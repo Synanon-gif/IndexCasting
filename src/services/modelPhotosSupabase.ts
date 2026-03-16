@@ -142,3 +142,36 @@ export async function reorderPhotos(
   return true;
 }
 
+/** Public bucket for images that everyone may see (model portfolio, etc.). Keep "documents" private. */
+const PUBLIC_IMAGES_BUCKET = 'documentspictures';
+const MODEL_PHOTOS_PREFIX = 'model-photos';
+
+/** Upload a portfolio photo for a model; returns public URL or null. */
+export async function uploadModelPhoto(modelId: string, file: Blob | File): Promise<string | null> {
+  const ext = file instanceof File ? (file.name.split('.').pop() || 'jpg') : 'jpg';
+  const path = `${MODEL_PHOTOS_PREFIX}/${modelId}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
+  const { error } = await supabase.storage.from(PUBLIC_IMAGES_BUCKET).upload(path, file, {
+    contentType: file.type || 'image/jpeg',
+    upsert: false,
+  });
+  if (error) {
+    console.error('uploadModelPhoto error:', error);
+    return null;
+  }
+  const { data } = supabase.storage.from(PUBLIC_IMAGES_BUCKET).getPublicUrl(path);
+  return data?.publicUrl ?? null;
+}
+
+/** Update models.portfolio_images from ordered URLs (first = cover for client swipe). */
+export async function syncPortfolioToModel(modelId: string, urls: string[]): Promise<boolean> {
+  const { error } = await supabase
+    .from('models')
+    .update({ portfolio_images: urls })
+    .eq('id', modelId);
+  if (error) {
+    console.error('syncPortfolioToModel error:', error);
+    return false;
+  }
+  return true;
+}
+

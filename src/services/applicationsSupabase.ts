@@ -2,16 +2,17 @@ import { supabase } from '../../lib/supabase';
 
 /**
  * Model-Bewerbungen (Apply) – in Supabase gespeichert.
- * model_applications (inkl. images = URLs); Bewerbungsfotos in Storage (documents/model-applications/…).
- * Pro Bewerber: applicant_user_id; pro Agentur bei Annahme sichtbar.
+ * model_applications (inkl. images = URLs); Bewerbungsfotos in Storage (documentspictures/model-applications/…).
+ * Public bucket so image URLs work; "documents" stays private.
  */
+const PUBLIC_IMAGES_BUCKET = 'documentspictures';
 const APPLICATION_IMAGES_PREFIX = 'model-applications';
 
 /** Upload one application image (blob or file) to Storage; returns public URL or null. */
 export async function uploadApplicationImage(file: Blob | File, slot: string): Promise<string | null> {
   const ext = file instanceof File ? (file.name.split('.').pop() || 'jpg') : 'jpg';
   const path = `${APPLICATION_IMAGES_PREFIX}/${Date.now()}-${slot}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-  const { error } = await supabase.storage.from('documents').upload(path, file, {
+  const { error } = await supabase.storage.from(PUBLIC_IMAGES_BUCKET).upload(path, file, {
     contentType: file.type || 'image/jpeg',
     upsert: false,
   });
@@ -19,7 +20,7 @@ export async function uploadApplicationImage(file: Blob | File, slot: string): P
     console.error('uploadApplicationImage error:', error);
     return null;
   }
-  const { data } = supabase.storage.from('documents').getPublicUrl(path);
+  const { data } = supabase.storage.from(PUBLIC_IMAGES_BUCKET).getPublicUrl(path);
   return data?.publicUrl ?? null;
 }
 
@@ -136,6 +137,24 @@ export async function updateApplicationStatus(
 
   if (error) {
     console.error('updateApplicationStatus error:', error);
+    return false;
+  }
+  return true;
+}
+
+/** Set recruiting thread on a pending application (so agency can chat before accepting). */
+export async function updateApplicationRecruitingThread(
+  applicationId: string,
+  recruitingThreadId: string
+): Promise<boolean> {
+  const { error } = await supabase
+    .from('model_applications')
+    .update({ recruiting_thread_id: recruitingThreadId })
+    .eq('id', applicationId)
+    .eq('status', 'pending');
+
+  if (error) {
+    console.error('updateApplicationRecruitingThread error:', error);
     return false;
   }
   return true;

@@ -280,17 +280,17 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
           <View style={[st.section, { marginTop: spacing.xl, paddingTop: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border }]}>
             <Text style={st.sectionLabel}>Account</Text>
             <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm }}>
-              Dein Konto und alle zugehörigen Daten können von dir gelöscht werden. Die Daten werden 30 Tage archiviert und danach endgültig entfernt.
+              Your account and all associated data can be deleted by you. Data will be archived for 30 days and then permanently removed.
             </Text>
             <TouchableOpacity
               onPress={() => {
                 Alert.alert(
-                  'Account löschen',
-                  'Dein Konto wird zur Löschung angemeldet. Deine Daten bleiben 30 Tage archiviert und werden danach endgültig gelöscht. Du kannst dich in dieser Zeit nicht mehr anmelden. Fortfahren?',
+                  'Delete account',
+                  'Your account will be scheduled for deletion. Your data will be kept for 30 days and then permanently deleted. You will not be able to sign in during this period. Continue?',
                   [
-                    { text: 'Abbrechen', style: 'cancel' },
+                    { text: 'Cancel', style: 'cancel' },
                     {
-                      text: 'Account löschen',
+                      text: 'Delete account',
                       style: 'destructive',
                       onPress: async () => {
                         setDeletingAccount(true);
@@ -306,7 +306,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
               disabled={deletingAccount}
               style={{ borderRadius: 999, borderWidth: 1, borderColor: '#e74c3c', paddingVertical: spacing.sm, alignItems: 'center' }}
             >
-              <Text style={{ ...typography.label, fontSize: 12, color: '#e74c3c' }}>{deletingAccount ? 'Wird gelöscht…' : 'Account löschen'}</Text>
+              <Text style={{ ...typography.label, fontSize: 12, color: '#e74c3c' }}>{deletingAccount ? 'Deleting…' : 'Delete account'}</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>

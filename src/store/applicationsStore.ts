@@ -12,7 +12,7 @@ import {
   createModelFromApplication,
   type SupabaseApplication,
 } from '../services/applicationsSupabase';
-import { createRecruitingThread, addRecruitingMessage } from './recruitingChats';
+import { startRecruitingChat, addRecruitingMessage } from './recruitingChats';
 
 export type ApplicationStatus = 'pending' | 'accepted' | 'rejected';
 
@@ -38,6 +38,17 @@ export type ModelApplication = {
   chatThreadId?: string;
 };
 
+/** Normalize image keys from DB (camelCase or snake_case) so UI always has closeUp, fullBody, profile. */
+function normalizeApplicationImages(imgs: unknown): ModelApplication['images'] {
+  if (!imgs || typeof imgs !== 'object') return {};
+  const o = imgs as Record<string, string | undefined>;
+  return {
+    closeUp: o.closeUp ?? o.close_up ?? '',
+    fullBody: o.fullBody ?? o.full_body ?? '',
+    profile: o.profile ?? '',
+  };
+}
+
 function toLocal(a: SupabaseApplication): ModelApplication {
   return {
     id: a.id,
@@ -49,7 +60,7 @@ function toLocal(a: SupabaseApplication): ModelApplication {
     hairColor: a.hair_color ?? '',
     city: a.city ?? '',
     instagramLink: a.instagram_link ?? '',
-    images: (a.images as any) ?? {},
+    images: normalizeApplicationImages(a.images),
     createdAt: new Date(a.created_at).getTime(),
     status: a.status,
     chatThreadId: a.recruiting_thread_id ?? undefined,
@@ -116,9 +127,13 @@ export async function acceptApplication(applicationId: string, agencyId: string)
   const app = cache.find((a) => a.id === applicationId);
   if (!app || app.status !== 'pending') return null;
   const modelName = `${app.firstName} ${app.lastName}`.trim();
-  const threadId = createRecruitingThread(applicationId, modelName);
-  addRecruitingMessage(threadId, 'agency', 'Welcome to our selection. We have received your application and would like to invite you to the next step.');
-
+  let threadId = app.chatThreadId;
+  if (!threadId || threadId.startsWith('recruiting-')) {
+    const realId = await startRecruitingChat(applicationId, modelName);
+    if (realId) threadId = realId;
+    else return null;
+    addRecruitingMessage(threadId, 'agency', 'Welcome to our selection. We have received your application and would like to invite you to the next step.');
+  }
   const ok = await updateApplicationStatus(applicationId, 'accepted', {
     recruiting_thread_id: threadId,
     accepted_by_agency_id: agencyId,

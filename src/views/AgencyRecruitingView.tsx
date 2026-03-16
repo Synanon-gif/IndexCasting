@@ -20,6 +20,7 @@ import {
   getAcceptedApplications,
   acceptApplication,
   rejectApplication,
+  refreshApplications,
   subscribeApplications,
   type ModelApplication,
   type Gender,
@@ -29,6 +30,8 @@ import {
   addRecruitingMessage,
   getRecruitingThread,
   getRecruitingThreads,
+  startRecruitingChat,
+  loadMessagesForThread,
 } from '../store/recruitingChats';
 
 type HeightFilter = 'all' | 'short' | 'medium' | 'tall';
@@ -66,6 +69,8 @@ export const AgencyRecruitingView: React.FC<{ onBack: () => void; agencyId: stri
   const [chatThreadId, setChatThreadId] = useState<string | null>(null);
   const [chatInput, setChatInput] = useState('');
   const [showBookingChats, setShowBookingChats] = useState(false);
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [startingChat, setStartingChat] = useState(false);
 
   const applications = filterApplications(allPending, heightFilter, genderFilter, hairFilter, cityFilter);
   const current = applications[index] ?? null;
@@ -105,7 +110,25 @@ export const AgencyRecruitingView: React.FC<{ onBack: () => void; agencyId: stri
     await rejectApplication(current.id);
     showFeedback('Application declined (archived).');
     setAllPending(getPendingApplications());
+    setShowDetailModal(false);
     if (index >= applications.length - 1) setIndex((i) => Math.max(0, i - 1));
+  };
+
+  const handleStartChat = async () => {
+    if (!current || !agencyId) return;
+    setStartingChat(true);
+    const modelName = `${current.firstName} ${current.lastName}`.trim();
+    const threadId = await startRecruitingChat(current.id, modelName);
+    setStartingChat(false);
+    if (threadId) {
+      await refreshApplications();
+      setAllPending(getPendingApplications());
+      setShowDetailModal(false);
+      setChatThreadId(threadId);
+      showFeedback('Chat started. You can message the model.');
+    } else {
+      showFeedback('Could not start chat. Try again.');
+    }
   };
 
   const closeChat = () => {
@@ -122,6 +145,10 @@ export const AgencyRecruitingView: React.FC<{ onBack: () => void; agencyId: stri
 
   const messages = chatThreadId ? getRecruitingMessages(chatThreadId) : [];
   const thread = chatThreadId ? getRecruitingThread(chatThreadId) : null;
+
+  useEffect(() => {
+    if (chatThreadId) loadMessagesForThread(chatThreadId);
+  }, [chatThreadId]);
 
   return (
     <View style={styles.container}>
@@ -243,7 +270,11 @@ export const AgencyRecruitingView: React.FC<{ onBack: () => void; agencyId: stri
       {current ? (
         <View style={styles.cardWrap}>
           <View style={styles.card}>
-            <View style={styles.cardImageWrap}>
+            <TouchableOpacity
+              style={styles.cardImageWrap}
+              activeOpacity={1}
+              onPress={() => setShowDetailModal(true)}
+            >
               {(current.images?.closeUp || current.images?.fullBody || current.images?.profile) ? (
                 <Image
                   source={{ uri: current.images.closeUp || current.images.fullBody || current.images.profile }}
@@ -260,20 +291,30 @@ export const AgencyRecruitingView: React.FC<{ onBack: () => void; agencyId: stri
                   {current.firstName} {current.lastName}
                 </Text>
                 <Text style={styles.cardMeta}>
-                  {current.age} · {current.height} cm · {current.city}
+                  {current.age} · {current.height} cm · {current.city || '—'}
                 </Text>
                 {current.instagramLink ? (
                   <Text style={styles.cardMeta} numberOfLines={1}>{current.instagramLink}</Text>
                 ) : null}
+                <Text style={[styles.cardMeta, { marginTop: 4, fontSize: 11, opacity: 0.9 }]}>Tap for full details</Text>
               </View>
-            </View>
+            </TouchableOpacity>
             <View style={styles.cardActions}>
               <TouchableOpacity style={styles.buttonNo} onPress={handleNo}>
                 <Text style={styles.buttonNoLabel}>No</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.buttonYes} onPress={handleYes}>
-                <Text style={styles.buttonYesLabel}>Add to selection</Text>
-              </TouchableOpacity>
+              {current.chatThreadId ? (
+                <TouchableOpacity
+                  style={[styles.buttonYes, { backgroundColor: colors.textPrimary }]}
+                  onPress={() => setChatThreadId(current.chatThreadId!)}
+                >
+                  <Text style={styles.buttonYesLabel}>Open chat</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity style={styles.buttonYes} onPress={handleYes}>
+                  <Text style={styles.buttonYesLabel}>Add to selection</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         </View>
@@ -292,6 +333,60 @@ export const AgencyRecruitingView: React.FC<{ onBack: () => void; agencyId: stri
           <Text style={styles.feedbackText}>{feedback}</Text>
         </View>
       )}
+
+      <Modal visible={showDetailModal && !!current} transparent animationType="fade" onRequestClose={() => setShowDetailModal(false)}>
+        <View style={styles.chatOverlay}>
+          <View style={[styles.chatCard, { maxHeight: '90%' }]}>
+            <View style={styles.chatHeader}>
+              <Text style={styles.chatTitle}>{current ? `${current.firstName} ${current.lastName}` : 'Details'}</Text>
+              <TouchableOpacity onPress={() => setShowDetailModal(false)}>
+                <Text style={styles.closeLabel}>Close</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ maxHeight: 400 }}>
+              {current && (
+                <>
+                  <View style={styles.filterLabel}>Photos</View>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: spacing.md }}>
+                    {[current.images?.closeUp, current.images?.fullBody, current.images?.profile].filter(Boolean).map((uri, i) => (
+                      <Image key={i} source={{ uri: uri! }} style={{ width: 100, height: 120, borderRadius: 8, backgroundColor: colors.border }} resizeMode="cover" />
+                    ))}
+                    {(!current.images?.closeUp && !current.images?.fullBody && !current.images?.profile) && (
+                      <Text style={styles.cardMeta}>No photos</Text>
+                    )}
+                  </View>
+                  <View style={styles.filterLabel}>Details</View>
+                  <Text style={styles.cardMeta}>Age: {current.age}</Text>
+                  <Text style={styles.cardMeta}>Height: {current.height} cm</Text>
+                  <Text style={styles.cardMeta}>Gender: {current.gender || '—'}</Text>
+                  <Text style={styles.cardMeta}>Hair: {current.hairColor || '—'}</Text>
+                  <Text style={styles.cardMeta}>City: {current.city || '—'}</Text>
+                  <Text style={styles.cardMeta}>Instagram: {current.instagramLink || '—'}</Text>
+                </>
+              )}
+            </ScrollView>
+            {current && (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: spacing.md }}>
+                {!current.chatThreadId && (
+                  <TouchableOpacity
+                    style={[styles.filterPill, { paddingHorizontal: spacing.md, paddingVertical: spacing.sm }]}
+                    onPress={handleStartChat}
+                    disabled={startingChat}
+                  >
+                    <Text style={styles.filterPillText}>{startingChat ? 'Starting…' : 'Start chat'}</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity style={[styles.buttonYes, { flex: 1, minWidth: 120 }]} onPress={() => { setShowDetailModal(false); handleYes(); }}>
+                  <Text style={styles.buttonYesLabel}>Add to selection</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.buttonNo, { flex: 1, minWidth: 100 }]} onPress={handleNo}>
+                  <Text style={styles.buttonNoLabel}>Decline</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={!!chatThreadId}

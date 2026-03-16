@@ -126,3 +126,16 @@ export async function linkModelByEmail(): Promise<void> {
   const { error } = await supabase.rpc('link_model_by_email');
   if (error) console.error('linkModelByEmail error:', error);
 }
+
+/** Agency removes a model (unassigns; dissolves connection and territories). */
+export async function removeModelFromAgency(modelId: string, agencyId: string): Promise<boolean> {
+  const { error } = await supabase.rpc('agency_remove_model', {
+    p_model_id: modelId,
+    p_agency_id: agencyId,
+  });
+  if (error) {
+    console.error('removeModelFromAgency error:', error);
+    return false;
+  }
+  return true;
+}

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -31,7 +31,13 @@ import {
   type ChatStatus,
 } from '../store/optionRequests';
 import { AgencyRecruitingView } from './AgencyRecruitingView';
-import { getModelsForAgencyFromSupabase, type SupabaseModel } from '../services/modelsSupabase';
+import { getModelsForAgencyFromSupabase, removeModelFromAgency, type SupabaseModel } from '../services/modelsSupabase';
+import {
+  getPhotosForModel,
+  upsertPhotosForModel,
+  syncPortfolioToModel,
+  uploadModelPhoto,
+} from '../services/modelPhotosSupabase';
 import { supabase } from '../../lib/supabase';
 import { getBookersForAgency, createBooker, deleteBooker, type Booker } from '../services/bookersSupabase';
 import { getAgencies, type Agency } from '../services/agenciesSupabase';
@@ -237,17 +243,17 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
           <View style={{ marginTop: spacing.md, marginBottom: spacing.lg }}>
             <Text style={s.sectionLabel}>Account</Text>
             <Text style={[s.metaText, { marginBottom: spacing.sm }]}>
-              Dein Konto und alle zugehörigen Daten können von dir gelöscht werden. Die Daten werden 30 Tage archiviert und danach endgültig entfernt.
+              Your account and all associated data can be deleted by you. Data will be archived for 30 days and then permanently removed.
             </Text>
             <TouchableOpacity
               onPress={() => {
                 Alert.alert(
-                  'Account löschen',
-                  'Dein Konto wird zur Löschung angemeldet. Deine Daten bleiben 30 Tage archiviert und werden danach endgültig gelöscht. Du kannst dich in dieser Zeit nicht mehr anmelden. Fortfahren?',
+                  'Delete account',
+                  'Your account will be scheduled for deletion. Your data will be kept for 30 days and then permanently deleted. You will not be able to sign in during this period. Continue?',
                   [
-                    { text: 'Abbrechen', style: 'cancel' },
+                    { text: 'Cancel', style: 'cancel' },
                     {
-                      text: 'Account löschen',
+                      text: 'Delete account',
                       style: 'destructive',
                       onPress: async () => {
                         setDeletingAccount(true);
@@ -263,7 +269,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
               disabled={deletingAccount}
               style={{ borderRadius: 999, borderWidth: 1, borderColor: '#e74c3c', paddingVertical: spacing.sm, alignItems: 'center' }}
             >
-              <Text style={{ ...typography.label, fontSize: 12, color: '#e74c3c' }}>{deletingAccount ? 'Wird gelöscht…' : 'Account löschen'}</Text>
+              <Text style={{ ...typography.label, fontSize: 12, color: '#e74c3c' }}>{deletingAccount ? 'Deleting…' : 'Delete account'}</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -695,10 +701,10 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
         <View style={[s.modelRow, { marginBottom: spacing.sm }]}>
           <Text style={s.sectionLabel}>Tag: {selectedDate}</Text>
           <TouchableOpacity style={[s.filterPill, { alignSelf: 'flex-start', marginTop: spacing.xs }]} onPress={onAddEvent}>
-            <Text style={s.filterPillLabel}>+ Event an diesem Tag</Text>
+            <Text style={s.filterPillLabel}>+ Event on this day</Text>
           </TouchableOpacity>
           {(eventsByDate[selectedDate] ?? []).length === 0 ? (
-            <Text style={s.metaText}>Keine Einträge an diesem Tag.</Text>
+            <Text style={s.metaText}>No entries on this day.</Text>
           ) : (
             (eventsByDate[selectedDate] ?? []).map((ev) => (
               <TouchableOpacity
@@ -722,7 +728,7 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
       )}
 
       {sorted.length === 0 && sortedManual.length === 0 && !loading && (
-        <Text style={s.metaText}>Noch keine Kalendereinträge.</Text>
+        <Text style={s.metaText}>No calendar entries yet.</Text>
       )}
 
       <ScrollView style={{ flex: 1 }}>
@@ -813,27 +819,45 @@ const MyModelsTab: React.FC<{
     return models.filter((m) => (m.country || m.city || '') === countryFilter);
   }, [models, countryFilter]);
 
+  useEffect(() => {
+    if (!selectedModel) {
+      setModelPhotos([]);
+      return;
+    }
+    getPhotosForModel(selectedModel.id, 'portfolio').then((photos) => {
+      setModelPhotos(
+        photos.map((p) => ({ id: p.id, url: p.url, visible: p.visible }))
+      );
+    });
+  }, [selectedModel?.id]);
+
   const handleAddModel = async () => {
     const name = addFields.name?.trim();
     if (!name || !agencyId) return;
     setAddLoading(true);
     try {
-      await supabase.from('models').insert({
-        agency_id: agencyId,
-        name,
-        email: addFields.email?.trim() || null,
-        height: addFields.height ? parseInt(addFields.height, 10) : null,
-        bust: addFields.bust ? parseInt(addFields.bust, 10) : null,
-        waist: addFields.waist ? parseInt(addFields.waist, 10) : null,
-        hips: addFields.hips ? parseInt(addFields.hips, 10) : null,
-        city: addFields.city || null,
-        country: addFields.country || null,
-        hair_color: addFields.hair_color || null,
-        eye_color: addFields.eye_color || null,
-      }).select().single();
+      const { data: created, error } = await supabase
+        .from('models')
+        .insert({
+          agency_id: agencyId,
+          name,
+          email: addFields.email?.trim() || null,
+          height: addFields.height ? parseInt(addFields.height, 10) : null,
+          bust: addFields.bust ? parseInt(addFields.bust, 10) : null,
+          waist: addFields.waist ? parseInt(addFields.waist, 10) : null,
+          hips: addFields.hips ? parseInt(addFields.hips, 10) : null,
+          city: addFields.city || null,
+          country: addFields.country || null,
+          hair_color: addFields.hair_color || null,
+          eye_color: addFields.eye_color || null,
+        })
+        .select()
+        .single();
+      if (error) throw error;
       setAddFields({});
       setShowAddForm(false);
       onRefresh();
+      if (created) setSelectedModel(created as SupabaseModel);
     } finally {
       setAddLoading(false);
     }
@@ -853,6 +877,10 @@ const MyModelsTab: React.FC<{
 
   const handleSaveModel = async () => {
     if (!selectedModel) return;
+    if (modelPhotos.length < 5) {
+      Alert.alert('Minimum 5 photos', 'Please add at least 5 photos. The first photo is the cover (shown when clients swipe).');
+      return;
+    }
     const updates: any = {};
     if (editField.name !== undefined) updates.name = editField.name;
     if (editField.email !== undefined) updates.email = editField.email.trim() || null;
@@ -870,6 +898,19 @@ const MyModelsTab: React.FC<{
     if (editField.is_visible_fashion !== undefined) updates.is_visible_fashion = editField.is_visible_fashion === 'true';
 
     await supabase.from('models').update(updates).eq('id', selectedModel.id);
+
+    const photoPayload = modelPhotos.map((p, index) => ({
+      id: p.id,
+      url: p.url,
+      sort_order: index,
+      visible: p.visible,
+      source: null,
+      api_external_id: null,
+      photo_type: 'portfolio' as const,
+    }));
+    await upsertPhotosForModel(selectedModel.id, photoPayload);
+    await syncPortfolioToModel(selectedModel.id, modelPhotos.map((p) => p.url));
+
     setSelectedModel(null);
     setEditField({});
     onRefresh();
@@ -891,6 +932,26 @@ const MyModelsTab: React.FC<{
     if (!newPhotoUrl.trim()) return;
     setModelPhotos([...modelPhotos, { url: newPhotoUrl.trim(), visible: true }]);
     setNewPhotoUrl('');
+  };
+
+  const setCoverPhoto = (idx: number) => {
+    if (idx <= 0 || idx >= modelPhotos.length) return;
+    const next = [...modelPhotos];
+    const [cover] = next.splice(idx, 1);
+    next.unshift(cover);
+    setModelPhotos(next);
+  };
+
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const handlePhotoFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target?.files?.[0];
+    if (!file || !selectedModel || !file.type.startsWith('image/')) return;
+    e.target.value = '';
+    setUploadingPhoto(true);
+    const url = await uploadModelPhoto(selectedModel.id, file);
+    setUploadingPhoto(false);
+    if (url) setModelPhotos((prev) => [...prev, { url, visible: true }]);
   };
 
   if (selectedModel) {
@@ -943,8 +1004,11 @@ const MyModelsTab: React.FC<{
 
         {/* Model Photos Management */}
         <View style={{ marginTop: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.md }}>
-          <Text style={s.sectionLabel}>Model Photos</Text>
-          
+          <Text style={s.sectionLabel}>Model Photos (min. 5)</Text>
+          <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm }}>
+            First photo = cover (shown when clients swipe). Add at least 5 photos.
+          </Text>
+
           {/* Polas API connection */}
           <View style={{ marginBottom: spacing.md }}>
             <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary, marginBottom: 4 }}>
@@ -975,14 +1039,23 @@ const MyModelsTab: React.FC<{
             </Text>
           </View>
 
-          {/* Photo list with reorder */}
+          {/* Photo list with reorder and Set as cover */}
           <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary, marginBottom: 4 }}>
-            Photos ({modelPhotos.length}) — drag to reorder
+            Photos ({modelPhotos.length}/5 min) — first = cover
           </Text>
           {modelPhotos.map((photo, idx) => (
-            <View key={photo.id || idx} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-              <Text style={{ ...typography.body, fontSize: 12, flex: 1 }}>{photo.url || `Photo ${idx + 1}`}</Text>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
+            <View key={photo.id || `photo-${idx}`} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+              {typeof Image !== 'undefined' && photo.url ? (
+                <Image source={{ uri: photo.url }} style={{ width: 40, height: 40, borderRadius: 4, marginRight: 8, backgroundColor: colors.border }} resizeMode="cover" />
+              ) : null}
+              <Text style={{ ...typography.body, fontSize: 11, flex: 1 }} numberOfLines={1}>{photo.url ? (photo.url.length > 50 ? photo.url.slice(0, 47) + '…' : photo.url) : `Photo ${idx + 1}`}</Text>
+              <View style={{ flexDirection: 'row', gap: 4, alignItems: 'center' }}>
+                {idx > 0 && (
+                  <TouchableOpacity onPress={() => setCoverPhoto(idx)} style={[s.filterPill, { paddingHorizontal: 6, paddingVertical: 2 }]}>
+                    <Text style={[s.filterPillLabel, { fontSize: 10 }]}>Cover</Text>
+                  </TouchableOpacity>
+                )}
+                {idx === 0 && <Text style={{ ...typography.label, fontSize: 9, color: colors.buttonOptionGreen }}>Cover</Text>}
                 <TouchableOpacity onPress={() => movePhoto(idx, -1)} disabled={idx === 0}>
                   <Text style={{ fontSize: 16, color: idx === 0 ? colors.textSecondary : colors.textPrimary }}>↑</Text>
                 </TouchableOpacity>
@@ -995,19 +1068,37 @@ const MyModelsTab: React.FC<{
               </View>
             </View>
           ))}
-          
-          {/* Add photo manually */}
+
+          {/* Upload and URL */}
           {polasSource === 'manual' && (
             <View style={{ marginTop: spacing.sm }}>
+              {typeof window !== 'undefined' && (
+                <>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    ref={fileInputRef}
+                    onChange={handlePhotoFile}
+                    style={{ display: 'none' }}
+                  />
+                  <TouchableOpacity
+                    onPress={() => fileInputRef.current?.click()}
+                    disabled={uploadingPhoto}
+                    style={[s.apiBtn, { marginBottom: 8 }]}
+                  >
+                    <Text style={s.apiBtnLabel}>{uploadingPhoto ? 'Uploading…' : '+ Upload photo'}</Text>
+                  </TouchableOpacity>
+                </>
+              )}
               <TextInput
                 value={newPhotoUrl}
                 onChangeText={setNewPhotoUrl}
-                placeholder="Photo URL"
+                placeholder="Or paste photo URL"
                 placeholderTextColor={colors.textSecondary}
                 style={[s.editInput, { height: 36 }]}
               />
               <TouchableOpacity onPress={addPhoto} style={[s.apiBtn, { marginTop: 4 }]}>
-                <Text style={s.apiBtnLabel}>+ Add Photo</Text>
+                <Text style={s.apiBtnLabel}>+ Add URL</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -1022,6 +1113,33 @@ const MyModelsTab: React.FC<{
 
         <TouchableOpacity onPress={handleSaveModel} style={s.saveBtn}>
           <Text style={s.saveBtnLabel}>Save changes</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={{ marginTop: spacing.xl, paddingVertical: spacing.sm, borderRadius: 8, borderWidth: 1, borderColor: '#e74c3c', alignItems: 'center' }}
+          onPress={() => {
+            Alert.alert(
+              'Remove model',
+              'This will unassign the model from your agency and remove all representation (e.g. territories). The model profile remains but is no longer represented by you. Continue?',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Remove',
+                  style: 'destructive',
+                  onPress: async () => {
+                    const ok = await removeModelFromAgency(selectedModel.id, agencyId);
+                    if (ok) {
+                      setSelectedModel(null);
+                      setEditField({});
+                      onRefresh();
+                    }
+                  },
+                },
+              ]
+            );
+          }}
+        >
+          <Text style={{ ...typography.label, fontSize: 12, color: '#e74c3c' }}>Remove model from agency</Text>
         </TouchableOpacity>
       </ScrollView>
     );

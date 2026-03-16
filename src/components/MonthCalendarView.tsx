@@ -22,7 +22,7 @@ export type MonthCalendarViewProps = {
   onNextMonth: () => void;
 };
 
-const WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 function getMonthGrid(year: number, month: number): { date: string | null; dayNum: number; isCurrentMonth: boolean }[] {
   const first = new Date(year, month, 1);

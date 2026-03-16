@@ -1046,7 +1046,6 @@ const DiscoverView: React.FC<DiscoverProps> = ({
                   style={styles.coverImage}
                   resizeMode="cover"
                 />
-                <Text style={styles.tapForPhotosHint}>Tap for more photos</Text>
               </TouchableOpacity>
               <View style={styles.coverGradientOverlay} />
               <View style={styles.coverMeasurementsOverlay}>
@@ -1203,7 +1202,7 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
         <Text style={styles.sectionLabel}>Calendar</Text>
         <View style={{ flexDirection: 'row', gap: spacing.sm, alignItems: 'center' }}>
           {!canAddManualEvents && (
-            <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginRight: spacing.sm }}>Anmelden, um eigene Termine zu speichern</Text>
+            <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginRight: spacing.sm }}>Sign in to save your own events</Text>
           )}
           <TouchableOpacity
             style={[styles.filterPill, { paddingHorizontal: spacing.sm }, !canAddManualEvents && { opacity: 0.6 }]}
@@ -1237,10 +1236,10 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
             onPress={onAddEvent}
             disabled={!canAddManualEvents}
           >
-            <Text style={styles.filterPillLabel}>+ Event an diesem Tag</Text>
+            <Text style={styles.filterPillLabel}>+ Event on this day</Text>
           </TouchableOpacity>
           {(eventsByDate[selectedDate] ?? []).length === 0 ? (
-            <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginTop: spacing.xs }}>Keine Einträge an diesem Tag.</Text>
+            <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginTop: spacing.xs }}>No entries on this day.</Text>
           ) : (
             (eventsByDate[selectedDate] ?? []).map((ev) => (
               <TouchableOpacity
@@ -1265,7 +1264,7 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
 
       {sorted.length === 0 && sortedManual.length === 0 && !loading && (
         <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.sm }}>
-          Noch keine Kalendereinträge. Füge eigene Termine hinzu oder warte auf bestätigte Options/Jobs.
+          No calendar entries yet. Add your own events or wait for confirmed options/jobs.
         </Text>
       )}
 
@@ -2364,12 +2363,12 @@ const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
   const handleRequestAccountDeletion = () => {
     Alert.alert(
-      'Account löschen',
-      'Dein Konto wird zur Löschung angemeldet. Deine Daten bleiben 30 Tage archiviert und werden danach endgültig gelöscht. Du kannst dich in dieser Zeit nicht mehr anmelden. Fortfahren?',
+      'Delete account',
+      'Your account will be scheduled for deletion. Your data will be kept for 30 days and then permanently deleted. You will not be able to sign in during this period. Continue?',
       [
-        { text: 'Abbrechen', style: 'cancel' },
+        { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Account löschen',
+          text: 'Delete account',
           style: 'destructive',
           onPress: async () => {
             setDeleting(true);
@@ -2435,14 +2434,14 @@ const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
               <View style={{ marginTop: spacing.xl, paddingTop: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border }}>
                 <Text style={{ ...typography.label, fontSize: 12, color: colors.textPrimary, marginBottom: 4 }}>Account</Text>
                 <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm }}>
-                  Dein Konto und alle zugehörigen Daten können von dir gelöscht werden. Die Daten werden 30 Tage archiviert und danach endgültig entfernt.
+                  Your account and all associated data can be deleted by you. Data will be archived for 30 days and then permanently removed.
                 </Text>
                 <TouchableOpacity
                   onPress={handleRequestAccountDeletion}
                   disabled={deleting}
                   style={{ borderRadius: 999, borderWidth: 1, borderColor: '#e74c3c', paddingVertical: spacing.sm, alignItems: 'center' }}
                 >
-                  <Text style={{ ...typography.label, fontSize: 12, color: '#e74c3c' }}>{deleting ? 'Wird gelöscht…' : 'Account löschen'}</Text>
+                  <Text style={{ ...typography.label, fontSize: 12, color: '#e74c3c' }}>{deleting ? 'Deleting…' : 'Delete account'}</Text>
                 </TouchableOpacity>
               </View>
             </>
@@ -2732,20 +2731,6 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     backgroundColor: '#D0CEC7',
-  },
-  tapForPhotosHint: {
-    position: 'absolute',
-    bottom: 8,
-    left: spacing.md,
-    right: spacing.md,
-    ...typography.label,
-    fontSize: 11,
-    color: '#fff',
-    textAlign: 'center',
-    textShadowColor: '#000',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
-    zIndex: 2,
   },
   coverGradientOverlay: {
     position: 'absolute',

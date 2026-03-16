@@ -138,6 +138,16 @@ export async function getAdminLogs(limit = 100, offset = 0): Promise<AdminLogEnt
   return (data ?? []) as AdminLogEntry[];
 }
 
+/** Admin: Purge all public data for a user (profile + CASCADE). Call auth.admin.deleteUser(id) via Edge Function/Dashboard to complete. */
+export async function adminPurgeUserData(targetUserId: string): Promise<boolean> {
+  const { error } = await supabase.rpc('admin_purge_user_data', { target_id: targetUserId });
+  if (error) {
+    console.error('adminPurgeUserData error:', error);
+    return false;
+  }
+  return true;
+}
+
 export async function writeAdminLog(action: string, targetUserId?: string, details?: Record<string, unknown>): Promise<void> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;

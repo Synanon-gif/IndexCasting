@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, ActivityIndicator,
+  View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, Alert,
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import {
-  getAllProfiles, activateAccount, deactivateAccount, adminUpdateProfileFull,
+  getAllProfiles, activateAccount, deactivateAccount, adminUpdateProfileFull, adminPurgeUserData,
   getAdminLogs, type AdminProfile, type AdminLogEntry,
 } from '../services/adminSupabase';
 import { supabase } from '../../lib/supabase';
@@ -236,6 +236,31 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
                           <Text style={styles.deactivateBtnLabel}>Deactivate</Text>
                         </TouchableOpacity>
                       )}
+                      <TouchableOpacity
+                        style={[styles.deactivateBtn, { marginTop: 4, backgroundColor: '#333' }]}
+                        onPress={() => {
+                          Alert.alert(
+                            'Delete account permanently',
+                            'This will delete all profile data in the database. You must also delete the user in Supabase Dashboard > Authentication > Users to complete removal. Continue?',
+                            [
+                              { text: 'Cancel', style: 'cancel' },
+                              {
+                                text: 'Delete data',
+                                style: 'destructive',
+                                onPress: async () => {
+                                  const ok = await adminPurgeUserData(p.id);
+                                  if (ok) {
+                                    setFeedback('Profile data deleted. Remove user in Supabase Auth if needed.');
+                                    loadData();
+                                  } else setFeedback('Purge failed.');
+                                },
+                              },
+                            ]
+                          );
+                        }}
+                      >
+                        <Text style={styles.deactivateBtnLabel}>Delete permanently</Text>
+                      </TouchableOpacity>
                     </>
                   )}
                 </View>

@@ -144,9 +144,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const result = await loadProfile(data.user.id);
         if (result && 'deactivated' in result && result.deactivated) {
           if (result.reason === 'deletion') {
-            return { error: 'Dein Konto wurde zur Löschung angemeldet und ist nicht mehr zugänglich.' };
+            return { error: 'Your account has been scheduled for deletion and is no longer accessible.' };
           }
-          return { error: 'Dein Konto wurde deaktiviert. Bitte wende dich an den Administrator.' };
+          return { error: 'Your account has been deactivated. Please contact the administrator.' };
         }
       }
     } catch {}

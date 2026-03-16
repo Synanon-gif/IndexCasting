@@ -3,11 +3,12 @@
  * Nach Login/Sign-up als Model sichtbar, bis eine Agentur die Bewerbung annimmt.
  */
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Modal } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { getApplicationsForApplicant } from '../services/applicationsSupabase';
 import type { SupabaseApplication } from '../services/applicationsSupabase';
 import { ApplyFormView } from './ApplyFormView';
+import { BookingChatView } from './BookingChatView';
 
 type ModelApplicationsViewProps = {
   applicantUserId: string;
@@ -34,6 +35,7 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
   const [applications, setApplications] = useState<SupabaseApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [showApplyForm, setShowApplyForm] = useState(false);
+  const [chatThreadId, setChatThreadId] = useState<string | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -84,12 +86,26 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
             <View key={app.id} style={styles.card}>
               <Text style={styles.name}>{[app.first_name, app.last_name].filter(Boolean).join(' ')}</Text>
               <Text style={styles.meta}>{app.height} cm · {app.city ?? '—'}</Text>
-              <View style={[styles.badge, { backgroundColor: statusColor(app.status) }]}>
-                <Text style={styles.badgeLabel}>{toStatusLabel(app.status)}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                <View style={[styles.badge, { backgroundColor: statusColor(app.status) }]}>
+                  <Text style={styles.badgeLabel}>{toStatusLabel(app.status)}</Text>
+                </View>
+                {app.recruiting_thread_id && (
+                  <TouchableOpacity
+                    style={{ paddingVertical: 4, paddingHorizontal: 10, borderRadius: 8, backgroundColor: colors.buttonOptionGreen }}
+                    onPress={() => setChatThreadId(app.recruiting_thread_id!)}
+                  >
+                    <Text style={{ ...typography.label, fontSize: 11, color: colors.surface }}>Chat</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
           ))}
         </ScrollView>
+      )}
+
+      {chatThreadId != null && (
+        <BookingChatView threadId={chatThreadId} fromRole="model" onClose={() => setChatThreadId(null)} />
       )}
     </View>
   );

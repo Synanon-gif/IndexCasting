@@ -11,6 +11,7 @@ import {
   getMessages as fetchMessages,
   addMessage as addMessageInDb,
 } from '../services/recruitingChatSupabase';
+import { updateApplicationRecruitingThread } from '../services/applicationsSupabase';
 
 export type RecruitingMessage = {
   id: string;
@@ -84,6 +85,22 @@ export function createRecruitingThread(applicationId: string, modelName: string)
 
   notify();
   return tempId;
+}
+
+/** Create thread in DB, link to application (for chat before accept), return thread id. */
+export async function startRecruitingChat(applicationId: string, modelName: string): Promise<string | null> {
+  const realId = await createThreadInDb(applicationId, modelName);
+  if (!realId) return null;
+  const ok = await updateApplicationRecruitingThread(applicationId, realId);
+  if (!ok) return null;
+  threadsCache.push({
+    id: realId,
+    applicationId,
+    modelName,
+    createdAt: Date.now(),
+  });
+  notify();
+  return realId;
 }
 
 export function getRecruitingMessages(threadId: string): RecruitingMessage[] {
