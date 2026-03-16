@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { Platform, View, StyleSheet, ActivityIndicator } from 'react-native';
+import { Platform, View, StyleSheet, ActivityIndicator, Text, Dimensions } from 'react-native';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { AppDataProvider, useAppData } from './src/context/AppDataContext';
 import { AuthScreen } from './src/screens/AuthScreen';
@@ -16,6 +16,7 @@ import { AdminDashboard } from './src/views/AdminDashboard';
 import { colors } from './src/theme/theme';
 import type { ClientType } from './src/views/ClientView';
 import { loadClientType, saveClientType } from './src/storage/persistence';
+import { supabaseUrl, supabaseAnonKey } from './src/config/env';
 
 type Role = 'model' | 'agency' | 'client' | 'apply';
 
@@ -203,19 +204,40 @@ function AppContent() {
   );
 }
 
+const { height: windowHeight } = Dimensions.get('window');
 const styles = StyleSheet.create({
   shell: {
     flex: 1,
     backgroundColor: colors.background,
+    ...(Platform.OS === 'web' ? { minHeight: windowHeight } : {}),
   },
 });
 
+function ConfigGuard({ children }: { children: React.ReactNode }) {
+  const configured = Boolean(supabaseUrl && supabaseAnonKey);
+  if (!configured) {
+    return (
+      <View style={[styles.shell, { justifyContent: 'center', alignItems: 'center', padding: 24 }]}>
+        <Text style={{ color: colors.textPrimary, fontSize: 16, textAlign: 'center' }}>
+          Supabase ist nicht konfiguriert.{'\n\n'}
+          Bitte in .env.local prüfen:{'\n'}
+          NEXT_PUBLIC_SUPABASE_URL und NEXT_PUBLIC_SUPABASE_ANON_KEY
+        </Text>
+        <StatusBar style="dark" />
+      </View>
+    );
+  }
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
-    <AuthProvider>
-      <AppDataProvider>
-        <AppContent />
-      </AppDataProvider>
-    </AuthProvider>
+    <ConfigGuard>
+      <AuthProvider>
+        <AppDataProvider>
+          <AppContent />
+        </AppDataProvider>
+      </AuthProvider>
+    </ConfigGuard>
   );
 }
