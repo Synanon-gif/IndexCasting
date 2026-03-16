@@ -1,0 +1,221 @@
+import React, { useEffect, useState } from 'react';
+import { StatusBar } from 'expo-status-bar';
+import { Platform, View, StyleSheet, ActivityIndicator } from 'react-native';
+import { AuthProvider, useAuth } from './src/context/AuthContext';
+import { AppDataProvider, useAppData } from './src/context/AppDataContext';
+import { AuthScreen } from './src/screens/AuthScreen';
+import { LegalAcceptanceScreen } from './src/screens/LegalAcceptanceScreen';
+import { PendingActivationScreen } from './src/screens/PendingActivationScreen';
+import { ClientView } from './src/views/ClientView';
+import { ModelView } from './src/views/ModelView';
+import { AgencyView } from './src/views/AgencyView';
+import { SharedSelectionView } from './src/views/SharedSelectionView';
+import { BookingChatView } from './src/views/BookingChatView';
+import { GuestView } from './src/views/GuestView';
+import { AdminDashboard } from './src/views/AdminDashboard';
+import { colors } from './src/theme/theme';
+import type { ClientType } from './src/views/ClientView';
+import { loadClientType, saveClientType } from './src/storage/persistence';
+
+type Role = 'model' | 'agency' | 'client' | 'apply';
+
+function getSharedParams(): { name: string; ids: string[] } | null {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
+  const p = new URLSearchParams(window.location.search);
+  if (p.get('shared') !== '1') return null;
+  const name = p.get('name') || 'Selection';
+  const ids = (p.get('ids') || '').split(',').filter(Boolean);
+  return { name, ids };
+}
+
+function getBookingThreadId(): string | null {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
+  const p = new URLSearchParams(window.location.search);
+  const id = p.get('booking');
+  return id && id.trim() ? id.trim() : null;
+}
+
+function getGuestLinkId(): string | null {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
+  const p = new URLSearchParams(window.location.search);
+  return p.get('guest') || null;
+}
+
+const ROLE_TO_USER_ID: Record<string, string> = {
+  client: 'user-client',
+  agency: 'user-agent',
+  model: 'user-model-1',
+};
+
+function roleFromProfile(profileRole: string | undefined): Role | null {
+  if (profileRole === 'client') return 'client';
+  if (profileRole === 'agent') return 'agency';
+  if (profileRole === 'model') return 'model';
+  return null;
+}
+
+function AppContent() {
+  const { session, loading, profile, signOut } = useAuth();
+  const [sharedParams] = useState<{ name: string; ids: string[] } | null>(getSharedParams);
+  const [bookingThreadId, setBookingThreadId] = useState<string | null>(getBookingThreadId);
+  const [guestLinkId] = useState<string | null>(getGuestLinkId);
+  const [demoRole, setDemoRole] = useState<Role | null>(null);
+  const [clientType, setClientTypeState] = useState<ClientType>(() => loadClientType() ?? 'fashion');
+  const { setCurrentUserId } = useAppData();
+
+  const isDemo = demoRole !== null;
+  const effectiveRole: Role | null = isDemo ? demoRole : roleFromProfile(profile?.role);
+
+  const setClientType = (value: ClientType) => {
+    setClientTypeState(value);
+    saveClientType(value);
+  };
+
+  useEffect(() => {
+    if (!effectiveRole || effectiveRole === 'apply') setCurrentUserId(null);
+    else if (isDemo && ROLE_TO_USER_ID[effectiveRole]) setCurrentUserId(ROLE_TO_USER_ID[effectiveRole]);
+    else if (session?.user) setCurrentUserId(session.user.id);
+  }, [effectiveRole, isDemo, session, setCurrentUserId]);
+
+  if (loading) {
+    return (
+      <View style={[styles.shell, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={colors.textPrimary} />
+      </View>
+    );
+  }
+
+  if (guestLinkId) {
+    return (
+      <>
+        <GuestView linkId={guestLinkId} />
+        <StatusBar style="dark" />
+      </>
+    );
+  }
+
+  if (sharedParams) {
+    return (
+      <>
+        <SharedSelectionView shareName={sharedParams.name} modelIds={sharedParams.ids} />
+        <StatusBar style="dark" />
+      </>
+    );
+  }
+
+  if (bookingThreadId) {
+    return (
+      <>
+        <View style={styles.shell}>
+          <BookingChatView
+            threadId={bookingThreadId}
+            fromRole="model"
+            onClose={() => {
+              if (Platform.OS === 'web' && typeof window !== 'undefined') {
+                window.history.replaceState({}, '', window.location.pathname || '/');
+              }
+              setBookingThreadId(null);
+            }}
+          />
+        </View>
+        <StatusBar style="dark" />
+      </>
+    );
+  }
+
+  if (!session && !isDemo) {
+    return (
+      <>
+        <AuthScreen onDemoLogin={(r) => setDemoRole(r)} />
+        <StatusBar style="dark" />
+      </>
+    );
+  }
+
+  if (!effectiveRole) {
+    return (
+      <>
+        <AuthScreen onDemoLogin={(r) => setDemoRole(r)} />
+        <StatusBar style="dark" />
+      </>
+    );
+  }
+
+  if (!isDemo && profile) {
+    if (!profile.tos_accepted || !profile.privacy_accepted) {
+      return (
+        <>
+          <LegalAcceptanceScreen />
+          <StatusBar style="dark" />
+        </>
+      );
+    }
+
+    if (profile.is_admin) {
+      return (
+        <>
+          <View style={styles.shell}>
+            <AdminDashboard onLogout={signOut} />
+          </View>
+          <StatusBar style="dark" />
+        </>
+      );
+    }
+
+    if (!profile.is_active && (profile.role === 'client' || profile.role === 'agent')) {
+      return (
+        <>
+          <PendingActivationScreen />
+          <StatusBar style="dark" />
+        </>
+      );
+    }
+  }
+
+  const handleBackToRoleSelection = () => {
+    if (isDemo) {
+      setDemoRole(null);
+    } else {
+      signOut();
+    }
+  };
+
+  return (
+    <>
+      <View style={styles.shell}>
+        {effectiveRole === 'client' && (
+          <ClientView
+            clientType={clientType}
+            onClientTypeChange={setClientType}
+            onBackToRoleSelection={handleBackToRoleSelection}
+          />
+        )}
+        {effectiveRole === 'model' && (
+          <ModelView
+            onBackToRoleSelection={handleBackToRoleSelection}
+            userId={!isDemo && session?.user ? session.user.id : undefined}
+          />
+        )}
+        {effectiveRole === 'agency' && <AgencyView onBackToRoleSelection={handleBackToRoleSelection} />}
+      </View>
+      <StatusBar style="dark" />
+    </>
+  );
+}
+
+const styles = StyleSheet.create({
+  shell: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+});
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppDataProvider>
+        <AppContent />
+      </AppDataProvider>
+    </AuthProvider>
+  );
+}
