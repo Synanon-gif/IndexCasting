@@ -171,7 +171,11 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         </TouchableOpacity>
       </View>
 
-      <View style={s.tabRow}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={s.tabRow}
+      >
         {([
           { key: 'dashboard', label: 'Dashboard' },
           { key: 'myModels', label: 'My Models' },
@@ -187,7 +191,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
             {tab === t.key && <View style={s.tabUnderline} />}
           </TouchableOpacity>
         ))}
-      </View>
+      </ScrollView>
 
       {tab === 'dashboard' && (
         <DashboardTab models={models} />

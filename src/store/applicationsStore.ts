@@ -123,6 +123,10 @@ export function getAcceptedApplications(): ModelApplication[] {
   return cache.filter((a) => a.status === 'accepted' && a.chatThreadId);
 }
 
+export function getApplicationById(id: string): ModelApplication | undefined {
+  return cache.find((a) => a.id === id);
+}
+
 export async function acceptApplication(applicationId: string, agencyId: string): Promise<string | null> {
   const app = cache.find((a) => a.id === applicationId);
   if (!app || app.status !== 'pending') return null;

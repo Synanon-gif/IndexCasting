@@ -3,7 +3,7 @@
  * Used by the model to open a chat from "Booking chats" or from a ?booking= thread link.
  */
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, Modal, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, Modal, ScrollView, Image } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import {
   getRecruitingMessages,
@@ -12,6 +12,7 @@ import {
   subscribeRecruitingChats,
   addModelBookingThreadId,
 } from '../store/recruitingChats';
+import { getApplicationById } from '../store/applicationsStore';
 
 type Props = {
   threadId: string;
@@ -23,6 +24,7 @@ export const BookingChatView: React.FC<Props> = ({ threadId, fromRole, onClose }
   const [chatInput, setChatInput] = useState('');
   const [messages, setMessages] = useState(() => getRecruitingMessages(threadId));
   const thread = getRecruitingThread(threadId);
+  const application = thread ? getApplicationById(thread.applicationId) : undefined;
 
   useEffect(() => {
     if (fromRole === 'model') addModelBookingThreadId(threadId);
@@ -47,11 +49,34 @@ export const BookingChatView: React.FC<Props> = ({ threadId, fromRole, onClose }
       <View style={styles.overlay}>
         <View style={styles.card}>
           <View style={styles.header}>
-            <Text style={styles.title}>{thread ? thread.modelName : 'Chat'}</Text>
+            <View>
+              <Text style={styles.title}>{thread ? thread.modelName : 'Chat'}</Text>
+              {application && (
+                <Text style={styles.subtitle}>
+                  {application.city || '—'} · {application.height} cm · {application.gender || '—'}
+                </Text>
+              )}
+            </View>
             <TouchableOpacity onPress={onClose}>
               <Text style={styles.closeLabel}>Close</Text>
             </TouchableOpacity>
           </View>
+          {application && (
+            <View style={styles.profileRow}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                {[application.images?.closeUp, application.images?.fullBody, application.images?.profile]
+                  .filter(Boolean)
+                  .map((uri, idx) => (
+                    <Image
+                      key={idx}
+                      source={{ uri: uri! }}
+                      style={styles.profileImage}
+                      resizeMode="cover"
+                    />
+                  ))}
+              </ScrollView>
+            </View>
+          )}
           <ScrollView style={styles.messages}>
             {messages.map((msg) => (
               <View
@@ -109,6 +134,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing.md,
   },
+  subtitle: {
+    ...typography.body,
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
   title: {
     ...typography.heading,
     fontSize: 16,
@@ -118,6 +149,16 @@ const styles = StyleSheet.create({
     ...typography.label,
     fontSize: 11,
     color: colors.textSecondary,
+  },
+  profileRow: {
+    marginBottom: spacing.sm,
+  },
+  profileImage: {
+    width: 72,
+    height: 90,
+    borderRadius: 8,
+    backgroundColor: colors.border,
+    marginRight: spacing.sm,
   },
   messages: {
     maxHeight: 240,

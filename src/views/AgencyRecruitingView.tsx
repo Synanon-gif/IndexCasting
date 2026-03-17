@@ -39,19 +39,24 @@ type HeightFilter = 'all' | 'short' | 'medium' | 'tall';
 function filterApplications(
   list: ModelApplication[],
   heightFilter: HeightFilter,
+  minHeight: number | null,
+  maxHeight: number | null,
   genderFilter: Gender | '',
   hairFilter: string,
   cityFilter: string
 ): ModelApplication[] {
   return list.filter((a) => {
+    const h = a.height ?? 0;
+    if (typeof minHeight === 'number' && !Number.isNaN(minHeight) && h < minHeight) return false;
+    if (typeof maxHeight === 'number' && !Number.isNaN(maxHeight) && h > maxHeight) return false;
     if (heightFilter !== 'all') {
-      if (heightFilter === 'short' && a.height >= 175) return false;
-      if (heightFilter === 'medium' && (a.height < 175 || a.height > 182)) return false;
-      if (heightFilter === 'tall' && a.height <= 182) return false;
+      if (heightFilter === 'short' && h >= 175) return false;
+      if (heightFilter === 'medium' && (h < 175 || h > 182)) return false;
+      if (heightFilter === 'tall' && h <= 182) return false;
     }
     if (genderFilter && (a.gender ?? '') !== genderFilter) return false;
     if (hairFilter && !((a.hairColor ?? '').toLowerCase().includes(hairFilter.toLowerCase()))) return false;
-    if (cityFilter && (a.city || '') !== cityFilter) return false;
+    if (cityFilter && !(a.city || '').toLowerCase().includes(cityFilter.toLowerCase())) return false;
     return true;
   });
 }
@@ -60,6 +65,8 @@ export const AgencyRecruitingView: React.FC<{ onBack: () => void; agencyId: stri
   const [recruitTab, setRecruitTab] = useState<'pending' | 'accepted'>('pending');
   const [allPending, setAllPending] = useState<ModelApplication[]>([]);
   const [heightFilter, setHeightFilter] = useState<HeightFilter>('all');
+  const [minHeight, setMinHeight] = useState<string>('');
+  const [maxHeight, setMaxHeight] = useState<string>('');
   const [genderFilter, setGenderFilter] = useState<Gender | ''>('');
   const [hairFilter, setHairFilter] = useState('');
   const [cityFilter, setCityFilter] = useState('');
@@ -72,7 +79,15 @@ export const AgencyRecruitingView: React.FC<{ onBack: () => void; agencyId: stri
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [startingChat, setStartingChat] = useState(false);
 
-  const applications = filterApplications(allPending, heightFilter, genderFilter, hairFilter, cityFilter);
+  const applications = filterApplications(
+    allPending,
+    heightFilter,
+    minHeight ? Number(minHeight) : null,
+    maxHeight ? Number(maxHeight) : null,
+    genderFilter,
+    hairFilter,
+    cityFilter
+  );
   const current = applications[index] ?? null;
   const acceptedList = getAcceptedApplications();
   const allThreads = getRecruitingThreads();
@@ -211,6 +226,26 @@ export const AgencyRecruitingView: React.FC<{ onBack: () => void; agencyId: stri
               </TouchableOpacity>
             ))}
           </View>
+          <View style={styles.heightRangeRow}>
+            <Text style={styles.filterLabel}>Height range (cm)</Text>
+            <View style={styles.heightInputsRow}>
+              <TextInput
+                value={minHeight}
+                onChangeText={setMinHeight}
+                placeholder="Min"
+                keyboardType="number-pad"
+                style={styles.heightInput}
+              />
+              <Text style={styles.heightDash}>–</Text>
+              <TextInput
+                value={maxHeight}
+                onChangeText={setMaxHeight}
+                placeholder="Max"
+                keyboardType="number-pad"
+                style={styles.heightInput}
+              />
+            </View>
+          </View>
           <Text style={styles.filterLabel}>Gender</Text>
           <View style={styles.filterPills}>
             {(['', 'female', 'male', 'diverse'] as const).map((g) => (
@@ -230,17 +265,14 @@ export const AgencyRecruitingView: React.FC<{ onBack: () => void; agencyId: stri
               </TouchableOpacity>
             ))}
           </ScrollView>
-          <Text style={styles.filterLabel}>City</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
-            <TouchableOpacity style={[styles.filterPill, !cityFilter && styles.filterPillActive]} onPress={() => setCityFilter('')}>
-              <Text style={[styles.filterPillText, !cityFilter && styles.filterPillTextActive]}>All</Text>
-            </TouchableOpacity>
-            {uniqueCities.map((c) => (
-              <TouchableOpacity key={c} style={[styles.filterPill, cityFilter === c && styles.filterPillActive]} onPress={() => setCityFilter(c)}>
-                <Text style={[styles.filterPillText, cityFilter === c && styles.filterPillTextActive]}>{c}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+          <Text style={styles.filterLabel}>City search</Text>
+          <TextInput
+            value={cityFilter}
+            onChangeText={setCityFilter}
+            placeholder="Search by city"
+            placeholderTextColor={colors.textSecondary}
+            style={styles.citySearchInput}
+          />
         </View>
       )}
 
@@ -347,14 +379,26 @@ export const AgencyRecruitingView: React.FC<{ onBack: () => void; agencyId: stri
               {current && (
                 <>
                   <View style={styles.filterLabel}>Photos</View>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: spacing.md }}>
-                    {[current.images?.closeUp, current.images?.fullBody, current.images?.profile].filter(Boolean).map((uri, i) => (
-                      <Image key={i} source={{ uri: uri! }} style={{ width: 100, height: 120, borderRadius: 8, backgroundColor: colors.border }} resizeMode="cover" />
-                    ))}
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={{ marginBottom: spacing.md }}
+                  >
+                    {[current.images?.closeUp, current.images?.fullBody, current.images?.profile]
+                      .filter(Boolean)
+                      .map((uri, i) => (
+                        <View key={i} style={{ marginRight: spacing.sm }}>
+                          <Image
+                            source={{ uri: uri! }}
+                            style={{ width: 120, height: 150, borderRadius: 8, backgroundColor: colors.border }}
+                            resizeMode="cover"
+                          />
+                        </View>
+                      ))}
                     {(!current.images?.closeUp && !current.images?.fullBody && !current.images?.profile) && (
                       <Text style={styles.cardMeta}>No photos</Text>
                     )}
-                  </View>
+                  </ScrollView>
                   <View style={styles.filterLabel}>Details</View>
                   <Text style={styles.cardMeta}>Age: {current.age}</Text>
                   <Text style={styles.cardMeta}>Height: {current.height} cm</Text>
@@ -794,6 +838,42 @@ const styles = StyleSheet.create({
     ...typography.label,
     fontSize: 11,
     color: colors.surface,
+  },
+  heightRangeRow: {
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  heightInputsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  heightInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 999,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    ...typography.body,
+    fontSize: 12,
+    color: colors.textPrimary,
+  },
+  heightDash: {
+    ...typography.body,
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  citySearchInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 999,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    ...typography.body,
+    fontSize: 12,
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
   },
 });
 
