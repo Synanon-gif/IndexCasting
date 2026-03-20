@@ -10,6 +10,7 @@ export type Agency = {
   focus: string | null;
   email: string | null;
   code?: string | null;
+  logo_url?: string | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -17,7 +18,7 @@ export type Agency = {
 export async function getAgencies(): Promise<Agency[]> {
   const { data, error } = await supabase
     .from('agencies')
-    .select('id, name, city, focus, email, code, created_at, updated_at')
+    .select('id, name, city, focus, email, code, logo_url, created_at, updated_at')
     .order('name');
 
   if (error) {
@@ -25,4 +26,17 @@ export async function getAgencies(): Promise<Agency[]> {
     return [];
   }
   return (data ?? []) as Agency[];
+}
+
+export async function getAgencyById(id: string): Promise<Agency | null> {
+  const { data, error } = await supabase
+    .from('agencies')
+    .select('id, name, city, focus, email, code, logo_url, created_at, updated_at')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) {
+    console.error('getAgencyById error:', error);
+    return null;
+  }
+  return (data ?? null) as Agency | null;
 }

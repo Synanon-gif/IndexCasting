@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Linking, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Linking, Alert, ActivityIndicator, Image } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { getModelsFromSupabase, getModelForUserFromSupabase } from '../services/modelsSupabase';
 import { supabase } from '../../lib/supabase';
@@ -23,7 +23,10 @@ import {
   type CalendarEntry,
   type CalendarEntryType,
   updateBookingDetails,
+  appendSharedBookingNote,
+  type SharedBookingNote,
 } from '../services/calendarSupabase';
+import { getAgencyById, type Agency } from '../services/agenciesSupabase';
 import { BookingChatView } from '../views/BookingChatView';
 import { useAuth } from '../context/AuthContext';
 
@@ -80,6 +83,9 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   const [openEntry, setOpenEntry] = useState<CalendarEntry | null>(null);
   const [modelNotesDraft, setModelNotesDraft] = useState('');
   const [savingNotes, setSavingNotes] = useState(false);
+  const [sharedNoteDraft, setSharedNoteDraft] = useState('');
+  const [savingSharedNote, setSavingSharedNote] = useState(false);
+  const [optionChatAgency, setOptionChatAgency] = useState<Agency | null>(null);
 
   const handleShareLocation = async () => {
     if (!profile) return;
@@ -155,6 +161,28 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     profile ? getOutstandingOptionsForModel(profile.id) : [],
     [profile, options]
   );
+
+  const jobTickets = useMemo(
+    () =>
+      profile
+        ? options.filter(
+            (o) =>
+              o.modelId === profile.id &&
+              (o.finalStatus === 'option_confirmed' || o.finalStatus === 'job_confirmed'),
+          )
+        : [],
+    [profile, options],
+  );
+
+  useEffect(() => {
+    if (!selectedOptionThread) {
+      setOptionChatAgency(null);
+      return;
+    }
+    const r = getRequestByThreadId(selectedOptionThread);
+    if (r?.agencyId) getAgencyById(r.agencyId).then(setOptionChatAgency);
+    else setOptionChatAgency(null);
+  }, [selectedOptionThread]);
 
   const daysInMonth = new Date(calMonth.year, calMonth.month + 1, 0).getDate();
   const firstDayOfWeek = new Date(calMonth.year, calMonth.month, 1).getDay();
@@ -398,6 +426,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                           }}
                           onPress={() => {
                             setOpenEntry(entry);
+                            setSharedNoteDraft('');
                             const existing =
                               (entry.booking_details as any)?.model_notes ??
                               entry.note ??
@@ -491,8 +520,38 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
       )}
 
       {tab === 'options' && (
-        <ScrollView style={{ flex: 1 }}>
-          <Text style={st.sectionLabel}>Outstanding options</Text>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1, paddingBottom: spacing.xl * 2 }}>
+          <Text style={st.sectionLabel}>Job tickets</Text>
+          <Text style={st.metaText}>
+            Confirmed options and jobs. Fee details are not shown to models (agency–client only).
+          </Text>
+          {jobTickets.length === 0 ? (
+            <Text style={[st.metaText, { marginTop: spacing.sm }]}>No confirmed tickets yet.</Text>
+          ) : (
+            jobTickets.map((o) => (
+              <View
+                key={o.threadId}
+                style={{
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 12,
+                  padding: spacing.md,
+                  marginTop: spacing.sm,
+                  backgroundColor: colors.surface,
+                }}
+              >
+                <Text style={{ ...typography.label, color: colors.textPrimary }}>
+                  {o.requestType === 'casting' ? 'Casting' : 'Option'} · {o.finalStatus === 'job_confirmed' ? 'Job confirmed' : 'Confirmed'}
+                </Text>
+                <Text style={st.metaText}>
+                  {o.clientName} · {o.date}
+                  {o.startTime ? ` · ${o.startTime}–${o.endTime}` : ''}
+                </Text>
+              </View>
+            ))
+          )}
+
+          <Text style={[st.sectionLabel, { marginTop: spacing.xl }]}>Outstanding options</Text>
           <Text style={st.metaText}>Options that need your approval before the agency can confirm.</Text>
           {outstandingOptions.length === 0 ? (
             <Text style={[st.metaText, { marginTop: spacing.md }]}>No outstanding options.</Text>
@@ -545,8 +604,16 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
       {selectedOptionThread && (
         <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.1)', justifyContent: 'center', alignItems: 'center', padding: spacing.lg }}>
           <View style={{ width: '100%', maxWidth: 420, maxHeight: '80%', backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.border, padding: spacing.md }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.sm }}>
-              <Text style={{ ...typography.label, color: colors.textPrimary }}>Option chat</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                {optionChatAgency?.logo_url ? (
+                  <Image source={{ uri: optionChatAgency.logo_url }} style={{ width: 32, height: 32, borderRadius: 6 }} resizeMode="contain" />
+                ) : null}
+                <View>
+                  <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary }}>Agency</Text>
+                  <Text style={{ ...typography.label, color: colors.textPrimary }}>{optionChatAgency?.name ?? 'Agency'}</Text>
+                </View>
+              </View>
               <TouchableOpacity onPress={() => setSelectedOptionThread(null)}>
                 <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary }}>Close</Text>
               </TouchableOpacity>
@@ -637,7 +704,79 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                 </View>
               );
             })()}
-            <Text style={st.sectionLabel}>My notes</Text>
+            {openEntry.option_request_id ? (
+              <View style={{ marginBottom: spacing.md }}>
+                <Text style={st.sectionLabel}>Shared notes</Text>
+                <Text style={[st.metaText, { marginBottom: spacing.sm }]}>
+                  Visible to client, agency, and model. English only in production workflows. Do not add unnecessary personal data (data minimisation).
+                </Text>
+                <ScrollView style={{ maxHeight: 140, marginBottom: spacing.sm }}>
+                  {(
+                    (openEntry.booking_details as { shared_notes?: SharedBookingNote[] } | null)?.shared_notes ?? []
+                  ).map((n, i) => (
+                    <View
+                      key={`${n.at}-${i}`}
+                      style={{
+                        marginBottom: spacing.xs,
+                        padding: spacing.sm,
+                        backgroundColor: colors.border,
+                        borderRadius: 8,
+                      }}
+                    >
+                      <Text style={{ ...typography.label, fontSize: 9, color: colors.textSecondary }}>
+                        {n.role} · {new Date(n.at).toLocaleString('en-GB')}
+                      </Text>
+                      <Text style={{ ...typography.body, fontSize: 12, color: colors.textPrimary }}>{n.text}</Text>
+                    </View>
+                  ))}
+                </ScrollView>
+                <TextInput
+                  value={sharedNoteDraft}
+                  onChangeText={setSharedNoteDraft}
+                  multiline
+                  placeholder="Add a note everyone on this booking can read…"
+                  placeholderTextColor={colors.textSecondary}
+                  style={[st.input, { minHeight: 72, textAlignVertical: 'top', borderRadius: 12 }]}
+                />
+                <TouchableOpacity
+                  onPress={async () => {
+                    if (!profile || !openEntry?.option_request_id || !sharedNoteDraft.trim()) return;
+                    setSavingSharedNote(true);
+                    try {
+                      const ok = await appendSharedBookingNote(
+                        openEntry.option_request_id,
+                        'model',
+                        sharedNoteDraft,
+                      );
+                      if (ok) {
+                        setSharedNoteDraft('');
+                        const refreshed = await getCalendarForModel(profile.id);
+                        setCalEntries(refreshed);
+                        const updated = refreshed.find((e) => e.id === openEntry.id);
+                        if (updated) setOpenEntry(updated);
+                      }
+                    } finally {
+                      setSavingSharedNote(false);
+                    }
+                  }}
+                  style={{
+                    alignSelf: 'flex-end',
+                    marginTop: spacing.sm,
+                    borderRadius: 999,
+                    backgroundColor: colors.textPrimary,
+                    paddingHorizontal: spacing.md,
+                    paddingVertical: spacing.sm,
+                    opacity: savingSharedNote ? 0.6 : 1,
+                  }}
+                  disabled={savingSharedNote}
+                >
+                  <Text style={{ ...typography.label, color: colors.surface }}>
+                    {savingSharedNote ? 'Posting…' : 'Post shared note'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+            <Text style={st.sectionLabel}>My notes (private)</Text>
             <TextInput
               value={modelNotesDraft}
               onChangeText={setModelNotesDraft}

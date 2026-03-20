@@ -27,11 +27,17 @@ import {
   loadMessagesForThread,
   agencyAcceptClientPriceStore,
   agencyCounterOfferStore,
+  agencyRejectClientPriceStore,
   type OptionRequest,
   type ChatStatus,
 } from '../store/optionRequests';
 import { AgencyRecruitingView } from './AgencyRecruitingView';
-import { getModelsForAgencyFromSupabase, removeModelFromAgency, type SupabaseModel } from '../services/modelsSupabase';
+import {
+  getModelsForAgencyFromSupabase,
+  removeModelFromAgency,
+  agencyLinkModelToUser,
+  type SupabaseModel,
+} from '../services/modelsSupabase';
 import {
   getPhotosForModel,
   upsertPhotosForModel,
@@ -42,7 +48,13 @@ import { supabase } from '../../lib/supabase';
 import { getBookersForAgency, createBooker, deleteBooker, type Booker } from '../services/bookersSupabase';
 import { getAgencies, type Agency } from '../services/agenciesSupabase';
 import { createGuestLink, getGuestLinksForAgency, buildGuestUrl, deactivateGuestLink, type GuestLink } from '../services/guestLinksSupabase';
-import { getCalendarEntriesForAgency, type AgencyCalendarItem, updateBookingDetails } from '../services/calendarSupabase';
+import {
+  getCalendarEntriesForAgency,
+  type AgencyCalendarItem,
+  updateBookingDetails,
+  appendSharedBookingNote,
+  type SharedBookingNote,
+} from '../services/calendarSupabase';
 import {
   getManualEventsForOwner,
   insertManualEvent,
@@ -51,6 +63,7 @@ import {
   type UserCalendarEvent,
 } from '../services/userCalendarEventsSupabase';
 import { MonthCalendarView, type CalendarDayEvent } from '../components/MonthCalendarView';
+import { ScreenScrollView } from '../components/ScreenScrollView';
 
 const STATUS_LABELS: Record<ChatStatus, string> = {
   in_negotiation: 'In negotiation',
@@ -104,6 +117,8 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   const [showAddManualEvent, setShowAddManualEvent] = useState(false);
   const [newEventForm, setNewEventForm] = useState({ date: '', start_time: '09:00', end_time: '17:00', title: '', color: MANUAL_EVENT_COLORS[0] });
   const [agencyNotesDraft, setAgencyNotesDraft] = useState('');
+  const [agencySharedNoteDraft, setAgencySharedNoteDraft] = useState('');
+  const [savingAgencySharedNote, setSavingAgencySharedNote] = useState(false);
   const [savingManualEvent, setSavingManualEvent] = useState(false);
   const [savingNotes, setSavingNotes] = useState(false);
   const currentAgencyId = agencies[0]?.id ?? '';
@@ -125,6 +140,20 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
     getBookersForAgency(currentAgencyId).then(setBookers);
     loadOptionRequestsForAgency(currentAgencyId);
   }, [currentAgencyId]);
+
+  /** Re-load roster when opening My Models (e.g. after accepting an application in Recruiting). */
+  useEffect(() => {
+    if (tab === 'myModels' && currentAgencyId) {
+      getModelsForAgencyFromSupabase(currentAgencyId).then(setFullModels);
+      getAgencyModels(currentAgencyId).then((data: any[]) => {
+        setModels(data.map((m: any) => ({
+          id: m.id, name: m.name, traction: m.traction ?? 0,
+          isVisibleCommercial: m.isVisibleCommercial ?? false,
+          isVisibleFashion: m.isVisibleFashion ?? false,
+        })));
+      });
+    }
+  }, [tab, currentAgencyId]);
 
   const loadAgencyCalendar = async () => {
     if (!currentAgencyId) return;
@@ -218,6 +247,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
           onOpenDetails={(item) => {
             setSelectedCalendarItem(item);
             setSelectedManualEvent(null);
+            setAgencySharedNoteDraft('');
             const existing =
               (item.calendar_entry?.booking_details as any)?.agency_notes ?? '';
             setAgencyNotesDraft(existing);
@@ -243,7 +273,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
       )}
 
       {tab === 'settings' && (
-        <ScrollView style={{ flex: 1 }}>
+        <ScreenScrollView>
           <View style={{ marginTop: spacing.md, marginBottom: spacing.lg }}>
             <Text style={s.sectionLabel}>Account</Text>
             <Text style={[s.metaText, { marginBottom: spacing.sm }]}>
@@ -276,7 +306,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
               <Text style={{ ...typography.label, fontSize: 12, color: '#e74c3c' }}>{deletingAccount ? 'Deleting…' : 'Delete account'}</Text>
             </TouchableOpacity>
           </View>
-        </ScrollView>
+        </ScreenScrollView>
       )}
 
       {selectedCalendarItem && (
@@ -318,6 +348,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                 onPress={() => {
                   setSelectedCalendarItem(null);
                   setAgencyNotesDraft('');
+                  setAgencySharedNoteDraft('');
                 }}
               >
                 <Text style={s.backLabel}>Close</Text>
@@ -349,7 +380,75 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                 </View>
               );
             })()}
-            <Text style={s.sectionLabel}>Agency notes</Text>
+            {selectedCalendarItem.calendar_entry ? (
+              <View style={{ marginBottom: spacing.md }}>
+                <Text style={s.sectionLabel}>Shared notes</Text>
+                <Text style={[s.metaText, { marginBottom: spacing.sm }]}>
+                  Visible to client and model. Minimise personal data (GDPR).
+                </Text>
+                <ScrollView style={{ maxHeight: 120, marginBottom: spacing.sm }}>
+                  {(
+                    (selectedCalendarItem.calendar_entry?.booking_details as { shared_notes?: SharedBookingNote[] } | null)
+                      ?.shared_notes ?? []
+                  ).map((n, i) => (
+                    <View
+                      key={`${n.at}-${i}`}
+                      style={{
+                        marginBottom: spacing.xs,
+                        padding: spacing.sm,
+                        backgroundColor: colors.border,
+                        borderRadius: 8,
+                      }}
+                    >
+                      <Text style={{ ...typography.label, fontSize: 9, color: colors.textSecondary }}>
+                        {n.role} · {new Date(n.at).toLocaleString('en-GB')}
+                      </Text>
+                      <Text style={{ ...typography.body, fontSize: 12, color: colors.textPrimary }}>{n.text}</Text>
+                    </View>
+                  ))}
+                </ScrollView>
+                <TextInput
+                  value={agencySharedNoteDraft}
+                  onChangeText={setAgencySharedNoteDraft}
+                  multiline
+                  placeholder="Add a note for everyone on this booking…"
+                  placeholderTextColor={colors.textSecondary}
+                  style={[s.editInput, { minHeight: 72, textAlignVertical: 'top', borderRadius: 12 }]}
+                />
+                <TouchableOpacity
+                  onPress={async () => {
+                    if (!selectedCalendarItem || !agencySharedNoteDraft.trim() || !currentAgencyId) return;
+                    setSavingAgencySharedNote(true);
+                    try {
+                      const ok = await appendSharedBookingNote(
+                        selectedCalendarItem.option.id,
+                        'agency',
+                        agencySharedNoteDraft,
+                      );
+                      if (ok) {
+                        setAgencySharedNoteDraft('');
+                        await loadAgencyCalendar();
+                        const items = await getCalendarEntriesForAgency(currentAgencyId);
+                        const next = items.find((x) => x.option.id === selectedCalendarItem.option.id);
+                        if (next) setSelectedCalendarItem(next);
+                      }
+                    } finally {
+                      setSavingAgencySharedNote(false);
+                    }
+                  }}
+                  style={[
+                    s.saveBtn,
+                    { marginTop: spacing.sm, alignSelf: 'flex-end', opacity: savingAgencySharedNote ? 0.6 : 1 },
+                  ]}
+                  disabled={savingAgencySharedNote}
+                >
+                  <Text style={s.saveBtnLabel}>
+                    {savingAgencySharedNote ? 'Posting…' : 'Post shared note'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+            <Text style={s.sectionLabel}>Agency notes (internal)</Text>
             <TextInput
               value={agencyNotesDraft}
               onChangeText={setAgencyNotesDraft}
@@ -377,6 +476,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                 onPress={() => {
                   setSelectedCalendarItem(null);
                   setAgencyNotesDraft('');
+                  setAgencySharedNoteDraft('');
                 }}
                 style={[s.filterPill, { paddingHorizontal: spacing.md }]}
               >
@@ -487,7 +587,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
 };
 
 const DashboardTab: React.FC<{ models: AgencyModel[] }> = ({ models }) => (
-  <ScrollView style={{ flex: 1 }}>
+  <ScreenScrollView>
     <Text style={s.sectionLabel}>Traction</Text>
     <View style={{ gap: spacing.xs, marginTop: spacing.sm }}>
       {models.map((m) => (
@@ -498,7 +598,7 @@ const DashboardTab: React.FC<{ models: AgencyModel[] }> = ({ models }) => (
       ))}
       {models.length === 0 && <Text style={s.metaText}>No models yet.</Text>}
     </View>
-  </ScrollView>
+  </ScreenScrollView>
 );
 
 type AgencyCalendarTabProps = {
@@ -630,7 +730,7 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
   };
 
   return (
-    <View style={{ flex: 1 }}>
+    <ScreenScrollView>
       <View
         style={{
           flexDirection: 'row',
@@ -735,7 +835,6 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
         <Text style={s.metaText}>No calendar entries yet.</Text>
       )}
 
-      <ScrollView style={{ flex: 1 }}>
         {sortedManual.map((ev) => (
           <TouchableOpacity
             key={ev.id}
@@ -780,8 +879,7 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
             </TouchableOpacity>
           );
         })}
-      </ScrollView>
-    </View>
+    </ScreenScrollView>
   );
 };
 
@@ -840,12 +938,15 @@ const MyModelsTab: React.FC<{
     if (!name || !agencyId) return;
     setAddLoading(true);
     try {
+      const emailTrim = addFields.email?.trim() || null;
       const { data: created, error } = await supabase
         .from('models')
         .insert({
           agency_id: agencyId,
           name,
-          email: addFields.email?.trim() || null,
+          email: emailTrim,
+          agency_relationship_status: emailTrim ? 'pending_link' : 'active',
+          agency_relationship_ended_at: null,
           height: addFields.height ? parseInt(addFields.height, 10) : null,
           bust: addFields.bust ? parseInt(addFields.bust, 10) : null,
           waist: addFields.waist ? parseInt(addFields.waist, 10) : null,
@@ -947,6 +1048,8 @@ const MyModelsTab: React.FC<{
   };
 
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [linkAccountEmail, setLinkAccountEmail] = useState('');
+  const [linkAccountLoading, setLinkAccountLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const handlePhotoFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target?.files?.[0];
@@ -960,8 +1063,9 @@ const MyModelsTab: React.FC<{
 
   if (selectedModel) {
     const ef = (field: string, fallback: any) => editField[field] ?? String(fallback ?? '');
+    const needsAccountLink = !selectedModel.user_id;
     return (
-      <ScrollView style={{ flex: 1 }}>
+      <ScreenScrollView>
         <TouchableOpacity onPress={() => { setSelectedModel(null); setEditField({}); }} style={{ marginBottom: spacing.md }}>
           <Text style={s.backLabel}>← Back to models</Text>
         </TouchableOpacity>
@@ -1115,6 +1219,56 @@ const MyModelsTab: React.FC<{
           </View>
         </View>
 
+        {needsAccountLink && (
+          <View style={{ marginTop: spacing.lg, padding: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: 12, backgroundColor: colors.surface }}>
+            <Text style={s.sectionLabel}>Link app account</Text>
+            <Text style={[s.metaText, { marginBottom: spacing.sm }]}>
+              If this profile was created via Mediaslide/Netwalk or manually, connect the model’s registered Casting Index email so they get the full model dashboard (calendar, options, chats).
+            </Text>
+            <TextInput
+              value={linkAccountEmail}
+              onChangeText={setLinkAccountEmail}
+              placeholder="Model signup email (same as profile)"
+              placeholderTextColor={colors.textSecondary}
+              autoCapitalize="none"
+              keyboardType="email-address"
+              style={[s.editInput, { marginBottom: spacing.sm }]}
+            />
+            <TouchableOpacity
+              style={[s.saveBtn, { opacity: linkAccountLoading ? 0.6 : 1 }]}
+              disabled={linkAccountLoading}
+              onPress={async () => {
+                const em = linkAccountEmail.trim();
+                if (!em) {
+                  Alert.alert('Email required', 'Enter the email the model used to register.');
+                  return;
+                }
+                setLinkAccountLoading(true);
+                try {
+                  const ok = await agencyLinkModelToUser(selectedModel.id, agencyId, em);
+                  if (ok) {
+                    setLinkAccountEmail('');
+                    Alert.alert('Linked', 'The model account is now connected to this profile.');
+                    onRefresh();
+                    const refreshed = await getModelsForAgencyFromSupabase(agencyId);
+                    const m = refreshed.find((x) => x.id === selectedModel.id);
+                    if (m) setSelectedModel(m);
+                  } else {
+                    Alert.alert(
+                      'Could not link',
+                      'No model-role user with that email was found, or the email does not match. The model must sign up first; you can also rely on automatic link when their profile email matches this roster email.',
+                    );
+                  }
+                } finally {
+                  setLinkAccountLoading(false);
+                }
+              }}
+            >
+              <Text style={s.saveBtnLabel}>{linkAccountLoading ? 'Linking…' : 'Link account'}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         <TouchableOpacity onPress={handleSaveModel} style={s.saveBtn}>
           <Text style={s.saveBtnLabel}>Save changes</Text>
         </TouchableOpacity>
@@ -1123,12 +1277,12 @@ const MyModelsTab: React.FC<{
           style={{ marginTop: spacing.xl, paddingVertical: spacing.sm, borderRadius: 8, borderWidth: 1, borderColor: '#e74c3c', alignItems: 'center' }}
           onPress={() => {
             Alert.alert(
-              'Remove model',
-              'This will unassign the model from your agency and remove all representation (e.g. territories). The model profile remains but is no longer represented by you. Continue?',
+              'End representation',
+              'Soft-remove: the model disappears from My Models and client discovery. Past options, jobs and billing history stay in the system. Territories for this model are cleared. Continue?',
               [
                 { text: 'Cancel', style: 'cancel' },
                 {
-                  text: 'Remove',
+                  text: 'End representation',
                   style: 'destructive',
                   onPress: async () => {
                     const ok = await removeModelFromAgency(selectedModel.id, agencyId);
@@ -1143,14 +1297,14 @@ const MyModelsTab: React.FC<{
             );
           }}
         >
-          <Text style={{ ...typography.label, fontSize: 12, color: '#e74c3c' }}>Remove model from agency</Text>
+          <Text style={{ ...typography.label, fontSize: 12, color: '#e74c3c' }}>End representation (soft-remove)</Text>
         </TouchableOpacity>
-      </ScrollView>
+      </ScreenScrollView>
     );
   }
 
   return (
-    <ScrollView style={{ flex: 1 }}>
+    <ScreenScrollView>
       {/* API Import Section */}
       <View style={s.apiSection}>
         <Text style={s.sectionLabel}>API Import</Text>
@@ -1259,6 +1413,9 @@ const MyModelsTab: React.FC<{
           <View style={{ flex: 1 }}>
             <Text style={s.modelName}>{m.name}</Text>
             <Text style={s.metaText}>{m.city ?? '—'} · H{m.height} C{m.bust ?? m.chest ?? '—'} W{m.waist ?? '—'} H{m.hips ?? '—'}</Text>
+            {(m.agency_relationship_status === 'pending_link' || (!m.user_id && m.email)) && (
+              <Text style={{ ...typography.label, fontSize: 9, color: '#B8860B', marginTop: 2 }}>Pending app account link</Text>
+            )}
           </View>
           <View style={{ flexDirection: 'row', gap: 4 }}>
             {m.is_visible_commercial && <View style={s.visTag}><Text style={s.visTagLabel}>C</Text></View>}
@@ -1268,7 +1425,7 @@ const MyModelsTab: React.FC<{
         </TouchableOpacity>
       ))}
       {filtered.length === 0 && <Text style={s.metaText}>No models found.</Text>}
-    </ScrollView>
+    </ScreenScrollView>
   );
 };
 
@@ -1327,7 +1484,7 @@ const AgencyMessagesTab: React.FC = () => {
   };
 
   return (
-    <View style={{ flex: 1 }}>
+    <ScreenScrollView>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm }}>
         <Text style={s.sectionLabel}>Messages</Text>
         <View style={{ flexDirection: 'row', gap: 4 }}>
@@ -1357,17 +1514,19 @@ const AgencyMessagesTab: React.FC = () => {
                   )}
                   <View style={[
                     s.approvalBadge,
-                    r.modelApproval === 'approved' && s.approvalBadgeApproved,
-                    r.modelApproval === 'rejected' && s.approvalBadgeRejected,
-                    r.modelApproval === 'pending' && s.approvalBadgePending,
+                    r.modelAccountLinked === false && { backgroundColor: 'rgba(120,120,120,0.2)' },
+                    r.modelAccountLinked !== false && r.modelApproval === 'approved' && s.approvalBadgeApproved,
+                    r.modelAccountLinked !== false && r.modelApproval === 'rejected' && s.approvalBadgeRejected,
+                    r.modelAccountLinked !== false && r.modelApproval === 'pending' && s.approvalBadgePending,
                   ]}>
                     <Text style={[
                       s.approvalBadgeLabel,
-                      r.modelApproval === 'approved' && s.approvalBadgeLabelApproved,
-                      r.modelApproval === 'rejected' && s.approvalBadgeLabelRejected,
-                      r.modelApproval === 'pending' && s.approvalBadgeLabelPending,
+                      r.modelAccountLinked === false && { color: colors.textSecondary },
+                      r.modelAccountLinked !== false && r.modelApproval === 'approved' && s.approvalBadgeLabelApproved,
+                      r.modelAccountLinked !== false && r.modelApproval === 'rejected' && s.approvalBadgeLabelRejected,
+                      r.modelAccountLinked !== false && r.modelApproval === 'pending' && s.approvalBadgeLabelPending,
                     ]}>
-                      {r.modelApproval === 'approved' ? 'Model ✓' : r.modelApproval === 'rejected' ? 'Model ✗' : 'Model ⏳'}
+                      {r.modelAccountLinked === false ? 'No model app' : r.modelApproval === 'approved' ? 'Model ✓' : r.modelApproval === 'rejected' ? 'Model ✗' : 'Model ⏳'}
                     </Text>
                   </View>
                   <View style={[s.statusPill, { backgroundColor: STATUS_COLORS[reqStatus] }]}>
@@ -1404,21 +1563,29 @@ const AgencyMessagesTab: React.FC = () => {
               ))}
             </View>
           )}
-          <View style={[
-            s.approvalBanner,
-            request.modelApproval === 'approved' && s.approvalBannerApproved,
-            request.modelApproval === 'rejected' && s.approvalBannerRejected,
-            request.modelApproval === 'pending' && s.approvalBannerPending,
-          ]}>
-            <Text style={[
-              s.approvalBannerText,
-              request.modelApproval === 'approved' && s.approvalBannerTextApproved,
-              request.modelApproval === 'rejected' && s.approvalBannerTextRejected,
-              request.modelApproval === 'pending' && s.approvalBannerTextPending,
+          {request.modelAccountLinked === false ? (
+            <View style={{ paddingVertical: spacing.xs, paddingHorizontal: spacing.sm, marginBottom: spacing.sm, backgroundColor: 'rgba(100,100,100,0.12)', borderRadius: 8 }}>
+              <Text style={{ ...typography.label, fontSize: 11, color: colors.textPrimary }}>
+                No model app account — negotiate with the client only. When you confirm the option or casting, it is booked and syncs to client & agency calendars (no in-app model step).
+              </Text>
+            </View>
+          ) : (
+            <View style={[
+              s.approvalBanner,
+              request.modelApproval === 'approved' && s.approvalBannerApproved,
+              request.modelApproval === 'rejected' && s.approvalBannerRejected,
+              request.modelApproval === 'pending' && s.approvalBannerPending,
             ]}>
-              {request.modelApproval === 'approved' ? 'Approved by Model ✓' : request.modelApproval === 'rejected' ? 'Rejected by Model ✗' : 'Pending Model Approval ⏳'}
-            </Text>
-          </View>
+              <Text style={[
+                s.approvalBannerText,
+                request.modelApproval === 'approved' && s.approvalBannerTextApproved,
+                request.modelApproval === 'rejected' && s.approvalBannerTextRejected,
+                request.modelApproval === 'pending' && s.approvalBannerTextPending,
+              ]}>
+                {request.modelApproval === 'approved' ? 'Approved by Model ✓' : request.modelApproval === 'rejected' ? 'Rejected by Model ✗' : 'Pending Model Approval ⏳'}
+              </Text>
+            </View>
+          )}
           {request.proposedPrice != null && (
             <Text style={{ ...typography.label, fontSize: 10, color: colors.accentBrown, marginBottom: spacing.xs }}>
               Client proposed: {currency === 'USD' ? '$' : currency === 'GBP' ? '£' : currency === 'CHF' ? 'CHF ' : '€'}{request.proposedPrice}
@@ -1431,7 +1598,7 @@ const AgencyMessagesTab: React.FC = () => {
               </Text>
             </View>
           )}
-          {request.modelApproval === 'approved' && clientPriceStatus === 'pending' && finalStatus !== 'job_confirmed' && (
+          {request.modelApproval === 'approved' && clientPriceStatus === 'pending' && finalStatus !== 'job_confirmed' && request.proposedPrice != null && (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm }}>
               <TouchableOpacity
                 style={[s.filterPill, { backgroundColor: colors.buttonOptionGreen }]}
@@ -1444,17 +1611,35 @@ const AgencyMessagesTab: React.FC = () => {
               >
                 <Text style={[s.filterPillLabel, { color: '#fff' }]}>Accept client price</Text>
               </TouchableOpacity>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <TouchableOpacity
+                style={[s.filterPill, { borderWidth: 1, borderColor: colors.buttonSkipRed }]}
+                onPress={async () => {
+                  if (request?.threadId) {
+                    await agencyRejectClientPriceStore(request.threadId);
+                    setRequests(getOptionRequests());
+                  }
+                }}
+              >
+                <Text style={[s.filterPillLabel, { color: colors.buttonSkipRed }]}>Reject client price</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          {request.modelApproval === 'approved' && clientPriceStatus === 'rejected' && finalStatus !== 'job_confirmed' && (
+            <View style={{ marginBottom: spacing.sm, padding: spacing.sm, backgroundColor: 'rgba(180,100,0,0.08)', borderRadius: 8 }}>
+              <Text style={{ ...typography.label, fontSize: 11, color: colors.textPrimary, marginBottom: spacing.xs }}>
+                Client price declined — enter a counter-offer
+              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
                 <TextInput
                   value={agencyCounterInput}
                   onChangeText={setAgencyCounterInput}
                   placeholder="Counter (e.g. 3000)"
                   placeholderTextColor={colors.textSecondary}
                   keyboardType="numeric"
-                  style={[s.chatInput, { flex: 1, minWidth: 80 }]}
+                  style={[s.chatInput, { flex: 1, minWidth: 120 }]}
                 />
                 <TouchableOpacity
-                  style={[s.filterPill, { paddingHorizontal: spacing.sm }]}
+                  style={[s.filterPill, { paddingHorizontal: spacing.sm, backgroundColor: colors.textPrimary }]}
                   onPress={async () => {
                     const num = parseFloat(agencyCounterInput.trim());
                     if (!request?.threadId || isNaN(num)) return;
@@ -1463,9 +1648,34 @@ const AgencyMessagesTab: React.FC = () => {
                     setRequests(getOptionRequests());
                   }}
                 >
-                  <Text style={s.filterPillLabel}>Counter offer</Text>
+                  <Text style={[s.filterPillLabel, { color: '#fff' }]}>Send counter-offer</Text>
                 </TouchableOpacity>
               </View>
+            </View>
+          )}
+          {request.modelApproval === 'approved' && clientPriceStatus === 'pending' && finalStatus !== 'job_confirmed' && request.proposedPrice == null && (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm, alignItems: 'center' }}>
+              <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary }}>Propose a fee (optional)</Text>
+              <TextInput
+                value={agencyCounterInput}
+                onChangeText={setAgencyCounterInput}
+                placeholder="Amount"
+                placeholderTextColor={colors.textSecondary}
+                keyboardType="numeric"
+                style={[s.chatInput, { width: 100 }]}
+              />
+              <TouchableOpacity
+                style={[s.filterPill, { paddingHorizontal: spacing.sm }]}
+                onPress={async () => {
+                  const num = parseFloat(agencyCounterInput.trim());
+                  if (!request?.threadId || isNaN(num)) return;
+                  await agencyCounterOfferStore(request.threadId, num, currency);
+                  setAgencyCounterInput('');
+                  setRequests(getOptionRequests());
+                }}
+              >
+                <Text style={s.filterPillLabel}>Send offer</Text>
+              </TouchableOpacity>
             </View>
           )}
           <ScrollView style={{ maxHeight: 180, marginBottom: spacing.sm }}>
@@ -1483,7 +1693,7 @@ const AgencyMessagesTab: React.FC = () => {
           </View>
         </View>
       )}
-    </View>
+    </ScreenScrollView>
   );
 };
 
@@ -1506,7 +1716,7 @@ const BookersTab: React.FC<{
   };
 
   return (
-    <ScrollView style={{ flex: 1 }}>
+    <ScreenScrollView>
       <Text style={s.sectionLabel}>Bookers</Text>
       <Text style={s.metaText}>Each booker has their own login. The master account oversees all.</Text>
       <View style={{ gap: spacing.sm, marginTop: spacing.md }}>
@@ -1530,7 +1740,7 @@ const BookersTab: React.FC<{
           <Text style={s.saveBtnLabel}>Create booker</Text>
         </TouchableOpacity>
       </View>
-    </ScrollView>
+    </ScreenScrollView>
   );
 };
 
@@ -1586,7 +1796,7 @@ const GuestLinksTab: React.FC<{
   };
 
   return (
-    <ScrollView style={{ flex: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.md }}>
+    <ScreenScrollView contentStyle={{ paddingHorizontal: spacing.lg, paddingTop: spacing.md }}>
       <Text style={s.sectionLabel}>Create Guest Link</Text>
       <Text style={{ ...typography.body, color: colors.textSecondary, fontSize: 12, marginBottom: spacing.md }}>
         Select models to share with a guest. The guest can view them and contact you via email.
@@ -1639,7 +1849,7 @@ const GuestLinksTab: React.FC<{
           ))}
         </>
       )}
-    </ScrollView>
+    </ScreenScrollView>
   );
 };
 

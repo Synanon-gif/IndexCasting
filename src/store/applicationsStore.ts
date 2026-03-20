@@ -20,6 +20,8 @@ export type Gender = 'female' | 'male' | 'diverse' | '';
 
 export type ModelApplication = {
   id: string;
+  /** Target agency for this application (for chat branding). */
+  agencyId?: string | null;
   firstName: string;
   lastName: string;
   age: number;
@@ -52,6 +54,7 @@ function normalizeApplicationImages(imgs: unknown): ModelApplication['images'] {
 function toLocal(a: SupabaseApplication): ModelApplication {
   return {
     id: a.id,
+    agencyId: a.agency_id ?? undefined,
     firstName: a.first_name,
     lastName: a.last_name,
     age: a.age,

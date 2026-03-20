@@ -16,6 +16,10 @@ Falls du die Reihenfolge anpassen willst: Zuerst alle Enums und Tabellen, dann R
 
 **Admin-Profil-Änderungen speichern:** Zusätzlich `migration_admin_profile_update.sql` ausführen. Dann werden Admin-Änderungen an Nutzerprofilen (Name, E-Mail, Rolle, is_active, is_admin usw.) über die RPC `admin_update_profile_full` geschrieben und zuverlässig in der DB gespeichert (umgeht RLS). Nutzer können in den Einstellungen ihr Konto zur Löschung anmelden; Daten bleiben 30 Tage archiviert. Nach 30 Tagen müssen die Einträge endgültig gelöscht werden: z.B. eine geplante Edge Function, die `get_accounts_to_purge()` aufruft und für jede zurückgegebene `user_id` die Supabase Admin API `auth.admin.deleteUser(user_id)` ausführt (CASCADE räumt dann die öffentlichen Tabellen).
 
+**My Models (Roster, Soft-Delete, Account-Link):** `migration_model_roster_soft_delete.sql` — `agency_relationship_status` (`active` / `pending_link` / `ended`), Soft-End statt `agency_id` löschen; RPC `agency_link_model_to_user` für manuelle Verknüpfung nach API-Import.
+
+**Identität, Verhandlung, Kalender-Spiegelung:** `migration_identity_negotiation_calendar.sql` — `agencies.logo_url`, `user_calendar_events.source_option_request_id`, Trigger bei `option_requests.final_status = option_confirmed` (Client- und Agentur-Kalender). Im SQL Editor ausführen, nachdem `user_calendar_events` existiert.
+
 **Model-Fotos (Portfolio, manueller Upload, Cover):** Dafür müssen **Phase 13** und **Phase 14** ausgeführt sein:
 - `migration_phase13_enhancements.sql` – legt die Tabelle `model_photos` und RLS an.
 - `migration_phase14_options_jobs_castings.sql` – fügt die Spalte `photo_type` (portfolio/polaroid) in `model_photos` hinzu.

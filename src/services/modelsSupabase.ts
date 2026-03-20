@@ -8,6 +8,9 @@ export type SupabaseModel = {
   id: string;
   agency_id: string;
   user_id: string | null;
+  /** active | pending_link | ended — ended = soft-removed from My Models, history kept */
+  agency_relationship_status?: string | null;
+  agency_relationship_ended_at?: string | null;
   email: string | null;
   mediaslide_sync_id: string | null;
   name: string;
@@ -82,6 +85,7 @@ export async function getModelsForClientFromSupabase(
     .from('models')
     .select('*')
     .eq(column, true)
+    .or('agency_relationship_status.is.null,agency_relationship_status.eq.active,agency_relationship_status.eq.pending_link')
     .order('name');
 
   if (error) {
@@ -96,6 +100,7 @@ export async function getModelsForAgencyFromSupabase(agencyId: string): Promise<
     .from('models')
     .select('*')
     .eq('agency_id', agencyId)
+    .or('agency_relationship_status.is.null,agency_relationship_status.eq.active,agency_relationship_status.eq.pending_link')
     .order('name');
 
   if (error) {
@@ -127,7 +132,10 @@ export async function linkModelByEmail(): Promise<void> {
   if (error) console.error('linkModelByEmail error:', error);
 }
 
-/** Agency removes a model (unassigns; dissolves connection and territories). */
+/**
+ * Agency ends representation (soft delete): model leaves My Models & client discovery;
+ * past option_requests / calendar history stay in DB for reporting.
+ */
 export async function removeModelFromAgency(modelId: string, agencyId: string): Promise<boolean> {
   const { error } = await supabase.rpc('agency_remove_model', {
     p_model_id: modelId,
@@ -138,4 +146,22 @@ export async function removeModelFromAgency(modelId: string, agencyId: string): 
     return false;
   }
   return true;
+}
+
+/** Link a roster model to the model user who registered with this email (after API import etc.). */
+export async function agencyLinkModelToUser(
+  modelId: string,
+  agencyId: string,
+  email: string
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc('agency_link_model_to_user', {
+    p_model_id: modelId,
+    p_agency_id: agencyId,
+    p_email: email.trim(),
+  });
+  if (error) {
+    console.error('agencyLinkModelToUser error:', error);
+    return false;
+  }
+  return data === true;
 }

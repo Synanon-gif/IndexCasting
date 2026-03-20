@@ -27,6 +27,8 @@ export type SupabaseOptionRequest = {
   end_time: string | null;
   model_approval: 'pending' | 'approved' | 'rejected';
   model_approved_at: string | null;
+  /** false = no models.user_id; negotiation proceeds client↔agency only */
+  model_account_linked?: boolean | null;
   booker_id: string | null;
   created_at: string;
   updated_at: string;
@@ -117,6 +119,15 @@ export async function insertOptionRequest(req: {
   start_time?: string;
   end_time?: string;
 }): Promise<SupabaseOptionRequest | null> {
+  const { data: modelRow } = await supabase
+    .from('models')
+    .select('user_id')
+    .eq('id', req.model_id)
+    .maybeSingle();
+  const modelAccountLinked = !!(modelRow as { user_id?: string | null } | null)?.user_id;
+  const modelApproval = modelAccountLinked ? 'pending' : 'approved';
+  const modelApprovedAt = modelAccountLinked ? null : new Date().toISOString();
+
   const { data, error } = await supabase
     .from('option_requests')
     .insert({
@@ -136,7 +147,9 @@ export async function insertOptionRequest(req: {
       start_time: req.start_time || null,
       end_time: req.end_time || null,
       status: 'in_negotiation',
-      model_approval: 'pending',
+      model_approval: modelApproval,
+      model_approved_at: modelApprovedAt,
+      model_account_linked: modelAccountLinked,
     })
     .select()
     .single();
@@ -181,6 +194,16 @@ export async function agencyAcceptClientPrice(id: string): Promise<boolean> {
     })
     .eq('id', id);
   if (error) { console.error('agencyAcceptClientPrice error:', error); return false; }
+  return true;
+}
+
+/** Agency declines the client's proposed fee; counter-offer UI becomes the next step. */
+export async function agencyRejectClientPrice(id: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('option_requests')
+    .update({ client_price_status: 'rejected' })
+    .eq('id', id);
+  if (error) { console.error('agencyRejectClientPrice error:', error); return false; }
   return true;
 }
 

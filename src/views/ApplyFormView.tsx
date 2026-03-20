@@ -2,7 +2,7 @@
  * Öffentliche Apply-Page für neue Models.
  * Schlichtes, High-End-Formular – auf dem Smartphone so einfach wie ein Instagram-Post.
  */
-import React, { useRef, useState, createElement } from 'react';
+import React, { useRef, useState, useEffect, createElement } from 'react';
 import {
   View,
   Text,
@@ -37,9 +37,19 @@ const SLOT_LABELS: Record<ImageSlot, string> = {
   profile: 'Profile',
 };
 
+function splitDisplayName(displayName: string | null | undefined): { first: string; last: string } {
+  const d = (displayName || '').trim();
+  if (!d) return { first: '', last: '' };
+  const i = d.indexOf(' ');
+  if (i === -1) return { first: d, last: '' };
+  return { first: d.slice(0, i).trim(), last: d.slice(i + 1).trim() };
+}
+
 export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const auth = useAuth();
   const applicantUserId = auth?.user?.id ?? '';
+  const profile = auth?.profile ?? null;
+  const nameLocked = Boolean(applicantUserId);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [age, setAge] = useState('');
@@ -63,6 +73,13 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   });
 
   const fileRefs = useRef<Record<ImageSlot, File | null>>({ closeUp: null, fullBody: null, profile: null });
+
+  useEffect(() => {
+    if (!nameLocked || !profile?.display_name) return;
+    const { first, last } = splitDisplayName(profile.display_name);
+    setFirstName(first);
+    setLastName(last);
+  }, [nameLocked, profile?.display_name]);
 
   const handleFileChange = (slot: ImageSlot) => (e: any) => {
     const file = e?.target?.files?.[0];
@@ -97,7 +114,11 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const ageNum = parseInt(age, 10);
     const heightNum = parseInt(height, 10);
     if (!firstName.trim() || !lastName.trim()) {
-      setError('Please enter first and last name.');
+      setError(
+        nameLocked
+          ? 'Your account display name is missing. Add your full name in Account settings, then try again.'
+          : 'Please enter first and last name.'
+      );
       return;
     }
     if (!age || isNaN(ageNum) || ageNum < 14 || ageNum > 99) {
@@ -196,26 +217,44 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         <Text style={styles.subtitle}>Send us your details and photos.</Text>
 
         <View style={styles.field}>
-          <Text style={styles.label}>First name</Text>
-          <TextInput
-            value={firstName}
-            onChangeText={setFirstName}
-            placeholder="First name"
-            placeholderTextColor={colors.textSecondary}
-            style={styles.input}
-            autoCapitalize="words"
-          />
-        </View>
-        <View style={styles.field}>
-          <Text style={styles.label}>Last name</Text>
-          <TextInput
-            value={lastName}
-            onChangeText={setLastName}
-            placeholder="Last name"
-            placeholderTextColor={colors.textSecondary}
-            style={styles.input}
-            autoCapitalize="words"
-          />
+          <Text style={styles.label}>Applicant name</Text>
+          {nameLocked ? (
+            <View style={styles.readonlyBox}>
+              <Text style={styles.readonlyValue}>
+                {[firstName, lastName].filter(Boolean).join(' ') || '—'}
+              </Text>
+              <Text style={styles.readonlyHint}>
+                Pulled from your account and cannot be edited during this application (identity binding).
+              </Text>
+            </View>
+          ) : (
+            <>
+              <View style={styles.row}>
+                <View style={[styles.field, styles.half, { marginBottom: 0 }]}>
+                  <Text style={styles.label}>First name</Text>
+                  <TextInput
+                    value={firstName}
+                    onChangeText={setFirstName}
+                    placeholder="First name"
+                    placeholderTextColor={colors.textSecondary}
+                    style={styles.input}
+                    autoCapitalize="words"
+                  />
+                </View>
+                <View style={[styles.field, styles.half, { marginBottom: 0 }]}>
+                  <Text style={styles.label}>Last name</Text>
+                  <TextInput
+                    value={lastName}
+                    onChangeText={setLastName}
+                    placeholder="Last name"
+                    placeholderTextColor={colors.textSecondary}
+                    style={styles.input}
+                    autoCapitalize="words"
+                  />
+                </View>
+              </View>
+            </>
+          )}
         </View>
         <View style={styles.row}>
           <View style={[styles.field, styles.half]}>
@@ -356,6 +395,27 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: spacing.lg,
+    flexGrow: 1,
+    paddingBottom: spacing.xl * 3,
+  },
+  readonlyBox: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 4,
+    backgroundColor: colors.surface,
+  },
+  readonlyValue: {
+    ...typography.body,
+    color: colors.textPrimary,
+  },
+  readonlyHint: {
+    ...typography.label,
+    fontSize: 10,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+    lineHeight: 14,
   },
   title: {
     ...typography.heading,

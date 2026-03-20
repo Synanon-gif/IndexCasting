@@ -18,6 +18,7 @@ import {
   getOptionRequestsForAgency as fetchRequestsForAgency,
   setAgencyCounterOffer,
   agencyAcceptClientPrice,
+  agencyRejectClientPrice as agencyRejectClientPriceDb,
   clientAcceptCounterPrice,
   clientConfirmJobOnSupabase,
   type SupabaseOptionRequest,
@@ -25,7 +26,9 @@ import {
 } from '../services/optionRequestsSupabase';
 import { supabase } from '../../lib/supabase';
 import { getModelByIdFromSupabase } from '../services/modelsSupabase';
+import { getAgencyById } from '../services/agenciesSupabase';
 import { insertCalendarEntry, upsertCalendarEntry, updateCalendarEntryToJob } from '../services/calendarSupabase';
+import { notifyClientAgencyCounterOffer } from '../services/pushNotifications';
 
 export type ChatStatus = 'in_negotiation' | 'confirmed' | 'rejected';
 
@@ -49,6 +52,9 @@ export type OptionRequest = {
   endTime?: string;
   modelApproval: 'pending' | 'approved' | 'rejected';
   modelApprovedAt?: string;
+  /** false when model has no app user — client & agency do not wait for in-app model approval */
+  modelAccountLinked?: boolean;
+  agencyId?: string;
 };
 
 export type ChatMessage = {
@@ -80,6 +86,7 @@ function toLocalRequest(r: SupabaseOptionRequest): OptionRequest {
     endTime: r.end_time ?? undefined,
     modelApproval: r.model_approval ?? 'pending',
     modelApprovedAt: r.model_approved_at ?? undefined,
+    agencyId: r.agency_id,
   };
 }
 
@@ -154,6 +161,7 @@ export function addOptionRequest(
     startTime: extra?.startTime,
     endTime: extra?.endTime,
     modelApproval: 'pending',
+    modelAccountLinked: true,
     finalStatus: 'option_pending',
     clientPriceStatus: 'pending',
   };
@@ -196,14 +204,26 @@ export function addOptionRequest(
       request_type: requestType,
     });
     if (result) {
+      const local = toLocalRequest(result);
       const r = requestsCache.find((x) => x.id === req.id);
       if (r) {
-        r.id = result.id;
-        r.threadId = result.id;
+        r.id = local.id;
+        r.threadId = local.threadId;
+        r.modelApproval = local.modelApproval;
+        r.modelApprovedAt = local.modelApprovedAt;
+        r.modelAccountLinked = local.modelAccountLinked;
+        r.agencyId = local.agencyId;
       }
       const m = messagesCache.find((x) => x.id === autoMessage.id);
       if (m) m.threadId = result.id;
       addOptionMessage(result.id, 'client', autoText);
+      if (local.modelAccountLinked === false) {
+        addOptionMessage(
+          result.id,
+          'agency',
+          'No model app account on file — you can negotiate and confirm with the client without waiting for model approval. The booking will appear in client and agency calendars when confirmed.',
+        );
+      }
       notify();
     }
   })();
@@ -395,7 +415,7 @@ export async function agencyAcceptClientPriceStore(threadId: string): Promise<bo
   return true;
 }
 
-/** Agency sends counter offer; system message. */
+/** Agency sends counter offer; system message + local/web notification hook. */
 export async function agencyCounterOfferStore(threadId: string, counterPrice: number, currency: string): Promise<boolean> {
   const req = requestsCache.find((r) => r.threadId === threadId);
   if (!req) return false;
@@ -405,6 +425,22 @@ export async function agencyCounterOfferStore(threadId: string, counterPrice: nu
   req.clientPriceStatus = 'pending';
   req.finalStatus = 'option_pending';
   const text = `Agency proposed ${counterPrice} ${currency}.`;
+  await addOptionMessage(req.id, 'agency', text);
+  messagesCache.push({ id: `msg-${Date.now()}`, threadId, from: 'agency', text, createdAt: Date.now() });
+  const agency = req.agencyId ? await getAgencyById(req.agencyId) : null;
+  notifyClientAgencyCounterOffer(agency?.name ?? 'Agency');
+  notify();
+  return true;
+}
+
+/** Agency rejects the client's proposed fee (counter-offer step follows). */
+export async function agencyRejectClientPriceStore(threadId: string): Promise<boolean> {
+  const req = requestsCache.find((r) => r.threadId === threadId);
+  if (!req) return false;
+  const ok = await agencyRejectClientPriceDb(req.id);
+  if (!ok) return false;
+  req.clientPriceStatus = 'rejected';
+  const text = 'Agency declined the proposed fee. A counter-offer can be sent below.';
   await addOptionMessage(req.id, 'agency', text);
   messagesCache.push({ id: `msg-${Date.now()}`, threadId, from: 'agency', text, createdAt: Date.now() });
   notify();

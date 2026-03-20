@@ -8,10 +8,19 @@ export type CalendarEntryType =
   | 'option'
   | 'casting';
 
+/** Visible to client, agency, and model on the same booking (GDPR: party role + timestamp only, no extra PII). */
+export type SharedBookingNote = {
+  role: 'client' | 'agency' | 'model';
+  at: string;
+  text: string;
+};
+
 export type BookingDetails = {
   client_notes?: string;
   agency_notes?: string;
   model_notes?: string;
+  /** Append-only timeline all parties can read in-app */
+  shared_notes?: SharedBookingNote[];
   [key: string]: any;
 };
 
@@ -235,6 +244,54 @@ export async function getCalendarEntriesForAgency(agencyId: string): Promise<Age
     option: opt,
     calendar_entry: entryList.find((e) => e.option_request_id === opt.id) ?? null,
   }));
+}
+
+/** Append a note every party can see (stored in calendar_entries.booking_details.shared_notes). */
+export async function appendSharedBookingNote(
+  optionRequestId: string,
+  role: 'client' | 'agency' | 'model',
+  text: string
+): Promise<boolean> {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  try {
+    const { data, error } = await supabase
+      .from('calendar_entries')
+      .select('id, booking_details')
+      .eq('option_request_id', optionRequestId);
+    if (error) {
+      console.error('appendSharedBookingNote select error:', error);
+      return false;
+    }
+    const rows = data as { id: string; booking_details: BookingDetails | null }[];
+    if (!rows.length) return false;
+    const entry: SharedBookingNote = {
+      role,
+      at: new Date().toISOString(),
+      text: trimmed.slice(0, 4000),
+    };
+    const updates = rows.map((row) => {
+      const prev = Array.isArray(row.booking_details?.shared_notes)
+        ? row.booking_details!.shared_notes!
+        : [];
+      return {
+        id: row.id,
+        booking_details: {
+          ...(row.booking_details || {}),
+          shared_notes: [...prev, entry],
+        } as BookingDetails,
+      };
+    });
+    const { error: updError } = await supabase.from('calendar_entries').upsert(updates, { onConflict: 'id' });
+    if (updError) {
+      console.error('appendSharedBookingNote upsert error:', updError);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('appendSharedBookingNote unexpected error:', e);
+    return false;
+  }
 }
 
 export async function updateBookingDetails(

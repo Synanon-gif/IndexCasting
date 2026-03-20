@@ -13,6 +13,7 @@ import {
   addModelBookingThreadId,
 } from '../store/recruitingChats';
 import { getApplicationById } from '../store/applicationsStore';
+import { getAgencyById, type Agency } from '../services/agenciesSupabase';
 
 type Props = {
   threadId: string;
@@ -23,12 +24,22 @@ type Props = {
 export const BookingChatView: React.FC<Props> = ({ threadId, fromRole, onClose }) => {
   const [chatInput, setChatInput] = useState('');
   const [messages, setMessages] = useState(() => getRecruitingMessages(threadId));
+  const [agencyBrand, setAgencyBrand] = useState<Agency | null>(null);
   const thread = getRecruitingThread(threadId);
   const application = thread ? getApplicationById(thread.applicationId) : undefined;
 
   useEffect(() => {
     if (fromRole === 'model') addModelBookingThreadId(threadId);
   }, [threadId, fromRole]);
+
+  useEffect(() => {
+    const aid = application?.agencyId;
+    if (!aid) {
+      setAgencyBrand(null);
+      return;
+    }
+    getAgencyById(aid).then(setAgencyBrand);
+  }, [application?.agencyId]);
 
   useEffect(() => {
     const refresh = () => setMessages(getRecruitingMessages(threadId));
@@ -49,12 +60,39 @@ export const BookingChatView: React.FC<Props> = ({ threadId, fromRole, onClose }
       <View style={styles.overlay}>
         <View style={styles.card}>
           <View style={styles.header}>
-            <View>
-              <Text style={styles.title}>{thread ? thread.modelName : 'Chat'}</Text>
-              {application && (
-                <Text style={styles.subtitle}>
-                  {application.city || '—'} · {application.height} cm · {application.gender || '—'}
-                </Text>
+            <View style={{ flex: 1, marginRight: spacing.sm }}>
+              {fromRole === 'model' && agencyBrand ? (
+                <View style={styles.brandRow}>
+                  {agencyBrand.logo_url ? (
+                    <Image source={{ uri: agencyBrand.logo_url }} style={styles.agencyLogo} resizeMode="contain" />
+                  ) : (
+                    <View style={styles.agencyLogoPlaceholder}>
+                      <Text style={styles.agencyLogoLetter}>{(agencyBrand.name || '?').charAt(0).toUpperCase()}</Text>
+                    </View>
+                  )}
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.agencyName}>{agencyBrand.name}</Text>
+                    <Text style={styles.subtitle}>You are chatting with this agency</Text>
+                    <Text style={styles.modelLine}>Applicant: {thread?.modelName ?? '—'}</Text>
+                  </View>
+                </View>
+              ) : (
+                <>
+                  <Text style={styles.title}>{thread ? thread.modelName : 'Chat'}</Text>
+                  {fromRole === 'agency' && agencyBrand && (
+                    <View style={styles.brandRow}>
+                      {agencyBrand.logo_url ? (
+                        <Image source={{ uri: agencyBrand.logo_url }} style={styles.agencyLogoSmall} resizeMode="contain" />
+                      ) : null}
+                      <Text style={styles.replyingAs}>Replying as {agencyBrand.name}</Text>
+                    </View>
+                  )}
+                  {application && (
+                    <Text style={styles.subtitle}>
+                      {application.city || '—'} · {application.height} cm · {application.gender || '—'}
+                    </Text>
+                  )}
+                </>
               )}
             </View>
             <TouchableOpacity onPress={onClose}>
@@ -77,7 +115,7 @@ export const BookingChatView: React.FC<Props> = ({ threadId, fromRole, onClose }
               </ScrollView>
             </View>
           )}
-          <ScrollView style={styles.messages}>
+          <ScrollView style={styles.messages} contentContainerStyle={styles.messagesContent}>
             {messages.map((msg) => (
               <View
                 key={msg.id}
@@ -140,10 +178,61 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 2,
   },
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  agencyLogo: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    backgroundColor: colors.border,
+  },
+  agencyLogoSmall: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: colors.border,
+  },
+  agencyLogoPlaceholder: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    backgroundColor: colors.textPrimary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  agencyLogoLetter: {
+    ...typography.heading,
+    fontSize: 18,
+    color: colors.surface,
+  },
+  agencyName: {
+    ...typography.heading,
+    fontSize: 15,
+    color: colors.textPrimary,
+  },
+  modelLine: {
+    ...typography.body,
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  replyingAs: {
+    ...typography.label,
+    fontSize: 10,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
   title: {
     ...typography.heading,
     fontSize: 16,
     color: colors.textPrimary,
+  },
+  messagesContent: {
+    flexGrow: 1,
+    paddingBottom: spacing.sm,
   },
   closeLabel: {
     ...typography.label,

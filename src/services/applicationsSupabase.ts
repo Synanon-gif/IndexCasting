@@ -180,6 +180,8 @@ export async function createModelFromApplication(applicationId: string): Promise
     .insert({
       agency_id: app.accepted_by_agency_id,
       user_id: app.applicant_user_id || null,
+      agency_relationship_status: 'active',
+      agency_relationship_ended_at: null,
       name,
       height: app.height || 0,
       bust: null,

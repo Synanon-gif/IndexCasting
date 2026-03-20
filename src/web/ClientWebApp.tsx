@@ -14,7 +14,13 @@ import { colors, spacing, typography } from '../theme/theme';
 import { useAuth } from '../context/AuthContext';
 import { getModelsForClient, getModelData } from '../services/apiService';
 import { getAgencies, type Agency } from '../services/agenciesSupabase';
-import { getCalendarEntriesForClient, type ClientCalendarItem, updateBookingDetails } from '../services/calendarSupabase';
+import {
+  getCalendarEntriesForClient,
+  type ClientCalendarItem,
+  updateBookingDetails,
+  appendSharedBookingNote,
+  type SharedBookingNote,
+} from '../services/calendarSupabase';
 import {
   getManualEventsForOwner,
   insertManualEvent,
@@ -47,6 +53,7 @@ import {
   loadMessagesForThread,
   agencyAcceptClientPriceStore,
   agencyCounterOfferStore,
+  agencyRejectClientPriceStore,
   clientAcceptCounterStore,
   clientConfirmJobStore,
   type ChatStatus,
@@ -177,6 +184,8 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   const [savingManualEvent, setSavingManualEvent] = useState(false);
   const [clientNotesDraft, setClientNotesDraft] = useState('');
   const [savingNotes, setSavingNotes] = useState(false);
+  const [clientSharedNoteDraft, setClientSharedNoteDraft] = useState('');
+  const [savingSharedNoteClient, setSavingSharedNoteClient] = useState(false);
 
   useEffect(() => {
     if (!navigator.geolocation) return;
@@ -637,6 +646,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                 onPress={() => {
                   setSelectedCalendarItem(null);
                   setClientNotesDraft('');
+                  setClientSharedNoteDraft('');
                 }}
               >
                 <Text style={styles.closeLabel}>Close</Text>
@@ -666,8 +676,76 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                 </View>
               );
             })()}
+            {selectedCalendarItem.calendar_entry ? (
+              <View style={{ marginTop: spacing.md }}>
+                <Text style={styles.sectionLabel}>Shared notes</Text>
+                <Text style={[styles.metaText, { marginBottom: spacing.sm }]}>
+                  Visible to agency and model. Minimise personal data (GDPR).
+                </Text>
+                <ScrollView style={{ maxHeight: 120, marginBottom: spacing.sm }}>
+                  {(
+                    (selectedCalendarItem.calendar_entry?.booking_details as { shared_notes?: SharedBookingNote[] } | null)
+                      ?.shared_notes ?? []
+                  ).map((n, i) => (
+                    <View
+                      key={`${n.at}-${i}`}
+                      style={{
+                        marginBottom: 6,
+                        padding: 8,
+                        backgroundColor: colors.border,
+                        borderRadius: 8,
+                      }}
+                    >
+                      <Text style={{ fontSize: 10, color: colors.textSecondary }}>
+                        {n.role} · {new Date(n.at).toLocaleString('en-GB')}
+                      </Text>
+                      <Text style={{ fontSize: 12, color: colors.textPrimary }}>{n.text}</Text>
+                    </View>
+                  ))}
+                </ScrollView>
+                <TextInput
+                  value={clientSharedNoteDraft}
+                  onChangeText={setClientSharedNoteDraft}
+                  multiline
+                  placeholder="Add a note for everyone on this booking…"
+                  placeholderTextColor={colors.textSecondary}
+                  style={[styles.input, { minHeight: 72, borderRadius: 12, textAlignVertical: 'top' }]}
+                />
+                <TouchableOpacity
+                  onPress={async () => {
+                    if (!selectedCalendarItem || !clientSharedNoteDraft.trim()) return;
+                    setSavingSharedNoteClient(true);
+                    try {
+                      const ok = await appendSharedBookingNote(
+                        selectedCalendarItem.option.id,
+                        'client',
+                        clientSharedNoteDraft,
+                      );
+                      if (ok) {
+                        setClientSharedNoteDraft('');
+                        await loadClientCalendar();
+                        const items = await getCalendarEntriesForClient(effectiveClientId);
+                        const next = items.find((x) => x.option.id === selectedCalendarItem.option.id);
+                        if (next) setSelectedCalendarItem(next);
+                      }
+                    } finally {
+                      setSavingSharedNoteClient(false);
+                    }
+                  }}
+                  style={[
+                    styles.primaryButton,
+                    { marginTop: spacing.sm, alignSelf: 'flex-end', opacity: savingSharedNoteClient ? 0.6 : 1 },
+                  ]}
+                  disabled={savingSharedNoteClient}
+                >
+                  <Text style={styles.primaryLabel}>
+                    {savingSharedNoteClient ? 'Posting…' : 'Post shared note'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
             <View style={{ marginTop: spacing.md }}>
-              <Text style={styles.sectionLabel}>Client notes</Text>
+              <Text style={styles.sectionLabel}>Client notes (internal)</Text>
               <TextInput
                 value={clientNotesDraft}
                 onChangeText={setClientNotesDraft}
@@ -1704,9 +1782,11 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                   <Text style={styles.metaText}>{r.clientName}{r.startTime ? ` · ${r.startTime}–${r.endTime}` : ''}</Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
-                  {r.modelApproval === 'approved' && (
+                  {r.modelAccountLinked === false ? (
+                    <Text style={{ ...typography.label, fontSize: 9, color: colors.textSecondary }}>No model app</Text>
+                  ) : r.modelApproval === 'approved' ? (
                     <Text style={{ ...typography.label, fontSize: 9, color: colors.buttonOptionGreen }}>Model OK</Text>
-                  )}
+                  ) : null}
                   <View style={[styles.statusPill, { backgroundColor: STATUS_COLORS[reqStatus] }]}>
                     <Text style={styles.statusPillLabel}>{STATUS_LABELS[reqStatus]}</Text>
                   </View>
@@ -1745,6 +1825,13 @@ const MessagesView: React.FC<MessagesViewProps> = ({
               Proposed price: {request.currency === 'USD' ? '$' : request.currency === 'GBP' ? '£' : request.currency === 'CHF' ? 'CHF ' : '€'}{request.proposedPrice}
             </Text>
           )}
+          {request.modelAccountLinked === false && (
+            <View style={{ paddingVertical: spacing.xs, paddingHorizontal: spacing.sm, marginBottom: spacing.sm, backgroundColor: 'rgba(100,100,100,0.12)', borderRadius: 8 }}>
+              <Text style={{ ...typography.label, fontSize: 11, color: colors.textPrimary }}>
+                This model has no app account — the agency can confirm with you directly. Once confirmed, the date is booked and appears in your calendar and the agency&apos;s.
+              </Text>
+            </View>
+          )}
           {finalStatus && (
             <View style={{ paddingVertical: spacing.xs, paddingHorizontal: spacing.sm, marginBottom: spacing.sm, backgroundColor: finalStatus === 'job_confirmed' ? 'rgba(0,120,0,0.15)' : finalStatus === 'option_confirmed' ? 'rgba(0,80,200,0.12)' : 'rgba(120,120,0,0.12)', borderRadius: 8 }}>
               <Text style={{ ...typography.label, fontSize: 11, color: colors.textPrimary }}>
@@ -1752,7 +1839,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
               </Text>
             </View>
           )}
-          {isAgency && request.modelApproval === 'approved' && clientPriceStatus === 'pending' && finalStatus !== 'job_confirmed' && (
+          {isAgency && request.modelApproval === 'approved' && clientPriceStatus === 'pending' && finalStatus !== 'job_confirmed' && request.proposedPrice != null && (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm }}>
               <TouchableOpacity
                 style={[styles.filterPill, { backgroundColor: colors.buttonOptionGreen }]}
@@ -1765,17 +1852,35 @@ const MessagesView: React.FC<MessagesViewProps> = ({
               >
                 <Text style={[styles.filterPillLabel, { color: '#fff' }]}>Accept client price</Text>
               </TouchableOpacity>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <TouchableOpacity
+                style={[styles.filterPill, { borderWidth: 1, borderColor: colors.buttonSkipRed }]}
+                onPress={async () => {
+                  if (request?.threadId) {
+                    await agencyRejectClientPriceStore(request.threadId);
+                    setRequests(getOptionRequests());
+                  }
+                }}
+              >
+                <Text style={[styles.filterPillLabel, { color: colors.buttonSkipRed }]}>Reject client price</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          {isAgency && request.modelApproval === 'approved' && clientPriceStatus === 'rejected' && finalStatus !== 'job_confirmed' && (
+            <View style={{ marginBottom: spacing.sm, padding: spacing.sm, backgroundColor: 'rgba(180,100,0,0.08)', borderRadius: 8 }}>
+              <Text style={{ ...typography.label, fontSize: 11, color: colors.textPrimary, marginBottom: spacing.xs }}>
+                Client price declined — enter a counter-offer
+              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
                 <TextInput
                   value={agencyCounterInput}
                   onChangeText={setAgencyCounterInput}
                   placeholder="Counter (e.g. 3000)"
                   placeholderTextColor={colors.textSecondary}
                   keyboardType="numeric"
-                  style={[styles.chatPanelInput, { flex: 1, minWidth: 80 }]}
+                  style={[styles.chatPanelInput, { flex: 1, minWidth: 120 }]}
                 />
                 <TouchableOpacity
-                  style={[styles.filterPill, { paddingHorizontal: spacing.sm }]}
+                  style={[styles.filterPill, { paddingHorizontal: spacing.sm, backgroundColor: colors.textPrimary }]}
                   onPress={async () => {
                     const num = parseFloat(agencyCounterInput.trim());
                     if (!request?.threadId || isNaN(num)) return;
@@ -1784,9 +1889,34 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                     setRequests(getOptionRequests());
                   }}
                 >
-                  <Text style={styles.filterPillLabel}>Counter offer</Text>
+                  <Text style={[styles.filterPillLabel, { color: '#fff' }]}>Send counter-offer</Text>
                 </TouchableOpacity>
               </View>
+            </View>
+          )}
+          {isAgency && request.modelApproval === 'approved' && clientPriceStatus === 'pending' && finalStatus !== 'job_confirmed' && request.proposedPrice == null && (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm, alignItems: 'center' }}>
+              <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary }}>Propose a fee (optional)</Text>
+              <TextInput
+                value={agencyCounterInput}
+                onChangeText={setAgencyCounterInput}
+                placeholder="Amount"
+                placeholderTextColor={colors.textSecondary}
+                keyboardType="numeric"
+                style={[styles.chatPanelInput, { width: 100 }]}
+              />
+              <TouchableOpacity
+                style={[styles.filterPill, { paddingHorizontal: spacing.sm }]}
+                onPress={async () => {
+                  const num = parseFloat(agencyCounterInput.trim());
+                  if (!request?.threadId || isNaN(num)) return;
+                  await agencyCounterOfferStore(request.threadId, num, currency);
+                  setAgencyCounterInput('');
+                  setRequests(getOptionRequests());
+                }}
+              >
+                <Text style={styles.filterPillLabel}>Send offer</Text>
+              </TouchableOpacity>
             </View>
           )}
           {!isAgency && agencyCounterPrice != null && clientPriceStatus === 'pending' && finalStatus !== 'job_confirmed' && (

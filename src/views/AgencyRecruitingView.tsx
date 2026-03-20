@@ -33,6 +33,8 @@ import {
   startRecruitingChat,
   loadMessagesForThread,
 } from '../store/recruitingChats';
+import { getAgencyById, type Agency } from '../services/agenciesSupabase';
+import { ScreenScrollView } from '../components/ScreenScrollView';
 
 type HeightFilter = 'all' | 'short' | 'medium' | 'tall';
 
@@ -78,6 +80,15 @@ export const AgencyRecruitingView: React.FC<{ onBack: () => void; agencyId: stri
   const [showBookingChats, setShowBookingChats] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [startingChat, setStartingChat] = useState(false);
+  const [myAgency, setMyAgency] = useState<Agency | null>(null);
+
+  useEffect(() => {
+    if (!agencyId) {
+      setMyAgency(null);
+      return;
+    }
+    getAgencyById(agencyId).then(setMyAgency);
+  }, [agencyId]);
 
   const applications = filterApplications(
     allPending,
@@ -113,7 +124,7 @@ export const AgencyRecruitingView: React.FC<{ onBack: () => void; agencyId: stri
     if (!current || !agencyId) return;
     const threadId = await acceptApplication(current.id, agencyId);
     if (threadId) {
-      showFeedback('Added to selection. Confirmation email sent.');
+      showFeedback('Active contract: model is in My Models. Chat is open.');
       setChatThreadId(threadId);
       setAllPending(getPendingApplications());
       setIndex((i) => Math.min(i, Math.max(0, applications.length - 2)));
@@ -208,9 +219,9 @@ export const AgencyRecruitingView: React.FC<{ onBack: () => void; agencyId: stri
               </View>
             ))
           )}
-        </ScrollView>
+        </ScreenScrollView>
       ) : (
-      <View style={{ flex: 1 }}>
+      <ScreenScrollView contentStyle={{ paddingHorizontal: spacing.lg }}>
 
       <TouchableOpacity style={styles.filterToggle} onPress={() => setFilterOpen((o) => !o)}>
         <Text style={styles.filterToggleLabel}>Filters</Text>
@@ -357,7 +368,7 @@ export const AgencyRecruitingView: React.FC<{ onBack: () => void; agencyId: stri
         </View>
       )}
 
-      </View>
+      </ScreenScrollView>
       )}
 
       {feedback && (
@@ -441,9 +452,21 @@ export const AgencyRecruitingView: React.FC<{ onBack: () => void; agencyId: stri
         <View style={styles.chatOverlay}>
           <View style={styles.chatCard}>
             <View style={styles.chatHeader}>
-              <Text style={styles.chatTitle}>
-                {thread ? thread.modelName : 'Chat'}
-              </Text>
+              <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                {myAgency?.logo_url ? (
+                  <Image source={{ uri: myAgency.logo_url }} style={styles.chatAgencyLogo} resizeMode="contain" />
+                ) : myAgency ? (
+                  <View style={styles.chatAgencyLogoPlaceholder}>
+                    <Text style={styles.chatAgencyLogoLetter}>{(myAgency.name || '?').charAt(0).toUpperCase()}</Text>
+                  </View>
+                ) : null}
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.chatAgencyName}>{myAgency?.name ?? 'Agency'}</Text>
+                  <Text style={styles.chatTitle}>
+                    {thread ? `Applicant: ${thread.modelName}` : 'Chat'}
+                  </Text>
+                </View>
+              </View>
               <View style={styles.chatHeaderActions}>
                 {typeof window !== 'undefined' && thread && (
                   <TouchableOpacity
@@ -774,10 +797,35 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.textSecondary,
   },
-  chatTitle: {
+  chatAgencyLogo: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: colors.border,
+  },
+  chatAgencyLogoPlaceholder: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: colors.textPrimary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chatAgencyLogoLetter: {
     ...typography.heading,
     fontSize: 16,
+    color: colors.surface,
+  },
+  chatAgencyName: {
+    ...typography.heading,
+    fontSize: 14,
     color: colors.textPrimary,
+  },
+  chatTitle: {
+    ...typography.body,
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
   },
   closeLabel: {
     ...typography.label,
