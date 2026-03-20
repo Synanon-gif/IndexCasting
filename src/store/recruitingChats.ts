@@ -7,6 +7,7 @@
 import {
   getThreads as fetchThreads,
   getThread as fetchThread,
+  getThreadsForAgency as fetchThreadsForAgency,
   createThread as createThreadInDb,
   getMessages as fetchMessages,
   addMessage as addMessageInDb,
@@ -88,8 +89,12 @@ export function createRecruitingThread(applicationId: string, modelName: string)
 }
 
 /** Create thread in DB, link to application (for chat before accept), return thread id. */
-export async function startRecruitingChat(applicationId: string, modelName: string): Promise<string | null> {
-  const realId = await createThreadInDb(applicationId, modelName);
+export async function startRecruitingChat(
+  applicationId: string,
+  modelName: string,
+  agencyId?: string | null
+): Promise<string | null> {
+  const realId = await createThreadInDb(applicationId, modelName, agencyId ?? undefined);
   if (!realId) return null;
   const ok = await updateApplicationRecruitingThread(applicationId, realId);
   if (!ok) return null;
@@ -101,6 +106,17 @@ export async function startRecruitingChat(applicationId: string, modelName: stri
   });
   notify();
   return realId;
+}
+
+/** Threads für eine Agentur (Booking Chats) – aus Supabase. */
+export async function getRecruitingThreadsForAgency(agencyId: string): Promise<RecruitingThread[]> {
+  const threads = await fetchThreadsForAgency(agencyId);
+  return threads.map((t) => ({
+    id: t.id,
+    applicationId: t.application_id,
+    modelName: t.model_name,
+    createdAt: new Date(t.created_at).getTime(),
+  }));
 }
 
 export function getRecruitingMessages(threadId: string): RecruitingMessage[] {

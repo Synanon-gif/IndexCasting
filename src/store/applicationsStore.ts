@@ -13,6 +13,7 @@ import {
   type SupabaseApplication,
 } from '../services/applicationsSupabase';
 import { startRecruitingChat, addRecruitingMessage } from './recruitingChats';
+import { updateThreadAgency } from '../services/recruitingChatSupabase';
 
 export type ApplicationStatus = 'pending' | 'accepted' | 'rejected';
 
@@ -136,7 +137,7 @@ export async function acceptApplication(applicationId: string, agencyId: string)
   const modelName = `${app.firstName} ${app.lastName}`.trim();
   let threadId = app.chatThreadId;
   if (!threadId || threadId.startsWith('recruiting-')) {
-    const realId = await startRecruitingChat(applicationId, modelName);
+    const realId = await startRecruitingChat(applicationId, modelName, agencyId);
     if (realId) threadId = realId;
     else return null;
     addRecruitingMessage(threadId, 'agency', 'Welcome to our selection. We have received your application and would like to invite you to the next step.');
@@ -146,6 +147,8 @@ export async function acceptApplication(applicationId: string, agencyId: string)
     accepted_by_agency_id: agencyId,
   });
   if (!ok) return null;
+
+  await updateThreadAgency(threadId, agencyId);
 
   await createModelFromApplication(applicationId);
 

@@ -10,10 +10,12 @@ import {
   addRecruitingMessage,
   getRecruitingThread,
   subscribeRecruitingChats,
+  loadMessagesForThread,
   addModelBookingThreadId,
 } from '../store/recruitingChats';
 import { getApplicationById } from '../store/applicationsStore';
-import { getAgencyById, type Agency } from '../services/agenciesSupabase';
+import { getThread } from '../services/recruitingChatSupabase';
+import { getAgencyById } from '../services/agenciesSupabase';
 
 type Props = {
   threadId: string;
@@ -24,7 +26,7 @@ type Props = {
 export const BookingChatView: React.FC<Props> = ({ threadId, fromRole, onClose }) => {
   const [chatInput, setChatInput] = useState('');
   const [messages, setMessages] = useState(() => getRecruitingMessages(threadId));
-  const [agencyBrand, setAgencyBrand] = useState<Agency | null>(null);
+  const [agencyName, setAgencyName] = useState<string | null>(null);
   const thread = getRecruitingThread(threadId);
   const application = thread ? getApplicationById(thread.applicationId) : undefined;
 
@@ -33,20 +35,18 @@ export const BookingChatView: React.FC<Props> = ({ threadId, fromRole, onClose }
   }, [threadId, fromRole]);
 
   useEffect(() => {
-    const aid = application?.agencyId;
-    if (!aid) {
-      setAgencyBrand(null);
-      return;
-    }
-    getAgencyById(aid).then(setAgencyBrand);
-  }, [application?.agencyId]);
-
-  useEffect(() => {
     const refresh = () => setMessages(getRecruitingMessages(threadId));
-    refresh();
+    loadMessagesForThread(threadId).then(() => refresh());
     const unsub = subscribeRecruitingChats(refresh);
     return unsub;
   }, [threadId]);
+
+  useEffect(() => {
+    if (fromRole !== 'model') return;
+    getThread(threadId).then((t) => {
+      if (t?.agency_id) getAgencyById(t.agency_id).then((a) => setAgencyName(a?.name ?? null));
+    });
+  }, [threadId, fromRole]);
 
   const sendMessage = () => {
     const t = chatInput.trim();
@@ -60,39 +60,17 @@ export const BookingChatView: React.FC<Props> = ({ threadId, fromRole, onClose }
       <View style={styles.overlay}>
         <View style={styles.card}>
           <View style={styles.header}>
-            <View style={{ flex: 1, marginRight: spacing.sm }}>
-              {fromRole === 'model' && agencyBrand ? (
-                <View style={styles.brandRow}>
-                  {agencyBrand.logo_url ? (
-                    <Image source={{ uri: agencyBrand.logo_url }} style={styles.agencyLogo} resizeMode="contain" />
-                  ) : (
-                    <View style={styles.agencyLogoPlaceholder}>
-                      <Text style={styles.agencyLogoLetter}>{(agencyBrand.name || '?').charAt(0).toUpperCase()}</Text>
-                    </View>
-                  )}
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.agencyName}>{agencyBrand.name}</Text>
-                    <Text style={styles.subtitle}>You are chatting with this agency</Text>
-                    <Text style={styles.modelLine}>Applicant: {thread?.modelName ?? '—'}</Text>
-                  </View>
-                </View>
-              ) : (
-                <>
-                  <Text style={styles.title}>{thread ? thread.modelName : 'Chat'}</Text>
-                  {fromRole === 'agency' && agencyBrand && (
-                    <View style={styles.brandRow}>
-                      {agencyBrand.logo_url ? (
-                        <Image source={{ uri: agencyBrand.logo_url }} style={styles.agencyLogoSmall} resizeMode="contain" />
-                      ) : null}
-                      <Text style={styles.replyingAs}>Replying as {agencyBrand.name}</Text>
-                    </View>
-                  )}
-                  {application && (
-                    <Text style={styles.subtitle}>
-                      {application.city || '—'} · {application.height} cm · {application.gender || '—'}
-                    </Text>
-                  )}
-                </>
+            <View>
+              <Text style={styles.title}>
+                {fromRole === 'model' && agencyName ? agencyName : thread ? thread.modelName : 'Chat'}
+              </Text>
+              {fromRole === 'model' && thread && (
+                <Text style={styles.subtitle}>{thread.modelName}</Text>
+              )}
+              {fromRole === 'agency' && application && (
+                <Text style={styles.subtitle}>
+                  {application.city || '—'} · {application.height} cm · {application.gender || '—'}
+                </Text>
               )}
             </View>
             <TouchableOpacity onPress={onClose}>
@@ -109,7 +87,7 @@ export const BookingChatView: React.FC<Props> = ({ threadId, fromRole, onClose }
                       key={idx}
                       source={{ uri: uri! }}
                       style={styles.profileImage}
-                      resizeMode="cover"
+                      resizeMode="contain"
                     />
                   ))}
               </ScrollView>

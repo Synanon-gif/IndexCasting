@@ -38,6 +38,10 @@ import {
   agencyLinkModelToUser,
   type SupabaseModel,
 } from '../services/modelsSupabase';
+import { BookingChatView } from './BookingChatView';
+import { getRecruitingThreadsForAgency, type RecruitingThread } from '../store/recruitingChats';
+import { getApplicationById } from '../store/applicationsStore';
+// Note: booking chats are shown in tab "bookingChats" and rendered via BookingChatView.
 import {
   getPhotosForModel,
   upsertPhotosForModel,
@@ -83,6 +87,7 @@ type AgencyTab =
   | 'messages'
   | 'calendar'
   | 'recruiting'
+  | 'bookingChats'
   | 'bookers'
   | 'guestLinks'
   | 'settings';
@@ -121,6 +126,8 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   const [savingAgencySharedNote, setSavingAgencySharedNote] = useState(false);
   const [savingManualEvent, setSavingManualEvent] = useState(false);
   const [savingNotes, setSavingNotes] = useState(false);
+  const [bookingChatThreads, setBookingChatThreads] = useState<RecruitingThread[]>([]);
+  const [openBookingThreadId, setOpenBookingThreadId] = useState<string | null>(null);
   const currentAgencyId = agencies[0]?.id ?? '';
 
   useEffect(() => {
@@ -176,6 +183,12 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
     }
   }, [tab, currentAgencyId]);
 
+  useEffect(() => {
+    if (tab === 'bookingChats' && currentAgencyId) {
+      getRecruitingThreadsForAgency(currentAgencyId).then(setBookingChatThreads);
+    }
+  }, [tab, currentAgencyId]);
+
   if (tab === 'recruiting') {
     return <AgencyRecruitingView onBack={() => setTab('dashboard')} agencyId={currentAgencyId} />;
   }
@@ -200,28 +213,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         </TouchableOpacity>
       </View>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={s.tabRow}
-      >
-        {([
-          { key: 'dashboard', label: 'Dashboard' },
-          { key: 'myModels', label: 'My Models' },
-          { key: 'messages', label: 'Messages' },
-          { key: 'calendar', label: 'Calendar' },
-          { key: 'recruiting', label: 'Recruiting' },
-          { key: 'bookers', label: 'Bookers' },
-          { key: 'guestLinks', label: 'Guest Links' },
-          { key: 'settings', label: 'Settings' },
-        ] as { key: AgencyTab; label: string }[]).map((t) => (
-          <TouchableOpacity key={t.key} onPress={() => setTab(t.key)} style={s.tabItem}>
-            <Text style={[s.tabLabel, tab === t.key && s.tabLabelActive]}>{t.label}</Text>
-            {tab === t.key && <View style={s.tabUnderline} />}
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-
+      <View style={{ flex: 1 }}>
       {tab === 'dashboard' && (
         <DashboardTab models={models} />
       )}
@@ -260,15 +252,48 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         />
       )}
 
-      {tab === 'bookers' && (
-        <BookersTab
-          bookers={bookers}
-          agencyId={currentAgencyId}
-          onRefresh={() => getBookersForAgency(currentAgencyId).then(setBookers)}
-        />
-      )}
+        {tab === 'bookingChats' && (
+          <ScrollView style={{ flex: 1 }}>
+            <Text style={[s.sectionLabel, { marginTop: spacing.sm }]}>Chats mit Models (Bewerbungen)</Text>
+            {bookingChatThreads.length === 0 ? (
+              <Text style={s.metaText}>Noch keine Booking-Chats. Chats aus Recruiting erscheinen hier.</Text>
+            ) : (
+              bookingChatThreads.map((thread) => {
+                const application = getApplicationById(thread.applicationId);
+                const thumbUri = application?.images?.closeUp || application?.images?.profile || application?.images?.fullBody;
+                return (
+                  <TouchableOpacity
+                    key={thread.id}
+                    style={s.bookingChatRow}
+                    onPress={() => setOpenBookingThreadId(thread.id)}
+                  >
+                    <View style={s.bookingChatThumbWrap}>
+                      {thumbUri ? (
+                        <Image source={{ uri: thumbUri }} style={s.bookingChatThumb} resizeMode="contain" />
+                      ) : (
+                        <View style={[s.bookingChatThumb, s.bookingChatThumbPlaceholder]}>
+                          <Text style={s.bookingChatThumbPlaceholderText} numberOfLines={1}>{thread.modelName}</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={[s.modelName, { flex: 1, marginLeft: spacing.sm }]} numberOfLines={1}>{thread.modelName}</Text>
+                    <Text style={s.backLabel}>Chat öffnen</Text>
+                  </TouchableOpacity>
+                );
+              })
+            )}
+          </ScrollView>
+        )}
 
-      {tab === 'guestLinks' && (
+        {tab === 'bookers' && (
+          <BookersTab
+            bookers={bookers}
+            agencyId={currentAgencyId}
+            onRefresh={() => getBookersForAgency(currentAgencyId).then(setBookers)}
+          />
+        )}
+
+        {tab === 'guestLinks' && (
         <GuestLinksTab agencyId={currentAgencyId} agencyEmail={agencies[0]?.email ?? ''} agencyName={agencies[0]?.name ?? ''} models={fullModels} />
       )}
 
@@ -307,6 +332,40 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
             </TouchableOpacity>
           </View>
         </ScreenScrollView>
+      )}
+      </View>
+
+      <View style={s.bottomBar}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={s.tabRow}
+        >
+          {([
+            { key: 'dashboard', label: 'Dashboard' },
+            { key: 'myModels', label: 'My Models' },
+            { key: 'messages', label: 'Messages' },
+            { key: 'calendar', label: 'Calendar' },
+            { key: 'recruiting', label: 'Recruiting' },
+            { key: 'bookingChats', label: 'Booking Chats' },
+            { key: 'bookers', label: 'Bookers' },
+            { key: 'guestLinks', label: 'Guest Links' },
+            { key: 'settings', label: 'Settings' },
+          ] as { key: AgencyTab; label: string }[]).map((t) => (
+            <TouchableOpacity key={t.key} onPress={() => setTab(t.key)} style={s.tabItem}>
+              <Text style={[s.tabLabel, tab === t.key && s.tabLabelActive]}>{t.label}</Text>
+              {tab === t.key && <View style={s.tabUnderline} />}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
+      {openBookingThreadId != null && (
+        <BookingChatView
+          threadId={openBookingThreadId}
+          fromRole="agency"
+          onClose={() => setOpenBookingThreadId(null)}
+        />
       )}
 
       {selectedCalendarItem && (
@@ -1865,7 +1924,8 @@ const s = StyleSheet.create({
   backLabel: { ...typography.label, fontSize: 11, color: colors.textSecondary },
   brand: { ...typography.heading, color: colors.textPrimary, marginBottom: spacing.md },
   heading: { ...typography.heading, fontSize: 18, color: colors.textPrimary, marginBottom: spacing.md },
-  tabRow: { flexDirection: 'row', gap: spacing.lg, marginBottom: spacing.lg, borderBottomWidth: 1, borderBottomColor: colors.border, paddingBottom: spacing.sm },
+  tabRow: { flexDirection: 'row', gap: spacing.lg, alignItems: 'center' },
+  bottomBar: { borderTopWidth: 1, borderTopColor: colors.border, paddingVertical: spacing.sm, backgroundColor: colors.background },
   tabItem: { alignItems: 'center' },
   tabLabel: { ...typography.label, color: colors.textSecondary },
   tabLabelActive: { color: colors.accentGreen },
@@ -1881,6 +1941,37 @@ const s = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingVertical: spacing.sm, paddingHorizontal: spacing.sm,
     borderWidth: 1, borderColor: colors.border, borderRadius: 12, marginBottom: spacing.xs,
+  },
+  bookingChatRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    marginBottom: spacing.xs,
+  },
+  bookingChatThumbWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: colors.border,
+  },
+  bookingChatThumb: {
+    width: '100%',
+    height: '100%',
+  },
+  bookingChatThumbPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bookingChatThumbPlaceholderText: {
+    ...typography.label,
+    fontSize: 10,
+    color: colors.textSecondary,
+    textAlign: 'center',
   },
   visTag: {
     borderRadius: 4, borderWidth: 1, borderColor: colors.accentGreen,

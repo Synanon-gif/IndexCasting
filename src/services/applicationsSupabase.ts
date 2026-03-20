@@ -160,6 +160,47 @@ export async function updateApplicationRecruitingThread(
   return true;
 }
 
+/** Bewerbung löschen (nur für Applicant, nur pending/rejected). */
+export async function deleteApplication(applicationId: string, applicantUserId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('model_applications')
+    .delete()
+    .eq('id', applicationId)
+    .eq('applicant_user_id', applicantUserId)
+    .in('status', ['pending', 'rejected']);
+
+  if (error) {
+    console.error('deleteApplication error:', error);
+    return false;
+  }
+  return true;
+}
+
+/** Stammdaten des Bewerbers auf allen offenen Bewerbungen aktualisieren. */
+export async function updateApplicationsProfileForApplicant(
+  applicantUserId: string,
+  payload: {
+    first_name?: string;
+    last_name?: string;
+    height?: number;
+    city?: string | null;
+    hair_color?: string | null;
+    instagram_link?: string | null;
+  },
+): Promise<boolean> {
+  const { error } = await supabase
+    .from('model_applications')
+    .update(payload)
+    .eq('applicant_user_id', applicantUserId)
+    .in('status', ['pending', 'rejected']);
+
+  if (error) {
+    console.error('updateApplicationsProfileForApplicant error:', error);
+    return false;
+  }
+  return true;
+}
+
 /** Nach Accept: Model-Eintrag anlegen und Bewerber der Agentur zuordnen. */
 export async function createModelFromApplication(applicationId: string): Promise<string | null> {
   const { data: app, error: fetchErr } = await supabase

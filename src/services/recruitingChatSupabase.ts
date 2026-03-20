@@ -11,6 +11,7 @@ export type SupabaseRecruitingThread = {
   id: string;
   application_id: string;
   model_name: string;
+  agency_id: string | null;
   created_at: string;
 };
 
@@ -41,14 +42,41 @@ export async function getThread(threadId: string): Promise<SupabaseRecruitingThr
   return data as SupabaseRecruitingThread | null;
 }
 
-export async function createThread(applicationId: string, modelName: string): Promise<string | null> {
+export async function createThread(
+  applicationId: string,
+  modelName: string,
+  agencyId?: string | null
+): Promise<string | null> {
+  const payload: Record<string, unknown> = { application_id: applicationId, model_name: modelName };
+  if (agencyId != null) payload.agency_id = agencyId;
   const { data, error } = await supabase
     .from('recruiting_chat_threads')
-    .insert({ application_id: applicationId, model_name: modelName })
+    .insert(payload)
     .select('id')
     .single();
   if (error) { console.error('createThread error:', error); return null; }
   return data?.id ?? null;
+}
+
+/** Threads für eine Agentur (Booking Chats). */
+export async function getThreadsForAgency(agencyId: string): Promise<SupabaseRecruitingThread[]> {
+  const { data, error } = await supabase
+    .from('recruiting_chat_threads')
+    .select('*')
+    .eq('agency_id', agencyId)
+    .order('created_at', { ascending: false });
+  if (error) { console.error('getThreadsForAgency error:', error); return []; }
+  return (data ?? []) as SupabaseRecruitingThread[];
+}
+
+/** agency_id setzen (z. B. nach Accept, wenn Thread vorher ohne agency erstellt wurde). */
+export async function updateThreadAgency(threadId: string, agencyId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('recruiting_chat_threads')
+    .update({ agency_id: agencyId })
+    .eq('id', threadId);
+  if (error) { console.error('updateThreadAgency error:', error); return false; }
+  return true;
 }
 
 export async function getMessages(threadId: string): Promise<SupabaseRecruitingMessage[]> {
