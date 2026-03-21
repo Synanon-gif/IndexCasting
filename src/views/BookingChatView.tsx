@@ -3,7 +3,7 @@
  * Used by the model to open a chat from "Booking chats" or from a ?booking= thread link.
  */
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, Modal, ScrollView, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, Modal, ScrollView, Image, Platform } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import {
   getRecruitingMessages,
@@ -21,14 +21,21 @@ type Props = {
   threadId: string;
   fromRole: 'agency' | 'model';
   onClose: () => void;
+  /** Sofort angezeigter Agenturname (z. B. aus Messages-Liste), bevor Supabase antwortet. */
+  initialAgencyName?: string | null;
 };
 
-export const BookingChatView: React.FC<Props> = ({ threadId, fromRole, onClose }) => {
+export const BookingChatView: React.FC<Props> = ({ threadId, fromRole, onClose, initialAgencyName }) => {
   const [chatInput, setChatInput] = useState('');
   const [messages, setMessages] = useState(() => getRecruitingMessages(threadId));
-  const [agencyName, setAgencyName] = useState<string | null>(null);
+  const [agencyName, setAgencyName] = useState<string | null>(initialAgencyName ?? null);
+  const [agencyLogoUrl, setAgencyLogoUrl] = useState<string | null>(null);
   const thread = getRecruitingThread(threadId);
   const application = thread ? getApplicationById(thread.applicationId) : undefined;
+
+  useEffect(() => {
+    if (initialAgencyName) setAgencyName(initialAgencyName);
+  }, [initialAgencyName]);
 
   useEffect(() => {
     if (fromRole === 'model') addModelBookingThreadId(threadId);
@@ -44,7 +51,12 @@ export const BookingChatView: React.FC<Props> = ({ threadId, fromRole, onClose }
   useEffect(() => {
     if (fromRole !== 'model') return;
     getThread(threadId).then((t) => {
-      if (t?.agency_id) getAgencyById(t.agency_id).then((a) => setAgencyName(a?.name ?? null));
+      if (t?.agency_id) {
+        getAgencyById(t.agency_id).then((a) => {
+          if (a?.name) setAgencyName(a.name);
+          setAgencyLogoUrl(a?.logo_url ?? null);
+        });
+      }
     });
   }, [threadId, fromRole]);
 
@@ -55,27 +67,60 @@ export const BookingChatView: React.FC<Props> = ({ threadId, fromRole, onClose }
     setChatInput('');
   };
 
+  const displayAgencyName = agencyName || initialAgencyName || 'Agentur';
+
+  const copyBookingLink = () => {
+    if (typeof window === 'undefined' || !threadId) return;
+    const url = `${window.location.origin}${window.location.pathname || ''}?booking=${threadId}`;
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(url);
+    }
+  };
+
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View style={styles.card}>
           <View style={styles.header}>
-            <View>
-              <Text style={styles.title}>
-                {fromRole === 'model' && agencyName ? agencyName : thread ? thread.modelName : 'Chat'}
-              </Text>
-              {fromRole === 'model' && thread && (
-                <Text style={styles.subtitle}>{thread.modelName}</Text>
-              )}
-              {fromRole === 'agency' && application && (
-                <Text style={styles.subtitle}>
-                  {application.city || '—'} · {application.height} cm · {application.gender || '—'}
-                </Text>
+            <View style={{ flex: 1 }}>
+              {fromRole === 'model' ? (
+                <View style={styles.modelAgencyBanner}>
+                  <Text style={styles.modelAgencyKicker}>Du chattest mit</Text>
+                  <View style={styles.brandRow}>
+                    {agencyLogoUrl ? (
+                      <Image source={{ uri: agencyLogoUrl }} style={styles.agencyLogo} resizeMode="contain" />
+                    ) : (
+                      <View style={styles.agencyLogoPlaceholder}>
+                        <Text style={styles.agencyLogoLetter}>{displayAgencyName.charAt(0).toUpperCase()}</Text>
+                      </View>
+                    )}
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.agencyName}>{displayAgencyName}</Text>
+                      {thread ? <Text style={styles.modelLine}>Als: {thread.modelName}</Text> : null}
+                    </View>
+                  </View>
+                </View>
+              ) : (
+                <View>
+                  <Text style={styles.title}>{thread ? thread.modelName : 'Chat'}</Text>
+                  {application && (
+                    <Text style={styles.subtitle}>
+                      {application.city || '—'} · {application.height} cm · {application.gender || '—'}
+                    </Text>
+                  )}
+                </View>
               )}
             </View>
-            <TouchableOpacity onPress={onClose}>
-              <Text style={styles.closeLabel}>Close</Text>
-            </TouchableOpacity>
+            <View style={{ alignItems: 'flex-end', gap: spacing.xs }}>
+              {fromRole === 'agency' && Platform.OS === 'web' && (
+                <TouchableOpacity onPress={copyBookingLink}>
+                  <Text style={styles.copyLinkLabel}>Link für Model</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity onPress={onClose}>
+                <Text style={styles.closeLabel}>Schließen</Text>
+              </TouchableOpacity>
+            </View>
           </View>
           {application && (
             <View style={styles.profileRow}>
@@ -216,6 +261,22 @@ const styles = StyleSheet.create({
     ...typography.label,
     fontSize: 11,
     color: colors.textSecondary,
+  },
+  copyLinkLabel: {
+    ...typography.label,
+    fontSize: 10,
+    color: colors.buttonOptionGreen,
+  },
+  modelAgencyBanner: {
+    marginBottom: spacing.xs,
+  },
+  modelAgencyKicker: {
+    ...typography.label,
+    fontSize: 10,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: spacing.xs,
   },
   profileRow: {
     marginBottom: spacing.sm,

@@ -27,6 +27,7 @@ import {
   type SharedBookingNote,
 } from '../services/calendarSupabase';
 import { getAgencyById, type Agency } from '../services/agenciesSupabase';
+import { getThread } from '../services/recruitingChatSupabase';
 import { BookingChatView } from '../views/BookingChatView';
 import { useAuth } from '../context/AuthContext';
 
@@ -86,6 +87,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   const [sharedNoteDraft, setSharedNoteDraft] = useState('');
   const [savingSharedNote, setSavingSharedNote] = useState(false);
   const [optionChatAgency, setOptionChatAgency] = useState<Agency | null>(null);
+  const [bookingAgencyByThread, setBookingAgencyByThread] = useState<Record<string, string>>({});
 
   const handleShareLocation = async () => {
     if (!profile) return;
@@ -118,6 +120,29 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     const interval = setInterval(() => setBookingThreadIds(getModelBookingThreadIds()), 3000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (tab !== 'messages' || bookingThreadIds.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const map: Record<string, string> = {};
+      for (const id of bookingThreadIds) {
+        try {
+          const t = await getThread(id);
+          if (t?.agency_id) {
+            const a = await getAgencyById(t.agency_id);
+            if (a?.name) map[id] = a.name;
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+      if (!cancelled) setBookingAgencyByThread((prev) => ({ ...prev, ...map }));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, bookingThreadIds]);
 
   useEffect(() => {
     if (userId) {
@@ -494,10 +519,15 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
               bookingThreadIds.map((id) => {
                 const t = getRecruitingThread(id);
                 if (!t) return null;
+                const agencyLabel = bookingAgencyByThread[id] ?? 'Agentur';
                 return (
                   <TouchableOpacity key={id} style={st.chatRow} onPress={() => setOpenBookingThreadId(id)}>
-                    <Text style={st.chatRowLabel}>{t.modelName} (Agency)</Text>
-                    <Text style={st.chatRowOpen}>Open chat</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={st.chatRowKicker}>Agentur</Text>
+                      <Text style={st.chatRowLabel}>{agencyLabel}</Text>
+                      <Text style={st.metaText}>{t.modelName}</Text>
+                    </View>
+                    <Text style={st.chatRowOpen}>Chat</Text>
                   </TouchableOpacity>
                 );
               })
@@ -597,6 +627,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
         <BookingChatView
           threadId={openBookingThreadId}
           fromRole="model"
+          initialAgencyName={bookingAgencyByThread[openBookingThreadId]}
           onClose={() => setOpenBookingThreadId(null)}
         />
       )}
@@ -913,6 +944,7 @@ const st = StyleSheet.create({
     paddingVertical: spacing.sm, paddingHorizontal: spacing.sm,
     borderWidth: 1, borderColor: colors.border, borderRadius: 12, marginBottom: spacing.xs,
   },
-  chatRowLabel: { ...typography.body, color: colors.textPrimary },
+  chatRowKicker: { ...typography.label, fontSize: 9, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.6 },
+  chatRowLabel: { ...typography.body, color: colors.textPrimary, fontWeight: '600' },
   chatRowOpen: { ...typography.label, fontSize: 11, color: colors.textSecondary },
 });

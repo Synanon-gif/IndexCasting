@@ -36,6 +36,8 @@ import {
   saveClientActiveProjectId,
   loadClientFilters,
   saveClientFilters,
+  type PersistedClientProject,
+  type PersistedClientFilters,
 } from '../storage/persistence';
 import {
   addOptionRequest,
@@ -140,6 +142,40 @@ const initialFilters: WebFilters = {
   onlyConnectedAgencies: false,
 };
 
+/** localStorage-Modelle ohne chest/legsInseam → volles ModelSummary für die App */
+function persistedProjectsToProjects(list: PersistedClientProject[]): Project[] {
+  return list.map((p) => ({
+    id: p.id,
+    name: p.name,
+    models: p.models.map((m) => ({
+      ...m,
+      chest: 0,
+      legsInseam: 0,
+      agencyId: undefined,
+    })),
+  }));
+}
+
+function projectsToPersisted(list: Project[]): PersistedClientProject[] {
+  return list.map((p) => ({
+    id: p.id,
+    name: p.name,
+    models: p.models.map(
+      ({ id, name, city, hairColor, height, bust, waist, hips, coverUrl }) => ({
+        id,
+        name,
+        city,
+        hairColor,
+        height,
+        bust,
+        waist,
+        hips,
+        coverUrl,
+      }),
+    ),
+  }));
+}
+
 export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   clientType,
   onClientTypeChange,
@@ -148,7 +184,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   const [tab, setTab] = useState<TopTab>('discover');
   const [models, setModels] = useState<ModelSummary[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [projects, setProjects] = useState<Project[]>(() => loadClientProjects());
+  const [projects, setProjects] = useState<Project[]>(() => persistedProjectsToProjects(loadClientProjects()));
   const [activeProjectId, setActiveProjectId] = useState<string | null>(() => loadClientActiveProjectId());
   const [newProjectName, setNewProjectName] = useState('');
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -223,7 +259,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
 
   // Persist client projects and selection to localStorage (survives refresh)
   useEffect(() => {
-    saveClientProjects(projects);
+    saveClientProjects(projectsToPersisted(projects));
   }, [projects]);
 
   useEffect(() => {
@@ -231,8 +267,13 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   }, [activeProjectId]);
 
   useEffect(() => {
-    saveClientFilters(filters);
-  }, [filters]);
+    const persisted: PersistedClientFilters = {
+      size: filters.size,
+      location: filters.location,
+      onlyConnectedAgencies: filters.onlyConnectedAgencies,
+    };
+    saveClientFilters(persisted);
+  }, [filters.size, filters.location, filters.onlyConnectedAgencies]);
 
   const auth = useAuth();
   const effectiveClientId = (auth?.profile?.role === 'client' ? auth?.profile?.id : null) ?? 'user-client';
@@ -566,6 +607,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             onOpenDetails={openDetails}
             onOpenOptionDatePicker={openOptionDatePicker}
             isSharedMode={isSharedMode}
+            userCity={userCity}
           />
         )}
 
@@ -954,6 +996,7 @@ type DiscoverProps = {
   onOpenDetails: (id: string) => void;
   onOpenOptionDatePicker: (model: ModelSummary) => void;
   isSharedMode: boolean;
+  userCity: string | null;
 };
 
 const DiscoverView: React.FC<DiscoverProps> = ({
@@ -967,6 +1010,7 @@ const DiscoverView: React.FC<DiscoverProps> = ({
   onClientTypeChange,
   onNext,
   onAddToProject,
+  userCity,
   onOpenDetails,
   onOpenOptionDatePicker,
   isSharedMode,
@@ -2021,6 +2065,13 @@ type OptionDatePickerModalProps = {
 
 const TIME_SLOTS = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`);
 
+/** Schnellauswahl Daten für Option im Model-Detail (14 Tage ab heute). */
+const OPTION_DATES: string[] = Array.from({ length: 14 }, (_, i) => {
+  const x = new Date();
+  x.setDate(x.getDate() + i);
+  return x.toISOString().slice(0, 10);
+});
+
 const OptionDatePickerModal: React.FC<OptionDatePickerModalProps> = ({
   open,
   model,
@@ -2080,7 +2131,7 @@ const OptionDatePickerModal: React.FC<OptionDatePickerModalProps> = ({
               style={[styles.filterPill, requestType === t && styles.filterPillActive, { paddingHorizontal: spacing.md }]}
               onPress={() => setRequestType(t)}
             >
-              <Text style={[styles.filterPillText, requestType === t && styles.filterPillTextActive]}>{t === 'option' ? 'Option' : 'Casting'}</Text>
+              <Text style={[styles.filterPillLabel, requestType === t && styles.filterPillLabelActive]}>{t === 'option' ? 'Option' : 'Casting'}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -2176,7 +2227,7 @@ const OptionDatePickerModal: React.FC<OptionDatePickerModalProps> = ({
                     style={[styles.filterPill, currency === c && styles.filterPillActive, { paddingHorizontal: 8, paddingVertical: 6 }]}
                     onPress={() => setCurrency(c)}
                   >
-                    <Text style={[styles.filterPillText, currency === c && styles.filterPillTextActive, { fontSize: 10 }]}>
+                    <Text style={[styles.filterPillLabel, currency === c && styles.filterPillLabelActive, { fontSize: 10 }]}>
                       {c === 'EUR' ? '€' : c === 'USD' ? '$' : c === 'GBP' ? '£' : 'CHF'}
                     </Text>
                   </TouchableOpacity>
@@ -2195,7 +2246,7 @@ const OptionDatePickerModal: React.FC<OptionDatePickerModalProps> = ({
                 style={[styles.filterPill, sendVia === v && styles.filterPillActive, { paddingHorizontal: spacing.md }]}
                 onPress={() => setSendVia(v)}
               >
-                <Text style={[styles.filterPillText, sendVia === v && styles.filterPillTextActive]}>
+                <Text style={[styles.filterPillLabel, sendVia === v && styles.filterPillLabelActive]}>
                   {v === 'app' ? 'In-App' : 'Email'}
                 </Text>
               </TouchableOpacity>

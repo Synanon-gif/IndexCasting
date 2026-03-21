@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-nati
 import { colors, spacing, typography } from '../theme/theme';
 import { getAgencyModels } from '../services/apiService';
 import { AgencyRecruitingView } from '../views/AgencyRecruitingView';
+import { BookingChatView } from '../views/BookingChatView';
 import {
   getConnectionsForAgencyByIdOrCode,
   sendConnectionRequest,
@@ -35,6 +36,7 @@ export const AgencyDashboardScreen: React.FC<AgencyDashboardScreenProps> = ({
 }) => {
   const [items, setItems] = useState<AgencyModel[]>([]);
   const [showRecruiting, setShowRecruiting] = useState(false);
+  const [openRecruitingBookingThreadId, setOpenRecruitingBookingThreadId] = useState<string | null>(null);
   const [showConnections, setShowConnections] = useState(false);
   const [agencies, setAgencies] = useState<{ id: string }[]>([]);
   const currentAgencyId = agencies.find((a: any) => a.code === 'a1')?.id ?? agencies[0]?.id ?? '';
@@ -90,7 +92,20 @@ export const AgencyDashboardScreen: React.FC<AgencyDashboardScreenProps> = ({
 
   if (showRecruiting) {
     return (
-      <AgencyRecruitingView onBack={() => setShowRecruiting(false)} />
+      <>
+        <AgencyRecruitingView
+          onBack={() => setShowRecruiting(false)}
+          agencyId={currentAgencyId}
+          onOpenBookingChat={(threadId) => setOpenRecruitingBookingThreadId(threadId)}
+        />
+        {openRecruitingBookingThreadId != null && (
+          <BookingChatView
+            threadId={openRecruitingBookingThreadId}
+            fromRole="agency"
+            onClose={() => setOpenRecruitingBookingThreadId(null)}
+          />
+        )}
+      </>
     );
   }
 

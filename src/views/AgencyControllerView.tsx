@@ -189,9 +189,15 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
     }
   }, [tab, currentAgencyId]);
 
-  if (tab === 'recruiting') {
-    return <AgencyRecruitingView onBack={() => setTab('dashboard')} agencyId={currentAgencyId} />;
-  }
+  /** Recruiting-Chat im gleichen Shell wie andere Tabs: unten weiter „Booking Chats“ / Swipen nach Schließen des Chats. */
+  const refreshBookingThreads = () => {
+    if (currentAgencyId) getRecruitingThreadsForAgency(currentAgencyId).then(setBookingChatThreads);
+  };
+
+  const openAgencyBookingChat = (threadId: string) => {
+    refreshBookingThreads();
+    setOpenBookingThreadId(threadId);
+  };
 
   return (
     <View style={s.container}>
@@ -216,6 +222,18 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
       <View style={{ flex: 1 }}>
       {tab === 'dashboard' && (
         <DashboardTab models={models} />
+      )}
+
+      {tab === 'recruiting' && (
+        currentAgencyId ? (
+          <AgencyRecruitingView
+            onBack={() => setTab('dashboard')}
+            agencyId={currentAgencyId}
+            onOpenBookingChat={openAgencyBookingChat}
+          />
+        ) : (
+          <Text style={[s.metaText, { marginTop: spacing.md }]}>Keine Agentur zugeordnet.</Text>
+        )
       )}
 
       {tab === 'myModels' && (
@@ -562,7 +580,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                   s.saveBtn,
                   {
                     paddingHorizontal: spacing.lg,
-                    alignSelf: 'flex-auto',
+                    alignSelf: 'auto',
                     opacity: savingNotes ? 0.6 : 1,
                   },
                 ]}

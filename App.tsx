@@ -17,6 +17,24 @@ import { colors } from './src/theme/theme';
 import type { ClientType } from './src/views/ClientView';
 import { loadClientType, saveClientType } from './src/storage/persistence';
 import { supabaseUrl, supabaseAnonKey } from './src/config/env';
+import { AppErrorBoundary } from './src/components/AppErrorBoundary';
+
+/** Web: volle Höhe sofort beim Modul-Load (vor erstem React-Paint) – verhindert weißen/leeren Screen. */
+function ensureWebRootHasHeight() {
+  if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+  const styleId = '__indexcasting_web_root_height';
+  if (document.getElementById(styleId)) return;
+  const el = document.createElement('style');
+  el.id = styleId;
+  el.textContent = `
+    html, body { height: 100%; margin: 0; }
+    #root { min-height: 100%; height: 100%; display: flex; flex-direction: column; }
+    /* RN-Web hängt oft ein zusätzliches div unter #root */
+    #root > div { flex: 1; display: flex; flex-direction: column; min-height: 100%; }
+  `;
+  document.head.appendChild(el);
+}
+ensureWebRootHasHeight();
 
 type Role = 'model' | 'agency' | 'client' | 'apply';
 
@@ -232,12 +250,14 @@ function ConfigGuard({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <ConfigGuard>
-      <AuthProvider>
-        <AppDataProvider>
-          <AppContent />
-        </AppDataProvider>
-      </AuthProvider>
-    </ConfigGuard>
+    <AppErrorBoundary>
+      <ConfigGuard>
+        <AuthProvider>
+          <AppDataProvider>
+            <AppContent />
+          </AppDataProvider>
+        </AuthProvider>
+      </ConfigGuard>
+    </AppErrorBoundary>
   );
 }

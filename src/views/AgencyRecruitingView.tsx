@@ -25,15 +25,7 @@ import {
   type ModelApplication,
   type Gender,
 } from '../store/applicationsStore';
-import {
-  getRecruitingMessages,
-  addRecruitingMessage,
-  getRecruitingThread,
-  getRecruitingThreads,
-  startRecruitingChat,
-  loadMessagesForThread,
-} from '../store/recruitingChats';
-import { getAgencyById, type Agency } from '../services/agenciesSupabase';
+import { startRecruitingChat } from '../store/recruitingChats';
 import { ScreenScrollView } from '../components/ScreenScrollView';
 
 type HeightFilter = 'all' | 'short' | 'medium' | 'tall';
@@ -63,7 +55,12 @@ function filterApplications(
   });
 }
 
-export const AgencyRecruitingView: React.FC<{ onBack: () => void; agencyId: string }> = ({ onBack, agencyId }) => {
+export const AgencyRecruitingView: React.FC<{
+  onBack: () => void;
+  agencyId: string;
+  /** Chat-Fenster zentral in Booking Chats (Modal) – Agentur kann danach weiter swipen. */
+  onOpenBookingChat: (threadId: string) => void;
+}> = ({ onBack, agencyId, onOpenBookingChat }) => {
   const [recruitTab, setRecruitTab] = useState<'pending' | 'accepted'>('pending');
   const [allPending, setAllPending] = useState<ModelApplication[]>([]);
   const [heightFilter, setHeightFilter] = useState<HeightFilter>('all');
@@ -75,20 +72,9 @@ export const AgencyRecruitingView: React.FC<{ onBack: () => void; agencyId: stri
   const [filterOpen, setFilterOpen] = useState(false);
   const [index, setIndex] = useState(0);
   const [feedback, setFeedback] = useState<string | null>(null);
-  const [chatThreadId, setChatThreadId] = useState<string | null>(null);
-  const [chatInput, setChatInput] = useState('');
   const [showBookingChats, setShowBookingChats] = useState(true);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [startingChat, setStartingChat] = useState(false);
-  const [myAgency, setMyAgency] = useState<Agency | null>(null);
-
-  useEffect(() => {
-    if (!agencyId) {
-      setMyAgency(null);
-      return;
-    }
-    getAgencyById(agencyId).then(setMyAgency);
-  }, [agencyId]);
   const [photoIndex, setPhotoIndex] = useState(0);
   const [showPhotoFullscreen, setShowPhotoFullscreen] = useState(false);
   const [shortlistIds, setShortlistIds] = useState<string[]>([]);
@@ -103,8 +89,18 @@ export const AgencyRecruitingView: React.FC<{ onBack: () => void; agencyId: stri
     cityFilter
   );
   const current = applications[index] ?? null;
+
+  const filteredFromStore = () =>
+    filterApplications(
+      getPendingApplications(),
+      heightFilter,
+      minHeight ? Number(minHeight) : null,
+      maxHeight ? Number(maxHeight) : null,
+      genderFilter,
+      hairFilter,
+      cityFilter
+    );
   const acceptedList = getAcceptedApplications();
-  const allThreads = getRecruitingThreads();
   const shortlist = allPending.filter((a) => shortlistIds.includes(a.id));
   const uniqueCities = React.useMemo(() => Array.from(new Set(allPending.map((a) => a.city).filter(Boolean))).sort(), [allPending]);
   const uniqueHair = React.useMemo(() => Array.from(new Set(allPending.map((a) => a.hairColor).filter(Boolean))).sort(), [allPending]);
@@ -128,12 +124,14 @@ export const AgencyRecruitingView: React.FC<{ onBack: () => void; agencyId: stri
     if (!current || !agencyId) return;
     const threadId = await acceptApplication(current.id, agencyId);
     if (threadId) {
-      showFeedback('Active contract: model is in My Models. Chat is open.');
-      setChatThreadId(threadId);
+      showFeedback('Model übernommen. Chat unter „Booking Chats“ – hier weiter swipen.');
+      onOpenBookingChat(threadId);
       setAllPending(getPendingApplications());
-      setIndex((i) => Math.min(i, Math.max(0, applications.length - 2)));
-      // Optional: direkt sicherstellen, dass Thread eine Agency hat (falls Startchat vorher ohne Agency lief)
-      // und damit im Booking-Chats-Tab erscheint – wird bereits in acceptApplication erledigt.
+      setIndex((prev) => {
+        const apps = filteredFromStore();
+        if (apps.length === 0) return 0;
+        return Math.min(prev, apps.length - 1);
+      });
     }
   };
 
@@ -167,31 +165,17 @@ export const AgencyRecruitingView: React.FC<{ onBack: () => void; agencyId: stri
       await refreshApplications();
       setAllPending(getPendingApplications());
       setShowDetailModal(false);
-      setChatThreadId(threadId);
-      showFeedback('Chat started. You can message the model.');
+      onOpenBookingChat(threadId);
+      showFeedback('Chat läuft unter „Booking Chats“. Hier geht’s mit den nächsten Bewerbungen weiter.');
+      setIndex((prev) => {
+        const apps = filteredFromStore();
+        if (apps.length <= 1) return prev;
+        return Math.min(prev + 1, apps.length - 1);
+      });
     } else {
       showFeedback('Could not start chat. Try again.');
     }
   };
-
-  const closeChat = () => {
-    setChatThreadId(null);
-    setChatInput('');
-  };
-
-  const sendChatMessage = () => {
-    const text = chatInput.trim();
-    if (!text || !chatThreadId) return;
-    addRecruitingMessage(chatThreadId, 'agency', text);
-    setChatInput('');
-  };
-
-  const messages = chatThreadId ? getRecruitingMessages(chatThreadId) : [];
-  const thread = chatThreadId ? getRecruitingThread(chatThreadId) : null;
-
-  useEffect(() => {
-    if (chatThreadId) loadMessagesForThread(chatThreadId);
-  }, [chatThreadId]);
 
   return (
     <View style={styles.container}>
@@ -230,7 +214,7 @@ export const AgencyRecruitingView: React.FC<{ onBack: () => void; agencyId: stri
             acceptedList.map((app) => (
               <View key={app.id} style={styles.bookingChatRow}>
                 <Text style={styles.bookingChatName}>{app.firstName} {app.lastName}</Text>
-                <TouchableOpacity style={styles.bookingChatOpen} onPress={() => app.chatThreadId && setChatThreadId(app.chatThreadId)}>
+                <TouchableOpacity style={styles.bookingChatOpen} onPress={() => app.chatThreadId && onOpenBookingChat(app.chatThreadId)}>
                   <Text style={styles.bookingChatOpenLabel}>Open chat</Text>
                 </TouchableOpacity>
               </View>
@@ -327,7 +311,7 @@ export const AgencyRecruitingView: React.FC<{ onBack: () => void; agencyId: stri
                 <Text style={styles.bookingChatName}>{app.firstName} {app.lastName}</Text>
                 <TouchableOpacity
                   style={styles.bookingChatOpen}
-                  onPress={() => app.chatThreadId && setChatThreadId(app.chatThreadId)}
+                  onPress={() => app.chatThreadId && onOpenBookingChat(app.chatThreadId)}
                 >
                   <Text style={styles.bookingChatOpenLabel}>Open chat</Text>
                 </TouchableOpacity>
@@ -385,9 +369,9 @@ export const AgencyRecruitingView: React.FC<{ onBack: () => void; agencyId: stri
                 {current.chatThreadId ? (
                   <TouchableOpacity
                     style={[styles.buttonAccept, { backgroundColor: colors.textPrimary }]}
-                    onPress={() => setChatThreadId(current.chatThreadId!)}
+                    onPress={() => onOpenBookingChat(current.chatThreadId!)}
                   >
-                    <Text style={styles.buttonAcceptLabel}>Open chat</Text>
+                    <Text style={styles.buttonAcceptLabel}>Chat (Booking Chats)</Text>
                   </TouchableOpacity>
                 ) : (
                   <TouchableOpacity style={styles.buttonAccept} onPress={handleYes}>
@@ -524,81 +508,6 @@ export const AgencyRecruitingView: React.FC<{ onBack: () => void; agencyId: stri
         </TouchableOpacity>
       </Modal>
 
-      <Modal
-        visible={!!chatThreadId}
-        transparent
-        animationType="fade"
-        onRequestClose={closeChat}
-      >
-        <View style={styles.chatOverlay}>
-          <View style={styles.chatCard}>
-            <View style={styles.chatHeader}>
-              <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                {myAgency?.logo_url ? (
-                  <Image source={{ uri: myAgency.logo_url }} style={styles.chatAgencyLogo} resizeMode="contain" />
-                ) : myAgency ? (
-                  <View style={styles.chatAgencyLogoPlaceholder}>
-                    <Text style={styles.chatAgencyLogoLetter}>{(myAgency.name || '?').charAt(0).toUpperCase()}</Text>
-                  </View>
-                ) : null}
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.chatAgencyName}>{myAgency?.name ?? 'Agency'}</Text>
-                  <Text style={styles.chatTitle}>
-                    {thread ? `Applicant: ${thread.modelName}` : 'Chat'}
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.chatHeaderActions}>
-                {typeof window !== 'undefined' && thread && (
-                  <TouchableOpacity
-                    style={styles.copyLinkBtn}
-                    onPress={() => {
-                      const url = `${window.location.origin}${window.location.pathname || ''}?booking=${thread.id}`;
-                      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-                        navigator.clipboard.writeText(url);
-                        setFeedback('Link copied. Send to model.');
-                        setTimeout(() => setFeedback(null), 2000);
-                      }
-                    }}
-                  >
-                    <Text style={styles.copyLinkLabel}>Copy link</Text>
-                  </TouchableOpacity>
-                )}
-                <TouchableOpacity onPress={closeChat}>
-                  <Text style={styles.closeLabel}>Close</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-            <ScrollView style={styles.chatMessages}>
-              {messages.map((msg) => (
-                <View
-                  key={msg.id}
-                  style={[
-                    styles.chatBubble,
-                    msg.from === 'agency' ? styles.chatBubbleAgency : styles.chatBubbleModel,
-                  ]}
-                >
-                  <Text style={[styles.chatBubbleText, msg.from === 'agency' && styles.chatBubbleTextAgency]}>
-                    {msg.text}
-                  </Text>
-                </View>
-              ))}
-            </ScrollView>
-            <View style={styles.chatInputRow}>
-              <TextInput
-                value={chatInput}
-                onChangeText={setChatInput}
-                placeholder="Message..."
-                placeholderTextColor={colors.textSecondary}
-                style={styles.chatInput}
-              />
-              <TouchableOpacity style={styles.chatSend} onPress={sendChatMessage}>
-                <Text style={styles.chatSendLabel}>Send</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 };
@@ -920,109 +829,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing.md,
   },
-  chatHeaderActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  copyLinkBtn: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-  },
-  copyLinkLabel: {
-    ...typography.label,
-    fontSize: 11,
-    color: colors.textSecondary,
-  },
-  chatAgencyLogo: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    backgroundColor: colors.border,
-  },
-  chatAgencyLogoPlaceholder: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    backgroundColor: colors.textPrimary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  chatAgencyLogoLetter: {
+  chatTitle: {
     ...typography.heading,
     fontSize: 16,
-    color: colors.surface,
-  },
-  chatAgencyName: {
-    ...typography.heading,
-    fontSize: 14,
     color: colors.textPrimary,
-  },
-  chatTitle: {
-    ...typography.body,
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginTop: 2,
+    flex: 1,
   },
   closeLabel: {
     ...typography.label,
     fontSize: 11,
     color: colors.textSecondary,
-  },
-  chatMessages: {
-    maxHeight: 240,
-    marginBottom: spacing.sm,
-  },
-  chatBubble: {
-    alignSelf: 'flex-start',
-    maxWidth: '85%',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: 12,
-    marginBottom: spacing.xs,
-    backgroundColor: '#F0EEEA',
-  },
-  chatBubbleAgency: {
-    alignSelf: 'flex-end',
-    backgroundColor: colors.buttonOptionGreen,
-  },
-  chatBubbleModel: {
-    alignSelf: 'flex-start',
-  },
-  chatBubbleText: {
-    ...typography.body,
-    fontSize: 12,
-    color: colors.textPrimary,
-  },
-  chatBubbleTextAgency: {
-    color: colors.surface,
-  },
-  chatInputRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  chatInput: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 999,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    ...typography.body,
-    fontSize: 12,
-    color: colors.textPrimary,
-  },
-  chatSend: {
-    backgroundColor: colors.buttonOptionGreen,
-    borderRadius: 999,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    justifyContent: 'center',
-  },
-  chatSendLabel: {
-    ...typography.label,
-    fontSize: 11,
-    color: colors.surface,
   },
   heightRangeRow: {
     marginTop: spacing.sm,

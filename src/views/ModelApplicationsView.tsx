@@ -49,7 +49,7 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
   const [loading, setLoading] = useState(true);
   const [showApplyForm, setShowApplyForm] = useState(false);
   const [tab, setTab] = useState<Tab>('applications');
-  const [chatThreadId, setChatThreadId] = useState<string | null>(null);
+  const [chatOpen, setChatOpen] = useState<{ threadId: string; agencyName?: string } | null>(null);
   const [messagesList, setMessagesList] = useState<MessageRow[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -219,7 +219,12 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
                           {app.recruiting_thread_id && (
                             <TouchableOpacity
                               style={{ paddingVertical: 4, paddingHorizontal: 10, borderRadius: 8, backgroundColor: colors.buttonOptionGreen }}
-                              onPress={() => setChatThreadId(app.recruiting_thread_id!)}
+                              onPress={() =>
+                              setChatOpen({
+                                threadId: app.recruiting_thread_id!,
+                                agencyName: app.agency_id ? agencyNames[app.agency_id] : undefined,
+                              })
+                            }
                             >
                               <Text style={{ ...typography.label, fontSize: 11, color: colors.surface }}>Chat</Text>
                             </TouchableOpacity>
@@ -256,7 +261,7 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
                 <TouchableOpacity
                   key={row.threadId}
                   style={styles.card}
-                  onPress={() => setChatThreadId(row.threadId)}
+                  onPress={() => setChatOpen({ threadId: row.threadId, agencyName: row.agencyName })}
                 >
                   <Text style={styles.name}>{row.agencyName}</Text>
                   <Text style={styles.meta}>{row.modelName} · {toStatusLabel(row.status)}</Text>
@@ -350,8 +355,13 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
         </View>
       </View>
 
-      {chatThreadId != null && (
-        <BookingChatView threadId={chatThreadId} fromRole="model" onClose={() => setChatThreadId(null)} />
+      {chatOpen != null && (
+        <BookingChatView
+          threadId={chatOpen.threadId}
+          fromRole="model"
+          initialAgencyName={chatOpen.agencyName}
+          onClose={() => setChatOpen(null)}
+        />
       )}
     </View>
   );

@@ -66,8 +66,8 @@ function AppTabs({ role }: AppTabsProps) {
           borderTopColor: colors.border,
           elevation: 0,
         },
-        tabBarShowIcon: false,
-        tabBarLabelPosition: 'beside-icon',
+        // RN Navigation v7: kein tabBarShowIcon — ohne tabBarIcon werden keine Icons gezeigt.
+        tabBarLabelPosition: 'below-icon',
       }}
     >
       {role === 'client' && (
