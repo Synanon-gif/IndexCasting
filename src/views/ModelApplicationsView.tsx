@@ -3,13 +3,12 @@
  * Tabs: Applications, Messages (Recruiting-Chats mit Agenturen), Settings.
  */
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Modal, Alert, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Modal, Alert, TextInput, Platform } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { getApplicationsForApplicant, deleteApplication, updateApplicationsProfileForApplicant } from '../services/applicationsSupabase';
 import { refreshApplications } from '../store/applicationsStore';
 import type { SupabaseApplication } from '../services/applicationsSupabase';
-import { getThread } from '../services/recruitingChatSupabase';
-import { getAgencyById } from '../services/agenciesSupabase';
+import { getAgencyChatDisplayById } from '../services/agenciesSupabase';
 import { ApplyFormView } from './ApplyFormView';
 import { BookingChatView } from './BookingChatView';
 
@@ -41,6 +40,14 @@ function statusColor(status: string): string {
   return '#F9A825';
 }
 
+/** PostgREST-Embed `agencies ( name )` – Objekt oder (selten) Array. */
+function embeddedAgencyName(app: SupabaseApplication): string | undefined {
+  const ag = app.agencies;
+  if (ag == null) return undefined;
+  if (Array.isArray(ag)) return (ag[0] as { name?: string } | undefined)?.name;
+  return ag.name;
+}
+
 export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
   applicantUserId,
   onBackToRoleSelection,
@@ -49,7 +56,12 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
   const [loading, setLoading] = useState(true);
   const [showApplyForm, setShowApplyForm] = useState(false);
   const [tab, setTab] = useState<Tab>('applications');
-  const [chatOpen, setChatOpen] = useState<{ threadId: string; agencyName?: string } | null>(null);
+  const [chatOpen, setChatOpen] = useState<{
+    threadId: string;
+    agencyName?: string;
+    applicationAgencyId?: string | null;
+  } | null>(null);
+  const [pendingDeleteApp, setPendingDeleteApp] = useState<SupabaseApplication | null>(null);
   const [messagesList, setMessagesList] = useState<MessageRow[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -66,21 +78,35 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
 
   const load = () => {
     setLoading(true);
-    getApplicationsForApplicant(applicantUserId).then((list) => {
+    getApplicationsForApplicant(applicantUserId).then(async (list) => {
       setApplications(list);
       setLoading(false);
-      const ids = Array.from(new Set(list.map((a) => a.agency_id).filter(Boolean))) as string[];
-      if (ids.length) {
-        Promise.all(ids.map(async (id) => [id, (await getAgencyById(id))?.name ?? 'Agency'] as [string, string]))
-          .then((entries) => {
-            setAgencyNames((prev) => ({ ...prev, ...Object.fromEntries(entries) }));
-          });
+      const map: Record<string, string> = {};
+      for (const a of list) {
+        if (!a.agency_id) continue;
+        const n = embeddedAgencyName(a)?.trim();
+        if (n) map[a.agency_id] = n;
       }
+      const allIds = [...new Set(list.map((x) => x.agency_id).filter(Boolean))] as string[];
+      for (const id of allIds) {
+        if (map[id]) continue;
+        try {
+          const row = await getAgencyChatDisplayById(id);
+          if (row?.name) map[id] = row.name;
+        } catch {
+          /* ignore */
+        }
+      }
+      setAgencyNames(map);
     });
   };
 
   useEffect(() => {
     load();
+  }, [applicantUserId]);
+
+  useEffect(() => {
+    void refreshApplications();
   }, [applicantUserId]);
 
   useEffect(() => {
@@ -125,10 +151,10 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
     setMessagesLoading(true);
     Promise.all(
       withThread.map(async (app) => {
-        const thread = app.recruiting_thread_id ? await getThread(app.recruiting_thread_id) : null;
-        const agencyName = thread?.agency_id
-          ? (await getAgencyById(thread.agency_id))?.name ?? 'Agency'
-          : 'Agency';
+        const agencyName =
+          embeddedAgencyName(app)?.trim()
+          || (app.agency_id ? (await getAgencyChatDisplayById(app.agency_id))?.name : undefined)
+          || 'Agency';
         return {
           threadId: app.recruiting_thread_id!,
           applicationId: app.id,
@@ -140,25 +166,38 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
     ).then(setMessagesList).finally(() => setMessagesLoading(false));
   }, [tab, applications]);
 
+  const runConfirmedDelete = async (app: SupabaseApplication) => {
+    if (app.status !== 'pending' && app.status !== 'rejected') return;
+    setDeletingId(app.id);
+    const ok = await deleteApplication(app.id, applicantUserId);
+    setDeletingId(null);
+    if (ok) {
+      setApplications((prev) => prev.filter((x) => x.id !== app.id));
+      setMessagesList((prev) => prev.filter((x) => x.applicationId !== app.id));
+      await refreshApplications();
+      load();
+    } else if (Platform.OS === 'web') {
+      Alert.alert('Could not delete', 'Please try again or check your connection.');
+    } else {
+      Alert.alert('Löschen fehlgeschlagen', 'Bitte erneut versuchen.');
+    }
+  };
+
   const handleDeleteApplication = (app: SupabaseApplication) => {
     if (app.status !== 'pending' && app.status !== 'rejected') return;
+    if (Platform.OS === 'web') {
+      setPendingDeleteApp(app);
+      return;
+    }
     Alert.alert(
-      'Bewerbung löschen',
-      'Möchtest du diese Bewerbung wirklich löschen? Du kannst danach neu bewerben.',
+      'Delete application',
+      'Are you sure you want to delete this application? This action cannot be undone.',
       [
-        { text: 'Abbrechen', style: 'cancel' },
+        { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Löschen',
+          text: 'Delete',
           style: 'destructive',
-          onPress: async () => {
-            setDeletingId(app.id);
-            const ok = await deleteApplication(app.id, applicantUserId);
-            setDeletingId(null);
-            if (ok) {
-              await refreshApplications();
-              load();
-            }
-          },
+          onPress: () => void runConfirmedDelete(app),
         },
       ]
     );
@@ -209,7 +248,7 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
                         <Text style={styles.meta}>{app.height} cm · {app.city ?? '—'}</Text>
                         {app.agency_id && (
                           <Text style={styles.meta}>
-                            Agency: {agencyNames[app.agency_id] ?? 'Agency'}
+                            Agency: {embeddedAgencyName(app)?.trim() || agencyNames[app.agency_id] || 'Agency'}
                           </Text>
                         )}
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
@@ -222,7 +261,10 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
                               onPress={() =>
                               setChatOpen({
                                 threadId: app.recruiting_thread_id!,
-                                agencyName: app.agency_id ? agencyNames[app.agency_id] : undefined,
+                                agencyName:
+                                  embeddedAgencyName(app)?.trim()
+                                  || (app.agency_id ? agencyNames[app.agency_id] : undefined),
+                                applicationAgencyId: app.agency_id,
                               })
                             }
                             >
@@ -261,7 +303,14 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
                 <TouchableOpacity
                   key={row.threadId}
                   style={styles.card}
-                  onPress={() => setChatOpen({ threadId: row.threadId, agencyName: row.agencyName })}
+                  onPress={() => {
+                    const app = applications.find((a) => a.recruiting_thread_id === row.threadId);
+                    setChatOpen({
+                      threadId: row.threadId,
+                      agencyName: row.agencyName,
+                      applicationAgencyId: app?.agency_id ?? null,
+                    });
+                  }}
                 >
                   <Text style={styles.name}>{row.agencyName}</Text>
                   <Text style={styles.meta}>{row.modelName} · {toStatusLabel(row.status)}</Text>
@@ -360,8 +409,37 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
           threadId={chatOpen.threadId}
           fromRole="model"
           initialAgencyName={chatOpen.agencyName}
+          applicationAgencyId={chatOpen.applicationAgencyId}
           onClose={() => setChatOpen(null)}
         />
+      )}
+
+      {Platform.OS === 'web' && pendingDeleteApp != null && (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setPendingDeleteApp(null)}>
+          <View style={styles.confirmOverlay}>
+            <View style={styles.confirmCard}>
+              <Text style={styles.confirmTitle}>Delete application</Text>
+              <Text style={styles.confirmBody}>
+                Are you sure you want to delete this application? This action cannot be undone.
+              </Text>
+              <View style={styles.confirmRow}>
+                <TouchableOpacity style={styles.confirmBtnGhost} onPress={() => setPendingDeleteApp(null)}>
+                  <Text style={styles.confirmBtnGhostLabel}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.confirmBtnDanger}
+                  onPress={() => {
+                    const a = pendingDeleteApp;
+                    setPendingDeleteApp(null);
+                    void runConfirmedDelete(a);
+                  }}
+                >
+                  <Text style={styles.confirmBtnDangerLabel}>Delete</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       )}
     </View>
   );
@@ -445,4 +523,38 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     backgroundColor: colors.surface,
   },
+  confirmOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
+  confirmCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    maxWidth: 400,
+    alignSelf: 'center',
+    width: '100%',
+  },
+  confirmTitle: { ...typography.heading, fontSize: 17, color: colors.textPrimary, marginBottom: spacing.sm },
+  confirmBody: { ...typography.body, fontSize: 14, color: colors.textSecondary, marginBottom: spacing.lg },
+  confirmRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
+  confirmBtnGhost: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  confirmBtnGhostLabel: { ...typography.label, color: colors.textSecondary },
+  confirmBtnDanger: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: 10,
+    backgroundColor: colors.buttonSkipRed,
+  },
+  confirmBtnDangerLabel: { ...typography.label, color: colors.surface },
 });

@@ -103,6 +103,11 @@ export function getPendingApplications(): ModelApplication[] {
   return cache.filter((a) => a.status === 'pending');
 }
 
+/** Pending ohne gestarteten Recruiting-Chat – nur diese erscheinen in der Swipe-Queue. */
+export function getPendingSwipeQueueApplications(): ModelApplication[] {
+  return cache.filter((a) => a.status === 'pending' && !a.chatThreadId);
+}
+
 export async function addApplication(data: Omit<ModelApplication, 'id' | 'createdAt' | 'status'> & { applicantUserId: string }): Promise<ModelApplication | null> {
   const result = await insertApp({
     applicant_user_id: data.applicantUserId,

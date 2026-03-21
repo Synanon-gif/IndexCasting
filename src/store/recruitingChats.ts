@@ -11,8 +11,17 @@ import {
   createThread as createThreadInDb,
   getMessages as fetchMessages,
   addMessage as addMessageInDb,
+  findLatestThreadIdForApplication,
+  updateThreadAgency,
+  agencyStartRecruitingChatRpc,
+  formatRecruitingChatRpcErrorDe,
 } from '../services/recruitingChatSupabase';
-import { updateApplicationRecruitingThread } from '../services/applicationsSupabase';
+import { updateApplicationRecruitingThread, fetchApplicationById } from '../services/applicationsSupabase';
+import { supabase } from '../../lib/supabase';
+import {
+  getOrganizationIdForAgency,
+  ensureAgencyOrganization,
+} from '../services/organizationsInvitationsSupabase';
 
 export type RecruitingMessage = {
   id: string;
@@ -76,7 +85,7 @@ export function createRecruitingThread(applicationId: string, modelName: string)
     createdAt: Date.now(),
   });
 
-  createThreadInDb(applicationId, modelName).then((realId) => {
+  createThreadInDb(applicationId, modelName, null, undefined).then((realId) => {
     if (realId) {
       const t = threadsCache.find((t) => t.id === tempId);
       if (t) t.id = realId;
@@ -88,29 +97,159 @@ export function createRecruitingThread(applicationId: string, modelName: string)
   return tempId;
 }
 
+export type TryStartRecruitingChatResult =
+  | { ok: true; threadId: string }
+  | { ok: false; messageDe: string };
+
+/** Wie startRecruitingChat, mit deutscher Fehlermeldung für die UI. */
+export async function tryStartRecruitingChat(
+  applicationId: string,
+  modelName: string,
+  agencyId?: string | null
+): Promise<TryStartRecruitingChatResult> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user?.id) {
+    console.error('tryStartRecruitingChat: no authenticated user');
+    return { ok: false, messageDe: 'Bitte anmelden, um den Chat zu starten.' };
+  }
+
+  let displayName = modelName.trim();
+  if (!displayName) {
+    const r = await fetchApplicationById(applicationId);
+    displayName = (r ? `${r.first_name} ${r.last_name}`.trim() : '') || 'Model';
+  }
+
+  if (agencyId) {
+    const rpc = await agencyStartRecruitingChatRpc(applicationId, agencyId, displayName);
+    if (rpc.status === 'ok') {
+      const tid = rpc.threadId;
+      if (!threadsCache.some((t) => t.id === tid)) {
+        threadsCache.push({
+          id: tid,
+          applicationId,
+          modelName: displayName,
+          createdAt: Date.now(),
+        });
+        notify();
+      }
+      return { ok: true, threadId: tid };
+    }
+    if (rpc.status === 'error') {
+      console.error('tryStartRecruitingChat: agency_start_recruiting_chat failed', rpc.error);
+      return { ok: false, messageDe: formatRecruitingChatRpcErrorDe(rpc.error) };
+    }
+  }
+
+  const row = await fetchApplicationById(applicationId);
+  if (!row || row.status !== 'pending') {
+    console.error('tryStartRecruitingChat: application missing or not pending', applicationId, row?.status);
+    if (!row) {
+      return {
+        ok: false,
+        messageDe:
+          'Bewerbung nicht gefunden oder keine Leseberechtigung. Passt die Bewerbung zu dieser Agentur?',
+      };
+    }
+    return {
+      ok: false,
+      messageDe: 'Recruiting-Chat nur möglich, solange die Bewerbung noch offen (pending) ist.',
+    };
+  }
+
+  const displayNameFromRow = `${row.first_name} ${row.last_name}`.trim() || displayName;
+
+  if (row.recruiting_thread_id) {
+    const tid = row.recruiting_thread_id;
+    if (agencyId) await updateThreadAgency(tid, agencyId);
+    if (!threadsCache.some((t) => t.id === tid)) {
+      threadsCache.push({
+        id: tid,
+        applicationId,
+        modelName: displayNameFromRow,
+        createdAt: Date.now(),
+      });
+      notify();
+    }
+    return { ok: true, threadId: tid };
+  }
+
+  const orphanId = await findLatestThreadIdForApplication(applicationId);
+  if (orphanId) {
+    const linked = await updateApplicationRecruitingThread(applicationId, orphanId);
+    if (linked) {
+      if (agencyId) await updateThreadAgency(orphanId, agencyId);
+      if (!threadsCache.some((t) => t.id === orphanId)) {
+        threadsCache.push({
+          id: orphanId,
+          applicationId,
+          modelName: displayNameFromRow,
+          createdAt: Date.now(),
+        });
+        notify();
+      }
+      return { ok: true, threadId: orphanId };
+    }
+    console.error('tryStartRecruitingChat: could not link orphan thread to application', applicationId, orphanId);
+  }
+
+  if (agencyId) {
+    await ensureAgencyOrganization(agencyId);
+  }
+
+  let organizationId: string | null = null;
+  if (agencyId) {
+    organizationId = await getOrganizationIdForAgency(agencyId);
+  }
+
+  const realId = await createThreadInDb(applicationId, displayNameFromRow, agencyId ?? undefined, {
+    organizationId,
+    createdBy: user.id,
+  });
+  if (!realId) {
+    console.error('tryStartRecruitingChat: createThreadInDb failed', applicationId);
+    return {
+      ok: false,
+      messageDe: 'Recruiting-Thread konnte nicht angelegt werden (Rechte oder Verbindung).',
+    };
+  }
+  const ok = await updateApplicationRecruitingThread(applicationId, realId);
+  if (!ok) {
+    console.error(
+      'tryStartRecruitingChat: updateApplicationRecruitingThread failed after insert',
+      applicationId,
+      realId
+    );
+    return {
+      ok: false,
+      messageDe: 'Chat wurde angelegt, die Bewerbung konnte aber nicht verknüpft werden.',
+    };
+  }
+  threadsCache.push({
+    id: realId,
+    applicationId,
+    modelName: displayNameFromRow,
+    createdAt: Date.now(),
+  });
+  notify();
+  return { ok: true, threadId: realId };
+}
+
 /** Create thread in DB, link to application (for chat before accept), return thread id. */
 export async function startRecruitingChat(
   applicationId: string,
   modelName: string,
   agencyId?: string | null
 ): Promise<string | null> {
-  const realId = await createThreadInDb(applicationId, modelName, agencyId ?? undefined);
-  if (!realId) return null;
-  const ok = await updateApplicationRecruitingThread(applicationId, realId);
-  if (!ok) return null;
-  threadsCache.push({
-    id: realId,
-    applicationId,
-    modelName,
-    createdAt: Date.now(),
-  });
-  notify();
-  return realId;
+  const r = await tryStartRecruitingChat(applicationId, modelName, agencyId);
+  return r.ok ? r.threadId : null;
 }
 
 /** Threads für eine Agentur (Booking Chats) – aus Supabase. */
-export async function getRecruitingThreadsForAgency(agencyId: string): Promise<RecruitingThread[]> {
-  const threads = await fetchThreadsForAgency(agencyId);
+export async function getRecruitingThreadsForAgency(
+  agencyId: string,
+  options?: { createdByUserId?: string | null }
+): Promise<RecruitingThread[]> {
+  const threads = await fetchThreadsForAgency(agencyId, options);
   return threads.map((t) => ({
     id: t.id,
     applicationId: t.application_id,

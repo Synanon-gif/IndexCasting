@@ -49,7 +49,16 @@ import {
   uploadModelPhoto,
 } from '../services/modelPhotosSupabase';
 import { supabase } from '../../lib/supabase';
-import { getBookersForAgency, createBooker, deleteBooker, type Booker } from '../services/bookersSupabase';
+import {
+  ensureAgencyOrganization,
+  getOrganizationIdForAgency,
+  listOrganizationMembers,
+  listInvitationsForOrganization,
+  createOrganizationInvitation,
+  buildOrganizationInviteUrl,
+  getMyAgencyMemberRole,
+  type InvitationRow,
+} from '../services/organizationsInvitationsSupabase';
 import { getAgencies, type Agency } from '../services/agenciesSupabase';
 import { createGuestLink, getGuestLinksForAgency, buildGuestUrl, deactivateGuestLink, type GuestLink } from '../services/guestLinksSupabase';
 import {
@@ -59,9 +68,11 @@ import {
   appendSharedBookingNote,
   type SharedBookingNote,
 } from '../services/calendarSupabase';
+import { updateOptionRequestSchedule } from '../services/optionRequestsSupabase';
 import {
   getManualEventsForOwner,
   insertManualEvent,
+  updateManualEvent,
   deleteManualEvent,
   MANUAL_EVENT_COLORS,
   type UserCalendarEvent,
@@ -107,28 +118,65 @@ type AgencyControllerViewProps = {
 export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   onBackToRoleSelection,
 }) => {
-  const { signOut } = useAuth();
+  const { signOut, profile, session } = useAuth();
   const [tab, setTab] = useState<AgencyTab>('dashboard');
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [models, setModels] = useState<AgencyModel[]>([]);
   const [fullModels, setFullModels] = useState<SupabaseModel[]>([]);
   const [agencies, setAgencies] = useState<Agency[]>([]);
-  const [bookers, setBookers] = useState<Booker[]>([]);
+  const [agencyOrganizationId, setAgencyOrganizationId] = useState<string | null>(null);
+  const [teamMembers, setTeamMembers] = useState<
+    Awaited<ReturnType<typeof listOrganizationMembers>>
+  >([]);
+  const [pendingInvites, setPendingInvites] = useState<InvitationRow[]>([]);
+  const [agencyTeamIsOwner, setAgencyTeamIsOwner] = useState(false);
   const [calendarItems, setCalendarItems] = useState<AgencyCalendarItem[]>([]);
   const [manualCalendarEvents, setManualCalendarEvents] = useState<UserCalendarEvent[]>([]);
   const [calendarLoading, setCalendarLoading] = useState(false);
   const [selectedCalendarItem, setSelectedCalendarItem] = useState<AgencyCalendarItem | null>(null);
   const [selectedManualEvent, setSelectedManualEvent] = useState<UserCalendarEvent | null>(null);
   const [showAddManualEvent, setShowAddManualEvent] = useState(false);
-  const [newEventForm, setNewEventForm] = useState({ date: '', start_time: '09:00', end_time: '17:00', title: '', color: MANUAL_EVENT_COLORS[0] });
+  const [newEventForm, setNewEventForm] = useState({
+    date: '',
+    start_time: '09:00',
+    end_time: '17:00',
+    title: '',
+    note: '',
+    color: MANUAL_EVENT_COLORS[0],
+  });
   const [agencyNotesDraft, setAgencyNotesDraft] = useState('');
   const [agencySharedNoteDraft, setAgencySharedNoteDraft] = useState('');
   const [savingAgencySharedNote, setSavingAgencySharedNote] = useState(false);
   const [savingManualEvent, setSavingManualEvent] = useState(false);
   const [savingNotes, setSavingNotes] = useState(false);
+  const [bookingScheduleDraft, setBookingScheduleDraft] = useState({
+    date: '',
+    start_time: '09:00',
+    end_time: '17:00',
+  });
+  const [savingBookingSchedule, setSavingBookingSchedule] = useState(false);
+  const [manualEventEditDraft, setManualEventEditDraft] = useState({
+    title: '',
+    date: '',
+    start_time: '09:00',
+    end_time: '17:00',
+    note: '',
+    color: MANUAL_EVENT_COLORS[0],
+  });
+  const [savingManualEventEdit, setSavingManualEventEdit] = useState(false);
   const [bookingChatThreads, setBookingChatThreads] = useState<RecruitingThread[]>([]);
   const [openBookingThreadId, setOpenBookingThreadId] = useState<string | null>(null);
-  const currentAgencyId = agencies[0]?.id ?? '';
+  const currentAgency = useMemo(() => {
+    if (!agencies.length) return null;
+    const pe = profile?.email?.trim().toLowerCase();
+    if (pe) {
+      const hit = agencies.find((a) => a.email?.trim().toLowerCase() === pe);
+      if (hit) return hit;
+    }
+    return agencies[0];
+  }, [agencies, profile?.email]);
+
+  const currentAgencyId = currentAgency?.id ?? '';
 
   useEffect(() => {
     getAgencies().then(setAgencies);
@@ -144,9 +192,33 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
       })));
     });
     getModelsForAgencyFromSupabase(currentAgencyId).then(setFullModels);
-    getBookersForAgency(currentAgencyId).then(setBookers);
     loadOptionRequestsForAgency(currentAgencyId);
   }, [currentAgencyId]);
+
+  const loadAgencyTeam = async () => {
+    if (!currentAgencyId) return;
+    const pe = profile?.email?.trim().toLowerCase();
+    const ae = currentAgency?.email?.trim().toLowerCase();
+    let oid: string | null = null;
+    if (pe && ae && pe === ae) {
+      oid = await ensureAgencyOrganization(currentAgencyId);
+    }
+    if (!oid) oid = await getOrganizationIdForAgency(currentAgencyId);
+    setAgencyOrganizationId(oid);
+    const mem = await getMyAgencyMemberRole(currentAgencyId);
+    setAgencyTeamIsOwner(mem?.member_role === 'owner');
+    if (oid) {
+      setTeamMembers(await listOrganizationMembers(oid));
+      setPendingInvites(await listInvitationsForOrganization(oid));
+    } else {
+      setTeamMembers([]);
+      setPendingInvites([]);
+    }
+  };
+
+  useEffect(() => {
+    if (currentAgencyId) void loadAgencyTeam();
+  }, [currentAgencyId, profile?.email]);
 
   /** Re-load roster when opening My Models (e.g. after accepting an application in Recruiting). */
   useEffect(() => {
@@ -184,14 +256,47 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   }, [tab, currentAgencyId]);
 
   useEffect(() => {
-    if (tab === 'bookingChats' && currentAgencyId) {
-      getRecruitingThreadsForAgency(currentAgencyId).then(setBookingChatThreads);
-    }
-  }, [tab, currentAgencyId]);
+    if (!selectedCalendarItem) return;
+    const o = selectedCalendarItem.option;
+    const ce = selectedCalendarItem.calendar_entry;
+    const d = (ce?.date || o.requested_date || '').toString().slice(0, 10);
+    setBookingScheduleDraft({
+      date: d,
+      start_time: (ce?.start_time ?? o.start_time ?? '09:00').toString().slice(0, 5),
+      end_time: (ce?.end_time ?? o.end_time ?? '17:00').toString().slice(0, 5),
+    });
+  }, [selectedCalendarItem?.option.id]);
 
-  /** Recruiting-Chat im gleichen Shell wie andere Tabs: unten weiter „Booking Chats“ / Swipen nach Schließen des Chats. */
+  useEffect(() => {
+    if (!selectedManualEvent) return;
+    setManualEventEditDraft({
+      title: selectedManualEvent.title,
+      date: selectedManualEvent.date,
+      start_time: selectedManualEvent.start_time ?? '09:00',
+      end_time: selectedManualEvent.end_time ?? '17:00',
+      note: selectedManualEvent.note ?? '',
+      color: selectedManualEvent.color,
+    });
+  }, [selectedManualEvent?.id]);
+
+  useEffect(() => {
+    if (tab === 'bookingChats' && currentAgencyId) {
+      const uid = session?.user?.id;
+      getMyAgencyMemberRole(currentAgencyId).then((m) => {
+        const filterBooker = m?.member_role === 'booker' && uid ? uid : undefined;
+        return getRecruitingThreadsForAgency(currentAgencyId, { createdByUserId: filterBooker });
+      }).then(setBookingChatThreads);
+    }
+  }, [tab, currentAgencyId, session?.user?.id]);
+
+  /** Recruiting chat opens in the same shell; agency can return to Booking chats or keep swiping after close. */
   const refreshBookingThreads = () => {
-    if (currentAgencyId) getRecruitingThreadsForAgency(currentAgencyId).then(setBookingChatThreads);
+    if (!currentAgencyId) return;
+    const uid = session?.user?.id;
+    getMyAgencyMemberRole(currentAgencyId).then((m) => {
+      const filterBooker = m?.member_role === 'booker' && uid ? uid : undefined;
+      return getRecruitingThreadsForAgency(currentAgencyId, { createdByUserId: filterBooker });
+    }).then(setBookingChatThreads);
   };
 
   const openAgencyBookingChat = (threadId: string) => {
@@ -232,7 +337,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
             onOpenBookingChat={openAgencyBookingChat}
           />
         ) : (
-          <Text style={[s.metaText, { marginTop: spacing.md }]}>Keine Agentur zugeordnet.</Text>
+          <Text style={[s.metaText, { marginTop: spacing.md }]}>No agency assigned.</Text>
         )
       )}
 
@@ -272,9 +377,12 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
 
         {tab === 'bookingChats' && (
           <ScrollView style={{ flex: 1 }}>
-            <Text style={[s.sectionLabel, { marginTop: spacing.sm }]}>Chats mit Models (Bewerbungen)</Text>
+            <Text style={[s.sectionLabel, { marginTop: spacing.sm }]}>Recruiting chats</Text>
+            <Text style={[s.metaText, { marginBottom: spacing.md }]}>
+              When you start a chat or accept an application from Recruiting, the thread appears here (and leaves the pending swipe queue).
+            </Text>
             {bookingChatThreads.length === 0 ? (
-              <Text style={s.metaText}>Noch keine Booking-Chats. Chats aus Recruiting erscheinen hier.</Text>
+              <Text style={s.metaText}>No recruiting chats yet. Start a chat from Recruiting or accept an application.</Text>
             ) : (
               bookingChatThreads.map((thread) => {
                 const application = getApplicationById(thread.applicationId);
@@ -295,7 +403,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                       )}
                     </View>
                     <Text style={[s.modelName, { flex: 1, marginLeft: spacing.sm }]} numberOfLines={1}>{thread.modelName}</Text>
-                    <Text style={s.backLabel}>Chat öffnen</Text>
+                    <Text style={s.backLabel}>Chat</Text>
                   </TouchableOpacity>
                 );
               })
@@ -304,15 +412,22 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         )}
 
         {tab === 'bookers' && (
-          <BookersTab
-            bookers={bookers}
-            agencyId={currentAgencyId}
-            onRefresh={() => getBookersForAgency(currentAgencyId).then(setBookers)}
+          <OrganizationTeamTab
+            organizationId={agencyOrganizationId}
+            canInvite={agencyTeamIsOwner}
+            members={teamMembers}
+            invitations={pendingInvites}
+            onRefresh={() => void loadAgencyTeam()}
           />
         )}
 
         {tab === 'guestLinks' && (
-        <GuestLinksTab agencyId={currentAgencyId} agencyEmail={agencies[0]?.email ?? ''} agencyName={agencies[0]?.name ?? ''} models={fullModels} />
+        <GuestLinksTab
+          agencyId={currentAgencyId}
+          agencyEmail={currentAgency?.email ?? ''}
+          agencyName={currentAgency?.name ?? ''}
+          models={fullModels}
+        />
       )}
 
       {tab === 'settings' && (
@@ -366,7 +481,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
             { key: 'calendar', label: 'Calendar' },
             { key: 'recruiting', label: 'Recruiting' },
             { key: 'bookingChats', label: 'Booking Chats' },
-            { key: 'bookers', label: 'Bookers' },
+            { key: 'bookers', label: 'Team' },
             { key: 'guestLinks', label: 'Guest Links' },
             { key: 'settings', label: 'Settings' },
           ] as { key: AgencyTab; label: string }[]).map((t) => (
@@ -457,6 +572,71 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                 </View>
               );
             })()}
+            <View style={{ marginBottom: spacing.md }}>
+              <Text style={s.sectionLabel}>Termin verschieben</Text>
+              <Text style={[s.metaText, { marginBottom: spacing.sm }]}>
+                Aktualisiert Option, Model-Kalender und gespiegelte Einträge (Migration migration_calendar_reschedule_sync.sql).
+              </Text>
+              <Text style={{ ...typography.label, marginBottom: 4 }}>Date (YYYY-MM-DD)</Text>
+              <TextInput
+                value={bookingScheduleDraft.date}
+                onChangeText={(t) => setBookingScheduleDraft((p) => ({ ...p, date: t }))}
+                placeholderTextColor={colors.textSecondary}
+                style={s.editInput}
+              />
+              <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ ...typography.label, marginBottom: 4 }}>From</Text>
+                  <TextInput
+                    value={bookingScheduleDraft.start_time}
+                    onChangeText={(t) => setBookingScheduleDraft((p) => ({ ...p, start_time: t }))}
+                    placeholderTextColor={colors.textSecondary}
+                    style={s.editInput}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ ...typography.label, marginBottom: 4 }}>To</Text>
+                  <TextInput
+                    value={bookingScheduleDraft.end_time}
+                    onChangeText={(t) => setBookingScheduleDraft((p) => ({ ...p, end_time: t }))}
+                    placeholderTextColor={colors.textSecondary}
+                    style={s.editInput}
+                  />
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={async () => {
+                  if (!selectedCalendarItem || !currentAgencyId || !bookingScheduleDraft.date.trim()) return;
+                  setSavingBookingSchedule(true);
+                  try {
+                    const ok = await updateOptionRequestSchedule(selectedCalendarItem.option.id, {
+                      requested_date: bookingScheduleDraft.date.trim(),
+                      start_time: bookingScheduleDraft.start_time.trim() || null,
+                      end_time: bookingScheduleDraft.end_time.trim() || null,
+                    });
+                    if (ok) {
+                      await loadAgencyCalendar();
+                      loadOptionRequestsForAgency(currentAgencyId);
+                      const items = await getCalendarEntriesForAgency(currentAgencyId);
+                      const next = items.find((x) => x.option.id === selectedCalendarItem.option.id);
+                      if (next) setSelectedCalendarItem(next);
+                      Alert.alert('Gespeichert', 'Termin wurde aktualisiert.');
+                    } else {
+                      Alert.alert('Fehler', 'Termin konnte nicht gespeichert werden.');
+                    }
+                  } finally {
+                    setSavingBookingSchedule(false);
+                  }
+                }}
+                style={[
+                  s.saveBtn,
+                  { marginTop: spacing.sm, alignSelf: 'flex-end', opacity: savingBookingSchedule ? 0.6 : 1 },
+                ]}
+                disabled={savingBookingSchedule}
+              >
+                <Text style={s.saveBtnLabel}>{savingBookingSchedule ? 'Speichern…' : 'Termin speichern'}</Text>
+              </TouchableOpacity>
+            </View>
             {selectedCalendarItem.calendar_entry ? (
               <View style={{ marginBottom: spacing.md }}>
                 <Text style={s.sectionLabel}>Shared notes</Text>
@@ -613,6 +793,14 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                 <TextInput value={newEventForm.end_time} onChangeText={(t) => setNewEventForm((f) => ({ ...f, end_time: t }))} placeholderTextColor={colors.textSecondary} style={s.editInput} />
               </View>
             </View>
+            <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>Note (private)</Text>
+            <TextInput
+              value={newEventForm.note}
+              onChangeText={(t) => setNewEventForm((f) => ({ ...f, note: t }))}
+              multiline
+              placeholderTextColor={colors.textSecondary}
+              style={[s.editInput, { minHeight: 64, textAlignVertical: 'top', borderRadius: 12 }]}
+            />
             <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>Color</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {MANUAL_EVENT_COLORS.map((c) => (
@@ -629,9 +817,42 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                 onPress={async () => {
                   if (!currentAgencyId) return;
                   setSavingManualEvent(true);
-                  const created = await insertManualEvent({ owner_id: currentAgencyId, owner_type: 'agency', ...newEventForm });
+                  let calOrg = agencyOrganizationId;
+                  if (!calOrg) {
+                    const pe = profile?.email?.trim().toLowerCase();
+                    const ae = currentAgency?.email?.trim().toLowerCase();
+                    if (pe && ae && pe === ae) {
+                      calOrg = await ensureAgencyOrganization(currentAgencyId);
+                    }
+                    if (!calOrg) calOrg = await getOrganizationIdForAgency(currentAgencyId);
+                  }
+                  const { data: calUser } = await supabase.auth.getUser();
+                  const result = await insertManualEvent({
+                    owner_id: currentAgencyId,
+                    owner_type: 'agency',
+                    organization_id: calOrg,
+                    created_by: calUser.user?.id ?? null,
+                    ...newEventForm,
+                  });
                   setSavingManualEvent(false);
-                  if (created) { await loadAgencyCalendar(); setShowAddManualEvent(false); setNewEventForm({ date: '', start_time: '09:00', end_time: '17:00', title: '', color: MANUAL_EVENT_COLORS[0] }); }
+                  if (result.ok) {
+                    await loadAgencyCalendar();
+                    setShowAddManualEvent(false);
+                    setNewEventForm({
+                      date: '',
+                      start_time: '09:00',
+                      end_time: '17:00',
+                      title: '',
+                      note: '',
+                      color: MANUAL_EVENT_COLORS[0],
+                    });
+                  } else {
+                    Alert.alert(
+                      'Kalender',
+                      result.errorMessage ||
+                        'Eintrag nicht gespeichert. Prüfe: (1) Datum YYYY-MM-DD, (2) Profil-E-Mail muss zur Agentur-E-Mail passen, (3) in Supabase migration_calendar_entries_multi_slot_rls_email.sql ausführen.',
+                    );
+                  }
                 }}
               >
                 <Text style={s.saveBtnLabel}>{savingManualEvent ? 'Adding…' : 'Add'}</Text>
@@ -645,14 +866,109 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.08)', justifyContent: 'center', alignItems: 'center', padding: spacing.lg }]}>
           <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setSelectedManualEvent(null)} />
           <View style={{ width: '100%', maxWidth: 400, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, padding: spacing.lg }}>
-            <Text style={s.sectionLabel}>{selectedManualEvent.title}</Text>
-            <Text style={s.metaText}>{selectedManualEvent.date} · {selectedManualEvent.start_time || '—'}{selectedManualEvent.end_time ? ` – ${selectedManualEvent.end_time}` : ''}</Text>
-            {selectedManualEvent.note ? <Text style={{ ...typography.body, marginTop: spacing.sm }}>{selectedManualEvent.note}</Text> : null}
-            <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg }}>
-              <TouchableOpacity style={[s.filterPill, { flex: 1 }]} onPress={async () => { if (await deleteManualEvent(selectedManualEvent.id)) { await loadAgencyCalendar(); setSelectedManualEvent(null); } }}>
+            <Text style={s.sectionLabel}>Event bearbeiten</Text>
+            <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>Title</Text>
+            <TextInput
+              value={manualEventEditDraft.title}
+              onChangeText={(t) => setManualEventEditDraft((p) => ({ ...p, title: t }))}
+              placeholderTextColor={colors.textSecondary}
+              style={s.editInput}
+            />
+            <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>Date (YYYY-MM-DD)</Text>
+            <TextInput
+              value={manualEventEditDraft.date}
+              onChangeText={(t) => setManualEventEditDraft((p) => ({ ...p, date: t }))}
+              placeholderTextColor={colors.textSecondary}
+              style={s.editInput}
+            />
+            <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ ...typography.label, marginBottom: 4 }}>From</Text>
+                <TextInput
+                  value={manualEventEditDraft.start_time}
+                  onChangeText={(t) => setManualEventEditDraft((p) => ({ ...p, start_time: t }))}
+                  placeholderTextColor={colors.textSecondary}
+                  style={s.editInput}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ ...typography.label, marginBottom: 4 }}>To</Text>
+                <TextInput
+                  value={manualEventEditDraft.end_time}
+                  onChangeText={(t) => setManualEventEditDraft((p) => ({ ...p, end_time: t }))}
+                  placeholderTextColor={colors.textSecondary}
+                  style={s.editInput}
+                />
+              </View>
+            </View>
+            <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>Note (private)</Text>
+            <TextInput
+              value={manualEventEditDraft.note}
+              onChangeText={(t) => setManualEventEditDraft((p) => ({ ...p, note: t }))}
+              multiline
+              placeholderTextColor={colors.textSecondary}
+              style={[s.editInput, { minHeight: 72, textAlignVertical: 'top', borderRadius: 12 }]}
+            />
+            <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>Color</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {MANUAL_EVENT_COLORS.map((c) => (
+                <TouchableOpacity
+                  key={c}
+                  onPress={() => setManualEventEditDraft((p) => ({ ...p, color: c }))}
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 14,
+                    backgroundColor: c,
+                    borderWidth: manualEventEditDraft.color === c ? 2 : 0,
+                    borderColor: colors.textPrimary,
+                  }}
+                />
+              ))}
+            </View>
+            <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg, flexWrap: 'wrap' }}>
+              <TouchableOpacity
+                style={[s.saveBtn, { flex: 1, minWidth: 120, opacity: savingManualEventEdit ? 0.6 : 1 }]}
+                disabled={savingManualEventEdit || !manualEventEditDraft.title.trim()}
+                onPress={async () => {
+                  if (!selectedManualEvent) return;
+                  setSavingManualEventEdit(true);
+                  try {
+                    const ok = await updateManualEvent(selectedManualEvent.id, {
+                      title: manualEventEditDraft.title.trim(),
+                      date: manualEventEditDraft.date.trim(),
+                      start_time: manualEventEditDraft.start_time.trim() || null,
+                      end_time: manualEventEditDraft.end_time.trim() || null,
+                      note: manualEventEditDraft.note.trim() || null,
+                      color: manualEventEditDraft.color,
+                    });
+                    if (ok) {
+                      await loadAgencyCalendar();
+                      setSelectedManualEvent(null);
+                      Alert.alert('Gespeichert', 'Kalendereintrag wurde aktualisiert.');
+                    } else {
+                      Alert.alert('Fehler', 'Speichern fehlgeschlagen (Datum YYYY-MM-DD prüfen).');
+                    }
+                  } finally {
+                    setSavingManualEventEdit(false);
+                  }
+                }}
+              >
+                <Text style={s.saveBtnLabel}>{savingManualEventEdit ? '…' : 'Save'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.filterPill, { flex: 1, minWidth: 100 }]}
+                onPress={async () => {
+                  if (!selectedManualEvent) return;
+                  if (await deleteManualEvent(selectedManualEvent.id)) {
+                    await loadAgencyCalendar();
+                    setSelectedManualEvent(null);
+                  }
+                }}
+              >
                 <Text style={[s.filterPillLabel, { color: colors.buttonSkipRed }]}>Delete</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[s.filterPill, { flex: 1 }]} onPress={() => setSelectedManualEvent(null)}>
+              <TouchableOpacity style={[s.filterPill, { flex: 1, minWidth: 100 }]} onPress={() => setSelectedManualEvent(null)}>
                 <Text style={s.filterPillLabel}>Close</Text>
               </TouchableOpacity>
             </View>
@@ -1774,49 +2090,115 @@ const AgencyMessagesTab: React.FC = () => {
   );
 };
 
-const BookersTab: React.FC<{
-  bookers: Booker[];
-  agencyId: string;
+const OrganizationTeamTab: React.FC<{
+  organizationId: string | null;
+  canInvite: boolean;
+  members: Awaited<ReturnType<typeof listOrganizationMembers>>;
+  invitations: InvitationRow[];
   onRefresh: () => void;
-}> = ({ bookers, agencyId, onRefresh }) => {
-  const [newName, setNewName] = useState('');
-  const [newEmail, setNewEmail] = useState('');
-  const [isMaster, setIsMaster] = useState(false);
+}> = ({ organizationId, canInvite, members, invitations, onRefresh }) => {
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [lastLink, setLastLink] = useState<string | null>(null);
 
-  const handleCreate = async () => {
-    if (!newName.trim() || !agencyId) return;
-    await createBooker({ agency_id: agencyId, display_name: newName.trim(), email: newEmail.trim() || undefined, is_master: isMaster });
-    setNewName('');
-    setNewEmail('');
-    setIsMaster(false);
-    onRefresh();
+  const handleInvite = async () => {
+    if (!organizationId || !inviteEmail.trim()) return;
+    setBusy(true);
+    const row = await createOrganizationInvitation({
+      organizationId,
+      email: inviteEmail.trim(),
+      role: 'booker',
+    });
+    setBusy(false);
+    if (row) {
+      setInviteEmail('');
+      setLastLink(buildOrganizationInviteUrl(row.token));
+      onRefresh();
+      Alert.alert(
+        'Einladung erstellt',
+        'Teile den Einladungslink sicher mit dem Booker (z. B. per E-Mail). E-Mail-Versand über die App folgt später.',
+      );
+    } else {
+      Alert.alert('Fehler', 'Einladung konnte nicht erstellt werden. Bist du als Owner eingeloggt und stimmt die Supabase-RLS?');
+    }
   };
+
+  const roleLabel = (r: string) =>
+    r === 'owner' ? 'Owner' : r === 'booker' ? 'Booker' : r === 'employee' ? 'Mitarbeiter' : r;
 
   return (
     <ScreenScrollView>
-      <Text style={s.sectionLabel}>Bookers</Text>
-      <Text style={s.metaText}>Each booker has their own login. The master account oversees all.</Text>
+      <Text style={s.sectionLabel}>Team</Text>
+      <Text style={s.metaText}>
+        Booker erhalten einen Einladungslink und legen ihr Konto selbst an (DSGVO). Nur die Agentur-E-Mail (Owner) kann neue Einladungen erstellen.
+      </Text>
+      {!organizationId && (
+        <Text style={[s.metaText, { marginTop: spacing.md }]}>
+          Noch keine Organisation: Als Agentur-Master anmelden (Profil-E-Mail = Agentur-E-Mail), dann wird die Organisation automatisch angelegt.
+        </Text>
+      )}
       <View style={{ gap: spacing.sm, marginTop: spacing.md }}>
-        {bookers.map((b) => (
-          <View key={b.id} style={s.modelRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={s.modelName}>{b.display_name}{b.is_master ? ' (Master)' : ''}</Text>
-              <Text style={s.metaText}>{b.email ?? '—'} · {b.bookings_completed} bookings</Text>
+        <Text style={s.sectionLabel}>Mitglieder</Text>
+        {members.length === 0 ? (
+          <Text style={s.metaText}>Keine Mitglieder geladen.</Text>
+        ) : (
+          members.map((m) => (
+            <View key={m.id} style={s.modelRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.modelName}>
+                  {m.display_name || m.email || m.user_id.slice(0, 8)} · {roleLabel(m.role)}
+                </Text>
+                <Text style={s.metaText}>{m.email ?? '—'}</Text>
+              </View>
             </View>
-          </View>
-        ))}
+          ))
+        )}
       </View>
       <View style={{ marginTop: spacing.lg, gap: spacing.sm }}>
-        <Text style={s.sectionLabel}>Add booker</Text>
-        <TextInput value={newName} onChangeText={setNewName} placeholder="Booker name" placeholderTextColor={colors.textSecondary} style={s.editInput} />
-        <TextInput value={newEmail} onChangeText={setNewEmail} placeholder="Email" placeholderTextColor={colors.textSecondary} style={s.editInput} />
-        <TouchableOpacity style={[s.filterPill, isMaster && s.filterPillActive]} onPress={() => setIsMaster((o) => !o)}>
-          <Text style={[s.filterPillLabel, isMaster && s.filterPillLabelActive]}>Master account</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={s.saveBtn} onPress={handleCreate}>
-          <Text style={s.saveBtnLabel}>Create booker</Text>
-        </TouchableOpacity>
+        <Text style={s.sectionLabel}>Ausstehende Einladungen</Text>
+        {invitations.filter((i) => i.status === 'pending').length === 0 ? (
+          <Text style={s.metaText}>Keine offenen Einladungen.</Text>
+        ) : (
+          invitations
+            .filter((i) => i.status === 'pending')
+            .map((i) => (
+              <View key={i.id} style={s.modelRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.modelName}>{i.email}</Text>
+                  <Text style={s.metaText}>
+                    {roleLabel(i.role)} · bis {new Date(i.expires_at).toLocaleDateString()}
+                  </Text>
+                </View>
+              </View>
+            ))
+        )}
       </View>
+      {canInvite && organizationId && (
+        <View style={{ marginTop: spacing.lg, gap: spacing.sm }}>
+          <Text style={s.sectionLabel}>Booker einladen</Text>
+          <TextInput
+            value={inviteEmail}
+            onChangeText={setInviteEmail}
+            placeholder="E-Mail"
+            placeholderTextColor={colors.textSecondary}
+            style={s.editInput}
+            autoCapitalize="none"
+            keyboardType="email-address"
+          />
+          <TouchableOpacity style={s.saveBtn} onPress={handleInvite} disabled={busy || !inviteEmail.trim()}>
+            <Text style={s.saveBtnLabel}>{busy ? '…' : 'Einladung senden (Link erzeugen)'}</Text>
+          </TouchableOpacity>
+          {lastLink && (
+            <TouchableOpacity
+              onPress={() => {
+                Alert.alert('Einladungslink', lastLink);
+              }}
+            >
+              <Text style={[s.metaText, { textDecorationLine: 'underline' }]}>Letzten Link anzeigen</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
     </ScreenScrollView>
   );
 };

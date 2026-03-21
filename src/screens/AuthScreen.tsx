@@ -4,16 +4,29 @@ import { colors, spacing, typography } from '../theme/theme';
 import { useAuth } from '../context/AuthContext';
 
 type AuthScreenProps = {
+  initialMode?: 'login' | 'signup';
   onDemoLogin: (role: 'model' | 'agency' | 'client' | 'apply') => void;
+  /** Einladung: Rolle fix (Agentur-Booker = agent, Client-Mitarbeiter = client). */
+  inviteAuth?: {
+    orgName: string;
+    lockedProfileRole: 'agent' | 'client';
+    inviteRoleLabel: string;
+  };
 };
 
-export const AuthScreen: React.FC<AuthScreenProps> = ({ onDemoLogin }) => {
+export const AuthScreen: React.FC<AuthScreenProps> = ({
+  initialMode = 'login',
+  onDemoLogin,
+  inviteAuth,
+}) => {
   const { signIn, signUp } = useAuth();
-  const [mode, setMode] = useState<'login' | 'signup'>('login');
+  const [mode, setMode] = useState<'login' | 'signup'>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [role, setRole] = useState<'model' | 'agent' | 'client'>('client');
+  const [role, setRole] = useState<'model' | 'agent' | 'client'>(
+    inviteAuth?.lockedProfileRole ?? 'client'
+  );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -28,7 +41,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onDemoLogin }) => {
       const { error: e } = await signIn(email.trim(), password);
       if (e) setError(e);
     } else {
-      const { error: e } = await signUp(email.trim(), password, role, displayName.trim() || undefined);
+      const r = inviteAuth?.lockedProfileRole ?? role;
+      const { error: e } = await signUp(email.trim(), password, r, displayName.trim() || undefined);
       if (e) setError(e);
     }
     setBusy(false);
@@ -39,6 +53,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onDemoLogin }) => {
       <View style={styles.content}>
         <Text style={styles.brand}>INDEX CASTING</Text>
         <Text style={styles.subtitle}>B2B platform for fashion casting</Text>
+
+        {inviteAuth && (
+          <Text style={styles.inviteBanner}>
+            Einladung: {inviteAuth.orgName} · {inviteAuth.inviteRoleLabel}
+          </Text>
+        )}
 
         <View style={styles.modeRow}>
           <TouchableOpacity
@@ -82,20 +102,29 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onDemoLogin }) => {
               value={displayName}
               onChangeText={setDisplayName}
             />
-            <Text style={styles.roleLabel}>Role</Text>
-            <View style={styles.roleRow}>
-              {(['client', 'agent', 'model'] as const).map((r) => (
-                <TouchableOpacity
-                  key={r}
-                  style={[styles.rolePill, role === r && styles.rolePillActive]}
-                  onPress={() => setRole(r)}
-                >
-                  <Text style={[styles.rolePillLabel, role === r && styles.rolePillLabelActive]}>
-                    {r === 'agent' ? 'Agency' : r.charAt(0).toUpperCase() + r.slice(1)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            {!inviteAuth && (
+              <>
+                <Text style={styles.roleLabel}>Role</Text>
+                <View style={styles.roleRow}>
+                  {(['client', 'agent', 'model'] as const).map((r) => (
+                    <TouchableOpacity
+                      key={r}
+                      style={[styles.rolePill, role === r && styles.rolePillActive]}
+                      onPress={() => setRole(r)}
+                    >
+                      <Text style={[styles.rolePillLabel, role === r && styles.rolePillLabelActive]}>
+                        {r === 'agent' ? 'Agency' : r.charAt(0).toUpperCase() + r.slice(1)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
+            {inviteAuth && (
+              <Text style={styles.roleLocked}>
+                Konto-Typ: {inviteAuth.lockedProfileRole === 'agent' ? 'Agency' : 'Client'} (vorgegeben durch die Einladung)
+              </Text>
+            )}
           </>
         )}
 
@@ -139,7 +168,25 @@ const styles = StyleSheet.create({
   },
   content: { width: '100%', maxWidth: 380, alignItems: 'center' },
   brand: { ...typography.heading, color: colors.textPrimary, marginBottom: spacing.sm },
-  subtitle: { ...typography.body, color: colors.textSecondary, marginBottom: spacing.xl },
+  subtitle: { ...typography.body, color: colors.textSecondary, marginBottom: spacing.md },
+  inviteBanner: {
+    ...typography.body,
+    fontSize: 12,
+    color: colors.textPrimary,
+    textAlign: 'center',
+    marginBottom: spacing.lg,
+    padding: spacing.sm,
+    borderRadius: 8,
+    backgroundColor: colors.background,
+    width: '100%',
+  },
+  roleLocked: {
+    ...typography.label,
+    fontSize: 11,
+    color: colors.textSecondary,
+    alignSelf: 'flex-start',
+    marginBottom: spacing.md,
+  },
   modeRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg },
   modeBtn: {
     paddingVertical: spacing.xs,

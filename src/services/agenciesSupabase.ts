@@ -40,3 +40,19 @@ export async function getAgencyById(id: string): Promise<Agency | null> {
   }
   return (data ?? null) as Agency | null;
 }
+
+/** Nur Anzeigefelder für Model-Chat-Header (keine Mail, Adresse, API-Keys). */
+export async function getAgencyChatDisplayById(id: string): Promise<{ name: string; logo_url: string | null } | null> {
+  try {
+    const { data, error } = await supabase.from('agencies').select('name, logo_url').eq('id', id).maybeSingle();
+    if (error) {
+      console.error('getAgencyChatDisplayById error:', error);
+      return null;
+    }
+    if (!data?.name) return null;
+    return { name: data.name, logo_url: data.logo_url ?? null };
+  } catch (e) {
+    console.error('getAgencyChatDisplayById exception:', e);
+    return null;
+  }
+}

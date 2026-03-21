@@ -1,7 +1,5 @@
 /**
- * Agency-Recruiting-Screen: Tinder-ähnliche Ansicht für Booker.
- * Bewerbungen nacheinander; Swipe/Buttons: In Auswahl übernehmen (Ja) / Absage (Nein).
- * Bei Ja: Bestätigung simulieren, Chat mit Agentur öffnen.
+ * Agency recruiting: swipe queue (pending), shortlist, accepted; recruiting chat threads in Supabase.
  */
 import React, { useEffect, useState } from 'react';
 import {
@@ -16,17 +14,18 @@ import {
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import {
-  getPendingApplications,
+  getPendingSwipeQueueApplications,
   getAcceptedApplications,
   acceptApplication,
   rejectApplication,
   refreshApplications,
   subscribeApplications,
+  getApplicationById,
   type ModelApplication,
   type Gender,
 } from '../store/applicationsStore';
-import { startRecruitingChat } from '../store/recruitingChats';
-import { ScreenScrollView } from '../components/ScreenScrollView';
+import { tryStartRecruitingChat } from '../store/recruitingChats';
+import { loadAgencyShortlistIds, saveAgencyShortlistIds } from '../storage/agencyRecruitingShortlist';
 
 type HeightFilter = 'all' | 'short' | 'medium' | 'tall';
 
@@ -58,11 +57,12 @@ function filterApplications(
 export const AgencyRecruitingView: React.FC<{
   onBack: () => void;
   agencyId: string;
-  /** Chat-Fenster zentral in Booking Chats (Modal) – Agentur kann danach weiter swipen. */
+  /** Opens recruiting chat (modal); threads are stored in Supabase for agency and model. */
   onOpenBookingChat: (threadId: string) => void;
 }> = ({ onBack, agencyId, onOpenBookingChat }) => {
-  const [recruitTab, setRecruitTab] = useState<'pending' | 'accepted'>('pending');
-  const [allPending, setAllPending] = useState<ModelApplication[]>([]);
+  const [recruitTab, setRecruitTab] = useState<'pending' | 'shortlist' | 'accepted'>('pending');
+  /** All pending apps without a recruiting thread (from store). */
+  const [allSwipeQueue, setAllSwipeQueue] = useState<ModelApplication[]>([]);
   const [heightFilter, setHeightFilter] = useState<HeightFilter>('all');
   const [minHeight, setMinHeight] = useState<string>('');
   const [maxHeight, setMaxHeight] = useState<string>('');
@@ -72,15 +72,22 @@ export const AgencyRecruitingView: React.FC<{
   const [filterOpen, setFilterOpen] = useState(false);
   const [index, setIndex] = useState(0);
   const [feedback, setFeedback] = useState<string | null>(null);
-  const [showBookingChats, setShowBookingChats] = useState(true);
-  const [showDetailModal, setShowDetailModal] = useState(false);
+  /** Application shown in the details modal (pending card or shortlist). */
+  const [detailApplication, setDetailApplication] = useState<ModelApplication | null>(null);
   const [startingChat, setStartingChat] = useState(false);
   const [photoIndex, setPhotoIndex] = useState(0);
   const [showPhotoFullscreen, setShowPhotoFullscreen] = useState(false);
   const [shortlistIds, setShortlistIds] = useState<string[]>([]);
 
+  const shortlistSet = React.useMemo(() => new Set(shortlistIds), [shortlistIds]);
+  /** Pending swipe queue excludes shortlist so those models only appear under My list. */
+  const pendingNotShortlisted = React.useMemo(
+    () => allSwipeQueue.filter((a) => !shortlistSet.has(a.id)),
+    [allSwipeQueue, shortlistSet]
+  );
+
   const applications = filterApplications(
-    allPending,
+    pendingNotShortlisted,
     heightFilter,
     minHeight ? Number(minHeight) : null,
     maxHeight ? Number(maxHeight) : null,
@@ -92,7 +99,7 @@ export const AgencyRecruitingView: React.FC<{
 
   const filteredFromStore = () =>
     filterApplications(
-      getPendingApplications(),
+      getPendingSwipeQueueApplications().filter((a) => !shortlistSet.has(a.id)),
       heightFilter,
       minHeight ? Number(minHeight) : null,
       maxHeight ? Number(maxHeight) : null,
@@ -101,15 +108,33 @@ export const AgencyRecruitingView: React.FC<{
       cityFilter
     );
   const acceptedList = getAcceptedApplications();
-  const shortlist = allPending.filter((a) => shortlistIds.includes(a.id));
-  const uniqueCities = React.useMemo(() => Array.from(new Set(allPending.map((a) => a.city).filter(Boolean))).sort(), [allPending]);
-  const uniqueHair = React.useMemo(() => Array.from(new Set(allPending.map((a) => a.hairColor).filter(Boolean))).sort(), [allPending]);
+  const shortlistApps = shortlistIds
+    .map((id) => getApplicationById(id))
+    .filter((a): a is ModelApplication => !!a && a.status !== 'rejected');
+  const uniqueCities = React.useMemo(
+    () => Array.from(new Set(allSwipeQueue.map((a) => a.city).filter(Boolean))).sort(),
+    [allSwipeQueue]
+  );
+  const uniqueHair = React.useMemo(
+    () => Array.from(new Set(allSwipeQueue.map((a) => a.hairColor).filter(Boolean))).sort(),
+    [allSwipeQueue]
+  );
+
+  const refreshSwipeQueue = () => setAllSwipeQueue(getPendingSwipeQueueApplications());
 
   useEffect(() => {
-    setAllPending(getPendingApplications());
-    const unsub = subscribeApplications(() => setAllPending(getPendingApplications()));
+    refreshSwipeQueue();
+    const unsub = subscribeApplications(() => refreshSwipeQueue());
     return unsub;
   }, []);
+
+  useEffect(() => {
+    if (!agencyId) {
+      setShortlistIds([]);
+      return;
+    }
+    loadAgencyShortlistIds(agencyId).then(setShortlistIds);
+  }, [agencyId]);
 
   useEffect(() => {
     setIndex((i) => (i >= applications.length ? Math.max(0, applications.length - 1) : i));
@@ -120,13 +145,20 @@ export const AgencyRecruitingView: React.FC<{
     setTimeout(() => setFeedback(null), 2500);
   };
 
-  const handleYes = async () => {
-    if (!current || !agencyId) return;
-    const threadId = await acceptApplication(current.id, agencyId);
+  const handleAcceptForApp = async (app: ModelApplication) => {
+    if (!agencyId) return;
+    const threadId = await acceptApplication(app.id, agencyId);
     if (threadId) {
-      showFeedback('Model übernommen. Chat unter „Booking Chats“ – hier weiter swipen.');
+      showFeedback('Model accepted. Open the thread under Booking chats → Recruiting chats.');
       onOpenBookingChat(threadId);
-      setAllPending(getPendingApplications());
+      refreshSwipeQueue();
+      setDetailApplication(null);
+      setShortlistIds((prev) => {
+        if (!prev.includes(app.id)) return prev;
+        const next = prev.filter((id) => id !== app.id);
+        void saveAgencyShortlistIds(agencyId, next);
+        return next;
+      });
       setIndex((prev) => {
         const apps = filteredFromStore();
         if (apps.length === 0) return 0;
@@ -135,19 +167,39 @@ export const AgencyRecruitingView: React.FC<{
     }
   };
 
-  const handleNo = async () => {
-    if (!current) return;
-    await rejectApplication(current.id);
+  const handleYes = () => {
+    if (current) void handleAcceptForApp(current);
+  };
+
+  const handleDeclineForApp = async (app: ModelApplication) => {
+    await rejectApplication(app.id);
     showFeedback('Application declined (archived).');
-    setAllPending(getPendingApplications());
-    setShowDetailModal(false);
-    if (index >= applications.length - 1) setIndex((i) => Math.max(0, i - 1));
+    refreshSwipeQueue();
+    setDetailApplication(null);
+    setShortlistIds((prev) => {
+      if (!agencyId || !prev.includes(app.id)) return prev;
+      const next = prev.filter((id) => id !== app.id);
+      void saveAgencyShortlistIds(agencyId, next);
+      return next;
+    });
+    if (current?.id === app.id && index >= applications.length - 1) {
+      setIndex((i) => Math.max(0, i - 1));
+    }
+  };
+
+  const handleNo = () => {
+    if (current) void handleDeclineForApp(current);
   };
 
   const handleAddToList = () => {
-    if (!current) return;
-    setShortlistIds((prev) => (prev.includes(current.id) ? prev : [...prev, current.id]));
-    showFeedback('Added to list.');
+    if (!current || !agencyId) return;
+    setShortlistIds((prev) => {
+      const next = prev.includes(current.id) ? prev : [...prev, current.id];
+      void saveAgencyShortlistIds(agencyId, next);
+      return next;
+    });
+    showFeedback('Saved to My list.');
+    setRecruitTab('shortlist');
     if (index >= applications.length - 1) {
       setIndex((i) => Math.max(0, i - 1));
     } else {
@@ -155,26 +207,42 @@ export const AgencyRecruitingView: React.FC<{
     }
   };
 
-  const handleStartChat = async () => {
-    if (!current || !agencyId) return;
+  const handleStartChatForApp = async (app: ModelApplication) => {
+    if (!agencyId) return;
     setStartingChat(true);
-    const modelName = `${current.firstName} ${current.lastName}`.trim();
-    const threadId = await startRecruitingChat(current.id, modelName, agencyId);
+    const modelName = `${app.firstName} ${app.lastName}`.trim();
+    const chatResult = await tryStartRecruitingChat(app.id, modelName, agencyId);
     setStartingChat(false);
-    if (threadId) {
+    if (chatResult.ok) {
       await refreshApplications();
-      setAllPending(getPendingApplications());
-      setShowDetailModal(false);
-      onOpenBookingChat(threadId);
-      showFeedback('Chat läuft unter „Booking Chats“. Hier geht’s mit den nächsten Bewerbungen weiter.');
+      refreshSwipeQueue();
+      setDetailApplication(null);
+      onOpenBookingChat(chatResult.threadId);
+      showFeedback('Chat ready. Continue under Booking chats → Recruiting chats.');
       setIndex((prev) => {
         const apps = filteredFromStore();
-        if (apps.length <= 1) return prev;
-        return Math.min(prev + 1, apps.length - 1);
+        if (apps.length <= 1) return 0;
+        return Math.min(prev, apps.length - 1);
       });
     } else {
-      showFeedback('Could not start chat. Try again.');
+      showFeedback(chatResult.messageDe);
     }
+  };
+
+  const handleRemoveFromShortlist = (applicationId: string) => {
+    if (!agencyId) return;
+    setShortlistIds((prev) => {
+      const next = prev.filter((id) => id !== applicationId);
+      void saveAgencyShortlistIds(agencyId, next);
+      return next;
+    });
+    showFeedback('Removed from list.');
+  };
+
+  const openApplicationDetails = (app: ModelApplication) => {
+    setDetailApplication(app);
+    setPhotoIndex(0);
+    setShowPhotoFullscreen(false);
   };
 
   return (
@@ -189,15 +257,19 @@ export const AgencyRecruitingView: React.FC<{
         </Text>
       </View>
 
-      <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-        {(['pending', 'accepted'] as const).map((t) => (
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+        {(['pending', 'shortlist', 'accepted'] as const).map((t) => (
           <TouchableOpacity
             key={t}
             style={[styles.filterPill, recruitTab === t && styles.filterPillActive]}
             onPress={() => setRecruitTab(t)}
           >
             <Text style={[styles.filterPillText, recruitTab === t && styles.filterPillTextActive]}>
-              {t === 'pending' ? `Pending (${applications.length})` : `Accepted (${acceptedList.length})`}
+              {t === 'pending'
+                ? `Pending (${applications.length})`
+                : t === 'shortlist'
+                  ? `My list (${shortlistIds.length})`
+                  : `Accepted (${acceptedList.length})`}
             </Text>
           </TouchableOpacity>
         ))}
@@ -215,10 +287,77 @@ export const AgencyRecruitingView: React.FC<{
               <View key={app.id} style={styles.bookingChatRow}>
                 <Text style={styles.bookingChatName}>{app.firstName} {app.lastName}</Text>
                 <TouchableOpacity style={styles.bookingChatOpen} onPress={() => app.chatThreadId && onOpenBookingChat(app.chatThreadId)}>
-                  <Text style={styles.bookingChatOpenLabel}>Open chat</Text>
+                  <Text style={styles.bookingChatOpenLabel}>Chat</Text>
                 </TouchableOpacity>
               </View>
             ))
+          )}
+        </ScrollView>
+      ) : recruitTab === 'shortlist' ? (
+        <ScrollView style={{ flex: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.md }} contentContainerStyle={{ paddingBottom: spacing.xl }}>
+          <Text style={[styles.filterLabel, { marginBottom: spacing.sm }]}>
+            Saved for this agency only. Open details to see full application data.
+          </Text>
+          {shortlistIds.length === 0 ? (
+            <View style={styles.empty}>
+              <Text style={styles.emptyTitle}>Your list is empty</Text>
+              <Text style={styles.emptyCopy}>Under Pending, tap Add to list on a candidate.</Text>
+            </View>
+          ) : shortlistApps.length === 0 ? (
+            <View style={styles.empty}>
+              <Text style={styles.emptyTitle}>No entries left</Text>
+              <Text style={styles.emptyCopy}>Applications were archived or removed.</Text>
+            </View>
+          ) : (
+            shortlistApps.map((app) => {
+              const thumbUri = app.images?.closeUp || app.images?.profile || app.images?.fullBody;
+              return (
+                <View key={app.id} style={styles.bookingChatRow}>
+                  <TouchableOpacity style={styles.bookingChatThumbWrap} onPress={() => openApplicationDetails(app)} activeOpacity={0.85}>
+                    {thumbUri ? (
+                      <Image source={{ uri: thumbUri }} style={styles.bookingChatThumb} resizeMode="contain" />
+                    ) : (
+                      <View style={[styles.bookingChatThumb, styles.bookingChatThumbPlaceholder]}>
+                        <Text style={styles.bookingChatThumbPlaceholderText} numberOfLines={1}>
+                          {app.firstName} {app.lastName}
+                        </Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                  <View style={{ flex: 1, marginLeft: spacing.sm }}>
+                    <Text style={styles.bookingChatName}>
+                      {app.firstName} {app.lastName}
+                    </Text>
+                    <Text style={styles.shortlistRowSub}>{app.city || '—'} · {app.height} cm</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.filterPill, { paddingHorizontal: spacing.sm, paddingVertical: spacing.xs }]}
+                    onPress={() => openApplicationDetails(app)}
+                  >
+                    <Text style={styles.filterPillText}>Details</Text>
+                  </TouchableOpacity>
+                  {app.chatThreadId ? (
+                    <TouchableOpacity style={styles.bookingChatOpen} onPress={() => onOpenBookingChat(app.chatThreadId!)}>
+                      <Text style={styles.bookingChatOpenLabel}>Chat</Text>
+                    </TouchableOpacity>
+                  ) : app.status === 'pending' ? (
+                    <TouchableOpacity
+                      style={styles.bookingChatOpen}
+                      onPress={() => void handleStartChatForApp(app)}
+                      disabled={startingChat}
+                    >
+                      <Text style={styles.bookingChatOpenLabel}>{startingChat ? '…' : 'Start chat'}</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  <TouchableOpacity
+                    style={[styles.buttonNo, { marginLeft: spacing.xs, paddingHorizontal: spacing.sm }]}
+                    onPress={() => handleRemoveFromShortlist(app.id)}
+                  >
+                    <Text style={styles.buttonNoLabel}>Remove</Text>
+                  </TouchableOpacity>
+                </View>
+              );
+            })
           )}
         </ScrollView>
       ) : (
@@ -289,56 +428,13 @@ export const AgencyRecruitingView: React.FC<{
 
       <View style={{ height: 8 }} />
 
-      <TouchableOpacity style={styles.bookingChatsToggle} onPress={() => setShowBookingChats((s) => !s)}>
-        <Text style={styles.filterToggleLabel}>Booking chats ({acceptedList.length})</Text>
-        <Text style={styles.filterToggleArrow}>{showBookingChats ? '▼' : '▶'}</Text>
-      </TouchableOpacity>
-      {showBookingChats && acceptedList.length > 0 && (
-        <ScrollView style={styles.bookingChatsList} horizontal={false}>
-          {acceptedList.map((app) => {
-            const thumbUri = app.images?.closeUp || app.images?.profile || app.images?.fullBody;
-            return (
-              <View key={app.id} style={styles.bookingChatRow}>
-                <View style={styles.bookingChatThumbWrap}>
-                  {thumbUri ? (
-                    <Image source={{ uri: thumbUri }} style={styles.bookingChatThumb} resizeMode="contain" />
-                  ) : (
-                    <View style={[styles.bookingChatThumb, styles.bookingChatThumbPlaceholder]}>
-                      <Text style={styles.bookingChatThumbPlaceholderText} numberOfLines={1}>{app.firstName} {app.lastName}</Text>
-                    </View>
-                  )}
-                </View>
-                <Text style={styles.bookingChatName}>{app.firstName} {app.lastName}</Text>
-                <TouchableOpacity
-                  style={styles.bookingChatOpen}
-                  onPress={() => app.chatThreadId && onOpenBookingChat(app.chatThreadId)}
-                >
-                  <Text style={styles.bookingChatOpenLabel}>Open chat</Text>
-                </TouchableOpacity>
-              </View>
-            );
-          })}
-        </ScrollView>
-      )}
-
-      {shortlist.length > 0 && (
-        <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.md }}>
-          <Text style={styles.filterLabel}>Favorite list</Text>
-          {shortlist.map((app) => (
-            <View key={app.id} style={styles.bookingChatRow}>
-              <Text style={styles.bookingChatName}>{app.firstName} {app.lastName}</Text>
-            </View>
-          ))}
-        </View>
-      )}
-
       {current ? (
         <View style={styles.cardWrap}>
           <View style={styles.card}>
             <TouchableOpacity
               style={styles.cardImageWrap}
               activeOpacity={1}
-              onPress={() => { setShowDetailModal(true); setPhotoIndex(0); setShowPhotoFullscreen(false); }}
+              onPress={() => current && openApplicationDetails(current)}
             >
               {(current.images?.closeUp || current.images?.fullBody || current.images?.profile) ? (
                 <Image
@@ -361,23 +457,14 @@ export const AgencyRecruitingView: React.FC<{
                 {current.instagramLink ? (
                   <Text style={styles.cardMeta} numberOfLines={1}>{current.instagramLink}</Text>
                 ) : null}
-                <Text style={[styles.cardMeta, { marginTop: 4, fontSize: 11, opacity: 0.9 }]}>Tap for full details</Text>
+                <Text style={[styles.cardMeta, { marginTop: 4, fontSize: 11, opacity: 0.9 }]}>Tap for application details</Text>
               </View>
             </TouchableOpacity>
             <View style={styles.cardActions}>
               <View style={styles.cardActionsRowCentered}>
-                {current.chatThreadId ? (
-                  <TouchableOpacity
-                    style={[styles.buttonAccept, { backgroundColor: colors.textPrimary }]}
-                    onPress={() => onOpenBookingChat(current.chatThreadId!)}
-                  >
-                    <Text style={styles.buttonAcceptLabel}>Chat (Booking Chats)</Text>
-                  </TouchableOpacity>
-                ) : (
-                  <TouchableOpacity style={styles.buttonAccept} onPress={handleYes}>
-                    <Text style={styles.buttonAcceptLabel}>Accept Application</Text>
-                  </TouchableOpacity>
-                )}
+                <TouchableOpacity style={styles.buttonAccept} onPress={handleYes}>
+                  <Text style={styles.buttonAcceptLabel}>Accept application</Text>
+                </TouchableOpacity>
               </View>
               <View style={styles.cardActionsRow}>
                 <TouchableOpacity style={styles.buttonNo} onPress={handleNo}>
@@ -406,21 +493,24 @@ export const AgencyRecruitingView: React.FC<{
         </View>
       )}
 
-      <Modal visible={showDetailModal && !!current} transparent animationType="fade" onRequestClose={() => setShowDetailModal(false)}>
+      <Modal visible={!!detailApplication} transparent animationType="fade" onRequestClose={() => setDetailApplication(null)}>
         <View style={styles.chatOverlay}>
           <View style={[styles.chatCard, { maxHeight: '90%' }]}>
             <View style={styles.chatHeader}>
-              <Text style={styles.chatTitle}>{current ? `${current.firstName} ${current.lastName}` : 'Details'}</Text>
-              <TouchableOpacity onPress={() => setShowDetailModal(false)}>
+              <Text style={styles.chatTitle}>
+                {detailApplication ? `${detailApplication.firstName} ${detailApplication.lastName}` : 'Details'}
+              </Text>
+              <TouchableOpacity onPress={() => setDetailApplication(null)}>
                 <Text style={styles.closeLabel}>Close</Text>
               </TouchableOpacity>
             </View>
             <ScrollView style={{ maxHeight: 400 }}>
-              {current && (
+              {detailApplication && (
                 <>
-                  <View style={styles.filterLabel}>Photos</View>
+                  <Text style={styles.detailSectionLabel}>Photos</Text>
                   {(() => {
-                    const uris = [current.images?.closeUp, current.images?.fullBody, current.images?.profile].filter(Boolean) as string[];
+                    const d = detailApplication;
+                    const uris = [d.images?.closeUp, d.images?.fullBody, d.images?.profile].filter(Boolean) as string[];
                     const idx = Math.min(photoIndex, Math.max(0, uris.length - 1));
                     const uri = uris[idx];
                     return (
@@ -442,8 +532,8 @@ export const AgencyRecruitingView: React.FC<{
                           {uri ? (
                             <Image source={{ uri }} style={styles.photoSwipeImage} resizeMode="contain" />
                           ) : (
-                            <View style={[styles.photoSwipeImage, styles.cardImagePlaceholder]}>
-                              <Text style={styles.cardMeta}>No photo</Text>
+                            <View style={[styles.photoSwipeImage, styles.detailPhotoPlaceholder]}>
+                              <Text style={styles.detailBodyMuted}>No photo</Text>
                             </View>
                           )}
                         </TouchableOpacity>
@@ -459,49 +549,55 @@ export const AgencyRecruitingView: React.FC<{
                       </View>
                     );
                   })()}
-                  {current && (
-                    <Text style={[styles.cardMeta, { marginTop: 4 }]}>
-                      Tap image to enlarge · Use arrows to swipe
-                    </Text>
-                  )}
-                  <View style={styles.filterLabel}>Details</View>
-                  <Text style={styles.cardMeta}>Age: {current.age}</Text>
-                  <Text style={styles.cardMeta}>Height: {current.height} cm</Text>
-                  <Text style={styles.cardMeta}>Gender: {current.gender || '—'}</Text>
-                  <Text style={styles.cardMeta}>Hair: {current.hairColor || '—'}</Text>
-                  <Text style={styles.cardMeta}>City: {current.city || '—'}</Text>
-                  <Text style={styles.cardMeta}>Instagram: {current.instagramLink || '—'}</Text>
+                  <Text style={styles.detailHint}>Tap image to enlarge · Use arrows to browse photos</Text>
+                  <Text style={styles.detailSectionLabel}>Application details</Text>
+                  <Text style={styles.detailBody}>Age: {detailApplication.age}</Text>
+                  <Text style={styles.detailBody}>Height: {detailApplication.height} cm</Text>
+                  <Text style={styles.detailBody}>Gender: {detailApplication.gender || '—'}</Text>
+                  <Text style={styles.detailBody}>Hair color: {detailApplication.hairColor || '—'}</Text>
+                  <Text style={styles.detailBody}>City: {detailApplication.city || '—'}</Text>
+                  <Text style={styles.detailBody}>Instagram: {detailApplication.instagramLink || '—'}</Text>
                 </>
               )}
             </ScrollView>
-            {current && (
+            {detailApplication && (
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: spacing.md }}>
-                {!current.chatThreadId && (
+                {!detailApplication.chatThreadId && detailApplication.status === 'pending' && (
                   <TouchableOpacity
                     style={[styles.filterPill, { paddingHorizontal: spacing.md, paddingVertical: spacing.sm }]}
-                    onPress={handleStartChat}
+                    onPress={() => void handleStartChatForApp(detailApplication)}
                     disabled={startingChat}
                   >
                     <Text style={styles.filterPillText}>{startingChat ? 'Starting…' : 'Start chat'}</Text>
                   </TouchableOpacity>
                 )}
-                <TouchableOpacity style={[styles.buttonYes, { flex: 1, minWidth: 120 }]} onPress={() => { setShowDetailModal(false); handleYes(); }}>
-                  <Text style={styles.buttonYesLabel}>Accept Application</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.buttonNo, { flex: 1, minWidth: 100 }]} onPress={handleNo}>
-                  <Text style={styles.buttonNoLabel}>Decline</Text>
-                </TouchableOpacity>
+                {detailApplication.status === 'pending' && (
+                  <>
+                    <TouchableOpacity
+                      style={[styles.buttonYes, { flex: 1, minWidth: 120 }]}
+                      onPress={() => void handleAcceptForApp(detailApplication)}
+                    >
+                      <Text style={styles.buttonYesLabel}>Accept application</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.buttonNo, { flex: 1, minWidth: 100 }]}
+                      onPress={() => void handleDeclineForApp(detailApplication)}
+                    >
+                      <Text style={styles.buttonNoLabel}>Decline</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
               </View>
             )}
           </View>
         </View>
       </Modal>
 
-      <Modal visible={showPhotoFullscreen && !!current} transparent animationType="fade" onRequestClose={() => setShowPhotoFullscreen(false)}>
+      <Modal visible={showPhotoFullscreen && !!detailApplication} transparent animationType="fade" onRequestClose={() => setShowPhotoFullscreen(false)}>
         <TouchableOpacity style={styles.fullscreenPhotoOverlay} activeOpacity={1} onPress={() => setShowPhotoFullscreen(false)}>
-          {current && (() => {
-            const uris = [current.images?.closeUp, current.images?.fullBody, current.images?.profile].filter(Boolean) as string[];
-            const uri = uris[Math.min(photoIndex, uris.length - 1)];
+          {detailApplication && (() => {
+            const uris = [detailApplication.images?.closeUp, detailApplication.images?.fullBody, detailApplication.images?.profile].filter(Boolean) as string[];
+            const uri = uris[Math.min(photoIndex, Math.max(0, uris.length - 1))];
             return uri ? <Image source={{ uri }} style={styles.fullscreenPhoto} resizeMode="contain" /> : null;
           })()}
           <Text style={styles.fullscreenPhotoHint}>Tap to close</Text>
@@ -572,6 +668,44 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     marginBottom: spacing.xs,
   },
+  shortlistRowSub: {
+    ...typography.body,
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  detailSectionLabel: {
+    ...typography.label,
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  detailBody: {
+    ...typography.body,
+    fontSize: 13,
+    color: colors.textPrimary,
+    marginBottom: 4,
+  },
+  detailBodyMuted: {
+    ...typography.body,
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  detailHint: {
+    ...typography.label,
+    fontSize: 10,
+    color: colors.textSecondary,
+    marginTop: 4,
+    marginBottom: spacing.sm,
+  },
+  detailPhotoPlaceholder: {
+    width: '100%',
+    height: 220,
+    borderRadius: 12,
+    backgroundColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   filterPills: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -600,22 +734,6 @@ const styles = StyleSheet.create({
   },
   filterPillTextActive: {
     color: colors.surface,
-  },
-  bookingChatsToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  bookingChatsList: {
-    maxHeight: 160,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
   },
   bookingChatRow: {
     flexDirection: 'row',

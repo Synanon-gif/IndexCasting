@@ -124,6 +124,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (pErr) console.error('profile upsert error', pErr);
       await loadProfile(data.user.id);
       try {
+        const { acceptOrganizationInvitation } = await import('../services/organizationsInvitationsSupabase');
+        const { readInviteToken, persistInviteToken } = await import('../storage/inviteToken');
+        const tok = await readInviteToken();
+        if (tok) {
+          const inv = await acceptOrganizationInvitation(tok);
+          if (inv.ok) await persistInviteToken(null);
+        }
+      } catch (e) {
+        console.error('signUp invite accept error:', e);
+      }
+      try {
         const { linkModelByEmail } = await import('../services/modelsSupabase');
         await linkModelByEmail();
         await loadProfile(data.user.id);
@@ -136,9 +147,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) return { error: error.message };
     try {
-      const { linkBookerToAuthUser } = await import('../services/bookersSupabase');
-      await linkBookerToAuthUser(email);
-    } catch {}
+      const { acceptOrganizationInvitation } = await import('../services/organizationsInvitationsSupabase');
+      const { readInviteToken, persistInviteToken } = await import('../storage/inviteToken');
+      const tok = await readInviteToken();
+      if (tok) {
+        const inv = await acceptOrganizationInvitation(tok);
+        if (inv.ok) await persistInviteToken(null);
+      }
+    } catch (e) {
+      console.error('signIn invite accept error:', e);
+    }
     try {
       const { linkModelByEmail } = await import('../services/modelsSupabase');
       await linkModelByEmail();

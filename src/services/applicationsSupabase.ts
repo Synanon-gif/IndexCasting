@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase';
+import { splitProfileDisplayName } from '../utils/applicantNameFromProfile';
 
 /**
  * Model-Bewerbungen (Apply) – in Supabase gespeichert.
@@ -24,6 +25,9 @@ export async function uploadApplicationImage(file: Blob | File, slot: string): P
   return data?.publicUrl ?? null;
 }
 
+/** Von PostgREST: Embed über FK agency_id (nicht accepted_by_agency_id). */
+export type SupabaseApplicationAgencyEmbed = { name: string } | null;
+
 export type SupabaseApplication = {
   id: string;
   applicant_user_id: string | null;
@@ -42,6 +46,8 @@ export type SupabaseApplication = {
   accepted_by_agency_id: string | null;
   created_at: string;
   updated_at: string;
+  /** Nur bei getApplicationsForApplicant; Key = PostgREST-Name für FK agency_id → agencies. */
+  agencies?: SupabaseApplicationAgencyEmbed;
 };
 
 export async function getApplications(): Promise<SupabaseApplication[]> {
@@ -55,6 +61,25 @@ export async function getApplications(): Promise<SupabaseApplication[]> {
     return [];
   }
   return (data ?? []) as SupabaseApplication[];
+}
+
+/** Single application row (RLS: agency or applicant). */
+export async function fetchApplicationById(applicationId: string): Promise<SupabaseApplication | null> {
+  try {
+    const { data, error } = await supabase
+      .from('model_applications')
+      .select('*')
+      .eq('id', applicationId)
+      .maybeSingle();
+    if (error) {
+      console.error('fetchApplicationById error:', error);
+      return null;
+    }
+    return (data ?? null) as SupabaseApplication | null;
+  } catch (e) {
+    console.error('fetchApplicationById exception:', e);
+    return null;
+  }
 }
 
 export async function getApplicationsByStatus(status: string): Promise<SupabaseApplication[]> {
@@ -71,25 +96,31 @@ export async function getApplicationsByStatus(status: string): Promise<SupabaseA
   return (data ?? []) as SupabaseApplication[];
 }
 
-/** Bewerbungen des eingeloggten Models (für "My Applications"). */
+/** Bewerbungen des eingeloggten Models (für "My Applications"). Agency-Name nur als Embed (ein Feld). */
 export async function getApplicationsForApplicant(applicantUserId: string): Promise<SupabaseApplication[]> {
-  const { data, error } = await supabase
-    .from('model_applications')
-    .select('*')
-    .eq('applicant_user_id', applicantUserId)
-    .order('created_at', { ascending: false });
+  try {
+    const { data, error } = await supabase
+      .from('model_applications')
+      .select('*, agencies!agency_id ( name )')
+      .eq('applicant_user_id', applicantUserId)
+      .order('created_at', { ascending: false });
 
-  if (error) {
-    console.error('getApplicationsForApplicant error:', error);
+    if (error) {
+      console.error('getApplicationsForApplicant error:', error);
+      return [];
+    }
+    return (data ?? []) as SupabaseApplication[];
+  } catch (e) {
+    console.error('getApplicationsForApplicant exception:', e);
     return [];
   }
-  return (data ?? []) as SupabaseApplication[];
 }
 
 export async function insertApplication(app: {
   applicant_user_id: string;
-  first_name: string;
-  last_name: string;
+  /** Wird ignoriert – Namen kommen immer aus profiles.display_name (identisch zum Account). */
+  first_name?: string;
+  last_name?: string;
   age: number;
   height: number;
   gender?: string;
@@ -99,30 +130,63 @@ export async function insertApplication(app: {
   images?: Record<string, string>;
   agency_id?: string;
 }): Promise<SupabaseApplication | null> {
-  const { data, error } = await supabase
-    .from('model_applications')
-    .insert({
-      applicant_user_id: app.applicant_user_id,
-      first_name: app.first_name,
-      last_name: app.last_name,
-      age: app.age,
-      height: app.height,
-      gender: app.gender || null,
-      hair_color: app.hair_color || null,
-      city: app.city || null,
-      instagram_link: app.instagram_link || null,
-      images: app.images || {},
-      agency_id: app.agency_id || null,
-      status: 'pending',
-    })
-    .select()
-    .single();
+  try {
+    const { data: userData, error: userErr } = await supabase.auth.getUser();
+    if (userErr || !userData.user || userData.user.id !== app.applicant_user_id) {
+      console.error('insertApplication: applicant must match signed-in user', userErr);
+      return null;
+    }
 
-  if (error) {
-    console.error('insertApplication error:', error);
+    const { data: prof, error: pErr } = await supabase
+      .from('profiles')
+      .select('display_name')
+      .eq('id', app.applicant_user_id)
+      .maybeSingle();
+
+    if (pErr) {
+      console.error('insertApplication profile load error:', pErr);
+      return null;
+    }
+
+    const { firstName: fn, lastName: ln } = splitProfileDisplayName(
+      (prof as { display_name?: string | null } | null)?.display_name
+    );
+    if (!fn.trim()) {
+      console.error('insertApplication: profile display_name empty');
+      return null;
+    }
+
+    const first_name = fn.trim();
+    const last_name = ln.trim();
+
+    const { data, error } = await supabase
+      .from('model_applications')
+      .insert({
+        applicant_user_id: app.applicant_user_id,
+        first_name,
+        last_name,
+        age: app.age,
+        height: app.height,
+        gender: app.gender || null,
+        hair_color: app.hair_color || null,
+        city: app.city || null,
+        instagram_link: app.instagram_link || null,
+        images: app.images || {},
+        agency_id: app.agency_id || null,
+        status: 'pending',
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('insertApplication error:', error);
+      return null;
+    }
+    return data as SupabaseApplication;
+  } catch (e) {
+    console.error('insertApplication exception:', e);
     return null;
   }
-  return data as SupabaseApplication;
 }
 
 export async function updateApplicationStatus(
@@ -147,33 +211,49 @@ export async function updateApplicationRecruitingThread(
   applicationId: string,
   recruitingThreadId: string
 ): Promise<boolean> {
-  const { error } = await supabase
-    .from('model_applications')
-    .update({ recruiting_thread_id: recruitingThreadId })
-    .eq('id', applicationId)
-    .eq('status', 'pending');
+  try {
+    const { data, error } = await supabase
+      .from('model_applications')
+      .update({ recruiting_thread_id: recruitingThreadId })
+      .eq('id', applicationId)
+      .eq('status', 'pending')
+      .select('id')
+      .maybeSingle();
 
-  if (error) {
-    console.error('updateApplicationRecruitingThread error:', error);
+    if (error) {
+      console.error('updateApplicationRecruitingThread error:', error);
+      return false;
+    }
+    if (!data?.id) {
+      console.error('updateApplicationRecruitingThread: no row updated (not pending or wrong id)', applicationId);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('updateApplicationRecruitingThread exception:', e);
     return false;
   }
-  return true;
 }
 
-/** Bewerbung löschen (nur für Applicant, nur pending/rejected). */
+/** Bewerbung löschen (nur für Applicant, nur pending/rejected). RLS muss DELETE für eigene Zeilen erlauben. */
 export async function deleteApplication(applicationId: string, applicantUserId: string): Promise<boolean> {
-  const { error } = await supabase
-    .from('model_applications')
-    .delete()
-    .eq('id', applicationId)
-    .eq('applicant_user_id', applicantUserId)
-    .in('status', ['pending', 'rejected']);
+  try {
+    const { error } = await supabase
+      .from('model_applications')
+      .delete()
+      .eq('id', applicationId)
+      .eq('applicant_user_id', applicantUserId)
+      .in('status', ['pending', 'rejected']);
 
-  if (error) {
-    console.error('deleteApplication error:', error);
+    if (error) {
+      console.error('deleteApplication error:', error);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('deleteApplication exception:', e);
     return false;
   }
-  return true;
 }
 
 /** Stammdaten des Bewerbers auf allen offenen Bewerbungen aktualisieren. */

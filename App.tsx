@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Platform, View, StyleSheet, ActivityIndicator, Text, Dimensions } from 'react-native';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { AppDataProvider, useAppData } from './src/context/AppDataContext';
 import { AuthScreen } from './src/screens/AuthScreen';
+import { InviteAcceptanceScreen } from './src/screens/InviteAcceptanceScreen';
 import { LegalAcceptanceScreen } from './src/screens/LegalAcceptanceScreen';
 import { PendingActivationScreen } from './src/screens/PendingActivationScreen';
 import { ClientView } from './src/views/ClientView';
@@ -18,6 +19,12 @@ import type { ClientType } from './src/views/ClientView';
 import { loadClientType, saveClientType } from './src/storage/persistence';
 import { supabaseUrl, supabaseAnonKey } from './src/config/env';
 import { AppErrorBoundary } from './src/components/AppErrorBoundary';
+import {
+  getInvitationPreview,
+  acceptOrganizationInvitation,
+  type InvitationPreview,
+} from './src/services/organizationsInvitationsSupabase';
+import { persistInviteToken, readInviteToken } from './src/storage/inviteToken';
 
 /** Web: volle Höhe sofort beim Modul-Load (vor erstem React-Paint) – verhindert weißen/leeren Screen. */
 function ensureWebRootHasHeight() {
@@ -60,6 +67,21 @@ function getGuestLinkId(): string | null {
   return p.get('guest') || null;
 }
 
+function getInviteTokenFromUrl(): string | null {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
+  const p = new URLSearchParams(window.location.search);
+  const t = p.get('invite');
+  return t && t.trim() ? t.trim() : null;
+}
+
+function clearInviteQueryParam() {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+  const u = new URL(window.location.href);
+  if (!u.searchParams.has('invite')) return;
+  u.searchParams.delete('invite');
+  window.history.replaceState({}, '', u.pathname + u.search + u.hash);
+}
+
 const ROLE_TO_USER_ID: Record<string, string> = {
   client: 'user-client',
   agency: 'user-agent',
@@ -74,10 +96,16 @@ function roleFromProfile(profileRole: string | undefined): Role | null {
 }
 
 function AppContent() {
-  const { session, loading, profile, signOut } = useAuth();
+  const { session, loading, profile, signOut, refreshProfile } = useAuth();
   const [sharedParams] = useState<{ name: string; ids: string[] } | null>(getSharedParams);
   const [bookingThreadId, setBookingThreadId] = useState<string | null>(getBookingThreadId);
   const [guestLinkId] = useState<string | null>(getGuestLinkId);
+  const [inviteTokenState] = useState<string | null>(() => getInviteTokenFromUrl());
+  const [invitePreview, setInvitePreview] = useState<InvitationPreview | null>(null);
+  const [invitePreviewLoading, setInvitePreviewLoading] = useState(Boolean(inviteTokenState));
+  const [invitePreviewError, setInvitePreviewError] = useState<string | null>(null);
+  const [inviteAuthPhase, setInviteAuthPhase] = useState<'gate' | 'auth'>('gate');
+  const [inviteAuthMode, setInviteAuthMode] = useState<'login' | 'signup'>('signup');
   const [demoRole, setDemoRole] = useState<Role | null>(null);
   const [clientType, setClientTypeState] = useState<ClientType>(() => loadClientType() ?? 'fashion');
   const { setCurrentUserId } = useAppData();
@@ -89,6 +117,44 @@ function AppContent() {
     setClientTypeState(value);
     saveClientType(value);
   };
+
+  useEffect(() => {
+    if (!inviteTokenState) return;
+    void persistInviteToken(inviteTokenState);
+    let cancelled = false;
+    setInvitePreviewLoading(true);
+    getInvitationPreview(inviteTokenState)
+      .then((p) => {
+        if (cancelled) return;
+        setInvitePreview(p);
+        setInvitePreviewError(p ? null : 'Diese Einladung ist ungültig oder abgelaufen.');
+        setInvitePreviewLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setInvitePreviewError('Einladung konnte nicht geladen werden.');
+        setInvitePreviewLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [inviteTokenState]);
+
+  const tryAcceptInviteAfterSession = useCallback(async () => {
+    const tok = inviteTokenState ?? (await readInviteToken());
+    if (!tok) return;
+    const r = await acceptOrganizationInvitation(tok);
+    if (r.ok) {
+      await persistInviteToken(null);
+      clearInviteQueryParam();
+      await refreshProfile();
+    }
+  }, [inviteTokenState, refreshProfile]);
+
+  useEffect(() => {
+    if (!session?.user) return;
+    void tryAcceptInviteAfterSession();
+  }, [session?.user?.id, tryAcceptInviteAfterSession]);
 
   useEffect(() => {
     if (!effectiveRole || effectiveRole === 'apply') setCurrentUserId(null);
@@ -143,9 +209,51 @@ function AppContent() {
   }
 
   if (!session && !isDemo) {
+    const inviteLockedRole =
+      invitePreview?.org_type === 'agency' ? 'agent' : invitePreview?.org_type === 'client' ? 'client' : undefined;
+    const inviteRoleLabel =
+      invitePreview?.invite_role === 'booker'
+        ? 'Booker'
+        : invitePreview?.invite_role === 'employee'
+          ? 'Mitarbeiter'
+          : 'Mitglied';
+
+    if (inviteTokenState && inviteAuthPhase === 'gate' && (invitePreviewLoading || invitePreview)) {
+      return (
+        <>
+          <InviteAcceptanceScreen
+            preview={invitePreview}
+            loading={invitePreviewLoading}
+            error={invitePreviewError}
+            onContinueSignup={() => {
+              setInviteAuthMode('signup');
+              setInviteAuthPhase('auth');
+            }}
+            onContinueLogin={() => {
+              setInviteAuthMode('login');
+              setInviteAuthPhase('auth');
+            }}
+          />
+          <StatusBar style="dark" />
+        </>
+      );
+    }
+
     return (
       <>
-        <AuthScreen onDemoLogin={(r) => setDemoRole(r)} />
+        <AuthScreen
+          initialMode={inviteAuthMode}
+          onDemoLogin={(r) => setDemoRole(r)}
+          inviteAuth={
+            inviteTokenState && invitePreview && inviteLockedRole
+              ? {
+                  orgName: invitePreview.org_name,
+                  lockedProfileRole: inviteLockedRole,
+                  inviteRoleLabel,
+                }
+              : undefined
+          }
+        />
         <StatusBar style="dark" />
       </>
     );

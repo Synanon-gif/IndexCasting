@@ -18,14 +18,16 @@ import {
 } from '../store/optionRequests';
 import {
   getCalendarForModel,
-  upsertCalendarEntry,
   insertCalendarEntry,
+  deleteCalendarEntryById,
+  updateCalendarEntryById,
   type CalendarEntry,
   type CalendarEntryType,
   updateBookingDetails,
   appendSharedBookingNote,
   type SharedBookingNote,
 } from '../services/calendarSupabase';
+import { modelUpdateOptionSchedule } from '../services/optionRequestsSupabase';
 import { getAgencyById, type Agency } from '../services/agenciesSupabase';
 import { getThread } from '../services/recruitingChatSupabase';
 import { BookingChatView } from '../views/BookingChatView';
@@ -86,6 +88,14 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   const [savingNotes, setSavingNotes] = useState(false);
   const [sharedNoteDraft, setSharedNoteDraft] = useState('');
   const [savingSharedNote, setSavingSharedNote] = useState(false);
+  const [entryScheduleDraft, setEntryScheduleDraft] = useState({
+    date: '',
+    start_time: '09:00',
+    end_time: '10:00',
+    title: '',
+  });
+  const [savingEntrySchedule, setSavingEntrySchedule] = useState(false);
+  const [deletingCalendarEntry, setDeletingCalendarEntry] = useState(false);
   const [optionChatAgency, setOptionChatAgency] = useState<Agency | null>(null);
   const [bookingAgencyByThread, setBookingAgencyByThread] = useState<Record<string, string>>({});
 
@@ -209,6 +219,16 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     else setOptionChatAgency(null);
   }, [selectedOptionThread]);
 
+  useEffect(() => {
+    if (!openEntry) return;
+    setEntryScheduleDraft({
+      date: openEntry.date,
+      start_time: (openEntry.start_time ?? '09:00').toString().slice(0, 5),
+      end_time: (openEntry.end_time ?? '10:00').toString().slice(0, 5),
+      title: openEntry.title ?? '',
+    });
+  }, [openEntry?.id]);
+
   const daysInMonth = new Date(calMonth.year, calMonth.month + 1, 0).getDate();
   const firstDayOfWeek = new Date(calMonth.year, calMonth.month, 1).getDay();
   const monthLabel = new Date(calMonth.year, calMonth.month).toLocaleString('en', { month: 'long', year: 'numeric' });
@@ -229,12 +249,19 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
 
   const handleAddPersonalEntry = async () => {
     if (!profile || !selectedDate) return;
-    await insertCalendarEntry(profile.id, selectedDate, 'blocked', {
+    const created = await insertCalendarEntry(profile.id, selectedDate, 'blocked', {
       start_time: newEntryStart,
       end_time: newEntryEnd,
       title: newEntryTitle.trim() || 'Personal',
       entry_type: 'personal',
     });
+    if (!created) {
+      Alert.alert(
+        'Kalender',
+        'Eintrag konnte nicht gespeichert werden. Bitte in Supabase die Migration migration_calendar_entries_multi_slot_rls_email.sql ausführen (u. a. UNIQUE model_id+date entfernen) und erneut anmelden.',
+      );
+      return;
+    }
     setNewEntryTitle('');
     loadCalendar(profile.id);
   };
@@ -735,6 +762,148 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                 </View>
               );
             })()}
+            <View style={{ marginBottom: spacing.md }}>
+              <Text style={st.sectionLabel}>
+                {openEntry.option_request_id ? 'Termin verschieben' : 'Eintrag bearbeiten'}
+              </Text>
+              <Text style={[st.metaText, { marginBottom: spacing.sm }]}>
+                {openEntry.option_request_id
+                  ? 'Datum/Zeit für alle Parteien (Migration migration_calendar_reschedule_sync.sql + RPC model_update_option_schedule).'
+                  : 'Persönlichen Block anpassen oder löschen.'}
+              </Text>
+              {!openEntry.option_request_id ? (
+                <>
+                  <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary, marginBottom: 4 }}>Title</Text>
+                  <TextInput
+                    value={entryScheduleDraft.title}
+                    onChangeText={(t) => setEntryScheduleDraft((p) => ({ ...p, title: t }))}
+                    placeholderTextColor={colors.textSecondary}
+                    style={[st.input, { marginBottom: spacing.sm }]}
+                  />
+                </>
+              ) : null}
+              <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary, marginBottom: 4 }}>Date (YYYY-MM-DD)</Text>
+              <TextInput
+                value={entryScheduleDraft.date}
+                onChangeText={(t) => setEntryScheduleDraft((p) => ({ ...p, date: t }))}
+                placeholderTextColor={colors.textSecondary}
+                style={[st.input, { marginBottom: spacing.sm }]}
+              />
+              <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary, marginBottom: 4 }}>From</Text>
+                  <TextInput
+                    value={entryScheduleDraft.start_time}
+                    onChangeText={(t) => setEntryScheduleDraft((p) => ({ ...p, start_time: t }))}
+                    placeholderTextColor={colors.textSecondary}
+                    style={st.input}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary, marginBottom: 4 }}>To</Text>
+                  <TextInput
+                    value={entryScheduleDraft.end_time}
+                    onChangeText={(t) => setEntryScheduleDraft((p) => ({ ...p, end_time: t }))}
+                    placeholderTextColor={colors.textSecondary}
+                    style={st.input}
+                  />
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={async () => {
+                  if (!profile || !openEntry || !entryScheduleDraft.date.trim()) return;
+                  setSavingEntrySchedule(true);
+                  try {
+                    let ok = false;
+                    if (openEntry.option_request_id) {
+                      ok = await modelUpdateOptionSchedule(
+                        openEntry.option_request_id,
+                        entryScheduleDraft.date.trim(),
+                        entryScheduleDraft.start_time.trim() || null,
+                        entryScheduleDraft.end_time.trim() || null,
+                      );
+                    } else {
+                      ok = await updateCalendarEntryById(openEntry.id, {
+                        date: entryScheduleDraft.date.trim(),
+                        start_time: entryScheduleDraft.start_time.trim() || null,
+                        end_time: entryScheduleDraft.end_time.trim() || null,
+                        title: entryScheduleDraft.title.trim() || null,
+                      });
+                    }
+                    if (ok) {
+                      const refreshed = await getCalendarForModel(profile.id);
+                      setCalEntries(refreshed);
+                      const updated = refreshed.find((e) => e.id === openEntry.id);
+                      if (updated) setOpenEntry(updated);
+                      Alert.alert('Gespeichert', 'Kalender wurde aktualisiert.');
+                    } else {
+                      Alert.alert('Fehler', 'Konnte nicht speichern. Ist die Supabase-Migration ausgeführt?');
+                    }
+                  } finally {
+                    setSavingEntrySchedule(false);
+                  }
+                }}
+                style={{
+                  alignSelf: 'flex-end',
+                  marginTop: spacing.sm,
+                  borderRadius: 999,
+                  backgroundColor: colors.textPrimary,
+                  paddingHorizontal: spacing.md,
+                  paddingVertical: spacing.sm,
+                  opacity: savingEntrySchedule ? 0.6 : 1,
+                }}
+                disabled={savingEntrySchedule}
+              >
+                <Text style={{ ...typography.label, color: colors.surface }}>
+                  {savingEntrySchedule ? '…' : 'Termin speichern'}
+                </Text>
+              </TouchableOpacity>
+              {!openEntry.option_request_id ? (
+                <TouchableOpacity
+                  onPress={() => {
+                    if (!profile || !openEntry) return;
+                    Alert.alert(
+                      'Eintrag löschen',
+                      'Diesen persönlichen Kalendereintrag wirklich entfernen?',
+                      [
+                        { text: 'Abbrechen', style: 'cancel' },
+                        {
+                          text: 'Löschen',
+                          style: 'destructive',
+                          onPress: async () => {
+                            setDeletingCalendarEntry(true);
+                            try {
+                              const ok = await deleteCalendarEntryById(openEntry.id);
+                              if (ok) {
+                                await loadCalendar(profile.id);
+                                setOpenEntry(null);
+                              } else {
+                                Alert.alert('Fehler', 'Löschen fehlgeschlagen.');
+                              }
+                            } finally {
+                              setDeletingCalendarEntry(false);
+                            }
+                          },
+                        },
+                      ],
+                    );
+                  }}
+                  style={{
+                    alignSelf: 'flex-start',
+                    marginTop: spacing.md,
+                    borderRadius: 999,
+                    borderWidth: 1,
+                    borderColor: colors.buttonSkipRed,
+                    paddingHorizontal: spacing.md,
+                    paddingVertical: spacing.sm,
+                    opacity: deletingCalendarEntry ? 0.6 : 1,
+                  }}
+                  disabled={deletingCalendarEntry}
+                >
+                  <Text style={{ ...typography.label, color: colors.buttonSkipRed }}>Persönlichen Eintrag löschen</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
             {openEntry.option_request_id ? (
               <View style={{ marginBottom: spacing.md }}>
                 <Text style={st.sectionLabel}>Shared notes</Text>
@@ -860,18 +1029,13 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                         'model',
                       );
                     } else {
-                      await upsertCalendarEntry(
-                        profile.id,
-                        openEntry.date,
-                        openEntry.status,
-                        modelNotesDraft,
-                        {
-                          start_time: openEntry.start_time ?? undefined,
-                          end_time: openEntry.end_time ?? undefined,
-                          title: openEntry.title ?? undefined,
-                          entry_type: openEntry.entry_type,
-                        },
-                      );
+                      await updateCalendarEntryById(openEntry.id, {
+                        note: modelNotesDraft,
+                        start_time: openEntry.start_time ?? null,
+                        end_time: openEntry.end_time ?? null,
+                        title: openEntry.title ?? null,
+                        status: openEntry.status,
+                      });
                     }
                     await loadCalendar(profile.id);
                     setOpenEntry(null);

@@ -1,7 +1,7 @@
 /**
  * Option Requests + Chat (Client ↔ Agency).
  * Alle Anfragen und Chats in Supabase gespeichert (option_requests + option_request_messages).
- * Pro Partei laden: loadOptionRequestsForClient(clientId), loadOptionRequestsForAgency(agencyId),
+ * Pro Partei laden: loadOptionRequestsForClient(), loadOptionRequestsForAgency(agencyId),
  * loadOptionsForModel(modelId). Cache wird mit den jeweiligen Daten gefüllt.
  */
 
@@ -14,7 +14,7 @@ import {
   getOptionMessages as fetchMessages,
   addOptionMessage,
   getOptionRequestsForModel,
-  getOptionRequestsForClient as fetchRequestsForClient,
+  getOptionRequestsForCurrentClient as fetchRequestsForCurrentClient,
   getOptionRequestsForAgency as fetchRequestsForAgency,
   setAgencyCounterOffer,
   agencyAcceptClientPrice,
@@ -183,6 +183,16 @@ export function addOptionRequest(
     const { data: { user } } = await supabase.auth.getUser();
     const clientId = user?.id ?? 'user-client';
 
+    let organizationId: string | null = null;
+    if (user?.id) {
+      try {
+        const { ensureClientOrganization } = await import('../services/organizationsInvitationsSupabase');
+        organizationId = await ensureClientOrganization();
+      } catch {
+        /* ignore */
+      }
+    }
+
     let agencyId = 'a1000000-0000-4000-8000-000000000001';
     try {
       const model = await getModelByIdFromSupabase(modelId);
@@ -202,6 +212,8 @@ export function addOptionRequest(
       start_time: extra?.startTime,
       end_time: extra?.endTime,
       request_type: requestType,
+      organization_id: organizationId,
+      created_by: user?.id ?? null,
     });
     if (result) {
       const local = toLocalRequest(result);
@@ -281,12 +293,14 @@ export async function loadOptionsForModel(modelId: string): Promise<void> {
   } catch { /* keep cache */ }
 }
 
-export async function loadOptionRequestsForClient(clientId: string): Promise<void> {
+export async function loadOptionRequestsForClient(): Promise<void> {
   try {
-    const remote = await fetchRequestsForClient(clientId);
+    const remote = await fetchRequestsForCurrentClient();
     requestsCache = remote.map(toLocalRequest);
     notify();
-  } catch { /* keep cache */ }
+  } catch {
+    /* keep cache */
+  }
 }
 
 export async function loadOptionRequestsForAgency(agencyId: string): Promise<void> {

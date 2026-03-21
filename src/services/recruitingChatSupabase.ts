@@ -12,6 +12,8 @@ export type SupabaseRecruitingThread = {
   application_id: string;
   model_name: string;
   agency_id: string | null;
+  organization_id: string | null;
+  created_by: string | null;
   created_at: string;
 };
 
@@ -42,13 +44,37 @@ export async function getThread(threadId: string): Promise<SupabaseRecruitingThr
   return data as SupabaseRecruitingThread | null;
 }
 
+/** Latest thread for an application (heals orphaned threads if the app row was never linked). */
+export async function findLatestThreadIdForApplication(applicationId: string): Promise<string | null> {
+  try {
+    const { data, error } = await supabase
+      .from('recruiting_chat_threads')
+      .select('id')
+      .eq('application_id', applicationId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      console.error('findLatestThreadIdForApplication error:', error);
+      return null;
+    }
+    return (data as { id?: string } | null)?.id ?? null;
+  } catch (e) {
+    console.error('findLatestThreadIdForApplication exception:', e);
+    return null;
+  }
+}
+
 export async function createThread(
   applicationId: string,
   modelName: string,
-  agencyId?: string | null
+  agencyId?: string | null,
+  meta?: { organizationId?: string | null; createdBy?: string | null }
 ): Promise<string | null> {
   const payload: Record<string, unknown> = { application_id: applicationId, model_name: modelName };
   if (agencyId != null) payload.agency_id = agencyId;
+  if (meta?.organizationId != null) payload.organization_id = meta.organizationId;
+  if (meta?.createdBy != null) payload.created_by = meta.createdBy;
   const { data, error } = await supabase
     .from('recruiting_chat_threads')
     .insert(payload)
@@ -59,12 +85,19 @@ export async function createThread(
 }
 
 /** Threads für eine Agentur (Booking Chats). */
-export async function getThreadsForAgency(agencyId: string): Promise<SupabaseRecruitingThread[]> {
-  const { data, error } = await supabase
+export async function getThreadsForAgency(
+  agencyId: string,
+  options?: { createdByUserId?: string | null }
+): Promise<SupabaseRecruitingThread[]> {
+  let q = supabase
     .from('recruiting_chat_threads')
-    .select('*')
+    .select('id, application_id, model_name, agency_id, organization_id, created_by, created_at')
     .eq('agency_id', agencyId)
     .order('created_at', { ascending: false });
+  if (options?.createdByUserId) {
+    q = q.eq('created_by', options.createdByUserId);
+  }
+  const { data, error } = await q;
   if (error) { console.error('getThreadsForAgency error:', error); return []; }
   return (data ?? []) as SupabaseRecruitingThread[];
 }
@@ -120,4 +153,191 @@ export function subscribeToThreadMessages(
     .subscribe();
 
   return () => { supabase.removeChannel(channel); };
+}
+
+/**
+ * Nur echte „Funktion fehlt / nicht im API-Schema“-Fälle.
+ * Hinweis: PostgREST nutzt PGRST202 auch bei Signatur-/Parameter-Mismatch — das darf NICHT als „RPC fehlt“
+ * gelten, sonst läuft der Client in einen wirkungslosen Fallback.
+ */
+export function isAgencyRecruitingChatRpcMissingError(err: unknown): boolean {
+  if (err == null || typeof err !== 'object') return false;
+  const e = err as { code?: string; message?: string };
+  const msg = (e.message || '').toLowerCase();
+  const namesThisRpc =
+    msg.includes('agency_start_recruiting_chat') ||
+    msg.includes('public.agency_start_recruiting_chat');
+  if (!namesThisRpc) return false;
+  return (
+    msg.includes('schema cache') ||
+    msg.includes('could not find') ||
+    msg.includes('does not exist')
+  );
+}
+
+/** PGRST202 mit anderem Text: oft falscher Funktionsname oder Argumente — kein Fallback als „fehlt“. */
+export function isPgrst202Error(err: unknown): boolean {
+  if (err == null || typeof err !== 'object') return false;
+  return (err as { code?: string }).code === 'PGRST202';
+}
+
+function collectErrText(err: unknown): string {
+  if (err == null) return '';
+  if (typeof err === 'string') return err;
+  if (err instanceof Error) {
+    const x = err as Error & { details?: string; hint?: string; code?: string };
+    return [x.message, x.details, x.hint, x.code].filter(Boolean).join(' ');
+  }
+  if (typeof err === 'object') {
+    const o = err as Record<string, unknown>;
+    const parts: string[] = [];
+    for (const k of ['message', 'details', 'hint', 'code']) {
+      const v = o[k];
+      if (typeof v === 'string') parts.push(v);
+    }
+    const nested = o.cause ?? o.error;
+    if (nested) parts.push(collectErrText(nested));
+    const joined = parts.join(' ').trim();
+    if (joined.length > 0) return joined;
+    try {
+      return JSON.stringify(err);
+    } catch {
+      return String(err);
+    }
+  }
+  return String(err);
+}
+
+/** Scalar uuid aus PostgREST / supabase-js normalisieren */
+export function normalizeAgencyRecruitingChatRpcUuid(data: unknown): string | null {
+  if (data == null) return null;
+  if (typeof data === 'string') {
+    const t = data.trim();
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(t)
+      ? t
+      : null;
+  }
+  if (Array.isArray(data)) {
+    for (const item of data) {
+      const u = normalizeAgencyRecruitingChatRpcUuid(item);
+      if (u) return u;
+    }
+    return null;
+  }
+  if (typeof data === 'object' && data !== null) {
+    const o = data as Record<string, unknown>;
+    for (const k of ['agency_start_recruiting_chat', 'thread_id', 'id']) {
+      const u = normalizeAgencyRecruitingChatRpcUuid(o[k]);
+      if (u) return u;
+    }
+  }
+  return null;
+}
+
+export function formatRecruitingChatRpcError(err: unknown): string {
+  const e = err as { message?: string; details?: string; hint?: string } | null;
+  const raw = [e?.message, e?.details, e?.hint].filter(Boolean).join(' ');
+  const msg = raw.toLowerCase();
+  if (msg.includes('forbidden')) {
+    return 'No permission to start this recruiting chat.';
+  }
+  if (msg.includes('wrong agency')) {
+    return 'This application belongs to a different agency.';
+  }
+  if (msg.includes('not pending')) {
+    return 'Recruiting chat is only available while the application is pending.';
+  }
+  if (msg.includes('not authenticated')) {
+    return 'Please sign in again.';
+  }
+  if (msg.includes('application not found')) {
+    return 'Application not found.';
+  }
+  if (msg.includes('failed to link')) {
+    return 'Could not link recruiting thread to application.';
+  }
+  return 'Could not start recruiting chat.';
+}
+
+/** Deutsche Kurzmeldungen für die Agentur-UI */
+export function formatRecruitingChatRpcErrorDe(err: unknown): string {
+  const raw = collectErrText(err);
+  const msg = raw.toLowerCase();
+  if (msg.includes('forbidden')) {
+    return 'Keine Berechtigung: Als Agentur-Mitglied (Organisation) angemeldet sein oder Master-Account mit der Agentur-E-Mail.';
+  }
+  if (msg.includes('wrong agency')) {
+    return 'Diese Bewerbung gehört zu einer anderen Agentur.';
+  }
+  if (msg.includes('not pending')) {
+    return 'Recruiting-Chat nur möglich, solange die Bewerbung noch offen (pending) ist.';
+  }
+  if (msg.includes('not authenticated')) {
+    return 'Bitte erneut anmelden.';
+  }
+  if (msg.includes('application not found')) {
+    return 'Bewerbung nicht gefunden.';
+  }
+  if (msg.includes('failed to link')) {
+    return 'Chat konnte nicht mit der Bewerbung verknüpft werden (Datenbank). Support prüfen.';
+  }
+  if (isPgrst202Error(err) && !isAgencyRecruitingChatRpcMissingError(err)) {
+    return 'Server erkennt den Aufruf nicht (Parameter/Schema). In Supabase: SQL migrieren, API-Schema neu laden (Dashboard oder NOTIFY pgrst).';
+  }
+  if (msg.includes('internal server error') || msg.includes('internal_server_error')) {
+    return 'Server-Fehler (500). In Supabase: Logs → Postgres / API prüfen; oft fehlt eine Abhängigkeit (z. B. get_my_agency_member_role) oder RLS in der Funktion.';
+  }
+  if (msg.includes('permission denied') || msg.includes('42501')) {
+    return 'Berechtigung verweigert (EXECUTE auf die Funktion oder Tabellen). In SQL: GRANT EXECUTE … TO authenticated prüfen.';
+  }
+  if (msg.includes('does not exist') && msg.includes('function')) {
+    return 'Funktion fehlt oder API-Schema veraltet. SQL-Migration erneut ausführen, dann NOTIFY pgrst reload.';
+  }
+  const detail = raw.replace(/\s+/g, ' ').trim();
+  if (detail.length > 0) {
+    return `Technisch: ${detail.length > 320 ? `${detail.slice(0, 320)}…` : detail}`;
+  }
+  return 'Chat konnte nicht gestartet werden. Verbindung prüfen oder erneut versuchen.';
+}
+
+export type AgencyStartRecruitingChatRpcResult =
+  | { status: 'ok'; threadId: string }
+  | { status: 'missing_rpc' }
+  | { status: 'error'; error: unknown };
+
+/**
+ * Atomar Thread anlegen/verknüpfen (SECURITY DEFINER) – für Agentur-Booker ohne RLS-Hänger.
+ * Wenn die Funktion in der DB fehlt: status missing_rpc → Caller kann auf direkten Client-Pfad fallen.
+ */
+export async function agencyStartRecruitingChatRpc(
+  applicationId: string,
+  agencyId: string,
+  modelName: string
+): Promise<AgencyStartRecruitingChatRpcResult> {
+  try {
+    const { data, error } = await supabase.rpc('agency_start_recruiting_chat', {
+      p_application_id: applicationId,
+      p_agency_id: agencyId,
+      p_model_name: modelName,
+    });
+    if (error) {
+      if (isAgencyRecruitingChatRpcMissingError(error)) {
+        return { status: 'missing_rpc' };
+      }
+      console.error('agencyStartRecruitingChatRpc error:', error);
+      return { status: 'error', error };
+    }
+    const threadId = normalizeAgencyRecruitingChatRpcUuid(data);
+    if (!threadId) {
+      console.error('agencyStartRecruitingChatRpc: unexpected RPC data shape', data);
+      return {
+        status: 'error',
+        error: new Error('empty thread id from agency_start_recruiting_chat'),
+      };
+    }
+    return { status: 'ok', threadId };
+  } catch (e) {
+    console.error('agencyStartRecruitingChatRpc exception:', e);
+    return { status: 'error', error: e };
+  }
 }

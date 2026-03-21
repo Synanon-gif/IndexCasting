@@ -22,7 +22,8 @@ Du bist der Lead Product Engineer für IndexCasting. Dein Ziel ist es, das "digi
 - Struktur: Trenne UI (src/components), Logik (src/services) und Navigation (src/navigation).
 ## 5. Automatisierung & Testing (Mandatory)
 - Test-First: Für jede neue Logik in `src/services` oder `src/db` MUSS Cursor automatisch einen passenden Unit-Test (z.B. mit Jest) vorschlagen.
-- Self-Correction: Bevor du Code im Composer finalisierst, führe einen virtuellen "Dry Run" durch. Wenn du Terminal-Zugriff hast, frage mich: "Soll ich die Tests jetzt ausführen?".
+- Test-Run: Nach jeder relevanten Code-Änderung (Features, Fixes, Refactors) MUSS `npm test` im Projektroot ausgeführt werden — nicht den Nutzer fragen, sondern selbst laufen lassen und das Ergebnis kurz melden. Wo sinnvoll, ergänze passende Tests statt nur UI zu ändern.
+- Self-Correction: Bevor du Code im Composer finalisierst, führe einen virtuellen "Dry Run" durch.
 - Fehlermanagement: Jede Supabase-Abfrage muss einen `try-catch` Block mit spezifischem Error-Logging haben.
 
 ## 6. Supabase & Security Guardrails

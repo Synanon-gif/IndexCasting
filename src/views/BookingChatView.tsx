@@ -15,7 +15,7 @@ import {
 } from '../store/recruitingChats';
 import { getApplicationById } from '../store/applicationsStore';
 import { getThread } from '../services/recruitingChatSupabase';
-import { getAgencyById } from '../services/agenciesSupabase';
+import { getAgencyChatDisplayById } from '../services/agenciesSupabase';
 
 type Props = {
   threadId: string;
@@ -23,9 +23,11 @@ type Props = {
   onClose: () => void;
   /** Sofort angezeigter Agenturname (z. B. aus Messages-Liste), bevor Supabase antwortet. */
   initialAgencyName?: string | null;
+  /** agency_id der zugehörigen Bewerbung – zuverlässiger als globaler Applications-Store. */
+  applicationAgencyId?: string | null;
 };
 
-export const BookingChatView: React.FC<Props> = ({ threadId, fromRole, onClose, initialAgencyName }) => {
+export const BookingChatView: React.FC<Props> = ({ threadId, fromRole, onClose, initialAgencyName, applicationAgencyId }) => {
   const [chatInput, setChatInput] = useState('');
   const [messages, setMessages] = useState(() => getRecruitingMessages(threadId));
   const [agencyName, setAgencyName] = useState<string | null>(initialAgencyName ?? null);
@@ -50,15 +52,21 @@ export const BookingChatView: React.FC<Props> = ({ threadId, fromRole, onClose, 
 
   useEffect(() => {
     if (fromRole !== 'model') return;
+    const fromApp = applicationAgencyId?.trim() || application?.agencyId || null;
+    const loadDisplay = (agencyId: string) => {
+      getAgencyChatDisplayById(agencyId).then((row) => {
+        if (row?.name) setAgencyName(row.name);
+        setAgencyLogoUrl(row?.logo_url ?? null);
+      });
+    };
+    if (fromApp) {
+      loadDisplay(fromApp);
+      return;
+    }
     getThread(threadId).then((t) => {
-      if (t?.agency_id) {
-        getAgencyById(t.agency_id).then((a) => {
-          if (a?.name) setAgencyName(a.name);
-          setAgencyLogoUrl(a?.logo_url ?? null);
-        });
-      }
+      if (t?.agency_id) loadDisplay(t.agency_id);
     });
-  }, [threadId, fromRole]);
+  }, [threadId, fromRole, applicationAgencyId, application?.agencyId]);
 
   const sendMessage = () => {
     const t = chatInput.trim();
@@ -67,7 +75,7 @@ export const BookingChatView: React.FC<Props> = ({ threadId, fromRole, onClose, 
     setChatInput('');
   };
 
-  const displayAgencyName = agencyName || initialAgencyName || 'Agentur';
+  const displayAgencyName = agencyName || initialAgencyName || 'Agency';
 
   const copyBookingLink = () => {
     if (typeof window === 'undefined' || !threadId) return;
@@ -85,7 +93,7 @@ export const BookingChatView: React.FC<Props> = ({ threadId, fromRole, onClose, 
             <View style={{ flex: 1 }}>
               {fromRole === 'model' ? (
                 <View style={styles.modelAgencyBanner}>
-                  <Text style={styles.modelAgencyKicker}>Du chattest mit</Text>
+                  <Text style={styles.modelAgencyKicker}>You are chatting with</Text>
                   <View style={styles.brandRow}>
                     {agencyLogoUrl ? (
                       <Image source={{ uri: agencyLogoUrl }} style={styles.agencyLogo} resizeMode="contain" />
@@ -96,7 +104,7 @@ export const BookingChatView: React.FC<Props> = ({ threadId, fromRole, onClose, 
                     )}
                     <View style={{ flex: 1 }}>
                       <Text style={styles.agencyName}>{displayAgencyName}</Text>
-                      {thread ? <Text style={styles.modelLine}>Als: {thread.modelName}</Text> : null}
+                      {thread ? <Text style={styles.modelLine}>As: {thread.modelName}</Text> : null}
                     </View>
                   </View>
                 </View>
@@ -114,11 +122,11 @@ export const BookingChatView: React.FC<Props> = ({ threadId, fromRole, onClose, 
             <View style={{ alignItems: 'flex-end', gap: spacing.xs }}>
               {fromRole === 'agency' && Platform.OS === 'web' && (
                 <TouchableOpacity onPress={copyBookingLink}>
-                  <Text style={styles.copyLinkLabel}>Link für Model</Text>
+                  <Text style={styles.copyLinkLabel}>Link for model</Text>
                 </TouchableOpacity>
               )}
               <TouchableOpacity onPress={onClose}>
-                <Text style={styles.closeLabel}>Schließen</Text>
+                <Text style={styles.closeLabel}>Close</Text>
               </TouchableOpacity>
             </View>
           </View>

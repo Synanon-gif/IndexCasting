@@ -18,6 +18,7 @@ import { colors, spacing, typography } from '../theme/theme';
 import { addApplication } from '../store/applicationsStore';
 import { uploadApplicationImage } from '../services/applicationsSupabase';
 import { useAuth } from '../context/AuthContext';
+import { splitProfileDisplayName } from '../utils/applicantNameFromProfile';
 
 type ImageSlot = 'closeUp' | 'fullBody' | 'profile';
 
@@ -36,14 +37,6 @@ const SLOT_LABELS: Record<ImageSlot, string> = {
   fullBody: 'Full body',
   profile: 'Profile',
 };
-
-function splitDisplayName(displayName: string | null | undefined): { first: string; last: string } {
-  const d = (displayName || '').trim();
-  if (!d) return { first: '', last: '' };
-  const i = d.indexOf(' ');
-  if (i === -1) return { first: d, last: '' };
-  return { first: d.slice(0, i).trim(), last: d.slice(i + 1).trim() };
-}
 
 export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const auth = useAuth();
@@ -76,20 +69,25 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
   useEffect(() => {
     if (!nameLocked || !profile?.display_name) return;
-    const { first, last } = splitDisplayName(profile.display_name);
-    setFirstName(first);
-    setLastName(last);
+    const { firstName, lastName } = splitProfileDisplayName(profile.display_name);
+    setFirstName(firstName);
+    setLastName(lastName);
   }, [nameLocked, profile?.display_name]);
 
-  const handleFileChange = (slot: ImageSlot) => (e: any) => {
-    const file = e?.target?.files?.[0];
-    if (!file) return;
+  const assignImageFile = (slot: ImageSlot, file: File) => {
+    if (!file.type.startsWith('image/')) return;
     fileRefs.current[slot] = file;
     const reader = new FileReader();
     reader.onload = () => {
       setImages((prev) => ({ ...prev, [slot]: reader.result as string }));
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleFileChange = (slot: ImageSlot) => (e: { target?: { files?: FileList | null } }) => {
+    const file = e?.target?.files?.[0];
+    if (!file) return;
+    assignImageFile(slot, file);
   };
 
   const triggerFileInput = (slot: ImageSlot) => {
@@ -109,16 +107,43 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     });
   };
 
+  /** Web: ohne dragover/drop + preventDefault navigiert der Browser zur Bild-URL statt ins Feld. */
+  const wrapImageDropZone = (slot: ImageSlot, node: React.ReactElement) => {
+    if (Platform.OS !== 'web') return node;
+    return createElement(
+      'div',
+      {
+        style: { alignSelf: 'stretch' },
+        onDragOver: (e: DragEvent) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+        },
+        onDrop: (e: DragEvent) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const file = e.dataTransfer?.files?.[0];
+          if (file) assignImageFile(slot, file);
+        },
+      },
+      node,
+    );
+  };
+
   const handleSubmit = async () => {
     setError(null);
     const ageNum = parseInt(age, 10);
     const heightNum = parseInt(height, 10);
-    if (!firstName.trim() || !lastName.trim()) {
+    if (!firstName.trim()) {
       setError(
         nameLocked
-          ? 'Your account display name is missing. Add your full name in Account settings, then try again.'
-          : 'Please enter first and last name.'
+          ? 'Im Profil fehlt der Anzeigename. Bitte unter Account einen Namen eintragen und erneut versuchen.'
+          : 'Bitte Vorname angeben.'
       );
+      return;
+    }
+    if (!nameLocked && !lastName.trim()) {
+      setError('Bitte Vor- und Nachname angeben.');
       return;
     }
     if (!age || isNaN(ageNum) || ageNum < 14 || ageNum > 99) {
@@ -224,7 +249,7 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 {[firstName, lastName].filter(Boolean).join(' ') || '—'}
               </Text>
               <Text style={styles.readonlyHint}>
-                Pulled from your account and cannot be edited during this application (identity binding).
+                Entspricht deinem Account-Namen (Profil) und kann hier nicht geändert werden. Zwei Wörter = Vor- und Nachname; ein Wort = nur Vorname.
               </Text>
             </View>
           ) : (
@@ -332,17 +357,20 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           <View key={slot} style={styles.imageField}>
             <Text style={styles.label}>{SLOT_LABELS[slot]}</Text>
             {renderFileInput(slot)}
-            <TouchableOpacity
-              style={styles.imageBox}
-              onPress={() => triggerFileInput(slot)}
-              activeOpacity={0.8}
-            >
-              {images[slot] ? (
-                <Image source={{ uri: images[slot] }} style={styles.previewImage} resizeMode="cover" />
-              ) : (
-                <Text style={styles.imagePlaceholder}>+ Photo</Text>
-              )}
-            </TouchableOpacity>
+            {wrapImageDropZone(
+              slot,
+              <TouchableOpacity
+                style={styles.imageBox}
+                onPress={() => triggerFileInput(slot)}
+                activeOpacity={0.8}
+              >
+                {images[slot] ? (
+                  <Image source={{ uri: images[slot] }} style={styles.previewImage} resizeMode="cover" />
+                ) : (
+                  <Text style={styles.imagePlaceholder}>+ Photo</Text>
+                )}
+              </TouchableOpacity>,
+            )}
           </View>
         ))}
 

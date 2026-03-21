@@ -1,5 +1,8 @@
 import { supabase } from '../../lib/supabase';
 
+const OPTION_REQUEST_SELECT =
+  'id, client_id, model_id, agency_id, requested_date, status, project_id, client_name, model_name, proposed_price, agency_counter_price, client_price_status, final_status, request_type, currency, start_time, end_time, model_approval, model_approved_at, model_account_linked, booker_id, organization_id, created_by, agency_assignee_user_id, created_at, updated_at';
+
 /**
  * Option Requests + Chat (Kunde ↔ Agentur).
  * Alle Anfragen, Nachrichten und Anhänge in Supabase:
@@ -30,6 +33,9 @@ export type SupabaseOptionRequest = {
   /** false = no models.user_id; negotiation proceeds client↔agency only */
   model_account_linked?: boolean | null;
   booker_id: string | null;
+  organization_id: string | null;
+  created_by: string | null;
+  agency_assignee_user_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -59,7 +65,7 @@ export type SupabaseOptionDocument = {
 export async function getOptionRequests(): Promise<SupabaseOptionRequest[]> {
   const { data, error } = await supabase
     .from('option_requests')
-    .select('*')
+    .select(OPTION_REQUEST_SELECT)
     .order('created_at', { ascending: false });
   if (error) { console.error('getOptionRequests error:', error); return []; }
   return (data ?? []) as SupabaseOptionRequest[];
@@ -68,7 +74,7 @@ export async function getOptionRequests(): Promise<SupabaseOptionRequest[]> {
 export async function getOptionRequestById(id: string): Promise<SupabaseOptionRequest | null> {
   const { data, error } = await supabase
     .from('option_requests')
-    .select('*')
+    .select(OPTION_REQUEST_SELECT)
     .eq('id', id)
     .maybeSingle();
   if (error) { console.error('getOptionRequestById error:', error); return null; }
@@ -78,31 +84,52 @@ export async function getOptionRequestById(id: string): Promise<SupabaseOptionRe
 export async function getOptionRequestsByProject(projectId: string): Promise<SupabaseOptionRequest[]> {
   const { data, error } = await supabase
     .from('option_requests')
-    .select('*')
+    .select(OPTION_REQUEST_SELECT)
     .eq('project_id', projectId)
     .order('created_at', { ascending: false });
   if (error) { console.error('getOptionRequestsByProject error:', error); return []; }
   return (data ?? []) as SupabaseOptionRequest[];
 }
 
-export async function getOptionRequestsForClient(clientId: string): Promise<SupabaseOptionRequest[]> {
-  const { data, error } = await supabase
-    .from('option_requests')
-    .select('*')
-    .eq('client_id', clientId)
-    .order('created_at', { ascending: false });
-  if (error) { console.error('getOptionRequestsForClient error:', error); return []; }
-  return (data ?? []) as SupabaseOptionRequest[];
+/** Sichtbare Option-Requests für die aktuelle Session (RLS: Client-Organisation / Legacy client_id). */
+export async function getOptionRequestsForCurrentClient(): Promise<SupabaseOptionRequest[]> {
+  try {
+    const { data, error } = await supabase
+      .from('option_requests')
+      .select(OPTION_REQUEST_SELECT)
+      .order('created_at', { ascending: false });
+    if (error) {
+      console.error('getOptionRequestsForCurrentClient error:', error);
+      return [];
+    }
+    return (data ?? []) as SupabaseOptionRequest[];
+  } catch (e) {
+    console.error('getOptionRequestsForCurrentClient exception:', e);
+    return [];
+  }
+}
+
+/** @deprecated Parameter wird ignoriert; nutzt RLS wie getOptionRequestsForCurrentClient. */
+export async function getOptionRequestsForClient(_clientId: string): Promise<SupabaseOptionRequest[]> {
+  return getOptionRequestsForCurrentClient();
 }
 
 export async function getOptionRequestsForAgency(agencyId: string): Promise<SupabaseOptionRequest[]> {
-  const { data, error } = await supabase
-    .from('option_requests')
-    .select('*')
-    .eq('agency_id', agencyId)
-    .order('created_at', { ascending: false });
-  if (error) { console.error('getOptionRequestsForAgency error:', error); return []; }
-  return (data ?? []) as SupabaseOptionRequest[];
+  try {
+    const { data, error } = await supabase
+      .from('option_requests')
+      .select(OPTION_REQUEST_SELECT)
+      .eq('agency_id', agencyId)
+      .order('created_at', { ascending: false });
+    if (error) {
+      console.error('getOptionRequestsForAgency error:', error);
+      return [];
+    }
+    return (data ?? []) as SupabaseOptionRequest[];
+  } catch (e) {
+    console.error('getOptionRequestsForAgency exception:', e);
+    return [];
+  }
 }
 
 export async function insertOptionRequest(req: {
@@ -118,6 +145,8 @@ export async function insertOptionRequest(req: {
   currency?: string;
   start_time?: string;
   end_time?: string;
+  organization_id?: string | null;
+  created_by?: string | null;
 }): Promise<SupabaseOptionRequest | null> {
   const { data: modelRow } = await supabase
     .from('models')
@@ -150,8 +179,10 @@ export async function insertOptionRequest(req: {
       model_approval: modelApproval,
       model_approved_at: modelApprovedAt,
       model_account_linked: modelAccountLinked,
+      organization_id: req.organization_id ?? null,
+      created_by: req.created_by ?? null,
     })
-    .select()
+    .select(OPTION_REQUEST_SELECT)
     .single();
   if (error) { console.error('insertOptionRequest error:', error); return null; }
   return data as SupabaseOptionRequest;
@@ -167,6 +198,63 @@ export async function updateOptionRequestStatus(
     .eq('id', id);
   if (error) { console.error('updateOptionRequestStatus error:', error); return false; }
   return true;
+}
+
+/** Datum/Zeit der Option (Client/Agentur). Trigger sync_option_dates_to_calendars pflegt Kalender + gespiegelte Events. */
+export async function updateOptionRequestSchedule(
+  id: string,
+  fields: { requested_date: string; start_time?: string | null; end_time?: string | null }
+): Promise<boolean> {
+  try {
+    const dateNorm = fields.requested_date.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateNorm)) {
+      console.error('updateOptionRequestSchedule: invalid date');
+      return false;
+    }
+    const { error } = await supabase
+      .from('option_requests')
+      .update({
+        requested_date: dateNorm,
+        start_time: fields.start_time ?? null,
+        end_time: fields.end_time ?? null,
+      })
+      .eq('id', id);
+    if (error) {
+      console.error('updateOptionRequestSchedule error:', error);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('updateOptionRequestSchedule exception:', e);
+    return false;
+  }
+}
+
+/** Model: nur Datum/Zeit, RPC in DB (migration_calendar_reschedule_sync.sql). */
+export async function modelUpdateOptionSchedule(
+  optionId: string,
+  date: string,
+  startTime?: string | null,
+  endTime?: string | null
+): Promise<boolean> {
+  try {
+    const d = date.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;
+    const { error } = await supabase.rpc('model_update_option_schedule', {
+      p_option_id: optionId,
+      p_date: d,
+      p_start: startTime ?? '',
+      p_end: endTime ?? '',
+    });
+    if (error) {
+      console.error('modelUpdateOptionSchedule error:', error);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('modelUpdateOptionSchedule exception:', e);
+    return false;
+  }
 }
 
 export async function setAgencyCounterOffer(
@@ -246,13 +334,30 @@ export async function addOptionMessage(
   fromRole: 'client' | 'agency',
   text: string
 ): Promise<SupabaseOptionMessage | null> {
-  const { data, error } = await supabase
-    .from('option_request_messages')
-    .insert({ option_request_id: requestId, from_role: fromRole, text })
-    .select()
-    .single();
-  if (error) { console.error('addOptionMessage error:', error); return null; }
-  return data as SupabaseOptionMessage;
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    const { data, error } = await supabase
+      .from('option_request_messages')
+      .insert({ option_request_id: requestId, from_role: fromRole, text })
+      .select('id, option_request_id, from_role, text, booker_id, booker_name, created_at')
+      .single();
+    if (error) {
+      console.error('addOptionMessage error:', error);
+      return null;
+    }
+    if (fromRole === 'agency' && user?.id) {
+      const { error: claimErr } = await supabase
+        .from('option_requests')
+        .update({ agency_assignee_user_id: user.id })
+        .eq('id', requestId)
+        .is('agency_assignee_user_id', null);
+      if (claimErr) console.error('addOptionMessage claim assignee error:', claimErr);
+    }
+    return data as SupabaseOptionMessage;
+  } catch (e) {
+    console.error('addOptionMessage exception:', e);
+    return null;
+  }
 }
 
 export async function updateModelApproval(
@@ -273,7 +378,7 @@ export async function updateModelApproval(
 export async function getOptionRequestsForModel(modelId: string): Promise<SupabaseOptionRequest[]> {
   const { data, error } = await supabase
     .from('option_requests')
-    .select('*')
+    .select(OPTION_REQUEST_SELECT)
     .eq('model_id', modelId)
     .order('created_at', { ascending: false });
   if (error) { console.error('getOptionRequestsForModel error:', error); return []; }

@@ -1,6 +1,10 @@
 import { supabase } from '../../lib/supabase';
 import type { SupabaseOptionRequest } from './optionRequestsSupabase';
 
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.trim());
+}
+
 export type CalendarEntryType =
   | 'personal'
   | 'gosee'
@@ -92,29 +96,74 @@ export async function upsertCalendarEntry(
     option_request_id?: string;
     client_name?: string;
     booking_details?: BookingDetails;
+    note?: string;
   }
 ): Promise<boolean> {
-  const { error } = await supabase
-    .from('calendar_entries')
-    .upsert(
-      {
-        model_id: modelId,
-        date,
-        status,
-        note: note || null,
-        start_time: options?.start_time || null,
-        end_time: options?.end_time || null,
-        title: options?.title || null,
-        entry_type: options?.entry_type || 'personal',
-        created_by_agency: options?.created_by_agency ?? null,
-        option_request_id: options?.option_request_id ?? null,
-        client_name: options?.client_name ?? null,
-        booking_details: options?.booking_details ?? null,
-      },
-      { onConflict: 'model_id,date' }
-    );
-  if (error) { console.error('upsertCalendarEntry error:', error); return false; }
-  return true;
+  const rowPayload = {
+    model_id: modelId,
+    date,
+    status,
+    note: (note ?? options?.note) || null,
+    start_time: options?.start_time || null,
+    end_time: options?.end_time || null,
+    title: options?.title || null,
+    entry_type: options?.entry_type || 'personal',
+    created_by_agency: options?.created_by_agency ?? null,
+    option_request_id: options?.option_request_id ?? null,
+    client_name: options?.client_name ?? null,
+    booking_details: options?.booking_details ?? null,
+  };
+  try {
+    if (options?.option_request_id) {
+      const { data: existing, error: selErr } = await supabase
+        .from('calendar_entries')
+        .select('id')
+        .eq('option_request_id', options.option_request_id)
+        .maybeSingle();
+      if (selErr) {
+        console.error('upsertCalendarEntry select option error:', selErr);
+        return false;
+      }
+      if (existing?.id) {
+        const { error } = await supabase.from('calendar_entries').update(rowPayload).eq('id', existing.id);
+        if (error) {
+          console.error('upsertCalendarEntry update option row error:', error);
+          return false;
+        }
+        return true;
+      }
+    } else {
+      const { data: existing, error: selErr } = await supabase
+        .from('calendar_entries')
+        .select('id')
+        .eq('model_id', modelId)
+        .eq('date', date)
+        .is('option_request_id', null)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (selErr) {
+        console.error('upsertCalendarEntry select personal error:', selErr);
+        return false;
+      }
+      if (existing?.id) {
+        const { error } = await supabase.from('calendar_entries').update(rowPayload).eq('id', existing.id);
+        if (error) {
+          console.error('upsertCalendarEntry update personal error:', error);
+          return false;
+        }
+        return true;
+      }
+    }
+    const inserted = await insertCalendarEntry(modelId, date, status, {
+      ...options,
+      note: (note ?? options?.note) || undefined,
+    });
+    return inserted != null;
+  } catch (e) {
+    console.error('upsertCalendarEntry exception:', e);
+    return false;
+  }
 }
 
 export async function insertCalendarEntry(
@@ -165,6 +214,43 @@ export async function deleteCalendarEntry(modelId: string, date: string): Promis
   return true;
 }
 
+export async function updateCalendarEntryById(
+  entryId: string,
+  updates: Partial<
+    Pick<CalendarEntry, 'date' | 'start_time' | 'end_time' | 'title' | 'note' | 'status'>
+  >
+): Promise<boolean> {
+  try {
+    if (updates.date != null && !/^\d{4}-\d{2}-\d{2}$/.test(String(updates.date).trim())) {
+      console.error('updateCalendarEntryById: invalid date');
+      return false;
+    }
+    const { error } = await supabase.from('calendar_entries').update(updates).eq('id', entryId);
+    if (error) {
+      console.error('updateCalendarEntryById error:', error);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('updateCalendarEntryById exception:', e);
+    return false;
+  }
+}
+
+export async function deleteCalendarEntryById(entryId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase.from('calendar_entries').delete().eq('id', entryId);
+    if (error) {
+      console.error('deleteCalendarEntryById error:', error);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('deleteCalendarEntryById exception:', e);
+    return false;
+  }
+}
+
 /** Set calendar entries linked to this option_request to Job (booking) type and title. */
 export async function updateCalendarEntryToJob(optionRequestId: string): Promise<boolean> {
   const { data: rows, error: selErr } = await supabase
@@ -188,6 +274,10 @@ export async function getCalendarEntriesForModel(modelId: string): Promise<Calen
 
 /** Optionen/Jobs/Castings des Kunden – aus Supabase (option_requests + calendar_entries), pro client_id gespeichert. */
 export async function getCalendarEntriesForClient(clientId: string): Promise<ClientCalendarItem[]> {
+  if (!isUuid(clientId)) {
+    console.warn('getCalendarEntriesForClient: clientId must be auth user UUID');
+    return [];
+  }
   const { data: options, error: optError } = await supabase
     .from('option_requests')
     .select('*')
@@ -218,6 +308,10 @@ export async function getCalendarEntriesForClient(clientId: string): Promise<Cli
 
 /** Optionen/Jobs/Castings der Agentur – aus Supabase (option_requests + calendar_entries), pro agency_id gespeichert. */
 export async function getCalendarEntriesForAgency(agencyId: string): Promise<AgencyCalendarItem[]> {
+  if (!isUuid(agencyId)) {
+    console.warn('getCalendarEntriesForAgency: agencyId must be UUID');
+    return [];
+  }
   const { data: options, error: optError } = await supabase
     .from('option_requests')
     .select('*')

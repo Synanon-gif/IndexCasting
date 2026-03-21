@@ -21,6 +21,7 @@ import {
   appendSharedBookingNote,
   type SharedBookingNote,
 } from '../services/calendarSupabase';
+import { updateOptionRequestSchedule } from '../services/optionRequestsSupabase';
 import {
   getManualEventsForOwner,
   insertManualEvent,
@@ -62,6 +63,15 @@ import {
 } from '../store/optionRequests';
 import { getConnectedAgencyIdsForClient, sendConnectionRequest, getConnectionsForClient, acceptConnection, subscribeConnections } from '../store/connectionsStore';
 import { sendAgencyInvitation } from '../services/optionRequestsSupabase';
+import {
+  ensureClientOrganization,
+  listOrganizationMembers,
+  listInvitationsForOrganization,
+  createOrganizationInvitation,
+  buildOrganizationInviteUrl,
+  type InvitationRow,
+} from '../services/organizationsInvitationsSupabase';
+import { supabase } from '../../lib/supabase';
 import { MonthCalendarView, type CalendarDayEvent } from '../components/MonthCalendarView';
 
 type TopTab = 'discover' | 'projects' | 'agencies' | 'messages' | 'calendar';
@@ -216,12 +226,58 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   const [selectedCalendarItem, setSelectedCalendarItem] = useState<ClientCalendarItem | null>(null);
   const [selectedManualEvent, setSelectedManualEvent] = useState<UserCalendarEvent | null>(null);
   const [showAddManualEvent, setShowAddManualEvent] = useState(false);
-  const [newEventForm, setNewEventForm] = useState({ date: '', start_time: '09:00', end_time: '17:00', title: '', color: MANUAL_EVENT_COLORS[0] });
+  const [newEventForm, setNewEventForm] = useState({
+    date: '',
+    start_time: '09:00',
+    end_time: '17:00',
+    title: '',
+    note: '',
+    color: MANUAL_EVENT_COLORS[0],
+  });
   const [savingManualEvent, setSavingManualEvent] = useState(false);
   const [clientNotesDraft, setClientNotesDraft] = useState('');
   const [savingNotes, setSavingNotes] = useState(false);
   const [clientSharedNoteDraft, setClientSharedNoteDraft] = useState('');
   const [savingSharedNoteClient, setSavingSharedNoteClient] = useState(false);
+  const [bookingScheduleDraft, setBookingScheduleDraft] = useState({
+    date: '',
+    start_time: '09:00',
+    end_time: '17:00',
+  });
+  const [savingBookingSchedule, setSavingBookingSchedule] = useState(false);
+  const [manualEventEditDraft, setManualEventEditDraft] = useState({
+    title: '',
+    date: '',
+    start_time: '09:00',
+    end_time: '17:00',
+    note: '',
+    color: MANUAL_EVENT_COLORS[0],
+  });
+  const [savingManualEventEdit, setSavingManualEventEdit] = useState(false);
+
+  useEffect(() => {
+    if (!selectedCalendarItem) return;
+    const o = selectedCalendarItem.option;
+    const ce = selectedCalendarItem.calendar_entry;
+    const d = (ce?.date || o.requested_date || '').toString().slice(0, 10);
+    setBookingScheduleDraft({
+      date: d,
+      start_time: (ce?.start_time ?? o.start_time ?? '09:00').toString().slice(0, 5),
+      end_time: (ce?.end_time ?? o.end_time ?? '17:00').toString().slice(0, 5),
+    });
+  }, [selectedCalendarItem?.option.id]);
+
+  useEffect(() => {
+    if (!selectedManualEvent) return;
+    setManualEventEditDraft({
+      title: selectedManualEvent.title,
+      date: selectedManualEvent.date,
+      start_time: selectedManualEvent.start_time ?? '09:00',
+      end_time: selectedManualEvent.end_time ?? '17:00',
+      note: selectedManualEvent.note ?? '',
+      color: selectedManualEvent.color,
+    });
+  }, [selectedManualEvent?.id]);
 
   useEffect(() => {
     if (!navigator.geolocation) return;
@@ -276,15 +332,23 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   }, [filters.size, filters.location, filters.onlyConnectedAgencies]);
 
   const auth = useAuth();
-  const effectiveClientId = (auth?.profile?.role === 'client' ? auth?.profile?.id : null) ?? 'user-client';
-  const isRealClient = auth?.profile?.role === 'client' && !!auth?.profile?.id;
+  /** Nur echte Auth-UUID – Supabase erwartet UUID für client_id / owner_id (kein Demo-String „user-client“). */
+  const realClientId =
+    auth?.profile?.role === 'client' && auth.profile.id ? auth.profile.id : null;
+  const isRealClient = !!realClientId;
+  const effectiveClientId = realClientId ?? 'user-client';
 
   const loadClientCalendar = async () => {
+    if (!realClientId) {
+      setCalendarItems([]);
+      setManualCalendarEvents([]);
+      return;
+    }
     setCalendarLoading(true);
     try {
       const [items, manual] = await Promise.all([
-        getCalendarEntriesForClient(effectiveClientId),
-        getManualEventsForOwner(effectiveClientId, 'client'),
+        getCalendarEntriesForClient(realClientId),
+        getManualEventsForOwner(realClientId, 'client'),
       ]);
       setCalendarItems(items);
       setManualCalendarEvents(manual);
@@ -297,11 +361,13 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     if (tab === 'calendar') {
       loadClientCalendar();
     }
-  }, [tab, effectiveClientId]);
+  }, [tab, realClientId]);
 
   useEffect(() => {
-    loadOptionRequestsForClient(effectiveClientId);
-  }, [effectiveClientId]);
+    if (realClientId) {
+      loadOptionRequestsForClient();
+    }
+  }, [realClientId]);
 
   useEffect(() => {
     getModelsForClient(clientType).then((data: any[]) => {
@@ -632,26 +698,46 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         {tab === 'agencies' && <AgenciesView />}
 
         {tab === 'calendar' && (
-          <ClientCalendarView
-            items={calendarItems}
-            manualEvents={manualCalendarEvents}
-            loading={calendarLoading}
-            canAddManualEvents={isRealClient}
-            onRefresh={loadClientCalendar}
-            onOpenDetails={(item) => {
-              setSelectedCalendarItem(item);
-              setSelectedManualEvent(null);
-              const existing =
-                (item.calendar_entry?.booking_details as any)?.client_notes ??
-                '';
-              setClientNotesDraft(existing);
-            }}
-            onOpenManualEvent={(ev) => {
-              setSelectedManualEvent(ev);
-              setSelectedCalendarItem(null);
-            }}
-            onAddEvent={() => isRealClient && setShowAddManualEvent(true)}
-          />
+          <View style={{ flex: 1 }}>
+            {!isRealClient ? (
+              <View
+                style={{
+                  padding: spacing.md,
+                  marginBottom: spacing.sm,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  backgroundColor: colors.surface,
+                }}
+              >
+                <Text style={{ ...typography.body, fontSize: 13, color: colors.textPrimary }}>
+                  <Text style={{ fontWeight: '600' }}>Kalender speichern:</Text> Bitte mit einem Account anmelden, dessen Profil-Rolle{' '}
+                  <Text style={{ fontWeight: '600' }}>Client</Text> ist. Ohne gültige Login-UUID können keine Einträge in Supabase geschrieben
+                  werden (Demo-Modus „user-client“ ist kein UUID).
+                </Text>
+              </View>
+            ) : null}
+            <ClientCalendarView
+              items={calendarItems}
+              manualEvents={manualCalendarEvents}
+              loading={calendarLoading}
+              canAddManualEvents={isRealClient}
+              onRefresh={loadClientCalendar}
+              onOpenDetails={(item) => {
+                setSelectedCalendarItem(item);
+                setSelectedManualEvent(null);
+                const existing =
+                  (item.calendar_entry?.booking_details as any)?.client_notes ??
+                  '';
+                setClientNotesDraft(existing);
+              }}
+              onOpenManualEvent={(ev) => {
+                setSelectedManualEvent(ev);
+                setSelectedCalendarItem(null);
+              }}
+              onAddEvent={() => isRealClient && setShowAddManualEvent(true)}
+            />
+          </View>
         )}
 
         {tab === 'messages' && (
@@ -718,6 +804,72 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                 </View>
               );
             })()}
+            <View style={{ marginTop: spacing.md }}>
+              <Text style={styles.sectionLabel}>Termin verschieben</Text>
+              <Text style={[styles.metaText, { marginBottom: spacing.sm }]}>
+                Datum und Uhrzeit werden für alle Parteien übernommen (Option + Kalender), sobald die Migration{' '}
+                <Text style={{ fontWeight: '600' }}>migration_calendar_reschedule_sync.sql</Text> in Supabase aktiv ist.
+              </Text>
+              <Text style={{ ...typography.label, marginBottom: 4 }}>Date (YYYY-MM-DD)</Text>
+              <TextInput
+                value={bookingScheduleDraft.date}
+                onChangeText={(t) => setBookingScheduleDraft((p) => ({ ...p, date: t }))}
+                placeholderTextColor={colors.textSecondary}
+                style={styles.input}
+              />
+              <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ ...typography.label, marginBottom: 4 }}>From</Text>
+                  <TextInput
+                    value={bookingScheduleDraft.start_time}
+                    onChangeText={(t) => setBookingScheduleDraft((p) => ({ ...p, start_time: t }))}
+                    placeholderTextColor={colors.textSecondary}
+                    style={styles.input}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ ...typography.label, marginBottom: 4 }}>To</Text>
+                  <TextInput
+                    value={bookingScheduleDraft.end_time}
+                    onChangeText={(t) => setBookingScheduleDraft((p) => ({ ...p, end_time: t }))}
+                    placeholderTextColor={colors.textSecondary}
+                    style={styles.input}
+                  />
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={async () => {
+                  if (!selectedCalendarItem || !bookingScheduleDraft.date.trim()) return;
+                  setSavingBookingSchedule(true);
+                  try {
+                    const ok = await updateOptionRequestSchedule(selectedCalendarItem.option.id, {
+                      requested_date: bookingScheduleDraft.date.trim(),
+                      start_time: bookingScheduleDraft.start_time.trim() || null,
+                      end_time: bookingScheduleDraft.end_time.trim() || null,
+                    });
+                    if (ok && realClientId) {
+                      await loadClientCalendar();
+                      await loadOptionRequestsForClient();
+                      const items = await getCalendarEntriesForClient(realClientId);
+                      const next = items.find((x) => x.option.id === selectedCalendarItem.option.id);
+                      if (next) setSelectedCalendarItem(next);
+                      Alert.alert('Gespeichert', 'Termin wurde aktualisiert.');
+                    } else {
+                      Alert.alert('Fehler', 'Termin konnte nicht gespeichert werden.');
+                    }
+                  } finally {
+                    setSavingBookingSchedule(false);
+                  }
+                }}
+                style={[
+                  styles.primaryButton,
+                  { marginTop: spacing.sm, alignSelf: 'flex-end', opacity: savingBookingSchedule ? 0.6 : 1 },
+                ]}
+                disabled={savingBookingSchedule}
+              >
+                <Text style={styles.primaryLabel}>{savingBookingSchedule ? 'Speichern…' : 'Termin speichern'}</Text>
+              </TouchableOpacity>
+            </View>
             {selectedCalendarItem.calendar_entry ? (
               <View style={{ marginTop: spacing.md }}>
                 <Text style={styles.sectionLabel}>Shared notes</Text>
@@ -763,10 +915,10 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                         'client',
                         clientSharedNoteDraft,
                       );
-                      if (ok) {
+                      if (ok && realClientId) {
                         setClientSharedNoteDraft('');
                         await loadClientCalendar();
-                        const items = await getCalendarEntriesForClient(effectiveClientId);
+                        const items = await getCalendarEntriesForClient(realClientId);
                         const next = items.find((x) => x.option.id === selectedCalendarItem.option.id);
                         if (next) setSelectedCalendarItem(next);
                       }
@@ -901,6 +1053,14 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                 <TextInput value={newEventForm.end_time} onChangeText={(t) => setNewEventForm((f) => ({ ...f, end_time: t }))} placeholderTextColor={colors.textSecondary} style={styles.input} />
               </View>
             </View>
+            <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>Note (private)</Text>
+            <TextInput
+              value={newEventForm.note}
+              onChangeText={(t) => setNewEventForm((f) => ({ ...f, note: t }))}
+              multiline
+              placeholderTextColor={colors.textSecondary}
+              style={[styles.input, { minHeight: 64, textAlignVertical: 'top', borderRadius: 12 }]}
+            />
             <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>Color</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {MANUAL_EVENT_COLORS.map((c) => (
@@ -915,10 +1075,35 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                 style={[styles.primaryButton, { flex: 1 }]}
                 disabled={!newEventForm.title.trim() || !newEventForm.date.trim() || savingManualEvent}
                 onPress={async () => {
+                  if (!realClientId) {
+                    Alert.alert('Anmeldung nötig', 'Bitte als Kunde (Client) anmelden – Kalendereinträge brauchen eine gültige Benutzer-ID.');
+                    return;
+                  }
                   setSavingManualEvent(true);
-                  const created = await insertManualEvent({ owner_id: effectiveClientId, owner_type: 'client', ...newEventForm });
+                  const clientOrgId = await ensureClientOrganization();
+                  const { data: calUser } = await supabase.auth.getUser();
+                  const result = await insertManualEvent({
+                    owner_id: realClientId,
+                    owner_type: 'client',
+                    organization_id: clientOrgId,
+                    created_by: calUser.user?.id ?? null,
+                    ...newEventForm,
+                  });
                   setSavingManualEvent(false);
-                  if (created) { await loadClientCalendar(); setShowAddManualEvent(false); setNewEventForm({ date: '', start_time: '09:00', end_time: '17:00', title: '', color: MANUAL_EVENT_COLORS[0] }); }
+                  if (result.ok) {
+                    await loadClientCalendar();
+                    setShowAddManualEvent(false);
+                    setNewEventForm({
+                      date: '',
+                      start_time: '09:00',
+                      end_time: '17:00',
+                      title: '',
+                      note: '',
+                      color: MANUAL_EVENT_COLORS[0],
+                    });
+                  } else {
+                    Alert.alert('Event not saved', result.errorMessage || 'Please check the date (YYYY-MM-DD) and try again.');
+                  }
                 }}
               >
                 <Text style={styles.primaryLabel}>Add</Text>
@@ -932,14 +1117,109 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         <View style={styles.detailOverlay}>
           <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setSelectedManualEvent(null)} />
           <View style={[styles.detailCard, { maxWidth: 400 }]}>
-            <Text style={styles.detailTitle}>{selectedManualEvent.title}</Text>
-            <Text style={styles.metaText}>{selectedManualEvent.date} · {selectedManualEvent.start_time || '—'}{selectedManualEvent.end_time ? ` – ${selectedManualEvent.end_time}` : ''}</Text>
-            {selectedManualEvent.note ? <Text style={{ ...typography.body, marginTop: spacing.sm }}>{selectedManualEvent.note}</Text> : null}
-            <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg }}>
-              <TouchableOpacity style={[styles.filterPill, { flex: 1 }]} onPress={async () => { if (await deleteManualEvent(selectedManualEvent.id)) { await loadClientCalendar(); setSelectedManualEvent(null); } }}>
+            <Text style={styles.detailTitle}>Event bearbeiten</Text>
+            <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>Title</Text>
+            <TextInput
+              value={manualEventEditDraft.title}
+              onChangeText={(t) => setManualEventEditDraft((p) => ({ ...p, title: t }))}
+              placeholderTextColor={colors.textSecondary}
+              style={styles.input}
+            />
+            <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>Date (YYYY-MM-DD)</Text>
+            <TextInput
+              value={manualEventEditDraft.date}
+              onChangeText={(t) => setManualEventEditDraft((p) => ({ ...p, date: t }))}
+              placeholderTextColor={colors.textSecondary}
+              style={styles.input}
+            />
+            <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ ...typography.label, marginBottom: 4 }}>From</Text>
+                <TextInput
+                  value={manualEventEditDraft.start_time}
+                  onChangeText={(t) => setManualEventEditDraft((p) => ({ ...p, start_time: t }))}
+                  placeholderTextColor={colors.textSecondary}
+                  style={styles.input}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ ...typography.label, marginBottom: 4 }}>To</Text>
+                <TextInput
+                  value={manualEventEditDraft.end_time}
+                  onChangeText={(t) => setManualEventEditDraft((p) => ({ ...p, end_time: t }))}
+                  placeholderTextColor={colors.textSecondary}
+                  style={styles.input}
+                />
+              </View>
+            </View>
+            <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>Note (private)</Text>
+            <TextInput
+              value={manualEventEditDraft.note}
+              onChangeText={(t) => setManualEventEditDraft((p) => ({ ...p, note: t }))}
+              multiline
+              placeholderTextColor={colors.textSecondary}
+              style={[styles.input, { minHeight: 72, textAlignVertical: 'top', borderRadius: 12 }]}
+            />
+            <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>Color</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {MANUAL_EVENT_COLORS.map((c) => (
+                <TouchableOpacity
+                  key={c}
+                  onPress={() => setManualEventEditDraft((p) => ({ ...p, color: c }))}
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 14,
+                    backgroundColor: c,
+                    borderWidth: manualEventEditDraft.color === c ? 2 : 0,
+                    borderColor: colors.textPrimary,
+                  }}
+                />
+              ))}
+            </View>
+            <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg, flexWrap: 'wrap' }}>
+              <TouchableOpacity
+                style={[styles.primaryButton, { flex: 1, minWidth: 120, opacity: savingManualEventEdit ? 0.6 : 1 }]}
+                disabled={savingManualEventEdit || !manualEventEditDraft.title.trim()}
+                onPress={async () => {
+                  if (!selectedManualEvent) return;
+                  setSavingManualEventEdit(true);
+                  try {
+                    const ok = await updateManualEvent(selectedManualEvent.id, {
+                      title: manualEventEditDraft.title.trim(),
+                      date: manualEventEditDraft.date.trim(),
+                      start_time: manualEventEditDraft.start_time.trim() || null,
+                      end_time: manualEventEditDraft.end_time.trim() || null,
+                      note: manualEventEditDraft.note.trim() || null,
+                      color: manualEventEditDraft.color,
+                    });
+                    if (ok) {
+                      await loadClientCalendar();
+                      setSelectedManualEvent(null);
+                      Alert.alert('Gespeichert', 'Kalendereintrag wurde aktualisiert.');
+                    } else {
+                      Alert.alert('Fehler', 'Speichern fehlgeschlagen (Datum YYYY-MM-DD prüfen).');
+                    }
+                  } finally {
+                    setSavingManualEventEdit(false);
+                  }
+                }}
+              >
+                <Text style={styles.primaryLabel}>{savingManualEventEdit ? '…' : 'Save'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.filterPill, { flex: 1, minWidth: 100 }]}
+                onPress={async () => {
+                  if (!selectedManualEvent) return;
+                  if (await deleteManualEvent(selectedManualEvent.id)) {
+                    await loadClientCalendar();
+                    setSelectedManualEvent(null);
+                  }
+                }}
+              >
                 <Text style={[styles.filterPillLabel, { color: colors.buttonSkipRed }]}>Delete</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.filterPill, { flex: 1 }]} onPress={() => setSelectedManualEvent(null)}>
+              <TouchableOpacity style={[styles.filterPill, { flex: 1, minWidth: 100 }]} onPress={() => setSelectedManualEvent(null)}>
                 <Text style={styles.filterPillLabel}>Close</Text>
               </TouchableOpacity>
             </View>
@@ -948,7 +1228,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       )}
 
       {settingsOpen && (
-        <SettingsPanel onClose={() => setSettingsOpen(false)} />
+        <SettingsPanel realClientId={realClientId} onClose={() => setSettingsOpen(false)} />
       )}
 
       {!isSharedMode && (
@@ -2480,7 +2760,10 @@ const ProjectPicker: React.FC<ProjectPickerProps> = ({
   );
 };
 
-const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void }> = ({
+  realClientId,
+  onClose,
+}) => {
   const { signOut } = useAuth();
   const [displayName, setDisplayName] = useState('');
   const [companyName, setCompanyName] = useState('');
@@ -2489,12 +2772,32 @@ const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const [instagram, setInstagram] = useState('');
   const [linkedin, setLinkedin] = useState('');
   const [saved, setSaved] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<'profile' | 'bookers'>('profile');
-  const [bookersList, setBookersList] = useState<Array<{id: string; display_name: string; email: string | null; is_master: boolean; bookings_completed: number}>>([]);
-  const [newBookerName, setNewBookerName] = useState('');
-  const [newBookerEmail, setNewBookerEmail] = useState('');
-  const [newBookerMaster, setNewBookerMaster] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<'profile' | 'team'>('profile');
+  const [organizationId, setOrganizationId] = useState<string | null>(null);
+  const [teamMembers, setTeamMembers] = useState<Awaited<ReturnType<typeof listOrganizationMembers>>>([]);
+  const [invitations, setInvitations] = useState<InvitationRow[]>([]);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [isClientOwner, setIsClientOwner] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  const loadTeam = async () => {
+    if (!realClientId) return;
+    const oid = await ensureClientOrganization();
+    setOrganizationId(oid);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (oid && user?.id) {
+      const members = await listOrganizationMembers(oid);
+      setTeamMembers(members);
+      setInvitations(await listInvitationsForOrganization(oid));
+      const self = members.find((m) => m.user_id === user.id);
+      setIsClientOwner(self?.role === 'owner');
+    } else {
+      setTeamMembers([]);
+      setInvitations([]);
+      setIsClientOwner(false);
+    }
+  };
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -2511,10 +2814,11 @@ const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         }
       } catch {}
     }
-    import('../services/bookersSupabase').then(({ getBookersForClient }) => {
-      getBookersForClient('user-client').then(setBookersList as any);
-    });
   }, []);
+
+  useEffect(() => {
+    if (realClientId && settingsTab === 'team') void loadTeam();
+  }, [realClientId, settingsTab]);
 
   const handleSave = () => {
     if (typeof window !== 'undefined') {
@@ -2526,20 +2830,25 @@ const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     setTimeout(() => setSaved(false), 2000);
   };
 
-  const handleAddBooker = async () => {
-    if (!newBookerName.trim()) return;
-    const { createBooker } = await import('../services/bookersSupabase');
-    const b = await createBooker({ client_id: 'user-client', display_name: newBookerName.trim(), email: newBookerEmail.trim() || undefined, is_master: newBookerMaster });
-    if (b) setBookersList((prev) => [...prev, b]);
-    setNewBookerName('');
-    setNewBookerEmail('');
-    setNewBookerMaster(false);
-  };
-
-  const handleDeleteBooker = async (id: string) => {
-    const { deleteBooker } = await import('../services/bookersSupabase');
-    const ok = await deleteBooker(id);
-    if (ok) setBookersList((prev) => prev.filter((b) => b.id !== id));
+  const handleInviteEmployee = async () => {
+    if (!organizationId || !inviteEmail.trim()) return;
+    setInviteBusy(true);
+    const row = await createOrganizationInvitation({
+      organizationId,
+      email: inviteEmail.trim(),
+      role: 'employee',
+    });
+    setInviteBusy(false);
+    if (row) {
+      setInviteEmail('');
+      Alert.alert(
+        'Einladung',
+        `Link: ${buildOrganizationInviteUrl(row.token)}\n\nTeile diesen Link sicher per E-Mail.`,
+      );
+      void loadTeam();
+    } else {
+      Alert.alert('Fehler', 'Einladung konnte nicht erstellt werden.');
+    }
   };
 
   const handleRequestAccountDeletion = () => {
@@ -2583,9 +2892,9 @@ const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           </TouchableOpacity>
         </View>
         <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md }}>
-          {(['profile', 'bookers'] as const).map((t) => (
+          {(['profile', 'team'] as const).map((t) => (
             <TouchableOpacity key={t} onPress={() => setSettingsTab(t)} style={{ paddingVertical: 4, paddingHorizontal: spacing.md, borderRadius: 999, borderWidth: 1, borderColor: settingsTab === t ? colors.textPrimary : colors.border, backgroundColor: settingsTab === t ? colors.textPrimary : 'transparent' }}>
-              <Text style={{ ...typography.label, fontSize: 11, color: settingsTab === t ? colors.surface : colors.textSecondary }}>{t === 'profile' ? 'Profile' : 'My Bookers'}</Text>
+              <Text style={{ ...typography.label, fontSize: 11, color: settingsTab === t ? colors.surface : colors.textSecondary }}>{t === 'profile' ? 'Profile' : 'Team'}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -2629,33 +2938,42 @@ const SettingsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           ) : (
             <>
               <Text style={{ ...typography.body, color: colors.textSecondary, fontSize: 12, marginBottom: spacing.md }}>
-                Manage bookers for your company. Each booker gets their own login and is attributed in all messages.
+                Mitarbeiter laden wir per E-Mail-Link ein; jeder legt sein Konto selbst an. Nur der Owner (Haupt-Client-Account) kann einladen.
               </Text>
-              {bookersList.map((b) => (
-                <View key={b.id} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+              {!realClientId && (
+                <Text style={{ ...typography.body, color: colors.textSecondary, fontSize: 12 }}>Bitte mit einem echten Client-Account anmelden.</Text>
+              )}
+              {teamMembers.map((m) => (
+                <View key={m.id} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border }}>
                   <View>
-                    <Text style={{ ...typography.label, color: colors.textPrimary, fontSize: 13 }}>{b.display_name} {b.is_master ? '(Master)' : ''}</Text>
-                    <Text style={{ ...typography.body, color: colors.textSecondary, fontSize: 11 }}>{b.email || 'No email'} · {b.bookings_completed} bookings</Text>
+                    <Text style={{ ...typography.label, color: colors.textPrimary, fontSize: 13 }}>
+                      {m.display_name || m.email || m.user_id.slice(0, 8)} · {m.role}
+                    </Text>
+                    <Text style={{ ...typography.body, color: colors.textSecondary, fontSize: 11 }}>{m.email || '—'}</Text>
                   </View>
-                  <TouchableOpacity onPress={() => handleDeleteBooker(b.id)}>
-                    <Text style={{ fontSize: 11, color: '#e74c3c' }}>Remove</Text>
-                  </TouchableOpacity>
                 </View>
               ))}
-              <View style={{ marginTop: spacing.md, gap: spacing.sm }}>
-                <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary }}>Add booker</Text>
-                <TextInput value={newBookerName} onChangeText={setNewBookerName} placeholder="Booker name" placeholderTextColor={colors.textSecondary} style={settingsInputStyle} />
-                <TextInput value={newBookerEmail} onChangeText={setNewBookerEmail} placeholder="Email" placeholderTextColor={colors.textSecondary} style={settingsInputStyle} />
-                <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }} onPress={() => setNewBookerMaster(!newBookerMaster)}>
-                  <View style={{ width: 18, height: 18, borderRadius: 4, borderWidth: 2, borderColor: newBookerMaster ? colors.textPrimary : colors.border, backgroundColor: newBookerMaster ? colors.textPrimary : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
-                    {newBookerMaster && <Text style={{ color: colors.surface, fontSize: 11, fontWeight: '700' }}>✓</Text>}
-                  </View>
-                  <Text style={{ ...typography.body, fontSize: 12, color: colors.textPrimary }}>Master access</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={handleAddBooker} style={{ borderRadius: 999, backgroundColor: colors.accentGreen, paddingVertical: spacing.sm, alignItems: 'center', marginTop: spacing.xs }}>
-                  <Text style={{ ...typography.label, color: colors.surface }}>Add Booker</Text>
-                </TouchableOpacity>
-              </View>
+              <Text style={{ ...typography.label, fontSize: 12, color: colors.textPrimary, marginTop: spacing.md }}>Ausstehende Einladungen</Text>
+              {invitations.filter((i) => i.status === 'pending').length === 0 ? (
+                <Text style={{ ...typography.body, color: colors.textSecondary, fontSize: 11 }}>Keine.</Text>
+              ) : (
+                invitations
+                  .filter((i) => i.status === 'pending')
+                  .map((i) => (
+                    <Text key={i.id} style={{ ...typography.body, fontSize: 11, color: colors.textSecondary }}>
+                      {i.email} · {i.role} · bis {new Date(i.expires_at).toLocaleDateString()}
+                    </Text>
+                  ))
+              )}
+              {isClientOwner && organizationId && (
+                <View style={{ marginTop: spacing.md, gap: spacing.sm }}>
+                  <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary }}>Mitarbeiter einladen</Text>
+                  <TextInput value={inviteEmail} onChangeText={setInviteEmail} placeholder="E-Mail" placeholderTextColor={colors.textSecondary} style={settingsInputStyle} autoCapitalize="none" keyboardType="email-address" />
+                  <TouchableOpacity onPress={handleInviteEmployee} disabled={inviteBusy || !inviteEmail.trim()} style={{ borderRadius: 999, backgroundColor: colors.accentGreen, paddingVertical: spacing.sm, alignItems: 'center', marginTop: spacing.xs, opacity: inviteBusy ? 0.6 : 1 }}>
+                    <Text style={{ ...typography.label, color: colors.surface }}>{inviteBusy ? '…' : 'Einladung (Link erzeugen)'}</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </>
           )}
         </ScrollView>
