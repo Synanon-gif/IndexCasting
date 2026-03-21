@@ -3,6 +3,9 @@
 # Versehentliche Nestkopie desselben Projekts (kein zweites Repo committen)
 /IndexCasting/
 
+# Editor: fälschlich angelegte „git:“-URI als Dateiname (nicht committen)
+.env.local.git*
+
 # dependencies
 node_modules/
 
