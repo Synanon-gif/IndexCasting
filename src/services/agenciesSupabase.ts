@@ -12,17 +12,47 @@ export type Agency = {
   email: string | null;
   code?: string | null;
   logo_url?: string | null;
+  description?: string | null;
+  phone?: string | null;
+  website?: string | null;
+  street?: string | null;
+  country?: string | null;
+  /** Marketing segments (Fashion, High Fashion, Commercial). */
+  agency_types?: string[] | null;
   created_at?: string;
   updated_at?: string;
 };
 
-export async function getAgencies(): Promise<Agency[]> {
+/**
+ * Creates public.agencies for the current agent email if missing (SECURITY DEFINER RPC).
+ * Do not call for invited bookers — use only when starting a new agency (no invite acceptance).
+ */
+export async function ensureAgencyRecordForCurrentAgent(): Promise<string | null> {
+  try {
+    const { data, error } = await supabase.rpc('ensure_agency_for_current_agent');
+    if (error) {
+      console.error('ensureAgencyRecordForCurrentAgent error:', error);
+      return null;
+    }
+    return typeof data === 'string' ? data : null;
+  } catch (e) {
+    console.error('ensureAgencyRecordForCurrentAgent exception:', e);
+    return null;
+  }
+}
+
+export async function getAgencies(options?: { overlapsAgencyTypes?: string[] }): Promise<Agency[]> {
   return fetchAllSupabasePages(async (from, to) => {
-    const { data, error } = await supabase
+    let q = supabase
       .from('agencies')
-      .select('id, name, city, focus, email, code, logo_url, created_at, updated_at')
-      .order('name')
-      .range(from, to);
+      .select(
+        'id, name, city, focus, email, code, logo_url, description, phone, website, street, country, agency_types, created_at, updated_at'
+      )
+      .order('name');
+    if (options?.overlapsAgencyTypes?.length) {
+      q = q.overlaps('agency_types', options.overlapsAgencyTypes);
+    }
+    const { data, error } = await q.range(from, to);
     return { data: data as Agency[] | null, error };
   });
 }
@@ -30,7 +60,9 @@ export async function getAgencies(): Promise<Agency[]> {
 export async function getAgencyById(id: string): Promise<Agency | null> {
   const { data, error } = await supabase
     .from('agencies')
-    .select('id, name, city, focus, email, code, logo_url, created_at, updated_at')
+    .select(
+      'id, name, city, focus, email, code, logo_url, description, phone, website, street, country, agency_types, created_at, updated_at'
+    )
     .eq('id', id)
     .maybeSingle();
   if (error) {

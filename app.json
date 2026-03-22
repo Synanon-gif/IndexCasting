@@ -12,7 +12,10 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "IndexCasting needs access to your photo library to upload portfolio and polaroid images for models."
+      }
     },
     "android": {
       "adaptiveIcon": {

@@ -329,5 +329,21 @@ export async function createModelFromApplication(applicationId: string): Promise
     console.error('createModelFromApplication insert error:', insertErr);
     return null;
   }
-  return (model as { id: string })?.id ?? null;
+  const modelId = (model as { id: string }).id;
+  if (imgs.length > 0 && modelId) {
+    const rows = imgs.map((url, i) => ({
+      model_id: modelId,
+      url,
+      sort_order: i,
+      visible: true,
+      photo_type: 'portfolio' as const,
+      source: 'application',
+      api_external_id: null as string | null,
+    }));
+    const { error: phErr } = await supabase.from('model_photos').insert(rows);
+    if (phErr) {
+      console.error('createModelFromApplication model_photos error:', phErr);
+    }
+  }
+  return modelId ?? null;
 }

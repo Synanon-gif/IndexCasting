@@ -14,6 +14,7 @@ import {
   getMyClientMemberRole,
   type InvitationRow,
 } from '../services/organizationsInvitationsSupabase';
+import { uiCopy } from '../constants/uiCopy';
 
 const inputStyle = {
   borderWidth: 1,
@@ -132,9 +133,9 @@ export const ClientOrganizationTeamSection: React.FC<{
 
   return (
     <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-      <Text style={styles.lead}>
-        Employees receive a secure invite link and create their own account. Only the organization owner can invite
-        new members.
+      <Text style={styles.lead}>{uiCopy.team.leadClient}</Text>
+      <Text style={[styles.lead, { marginTop: spacing.sm }]}>
+        {uiCopy.team.ownerRoleExplainerClient}
       </Text>
 
       <Text style={styles.sectionTitle}>Team members</Text>

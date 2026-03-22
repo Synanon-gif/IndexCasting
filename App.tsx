@@ -24,7 +24,12 @@ import {
   acceptOrganizationInvitation,
   type InvitationPreview,
 } from './src/services/organizationsInvitationsSupabase';
-import { persistInviteToken, readInviteToken } from './src/storage/inviteToken';
+import {
+  persistInviteToken,
+  readInviteToken,
+  markInviteFlowFromUrl,
+  isInviteFlowActive,
+} from './src/storage/inviteToken';
 import { uiCopy } from './src/constants/uiCopy';
 
 /** Web: volle Höhe sofort beim Modul-Load (vor erstem React-Paint) – verhindert weißen/leeren Screen. */
@@ -119,9 +124,24 @@ function AppContent() {
     saveClientType(value);
   };
 
+  /** Drop stray invite tokens when this load is not part of an invite flow (e.g. Supabase email-confirm redirect). */
+  useEffect(() => {
+    void (async () => {
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        const fromUrl = new URLSearchParams(window.location.search).get('invite');
+        if (fromUrl) return;
+      }
+      if (await isInviteFlowActive()) return;
+      await persistInviteToken(null);
+    })();
+  }, []);
+
   useEffect(() => {
     if (!inviteTokenState) return;
-    void persistInviteToken(inviteTokenState);
+    void (async () => {
+      await persistInviteToken(inviteTokenState);
+      await markInviteFlowFromUrl();
+    })();
     let cancelled = false;
     setInvitePreviewLoading(true);
     getInvitationPreview(inviteTokenState)
@@ -142,7 +162,8 @@ function AppContent() {
   }, [inviteTokenState]);
 
   const tryAcceptInviteAfterSession = useCallback(async () => {
-    const tok = inviteTokenState ?? (await readInviteToken());
+    const tok =
+      inviteTokenState ?? ((await isInviteFlowActive()) ? await readInviteToken() : null);
     if (!tok) return;
     const r = await acceptOrganizationInvitation(tok);
     if (r.ok) {
@@ -214,10 +235,10 @@ function AppContent() {
       invitePreview?.org_type === 'agency' ? 'agent' : invitePreview?.org_type === 'client' ? 'client' : undefined;
     const inviteRoleLabel =
       invitePreview?.invite_role === 'booker'
-        ? 'Booker'
+        ? uiCopy.invite.roleBookerAgency
         : invitePreview?.invite_role === 'employee'
-          ? 'Mitarbeiter'
-          : 'Mitglied';
+          ? uiCopy.invite.roleEmployeeClient
+          : uiCopy.invite.roleMember;
 
     if (inviteTokenState && inviteAuthPhase === 'gate' && (invitePreviewLoading || invitePreview)) {
       return (
@@ -245,6 +266,7 @@ function AppContent() {
         <AuthScreen
           initialMode={inviteAuthMode}
           onDemoLogin={(r) => setDemoRole(r)}
+          clearStaleInviteOnSignIn={!inviteTokenState}
           inviteAuth={
             inviteTokenState && invitePreview && inviteLockedRole
               ? {
@@ -263,7 +285,7 @@ function AppContent() {
   if (!effectiveRole) {
     return (
       <>
-        <AuthScreen onDemoLogin={(r) => setDemoRole(r)} />
+        <AuthScreen onDemoLogin={(r) => setDemoRole(r)} clearStaleInviteOnSignIn={!inviteTokenState} />
         <StatusBar style="dark" />
       </>
     );

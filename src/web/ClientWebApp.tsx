@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -11,10 +11,12 @@ import {
   Alert,
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
+import { showAppAlert } from '../utils/crossPlatformAlert';
 import { uiCopy } from '../constants/uiCopy';
 import { useAuth } from '../context/AuthContext';
 import { getModelsForClient, getModelData } from '../services/apiService';
 import { getAgencies, type Agency } from '../services/agenciesSupabase';
+import { AGENCY_SEGMENT_TYPES } from '../constants/agencyTypes';
 import {
   getCalendarEntriesForClient,
   type ClientCalendarItem,
@@ -69,11 +71,15 @@ import {
 } from '../services/b2bOrgChatSupabase';
 import type { Conversation } from '../services/messengerSupabase';
 import { sendAgencyInvitation } from '../services/optionRequestsSupabase';
-import { ensureClientOrganization } from '../services/organizationsInvitationsSupabase';
+import {
+  ensureClientOrganization,
+  getClientOrganizationIdForUser,
+  getMyClientMemberRole,
+} from '../services/organizationsInvitationsSupabase';
 import { supabase } from '../../lib/supabase';
 import { MonthCalendarView, type CalendarDayEvent } from '../components/MonthCalendarView';
 import { ClientOrganizationTeamSection } from '../components/ClientOrganizationTeamSection';
-import { ConnectionMessengerInline } from '../components/ConnectionMessengerInline';
+import { OrgMessengerInline } from '../components/OrgMessengerInline';
 
 type TopTab = 'discover' | 'projects' | 'agencies' | 'messages' | 'calendar' | 'team';
 
@@ -1842,13 +1848,18 @@ const AgenciesView: React.FC<{
 }> = ({ clientUserId, onChatStarted }) => {
   const [search, setSearch] = useState('');
   const [agencies, setAgencies] = useState<Agency[]>([]);
+  const [agencyTypeFilter, setAgencyTypeFilter] = useState<string[]>([]);
   const [invitationEmail, setInvitationEmail] = useState('');
   const [invitationFeedback, setInvitationFeedback] = useState<string | null>(null);
   const [busyAgencyId, setBusyAgencyId] = useState<string | null>(null);
 
   useEffect(() => {
-    getAgencies().then(setAgencies);
-  }, []);
+    if (agencyTypeFilter.length === 0) {
+      void getAgencies().then(setAgencies);
+    } else {
+      void getAgencies({ overlapsAgencyTypes: agencyTypeFilter }).then(setAgencies);
+    }
+  }, [agencyTypeFilter]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -1873,7 +1884,7 @@ const AgenciesView: React.FC<{
 
   const startChat = async (agency: Agency) => {
     if (!clientUserId) {
-      Alert.alert(uiCopy.alerts.signInRequired, uiCopy.b2bChat.signInToChatBody);
+      showAppAlert(uiCopy.alerts.signInRequired, uiCopy.b2bChat.signInToChatBody);
       return;
     }
     setBusyAgencyId(agency.id);
@@ -1884,7 +1895,7 @@ const AgenciesView: React.FC<{
         actingUserId: clientUserId,
       });
       if (!r.ok) {
-        Alert.alert(uiCopy.b2bChat.chatFailedTitle, r.reason || uiCopy.b2bChat.chatFailedGeneric);
+        showAppAlert(uiCopy.b2bChat.chatFailedTitle, r.reason || uiCopy.b2bChat.chatFailedGeneric);
         return;
       }
       onChatStarted(r.conversationId, agency.name);
@@ -1906,6 +1917,25 @@ const AgenciesView: React.FC<{
         placeholderTextColor={colors.textSecondary}
         style={styles.agencySearchInput}
       />
+      <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.xs }}>
+        {uiCopy.b2bChat.agencyTypeFilterLabel}
+      </Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.md }}>
+        {AGENCY_SEGMENT_TYPES.map((seg) => {
+          const on = agencyTypeFilter.includes(seg);
+          return (
+            <TouchableOpacity
+              key={seg}
+              style={[styles.filterPill, on && { borderColor: colors.accentGreen, backgroundColor: colors.surface }]}
+              onPress={() => {
+                setAgencyTypeFilter((prev) => (on ? prev.filter((x) => x !== seg) : [...prev, seg]));
+              }}
+            >
+              <Text style={[styles.filterPillLabel, on && { color: colors.accentGreen }]}>{seg}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
 
       {showNotFound && (
         <View style={{ padding: spacing.md, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, marginBottom: spacing.md }}>
@@ -1938,6 +1968,11 @@ const AgenciesView: React.FC<{
               <View style={styles.agencyLeft}>
                 <Text style={styles.agencyName}>{a.name}</Text>
                 <Text style={styles.metaText}>{a.city ?? '—'}</Text>
+                {a.agency_types && a.agency_types.length > 0 ? (
+                  <Text style={{ ...styles.metaText, fontSize: 11, marginTop: 4 }}>
+                    {a.agency_types.join(' · ')}
+                  </Text>
+                ) : null}
               </View>
               <View style={styles.agencyRight}>
                 <View style={styles.agencyPill}>
@@ -1994,20 +2029,35 @@ const ClientB2BChatsPanel: React.FC<{
   const [rows, setRows] = useState<Conversation[]>([]);
   const [titles, setTitles] = useState<Record<string, string>>({});
   const [clientOrgId, setClientOrgId] = useState<string | null>(null);
+  const [orgLoading, setOrgLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  /** Until `rows` + `titles` include a freshly started chat, keep the agency name from Start chat. */
+  const [optimisticThreadTitle, setOptimisticThreadTitle] = useState<string | null>(null);
 
-  const reload = () => {
+  const reload = useCallback(() => {
     if (!clientOrgId) return;
     void listB2BConversationsForOrganization(clientOrgId).then(setRows);
-  };
+  }, [clientOrgId]);
 
   useEffect(() => {
-    void ensureClientOrganization().then(setClientOrgId);
+    let cancelled = false;
+    setOrgLoading(true);
+    void (async () => {
+      let oid = await getClientOrganizationIdForUser(clientUserId);
+      if (!oid) oid = await ensureClientOrganization();
+      if (!cancelled) {
+        setClientOrgId(oid);
+        setOrgLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [clientUserId]);
 
   useEffect(() => {
     reload();
-  }, [clientOrgId]);
+  }, [reload]);
 
   useEffect(() => {
     if (!clientOrgId || rows.length === 0) {
@@ -2030,49 +2080,64 @@ const ClientB2BChatsPanel: React.FC<{
         m[id] = t;
       });
       setTitles(m);
+      if (selectedId && m[selectedId]) {
+        setOptimisticThreadTitle(null);
+      }
     });
     return () => {
       cancelled = true;
     };
-  }, [rows, clientOrgId]);
+  }, [rows, clientOrgId, selectedId]);
 
   useEffect(() => {
-    if (!pendingOpen?.conversationId) return;
+    if (!pendingOpen?.conversationId || !clientOrgId) return;
     setSelectedId(pendingOpen.conversationId);
+    setOptimisticThreadTitle(pendingOpen.title);
     onPendingConsumed?.();
-    reload();
-  }, [pendingOpen?.conversationId]);
+    void listB2BConversationsForOrganization(clientOrgId).then(setRows);
+  }, [pendingOpen?.conversationId, clientOrgId, onPendingConsumed, pendingOpen?.title]);
+
+  if (orgLoading) {
+    return <Text style={styles.metaText}>{uiCopy.b2bChat.clientWorkspaceLoading}</Text>;
+  }
 
   if (!clientOrgId) {
-    return <Text style={styles.metaText}>{uiCopy.b2bChat.noAgencyContext}</Text>;
+    return <Text style={styles.metaText}>{uiCopy.b2bChat.noClientWorkspaceForB2B}</Text>;
   }
 
-  if (rows.length === 0) {
-    return <Text style={styles.metaText}>{uiCopy.b2bChat.noChatsYet}</Text>;
-  }
+  const selectedRow = selectedId ? rows.find((r) => r.id === selectedId) : undefined;
+  const activeConversationId = selectedRow?.id ?? selectedId ?? null;
+  const messengerTitle =
+    (activeConversationId &&
+      (titles[activeConversationId] ?? optimisticThreadTitle ?? null)) ??
+    uiCopy.b2bChat.chatPartnerFallback;
 
-  const selected = rows.find((r) => r.id === selectedId);
+  if (rows.length === 0 && !activeConversationId) {
+    return <Text style={styles.metaText}>{uiCopy.b2bChat.noAgencyChatsYetClient}</Text>;
+  }
 
   return (
     <View style={{ marginTop: spacing.sm }}>
-      <ScrollView style={{ maxHeight: 220 }}>
-        {rows.map((c) => (
-          <TouchableOpacity
-            key={c.id}
-            style={[styles.threadRow, selectedId === c.id && styles.threadRowActive]}
-            onPress={() => setSelectedId(c.id)}
-          >
-            <View style={styles.threadRowLeft}>
-              <Text style={styles.threadTitle}>{titles[c.id] ?? uiCopy.b2bChat.agencyFallback}</Text>
-              <Text style={styles.metaText}>{new Date(c.updated_at).toLocaleString()}</Text>
-            </View>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-      {selected ? (
-        <ConnectionMessengerInline
-          conversationId={selected.id}
-          headerTitle={titles[selected.id] ?? uiCopy.b2bChat.agencyFallback}
+      {rows.length > 0 ? (
+        <ScrollView style={{ maxHeight: 220 }}>
+          {rows.map((c) => (
+            <TouchableOpacity
+              key={c.id}
+              style={[styles.threadRow, selectedId === c.id && styles.threadRowActive]}
+              onPress={() => setSelectedId(c.id)}
+            >
+              <View style={styles.threadRowLeft}>
+                <Text style={styles.threadTitle}>{titles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback}</Text>
+                <Text style={styles.metaText}>{new Date(c.updated_at).toLocaleString()}</Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      ) : null}
+      {activeConversationId ? (
+        <OrgMessengerInline
+          conversationId={activeConversationId}
+          headerTitle={messengerTitle}
           viewerUserId={auth.profile?.id ?? null}
           containerStyle={{ marginTop: spacing.md }}
         />
@@ -2091,7 +2156,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   pendingClientB2BChat = null,
   onPendingClientB2BChatConsumed,
 }) => {
-  const [clientMsgTab, setClientMsgTab] = useState<'b2bChats' | 'optionRequests' | 'recruitingChats'>('b2bChats');
+  const [clientMsgTab, setClientMsgTab] = useState<'b2bChats' | 'optionRequests'>('b2bChats');
   const [requests, setRequests] = useState(getOptionRequests());
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [chatInput, setChatInput] = useState('');
@@ -2154,18 +2219,18 @@ const MessagesView: React.FC<MessagesViewProps> = ({
     setChatInput('');
   };
 
-  const showClientConnectionTabs = !isAgency && !!clientUserId;
+  const showClientMessagesTabs = !isAgency && !!clientUserId;
 
   return (
     <View style={styles.section}>
-      {showClientConnectionTabs && (
+      {showClientMessagesTabs && (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: spacing.md }}>
           <TouchableOpacity
             style={[styles.filterPill, clientMsgTab === 'b2bChats' && styles.filterPillActive]}
             onPress={() => setClientMsgTab('b2bChats')}
           >
             <Text style={[styles.filterPillLabel, clientMsgTab === 'b2bChats' && styles.filterPillLabelActive]}>
-              {uiCopy.b2bChat.tabClientChats}
+              {uiCopy.b2bChat.tabB2BChatsClientView}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -2176,24 +2241,14 @@ const MessagesView: React.FC<MessagesViewProps> = ({
               {uiCopy.b2bChat.tabOptionRequests}
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.filterPill, clientMsgTab === 'recruitingChats' && styles.filterPillActive]}
-            onPress={() => setClientMsgTab('recruitingChats')}
-          >
-            <Text style={[styles.filterPillLabel, clientMsgTab === 'recruitingChats' && styles.filterPillLabelActive]}>
-              {uiCopy.b2bChat.tabRecruitingChats}
-            </Text>
-          </TouchableOpacity>
         </View>
       )}
-      {showClientConnectionTabs && clientMsgTab === 'b2bChats' ? (
+      {showClientMessagesTabs && clientMsgTab === 'b2bChats' ? (
         <ClientB2BChatsPanel
           clientUserId={clientUserId!}
           pendingOpen={pendingClientB2BChat}
           onPendingConsumed={onPendingClientB2BChatConsumed}
         />
-      ) : showClientConnectionTabs && clientMsgTab === 'recruitingChats' ? (
-        <Text style={styles.metaText}>{uiCopy.b2bChat.recruitingChatsEmpty}</Text>
       ) : (
         <>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm }}>
@@ -2902,6 +2957,21 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
   const [saved, setSaved] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'profile' | 'team'>('profile');
   const [deleting, setDeleting] = useState(false);
+  const [clientIsOwner, setClientIsOwner] = useState(false);
+  const [ownerRoleLoading, setOwnerRoleLoading] = useState(true);
+
+  useEffect(() => {
+    if (!realClientId) {
+      setClientIsOwner(false);
+      setOwnerRoleLoading(false);
+      return;
+    }
+    setOwnerRoleLoading(true);
+    void getMyClientMemberRole().then((row) => {
+      setClientIsOwner(row?.member_role === 'owner');
+      setOwnerRoleLoading(false);
+    });
+  }, [realClientId]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -2932,21 +3002,27 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
 
   const handleRequestAccountDeletion = () => {
     Alert.alert(
-      'Delete account',
-      'Your account will be scheduled for deletion. Your data will be kept for 30 days and then permanently deleted. You will not be able to sign in during this period. Continue?',
+      uiCopy.accountDeletion.confirmTitle,
+      uiCopy.accountDeletion.confirmMessage,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: uiCopy.common.cancel, style: 'cancel' },
         {
-          text: 'Delete account',
+          text: uiCopy.accountDeletion.button,
           style: 'destructive',
           onPress: async () => {
             setDeleting(true);
             const { requestAccountDeletion } = await import('../services/accountSupabase');
-            const ok = await requestAccountDeletion();
+            const res = await requestAccountDeletion();
             setDeleting(false);
-            if (ok) {
+            if (res.ok) {
               onClose();
               await signOut();
+              return;
+            }
+            if (res.reason === 'not_owner') {
+              Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.ownerOnly);
+            } else {
+              Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.failed);
             }
           },
         },
@@ -3001,17 +3077,35 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
               </TouchableOpacity>
 
               <View style={{ marginTop: spacing.xl, paddingTop: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border }}>
-                <Text style={{ ...typography.label, fontSize: 12, color: colors.textPrimary, marginBottom: 4 }}>Account</Text>
-                <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm }}>
-                  Your account and all associated data can be deleted by you. Data will be archived for 30 days and then permanently removed.
+                <Text style={{ ...typography.label, fontSize: 12, color: colors.textPrimary, marginBottom: 4 }}>
+                  {uiCopy.accountDeletion.sectionTitle}
                 </Text>
-                <TouchableOpacity
-                  onPress={handleRequestAccountDeletion}
-                  disabled={deleting}
-                  style={{ borderRadius: 999, borderWidth: 1, borderColor: '#e74c3c', paddingVertical: spacing.sm, alignItems: 'center' }}
-                >
-                  <Text style={{ ...typography.label, fontSize: 12, color: '#e74c3c' }}>{deleting ? 'Deleting…' : 'Delete account'}</Text>
-                </TouchableOpacity>
+                {!realClientId ? (
+                  <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary }}>
+                    {uiCopy.accountDeletion.notAvailableSignedOut}
+                  </Text>
+                ) : ownerRoleLoading ? (
+                  <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary }}>{uiCopy.common.loading}</Text>
+                ) : clientIsOwner ? (
+                  <>
+                    <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm }}>
+                      {uiCopy.accountDeletion.description}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={handleRequestAccountDeletion}
+                      disabled={deleting}
+                      style={{ borderRadius: 999, borderWidth: 1, borderColor: '#e74c3c', paddingVertical: spacing.sm, alignItems: 'center' }}
+                    >
+                      <Text style={{ ...typography.label, fontSize: 12, color: '#e74c3c' }}>
+                        {deleting ? uiCopy.accountDeletion.buttonWorking : uiCopy.accountDeletion.button}
+                      </Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary }}>
+                    {uiCopy.accountDeletion.ownerOnly}
+                  </Text>
+                )}
               </View>
             </>
           ) : (

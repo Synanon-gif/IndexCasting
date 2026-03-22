@@ -175,3 +175,16 @@ export async function syncPortfolioToModel(modelId: string, urls: string[]): Pro
   return true;
 }
 
+/** Legacy `models.polaroids` array — keep in sync with visible polaroid rows for clients / swipe. */
+export async function syncPolaroidsToModel(modelId: string, urls: string[]): Promise<boolean> {
+  const { error } = await supabase
+    .from('models')
+    .update({ polaroids: urls })
+    .eq('id', modelId);
+  if (error) {
+    console.error('syncPolaroidsToModel error:', error);
+    return false;
+  }
+  return true;
+}
+

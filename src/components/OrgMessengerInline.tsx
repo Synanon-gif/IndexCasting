@@ -22,7 +22,8 @@ import {
 } from '../services/messengerSupabase';
 import { buildGuestUrl, type GuestLink } from '../services/guestLinksSupabase';
 
-export type ConnectionMessengerInlineProps = {
+/** Organization-scoped B2B thread (client org ↔ agency org). Not a user-to-user or “connection” chat. */
+export type OrgMessengerInlineProps = {
   conversationId: string;
   headerTitle: string;
   viewerUserId: string | null;
@@ -44,7 +45,7 @@ function metaString(m: MessageWithSender, key: string): string | undefined {
   return typeof raw === 'string' ? raw : undefined;
 }
 
-export const ConnectionMessengerInline: React.FC<ConnectionMessengerInlineProps> = ({
+export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   conversationId,
   headerTitle,
   viewerUserId,

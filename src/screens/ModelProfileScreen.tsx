@@ -356,26 +356,30 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
           </View>
 
           <View style={[st.section, { marginTop: spacing.xl, paddingTop: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border }]}>
-            <Text style={st.sectionLabel}>Account</Text>
+            <Text style={st.sectionLabel}>{uiCopy.accountDeletion.sectionTitle}</Text>
             <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm }}>
-              Your account and all associated data can be deleted by you. Data will be archived for 30 days and then permanently removed.
+              {uiCopy.accountDeletion.description}
             </Text>
             <TouchableOpacity
               onPress={() => {
                 Alert.alert(
-                  'Delete account',
-                  'Your account will be scheduled for deletion. Your data will be kept for 30 days and then permanently deleted. You will not be able to sign in during this period. Continue?',
+                  uiCopy.accountDeletion.confirmTitle,
+                  uiCopy.accountDeletion.confirmMessage,
                   [
-                    { text: 'Cancel', style: 'cancel' },
+                    { text: uiCopy.common.cancel, style: 'cancel' },
                     {
-                      text: 'Delete account',
+                      text: uiCopy.accountDeletion.button,
                       style: 'destructive',
                       onPress: async () => {
                         setDeletingAccount(true);
                         const { requestAccountDeletion } = await import('../services/accountSupabase');
-                        const ok = await requestAccountDeletion();
+                        const res = await requestAccountDeletion();
                         setDeletingAccount(false);
-                        if (ok) await signOut();
+                        if (res.ok) {
+                          await signOut();
+                          return;
+                        }
+                        Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.failed);
                       },
                     },
                   ]
@@ -384,7 +388,9 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
               disabled={deletingAccount}
               style={{ borderRadius: 999, borderWidth: 1, borderColor: '#e74c3c', paddingVertical: spacing.sm, alignItems: 'center' }}
             >
-              <Text style={{ ...typography.label, fontSize: 12, color: '#e74c3c' }}>{deletingAccount ? 'Deleting…' : 'Delete account'}</Text>
+              <Text style={{ ...typography.label, fontSize: 12, color: '#e74c3c' }}>
+                {deletingAccount ? uiCopy.accountDeletion.buttonWorking : uiCopy.accountDeletion.button}
+              </Text>
             </TouchableOpacity>
           </View>
         </ScrollView>

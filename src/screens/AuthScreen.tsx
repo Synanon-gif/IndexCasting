@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { useAuth } from '../context/AuthContext';
@@ -7,6 +7,8 @@ import { uiCopy } from '../constants/uiCopy';
 type AuthScreenProps = {
   initialMode?: 'login' | 'signup';
   onDemoLogin: (role: 'model' | 'agency' | 'client' | 'apply') => void;
+  /** When true (plain login, no ?invite= in URL), stale invite tokens are cleared so sign-in cannot join the wrong org. */
+  clearStaleInviteOnSignIn?: boolean;
   /** Einladung: Rolle fix (Agentur-Booker = agent, Client-Mitarbeiter = client). */
   inviteAuth?: {
     orgName: string;
@@ -18,6 +20,7 @@ type AuthScreenProps = {
 export const AuthScreen: React.FC<AuthScreenProps> = ({
   initialMode = 'login',
   onDemoLogin,
+  clearStaleInviteOnSignIn = false,
   inviteAuth,
 }) => {
   const { signIn, signUp } = useAuth();
@@ -25,25 +28,41 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [companyName, setCompanyName] = useState('');
   const [role, setRole] = useState<'model' | 'agent' | 'client'>(
     inviteAuth?.lockedProfileRole ?? 'client'
   );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  useEffect(() => {
+    if (role === 'model') setCompanyName('');
+  }, [role]);
+
   const handleSubmit = async () => {
     setError(null);
     if (!email.trim() || !password.trim()) {
-      setError('Email and password required');
+      setError(uiCopy.auth.emailPasswordRequired);
       return;
     }
     setBusy(true);
     if (mode === 'login') {
-      const { error: e } = await signIn(email.trim(), password);
+      const { error: e } = await signIn(email.trim(), password, {
+        clearStaleInviteToken: clearStaleInviteOnSignIn,
+      });
       if (e) setError(e);
     } else {
       const r = inviteAuth?.lockedProfileRole ?? role;
-      const { error: e } = await signUp(email.trim(), password, r, displayName.trim() || undefined);
+      const company =
+        !inviteAuth && (r === 'client' || r === 'agent') ? companyName.trim() || undefined : undefined;
+      const { error: e } = await signUp(
+        email.trim(),
+        password,
+        r,
+        displayName.trim() || undefined,
+        company,
+        { isInviteSignup: !!inviteAuth }
+      );
       if (e) setError(e);
     }
     setBusy(false);
@@ -68,13 +87,17 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             style={[styles.modeBtn, mode === 'login' && styles.modeBtnActive]}
             onPress={() => setMode('login')}
           >
-            <Text style={[styles.modeBtnLabel, mode === 'login' && styles.modeBtnLabelActive]}>Login</Text>
+            <Text style={[styles.modeBtnLabel, mode === 'login' && styles.modeBtnLabelActive]}>
+              {uiCopy.auth.loginTab}
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.modeBtn, mode === 'signup' && styles.modeBtnActive]}
             onPress={() => setMode('signup')}
           >
-            <Text style={[styles.modeBtnLabel, mode === 'signup' && styles.modeBtnLabelActive]}>Sign Up</Text>
+            <Text style={[styles.modeBtnLabel, mode === 'signup' && styles.modeBtnLabelActive]}>
+              {uiCopy.auth.signUpTab}
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -100,14 +123,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           <>
             <TextInput
               style={styles.input}
-              placeholder="Display Name"
+              placeholder={uiCopy.auth.signUpDisplayNamePlaceholder}
               placeholderTextColor={colors.textSecondary}
               value={displayName}
               onChangeText={setDisplayName}
             />
             {!inviteAuth && (
               <>
-                <Text style={styles.roleLabel}>Role</Text>
+                <Text style={styles.roleLabel}>{uiCopy.auth.roleLabel}</Text>
                 <View style={styles.roleRow}>
                   {(['client', 'agent', 'model'] as const).map((r) => (
                     <TouchableOpacity
@@ -116,13 +139,30 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                       onPress={() => setRole(r)}
                     >
                       <Text style={[styles.rolePillLabel, role === r && styles.rolePillLabelActive]}>
-                        {r === 'agent' ? 'Agency' : r.charAt(0).toUpperCase() + r.slice(1)}
+                        {r === 'agent'
+                          ? uiCopy.auth.roleAgency
+                          : r === 'client'
+                            ? uiCopy.auth.roleClient
+                            : uiCopy.auth.roleModel}
                       </Text>
                     </TouchableOpacity>
                   ))}
                 </View>
               </>
             )}
+            {!inviteAuth && (role === 'client' || role === 'agent') ? (
+              <>
+                <Text style={styles.ownerHint}>{uiCopy.auth.signUpOwnerHint}</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder={uiCopy.auth.signUpCompanyNamePlaceholder}
+                  placeholderTextColor={colors.textSecondary}
+                  value={companyName}
+                  onChangeText={setCompanyName}
+                  autoCapitalize="words"
+                />
+              </>
+            ) : null}
             {inviteAuth && (
               <Text style={styles.roleLocked}>
                 {uiCopy.auth.accountTypeFixed.replace(
@@ -140,7 +180,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           {busy ? (
             <ActivityIndicator color={colors.surface} />
           ) : (
-            <Text style={styles.submitLabel}>{mode === 'login' ? 'Login' : 'Create Account'}</Text>
+            <Text style={styles.submitLabel}>
+              {mode === 'login' ? uiCopy.auth.loginTab : uiCopy.auth.createAccount}
+            </Text>
           )}
         </TouchableOpacity>
 
@@ -227,6 +269,14 @@ const styles = StyleSheet.create({
   rolePillActive: { backgroundColor: colors.textPrimary, borderColor: colors.textPrimary },
   rolePillLabel: { ...typography.label, fontSize: 11, color: colors.textSecondary },
   rolePillLabelActive: { color: colors.surface },
+  ownerHint: {
+    ...typography.body,
+    fontSize: 11,
+    lineHeight: 16,
+    color: colors.textSecondary,
+    alignSelf: 'stretch',
+    marginBottom: spacing.sm,
+  },
   error: { ...typography.body, fontSize: 12, color: '#C0392B', marginBottom: spacing.sm },
   submitBtn: {
     width: '100%',

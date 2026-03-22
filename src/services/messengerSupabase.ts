@@ -77,13 +77,17 @@ export async function getConversationById(conversationId: string): Promise<Conve
   }
 }
 
+export type GetOrCreateConversationResult =
+  | { ok: true; conversation: Conversation }
+  | { ok: false; errorMessage: string };
+
 export async function getOrCreateConversation(
   type: ConversationType,
   participantIds: string[],
   contextId?: string,
   title?: string,
   meta?: ConversationCreateMeta
-): Promise<Conversation | null> {
+): Promise<GetOrCreateConversationResult> {
   if (contextId) {
     const { data: existing } = await supabase
       .from('conversations')
@@ -91,7 +95,7 @@ export async function getOrCreateConversation(
       .eq('type', type)
       .eq('context_id', contextId)
       .maybeSingle();
-    if (existing) return existing as Conversation;
+    if (existing) return { ok: true, conversation: existing as Conversation };
   }
 
   const insertRow: Record<string, unknown> = {
@@ -106,10 +110,24 @@ export async function getOrCreateConversation(
 
   const { data, error } = await supabase.from('conversations').insert(insertRow).select().single();
   if (error) {
+    const code = (error as { code?: string }).code;
+    const msg = error.message || '';
+    const isDup =
+      code === '23505' ||
+      /duplicate key|unique constraint/i.test(msg);
+    if (contextId && isDup) {
+      const { data: again } = await supabase
+        .from('conversations')
+        .select('*')
+        .eq('type', type)
+        .eq('context_id', contextId)
+        .maybeSingle();
+      if (again) return { ok: true, conversation: again as Conversation };
+    }
     console.error('getOrCreateConversation error:', error);
-    return null;
+    return { ok: false, errorMessage: msg || 'Unknown error' };
   }
-  return data as Conversation;
+  return { ok: true, conversation: data as Conversation };
 }
 
 export async function getMessages(conversationId: string): Promise<Message[]> {
@@ -195,15 +213,28 @@ async function fetchOrgRoleLabelsForSenders(
       console.error('fetchOrgRoleLabelsForSenders error:', error);
       return result;
     }
-    const roleMap: Record<string, string> = {
-      owner: 'Owner',
-      booker: 'Booker',
-      employee: 'Employee',
-    };
-    for (const row of data ?? []) {
-      const r = row as { user_id: string; role: string };
-      const label = roleMap[r.role] ?? r.role;
-      if (result[r.user_id] === undefined) result[r.user_id] = label;
+    const rows = (data ?? []) as { user_id: string; role: string; organization_id: string }[];
+    const byUser = new Map<string, typeof rows>();
+    for (const row of rows) {
+      const arr = byUser.get(row.user_id) ?? [];
+      arr.push(row);
+      byUser.set(row.user_id, arr);
+    }
+    for (const uid of senderIds) {
+      const memb = byUser.get(uid) ?? [];
+      const clientMem = memb.find((m) => Boolean(clientOrgId && m.organization_id === clientOrgId));
+      const agencyMem = memb.find((m) => Boolean(agencyOrgId && m.organization_id === agencyOrgId));
+      let label: string | null = null;
+      if (clientMem) {
+        if (clientMem.role === 'employee') label = 'Client';
+        else if (clientMem.role === 'owner') label = 'Owner';
+        else label = clientMem.role;
+      } else if (agencyMem) {
+        if (agencyMem.role === 'booker') label = 'Booker';
+        else if (agencyMem.role === 'owner') label = 'Owner';
+        else label = agencyMem.role;
+      }
+      if (label) result[uid] = label;
     }
     return result;
   } catch (e) {

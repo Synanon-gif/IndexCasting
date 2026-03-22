@@ -10,8 +10,11 @@ import {
   Image,
   Linking,
   Alert,
+  Platform,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { colors, spacing, typography } from '../theme/theme';
+import { showAppAlert } from '../utils/crossPlatformAlert';
 import { useAuth } from '../context/AuthContext';
 import { getAgencyModels, updateModelVisibility } from '../services/apiService';
 import {
@@ -47,19 +50,20 @@ import {
 } from '../services/b2bOrgChatSupabase';
 import type { Conversation } from '../services/messengerSupabase';
 import { getApplicationById } from '../store/applicationsStore';
-import { ConnectionMessengerInline } from '../components/ConnectionMessengerInline';
+import { OrgMessengerInline } from '../components/OrgMessengerInline';
+import { AgencySettingsTab } from '../components/AgencySettingsTab';
 // Recruiting chats (BookingChatView) live under Messages → Recruiting chats.
 import {
   getPhotosForModel,
   upsertPhotosForModel,
   syncPortfolioToModel,
+  syncPolaroidsToModel,
   uploadModelPhoto,
 } from '../services/modelPhotosSupabase';
 import { supabase } from '../../lib/supabase';
 import {
   ensureAgencyOrganization,
   getOrganizationIdForAgency,
-  getClientOrganizationIdForUser,
   listOrganizationMembers,
   listInvitationsForOrganization,
   createOrganizationInvitation,
@@ -67,7 +71,10 @@ import {
   getMyAgencyMemberRole,
   type InvitationRow,
 } from '../services/organizationsInvitationsSupabase';
-import { searchClientProfilesForAgency, type ClientDirectoryRow } from '../services/clientsDirectorySupabase';
+import {
+  listClientOrganizationsForAgencyDirectory,
+  type ClientOrganizationDirectoryRow,
+} from '../services/clientOrganizationsDirectorySupabase';
 import { getAgencies, type Agency } from '../services/agenciesSupabase';
 import { createGuestLink, getGuestLinksForAgency, buildGuestUrl, deactivateGuestLink, type GuestLink } from '../services/guestLinksSupabase';
 import {
@@ -307,6 +314,30 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
     }
   }, [tab, currentAgencyId, refreshBookingThreads]);
 
+  const agencyBottomTabs = useMemo(
+    () => {
+      const all: { key: AgencyTab; label: string }[] = [
+        { key: 'dashboard', label: 'Dashboard' },
+        { key: 'myModels', label: 'My Models' },
+        { key: 'clients', label: 'Clients' },
+        { key: 'messages', label: 'Messages' },
+        { key: 'calendar', label: 'Calendar' },
+        { key: 'recruiting', label: 'Recruiting' },
+        { key: 'bookers', label: 'Team' },
+        { key: 'guestLinks', label: 'Guest Links' },
+        { key: 'settings', label: uiCopy.agencySettings.tabLabel },
+      ];
+      return agencyTeamIsOwner ? all : all.filter((t) => t.key !== 'settings');
+    },
+    [agencyTeamIsOwner],
+  );
+
+  useEffect(() => {
+    if (tab === 'settings' && !agencyTeamIsOwner) {
+      setTab('dashboard');
+    }
+  }, [tab, agencyTeamIsOwner]);
+
   const openAgencyBookingChat = (threadId: string) => {
     refreshBookingThreads();
     setOpenBookingThreadId(threadId);
@@ -428,41 +459,58 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         />
       )}
 
-      {tab === 'settings' && (
-        <ScreenScrollView>
-          <View style={{ marginTop: spacing.md, marginBottom: spacing.lg }}>
-            <Text style={s.sectionLabel}>Account</Text>
-            <Text style={[s.metaText, { marginBottom: spacing.sm }]}>
-              Your account and all associated data can be deleted by you. Data will be archived for 30 days and then permanently removed.
-            </Text>
-            <TouchableOpacity
-              onPress={() => {
-                Alert.alert(
-                  'Delete account',
-                  'Your account will be scheduled for deletion. Your data will be kept for 30 days and then permanently deleted. You will not be able to sign in during this period. Continue?',
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    {
-                      text: 'Delete account',
-                      style: 'destructive',
-                      onPress: async () => {
-                        setDeletingAccount(true);
-                        const { requestAccountDeletion } = await import('../services/accountSupabase');
-                        const ok = await requestAccountDeletion();
-                        setDeletingAccount(false);
-                        if (ok) await signOut();
+      {tab === 'settings' && agencyTeamIsOwner && (
+        <>
+          <AgencySettingsTab
+            agency={currentAgency}
+            organizationId={agencyOrganizationId}
+            onSaved={() => {
+              void getAgencies().then(setAgencies);
+            }}
+          />
+          <ScreenScrollView>
+            <View style={{ marginTop: spacing.md, marginBottom: spacing.lg }}>
+              <Text style={s.sectionLabel}>{uiCopy.accountDeletion.sectionTitle}</Text>
+              <Text style={[s.metaText, { marginBottom: spacing.sm }]}>{uiCopy.accountDeletion.description}</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  Alert.alert(
+                    uiCopy.accountDeletion.confirmTitle,
+                    uiCopy.accountDeletion.confirmMessage,
+                    [
+                      { text: uiCopy.common.cancel, style: 'cancel' },
+                      {
+                        text: uiCopy.accountDeletion.button,
+                        style: 'destructive',
+                        onPress: async () => {
+                          setDeletingAccount(true);
+                          const { requestAccountDeletion } = await import('../services/accountSupabase');
+                          const res = await requestAccountDeletion();
+                          setDeletingAccount(false);
+                          if (res.ok) {
+                            await signOut();
+                            return;
+                          }
+                          if (res.reason === 'not_owner') {
+                            Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.ownerOnly);
+                          } else {
+                            Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.failed);
+                          }
+                        },
                       },
-                    },
-                  ]
-                );
-              }}
-              disabled={deletingAccount}
-              style={{ borderRadius: 999, borderWidth: 1, borderColor: '#e74c3c', paddingVertical: spacing.sm, alignItems: 'center' }}
-            >
-              <Text style={{ ...typography.label, fontSize: 12, color: '#e74c3c' }}>{deletingAccount ? 'Deleting…' : 'Delete account'}</Text>
-            </TouchableOpacity>
-          </View>
-        </ScreenScrollView>
+                    ]
+                  );
+                }}
+                disabled={deletingAccount}
+                style={{ borderRadius: 999, borderWidth: 1, borderColor: '#e74c3c', paddingVertical: spacing.sm, alignItems: 'center' }}
+              >
+                <Text style={{ ...typography.label, fontSize: 12, color: '#e74c3c' }}>
+                  {deletingAccount ? uiCopy.accountDeletion.buttonWorking : uiCopy.accountDeletion.button}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </ScreenScrollView>
+        </>
       )}
       </View>
 
@@ -472,17 +520,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={s.tabRow}
         >
-          {([
-            { key: 'dashboard', label: 'Dashboard' },
-            { key: 'myModels', label: 'My Models' },
-            { key: 'clients', label: 'Clients' },
-            { key: 'messages', label: 'Messages' },
-            { key: 'calendar', label: 'Calendar' },
-            { key: 'recruiting', label: 'Recruiting' },
-            { key: 'bookers', label: 'Team' },
-            { key: 'guestLinks', label: 'Guest Links' },
-            { key: 'settings', label: 'Settings' },
-          ] as { key: AgencyTab; label: string }[]).map((t) => (
+          {agencyBottomTabs.map((t) => (
             <TouchableOpacity key={t.key} onPress={() => setTab(t.key)} style={s.tabItem}>
               <Text style={[s.tabLabel, tab === t.key && s.tabLabelActive]}>{t.label}</Text>
               {tab === t.key && <View style={s.tabUnderline} />}
@@ -1297,8 +1335,10 @@ const MyModelsTab: React.FC<{
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
 
   const [polasSource, setPolasSource] = useState<'mediaslide' | 'netwalk' | 'manual'>('manual');
-  const [modelPhotos, setModelPhotos] = useState<Array<{id?: string; url: string; visible: boolean}>>([]);
+  const [modelPhotos, setModelPhotos] = useState<Array<{ id?: string; url: string; visible: boolean }>>([]);
+  const [polaroidPhotos, setPolaroidPhotos] = useState<Array<{ id?: string; url: string; visible: boolean }>>([]);
   const [newPhotoUrl, setNewPhotoUrl] = useState('');
+  const [newPolaroidUrl, setNewPolaroidUrl] = useState('');
   const [showPolasOnProfile, setShowPolasOnProfile] = useState(true);
 
   const countries = useMemo(() =>
@@ -1314,12 +1354,14 @@ const MyModelsTab: React.FC<{
   useEffect(() => {
     if (!selectedModel) {
       setModelPhotos([]);
+      setPolaroidPhotos([]);
       return;
     }
-    getPhotosForModel(selectedModel.id, 'portfolio').then((photos) => {
-      setModelPhotos(
-        photos.map((p) => ({ id: p.id, url: p.url, visible: p.visible }))
-      );
+    void getPhotosForModel(selectedModel.id, 'portfolio').then((photos) => {
+      setModelPhotos(photos.map((p) => ({ id: p.id, url: p.url, visible: p.visible })));
+    });
+    void getPhotosForModel(selectedModel.id, 'polaroid').then((photos) => {
+      setPolaroidPhotos(photos.map((p) => ({ id: p.id, url: p.url, visible: p.visible })));
     });
   }, [selectedModel?.id]);
 
@@ -1372,8 +1414,9 @@ const MyModelsTab: React.FC<{
 
   const handleSaveModel = async () => {
     if (!selectedModel) return;
-    if (modelPhotos.length < 5) {
-      Alert.alert('Minimum 5 photos', 'Please add at least 5 photos. The first photo is the cover (shown when clients swipe).');
+    const visiblePortfolio = modelPhotos.filter((p) => p.visible);
+    if (visiblePortfolio.length === 0) {
+      Alert.alert(uiCopy.modelRoster.portfolioRequiredTitle, uiCopy.modelRoster.portfolioRequiredBody);
       return;
     }
     const updates: any = {};
@@ -1391,6 +1434,7 @@ const MyModelsTab: React.FC<{
     if (editField.current_location !== undefined) updates.current_location = editField.current_location;
     if (editField.is_visible_commercial !== undefined) updates.is_visible_commercial = editField.is_visible_commercial === 'true';
     if (editField.is_visible_fashion !== undefined) updates.is_visible_fashion = editField.is_visible_fashion === 'true';
+    updates.show_polas_on_profile = showPolasOnProfile;
 
     await supabase.from('models').update(updates).eq('id', selectedModel.id);
 
@@ -1403,8 +1447,24 @@ const MyModelsTab: React.FC<{
       api_external_id: null,
       photo_type: 'portfolio' as const,
     }));
-    await upsertPhotosForModel(selectedModel.id, photoPayload);
-    await syncPortfolioToModel(selectedModel.id, modelPhotos.map((p) => p.url));
+    const polaroidPayload = polaroidPhotos.map((p, index) => ({
+      id: p.id,
+      url: p.url,
+      sort_order: index,
+      visible: p.visible,
+      source: null,
+      api_external_id: null,
+      photo_type: 'polaroid' as const,
+    }));
+    await upsertPhotosForModel(selectedModel.id, [...photoPayload, ...polaroidPayload]);
+    await syncPortfolioToModel(
+      selectedModel.id,
+      modelPhotos.filter((p) => p.visible).map((p) => p.url),
+    );
+    await syncPolaroidsToModel(
+      selectedModel.id,
+      polaroidPhotos.filter((p) => p.visible).map((p) => p.url),
+    );
 
     setSelectedModel(null);
     setEditField({});
@@ -1418,10 +1478,22 @@ const MyModelsTab: React.FC<{
     [next[idx], next[target]] = [next[target], next[idx]];
     setModelPhotos(next);
   };
-  const togglePhotoVisibility = (photo: any, idx: number) => {
+  const movePolaroid = (idx: number, dir: number) => {
+    const next = [...polaroidPhotos];
+    const target = idx + dir;
+    if (target < 0 || target >= next.length) return;
+    [next[idx], next[target]] = [next[target], next[idx]];
+    setPolaroidPhotos(next);
+  };
+  const togglePhotoVisibility = (photo: { id?: string; url: string; visible: boolean }, idx: number) => {
     const next = [...modelPhotos];
     next[idx] = { ...photo, visible: !photo.visible };
     setModelPhotos(next);
+  };
+  const togglePolaroidVisibility = (photo: { id?: string; url: string; visible: boolean }, idx: number) => {
+    const next = [...polaroidPhotos];
+    next[idx] = { ...photo, visible: !photo.visible };
+    setPolaroidPhotos(next);
   };
   const addPhoto = () => {
     if (!newPhotoUrl.trim()) return;
@@ -1441,6 +1513,8 @@ const MyModelsTab: React.FC<{
   const [linkAccountEmail, setLinkAccountEmail] = useState('');
   const [linkAccountLoading, setLinkAccountLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const polaroidFileInputRef = useRef<HTMLInputElement | null>(null);
+
   const handlePhotoFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target?.files?.[0];
     if (!file || !selectedModel || !file.type.startsWith('image/')) return;
@@ -1449,6 +1523,53 @@ const MyModelsTab: React.FC<{
     const url = await uploadModelPhoto(selectedModel.id, file);
     setUploadingPhoto(false);
     if (url) setModelPhotos((prev) => [...prev, { url, visible: true }]);
+  };
+
+  const handlePolaroidFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target?.files?.[0];
+    if (!file || !selectedModel || !file.type.startsWith('image/')) return;
+    e.target.value = '';
+    setUploadingPhoto(true);
+    const url = await uploadModelPhoto(selectedModel.id, file);
+    setUploadingPhoto(false);
+    if (url) setPolaroidPhotos((prev) => [...prev, { url, visible: true }]);
+  };
+
+  const pickFromLibrary = async (target: 'portfolio' | 'polaroid') => {
+    if (!selectedModel) return;
+    if (Platform.OS === 'web') {
+      if (target === 'portfolio') fileInputRef.current?.click();
+      else polaroidFileInputRef.current?.click();
+      return;
+    }
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('Permission needed', 'Allow photo library access to upload images.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.85,
+      allowsMultipleSelection: true,
+    });
+    if (result.canceled || !result.assets?.length) return;
+    setUploadingPhoto(true);
+    try {
+      for (const asset of result.assets) {
+        const res = await fetch(asset.uri);
+        const blob = await res.blob();
+        const url = await uploadModelPhoto(selectedModel.id, blob);
+        if (url) {
+          if (target === 'portfolio') {
+            setModelPhotos((prev) => [...prev, { url, visible: true }]);
+          } else {
+            setPolaroidPhotos((prev) => [...prev, { url, visible: true }]);
+          }
+        }
+      }
+    } finally {
+      setUploadingPhoto(false);
+    }
   };
 
   if (selectedModel) {
@@ -1502,9 +1623,9 @@ const MyModelsTab: React.FC<{
 
         {/* Model Photos Management */}
         <View style={{ marginTop: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.md }}>
-          <Text style={s.sectionLabel}>Model Photos (min. 5)</Text>
+          <Text style={s.sectionLabel}>{uiCopy.modelRoster.portfolioTitle}</Text>
           <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm }}>
-            First photo = cover (shown when clients swipe). Add at least 5 photos.
+            {uiCopy.modelRoster.portfolioHint}
           </Text>
 
           {/* Polas API connection */}
@@ -1539,14 +1660,19 @@ const MyModelsTab: React.FC<{
 
           {/* Photo list with reorder and Set as cover */}
           <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary, marginBottom: 4 }}>
-            Photos ({modelPhotos.length}/5 min) — first = cover
+            {modelPhotos.length} image(s) — first = cover
           </Text>
           {modelPhotos.map((photo, idx) => (
             <View key={photo.id || `photo-${idx}`} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border }}>
               {typeof Image !== 'undefined' && photo.url ? (
                 <Image source={{ uri: photo.url }} style={{ width: 40, height: 40, borderRadius: 4, marginRight: 8, backgroundColor: colors.border }} resizeMode="cover" />
               ) : null}
-              <Text style={{ ...typography.body, fontSize: 11, flex: 1 }} numberOfLines={1}>{photo.url ? (photo.url.length > 50 ? photo.url.slice(0, 47) + '…' : photo.url) : `Photo ${idx + 1}`}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={{ ...typography.body, fontSize: 11 }} numberOfLines={1}>{photo.url ? (photo.url.length > 50 ? photo.url.slice(0, 47) + '…' : photo.url) : `Photo ${idx + 1}`}</Text>
+                <Text style={{ ...typography.label, fontSize: 9, color: photo.visible ? colors.buttonOptionGreen : colors.textSecondary }}>
+                  {uiCopy.modelRoster.visibleInClientSwipe}: {photo.visible ? uiCopy.common.yes : uiCopy.common.no}
+                </Text>
+              </View>
               <View style={{ flexDirection: 'row', gap: 4, alignItems: 'center' }}>
                 {idx > 0 && (
                   <TouchableOpacity onPress={() => setCoverPhoto(idx)} style={[s.filterPill, { paddingHorizontal: 6, paddingVertical: 2 }]}>
@@ -1588,6 +1714,17 @@ const MyModelsTab: React.FC<{
                   </TouchableOpacity>
                 </>
               )}
+              {Platform.OS !== 'web' && (
+                <TouchableOpacity
+                  onPress={() => void pickFromLibrary('portfolio')}
+                  disabled={uploadingPhoto}
+                  style={[s.apiBtn, { marginBottom: 8 }]}
+                >
+                  <Text style={s.apiBtnLabel}>
+                    {uploadingPhoto ? 'Uploading…' : uiCopy.modelRoster.pickFromLibrary}
+                  </Text>
+                </TouchableOpacity>
+              )}
               <TextInput
                 value={newPhotoUrl}
                 onChangeText={setNewPhotoUrl}
@@ -1600,7 +1737,97 @@ const MyModelsTab: React.FC<{
               </TouchableOpacity>
             </View>
           )}
-          
+
+          <View style={{ marginTop: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.md }}>
+            <Text style={s.sectionLabel}>{uiCopy.modelRoster.polaroidsTitle}</Text>
+            <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm }}>
+              {uiCopy.modelRoster.polaroidsHint}
+            </Text>
+            {polaroidPhotos.map((photo, idx) => (
+              <View
+                key={photo.id || `pola-${idx}`}
+                style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border }}
+              >
+                {typeof Image !== 'undefined' && photo.url ? (
+                  <Image
+                    source={{ uri: photo.url }}
+                    style={{ width: 40, height: 40, borderRadius: 4, marginRight: 8, backgroundColor: colors.border }}
+                    resizeMode="cover"
+                  />
+                ) : null}
+                <View style={{ flex: 1 }}>
+                  <Text style={{ ...typography.body, fontSize: 11 }} numberOfLines={1}>
+                    {photo.url ? (photo.url.length > 50 ? photo.url.slice(0, 47) + '…' : photo.url) : `Polaroid ${idx + 1}`}
+                  </Text>
+                  <Text style={{ ...typography.label, fontSize: 9, color: photo.visible ? colors.buttonOptionGreen : colors.textSecondary }}>
+                    {uiCopy.modelRoster.visibleInClientSwipe}: {photo.visible ? uiCopy.common.yes : uiCopy.common.no}
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 4, alignItems: 'center' }}>
+                  <TouchableOpacity onPress={() => movePolaroid(idx, -1)} disabled={idx === 0}>
+                    <Text style={{ fontSize: 16, color: idx === 0 ? colors.textSecondary : colors.textPrimary }}>↑</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => movePolaroid(idx, 1)} disabled={idx === polaroidPhotos.length - 1}>
+                    <Text style={{ fontSize: 16, color: idx === polaroidPhotos.length - 1 ? colors.textSecondary : colors.textPrimary }}>↓</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => togglePolaroidVisibility(photo, idx)}>
+                    <Text style={{ fontSize: 14 }}>{photo.visible ? '👁' : '🚫'}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+            {polasSource === 'manual' && (
+              <View style={{ marginTop: spacing.sm }}>
+                {typeof window !== 'undefined' && (
+                  <>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      ref={polaroidFileInputRef}
+                      onChange={handlePolaroidFile}
+                      style={{ display: 'none' }}
+                    />
+                    <TouchableOpacity
+                      onPress={() => polaroidFileInputRef.current?.click()}
+                      disabled={uploadingPhoto}
+                      style={[s.apiBtn, { marginBottom: 8 }]}
+                    >
+                      <Text style={s.apiBtnLabel}>{uploadingPhoto ? 'Uploading…' : '+ Upload polaroid'}</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+                {Platform.OS !== 'web' && (
+                  <TouchableOpacity
+                    onPress={() => void pickFromLibrary('polaroid')}
+                    disabled={uploadingPhoto}
+                    style={[s.apiBtn, { marginBottom: 8 }]}
+                  >
+                    <Text style={s.apiBtnLabel}>
+                      {uploadingPhoto ? 'Uploading…' : `${uiCopy.modelRoster.pickFromLibrary} (polaroid)`}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                <TextInput
+                  value={newPolaroidUrl}
+                  onChangeText={setNewPolaroidUrl}
+                  placeholder={uiCopy.modelRoster.addPolaroidUrlPlaceholder}
+                  placeholderTextColor={colors.textSecondary}
+                  style={[s.editInput, { height: 36 }]}
+                />
+                <TouchableOpacity
+                  onPress={() => {
+                    if (!newPolaroidUrl.trim()) return;
+                    setPolaroidPhotos((prev) => [...prev, { url: newPolaroidUrl.trim(), visible: true }]);
+                    setNewPolaroidUrl('');
+                  }}
+                  style={[s.apiBtn, { marginTop: 4 }]}
+                >
+                  <Text style={s.apiBtnLabel}>+ Add polaroid URL</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+
           {/* Show on profile toggle */}
           <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: spacing.md, gap: spacing.sm }}>
             <TouchableOpacity onPress={() => setShowPolasOnProfile(!showPolasOnProfile)} style={[s.apiBtn, showPolasOnProfile && { borderColor: colors.accent }]}>
@@ -1831,15 +2058,22 @@ const AgencyClientsTab: React.FC<AgencyClientsTabProps> = ({
   onChatStarted,
 }) => {
   const [search, setSearch] = useState('');
-  const [rows, setRows] = useState<ClientDirectoryRow[]>([]);
+  const [rows, setRows] = useState<ClientOrganizationDirectoryRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [actionId, setActionId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    if (!agencyId) {
+      setRows([]);
+      setLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
     setLoading(true);
     const t = setTimeout(() => {
-      void searchClientProfilesForAgency(search).then((list) => {
+      void listClientOrganizationsForAgencyDirectory(agencyId, search).then((list) => {
         if (!cancelled) {
           setRows(list);
           setLoading(false);
@@ -1850,22 +2084,22 @@ const AgencyClientsTab: React.FC<AgencyClientsTabProps> = ({
       cancelled = true;
       clearTimeout(t);
     };
-  }, [search]);
+  }, [search, agencyId]);
 
-  const startChat = async (clientUserId: string, title: string) => {
+  const startChat = async (clientOrganizationId: string, title: string) => {
     if (!currentUserId) {
-      Alert.alert(uiCopy.alerts.signInRequired, uiCopy.b2bChat.signInToChatGeneric);
+      showAppAlert(uiCopy.alerts.signInRequired, uiCopy.b2bChat.signInToChatGeneric);
       return;
     }
-    setActionId(clientUserId);
+    setActionId(clientOrganizationId);
     try {
       const r = await ensureClientAgencyChat({
-        clientUserId,
+        clientOrganizationId,
         agencyId,
         actingUserId: currentUserId,
       });
       if (!r.ok) {
-        Alert.alert(uiCopy.b2bChat.chatFailedTitle, r.reason || uiCopy.b2bChat.chatFailedGeneric);
+        showAppAlert(uiCopy.b2bChat.chatFailedTitle, r.reason || uiCopy.b2bChat.chatFailedGeneric);
         return;
       }
       onChatStarted(r.conversationId, title);
@@ -1897,8 +2131,8 @@ const AgencyClientsTab: React.FC<AgencyClientsTabProps> = ({
       />
       {loading ? <Text style={s.metaText}>{uiCopy.common.loading}</Text> : null}
       {rows.map((row) => {
-        const label = row.display_name?.trim() || row.email || row.id.slice(0, 8);
-        const sub = row.company_name || row.email || '';
+        const label = row.name?.trim() || row.id.slice(0, 8);
+        const sub = row.organization_type ? row.organization_type.replace(/_/g, ' ') : '';
         return (
           <View
             key={row.id}
@@ -1979,7 +2213,16 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
       setAgencyOrgIdB2b(null);
       return;
     }
-    void ensureAgencyOrganization(agencyId).then(setAgencyOrgIdB2b);
+    let cancelled = false;
+    void (async () => {
+      // Booker/employee: RPC fails (email mismatch) — org id still exists; resolve by agency_id.
+      let oid = await ensureAgencyOrganization(agencyId);
+      if (!oid) oid = await getOrganizationIdForAgency(agencyId);
+      if (!cancelled) setAgencyOrgIdB2b(oid);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [agencyId]);
 
   const refreshB2bList = useCallback(() => {
@@ -2083,7 +2326,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   return (
     <ScreenScrollView>
       <Text style={s.sectionLabel}>Messages</Text>
-      <Text style={[s.metaText, { marginBottom: spacing.sm }]}>{uiCopy.b2bChat.messagesIntro}</Text>
+      <Text style={[s.metaText, { marginBottom: spacing.sm }]}>{uiCopy.b2bChat.messagesIntroAgency}</Text>
 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: spacing.md }}>
         {(['clientRequests', 'recruiting', 'optionRequests'] as const).map((key) => (
@@ -2097,7 +2340,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                 ? uiCopy.b2bChat.tabOptionRequests
                 : key === 'recruiting'
                   ? uiCopy.b2bChat.tabRecruiting
-                  : uiCopy.b2bChat.tabClientChats}
+                  : uiCopy.b2bChat.tabB2BChatsAgencyView}
             </Text>
           </TouchableOpacity>
         ))}
@@ -2110,10 +2353,10 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
           ) : (
             <>
               <Text style={[s.metaText, { marginBottom: spacing.sm, fontWeight: '600' }]}>
-                {uiCopy.b2bChat.tabClientChats}
+                {uiCopy.b2bChat.tabB2BChatsAgencyView}
               </Text>
               {b2bConversations.length === 0 ? (
-                <Text style={s.metaText}>{uiCopy.b2bChat.noChatsYet}</Text>
+                <Text style={s.metaText}>{uiCopy.b2bChat.noClientChatsYetAgency}</Text>
               ) : (
                 b2bConversations.map((c) => (
                   <View
@@ -2121,14 +2364,14 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                     style={[s.modelRow, { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm }]}
                   >
                     <View style={{ flex: 1, minWidth: 160 }}>
-                      <Text style={s.modelName}>{b2bTitles[c.id] ?? uiCopy.b2bChat.clientFallback}</Text>
+                      <Text style={s.modelName}>{b2bTitles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback}</Text>
                       <Text style={s.metaText}>{new Date(c.updated_at).toLocaleString()}</Text>
                     </View>
                     <TouchableOpacity
                       style={[s.filterPill, s.filterPillActive]}
                       onPress={() => {
                         setActiveConnectionChatId(c.id);
-                        setActiveConnectionChatTitle(b2bTitles[c.id] ?? uiCopy.b2bChat.clientFallback);
+                        setActiveConnectionChatTitle(b2bTitles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback);
                       }}
                     >
                       <Text style={[s.filterPillLabel, s.filterPillLabelActive]}>{uiCopy.b2bChat.openConversation}</Text>
@@ -2137,7 +2380,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                 ))
               )}
               {activeConnectionChatId ? (
-                <ConnectionMessengerInline
+                <OrgMessengerInline
                   conversationId={activeConnectionChatId}
                   headerTitle={activeConnectionChatTitle}
                   viewerUserId={currentUserId}
@@ -2442,6 +2685,9 @@ const OrganizationTeamTab: React.FC<{
       <Text style={s.sectionLabel}>{uiCopy.team.section}</Text>
       <Text style={s.metaText}>
         {uiCopy.team.leadAgency}
+      </Text>
+      <Text style={[s.metaText, { marginTop: spacing.sm }]}>
+        {uiCopy.team.ownerRoleExplainerAgency}
       </Text>
       {!organizationId && (
         <Text style={[s.metaText, { marginTop: spacing.md }]}>

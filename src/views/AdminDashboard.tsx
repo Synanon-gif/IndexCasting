@@ -1,11 +1,29 @@
 import React, { useEffect, useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, Alert,
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  TextInput,
+  ActivityIndicator,
+  Alert,
+  Platform,
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
+import { uiCopy } from '../constants/uiCopy';
 import {
-  getAllProfiles, activateAccount, deactivateAccount, adminUpdateProfileFull, adminPurgeUserData,
-  getAdminLogs, type AdminProfile, type AdminLogEntry,
+  getAllProfiles,
+  activateAccount,
+  deactivateAccount,
+  adminUpdateProfileFull,
+  adminPurgeUserData,
+  adminListOrgMemberships,
+  adminSetOrganizationMemberRole,
+  getAdminLogs,
+  type AdminProfile,
+  type AdminLogEntry,
+  type AdminOrgMembership,
 } from '../services/adminSupabase';
 import { supabase } from '../../lib/supabase';
 
@@ -27,6 +45,8 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
   const [modelData, setModelData] = useState<Record<string, unknown> | null>(null);
   const [agencyData, setAgencyData] = useState<Record<string, unknown> | null>(null);
   const [saving, setSaving] = useState(false);
+  const [orgMemberships, setOrgMemberships] = useState<AdminOrgMembership[]>([]);
+  const [orgRoleBusyId, setOrgRoleBusyId] = useState<string | null>(null);
 
   const loadData = async () => {
     setLoading(true);
@@ -73,6 +93,33 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
     }
   };
 
+  const runAdminPurge = async (userId: string) => {
+    const result = await adminPurgeUserData(userId);
+    if (result.ok) {
+      setFeedback(uiCopy.adminDashboard.purgeSuccess);
+      await loadData();
+    } else {
+      setFeedback(uiCopy.adminDashboard.purgeFailedWithDetails.replace('{details}', result.error));
+    }
+  };
+
+  const confirmAdminPurge = (p: AdminProfile) => {
+    const title = uiCopy.adminDashboard.deletePermanentlyTitle;
+    const message = uiCopy.adminDashboard.deletePermanentlyMessage;
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      if (window.confirm(`${title}\n\n${message}`)) void runAdminPurge(p.id);
+      return;
+    }
+    Alert.alert(title, message, [
+      { text: uiCopy.common.cancel, style: 'cancel' },
+      {
+        text: uiCopy.adminDashboard.deleteData,
+        style: 'destructive',
+        onPress: () => void runAdminPurge(p.id),
+      },
+    ]);
+  };
+
   const handleEditProfile = async (profile: AdminProfile) => {
     const { data: fullProfile } = await supabase
       .from('profiles')
@@ -90,10 +137,10 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
       country: fullProfile?.country || profile.country || '',
       role: fullProfile?.role || profile.role || '',
       is_active: (fullProfile?.is_active ?? profile.is_active) ? 'true' : 'false',
-      is_admin: (fullProfile?.is_admin ?? profile.is_admin) ? 'true' : 'false',
     });
     setModelData(null);
     setAgencyData(null);
+    setOrgMemberships([]);
     setTab('edit');
 
     if (profile.role === 'model') {
@@ -102,6 +149,25 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
     } else if (profile.role === 'agent') {
       const { data } = await supabase.from('agencies').select('*').eq('email', profile.email).maybeSingle();
       setAgencyData(data as Record<string, unknown> | null);
+    }
+
+    if (profile.role === 'agent' || profile.role === 'client') {
+      const m = await adminListOrgMemberships(profile.id);
+      setOrgMemberships(m);
+    }
+  };
+
+  const handleSetOrgRole = async (organizationId: string, role: 'owner' | 'booker' | 'employee') => {
+    if (!editingProfile) return;
+    setOrgRoleBusyId(organizationId);
+    const r = await adminSetOrganizationMemberRole(editingProfile.id, organizationId, role);
+    setOrgRoleBusyId(null);
+    if (r.ok) {
+      setFeedback(uiCopy.adminDashboard.orgRoleUpdated);
+      const m = await adminListOrgMemberships(editingProfile.id);
+      setOrgMemberships(m);
+    } else {
+      setFeedback(uiCopy.adminDashboard.orgRoleFailed);
     }
   };
 
@@ -117,7 +183,6 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
       country: editFields.country || null,
       role: editFields.role || null,
       is_active: editFields.is_active === 'true',
-      is_admin: editFields.is_admin === 'true',
     });
     if (ok) {
       setFeedback('Profile updated');
@@ -210,9 +275,17 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
 
                 <View style={styles.profileActions}>
                   {!p.is_active ? (
-                    <TouchableOpacity style={styles.activateBtn} onPress={() => handleActivate(p.id)}>
-                      <Text style={styles.activateBtnLabel}>Activate</Text>
-                    </TouchableOpacity>
+                    <View style={{ gap: 4 }}>
+                      <TouchableOpacity style={styles.activateBtn} onPress={() => handleActivate(p.id)}>
+                        <Text style={styles.activateBtnLabel}>Activate</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.deactivateBtn, { backgroundColor: '#333' }]}
+                        onPress={() => confirmAdminPurge(p)}
+                      >
+                        <Text style={styles.deactivateBtnLabel}>Delete permanently</Text>
+                      </TouchableOpacity>
+                    </View>
                   ) : (
                     <>
                       {actionTarget === p.id ? (
@@ -238,26 +311,7 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
                       )}
                       <TouchableOpacity
                         style={[styles.deactivateBtn, { marginTop: 4, backgroundColor: '#333' }]}
-                        onPress={() => {
-                          Alert.alert(
-                            'Delete account permanently',
-                            'This will delete all profile data in the database. You must also delete the user in Supabase Dashboard > Authentication > Users to complete removal. Continue?',
-                            [
-                              { text: 'Cancel', style: 'cancel' },
-                              {
-                                text: 'Delete data',
-                                style: 'destructive',
-                                onPress: async () => {
-                                  const ok = await adminPurgeUserData(p.id);
-                                  if (ok) {
-                                    setFeedback('Profile data deleted. Remove user in Supabase Auth if needed.');
-                                    loadData();
-                                  } else setFeedback('Purge failed.');
-                                },
-                              },
-                            ]
-                          );
-                        }}
+                        onPress={() => confirmAdminPurge(p)}
                       >
                         <Text style={styles.deactivateBtnLabel}>Delete permanently</Text>
                       </TouchableOpacity>
@@ -294,7 +348,13 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
           {editingProfile ? (
             <>
               <View style={styles.editHeader}>
-                <TouchableOpacity onPress={() => { setEditingProfile(null); setTab('accounts'); }}>
+                <TouchableOpacity
+                  onPress={() => {
+                    setEditingProfile(null);
+                    setOrgMemberships([]);
+                    setTab('accounts');
+                  }}
+                >
                   <Text style={styles.backLabel}>← Back to Accounts</Text>
                 </TouchableOpacity>
                 <Text style={styles.editTitle}>
@@ -308,6 +368,9 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
                   <Text style={styles.editFieldLabel}>
                     {field.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
                   </Text>
+                  {field === 'role' && (
+                    <Text style={styles.fieldHint}>{uiCopy.adminDashboard.accountRoleHint}</Text>
+                  )}
                   <TextInput
                     style={styles.editInput}
                     value={editFields[field] || ''}
@@ -317,19 +380,76 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
                 </View>
               ))}
 
-              {(['is_active', 'is_admin'] as const).map((field) => (
-                <View key={field} style={styles.editFieldRow}>
-                  <Text style={styles.editFieldLabel}>{field === 'is_active' ? 'Active' : 'Admin'}</Text>
-                  <TouchableOpacity
-                    style={[styles.toggleBtn, editFields[field] === 'true' && styles.toggleBtnActive]}
-                    onPress={() => setEditFields((prev) => ({ ...prev, [field]: prev[field] === 'true' ? 'false' : 'true' }))}
-                  >
-                    <Text style={[styles.toggleBtnLabel, editFields[field] === 'true' && styles.toggleBtnLabelActive]}>
-                      {editFields[field] === 'true' ? 'Yes' : 'No'}
-                    </Text>
-                  </TouchableOpacity>
+              {(editingProfile.role === 'agent' || editingProfile.role === 'client') && (
+                <View style={styles.orgRoleSection}>
+                  <Text style={styles.roleDataTitle}>{uiCopy.adminDashboard.organizationRolesTitle}</Text>
+                  <Text style={styles.fieldHint}>{uiCopy.adminDashboard.organizationRolesHint}</Text>
+                  {orgMemberships.length === 0 ? (
+                    <Text style={styles.orgRoleEmpty}>{uiCopy.adminDashboard.orgRoleNoneLoaded}</Text>
+                  ) : (
+                    orgMemberships.map((m) => (
+                      <View key={m.organization_id} style={styles.orgRoleCard}>
+                        <Text style={styles.orgRoleOrgName}>
+                          {m.org_name || '—'} · {m.org_type} · current: {m.member_role}
+                        </Text>
+                        <View style={styles.orgRoleBtnRow}>
+                          {m.org_type === 'agency' ? (
+                            <>
+                              <TouchableOpacity
+                                style={[styles.orgRoleBtn, orgRoleBusyId === m.organization_id && { opacity: 0.5 }]}
+                                disabled={orgRoleBusyId !== null}
+                                onPress={() => void handleSetOrgRole(m.organization_id, 'owner')}
+                              >
+                                <Text style={styles.orgRoleBtnLabel}>{uiCopy.adminDashboard.orgRoleSetOwner}</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={[styles.orgRoleBtn, orgRoleBusyId === m.organization_id && { opacity: 0.5 }]}
+                                disabled={orgRoleBusyId !== null}
+                                onPress={() => void handleSetOrgRole(m.organization_id, 'booker')}
+                              >
+                                <Text style={styles.orgRoleBtnLabel}>{uiCopy.adminDashboard.orgRoleSetBooker}</Text>
+                              </TouchableOpacity>
+                            </>
+                          ) : (
+                            <>
+                              <TouchableOpacity
+                                style={[styles.orgRoleBtn, orgRoleBusyId === m.organization_id && { opacity: 0.5 }]}
+                                disabled={orgRoleBusyId !== null}
+                                onPress={() => void handleSetOrgRole(m.organization_id, 'owner')}
+                              >
+                                <Text style={styles.orgRoleBtnLabel}>{uiCopy.adminDashboard.orgRoleSetOwner}</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={[styles.orgRoleBtn, orgRoleBusyId === m.organization_id && { opacity: 0.5 }]}
+                                disabled={orgRoleBusyId !== null}
+                                onPress={() => void handleSetOrgRole(m.organization_id, 'employee')}
+                              >
+                                <Text style={styles.orgRoleBtnLabel}>{uiCopy.adminDashboard.orgRoleSetEmployee}</Text>
+                              </TouchableOpacity>
+                            </>
+                          )}
+                        </View>
+                      </View>
+                    ))
+                  )}
                 </View>
-              ))}
+              )}
+
+              <View style={styles.editFieldRow}>
+                <Text style={styles.editFieldLabel}>Active</Text>
+                <TouchableOpacity
+                  style={[styles.toggleBtn, editFields.is_active === 'true' && styles.toggleBtnActive]}
+                  onPress={() => setEditFields((prev) => ({
+                    ...prev,
+                    is_active: prev.is_active === 'true' ? 'false' : 'true',
+                  }))}
+                >
+                  <Text style={[styles.toggleBtnLabel, editFields.is_active === 'true' && styles.toggleBtnLabelActive]}>
+                    {editFields.is_active === 'true' ? 'Yes' : 'No'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.fieldHint}>{uiCopy.adminDashboard.adminFlagNotEditableInApp}</Text>
 
               {modelData && (
                 <View style={styles.roleDataSection}>
@@ -458,4 +578,23 @@ const styles = StyleSheet.create({
     borderRadius: 8, alignItems: 'center' as const, marginTop: spacing.lg,
   },
   saveBtnLabel: { ...typography.label, color: colors.surface, fontSize: 14 },
+  fieldHint: { ...typography.body, color: colors.textSecondary, fontSize: 11, marginBottom: 6 },
+  orgRoleSection: { marginTop: spacing.md, marginBottom: spacing.sm },
+  orgRoleCard: {
+    marginTop: spacing.sm,
+    padding: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+  },
+  orgRoleOrgName: { ...typography.label, color: colors.textPrimary, fontSize: 12, marginBottom: spacing.sm },
+  orgRoleBtnRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  orgRoleBtn: {
+    backgroundColor: colors.textPrimary,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  orgRoleBtnLabel: { ...typography.label, color: colors.surface, fontSize: 12 },
+  orgRoleEmpty: { ...typography.body, color: colors.textSecondary, fontSize: 12, marginTop: 4 },
 });

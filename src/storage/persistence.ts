@@ -65,7 +65,6 @@ export type PersistedClientProject = {
 export type PersistedClientFilters = {
   size: 'all' | 'short' | 'medium' | 'tall';
   location: 'all' | 'Paris' | 'Milan' | 'Berlin' | 'nearby';
-  onlyConnectedAgencies?: boolean;
 };
 
 export type ClientType = 'fashion' | 'commercial';

@@ -290,7 +290,7 @@ export async function getOrganizationIdForAgency(agencyId: string): Promise<stri
   }
 }
 
-/** First client-type organization for a user (for connection org metadata). */
+/** First client-type organization for a user (B2B org context). */
 export async function getClientOrganizationIdForUser(clientUserId: string): Promise<string | null> {
   try {
     const { data: mems, error: e1 } = await supabase

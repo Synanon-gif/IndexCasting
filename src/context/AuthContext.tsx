@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { uiCopy } from '../constants/uiCopy';
 import { supabase } from '../../lib/supabase';
 import type { Session, User } from '@supabase/supabase-js';
 
@@ -25,8 +26,19 @@ type AuthState = {
   session: Session | null;
   user: User | null;
   loading: boolean;
-  signUp: (email: string, password: string, role: string, displayName?: string) => Promise<{ error: string | null }>;
-  signIn: (email: string, password: string) => Promise<{ error: string | null }>;
+  signUp: (
+    email: string,
+    password: string,
+    role: string,
+    displayName?: string,
+    companyName?: string | null,
+    options?: { isInviteSignup?: boolean }
+  ) => Promise<{ error: string | null }>;
+  signIn: (
+    email: string,
+    password: string,
+    options?: { clearStaleInviteToken?: boolean }
+  ) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   profile: Profile | null;
   refreshProfile: () => Promise<void>;
@@ -46,15 +58,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: s } }) => {
       setSession(s);
-      if (s?.user) loadProfile(s.user.id);
-      setLoading(false);
+      if (s?.user) {
+        void bootstrapThenLoadProfile(s.user.id).finally(() => setLoading(false));
+      } else {
+        setLoading(false);
+      }
     }).catch(() => {
       setLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s);
-      if (s?.user) loadProfile(s.user.id);
+      if (s?.user) void bootstrapThenLoadProfile(s.user.id);
       else setProfile(null);
     });
 
@@ -101,16 +116,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { profile: profileData };
   }
 
+  /** Runs after a real session exists — fixes owner bootstrap when email confirmation prevented it at signUp. */
+  async function bootstrapThenLoadProfile(userId: string) {
+    try {
+      const { ensurePlainSignupB2bOwnerBootstrap } = await import('../services/b2bOwnerBootstrapSupabase');
+      const { error } = await ensurePlainSignupB2bOwnerBootstrap();
+      if (error) console.error('bootstrapThenLoadProfile RPC', error);
+    } catch (e) {
+      console.error('bootstrapThenLoadProfile', e);
+    }
+    return loadProfile(userId);
+  }
+
   const refreshProfile = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) await loadProfile(user.id);
   };
 
-  const signUp = async (email: string, password: string, role: string, displayName?: string) => {
+  const signUp = async (
+    email: string,
+    password: string,
+    role: string,
+    displayName?: string,
+    companyName?: string | null,
+    options?: { isInviteSignup?: boolean }
+  ) => {
+    const trimmedCompany = companyName?.trim() || null;
+    const orgNameForB2b = role === 'client' || role === 'agent' ? trimmedCompany : null;
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { role, display_name: displayName || email.split('@')[0] } },
+      options: {
+        data: {
+          role,
+          display_name: displayName || email.split('@')[0],
+          ...(orgNameForB2b ? { company_name: orgNameForB2b } : {}),
+        },
+      },
     });
     if (error) return { error: error.message };
     if (data.user) {
@@ -120,19 +162,54 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         display_name: displayName || email.split('@')[0],
         role,
         is_active: role === 'model',
+        ...(orgNameForB2b ? { company_name: orgNameForB2b } : {}),
       });
       if (pErr) console.error('profile upsert error', pErr);
-      await loadProfile(data.user.id);
+
+      try {
+        const { clearInviteTokenIfPlainSignup } = await import('../services/authInviteTokenPolicy');
+        await clearInviteTokenIfPlainSignup(options?.isInviteSignup === true);
+      } catch (e) {
+        console.error('signUp invite token policy error:', e);
+      }
+
+      let inviteAcceptedOk = false;
       try {
         const { acceptOrganizationInvitation } = await import('../services/organizationsInvitationsSupabase');
         const { readInviteToken, persistInviteToken } = await import('../storage/inviteToken');
         const tok = await readInviteToken();
         if (tok) {
           const inv = await acceptOrganizationInvitation(tok);
+          inviteAcceptedOk = !!inv.ok;
           if (inv.ok) await persistInviteToken(null);
         }
       } catch (e) {
         console.error('signUp invite accept error:', e);
+      }
+
+      /** New org owners only — invited employees/bookers skip (they join an existing org). */
+      if (role === 'client' && !inviteAcceptedOk) {
+        const { error: rpcErr } = await supabase.rpc('ensure_client_organization');
+        if (rpcErr) console.error('ensure_client_organization on signup', rpcErr);
+      }
+      if (role === 'agent' && !inviteAcceptedOk) {
+        try {
+          const { ensureAgencyRecordForCurrentAgent } = await import('../services/agenciesSupabase');
+          const agId = await ensureAgencyRecordForCurrentAgent();
+          if (agId) {
+            const { error: orgErr } = await supabase.rpc('ensure_agency_organization', { p_agency_id: agId });
+            if (orgErr) console.error('ensure_agency_organization on signup', orgErr);
+          }
+        } catch (e) {
+          console.error('agency owner bootstrap on signup', e);
+        }
+      }
+
+      const { data: { session: sess } } = await supabase.auth.getSession();
+      if (sess?.user) {
+        await bootstrapThenLoadProfile(data.user.id);
+      } else {
+        await loadProfile(data.user.id);
       }
       try {
         const { linkModelByEmail } = await import('../services/modelsSupabase');
@@ -143,13 +220,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { error: null };
   };
 
-  const signIn = async (email: string, password: string) => {
+  const signIn = async (
+    email: string,
+    password: string,
+    options?: { clearStaleInviteToken?: boolean }
+  ) => {
+    try {
+      const { clearInviteTokenIfPlainSignIn } = await import('../services/authInviteTokenPolicy');
+      await clearInviteTokenIfPlainSignIn(options?.clearStaleInviteToken === true);
+    } catch (e) {
+      console.error('signIn invite token policy error:', e);
+    }
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) return { error: error.message };
     try {
       const { acceptOrganizationInvitation } = await import('../services/organizationsInvitationsSupabase');
-      const { readInviteToken, persistInviteToken } = await import('../storage/inviteToken');
-      const tok = await readInviteToken();
+      const { readInviteToken, persistInviteToken, isInviteFlowActive } = await import('../storage/inviteToken');
+      const tok = (await isInviteFlowActive()) ? await readInviteToken() : null;
       if (tok) {
         const inv = await acceptOrganizationInvitation(tok);
         if (inv.ok) await persistInviteToken(null);
@@ -161,10 +248,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { linkModelByEmail } = await import('../services/modelsSupabase');
       await linkModelByEmail();
       if (data?.user) {
-        const result = await loadProfile(data.user.id);
+        const result = await bootstrapThenLoadProfile(data.user.id);
         if (result && 'deactivated' in result && result.deactivated) {
           if (result.reason === 'deletion') {
-            return { error: 'Your account has been scheduled for deletion and is no longer accessible.' };
+            return { error: uiCopy.auth.accountScheduledForDeletion };
           }
           return { error: 'Your account has been deactivated. Please contact the administrator.' };
         }

@@ -1,4 +1,4 @@
-/** English label for connection chat bubbles: "Name (Role)". */
+/** English label for org-scoped chat bubbles: "Name (Role)". */
 export function formatSenderDisplayLine(
   displayName: string,
   orgRoleLabel: string | null,
