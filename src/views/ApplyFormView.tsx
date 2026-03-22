@@ -19,6 +19,7 @@ import { addApplication } from '../store/applicationsStore';
 import { uploadApplicationImage } from '../services/applicationsSupabase';
 import { useAuth } from '../context/AuthContext';
 import { splitProfileDisplayName } from '../utils/applicantNameFromProfile';
+import { uiCopy } from '../constants/uiCopy';
 
 type ImageSlot = 'closeUp' | 'fullBody' | 'profile';
 
@@ -136,14 +137,12 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const heightNum = parseInt(height, 10);
     if (!firstName.trim()) {
       setError(
-        nameLocked
-          ? 'Im Profil fehlt der Anzeigename. Bitte unter Account einen Namen eintragen und erneut versuchen.'
-          : 'Bitte Vorname angeben.'
+        nameLocked ? uiCopy.apply.displayNameMissing : uiCopy.apply.firstNameRequired,
       );
       return;
     }
     if (!nameLocked && !lastName.trim()) {
-      setError('Bitte Vor- und Nachname angeben.');
+      setError(uiCopy.apply.nameRequired);
       return;
     }
     if (!age || isNaN(ageNum) || ageNum < 14 || ageNum > 99) {
@@ -248,9 +247,7 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
               <Text style={styles.readonlyValue}>
                 {[firstName, lastName].filter(Boolean).join(' ') || '—'}
               </Text>
-              <Text style={styles.readonlyHint}>
-                Entspricht deinem Account-Namen (Profil) und kann hier nicht geändert werden. Zwei Wörter = Vor- und Nachname; ein Wort = nur Vorname.
-              </Text>
+              <Text style={styles.readonlyHint}>{uiCopy.apply.nameLockedHint}</Text>
             </View>
           ) : (
             <>

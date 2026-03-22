@@ -14,7 +14,7 @@ import {
   findLatestThreadIdForApplication,
   updateThreadAgency,
   agencyStartRecruitingChatRpc,
-  formatRecruitingChatRpcErrorDe,
+  formatRecruitingChatRpcError,
 } from '../services/recruitingChatSupabase';
 import { updateApplicationRecruitingThread, fetchApplicationById } from '../services/applicationsSupabase';
 import { supabase } from '../../lib/supabase';
@@ -99,9 +99,9 @@ export function createRecruitingThread(applicationId: string, modelName: string)
 
 export type TryStartRecruitingChatResult =
   | { ok: true; threadId: string }
-  | { ok: false; messageDe: string };
+  | { ok: false; message: string };
 
-/** Wie startRecruitingChat, mit deutscher Fehlermeldung für die UI. */
+/** Same as startRecruitingChat, with English error messages for the UI. */
 export async function tryStartRecruitingChat(
   applicationId: string,
   modelName: string,
@@ -110,7 +110,7 @@ export async function tryStartRecruitingChat(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user?.id) {
     console.error('tryStartRecruitingChat: no authenticated user');
-    return { ok: false, messageDe: 'Bitte anmelden, um den Chat zu starten.' };
+    return { ok: false, message: 'Please sign in to start the chat.' };
   }
 
   let displayName = modelName.trim();
@@ -136,7 +136,7 @@ export async function tryStartRecruitingChat(
     }
     if (rpc.status === 'error') {
       console.error('tryStartRecruitingChat: agency_start_recruiting_chat failed', rpc.error);
-      return { ok: false, messageDe: formatRecruitingChatRpcErrorDe(rpc.error) };
+      return { ok: false, message: formatRecruitingChatRpcError(rpc.error) };
     }
   }
 
@@ -146,13 +146,13 @@ export async function tryStartRecruitingChat(
     if (!row) {
       return {
         ok: false,
-        messageDe:
-          'Bewerbung nicht gefunden oder keine Leseberechtigung. Passt die Bewerbung zu dieser Agentur?',
+        message:
+          'Application not found or no read access. Does this application belong to your agency?',
       };
     }
     return {
       ok: false,
-      messageDe: 'Recruiting-Chat nur möglich, solange die Bewerbung noch offen (pending) ist.',
+      message: 'Recruiting chat is only available while the application is pending.',
     };
   }
 
@@ -209,7 +209,7 @@ export async function tryStartRecruitingChat(
     console.error('tryStartRecruitingChat: createThreadInDb failed', applicationId);
     return {
       ok: false,
-      messageDe: 'Recruiting-Thread konnte nicht angelegt werden (Rechte oder Verbindung).',
+      message: 'Could not create recruiting thread (permissions or connection).',
     };
   }
   const ok = await updateApplicationRecruitingThread(applicationId, realId);
@@ -221,7 +221,7 @@ export async function tryStartRecruitingChat(
     );
     return {
       ok: false,
-      messageDe: 'Chat wurde angelegt, die Bewerbung konnte aber nicht verknüpft werden.',
+      message: 'Chat was created but could not be linked to the application.',
     };
   }
   threadsCache.push({

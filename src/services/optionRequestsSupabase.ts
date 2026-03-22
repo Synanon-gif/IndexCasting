@@ -192,11 +192,20 @@ export async function updateOptionRequestStatus(
   id: string,
   status: 'in_negotiation' | 'confirmed' | 'rejected'
 ): Promise<boolean> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('option_requests')
     .update({ status })
-    .eq('id', id);
-  if (error) { console.error('updateOptionRequestStatus error:', error); return false; }
+    .eq('id', id)
+    .select('id')
+    .maybeSingle();
+  if (error) {
+    console.error('updateOptionRequestStatus error:', error);
+    return false;
+  }
+  if (!data?.id) {
+    console.warn('updateOptionRequestStatus: no row updated (check id / RLS)', id);
+    return false;
+  }
   return true;
 }
 

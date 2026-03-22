@@ -7,11 +7,13 @@ import { BookingChatView } from '../views/BookingChatView';
 import {
   getConnectionsForAgencyByIdOrCode,
   sendConnectionRequest,
-  acceptConnection,
-  rejectConnection,
+  acceptConnectionAndCreateChat,
+  rejectIncomingConnection,
   subscribeConnections,
+  fetchConnectionsForAgency,
   type Connection,
 } from '../store/connectionsStore';
+import { useAuth } from '../context/AuthContext';
 import { getAgencies } from '../services/agenciesSupabase';
 
 const DEMO_CLIENT_ID = 'user-client';
@@ -34,6 +36,7 @@ type AgencyDashboardScreenProps = {
 export const AgencyDashboardScreen: React.FC<AgencyDashboardScreenProps> = ({
   onBackToRoleSelection,
 }) => {
+  const { session } = useAuth();
   const [items, setItems] = useState<AgencyModel[]>([]);
   const [showRecruiting, setShowRecruiting] = useState(false);
   const [openRecruitingBookingThreadId, setOpenRecruitingBookingThreadId] = useState<string | null>(null);
@@ -48,6 +51,7 @@ export const AgencyDashboardScreen: React.FC<AgencyDashboardScreenProps> = ({
 
   useEffect(() => {
     if (!currentAgencyId) return;
+    void fetchConnectionsForAgency(currentAgencyId);
     const refresh = () => setConnections(getConnectionsForAgencyByIdOrCode(currentAgencyId, 'a1'));
     refresh();
     const unsub = subscribeConnections(refresh);
@@ -132,10 +136,29 @@ export const AgencyDashboardScreen: React.FC<AgencyDashboardScreenProps> = ({
                 <View key={c.id} style={styles.connectionRow}>
                   <Text style={styles.connectionRowLabel}>Client</Text>
                   <View style={styles.connectionRowActions}>
-                    <TouchableOpacity style={styles.connectionAcceptBtn} onPress={() => acceptConnection(c.id)}>
+                    <TouchableOpacity
+                      style={styles.connectionAcceptBtn}
+                      onPress={async () => {
+                        const uid = session?.user?.id;
+                        if (!uid || !currentAgencyId) return;
+                        await acceptConnectionAndCreateChat({
+                          connectionId: c.id,
+                          actingUserId: uid,
+                          clientUserId: c.clientId,
+                          agencyId: c.agencyId,
+                        });
+                        await fetchConnectionsForAgency(currentAgencyId);
+                      }}
+                    >
                       <Text style={styles.connectionAcceptLabel}>Accept</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.connectionRejectBtn} onPress={() => rejectConnection(c.id)}>
+                    <TouchableOpacity
+                      style={styles.connectionRejectBtn}
+                      onPress={async () => {
+                        await rejectIncomingConnection(c.id);
+                        if (currentAgencyId) await fetchConnectionsForAgency(currentAgencyId);
+                      }}
+                    >
                       <Text style={styles.connectionRejectLabel}>Reject</Text>
                     </TouchableOpacity>
                   </View>
@@ -162,7 +185,11 @@ export const AgencyDashboardScreen: React.FC<AgencyDashboardScreenProps> = ({
               ) : (
                 <TouchableOpacity
                   style={styles.connectionSendBtn}
-                  onPress={() => currentAgencyId && sendConnectionRequest(DEMO_CLIENT_ID, currentAgencyId, 'agency')}
+                  onPress={async () => {
+                    if (!currentAgencyId) return;
+                    await sendConnectionRequest(DEMO_CLIENT_ID, currentAgencyId, 'agency');
+                    await fetchConnectionsForAgency(currentAgencyId);
+                  }}
                 >
                   <Text style={styles.connectionSendLabel}>Send request</Text>
                 </TouchableOpacity>

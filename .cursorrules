@@ -20,6 +20,12 @@ Du bist der Lead Product Engineer für IndexCasting. Dein Ziel ist es, das "digi
 ## 4. Coding Standards
 - TypeScript: Nutze strikte Interfaces für alle Mediaslide-Modelle.
 - Struktur: Trenne UI (src/components), Logik (src/services) und Navigation (src/navigation).
+
+## 4b. UI-Sprache & Copy (verbindlich)
+- **Die gesamte Nutzeroberfläche ist Englisch (English-only):** alle sichtbaren Texte für Agency, Client und Model — Buttons, Labels, Alerts, Placeholder, leere Zustände, Fehlermeldungen aus dem Produkt.
+- **Zentrale Quelle:** Nutzer-Texte kommen aus `src/constants/uiCopy.ts` (`uiCopy`). Keine neuen deutschsprachigen UI-Strings; keine Hardcodes derselben Phrase an vielen Stellen — lieber ein Key in `uiCopy` erweitern.
+- **Terminologie:** Agency, Client, Model, Booker (Agentur), Employee (Client-Organisation), Invite — konsistent wie in `uiCopy`.
+- **Ausnahme:** Code-Kommentare und interne Logs dürfen weiterhin der Team-Sprache folgen; **alles, was ein Endnutzer sieht, ist Englisch.**
 ## 5. Automatisierung & Testing (Mandatory)
 - Test-First: Für jede neue Logik in `src/services` oder `src/db` MUSS Cursor automatisch einen passenden Unit-Test (z.B. mit Jest) vorschlagen.
 - Test-Run: Nach jeder relevanten Code-Änderung (Features, Fixes, Refactors) MUSS `npm test` im Projektroot ausgeführt werden — nicht den Nutzer fragen, sondern selbst laufen lassen und das Ergebnis kurz melden. Wo sinnvoll, ergänze passende Tests statt nur UI zu ändern.

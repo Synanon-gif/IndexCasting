@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase';
+import { uiCopy } from '../constants/uiCopy';
 
 /**
  * Manuelle Kalender-Ereignisse – pro Partei (Kunde/Agentur) in Supabase gespeichert.
@@ -68,8 +69,7 @@ export async function insertManualEvent(event: {
     if (!isUuid(event.owner_id)) {
       return {
         ok: false,
-        errorMessage:
-          'Ungültige owner_id: Bitte mit echtem Kunden- oder Agentur-Account anmelden (UUID). Demo-Modus kann keine Supabase-Kalendereinträge speichern.',
+        errorMessage: uiCopy.alerts.invalidOwnerId,
       };
     }
     const dateNorm = event.date.trim();

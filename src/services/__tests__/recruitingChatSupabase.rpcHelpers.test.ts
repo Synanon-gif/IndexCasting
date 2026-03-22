@@ -8,7 +8,6 @@ import { supabase } from '../../../lib/supabase';
 import {
   isAgencyRecruitingChatRpcMissingError,
   formatRecruitingChatRpcError,
-  formatRecruitingChatRpcErrorDe,
   normalizeAgencyRecruitingChatRpcUuid,
   agencyStartRecruitingChatRpc,
 } from '../recruitingChatSupabase';
@@ -45,6 +44,10 @@ describe('formatRecruitingChatRpcError', () => {
   it('maps wrong agency', () => {
     expect(formatRecruitingChatRpcError({ message: 'wrong agency for application' })).toContain('different agency');
   });
+
+  it('includes technical detail for unknown errors', () => {
+    expect(formatRecruitingChatRpcError({ message: 'xyz_unknown_code', details: 'foo' })).toContain('Technical:');
+  });
 });
 
 describe('normalizeAgencyRecruitingChatRpcUuid', () => {
@@ -55,16 +58,6 @@ describe('normalizeAgencyRecruitingChatRpcUuid', () => {
   });
   it('rejects non-uuid strings', () => {
     expect(normalizeAgencyRecruitingChatRpcUuid('thread-uuid')).toBeNull();
-  });
-});
-
-describe('formatRecruitingChatRpcErrorDe', () => {
-  it('maps forbidden to German', () => {
-    expect(formatRecruitingChatRpcErrorDe({ message: 'forbidden' })).toContain('Berechtigung');
-  });
-
-  it('includes technical detail for unknown errors', () => {
-    expect(formatRecruitingChatRpcErrorDe({ message: 'xyz_unknown_code', details: 'foo' })).toContain('Technisch:');
   });
 });
 

@@ -227,6 +227,28 @@ export async function createOrganizationInvitation(params: {
   }
 }
 
+export async function getMyClientMemberRole(): Promise<{
+  member_role: OrgMemberRole;
+  organization_id: string;
+} | null> {
+  try {
+    const { data, error } = await supabase.rpc('get_my_client_member_role');
+    if (error) {
+      console.error('getMyClientMemberRole error:', error);
+      return null;
+    }
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row?.organization_id) return null;
+    return {
+      member_role: row.member_role as OrgMemberRole,
+      organization_id: row.organization_id,
+    };
+  } catch (e) {
+    console.error('getMyClientMemberRole exception:', e);
+    return null;
+  }
+}
+
 export async function getMyAgencyMemberRole(
   agencyId: string
 ): Promise<{ member_role: OrgMemberRole; organization_id: string } | null> {
@@ -264,6 +286,36 @@ export async function getOrganizationIdForAgency(agencyId: string): Promise<stri
     return (data as { id: string } | null)?.id ?? null;
   } catch (e) {
     console.error('getOrganizationIdForAgency exception:', e);
+    return null;
+  }
+}
+
+/** First client-type organization for a user (for connection org metadata). */
+export async function getClientOrganizationIdForUser(clientUserId: string): Promise<string | null> {
+  try {
+    const { data: mems, error: e1 } = await supabase
+      .from('organization_members')
+      .select('organization_id')
+      .eq('user_id', clientUserId);
+    if (e1) {
+      console.error('getClientOrganizationIdForUser members error:', e1);
+      return null;
+    }
+    const orgIds = [...new Set((mems ?? []).map((m: { organization_id: string }) => m.organization_id))];
+    if (orgIds.length === 0) return null;
+    const { data: orgs, error: e2 } = await supabase
+      .from('organizations')
+      .select('id')
+      .in('id', orgIds)
+      .eq('type', 'client')
+      .limit(1);
+    if (e2) {
+      console.error('getClientOrganizationIdForUser orgs error:', e2);
+      return null;
+    }
+    return (orgs?.[0] as { id: string } | undefined)?.id ?? null;
+  } catch (e) {
+    console.error('getClientOrganizationIdForUser exception:', e);
     return null;
   }
 }

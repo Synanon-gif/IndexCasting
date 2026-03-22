@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -40,8 +40,19 @@ import {
 } from '../services/modelsSupabase';
 import { BookingChatView } from './BookingChatView';
 import { getRecruitingThreadsForAgency, type RecruitingThread } from '../store/recruitingChats';
+import {
+  fetchConnectionsForAgency,
+  getConnectionsForAgency,
+  subscribeConnections,
+  sendConnectionRequest,
+  acceptConnectionAndCreateChat,
+  rejectIncomingConnection,
+  type Connection,
+} from '../store/connectionsStore';
+import { getProfileDisplayNamesForUserIds } from '../services/connectionsSupabase';
 import { getApplicationById } from '../store/applicationsStore';
-// Note: booking chats are shown in tab "bookingChats" and rendered via BookingChatView.
+import { ConnectionMessengerInline } from '../components/ConnectionMessengerInline';
+// Recruiting chats (BookingChatView) live under Messages → Recruiting chats.
 import {
   getPhotosForModel,
   upsertPhotosForModel,
@@ -52,6 +63,7 @@ import { supabase } from '../../lib/supabase';
 import {
   ensureAgencyOrganization,
   getOrganizationIdForAgency,
+  getClientOrganizationIdForUser,
   listOrganizationMembers,
   listInvitationsForOrganization,
   createOrganizationInvitation,
@@ -59,6 +71,7 @@ import {
   getMyAgencyMemberRole,
   type InvitationRow,
 } from '../services/organizationsInvitationsSupabase';
+import { searchClientProfilesForAgency, type ClientDirectoryRow } from '../services/clientsDirectorySupabase';
 import { getAgencies, type Agency } from '../services/agenciesSupabase';
 import { createGuestLink, getGuestLinksForAgency, buildGuestUrl, deactivateGuestLink, type GuestLink } from '../services/guestLinksSupabase';
 import {
@@ -79,6 +92,7 @@ import {
 } from '../services/userCalendarEventsSupabase';
 import { MonthCalendarView, type CalendarDayEvent } from '../components/MonthCalendarView';
 import { ScreenScrollView } from '../components/ScreenScrollView';
+import { uiCopy } from '../constants/uiCopy';
 
 const STATUS_LABELS: Record<ChatStatus, string> = {
   in_negotiation: 'In negotiation',
@@ -95,10 +109,10 @@ const STATUS_COLORS: Record<ChatStatus, string> = {
 type AgencyTab =
   | 'dashboard'
   | 'myModels'
+  | 'clients'
   | 'messages'
   | 'calendar'
   | 'recruiting'
-  | 'bookingChats'
   | 'bookers'
   | 'guestLinks'
   | 'settings';
@@ -279,25 +293,21 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
     });
   }, [selectedManualEvent?.id]);
 
-  useEffect(() => {
-    if (tab === 'bookingChats' && currentAgencyId) {
-      const uid = session?.user?.id;
-      getMyAgencyMemberRole(currentAgencyId).then((m) => {
-        const filterBooker = m?.member_role === 'booker' && uid ? uid : undefined;
-        return getRecruitingThreadsForAgency(currentAgencyId, { createdByUserId: filterBooker });
-      }).then(setBookingChatThreads);
-    }
-  }, [tab, currentAgencyId, session?.user?.id]);
-
-  /** Recruiting chat opens in the same shell; agency can return to Booking chats or keep swiping after close. */
-  const refreshBookingThreads = () => {
+  /** Recruiting threads for Messages → Recruiting chats (Supabase). */
+  const refreshBookingThreads = useCallback(() => {
     if (!currentAgencyId) return;
     const uid = session?.user?.id;
     getMyAgencyMemberRole(currentAgencyId).then((m) => {
       const filterBooker = m?.member_role === 'booker' && uid ? uid : undefined;
       return getRecruitingThreadsForAgency(currentAgencyId, { createdByUserId: filterBooker });
     }).then(setBookingChatThreads);
-  };
+  }, [currentAgencyId, session?.user?.id]);
+
+  useEffect(() => {
+    if (tab === 'messages' && currentAgencyId) {
+      refreshBookingThreads();
+    }
+  }, [tab, currentAgencyId, refreshBookingThreads]);
 
   const openAgencyBookingChat = (threadId: string) => {
     refreshBookingThreads();
@@ -349,8 +359,27 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         />
       )}
 
+      {tab === 'clients' && currentAgencyId ? (
+        <AgencyClientsTab
+          agencyId={currentAgencyId}
+          currentUserId={session?.user?.id ?? null}
+          agencyOrganizationId={agencyOrganizationId}
+        />
+      ) : tab === 'clients' ? (
+        <Text style={[s.metaText, { marginTop: spacing.md }]}>No agency assigned.</Text>
+      ) : null}
+
       {tab === 'messages' && (
-        <AgencyMessagesTab />
+        <AgencyMessagesTab
+          recruitingThreads={bookingChatThreads}
+          onRefreshRecruitingThreads={refreshBookingThreads}
+          onOpenRecruitingThread={(threadId) => {
+            refreshBookingThreads();
+            setOpenBookingThreadId(threadId);
+          }}
+          agencyId={currentAgencyId || null}
+          currentUserId={session?.user?.id ?? null}
+        />
       )}
 
       {tab === 'calendar' && (
@@ -374,42 +403,6 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
           onAddEvent={() => setShowAddManualEvent(true)}
         />
       )}
-
-        {tab === 'bookingChats' && (
-          <ScrollView style={{ flex: 1 }}>
-            <Text style={[s.sectionLabel, { marginTop: spacing.sm }]}>Recruiting chats</Text>
-            <Text style={[s.metaText, { marginBottom: spacing.md }]}>
-              When you start a chat or accept an application from Recruiting, the thread appears here (and leaves the pending swipe queue).
-            </Text>
-            {bookingChatThreads.length === 0 ? (
-              <Text style={s.metaText}>No recruiting chats yet. Start a chat from Recruiting or accept an application.</Text>
-            ) : (
-              bookingChatThreads.map((thread) => {
-                const application = getApplicationById(thread.applicationId);
-                const thumbUri = application?.images?.closeUp || application?.images?.profile || application?.images?.fullBody;
-                return (
-                  <TouchableOpacity
-                    key={thread.id}
-                    style={s.bookingChatRow}
-                    onPress={() => setOpenBookingThreadId(thread.id)}
-                  >
-                    <View style={s.bookingChatThumbWrap}>
-                      {thumbUri ? (
-                        <Image source={{ uri: thumbUri }} style={s.bookingChatThumb} resizeMode="contain" />
-                      ) : (
-                        <View style={[s.bookingChatThumb, s.bookingChatThumbPlaceholder]}>
-                          <Text style={s.bookingChatThumbPlaceholderText} numberOfLines={1}>{thread.modelName}</Text>
-                        </View>
-                      )}
-                    </View>
-                    <Text style={[s.modelName, { flex: 1, marginLeft: spacing.sm }]} numberOfLines={1}>{thread.modelName}</Text>
-                    <Text style={s.backLabel}>Chat</Text>
-                  </TouchableOpacity>
-                );
-              })
-            )}
-          </ScrollView>
-        )}
 
         {tab === 'bookers' && (
           <OrganizationTeamTab
@@ -477,10 +470,10 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
           {([
             { key: 'dashboard', label: 'Dashboard' },
             { key: 'myModels', label: 'My Models' },
+            { key: 'clients', label: 'Clients' },
             { key: 'messages', label: 'Messages' },
             { key: 'calendar', label: 'Calendar' },
             { key: 'recruiting', label: 'Recruiting' },
-            { key: 'bookingChats', label: 'Booking Chats' },
             { key: 'bookers', label: 'Team' },
             { key: 'guestLinks', label: 'Guest Links' },
             { key: 'settings', label: 'Settings' },
@@ -573,9 +566,9 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
               );
             })()}
             <View style={{ marginBottom: spacing.md }}>
-              <Text style={s.sectionLabel}>Termin verschieben</Text>
+              <Text style={s.sectionLabel}>{uiCopy.calendar.reschedule}</Text>
               <Text style={[s.metaText, { marginBottom: spacing.sm }]}>
-                Aktualisiert Option, Model-Kalender und gespiegelte Einträge (Migration migration_calendar_reschedule_sync.sql).
+                {uiCopy.calendar.rescheduleHelpAgency}
               </Text>
               <Text style={{ ...typography.label, marginBottom: 4 }}>Date (YYYY-MM-DD)</Text>
               <TextInput
@@ -620,9 +613,9 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                       const items = await getCalendarEntriesForAgency(currentAgencyId);
                       const next = items.find((x) => x.option.id === selectedCalendarItem.option.id);
                       if (next) setSelectedCalendarItem(next);
-                      Alert.alert('Gespeichert', 'Termin wurde aktualisiert.');
+                      Alert.alert(uiCopy.common.success, uiCopy.alerts.scheduleUpdated);
                     } else {
-                      Alert.alert('Fehler', 'Termin konnte nicht gespeichert werden.');
+                      Alert.alert(uiCopy.common.error, uiCopy.alerts.scheduleSaveFailed);
                     }
                   } finally {
                     setSavingBookingSchedule(false);
@@ -634,7 +627,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                 ]}
                 disabled={savingBookingSchedule}
               >
-                <Text style={s.saveBtnLabel}>{savingBookingSchedule ? 'Speichern…' : 'Termin speichern'}</Text>
+                <Text style={s.saveBtnLabel}>{savingBookingSchedule ? uiCopy.common.saving : uiCopy.calendar.saveSchedule}</Text>
               </TouchableOpacity>
             </View>
             {selectedCalendarItem.calendar_entry ? (
@@ -848,9 +841,8 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                     });
                   } else {
                     Alert.alert(
-                      'Kalender',
-                      result.errorMessage ||
-                        'Eintrag nicht gespeichert. Prüfe: (1) Datum YYYY-MM-DD, (2) Profil-E-Mail muss zur Agentur-E-Mail passen, (3) in Supabase migration_calendar_entries_multi_slot_rls_email.sql ausführen.',
+                      'Calendar',
+                      result.errorMessage || uiCopy.alerts.calendarNotSaved,
                     );
                   }
                 }}
@@ -866,7 +858,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.08)', justifyContent: 'center', alignItems: 'center', padding: spacing.lg }]}>
           <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setSelectedManualEvent(null)} />
           <View style={{ width: '100%', maxWidth: 400, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, padding: spacing.lg }}>
-            <Text style={s.sectionLabel}>Event bearbeiten</Text>
+            <Text style={s.sectionLabel}>{uiCopy.clientWeb.editEvent}</Text>
             <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>Title</Text>
             <TextInput
               value={manualEventEditDraft.title}
@@ -945,9 +937,9 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                     if (ok) {
                       await loadAgencyCalendar();
                       setSelectedManualEvent(null);
-                      Alert.alert('Gespeichert', 'Kalendereintrag wurde aktualisiert.');
+                      Alert.alert(uiCopy.common.success, uiCopy.alerts.calendarEntryUpdated);
                     } else {
-                      Alert.alert('Fehler', 'Speichern fehlgeschlagen (Datum YYYY-MM-DD prüfen).');
+                      Alert.alert(uiCopy.common.error, uiCopy.alerts.calendarSaveFailed);
                     }
                   } finally {
                     setSavingManualEventEdit(false);
@@ -1822,7 +1814,156 @@ const MyModelsTab: React.FC<{
   );
 };
 
-const AgencyMessagesTab: React.FC = () => {
+type AgencyClientsTabProps = {
+  agencyId: string;
+  currentUserId: string | null;
+  agencyOrganizationId: string | null;
+};
+
+const AgencyClientsTab: React.FC<AgencyClientsTabProps> = ({
+  agencyId,
+  currentUserId,
+  agencyOrganizationId,
+}) => {
+  const [search, setSearch] = useState('');
+  const [rows, setRows] = useState<ClientDirectoryRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [actionId, setActionId] = useState<string | null>(null);
+  const [, bump] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    const t = setTimeout(() => {
+      void searchClientProfilesForAgency(search).then((list) => {
+        if (!cancelled) {
+          setRows(list);
+          setLoading(false);
+        }
+      });
+    }, 200);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [search]);
+
+  useEffect(() => {
+    void fetchConnectionsForAgency(agencyId);
+    const unsub = subscribeConnections(() => bump((n) => n + 1));
+    return unsub;
+  }, [agencyId]);
+
+  const connectionForClient = (clientUserId: string) =>
+    getConnectionsForAgency(agencyId).find((c) => c.clientId === clientUserId);
+
+  const sendReq = async (clientUserId: string) => {
+    if (!currentUserId) {
+      Alert.alert(uiCopy.alerts.signInRequired, uiCopy.connections.signInToSendRequestGeneric);
+      return;
+    }
+    setActionId(clientUserId);
+    try {
+      const fromOrg = agencyOrganizationId ?? (await ensureAgencyOrganization(agencyId));
+      const toOrg = await getClientOrganizationIdForUser(clientUserId);
+      const r = await sendConnectionRequest(clientUserId, agencyId, 'agency', {
+        createdBy: currentUserId,
+        fromOrganizationId: fromOrg,
+        toOrganizationId: toOrg,
+      });
+      if (!r.ok) {
+        Alert.alert(
+          uiCopy.connections.requestFailedTitle,
+          r.duplicate ? uiCopy.connections.duplicateConnection : uiCopy.connections.requestFailedGeneric,
+        );
+      } else {
+        await fetchConnectionsForAgency(agencyId);
+      }
+    } finally {
+      setActionId(null);
+    }
+  };
+
+  return (
+    <ScreenScrollView>
+      <Text style={s.sectionLabel}>{uiCopy.connections.clientsSectionTitle}</Text>
+      <Text style={[s.metaText, { marginBottom: spacing.sm }]}>{uiCopy.connections.clientsSectionSubtitle}</Text>
+      <TextInput
+        value={search}
+        onChangeText={setSearch}
+        placeholder={uiCopy.connections.clientsSearchPlaceholder}
+        placeholderTextColor={colors.textSecondary}
+        style={{
+          borderWidth: 1,
+          borderColor: colors.border,
+          borderRadius: 10,
+          paddingHorizontal: spacing.md,
+          paddingVertical: spacing.sm,
+          marginBottom: spacing.md,
+          ...typography.body,
+          fontSize: 14,
+          color: colors.textPrimary,
+        }}
+      />
+      {loading ? <Text style={s.metaText}>{uiCopy.common.loading}</Text> : null}
+      {rows.map((row) => {
+        const conn = connectionForClient(row.id);
+        const label = row.display_name?.trim() || row.email || row.id.slice(0, 8);
+        const sub = row.company_name || row.email || '';
+        return (
+          <View
+            key={row.id}
+            style={[s.modelRow, { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm }]}
+          >
+            <View style={{ flex: 1, minWidth: 160 }}>
+              <Text style={s.modelName}>{label}</Text>
+              <Text style={s.metaText}>{sub}</Text>
+            </View>
+            {conn?.status === 'accepted' ? (
+              <Text style={s.metaText}>{uiCopy.connections.connectedLabel}</Text>
+            ) : conn?.status === 'pending' ? (
+              <Text style={s.metaText}>{uiCopy.connections.pendingLabel}</Text>
+            ) : conn?.status === 'rejected' ? (
+              <Text style={s.metaText}>{uiCopy.connections.statusRejectedLabel}</Text>
+            ) : (
+              <TouchableOpacity
+                style={[s.filterPill, { backgroundColor: colors.buttonOptionGreen, opacity: actionId === row.id ? 0.6 : 1 }]}
+                disabled={actionId === row.id}
+                onPress={() => void sendReq(row.id)}
+              >
+                <Text style={[s.filterPillLabel, { color: '#fff' }]}>{uiCopy.connections.sendRequest}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        );
+      })}
+      {!loading && rows.length === 0 ? <Text style={s.metaText}>{uiCopy.connections.clientsEmpty}</Text> : null}
+    </ScreenScrollView>
+  );
+};
+
+type AgencyMessagesTabProps = {
+  recruitingThreads: RecruitingThread[];
+  onRefreshRecruitingThreads: () => void;
+  onOpenRecruitingThread: (threadId: string) => void;
+  agencyId: string | null;
+  currentUserId: string | null;
+};
+
+const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
+  recruitingThreads,
+  onRefreshRecruitingThreads,
+  onOpenRecruitingThread,
+  agencyId,
+  currentUserId,
+}) => {
+  const [messagesSection, setMessagesSection] = useState<'optionRequests' | 'recruiting' | 'clientRequests'>('clientRequests');
+  const [incomingClientRequests, setIncomingClientRequests] = useState<Connection[]>([]);
+  const [acceptedClientConnections, setAcceptedClientConnections] = useState<Connection[]>([]);
+  const [clientReqNames, setClientReqNames] = useState<Record<string, string>>({});
+  const [connectionActionId, setConnectionActionId] = useState<string | null>(null);
+  const [activeConnectionChatId, setActiveConnectionChatId] = useState<string | null>(null);
+  const [activeConnectionChatTitle, setActiveConnectionChatTitle] = useState('');
   const [requests, setRequests] = useState(getOptionRequests());
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [chatInput, setChatInput] = useState('');
@@ -1840,6 +1981,58 @@ const AgencyMessagesTab: React.FC = () => {
     const unsub = subscribe(() => setRequests(getOptionRequests()));
     return unsub;
   }, []);
+
+  useEffect(() => {
+    if (messagesSection === 'recruiting') {
+      onRefreshRecruitingThreads();
+    }
+  }, [messagesSection, onRefreshRecruitingThreads]);
+
+  const syncConnectionUi = useCallback(() => {
+    if (!agencyId) {
+      setIncomingClientRequests([]);
+      setAcceptedClientConnections([]);
+      return;
+    }
+    const all = getConnectionsForAgency(agencyId);
+    setIncomingClientRequests(all.filter((c) => c.status === 'pending' && c.requestedBy === 'client'));
+    setAcceptedClientConnections(
+      all
+        .filter((c) => c.status === 'accepted' && c.conversationId && c.requestedBy === 'client')
+        .sort((a, b) => b.createdAt - a.createdAt),
+    );
+  }, [agencyId]);
+
+  useEffect(() => {
+    if (!agencyId) return;
+    void fetchConnectionsForAgency(agencyId);
+  }, [agencyId]);
+
+  useEffect(() => {
+    syncConnectionUi();
+    const unsub = subscribeConnections(syncConnectionUi);
+    return unsub;
+  }, [syncConnectionUi]);
+
+  useEffect(() => {
+    if (messagesSection !== 'clientRequests') {
+      setActiveConnectionChatId(null);
+    }
+  }, [messagesSection]);
+
+  useEffect(() => {
+    const ids = [
+      ...new Set([
+        ...incomingClientRequests.map((c) => c.clientId),
+        ...acceptedClientConnections.map((c) => c.clientId),
+      ]),
+    ];
+    if (ids.length === 0) {
+      setClientReqNames({});
+      return;
+    }
+    void getProfileDisplayNamesForUserIds(ids).then(setClientReqNames);
+  }, [incomingClientRequests, acceptedClientConnections]);
 
   useEffect(() => {
     if (selectedThreadId) {
@@ -1878,8 +2071,203 @@ const AgencyMessagesTab: React.FC = () => {
 
   return (
     <ScreenScrollView>
+      <Text style={s.sectionLabel}>Messages</Text>
+      <Text style={[s.metaText, { marginBottom: spacing.sm }]}>{uiCopy.connections.messagesIntro}</Text>
+
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: spacing.md }}>
+        {(['clientRequests', 'recruiting', 'optionRequests'] as const).map((key) => (
+          <TouchableOpacity
+            key={key}
+            style={[s.filterPill, messagesSection === key && s.filterPillActive]}
+            onPress={() => setMessagesSection(key)}
+          >
+            <Text style={[s.filterPillLabel, messagesSection === key && s.filterPillLabelActive]}>
+              {key === 'optionRequests'
+                ? uiCopy.connections.tabOptionRequests
+                : key === 'recruiting'
+                  ? uiCopy.connections.tabRecruiting
+                  : uiCopy.connections.tabClientRequests}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {messagesSection === 'clientRequests' ? (
+        <View style={{ marginBottom: spacing.lg }}>
+          {!agencyId ? (
+            <Text style={s.metaText}>{uiCopy.connections.noAgencyContext}</Text>
+          ) : (
+            <>
+              {incomingClientRequests.length > 0 && (
+                <>
+                  <Text style={[s.metaText, { marginBottom: spacing.sm, fontWeight: '600' }]}>
+                    {uiCopy.connections.pendingRequestsHeading}
+                  </Text>
+                  {incomingClientRequests.map((c) => (
+                    <View
+                      key={c.id}
+                      style={[s.modelRow, { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm }]}
+                    >
+                      <View style={{ flex: 1, minWidth: 160 }}>
+                        <Text style={s.modelName}>
+                          {clientReqNames[c.clientId] ?? uiCopy.connections.clientFallback}
+                        </Text>
+                        <Text style={s.metaText}>
+                          {new Date(c.createdAt).toLocaleString()} · {uiCopy.connections.statusPending}
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        style={[
+                          s.filterPill,
+                          { backgroundColor: colors.buttonOptionGreen, opacity: connectionActionId === c.id ? 0.6 : 1 },
+                        ]}
+                        disabled={connectionActionId === c.id || !currentUserId}
+                        onPress={async () => {
+                          if (!currentUserId || !agencyId) {
+                            Alert.alert(uiCopy.alerts.signInRequired, uiCopy.connections.signInToAcceptBody);
+                            return;
+                          }
+                          setConnectionActionId(c.id);
+                          try {
+                            const r = await acceptConnectionAndCreateChat({
+                              connectionId: c.id,
+                              actingUserId: currentUserId,
+                              clientUserId: c.clientId,
+                              agencyId: c.agencyId,
+                            });
+                            if (r.ok) {
+                              if (r.conversationId) {
+                                setActiveConnectionChatId(r.conversationId);
+                                setActiveConnectionChatTitle(
+                                  clientReqNames[c.clientId] ?? uiCopy.connections.clientFallback,
+                                );
+                              }
+                              Alert.alert(uiCopy.connections.connectedTitle, uiCopy.connections.connectedBody);
+                              await fetchConnectionsForAgency(agencyId);
+                              syncConnectionUi();
+                            } else {
+                              Alert.alert(uiCopy.common.error, uiCopy.connections.acceptFailed);
+                            }
+                          } finally {
+                            setConnectionActionId(null);
+                          }
+                        }}
+                      >
+                        <Text style={[s.filterPillLabel, { color: '#fff' }]}>{uiCopy.connections.accept}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          s.filterPill,
+                          { borderWidth: 1, borderColor: colors.buttonSkipRed, opacity: connectionActionId === c.id ? 0.6 : 1 },
+                        ]}
+                        disabled={connectionActionId === c.id}
+                        onPress={async () => {
+                          setConnectionActionId(c.id);
+                          try {
+                            await rejectIncomingConnection(c.id);
+                            if (agencyId) await fetchConnectionsForAgency(agencyId);
+                            syncConnectionUi();
+                          } finally {
+                            setConnectionActionId(null);
+                          }
+                        }}
+                      >
+                        <Text style={[s.filterPillLabel, { color: colors.buttonSkipRed }]}>{uiCopy.connections.reject}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </>
+              )}
+              {acceptedClientConnections.length > 0 && (
+                <>
+                  <Text
+                    style={[
+                      s.metaText,
+                      { marginBottom: spacing.sm, marginTop: incomingClientRequests.length > 0 ? spacing.md : 0, fontWeight: '600' },
+                    ]}
+                  >
+                    {uiCopy.connections.activeConnectionChatsHeading}
+                  </Text>
+                  {acceptedClientConnections.map((c) => (
+                    <View
+                      key={c.id}
+                      style={[s.modelRow, { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm }]}
+                    >
+                      <View style={{ flex: 1, minWidth: 160 }}>
+                        <Text style={s.modelName}>
+                          {clientReqNames[c.clientId] ?? uiCopy.connections.clientFallback}
+                        </Text>
+                        <Text style={s.metaText}>
+                          {new Date(c.createdAt).toLocaleString()} · {uiCopy.connections.connectedLabel}
+                        </Text>
+                      </View>
+                      {c.conversationId ? (
+                        <TouchableOpacity
+                          style={[s.filterPill, s.filterPillActive]}
+                          onPress={() => {
+                            setActiveConnectionChatId(c.conversationId!);
+                            setActiveConnectionChatTitle(clientReqNames[c.clientId] ?? uiCopy.connections.clientFallback);
+                          }}
+                        >
+                          <Text style={[s.filterPillLabel, s.filterPillLabelActive]}>
+                            {uiCopy.connections.openConversation}
+                          </Text>
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                  ))}
+                </>
+              )}
+              {incomingClientRequests.length === 0 && acceptedClientConnections.length === 0 ? (
+                <Text style={s.metaText}>{uiCopy.connections.noIncomingRequests}</Text>
+              ) : null}
+              {activeConnectionChatId ? (
+                <ConnectionMessengerInline
+                  conversationId={activeConnectionChatId}
+                  headerTitle={activeConnectionChatTitle}
+                  viewerUserId={currentUserId}
+                />
+              ) : null}
+            </>
+          )}
+        </View>
+      ) : messagesSection === 'recruiting' ? (
+        <View style={{ marginBottom: spacing.lg }}>
+          <Text style={[s.metaText, { marginBottom: spacing.md }]}>
+            When you start a chat or accept an application from Recruiting, the thread appears here (and leaves the pending swipe queue). Same candidates are listed under Recruiting → My list until accepted.
+          </Text>
+          {recruitingThreads.length === 0 ? (
+            <Text style={s.metaText}>No recruiting chats yet. Start a chat from Recruiting or accept an application.</Text>
+          ) : (
+            recruitingThreads.map((thread) => {
+              const application = getApplicationById(thread.applicationId);
+              const thumbUri = application?.images?.closeUp || application?.images?.profile || application?.images?.fullBody;
+              return (
+                <TouchableOpacity
+                  key={thread.id}
+                  style={s.bookingChatRow}
+                  onPress={() => onOpenRecruitingThread(thread.id)}
+                >
+                  <View style={s.bookingChatThumbWrap}>
+                    {thumbUri ? (
+                      <Image source={{ uri: thumbUri }} style={s.bookingChatThumb} resizeMode="contain" />
+                    ) : (
+                      <View style={[s.bookingChatThumb, s.bookingChatThumbPlaceholder]}>
+                        <Text style={s.bookingChatThumbPlaceholderText} numberOfLines={1}>{thread.modelName}</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={[s.modelName, { flex: 1, marginLeft: spacing.sm }]} numberOfLines={1}>{thread.modelName}</Text>
+                  <Text style={s.backLabel}>Chat</Text>
+                </TouchableOpacity>
+              );
+            })
+          )}
+        </View>
+      ) : messagesSection === 'optionRequests' ? (
+        <>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm }}>
-        <Text style={s.sectionLabel}>Messages</Text>
+        <Text style={[s.sectionLabel, { fontSize: 14 }]}>Option request threads</Text>
         <View style={{ flexDirection: 'row', gap: 4 }}>
           {(['current', 'archived'] as const).map((f) => (
             <TouchableOpacity key={f} style={[s.filterPill, msgFilter === f && s.filterPillActive]} onPress={() => setMsgFilter(f)}>
@@ -2086,6 +2474,8 @@ const AgencyMessagesTab: React.FC = () => {
           </View>
         </View>
       )}
+        </>
+      ) : null}
     </ScreenScrollView>
   );
 };
@@ -2114,33 +2504,36 @@ const OrganizationTeamTab: React.FC<{
       setInviteEmail('');
       setLastLink(buildOrganizationInviteUrl(row.token));
       onRefresh();
-      Alert.alert(
-        'Einladung erstellt',
-        'Teile den Einladungslink sicher mit dem Booker (z. B. per E-Mail). E-Mail-Versand über die App folgt später.',
-      );
+      Alert.alert(uiCopy.alerts.invitationCreated, uiCopy.alerts.invitationCreatedBody);
     } else {
-      Alert.alert('Fehler', 'Einladung konnte nicht erstellt werden. Bist du als Owner eingeloggt und stimmt die Supabase-RLS?');
+      Alert.alert(uiCopy.common.error, uiCopy.alerts.invitationFailed);
     }
   };
 
   const roleLabel = (r: string) =>
-    r === 'owner' ? 'Owner' : r === 'booker' ? 'Booker' : r === 'employee' ? 'Mitarbeiter' : r;
+    r === 'owner'
+      ? uiCopy.team.roleOwner
+      : r === 'booker'
+        ? uiCopy.team.roleBooker
+        : r === 'employee'
+          ? uiCopy.team.roleEmployee
+          : r;
 
   return (
     <ScreenScrollView>
-      <Text style={s.sectionLabel}>Team</Text>
+      <Text style={s.sectionLabel}>{uiCopy.team.section}</Text>
       <Text style={s.metaText}>
-        Booker erhalten einen Einladungslink und legen ihr Konto selbst an (DSGVO). Nur die Agentur-E-Mail (Owner) kann neue Einladungen erstellen.
+        {uiCopy.team.leadAgency}
       </Text>
       {!organizationId && (
         <Text style={[s.metaText, { marginTop: spacing.md }]}>
-          Noch keine Organisation: Als Agentur-Master anmelden (Profil-E-Mail = Agentur-E-Mail), dann wird die Organisation automatisch angelegt.
+          {uiCopy.team.noOrganizationYet}
         </Text>
       )}
       <View style={{ gap: spacing.sm, marginTop: spacing.md }}>
-        <Text style={s.sectionLabel}>Mitglieder</Text>
+        <Text style={s.sectionLabel}>{uiCopy.team.members}</Text>
         {members.length === 0 ? (
-          <Text style={s.metaText}>Keine Mitglieder geladen.</Text>
+          <Text style={s.metaText}>No members loaded.</Text>
         ) : (
           members.map((m) => (
             <View key={m.id} style={s.modelRow}>
@@ -2155,9 +2548,9 @@ const OrganizationTeamTab: React.FC<{
         )}
       </View>
       <View style={{ marginTop: spacing.lg, gap: spacing.sm }}>
-        <Text style={s.sectionLabel}>Ausstehende Einladungen</Text>
+        <Text style={s.sectionLabel}>{uiCopy.team.pendingInvitations}</Text>
         {invitations.filter((i) => i.status === 'pending').length === 0 ? (
-          <Text style={s.metaText}>Keine offenen Einladungen.</Text>
+          <Text style={s.metaText}>{uiCopy.team.noOpenInvitations}</Text>
         ) : (
           invitations
             .filter((i) => i.status === 'pending')
@@ -2175,26 +2568,26 @@ const OrganizationTeamTab: React.FC<{
       </View>
       {canInvite && organizationId && (
         <View style={{ marginTop: spacing.lg, gap: spacing.sm }}>
-          <Text style={s.sectionLabel}>Booker einladen</Text>
+          <Text style={s.sectionLabel}>{uiCopy.team.inviteBooker}</Text>
           <TextInput
             value={inviteEmail}
             onChangeText={setInviteEmail}
-            placeholder="E-Mail"
+            placeholder="Email"
             placeholderTextColor={colors.textSecondary}
             style={s.editInput}
             autoCapitalize="none"
             keyboardType="email-address"
           />
           <TouchableOpacity style={s.saveBtn} onPress={handleInvite} disabled={busy || !inviteEmail.trim()}>
-            <Text style={s.saveBtnLabel}>{busy ? '…' : 'Einladung senden (Link erzeugen)'}</Text>
+            <Text style={s.saveBtnLabel}>{busy ? '…' : uiCopy.team.inviteSendLink}</Text>
           </TouchableOpacity>
           {lastLink && (
             <TouchableOpacity
               onPress={() => {
-                Alert.alert('Einladungslink', lastLink);
+                Alert.alert(uiCopy.alerts.invitationLink, lastLink);
               }}
             >
-              <Text style={[s.metaText, { textDecorationLine: 'underline' }]}>Letzten Link anzeigen</Text>
+              <Text style={[s.metaText, { textDecorationLine: 'underline' }]}>{uiCopy.alerts.showLastLink}</Text>
             </TouchableOpacity>
           )}
         </View>

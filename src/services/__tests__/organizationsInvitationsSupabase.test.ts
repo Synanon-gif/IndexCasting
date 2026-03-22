@@ -17,6 +17,7 @@ import {
   getInvitationPreview,
   acceptOrganizationInvitation,
   buildOrganizationInviteUrl,
+  getMyClientMemberRole,
 } from '../organizationsInvitationsSupabase';
 
 const rpc = supabase.rpc as jest.Mock;
@@ -57,6 +58,23 @@ describe('organizationsInvitationsSupabase', () => {
   it('ensureClientOrganization: null wenn data kein string', async () => {
     rpc.mockResolvedValueOnce({ data: null, error: null });
     await expect(ensureClientOrganization()).resolves.toBeNull();
+  });
+
+  it('getMyClientMemberRole: maps RPC row', async () => {
+    rpc.mockResolvedValueOnce({
+      data: [{ member_role: 'owner', organization_id: 'org-client-1' }],
+      error: null,
+    });
+    await expect(getMyClientMemberRole()).resolves.toEqual({
+      member_role: 'owner',
+      organization_id: 'org-client-1',
+    });
+    expect(rpc).toHaveBeenCalledWith('get_my_client_member_role');
+  });
+
+  it('getMyClientMemberRole: null wenn kein org', async () => {
+    rpc.mockResolvedValueOnce({ data: [], error: null });
+    await expect(getMyClientMemberRole()).resolves.toBeNull();
   });
 
   it('getInvitationPreview mappt erste Tabellenzeile', async () => {

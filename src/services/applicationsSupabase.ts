@@ -194,13 +194,19 @@ export async function updateApplicationStatus(
   status: 'accepted' | 'rejected',
   extra?: { recruiting_thread_id?: string; accepted_by_agency_id?: string }
 ): Promise<boolean> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('model_applications')
     .update({ status, ...extra })
-    .eq('id', id);
+    .eq('id', id)
+    .select('id')
+    .maybeSingle();
 
   if (error) {
     console.error('updateApplicationStatus error:', error);
+    return false;
+  }
+  if (!data?.id) {
+    console.warn('updateApplicationStatus: no row updated (check id / RLS)', id);
     return false;
   }
   return true;

@@ -27,7 +27,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import { getModelByIdFromSupabase } from '../services/modelsSupabase';
 import { getAgencyById } from '../services/agenciesSupabase';
-import { insertCalendarEntry, upsertCalendarEntry, updateCalendarEntryToJob } from '../services/calendarSupabase';
+import { upsertCalendarEntry, updateCalendarEntryToJob } from '../services/calendarSupabase';
 import { notifyClientAgencyCounterOffer } from '../services/pushNotifications';
 
 export type ChatStatus = 'in_negotiation' | 'confirmed' | 'rejected';
@@ -313,20 +313,43 @@ export async function loadOptionRequestsForAgency(agencyId: string): Promise<voi
 
 export function setRequestStatus(threadId: string, status: ChatStatus): void {
   const req = requestsCache.find((r) => r.threadId === threadId);
-  if (req) {
-    req.status = status;
-    notify();
-    updateOptionRequestStatus(req.id, status);
+  if (!req) return;
 
-    if (status === 'confirmed') {
-      insertCalendarEntry(req.modelId, req.date, 'booked', {
-        title: 'Booking: ' + req.clientName,
-        start_time: req.startTime,
-        end_time: req.endTime,
-        entry_type: 'booking',
-      }).catch(() => {});
+  const prev = req.status;
+  req.status = status;
+  notify();
+
+  void updateOptionRequestStatus(req.id, status).then((ok) => {
+    if (!ok) {
+      req.status = prev;
+      notify();
+      console.error('[setRequestStatus] Supabase rejected status update', req.id);
+      return;
     }
-  }
+    if (status !== 'confirmed') return;
+
+    /** Manual “confirmed” must mirror option_requests into calendar_entries with option_request_id (client calendar join). */
+    void (async () => {
+      try {
+        const full = await getOptionRequestById(req.id);
+        if (!full) return;
+        const entryType = full.request_type === 'casting' ? 'casting' : 'option';
+        const title = `${entryType === 'casting' ? 'Casting' : 'Option'} – ${full.client_name ?? 'Client'}`;
+        await upsertCalendarEntry(full.model_id, full.requested_date, 'booked', undefined, {
+          start_time: full.start_time ?? undefined,
+          end_time: full.end_time ?? undefined,
+          title,
+          entry_type: entryType,
+          option_request_id: full.id,
+          client_name: full.client_name ?? undefined,
+          booking_details: {},
+          created_by_agency: false,
+        });
+      } catch (e) {
+        console.error('[setRequestStatus] calendar sync failed', e);
+      }
+    })();
+  });
 }
 
 export function getRequestStatus(threadId: string): ChatStatus | undefined {

@@ -1,19 +1,23 @@
 /**
- * Client–Agency connections.
- * Backed by Supabase (client_agency_connections).
- * Local cache with sync API for UI compatibility.
- * Falls back to localStorage when Supabase FK constraints reject demo IDs.
+ * Client–Agency connections (Supabase `client_agency_connections`).
+ * Load with fetchConnectionsForClient / fetchConnectionsForAgency after login.
  */
 
 import {
-  getAllConnections,
-  insertConnection as insertInDb,
-  updateConnectionStatus as updateInDb,
-  deleteConnection as deleteInDb,
+  getConnectionsForClient as fetchClientRows,
+  getConnectionsForAgency as fetchAgencyRows,
+  getConnectionByClientAndAgency,
+  insertConnection,
+  updateConnectionStatus,
+  deleteConnection,
+  setConnectionConversationId,
   type SupabaseConnection,
 } from '../services/connectionsSupabase';
+import { getOrCreateConversation } from '../services/messengerSupabase';
+import { collectParticipantUserIdsForConnection } from '../services/connectionChatParticipants';
+import { getClientOrganizationIdForUser, getOrganizationIdForAgency } from '../services/organizationsInvitationsSupabase';
 
-export type ConnectionStatus = 'pending' | 'accepted';
+export type ConnectionStatus = 'pending' | 'accepted' | 'rejected';
 
 export type Connection = {
   id: string;
@@ -22,74 +26,51 @@ export type Connection = {
   status: ConnectionStatus;
   requestedBy: 'client' | 'agency';
   createdAt: number;
+  conversationId?: string | null;
 };
 
-const STORAGE_KEY = 'ci_connections';
-
-function loadLocal(): Connection[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
-}
-
-function saveLocal(conns: Connection[]) {
-  if (typeof window !== 'undefined') {
-    try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(conns)); }
-    catch { /* ignore */ }
-  }
-}
+let connections: Connection[] = [];
+const listeners = new Set<() => void>();
 
 function toLocal(c: SupabaseConnection): Connection {
   return {
     id: c.id,
     clientId: c.client_id,
     agencyId: c.agency_id,
-    status: c.status,
+    status: c.status as ConnectionStatus,
     requestedBy: c.requested_by,
     createdAt: new Date(c.created_at).getTime(),
+    conversationId: c.conversation_id ?? undefined,
   };
 }
 
-let connections: Connection[] = loadLocal();
-let hydrated = false;
-const listeners = new Set<() => void>();
-
 function notify() {
   listeners.forEach((f) => f());
-  saveLocal(connections);
-}
-
-async function ensureHydrated() {
-  if (hydrated) return;
-  hydrated = true;
-  try {
-    const remote = await getAllConnections();
-    if (remote.length > 0) {
-      connections = remote.map(toLocal);
-      saveLocal(connections);
-      notify();
-    }
-  } catch {
-    // Keep localStorage data as fallback
-  }
 }
 
 export function subscribeConnections(fn: () => void): () => void {
   listeners.add(fn);
-  ensureHydrated();
   return () => listeners.delete(fn);
+}
+
+export async function fetchConnectionsForClient(clientId: string): Promise<void> {
+  const remote = await fetchClientRows(clientId);
+  const mapped = remote.map(toLocal);
+  const others = connections.filter((c) => c.clientId !== clientId);
+  connections = [...others, ...mapped];
+  notify();
+}
+
+export async function fetchConnectionsForAgency(agencyId: string): Promise<void> {
+  const remote = await fetchAgencyRows(agencyId);
+  const mapped = remote.map(toLocal);
+  const others = connections.filter((c) => c.agencyId !== agencyId);
+  connections = [...others, ...mapped];
+  notify();
 }
 
 export function getConnections(): Connection[] {
   return [...connections];
-}
-
-export function getConnection(clientId: string, agencyId: string): Connection | undefined {
-  return connections.find(
-    (c) => c.clientId === clientId && c.agencyId === agencyId
-  );
 }
 
 export function getConnectionsForClient(clientId: string): Connection[] {
@@ -100,10 +81,8 @@ export function getConnectionsForAgency(agencyId: string): Connection[] {
   return connections.filter((c) => c.agencyId === agencyId);
 }
 
-export function getConnectionsForAgencyByIdOrCode(agencyId: string, code?: string): Connection[] {
-  return connections.filter(
-    (c) => c.agencyId === agencyId || (!!code && c.agencyId === code)
-  );
+export function getConnection(clientId: string, agencyId: string): Connection | undefined {
+  return connections.find((c) => c.clientId === clientId && c.agencyId === agencyId);
 }
 
 export function getConnectedAgencyIdsForClient(clientId: string): string[] {
@@ -118,50 +97,118 @@ export function getConnectedClientIdsForAgency(agencyId: string): string[] {
     .map((c) => c.clientId);
 }
 
-export function sendConnectionRequest(
+export function getConnectionsForAgencyByIdOrCode(agencyId: string, code?: string): Connection[] {
+  return connections.filter((c) => c.agencyId === agencyId || (!!code && c.agencyId === code));
+}
+
+export type SendConnectionResult =
+  | { ok: true; connection: Connection }
+  | { ok: false; duplicate?: boolean; reason?: string };
+
+export async function sendConnectionRequest(
   clientId: string,
   agencyId: string,
-  requestedBy: 'client' | 'agency'
-): Connection | null {
-  if (connections.some((c) => c.clientId === clientId && c.agencyId === agencyId)) {
-    return null;
+  requestedBy: 'client' | 'agency',
+  opts?: {
+    createdBy?: string;
+    fromOrganizationId?: string | null;
+    toOrganizationId?: string | null;
   }
-  const conn: Connection = {
-    id: `conn-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+): Promise<SendConnectionResult> {
+  const existingRow = await getConnectionByClientAndAgency(clientId, agencyId);
+  if (existingRow) {
+    const conn = toLocal(existingRow);
+    const others = connections.filter((c) => !(c.clientId === clientId && c.agencyId === agencyId));
+    connections = [conn, ...others];
+    notify();
+    return { ok: false, duplicate: true };
+  }
+  const result = await insertConnection({
     clientId,
     agencyId,
-    status: 'pending',
     requestedBy,
-    createdAt: Date.now(),
-  };
-  connections.push(conn);
-  notify();
-
-  insertInDb(clientId, agencyId, requestedBy).then((result) => {
-    if (result) {
-      const c = connections.find((x) => x.id === conn.id);
-      if (c) c.id = result.id;
-      notify();
-    }
+    createdBy: opts?.createdBy,
+    fromOrganizationId: opts?.fromOrganizationId ?? undefined,
+    toOrganizationId: opts?.toOrganizationId ?? undefined,
   });
-
-  return conn;
+  if (!result) {
+    return { ok: false, duplicate: true };
+  }
+  const conn = toLocal(result);
+  const others = connections.filter((c) => !(c.clientId === clientId && c.agencyId === agencyId));
+  connections = [conn, ...others];
+  notify();
+  return { ok: true, connection: conn };
 }
 
-export function acceptConnection(connectionId: string): boolean {
-  const c = connections.find((x) => x.id === connectionId);
-  if (!c || c.status !== 'pending') return false;
-  c.status = 'accepted';
+/**
+ * Agency (or client) accepts a pending connection and opens a shared direct conversation for both orgs.
+ */
+export async function acceptConnectionAndCreateChat(params: {
+  connectionId: string;
+  actingUserId: string;
+  clientUserId: string;
+  agencyId: string;
+}): Promise<{ ok: boolean; conversationId?: string }> {
+  const row = connections.find((c) => c.id === params.connectionId);
+  if (!row || row.status !== 'pending') {
+    return { ok: false };
+  }
+
+  const participantIds = await collectParticipantUserIdsForConnection(
+    params.clientUserId,
+    params.agencyId,
+    params.actingUserId
+  );
+
+  const [clientOrgId, agencyOrgId] = await Promise.all([
+    getClientOrganizationIdForUser(params.clientUserId),
+    getOrganizationIdForAgency(params.agencyId),
+  ]);
+
+  const conv = await getOrCreateConversation(
+    'direct',
+    participantIds,
+    params.connectionId,
+    'Client ↔ Agency',
+    {
+      createdBy: params.actingUserId,
+      clientOrganizationId: clientOrgId,
+      agencyOrganizationId: agencyOrgId,
+    }
+  );
+  if (!conv) {
+    console.error('acceptConnectionAndCreateChat: conversation not created');
+    return { ok: false };
+  }
+
+  const updated = await updateConnectionStatus(params.connectionId, 'accepted');
+  if (!updated) {
+    return { ok: false };
+  }
+
+  await setConnectionConversationId(params.connectionId, conv.id);
+
+  const c = connections.find((x) => x.id === params.connectionId);
+  if (c) {
+    c.status = 'accepted';
+    c.conversationId = conv.id;
+  }
   notify();
-  updateInDb(connectionId, 'accepted');
-  return true;
+  return { ok: true, conversationId: conv.id };
 }
 
-export function rejectConnection(connectionId: string): boolean {
-  const idx = connections.findIndex((x) => x.id === connectionId);
-  if (idx === -1) return false;
-  connections.splice(idx, 1);
-  notify();
-  deleteInDb(connectionId);
-  return true;
+export async function rejectIncomingConnection(connectionId: string): Promise<boolean> {
+  const ok = await updateConnectionStatus(connectionId, 'rejected');
+  if (ok) {
+    connections = connections.map((c) => (c.id === connectionId ? { ...c, status: 'rejected' as const } : c));
+    notify();
+    return true;
+  }
+  const del = await deleteConnection(connectionId);
+  if (del) {
+    connections = connections.filter((c) => c.id !== connectionId);
+    notify();
+  }
+  return del;
 }

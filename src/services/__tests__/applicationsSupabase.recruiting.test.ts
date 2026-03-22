@@ -5,20 +5,23 @@ jest.mock('../../../lib/supabase', () => ({
 }));
 
 import { supabase } from '../../../lib/supabase';
-import { fetchApplicationById, updateApplicationRecruitingThread } from '../applicationsSupabase';
+import { fetchApplicationById, updateApplicationRecruitingThread, updateApplicationStatus } from '../applicationsSupabase';
 
 const from = supabase.from as jest.Mock;
 
 describe('applicationsSupabase (recruiting helpers)', () => {
   let consoleErrorSpy: jest.SpyInstance;
+  let consoleWarnSpy: jest.SpyInstance;
 
   beforeEach(() => {
     jest.clearAllMocks();
     consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
   afterEach(() => {
     consoleErrorSpy.mockRestore();
+    consoleWarnSpy.mockRestore();
   });
 
   it('fetchApplicationById returns row when found', async () => {
@@ -72,5 +75,29 @@ describe('applicationsSupabase (recruiting helpers)', () => {
       }),
     });
     await expect(updateApplicationRecruitingThread('app-1', 'thread-1')).resolves.toBe(false);
+  });
+
+  it('updateApplicationStatus returns false when RLS updates zero rows', async () => {
+    const maybeSingle = jest.fn().mockResolvedValue({ data: null, error: null });
+    from.mockReturnValue({
+      update: () => ({
+        eq: () => ({
+          select: () => ({ maybeSingle }),
+        }),
+      }),
+    });
+    await expect(updateApplicationStatus('missing-id', 'rejected')).resolves.toBe(false);
+  });
+
+  it('updateApplicationStatus returns true when a row is updated', async () => {
+    const maybeSingle = jest.fn().mockResolvedValue({ data: { id: 'app-1' }, error: null });
+    from.mockReturnValue({
+      update: () => ({
+        eq: () => ({
+          select: () => ({ maybeSingle }),
+        }),
+      }),
+    });
+    await expect(updateApplicationStatus('app-1', 'accepted', { accepted_by_agency_id: 'ag-1' })).resolves.toBe(true);
   });
 });

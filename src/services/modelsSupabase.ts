@@ -3,6 +3,7 @@
  * Pro Partei: agency_id; Bilder-URLs und Maße persistent; parteiübergreifend sichtbar je nach RLS.
  */
 import { supabase } from '../../lib/supabase';
+import { fetchAllSupabasePages } from './supabaseFetchAll';
 
 export type SupabaseModel = {
   id: string;
@@ -81,33 +82,29 @@ export async function getModelsForClientFromSupabase(
   clientType: 'fashion' | 'commercial'
 ): Promise<SupabaseModel[]> {
   const column = clientType === 'fashion' ? 'is_visible_fashion' : 'is_visible_commercial';
-  const { data, error } = await supabase
-    .from('models')
-    .select('*')
-    .eq(column, true)
-    .or('agency_relationship_status.is.null,agency_relationship_status.eq.active,agency_relationship_status.eq.pending_link')
-    .order('name');
-
-  if (error) {
-    console.error('getModelsForClientFromSupabase error:', error);
-    return [];
-  }
-  return (data ?? []) as SupabaseModel[];
+  return fetchAllSupabasePages(async (from, to) => {
+    const { data, error } = await supabase
+      .from('models')
+      .select('*')
+      .eq(column, true)
+      .or('agency_relationship_status.is.null,agency_relationship_status.eq.active,agency_relationship_status.eq.pending_link')
+      .order('name')
+      .range(from, to);
+    return { data: data as SupabaseModel[] | null, error };
+  });
 }
 
 export async function getModelsForAgencyFromSupabase(agencyId: string): Promise<SupabaseModel[]> {
-  const { data, error } = await supabase
-    .from('models')
-    .select('*')
-    .eq('agency_id', agencyId)
-    .or('agency_relationship_status.is.null,agency_relationship_status.eq.active,agency_relationship_status.eq.pending_link')
-    .order('name');
-
-  if (error) {
-    console.error('getModelsForAgencyFromSupabase error:', error);
-    return [];
-  }
-  return (data ?? []) as SupabaseModel[];
+  return fetchAllSupabasePages(async (from, to) => {
+    const { data, error } = await supabase
+      .from('models')
+      .select('*')
+      .eq('agency_id', agencyId)
+      .or('agency_relationship_status.is.null,agency_relationship_status.eq.active,agency_relationship_status.eq.pending_link')
+      .order('name')
+      .range(from, to);
+    return { data: data as SupabaseModel[] | null, error };
+  });
 }
 
 export async function updateModelVisibilityInSupabase(

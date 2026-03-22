@@ -25,6 +25,7 @@ import {
   type InvitationPreview,
 } from './src/services/organizationsInvitationsSupabase';
 import { persistInviteToken, readInviteToken } from './src/storage/inviteToken';
+import { uiCopy } from './src/constants/uiCopy';
 
 /** Web: volle Höhe sofort beim Modul-Load (vor erstem React-Paint) – verhindert weißen/leeren Screen. */
 function ensureWebRootHasHeight() {
@@ -127,12 +128,12 @@ function AppContent() {
       .then((p) => {
         if (cancelled) return;
         setInvitePreview(p);
-        setInvitePreviewError(p ? null : 'Diese Einladung ist ungültig oder abgelaufen.');
+        setInvitePreviewError(p ? null : uiCopy.invite.invalidOrExpired);
         setInvitePreviewLoading(false);
       })
       .catch(() => {
         if (cancelled) return;
-        setInvitePreviewError('Einladung konnte nicht geladen werden.');
+        setInvitePreviewError(uiCopy.invite.loadFailed);
         setInvitePreviewLoading(false);
       });
     return () => {
@@ -345,9 +346,7 @@ function ConfigGuard({ children }: { children: React.ReactNode }) {
     return (
       <View style={[styles.shell, { justifyContent: 'center', alignItems: 'center', padding: 24 }]}>
         <Text style={{ color: colors.textPrimary, fontSize: 16, textAlign: 'center' }}>
-          Supabase ist nicht konfiguriert.{'\n\n'}
-          Bitte in .env.local prüfen:{'\n'}
-          NEXT_PUBLIC_SUPABASE_URL und NEXT_PUBLIC_SUPABASE_ANON_KEY
+          {uiCopy.app.supabaseMissing}
         </Text>
         <StatusBar style="dark" />
       </View>

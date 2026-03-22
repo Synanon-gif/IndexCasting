@@ -234,12 +234,12 @@ export function normalizeAgencyRecruitingChatRpcUuid(data: unknown): string | nu
   return null;
 }
 
+/** User-facing recruiting chat RPC errors (English only). */
 export function formatRecruitingChatRpcError(err: unknown): string {
-  const e = err as { message?: string; details?: string; hint?: string } | null;
-  const raw = [e?.message, e?.details, e?.hint].filter(Boolean).join(' ');
+  const raw = collectErrText(err);
   const msg = raw.toLowerCase();
   if (msg.includes('forbidden')) {
-    return 'No permission to start this recruiting chat.';
+    return 'No permission: sign in as an agency organization member or use the master account with the agency email.';
   }
   if (msg.includes('wrong agency')) {
     return 'This application belongs to a different agency.';
@@ -254,50 +254,25 @@ export function formatRecruitingChatRpcError(err: unknown): string {
     return 'Application not found.';
   }
   if (msg.includes('failed to link')) {
-    return 'Could not link recruiting thread to application.';
-  }
-  return 'Could not start recruiting chat.';
-}
-
-/** Deutsche Kurzmeldungen für die Agentur-UI */
-export function formatRecruitingChatRpcErrorDe(err: unknown): string {
-  const raw = collectErrText(err);
-  const msg = raw.toLowerCase();
-  if (msg.includes('forbidden')) {
-    return 'Keine Berechtigung: Als Agentur-Mitglied (Organisation) angemeldet sein oder Master-Account mit der Agentur-E-Mail.';
-  }
-  if (msg.includes('wrong agency')) {
-    return 'Diese Bewerbung gehört zu einer anderen Agentur.';
-  }
-  if (msg.includes('not pending')) {
-    return 'Recruiting-Chat nur möglich, solange die Bewerbung noch offen (pending) ist.';
-  }
-  if (msg.includes('not authenticated')) {
-    return 'Bitte erneut anmelden.';
-  }
-  if (msg.includes('application not found')) {
-    return 'Bewerbung nicht gefunden.';
-  }
-  if (msg.includes('failed to link')) {
-    return 'Chat konnte nicht mit der Bewerbung verknüpft werden (Datenbank). Support prüfen.';
+    return 'Could not link the recruiting thread to the application. Check the database or contact support.';
   }
   if (isPgrst202Error(err) && !isAgencyRecruitingChatRpcMissingError(err)) {
-    return 'Server erkennt den Aufruf nicht (Parameter/Schema). In Supabase: SQL migrieren, API-Schema neu laden (Dashboard oder NOTIFY pgrst).';
+    return 'Server does not recognize this call (parameters/schema). In Supabase: apply SQL migrations, reload the API schema (Dashboard or NOTIFY pgrst).';
   }
   if (msg.includes('internal server error') || msg.includes('internal_server_error')) {
-    return 'Server-Fehler (500). In Supabase: Logs → Postgres / API prüfen; oft fehlt eine Abhängigkeit (z. B. get_my_agency_member_role) oder RLS in der Funktion.';
+    return 'Server error (500). In Supabase: check Postgres/API logs; a dependency (e.g. get_my_agency_member_role) or RLS inside the function may be missing.';
   }
   if (msg.includes('permission denied') || msg.includes('42501')) {
-    return 'Berechtigung verweigert (EXECUTE auf die Funktion oder Tabellen). In SQL: GRANT EXECUTE … TO authenticated prüfen.';
+    return 'Permission denied (EXECUTE on the function or tables). In SQL: verify GRANT EXECUTE … TO authenticated.';
   }
   if (msg.includes('does not exist') && msg.includes('function')) {
-    return 'Funktion fehlt oder API-Schema veraltet. SQL-Migration erneut ausführen, dann NOTIFY pgrst reload.';
+    return 'Function missing or API schema stale. Re-run the SQL migration, then NOTIFY pgrst reload.';
   }
   const detail = raw.replace(/\s+/g, ' ').trim();
   if (detail.length > 0) {
-    return `Technisch: ${detail.length > 320 ? `${detail.slice(0, 320)}…` : detail}`;
+    return `Technical: ${detail.length > 320 ? `${detail.slice(0, 320)}…` : detail}`;
   }
-  return 'Chat konnte nicht gestartet werden. Verbindung prüfen oder erneut versuchen.';
+  return 'Could not start recruiting chat. Check your connection and try again.';
 }
 
 export type AgencyStartRecruitingChatRpcResult =

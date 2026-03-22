@@ -2,6 +2,7 @@
  * Agenturen – alle Stammdaten in Supabase (agencies); zentrale Datenquelle für die App.
  */
 import { supabase } from '../../lib/supabase';
+import { fetchAllSupabasePages } from './supabaseFetchAll';
 
 export type Agency = {
   id: string;
@@ -16,16 +17,14 @@ export type Agency = {
 };
 
 export async function getAgencies(): Promise<Agency[]> {
-  const { data, error } = await supabase
-    .from('agencies')
-    .select('id, name, city, focus, email, code, logo_url, created_at, updated_at')
-    .order('name');
-
-  if (error) {
-    console.error('getAgencies error:', error);
-    return [];
-  }
-  return (data ?? []) as Agency[];
+  return fetchAllSupabasePages(async (from, to) => {
+    const { data, error } = await supabase
+      .from('agencies')
+      .select('id, name, city, focus, email, code, logo_url, created_at, updated_at')
+      .order('name')
+      .range(from, to);
+    return { data: data as Agency[] | null, error };
+  });
 }
 
 export async function getAgencyById(id: string): Promise<Agency | null> {

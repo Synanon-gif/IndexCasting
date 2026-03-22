@@ -1,12 +1,11 @@
 import React, { Component, type ErrorInfo, type ReactNode } from 'react';
 import { View, Text, ScrollView, Platform, TouchableOpacity, StyleSheet } from 'react-native';
+import { uiCopy } from '../constants/uiCopy';
 
 type Props = { children: ReactNode };
 type State = { error: Error | null };
 
-/**
- * Zeigt Render-Fehler direkt im UI (hilft, wenn der Screen nur weiß bleibt und die Konsole „leer“ wirkt).
- */
+/** Renders render errors in-app (helps when the screen stays blank). */
 export class AppErrorBoundary extends Component<Props, State> {
   state: State = { error: null };
 
@@ -31,10 +30,8 @@ export class AppErrorBoundary extends Component<Props, State> {
       const stack = this.state.error.stack || '';
       return (
         <View style={styles.wrap}>
-          <Text style={styles.title}>Die App ist abgestürzt (Render-Fehler)</Text>
-          <Text style={styles.hint}>
-            GitHub/Supabase sind dafür nicht die Ursache – hier steht der echte Fehler. Bei Web: Konsole mit F12 öffnen.
-          </Text>
+          <Text style={styles.title}>{uiCopy.app.crashTitle}</Text>
+          <Text style={styles.hint}>{uiCopy.app.crashBody}</Text>
           <ScrollView style={styles.scroll}>
             <Text selectable style={styles.mono}>
               {msg}
@@ -43,7 +40,7 @@ export class AppErrorBoundary extends Component<Props, State> {
           </ScrollView>
           {Platform.OS === 'web' && (
             <TouchableOpacity style={styles.btn} onPress={this.handleReload}>
-              <Text style={styles.btnLabel}>Seite neu laden</Text>
+              <Text style={styles.btnLabel}>{uiCopy.common.reloadPage}</Text>
             </TouchableOpacity>
           )}
         </View>

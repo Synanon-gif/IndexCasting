@@ -32,6 +32,7 @@ import { getAgencyById, type Agency } from '../services/agenciesSupabase';
 import { getThread } from '../services/recruitingChatSupabase';
 import { BookingChatView } from '../views/BookingChatView';
 import { useAuth } from '../context/AuthContext';
+import { uiCopy } from '../constants/uiCopy';
 
 type ModelProfile = {
   id: string;
@@ -256,10 +257,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
       entry_type: 'personal',
     });
     if (!created) {
-      Alert.alert(
-        'Kalender',
-        'Eintrag konnte nicht gespeichert werden. Bitte in Supabase die Migration migration_calendar_entries_multi_slot_rls_email.sql ausführen (u. a. UNIQUE model_id+date entfernen) und erneut anmelden.',
-      );
+      Alert.alert('Calendar', uiCopy.alerts.calendarNotSaved);
       return;
     }
     setNewEntryTitle('');
@@ -546,11 +544,11 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
               bookingThreadIds.map((id) => {
                 const t = getRecruitingThread(id);
                 if (!t) return null;
-                const agencyLabel = bookingAgencyByThread[id] ?? 'Agentur';
+                const agencyLabel = bookingAgencyByThread[id] ?? uiCopy.model.agencyLabel;
                 return (
                   <TouchableOpacity key={id} style={st.chatRow} onPress={() => setOpenBookingThreadId(id)}>
                     <View style={{ flex: 1 }}>
-                      <Text style={st.chatRowKicker}>Agentur</Text>
+                      <Text style={st.chatRowKicker}>{uiCopy.model.agencyLabel}</Text>
                       <Text style={st.chatRowLabel}>{agencyLabel}</Text>
                       <Text style={st.metaText}>{t.modelName}</Text>
                     </View>
@@ -764,12 +762,12 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
             })()}
             <View style={{ marginBottom: spacing.md }}>
               <Text style={st.sectionLabel}>
-                {openEntry.option_request_id ? 'Termin verschieben' : 'Eintrag bearbeiten'}
+                {openEntry.option_request_id ? uiCopy.calendar.reschedule : uiCopy.calendar.editEntry}
               </Text>
               <Text style={[st.metaText, { marginBottom: spacing.sm }]}>
                 {openEntry.option_request_id
-                  ? 'Datum/Zeit für alle Parteien (Migration migration_calendar_reschedule_sync.sql + RPC model_update_option_schedule).'
-                  : 'Persönlichen Block anpassen oder löschen.'}
+                  ? uiCopy.calendar.optionScheduleHelp
+                  : uiCopy.calendar.manualBlockHelp}
               </Text>
               {!openEntry.option_request_id ? (
                 <>
@@ -835,9 +833,9 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                       setCalEntries(refreshed);
                       const updated = refreshed.find((e) => e.id === openEntry.id);
                       if (updated) setOpenEntry(updated);
-                      Alert.alert('Gespeichert', 'Kalender wurde aktualisiert.');
+                      Alert.alert(uiCopy.common.success, uiCopy.alerts.calendarUpdatedGeneric);
                     } else {
-                      Alert.alert('Fehler', 'Konnte nicht speichern. Ist die Supabase-Migration ausgeführt?');
+                      Alert.alert(uiCopy.common.error, uiCopy.alerts.couldNotSaveCheckMigration);
                     }
                   } finally {
                     setSavingEntrySchedule(false);
@@ -855,7 +853,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                 disabled={savingEntrySchedule}
               >
                 <Text style={{ ...typography.label, color: colors.surface }}>
-                  {savingEntrySchedule ? '…' : 'Termin speichern'}
+                  {savingEntrySchedule ? '…' : uiCopy.calendar.saveSchedule}
                 </Text>
               </TouchableOpacity>
               {!openEntry.option_request_id ? (
@@ -863,12 +861,12 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                   onPress={() => {
                     if (!profile || !openEntry) return;
                     Alert.alert(
-                      'Eintrag löschen',
-                      'Diesen persönlichen Kalendereintrag wirklich entfernen?',
+                      uiCopy.alerts.deletePersonalEntryTitle,
+                      uiCopy.alerts.deletePersonalEntryMessage,
                       [
-                        { text: 'Abbrechen', style: 'cancel' },
+                        { text: uiCopy.common.cancel, style: 'cancel' },
                         {
-                          text: 'Löschen',
+                          text: uiCopy.common.delete,
                           style: 'destructive',
                           onPress: async () => {
                             setDeletingCalendarEntry(true);
@@ -878,7 +876,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                                 await loadCalendar(profile.id);
                                 setOpenEntry(null);
                               } else {
-                                Alert.alert('Fehler', 'Löschen fehlgeschlagen.');
+                                Alert.alert(uiCopy.common.error, uiCopy.alerts.deleteEntryFailed);
                               }
                             } finally {
                               setDeletingCalendarEntry(false);
@@ -900,7 +898,9 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                   }}
                   disabled={deletingCalendarEntry}
                 >
-                  <Text style={{ ...typography.label, color: colors.buttonSkipRed }}>Persönlichen Eintrag löschen</Text>
+                  <Text style={{ ...typography.label, color: colors.buttonSkipRed }}>
+                    {uiCopy.calendar.deletePersonalCalendarEntry}
+                  </Text>
                 </TouchableOpacity>
               ) : null}
             </View>

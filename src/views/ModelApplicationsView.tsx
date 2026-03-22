@@ -11,6 +11,7 @@ import type { SupabaseApplication } from '../services/applicationsSupabase';
 import { getAgencyChatDisplayById } from '../services/agenciesSupabase';
 import { ApplyFormView } from './ApplyFormView';
 import { BookingChatView } from './BookingChatView';
+import { uiCopy } from '../constants/uiCopy';
 
 type ModelApplicationsViewProps = {
   applicantUserId: string;
@@ -179,7 +180,7 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
     } else if (Platform.OS === 'web') {
       Alert.alert('Could not delete', 'Please try again or check your connection.');
     } else {
-      Alert.alert('Löschen fehlgeschlagen', 'Bitte erneut versuchen.');
+      Alert.alert(uiCopy.alerts.deleteFailed, uiCopy.alerts.tryAgain);
     }
   };
 
@@ -293,11 +294,11 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
         {tab === 'messages' && (
           <ScrollView style={{ flex: 1 }}>
             <Text style={styles.heading}>Messages</Text>
-            <Text style={styles.subtitle}>Chats mit Agenturen, die auf deine Bewerbung reagiert haben.</Text>
+            <Text style={styles.subtitle}>{uiCopy.model.chatsSubtitle}</Text>
             {messagesLoading ? (
               <ActivityIndicator size="small" color={colors.textPrimary} style={{ marginTop: spacing.lg }} />
             ) : messagesList.length === 0 ? (
-              <Text style={styles.meta}>Noch keine Nachrichten von Agenturen.</Text>
+              <Text style={styles.meta}>{uiCopy.model.noAgencyMessages}</Text>
             ) : (
               messagesList.map((row) => (
                 <TouchableOpacity
@@ -314,7 +315,7 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
                 >
                   <Text style={styles.name}>{row.agencyName}</Text>
                   <Text style={styles.meta}>{row.modelName} · {toStatusLabel(row.status)}</Text>
-                  <Text style={[styles.meta, { marginTop: 4, color: colors.buttonOptionGreen }]}>Chat öffnen</Text>
+                  <Text style={[styles.meta, { marginTop: 4, color: colors.buttonOptionGreen }]}>{uiCopy.model.openChat}</Text>
                 </TouchableOpacity>
               ))
             )}
@@ -326,7 +327,7 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
             <Text style={styles.heading}>Settings</Text>
             {profileDraft ? (
               <>
-                <Text style={styles.subtitle}>Stammdaten für deine Bewerbungen.</Text>
+                <Text style={styles.subtitle}>{uiCopy.model.applicationDefaultsSubtitle}</Text>
                 <View style={styles.settingsField}>
                   <Text style={styles.settingsLabel}>First name</Text>
                   <TextInput
@@ -381,7 +382,7 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
                 </TouchableOpacity>
               </>
             ) : (
-              <Text style={styles.meta}>Noch keine Bewerbungen. Lege zuerst eine Bewerbung an, um Stammdaten zu bearbeiten.</Text>
+              <Text style={styles.meta}>{uiCopy.model.noApplicationsYet}</Text>
             )}
             <TouchableOpacity style={[styles.applyBtn, { marginTop: spacing.lg }]} onPress={onBackToRoleSelection}>
               <Text style={styles.applyBtnLabel}>Logout</Text>

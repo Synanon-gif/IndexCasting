@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import {
+  getApplications,
   getPendingSwipeQueueApplications,
   getAcceptedApplications,
   acceptApplication,
@@ -26,6 +27,7 @@ import {
 } from '../store/applicationsStore';
 import { tryStartRecruitingChat } from '../store/recruitingChats';
 import { loadAgencyShortlistIds, saveAgencyShortlistIds } from '../storage/agencyRecruitingShortlist';
+import { mergeAgencyRecruitingMyListIds } from '../utils/agencyRecruitingMyList';
 
 type HeightFilter = 'all' | 'short' | 'medium' | 'tall';
 
@@ -78,6 +80,8 @@ export const AgencyRecruitingView: React.FC<{
   const [photoIndex, setPhotoIndex] = useState(0);
   const [showPhotoFullscreen, setShowPhotoFullscreen] = useState(false);
   const [shortlistIds, setShortlistIds] = useState<string[]>([]);
+  /** Pending applications with an active recruiting thread (same rows as Messages → Recruiting chats). */
+  const [pendingWithChatApps, setPendingWithChatApps] = useState<ModelApplication[]>([]);
 
   const shortlistSet = React.useMemo(() => new Set(shortlistIds), [shortlistIds]);
   /** Pending swipe queue excludes shortlist so those models only appear under My list. */
@@ -108,7 +112,17 @@ export const AgencyRecruitingView: React.FC<{
       cityFilter
     );
   const acceptedList = getAcceptedApplications();
-  const shortlistApps = shortlistIds
+  /** My list = explicit shortlist ∪ every pending application that already has a recruiting chat (always in sync with Messages → Recruiting chats). */
+  const mergedMyListIds = React.useMemo(
+    () =>
+      mergeAgencyRecruitingMyListIds(
+        shortlistIds,
+        pendingWithChatApps.map((a) => a.id)
+      ),
+    [shortlistIds, pendingWithChatApps]
+  );
+
+  const shortlistApps = mergedMyListIds
     .map((id) => getApplicationById(id))
     .filter((a): a is ModelApplication => !!a && a.status !== 'rejected');
   const uniqueCities = React.useMemo(
@@ -120,7 +134,12 @@ export const AgencyRecruitingView: React.FC<{
     [allSwipeQueue]
   );
 
-  const refreshSwipeQueue = () => setAllSwipeQueue(getPendingSwipeQueueApplications());
+  const refreshSwipeQueue = () => {
+    setAllSwipeQueue(getPendingSwipeQueueApplications());
+    setPendingWithChatApps(
+      getApplications().filter((a) => a.status === 'pending' && !!a.chatThreadId)
+    );
+  };
 
   useEffect(() => {
     refreshSwipeQueue();
@@ -149,7 +168,7 @@ export const AgencyRecruitingView: React.FC<{
     if (!agencyId) return;
     const threadId = await acceptApplication(app.id, agencyId);
     if (threadId) {
-      showFeedback('Model accepted. Open the thread under Booking chats → Recruiting chats.');
+      showFeedback('Model accepted. Open the thread under Messages → Recruiting chats.');
       onOpenBookingChat(threadId);
       refreshSwipeQueue();
       setDetailApplication(null);
@@ -218,14 +237,14 @@ export const AgencyRecruitingView: React.FC<{
       refreshSwipeQueue();
       setDetailApplication(null);
       onOpenBookingChat(chatResult.threadId);
-      showFeedback('Chat ready. Continue under Booking chats → Recruiting chats.');
+      showFeedback('Chat ready. Continue under Messages → Recruiting chats.');
       setIndex((prev) => {
         const apps = filteredFromStore();
         if (apps.length <= 1) return 0;
         return Math.min(prev, apps.length - 1);
       });
     } else {
-      showFeedback(chatResult.messageDe);
+      showFeedback(chatResult.message);
     }
   };
 
@@ -268,7 +287,7 @@ export const AgencyRecruitingView: React.FC<{
               {t === 'pending'
                 ? `Pending (${applications.length})`
                 : t === 'shortlist'
-                  ? `My list (${shortlistIds.length})`
+                  ? `My list (${mergedMyListIds.length})`
                   : `Accepted (${acceptedList.length})`}
             </Text>
           </TouchableOpacity>
@@ -296,12 +315,12 @@ export const AgencyRecruitingView: React.FC<{
       ) : recruitTab === 'shortlist' ? (
         <ScrollView style={{ flex: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.md }} contentContainerStyle={{ paddingBottom: spacing.xl }}>
           <Text style={[styles.filterLabel, { marginBottom: spacing.sm }]}>
-            Saved for this agency only. Open details to see full application data.
+            Includes everyone you saved and everyone with an active recruiting chat (same as Messages → Recruiting chats, before acceptance).
           </Text>
-          {shortlistIds.length === 0 ? (
+          {mergedMyListIds.length === 0 ? (
             <View style={styles.empty}>
               <Text style={styles.emptyTitle}>Your list is empty</Text>
-              <Text style={styles.emptyCopy}>Under Pending, tap Add to list on a candidate.</Text>
+              <Text style={styles.emptyCopy}>Under Pending, tap Add to list, or start a chat — candidates stay here until accepted.</Text>
             </View>
           ) : shortlistApps.length === 0 ? (
             <View style={styles.empty}>
@@ -349,12 +368,16 @@ export const AgencyRecruitingView: React.FC<{
                       <Text style={styles.bookingChatOpenLabel}>{startingChat ? '…' : 'Start chat'}</Text>
                     </TouchableOpacity>
                   ) : null}
-                  <TouchableOpacity
-                    style={[styles.buttonNo, { marginLeft: spacing.xs, paddingHorizontal: spacing.sm }]}
-                    onPress={() => handleRemoveFromShortlist(app.id)}
-                  >
-                    <Text style={styles.buttonNoLabel}>Remove</Text>
-                  </TouchableOpacity>
+                  {shortlistIds.includes(app.id) ? (
+                    <TouchableOpacity
+                      style={[styles.buttonNo, { marginLeft: spacing.xs, paddingHorizontal: spacing.sm }]}
+                      onPress={() => handleRemoveFromShortlist(app.id)}
+                    >
+                      <Text style={styles.buttonNoLabel}>Remove</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <Text style={[styles.shortlistRowSub, { marginLeft: spacing.xs }]}>In chat</Text>
+                  )}
                 </View>
               );
             })

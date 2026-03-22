@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Platform } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import type { InvitationPreview } from '../services/organizationsInvitationsSupabase';
+import { uiCopy } from '../constants/uiCopy';
 
 type Props = {
   preview: InvitationPreview | null;
@@ -22,10 +23,10 @@ export function InviteAcceptanceScreen({
 
   const roleLabel =
     preview?.invite_role === 'booker'
-      ? 'Booker (Agentur)'
+      ? uiCopy.invite.roleBookerAgency
       : preview?.invite_role === 'employee'
-        ? 'Mitarbeiter (Kunde)'
-        : 'Mitglied';
+        ? uiCopy.invite.roleEmployeeClient
+        : uiCopy.invite.roleMember;
 
   const copyHint = async () => {
     if (Platform.OS !== 'web' || typeof window === 'undefined' || !navigator.clipboard) return;
@@ -42,7 +43,7 @@ export function InviteAcceptanceScreen({
     <View style={styles.container}>
       <View style={styles.card}>
         <Text style={styles.brand}>INDEX CASTING</Text>
-        <Text style={styles.title}>Organisationseinladung</Text>
+        <Text style={styles.title}>{uiCopy.invite.pageTitle}</Text>
 
         {loading && <ActivityIndicator size="large" color={colors.textPrimary} style={{ marginVertical: spacing.lg }} />}
 
@@ -51,34 +52,33 @@ export function InviteAcceptanceScreen({
         {!loading && preview && (
           <>
             <Text style={styles.body}>
-              Du wurdest eingeladen bei <Text style={styles.emph}>{preview.org_name}</Text> mitzuarbeiten.
+              {uiCopy.invite.invitedToWorkAt}{' '}
+              <Text style={styles.emph}>{preview.org_name}</Text>.
             </Text>
             <Text style={styles.meta}>
-              Rolle: {roleLabel}
+              Role: {roleLabel}
               {'\n'}
-              Gültig bis: {new Date(preview.expires_at).toLocaleString()}
+              {uiCopy.invite.validUntil}: {new Date(preview.expires_at).toLocaleString()}
             </Text>
-            <Text style={styles.hint}>
-              Registriere dich oder melde dich mit derselben E-Mail-Adresse an, an die die Einladung gesendet wurde.
-            </Text>
+            <Text style={styles.hint}>{uiCopy.invite.sameEmailInstructions}</Text>
           </>
         )}
 
         {!loading && !preview && !error && (
-          <Text style={styles.body}>Ungültiger oder abgelaufener Einladungslink.</Text>
+          <Text style={styles.body}>{uiCopy.invite.invalidLink}</Text>
         )}
 
         {preview && !loading && (
           <View style={styles.btnCol}>
             <TouchableOpacity style={styles.primaryBtn} onPress={onContinueSignup}>
-              <Text style={styles.primaryLabel}>Konto erstellen & annehmen</Text>
+              <Text style={styles.primaryLabel}>{uiCopy.invite.signUpToAccept}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.secondaryBtn} onPress={onContinueLogin}>
-              <Text style={styles.secondaryLabel}>Ich habe bereits ein Konto</Text>
+              <Text style={styles.secondaryLabel}>{uiCopy.invite.alreadyHaveAccount}</Text>
             </TouchableOpacity>
             {Platform.OS === 'web' && (
               <TouchableOpacity onPress={copyHint} style={styles.linkBtn}>
-                <Text style={styles.linkLabel}>{copied ? 'Link kopiert' : 'Einladungslink kopieren'}</Text>
+                <Text style={styles.linkLabel}>{copied ? uiCopy.invite.linkCopied : uiCopy.invite.copyLink}</Text>
               </TouchableOpacity>
             )}
           </View>

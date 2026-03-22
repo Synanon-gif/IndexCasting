@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, spacing, typography } from '../theme/theme';
 import type { UserRole } from '../navigation/RootNavigator';
+import { uiCopy } from '../constants/uiCopy';
 
 type Props = {
   onSelectRole: (role: UserRole) => void;
@@ -99,9 +100,7 @@ export const LoginScreen: React.FC<Props> = ({ onSelectRole }) => {
             {selectedRole ? `Continue as ${roleLabel}` : 'Choose a role to enter'}
           </Text>
         </TouchableOpacity>
-        <Text style={styles.helperText}>
-          Dummy-Flow – Rolle wählen, um den jeweiligen Workspace zu sehen.
-        </Text>
+        <Text style={styles.helperText}>{uiCopy.login.dummyFlow}</Text>
       </View>
     </View>
   );

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { useAuth } from '../context/AuthContext';
+import { uiCopy } from '../constants/uiCopy';
 
 type AuthScreenProps = {
   initialMode?: 'login' | 'signup';
@@ -56,7 +57,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
         {inviteAuth && (
           <Text style={styles.inviteBanner}>
-            Einladung: {inviteAuth.orgName} · {inviteAuth.inviteRoleLabel}
+            {uiCopy.auth.inviteLine
+              .replace('{org}', inviteAuth.orgName)
+              .replace('{role}', inviteAuth.inviteRoleLabel)}
           </Text>
         )}
 
@@ -122,7 +125,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             )}
             {inviteAuth && (
               <Text style={styles.roleLocked}>
-                Konto-Typ: {inviteAuth.lockedProfileRole === 'agent' ? 'Agency' : 'Client'} (vorgegeben durch die Einladung)
+                {uiCopy.auth.accountTypeFixed.replace(
+                  '{role}',
+                  inviteAuth.lockedProfileRole === 'agent' ? 'Agency' : 'Client',
+                )}
               </Text>
             )}
           </>
