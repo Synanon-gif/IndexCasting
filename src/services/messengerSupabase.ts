@@ -33,6 +33,8 @@ export type Message = {
   file_type: string | null;
   read_at: string | null;
   created_at: string;
+  message_type?: MessagePayloadType | string | null;
+  metadata?: Record<string, unknown> | null;
 };
 
 /** Message with resolved sender label for UI (English). */
@@ -45,6 +47,9 @@ export type ConversationCreateMeta = {
   clientOrganizationId?: string | null;
   agencyOrganizationId?: string | null;
 };
+
+/** B2B chat message payload (maps to `messages.message_type` + `metadata`). */
+export type MessagePayloadType = 'text' | 'link' | 'package' | 'model';
 
 export async function getConversationsForUser(userId: string): Promise<Conversation[]> {
   return fetchAllSupabasePages(async (from, to) => {
@@ -124,19 +129,23 @@ export async function sendMessage(
   senderId: string,
   text?: string,
   fileUrl?: string,
-  fileType?: string
+  fileType?: string,
+  opts?: {
+    messageType?: MessagePayloadType;
+    metadata?: Record<string, unknown> | null;
+  }
 ): Promise<Message | null> {
-  const { data, error } = await supabase
-    .from('messages')
-    .insert({
-      conversation_id: conversationId,
-      sender_id: senderId,
-      text: text || null,
-      file_url: fileUrl || null,
-      file_type: fileType || null,
-    })
-    .select()
-    .single();
+  const insertRow: Record<string, unknown> = {
+    conversation_id: conversationId,
+    sender_id: senderId,
+    text: text ?? null,
+    file_url: fileUrl ?? null,
+    file_type: fileType ?? null,
+    message_type: opts?.messageType ?? 'text',
+  };
+  if (opts?.metadata !== undefined) insertRow.metadata = opts.metadata;
+
+  const { data, error } = await supabase.from('messages').insert(insertRow).select().single();
   if (error) { console.error('sendMessage error:', error); return null; }
 
   await supabase.from('conversations').update({ updated_at: new Date().toISOString() }).eq('id', conversationId);

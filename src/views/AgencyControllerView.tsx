@@ -41,15 +41,11 @@ import {
 import { BookingChatView } from './BookingChatView';
 import { getRecruitingThreadsForAgency, type RecruitingThread } from '../store/recruitingChats';
 import {
-  fetchConnectionsForAgency,
-  getConnectionsForAgency,
-  subscribeConnections,
-  sendConnectionRequest,
-  acceptConnectionAndCreateChat,
-  rejectIncomingConnection,
-  type Connection,
-} from '../store/connectionsStore';
-import { getProfileDisplayNamesForUserIds } from '../services/connectionsSupabase';
+  ensureClientAgencyChat,
+  listB2BConversationsForOrganization,
+  getB2BConversationTitleForViewer,
+} from '../services/b2bOrgChatSupabase';
+import type { Conversation } from '../services/messengerSupabase';
 import { getApplicationById } from '../store/applicationsStore';
 import { ConnectionMessengerInline } from '../components/ConnectionMessengerInline';
 // Recruiting chats (BookingChatView) live under Messages → Recruiting chats.
@@ -180,6 +176,8 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   const [savingManualEventEdit, setSavingManualEventEdit] = useState(false);
   const [bookingChatThreads, setBookingChatThreads] = useState<RecruitingThread[]>([]);
   const [openBookingThreadId, setOpenBookingThreadId] = useState<string | null>(null);
+  /** After starting a chat from Clients, open Messages with this thread. */
+  const [pendingB2BChat, setPendingB2BChat] = useState<{ conversationId: string; title: string } | null>(null);
   const currentAgency = useMemo(() => {
     if (!agencies.length) return null;
     const pe = profile?.email?.trim().toLowerCase();
@@ -314,6 +312,8 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
     setOpenBookingThreadId(threadId);
   };
 
+  const clearPendingB2BChat = useCallback(() => setPendingB2BChat(null), []);
+
   return (
     <View style={s.container}>
       <TouchableOpacity style={s.backRow} onPress={onBackToRoleSelection} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
@@ -363,7 +363,10 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         <AgencyClientsTab
           agencyId={currentAgencyId}
           currentUserId={session?.user?.id ?? null}
-          agencyOrganizationId={agencyOrganizationId}
+          onChatStarted={(conversationId, title) => {
+            setPendingB2BChat({ conversationId, title });
+            setTab('messages');
+          }}
         />
       ) : tab === 'clients' ? (
         <Text style={[s.metaText, { marginTop: spacing.md }]}>No agency assigned.</Text>
@@ -379,6 +382,8 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
           }}
           agencyId={currentAgencyId || null}
           currentUserId={session?.user?.id ?? null}
+          pendingOpenB2BChat={pendingB2BChat}
+          onPendingB2BChatConsumed={clearPendingB2BChat}
         />
       )}
 
@@ -1817,19 +1822,18 @@ const MyModelsTab: React.FC<{
 type AgencyClientsTabProps = {
   agencyId: string;
   currentUserId: string | null;
-  agencyOrganizationId: string | null;
+  onChatStarted: (conversationId: string, title: string) => void;
 };
 
 const AgencyClientsTab: React.FC<AgencyClientsTabProps> = ({
   agencyId,
   currentUserId,
-  agencyOrganizationId,
+  onChatStarted,
 }) => {
   const [search, setSearch] = useState('');
   const [rows, setRows] = useState<ClientDirectoryRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [actionId, setActionId] = useState<string | null>(null);
-  const [, bump] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -1848,37 +1852,23 @@ const AgencyClientsTab: React.FC<AgencyClientsTabProps> = ({
     };
   }, [search]);
 
-  useEffect(() => {
-    void fetchConnectionsForAgency(agencyId);
-    const unsub = subscribeConnections(() => bump((n) => n + 1));
-    return unsub;
-  }, [agencyId]);
-
-  const connectionForClient = (clientUserId: string) =>
-    getConnectionsForAgency(agencyId).find((c) => c.clientId === clientUserId);
-
-  const sendReq = async (clientUserId: string) => {
+  const startChat = async (clientUserId: string, title: string) => {
     if (!currentUserId) {
-      Alert.alert(uiCopy.alerts.signInRequired, uiCopy.connections.signInToSendRequestGeneric);
+      Alert.alert(uiCopy.alerts.signInRequired, uiCopy.b2bChat.signInToChatGeneric);
       return;
     }
     setActionId(clientUserId);
     try {
-      const fromOrg = agencyOrganizationId ?? (await ensureAgencyOrganization(agencyId));
-      const toOrg = await getClientOrganizationIdForUser(clientUserId);
-      const r = await sendConnectionRequest(clientUserId, agencyId, 'agency', {
-        createdBy: currentUserId,
-        fromOrganizationId: fromOrg,
-        toOrganizationId: toOrg,
+      const r = await ensureClientAgencyChat({
+        clientUserId,
+        agencyId,
+        actingUserId: currentUserId,
       });
       if (!r.ok) {
-        Alert.alert(
-          uiCopy.connections.requestFailedTitle,
-          r.duplicate ? uiCopy.connections.duplicateConnection : uiCopy.connections.requestFailedGeneric,
-        );
-      } else {
-        await fetchConnectionsForAgency(agencyId);
+        Alert.alert(uiCopy.b2bChat.chatFailedTitle, r.reason || uiCopy.b2bChat.chatFailedGeneric);
+        return;
       }
+      onChatStarted(r.conversationId, title);
     } finally {
       setActionId(null);
     }
@@ -1886,12 +1876,12 @@ const AgencyClientsTab: React.FC<AgencyClientsTabProps> = ({
 
   return (
     <ScreenScrollView>
-      <Text style={s.sectionLabel}>{uiCopy.connections.clientsSectionTitle}</Text>
-      <Text style={[s.metaText, { marginBottom: spacing.sm }]}>{uiCopy.connections.clientsSectionSubtitle}</Text>
+      <Text style={s.sectionLabel}>{uiCopy.b2bChat.clientsSectionTitle}</Text>
+      <Text style={[s.metaText, { marginBottom: spacing.sm }]}>{uiCopy.b2bChat.clientsSectionSubtitle}</Text>
       <TextInput
         value={search}
         onChangeText={setSearch}
-        placeholder={uiCopy.connections.clientsSearchPlaceholder}
+        placeholder={uiCopy.b2bChat.clientsSearchPlaceholder}
         placeholderTextColor={colors.textSecondary}
         style={{
           borderWidth: 1,
@@ -1907,7 +1897,6 @@ const AgencyClientsTab: React.FC<AgencyClientsTabProps> = ({
       />
       {loading ? <Text style={s.metaText}>{uiCopy.common.loading}</Text> : null}
       {rows.map((row) => {
-        const conn = connectionForClient(row.id);
         const label = row.display_name?.trim() || row.email || row.id.slice(0, 8);
         const sub = row.company_name || row.email || '';
         return (
@@ -1919,25 +1908,17 @@ const AgencyClientsTab: React.FC<AgencyClientsTabProps> = ({
               <Text style={s.modelName}>{label}</Text>
               <Text style={s.metaText}>{sub}</Text>
             </View>
-            {conn?.status === 'accepted' ? (
-              <Text style={s.metaText}>{uiCopy.connections.connectedLabel}</Text>
-            ) : conn?.status === 'pending' ? (
-              <Text style={s.metaText}>{uiCopy.connections.pendingLabel}</Text>
-            ) : conn?.status === 'rejected' ? (
-              <Text style={s.metaText}>{uiCopy.connections.statusRejectedLabel}</Text>
-            ) : (
-              <TouchableOpacity
-                style={[s.filterPill, { backgroundColor: colors.buttonOptionGreen, opacity: actionId === row.id ? 0.6 : 1 }]}
-                disabled={actionId === row.id}
-                onPress={() => void sendReq(row.id)}
-              >
-                <Text style={[s.filterPillLabel, { color: '#fff' }]}>{uiCopy.connections.sendRequest}</Text>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity
+              style={[s.filterPill, { backgroundColor: colors.buttonOptionGreen, opacity: actionId === row.id ? 0.6 : 1 }]}
+              disabled={actionId === row.id}
+              onPress={() => void startChat(row.id, label)}
+            >
+              <Text style={[s.filterPillLabel, { color: '#fff' }]}>{uiCopy.b2bChat.startChat}</Text>
+            </TouchableOpacity>
           </View>
         );
       })}
-      {!loading && rows.length === 0 ? <Text style={s.metaText}>{uiCopy.connections.clientsEmpty}</Text> : null}
+      {!loading && rows.length === 0 ? <Text style={s.metaText}>{uiCopy.b2bChat.clientsEmpty}</Text> : null}
     </ScreenScrollView>
   );
 };
@@ -1948,6 +1929,8 @@ type AgencyMessagesTabProps = {
   onOpenRecruitingThread: (threadId: string) => void;
   agencyId: string | null;
   currentUserId: string | null;
+  pendingOpenB2BChat: { conversationId: string; title: string } | null;
+  onPendingB2BChatConsumed: () => void;
 };
 
 const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
@@ -1956,12 +1939,15 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   onOpenRecruitingThread,
   agencyId,
   currentUserId,
+  pendingOpenB2BChat,
+  onPendingB2BChatConsumed,
 }) => {
   const [messagesSection, setMessagesSection] = useState<'optionRequests' | 'recruiting' | 'clientRequests'>('clientRequests');
-  const [incomingClientRequests, setIncomingClientRequests] = useState<Connection[]>([]);
-  const [acceptedClientConnections, setAcceptedClientConnections] = useState<Connection[]>([]);
-  const [clientReqNames, setClientReqNames] = useState<Record<string, string>>({});
-  const [connectionActionId, setConnectionActionId] = useState<string | null>(null);
+  const [b2bConversations, setB2bConversations] = useState<Conversation[]>([]);
+  const [agencyOrgIdB2b, setAgencyOrgIdB2b] = useState<string | null>(null);
+  const [b2bTitles, setB2bTitles] = useState<Record<string, string>>({});
+  const [guestLinksForChat, setGuestLinksForChat] = useState<GuestLink[]>([]);
+  const [modelsForShare, setModelsForShare] = useState<{ id: string; name: string }[]>([]);
   const [activeConnectionChatId, setActiveConnectionChatId] = useState<string | null>(null);
   const [activeConnectionChatTitle, setActiveConnectionChatTitle] = useState('');
   const [requests, setRequests] = useState(getOptionRequests());
@@ -1988,31 +1974,58 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
     }
   }, [messagesSection, onRefreshRecruitingThreads]);
 
-  const syncConnectionUi = useCallback(() => {
+  useEffect(() => {
     if (!agencyId) {
-      setIncomingClientRequests([]);
-      setAcceptedClientConnections([]);
+      setAgencyOrgIdB2b(null);
       return;
     }
-    const all = getConnectionsForAgency(agencyId);
-    setIncomingClientRequests(all.filter((c) => c.status === 'pending' && c.requestedBy === 'client'));
-    setAcceptedClientConnections(
-      all
-        .filter((c) => c.status === 'accepted' && c.conversationId && c.requestedBy === 'client')
-        .sort((a, b) => b.createdAt - a.createdAt),
-    );
+    void ensureAgencyOrganization(agencyId).then(setAgencyOrgIdB2b);
   }, [agencyId]);
 
-  useEffect(() => {
-    if (!agencyId) return;
-    void fetchConnectionsForAgency(agencyId);
-  }, [agencyId]);
+  const refreshB2bList = useCallback(() => {
+    if (!agencyOrgIdB2b) return;
+    void listB2BConversationsForOrganization(agencyOrgIdB2b).then(setB2bConversations);
+  }, [agencyOrgIdB2b]);
 
   useEffect(() => {
-    syncConnectionUi();
-    const unsub = subscribeConnections(syncConnectionUi);
-    return unsub;
-  }, [syncConnectionUi]);
+    refreshB2bList();
+  }, [refreshB2bList, messagesSection]);
+
+  useEffect(() => {
+    if (!agencyOrgIdB2b || b2bConversations.length === 0) {
+      setB2bTitles({});
+      return;
+    }
+    let cancelled = false;
+    void Promise.all(
+      b2bConversations.map(async (c) => {
+        const t = await getB2BConversationTitleForViewer({
+          conversation: c,
+          viewerOrganizationId: agencyOrgIdB2b,
+        });
+        return [c.id, t] as const;
+      }),
+    ).then((pairs) => {
+      if (cancelled) return;
+      const m: Record<string, string> = {};
+      pairs.forEach(([id, t]) => {
+        m[id] = t;
+      });
+      setB2bTitles(m);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [b2bConversations, agencyOrgIdB2b]);
+
+  useEffect(() => {
+    if (!pendingOpenB2BChat?.conversationId) return;
+    setMessagesSection('clientRequests');
+    setActiveConnectionChatId(pendingOpenB2BChat.conversationId);
+    setActiveConnectionChatTitle(pendingOpenB2BChat.title);
+    onPendingB2BChatConsumed();
+    refreshB2bList();
+  }, [pendingOpenB2BChat?.conversationId, onPendingB2BChatConsumed, refreshB2bList, pendingOpenB2BChat?.title]);
 
   useEffect(() => {
     if (messagesSection !== 'clientRequests') {
@@ -2021,18 +2034,16 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   }, [messagesSection]);
 
   useEffect(() => {
-    const ids = [
-      ...new Set([
-        ...incomingClientRequests.map((c) => c.clientId),
-        ...acceptedClientConnections.map((c) => c.clientId),
-      ]),
-    ];
-    if (ids.length === 0) {
-      setClientReqNames({});
+    if (!agencyId || !activeConnectionChatId) {
+      setGuestLinksForChat([]);
+      setModelsForShare([]);
       return;
     }
-    void getProfileDisplayNamesForUserIds(ids).then(setClientReqNames);
-  }, [incomingClientRequests, acceptedClientConnections]);
+    void getGuestLinksForAgency(agencyId).then(setGuestLinksForChat);
+    void getModelsForAgencyFromSupabase(agencyId).then((rows) =>
+      setModelsForShare(rows.map((m) => ({ id: m.id, name: m.name }))),
+    );
+  }, [agencyId, activeConnectionChatId]);
 
   useEffect(() => {
     if (selectedThreadId) {
@@ -2072,7 +2083,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   return (
     <ScreenScrollView>
       <Text style={s.sectionLabel}>Messages</Text>
-      <Text style={[s.metaText, { marginBottom: spacing.sm }]}>{uiCopy.connections.messagesIntro}</Text>
+      <Text style={[s.metaText, { marginBottom: spacing.sm }]}>{uiCopy.b2bChat.messagesIntro}</Text>
 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: spacing.md }}>
         {(['clientRequests', 'recruiting', 'optionRequests'] as const).map((key) => (
@@ -2083,10 +2094,10 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
           >
             <Text style={[s.filterPillLabel, messagesSection === key && s.filterPillLabelActive]}>
               {key === 'optionRequests'
-                ? uiCopy.connections.tabOptionRequests
+                ? uiCopy.b2bChat.tabOptionRequests
                 : key === 'recruiting'
-                  ? uiCopy.connections.tabRecruiting
-                  : uiCopy.connections.tabClientRequests}
+                  ? uiCopy.b2bChat.tabRecruiting
+                  : uiCopy.b2bChat.tabClientChats}
             </Text>
           </TouchableOpacity>
         ))}
@@ -2095,137 +2106,44 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
       {messagesSection === 'clientRequests' ? (
         <View style={{ marginBottom: spacing.lg }}>
           {!agencyId ? (
-            <Text style={s.metaText}>{uiCopy.connections.noAgencyContext}</Text>
+            <Text style={s.metaText}>{uiCopy.b2bChat.noAgencyContext}</Text>
           ) : (
             <>
-              {incomingClientRequests.length > 0 && (
-                <>
-                  <Text style={[s.metaText, { marginBottom: spacing.sm, fontWeight: '600' }]}>
-                    {uiCopy.connections.pendingRequestsHeading}
-                  </Text>
-                  {incomingClientRequests.map((c) => (
-                    <View
-                      key={c.id}
-                      style={[s.modelRow, { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm }]}
-                    >
-                      <View style={{ flex: 1, minWidth: 160 }}>
-                        <Text style={s.modelName}>
-                          {clientReqNames[c.clientId] ?? uiCopy.connections.clientFallback}
-                        </Text>
-                        <Text style={s.metaText}>
-                          {new Date(c.createdAt).toLocaleString()} · {uiCopy.connections.statusPending}
-                        </Text>
-                      </View>
-                      <TouchableOpacity
-                        style={[
-                          s.filterPill,
-                          { backgroundColor: colors.buttonOptionGreen, opacity: connectionActionId === c.id ? 0.6 : 1 },
-                        ]}
-                        disabled={connectionActionId === c.id || !currentUserId}
-                        onPress={async () => {
-                          if (!currentUserId || !agencyId) {
-                            Alert.alert(uiCopy.alerts.signInRequired, uiCopy.connections.signInToAcceptBody);
-                            return;
-                          }
-                          setConnectionActionId(c.id);
-                          try {
-                            const r = await acceptConnectionAndCreateChat({
-                              connectionId: c.id,
-                              actingUserId: currentUserId,
-                              clientUserId: c.clientId,
-                              agencyId: c.agencyId,
-                            });
-                            if (r.ok) {
-                              if (r.conversationId) {
-                                setActiveConnectionChatId(r.conversationId);
-                                setActiveConnectionChatTitle(
-                                  clientReqNames[c.clientId] ?? uiCopy.connections.clientFallback,
-                                );
-                              }
-                              Alert.alert(uiCopy.connections.connectedTitle, uiCopy.connections.connectedBody);
-                              await fetchConnectionsForAgency(agencyId);
-                              syncConnectionUi();
-                            } else {
-                              Alert.alert(uiCopy.common.error, uiCopy.connections.acceptFailed);
-                            }
-                          } finally {
-                            setConnectionActionId(null);
-                          }
-                        }}
-                      >
-                        <Text style={[s.filterPillLabel, { color: '#fff' }]}>{uiCopy.connections.accept}</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[
-                          s.filterPill,
-                          { borderWidth: 1, borderColor: colors.buttonSkipRed, opacity: connectionActionId === c.id ? 0.6 : 1 },
-                        ]}
-                        disabled={connectionActionId === c.id}
-                        onPress={async () => {
-                          setConnectionActionId(c.id);
-                          try {
-                            await rejectIncomingConnection(c.id);
-                            if (agencyId) await fetchConnectionsForAgency(agencyId);
-                            syncConnectionUi();
-                          } finally {
-                            setConnectionActionId(null);
-                          }
-                        }}
-                      >
-                        <Text style={[s.filterPillLabel, { color: colors.buttonSkipRed }]}>{uiCopy.connections.reject}</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ))}
-                </>
-              )}
-              {acceptedClientConnections.length > 0 && (
-                <>
-                  <Text
-                    style={[
-                      s.metaText,
-                      { marginBottom: spacing.sm, marginTop: incomingClientRequests.length > 0 ? spacing.md : 0, fontWeight: '600' },
-                    ]}
+              <Text style={[s.metaText, { marginBottom: spacing.sm, fontWeight: '600' }]}>
+                {uiCopy.b2bChat.tabClientChats}
+              </Text>
+              {b2bConversations.length === 0 ? (
+                <Text style={s.metaText}>{uiCopy.b2bChat.noChatsYet}</Text>
+              ) : (
+                b2bConversations.map((c) => (
+                  <View
+                    key={c.id}
+                    style={[s.modelRow, { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm }]}
                   >
-                    {uiCopy.connections.activeConnectionChatsHeading}
-                  </Text>
-                  {acceptedClientConnections.map((c) => (
-                    <View
-                      key={c.id}
-                      style={[s.modelRow, { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm }]}
-                    >
-                      <View style={{ flex: 1, minWidth: 160 }}>
-                        <Text style={s.modelName}>
-                          {clientReqNames[c.clientId] ?? uiCopy.connections.clientFallback}
-                        </Text>
-                        <Text style={s.metaText}>
-                          {new Date(c.createdAt).toLocaleString()} · {uiCopy.connections.connectedLabel}
-                        </Text>
-                      </View>
-                      {c.conversationId ? (
-                        <TouchableOpacity
-                          style={[s.filterPill, s.filterPillActive]}
-                          onPress={() => {
-                            setActiveConnectionChatId(c.conversationId!);
-                            setActiveConnectionChatTitle(clientReqNames[c.clientId] ?? uiCopy.connections.clientFallback);
-                          }}
-                        >
-                          <Text style={[s.filterPillLabel, s.filterPillLabelActive]}>
-                            {uiCopy.connections.openConversation}
-                          </Text>
-                        </TouchableOpacity>
-                      ) : null}
+                    <View style={{ flex: 1, minWidth: 160 }}>
+                      <Text style={s.modelName}>{b2bTitles[c.id] ?? uiCopy.b2bChat.clientFallback}</Text>
+                      <Text style={s.metaText}>{new Date(c.updated_at).toLocaleString()}</Text>
                     </View>
-                  ))}
-                </>
+                    <TouchableOpacity
+                      style={[s.filterPill, s.filterPillActive]}
+                      onPress={() => {
+                        setActiveConnectionChatId(c.id);
+                        setActiveConnectionChatTitle(b2bTitles[c.id] ?? uiCopy.b2bChat.clientFallback);
+                      }}
+                    >
+                      <Text style={[s.filterPillLabel, s.filterPillLabelActive]}>{uiCopy.b2bChat.openConversation}</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))
               )}
-              {incomingClientRequests.length === 0 && acceptedClientConnections.length === 0 ? (
-                <Text style={s.metaText}>{uiCopy.connections.noIncomingRequests}</Text>
-              ) : null}
               {activeConnectionChatId ? (
                 <ConnectionMessengerInline
                   conversationId={activeConnectionChatId}
                   headerTitle={activeConnectionChatTitle}
                   viewerUserId={currentUserId}
+                  agencyId={agencyId}
+                  guestLinks={guestLinksForChat}
+                  modelsForShare={modelsForShare}
                 />
               ) : null}
             </>

@@ -4,20 +4,7 @@ import { colors, spacing, typography } from '../theme/theme';
 import { getAgencyModels } from '../services/apiService';
 import { AgencyRecruitingView } from '../views/AgencyRecruitingView';
 import { BookingChatView } from '../views/BookingChatView';
-import {
-  getConnectionsForAgencyByIdOrCode,
-  sendConnectionRequest,
-  acceptConnectionAndCreateChat,
-  rejectIncomingConnection,
-  subscribeConnections,
-  fetchConnectionsForAgency,
-  type Connection,
-} from '../store/connectionsStore';
-import { useAuth } from '../context/AuthContext';
 import { getAgencies } from '../services/agenciesSupabase';
-
-const DEMO_CLIENT_ID = 'user-client';
-const DEMO_CLIENT_LABEL = 'Client (Demo)';
 
 type AgencyModel = {
   id: string;
@@ -36,27 +23,15 @@ type AgencyDashboardScreenProps = {
 export const AgencyDashboardScreen: React.FC<AgencyDashboardScreenProps> = ({
   onBackToRoleSelection,
 }) => {
-  const { session } = useAuth();
   const [items, setItems] = useState<AgencyModel[]>([]);
   const [showRecruiting, setShowRecruiting] = useState(false);
   const [openRecruitingBookingThreadId, setOpenRecruitingBookingThreadId] = useState<string | null>(null);
-  const [showConnections, setShowConnections] = useState(false);
   const [agencies, setAgencies] = useState<{ id: string }[]>([]);
   const currentAgencyId = agencies.find((a: any) => a.code === 'a1')?.id ?? agencies[0]?.id ?? '';
-  const [connections, setConnections] = useState<Connection[]>([]);
 
   useEffect(() => {
     getAgencies().then(setAgencies);
   }, []);
-
-  useEffect(() => {
-    if (!currentAgencyId) return;
-    void fetchConnectionsForAgency(currentAgencyId);
-    const refresh = () => setConnections(getConnectionsForAgencyByIdOrCode(currentAgencyId, 'a1'));
-    refresh();
-    const unsub = subscribeConnections(refresh);
-    return unsub;
-  }, [currentAgencyId]);
 
   useEffect(() => {
     if (!currentAgencyId) return;
@@ -113,94 +88,6 @@ export const AgencyDashboardScreen: React.FC<AgencyDashboardScreenProps> = ({
     );
   }
 
-  if (showConnections) {
-    const conns = currentAgencyId ? getConnectionsForAgencyByIdOrCode(currentAgencyId, 'a1') : [];
-    const incoming = conns.filter((c) => c.status === 'pending' && c.requestedBy === 'client');
-    const connected = conns.filter((c) => c.status === 'accepted');
-    const hasRequestToClient = conns.some(
-      (c) => c.clientId === DEMO_CLIENT_ID && (c.status === 'pending' || c.status === 'accepted')
-    );
-    return (
-      <View style={styles.container}>
-        <TouchableOpacity style={styles.backRow} onPress={() => setShowConnections(false)}>
-          <Text style={styles.backArrow}>←</Text>
-          <Text style={styles.backLabel}>Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.label}>Connections</Text>
-        <Text style={styles.heading}>Client connections</Text>
-        <ScrollView style={{ flex: 1 }}>
-          {incoming.length > 0 && (
-            <View style={styles.connectionsSection}>
-              <Text style={styles.connectionsSectionLabel}>Incoming requests</Text>
-              {incoming.map((c) => (
-                <View key={c.id} style={styles.connectionRow}>
-                  <Text style={styles.connectionRowLabel}>Client</Text>
-                  <View style={styles.connectionRowActions}>
-                    <TouchableOpacity
-                      style={styles.connectionAcceptBtn}
-                      onPress={async () => {
-                        const uid = session?.user?.id;
-                        if (!uid || !currentAgencyId) return;
-                        await acceptConnectionAndCreateChat({
-                          connectionId: c.id,
-                          actingUserId: uid,
-                          clientUserId: c.clientId,
-                          agencyId: c.agencyId,
-                        });
-                        await fetchConnectionsForAgency(currentAgencyId);
-                      }}
-                    >
-                      <Text style={styles.connectionAcceptLabel}>Accept</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.connectionRejectBtn}
-                      onPress={async () => {
-                        await rejectIncomingConnection(c.id);
-                        if (currentAgencyId) await fetchConnectionsForAgency(currentAgencyId);
-                      }}
-                    >
-                      <Text style={styles.connectionRejectLabel}>Reject</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ))}
-            </View>
-          )}
-          {connected.length > 0 && (
-            <View style={styles.connectionsSection}>
-              <Text style={styles.connectionsSectionLabel}>Connected</Text>
-              {connected.map((c) => (
-                <View key={c.id} style={styles.connectionRow}>
-                  <Text style={styles.connectionRowLabel}>Client</Text>
-                </View>
-              ))}
-            </View>
-          )}
-          <View style={styles.connectionsSection}>
-            <Text style={styles.connectionsSectionLabel}>Send request to client</Text>
-            <View style={styles.connectionRow}>
-              <Text style={styles.connectionRowLabel}>{DEMO_CLIENT_LABEL}</Text>
-              {hasRequestToClient ? (
-                <Text style={styles.connectionPendingLabel}>Pending / Connected</Text>
-              ) : (
-                <TouchableOpacity
-                  style={styles.connectionSendBtn}
-                  onPress={async () => {
-                    if (!currentAgencyId) return;
-                    await sendConnectionRequest(DEMO_CLIENT_ID, currentAgencyId, 'agency');
-                    await fetchConnectionsForAgency(currentAgencyId);
-                  }}
-                >
-                  <Text style={styles.connectionSendLabel}>Send request</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
-        </ScrollView>
-      </View>
-    );
-  }
-
   return (
     <View style={styles.container}>
       {onBackToRoleSelection && (
@@ -222,14 +109,6 @@ export const AgencyDashboardScreen: React.FC<AgencyDashboardScreenProps> = ({
       >
         <Text style={styles.recruitingEntryLabel}>Recruiting</Text>
         <Text style={styles.recruitingEntryHint}>Review model applications</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={styles.recruitingEntry}
-        onPress={() => setShowConnections(true)}
-      >
-        <Text style={styles.recruitingEntryLabel}>Connections</Text>
-        <Text style={styles.recruitingEntryHint}>Client connection requests</Text>
       </TouchableOpacity>
 
       <View style={styles.list}>
@@ -396,72 +275,6 @@ const styles = StyleSheet.create({
   toggleLabel: {
     ...typography.label,
     fontSize: 10,
-    color: colors.textSecondary,
-  },
-  connectionsSection: {
-    marginBottom: spacing.lg,
-  },
-  connectionsSectionLabel: {
-    ...typography.label,
-    color: colors.textSecondary,
-    marginBottom: spacing.sm,
-  },
-  connectionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    marginBottom: spacing.xs,
-  },
-  connectionRowLabel: {
-    ...typography.body,
-    color: colors.textPrimary,
-  },
-  connectionRowActions: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  connectionAcceptBtn: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: 8,
-    backgroundColor: colors.buttonOptionGreen,
-  },
-  connectionAcceptLabel: {
-    ...typography.label,
-    fontSize: 11,
-    color: colors.surface,
-  },
-  connectionRejectBtn: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  connectionRejectLabel: {
-    ...typography.label,
-    fontSize: 11,
-    color: colors.textSecondary,
-  },
-  connectionSendBtn: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: 8,
-    backgroundColor: colors.textPrimary,
-  },
-  connectionSendLabel: {
-    ...typography.label,
-    fontSize: 11,
-    color: colors.surface,
-  },
-  connectionPendingLabel: {
-    ...typography.label,
-    fontSize: 11,
     color: colors.textSecondary,
   },
 });
