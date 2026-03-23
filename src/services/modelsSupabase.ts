@@ -94,6 +94,31 @@ export async function getModelsForClientFromSupabase(
   });
 }
 
+export async function getModelsForClientFromSupabaseByTerritory(
+  clientType: 'fashion' | 'commercial',
+  countryCode: string,
+): Promise<
+  Array<SupabaseModel & { country_code: string; agency_name: string; territory_agency_id?: string | null }>
+> {
+  const iso = countryCode.trim().toUpperCase();
+  const column = clientType === 'fashion' ? 'is_visible_fashion' : 'is_visible_commercial';
+  return fetchAllSupabasePages(async (from, to) => {
+    const { data, error } = await supabase
+      .from('models_with_territories')
+      .select('*')
+      .eq('country_code', iso)
+      .eq(column, true)
+      .order('name')
+      .range(from, to);
+    return {
+      data: data as Array<
+        SupabaseModel & { country_code: string; agency_name: string; territory_agency_id?: string | null }
+      > | null,
+      error,
+    };
+  });
+}
+
 export async function getModelsForAgencyFromSupabase(agencyId: string): Promise<SupabaseModel[]> {
   return fetchAllSupabasePages(async (from, to) => {
     const { data, error } = await supabase

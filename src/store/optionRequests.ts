@@ -28,8 +28,11 @@ import { supabase } from '../../lib/supabase';
 import { getModelByIdFromSupabase } from '../services/modelsSupabase';
 import { getAgencyById } from '../services/agenciesSupabase';
 import { resolveAgencyForModelAndCountry } from '../services/territoriesSupabase';
+import { createBookingMessageInClientAgencyChat } from '../services/bookingChatIntegrationSupabase';
 import { upsertCalendarEntry, updateCalendarEntryToJob } from '../services/calendarSupabase';
 import { notifyClientAgencyCounterOffer } from '../services/pushNotifications';
+import { showAppAlert } from '../utils/crossPlatformAlert';
+import { uiCopy } from '../constants/uiCopy';
 
 export type ChatStatus = 'in_negotiation' | 'confirmed' | 'rejected';
 
@@ -195,25 +198,47 @@ export function addOptionRequest(
       }
     }
 
-    const DEFAULT_AGENCY_ID = 'a1000000-0000-4000-8000-000000000001';
-    let agencyId: string = DEFAULT_AGENCY_ID;
+    let agencyId: string | null = null;
+    let countryCodeUsedForBooking: string | null = null;
     try {
       const model = await getModelByIdFromSupabase(modelId);
       const fallbackAgency = model?.agency_id ?? null;
-      const countryCode = extra?.countryCode ?? model?.country ?? null;
-      if (countryCode) {
-        const resolved = await resolveAgencyForModelAndCountry(modelId, countryCode);
-        if (resolved) agencyId = resolved;
-        else if (fallbackAgency) agencyId = fallbackAgency;
-      } else if (fallbackAgency) {
+
+      const countryCodeUsed = extra?.countryCode?.trim()
+        ? extra?.countryCode
+        : model?.country ?? null;
+
+      if (countryCodeUsed) {
+        countryCodeUsedForBooking = countryCodeUsed;
+        const resolved = await resolveAgencyForModelAndCountry(modelId, countryCodeUsed);
+        agencyId = resolved ?? fallbackAgency;
+
+        if (!agencyId) {
+          // Territory missing and no default agency defined.
+          showAppAlert(uiCopy.common.error, uiCopy.alerts.noTerritoryForCountry);
+          // Rollback optimistic local cache entries.
+          requestsCache = requestsCache.filter((x) => x.id !== req.id);
+          messagesCache = messagesCache.filter((m) => m.id !== autoMessage.id);
+          notify();
+          return;
+        }
+      } else {
+        // Missing country input: rely on fallback agency only.
         agencyId = fallbackAgency;
+        if (!agencyId) {
+          showAppAlert(uiCopy.common.error, uiCopy.alerts.missingCountryCode);
+          requestsCache = requestsCache.filter((x) => x.id !== req.id);
+          messagesCache = messagesCache.filter((m) => m.id !== autoMessage.id);
+          notify();
+          return;
+        }
       }
     } catch {}
 
     const result = await insertOptionRequest({
       client_id: clientId,
       model_id: modelId,
-      agency_id: agencyId,
+      agency_id: agencyId!,
       requested_date: date,
       project_id: projectId,
       client_name: clientName,
@@ -240,6 +265,20 @@ export function addOptionRequest(
       const m = messagesCache.find((x) => x.id === autoMessage.id);
       if (m) m.threadId = result.id;
       addOptionMessage(result.id, 'client', autoText);
+
+      // Booking must be visible in B2B chat as a typed message.
+      const bookingCountryCode = (countryCodeUsedForBooking ?? '').trim().toUpperCase();
+      if (user?.id && organizationId && bookingCountryCode) {
+        void createBookingMessageInClientAgencyChat({
+          agencyId: result.agency_id,
+          actingUserId: user.id,
+          clientOrganizationId: organizationId,
+          modelId,
+          countryCode: bookingCountryCode,
+          date,
+        });
+      }
+
       if (local.modelAccountLinked === false) {
         addOptionMessage(
           result.id,

@@ -49,7 +49,7 @@ export type ConversationCreateMeta = {
 };
 
 /** B2B chat message payload (maps to `messages.message_type` + `metadata`). */
-export type MessagePayloadType = 'text' | 'link' | 'package' | 'model';
+export type MessagePayloadType = 'text' | 'link' | 'package' | 'model' | 'booking';
 
 export async function getConversationsForUser(userId: string): Promise<Conversation[]> {
   return fetchAllSupabasePages(async (from, to) => {

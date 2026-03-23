@@ -96,6 +96,7 @@ type ModelSummary = {
   legsInseam: number;
   coverUrl: string;
   agencyId?: string | null;
+  agencyName?: string | null;
 };
 
 type ClientWebAppProps = {
@@ -364,7 +365,16 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
 
   useEffect(() => {
     void (async () => {
-      const data: any[] = await getModelsForClient(clientType);
+      const territoryIso =
+        filters.location === 'Paris'
+          ? 'FR'
+          : filters.location === 'Milan'
+            ? 'IT'
+            : filters.location === 'Berlin'
+              ? 'DE'
+              : null;
+
+      const data: any[] = await getModelsForClient(clientType, territoryIso ?? undefined);
       const mapped: ModelSummary[] = data.map((m: any) => ({
         id: m.id,
         name: m.name,
@@ -378,6 +388,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         legsInseam: m.legsInseam ?? m.legs_inseam ?? 0,
         coverUrl: m.gallery?.[0] ?? m.polaroids?.[0] ?? '',
         agencyId: m.agencyId ?? m.agency_id ?? null,
+        agencyName: m.agencyName ?? m.agency_name ?? null,
       }));
       setModels(mapped);
 
@@ -411,7 +422,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         setTerritoriesByModel({});
       }
     })();
-  }, [clientType]);
+  }, [clientType, filters.location]);
 
   useEffect(() => {
     if (detailId) {
@@ -1519,7 +1530,8 @@ const DiscoverView: React.FC<DiscoverProps> = ({
               <View style={styles.coverMeasurementsOverlay}>
                 <Text style={styles.coverNameOnImage}>{current.name}</Text>
                 <Text style={styles.coverMeasurementsLabel}>
-                  Height {current.height} · Chest {current.chest || current.bust} · Waist {current.waist} · Hips {current.hips}{current.legsInseam ? ` · Inseam ${current.legsInseam}` : ''}
+                  Height {current.height} · Chest {current.chest || current.bust} · Waist {current.waist} · Hips {current.hips}
+                  {current.legsInseam ? ` · Inseam ${current.legsInseam}` : ''}{current.agencyName ? ` · ${current.agencyName}` : ''}
                 </Text>
               </View>
             </View>

@@ -20,6 +20,7 @@ import {
   type MessagePayloadType,
   type MessageWithSender,
 } from '../services/messengerSupabase';
+import { getModelByIdFromSupabase } from '../services/modelsSupabase';
 import { buildGuestUrl, type GuestLink } from '../services/guestLinksSupabase';
 
 /** Organization-scoped B2B thread (client org ↔ agency org). Not a user-to-user or “connection” chat. */
@@ -36,7 +37,7 @@ export type OrgMessengerInlineProps = {
 
 function payloadType(m: MessageWithSender): MessagePayloadType {
   const t = (m as { message_type?: string }).message_type;
-  if (t === 'link' || t === 'package' || t === 'model') return t;
+  if (t === 'link' || t === 'package' || t === 'model' || t === 'booking') return t;
   return 'text';
 }
 
@@ -57,6 +58,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   const [msgs, setMsgs] = useState<MessageWithSender[]>([]);
   const [input, setInput] = useState('');
   const [shareOpen, setShareOpen] = useState<'package' | 'model' | null>(null);
+  const [bookingModelNames, setBookingModelNames] = useState<Record<string, string>>({});
 
   const reload = () => void getMessagesWithSenderInfo(conversationId).then(setMsgs);
 
@@ -68,6 +70,28 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
     const unsub = subscribeToConversation(conversationId, () => reload());
     return unsub;
   }, [conversationId]);
+
+  useEffect(() => {
+    // Resolve booking cards to show model names (fallback to model_id).
+    const bookingModelIds = Array.from(
+      new Set(
+        msgs
+          .filter((m) => (m as { message_type?: string }).message_type === 'booking')
+          .map((m) => (m as { metadata?: Record<string, unknown> }).metadata?.['model_id'])
+          .filter((v): v is string => typeof v === 'string' && v.trim().length > 0),
+      ),
+    );
+    const missing = bookingModelIds.filter((id) => !bookingModelNames[id]);
+    if (missing.length === 0) return;
+
+    void Promise.all(
+      missing.map(async (modelId) => {
+        const row = await getModelByIdFromSupabase(modelId);
+        if (!row?.name) return;
+        setBookingModelNames((prev) => ({ ...prev, [modelId]: row.name }));
+      }),
+    );
+  }, [msgs, bookingModelNames]);
 
   const sendChat = async () => {
     const text = input.trim();
@@ -149,6 +173,32 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
                     </Text>
                   ) : null}
                 </View>
+              ) : null}
+              {pt === 'booking' ? (
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={() => {
+                    // UI-only: for now we just make the card clickable.
+                  }}
+                >
+                  <View style={styles.card}>
+                    <Text style={styles.cardTitle}>{uiCopy.b2bChat.bookingCardTitle}</Text>
+                    <Text style={styles.chatBubbleText} numberOfLines={2}>
+                      {uiCopy.b2bChat.bookingModelLabel}:{' '}
+                      {(() => {
+                        const mid = metaString(m, 'model_id');
+                        if (!mid) return '—';
+                        return bookingModelNames[mid] ?? mid;
+                      })()}
+                    </Text>
+                    <Text style={styles.metaHint}>
+                      {uiCopy.b2bChat.bookingDateLabel}: {metaString(m, 'date') ?? '—'}
+                    </Text>
+                    <Text style={styles.metaHint}>
+                      {uiCopy.b2bChat.bookingStatusLabel}: {metaString(m, 'status') ?? 'pending'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
               ) : null}
             </View>
           );

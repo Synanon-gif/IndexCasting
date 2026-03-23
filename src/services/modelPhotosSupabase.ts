@@ -11,7 +11,10 @@ export type ModelPhoto = {
   model_id: string;
   url: string;
   sort_order: number;
+  /** UI field: whether this photo should be visible to clients. */
   visible: boolean;
+  /** New stabilized column (backfilled from legacy `visible`). */
+  is_visible_to_clients?: boolean;
   source: string | null;
   api_external_id: string | null;
   photo_type: ModelPhotoType;
@@ -36,7 +39,16 @@ export async function getPhotosForModel(
     console.error('getPhotosForModel error:', error);
     return [];
   }
-  return (data ?? []) as ModelPhoto[];
+
+  // Keep legacy `visible` in sync with `is_visible_to_clients` for older UI code.
+  return (data ?? []).map((row: any) => {
+    const isVisibleToClients = Boolean(row.is_visible_to_clients ?? row.visible ?? true);
+    return {
+      ...(row as ModelPhoto),
+      visible: isVisibleToClients,
+      is_visible_to_clients: row.is_visible_to_clients ?? isVisibleToClients,
+    };
+  });
 }
 
 export async function upsertPhotosForModel(
@@ -49,6 +61,7 @@ export async function upsertPhotosForModel(
     url: p.url,
     sort_order: p.sort_order ?? index,
     visible: p.visible,
+    is_visible_to_clients: p.is_visible_to_clients ?? p.visible,
     source: p.source ?? null,
     api_external_id: p.api_external_id ?? null,
     photo_type: p.photo_type,
@@ -89,6 +102,7 @@ export async function addPhoto(
       url,
       sort_order: nextSort,
       visible: true,
+      is_visible_to_clients: true,
       source: null,
       api_external_id: null,
       photo_type: type,
@@ -105,11 +119,30 @@ export async function addPhoto(
 
 export async function updatePhoto(
   photoId: string,
-  fields: Partial<Pick<ModelPhoto, 'url' | 'visible' | 'sort_order' | 'source' | 'api_external_id' | 'photo_type'>>,
+  fields: Partial<
+    Pick<
+      ModelPhoto,
+      | 'url'
+      | 'visible'
+      | 'is_visible_to_clients'
+      | 'sort_order'
+      | 'source'
+      | 'api_external_id'
+      | 'photo_type'
+    >
+  >,
 ): Promise<boolean> {
+  const payload: any = { ...fields };
+  if ('visible' in fields && fields.visible !== undefined && payload.is_visible_to_clients === undefined) {
+    payload.is_visible_to_clients = fields.visible;
+  }
+  if ('is_visible_to_clients' in fields && fields.is_visible_to_clients !== undefined && payload.visible === undefined) {
+    payload.visible = fields.is_visible_to_clients;
+  }
+
   const { error } = await supabase
     .from('model_photos')
-    .update(fields)
+    .update(payload)
     .eq('id', photoId);
 
   if (error) {

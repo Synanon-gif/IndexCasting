@@ -1343,8 +1343,9 @@ const MyModelsTab: React.FC<{
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
 
   const [polasSource, setPolasSource] = useState<'mediaslide' | 'netwalk' | 'manual'>('manual');
-  const [modelPhotos, setModelPhotos] = useState<Array<{ id?: string; url: string; visible: boolean }>>([]);
-  const [polaroidPhotos, setPolaroidPhotos] = useState<Array<{ id?: string; url: string; visible: boolean }>>([]);
+  type LocalPhoto = { id?: string; url: string; visible: boolean; is_visible_to_clients: boolean };
+  const [modelPhotos, setModelPhotos] = useState<LocalPhoto[]>([]);
+  const [polaroidPhotos, setPolaroidPhotos] = useState<LocalPhoto[]>([]);
   const [newPhotoUrl, setNewPhotoUrl] = useState('');
   const [newPolaroidUrl, setNewPolaroidUrl] = useState('');
   const [showPolasOnProfile, setShowPolasOnProfile] = useState(true);
@@ -1385,10 +1386,30 @@ const MyModelsTab: React.FC<{
       return;
     }
     void getPhotosForModel(selectedModel.id, 'portfolio').then((photos) => {
-      setModelPhotos(photos.map((p) => ({ id: p.id, url: p.url, visible: p.visible })));
+      setModelPhotos(
+        photos.map((p) => {
+          const isVisibleToClients = Boolean(p.is_visible_to_clients ?? p.visible);
+          return {
+            id: p.id,
+            url: p.url,
+            visible: isVisibleToClients,
+            is_visible_to_clients: isVisibleToClients,
+          };
+        }),
+      );
     });
     void getPhotosForModel(selectedModel.id, 'polaroid').then((photos) => {
-      setPolaroidPhotos(photos.map((p) => ({ id: p.id, url: p.url, visible: p.visible })));
+      setPolaroidPhotos(
+        photos.map((p) => {
+          const isVisibleToClients = Boolean(p.is_visible_to_clients ?? p.visible);
+          return {
+            id: p.id,
+            url: p.url,
+            visible: isVisibleToClients,
+            is_visible_to_clients: isVisibleToClients,
+          };
+        }),
+      );
     });
     void getTerritoriesForModel(selectedModel.id).then((rows) => {
       setTerritoryCountryCodes(rows.map((r) => r.country_code.toUpperCase()));
@@ -1444,7 +1465,7 @@ const MyModelsTab: React.FC<{
 
   const handleSaveModel = async () => {
     if (!selectedModel) return;
-    const visiblePortfolio = modelPhotos.filter((p) => p.visible);
+    const visiblePortfolio = modelPhotos.filter((p) => p.is_visible_to_clients);
     if (visiblePortfolio.length === 0) {
       Alert.alert(uiCopy.modelRoster.portfolioRequiredTitle, uiCopy.modelRoster.portfolioRequiredBody);
       return;
@@ -1473,6 +1494,7 @@ const MyModelsTab: React.FC<{
       url: p.url,
       sort_order: index,
       visible: p.visible,
+      is_visible_to_clients: p.is_visible_to_clients,
       source: null,
       api_external_id: null,
       photo_type: 'portfolio' as const,
@@ -1482,6 +1504,7 @@ const MyModelsTab: React.FC<{
       url: p.url,
       sort_order: index,
       visible: p.visible,
+      is_visible_to_clients: p.is_visible_to_clients,
       source: null,
       api_external_id: null,
       photo_type: 'polaroid' as const,
@@ -1489,11 +1512,11 @@ const MyModelsTab: React.FC<{
     await upsertPhotosForModel(selectedModel.id, [...photoPayload, ...polaroidPayload]);
     await syncPortfolioToModel(
       selectedModel.id,
-      modelPhotos.filter((p) => p.visible).map((p) => p.url),
+      modelPhotos.filter((p) => p.is_visible_to_clients).map((p) => p.url),
     );
     await syncPolaroidsToModel(
       selectedModel.id,
-      polaroidPhotos.filter((p) => p.visible).map((p) => p.url),
+      polaroidPhotos.filter((p) => p.is_visible_to_clients).map((p) => p.url),
     );
 
     // Persist representation territories (agency ↔ model ↔ country).
@@ -1518,19 +1541,30 @@ const MyModelsTab: React.FC<{
     [next[idx], next[target]] = [next[target], next[idx]];
     setPolaroidPhotos(next);
   };
-  const togglePhotoVisibility = (photo: { id?: string; url: string; visible: boolean }, idx: number) => {
+  const togglePhotoVisibility = (photo: LocalPhoto, idx: number) => {
     const next = [...modelPhotos];
-    next[idx] = { ...photo, visible: !photo.visible };
+    next[idx] = {
+      ...photo,
+      visible: !photo.is_visible_to_clients,
+      is_visible_to_clients: !photo.is_visible_to_clients,
+    };
     setModelPhotos(next);
   };
-  const togglePolaroidVisibility = (photo: { id?: string; url: string; visible: boolean }, idx: number) => {
+  const togglePolaroidVisibility = (photo: LocalPhoto, idx: number) => {
     const next = [...polaroidPhotos];
-    next[idx] = { ...photo, visible: !photo.visible };
+    next[idx] = {
+      ...photo,
+      visible: !photo.is_visible_to_clients,
+      is_visible_to_clients: !photo.is_visible_to_clients,
+    };
     setPolaroidPhotos(next);
   };
   const addPhoto = () => {
     if (!newPhotoUrl.trim()) return;
-    setModelPhotos([...modelPhotos, { url: newPhotoUrl.trim(), visible: true }]);
+    setModelPhotos([
+      ...modelPhotos,
+      { url: newPhotoUrl.trim(), visible: true, is_visible_to_clients: true },
+    ]);
     setNewPhotoUrl('');
   };
 
@@ -1562,7 +1596,10 @@ const MyModelsTab: React.FC<{
         if (url) uploadedUrls.push(url);
       }
       if (uploadedUrls.length) {
-        setModelPhotos((prev) => [...prev, ...uploadedUrls.map((url) => ({ url, visible: true }))]);
+        setModelPhotos((prev) => [
+          ...prev,
+          ...uploadedUrls.map((url) => ({ url, visible: true, is_visible_to_clients: true })),
+        ]);
       }
     } finally {
       setUploadingPhoto(false);
@@ -1583,7 +1620,10 @@ const MyModelsTab: React.FC<{
         if (url) uploadedUrls.push(url);
       }
       if (uploadedUrls.length) {
-        setPolaroidPhotos((prev) => [...prev, ...uploadedUrls.map((url) => ({ url, visible: true }))]);
+        setPolaroidPhotos((prev) => [
+          ...prev,
+          ...uploadedUrls.map((url) => ({ url, visible: true, is_visible_to_clients: true })),
+        ]);
       }
     } finally {
       setUploadingPhoto(false);
@@ -1616,9 +1656,15 @@ const MyModelsTab: React.FC<{
         const url = await uploadModelPhoto(selectedModel.id, blob);
         if (url) {
           if (target === 'portfolio') {
-            setModelPhotos((prev) => [...prev, { url, visible: true }]);
+            setModelPhotos((prev) => [
+              ...prev,
+              { url, visible: true, is_visible_to_clients: true },
+            ]);
           } else {
-            setPolaroidPhotos((prev) => [...prev, { url, visible: true }]);
+            setPolaroidPhotos((prev) => [
+              ...prev,
+              { url, visible: true, is_visible_to_clients: true },
+            ]);
           }
         }
       }
@@ -1724,8 +1770,9 @@ const MyModelsTab: React.FC<{
               ) : null}
               <View style={{ flex: 1 }}>
                 <Text style={{ ...typography.body, fontSize: 11 }} numberOfLines={1}>{photo.url ? (photo.url.length > 50 ? photo.url.slice(0, 47) + '…' : photo.url) : `Photo ${idx + 1}`}</Text>
-                <Text style={{ ...typography.label, fontSize: 9, color: photo.visible ? colors.buttonOptionGreen : colors.textSecondary }}>
-                  {uiCopy.modelRoster.visibleInClientSwipe}: {photo.visible ? uiCopy.common.yes : uiCopy.common.no}
+                <Text style={{ ...typography.label, fontSize: 9, color: photo.is_visible_to_clients ? colors.buttonOptionGreen : colors.textSecondary }}>
+                  {uiCopy.modelRoster.visibleInClientSwipe}:{' '}
+                  {photo.is_visible_to_clients ? uiCopy.common.yes : uiCopy.common.no}
                 </Text>
               </View>
               <View style={{ flexDirection: 'row', gap: 4, alignItems: 'center' }}>
@@ -1742,7 +1789,7 @@ const MyModelsTab: React.FC<{
                   <Text style={{ fontSize: 16, color: idx === modelPhotos.length - 1 ? colors.textSecondary : colors.textPrimary }}>↓</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => togglePhotoVisibility(photo, idx)}>
-                  <Text style={{ fontSize: 14 }}>{photo.visible ? '👁' : '🚫'}</Text>
+                  <Text style={{ fontSize: 14 }}>{photo.is_visible_to_clients ? '👁' : '🚫'}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -1815,8 +1862,9 @@ const MyModelsTab: React.FC<{
                   <Text style={{ ...typography.body, fontSize: 11 }} numberOfLines={1}>
                     {photo.url ? (photo.url.length > 50 ? photo.url.slice(0, 47) + '…' : photo.url) : `Polaroid ${idx + 1}`}
                   </Text>
-                  <Text style={{ ...typography.label, fontSize: 9, color: photo.visible ? colors.buttonOptionGreen : colors.textSecondary }}>
-                    {uiCopy.modelRoster.visibleInClientSwipe}: {photo.visible ? uiCopy.common.yes : uiCopy.common.no}
+                  <Text style={{ ...typography.label, fontSize: 9, color: photo.is_visible_to_clients ? colors.buttonOptionGreen : colors.textSecondary }}>
+                    {uiCopy.modelRoster.visibleInClientSwipe}:{' '}
+                    {photo.is_visible_to_clients ? uiCopy.common.yes : uiCopy.common.no}
                   </Text>
                 </View>
                 <View style={{ flexDirection: 'row', gap: 4, alignItems: 'center' }}>
@@ -1827,7 +1875,7 @@ const MyModelsTab: React.FC<{
                     <Text style={{ fontSize: 16, color: idx === polaroidPhotos.length - 1 ? colors.textSecondary : colors.textPrimary }}>↓</Text>
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => togglePolaroidVisibility(photo, idx)}>
-                    <Text style={{ fontSize: 14 }}>{photo.visible ? '👁' : '🚫'}</Text>
+                    <Text style={{ fontSize: 14 }}>{photo.is_visible_to_clients ? '👁' : '🚫'}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -1874,7 +1922,10 @@ const MyModelsTab: React.FC<{
                 <TouchableOpacity
                   onPress={() => {
                     if (!newPolaroidUrl.trim()) return;
-                    setPolaroidPhotos((prev) => [...prev, { url: newPolaroidUrl.trim(), visible: true }]);
+                    setPolaroidPhotos((prev) => [
+                      ...prev,
+                      { url: newPolaroidUrl.trim(), visible: true, is_visible_to_clients: true },
+                    ]);
                     setNewPolaroidUrl('');
                   }}
                   style={[s.apiBtn, { marginTop: 4 }]}

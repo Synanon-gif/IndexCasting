@@ -49,6 +49,10 @@ export const uiCopy = {
     deleteEntryFailed: 'Could not remove the entry.',
     invalidOwnerId:
       'Invalid owner_id: sign in with a real client or agency account (UUID). Demo mode cannot save Supabase calendar entries.',
+    noTerritoryForCountry:
+      'No agency territory found for this model and country. Booking cannot be created.',
+    missingCountryCode:
+      'Country is missing. Booking cannot be routed without a selected territory country.',
   },
   team: {
     section: 'Team',
@@ -203,7 +207,7 @@ export const uiCopy = {
   },
   /** Agency — My Models manual editor (portfolio + polaroids). */
   modelRoster: {
-    visibleInClientSwipe: 'Visible in client swipe',
+    visibleInClientSwipe: 'Visible to clients',
     portfolioTitle: 'Portfolio images',
     portfolioHint: 'First image is the cover for client swipe. Reorder with arrows or tap Cover.',
     polaroidsTitle: 'Polaroids',
@@ -257,6 +261,10 @@ export const uiCopy = {
     sharedModel: 'Model',
     sharedModelBodyPrefix: 'Shared model:',
     modelsCount: 'models',
+    bookingCardTitle: 'Booking',
+    bookingModelLabel: 'Model',
+    bookingDateLabel: 'Date',
+    bookingStatusLabel: 'Status',
     openPackage: 'Open package',
     modelIdLabel: 'Model ID',
     pickPackage: 'Choose a package to share',

@@ -31,19 +31,27 @@ export async function upsertTerritoriesForModel(
   agencyId: string,
   countryCodes: string[],
 ): Promise<ModelTerritory[]> {
+  const normalized = Array.from(
+    new Set(countryCodes.map((c) => c.trim().toUpperCase()).filter(Boolean)),
+  );
+
   // First, delete territories for this model/agency that are not in the new list
   const { error: deleteError } = await supabase
     .from('model_agency_territories')
     .delete()
     .eq('model_id', modelId)
     .eq('agency_id', agencyId)
-    .not('country_code', 'in', `(${countryCodes.map((c) => `'${c}'`).join(',') || "''"})`);
+    .not(
+      'country_code',
+      'in',
+      `(${normalized.map((c) => `'${c}'`).join(',') || "''"})`,
+    );
 
   if (deleteError) {
     console.error('upsertTerritoriesForModel delete error:', deleteError);
   }
 
-  if (countryCodes.length === 0) {
+  if (normalized.length === 0) {
     const { data, error } = await supabase
       .from('model_agency_territories')
       .select('*')
@@ -57,7 +65,7 @@ export async function upsertTerritoriesForModel(
     return (data ?? []) as ModelTerritory[];
   }
 
-  const payload = countryCodes.map((code) => ({
+  const payload = normalized.map((code) => ({
     model_id: modelId,
     agency_id: agencyId,
     country_code: code,
@@ -65,12 +73,55 @@ export async function upsertTerritoriesForModel(
 
   const { data, error } = await supabase
     .from('model_agency_territories')
-    .upsert(payload, { onConflict: 'model_id,country_code,agency_id' })
+    // With the stabilized schema: 1 agency per (model_id,country_code).
+    // Conflict resolution updates `agency_id` for the country.
+    .upsert(payload, { onConflict: 'model_id,country_code' })
     .select('*')
     .order('country_code');
 
   if (error) {
     console.error('upsertTerritoriesForModel upsert error:', error);
+    return [];
+  }
+
+  return (data ?? []) as ModelTerritory[];
+}
+
+/**
+ * Merge territory claims without deleting other countries.
+ * Enforces stabilized uniqueness: 1 row per (model_id,country_code) updates agency_id.
+ */
+export async function upsertTerritoriesForModelCountryAgencyPairs(
+  modelId: string,
+  pairs: Array<{ country_code: string; agency_id: string }>,
+): Promise<ModelTerritory[]> {
+  const normalized = pairs
+    .map((p) => ({
+      country_code: p.country_code.trim().toUpperCase(),
+      agency_id: p.agency_id,
+    }))
+    .filter((p) => Boolean(p.country_code) && Boolean(p.agency_id));
+
+  // If multiple pairs are passed for the same country, keep the last one.
+  const dedupByCountry = new Map<string, { country_code: string; agency_id: string }>();
+  for (const p of normalized) dedupByCountry.set(p.country_code, p);
+
+  const payload = Array.from(dedupByCountry.values()).map((p) => ({
+    model_id: modelId,
+    agency_id: p.agency_id,
+    country_code: p.country_code,
+  }));
+
+  if (payload.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from('model_agency_territories')
+    .upsert(payload, { onConflict: 'model_id,country_code' })
+    .select('*')
+    .order('country_code');
+
+  if (error) {
+    console.error('upsertTerritoriesForModelCountryAgencyPairs error:', error);
     return [];
   }
 
@@ -95,14 +146,14 @@ export async function resolveAgencyForModelAndCountry(
       .select('agency_id')
       .eq('model_id', modelId)
       .eq('country_code', code)
-      .order('created_at', { ascending: false })
-      .limit(1);
+      .maybeSingle();
+
     if (error) {
       console.error('resolveAgencyForModelAndCountry error:', error);
       return null;
     }
-    const row = (data ?? []) as Array<{ agency_id: string }> | null;
-    return row?.[0]?.agency_id ?? null;
+
+    return (data as { agency_id: string } | null)?.agency_id ?? null;
   } catch (e) {
     console.error('resolveAgencyForModelAndCountry exception:', e);
     return null;
