@@ -87,6 +87,8 @@ type ModelSummary = {
   id: string;
   name: string;
   city: string;
+  countryCode?: string | null;
+  hasRealLocation?: boolean;
   hairColor: string;
   height: number;
   bust: number;
@@ -199,7 +201,6 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
 }) => {
   const [tab, setTab] = useState<TopTab>('discover');
   const [models, setModels] = useState<ModelSummary[]>([]);
-  const [territoriesByModel, setTerritoriesByModel] = useState<Record<string, string[]>>({});
   const [currentIndex, setCurrentIndex] = useState(0);
   const [projects, setProjects] = useState<Project[]>(() => persistedProjectsToProjects(loadClientProjects()));
   const [activeProjectId, setActiveProjectId] = useState<string | null>(() => loadClientActiveProjectId());
@@ -374,7 +375,20 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
               ? 'DE'
               : null;
 
-      const data: any[] = await getModelsForClient(clientType, territoryIso ?? undefined);
+      const cityFilter =
+        filters.location === 'Paris'
+          ? 'Paris'
+          : filters.location === 'Milan'
+            ? 'Milan'
+            : filters.location === 'Berlin'
+              ? 'Berlin'
+              : null;
+
+      const data: any[] = await getModelsForClient(
+        clientType,
+        territoryIso ?? undefined,
+        cityFilter ?? undefined,
+      );
       const mapped: ModelSummary[] = data.map((m: any) => ({
         id: m.id,
         name: m.name,
@@ -389,38 +403,10 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         coverUrl: m.gallery?.[0] ?? m.polaroids?.[0] ?? '',
         agencyId: m.agencyId ?? m.agency_id ?? null,
         agencyName: m.agencyName ?? m.agency_name ?? null,
+        countryCode: m.countryCode ?? null,
+        hasRealLocation: m.hasRealLocation ?? false,
       }));
       setModels(mapped);
-
-      // Prefetch territories for currently loaded models (clients can SELECT due to RLS policy).
-      if (mapped.length === 0) {
-        setTerritoriesByModel({});
-        return;
-      }
-
-      try {
-        const ids = mapped.map((m) => m.id);
-        const { data: rows, error } = await supabase
-          .from('model_agency_territories')
-          .select('model_id,country_code')
-          .in('model_id', ids);
-        if (error) {
-          console.error('territoriesByModel prefetch error:', error);
-          setTerritoriesByModel({});
-          return;
-        }
-        const map: Record<string, string[]> = {};
-        for (const r of rows ?? []) {
-          const rr = r as { model_id: string; country_code: string };
-          map[rr.model_id] = map[rr.model_id] ?? [];
-          const code = rr.country_code?.toUpperCase();
-          if (code && !map[rr.model_id].includes(code)) map[rr.model_id].push(code);
-        }
-        setTerritoriesByModel(map);
-      } catch (e) {
-        console.error('territoriesByModel prefetch exception:', e);
-        setTerritoriesByModel({});
-      }
     })();
   }, [clientType, filters.location]);
 
@@ -457,20 +443,6 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     return baseModels.filter((m) => {
       if (filters.location === 'nearby') {
         if (!userCity || !(m.city || '').toLowerCase().includes(userCity.toLowerCase())) return false;
-      } else if (filters.location !== 'all') {
-        // Territory-based discovery: treat city pills as ISO territory codes.
-        // (Paris → FR, Milan → IT, Berlin → DE)
-        const iso =
-          filters.location === 'Paris' ? 'FR'
-            : filters.location === 'Milan' ? 'IT'
-              : filters.location === 'Berlin' ? 'DE'
-                : null;
-        if (iso) {
-          const terrs = territoriesByModel[m.id] ?? [];
-          if (!terrs.includes(iso)) return false;
-        } else if (m.city !== filters.location) {
-          return false;
-        }
       }
       if (filters.size !== 'all') {
         if (filters.size === 'short' && m.height >= 175) return false;
@@ -489,7 +461,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       if (pInt(filters.legsInseamMax) !== null && m.legsInseam > pInt(filters.legsInseamMax)!) return false;
       return true;
     });
-  }, [baseModels, filters, userCity, territoriesByModel]);
+  }, [baseModels, filters, userCity]);
 
   const currentModel = useMemo(
     () =>
@@ -1531,7 +1503,14 @@ const DiscoverView: React.FC<DiscoverProps> = ({
                 <Text style={styles.coverNameOnImage}>{current.name}</Text>
                 <Text style={styles.coverMeasurementsLabel}>
                   Height {current.height} · Chest {current.chest || current.bust} · Waist {current.waist} · Hips {current.hips}
-                  {current.legsInseam ? ` · Inseam ${current.legsInseam}` : ''}{current.agencyName ? ` · ${current.agencyName}` : ''}
+                  {current.legsInseam ? ` · Inseam ${current.legsInseam}` : ''}
+                </Text>
+                <Text style={styles.coverLocationLabel}>
+                  {current.hasRealLocation
+                    ? `${current.city || '—'} · ${current.countryCode || '—'}`
+                    : `Represented in ${current.countryCode || '—'}${
+                        current.agencyName ? ` · ${current.agencyName}` : ''
+                      }`}
                 </Text>
               </View>
             </View>
@@ -3490,6 +3469,16 @@ const styles = StyleSheet.create({
     textShadowColor: '#000000',
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 2,
+  } as any,
+  coverLocationLabel: {
+    ...typography.label,
+    fontSize: 10,
+    letterSpacing: 0.8,
+    color: '#FFFFFF',
+    textShadowColor: '#000000',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+    marginTop: 6,
   } as any,
   coverImageShell: {
     height: 360,

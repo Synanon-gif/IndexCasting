@@ -34,6 +34,8 @@ export type SupabaseModel = {
   is_visible_fashion: boolean;
   created_at?: string;
   updated_at?: string;
+  // Real physical location (nullable). `country` is a legacy field used in older code.
+  country_code?: string | null;
 };
 
 export async function getModelsFromSupabase(): Promise<SupabaseModel[]> {
@@ -98,7 +100,13 @@ export async function getModelsForClientFromSupabaseByTerritory(
   clientType: 'fashion' | 'commercial',
   countryCode: string,
 ): Promise<
-  Array<SupabaseModel & { country_code: string; agency_name: string; territory_agency_id?: string | null }>
+  Array<
+    SupabaseModel & {
+      territory_country_code: string;
+      agency_name: string;
+      territory_agency_id?: string | null;
+    }
+  >
 > {
   const iso = countryCode.trim().toUpperCase();
   const column = clientType === 'fashion' ? 'is_visible_fashion' : 'is_visible_commercial';
@@ -106,17 +114,109 @@ export async function getModelsForClientFromSupabaseByTerritory(
     const { data, error } = await supabase
       .from('models_with_territories')
       .select('*')
-      .eq('country_code', iso)
+      .eq('territory_country_code', iso)
       .eq(column, true)
       .order('name')
       .range(from, to);
     return {
+      data: data as
+        | Array<
+            SupabaseModel & {
+              territory_country_code: string;
+              agency_name: string;
+              territory_agency_id?: string | null;
+            }
+          >
+        | null,
+      error,
+    };
+  });
+}
+
+export async function getModelsForClientFromSupabaseHybridLocation(
+  clientType: 'fashion' | 'commercial',
+  countryCode: string,
+  city?: string | null,
+): Promise<
+  Array<
+    SupabaseModel & {
+      has_real_location: boolean;
+      territory_country_code?: string | null;
+      agency_name?: string | null;
+      territory_agency_id?: string | null;
+    }
+  >
+> {
+  const iso = countryCode.trim().toUpperCase();
+  const column = clientType === 'fashion' ? 'is_visible_fashion' : 'is_visible_commercial';
+
+  // 1) REAL LOCATION group: models with models.country_code = selected country.
+  const realRows = await fetchAllSupabasePages(async (from, to) => {
+    let q = supabase
+      .from('models')
+      .select('*')
+      .eq(column, true)
+      .eq('country_code', iso)
+      .or('agency_relationship_status.is.null,agency_relationship_status.eq.active,agency_relationship_status.eq.pending_link')
+      .order('name')
+      .range(from, to);
+
+    if (city && city.trim()) {
+      q = q.ilike('city', city.trim());
+    }
+
+    const { data, error } = await q;
+    return { data: data as SupabaseModel[] | null, error };
+  });
+
+  // 2) TERRITORY FALLBACK group: models WITHOUT real location (models.country_code IS NULL),
+  // represented in the selected country via model_agency_territories.
+  const fallbackRows = await fetchAllSupabasePages(async (from, to) => {
+    const { data, error } = await supabase
+      .from('models_with_territories')
+      .select('*')
+      .eq('territory_country_code', iso)
+      .is('country_code', null)
+      .eq(column, true)
+      .or('agency_relationship_status.is.null,agency_relationship_status.eq.active,agency_relationship_status.eq.pending_link')
+      .order('name')
+      .range(from, to);
+
+    return {
       data: data as Array<
-        SupabaseModel & { country_code: string; agency_name: string; territory_agency_id?: string | null }
+        SupabaseModel & {
+          territory_country_code: string;
+          agency_name: string;
+          territory_agency_id?: string | null;
+        }
       > | null,
       error,
     };
   });
+
+  const realById = new Map<string, any>();
+  for (const r of realRows) {
+    realById.set(r.id, {
+      ...(r as any),
+      has_real_location: true,
+      territory_country_code: null,
+      agency_name: null,
+      territory_agency_id: null,
+    });
+  }
+
+  const merged: any[] = [];
+  merged.push(...realById.values());
+  for (const fb of fallbackRows as any[]) {
+    if (realById.has(fb.id)) continue; // prioritize real location
+    merged.push({
+      ...(fb as any),
+      has_real_location: false,
+    });
+  }
+
+  merged.sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
+  return merged;
 }
 
 export async function getModelsForAgencyFromSupabase(agencyId: string): Promise<SupabaseModel[]> {

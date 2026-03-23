@@ -6,7 +6,7 @@
 CREATE OR REPLACE VIEW public.models_with_territories AS
 SELECT
   m.*,
-  mat.country_code,
+  mat.country_code AS territory_country_code,
   mat.agency_id AS territory_agency_id,
   a.name AS agency_name
 FROM public.model_agency_territories mat

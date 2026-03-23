@@ -8,6 +8,7 @@ import {
   getModelByIdFromSupabase,
   getModelsForClientFromSupabase,
   getModelsForClientFromSupabaseByTerritory,
+  getModelsForClientFromSupabaseHybridLocation,
   getModelsForAgencyFromSupabase,
   updateModelVisibilityInSupabase,
 } from './modelsSupabase';
@@ -70,14 +71,18 @@ export async function updateModelVisibility(id, { isVisibleCommercial, isVisible
 /**
  * Models for client view, filtered by client type (fashion/commercial).
  */
-export async function getModelsForClient(clientType, countryCode) {
+export async function getModelsForClient(clientType, countryCode, city) {
   const list = countryCode
-    ? await getModelsForClientFromSupabaseByTerritory(clientType, countryCode)
+    ? await getModelsForClientFromSupabaseHybridLocation(clientType, countryCode, city ?? undefined)
     : await getModelsForClientFromSupabase(clientType);
   return list.map((m) => ({
     id: m.id,
     name: m.name,
     city: m.city,
+    hasRealLocation: Boolean(m.has_real_location ?? m.country_code),
+    countryCode: Boolean(m.has_real_location ?? m.country_code)
+      ? (m.country_code ?? null)
+      : (m.territory_country_code ?? null),
     hairColor: m.hair_color,
     height: m.height,
     bust: m.bust ?? 0,
