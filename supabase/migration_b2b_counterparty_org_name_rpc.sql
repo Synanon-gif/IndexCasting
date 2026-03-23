@@ -46,36 +46,18 @@ BEGIN
     RETURN NULL;
   END IF;
 
-  SELECT
-    COALESCE(
-      NULLIF(trim(o.name), ''),
-      CASE
-        WHEN o.type = 'agency' AND o.agency_id IS NOT NULL THEN (
-          SELECT NULLIF(trim(a.name), '')
-          FROM public.agencies a
-          WHERE a.id = o.agency_id
-          LIMIT 1
-        )
-        ELSE NULL
-      END,
-      CASE
-        WHEN o.type = 'client' AND o.owner_id IS NOT NULL THEN (
-          SELECT COALESCE(
-            NULLIF(trim(p.company_name), ''),
-            NULLIF(trim(p.display_name), '')
-          )
-          FROM public.profiles p
-          WHERE p.id = o.owner_id
-          LIMIT 1
-        )
-        ELSE NULL
-      END
-    )
+  -- Requirement: header must show ONLY the real organization name from organizations.name.
+  -- Avoid fallbacks to user/profile fields, because that can surface “user names” in B2B headers.
+  SELECT NULLIF(trim(o.name), '')
   INTO v_name
   FROM public.organizations o
   WHERE o.id = v_other;
 
-  RETURN NULLIF(trim(COALESCE(v_name, '')), '');
+  IF v_name IS NULL OR lower(trim(v_name)) = 'organization' THEN
+    RETURN NULL;
+  END IF;
+
+  RETURN v_name;
 END;
 $$;
 

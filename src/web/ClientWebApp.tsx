@@ -198,6 +198,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
 }) => {
   const [tab, setTab] = useState<TopTab>('discover');
   const [models, setModels] = useState<ModelSummary[]>([]);
+  const [territoriesByModel, setTerritoriesByModel] = useState<Record<string, string[]>>({});
   const [currentIndex, setCurrentIndex] = useState(0);
   const [projects, setProjects] = useState<Project[]>(() => persistedProjectsToProjects(loadClientProjects()));
   const [activeProjectId, setActiveProjectId] = useState<string | null>(() => loadClientActiveProjectId());
@@ -362,7 +363,8 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   }, [realClientId]);
 
   useEffect(() => {
-    getModelsForClient(clientType).then((data: any[]) => {
+    void (async () => {
+      const data: any[] = await getModelsForClient(clientType);
       const mapped: ModelSummary[] = data.map((m: any) => ({
         id: m.id,
         name: m.name,
@@ -378,7 +380,37 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         agencyId: m.agencyId ?? m.agency_id ?? null,
       }));
       setModels(mapped);
-    });
+
+      // Prefetch territories for currently loaded models (clients can SELECT due to RLS policy).
+      if (mapped.length === 0) {
+        setTerritoriesByModel({});
+        return;
+      }
+
+      try {
+        const ids = mapped.map((m) => m.id);
+        const { data: rows, error } = await supabase
+          .from('model_agency_territories')
+          .select('model_id,country_code')
+          .in('model_id', ids);
+        if (error) {
+          console.error('territoriesByModel prefetch error:', error);
+          setTerritoriesByModel({});
+          return;
+        }
+        const map: Record<string, string[]> = {};
+        for (const r of rows ?? []) {
+          const rr = r as { model_id: string; country_code: string };
+          map[rr.model_id] = map[rr.model_id] ?? [];
+          const code = rr.country_code?.toUpperCase();
+          if (code && !map[rr.model_id].includes(code)) map[rr.model_id].push(code);
+        }
+        setTerritoriesByModel(map);
+      } catch (e) {
+        console.error('territoriesByModel prefetch exception:', e);
+        setTerritoriesByModel({});
+      }
+    })();
   }, [clientType]);
 
   useEffect(() => {
@@ -414,7 +446,21 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     return baseModels.filter((m) => {
       if (filters.location === 'nearby') {
         if (!userCity || !(m.city || '').toLowerCase().includes(userCity.toLowerCase())) return false;
-      } else if (filters.location !== 'all' && m.city !== filters.location) return false;
+      } else if (filters.location !== 'all') {
+        // Territory-based discovery: treat city pills as ISO territory codes.
+        // (Paris → FR, Milan → IT, Berlin → DE)
+        const iso =
+          filters.location === 'Paris' ? 'FR'
+            : filters.location === 'Milan' ? 'IT'
+              : filters.location === 'Berlin' ? 'DE'
+                : null;
+        if (iso) {
+          const terrs = territoriesByModel[m.id] ?? [];
+          if (!terrs.includes(iso)) return false;
+        } else if (m.city !== filters.location) {
+          return false;
+        }
+      }
       if (filters.size !== 'all') {
         if (filters.size === 'short' && m.height >= 175) return false;
         if (filters.size === 'medium' && (m.height < 175 || m.height > 182)) return false;
@@ -432,7 +478,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       if (pInt(filters.legsInseamMax) !== null && m.legsInseam > pInt(filters.legsInseamMax)!) return false;
       return true;
     });
-  }, [baseModels, filters, userCity]);
+  }, [baseModels, filters, userCity, territoriesByModel]);
 
   const currentModel = useMemo(
     () =>
@@ -578,8 +624,28 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     setDetailId(null);
   };
 
-  const handleOptionRequest = (modelName: string, modelId: string, date: string, projectId?: string, extra?: { proposedPrice?: number; startTime?: string; endTime?: string; requestType?: 'option' | 'casting'; currency?: string }) => {
-    const threadId = addOptionRequest('Client', modelName, modelId, date, projectId ?? activeProjectId ?? undefined, extra);
+  const handleOptionRequest = (
+    modelName: string,
+    modelId: string,
+    date: string,
+    projectId?: string,
+    extra?: {
+      proposedPrice?: number;
+      startTime?: string;
+      endTime?: string;
+      requestType?: 'option' | 'casting';
+      currency?: string;
+      countryCode?: string;
+    }
+  ) => {
+    const threadId = addOptionRequest(
+      'Client',
+      modelName,
+      modelId,
+      date,
+      projectId ?? activeProjectId ?? undefined,
+      extra,
+    );
     setOptionDatePickerOpen(false);
     setOptionDateModel(null);
     setOpenThreadIdOnMessages(threadId);
@@ -1025,12 +1091,21 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
           setOptionDateModel(null);
         }}
         onSubmit={(date, startTime, endTime, price, requestType, currency) =>
-          optionDateModel && handleOptionRequest(optionDateModel.name, optionDateModel.id, date, undefined, {
+          optionDateModel &&
+          handleOptionRequest(optionDateModel.name, optionDateModel.id, date, undefined, {
             startTime,
             endTime,
             proposedPrice: price,
             requestType: requestType ?? 'option',
             currency: currency ?? 'EUR',
+            countryCode:
+              filters.location === 'Paris'
+                ? 'FR'
+                : filters.location === 'Milan'
+                  ? 'IT'
+                  : filters.location === 'Berlin'
+                    ? 'DE'
+                    : undefined,
           })
         }
       />

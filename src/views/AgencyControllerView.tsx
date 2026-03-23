@@ -13,6 +13,8 @@ import {
   Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import countries from 'i18n-iso-countries';
+import enLocale from 'i18n-iso-countries/langs/en.json';
 import { colors, spacing, typography } from '../theme/theme';
 import { showAppAlert } from '../utils/crossPlatformAlert';
 import { useAuth } from '../context/AuthContext';
@@ -60,6 +62,7 @@ import {
   syncPolaroidsToModel,
   uploadModelPhoto,
 } from '../services/modelPhotosSupabase';
+import { getTerritoriesForModel, upsertTerritoriesForModel } from '../services/territoriesSupabase';
 import { supabase } from '../../lib/supabase';
 import {
   ensureAgencyOrganization,
@@ -108,6 +111,11 @@ const STATUS_COLORS: Record<ChatStatus, string> = {
   confirmed: colors.buttonOptionGreen,
   rejected: colors.textSecondary,
 };
+
+// ISO country names for the territories multi-select.
+// Keep names in English for UI consistency.
+countries.registerLocale(enLocale as any);
+const ISO_COUNTRY_NAMES: Record<string, string> = countries.getNames('en', { select: 'official' }) as any;
 
 type AgencyTab =
   | 'dashboard'
@@ -1341,10 +1349,28 @@ const MyModelsTab: React.FC<{
   const [newPolaroidUrl, setNewPolaroidUrl] = useState('');
   const [showPolasOnProfile, setShowPolasOnProfile] = useState(true);
 
+  const [territoryCountryCodes, setTerritoryCountryCodes] = useState<string[]>([]);
+  const [territorySearch, setTerritorySearch] = useState('');
+
   const countries = useMemo(() =>
     Array.from(new Set(models.map((m) => m.country || m.city || 'Unknown').filter(Boolean))).sort(),
     [models]
   );
+
+  const isoCountryList = useMemo(() => {
+    const list = Object.entries(ISO_COUNTRY_NAMES)
+      .map(([code, name]) => ({ code: code.toUpperCase(), name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return list;
+  }, []);
+
+  const visibleIsoCountries = useMemo(() => {
+    const q = territorySearch.trim().toLowerCase();
+    if (!q) return isoCountryList.slice(0, 40);
+    return isoCountryList
+      .filter((c) => c.code.toLowerCase().includes(q) || c.name.toLowerCase().includes(q))
+      .slice(0, 40);
+  }, [isoCountryList, territorySearch]);
 
   const filtered = useMemo(() => {
     if (!countryFilter) return models;
@@ -1355,6 +1381,7 @@ const MyModelsTab: React.FC<{
     if (!selectedModel) {
       setModelPhotos([]);
       setPolaroidPhotos([]);
+      setTerritoryCountryCodes([]);
       return;
     }
     void getPhotosForModel(selectedModel.id, 'portfolio').then((photos) => {
@@ -1362,6 +1389,9 @@ const MyModelsTab: React.FC<{
     });
     void getPhotosForModel(selectedModel.id, 'polaroid').then((photos) => {
       setPolaroidPhotos(photos.map((p) => ({ id: p.id, url: p.url, visible: p.visible })));
+    });
+    void getTerritoriesForModel(selectedModel.id).then((rows) => {
+      setTerritoryCountryCodes(rows.map((r) => r.country_code.toUpperCase()));
     });
   }, [selectedModel?.id]);
 
@@ -1466,6 +1496,9 @@ const MyModelsTab: React.FC<{
       polaroidPhotos.filter((p) => p.visible).map((p) => p.url),
     );
 
+    // Persist representation territories (agency ↔ model ↔ country).
+    await upsertTerritoriesForModel(selectedModel.id, agencyId, territoryCountryCodes);
+
     setSelectedModel(null);
     setEditField({});
     onRefresh();
@@ -1516,23 +1549,45 @@ const MyModelsTab: React.FC<{
   const polaroidFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const handlePhotoFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target?.files?.[0];
-    if (!file || !selectedModel || !file.type.startsWith('image/')) return;
+    const files = Array.from(e.target?.files ?? []);
+    if (files.length === 0 || !selectedModel) return;
+    const imageFiles = files.filter((f) => f.type?.startsWith('image/'));
+    if (imageFiles.length === 0) return;
     e.target.value = '';
     setUploadingPhoto(true);
-    const url = await uploadModelPhoto(selectedModel.id, file);
-    setUploadingPhoto(false);
-    if (url) setModelPhotos((prev) => [...prev, { url, visible: true }]);
+    try {
+      const uploadedUrls: string[] = [];
+      for (const file of imageFiles) {
+        const url = await uploadModelPhoto(selectedModel.id, file);
+        if (url) uploadedUrls.push(url);
+      }
+      if (uploadedUrls.length) {
+        setModelPhotos((prev) => [...prev, ...uploadedUrls.map((url) => ({ url, visible: true }))]);
+      }
+    } finally {
+      setUploadingPhoto(false);
+    }
   };
 
   const handlePolaroidFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target?.files?.[0];
-    if (!file || !selectedModel || !file.type.startsWith('image/')) return;
+    const files = Array.from(e.target?.files ?? []);
+    if (files.length === 0 || !selectedModel) return;
+    const imageFiles = files.filter((f) => f.type?.startsWith('image/'));
+    if (imageFiles.length === 0) return;
     e.target.value = '';
     setUploadingPhoto(true);
-    const url = await uploadModelPhoto(selectedModel.id, file);
-    setUploadingPhoto(false);
-    if (url) setPolaroidPhotos((prev) => [...prev, { url, visible: true }]);
+    try {
+      const uploadedUrls: string[] = [];
+      for (const file of imageFiles) {
+        const url = await uploadModelPhoto(selectedModel.id, file);
+        if (url) uploadedUrls.push(url);
+      }
+      if (uploadedUrls.length) {
+        setPolaroidPhotos((prev) => [...prev, ...uploadedUrls.map((url) => ({ url, visible: true }))]);
+      }
+    } finally {
+      setUploadingPhoto(false);
+    }
   };
 
   const pickFromLibrary = async (target: 'portfolio' | 'polaroid') => {
@@ -1701,6 +1756,7 @@ const MyModelsTab: React.FC<{
                   <input
                     type="file"
                     accept="image/*"
+                    multiple
                     ref={fileInputRef}
                     onChange={handlePhotoFile}
                     style={{ display: 'none' }}
@@ -1783,6 +1839,7 @@ const MyModelsTab: React.FC<{
                     <input
                       type="file"
                       accept="image/*"
+                      multiple
                       ref={polaroidFileInputRef}
                       onChange={handlePolaroidFile}
                       style={{ display: 'none' }}
@@ -1826,6 +1883,87 @@ const MyModelsTab: React.FC<{
                 </TouchableOpacity>
               </View>
             )}
+          </View>
+
+          {/* Territories of Representation */}
+          <View style={{ marginTop: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.md }}>
+            <Text style={s.sectionLabel}>{uiCopy.modelRoster.territoriesTitle}</Text>
+            <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm }}>
+              {uiCopy.modelRoster.territoriesHint}
+            </Text>
+
+            <TextInput
+              value={territorySearch}
+              onChangeText={setTerritorySearch}
+              placeholder={uiCopy.modelRoster.territoriesSearchPlaceholder}
+              placeholderTextColor={colors.textSecondary}
+              style={[s.editInput, { height: 36, marginBottom: spacing.sm }]}
+              autoCapitalize="characters"
+            />
+
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm }}>
+              {territoryCountryCodes.length === 0 ? (
+                <Text style={s.metaText}>{uiCopy.modelRoster.noTerritoriesSelected}</Text>
+              ) : (
+                territoryCountryCodes.map((code) => (
+                  <TouchableOpacity
+                    key={code}
+                    onPress={() => setTerritoryCountryCodes((prev) => prev.filter((c) => c !== code))}
+                    style={[
+                      s.filterPill,
+                      {
+                        backgroundColor: colors.buttonOptionGreen,
+                        opacity: 0.9,
+                        borderWidth: 1,
+                        borderColor: colors.buttonOptionGreen,
+                      },
+                    ]}
+                  >
+                    <Text style={[s.filterPillLabel, { fontSize: 10, color: '#fff' }]}>{code}</Text>
+                  </TouchableOpacity>
+                ))
+              )}
+            </View>
+
+            <ScrollView style={{ maxHeight: 200 }}>
+              {visibleIsoCountries.map((c) => {
+                const active = territoryCountryCodes.includes(c.code);
+                return (
+                  <TouchableOpacity
+                    key={c.code}
+                    onPress={() => {
+                      setTerritoryCountryCodes((prev) => {
+                        if (prev.includes(c.code)) return prev.filter((x) => x !== c.code);
+                        return [...prev, c.code];
+                      });
+                    }}
+                    style={[
+                      s.filterPill,
+                      {
+                        backgroundColor: active ? colors.buttonOptionGreen : colors.surface,
+                        opacity: 1,
+                        borderWidth: 1,
+                        borderColor: active ? colors.buttonOptionGreen : colors.border,
+                      },
+                    ]}
+                    activeOpacity={0.85}
+                  >
+                    <Text
+                      style={[
+                        s.filterPillLabel,
+                        {
+                          fontSize: 10,
+                          color: active ? '#fff' : colors.textPrimary,
+                        },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {c.name} ({c.code})
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
           </View>
 
           {/* Show on profile toggle */}

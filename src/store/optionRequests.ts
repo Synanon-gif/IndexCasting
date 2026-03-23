@@ -27,6 +27,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import { getModelByIdFromSupabase } from '../services/modelsSupabase';
 import { getAgencyById } from '../services/agenciesSupabase';
+import { resolveAgencyForModelAndCountry } from '../services/territoriesSupabase';
 import { upsertCalendarEntry, updateCalendarEntryToJob } from '../services/calendarSupabase';
 import { notifyClientAgencyCounterOffer } from '../services/pushNotifications';
 
@@ -139,6 +140,7 @@ export function addOptionRequest(
     endTime?: string;
     requestType?: 'option' | 'casting';
     currency?: string;
+    countryCode?: string;
   }
 ): string {
   const threadId = `thread-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -193,10 +195,19 @@ export function addOptionRequest(
       }
     }
 
-    let agencyId = 'a1000000-0000-4000-8000-000000000001';
+    const DEFAULT_AGENCY_ID = 'a1000000-0000-4000-8000-000000000001';
+    let agencyId: string = DEFAULT_AGENCY_ID;
     try {
       const model = await getModelByIdFromSupabase(modelId);
-      if (model?.agency_id) agencyId = model.agency_id;
+      const fallbackAgency = model?.agency_id ?? null;
+      const countryCode = extra?.countryCode ?? model?.country ?? null;
+      if (countryCode) {
+        const resolved = await resolveAgencyForModelAndCountry(modelId, countryCode);
+        if (resolved) agencyId = resolved;
+        else if (fallbackAgency) agencyId = fallbackAgency;
+      } else if (fallbackAgency) {
+        agencyId = fallbackAgency;
+      }
     } catch {}
 
     const result = await insertOptionRequest({

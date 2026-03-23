@@ -9,6 +9,7 @@ export type ModelTerritory = {
   model_id: string;
   agency_id: string;
   country_code: string;
+  created_at?: string;
 };
 
 export async function getTerritoriesForModel(modelId: string): Promise<ModelTerritory[]> {
@@ -64,7 +65,7 @@ export async function upsertTerritoriesForModel(
 
   const { data, error } = await supabase
     .from('model_agency_territories')
-    .upsert(payload, { onConflict: 'model_id,country_code' })
+    .upsert(payload, { onConflict: 'model_id,country_code,agency_id' })
     .select('*')
     .order('country_code');
 
@@ -74,5 +75,37 @@ export async function upsertTerritoriesForModel(
   }
 
   return (data ?? []) as ModelTerritory[];
+}
+
+/**
+ * Booking routing helper: pick the correct agency for a model + country.
+ * - If multiple agencies exist for the same model+country, we pick the latest by `created_at`.
+ * - Returns null when no matching territory exists.
+ */
+export async function resolveAgencyForModelAndCountry(
+  modelId: string,
+  countryCode: string,
+): Promise<string | null> {
+  const code = countryCode.trim().toUpperCase();
+  if (!code) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from('model_agency_territories')
+      .select('agency_id')
+      .eq('model_id', modelId)
+      .eq('country_code', code)
+      .order('created_at', { ascending: false })
+      .limit(1);
+    if (error) {
+      console.error('resolveAgencyForModelAndCountry error:', error);
+      return null;
+    }
+    const row = (data ?? []) as Array<{ agency_id: string }> | null;
+    return row?.[0]?.agency_id ?? null;
+  } catch (e) {
+    console.error('resolveAgencyForModelAndCountry exception:', e);
+    return null;
+  }
 }
 
