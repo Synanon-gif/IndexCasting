@@ -1,6 +1,6 @@
 /**
  * Client organization: team roster + invitations (same tables/RPCs as agency booker invites).
- * English UI; owner-only invite (enforced by RLS + UI).
+ * English UI; organization members can manage team settings based on role policy.
  */
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView } from 'react-native';
@@ -44,14 +44,14 @@ export const ClientOrganizationTeamSection: React.FC<{
   const [inviteRole, setInviteRole] = useState<'employee'>('employee');
   const [inviteBusy, setInviteBusy] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [isOwner, setIsOwner] = useState(false);
+  const [memberRole, setMemberRole] = useState<'owner' | 'employee' | 'booker' | null>(null);
 
   const loadTeam = useCallback(async () => {
     if (!realClientId) {
       setOrganizationId(null);
       setTeamMembers([]);
       setInvitations([]);
-      setIsOwner(false);
+      setMemberRole(null);
       setLoading(false);
       return;
     }
@@ -60,7 +60,7 @@ export const ClientOrganizationTeamSection: React.FC<{
       const oid = await ensureClientOrganization();
       setOrganizationId(oid);
       const roleRow = await getMyClientMemberRole();
-      setIsOwner(roleRow?.member_role === 'owner');
+      setMemberRole((roleRow?.member_role as 'owner' | 'employee' | 'booker' | null) ?? null);
       if (oid) {
         const [members, inv] = await Promise.all([
           listOrganizationMembers(oid),
@@ -83,8 +83,9 @@ export const ClientOrganizationTeamSection: React.FC<{
 
   const handleInvite = async () => {
     if (!organizationId || !inviteEmail.trim()) return;
-    if (!isOwner) {
-      Alert.alert('Permission', 'Only the organization owner can send invitations.');
+    const canManageClientSettings = memberRole === 'owner' || memberRole === 'employee';
+    if (!canManageClientSettings) {
+      Alert.alert('Permission', 'Only owner/employee members can send invitations.');
       return;
     }
     setInviteBusy(true);
@@ -105,7 +106,7 @@ export const ClientOrganizationTeamSection: React.FC<{
       } else {
         Alert.alert(
           'Error',
-          'Could not create invitation. Ensure you are the organization owner and RLS allows inserts.',
+          'Could not create invitation. Ensure your member role has permission and RLS allows inserts.',
         );
       }
     } finally {
@@ -128,8 +129,8 @@ export const ClientOrganizationTeamSection: React.FC<{
   const pendingInv = invitations.filter((i) => i.status === 'pending');
   const acceptedInv = invitations.filter((i) => i.status === 'accepted');
 
-  /** RLS: only owners can read `invitations`; employees see an empty list. */
-  const invitationListHiddenForMember = !isOwner && realClientId;
+  const canManageClientSettings = memberRole === 'owner' || memberRole === 'employee';
+  const invitationListHiddenForMember = !canManageClientSettings && realClientId;
 
   return (
     <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
@@ -186,7 +187,7 @@ export const ClientOrganizationTeamSection: React.FC<{
         ))
       )}
 
-      {isOwner && organizationId ? (
+      {canManageClientSettings && organizationId ? (
         <View style={styles.inviteBox}>
           <Text style={styles.sectionTitle}>Invite member</Text>
           <Text style={styles.label}>Email</Text>
@@ -221,7 +222,7 @@ export const ClientOrganizationTeamSection: React.FC<{
         </View>
       ) : organizationId ? (
         <Text style={[styles.muted, { marginTop: spacing.md }]}>
-          Only the owner can invite employees. Contact your organization owner if you need access.
+          Only owner/employee members can invite employees. Contact your organization owner if you need access.
         </Text>
       ) : (
         <Text style={[styles.muted, { marginTop: spacing.md }]}>

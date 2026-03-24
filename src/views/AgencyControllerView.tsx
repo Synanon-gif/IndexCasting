@@ -39,6 +39,7 @@ import {
 import { AgencyRecruitingView } from './AgencyRecruitingView';
 import {
   getModelsForAgencyFromSupabase,
+  getModelByIdFromSupabase,
   removeModelFromAgency,
   agencyLinkModelToUser,
   type SupabaseModel,
@@ -154,7 +155,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
     Awaited<ReturnType<typeof listOrganizationMembers>>
   >([]);
   const [pendingInvites, setPendingInvites] = useState<InvitationRow[]>([]);
-  const [agencyTeamIsOwner, setAgencyTeamIsOwner] = useState(false);
+  const [agencyTeamRole, setAgencyTeamRole] = useState<'owner' | 'booker' | 'employee' | null>(null);
   const [calendarItems, setCalendarItems] = useState<AgencyCalendarItem[]>([]);
   const [manualCalendarEvents, setManualCalendarEvents] = useState<UserCalendarEvent[]>([]);
   const [calendarLoading, setCalendarLoading] = useState(false);
@@ -233,7 +234,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
     if (!oid) oid = await getOrganizationIdForAgency(currentAgencyId);
     setAgencyOrganizationId(oid);
     const mem = await getMyAgencyMemberRole(currentAgencyId);
-    setAgencyTeamIsOwner(mem?.member_role === 'owner');
+    setAgencyTeamRole((mem?.member_role as 'owner' | 'booker' | 'employee' | null) ?? null);
     if (oid) {
       setTeamMembers(await listOrganizationMembers(oid));
       setPendingInvites(await listInvitationsForOrganization(oid));
@@ -335,16 +336,18 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         { key: 'guestLinks', label: 'Guest Links' },
         { key: 'settings', label: uiCopy.agencySettings.tabLabel },
       ];
-      return agencyTeamIsOwner ? all : all.filter((t) => t.key !== 'settings');
+      return (agencyTeamRole === 'owner' || agencyTeamRole === 'booker')
+        ? all
+        : all.filter((t) => t.key !== 'settings');
     },
-    [agencyTeamIsOwner],
+    [agencyTeamRole],
   );
 
   useEffect(() => {
-    if (tab === 'settings' && !agencyTeamIsOwner) {
+    if (tab === 'settings' && agencyTeamRole !== 'owner' && agencyTeamRole !== 'booker') {
       setTab('dashboard');
     }
-  }, [tab, agencyTeamIsOwner]);
+  }, [tab, agencyTeamRole]);
 
   const openAgencyBookingChat = (threadId: string) => {
     refreshBookingThreads();
@@ -451,7 +454,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         {tab === 'bookers' && (
           <OrganizationTeamTab
             organizationId={agencyOrganizationId}
-            canInvite={agencyTeamIsOwner}
+            canInvite={agencyTeamRole === 'owner' || agencyTeamRole === 'booker'}
             members={teamMembers}
             invitations={pendingInvites}
             onRefresh={() => void loadAgencyTeam()}
@@ -467,7 +470,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         />
       )}
 
-      {tab === 'settings' && agencyTeamIsOwner && (
+      {tab === 'settings' && (agencyTeamRole === 'owner' || agencyTeamRole === 'booker') && (
         <>
           <AgencySettingsTab
             agency={currentAgency}
@@ -1331,6 +1334,8 @@ const MyModelsTab: React.FC<{
   const [showAddForm, setShowAddForm] = useState(false);
   const [addFields, setAddFields] = useState<Record<string, string>>({});
   const [addLoading, setAddLoading] = useState(false);
+  const [addModelImageFiles, setAddModelImageFiles] = useState<File[]>([]);
+  const [addModelFeedback, setAddModelFeedback] = useState<string | null>(null);
 
   const [showMediaslideInput, setShowMediaslideInput] = useState(false);
   const [showNetwalkInput, setShowNetwalkInput] = useState(false);
@@ -1419,7 +1424,14 @@ const MyModelsTab: React.FC<{
   const handleAddModel = async () => {
     const name = addFields.name?.trim();
     if (!name || !agencyId) return;
+    const toNullableInt = (value?: string) => {
+      const trimmed = (value ?? '').trim();
+      if (!trimmed) return null;
+      const parsed = Number.parseInt(trimmed, 10);
+      return Number.isFinite(parsed) ? parsed : null;
+    };
     setAddLoading(true);
+    setAddModelFeedback(null);
     try {
       const emailTrim = addFields.email?.trim() || null;
       const { data: created, error } = await supabase
@@ -1430,22 +1442,78 @@ const MyModelsTab: React.FC<{
           email: emailTrim,
           agency_relationship_status: emailTrim ? 'pending_link' : 'active',
           agency_relationship_ended_at: null,
-          height: addFields.height ? parseInt(addFields.height, 10) : null,
-          bust: addFields.bust ? parseInt(addFields.bust, 10) : null,
-          waist: addFields.waist ? parseInt(addFields.waist, 10) : null,
-          hips: addFields.hips ? parseInt(addFields.hips, 10) : null,
+          height: toNullableInt(addFields.height),
+          bust: toNullableInt(addFields.bust),
+          waist: toNullableInt(addFields.waist),
+          hips: toNullableInt(addFields.hips),
           city: addFields.city || null,
           country: addFields.country || null,
           hair_color: addFields.hair_color || null,
           eye_color: addFields.eye_color || null,
         })
-        .select()
+        .select('id')
         .single();
-      if (error) throw error;
+      if (error || !created?.id) {
+        throw new Error(
+          `Insert failed: ${error?.message ?? 'unknown error'}${error?.details ? ` (${error.details})` : ''}`,
+        );
+      }
+
+      const createdModelId = (created as { id: string }).id;
+      const modelDisplayName = name;
+
+      // Reset form immediately after successful insert.
       setAddFields({});
+      setAddModelImageFiles([]);
       setShowAddForm(false);
-      onRefresh();
-      if (created) setSelectedModel(created as SupabaseModel);
+      setCountryFilter('');
+
+      // Uploads should not make creation fail.
+      if (addModelImageFiles.length > 0) {
+        const uploadedUrls: string[] = [];
+        for (const file of addModelImageFiles) {
+          const url = await uploadModelPhoto(createdModelId, file);
+          if (url) uploadedUrls.push(url);
+        }
+        if (uploadedUrls.length > 0) {
+          await upsertPhotosForModel(
+            createdModelId,
+            uploadedUrls.map((url, index) => ({
+              url,
+              sort_order: index,
+              visible: true,
+              is_visible_to_clients: true,
+              source: null,
+              api_external_id: null,
+              photo_type: 'portfolio' as const,
+            })),
+          );
+          await syncPortfolioToModel(createdModelId, uploadedUrls);
+        }
+      }
+
+      try {
+        await Promise.resolve(onRefresh());
+      } catch (refreshErr: any) {
+        console.error('handleAddModel refresh error:', refreshErr);
+      }
+
+      const fresh = await getModelByIdFromSupabase(createdModelId);
+      if (fresh) {
+        setSelectedModel(fresh);
+        setAddModelFeedback(`${modelDisplayName} added successfully.`);
+      } else {
+        setAddModelFeedback(`${modelDisplayName} was created. Please refresh the list once.`);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('handleAddModel error:', err);
+      const isRlsInsert = /row-level security policy/i.test(message) && /models/i.test(message);
+      const userMessage = isRlsInsert
+        ? 'RLS blocks model insert. Run supabase/migration_models_insert_agency_org_members.sql and retry.'
+        : message;
+      setAddModelFeedback(`Could not add model: ${userMessage}`);
+      Alert.alert('Could not add model', userMessage);
     } finally {
       setAddLoading(false);
     }
@@ -1581,6 +1649,14 @@ const MyModelsTab: React.FC<{
   const [linkAccountLoading, setLinkAccountLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const polaroidFileInputRef = useRef<HTMLInputElement | null>(null);
+  const addModelFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleAddModelPhotoFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target?.files ?? []).filter((f) => f.type?.startsWith('image/'));
+    e.target.value = '';
+    if (files.length === 0) return;
+    setAddModelImageFiles((prev) => [...prev, ...files]);
+  };
 
   const handlePhotoFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target?.files ?? []);
@@ -2204,6 +2280,35 @@ const MyModelsTab: React.FC<{
               />
             </View>
           ))}
+          <View style={{ marginBottom: spacing.sm }}>
+            <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary }}>Portfolio photos</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs }}>
+              <TouchableOpacity
+                style={s.filterPill}
+                onPress={() => {
+                  if (Platform.OS === 'web') addModelFileInputRef.current?.click();
+                }}
+              >
+                <Text style={s.filterPillLabel}>Upload photos</Text>
+              </TouchableOpacity>
+              <Text style={s.metaText}>{addModelImageFiles.length} selected</Text>
+            </View>
+            {addModelImageFiles.length > 0 && (
+              <Text style={[s.metaText, { marginTop: 4 }]}>
+                First uploaded image becomes cover.
+              </Text>
+            )}
+            {Platform.OS === 'web' && (
+              <input
+                ref={addModelFileInputRef as any}
+                type="file"
+                accept="image/*"
+                multiple
+                style={{ display: 'none' }}
+                onChange={handleAddModelPhotoFiles}
+              />
+            )}
+          </View>
           <TouchableOpacity
             style={[s.saveBtn, (!addFields.name?.trim() || addLoading) && { opacity: 0.4 }]}
             onPress={handleAddModel}
@@ -2211,6 +2316,11 @@ const MyModelsTab: React.FC<{
           >
             <Text style={s.saveBtnLabel}>{addLoading ? 'Adding...' : 'Add Model'}</Text>
           </TouchableOpacity>
+          {addModelFeedback && (
+            <Text style={{ ...typography.body, fontSize: 12, marginTop: spacing.xs, color: colors.accentGreen }}>
+              {addModelFeedback}
+            </Text>
+          )}
         </View>
       )}
 
