@@ -1,5 +1,11 @@
 import { supabase } from '../../lib/supabase';
 import type { SupabaseOptionRequest } from './optionRequestsSupabase';
+import {
+  getBookingEventsForOrg,
+  getBookingEventsInRange,
+  type BookingEvent,
+  type BookingEventStatus,
+} from './bookingEventsSupabase';
 
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.trim());
@@ -57,13 +63,18 @@ export type AgencyCalendarItem = {
 };
 
 export async function getCalendarForModel(modelId: string): Promise<CalendarEntry[]> {
-  const { data, error } = await supabase
-    .from('calendar_entries')
-    .select('*')
-    .eq('model_id', modelId)
-    .order('date', { ascending: true });
-  if (error) { console.error('getCalendarForModel error:', error); return []; }
-  return (data ?? []) as CalendarEntry[];
+  try {
+    const { data, error } = await supabase
+      .from('calendar_entries')
+      .select('*')
+      .eq('model_id', modelId)
+      .order('date', { ascending: true });
+    if (error) { console.error('getCalendarForModel error:', error); return []; }
+    return (data ?? []) as CalendarEntry[];
+  } catch (e) {
+    console.error('getCalendarForModel exception:', e);
+    return [];
+  }
 }
 
 export async function getCalendarRange(
@@ -71,15 +82,20 @@ export async function getCalendarRange(
   startDate: string,
   endDate: string
 ): Promise<CalendarEntry[]> {
-  const { data, error } = await supabase
-    .from('calendar_entries')
-    .select('*')
-    .eq('model_id', modelId)
-    .gte('date', startDate)
-    .lte('date', endDate)
-    .order('date', { ascending: true });
-  if (error) { console.error('getCalendarRange error:', error); return []; }
-  return (data ?? []) as CalendarEntry[];
+  try {
+    const { data, error } = await supabase
+      .from('calendar_entries')
+      .select('*')
+      .eq('model_id', modelId)
+      .gte('date', startDate)
+      .lte('date', endDate)
+      .order('date', { ascending: true });
+    if (error) { console.error('getCalendarRange error:', error); return []; }
+    return (data ?? []) as CalendarEntry[];
+  } catch (e) {
+    console.error('getCalendarRange exception:', e);
+    return [];
+  }
 }
 
 export async function upsertCalendarEntry(
@@ -204,6 +220,11 @@ export async function insertCalendarEntry(
   return data as CalendarEntry;
 }
 
+/**
+ * @deprecated Deletes ALL calendar entries for a model on a given date which can cause
+ * unintended data loss when multiple entry types exist on the same day.
+ * Use deleteCalendarEntryById instead.
+ */
 export async function deleteCalendarEntry(modelId: string, date: string): Promise<boolean> {
   const { error } = await supabase
     .from('calendar_entries')
@@ -386,6 +407,66 @@ export async function appendSharedBookingNote(
     console.error('appendSharedBookingNote unexpected error:', e);
     return false;
   }
+}
+
+/**
+ * Convert a BookingEvent into the CalendarEntry shape so calendar views
+ * can render booking_events alongside legacy calendar_entries without
+ * changing view logic.
+ */
+export function bookingEventToCalendarEntry(ev: BookingEvent): CalendarEntry {
+  const statusMap: Record<BookingEventStatus, CalendarEntry['status']> = {
+    pending: 'tentative',
+    agency_accepted: 'tentative',
+    model_confirmed: 'booked',
+    completed: 'booked',
+    cancelled: 'available',
+  };
+  const typeMap: Record<BookingEvent['type'], CalendarEntryType> = {
+    option: 'option',
+    job: 'booking',
+    casting: 'casting',
+  };
+  return {
+    id: `be:${ev.id}`,
+    model_id: ev.model_id,
+    date: ev.date,
+    start_time: null,
+    end_time: null,
+    title: ev.title ?? null,
+    entry_type: typeMap[ev.type],
+    status: statusMap[ev.status as BookingEventStatus],
+    booking_id: null,
+    note: ev.note ?? null,
+    created_at: ev.created_at,
+    option_request_id: ev.source_option_request_id ?? null,
+    booking_details: null,
+  };
+}
+
+/**
+ * Get all booking_events for an org as CalendarEntry objects (additive merge).
+ * Prefixes id with 'be:' so UI can distinguish origin.
+ */
+export async function getBookingEventsAsCalendarEntries(
+  orgId: string,
+  role: 'agency' | 'client',
+): Promise<CalendarEntry[]> {
+  const events = await getBookingEventsForOrg(orgId, role);
+  return events.map(bookingEventToCalendarEntry);
+}
+
+/**
+ * Date-range variant for calendar month/week rendering.
+ */
+export async function getBookingEventsAsCalendarEntriesInRange(params: {
+  orgId: string;
+  role: 'agency' | 'client';
+  startDate: string;
+  endDate: string;
+}): Promise<CalendarEntry[]> {
+  const events = await getBookingEventsInRange(params);
+  return events.map(bookingEventToCalendarEntry);
 }
 
 export async function updateBookingDetails(

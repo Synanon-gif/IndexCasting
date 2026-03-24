@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase';
+import { uiCopy } from '../constants/uiCopy';
 
 /**
  * Recruiting-Chat (Agentur ↔ Model nach Bewerbungsannahme).
@@ -15,6 +16,8 @@ export type SupabaseRecruitingThread = {
   organization_id: string | null;
   created_by: string | null;
   created_at: string;
+  /** 'recruiting' = vor Accept; 'active_model' = nach Accept. */
+  chat_type: 'recruiting' | 'active_model' | null;
 };
 
 export type SupabaseRecruitingMessage = {
@@ -110,6 +113,30 @@ export async function updateThreadAgency(threadId: string, agencyId: string): Pr
     .eq('id', threadId);
   if (error) { console.error('updateThreadAgency error:', error); return false; }
   return true;
+}
+
+/**
+ * chat_type auf 'active_model' setzen, sobald die Agentur die Bewerbung angenommen hat.
+ * Der Thread bleibt derselbe – nur das Label ändert sich.
+ */
+export async function updateThreadChatType(
+  threadId: string,
+  chatType: 'recruiting' | 'active_model',
+): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('recruiting_chat_threads')
+      .update({ chat_type: chatType })
+      .eq('id', threadId);
+    if (error) {
+      console.error('updateThreadChatType error:', error);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('updateThreadChatType exception:', e);
+    return false;
+  }
 }
 
 export async function getMessages(threadId: string): Promise<SupabaseRecruitingMessage[]> {
@@ -234,45 +261,45 @@ export function normalizeAgencyRecruitingChatRpcUuid(data: unknown): string | nu
   return null;
 }
 
-/** User-facing recruiting chat RPC errors (English only). */
+/** User-facing recruiting chat RPC errors — all strings sourced from uiCopy.recruiting. */
 export function formatRecruitingChatRpcError(err: unknown): string {
   const raw = collectErrText(err);
   const msg = raw.toLowerCase();
   if (msg.includes('forbidden')) {
-    return 'No permission: sign in as an agency organization member or use the master account with the agency email.';
+    return uiCopy.recruiting.chatForbidden;
   }
   if (msg.includes('wrong agency')) {
-    return 'This application belongs to a different agency.';
+    return uiCopy.recruiting.chatWrongAgency;
   }
   if (msg.includes('not pending')) {
-    return 'Recruiting chat is only available while the application is pending.';
+    return uiCopy.recruiting.chatNotPending;
   }
   if (msg.includes('not authenticated')) {
-    return 'Please sign in again.';
+    return uiCopy.recruiting.chatSignInAgain;
   }
   if (msg.includes('application not found')) {
-    return 'Application not found.';
+    return uiCopy.recruiting.chatApplicationNotFound;
   }
   if (msg.includes('failed to link')) {
-    return 'Could not link the recruiting thread to the application. Check the database or contact support.';
+    return uiCopy.recruiting.chatLinkFailed;
   }
   if (isPgrst202Error(err) && !isAgencyRecruitingChatRpcMissingError(err)) {
-    return 'Server does not recognize this call (parameters/schema). In Supabase: apply SQL migrations, reload the API schema (Dashboard or NOTIFY pgrst).';
+    return uiCopy.recruiting.chatSchemaMismatch;
   }
   if (msg.includes('internal server error') || msg.includes('internal_server_error')) {
-    return 'Server error (500). In Supabase: check Postgres/API logs; a dependency (e.g. get_my_agency_member_role) or RLS inside the function may be missing.';
+    return uiCopy.recruiting.chatServerError;
   }
   if (msg.includes('permission denied') || msg.includes('42501')) {
-    return 'Permission denied (EXECUTE on the function or tables). In SQL: verify GRANT EXECUTE … TO authenticated.';
+    return uiCopy.recruiting.chatPermissionDenied;
   }
   if (msg.includes('does not exist') && msg.includes('function')) {
-    return 'Function missing or API schema stale. Re-run the SQL migration, then NOTIFY pgrst reload.';
+    return uiCopy.recruiting.chatFunctionMissing;
   }
   const detail = raw.replace(/\s+/g, ' ').trim();
   if (detail.length > 0) {
     return `Technical: ${detail.length > 320 ? `${detail.slice(0, 320)}…` : detail}`;
   }
-  return 'Could not start recruiting chat. Check your connection and try again.';
+  return uiCopy.recruiting.chatGenericFailed;
 }
 
 export type AgencyStartRecruitingChatRpcResult =

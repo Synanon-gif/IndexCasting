@@ -1,6 +1,8 @@
 /**
- * Standalone booking chat (Agency–Model recruiting thread).
+ * Booking chat (Agency–Model thread).
  * Used by the model to open a chat from "Booking chats" or from a ?booking= thread link.
+ * This view is shown AFTER the agency has accepted the model's application.
+ * Before acceptance, the chat is a Recruiting Chat (handled in AgencyRecruitingView).
  */
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, Modal, ScrollView, Image, Platform } from 'react-native';
@@ -116,6 +118,11 @@ export const BookingChatView: React.FC<Props> = ({ threadId, fromRole, onClose, 
                       {application.city || '—'} · {application.height} cm · {application.gender || '—'}
                     </Text>
                   )}
+                  {thread?.chatType === 'active_model' && (
+                    <View style={styles.chatTypeBadge}>
+                      <Text style={styles.chatTypeBadgeLabel}>Active Model</Text>
+                    </View>
+                  )}
                 </View>
               )}
             </View>
@@ -208,6 +215,19 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.textSecondary,
     marginTop: 2,
+  },
+  chatTypeBadge: {
+    alignSelf: 'flex-start',
+    marginTop: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: 999,
+    backgroundColor: colors.buttonOptionGreen,
+  },
+  chatTypeBadgeLabel: {
+    ...typography.label,
+    fontSize: 10,
+    color: colors.surface,
   },
   brandRow: {
     flexDirection: 'row',

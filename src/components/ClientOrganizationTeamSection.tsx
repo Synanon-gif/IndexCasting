@@ -130,6 +130,7 @@ export const ClientOrganizationTeamSection: React.FC<{
   const acceptedInv = invitations.filter((i) => i.status === 'accepted');
 
   const canManageClientSettings = memberRole === 'owner' || memberRole === 'employee';
+  // Bookers are external team members and cannot see invitation lists (owner + employee only).
   const invitationListHiddenForMember = !canManageClientSettings && realClientId;
 
   return (
@@ -157,7 +158,7 @@ export const ClientOrganizationTeamSection: React.FC<{
 
       <Text style={[styles.sectionTitle, styles.sectionSpacer]}>Pending invitations</Text>
       {invitationListHiddenForMember ? (
-        <Text style={styles.muted}>Visible to the organization owner only (access control).</Text>
+        <Text style={styles.muted}>Visible to organization owners and employees only.</Text>
       ) : pendingInv.length === 0 ? (
         <Text style={styles.muted}>None.</Text>
       ) : (
@@ -173,7 +174,7 @@ export const ClientOrganizationTeamSection: React.FC<{
 
       <Text style={[styles.sectionTitle, styles.sectionSpacer]}>Accepted invitations</Text>
       {invitationListHiddenForMember ? (
-        <Text style={styles.muted}>Visible to the organization owner only (access control).</Text>
+        <Text style={styles.muted}>Visible to organization owners and employees only.</Text>
       ) : acceptedInv.length === 0 ? (
         <Text style={styles.muted}>None yet.</Text>
       ) : (
@@ -222,7 +223,7 @@ export const ClientOrganizationTeamSection: React.FC<{
         </View>
       ) : organizationId ? (
         <Text style={[styles.muted, { marginTop: spacing.md }]}>
-          Only owner/employee members can invite employees. Contact your organization owner if you need access.
+          Only organization owners and employees can send invitations. Contact your organization owner if you need access.
         </Text>
       ) : (
         <Text style={[styles.muted, { marginTop: spacing.md }]}>

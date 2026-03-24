@@ -22,6 +22,10 @@ import {
 } from '../services/messengerSupabase';
 import { getModelByIdFromSupabase } from '../services/modelsSupabase';
 import { buildGuestUrl, type GuestLink } from '../services/guestLinksSupabase';
+import {
+  bookingStatusLabel,
+  type BookingEventStatus,
+} from '../services/bookingEventsSupabase';
 
 /** Organization-scoped B2B thread (client org ↔ agency org). Not a user-to-user or “connection” chat. */
 export type OrgMessengerInlineProps = {
@@ -33,6 +37,8 @@ export type OrgMessengerInlineProps = {
   guestLinks?: GuestLink[];
   modelsForShare?: { id: string; name: string }[];
   containerStyle?: ViewStyle;
+  /** Called when the user taps a booking card. Receives the booking metadata from the message. */
+  onBookingCardPress?: (metadata: Record<string, unknown>) => void;
 };
 
 function payloadType(m: MessageWithSender): MessagePayloadType {
@@ -54,6 +60,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   guestLinks = [],
   modelsForShare = [],
   containerStyle,
+  onBookingCardPress,
 }) => {
   const [msgs, setMsgs] = useState<MessageWithSender[]>([]);
   const [input, setInput] = useState('');
@@ -178,7 +185,8 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
                 <TouchableOpacity
                   activeOpacity={0.85}
                   onPress={() => {
-                    // UI-only: for now we just make the card clickable.
+                    const meta = (m as { metadata?: Record<string, unknown> }).metadata ?? {};
+                    onBookingCardPress?.(meta);
                   }}
                 >
                   <View style={styles.card}>
@@ -194,9 +202,24 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
                     <Text style={styles.metaHint}>
                       {uiCopy.b2bChat.bookingDateLabel}: {metaString(m, 'date') ?? '—'}
                     </Text>
-                    <Text style={styles.metaHint}>
-                      {uiCopy.b2bChat.bookingStatusLabel}: {metaString(m, 'status') ?? 'pending'}
-                    </Text>
+                    {(() => {
+                      const rawStatus = metaString(m, 'status') ?? 'pending';
+                      const label = bookingStatusLabel(rawStatus as BookingEventStatus);
+                      const isCancelled = rawStatus === 'cancelled';
+                      const isConfirmed =
+                        rawStatus === 'model_confirmed' || rawStatus === 'completed';
+                      return (
+                        <View
+                          style={[
+                            styles.statusBadge,
+                            isCancelled && styles.statusBadgeCancelled,
+                            isConfirmed && styles.statusBadgeConfirmed,
+                          ]}
+                        >
+                          <Text style={styles.statusBadgeLabel}>{label}</Text>
+                        </View>
+                      );
+                    })()}
                   </View>
                 </TouchableOpacity>
               ) : null}
@@ -361,6 +384,25 @@ const styles = StyleSheet.create({
     ...typography.label,
     fontSize: 10,
     color: colors.textSecondary,
+  },
+  statusBadge: {
+    alignSelf: 'flex-start',
+    marginTop: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+    backgroundColor: colors.border,
+  },
+  statusBadgeCancelled: {
+    backgroundColor: '#e5392520',
+  },
+  statusBadgeConfirmed: {
+    backgroundColor: '#1a8f4320',
+  },
+  statusBadgeLabel: {
+    ...typography.label,
+    fontSize: 10,
+    color: colors.textPrimary,
   },
   chatPanelInputRow: {
     flexDirection: 'row',

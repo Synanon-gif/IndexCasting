@@ -32,6 +32,8 @@ export type SupabaseModel = {
   video_url: string | null;
   is_visible_commercial: boolean;
   is_visible_fashion: boolean;
+  /** Marketing categories ('Fashion' | 'High Fashion' | 'Commercial'). NULL/empty = all categories. */
+  categories: string[] | null;
   created_at?: string;
   updated_at?: string;
   // Real physical location (nullable). `country` is a legacy field used in older code.
@@ -39,59 +41,87 @@ export type SupabaseModel = {
 };
 
 export async function getModelsFromSupabase(): Promise<SupabaseModel[]> {
-  const { data, error } = await supabase
-    .from('models')
-    .select('*')
-    .order('name');
+  try {
+    const { data, error } = await supabase
+      .from('models')
+      .select('*')
+      .order('name');
 
-  if (error) {
-    console.error('getModelsFromSupabase error:', error);
+    if (error) {
+      console.error('getModelsFromSupabase error:', error);
+      return [];
+    }
+    return (data ?? []) as SupabaseModel[];
+  } catch (e) {
+    console.error('getModelsFromSupabase exception:', e);
     return [];
   }
-  return (data ?? []) as SupabaseModel[];
 }
 
 /** Ein Model, das dem eingeloggten User zugeordnet ist (user_id oder E-Mail-Link). */
 export async function getModelForUserFromSupabase(userId: string): Promise<SupabaseModel | null> {
-  const { data, error } = await supabase
-    .from('models')
-    .select('*')
-    .eq('user_id', userId)
-    .maybeSingle();
+  try {
+    const { data, error } = await supabase
+      .from('models')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
 
-  if (error) {
-    console.error('getModelForUserFromSupabase error:', error);
+    if (error) {
+      console.error('getModelForUserFromSupabase error:', error);
+      return null;
+    }
+    return (data ?? null) as SupabaseModel | null;
+  } catch (e) {
+    console.error('getModelForUserFromSupabase exception:', e);
     return null;
   }
-  return (data ?? null) as SupabaseModel | null;
 }
 
 export async function getModelByIdFromSupabase(id: string): Promise<SupabaseModel | null> {
-  const { data, error } = await supabase
-    .from('models')
-    .select('*')
-    .eq('id', id)
-    .maybeSingle();
+  try {
+    const { data, error } = await supabase
+      .from('models')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
 
-  if (error) {
-    console.error('getModelByIdFromSupabase error:', error);
+    if (error) {
+      console.error('getModelByIdFromSupabase error:', error);
+      return null;
+    }
+    return (data as SupabaseModel) ?? null;
+  } catch (e) {
+    console.error('getModelByIdFromSupabase exception:', e);
     return null;
   }
-  return (data as SupabaseModel) ?? null;
+}
+
+/**
+ * Build a PostgREST `.or()` filter string for category-based filtering.
+ * NULL or empty categories = visible in ALL category filters.
+ * A value with a space (e.g. "High Fashion") is double-quoted inside the array literal.
+ */
+function buildCategoryOrFilter(category: string): string {
+  const escaped = category.replace(/"/g, '\\"');
+  return `categories.is.null,categories.eq.{},categories.ov.{"${escaped}"}`;
 }
 
 export async function getModelsForClientFromSupabase(
-  clientType: 'fashion' | 'commercial'
+  clientType: 'fashion' | 'commercial',
+  category?: string,
 ): Promise<SupabaseModel[]> {
   const column = clientType === 'fashion' ? 'is_visible_fashion' : 'is_visible_commercial';
   return fetchAllSupabasePages(async (from, to) => {
-    const { data, error } = await supabase
+    let q = supabase
       .from('models')
       .select('*')
       .eq(column, true)
       .or('agency_relationship_status.is.null,agency_relationship_status.eq.active,agency_relationship_status.eq.pending_link')
       .order('name')
       .range(from, to);
+    if (category) q = q.or(buildCategoryOrFilter(category));
+    const { data, error } = await q;
     return { data: data as SupabaseModel[] | null, error };
   });
 }
@@ -99,6 +129,7 @@ export async function getModelsForClientFromSupabase(
 export async function getModelsForClientFromSupabaseByTerritory(
   clientType: 'fashion' | 'commercial',
   countryCode: string,
+  category?: string,
 ): Promise<
   Array<
     SupabaseModel & {
@@ -111,13 +142,16 @@ export async function getModelsForClientFromSupabaseByTerritory(
   const iso = countryCode.trim().toUpperCase();
   const column = clientType === 'fashion' ? 'is_visible_fashion' : 'is_visible_commercial';
   return fetchAllSupabasePages(async (from, to) => {
-    const { data, error } = await supabase
+    let q = supabase
       .from('models_with_territories')
       .select('*')
       .eq('territory_country_code', iso)
       .eq(column, true)
+      .or('agency_relationship_status.is.null,agency_relationship_status.eq.active,agency_relationship_status.eq.pending_link')
       .order('name')
       .range(from, to);
+    if (category) q = q.or(buildCategoryOrFilter(category));
+    const { data, error } = await q;
     return {
       data: data as
         | Array<
@@ -137,6 +171,7 @@ export async function getModelsForClientFromSupabaseHybridLocation(
   clientType: 'fashion' | 'commercial',
   countryCode: string,
   city?: string | null,
+  category?: string,
 ): Promise<
   Array<
     SupabaseModel & {
@@ -164,6 +199,7 @@ export async function getModelsForClientFromSupabaseHybridLocation(
     if (city && city.trim()) {
       q = q.ilike('city', city.trim());
     }
+    if (category) q = q.or(buildCategoryOrFilter(category));
 
     const { data, error } = await q;
     return { data: data as SupabaseModel[] | null, error };
@@ -172,7 +208,7 @@ export async function getModelsForClientFromSupabaseHybridLocation(
   // 2) TERRITORY FALLBACK group: models WITHOUT real location (models.country_code IS NULL),
   // represented in the selected country via model_agency_territories.
   const fallbackRows = await fetchAllSupabasePages(async (from, to) => {
-    const { data, error } = await supabase
+    let q = supabase
       .from('models_with_territories')
       .select('*')
       .eq('territory_country_code', iso)
@@ -181,6 +217,8 @@ export async function getModelsForClientFromSupabaseHybridLocation(
       .or('agency_relationship_status.is.null,agency_relationship_status.eq.active,agency_relationship_status.eq.pending_link')
       .order('name')
       .range(from, to);
+    if (category) q = q.or(buildCategoryOrFilter(category));
+    const { data, error } = await q;
 
     return {
       data: data as Array<

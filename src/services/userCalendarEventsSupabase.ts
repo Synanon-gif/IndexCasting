@@ -17,6 +17,8 @@ export type UserCalendarEvent = {
   note: string | null;
   organization_id: string | null;
   created_by: string | null;
+  /** Populated by DB trigger when this event was mirrored from an option_request. */
+  source_option_request_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -74,7 +76,7 @@ export async function insertManualEvent(event: {
     }
     const dateNorm = event.date.trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dateNorm)) {
-      return { ok: false, errorMessage: 'Invalid date. Use YYYY-MM-DD.' };
+      return { ok: false, errorMessage: uiCopy.calendarValidation.invalidDateFormat };
     }
     const { data, error } = await supabase
       .from('user_calendar_events')
@@ -97,12 +99,12 @@ export async function insertManualEvent(event: {
       .single();
     if (error) {
       console.error('insertManualEvent error:', error);
-      return { ok: false, errorMessage: error.message || 'Insert failed' };
+      return { ok: false, errorMessage: error.message || uiCopy.calendarValidation.insertFailed };
     }
     return { ok: true, event: data as UserCalendarEvent };
   } catch (e) {
     console.error('insertManualEvent exception:', e);
-    return { ok: false, errorMessage: e instanceof Error ? e.message : 'Unknown error' };
+    return { ok: false, errorMessage: e instanceof Error ? e.message : uiCopy.calendarValidation.insertFailed };
   }
 }
 
@@ -135,12 +137,17 @@ export async function updateManualEvent(
 }
 
 export async function deleteManualEvent(id: string): Promise<boolean> {
-  const { error } = await supabase.from('user_calendar_events').delete().eq('id', id);
-  if (error) {
-    console.error('deleteManualEvent error:', error);
+  try {
+    const { error } = await supabase.from('user_calendar_events').delete().eq('id', id);
+    if (error) {
+      console.error('deleteManualEvent error:', error);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('deleteManualEvent exception:', e);
     return false;
   }
-  return true;
 }
 
 export { DEFAULT_COLORS as MANUAL_EVENT_COLORS };

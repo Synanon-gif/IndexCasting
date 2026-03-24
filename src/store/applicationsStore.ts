@@ -13,7 +13,7 @@ import {
   type SupabaseApplication,
 } from '../services/applicationsSupabase';
 import { startRecruitingChat, addRecruitingMessage } from './recruitingChats';
-import { updateThreadAgency } from '../services/recruitingChatSupabase';
+import { updateThreadAgency, updateThreadChatType } from '../services/recruitingChatSupabase';
 
 export type ApplicationStatus = 'pending' | 'accepted' | 'rejected';
 
@@ -136,7 +136,15 @@ export function getApplicationById(id: string): ModelApplication | undefined {
   return cache.find((a) => a.id === id);
 }
 
-export async function acceptApplication(applicationId: string, agencyId: string): Promise<string | null> {
+export type AcceptApplicationResult = {
+  threadId: string;
+  modelId: string | null;
+};
+
+export async function acceptApplication(
+  applicationId: string,
+  agencyId: string,
+): Promise<AcceptApplicationResult | null> {
   const app = cache.find((a) => a.id === applicationId);
   if (!app || app.status !== 'pending') return null;
   const modelName = `${app.firstName} ${app.lastName}`.trim();
@@ -145,7 +153,11 @@ export async function acceptApplication(applicationId: string, agencyId: string)
     const realId = await startRecruitingChat(applicationId, modelName, agencyId);
     if (realId) threadId = realId;
     else return null;
-    addRecruitingMessage(threadId, 'agency', 'Welcome to our selection. We have received your application and would like to invite you to the next step.');
+    addRecruitingMessage(
+      threadId,
+      'agency',
+      'Welcome to our selection. We have received your application and would like to invite you to the next step.',
+    );
   }
   const ok = await updateApplicationStatus(applicationId, 'accepted', {
     recruiting_thread_id: threadId,
@@ -155,12 +167,15 @@ export async function acceptApplication(applicationId: string, agencyId: string)
 
   await updateThreadAgency(threadId, agencyId);
 
-  await createModelFromApplication(applicationId);
+  // Mark chat as active_model so UI can display the correct label/state
+  await updateThreadChatType(threadId, 'active_model');
+
+  const modelId = await createModelFromApplication(applicationId);
 
   app.status = 'accepted';
   app.chatThreadId = threadId;
   notify();
-  return threadId;
+  return { threadId, modelId };
 }
 
 export async function rejectApplication(applicationId: string): Promise<void> {

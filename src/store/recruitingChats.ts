@@ -36,6 +36,8 @@ export type RecruitingThread = {
   applicationId: string;
   modelName: string;
   createdAt: number;
+  /** 'recruiting' = before acceptance; 'active_model' = after acceptance. */
+  chatType: 'recruiting' | 'active_model' | null;
 };
 
 let threadsCache: RecruitingThread[] = [];
@@ -57,6 +59,7 @@ async function ensureHydrated() {
     applicationId: t.application_id,
     modelName: t.model_name,
     createdAt: new Date(t.created_at).getTime(),
+    chatType: (t.chat_type as 'recruiting' | 'active_model' | null) ?? null,
   }));
   notify();
 }
@@ -83,6 +86,7 @@ export function createRecruitingThread(applicationId: string, modelName: string)
     applicationId,
     modelName,
     createdAt: Date.now(),
+    chatType: 'recruiting',
   });
 
   createThreadInDb(applicationId, modelName, null, undefined).then((realId) => {
@@ -129,6 +133,7 @@ export async function tryStartRecruitingChat(
           applicationId,
           modelName: displayName,
           createdAt: Date.now(),
+          chatType: 'recruiting',
         });
         notify();
       }
@@ -167,6 +172,7 @@ export async function tryStartRecruitingChat(
         applicationId,
         modelName: displayNameFromRow,
         createdAt: Date.now(),
+        chatType: 'recruiting',
       });
       notify();
     }
@@ -184,6 +190,7 @@ export async function tryStartRecruitingChat(
           applicationId,
           modelName: displayNameFromRow,
           createdAt: Date.now(),
+          chatType: 'recruiting',
         });
         notify();
       }
@@ -229,6 +236,7 @@ export async function tryStartRecruitingChat(
     applicationId,
     modelName: displayNameFromRow,
     createdAt: Date.now(),
+    chatType: 'recruiting',
   });
   notify();
   return { ok: true, threadId: realId };
@@ -255,6 +263,7 @@ export async function getRecruitingThreadsForAgency(
     applicationId: t.application_id,
     modelName: t.model_name,
     createdAt: new Date(t.created_at).getTime(),
+    chatType: (t.chat_type as 'recruiting' | 'active_model' | null) ?? null,
   }));
 }
 

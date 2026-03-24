@@ -69,12 +69,14 @@ export async function updateModelVisibility(id, { isVisibleCommercial, isVisible
 }
 
 /**
- * Models for client view, filtered by client type (fashion/commercial).
+ * Models for client view, filtered by client type (fashion/commercial) and optional category.
+ * @param {string} [category] - One of 'Fashion' | 'High Fashion' | 'Commercial'. Empty = all.
  */
-export async function getModelsForClient(clientType, countryCode, city) {
+export async function getModelsForClient(clientType, countryCode, city, category) {
+  const cat = category || undefined;
   const list = countryCode
-    ? await getModelsForClientFromSupabaseHybridLocation(clientType, countryCode, city ?? undefined)
-    : await getModelsForClientFromSupabase(clientType);
+    ? await getModelsForClientFromSupabaseHybridLocation(clientType, countryCode, city ?? undefined, cat)
+    : await getModelsForClientFromSupabase(clientType, cat);
   return list.map((m) => ({
     id: m.id,
     name: m.name,
@@ -92,6 +94,7 @@ export async function getModelsForClient(clientType, countryCode, city) {
     polaroids: m.polaroids || [],
     isVisibleCommercial: m.is_visible_commercial,
     isVisibleFashion: m.is_visible_fashion,
+    categories: m.categories ?? null,
     agencyId: m.territory_agency_id ?? m.agency_id ?? null,
     agencyName: m.agency_name || null,
   }));

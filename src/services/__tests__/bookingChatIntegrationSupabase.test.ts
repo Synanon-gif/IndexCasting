@@ -44,7 +44,7 @@ describe('createBookingMessageInClientAgencyChat', () => {
     expect(sendMessageMock).toHaveBeenCalledWith(
       'conv-123',
       'user-1',
-      undefined,
+      'Booking',
       undefined,
       undefined,
       expect.objectContaining({

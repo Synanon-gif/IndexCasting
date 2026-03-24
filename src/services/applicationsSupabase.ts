@@ -289,61 +289,86 @@ export async function updateApplicationsProfileForApplicant(
 
 /** Nach Accept: Model-Eintrag anlegen und Bewerber der Agentur zuordnen. */
 export async function createModelFromApplication(applicationId: string): Promise<string | null> {
-  const { data: app, error: fetchErr } = await supabase
-    .from('model_applications')
-    .select('*')
-    .eq('id', applicationId)
-    .single();
+  try {
+    const { data: app, error: fetchErr } = await supabase
+      .from('model_applications')
+      .select('*')
+      .eq('id', applicationId)
+      .single();
 
-  if (fetchErr || !app || app.status !== 'accepted' || !app.accepted_by_agency_id) {
-    if (fetchErr) console.error('createModelFromApplication fetch error:', fetchErr);
-    return null;
-  }
-
-  const name = `${(app as any).first_name || ''} ${(app as any).last_name || ''}`.trim() || 'Model';
-  const imgs = app.images && typeof app.images === 'object' ? [app.images.profile, app.images.fullBody, app.images.closeUp].filter(Boolean) as string[] : [];
-  const { data: model, error: insertErr } = await supabase
-    .from('models')
-    .insert({
-      agency_id: app.accepted_by_agency_id,
-      user_id: app.applicant_user_id || null,
-      agency_relationship_status: 'active',
-      agency_relationship_ended_at: null,
-      name,
-      height: app.height || 0,
-      bust: null,
-      waist: null,
-      hips: null,
-      city: app.city || null,
-      hair_color: app.hair_color || null,
-      eye_color: null,
-      portfolio_images: imgs,
-      polaroids: [],
-      is_visible_commercial: false,
-      is_visible_fashion: true,
-    })
-    .select('id')
-    .single();
-
-  if (insertErr) {
-    console.error('createModelFromApplication insert error:', insertErr);
-    return null;
-  }
-  const modelId = (model as { id: string }).id;
-  if (imgs.length > 0 && modelId) {
-    const rows = imgs.map((url, i) => ({
-      model_id: modelId,
-      url,
-      sort_order: i,
-      visible: true,
-      photo_type: 'portfolio' as const,
-      source: 'application',
-      api_external_id: null as string | null,
-    }));
-    const { error: phErr } = await supabase.from('model_photos').insert(rows);
-    if (phErr) {
-      console.error('createModelFromApplication model_photos error:', phErr);
+    if (fetchErr || !app || app.status !== 'accepted' || !app.accepted_by_agency_id) {
+      if (fetchErr) console.error('createModelFromApplication fetch error:', fetchErr);
+      return null;
     }
+
+    // Guard: if the applicant already has a linked model row, return the existing model id.
+    if (app.applicant_user_id) {
+      const { data: existing } = await supabase
+        .from('models')
+        .select('id')
+        .eq('user_id', app.applicant_user_id)
+        .maybeSingle();
+      if (existing?.id) {
+        console.warn('createModelFromApplication: model already exists for user_id', app.applicant_user_id);
+        return (existing as { id: string }).id;
+      }
+    }
+
+    const name = `${(app as any).first_name || ''} ${(app as any).last_name || ''}`.trim() || 'Model';
+    const imgs = app.images && typeof app.images === 'object'
+      ? ([app.images.profile, app.images.fullBody, app.images.closeUp].filter(Boolean) as string[])
+      : [];
+
+    const { data: model, error: insertErr } = await supabase
+      .from('models')
+      .insert({
+        agency_id: app.accepted_by_agency_id,
+        user_id: app.applicant_user_id || null,
+        agency_relationship_status: 'active',
+        agency_relationship_ended_at: null,
+        name,
+        height: app.height || 0,
+        bust: null,
+        waist: null,
+        hips: null,
+        city: app.city || null,
+        hair_color: app.hair_color || null,
+        eye_color: null,
+        portfolio_images: imgs,
+        polaroids: [],
+        is_visible_commercial: false,
+        is_visible_fashion: true,
+      })
+      .select('id')
+      .single();
+
+    if (insertErr) {
+      console.error('createModelFromApplication insert error:', insertErr);
+      return null;
+    }
+
+    const modelId = (model as { id: string }).id;
+
+    if (imgs.length > 0 && modelId) {
+      const rows = imgs.map((url, i) => ({
+        model_id: modelId,
+        url,
+        sort_order: i,
+        visible: true,
+        is_visible_to_clients: true,
+        photo_type: 'portfolio' as const,
+        source: 'application',
+        api_external_id: null as string | null,
+      }));
+      const { error: phErr } = await supabase.from('model_photos').insert(rows);
+      if (phErr) {
+        console.error('createModelFromApplication model_photos error:', phErr);
+      }
+    }
+
+    return modelId ?? null;
+  } catch (e) {
+    console.error('createModelFromApplication exception:', e);
+    return null;
   }
-  return modelId ?? null;
 }

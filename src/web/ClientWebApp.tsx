@@ -19,6 +19,8 @@ import { getAgencies, type Agency } from '../services/agenciesSupabase';
 import { AGENCY_SEGMENT_TYPES } from '../constants/agencyTypes';
 import {
   getCalendarEntriesForClient,
+  getBookingEventsAsCalendarEntries,
+  type CalendarEntry,
   type ClientCalendarItem,
   updateBookingDetails,
   appendSharedBookingNote,
@@ -75,6 +77,8 @@ import {
   ensureClientOrganization,
   getClientOrganizationIdForUser,
   getMyClientMemberRole,
+  updateOrganizationName,
+  getOrganizationById,
 } from '../services/organizationsInvitationsSupabase';
 import { supabase } from '../../lib/supabase';
 import { MonthCalendarView, type CalendarDayEvent } from '../components/MonthCalendarView';
@@ -134,7 +138,12 @@ type MediaslideModel = {
 
 type WebFilters = {
   size: 'all' | 'short' | 'medium' | 'tall';
-  location: 'all' | 'Paris' | 'Milan' | 'Berlin' | 'nearby';
+  /** ISO-2 country code, '' = all countries */
+  countryCode: string;
+  /** Free-text city, '' = all cities */
+  city: string;
+  /** Use geolocation near-me filter */
+  nearby: boolean;
   hairColor: string;
   hipsMin: string;
   hipsMax: string;
@@ -144,11 +153,38 @@ type WebFilters = {
   chestMax: string;
   legsInseamMin: string;
   legsInseamMax: string;
+  /** Marketing category: '' = all, 'Fashion' | 'High Fashion' | 'Commercial' */
+  category: string;
 };
+
+/** Supported country pills: ISO-2 code → display label */
+const FILTER_COUNTRIES: Array<{ code: string; label: string }> = [
+  { code: '', label: 'All' },
+  { code: 'DE', label: 'Germany' },
+  { code: 'FR', label: 'France' },
+  { code: 'IT', label: 'Italy' },
+  { code: 'GB', label: 'UK' },
+  { code: 'ES', label: 'Spain' },
+  { code: 'NL', label: 'Netherlands' },
+  { code: 'SE', label: 'Sweden' },
+  { code: 'DK', label: 'Denmark' },
+  { code: 'BE', label: 'Belgium' },
+  { code: 'CH', label: 'Switzerland' },
+  { code: 'AT', label: 'Austria' },
+  { code: 'PT', label: 'Portugal' },
+  { code: 'NO', label: 'Norway' },
+  { code: 'PL', label: 'Poland' },
+  { code: 'US', label: 'USA' },
+  { code: 'AU', label: 'Australia' },
+  { code: 'CA', label: 'Canada' },
+  { code: 'JP', label: 'Japan' },
+];
 
 const initialFilters: WebFilters = {
   size: 'all',
-  location: 'all',
+  countryCode: '',
+  city: '',
+  nearby: false,
   hairColor: '',
   hipsMin: '',
   hipsMax: '',
@@ -158,6 +194,7 @@ const initialFilters: WebFilters = {
   chestMax: '',
   legsInseamMin: '',
   legsInseamMax: '',
+  category: '',
 };
 
 /** localStorage-Modelle ohne chest/legsInseam → volles ModelSummary für die App */
@@ -211,8 +248,15 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   const [feedback, setFeedback] = useState<string | null>(null);
   const [filters, setFilters] = useState<WebFilters>(() => {
     const saved = loadClientFilters();
-    if (saved && typeof saved.size === 'string' && typeof saved.location === 'string') {
-      return { ...initialFilters, ...saved };
+    if (saved && typeof saved.size === 'string') {
+      const base: WebFilters = {
+        ...initialFilters,
+        size: saved.size,
+        countryCode: saved.countryCode ?? '',
+        city: saved.city ?? '',
+        nearby: saved.nearby ?? false,
+      };
+      return base;
     }
     return initialFilters;
   });
@@ -229,6 +273,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   const [userCity, setUserCity] = useState<string | null>(null);
   const [calendarItems, setCalendarItems] = useState<ClientCalendarItem[]>([]);
   const [manualCalendarEvents, setManualCalendarEvents] = useState<UserCalendarEvent[]>([]);
+  const [bookingEventEntries, setBookingEventEntries] = useState<CalendarEntry[]>([]);
   const [calendarLoading, setCalendarLoading] = useState(false);
   const [selectedCalendarItem, setSelectedCalendarItem] = useState<ClientCalendarItem | null>(null);
   const [selectedManualEvent, setSelectedManualEvent] = useState<UserCalendarEvent | null>(null);
@@ -321,10 +366,12 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   useEffect(() => {
     const persisted: PersistedClientFilters = {
       size: filters.size,
-      location: filters.location,
+      countryCode: filters.countryCode,
+      city: filters.city,
+      nearby: filters.nearby,
     };
     saveClientFilters(persisted);
-  }, [filters.size, filters.location]);
+  }, [filters.size, filters.countryCode, filters.city, filters.nearby]);
 
   const auth = useAuth();
   /** Nur echte Auth-UUID – Supabase erwartet UUID für client_id / owner_id (kein Demo-String „user-client“). */
@@ -337,16 +384,19 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     if (!realClientId) {
       setCalendarItems([]);
       setManualCalendarEvents([]);
+      setBookingEventEntries([]);
       return;
     }
     setCalendarLoading(true);
     try {
-      const [items, manual] = await Promise.all([
+      const [items, manual, beEntries] = await Promise.all([
         getCalendarEntriesForClient(realClientId),
         getManualEventsForOwner(realClientId, 'client'),
+        getBookingEventsAsCalendarEntries(realClientId, 'client'),
       ]);
       setCalendarItems(items);
       setManualCalendarEvents(manual);
+      setBookingEventEntries(beEntries);
     } finally {
       setCalendarLoading(false);
     }
@@ -366,28 +416,15 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
 
   useEffect(() => {
     void (async () => {
-      const territoryIso =
-        filters.location === 'Paris'
-          ? 'FR'
-          : filters.location === 'Milan'
-            ? 'IT'
-            : filters.location === 'Berlin'
-              ? 'DE'
-              : null;
-
-      const cityFilter =
-        filters.location === 'Paris'
-          ? 'Paris'
-          : filters.location === 'Milan'
-            ? 'Milan'
-            : filters.location === 'Berlin'
-              ? 'Berlin'
-              : null;
+      const countryIso = filters.countryCode.trim() || undefined;
+      // Pass city only when a country is also selected (server-side ilike filter).
+      const cityFilter = countryIso && filters.city.trim() ? filters.city.trim() : undefined;
 
       const data: any[] = await getModelsForClient(
         clientType,
-        territoryIso ?? undefined,
-        cityFilter ?? undefined,
+        countryIso,
+        cityFilter,
+        filters.category || undefined,
       );
       const mapped: ModelSummary[] = data.map((m: any) => ({
         id: m.id,
@@ -408,7 +445,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       }));
       setModels(mapped);
     })();
-  }, [clientType, filters.location]);
+  }, [clientType, filters.countryCode, filters.city, filters.category]);
 
   useEffect(() => {
     if (detailId) {
@@ -441,7 +478,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
 
   const filteredModels = useMemo(() => {
     return baseModels.filter((m) => {
-      if (filters.location === 'nearby') {
+      if (filters.nearby) {
         if (!userCity || !(m.city || '').toLowerCase().includes(userCity.toLowerCase())) return false;
       }
       if (filters.size !== 'all') {
@@ -756,6 +793,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             <ClientCalendarView
               items={calendarItems}
               manualEvents={manualCalendarEvents}
+              bookingEventEntries={bookingEventEntries}
               loading={calendarLoading}
               canAddManualEvents={isRealClient}
               onRefresh={loadClientCalendar}
@@ -771,6 +809,10 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                 setSelectedManualEvent(ev);
                 setSelectedCalendarItem(null);
               }}
+              onOpenBookingEntry={(be) => Alert.alert(
+                be.title ?? uiCopy.calendar.bookingEvent,
+                `${uiCopy.calendar.date}: ${be.date}\n${uiCopy.calendar.status}: ${be.status ?? '—'}`,
+              )}
               onAddEvent={() => isRealClient && setShowAddManualEvent(true)}
             />
           </View>
@@ -786,6 +828,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             clientUserId={realClientId}
             pendingClientB2BChat={pendingClientB2BChat}
             onPendingClientB2BChatConsumed={() => setPendingClientB2BChat(null)}
+            onBookingCardPress={() => setTab('calendar')}
           />
         )}
 
@@ -1081,14 +1124,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             proposedPrice: price,
             requestType: requestType ?? 'option',
             currency: currency ?? 'EUR',
-            countryCode:
-              filters.location === 'Paris'
-                ? 'FR'
-                : filters.location === 'Milan'
-                  ? 'IT'
-                  : filters.location === 'Berlin'
-                    ? 'DE'
-                    : undefined,
+            countryCode: filters.countryCode.trim() || undefined,
           })
         }
       />
@@ -1416,21 +1452,61 @@ const DiscoverView: React.FC<DiscoverProps> = ({
             </View>
           </View>
           <View style={styles.filterGroup}>
-            <Text style={styles.filterLabel}>Location</Text>
+            <Text style={styles.filterLabel}>Category</Text>
             <View style={styles.filterPills}>
-              {['all', 'Paris', 'Milan', 'Berlin', 'nearby'].map((loc) => (
+              <TouchableOpacity
+                style={[styles.filterPill, filters.category === '' && styles.filterPillActive]}
+                onPress={() => onChangeFilters({ ...filters, category: '' })}
+              >
+                <Text style={[styles.filterPillLabel, filters.category === '' && styles.filterPillLabelActive]}>All</Text>
+              </TouchableOpacity>
+              {AGENCY_SEGMENT_TYPES.map((seg) => (
                 <TouchableOpacity
-                  key={loc}
-                  style={[styles.filterPill, filters.location === loc && styles.filterPillActive]}
-                  onPress={() => onChangeFilters({ ...filters, location: loc as WebFilters['location'] })}
+                  key={seg}
+                  style={[styles.filterPill, filters.category === seg && styles.filterPillActive]}
+                  onPress={() => onChangeFilters({ ...filters, category: filters.category === seg ? '' : seg })}
                 >
-                  <Text style={[styles.filterPillLabel, filters.location === loc && styles.filterPillLabelActive]}>
-                    {loc === 'all' ? 'All' : loc === 'nearby' ? (userCity ? `Near me (${userCity})` : 'Near me') : loc}
-                  </Text>
+                  <Text style={[styles.filterPillLabel, filters.category === seg && styles.filterPillLabelActive]}>{seg}</Text>
                 </TouchableOpacity>
               ))}
             </View>
           </View>
+          <View style={styles.filterGroup}>
+            <Text style={styles.filterLabel}>Country</Text>
+            <View style={styles.filterPills}>
+              {FILTER_COUNTRIES.map((c) => (
+                <TouchableOpacity
+                  key={c.code || 'ALL'}
+                  style={[styles.filterPill, filters.countryCode === c.code && styles.filterPillActive]}
+                  onPress={() => onChangeFilters({ ...filters, countryCode: c.code, city: '', nearby: false })}
+                >
+                  <Text style={[styles.filterPillLabel, filters.countryCode === c.code && styles.filterPillLabelActive]}>
+                    {c.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity
+                style={[styles.filterPill, filters.nearby && styles.filterPillActive]}
+                onPress={() => onChangeFilters({ ...filters, nearby: !filters.nearby, countryCode: '', city: '' })}
+              >
+                <Text style={[styles.filterPillLabel, filters.nearby && styles.filterPillLabelActive]}>
+                  {userCity ? `Near me (${userCity})` : 'Near me'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+          {filters.countryCode && (
+            <View style={styles.filterGroup}>
+              <Text style={styles.filterLabel}>City</Text>
+              <TextInput
+                value={filters.city}
+                onChangeText={(v) => onChangeFilters({ ...filters, city: v })}
+                placeholder="e.g. Berlin, Hamburg, Munich..."
+                placeholderTextColor={colors.textSecondary}
+                style={[styles.input, { height: 32, paddingVertical: 4, fontSize: 11 }]}
+              />
+            </View>
+          )}
           <View style={styles.filterGroup}>
             <Text style={styles.filterLabel}>Hair color</Text>
             <TextInput
@@ -1549,22 +1625,26 @@ const DiscoverView: React.FC<DiscoverProps> = ({
 type ClientCalendarViewProps = {
   items: ClientCalendarItem[];
   manualEvents: UserCalendarEvent[];
+  bookingEventEntries?: CalendarEntry[];
   loading: boolean;
   canAddManualEvents?: boolean;
   onRefresh: () => void;
   onOpenDetails: (item: ClientCalendarItem) => void;
   onOpenManualEvent: (event: UserCalendarEvent) => void;
+  onOpenBookingEntry?: (entry: CalendarEntry) => void;
   onAddEvent: () => void;
 };
 
 const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
   items,
   manualEvents,
+  bookingEventEntries = [],
   loading,
   canAddManualEvents = true,
   onRefresh,
   onOpenDetails,
   onOpenManualEvent,
+  onOpenBookingEntry,
   onAddEvent,
 }) => {
   const now = new Date();
@@ -1592,8 +1672,28 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
         kind: entryType ?? 'option',
       });
     });
+    // Merge booking_events as the single source of truth; skip entries already covered
+    // by a calendar_entry sharing the same option_request_id to avoid duplicates.
+    const coveredOptionIds = new Set(
+      items.map((i) => i.calendar_entry?.option_request_id).filter(Boolean),
+    );
+    bookingEventEntries.forEach((be) => {
+      if (be.option_request_id && coveredOptionIds.has(be.option_request_id)) return;
+      const date = be.date;
+      if (!date) return;
+      if (!map[date]) map[date] = [];
+      let color = '#1565C0';
+      if (be.entry_type === 'booking') color = colors.buttonSkipRed;
+      else if (be.entry_type === 'casting' || be.entry_type === 'gosee') color = colors.textSecondary;
+      map[date].push({
+        id: be.id,
+        color,
+        title: be.title ?? 'Booking',
+        kind: be.entry_type ?? 'booking',
+      });
+    });
     return map;
-  }, [items, manualEvents]);
+  }, [items, manualEvents, bookingEventEntries]);
 
   const sorted = useMemo(
     () =>
@@ -1704,11 +1804,11 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
                 style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, paddingVertical: 4 }}
                 onPress={() => {
                   const manual = manualEvents.find((e) => e.id === ev.id);
-                  if (manual) onOpenManualEvent(manual);
-                  else {
-                    const item = items.find((i) => (i.calendar_entry?.date ?? i.option.requested_date) === selectedDate && i.option.id === ev.id);
-                    if (item) onOpenDetails(item);
-                  }
+                  if (manual) { onOpenManualEvent(manual); return; }
+                  const item = items.find((i) => (i.calendar_entry?.date ?? i.option.requested_date) === selectedDate && i.option.id === ev.id);
+                  if (item) { onOpenDetails(item); return; }
+                  const beEntry = bookingEventEntries.find((be) => be.id === ev.id);
+                  if (beEntry && onOpenBookingEntry) onOpenBookingEntry(beEntry);
                 }}
               >
                 <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: ev.color, marginRight: spacing.sm }} />
@@ -2084,13 +2184,15 @@ type MessagesViewProps = {
   clientUserId?: string | null;
   pendingClientB2BChat?: { conversationId: string; title: string } | null;
   onPendingClientB2BChatConsumed?: () => void;
+  onBookingCardPress?: (meta: Record<string, unknown>) => void;
 };
 
 const ClientB2BChatsPanel: React.FC<{
   clientUserId: string;
   pendingOpen?: { conversationId: string; title: string } | null;
   onPendingConsumed?: () => void;
-}> = ({ clientUserId, pendingOpen, onPendingConsumed }) => {
+  onBookingCardPress?: (meta: Record<string, unknown>) => void;
+}> = ({ clientUserId, pendingOpen, onPendingConsumed, onBookingCardPress }) => {
   const auth = useAuth();
   const [rows, setRows] = useState<Conversation[]>([]);
   const [titles, setTitles] = useState<Record<string, string>>({});
@@ -2206,6 +2308,7 @@ const ClientB2BChatsPanel: React.FC<{
           headerTitle={messengerTitle}
           viewerUserId={auth.profile?.id ?? null}
           containerStyle={{ marginTop: spacing.md }}
+          onBookingCardPress={onBookingCardPress}
         />
       ) : null}
     </View>
@@ -2221,6 +2324,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   clientUserId = null,
   pendingClientB2BChat = null,
   onPendingClientB2BChatConsumed,
+  onBookingCardPress,
 }) => {
   const [clientMsgTab, setClientMsgTab] = useState<'b2bChats' | 'optionRequests'>('b2bChats');
   const [requests, setRequests] = useState(getOptionRequests());
@@ -2314,6 +2418,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
           clientUserId={clientUserId!}
           pendingOpen={pendingClientB2BChat}
           onPendingConsumed={onPendingClientB2BChatConsumed}
+          onBookingCardPress={onBookingCardPress}
         />
       ) : (
         <>
@@ -3021,10 +3126,12 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
   const [instagram, setInstagram] = useState('');
   const [linkedin, setLinkedin] = useState('');
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'profile' | 'team'>('profile');
   const [deleting, setDeleting] = useState(false);
   const [clientIsOwner, setClientIsOwner] = useState(false);
   const [ownerRoleLoading, setOwnerRoleLoading] = useState(true);
+  const [clientOrgId, setClientOrgId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!realClientId) {
@@ -3036,9 +3143,13 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
     void getMyClientMemberRole().then((row) => {
       setClientIsOwner(row?.member_role === 'owner');
       setOwnerRoleLoading(false);
+      if (row?.organization_id) {
+        setClientOrgId(row.organization_id);
+      }
     });
   }, [realClientId]);
 
+  // Load company name from Supabase (authoritative) and fall back to localStorage.
   useEffect(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -3056,14 +3167,32 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
     }
   }, []);
 
-  const handleSave = () => {
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem('ci_client_settings', JSON.stringify({
-        displayName, companyName, phone, website, instagram, linkedin,
-      }));
+  useEffect(() => {
+    if (!clientOrgId) return;
+    void getOrganizationById(clientOrgId).then((org) => {
+      if (org?.name) setCompanyName(org.name);
+    });
+  }, [clientOrgId]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('ci_client_settings', JSON.stringify({
+          displayName, companyName, phone, website, instagram, linkedin,
+        }));
+      }
+      // Save company name to Supabase so Agency sees it in chat.
+      if (clientOrgId && companyName.trim()) {
+        await updateOrganizationName(clientOrgId, companyName.trim());
+      }
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      console.error('SettingsPanel handleSave error:', e);
+    } finally {
+      setSaving(false);
     }
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
   };
 
   const handleRequestAccountDeletion = () => {
@@ -3138,8 +3267,8 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
               <TextInput value={instagram} onChangeText={setInstagram} placeholder="Instagram URL" placeholderTextColor={colors.textSecondary} style={[settingsInputStyle, { marginBottom: spacing.sm }]} />
               <TextInput value={linkedin} onChangeText={setLinkedin} placeholder="LinkedIn URL" placeholderTextColor={colors.textSecondary} style={[settingsInputStyle, { marginBottom: spacing.lg }]} />
 
-              <TouchableOpacity onPress={handleSave} style={{ borderRadius: 999, backgroundColor: colors.accentGreen, paddingVertical: spacing.sm, alignItems: 'center' }}>
-                <Text style={{ ...typography.label, color: colors.surface }}>{saved ? 'Saved' : 'Save settings'}</Text>
+              <TouchableOpacity onPress={() => { void handleSave(); }} disabled={saving} style={{ borderRadius: 999, backgroundColor: colors.accentGreen, paddingVertical: spacing.sm, alignItems: 'center', opacity: saving ? 0.6 : 1 }}>
+                <Text style={{ ...typography.label, color: colors.surface }}>{saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save settings'}</Text>
               </TouchableOpacity>
 
               <View style={{ marginTop: spacing.xl, paddingTop: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border }}>

@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { buildInviteAbsoluteUrl, buildInviteDeepLinkPath } from './inviteUrlHelpers';
+import { uiCopy } from '../constants/uiCopy';
 
 export type OrganizationType = 'agency' | 'client';
 export type OrgMemberRole = 'owner' | 'booker' | 'employee';
@@ -286,6 +287,53 @@ export async function getOrganizationIdForAgency(agencyId: string): Promise<stri
     return (data as { id: string } | null)?.id ?? null;
   } catch (e) {
     console.error('getOrganizationIdForAgency exception:', e);
+    return null;
+  }
+}
+
+/**
+ * Update the display name of an organization.
+ * Only the owner / members with org-level write access can do this (enforced by RLS).
+ */
+export async function updateOrganizationName(
+  organizationId: string,
+  name: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const trimmed = name.trim();
+    if (!trimmed) return { ok: false, error: uiCopy.org.nameEmpty };
+    const { error } = await supabase
+      .from('organizations')
+      .update({ name: trimmed })
+      .eq('id', organizationId);
+    if (error) {
+      console.error('updateOrganizationName error:', error);
+      return { ok: false, error: error.message };
+    }
+    return { ok: true };
+  } catch (e) {
+    console.error('updateOrganizationName exception:', e);
+    return { ok: false, error: e instanceof Error ? e.message : 'unknown' };
+  }
+}
+
+/** Fetch a single organization row by id (reads name, type, owner_id). */
+export async function getOrganizationById(
+  organizationId: string,
+): Promise<OrganizationRow | null> {
+  try {
+    const { data, error } = await supabase
+      .from('organizations')
+      .select('id, name, type, owner_id, agency_id, created_at')
+      .eq('id', organizationId)
+      .maybeSingle();
+    if (error) {
+      console.error('getOrganizationById error:', error);
+      return null;
+    }
+    return (data as OrganizationRow) ?? null;
+  } catch (e) {
+    console.error('getOrganizationById exception:', e);
     return null;
   }
 }

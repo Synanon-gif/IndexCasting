@@ -1,5 +1,6 @@
 import { ensureClientAgencyChat } from './b2bOrgChatSupabase';
 import { sendMessage as sendMessengerMessage, type MessagePayloadType } from './messengerSupabase';
+import { uiCopy } from '../constants/uiCopy';
 
 export type BookingChatMetadata = {
   model_id: string;
@@ -44,7 +45,7 @@ export async function createBookingMessageInClientAgencyChat(params: {
     const msg = await sendMessengerMessage(
       ensured.conversationId,
       actingUserId,
-      undefined,
+      uiCopy.b2bChat.bookingCardTitle,
       undefined,
       undefined,
       {

@@ -16,6 +16,7 @@ import * as ImagePicker from 'expo-image-picker';
 import countries from 'i18n-iso-countries';
 import enLocale from 'i18n-iso-countries/langs/en.json';
 import { colors, spacing, typography } from '../theme/theme';
+import { AGENCY_SEGMENT_TYPES } from '../constants/agencyTypes';
 import { showAppAlert } from '../utils/crossPlatformAlert';
 import { useAuth } from '../context/AuthContext';
 import { getAgencyModels, updateModelVisibility } from '../services/apiService';
@@ -63,7 +64,7 @@ import {
   syncPolaroidsToModel,
   uploadModelPhoto,
 } from '../services/modelPhotosSupabase';
-import { getTerritoriesForModel, upsertTerritoriesForModel } from '../services/territoriesSupabase';
+import { getTerritoriesForModel, upsertTerritoriesForModel, bulkUpsertTerritoriesForModels } from '../services/territoriesSupabase';
 import { supabase } from '../../lib/supabase';
 import {
   ensureAgencyOrganization,
@@ -83,6 +84,8 @@ import { getAgencies, type Agency } from '../services/agenciesSupabase';
 import { createGuestLink, getGuestLinksForAgency, buildGuestUrl, deactivateGuestLink, type GuestLink } from '../services/guestLinksSupabase';
 import {
   getCalendarEntriesForAgency,
+  getBookingEventsAsCalendarEntries,
+  type CalendarEntry,
   type AgencyCalendarItem,
   updateBookingDetails,
   appendSharedBookingNote,
@@ -158,6 +161,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   const [agencyTeamRole, setAgencyTeamRole] = useState<'owner' | 'booker' | 'employee' | null>(null);
   const [calendarItems, setCalendarItems] = useState<AgencyCalendarItem[]>([]);
   const [manualCalendarEvents, setManualCalendarEvents] = useState<UserCalendarEvent[]>([]);
+  const [bookingEventEntries, setBookingEventEntries] = useState<CalendarEntry[]>([]);
   const [calendarLoading, setCalendarLoading] = useState(false);
   const [selectedCalendarItem, setSelectedCalendarItem] = useState<AgencyCalendarItem | null>(null);
   const [selectedManualEvent, setSelectedManualEvent] = useState<UserCalendarEvent | null>(null);
@@ -266,12 +270,14 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
     if (!currentAgencyId) return;
     setCalendarLoading(true);
     try {
-      const [items, manual] = await Promise.all([
+      const [items, manual, beEntries] = await Promise.all([
         getCalendarEntriesForAgency(currentAgencyId),
         getManualEventsForOwner(currentAgencyId, 'agency'),
+        getBookingEventsAsCalendarEntries(currentAgencyId, 'agency'),
       ]);
       setCalendarItems(items);
       setManualCalendarEvents(manual);
+      setBookingEventEntries(beEntries);
     } finally {
       setCalendarLoading(false);
     }
@@ -336,7 +342,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         { key: 'guestLinks', label: 'Guest Links' },
         { key: 'settings', label: uiCopy.agencySettings.tabLabel },
       ];
-      return (agencyTeamRole === 'owner' || agencyTeamRole === 'booker')
+      return agencyTeamRole === 'owner'
         ? all
         : all.filter((t) => t.key !== 'settings');
     },
@@ -344,7 +350,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   );
 
   useEffect(() => {
-    if (tab === 'settings' && agencyTeamRole !== 'owner' && agencyTeamRole !== 'booker') {
+    if (tab === 'settings' && agencyTeamRole !== 'owner') {
       setTab('dashboard');
     }
   }, [tab, agencyTeamRole]);
@@ -433,6 +439,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         <AgencyCalendarTab
           items={calendarItems}
           manualEvents={manualCalendarEvents}
+          bookingEventEntries={bookingEventEntries}
           loading={calendarLoading}
           onRefresh={loadAgencyCalendar}
           onOpenDetails={(item) => {
@@ -447,6 +454,10 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
             setSelectedManualEvent(ev);
             setSelectedCalendarItem(null);
           }}
+          onOpenBookingEntry={(be) => Alert.alert(
+            be.title ?? uiCopy.calendar.bookingEvent,
+            `${uiCopy.calendar.date}: ${be.date}\n${uiCopy.calendar.status}: ${be.status ?? '—'}`,
+          )}
           onAddEvent={() => setShowAddManualEvent(true)}
         />
       )}
@@ -454,7 +465,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         {tab === 'bookers' && (
           <OrganizationTeamTab
             organizationId={agencyOrganizationId}
-            canInvite={agencyTeamRole === 'owner' || agencyTeamRole === 'booker'}
+            canInvite={agencyTeamRole === 'owner'}
             members={teamMembers}
             invitations={pendingInvites}
             onRefresh={() => void loadAgencyTeam()}
@@ -470,7 +481,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         />
       )}
 
-      {tab === 'settings' && (agencyTeamRole === 'owner' || agencyTeamRole === 'booker') && (
+      {tab === 'settings' && agencyTeamRole === 'owner' && (
         <>
           <AgencySettingsTab
             agency={currentAgency}
@@ -1043,20 +1054,24 @@ const DashboardTab: React.FC<{ models: AgencyModel[] }> = ({ models }) => (
 type AgencyCalendarTabProps = {
   items: AgencyCalendarItem[];
   manualEvents: UserCalendarEvent[];
+  bookingEventEntries?: CalendarEntry[];
   loading: boolean;
   onRefresh: () => void;
   onOpenDetails: (item: AgencyCalendarItem) => void;
   onOpenManualEvent: (ev: UserCalendarEvent) => void;
+  onOpenBookingEntry?: (entry: CalendarEntry) => void;
   onAddEvent: () => void;
 };
 
 const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
   items,
   manualEvents,
+  bookingEventEntries = [],
   loading,
   onRefresh,
   onOpenDetails,
   onOpenManualEvent,
+  onOpenBookingEntry,
   onAddEvent,
 }) => {
   const [modelQuery, setModelQuery] = useState('');
@@ -1087,8 +1102,28 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
         kind: entryType ?? 'option',
       });
     });
+    // Merge booking_events as the single source of truth; skip entries already covered
+    // by a calendar_entry sharing the same option_request_id to avoid duplicates.
+    const coveredOptionIds = new Set(
+      items.map((i) => i.calendar_entry?.option_request_id).filter(Boolean),
+    );
+    bookingEventEntries.forEach((be) => {
+      if (be.option_request_id && coveredOptionIds.has(be.option_request_id)) return;
+      const date = be.date;
+      if (!date) return;
+      if (!map[date]) map[date] = [];
+      let color = '#1565C0';
+      if (be.entry_type === 'booking') color = colors.buttonSkipRed;
+      else if (be.entry_type === 'casting' || be.entry_type === 'gosee') color = colors.textSecondary;
+      map[date].push({
+        id: be.id,
+        color,
+        title: be.title ?? 'Booking',
+        kind: be.entry_type ?? 'booking',
+      });
+    });
     return map;
-  }, [items, manualEvents]);
+  }, [items, manualEvents, bookingEventEntries]);
 
   const filtered = useMemo(() => {
     const q = modelQuery.trim().toLowerCase();
@@ -1255,11 +1290,11 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
                 style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, paddingVertical: 4 }}
                 onPress={() => {
                   const manual = manualEvents.find((e) => e.id === ev.id);
-                  if (manual) onOpenManualEvent(manual);
-                  else {
-                    const item = items.find((i) => (i.calendar_entry?.date ?? i.option.requested_date) === selectedDate && i.option.id === ev.id);
-                    if (item) onOpenDetails(item);
-                  }
+                  if (manual) { onOpenManualEvent(manual); return; }
+                  const item = items.find((i) => (i.calendar_entry?.date ?? i.option.requested_date) === selectedDate && i.option.id === ev.id);
+                  if (item) { onOpenDetails(item); return; }
+                  const beEntry = bookingEventEntries.find((be) => be.id === ev.id);
+                  if (beEntry && onOpenBookingEntry) onOpenBookingEntry(beEntry);
                 }}
               >
                 <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: ev.color, marginRight: spacing.sm }} />
@@ -1358,6 +1393,50 @@ const MyModelsTab: React.FC<{
   const [territoryCountryCodes, setTerritoryCountryCodes] = useState<string[]>([]);
   const [territorySearch, setTerritorySearch] = useState('');
 
+  const [editModelCategories, setEditModelCategories] = useState<string[]>([]);
+
+  useEffect(() => {
+    setEditModelCategories(selectedModel?.categories ?? []);
+  }, [selectedModel?.id]);
+
+  // Bulk selection state
+  const [selectedModelIds, setSelectedModelIds] = useState<Set<string>>(new Set());
+  const [showBulkTerritoryModal, setShowBulkTerritoryModal] = useState(false);
+  const [bulkTerritorySearch, setBulkTerritorySearch] = useState('');
+  const [bulkSelectedCountries, setBulkSelectedCountries] = useState<string[]>([]);
+  const [bulkAssigning, setBulkAssigning] = useState(false);
+  const [bulkFeedback, setBulkFeedback] = useState<string | null>(null);
+
+  const bulkFilteredCountries = useMemo(() => {
+    const q = bulkTerritorySearch.trim().toLowerCase();
+    if (!q) return isoCountryList;
+    return isoCountryList.filter(
+      (c) => c.name.toLowerCase().includes(q) || c.code.toLowerCase().includes(q),
+    );
+  }, [isoCountryList, bulkTerritorySearch]);
+
+  const handleBulkAssignTerritories = async () => {
+    if (bulkSelectedCountries.length === 0 || selectedModelIds.size === 0) return;
+    setBulkAssigning(true);
+    const { succeededIds, failedIds } = await bulkUpsertTerritoriesForModels(
+      Array.from(selectedModelIds),
+      agencyId,
+      bulkSelectedCountries,
+    );
+    setBulkAssigning(false);
+    setShowBulkTerritoryModal(false);
+    setSelectedModelIds(new Set());
+    setBulkSelectedCountries([]);
+    if (failedIds.length === 0) {
+      setBulkFeedback(uiCopy.territoryModal.bulkAssignSuccess);
+    } else {
+      setBulkFeedback(
+        `${succeededIds.length} succeeded, ${failedIds.length} failed. ${uiCopy.territoryModal.bulkAssignFailed}`,
+      );
+    }
+    setTimeout(() => setBulkFeedback(null), 3000);
+  };
+
   const countries = useMemo(() =>
     Array.from(new Set(models.map((m) => m.country || m.city || 'Unknown').filter(Boolean))).sort(),
     [models]
@@ -1430,6 +1509,35 @@ const MyModelsTab: React.FC<{
       const parsed = Number.parseInt(trimmed, 10);
       return Number.isFinite(parsed) ? parsed : null;
     };
+
+    // Derive ISO-2 country_code from free-text country name.
+    const COUNTRY_NAME_TO_CODE: Record<string, string> = {
+      germany: 'DE', deutschland: 'DE',
+      france: 'FR', frankreich: 'FR',
+      italy: 'IT', italien: 'IT',
+      'united kingdom': 'GB', uk: 'GB', 'great britain': 'GB', england: 'GB',
+      spain: 'ES', spanien: 'ES',
+      netherlands: 'NL', niederlande: 'NL', holland: 'NL',
+      sweden: 'SE', schweden: 'SE',
+      denmark: 'DK', dänemark: 'DK',
+      belgium: 'BE', belgien: 'BE',
+      switzerland: 'CH', schweiz: 'CH',
+      austria: 'AT', österreich: 'AT',
+      usa: 'US', 'united states': 'US', 'united states of america': 'US',
+      portugal: 'PT', norway: 'NO', norwegen: 'NO',
+      poland: 'PL', polen: 'PL',
+      australia: 'AU', australien: 'AU',
+      canada: 'CA', kanada: 'CA',
+      japan: 'JP', china: 'CN',
+    };
+    const countryText = (addFields.country || '').trim();
+    const derivedCountryCode =
+      COUNTRY_NAME_TO_CODE[countryText.toLowerCase()] ??
+      (countryText.length === 2 ? countryText.toUpperCase() : null);
+
+    // Capture files in a local const BEFORE state resets (closure-safe).
+    const filesToUpload = [...addModelImageFiles];
+
     setAddLoading(true);
     setAddModelFeedback(null);
     try {
@@ -1447,7 +1555,8 @@ const MyModelsTab: React.FC<{
           waist: toNullableInt(addFields.waist),
           hips: toNullableInt(addFields.hips),
           city: addFields.city || null,
-          country: addFields.country || null,
+          country: countryText || null,
+          country_code: derivedCountryCode,
           hair_color: addFields.hair_color || null,
           eye_color: addFields.eye_color || null,
         })
@@ -1469,9 +1578,9 @@ const MyModelsTab: React.FC<{
       setCountryFilter('');
 
       // Uploads should not make creation fail.
-      if (addModelImageFiles.length > 0) {
+      if (filesToUpload.length > 0) {
         const uploadedUrls: string[] = [];
-        for (const file of addModelImageFiles) {
+        for (const file of filesToUpload) {
           const url = await uploadModelPhoto(createdModelId, file);
           if (url) uploadedUrls.push(url);
         }
@@ -1553,6 +1662,8 @@ const MyModelsTab: React.FC<{
     if (editField.current_location !== undefined) updates.current_location = editField.current_location;
     if (editField.is_visible_commercial !== undefined) updates.is_visible_commercial = editField.is_visible_commercial === 'true';
     if (editField.is_visible_fashion !== undefined) updates.is_visible_fashion = editField.is_visible_fashion === 'true';
+    // Store NULL when no categories selected → model visible in all category filters.
+    updates.categories = editModelCategories.length > 0 ? editModelCategories : null;
     updates.show_polas_on_profile = showPolasOnProfile;
 
     await supabase.from('models').update(updates).eq('id', selectedModel.id);
@@ -1783,7 +1894,7 @@ const MyModelsTab: React.FC<{
           </View>
         ))}
         <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary, marginTop: spacing.sm }}>Visibility</Text>
-        <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: 4, marginBottom: spacing.lg }}>
+        <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: 4, marginBottom: spacing.md }}>
           <TouchableOpacity
             style={[s.visPill, (ef('is_visible_commercial', selectedModel.is_visible_commercial) === 'true' || (editField.is_visible_commercial === undefined && selectedModel.is_visible_commercial)) && s.visPillActive]}
             onPress={() => setEditField((prev) => ({ ...prev, is_visible_commercial: prev.is_visible_commercial === 'true' || (prev.is_visible_commercial === undefined && selectedModel.is_visible_commercial) ? 'false' : 'true' }))}
@@ -1796,6 +1907,28 @@ const MyModelsTab: React.FC<{
           >
             <Text style={[s.visPillLabel, (ef('is_visible_fashion', selectedModel.is_visible_fashion) === 'true' || (editField.is_visible_fashion === undefined && selectedModel.is_visible_fashion)) && s.visPillLabelActive]}>Fashion</Text>
           </TouchableOpacity>
+        </View>
+
+        <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary, marginTop: spacing.sm }}>
+          Categories <Text style={{ fontWeight: '400' }}>(leave empty = visible in all)</Text>
+        </Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: 4, marginBottom: spacing.lg }}>
+          {AGENCY_SEGMENT_TYPES.map((seg) => {
+            const active = editModelCategories.includes(seg);
+            return (
+              <TouchableOpacity
+                key={seg}
+                style={[s.visPill, active && s.visPillActive]}
+                onPress={() =>
+                  setEditModelCategories((prev) =>
+                    active ? prev.filter((c) => c !== seg) : [...prev, seg]
+                  )
+                }
+              >
+                <Text style={[s.visPillLabel, active && s.visPillLabelActive]}>{seg}</Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
         {/* Model Photos Management */}
@@ -2289,14 +2422,48 @@ const MyModelsTab: React.FC<{
                   if (Platform.OS === 'web') addModelFileInputRef.current?.click();
                 }}
               >
-                <Text style={s.filterPillLabel}>Upload photos</Text>
+                <Text style={s.filterPillLabel}>
+                  {addModelImageFiles.length > 0 ? `+ Add more` : 'Upload photos'}
+                </Text>
               </TouchableOpacity>
-              <Text style={s.metaText}>{addModelImageFiles.length} selected</Text>
+              {addModelImageFiles.length > 0 && (
+                <TouchableOpacity
+                  onPress={() => setAddModelImageFiles([])}
+                  style={[s.filterPill, { borderColor: colors.textSecondary }]}
+                >
+                  <Text style={[s.filterPillLabel, { color: colors.textSecondary }]}>Clear all</Text>
+                </TouchableOpacity>
+              )}
             </View>
             {addModelImageFiles.length > 0 && (
-              <Text style={[s.metaText, { marginTop: 4 }]}>
-                First uploaded image becomes cover.
-              </Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: spacing.sm }}>
+                {addModelImageFiles.map((f, i) => {
+                  const objUrl = typeof URL !== 'undefined' ? URL.createObjectURL(f) : '';
+                  return (
+                    <View key={`${f.name}-${i}`} style={{ position: 'relative' }}>
+                      <Image
+                        source={{ uri: objUrl }}
+                        style={{ width: 60, height: 80, borderRadius: 4, borderWidth: i === 0 ? 2 : 1, borderColor: i === 0 ? colors.textPrimary : colors.border }}
+                        resizeMode="cover"
+                      />
+                      {i === 0 && (
+                        <View style={{ position: 'absolute', bottom: 2, left: 2, right: 2, backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 2, paddingVertical: 1 }}>
+                          <Text style={{ color: '#fff', fontSize: 8, textAlign: 'center' }}>Cover</Text>
+                        </View>
+                      )}
+                      <TouchableOpacity
+                        style={{ position: 'absolute', top: -4, right: -4, width: 16, height: 16, borderRadius: 8, backgroundColor: colors.textPrimary, justifyContent: 'center', alignItems: 'center' }}
+                        onPress={() => setAddModelImageFiles((prev) => prev.filter((_, idx) => idx !== i))}
+                      >
+                        <Text style={{ color: colors.surface, fontSize: 10, lineHeight: 14, textAlign: 'center' }}>×</Text>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+            {addModelImageFiles.length === 0 && (
+              <Text style={[s.metaText, { marginTop: 4 }]}>First image will be used as cover photo.</Text>
             )}
             {Platform.OS === 'web' && (
               <input
@@ -2324,23 +2491,232 @@ const MyModelsTab: React.FC<{
         </View>
       )}
 
-      {filtered.map((m) => (
-        <TouchableOpacity key={m.id} style={s.modelRow} onPress={() => setSelectedModel(m)}>
-          <View style={{ flex: 1 }}>
-            <Text style={s.modelName}>{m.name}</Text>
-            <Text style={s.metaText}>{m.city ?? '—'} · H{m.height} C{m.bust ?? m.chest ?? '—'} W{m.waist ?? '—'} H{m.hips ?? '—'}</Text>
-            {(m.agency_relationship_status === 'pending_link' || (!m.user_id && m.email)) && (
-              <Text style={{ ...typography.label, fontSize: 9, color: '#B8860B', marginTop: 2 }}>Pending app account link</Text>
-            )}
-          </View>
-          <View style={{ flexDirection: 'row', gap: 4 }}>
-            {m.is_visible_commercial && <View style={s.visTag}><Text style={s.visTagLabel}>C</Text></View>}
-            {m.is_visible_fashion && <View style={[s.visTag, { borderColor: colors.accentBrown }]}><Text style={[s.visTagLabel, { color: colors.accentBrown }]}>F</Text></View>}
-          </View>
-          <Text style={{ fontSize: 14, color: colors.textSecondary, marginLeft: spacing.sm }}>›</Text>
+      {/* Bulk selection header */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.xs }}>
+        <TouchableOpacity
+          onPress={() => {
+            if (selectedModelIds.size === filtered.length && filtered.length > 0) {
+              setSelectedModelIds(new Set());
+            } else {
+              setSelectedModelIds(new Set(filtered.map((m) => m.id)));
+            }
+          }}
+        >
+          <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary }}>
+            {selectedModelIds.size > 0
+              ? uiCopy.bulkActions.selectedCount.replace('{count}', String(selectedModelIds.size))
+              : 'Select models for bulk action'}
+          </Text>
         </TouchableOpacity>
-      ))}
+        {selectedModelIds.size > 0 && (
+          <TouchableOpacity onPress={() => setSelectedModelIds(new Set())}>
+            <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary }}>
+              {uiCopy.bulkActions.clearSelection}
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {filtered.map((m) => {
+        const isChecked = selectedModelIds.has(m.id);
+        return (
+          <View key={m.id} style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <TouchableOpacity
+              style={{ padding: spacing.sm, paddingRight: 0 }}
+              onPress={() =>
+                setSelectedModelIds((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(m.id)) next.delete(m.id);
+                  else next.add(m.id);
+                  return next;
+                })
+              }
+            >
+              <View style={{
+                width: 20, height: 20, borderRadius: 4,
+                borderWidth: 1.5,
+                borderColor: isChecked ? colors.textPrimary : colors.border,
+                backgroundColor: isChecked ? colors.textPrimary : 'transparent',
+                alignItems: 'center', justifyContent: 'center',
+              }}>
+                {isChecked && <Text style={{ color: colors.surface, fontSize: 12, lineHeight: 16 }}>✓</Text>}
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity style={[s.modelRow, { flex: 1, marginLeft: spacing.xs }]} onPress={() => setSelectedModel(m)}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.modelName}>{m.name}</Text>
+                <Text style={s.metaText}>{m.city ?? '—'} · H{m.height} C{m.bust ?? (m as any).chest ?? '—'} W{m.waist ?? '—'} H{m.hips ?? '—'}</Text>
+                {(m.agency_relationship_status === 'pending_link' || (!m.user_id && m.email)) && (
+                  <Text style={{ ...typography.label, fontSize: 9, color: '#B8860B', marginTop: 2 }}>Pending app account link</Text>
+                )}
+              </View>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, maxWidth: 80 }}>
+                {m.is_visible_commercial && <View style={s.visTag}><Text style={s.visTagLabel}>C</Text></View>}
+                {m.is_visible_fashion && <View style={[s.visTag, { borderColor: colors.accentBrown }]}><Text style={[s.visTagLabel, { color: colors.accentBrown }]}>F</Text></View>}
+                {(m.categories ?? []).map((cat: string) => (
+                  <View key={cat} style={[s.visTag, { borderColor: colors.accentBlue ?? colors.border }]}>
+                    <Text style={[s.visTagLabel, { color: colors.accentBlue ?? colors.textSecondary }]}>{cat.charAt(0)}</Text>
+                  </View>
+                ))}
+              </View>
+              <Text style={{ fontSize: 14, color: colors.textSecondary, marginLeft: spacing.sm }}>›</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      })}
       {filtered.length === 0 && <Text style={s.metaText}>No models found.</Text>}
+      {bulkFeedback && (
+        <Text style={{ ...typography.label, fontSize: 12, color: colors.accentGreen, marginTop: spacing.sm }}>
+          {bulkFeedback}
+        </Text>
+      )}
+
+      {/* Bulk action sticky footer */}
+      {selectedModelIds.size > 0 && (
+        <View style={{
+          position: 'absolute', bottom: 0, left: 0, right: 0,
+          backgroundColor: colors.surface,
+          borderTopWidth: 1, borderTopColor: colors.border,
+          flexDirection: 'row', alignItems: 'center',
+          padding: spacing.md, gap: spacing.sm,
+        }}>
+          <Text style={{ ...typography.label, fontSize: 12, color: colors.textPrimary, flex: 1 }}>
+            {uiCopy.bulkActions.selectedCount.replace('{count}', String(selectedModelIds.size))}
+          </Text>
+          <TouchableOpacity
+            style={{
+              backgroundColor: colors.textPrimary,
+              borderRadius: 999,
+              paddingHorizontal: spacing.md,
+              paddingVertical: spacing.sm,
+            }}
+            onPress={() => {
+              setBulkSelectedCountries([]);
+              setBulkTerritorySearch('');
+              setShowBulkTerritoryModal(true);
+            }}
+          >
+            <Text style={{ ...typography.label, fontSize: 12, color: colors.surface }}>
+              {uiCopy.bulkActions.assignTerritories}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Bulk territory assignment modal */}
+      <Modal
+        visible={showBulkTerritoryModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowBulkTerritoryModal(false)}
+      >
+        <View style={{
+          flex: 1, backgroundColor: 'rgba(0,0,0,0.25)',
+          justifyContent: 'center', alignItems: 'center', padding: spacing.lg,
+        }}>
+          <View style={{
+            width: '100%', maxWidth: 480,
+            backgroundColor: colors.surface,
+            borderRadius: 18, borderWidth: 1, borderColor: colors.border,
+            padding: spacing.md, maxHeight: '90%',
+          }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.sm }}>
+              <Text style={{ ...typography.heading, fontSize: 15, color: colors.textPrimary, flex: 1 }}>
+                {uiCopy.territoryModal.title}
+              </Text>
+              <TouchableOpacity onPress={() => setShowBulkTerritoryModal(false)}>
+                <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary }}>
+                  {uiCopy.common.cancel}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.sm }}>
+              {uiCopy.bulkActions.selectedCount.replace('{count}', String(selectedModelIds.size))}
+            </Text>
+
+            <TextInput
+              value={bulkTerritorySearch}
+              onChangeText={setBulkTerritorySearch}
+              placeholder={uiCopy.territoryModal.searchPlaceholder}
+              placeholderTextColor={colors.textSecondary}
+              style={{
+                borderWidth: 1, borderColor: colors.border, borderRadius: 999,
+                paddingHorizontal: spacing.md, paddingVertical: spacing.xs,
+                ...typography.body, fontSize: 12, color: colors.textPrimary,
+                marginBottom: spacing.sm,
+              }}
+            />
+
+            {bulkSelectedCountries.length > 0 && (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: spacing.sm }}>
+                {bulkSelectedCountries.map((code) => (
+                  <TouchableOpacity
+                    key={code}
+                    style={{
+                      paddingHorizontal: spacing.sm, paddingVertical: 2,
+                      borderRadius: 999, backgroundColor: colors.textPrimary,
+                    }}
+                    onPress={() => setBulkSelectedCountries((prev) => prev.filter((c) => c !== code))}
+                  >
+                    <Text style={{ ...typography.label, fontSize: 10, color: colors.surface }}>
+                      {ISO_COUNTRY_NAMES[code] ?? code} ✕
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            <ScrollView style={{ maxHeight: 220 }}>
+              {bulkFilteredCountries.map((c) => {
+                const active = bulkSelectedCountries.includes(c.code);
+                return (
+                  <TouchableOpacity
+                    key={c.code}
+                    style={{
+                      paddingHorizontal: spacing.sm, paddingVertical: spacing.xs,
+                      borderRadius: 8, marginBottom: 2,
+                      backgroundColor: active ? colors.textPrimary : 'transparent',
+                    }}
+                    onPress={() =>
+                      setBulkSelectedCountries((prev) =>
+                        active ? prev.filter((x) => x !== c.code) : [...prev, c.code],
+                      )
+                    }
+                  >
+                    <Text style={{ ...typography.label, fontSize: 11, color: active ? colors.surface : colors.textSecondary }}>
+                      {c.name} ({c.code})
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            {bulkSelectedCountries.length === 0 && (
+              <Text style={{ ...typography.label, fontSize: 11, color: colors.buttonSkipRed, marginTop: spacing.sm }}>
+                {uiCopy.territoryModal.requiredHint}
+              </Text>
+            )}
+
+            <TouchableOpacity
+              style={{
+                marginTop: spacing.md,
+                backgroundColor: colors.textPrimary,
+                borderRadius: 999,
+                paddingVertical: spacing.sm,
+                alignItems: 'center',
+                opacity: bulkSelectedCountries.length === 0 || bulkAssigning ? 0.4 : 1,
+              }}
+              onPress={handleBulkAssignTerritories}
+              disabled={bulkSelectedCountries.length === 0 || bulkAssigning}
+            >
+              <Text style={{ ...typography.label, color: colors.surface }}>
+                {bulkAssigning ? 'Assigning…' : uiCopy.territoryModal.confirmBulkButton}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
     </ScreenScrollView>
   );
 };
@@ -2686,6 +3062,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                   agencyId={agencyId}
                   guestLinks={guestLinksForChat}
                   modelsForShare={modelsForShare}
+                  onBookingCardPress={() => setTab('calendar')}
                 />
               ) : null}
             </>

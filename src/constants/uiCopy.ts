@@ -95,6 +95,9 @@ export const uiCopy = {
     manualBlockHelp: 'Edit or remove your personal block.',
     optionScheduleHelp:
       'Date/time for all parties (migration migration_calendar_reschedule_sync.sql + RPC model_update_option_schedule).',
+    bookingEvent: 'Booking event',
+    date: 'Date',
+    status: 'Status',
   },
   invite: {
     pageTitle: 'Organization invitation',
@@ -302,6 +305,67 @@ export const uiCopy = {
     ensureClientTargetNeedsOrg:
       'This client has no workspace yet. They must sign in as a client (or accept a team invitation) so their organization exists before you can chat.',
     contactLink: 'Contact',
+  },
+  /** Recruiting chat RPC errors and messages. */
+  recruiting: {
+    chatForbidden: 'No permission: sign in as an agency organization member.',
+    chatWrongAgency: 'This application belongs to a different agency.',
+    chatNotPending: 'Recruiting chat is only available while the application is pending.',
+    chatSignInAgain: 'Please sign in again.',
+    chatApplicationNotFound: 'Application not found.',
+    chatLinkFailed: 'Could not link the recruiting thread to the application. Check the database or contact support.',
+    chatSchemaMismatch: 'Server does not recognize this call. Apply SQL migrations in Supabase and reload the API schema, then try again.',
+    chatServerError: 'Server error (500). Check Postgres/API logs in Supabase.',
+    chatPermissionDenied: 'Permission denied. Verify GRANT EXECUTE on the function in SQL.',
+    chatFunctionMissing: 'Function missing or API schema stale. Re-run the SQL migration, then reload pgrst.',
+    chatGenericFailed: 'Could not start recruiting chat. Check your connection and try again.',
+  },
+  /** Organization name validation and management errors. */
+  org: {
+    nameEmpty: 'Organization name must not be empty.',
+  },
+  /** Territory selection — modal on accept + bulk assign. */
+  territoryModal: {
+    title: 'Select Countries of Representation',
+    subtitle: 'Choose the countries where this agency will represent the model.',
+    searchPlaceholder: 'Search country…',
+    confirmButton: 'Confirm & Accept',
+    confirmBulkButton: 'Assign Territories',
+    requiredHint: 'Select at least one country to continue.',
+    noCountriesFound: 'No countries match your search.',
+    assignSuccess: 'Territories assigned.',
+    assignFailed: 'Could not save territories. Please try again.',
+    bulkAssignSuccess: 'Territories assigned to selected models.',
+    bulkAssignFailed: 'Could not assign territories. Please try again.',
+    selectModelsFirst: 'Select at least one model first.',
+    activeModelBadge: 'Active Model',
+    recruitingBadge: 'Recruiting',
+  },
+  /** Booking event lifecycle labels. */
+  bookingStatus: {
+    pending: 'Pending',
+    agencyAccepted: 'Agency Accepted',
+    modelConfirmed: 'Model Confirmed',
+    completed: 'Completed',
+    cancelled: 'Cancelled',
+    markAgencyAccepted: 'Accept booking',
+    markModelConfirmed: 'Confirm as model',
+    markCompleted: 'Mark as completed',
+    markCancelled: 'Cancel booking',
+    statusLabel: 'Booking status',
+    updateFailed: 'Could not update booking status.',
+    updateSuccess: 'Booking status updated.',
+  },
+  /** Bulk model selection actions. */
+  bulkActions: {
+    selectedCount: '{count} model(s) selected',
+    assignTerritories: 'Assign Territories',
+    clearSelection: 'Clear selection',
+  },
+  /** Calendar input validation. */
+  calendarValidation: {
+    invalidDateFormat: 'Invalid date format. Use YYYY-MM-DD.',
+    insertFailed: 'Could not save calendar entry. Please try again.',
   },
   adminDashboard: {
     deletePermanentlyTitle: 'Delete account permanently',

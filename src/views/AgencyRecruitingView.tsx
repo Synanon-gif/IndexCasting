@@ -1,7 +1,7 @@
 /**
  * Agency recruiting: swipe queue (pending), shortlist, accepted; recruiting chat threads in Supabase.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,8 @@ import {
   Modal,
   TextInput,
 } from 'react-native';
+import countries from 'i18n-iso-countries';
+import enLocale from 'i18n-iso-countries/langs/en.json';
 import { colors, spacing, typography } from '../theme/theme';
 import {
   getApplications,
@@ -28,6 +30,16 @@ import {
 import { tryStartRecruitingChat } from '../store/recruitingChats';
 import { loadAgencyShortlistIds, saveAgencyShortlistIds } from '../storage/agencyRecruitingShortlist';
 import { mergeAgencyRecruitingMyListIds } from '../utils/agencyRecruitingMyList';
+import { upsertTerritoriesForModel } from '../services/territoriesSupabase';
+import { uiCopy } from '../constants/uiCopy';
+
+countries.registerLocale(enLocale);
+const ISO_COUNTRY_NAMES: Record<string, string> = countries.getNames('en', {
+  select: 'official',
+}) as Record<string, string>;
+const ISO_COUNTRY_LIST = Object.entries(ISO_COUNTRY_NAMES)
+  .map(([code, name]) => ({ code, name }))
+  .sort((a, b) => a.name.localeCompare(b.name));
 
 type HeightFilter = 'all' | 'short' | 'medium' | 'tall';
 
@@ -82,6 +94,20 @@ export const AgencyRecruitingView: React.FC<{
   const [shortlistIds, setShortlistIds] = useState<string[]>([]);
   /** Pending applications with an active recruiting thread (same rows as Messages → Recruiting chats). */
   const [pendingWithChatApps, setPendingWithChatApps] = useState<ModelApplication[]>([]);
+
+  // Territory modal state (shown before accept)
+  const [pendingAcceptApp, setPendingAcceptApp] = useState<ModelApplication | null>(null);
+  const [selectedCountryCodes, setSelectedCountryCodes] = useState<string[]>([]);
+  const [territorySearch, setTerritorySearch] = useState('');
+  const [acceptingWithTerritories, setAcceptingWithTerritories] = useState(false);
+
+  const filteredCountries = useMemo(() => {
+    const q = territorySearch.trim().toLowerCase();
+    if (!q) return ISO_COUNTRY_LIST;
+    return ISO_COUNTRY_LIST.filter(
+      (c) => c.name.toLowerCase().includes(q) || c.code.toLowerCase().includes(q),
+    );
+  }, [territorySearch]);
 
   const shortlistSet = React.useMemo(() => new Set(shortlistIds), [shortlistIds]);
   /** Pending swipe queue excludes shortlist so those models only appear under My list. */
@@ -164,17 +190,35 @@ export const AgencyRecruitingView: React.FC<{
     setTimeout(() => setFeedback(null), 2500);
   };
 
-  const handleAcceptForApp = async (app: ModelApplication) => {
+  /** Step 1: open territory modal; actual accept happens in handleConfirmAcceptWithTerritories */
+  const handleAcceptForApp = (app: ModelApplication) => {
     if (!agencyId) return;
-    const threadId = await acceptApplication(app.id, agencyId);
-    if (threadId) {
+    setPendingAcceptApp(app);
+    setSelectedCountryCodes([]);
+    setTerritorySearch('');
+  };
+
+  /** Step 2: agency confirmed territories → accept + assign */
+  const handleConfirmAcceptWithTerritories = async () => {
+    if (!agencyId || !pendingAcceptApp) return;
+    if (selectedCountryCodes.length === 0) {
+      showFeedback(uiCopy.territoryModal.requiredHint);
+      return;
+    }
+    setAcceptingWithTerritories(true);
+    const result = await acceptApplication(pendingAcceptApp.id, agencyId);
+    if (result) {
+      if (result.modelId) {
+        await upsertTerritoriesForModel(result.modelId, agencyId, selectedCountryCodes);
+      }
+      setPendingAcceptApp(null);
       showFeedback('Model accepted. Open the thread under Messages → Recruiting chats.');
-      onOpenBookingChat(threadId);
+      onOpenBookingChat(result.threadId);
       refreshSwipeQueue();
       setDetailApplication(null);
       setShortlistIds((prev) => {
-        if (!prev.includes(app.id)) return prev;
-        const next = prev.filter((id) => id !== app.id);
+        if (!prev.includes(pendingAcceptApp.id)) return prev;
+        const next = prev.filter((id) => id !== pendingAcceptApp.id);
         void saveAgencyShortlistIds(agencyId, next);
         return next;
       });
@@ -183,11 +227,14 @@ export const AgencyRecruitingView: React.FC<{
         if (apps.length === 0) return 0;
         return Math.min(prev, apps.length - 1);
       });
+    } else {
+      showFeedback('Could not accept application. Please try again.');
     }
+    setAcceptingWithTerritories(false);
   };
 
   const handleYes = () => {
-    if (current) void handleAcceptForApp(current);
+    if (current) handleAcceptForApp(current);
   };
 
   const handleDeclineForApp = async (app: ModelApplication) => {
@@ -485,7 +532,7 @@ export const AgencyRecruitingView: React.FC<{
             </TouchableOpacity>
             <View style={styles.cardActions}>
               <View style={styles.cardActionsRowCentered}>
-                <TouchableOpacity style={styles.buttonAccept} onPress={handleYes}>
+                <TouchableOpacity style={styles.buttonAccept} onPress={() => handleYes()}>
                   <Text style={styles.buttonAcceptLabel}>Accept application</Text>
                 </TouchableOpacity>
               </View>
@@ -598,7 +645,7 @@ export const AgencyRecruitingView: React.FC<{
                   <>
                     <TouchableOpacity
                       style={[styles.buttonYes, { flex: 1, minWidth: 120 }]}
-                      onPress={() => void handleAcceptForApp(detailApplication)}
+                      onPress={() => handleAcceptForApp(detailApplication)}
                     >
                       <Text style={styles.buttonYesLabel}>Accept application</Text>
                     </TouchableOpacity>
@@ -625,6 +672,102 @@ export const AgencyRecruitingView: React.FC<{
           })()}
           <Text style={styles.fullscreenPhotoHint}>Tap to close</Text>
         </TouchableOpacity>
+      </Modal>
+
+      {/* Territory selection modal — shown before accepting a model */}
+      <Modal
+        visible={!!pendingAcceptApp}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setPendingAcceptApp(null)}
+      >
+        <View style={styles.chatOverlay}>
+          <View style={[styles.chatCard, { maxHeight: '90%' }]}>
+            <View style={styles.chatHeader}>
+              <Text style={styles.chatTitle}>{uiCopy.territoryModal.title}</Text>
+              <TouchableOpacity onPress={() => setPendingAcceptApp(null)}>
+                <Text style={styles.closeLabel}>{uiCopy.common.cancel}</Text>
+              </TouchableOpacity>
+            </View>
+
+            {pendingAcceptApp && (
+              <Text style={[styles.filterLabel, { marginBottom: spacing.sm }]}>
+                {pendingAcceptApp.firstName} {pendingAcceptApp.lastName} · {uiCopy.territoryModal.subtitle}
+              </Text>
+            )}
+
+            <TextInput
+              value={territorySearch}
+              onChangeText={setTerritorySearch}
+              placeholder={uiCopy.territoryModal.searchPlaceholder}
+              placeholderTextColor={colors.textSecondary}
+              style={[styles.citySearchInput, { marginBottom: spacing.sm }]}
+            />
+
+            {selectedCountryCodes.length > 0 && (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: spacing.sm }}>
+                {selectedCountryCodes.map((code) => (
+                  <TouchableOpacity
+                    key={code}
+                    style={styles.filterPillActive}
+                    onPress={() =>
+                      setSelectedCountryCodes((prev) => prev.filter((c) => c !== code))
+                    }
+                  >
+                    <Text style={[styles.filterPillText, styles.filterPillTextActive]}>
+                      {ISO_COUNTRY_NAMES[code] ?? code} ✕
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            <ScrollView style={{ maxHeight: 260 }}>
+              {filteredCountries.length === 0 ? (
+                <Text style={styles.filterLabel}>{uiCopy.territoryModal.noCountriesFound}</Text>
+              ) : (
+                filteredCountries.map((c) => {
+                  const active = selectedCountryCodes.includes(c.code);
+                  return (
+                    <TouchableOpacity
+                      key={c.code}
+                      style={[styles.territoryRow, active && styles.territoryRowActive]}
+                      onPress={() =>
+                        setSelectedCountryCodes((prev) =>
+                          active ? prev.filter((x) => x !== c.code) : [...prev, c.code],
+                        )
+                      }
+                    >
+                      <Text style={[styles.filterPillText, active && styles.filterPillTextActive]}>
+                        {c.name} ({c.code})
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </ScrollView>
+
+            {selectedCountryCodes.length === 0 && (
+              <Text style={[styles.filterLabel, { marginTop: spacing.sm, color: colors.buttonSkipRed }]}>
+                {uiCopy.territoryModal.requiredHint}
+              </Text>
+            )}
+
+            <TouchableOpacity
+              style={[
+                styles.buttonAccept,
+                { marginTop: spacing.md },
+                (selectedCountryCodes.length === 0 || acceptingWithTerritories) && { opacity: 0.4 },
+              ]}
+              onPress={handleConfirmAcceptWithTerritories}
+              disabled={selectedCountryCodes.length === 0 || acceptingWithTerritories}
+            >
+              <Text style={styles.buttonAcceptLabel}>
+                {acceptingWithTerritories ? 'Accepting…' : uiCopy.territoryModal.confirmButton}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </Modal>
 
     </View>
@@ -1016,6 +1159,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.textPrimary,
     marginBottom: spacing.sm,
+  },
+  territoryRow: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: 8,
+    marginBottom: 2,
+  },
+  territoryRowActive: {
+    backgroundColor: colors.textPrimary,
   },
   photoSwipeWrap: {
     flexDirection: 'row',

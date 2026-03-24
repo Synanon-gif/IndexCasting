@@ -49,6 +49,7 @@ export async function upsertTerritoriesForModel(
 
   if (deleteError) {
     console.error('upsertTerritoriesForModel delete error:', deleteError);
+    return [];
   }
 
   if (normalized.length === 0) {
@@ -126,6 +127,35 @@ export async function upsertTerritoriesForModelCountryAgencyPairs(
   }
 
   return (data ?? []) as ModelTerritory[];
+}
+
+/**
+ * Bulk-assign territories to multiple models at once.
+ * Applies the same country list to every model in the array.
+ * Respects upsert semantics: existing territories for other agencies are not touched.
+ */
+export async function bulkUpsertTerritoriesForModels(
+  modelIds: string[],
+  agencyId: string,
+  countryCodes: string[],
+): Promise<{ succeededIds: string[]; failedIds: string[] }> {
+  const succeededIds: string[] = [];
+  const failedIds: string[] = [];
+
+  for (const modelId of modelIds) {
+    try {
+      await upsertTerritoriesForModel(modelId, agencyId, countryCodes);
+      // Success = no exception thrown. upsertTerritoriesForModel already logs Supabase
+      // errors internally; an empty SELECT result due to RLS does not mean the UPSERT
+      // failed — the row was written, the caller just cannot read it back.
+      succeededIds.push(modelId);
+    } catch (e) {
+      console.error('bulkUpsertTerritoriesForModels error for model', modelId, e);
+      failedIds.push(modelId);
+    }
+  }
+
+  return { succeededIds, failedIds };
 }
 
 /**

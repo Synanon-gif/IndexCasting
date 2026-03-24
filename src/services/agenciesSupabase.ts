@@ -50,7 +50,10 @@ export async function getAgencies(options?: { overlapsAgencyTypes?: string[] }):
       )
       .order('name');
     if (options?.overlapsAgencyTypes?.length) {
-      q = q.overlaps('agency_types', options.overlapsAgencyTypes);
+      // Agencies with NULL or empty agency_types are "uncategorised" → visible in ALL filters.
+      // Build an OR that explicitly includes them alongside the overlap check.
+      const escaped = options.overlapsAgencyTypes.map((t) => `"${t.replace(/"/g, '\\"')}"`).join(',');
+      q = q.or(`agency_types.is.null,agency_types.eq.{},agency_types.ov.{${escaped}}`);
     }
     const { data, error } = await q.range(from, to);
     return { data: data as Agency[] | null, error };

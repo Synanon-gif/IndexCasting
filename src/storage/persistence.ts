@@ -64,7 +64,14 @@ export type PersistedClientProject = {
 
 export type PersistedClientFilters = {
   size: 'all' | 'short' | 'medium' | 'tall';
-  location: 'all' | 'Paris' | 'Milan' | 'Berlin' | 'nearby';
+  /** @deprecated use countryCode + city + nearby instead */
+  location?: string;
+  /** ISO-2 country code, empty string = all countries */
+  countryCode: string;
+  /** Free-text city filter, empty = all cities */
+  city: string;
+  /** true = filter by user's detected city */
+  nearby: boolean;
 };
 
 export type ClientType = 'fashion' | 'commercial';

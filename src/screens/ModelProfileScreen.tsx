@@ -18,6 +18,7 @@ import {
 } from '../store/optionRequests';
 import {
   getCalendarForModel,
+  bookingEventToCalendarEntry,
   insertCalendarEntry,
   deleteCalendarEntryById,
   updateCalendarEntryById,
@@ -27,6 +28,7 @@ import {
   appendSharedBookingNote,
   type SharedBookingNote,
 } from '../services/calendarSupabase';
+import { getBookingEventsForModel } from '../services/bookingEventsSupabase';
 import { modelUpdateOptionSchedule } from '../services/optionRequestsSupabase';
 import { getAgencyById, type Agency } from '../services/agenciesSupabase';
 import { getThread } from '../services/recruitingChatSupabase';
@@ -189,8 +191,17 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   }, []);
 
   const loadCalendar = async (modelId: string) => {
-    const entries = await getCalendarForModel(modelId);
-    setCalEntries(entries);
+    const [legacyEntries, bookingEvents] = await Promise.all([
+      getCalendarForModel(modelId),
+      getBookingEventsForModel(modelId),
+    ]);
+    const coveredOptionIds = new Set(
+      legacyEntries.map((e) => e.option_request_id).filter(Boolean),
+    );
+    const beEntries = bookingEvents
+      .map(bookingEventToCalendarEntry)
+      .filter((be) => !(be.option_request_id && coveredOptionIds.has(be.option_request_id)));
+    setCalEntries([...legacyEntries, ...beEntries]);
   };
 
   const outstandingOptions = useMemo(() =>
