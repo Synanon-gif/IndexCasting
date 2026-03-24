@@ -13,6 +13,7 @@ import { AgencyView } from './src/views/AgencyView';
 import { SharedSelectionView } from './src/views/SharedSelectionView';
 import { BookingChatView } from './src/views/BookingChatView';
 import { GuestView } from './src/views/GuestView';
+import { GuestChatView } from './src/views/GuestChatView';
 import { AdminDashboard } from './src/views/AdminDashboard';
 import { colors } from './src/theme/theme';
 import type { ClientType } from './src/views/ClientView';
@@ -224,6 +225,19 @@ function AppContent() {
               setBookingThreadId(null);
             }}
           />
+        </View>
+        <StatusBar style="dark" />
+      </>
+    );
+  }
+
+  // Authenticated guest user (Magic Link) → limited-access chat view.
+  // Must come before the regular role-based routing to prevent accidental access.
+  if (!isDemo && session && profile?.is_guest === true) {
+    return (
+      <>
+        <View style={styles.shell}>
+          <GuestChatView />
         </View>
         <StatusBar style="dark" />
       </>

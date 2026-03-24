@@ -1381,6 +1381,7 @@ const MyModelsTab: React.FC<{
     typeof window !== 'undefined' ? window.localStorage.getItem('ci_netwalk_api_key') ?? '' : ''
   );
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
+  const [saveFeedback, setSaveFeedback] = useState<'saving' | 'success' | 'error' | null>(null);
 
   const [polasSource, setPolasSource] = useState<'mediaslide' | 'netwalk' | 'manual'>('manual');
   type LocalPhoto = { id?: string; url: string; visible: boolean; is_visible_to_clients: boolean };
@@ -1406,6 +1407,19 @@ const MyModelsTab: React.FC<{
   const [bulkSelectedCountries, setBulkSelectedCountries] = useState<string[]>([]);
   const [bulkAssigning, setBulkAssigning] = useState(false);
   const [bulkFeedback, setBulkFeedback] = useState<string | null>(null);
+
+  const countries = useMemo(() =>
+    Array.from(new Set(models.map((m) => m.country || m.city || 'Unknown').filter(Boolean))).sort(),
+    [models]
+  );
+
+  // Must be declared before any useMemo that references it in deps or body.
+  const isoCountryList = useMemo(() => {
+    const list = Object.entries(ISO_COUNTRY_NAMES)
+      .map(([code, name]) => ({ code: code.toUpperCase(), name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return list;
+  }, []);
 
   const bulkFilteredCountries = useMemo(() => {
     const q = bulkTerritorySearch.trim().toLowerCase();
@@ -1437,18 +1451,6 @@ const MyModelsTab: React.FC<{
     setTimeout(() => setBulkFeedback(null), 3000);
   };
 
-  const countries = useMemo(() =>
-    Array.from(new Set(models.map((m) => m.country || m.city || 'Unknown').filter(Boolean))).sort(),
-    [models]
-  );
-
-  const isoCountryList = useMemo(() => {
-    const list = Object.entries(ISO_COUNTRY_NAMES)
-      .map(([code, name]) => ({ code: code.toUpperCase(), name }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-    return list;
-  }, []);
-
   const visibleIsoCountries = useMemo(() => {
     const q = territorySearch.trim().toLowerCase();
     if (!q) return isoCountryList.slice(0, 40);
@@ -1463,6 +1465,7 @@ const MyModelsTab: React.FC<{
   }, [models, countryFilter]);
 
   useEffect(() => {
+    setSaveFeedback(null);
     if (!selectedModel) {
       setModelPhotos([]);
       setPolaroidPhotos([]);
@@ -1470,17 +1473,29 @@ const MyModelsTab: React.FC<{
       return;
     }
     void getPhotosForModel(selectedModel.id, 'portfolio').then((photos) => {
-      setModelPhotos(
-        photos.map((p) => {
-          const isVisibleToClients = Boolean(p.is_visible_to_clients ?? p.visible);
-          return {
-            id: p.id,
-            url: p.url,
-            visible: isVisibleToClients,
-            is_visible_to_clients: isVisibleToClients,
-          };
-        }),
-      );
+      if (photos.length > 0) {
+        setModelPhotos(
+          photos.map((p) => {
+            const isVisibleToClients = Boolean(p.is_visible_to_clients ?? p.visible);
+            return {
+              id: p.id,
+              url: p.url,
+              visible: isVisibleToClients,
+              is_visible_to_clients: isVisibleToClients,
+            };
+          }),
+        );
+      } else if ((selectedModel.portfolio_images ?? []).length > 0) {
+        // Fallback: model_photos table may be blocked by RLS (run migration_model_photos_agency_owner_rls.sql).
+        // Use portfolio_images from models table as display source.
+        setModelPhotos(
+          (selectedModel.portfolio_images ?? []).map((url) => ({
+            url,
+            visible: true,
+            is_visible_to_clients: true,
+          })),
+        );
+      }
     });
     void getPhotosForModel(selectedModel.id, 'polaroid').then((photos) => {
       setPolaroidPhotos(
@@ -1647,63 +1662,75 @@ const MyModelsTab: React.FC<{
       Alert.alert(uiCopy.modelRoster.portfolioRequiredTitle, uiCopy.modelRoster.portfolioRequiredBody);
       return;
     }
-    const updates: any = {};
-    if (editField.name !== undefined) updates.name = editField.name;
-    if (editField.email !== undefined) updates.email = editField.email.trim() || null;
-    if (editField.height !== undefined) updates.height = parseInt(editField.height, 10);
-    if (editField.bust !== undefined) updates.bust = parseInt(editField.bust, 10);
-    if (editField.waist !== undefined) updates.waist = parseInt(editField.waist, 10);
-    if (editField.hips !== undefined) updates.hips = parseInt(editField.hips, 10);
-    if (editField.legs_inseam !== undefined) updates.legs_inseam = parseInt(editField.legs_inseam, 10);
-    if (editField.hair_color !== undefined) updates.hair_color = editField.hair_color;
-    if (editField.eye_color !== undefined) updates.eye_color = editField.eye_color;
-    if (editField.city !== undefined) updates.city = editField.city;
-    if (editField.country !== undefined) updates.country = editField.country;
-    if (editField.current_location !== undefined) updates.current_location = editField.current_location;
-    if (editField.is_visible_commercial !== undefined) updates.is_visible_commercial = editField.is_visible_commercial === 'true';
-    if (editField.is_visible_fashion !== undefined) updates.is_visible_fashion = editField.is_visible_fashion === 'true';
-    // Store NULL when no categories selected → model visible in all category filters.
-    updates.categories = editModelCategories.length > 0 ? editModelCategories : null;
-    updates.show_polas_on_profile = showPolasOnProfile;
+    setSaveFeedback('saving');
+    try {
+      const updates: any = {};
+      if (editField.name !== undefined) updates.name = editField.name;
+      if (editField.email !== undefined) updates.email = editField.email.trim() || null;
+      if (editField.height !== undefined) updates.height = parseInt(editField.height, 10);
+      if (editField.bust !== undefined) updates.bust = parseInt(editField.bust, 10);
+      if (editField.waist !== undefined) updates.waist = parseInt(editField.waist, 10);
+      if (editField.hips !== undefined) updates.hips = parseInt(editField.hips, 10);
+      if (editField.legs_inseam !== undefined) updates.legs_inseam = parseInt(editField.legs_inseam, 10);
+      if (editField.hair_color !== undefined) updates.hair_color = editField.hair_color;
+      if (editField.eye_color !== undefined) updates.eye_color = editField.eye_color;
+      if (editField.city !== undefined) updates.city = editField.city;
+      if (editField.country !== undefined) updates.country = editField.country;
+      if (editField.current_location !== undefined) updates.current_location = editField.current_location;
+      if (editField.is_visible_commercial !== undefined) updates.is_visible_commercial = editField.is_visible_commercial === 'true';
+      if (editField.is_visible_fashion !== undefined) updates.is_visible_fashion = editField.is_visible_fashion === 'true';
+      // Store NULL when no categories selected → model visible in all category filters.
+      updates.categories = editModelCategories.length > 0 ? editModelCategories : null;
+      updates.show_polas_on_profile = showPolasOnProfile;
 
-    await supabase.from('models').update(updates).eq('id', selectedModel.id);
+      const { error: modelUpdateError } = await supabase.from('models').update(updates).eq('id', selectedModel.id);
+      if (modelUpdateError) throw modelUpdateError;
 
-    const photoPayload = modelPhotos.map((p, index) => ({
-      id: p.id,
-      url: p.url,
-      sort_order: index,
-      visible: p.visible,
-      is_visible_to_clients: p.is_visible_to_clients,
-      source: null,
-      api_external_id: null,
-      photo_type: 'portfolio' as const,
-    }));
-    const polaroidPayload = polaroidPhotos.map((p, index) => ({
-      id: p.id,
-      url: p.url,
-      sort_order: index,
-      visible: p.visible,
-      is_visible_to_clients: p.is_visible_to_clients,
-      source: null,
-      api_external_id: null,
-      photo_type: 'polaroid' as const,
-    }));
-    await upsertPhotosForModel(selectedModel.id, [...photoPayload, ...polaroidPayload]);
-    await syncPortfolioToModel(
-      selectedModel.id,
-      modelPhotos.filter((p) => p.is_visible_to_clients).map((p) => p.url),
-    );
-    await syncPolaroidsToModel(
-      selectedModel.id,
-      polaroidPhotos.filter((p) => p.is_visible_to_clients).map((p) => p.url),
-    );
+      const photoPayload = modelPhotos.map((p, index) => ({
+        id: p.id,
+        url: p.url,
+        sort_order: index,
+        visible: p.visible,
+        is_visible_to_clients: p.is_visible_to_clients,
+        source: null,
+        api_external_id: null,
+        photo_type: 'portfolio' as const,
+      }));
+      const polaroidPayload = polaroidPhotos.map((p, index) => ({
+        id: p.id,
+        url: p.url,
+        sort_order: index,
+        visible: p.visible,
+        is_visible_to_clients: p.is_visible_to_clients,
+        source: null,
+        api_external_id: null,
+        photo_type: 'polaroid' as const,
+      }));
+      await upsertPhotosForModel(selectedModel.id, [...photoPayload, ...polaroidPayload]);
+      await syncPortfolioToModel(
+        selectedModel.id,
+        modelPhotos.filter((p) => p.is_visible_to_clients).map((p) => p.url),
+      );
+      await syncPolaroidsToModel(
+        selectedModel.id,
+        polaroidPhotos.filter((p) => p.is_visible_to_clients).map((p) => p.url),
+      );
 
-    // Persist representation territories (agency ↔ model ↔ country).
-    await upsertTerritoriesForModel(selectedModel.id, agencyId, territoryCountryCodes);
+      // Persist representation territories (agency ↔ model ↔ country).
+      await upsertTerritoriesForModel(selectedModel.id, agencyId, territoryCountryCodes);
 
-    setSelectedModel(null);
-    setEditField({});
-    onRefresh();
+      setSaveFeedback('success');
+      onRefresh();
+      setTimeout(() => {
+        setSaveFeedback(null);
+        setSelectedModel(null);
+        setEditField({});
+      }, 1800);
+    } catch (err) {
+      console.error('handleSaveModel error:', err);
+      setSaveFeedback('error');
+      setTimeout(() => setSaveFeedback(null), 3000);
+    }
   };
 
   const movePhoto = (idx: number, dir: number) => {
@@ -2284,8 +2311,22 @@ const MyModelsTab: React.FC<{
           </View>
         )}
 
-        <TouchableOpacity onPress={handleSaveModel} style={s.saveBtn}>
-          <Text style={s.saveBtnLabel}>Save changes</Text>
+        {saveFeedback === 'success' && (
+          <View style={{ backgroundColor: '#1a7a4a', borderRadius: 8, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, marginBottom: spacing.sm, alignItems: 'center' }}>
+            <Text style={{ ...typography.label, fontSize: 13, color: '#fff' }}>Settings saved successfully</Text>
+          </View>
+        )}
+        {saveFeedback === 'error' && (
+          <View style={{ backgroundColor: '#b91c1c', borderRadius: 8, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, marginBottom: spacing.sm, alignItems: 'center' }}>
+            <Text style={{ ...typography.label, fontSize: 13, color: '#fff' }}>Save failed — please try again</Text>
+          </View>
+        )}
+        <TouchableOpacity
+          onPress={handleSaveModel}
+          style={[s.saveBtn, saveFeedback === 'saving' && { opacity: 0.6 }]}
+          disabled={saveFeedback === 'saving'}
+        >
+          <Text style={s.saveBtnLabel}>{saveFeedback === 'saving' ? 'Saving…' : 'Save settings'}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -2543,6 +2584,17 @@ const MyModelsTab: React.FC<{
               </View>
             </TouchableOpacity>
             <TouchableOpacity style={[s.modelRow, { flex: 1, marginLeft: spacing.xs }]} onPress={() => setSelectedModel(m)}>
+              {(m.portfolio_images ?? [])[0] ? (
+                <Image
+                  source={{ uri: (m.portfolio_images ?? [])[0] }}
+                  style={{ width: 44, height: 44, borderRadius: 6, marginRight: spacing.sm, backgroundColor: colors.border }}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={{ width: 44, height: 44, borderRadius: 6, marginRight: spacing.sm, backgroundColor: colors.border, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 18, color: colors.textSecondary }}>◻</Text>
+                </View>
+              )}
               <View style={{ flex: 1 }}>
                 <Text style={s.modelName}>{m.name}</Text>
                 <Text style={s.metaText}>{m.city ?? '—'} · H{m.height} C{m.bust ?? (m as any).chest ?? '—'} W{m.waist ?? '—'} H{m.hips ?? '—'}</Text>

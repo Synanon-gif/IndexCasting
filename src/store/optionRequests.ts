@@ -144,6 +144,10 @@ export function addOptionRequest(
     requestType?: 'option' | 'casting';
     currency?: string;
     countryCode?: string;
+    /** Set when the request is triggered from a shared package. */
+    source?: 'package';
+    /** ID of the guest_links row if source is 'package'. */
+    packageId?: string;
   }
 ): string {
   const threadId = `thread-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -276,6 +280,8 @@ export function addOptionRequest(
           modelId,
           countryCode: bookingCountryCode,
           date,
+          source: extra?.source,
+          packageId: extra?.packageId,
         });
       }
 

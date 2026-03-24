@@ -15,6 +15,8 @@ import { showAppAlert } from '../utils/crossPlatformAlert';
 import { uiCopy } from '../constants/uiCopy';
 import { useAuth } from '../context/AuthContext';
 import { getModelsForClient, getModelData } from '../services/apiService';
+import { getModelByIdFromSupabase, type SupabaseModel } from '../services/modelsSupabase';
+import { getGuestLink } from '../services/guestLinksSupabase';
 import { getAgencies, type Agency } from '../services/agenciesSupabase';
 import { AGENCY_SEGMENT_TYPES } from '../constants/agencyTypes';
 import {
@@ -157,27 +159,78 @@ type WebFilters = {
   category: string;
 };
 
-/** Supported country pills: ISO-2 code → display label */
+/** All selectable countries for the country search dropdown. Sorted A→Z. */
 const FILTER_COUNTRIES: Array<{ code: string; label: string }> = [
-  { code: '', label: 'All' },
-  { code: 'DE', label: 'Germany' },
-  { code: 'FR', label: 'France' },
-  { code: 'IT', label: 'Italy' },
-  { code: 'GB', label: 'UK' },
-  { code: 'ES', label: 'Spain' },
-  { code: 'NL', label: 'Netherlands' },
-  { code: 'SE', label: 'Sweden' },
-  { code: 'DK', label: 'Denmark' },
-  { code: 'BE', label: 'Belgium' },
-  { code: 'CH', label: 'Switzerland' },
-  { code: 'AT', label: 'Austria' },
-  { code: 'PT', label: 'Portugal' },
-  { code: 'NO', label: 'Norway' },
-  { code: 'PL', label: 'Poland' },
-  { code: 'US', label: 'USA' },
+  { code: 'AL', label: 'Albania' },
+  { code: 'DZ', label: 'Algeria' },
+  { code: 'AR', label: 'Argentina' },
   { code: 'AU', label: 'Australia' },
+  { code: 'AT', label: 'Austria' },
+  { code: 'BE', label: 'Belgium' },
+  { code: 'BA', label: 'Bosnia & Herzegovina' },
+  { code: 'BR', label: 'Brazil' },
+  { code: 'BG', label: 'Bulgaria' },
   { code: 'CA', label: 'Canada' },
+  { code: 'CL', label: 'Chile' },
+  { code: 'CN', label: 'China' },
+  { code: 'CO', label: 'Colombia' },
+  { code: 'HR', label: 'Croatia' },
+  { code: 'CY', label: 'Cyprus' },
+  { code: 'CZ', label: 'Czech Republic' },
+  { code: 'DK', label: 'Denmark' },
+  { code: 'EG', label: 'Egypt' },
+  { code: 'EE', label: 'Estonia' },
+  { code: 'FI', label: 'Finland' },
+  { code: 'FR', label: 'France' },
+  { code: 'DE', label: 'Germany' },
+  { code: 'GH', label: 'Ghana' },
+  { code: 'GR', label: 'Greece' },
+  { code: 'HU', label: 'Hungary' },
+  { code: 'IS', label: 'Iceland' },
+  { code: 'IN', label: 'India' },
+  { code: 'ID', label: 'Indonesia' },
+  { code: 'IE', label: 'Ireland' },
+  { code: 'IL', label: 'Israel' },
+  { code: 'IT', label: 'Italy' },
   { code: 'JP', label: 'Japan' },
+  { code: 'KE', label: 'Kenya' },
+  { code: 'KR', label: 'South Korea' },
+  { code: 'LV', label: 'Latvia' },
+  { code: 'LT', label: 'Lithuania' },
+  { code: 'LU', label: 'Luxembourg' },
+  { code: 'MY', label: 'Malaysia' },
+  { code: 'MA', label: 'Morocco' },
+  { code: 'MX', label: 'Mexico' },
+  { code: 'ME', label: 'Montenegro' },
+  { code: 'NL', label: 'Netherlands' },
+  { code: 'NZ', label: 'New Zealand' },
+  { code: 'NG', label: 'Nigeria' },
+  { code: 'MK', label: 'North Macedonia' },
+  { code: 'NO', label: 'Norway' },
+  { code: 'PK', label: 'Pakistan' },
+  { code: 'PE', label: 'Peru' },
+  { code: 'PH', label: 'Philippines' },
+  { code: 'PL', label: 'Poland' },
+  { code: 'PT', label: 'Portugal' },
+  { code: 'RO', label: 'Romania' },
+  { code: 'RU', label: 'Russia' },
+  { code: 'RS', label: 'Serbia' },
+  { code: 'SG', label: 'Singapore' },
+  { code: 'SK', label: 'Slovakia' },
+  { code: 'SI', label: 'Slovenia' },
+  { code: 'ZA', label: 'South Africa' },
+  { code: 'ES', label: 'Spain' },
+  { code: 'SE', label: 'Sweden' },
+  { code: 'CH', label: 'Switzerland' },
+  { code: 'TW', label: 'Taiwan' },
+  { code: 'TH', label: 'Thailand' },
+  { code: 'TR', label: 'Turkey' },
+  { code: 'UA', label: 'Ukraine' },
+  { code: 'AE', label: 'UAE' },
+  { code: 'GB', label: 'UK' },
+  { code: 'US', label: 'USA' },
+  { code: 'UY', label: 'Uruguay' },
+  { code: 'VN', label: 'Vietnam' },
 ];
 
 const initialFilters: WebFilters = {
@@ -261,6 +314,11 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     return initialFilters;
   });
   const [sharedProjectId, setSharedProjectId] = useState<string | null>(null);
+  const [packageViewState, setPackageViewState] = useState<{
+    packageId: string;
+    models: ModelSummary[];
+    guestLink: string;
+  } | null>(null);
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const [pendingModel, setPendingModel] = useState<ModelSummary | null>(null);
   const [optionDatePickerOpen, setOptionDatePickerOpen] = useState(false);
@@ -470,10 +528,11 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   );
 
   const isSharedMode = !!sharedProject;
+  const isPackageMode = !!packageViewState;
 
   const baseModels = useMemo(
-    () => (sharedProject ? sharedProject.models : models),
-    [sharedProject, models],
+    () => packageViewState?.models ?? (sharedProject ? sharedProject.models : models),
+    [packageViewState, sharedProject, models],
   );
 
   const filteredModels = useMemo(() => {
@@ -636,6 +695,45 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     setSharedProjectId(null);
   };
 
+  const exitPackageMode = () => setPackageViewState(null);
+
+  const handlePackagePress = async (meta: Record<string, unknown>) => {
+    const packageId = typeof meta.package_id === 'string' ? meta.package_id : null;
+    if (!packageId) return;
+    try {
+      const gl = await getGuestLink(packageId);
+      if (!gl) return;
+      const rows = await Promise.all(gl.model_ids.map((id) => getModelByIdFromSupabase(id)));
+      const packageModels: ModelSummary[] = rows
+        .filter((m): m is SupabaseModel => m !== null)
+        .map((m) => ({
+          id: m.id,
+          name: m.name,
+          city: m.city ?? '',
+          hairColor: m.hair_color ?? '',
+          height: m.height,
+          bust: m.bust ?? 0,
+          waist: m.waist ?? 0,
+          hips: m.hips ?? 0,
+          chest: m.chest ?? 0,
+          legsInseam: m.legs_inseam ?? 0,
+          coverUrl: m.portfolio_images?.[0] ?? m.polaroids?.[0] ?? '',
+          agencyId: m.agency_id ?? null,
+          agencyName: null,
+          countryCode: m.country ?? null,
+          hasRealLocation: false,
+        }));
+      setPackageViewState({
+        packageId,
+        models: packageModels,
+        guestLink: typeof meta.guest_link === 'string' ? meta.guest_link : '',
+      });
+      setTab('discover');
+    } catch (e) {
+      console.error('handlePackagePress error:', e);
+    }
+  };
+
   const openDetails = (id: string) => {
     setDetailId(id);
   };
@@ -658,13 +756,16 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       countryCode?: string;
     }
   ) => {
+    const pkgExtra = packageViewState
+      ? { source: 'package' as const, packageId: packageViewState.packageId }
+      : {};
     const threadId = addOptionRequest(
       'Client',
       modelName,
       modelId,
       date,
       projectId ?? activeProjectId ?? undefined,
-      extra,
+      { ...extra, ...pkgExtra },
     );
     setOptionDatePickerOpen(false);
     setOptionDateModel(null);
@@ -715,10 +816,12 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
               </TouchableOpacity>
             </View>
           </View>
-          {isSharedMode && (
+          {(isSharedMode || isPackageMode) && (
             <View style={styles.sharedRight}>
-              <TouchableOpacity onPress={exitSharedMode}>
-                <Text style={styles.sharedExit}>Back to workspace</Text>
+              <TouchableOpacity onPress={isPackageMode ? exitPackageMode : exitSharedMode}>
+                <Text style={styles.sharedExit}>
+                  {isPackageMode ? uiCopy.b2bChat.exitPackageMode : 'Back to workspace'}
+                </Text>
               </TouchableOpacity>
             </View>
           )}
@@ -829,6 +932,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             pendingClientB2BChat={pendingClientB2BChat}
             onPendingClientB2BChatConsumed={() => setPendingClientB2BChat(null)}
             onBookingCardPress={() => setTab('calendar')}
+            onPackagePress={(meta) => { void handlePackagePress(meta); }}
           />
         )}
 
@@ -1325,7 +1429,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         <SettingsPanel realClientId={realClientId} onClose={() => setSettingsOpen(false)} />
       )}
 
-      {!isSharedMode && (
+      {!isSharedMode && !isPackageMode && (
         <View style={styles.bottomTabBar}>
           {(['discover', 'messages', 'calendar', 'team', 'agencies', 'projects'] as TopTab[]).map((key) => (
             <TouchableOpacity
@@ -1392,6 +1496,21 @@ const DiscoverView: React.FC<DiscoverProps> = ({
   isSharedMode,
 }) => {
   const [filterOpen, setFilterOpen] = useState(false);
+  const [countryQuery, setCountryQuery] = useState('');
+  const [countryDropdownOpen, setCountryDropdownOpen] = useState(false);
+
+  const selectedCountryLabel = useMemo(
+    () => FILTER_COUNTRIES.find((c) => c.code === filters.countryCode)?.label ?? null,
+    [filters.countryCode],
+  );
+
+  const filteredCountryOptions = useMemo(() => {
+    if (!countryQuery.trim()) return FILTER_COUNTRIES;
+    const q = countryQuery.toLowerCase();
+    return FILTER_COUNTRIES.filter(
+      (c) => c.label.toLowerCase().includes(q) || c.code.toLowerCase().includes(q),
+    );
+  }, [countryQuery]);
 
   return (
     <View style={styles.section}>
@@ -1473,27 +1592,102 @@ const DiscoverView: React.FC<DiscoverProps> = ({
           </View>
           <View style={styles.filterGroup}>
             <Text style={styles.filterLabel}>Country</Text>
-            <View style={styles.filterPills}>
-              {FILTER_COUNTRIES.map((c) => (
+            {filters.countryCode ? (
+              /* ── selected state: chip + clear + Near me ── */
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, alignItems: 'center' }}>
+                <View style={[styles.filterPill, styles.filterPillActive, { flexDirection: 'row', alignItems: 'center', gap: 6 }]}>
+                  <Text style={[styles.filterPillLabel, styles.filterPillLabelActive]}>{selectedCountryLabel}</Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      onChangeFilters({ ...filters, countryCode: '', city: '', nearby: false });
+                      setCountryQuery('');
+                      setCountryDropdownOpen(false);
+                    }}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <Text style={[styles.filterPillLabel, styles.filterPillLabelActive, { fontSize: 13, lineHeight: 14 }]}>×</Text>
+                  </TouchableOpacity>
+                </View>
                 <TouchableOpacity
-                  key={c.code || 'ALL'}
-                  style={[styles.filterPill, filters.countryCode === c.code && styles.filterPillActive]}
-                  onPress={() => onChangeFilters({ ...filters, countryCode: c.code, city: '', nearby: false })}
+                  style={styles.filterPill}
+                  onPress={() => {
+                    onChangeFilters({ ...filters, countryCode: '', city: '', nearby: false });
+                    setCountryQuery('');
+                    setCountryDropdownOpen(true);
+                  }}
                 >
-                  <Text style={[styles.filterPillLabel, filters.countryCode === c.code && styles.filterPillLabelActive]}>
-                    {c.label}
+                  <Text style={styles.filterPillLabel}>Change</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.filterPill, filters.nearby && styles.filterPillActive]}
+                  onPress={() => onChangeFilters({ ...filters, nearby: !filters.nearby, countryCode: '', city: '' })}
+                >
+                  <Text style={[styles.filterPillLabel, filters.nearby && styles.filterPillLabelActive]}>
+                    {userCity ? `Near me (${userCity})` : 'Near me'}
                   </Text>
                 </TouchableOpacity>
-              ))}
-              <TouchableOpacity
-                style={[styles.filterPill, filters.nearby && styles.filterPillActive]}
-                onPress={() => onChangeFilters({ ...filters, nearby: !filters.nearby, countryCode: '', city: '' })}
-              >
-                <Text style={[styles.filterPillLabel, filters.nearby && styles.filterPillLabelActive]}>
-                  {userCity ? `Near me (${userCity})` : 'Near me'}
-                </Text>
-              </TouchableOpacity>
-            </View>
+              </View>
+            ) : (
+              /* ── unselected state: search input + Near me + dropdown list ── */
+              <View>
+                <View style={{ flexDirection: 'row', gap: spacing.xs, alignItems: 'center' }}>
+                  <TextInput
+                    value={countryQuery}
+                    onChangeText={(v) => { setCountryQuery(v); setCountryDropdownOpen(true); }}
+                    onFocus={() => setCountryDropdownOpen(true)}
+                    placeholder="Search country…"
+                    placeholderTextColor={colors.textSecondary}
+                    style={[styles.input, { flex: 1, height: 32, paddingVertical: 4, fontSize: 11 }]}
+                  />
+                  <TouchableOpacity
+                    style={[styles.filterPill, filters.nearby && styles.filterPillActive]}
+                    onPress={() => {
+                      onChangeFilters({ ...filters, nearby: !filters.nearby, countryCode: '', city: '' });
+                      setCountryDropdownOpen(false);
+                    }}
+                  >
+                    <Text style={[styles.filterPillLabel, filters.nearby && styles.filterPillLabelActive]}>
+                      {userCity ? `Near me (${userCity})` : 'Near me'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                {countryDropdownOpen && filteredCountryOptions.length > 0 && (
+                  <View style={{
+                    marginTop: 4,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    borderRadius: 8,
+                    backgroundColor: colors.surface,
+                    maxHeight: 180,
+                    overflow: 'hidden',
+                    zIndex: 10,
+                  }}>
+                    <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled>
+                      {filteredCountryOptions.map((c) => (
+                        <TouchableOpacity
+                          key={c.code}
+                          style={{
+                            paddingHorizontal: spacing.md,
+                            paddingVertical: spacing.xs,
+                            borderBottomWidth: 1,
+                            borderBottomColor: colors.border,
+                          }}
+                          onPress={() => {
+                            onChangeFilters({ ...filters, countryCode: c.code, city: '', nearby: false });
+                            setCountryQuery('');
+                            setCountryDropdownOpen(false);
+                          }}
+                        >
+                          <Text style={{ ...typography.body, fontSize: 12, color: colors.textPrimary }}>
+                            {c.label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+              </View>
+            )}
           </View>
           {filters.countryCode && (
             <View style={styles.filterGroup}>
@@ -2185,6 +2379,7 @@ type MessagesViewProps = {
   pendingClientB2BChat?: { conversationId: string; title: string } | null;
   onPendingClientB2BChatConsumed?: () => void;
   onBookingCardPress?: (meta: Record<string, unknown>) => void;
+  onPackagePress?: (meta: Record<string, unknown>) => void;
 };
 
 const ClientB2BChatsPanel: React.FC<{
@@ -2192,7 +2387,8 @@ const ClientB2BChatsPanel: React.FC<{
   pendingOpen?: { conversationId: string; title: string } | null;
   onPendingConsumed?: () => void;
   onBookingCardPress?: (meta: Record<string, unknown>) => void;
-}> = ({ clientUserId, pendingOpen, onPendingConsumed, onBookingCardPress }) => {
+  onPackagePress?: (meta: Record<string, unknown>) => void;
+}> = ({ clientUserId, pendingOpen, onPendingConsumed, onBookingCardPress, onPackagePress }) => {
   const auth = useAuth();
   const [rows, setRows] = useState<Conversation[]>([]);
   const [titles, setTitles] = useState<Record<string, string>>({});
@@ -2309,6 +2505,7 @@ const ClientB2BChatsPanel: React.FC<{
           viewerUserId={auth.profile?.id ?? null}
           containerStyle={{ marginTop: spacing.md }}
           onBookingCardPress={onBookingCardPress}
+          onPackagePress={onPackagePress}
         />
       ) : null}
     </View>
@@ -2325,6 +2522,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   pendingClientB2BChat = null,
   onPendingClientB2BChatConsumed,
   onBookingCardPress,
+  onPackagePress,
 }) => {
   const [clientMsgTab, setClientMsgTab] = useState<'b2bChats' | 'optionRequests'>('b2bChats');
   const [requests, setRequests] = useState(getOptionRequests());
@@ -2419,6 +2617,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
           pendingOpen={pendingClientB2BChat}
           onPendingConsumed={onPendingClientB2BChatConsumed}
           onBookingCardPress={onBookingCardPress}
+          onPackagePress={onPackagePress}
         />
       ) : (
         <>
@@ -3182,8 +3381,8 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
           displayName, companyName, phone, website, instagram, linkedin,
         }));
       }
-      // Save company name to Supabase so Agency sees it in chat.
-      if (clientOrgId && companyName.trim()) {
+      // Only the org owner may update the organization name.
+      if (clientIsOwner && clientOrgId && companyName.trim()) {
         await updateOrganizationName(clientOrgId, companyName.trim());
       }
       setSaved(true);
@@ -3254,8 +3453,28 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
               <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary, marginBottom: 4 }}>Display name</Text>
               <TextInput value={displayName} onChangeText={setDisplayName} placeholder="Your name" placeholderTextColor={colors.textSecondary} style={[settingsInputStyle, { marginBottom: spacing.md }]} />
 
-              <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary, marginBottom: 4 }}>Company</Text>
-              <TextInput value={companyName} onChangeText={setCompanyName} placeholder="Company name" placeholderTextColor={colors.textSecondary} style={[settingsInputStyle, { marginBottom: spacing.md }]} />
+              <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary, marginBottom: 4 }}>
+                Company {ownerRoleLoading ? '' : clientIsOwner ? '' : <Text style={{ fontWeight: '400', color: colors.textSecondary }}>(read-only)</Text>}
+              </Text>
+              {clientIsOwner ? (
+                <TextInput
+                  value={companyName}
+                  onChangeText={setCompanyName}
+                  placeholder="Company name"
+                  placeholderTextColor={colors.textSecondary}
+                  style={[settingsInputStyle, { marginBottom: 4 }]}
+                />
+              ) : (
+                <View style={[settingsInputStyle, { justifyContent: 'center', marginBottom: 4 }]}>
+                  <Text style={{ ...typography.body, fontSize: 13, color: colors.textPrimary }}>{companyName || '—'}</Text>
+                </View>
+              )}
+              {!ownerRoleLoading && !clientIsOwner && (
+                <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.md }}>
+                  Only the organization owner can change the company name.
+                </Text>
+              )}
+              {clientIsOwner && <View style={{ marginBottom: spacing.md }} />}
 
               <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary, marginBottom: 4 }}>Phone</Text>
               <TextInput value={phone} onChangeText={setPhone} placeholder="+49..." placeholderTextColor={colors.textSecondary} keyboardType="phone-pad" style={[settingsInputStyle, { marginBottom: spacing.md }]} />
@@ -4114,6 +4333,7 @@ const styles = StyleSheet.create({
   filterGroup: {
     flex: 1,
     gap: spacing.xs,
+    marginBottom: spacing.sm,
   },
   filterLabel: {
     ...typography.label,

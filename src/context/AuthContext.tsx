@@ -10,6 +10,8 @@ export type Profile = {
   role: string;
   is_active: boolean;
   is_admin: boolean;
+  is_guest: boolean;
+  has_completed_signup: boolean;
   tos_accepted: boolean;
   privacy_accepted: boolean;
   agency_model_rights_accepted: boolean;
@@ -48,7 +50,7 @@ type AuthState = {
 
 const AuthContext = createContext<AuthState | null>(null);
 
-const PROFILE_FIELDS = 'id, email, display_name, role, is_active, is_admin, tos_accepted, privacy_accepted, agency_model_rights_accepted, activation_documents_sent, company_name, phone, website, country, verification_email, deletion_requested_at';
+const PROFILE_FIELDS = 'id, email, display_name, role, is_active, is_admin, is_guest, has_completed_signup, tos_accepted, privacy_accepted, agency_model_rights_accepted, activation_documents_sent, company_name, phone, website, country, verification_email, deletion_requested_at';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -88,6 +90,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return null;
     }
     const isActive = data.is_active ?? false;
+    const isGuest = data.is_guest ?? false;
     const role = data.role;
     const deletionRequestedAt = data.deletion_requested_at ?? null;
     if (deletionRequestedAt) {
@@ -96,7 +99,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setProfile(null);
       return { deactivated: true, reason: 'deletion' };
     }
-    if ((role === 'client' || role === 'agent') && !isActive) {
+    // Guest accounts are always considered active — skip the activation gate.
+    if (!isGuest && (role === 'client' || role === 'agent') && !isActive) {
       await supabase.auth.signOut();
       setSession(null);
       setProfile(null);
@@ -104,8 +108,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     const profileData = {
       ...data,
-      is_active: isActive,
+      is_active: isGuest ? true : isActive,
       is_admin: data.is_admin ?? false,
+      is_guest: isGuest,
+      has_completed_signup: data.has_completed_signup ?? false,
       tos_accepted: data.tos_accepted ?? false,
       privacy_accepted: data.privacy_accepted ?? false,
       agency_model_rights_accepted: data.agency_model_rights_accepted ?? false,
@@ -118,12 +124,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   /** Runs after a real session exists — fixes owner bootstrap when email confirmation prevented it at signUp. */
   async function bootstrapThenLoadProfile(userId: string) {
+    // Check if this is a guest user before running the B2B bootstrap RPC.
+    // Guests have no organization and must not trigger org-creation side effects.
+    let isGuestUser = false;
     try {
-      const { ensurePlainSignupB2bOwnerBootstrap } = await import('../services/b2bOwnerBootstrapSupabase');
-      const { error } = await ensurePlainSignupB2bOwnerBootstrap();
-      if (error) console.error('bootstrapThenLoadProfile RPC', error);
-    } catch (e) {
-      console.error('bootstrapThenLoadProfile', e);
+      const { data: guestCheck } = await supabase
+        .from('profiles')
+        .select('is_guest')
+        .eq('id', userId)
+        .maybeSingle();
+      isGuestUser = guestCheck?.is_guest === true;
+    } catch {
+      // Ignore — fall through to full bootstrap
+    }
+
+    if (!isGuestUser) {
+      try {
+        const { ensurePlainSignupB2bOwnerBootstrap } = await import('../services/b2bOwnerBootstrapSupabase');
+        const { error } = await ensurePlainSignupB2bOwnerBootstrap();
+        if (error) console.error('bootstrapThenLoadProfile RPC', error);
+      } catch (e) {
+        console.error('bootstrapThenLoadProfile', e);
+      }
     }
     return loadProfile(userId);
   }

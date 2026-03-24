@@ -10,6 +10,7 @@ import {
   Modal,
   Linking,
   Pressable,
+  Image,
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { uiCopy } from '../constants/uiCopy';
@@ -27,7 +28,7 @@ import {
   type BookingEventStatus,
 } from '../services/bookingEventsSupabase';
 
-/** Organization-scoped B2B thread (client org ↔ agency org). Not a user-to-user or “connection” chat. */
+/** Organization-scoped B2B thread (client org ↔ agency org). Not a user-to-user or "connection" chat. */
 export type OrgMessengerInlineProps = {
   conversationId: string;
   headerTitle: string;
@@ -39,6 +40,12 @@ export type OrgMessengerInlineProps = {
   containerStyle?: ViewStyle;
   /** Called when the user taps a booking card. Receives the booking metadata from the message. */
   onBookingCardPress?: (metadata: Record<string, unknown>) => void;
+  /**
+   * Called when the user taps "Request from this package" on a package card.
+   * Receives the full package metadata (package_id, guest_link, preview_model_ids, etc.).
+   * If not provided, the button is hidden.
+   */
+  onPackagePress?: (metadata: Record<string, unknown>) => void;
 };
 
 function payloadType(m: MessageWithSender): MessagePayloadType {
@@ -52,6 +59,12 @@ function metaString(m: MessageWithSender, key: string): string | undefined {
   return typeof raw === 'string' ? raw : undefined;
 }
 
+function metaStringArray(m: MessageWithSender, key: string): string[] {
+  const raw = (m as { metadata?: Record<string, unknown> }).metadata?.[key];
+  if (Array.isArray(raw)) return raw.filter((v): v is string => typeof v === 'string');
+  return [];
+}
+
 export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   conversationId,
   headerTitle,
@@ -61,11 +74,14 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   modelsForShare = [],
   containerStyle,
   onBookingCardPress,
+  onPackagePress,
 }) => {
   const [msgs, setMsgs] = useState<MessageWithSender[]>([]);
   const [input, setInput] = useState('');
   const [shareOpen, setShareOpen] = useState<'package' | 'model' | null>(null);
   const [bookingModelNames, setBookingModelNames] = useState<Record<string, string>>({});
+  /** model_id → first portfolio_images URL, for package card previews */
+  const [packageModelPhotos, setPackageModelPhotos] = useState<Record<string, string>>({});
 
   const reload = () => void getMessagesWithSenderInfo(conversationId).then(setMsgs);
 
@@ -78,8 +94,8 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
     return unsub;
   }, [conversationId]);
 
+  // Resolve booking model names for booking cards
   useEffect(() => {
-    // Resolve booking cards to show model names (fallback to model_id).
     const bookingModelIds = Array.from(
       new Set(
         msgs
@@ -99,6 +115,32 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
       }),
     );
   }, [msgs, bookingModelNames]);
+
+  // Resolve model preview photos for package cards
+  useEffect(() => {
+    const previewIds = Array.from(
+      new Set(
+        msgs
+          .filter((m) => (m as { message_type?: string }).message_type === 'package')
+          .flatMap((m) => metaStringArray(m, 'preview_model_ids')),
+      ),
+    );
+    const missing = previewIds.filter((id) => !packageModelPhotos[id]);
+    if (missing.length === 0) return;
+
+    void Promise.all(
+      missing.map(async (modelId) => {
+        try {
+          const row = await getModelByIdFromSupabase(modelId);
+          const photo = row?.portfolio_images?.[0];
+          if (!photo) return;
+          setPackageModelPhotos((prev) => ({ ...prev, [modelId]: photo }));
+        } catch (e) {
+          console.error('packageModelPhotos lookup error:', e);
+        }
+      }),
+    );
+  }, [msgs, packageModelPhotos]);
 
   const sendChat = async () => {
     const text = input.trim();
@@ -157,19 +199,61 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
                   <Text style={styles.linkText}>{m.text || metaString(m, 'url') || 'Link'}</Text>
                 </Pressable>
               ) : null}
-              {pt === 'package' ? (
-                <View style={styles.card}>
-                  <Text style={styles.cardTitle}>{uiCopy.b2bChat.sharedPackage}</Text>
-                  <Text style={styles.chatBubbleText} numberOfLines={2}>
-                    {m.text ?? ''}
-                  </Text>
-                  {metaString(m, 'guest_link') ? (
-                    <TouchableOpacity style={styles.cardBtn} onPress={() => openUrl(metaString(m, 'guest_link')!)}>
-                      <Text style={styles.cardBtnLabel}>{uiCopy.b2bChat.openPackage}</Text>
-                    </TouchableOpacity>
-                  ) : null}
-                </View>
-              ) : null}
+              {pt === 'package' ? (() => {
+                const meta = (m as { metadata?: Record<string, unknown> }).metadata ?? {};
+                const previewIds = metaStringArray(m, 'preview_model_ids');
+                const packageLabel = metaString(m, 'package_label');
+                const guestLink = metaString(m, 'guest_link');
+                return (
+                  <View style={styles.card}>
+                    <Text style={styles.cardTitle}>{uiCopy.b2bChat.sharedPackage}</Text>
+                    {packageLabel ? (
+                      <Text style={styles.packageLabel}>
+                        {packageLabel} {uiCopy.b2bChat.packagePreviewLabel}
+                      </Text>
+                    ) : (
+                      <Text style={styles.chatBubbleText} numberOfLines={2}>
+                        {m.text ?? ''}
+                      </Text>
+                    )}
+                    {previewIds.length > 0 ? (
+                      <View style={styles.avatarRow}>
+                        {previewIds.slice(0, 4).map((modelId) => (
+                          packageModelPhotos[modelId] ? (
+                            <Image
+                              key={modelId}
+                              source={{ uri: packageModelPhotos[modelId] }}
+                              style={styles.avatar}
+                              resizeMode="cover"
+                            />
+                          ) : (
+                            <View key={modelId} style={[styles.avatar, styles.avatarPlaceholder]}>
+                              <Text style={styles.avatarPlaceholderText}>?</Text>
+                            </View>
+                          )
+                        ))}
+                      </View>
+                    ) : null}
+                    <View style={styles.cardActions}>
+                      {guestLink ? (
+                        <TouchableOpacity style={styles.cardBtn} onPress={() => openUrl(guestLink)}>
+                          <Text style={styles.cardBtnLabel}>{uiCopy.b2bChat.openPackage}</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                      {onPackagePress ? (
+                        <TouchableOpacity
+                          style={[styles.cardBtn, styles.cardBtnSecondary]}
+                          onPress={() => onPackagePress(meta)}
+                        >
+                          <Text style={styles.cardBtnLabelSecondary}>
+                            {uiCopy.b2bChat.requestFromPackage}
+                          </Text>
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                  </View>
+                );
+              })() : null}
               {pt === 'model' ? (
                 <View style={styles.card}>
                   <Text style={styles.cardTitle}>{uiCopy.b2bChat.sharedModel}</Text>
@@ -262,6 +346,8 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
                         void sendRich('package', uiCopy.b2bChat.sharedPackageBody, {
                           package_id: g.id,
                           guest_link: buildGuestUrl(g.id),
+                          preview_model_ids: g.model_ids.slice(0, 4),
+                          package_label: String(g.model_ids.length),
                         })
                       }
                     >
@@ -367,8 +453,39 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     color: colors.textPrimary,
   },
-  cardBtn: {
+  packageLabel: {
+    ...typography.body,
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
+  },
+  avatarRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginVertical: spacing.xs,
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
+  avatarPlaceholder: {
+    backgroundColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarPlaceholderText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+  },
+  cardActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
     marginTop: spacing.sm,
+  },
+  cardBtn: {
     alignSelf: 'flex-start',
     backgroundColor: colors.buttonOptionGreen,
     paddingHorizontal: spacing.md,
@@ -379,6 +496,16 @@ const styles = StyleSheet.create({
     ...typography.label,
     fontSize: 11,
     color: '#fff',
+  },
+  cardBtnSecondary: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.buttonOptionGreen,
+  },
+  cardBtnLabelSecondary: {
+    ...typography.label,
+    fontSize: 11,
+    color: colors.buttonOptionGreen,
   },
   metaHint: {
     ...typography.label,

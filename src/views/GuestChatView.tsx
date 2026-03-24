@@ -1,0 +1,498 @@
+/**
+ * GuestChatView — Limited-access chat for guest (Magic-Link) users.
+ *
+ * Shown immediately after the user clicks the Magic Link and is authenticated.
+ * Responsibilities:
+ *   1. Read the pending booking request from sessionStorage (set by GuestView)
+ *   2. Resolve the agency organization ID from the guest link agency_id
+ *   3. Create (or re-use) the guest ↔ agency conversation
+ *   4. Send the booking_request message (once)
+ *   5. Render the chat thread via OrgMessengerInline
+ *   6. Show the persistent limited-access banner
+ *   7. Provide the "Get full access" upgrade CTA
+ */
+
+import React, { useEffect, useState, useCallback } from 'react';
+import {
+  View, Text, StyleSheet, TouchableOpacity, ScrollView,
+  ActivityIndicator, TextInput, Modal, Platform,
+} from 'react-native';
+import { colors, spacing, typography } from '../theme/theme';
+import { uiCopy } from '../constants/uiCopy';
+import { useAuth } from '../context/AuthContext';
+import { supabase } from '../../lib/supabase';
+import {
+  createGuestConversation,
+  sendGuestBookingRequest,
+  getGuestConversation,
+  getAgencyMemberIds,
+  type GuestBookingRequestPayload,
+} from '../services/guestChatSupabase';
+import { upgradeGuestToClient } from '../services/guestAuthSupabase';
+import { OrgMessengerInline } from '../components/OrgMessengerInline';
+import type { Conversation } from '../services/messengerSupabase';
+
+const copy = uiCopy.guestFlow;
+
+type PendingRequest = {
+  link_id: string;
+  agency_id: string;
+  selected_models: string[];
+  requested_date: string | null;
+  message: string;
+  email: string;
+};
+
+function readPendingRequest(): PendingRequest | null {
+  if (Platform.OS !== 'web' || typeof sessionStorage === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem('guest_pending_request');
+    return raw ? (JSON.parse(raw) as PendingRequest) : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearPendingRequest(): void {
+  if (Platform.OS !== 'web' || typeof sessionStorage === 'undefined') return;
+  sessionStorage.removeItem('guest_pending_request');
+}
+
+/** Looks up the organization row for a given agency_id. */
+async function getAgencyOrgId(agencyId: string): Promise<string | null> {
+  try {
+    const { data, error } = await supabase
+      .from('organizations')
+      .select('id')
+      .eq('agency_id', agencyId)
+      .eq('type', 'agency')
+      .maybeSingle();
+    if (error) {
+      console.error('getAgencyOrgId error:', error);
+      return null;
+    }
+    return data?.id ?? null;
+  } catch (e) {
+    console.error('getAgencyOrgId exception:', e);
+    return null;
+  }
+}
+
+export const GuestChatView: React.FC = () => {
+  const { session, profile, refreshProfile } = useAuth();
+  const userId = session?.user?.id ?? null;
+
+  const [conversation, setConversation] = useState<Conversation | null>(null);
+  const [agencyOrgId, setAgencyOrgId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [chatError, setChatError] = useState<string | null>(null);
+  const [pendingRequest, setPendingRequest] = useState<PendingRequest | null>(null);
+  const [selectedModelIds, setSelectedModelIds] = useState<string[]>([]);
+
+  // Upgrade modal state
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [upgradeCompany, setUpgradeCompany] = useState('');
+  const [upgrading, setUpgrading] = useState(false);
+  const [upgradeError, setUpgradeError] = useState<string | null>(null);
+
+  const initChat = useCallback(async () => {
+    if (!userId) return;
+
+    setLoading(true);
+    setChatError(null);
+
+    try {
+      const pending = readPendingRequest();
+      setPendingRequest(pending);
+      if (pending?.selected_models) {
+        setSelectedModelIds(pending.selected_models);
+      }
+
+      const agencyId = pending?.agency_id ?? null;
+      if (!agencyId) {
+        // No pending request: try to find an existing conversation
+        // by scanning conversations where user is participant + guest_user_id = userId
+        const { data: convs } = await supabase
+          .from('conversations')
+          .select('*')
+          .contains('participant_ids', [userId])
+          .eq('guest_user_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(1);
+        if (convs && convs.length > 0) {
+          const conv = convs[0] as Conversation;
+          setConversation(conv);
+          setAgencyOrgId(conv.agency_organization_id ?? null);
+        }
+        setLoading(false);
+        return;
+      }
+
+      // Resolve agency org
+      const orgId = await getAgencyOrgId(agencyId);
+      if (!orgId) {
+        setChatError('Could not find the agency workspace. Please contact the agency directly.');
+        setLoading(false);
+        return;
+      }
+      setAgencyOrgId(orgId);
+
+      // Collect agency members for participant_ids
+      const memberIds = await getAgencyMemberIds(orgId);
+
+      // Create or retrieve existing conversation
+      const convResult = await createGuestConversation(userId, orgId, memberIds);
+      if (!convResult.ok) {
+        setChatError(copy.chatError);
+        setLoading(false);
+        return;
+      }
+      setConversation(convResult.conversation);
+
+      // Send booking request message only once (when conversation was just created)
+      if (convResult.created && pending) {
+        const payload: GuestBookingRequestPayload = {
+          selected_models: pending.selected_models,
+          requested_date: pending.requested_date,
+          message: pending.message,
+          guest_link_id: pending.link_id,
+        };
+        await sendGuestBookingRequest(convResult.conversation.id, userId, payload);
+        clearPendingRequest();
+      } else if (pending && !convResult.created) {
+        // Conversation existed — still clear pending to avoid re-sending on refresh
+        clearPendingRequest();
+      }
+    } catch (e) {
+      console.error('GuestChatView initChat exception:', e);
+      setChatError(copy.chatError);
+    } finally {
+      setLoading(false);
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    void initChat();
+  }, [initChat]);
+
+  const handleUpgrade = async () => {
+    setUpgradeError(null);
+    setUpgrading(true);
+    try {
+      const result = await upgradeGuestToClient(upgradeCompany.trim() || undefined);
+      if (!result.ok) {
+        setUpgradeError(copy.upgradeError);
+        return;
+      }
+      // Refresh profile so App.tsx routes to the full client view
+      await refreshProfile();
+      setShowUpgradeModal(false);
+    } catch (e) {
+      console.error('handleUpgrade exception:', e);
+      setUpgradeError(copy.upgradeError);
+    } finally {
+      setUpgrading(false);
+    }
+  };
+
+  // ─── Loading ────────────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <View style={styles.centered}>
+        <ActivityIndicator size="large" color={colors.textPrimary} />
+        <Text style={styles.loadingText}>{copy.loadingChat}</Text>
+      </View>
+    );
+  }
+
+  // ─── Error ──────────────────────────────────────────────────────────────────
+  if (chatError) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.errorText}>{chatError}</Text>
+        <TouchableOpacity style={styles.retryBtn} onPress={initChat}>
+          <Text style={styles.retryBtnLabel}>Retry</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  // ─── No conversation yet ────────────────────────────────────────────────────
+  if (!conversation) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.brand}>INDEX CASTING</Text>
+        <Text style={styles.subtitle}>
+          No active conversation found. Open a guest link to start a request.
+        </Text>
+      </View>
+    );
+  }
+
+  const displayName = profile?.display_name || session?.user?.email || 'Guest';
+
+  return (
+    <View style={styles.container}>
+      {/* ── Limited-access banner ── */}
+      <View style={styles.banner}>
+        <Text style={styles.bannerText}>{copy.banner}</Text>
+        <TouchableOpacity
+          style={styles.bannerCta}
+          onPress={() => setShowUpgradeModal(true)}
+        >
+          <Text style={styles.bannerCtaText}>{copy.upgradeButton}</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* ── Header ── */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>{copy.chatTitle}</Text>
+        <Text style={styles.headerSub}>
+          {displayName} · {copy.guestClientLabel}
+        </Text>
+      </View>
+
+      {/* ── Selected models summary (read-only) ── */}
+      {selectedModelIds.length > 0 && (
+        <View style={styles.modelsSummary}>
+          <Text style={styles.modelsSummaryLabel}>
+            {copy.selectedModels}: {selectedModelIds.length} model(s) requested
+          </Text>
+        </View>
+      )}
+
+      {/* ── Chat thread ── */}
+      <View style={styles.chatArea}>
+        <OrgMessengerInline
+          conversationId={conversation.id}
+          headerTitle=""
+          viewerUserId={userId}
+          containerStyle={styles.messengerContainer}
+          onPackagePress={(meta) => {
+            const url = typeof meta.guest_link === 'string' ? meta.guest_link : null;
+            if (url) void Linking.openURL(url).catch(() => {});
+          }}
+        />
+      </View>
+
+      {/* ── Upgrade modal ── */}
+      <Modal
+        visible={showUpgradeModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowUpgradeModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>{copy.upgradeTitle}</Text>
+            <Text style={styles.modalBody}>
+              Create a free client account to unlock model discovery, projects, and team management.
+            </Text>
+
+            <TextInput
+              style={styles.modalInput}
+              placeholder={copy.upgradeCompanyPlaceholder}
+              placeholderTextColor={colors.textSecondary}
+              value={upgradeCompany}
+              onChangeText={setUpgradeCompany}
+              editable={!upgrading}
+            />
+
+            {upgradeError && (
+              <Text style={styles.upgradeError}>{upgradeError}</Text>
+            )}
+
+            <TouchableOpacity
+              style={[styles.upgradeBtn, upgrading && styles.upgradeBtnDisabled]}
+              disabled={upgrading}
+              onPress={handleUpgrade}
+            >
+              {upgrading ? (
+                <ActivityIndicator size="small" color={colors.surface} />
+              ) : (
+                <Text style={styles.upgradeBtnLabel}>{copy.upgradeConfirm}</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.cancelBtn}
+              onPress={() => {
+                setShowUpgradeModal(false);
+                setUpgradeError(null);
+              }}
+            >
+              <Text style={styles.cancelBtnLabel}>{uiCopy.common.cancel}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  centered: {
+    flex: 1,
+    backgroundColor: colors.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  container: { flex: 1, backgroundColor: colors.background },
+  loadingText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
+  },
+  errorText: {
+    ...typography.body,
+    color: '#C0392B',
+    textAlign: 'center',
+    marginBottom: spacing.md,
+  },
+  retryBtn: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+  },
+  retryBtnLabel: { ...typography.label, color: colors.textPrimary },
+  brand: {
+    ...typography.heading,
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+  },
+  subtitle: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    maxWidth: 360,
+  },
+
+  // Banner
+  banner: {
+    backgroundColor: '#FFF3CD',
+    borderBottomWidth: 1,
+    borderBottomColor: '#FFEAA7',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  bannerText: {
+    ...typography.body,
+    fontSize: 12,
+    color: '#856404',
+    flex: 1,
+  },
+  bannerCta: {
+    backgroundColor: '#856404',
+    paddingVertical: 4,
+    paddingHorizontal: spacing.sm,
+    borderRadius: 6,
+  },
+  bannerCtaText: {
+    ...typography.label,
+    fontSize: 11,
+    color: '#FFF3CD',
+  },
+
+  // Header
+  header: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  headerTitle: {
+    ...typography.heading,
+    fontSize: 17,
+    color: colors.textPrimary,
+  },
+  headerSub: {
+    ...typography.body,
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+
+  // Models summary
+  modelsSummary: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  modelsSummaryLabel: {
+    ...typography.body,
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+
+  // Chat area
+  chatArea: { flex: 1 },
+  messengerContainer: { flex: 1 },
+
+  // Upgrade modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  modalCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    padding: spacing.xl,
+    width: '100%',
+    maxWidth: 420,
+  },
+  modalTitle: {
+    ...typography.heading,
+    fontSize: 18,
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+  },
+  modalBody: {
+    ...typography.body,
+    color: colors.textSecondary,
+    marginBottom: spacing.lg,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    ...typography.body,
+    color: colors.textPrimary,
+    backgroundColor: colors.background,
+    marginBottom: spacing.md,
+  },
+  upgradeError: {
+    ...typography.body,
+    color: '#C0392B',
+    fontSize: 13,
+    marginBottom: spacing.sm,
+  },
+  upgradeBtn: {
+    backgroundColor: colors.textPrimary,
+    paddingVertical: spacing.md,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  upgradeBtnDisabled: { opacity: 0.4 },
+  upgradeBtnLabel: { ...typography.label, color: colors.surface },
+  cancelBtn: {
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+  },
+  cancelBtnLabel: { ...typography.body, color: colors.textSecondary },
+});

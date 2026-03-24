@@ -22,6 +22,8 @@ export type Conversation = {
   created_by?: string | null;
   client_organization_id?: string | null;
   agency_organization_id?: string | null;
+  /** Set for guest (Magic-Link) conversations so the agency UI can label them "Guest Client". */
+  guest_user_id?: string | null;
 };
 
 export type Message = {
