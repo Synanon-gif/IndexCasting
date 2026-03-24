@@ -1408,12 +1408,6 @@ const MyModelsTab: React.FC<{
   const [bulkAssigning, setBulkAssigning] = useState(false);
   const [bulkFeedback, setBulkFeedback] = useState<string | null>(null);
 
-  const countries = useMemo(() =>
-    Array.from(new Set(models.map((m) => m.country || m.city || 'Unknown').filter(Boolean))).sort(),
-    [models]
-  );
-
-  // Must be declared before any useMemo that references it in deps or body.
   const isoCountryList = useMemo(() => {
     const list = Object.entries(ISO_COUNTRY_NAMES)
       .map(([code, name]) => ({ code: code.toUpperCase(), name }))
@@ -1450,6 +1444,11 @@ const MyModelsTab: React.FC<{
     }
     setTimeout(() => setBulkFeedback(null), 3000);
   };
+
+  const countries = useMemo(() =>
+    Array.from(new Set(models.map((m) => m.country || m.city || 'Unknown').filter(Boolean))).sort(),
+    [models]
+  );
 
   const visibleIsoCountries = useMemo(() => {
     const q = territorySearch.trim().toLowerCase();
