@@ -1573,6 +1573,8 @@ const MyModelsTab: React.FC<{
           country_code: derivedCountryCode,
           hair_color: addFields.hair_color || null,
           eye_color: addFields.eye_color || null,
+          is_visible_fashion: true,
+          is_visible_commercial: true,
         })
         .select('id')
         .single();

@@ -7,6 +7,7 @@ import {
   ScrollView,
   TextInput,
   Image,
+  Modal,
   Linking,
   Alert,
 } from 'react-native';
@@ -3121,6 +3122,7 @@ const ProjectDetailView: React.FC<DetailProps> = ({
 }) => {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<string | null>(null);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   useEffect(() => {
     if (!open) {
@@ -3175,13 +3177,14 @@ const ProjectDetailView: React.FC<DetailProps> = ({
               showsHorizontalScrollIndicator={false}
               style={styles.detailPortfolioRow}
             >
-              {(data.portfolio?.images || []).map((url) => (
-                <Image
-                  key={url}
-                  source={{ uri: url }}
-                  style={styles.detailPortfolioImage}
-                  resizeMode="cover"
-                />
+              {(data.portfolio?.images || []).map((url, idx) => (
+                <TouchableOpacity key={url} onPress={() => setLightboxIndex(idx)} activeOpacity={0.85}>
+                  <Image
+                    source={{ uri: url }}
+                    style={styles.detailPortfolioImage}
+                    resizeMode="cover"
+                  />
+                </TouchableOpacity>
               ))}
               {(!data.portfolio?.images || data.portfolio.images.length === 0) && (
                 <Text style={styles.metaText}>No portfolio images</Text>
@@ -3234,6 +3237,74 @@ const ProjectDetailView: React.FC<DetailProps> = ({
           </ScrollView>
         )}
       </View>
+
+      {/* Lightbox */}
+      {(() => {
+        const images = data?.portfolio?.images ?? [];
+        const currentUrl = lightboxIndex !== null ? images[lightboxIndex] : null;
+        const hasPrev = lightboxIndex !== null && lightboxIndex > 0;
+        const hasNext = lightboxIndex !== null && lightboxIndex < images.length - 1;
+        return (
+          <Modal
+            visible={lightboxIndex !== null}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setLightboxIndex(null)}
+          >
+            <View style={styles.lightboxOverlay}>
+              {/* Hintergrund-Tap zum Schließen */}
+              <TouchableOpacity
+                style={StyleSheet.absoluteFillObject}
+                activeOpacity={1}
+                onPress={() => setLightboxIndex(null)}
+              />
+
+              <Image
+                source={{ uri: currentUrl ?? '' }}
+                style={styles.lightboxImage}
+                resizeMode="contain"
+              />
+
+              {/* Pfeil links */}
+              {hasPrev && (
+                <TouchableOpacity
+                  style={styles.lightboxArrowLeft}
+                  onPress={() => setLightboxIndex((i) => (i !== null ? i - 1 : null))}
+                >
+                  <Text style={styles.lightboxArrowLabel}>‹</Text>
+                </TouchableOpacity>
+              )}
+
+              {/* Pfeil rechts */}
+              {hasNext && (
+                <TouchableOpacity
+                  style={styles.lightboxArrowRight}
+                  onPress={() => setLightboxIndex((i) => (i !== null ? i + 1 : null))}
+                >
+                  <Text style={styles.lightboxArrowLabel}>›</Text>
+                </TouchableOpacity>
+              )}
+
+              {/* Bildnummer */}
+              {images.length > 1 && lightboxIndex !== null && (
+                <View style={styles.lightboxCounter}>
+                  <Text style={styles.lightboxCounterLabel}>
+                    {lightboxIndex + 1} / {images.length}
+                  </Text>
+                </View>
+              )}
+
+              {/* Schließen-Button */}
+              <TouchableOpacity
+                style={styles.lightboxClose}
+                onPress={() => setLightboxIndex(null)}
+              >
+                <Text style={styles.lightboxCloseLabel}>✕</Text>
+              </TouchableOpacity>
+            </View>
+          </Modal>
+        );
+      })()}
     </View>
   );
 };
@@ -4618,6 +4689,71 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     bottom: 0,
+  },
+  lightboxOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.92)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  lightboxImage: {
+    width: '90%',
+    height: '85%',
+  },
+  lightboxClose: {
+    position: 'absolute',
+    top: 20,
+    right: 20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  lightboxCloseLabel: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  lightboxArrowLeft: {
+    position: 'absolute',
+    left: 16,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  lightboxArrowRight: {
+    position: 'absolute',
+    right: 16,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  lightboxArrowLabel: {
+    color: '#fff',
+    fontSize: 36,
+    lineHeight: 42,
+    fontWeight: '300',
+  },
+  lightboxCounter: {
+    position: 'absolute',
+    bottom: 24,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  lightboxCounterLabel: {
+    color: '#fff',
+    fontSize: 13,
   },
 });
 
