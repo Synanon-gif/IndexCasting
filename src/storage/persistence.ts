@@ -63,6 +63,8 @@ export type PersistedClientProject = {
 };
 
 export type PersistedClientFilters = {
+  /** Biological sex filter: 'all' | 'male' | 'female' */
+  sex?: 'all' | 'male' | 'female';
   size: 'all' | 'short' | 'medium' | 'tall';
   /** @deprecated use countryCode + city + nearby instead */
   location?: string;

@@ -334,6 +334,8 @@ export async function createModelFromApplication(applicationId: string): Promise
         city: app.city || null,
         hair_color: app.hair_color || null,
         eye_color: null,
+        // Map application gender ('female' | 'male' | 'diverse') → model sex ('female' | 'male').
+        sex: (app.gender === 'female' || app.gender === 'male') ? app.gender : null,
         portfolio_images: imgs,
         polaroids: [],
         is_visible_commercial: false,

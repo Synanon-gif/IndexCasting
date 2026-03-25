@@ -34,6 +34,8 @@ export type Model = {
   /** Sports dimension — independent of Fashion/Commercial categories. */
   is_sports_winter: boolean;
   is_sports_summer: boolean;
+  /** Biological sex: 'male' | 'female' | null (not yet specified). */
+  sex: 'male' | 'female' | null;
   created_at: number;
   updated_at: number;
 };

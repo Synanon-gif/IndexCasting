@@ -51,6 +51,40 @@ export async function getManualEventsForOwner(
   return (data ?? []) as UserCalendarEvent[];
 }
 
+/**
+ * Fetch all manual calendar events for an organisation (org-wide shared view).
+ * Uses the `organization_id` column so every org member sees the same set of
+ * events regardless of who originally created them.
+ *
+ * RLS enforces that the calling user is actually a member of `orgId`.
+ */
+export async function getManualEventsForOrg(
+  orgId: string,
+  ownerType: 'client' | 'agency'
+): Promise<UserCalendarEvent[]> {
+  if (!isUuid(orgId)) {
+    console.warn('getManualEventsForOrg: orgId must be a valid UUID');
+    return [];
+  }
+  try {
+    const { data, error } = await supabase
+      .from('user_calendar_events')
+      .select('*')
+      .eq('organization_id', orgId)
+      .eq('owner_type', ownerType)
+      .order('date', { ascending: true })
+      .order('start_time', { ascending: true });
+    if (error) {
+      console.error('getManualEventsForOrg error:', error);
+      return [];
+    }
+    return (data ?? []) as UserCalendarEvent[];
+  } catch (e) {
+    console.error('getManualEventsForOrg exception:', e);
+    return [];
+  }
+}
+
 export type InsertManualEventResult =
   | { ok: true; event: UserCalendarEvent }
   | { ok: false; errorMessage: string };

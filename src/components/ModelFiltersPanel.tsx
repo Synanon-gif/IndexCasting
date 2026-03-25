@@ -62,6 +62,7 @@ const ModelFiltersPanel: React.FC<Props> = ({
 
   const activeFilterCount = useMemo(() => {
     let n = 0;
+    if (filters.sex !== 'all') n++;
     if (filters.size !== 'all') n++;
     if (filters.category) n++;
     if (filters.sportsWinter || filters.sportsSummer) n++;
@@ -77,7 +78,7 @@ const ModelFiltersPanel: React.FC<Props> = ({
 
   const resetFilters = () =>
     onChangeFilters({
-      size: 'all', countryCode: '', city: '', nearby: false,
+      sex: 'all', size: 'all', countryCode: '', city: '', nearby: false,
       category: '', sportsWinter: false, sportsSummer: false,
       hairColor: '', hipsMin: '', hipsMax: '',
       waistMin: '', waistMax: '', chestMin: '', chestMax: '',
@@ -98,6 +99,28 @@ const ModelFiltersPanel: React.FC<Props> = ({
 
       {filterOpen && (
         <View style={styles.filterSlideOut}>
+          {/* ── Sex ── */}
+          <View style={styles.filterGroup}>
+            <Text style={styles.filterLabel}>Sex</Text>
+            <View style={styles.filterPills}>
+              {([
+                { key: 'all',    label: 'All' },
+                { key: 'female', label: 'Female' },
+                { key: 'male',   label: 'Male' },
+              ] as const).map((opt) => (
+                <TouchableOpacity
+                  key={opt.key}
+                  style={[styles.filterPill, filters.sex === opt.key && styles.filterPillActive]}
+                  onPress={() => onChangeFilters({ ...filters, sex: opt.key })}
+                >
+                  <Text style={[styles.filterPillLabel, filters.sex === opt.key && styles.filterPillLabelActive]}>
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
           {/* ── Height ── */}
           <View style={styles.filterGroup}>
             <Text style={styles.filterLabel}>Height</Text>

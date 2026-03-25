@@ -41,6 +41,8 @@ export type SupabaseModel = {
   updated_at?: string;
   // Real physical location (nullable). `country` is a legacy field used in older code.
   country_code?: string | null;
+  /** Biological sex: 'male' | 'female' | null (not yet specified). */
+  sex?: 'male' | 'female' | null;
 };
 
 export async function getModelsFromSupabase(): Promise<SupabaseModel[]> {
@@ -123,9 +125,11 @@ export type ClientMeasurementFilters = {
   chestMax?: number;
   legsInseamMin?: number;
   legsInseamMax?: number;
+  /** Filter by biological sex: 'male' | 'female'. Omit for all. */
+  sex?: 'male' | 'female';
 };
 
-/** Apply measurement/hair filters to any Supabase query builder — used in all three client functions. */
+/** Apply measurement/hair/sex filters to any Supabase query builder — used in all three client functions. */
 function applyMeasurementFilters(q: any, f: ClientMeasurementFilters): any {
   if (f.heightMin) q = q.gte('height', f.heightMin);
   if (f.heightMax) q = q.lte('height', f.heightMax);
@@ -138,6 +142,7 @@ function applyMeasurementFilters(q: any, f: ClientMeasurementFilters): any {
   if (f.chestMax) q = q.lte('chest', f.chestMax);
   if (f.legsInseamMin) q = q.gte('legs_inseam', f.legsInseamMin);
   if (f.legsInseamMax) q = q.lte('legs_inseam', f.legsInseamMax);
+  if (f.sex) q = q.eq('sex', f.sex);
   return q;
 }
 

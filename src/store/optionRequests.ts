@@ -195,8 +195,15 @@ export function addOptionRequest(
     let organizationId: string | null = null;
     if (user?.id) {
       try {
-        const { ensureClientOrganization } = await import('../services/organizationsInvitationsSupabase');
-        organizationId = await ensureClientOrganization();
+        // Employees must resolve their employer's org; owners fall back to
+        // creating their own org. getMyClientMemberRole covers both cases.
+        const { getMyClientMemberRole, ensureClientOrganization } = await import('../services/organizationsInvitationsSupabase');
+        const roleData = await getMyClientMemberRole();
+        if (roleData?.organization_id) {
+          organizationId = roleData.organization_id;
+        } else {
+          organizationId = await ensureClientOrganization();
+        }
       } catch {
         /* ignore */
       }

@@ -8,6 +8,8 @@ import type { SupabaseModel } from '../services/modelsSupabase';
 // ── Type ──────────────────────────────────────────────────────────────────────
 
 export type ModelFilters = {
+  /** Biological sex filter: 'all' = no restriction. */
+  sex: 'all' | 'male' | 'female';
   size: 'all' | 'short' | 'medium' | 'tall';
   /** ISO-2 country code, '' = all countries */
   countryCode: string;
@@ -34,6 +36,7 @@ export type ModelFilters = {
 // ── Defaults ──────────────────────────────────────────────────────────────────
 
 export const defaultModelFilters: ModelFilters = {
+  sex: 'all',
   size: 'all',
   countryCode: '',
   city: '',
@@ -149,6 +152,10 @@ export function filterModels(
   const pInt = (v: string) => { const n = parseInt(v, 10); return isNaN(n) ? undefined : n; };
 
   return models.filter((m) => {
+    // ── Sex ──
+    if (filters.sex === 'male'   && m.sex !== 'male')   return false;
+    if (filters.sex === 'female' && m.sex !== 'female') return false;
+
     // ── Height (size bucket) ──
     if (filters.size === 'short'  && m.height >= 175) return false;
     if (filters.size === 'medium' && (m.height < 175 || m.height > 182)) return false;

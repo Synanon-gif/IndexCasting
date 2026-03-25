@@ -34,6 +34,7 @@ import {
 import { updateOptionRequestSchedule } from '../services/optionRequestsSupabase';
 import {
   getManualEventsForOwner,
+  getManualEventsForOrg,
   insertManualEvent,
   updateManualEvent,
   deleteManualEvent,
@@ -114,6 +115,7 @@ type ModelSummary = {
   agencyName?: string | null;
   isSportsWinter?: boolean;
   isSportsSummer?: boolean;
+  sex?: 'male' | 'female' | null;
 };
 
 type ClientWebAppProps = {
@@ -203,6 +205,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     if (saved && typeof saved.size === 'string') {
       return {
         ...defaultModelFilters,
+        sex: (saved as any).sex ?? 'all',
         size: saved.size,
         countryCode: saved.countryCode ?? '',
         city: saved.city ?? '',
@@ -276,6 +279,8 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     color: MANUAL_EVENT_COLORS[0],
   });
   const [savingManualEventEdit, setSavingManualEventEdit] = useState(false);
+  /** UUID of the client organisation this user belongs to (owner or employee). */
+  const [clientOrgId, setClientOrgId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!selectedCalendarItem) return;
@@ -369,10 +374,32 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   const isRealClient = !!realClientId;
   const effectiveClientId = realClientId ?? 'user-client';
 
+  // Resolve the client organisation for this user (owner or employee).
+  // We use getMyClientMemberRole first so employees resolve their employer's
+  // org rather than accidentally creating their own via ensureClientOrganization.
+  useEffect(() => {
+    if (!realClientId) { setClientOrgId(null); return; }
+    void (async () => {
+      try {
+        const roleData = await getMyClientMemberRole();
+        if (roleData?.organization_id) {
+          setClientOrgId(roleData.organization_id);
+          return;
+        }
+        // Owner with no org record yet – create it.
+        const oid = await ensureClientOrganization();
+        setClientOrgId(oid);
+      } catch (e) {
+        console.error('ClientWebApp: failed to resolve clientOrgId', e);
+      }
+    })();
+  }, [realClientId]);
+
   // Save filters to Supabase (explicit user action via "Save Filters" button).
   const handleSaveFilters = useCallback(async () => {
     setFilterSaveStatus('saving');
     const preset: PersistedClientFilters = {
+      sex: filters.sex,
       size: filters.size,
       countryCode: filters.countryCode,
       city: filters.city,
@@ -402,6 +429,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       if (!preset) return;
       setFilters((prev) => ({
         ...prev,
+        sex: preset.sex ?? prev.sex,
         size: preset.size ?? prev.size,
         countryCode: preset.countryCode ?? prev.countryCode,
         city: preset.city ?? prev.city,
@@ -432,13 +460,21 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     }
     setCalendarLoading(true);
     try {
-      const [items, manual, beEntries] = await Promise.all([
+      const [items, personalEvents, orgEvents, beEntries] = await Promise.all([
         getCalendarEntriesForClient(realClientId),
         getManualEventsForOwner(realClientId, 'client'),
+        clientOrgId ? getManualEventsForOrg(clientOrgId, 'client') : Promise.resolve([]),
         getBookingEventsAsCalendarEntries(realClientId, 'client'),
       ]);
+      // Merge personal and org events, deduplicating by id.
+      const seen = new Set<string>();
+      const merged: UserCalendarEvent[] = [];
+      for (const ev of [...orgEvents, ...personalEvents]) {
+        if (!seen.has(ev.id)) { seen.add(ev.id); merged.push(ev); }
+      }
+      merged.sort((a, b) => a.date.localeCompare(b.date) || (a.start_time ?? '').localeCompare(b.start_time ?? ''));
       setCalendarItems(items);
-      setManualCalendarEvents(manual);
+      setManualCalendarEvents(merged);
       setBookingEventEntries(beEntries);
     } finally {
       setCalendarLoading(false);
@@ -449,7 +485,8 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     if (tab === 'calendar') {
       loadClientCalendar();
     }
-  }, [tab, realClientId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, realClientId, clientOrgId]);
 
   useEffect(() => {
     if (realClientId) {
@@ -487,6 +524,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         chestMax:       pInt(filters.chestMax),
         legsInseamMin:  pInt(filters.legsInseamMin),
         legsInseamMax:  pInt(filters.legsInseamMax),
+        sex: (filters.sex !== 'all' ? filters.sex : undefined) as 'male' | 'female' | undefined,
       };
 
       const data: any[] = await getModelsForClient(
@@ -516,11 +554,12 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         hasRealLocation: m.hasRealLocation ?? false,
         isSportsWinter: m.isSportsWinter ?? false,
         isSportsSummer: m.isSportsSummer ?? false,
+        sex: m.sex ?? null,
       }));
       setModels(mapped);
     })();
   }, [
-    filters.countryCode, filters.city, filters.category,
+    filters.sex, filters.countryCode, filters.city, filters.category,
     filters.sportsWinter, filters.sportsSummer, filters.size,
     filters.hairColor, filters.hipsMin, filters.hipsMax,
     filters.waistMin, filters.waistMax, filters.chestMin, filters.chestMax,
@@ -1302,7 +1341,6 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                     return;
                   }
                   setSavingManualEvent(true);
-                  const clientOrgId = await ensureClientOrganization();
                   const { data: calUser } = await supabase.auth.getUser();
                   const result = await insertManualEvent({
                     owner_id: realClientId,

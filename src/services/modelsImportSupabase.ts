@@ -23,6 +23,7 @@ export type ImportModelPayload = {
   hair_color?: string | null;
   eye_color?: string | null;
   current_location?: string | null;
+  sex?: 'male' | 'female' | null;
   is_visible_commercial?: boolean;
   is_visible_fashion?: boolean;
   portfolio_images?: string[] | null;
@@ -117,6 +118,7 @@ export async function importModelAndMerge(params: ImportModelPayload): Promise<{
       consider('hair_color', params.hair_color ?? null);
       consider('eye_color', params.eye_color ?? null);
       consider('current_location', params.current_location ?? null);
+      consider('sex', params.sex ?? null);
 
       // Merge arrays (avoid duplicates) if incoming arrays are provided.
       const incomingPortfolio = params.portfolio_images ?? null;
@@ -161,6 +163,7 @@ export async function importModelAndMerge(params: ImportModelPayload): Promise<{
       hair_color: params.hair_color ?? null,
       eye_color: params.eye_color ?? null,
       current_location: params.current_location ?? null,
+      sex: params.sex ?? null,
       is_visible_commercial: params.is_visible_commercial ?? true,
       is_visible_fashion: params.is_visible_fashion ?? false,
       // is_sports_winter / is_sports_summer intentionally omitted → DB default false.

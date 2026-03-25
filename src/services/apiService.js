@@ -103,6 +103,7 @@ export async function getModelsForClient(
     chestMax: measurementFilters.chestMax || undefined,
     legsInseamMin: measurementFilters.legsInseamMin || undefined,
     legsInseamMax: measurementFilters.legsInseamMax || undefined,
+    sex: measurementFilters.sex || undefined,
   };
   const hasMF = Object.values(mf).some(Boolean);
   const list = countryCode
@@ -130,6 +131,7 @@ export async function getModelsForClient(
     categories: m.categories ?? null,
     isSportsWinter: m.is_sports_winter ?? false,
     isSportsSummer: m.is_sports_summer ?? false,
+    sex: m.sex ?? null,
     agencyId: m.territory_agency_id ?? m.agency_id ?? null,
     agencyName: m.agency_name || null,
   }));

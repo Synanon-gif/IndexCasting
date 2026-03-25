@@ -227,6 +227,35 @@ describe('filterModels', () => {
     });
   });
 
+  describe('sex filter', () => {
+    const female = makeModel({ id: 'female', sex: 'female' });
+    const male = makeModel({ id: 'male', sex: 'male' });
+    const unset = makeModel({ id: 'unset', sex: undefined });
+    const models = [female, male, unset];
+
+    it('sex=all returns all models', () => {
+      expect(filterModels(models, { ...noFilter, sex: 'all' })).toHaveLength(3);
+    });
+
+    it('sex=female returns only female models', () => {
+      const result = filterModels(models, { ...noFilter, sex: 'female' });
+      expect(result.map((m) => m.id)).toEqual(['female']);
+    });
+
+    it('sex=male returns only male models', () => {
+      const result = filterModels(models, { ...noFilter, sex: 'male' });
+      expect(result.map((m) => m.id)).toEqual(['male']);
+    });
+
+    it('sex=female excludes models with no sex set', () => {
+      expect(filterModels([unset], { ...noFilter, sex: 'female' })).toHaveLength(0);
+    });
+
+    it('sex=male excludes models with no sex set', () => {
+      expect(filterModels([unset], { ...noFilter, sex: 'male' })).toHaveLength(0);
+    });
+  });
+
   describe('nearby filter', () => {
     const berlin = makeModel({ id: 'berlin', city: 'Berlin' });
     const munich = makeModel({ id: 'munich', city: 'Munich' });

@@ -344,7 +344,8 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
                 {m.hips ? ` · Hips ${m.hips}` : ''}
               </Text>
               <Text style={styles.modelMeta}>
-                {m.hair_color || ''}
+                {m.sex ? `${m.sex === 'female' ? 'Female' : 'Male'}` : ''}
+                {m.hair_color ? `${m.sex ? ' · ' : ''}${m.hair_color}` : ''}
                 {m.eye_color ? ` · ${m.eye_color}` : ''}
                 {m.city ? ` · ${m.city}` : ''}
               </Text>

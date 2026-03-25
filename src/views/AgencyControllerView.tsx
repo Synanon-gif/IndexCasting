@@ -1370,6 +1370,7 @@ const MyModelsTab: React.FC<{
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [addFields, setAddFields] = useState<Record<string, string>>({});
+  const [addSex, setAddSex] = useState<'male' | 'female' | null>(null);
   const [addLoading, setAddLoading] = useState(false);
   const [addModelImageFiles, setAddModelImageFiles] = useState<File[]>([]);
   const [addModelFeedback, setAddModelFeedback] = useState<string | null>(null);
@@ -1401,6 +1402,7 @@ const MyModelsTab: React.FC<{
   const [editModelCategories, setEditModelCategories] = useState<string[]>([]);
   const [editSportsWinter, setEditSportsWinter] = useState(false);
   const [editSportsSummer, setEditSportsSummer] = useState(false);
+  const [editSex, setEditSex] = useState<'male' | 'female' | null>(null);
 
   /** model_id → sorted country codes for territory badges in the roster list */
   const [rosterTerritoriesMap, setRosterTerritoriesMap] = useState<Record<string, string[]>>({});
@@ -1415,6 +1417,7 @@ const MyModelsTab: React.FC<{
     setEditModelCategories(selectedModel?.categories ?? []);
     setEditSportsWinter(selectedModel?.is_sports_winter ?? false);
     setEditSportsSummer(selectedModel?.is_sports_summer ?? false);
+    setEditSex((selectedModel?.sex as 'male' | 'female' | null | undefined) ?? null);
   }, [selectedModel?.id]);
 
   // Bulk selection state
@@ -1607,6 +1610,7 @@ const MyModelsTab: React.FC<{
           country_code: derivedCountryCode,
           hair_color: addFields.hair_color || null,
           eye_color: addFields.eye_color || null,
+          sex: addSex,
           is_visible_fashion: true,
           is_visible_commercial: true,
         })
@@ -1623,6 +1627,7 @@ const MyModelsTab: React.FC<{
 
       // Reset form immediately after successful insert.
       setAddFields({});
+      setAddSex(null);
       setAddModelImageFiles([]);
       setShowAddForm(false);
 
@@ -1759,6 +1764,7 @@ const MyModelsTab: React.FC<{
       // Sports columns: only include if migration has been applied (graceful skip on unknown column error).
       updates.is_sports_winter = editSportsWinter;
       updates.is_sports_summer = editSportsSummer;
+      updates.sex = editSex;
 
       const { error: modelUpdateError } = await supabase.from('models').update(updates).eq('id', selectedModel.id);
       if (modelUpdateError) {
@@ -2005,6 +2011,26 @@ const MyModelsTab: React.FC<{
             />
           </View>
         ))}
+        <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary, marginTop: spacing.sm }}>
+          Sex
+        </Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: 4, marginBottom: spacing.lg }}>
+          {(['female', 'male'] as const).map((option) => {
+            const active = editSex === option;
+            return (
+              <TouchableOpacity
+                key={option}
+                style={[s.visPill, active && s.visPillActive]}
+                onPress={() => setEditSex(active ? null : option)}
+              >
+                <Text style={[s.visPillLabel, active && s.visPillLabelActive]}>
+                  {option === 'female' ? 'Female' : 'Male'}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
         <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary, marginTop: spacing.sm }}>
           Categories{' '}
           <Text style={{ fontWeight: '400' }}>(leave empty = visible to all clients)</Text>
@@ -2598,6 +2624,26 @@ const MyModelsTab: React.FC<{
               />
             </View>
           ))}
+          <View style={{ marginBottom: spacing.sm }}>
+            <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary }}>Sex</Text>
+            <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: 4 }}>
+              {(['female', 'male'] as const).map((option) => {
+                const active = addSex === option;
+                return (
+                  <TouchableOpacity
+                    key={option}
+                    style={[s.visPill, active && s.visPillActive]}
+                    onPress={() => setAddSex(active ? null : option)}
+                  >
+                    <Text style={[s.visPillLabel, active && s.visPillLabelActive]}>
+                      {option === 'female' ? 'Female' : 'Male'}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
           <View style={{ marginBottom: spacing.sm }}>
             <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary }}>Portfolio photos</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs }}>
@@ -3710,6 +3756,11 @@ const GuestLinksTab: React.FC<{
   const [selectedModelIds, setSelectedModelIds] = useState<Set<string>>(new Set());
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [packageModelFilters, setPackageModelFilters] = useState<ModelFilters>(defaultModelFilters);
+  const filteredPackageModels = useMemo(
+    () => filterModels(models, packageModelFilters),
+    [models, packageModelFilters],
+  );
 
   // Package list
   const [links, setLinks] = useState<GuestLink[]>([]);
@@ -3721,10 +3772,28 @@ const GuestLinksTab: React.FC<{
   const [b2bConversations, setB2bConversations] = useState<Conversation[]>([]);
   const [convTitles, setConvTitles] = useState<Record<string, string>>({});
   const [sendInAppStatus, setSendInAppStatus] = useState<'idle' | 'loading' | 'sending' | 'success' | 'error'>('idle');
+  // Client discovery inside the modal
+  const [sendSearch, setSendSearch] = useState('');
+  const [searchRows, setSearchRows] = useState<ClientOrganizationDirectoryRow[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [startingChatForOrg, setStartingChatForOrg] = useState<string | null>(null);
 
   useEffect(() => {
     if (agencyId) void getGuestLinksForAgency(agencyId).then(setLinks);
   }, [agencyId]);
+
+  // Debounced client-directory search – only runs while the send modal is open.
+  useEffect(() => {
+    if (!sendInAppTarget || !agencyId) { setSearchRows([]); return; }
+    let cancelled = false;
+    setSearchLoading(true);
+    const t = setTimeout(() => {
+      void listClientOrganizationsForAgencyDirectory(agencyId, sendSearch).then((list) => {
+        if (!cancelled) { setSearchRows(list); setSearchLoading(false); }
+      });
+    }, 200);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [sendSearch, agencyId, sendInAppTarget]);
 
   const toggleModel = (id: string) => {
     setSelectedModelIds((prev) => {
@@ -3836,6 +3905,35 @@ const GuestLinksTab: React.FC<{
     }
   };
 
+  /**
+   * Start a B2B chat with a client org (if none exists yet) and immediately
+   * send the current package into that conversation.
+   */
+  const handleSendToNewClient = async (clientOrgId: string) => {
+    if (!viewerUserId) {
+      showAppAlert(uiCopy.alerts.signInRequired, uiCopy.b2bChat.signInToChatGeneric);
+      return;
+    }
+    setStartingChatForOrg(clientOrgId);
+    try {
+      const r = await ensureClientAgencyChat({
+        clientOrganizationId: clientOrgId,
+        agencyId,
+        actingUserId: viewerUserId,
+      });
+      if (!r.ok) {
+        showAppAlert(uiCopy.b2bChat.chatFailedTitle, r.reason || uiCopy.b2bChat.chatFailedGeneric);
+        return;
+      }
+      await handleSendToConversation(r.conversationId);
+    } catch (e) {
+      console.error('handleSendToNewClient error:', e);
+      setSendInAppStatus('error');
+    } finally {
+      setStartingChatForOrg(null);
+    }
+  };
+
   return (
     <>
       <ScreenScrollView contentStyle={{ paddingHorizontal: spacing.lg, paddingTop: spacing.md }}>
@@ -3855,7 +3953,13 @@ const GuestLinksTab: React.FC<{
           {copy.selectModelsHint}
         </Text>
 
-        {/* Model search */}
+        {/* Attribute filters – same panel as My Models */}
+        <ModelFiltersPanel
+          filters={packageModelFilters}
+          onChangeFilters={setPackageModelFilters}
+        />
+
+        {/* Model name search */}
         <TextInput
           style={[s.editInput, { marginBottom: spacing.sm, fontSize: 12 }]}
           placeholder="Search models…"
@@ -3872,7 +3976,7 @@ const GuestLinksTab: React.FC<{
         )}
 
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.md }}>
-          {models
+          {filteredPackageModels
             .filter((m) =>
               modelSearch.trim() === '' ||
               m.name.toLowerCase().includes(modelSearch.trim().toLowerCase()),
@@ -3886,12 +3990,14 @@ const GuestLinksTab: React.FC<{
                 <Text style={[s.filterPillLabel, selectedModelIds.has(m.id) && s.filterPillLabelActive]}>{m.name}</Text>
               </TouchableOpacity>
             ))}
-          {models.filter((m) =>
+          {filteredPackageModels.filter((m) =>
             modelSearch.trim() === '' ||
             m.name.toLowerCase().includes(modelSearch.trim().toLowerCase()),
-          ).length === 0 && modelSearch.trim() !== '' && (
+          ).length === 0 && (
             <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary }}>
-              No models found for "{modelSearch}"
+              {modelSearch.trim() !== ''
+                ? `No models found for "${modelSearch}"`
+                : 'No models match the current filters.'}
             </Text>
           )}
         </View>
@@ -4030,36 +4136,93 @@ const GuestLinksTab: React.FC<{
 
               {(sendInAppStatus === 'idle' || sendInAppStatus === 'error') && (
                 <>
-                  {b2bConversations.length === 0 ? (
-                    <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.md }}>
-                      {copy.sendInAppNoChats}
-                    </Text>
-                  ) : (
-                    <ScrollView style={{ maxHeight: 300 }}>
-                      {b2bConversations.map((c) => (
-                        <TouchableOpacity
-                          key={c.id}
-                          style={{
-                            paddingVertical: spacing.sm, paddingHorizontal: spacing.sm,
-                            borderBottomWidth: 1, borderBottomColor: colors.border,
-                            flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-                          }}
-                          onPress={() => handleSendToConversation(c.id)}
-                        >
-                          <Text style={{ ...typography.label, fontSize: 13, color: colors.textPrimary }} numberOfLines={1}>
-                            {convTitles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback}
-                          </Text>
-                          <Text style={{ ...typography.label, fontSize: 11, color: colors.buttonOptionGreen }}>
-                            {copy.sendInAppButton} →
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  )}
+                  <ScrollView style={{ maxHeight: 420 }} keyboardShouldPersistTaps="handled">
+
+                    {/* ── Client search ─────────────────────────────────── */}
+                    <TextInput
+                      style={[s.editInput, { marginBottom: spacing.sm }]}
+                      placeholder="Search clients..."
+                      placeholderTextColor={colors.textSecondary}
+                      value={sendSearch}
+                      onChangeText={setSendSearch}
+                      autoCorrect={false}
+                    />
+
+                    {searchLoading && (
+                      <ActivityIndicator size="small" color={colors.accentGreen} style={{ marginBottom: spacing.sm }} />
+                    )}
+
+                    {!searchLoading && searchRows.length > 0 && (
+                      <>
+                        {searchRows.map((row) => {
+                          const label = row.name?.trim() || uiCopy.b2bChat.chatPartnerFallback;
+                          const isSending = startingChatForOrg === row.id;
+                          return (
+                            <TouchableOpacity
+                              key={row.id}
+                              style={{
+                                paddingVertical: spacing.sm, paddingHorizontal: spacing.sm,
+                                borderBottomWidth: 1, borderBottomColor: colors.border,
+                                flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                                opacity: isSending ? 0.5 : 1,
+                              }}
+                              onPress={() => { if (!isSending) void handleSendToNewClient(row.id); }}
+                              disabled={isSending}
+                            >
+                              <Text style={{ ...typography.label, fontSize: 13, color: colors.textPrimary, flex: 1 }} numberOfLines={1}>
+                                {label}
+                              </Text>
+                              {isSending
+                                ? <ActivityIndicator size="small" color={colors.accentGreen} />
+                                : <Text style={{ ...typography.label, fontSize: 11, color: colors.buttonOptionGreen }}>{copy.sendInAppButton} →</Text>
+                              }
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </>
+                    )}
+
+                    {!searchLoading && sendSearch.trim() !== '' && searchRows.length === 0 && (
+                      <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.sm }}>
+                        No clients found for "{sendSearch}"
+                      </Text>
+                    )}
+
+                    {/* ── Recent chats ──────────────────────────────────── */}
+                    {b2bConversations.length > 0 && (
+                      <>
+                        <Text style={[s.sectionLabel, { marginTop: spacing.md }]}>Recent chats</Text>
+                        {b2bConversations.map((c) => (
+                          <TouchableOpacity
+                            key={c.id}
+                            style={{
+                              paddingVertical: spacing.sm, paddingHorizontal: spacing.sm,
+                              borderBottomWidth: 1, borderBottomColor: colors.border,
+                              flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                            }}
+                            onPress={() => handleSendToConversation(c.id)}
+                          >
+                            <Text style={{ ...typography.label, fontSize: 13, color: colors.textPrimary }} numberOfLines={1}>
+                              {convTitles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback}
+                            </Text>
+                            <Text style={{ ...typography.label, fontSize: 11, color: colors.buttonOptionGreen }}>
+                              {copy.sendInAppButton} →
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </>
+                    )}
+
+                    {b2bConversations.length === 0 && sendSearch.trim() === '' && !searchLoading && (
+                      <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.sm }}>
+                        Search for a client above or start a chat in the Clients tab first.
+                      </Text>
+                    )}
+                  </ScrollView>
 
                   <TouchableOpacity
                     style={[s.saveBtn, { marginTop: spacing.md, backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.border }]}
-                    onPress={() => { setSendInAppTarget(null); setSendInAppStatus('idle'); }}
+                    onPress={() => { setSendInAppTarget(null); setSendInAppStatus('idle'); setSendSearch(''); setSearchRows([]); }}
                   >
                     <Text style={{ ...typography.label, color: colors.textPrimary }}>{copy.sendInAppCancelButton}</Text>
                   </TouchableOpacity>
