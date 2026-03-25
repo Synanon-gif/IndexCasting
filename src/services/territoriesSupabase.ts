@@ -2,7 +2,9 @@ import { supabase } from '../../lib/supabase';
 
 /**
  * Model-Territorien (Agentur ↔ Model) – in Supabase: model_agency_territories.
- * Parteienübergreifend (model_id, agency_id); alle Daten persistent.
+ * All writes go through SECURITY DEFINER RPCs (migration_territories_rpc_definitive.sql).
+ * The RPCs use RETURNS BOOLEAN / prefixed column names (r_*) to avoid PL/pgSQL
+ * OUT-variable ambiguity with same-named table columns.
  */
 export type ModelTerritory = {
   id: string;
@@ -12,20 +14,117 @@ export type ModelTerritory = {
   created_at?: string;
 };
 
-export async function getTerritoriesForModel(modelId: string): Promise<ModelTerritory[]> {
-  const { data, error } = await supabase
-    .from('model_agency_territories')
-    .select('*')
-    .eq('model_id', modelId)
-    .order('country_code');
+// ---------------------------------------------------------------------------
+// READ helpers
+// ---------------------------------------------------------------------------
 
-  if (error) {
-    console.error('getTerritoriesForModel error:', error);
-    return [];
+/**
+ * Fetches all territories for every model belonging to an agency.
+ * Returns a map: model_id → sorted country codes[].
+ * Uses SECURITY DEFINER RPC (returns r_model_id, r_country_code).
+ */
+export async function getTerritoriesForAgency(
+  agencyId: string,
+): Promise<Record<string, string[]>> {
+  try {
+    const { data, error } = await supabase.rpc('get_territories_for_agency_roster', {
+      p_agency_id: agencyId,
+    });
+
+    if (error) {
+      console.error('getTerritoriesForAgency rpc error:', error);
+      // Direct-query fallback (works when SELECT RLS is permissive)
+      const { data: fb, error: fbErr } = await supabase
+        .from('model_agency_territories')
+        .select('model_id, country_code')
+        .eq('agency_id', agencyId)
+        .order('country_code');
+      if (fbErr) { console.error('getTerritoriesForAgency fallback error:', fbErr); return {}; }
+      return buildAgencyMap(fb ?? [], 'model_id', 'country_code');
+    }
+
+    // RPC returns rows with r_model_id / r_country_code columns
+    return buildAgencyMap(
+      (data as Array<{ r_model_id: string; r_country_code: string }>) ?? [],
+      'r_model_id',
+      'r_country_code',
+    );
+  } catch (e) {
+    console.error('getTerritoriesForAgency exception:', e);
+    return {};
   }
-  return (data ?? []) as ModelTerritory[];
 }
 
+function buildAgencyMap(
+  rows: Array<Record<string, string>>,
+  modelIdKey: string,
+  countryKey: string,
+): Record<string, string[]> {
+  const map: Record<string, string[]> = {};
+  for (const row of rows) {
+    const mid = row[modelIdKey];
+    if (!mid) continue;
+    if (!map[mid]) map[mid] = [];
+    map[mid].push(row[countryKey].toUpperCase());
+  }
+  return map;
+}
+
+/**
+ * Fetches territories for a single model, optionally scoped to one agency.
+ * Uses SECURITY DEFINER RPC (returns r_id, r_model_id, r_agency_id, r_country_code, r_created_at).
+ */
+export async function getTerritoriesForModel(
+  modelId: string,
+  agencyId?: string,
+): Promise<ModelTerritory[]> {
+  try {
+    const { data, error } = await supabase.rpc('get_territories_for_model', {
+      p_model_id: modelId,
+      p_agency_id: agencyId ?? null,
+    });
+
+    if (error) {
+      console.error('getTerritoriesForModel rpc error:', error);
+      // Direct-query fallback
+      let q = supabase
+        .from('model_agency_territories')
+        .select('*')
+        .eq('model_id', modelId)
+        .order('country_code');
+      if (agencyId) q = q.eq('agency_id', agencyId);
+      const { data: fb, error: fbErr } = await q;
+      if (fbErr) { console.error('getTerritoriesForModel fallback error:', fbErr); return []; }
+      return (fb ?? []) as ModelTerritory[];
+    }
+
+    // Map r_* columns back to ModelTerritory shape
+    return ((data as Array<{
+      r_id: string; r_model_id: string; r_agency_id: string;
+      r_country_code: string; r_created_at?: string;
+    }>) ?? []).map((r) => ({
+      id: r.r_id,
+      model_id: r.r_model_id,
+      agency_id: r.r_agency_id,
+      country_code: r.r_country_code,
+      created_at: r.r_created_at,
+    }));
+  } catch (e) {
+    console.error('getTerritoriesForModel exception:', e);
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// WRITE helpers — all go through save_model_territories RPC
+// ---------------------------------------------------------------------------
+
+/**
+ * Replaces all territories for a model+agency with the given list.
+ * Uses SECURITY DEFINER RPC save_model_territories (RETURNS BOOLEAN).
+ * After the RPC succeeds, re-fetches the saved rows so the caller has fresh data.
+ * Throws on any error so callers surface it to the user.
+ */
 export async function upsertTerritoriesForModel(
   modelId: string,
   agencyId: string,
@@ -35,104 +134,120 @@ export async function upsertTerritoriesForModel(
     new Set(countryCodes.map((c) => c.trim().toUpperCase()).filter(Boolean)),
   );
 
-  // First, delete territories for this model/agency that are not in the new list
-  const { error: deleteError } = await supabase
-    .from('model_agency_territories')
-    .delete()
-    .eq('model_id', modelId)
-    .eq('agency_id', agencyId)
-    .not(
-      'country_code',
-      'in',
-      `(${normalized.map((c) => `'${c}'`).join(',') || "''"})`,
-    );
-
-  if (deleteError) {
-    console.error('upsertTerritoriesForModel delete error:', deleteError);
-    return [];
-  }
-
-  if (normalized.length === 0) {
-    const { data, error } = await supabase
-      .from('model_agency_territories')
-      .select('*')
-      .eq('model_id', modelId)
-      .eq('agency_id', agencyId)
-      .order('country_code');
-    if (error) {
-      console.error('upsertTerritoriesForModel fetch-after-empty error:', error);
-      return [];
-    }
-    return (data ?? []) as ModelTerritory[];
-  }
-
-  const payload = normalized.map((code) => ({
-    model_id: modelId,
-    agency_id: agencyId,
-    country_code: code,
-  }));
-
-  const { data, error } = await supabase
-    .from('model_agency_territories')
-    // With the stabilized schema: 1 agency per (model_id,country_code).
-    // Conflict resolution updates `agency_id` for the country.
-    .upsert(payload, { onConflict: 'model_id,country_code' })
-    .select('*')
-    .order('country_code');
+  const { data, error } = await supabase.rpc('save_model_territories', {
+    p_model_id: modelId,
+    p_agency_id: agencyId,
+    p_country_codes: normalized,
+  });
 
   if (error) {
-    console.error('upsertTerritoriesForModel upsert error:', error);
-    return [];
+    console.error('upsertTerritoriesForModel rpc error:', error);
+    throw new Error(`Territory save failed: ${error.message}`);
   }
 
-  return (data ?? []) as ModelTerritory[];
+  if (!data) {
+    throw new Error('Territory save failed: RPC returned no result. Apply migration_territories_rpc_definitive.sql in Supabase.');
+  }
+
+  // Re-fetch saved rows for the caller
+  return getTerritoriesForModel(modelId, agencyId);
 }
 
 /**
- * Merge territory claims without deleting other countries.
- * Enforces stabilized uniqueness: 1 row per (model_id,country_code) updates agency_id.
+ * Merge territory claims per (country, agency) pair.
+ * Groups by agency_id and calls upsertTerritoriesForModel once per agency.
  */
 export async function upsertTerritoriesForModelCountryAgencyPairs(
   modelId: string,
   pairs: Array<{ country_code: string; agency_id: string }>,
 ): Promise<ModelTerritory[]> {
   const normalized = pairs
-    .map((p) => ({
-      country_code: p.country_code.trim().toUpperCase(),
-      agency_id: p.agency_id,
-    }))
+    .map((p) => ({ country_code: p.country_code.trim().toUpperCase(), agency_id: p.agency_id }))
     .filter((p) => Boolean(p.country_code) && Boolean(p.agency_id));
 
-  // If multiple pairs are passed for the same country, keep the last one.
+  // Last agency_id wins per country
   const dedupByCountry = new Map<string, { country_code: string; agency_id: string }>();
   for (const p of normalized) dedupByCountry.set(p.country_code, p);
 
-  const payload = Array.from(dedupByCountry.values()).map((p) => ({
-    model_id: modelId,
-    agency_id: p.agency_id,
-    country_code: p.country_code,
-  }));
+  if (dedupByCountry.size === 0) return [];
 
-  if (payload.length === 0) return [];
-
-  const { data, error } = await supabase
-    .from('model_agency_territories')
-    .upsert(payload, { onConflict: 'model_id,country_code' })
-    .select('*')
-    .order('country_code');
-
-  if (error) {
-    console.error('upsertTerritoriesForModelCountryAgencyPairs error:', error);
-    return [];
+  // Group by agency_id
+  const byAgency = new Map<string, string[]>();
+  for (const { country_code, agency_id } of dedupByCountry.values()) {
+    if (!byAgency.has(agency_id)) byAgency.set(agency_id, []);
+    byAgency.get(agency_id)!.push(country_code);
   }
 
-  return (data ?? []) as ModelTerritory[];
+  const results: ModelTerritory[] = [];
+  for (const [agId, codes] of byAgency) {
+    const rows = await upsertTerritoriesForModel(modelId, agId, codes);
+    results.push(...rows);
+  }
+  return results;
 }
 
 /**
- * Bulk-assign territories to multiple models at once.
- * Applies the same country list to every model in the array.
- * Respects upsert semantics: existing territories for other agencies are not touched.
+ * ADDITIVE territory assignment for a single model.
+ * Adds new countries WITHOUT removing existing territories.
+ * Uses `add_model_territories` SECURITY DEFINER RPC.
+ * Throws on error.
+ */
+export async function addTerritoriesForModel(
+  modelId: string,
+  agencyId: string,
+  countryCodes: string[],
+): Promise<ModelTerritory[]> {
+  const normalized = Array.from(
+    new Set(countryCodes.map((c) => c.trim().toUpperCase()).filter(Boolean)),
+  );
+  if (normalized.length === 0) return getTerritoriesForModel(modelId, agencyId);
+
+  const { data, error } = await supabase.rpc('add_model_territories', {
+    p_model_id: modelId,
+    p_agency_id: agencyId,
+    p_country_codes: normalized,
+  });
+
+  if (error) {
+    console.error('addTerritoriesForModel rpc error:', error);
+    throw new Error(`Territory add failed: ${error.message}`);
+  }
+
+  if (!data) {
+    throw new Error('Territory add failed: RPC returned no result. Apply migration_territories_add_rpc.sql in Supabase.');
+  }
+
+  return getTerritoriesForModel(modelId, agencyId);
+}
+
+/**
+ * ADDITIVE bulk-assign: adds territories to multiple models without removing existing ones.
+ * Used by the bulk selection panel under "My Models".
+ */
+export async function bulkAddTerritoriesForModels(
+  modelIds: string[],
+  agencyId: string,
+  countryCodes: string[],
+): Promise<{ succeededIds: string[]; failedIds: string[] }> {
+  const succeededIds: string[] = [];
+  const failedIds: string[] = [];
+
+  for (const modelId of modelIds) {
+    try {
+      await addTerritoriesForModel(modelId, agencyId, countryCodes);
+      succeededIds.push(modelId);
+    } catch (e) {
+      console.error('bulkAddTerritoriesForModels error for model', modelId, e);
+      failedIds.push(modelId);
+    }
+  }
+
+  return { succeededIds, failedIds };
+}
+
+/**
+ * REPLACE bulk-assign: replaces territories for multiple models (full replace per model).
+ * @deprecated Use bulkAddTerritoriesForModels for bulk panel — it preserves existing territories.
  */
 export async function bulkUpsertTerritoriesForModels(
   modelIds: string[],
@@ -145,9 +260,6 @@ export async function bulkUpsertTerritoriesForModels(
   for (const modelId of modelIds) {
     try {
       await upsertTerritoriesForModel(modelId, agencyId, countryCodes);
-      // Success = no exception thrown. upsertTerritoriesForModel already logs Supabase
-      // errors internally; an empty SELECT result due to RLS does not mean the UPSERT
-      // failed — the row was written, the caller just cannot read it back.
       succeededIds.push(modelId);
     } catch (e) {
       console.error('bulkUpsertTerritoriesForModels error for model', modelId, e);
@@ -159,9 +271,7 @@ export async function bulkUpsertTerritoriesForModels(
 }
 
 /**
- * Booking routing helper: pick the correct agency for a model + country.
- * - If multiple agencies exist for the same model+country, we pick the latest by `created_at`.
- * - Returns null when no matching territory exists.
+ * Booking routing helper: returns the agency_id responsible for a model in a country.
  */
 export async function resolveAgencyForModelAndCountry(
   modelId: string,
@@ -178,15 +288,10 @@ export async function resolveAgencyForModelAndCountry(
       .eq('country_code', code)
       .maybeSingle();
 
-    if (error) {
-      console.error('resolveAgencyForModelAndCountry error:', error);
-      return null;
-    }
-
+    if (error) { console.error('resolveAgencyForModelAndCountry error:', error); return null; }
     return (data as { agency_id: string } | null)?.agency_id ?? null;
   } catch (e) {
     console.error('resolveAgencyForModelAndCountry exception:', e);
     return null;
   }
 }
-

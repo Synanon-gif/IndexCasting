@@ -120,10 +120,28 @@ function AppContent() {
   const isDemo = demoRole !== null;
   const effectiveRole: Role | null = isDemo ? demoRole : roleFromProfile(profile?.role);
 
+  // Computed early (before hooks) so it can be used in useEffect and render guards.
+  // True when the user is fully authenticated and NOT a Magic-Link guest.
+  const isAuthenticatedNonGuest = !!session && !!profile && profile.is_guest !== true;
+
   const setClientType = (value: ClientType) => {
     setClientTypeState(value);
     saveClientType(value);
   };
+
+  // When an authenticated non-guest user lands with ?guest= in the URL
+  // (e.g. they bookmarked a shared link or an old tab reopened), silently strip
+  // the parameter so the normal workspace renders and no GuestView flash occurs.
+  useEffect(() => {
+    if (!isAuthenticatedNonGuest) return;
+    if (!guestLinkId) return;
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const u = new URL(window.location.href);
+    if (u.searchParams.has('guest')) {
+      u.searchParams.delete('guest');
+      window.history.replaceState({}, '', u.pathname + u.search + u.hash);
+    }
+  }, [isAuthenticatedNonGuest, guestLinkId]);
 
   /** Drop stray invite tokens when this load is not part of an invite flow (e.g. Supabase email-confirm redirect). */
   useEffect(() => {
@@ -193,7 +211,11 @@ function AppContent() {
     );
   }
 
-  if (guestLinkId) {
+  // Guest-link URL parameter: only show GuestView for unauthenticated users or
+  // users whose profile is explicitly marked as a guest (Magic-Link flow).
+  // Authenticated client-org owners/employees must NOT be redirected to GuestView —
+  // they open packages in-app via the Discover tab.
+  if (guestLinkId && !isAuthenticatedNonGuest) {
     return (
       <>
         <GuestView linkId={guestLinkId} />

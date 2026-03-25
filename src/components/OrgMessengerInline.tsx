@@ -204,9 +204,25 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
                 const previewIds = metaStringArray(m, 'preview_model_ids');
                 const packageLabel = metaString(m, 'package_label');
                 const guestLink = metaString(m, 'guest_link');
+                const isInAppAccess = !!onPackagePress;
                 return (
                   <View style={styles.card}>
-                    <Text style={styles.cardTitle}>{uiCopy.b2bChat.sharedPackage}</Text>
+                    <View style={styles.cardTitleRow}>
+                      <Text style={styles.cardTitle}>{uiCopy.b2bChat.sharedPackage}</Text>
+                      <View style={[
+                        styles.accessBadge,
+                        isInAppAccess ? styles.accessBadgeFull : styles.accessBadgeGuest,
+                      ]}>
+                        <Text style={[
+                          styles.accessBadgeLabel,
+                          isInAppAccess ? styles.accessBadgeLabelFull : styles.accessBadgeLabelGuest,
+                        ]}>
+                          {isInAppAccess
+                            ? uiCopy.b2bChat.packageBadgeFullAccess
+                            : uiCopy.b2bChat.packageBadgeGuestAccess}
+                        </Text>
+                      </View>
+                    </View>
                     {packageLabel ? (
                       <Text style={styles.packageLabel}>
                         {packageLabel} {uiCopy.b2bChat.packagePreviewLabel}
@@ -235,19 +251,16 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
                       </View>
                     ) : null}
                     <View style={styles.cardActions}>
-                      {guestLink ? (
-                        <TouchableOpacity style={styles.cardBtn} onPress={() => openUrl(guestLink)}>
-                          <Text style={styles.cardBtnLabel}>{uiCopy.b2bChat.openPackage}</Text>
-                        </TouchableOpacity>
-                      ) : null}
                       {onPackagePress ? (
                         <TouchableOpacity
-                          style={[styles.cardBtn, styles.cardBtnSecondary]}
+                          style={styles.cardBtn}
                           onPress={() => onPackagePress(meta)}
                         >
-                          <Text style={styles.cardBtnLabelSecondary}>
-                            {uiCopy.b2bChat.requestFromPackage}
-                          </Text>
+                          <Text style={styles.cardBtnLabel}>{uiCopy.b2bChat.openPackage}</Text>
+                        </TouchableOpacity>
+                      ) : guestLink ? (
+                        <TouchableOpacity style={styles.cardBtn} onPress={() => openUrl(guestLink)}>
+                          <Text style={styles.cardBtnLabel}>{uiCopy.b2bChat.openPackage}</Text>
                         </TouchableOpacity>
                       ) : null}
                     </View>
@@ -336,6 +349,9 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
             <Text style={styles.modalTitle}>
               {shareOpen === 'package' ? uiCopy.b2bChat.pickPackage : uiCopy.b2bChat.pickModel}
             </Text>
+            {shareOpen === 'package' ? (
+              <Text style={styles.modalHint}>{uiCopy.b2bChat.pickPackageHint}</Text>
+            ) : null}
             <ScrollView style={{ maxHeight: 280 }}>
               {shareOpen === 'package'
                 ? guestLinks.map((g) => (
@@ -447,11 +463,45 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
     backgroundColor: colors.surface,
   },
+  cardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
   cardTitle: {
     ...typography.label,
     fontSize: 11,
-    marginBottom: 4,
     color: colors.textPrimary,
+  },
+  accessBadge: {
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  accessBadgeFull: {
+    backgroundColor: colors.buttonOptionGreen,
+  },
+  accessBadgeGuest: {
+    backgroundColor: colors.border,
+  },
+  accessBadgeLabel: {
+    ...typography.label,
+    fontSize: 9,
+    fontWeight: '700',
+  },
+  accessBadgeLabelFull: {
+    color: '#fff',
+  },
+  accessBadgeLabelGuest: {
+    color: colors.textSecondary,
+  },
+  modalHint: {
+    ...typography.body,
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+    lineHeight: 16,
   },
   packageLabel: {
     ...typography.body,

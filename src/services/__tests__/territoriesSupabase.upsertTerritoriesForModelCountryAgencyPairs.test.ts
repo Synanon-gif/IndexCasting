@@ -1,45 +1,38 @@
 import { upsertTerritoriesForModelCountryAgencyPairs } from '../territoriesSupabase';
 
-const fromMock = jest.fn();
+const rpcMock = jest.fn();
 
 jest.mock('../../../lib/supabase', () => ({
   supabase: {
-    from: (...args: unknown[]) => fromMock(...args),
+    rpc: (...args: unknown[]) => rpcMock(...args),
   },
 }));
 
 describe('upsertTerritoriesForModelCountryAgencyPairs', () => {
   beforeEach(() => {
-    fromMock.mockReset();
+    rpcMock.mockReset();
   });
 
-  it('upserts with onConflict model_id,country_code and deduplicates by country_code', async () => {
-    const orderReturn = Promise.resolve({ data: [{ id: 't1' }], error: null });
-    const upsertChain = {
-      select: jest.fn().mockReturnThis(),
-      order: jest.fn().mockReturnValue(orderReturn),
-    };
-
-    const upsertPayloads: any[] = [];
-    const upsertBuilder = {
-      upsert: jest.fn().mockImplementation((payload: any[], opts: any) => {
-        upsertPayloads.push(...payload);
-        expect(opts).toEqual({ onConflict: 'model_id,country_code' });
-        return upsertChain;
-      }),
-    };
-
-    fromMock.mockReturnValueOnce(upsertBuilder);
+  it('calls save_model_territories per agency and deduplicates by country_code', async () => {
+    rpcMock.mockResolvedValue({ data: [{ id: 't1' }], error: null });
 
     await upsertTerritoriesForModelCountryAgencyPairs('m1', [
       { country_code: ' fr ', agency_id: 'a1' },
-      { country_code: 'FR', agency_id: 'a2' }, // same country, should win (last)
-      { country_code: ' de ', agency_id: 'a3' },
+      { country_code: 'FR', agency_id: 'a2' }, // same country — last one wins (a2)
+      { country_code: ' de ', agency_id: 'a2' },
     ]);
 
-    // Should only contain FR and DE once each.
-    const countries = Array.from(new Set(upsertPayloads.map((p) => p.country_code)));
-    expect(countries.sort()).toEqual(['DE', 'FR']);
+    // a2 should receive ['FR', 'DE'] (the deduplicated result for a2)
+    expect(rpcMock).toHaveBeenCalledWith('save_model_territories', {
+      p_model_id: 'm1',
+      p_agency_id: 'a2',
+      p_country_codes: expect.arrayContaining(['FR', 'DE']),
+    });
+  });
+
+  it('returns empty array when no pairs are passed', async () => {
+    const result = await upsertTerritoriesForModelCountryAgencyPairs('m1', []);
+    expect(result).toEqual([]);
+    expect(rpcMock).not.toHaveBeenCalled();
   });
 });
-

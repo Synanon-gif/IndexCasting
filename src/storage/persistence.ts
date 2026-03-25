@@ -72,6 +72,19 @@ export type PersistedClientFilters = {
   city: string;
   /** true = filter by user's detected city */
   nearby: boolean;
+  /** Marketing category filter: 'Fashion' | 'High Fashion' | 'Commercial' | '' */
+  category: string;
+  sportsWinter: boolean;
+  sportsSummer: boolean;
+  hairColor: string;
+  hipsMin: string;
+  hipsMax: string;
+  waistMin: string;
+  waistMax: string;
+  chestMin: string;
+  chestMax: string;
+  legsInseamMin: string;
+  legsInseamMax: string;
 };
 
 export type ClientType = 'fashion' | 'commercial';

@@ -10,6 +10,7 @@ export type GuestLink = {
   model_ids: string[];
   agency_email: string | null;
   agency_name: string | null;
+  label: string | null;
   created_by: string | null;
   expires_at: string | null;
   is_active: boolean;
@@ -22,6 +23,7 @@ export async function createGuestLink(params: {
   model_ids: string[];
   agency_email?: string;
   agency_name?: string;
+  label?: string;
   expires_at?: string;
 }): Promise<GuestLink | null> {
   const { data: { user } } = await supabase.auth.getUser();
@@ -32,6 +34,7 @@ export async function createGuestLink(params: {
       model_ids: params.model_ids,
       agency_email: params.agency_email || null,
       agency_name: params.agency_name || null,
+      label: params.label || null,
       created_by: user?.id || null,
       expires_at: params.expires_at || null,
     })

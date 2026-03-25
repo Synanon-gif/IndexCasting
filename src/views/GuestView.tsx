@@ -46,7 +46,7 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
       try {
         const g = await getGuestLink(linkId);
         if (!g) {
-          setPageError('This link is invalid or has expired.');
+          setPageError(copy.invalidOrExpired);
           setLoading(false);
           return;
         }
@@ -57,7 +57,7 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
         setModels(results.filter((m): m is SupabaseModel => m !== null));
       } catch (e) {
         console.error('GuestView load error:', e);
-        setPageError('Could not load this link. Please try again.');
+        setPageError(copy.loadError);
       } finally {
         setLoading(false);
       }
@@ -115,6 +115,7 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color={colors.textPrimary} />
+        <Text style={styles.loadingText}>{copy.loading}</Text>
       </View>
     );
   }
@@ -134,7 +135,11 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
     return (
       <View style={styles.centered}>
         <Text style={styles.brand}>INDEX CASTING</Text>
-        <Text style={styles.title}>Guest Access</Text>
+        <View style={styles.guestAccessBanner}>
+          <Text style={styles.guestAccessBadge}>{copy.guestAccessBadge}</Text>
+          <Text style={styles.guestAccessSubtitle}>{copy.guestAccessSubtitle}</Text>
+        </View>
+        <Text style={styles.title}>{copy.legalTitle}</Text>
         <Text style={styles.subtitle}>
           {link?.agency_name || 'An agency'} has shared a selection of models with you.
           Please accept the terms to continue.
@@ -148,7 +153,7 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
           <View style={[styles.checkbox, tosAccepted && styles.checkboxChecked]}>
             {tosAccepted && <Text style={styles.checkmark}>✓</Text>}
           </View>
-          <Text style={styles.checkLabel}>I accept the Terms of Service</Text>
+          <Text style={styles.checkLabel}>{copy.legalTosLabel}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -159,7 +164,7 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
           <View style={[styles.checkbox, privacyAccepted && styles.checkboxChecked]}>
             {privacyAccepted && <Text style={styles.checkmark}>✓</Text>}
           </View>
-          <Text style={styles.checkLabel}>I accept the Privacy Policy</Text>
+          <Text style={styles.checkLabel}>{copy.legalPrivacyLabel}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -167,7 +172,7 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
           disabled={!tosAccepted || !privacyAccepted}
           onPress={() => setPhase('browse')}
         >
-          <Text style={styles.primaryBtnLabel}>View Models</Text>
+          <Text style={styles.primaryBtnLabel}>{copy.legalContinue}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -306,9 +311,15 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.brand}>INDEX CASTING</Text>
-        <Text style={styles.headerSub}>
-          Shared by {link?.agency_name || 'Agency'} · {models.length} Models
-        </Text>
+        <View style={styles.headerMetaRow}>
+          <Text style={styles.headerSub}>
+            {copy.browseTitle} · {link?.agency_name || 'Agency'} · {models.length} models
+          </Text>
+          <View style={styles.guestBadgePill}>
+            <Text style={styles.guestBadgePillLabel}>{copy.guestAccessBadge}</Text>
+          </View>
+        </View>
+        <Text style={styles.guestAccessNote}>{copy.guestAccessSubtitle}</Text>
       </View>
 
       <ScrollView style={styles.scrollArea} contentContainerStyle={styles.grid}>
@@ -347,7 +358,9 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
           style={styles.contactBtn}
           onPress={() => setPhase('request_form')}
         >
-          <Text style={styles.contactBtnLabel}>Send a Request to {link?.agency_name || 'Agency'}</Text>
+          <Text style={styles.contactBtnLabel}>
+            {copy.browseSendRequest} {link?.agency_name || 'Agency'}
+          </Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -364,6 +377,65 @@ const styles = StyleSheet.create({
   },
   container: { flex: 1, backgroundColor: colors.background },
   brand: { ...typography.heading, color: colors.textPrimary, marginBottom: spacing.sm },
+  loadingText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
+    fontSize: 13,
+  },
+  /** Guest Access Banner — shown on legal gate and browse views */
+  guestAccessBanner: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    padding: spacing.md,
+    backgroundColor: colors.surface,
+    marginBottom: spacing.lg,
+    width: '100%',
+    maxWidth: 400,
+    alignItems: 'center',
+  },
+  guestAccessBadge: {
+    ...typography.label,
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  guestAccessSubtitle: {
+    ...typography.body,
+    fontSize: 12,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 16,
+  },
+  /** Browse header inline badge */
+  headerMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flexWrap: 'wrap',
+  },
+  guestBadgePill: {
+    backgroundColor: colors.border,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  guestBadgePillLabel: {
+    ...typography.label,
+    fontSize: 9,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  guestAccessNote: {
+    ...typography.body,
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 4,
+    lineHeight: 14,
+  },
   title: {
     ...typography.heading,
     fontSize: 20,

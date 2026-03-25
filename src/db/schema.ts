@@ -31,6 +31,9 @@ export type Model = {
   polaroids: string[];
   is_visible_commercial: boolean;
   is_visible_fashion: boolean;
+  /** Sports dimension — independent of Fashion/Commercial categories. */
+  is_sports_winter: boolean;
+  is_sports_summer: boolean;
   created_at: number;
   updated_at: number;
 };

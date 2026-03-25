@@ -34,6 +34,9 @@ export type SupabaseModel = {
   is_visible_fashion: boolean;
   /** Marketing categories ('Fashion' | 'High Fashion' | 'Commercial'). NULL/empty = all categories. */
   categories: string[] | null;
+  /** Sports dimension — independent of Fashion/Commercial categories. Default false. */
+  is_sports_winter?: boolean;
+  is_sports_summer?: boolean;
   created_at?: string;
   updated_at?: string;
   // Real physical location (nullable). `country` is a legacy field used in older code.
@@ -107,29 +110,70 @@ function buildCategoryOrFilter(category: string): string {
   return `categories.is.null,categories.eq.{},categories.ov.{"${escaped}"}`;
 }
 
+/** Shared measurement + hair parameters for all client discovery queries. */
+export type ClientMeasurementFilters = {
+  heightMin?: number;
+  heightMax?: number;
+  hairColor?: string;
+  hipsMin?: number;
+  hipsMax?: number;
+  waistMin?: number;
+  waistMax?: number;
+  chestMin?: number;
+  chestMax?: number;
+  legsInseamMin?: number;
+  legsInseamMax?: number;
+};
+
+/** Apply measurement/hair filters to any Supabase query builder — used in all three client functions. */
+function applyMeasurementFilters(q: any, f: ClientMeasurementFilters): any {
+  if (f.heightMin) q = q.gte('height', f.heightMin);
+  if (f.heightMax) q = q.lte('height', f.heightMax);
+  if (f.hairColor?.trim()) q = q.ilike('hair_color', `%${f.hairColor.trim()}%`);
+  if (f.hipsMin) q = q.gte('hips', f.hipsMin);
+  if (f.hipsMax) q = q.lte('hips', f.hipsMax);
+  if (f.waistMin) q = q.gte('waist', f.waistMin);
+  if (f.waistMax) q = q.lte('waist', f.waistMax);
+  if (f.chestMin) q = q.gte('chest', f.chestMin);
+  if (f.chestMax) q = q.lte('chest', f.chestMax);
+  if (f.legsInseamMin) q = q.gte('legs_inseam', f.legsInseamMin);
+  if (f.legsInseamMax) q = q.lte('legs_inseam', f.legsInseamMax);
+  return q;
+}
+
 export async function getModelsForClientFromSupabase(
-  clientType: 'fashion' | 'commercial',
+  clientType: 'fashion' | 'commercial' | 'all',
   category?: string,
+  sportsWinter?: boolean,
+  sportsSummer?: boolean,
+  measurementFilters?: ClientMeasurementFilters,
 ): Promise<SupabaseModel[]> {
-  const column = clientType === 'fashion' ? 'is_visible_fashion' : 'is_visible_commercial';
   return fetchAllSupabasePages(async (from, to) => {
     let q = supabase
       .from('models')
       .select('*')
-      .eq(column, true)
       .or('agency_relationship_status.is.null,agency_relationship_status.eq.active,agency_relationship_status.eq.pending_link')
       .order('name')
       .range(from, to);
+    if (clientType === 'fashion') q = q.eq('is_visible_fashion', true);
+    else if (clientType === 'commercial') q = q.eq('is_visible_commercial', true);
+    else q = q.or('is_visible_fashion.eq.true,is_visible_commercial.eq.true');
     if (category) q = q.or(buildCategoryOrFilter(category));
+    if (sportsWinter) q = q.eq('is_sports_winter', true);
+    if (sportsSummer) q = q.eq('is_sports_summer', true);
+    if (measurementFilters) q = applyMeasurementFilters(q, measurementFilters);
     const { data, error } = await q;
     return { data: data as SupabaseModel[] | null, error };
   });
 }
 
 export async function getModelsForClientFromSupabaseByTerritory(
-  clientType: 'fashion' | 'commercial',
+  clientType: 'fashion' | 'commercial' | 'all',
   countryCode: string,
   category?: string,
+  sportsWinter?: boolean,
+  sportsSummer?: boolean,
+  measurementFilters?: ClientMeasurementFilters,
 ): Promise<
   Array<
     SupabaseModel & {
@@ -140,17 +184,21 @@ export async function getModelsForClientFromSupabaseByTerritory(
   >
 > {
   const iso = countryCode.trim().toUpperCase();
-  const column = clientType === 'fashion' ? 'is_visible_fashion' : 'is_visible_commercial';
   return fetchAllSupabasePages(async (from, to) => {
     let q = supabase
       .from('models_with_territories')
       .select('*')
       .eq('territory_country_code', iso)
-      .eq(column, true)
       .or('agency_relationship_status.is.null,agency_relationship_status.eq.active,agency_relationship_status.eq.pending_link')
       .order('name')
       .range(from, to);
+    if (clientType === 'fashion') q = q.eq('is_visible_fashion', true);
+    else if (clientType === 'commercial') q = q.eq('is_visible_commercial', true);
+    else q = q.or('is_visible_fashion.eq.true,is_visible_commercial.eq.true');
     if (category) q = q.or(buildCategoryOrFilter(category));
+    if (sportsWinter) q = q.eq('is_sports_winter', true);
+    if (sportsSummer) q = q.eq('is_sports_summer', true);
+    if (measurementFilters) q = applyMeasurementFilters(q, measurementFilters);
     const { data, error } = await q;
     return {
       data: data as
@@ -168,10 +216,13 @@ export async function getModelsForClientFromSupabaseByTerritory(
 }
 
 export async function getModelsForClientFromSupabaseHybridLocation(
-  clientType: 'fashion' | 'commercial',
+  clientType: 'fashion' | 'commercial' | 'all',
   countryCode: string,
   city?: string | null,
   category?: string,
+  sportsWinter?: boolean,
+  sportsSummer?: boolean,
+  measurementFilters?: ClientMeasurementFilters,
 ): Promise<
   Array<
     SupabaseModel & {
@@ -183,23 +234,31 @@ export async function getModelsForClientFromSupabaseHybridLocation(
   >
 > {
   const iso = countryCode.trim().toUpperCase();
-  const column = clientType === 'fashion' ? 'is_visible_fashion' : 'is_visible_commercial';
+
+  const applyVisibility = (q: any) => {
+    if (clientType === 'fashion') return q.eq('is_visible_fashion', true);
+    if (clientType === 'commercial') return q.eq('is_visible_commercial', true);
+    return q.or('is_visible_fashion.eq.true,is_visible_commercial.eq.true');
+  };
 
   // 1) REAL LOCATION group: models with models.country_code = selected country.
   const realRows = await fetchAllSupabasePages(async (from, to) => {
     let q = supabase
       .from('models')
       .select('*')
-      .eq(column, true)
       .eq('country_code', iso)
       .or('agency_relationship_status.is.null,agency_relationship_status.eq.active,agency_relationship_status.eq.pending_link')
       .order('name')
       .range(from, to);
 
+    q = applyVisibility(q);
     if (city && city.trim()) {
       q = q.ilike('city', city.trim());
     }
     if (category) q = q.or(buildCategoryOrFilter(category));
+    if (sportsWinter) q = q.eq('is_sports_winter', true);
+    if (sportsSummer) q = q.eq('is_sports_summer', true);
+    if (measurementFilters) q = applyMeasurementFilters(q, measurementFilters);
 
     const { data, error } = await q;
     return { data: data as SupabaseModel[] | null, error };
@@ -213,11 +272,14 @@ export async function getModelsForClientFromSupabaseHybridLocation(
       .select('*')
       .eq('territory_country_code', iso)
       .is('country_code', null)
-      .eq(column, true)
       .or('agency_relationship_status.is.null,agency_relationship_status.eq.active,agency_relationship_status.eq.pending_link')
       .order('name')
       .range(from, to);
+    q = applyVisibility(q);
     if (category) q = q.or(buildCategoryOrFilter(category));
+    if (sportsWinter) q = q.eq('is_sports_winter', true);
+    if (sportsSummer) q = q.eq('is_sports_summer', true);
+    if (measurementFilters) q = applyMeasurementFilters(q, measurementFilters);
     const { data, error } = await q;
 
     return {

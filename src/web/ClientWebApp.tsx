@@ -20,6 +20,8 @@ import { getModelByIdFromSupabase, type SupabaseModel } from '../services/models
 import { getGuestLink } from '../services/guestLinksSupabase';
 import { getAgencies, type Agency } from '../services/agenciesSupabase';
 import { AGENCY_SEGMENT_TYPES } from '../constants/agencyTypes';
+import { type ModelFilters, defaultModelFilters, FILTER_COUNTRIES } from '../utils/modelFilters';
+import ModelFiltersPanel from '../components/ModelFiltersPanel';
 import {
   getCalendarEntriesForClient,
   getBookingEventsAsCalendarEntries,
@@ -48,6 +50,10 @@ import {
   type PersistedClientProject,
   type PersistedClientFilters,
 } from '../storage/persistence';
+import {
+  saveFilterPresetToSupabase,
+  loadFilterPresetFromSupabase,
+} from '../services/clientFiltersSupabase';
 import {
   addOptionRequest,
   getOptionRequests,
@@ -106,6 +112,8 @@ type ModelSummary = {
   coverUrl: string;
   agencyId?: string | null;
   agencyName?: string | null;
+  isSportsWinter?: boolean;
+  isSportsSummer?: boolean;
 };
 
 type ClientWebAppProps = {
@@ -139,117 +147,7 @@ type MediaslideModel = {
   };
 };
 
-type WebFilters = {
-  size: 'all' | 'short' | 'medium' | 'tall';
-  /** ISO-2 country code, '' = all countries */
-  countryCode: string;
-  /** Free-text city, '' = all cities */
-  city: string;
-  /** Use geolocation near-me filter */
-  nearby: boolean;
-  hairColor: string;
-  hipsMin: string;
-  hipsMax: string;
-  waistMin: string;
-  waistMax: string;
-  chestMin: string;
-  chestMax: string;
-  legsInseamMin: string;
-  legsInseamMax: string;
-  /** Marketing category: '' = all, 'Fashion' | 'High Fashion' | 'Commercial' */
-  category: string;
-};
-
-/** All selectable countries for the country search dropdown. Sorted A→Z. */
-const FILTER_COUNTRIES: Array<{ code: string; label: string }> = [
-  { code: 'AL', label: 'Albania' },
-  { code: 'DZ', label: 'Algeria' },
-  { code: 'AR', label: 'Argentina' },
-  { code: 'AU', label: 'Australia' },
-  { code: 'AT', label: 'Austria' },
-  { code: 'BE', label: 'Belgium' },
-  { code: 'BA', label: 'Bosnia & Herzegovina' },
-  { code: 'BR', label: 'Brazil' },
-  { code: 'BG', label: 'Bulgaria' },
-  { code: 'CA', label: 'Canada' },
-  { code: 'CL', label: 'Chile' },
-  { code: 'CN', label: 'China' },
-  { code: 'CO', label: 'Colombia' },
-  { code: 'HR', label: 'Croatia' },
-  { code: 'CY', label: 'Cyprus' },
-  { code: 'CZ', label: 'Czech Republic' },
-  { code: 'DK', label: 'Denmark' },
-  { code: 'EG', label: 'Egypt' },
-  { code: 'EE', label: 'Estonia' },
-  { code: 'FI', label: 'Finland' },
-  { code: 'FR', label: 'France' },
-  { code: 'DE', label: 'Germany' },
-  { code: 'GH', label: 'Ghana' },
-  { code: 'GR', label: 'Greece' },
-  { code: 'HU', label: 'Hungary' },
-  { code: 'IS', label: 'Iceland' },
-  { code: 'IN', label: 'India' },
-  { code: 'ID', label: 'Indonesia' },
-  { code: 'IE', label: 'Ireland' },
-  { code: 'IL', label: 'Israel' },
-  { code: 'IT', label: 'Italy' },
-  { code: 'JP', label: 'Japan' },
-  { code: 'KE', label: 'Kenya' },
-  { code: 'KR', label: 'South Korea' },
-  { code: 'LV', label: 'Latvia' },
-  { code: 'LT', label: 'Lithuania' },
-  { code: 'LU', label: 'Luxembourg' },
-  { code: 'MY', label: 'Malaysia' },
-  { code: 'MA', label: 'Morocco' },
-  { code: 'MX', label: 'Mexico' },
-  { code: 'ME', label: 'Montenegro' },
-  { code: 'NL', label: 'Netherlands' },
-  { code: 'NZ', label: 'New Zealand' },
-  { code: 'NG', label: 'Nigeria' },
-  { code: 'MK', label: 'North Macedonia' },
-  { code: 'NO', label: 'Norway' },
-  { code: 'PK', label: 'Pakistan' },
-  { code: 'PE', label: 'Peru' },
-  { code: 'PH', label: 'Philippines' },
-  { code: 'PL', label: 'Poland' },
-  { code: 'PT', label: 'Portugal' },
-  { code: 'RO', label: 'Romania' },
-  { code: 'RU', label: 'Russia' },
-  { code: 'RS', label: 'Serbia' },
-  { code: 'SG', label: 'Singapore' },
-  { code: 'SK', label: 'Slovakia' },
-  { code: 'SI', label: 'Slovenia' },
-  { code: 'ZA', label: 'South Africa' },
-  { code: 'ES', label: 'Spain' },
-  { code: 'SE', label: 'Sweden' },
-  { code: 'CH', label: 'Switzerland' },
-  { code: 'TW', label: 'Taiwan' },
-  { code: 'TH', label: 'Thailand' },
-  { code: 'TR', label: 'Turkey' },
-  { code: 'UA', label: 'Ukraine' },
-  { code: 'AE', label: 'UAE' },
-  { code: 'GB', label: 'UK' },
-  { code: 'US', label: 'USA' },
-  { code: 'UY', label: 'Uruguay' },
-  { code: 'VN', label: 'Vietnam' },
-];
-
-const initialFilters: WebFilters = {
-  size: 'all',
-  countryCode: '',
-  city: '',
-  nearby: false,
-  hairColor: '',
-  hipsMin: '',
-  hipsMax: '',
-  waistMin: '',
-  waistMax: '',
-  chestMin: '',
-  chestMax: '',
-  legsInseamMin: '',
-  legsInseamMax: '',
-  category: '',
-};
+// ModelFilters type, defaultModelFilters and FILTER_COUNTRIES are imported from '../utils/modelFilters'.
 
 /** localStorage-Modelle ohne chest/legsInseam → volles ModelSummary für die App */
 function persistedProjectsToProjects(list: PersistedClientProject[]): Project[] {
@@ -300,23 +198,36 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   const [detailData, setDetailData] = useState<MediaslideModel | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
-  const [filters, setFilters] = useState<WebFilters>(() => {
+  const [filters, setFilters] = useState<ModelFilters>(() => {
     const saved = loadClientFilters();
     if (saved && typeof saved.size === 'string') {
-      const base: WebFilters = {
-        ...initialFilters,
+      return {
+        ...defaultModelFilters,
         size: saved.size,
         countryCode: saved.countryCode ?? '',
         city: saved.city ?? '',
         nearby: saved.nearby ?? false,
+        category: (saved as any).category ?? '',
+        sportsWinter: (saved as any).sportsWinter ?? false,
+        sportsSummer: (saved as any).sportsSummer ?? false,
+        hairColor: (saved as any).hairColor ?? '',
+        hipsMin: (saved as any).hipsMin ?? '',
+        hipsMax: (saved as any).hipsMax ?? '',
+        waistMin: (saved as any).waistMin ?? '',
+        waistMax: (saved as any).waistMax ?? '',
+        chestMin: (saved as any).chestMin ?? '',
+        chestMax: (saved as any).chestMax ?? '',
+        legsInseamMin: (saved as any).legsInseamMin ?? '',
+        legsInseamMax: (saved as any).legsInseamMax ?? '',
       };
-      return base;
     }
-    return initialFilters;
+    return defaultModelFilters;
   });
+  const [filterSaveStatus, setFilterSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [sharedProjectId, setSharedProjectId] = useState<string | null>(null);
   const [packageViewState, setPackageViewState] = useState<{
     packageId: string;
+    name: string;
     models: ModelSummary[];
     guestLink: string;
   } | null>(null);
@@ -422,22 +333,95 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     saveClientActiveProjectId(activeProjectId);
   }, [activeProjectId]);
 
+  // Auto-save ALL filters to localStorage on every change.
   useEffect(() => {
     const persisted: PersistedClientFilters = {
       size: filters.size,
       countryCode: filters.countryCode,
       city: filters.city,
       nearby: filters.nearby,
+      category: filters.category,
+      sportsWinter: filters.sportsWinter,
+      sportsSummer: filters.sportsSummer,
+      hairColor: filters.hairColor,
+      hipsMin: filters.hipsMin,
+      hipsMax: filters.hipsMax,
+      waistMin: filters.waistMin,
+      waistMax: filters.waistMax,
+      chestMin: filters.chestMin,
+      chestMax: filters.chestMax,
+      legsInseamMin: filters.legsInseamMin,
+      legsInseamMax: filters.legsInseamMax,
     };
     saveClientFilters(persisted);
-  }, [filters.size, filters.countryCode, filters.city, filters.nearby]);
+  }, [
+    filters.size, filters.countryCode, filters.city, filters.nearby,
+    filters.category, filters.sportsWinter, filters.sportsSummer,
+    filters.hairColor, filters.hipsMin, filters.hipsMax,
+    filters.waistMin, filters.waistMax, filters.chestMin, filters.chestMax,
+    filters.legsInseamMin, filters.legsInseamMax,
+  ]);
 
   const auth = useAuth();
-  /** Nur echte Auth-UUID – Supabase erwartet UUID für client_id / owner_id (kein Demo-String „user-client“). */
+  /** Nur echte Auth-UUID – Supabase erwartet UUID für client_id / owner_id (kein Demo-String „user-client"). */
   const realClientId =
     auth?.profile?.role === 'client' && auth.profile.id ? auth.profile.id : null;
   const isRealClient = !!realClientId;
   const effectiveClientId = realClientId ?? 'user-client';
+
+  // Save filters to Supabase (explicit user action via "Save Filters" button).
+  const handleSaveFilters = useCallback(async () => {
+    setFilterSaveStatus('saving');
+    const preset: PersistedClientFilters = {
+      size: filters.size,
+      countryCode: filters.countryCode,
+      city: filters.city,
+      nearby: filters.nearby,
+      category: filters.category,
+      sportsWinter: filters.sportsWinter,
+      sportsSummer: filters.sportsSummer,
+      hairColor: filters.hairColor,
+      hipsMin: filters.hipsMin,
+      hipsMax: filters.hipsMax,
+      waistMin: filters.waistMin,
+      waistMax: filters.waistMax,
+      chestMin: filters.chestMin,
+      chestMax: filters.chestMax,
+      legsInseamMin: filters.legsInseamMin,
+      legsInseamMax: filters.legsInseamMax,
+    };
+    const ok = await saveFilterPresetToSupabase(preset);
+    setFilterSaveStatus(ok ? 'saved' : 'error');
+    setTimeout(() => setFilterSaveStatus('idle'), 3000);
+  }, [filters]);
+
+  // Load saved filter preset from Supabase on mount (if user is authenticated).
+  useEffect(() => {
+    if (!realClientId) return;
+    loadFilterPresetFromSupabase().then((preset) => {
+      if (!preset) return;
+      setFilters((prev) => ({
+        ...prev,
+        size: preset.size ?? prev.size,
+        countryCode: preset.countryCode ?? prev.countryCode,
+        city: preset.city ?? prev.city,
+        nearby: preset.nearby ?? prev.nearby,
+        category: preset.category ?? prev.category,
+        sportsWinter: preset.sportsWinter ?? prev.sportsWinter,
+        sportsSummer: preset.sportsSummer ?? prev.sportsSummer,
+        hairColor: preset.hairColor ?? prev.hairColor,
+        hipsMin: preset.hipsMin ?? prev.hipsMin,
+        hipsMax: preset.hipsMax ?? prev.hipsMax,
+        waistMin: preset.waistMin ?? prev.waistMin,
+        waistMax: preset.waistMax ?? prev.waistMax,
+        chestMin: preset.chestMin ?? prev.chestMin,
+        chestMax: preset.chestMax ?? prev.chestMax,
+        legsInseamMin: preset.legsInseamMin ?? prev.legsInseamMin,
+        legsInseamMax: preset.legsInseamMax ?? prev.legsInseamMax,
+      }));
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [realClientId]);
 
   const loadClientCalendar = async () => {
     if (!realClientId) {
@@ -476,14 +460,43 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   useEffect(() => {
     void (async () => {
       const countryIso = filters.countryCode.trim() || undefined;
-      // Pass city only when a country is also selected (server-side ilike filter).
       const cityFilter = countryIso && filters.city.trim() ? filters.city.trim() : undefined;
 
+      // Derive effective clientType / category from unified category filter.
+      const cat = filters.category;
+      const effectiveClientType = !cat ? 'all' : cat === 'Commercial' ? 'commercial' : 'fashion';
+      const effectiveCategory = cat === 'High Fashion' ? 'High Fashion' : undefined;
+
+      // Convert height bucket → numeric range for backend filtering.
+      const pInt = (v: string) => { const n = parseInt(v, 10); return isNaN(n) ? undefined : n; };
+      let heightMin: number | undefined;
+      let heightMax: number | undefined;
+      if (filters.size === 'short')  { heightMax = 174; }
+      if (filters.size === 'medium') { heightMin = 175; heightMax = 182; }
+      if (filters.size === 'tall')   { heightMin = 183; }
+
+      const measurementFilters = {
+        heightMin,
+        heightMax,
+        hairColor: filters.hairColor.trim() || undefined,
+        hipsMin:        pInt(filters.hipsMin),
+        hipsMax:        pInt(filters.hipsMax),
+        waistMin:       pInt(filters.waistMin),
+        waistMax:       pInt(filters.waistMax),
+        chestMin:       pInt(filters.chestMin),
+        chestMax:       pInt(filters.chestMax),
+        legsInseamMin:  pInt(filters.legsInseamMin),
+        legsInseamMax:  pInt(filters.legsInseamMax),
+      };
+
       const data: any[] = await getModelsForClient(
-        clientType,
+        effectiveClientType,
         countryIso,
         cityFilter,
-        filters.category || undefined,
+        effectiveCategory,
+        filters.sportsWinter || undefined,
+        filters.sportsSummer || undefined,
+        measurementFilters,
       );
       const mapped: ModelSummary[] = data.map((m: any) => ({
         id: m.id,
@@ -501,10 +514,18 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         agencyName: m.agencyName ?? m.agency_name ?? null,
         countryCode: m.countryCode ?? null,
         hasRealLocation: m.hasRealLocation ?? false,
+        isSportsWinter: m.isSportsWinter ?? false,
+        isSportsSummer: m.isSportsSummer ?? false,
       }));
       setModels(mapped);
     })();
-  }, [clientType, filters.countryCode, filters.city, filters.category]);
+  }, [
+    filters.countryCode, filters.city, filters.category,
+    filters.sportsWinter, filters.sportsSummer, filters.size,
+    filters.hairColor, filters.hipsMin, filters.hipsMax,
+    filters.waistMin, filters.waistMax, filters.chestMin, filters.chestMax,
+    filters.legsInseamMin, filters.legsInseamMax,
+  ]);
 
   useEffect(() => {
     if (detailId) {
@@ -537,28 +558,14 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   );
 
   const filteredModels = useMemo(() => {
-    return baseModels.filter((m) => {
-      if (filters.nearby) {
-        if (!userCity || !(m.city || '').toLowerCase().includes(userCity.toLowerCase())) return false;
-      }
-      if (filters.size !== 'all') {
-        if (filters.size === 'short' && m.height >= 175) return false;
-        if (filters.size === 'medium' && (m.height < 175 || m.height > 182)) return false;
-        if (filters.size === 'tall' && m.height <= 182) return false;
-      }
-      if (filters.hairColor && !(m.hairColor || '').toLowerCase().includes(filters.hairColor.toLowerCase())) return false;
-      const pInt = (v: string) => { const n = parseInt(v, 10); return isNaN(n) ? null : n; };
-      if (pInt(filters.hipsMin) !== null && m.hips < pInt(filters.hipsMin)!) return false;
-      if (pInt(filters.hipsMax) !== null && m.hips > pInt(filters.hipsMax)!) return false;
-      if (pInt(filters.waistMin) !== null && m.waist < pInt(filters.waistMin)!) return false;
-      if (pInt(filters.waistMax) !== null && m.waist > pInt(filters.waistMax)!) return false;
-      if (pInt(filters.chestMin) !== null && m.chest < pInt(filters.chestMin)!) return false;
-      if (pInt(filters.chestMax) !== null && m.chest > pInt(filters.chestMax)!) return false;
-      if (pInt(filters.legsInseamMin) !== null && m.legsInseam < pInt(filters.legsInseamMin)!) return false;
-      if (pInt(filters.legsInseamMax) !== null && m.legsInseam > pInt(filters.legsInseamMax)!) return false;
-      return true;
-    });
-  }, [baseModels, filters, userCity]);
+    // All measurement/category/sport/height/hair filters are now applied server-side.
+    // Only "nearby" (user location detection) remains client-side because it depends
+    // on the device's geo-position, not a fixed query parameter.
+    if (!filters.nearby || !userCity) return baseModels;
+    return baseModels.filter((m) =>
+      (m.city || '').toLowerCase().includes(userCity.toLowerCase()),
+    );
+  }, [baseModels, filters.nearby, userCity]);
 
   const currentModel = useMemo(
     () =>
@@ -701,9 +708,14 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   const handlePackagePress = async (meta: Record<string, unknown>) => {
     const packageId = typeof meta.package_id === 'string' ? meta.package_id : null;
     if (!packageId) return;
+    setFeedback('Loading package…');
     try {
       const gl = await getGuestLink(packageId);
-      if (!gl) return;
+      if (!gl) {
+        setFeedback('Package not found or has expired.');
+        clearFeedbackLater();
+        return;
+      }
       const rows = await Promise.all(gl.model_ids.map((id) => getModelByIdFromSupabase(id)));
       const packageModels: ModelSummary[] = rows
         .filter((m): m is SupabaseModel => m !== null)
@@ -724,14 +736,22 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
           countryCode: m.country ?? null,
           hasRealLocation: false,
         }));
+      const packageName = gl.agency_name
+        ? `${gl.agency_name} (${gl.model_ids.length} models)`
+        : `Package (${gl.model_ids.length} models)`;
+      setFeedback(null);
       setPackageViewState({
         packageId,
+        name: packageName,
         models: packageModels,
         guestLink: typeof meta.guest_link === 'string' ? meta.guest_link : '',
       });
+      setCurrentIndex(0);
       setTab('discover');
     } catch (e) {
       console.error('handlePackagePress error:', e);
+      setFeedback('Could not load package. Please try again.');
+      clearFeedbackLater();
     }
   };
 
@@ -836,13 +856,16 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             activeProject={activeProject}
             filters={filters}
             onChangeFilters={setFilters}
-            clientType={clientType}
-            onClientTypeChange={onClientTypeChange}
+            onSaveFilters={handleSaveFilters}
+            filterSaveStatus={filterSaveStatus}
             onNext={onNext}
             onAddToProject={openProjectPickerForModel}
             onOpenDetails={openDetails}
             onOpenOptionDatePicker={openOptionDatePicker}
             isSharedMode={isSharedMode}
+            isPackageMode={isPackageMode}
+            packageName={packageViewState?.name ?? null}
+            onExitPackage={exitPackageMode}
             userCity={userCity}
           />
         )}
@@ -1468,15 +1491,18 @@ type DiscoverProps = {
   current: ModelSummary | null;
   index: number;
   activeProject: Project | null;
-  filters: WebFilters;
-  onChangeFilters: (f: WebFilters) => void;
-  clientType: 'fashion' | 'commercial';
-  onClientTypeChange: (t: 'fashion' | 'commercial') => void;
+  filters: ModelFilters;
+  onChangeFilters: (f: ModelFilters) => void;
+  onSaveFilters: () => void;
+  filterSaveStatus: 'idle' | 'saving' | 'saved' | 'error';
   onNext: () => void;
   onAddToProject: (model: ModelSummary) => void;
   onOpenDetails: (id: string) => void;
   onOpenOptionDatePicker: (model: ModelSummary) => void;
   isSharedMode: boolean;
+  isPackageMode: boolean;
+  packageName: string | null;
+  onExitPackage?: () => void;
   userCity: string | null;
 };
 
@@ -1487,264 +1513,44 @@ const DiscoverView: React.FC<DiscoverProps> = ({
   activeProject,
   filters,
   onChangeFilters,
-  clientType,
-  onClientTypeChange,
+  onSaveFilters,
+  filterSaveStatus,
   onNext,
   onAddToProject,
   userCity,
   onOpenDetails,
   onOpenOptionDatePicker,
   isSharedMode,
+  isPackageMode,
+  packageName,
+  onExitPackage,
 }) => {
-  const [filterOpen, setFilterOpen] = useState(false);
-  const [countryQuery, setCountryQuery] = useState('');
-  const [countryDropdownOpen, setCountryDropdownOpen] = useState(false);
-
-  const selectedCountryLabel = useMemo(
-    () => FILTER_COUNTRIES.find((c) => c.code === filters.countryCode)?.label ?? null,
-    [filters.countryCode],
-  );
-
-  const filteredCountryOptions = useMemo(() => {
-    if (!countryQuery.trim()) return FILTER_COUNTRIES;
-    const q = countryQuery.toLowerCase();
-    return FILTER_COUNTRIES.filter(
-      (c) => c.label.toLowerCase().includes(q) || c.code.toLowerCase().includes(q),
-    );
-  }, [countryQuery]);
-
   return (
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionLabel}>Discover</Text>
-        <View style={styles.sectionHeaderRight}>
-          <View style={styles.clientTypeToggle}>
-            <TouchableOpacity
-              style={[styles.clientTypePill, clientType === 'fashion' && styles.clientTypePillActive]}
-              onPress={() => onClientTypeChange('fashion')}
-            >
-              <Text style={[styles.clientTypePillLabel, clientType === 'fashion' && styles.clientTypePillLabelActive]}>
-                Fashion
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.clientTypePill, clientType === 'commercial' && styles.clientTypePillActive]}
-              onPress={() => onClientTypeChange('commercial')}
-            >
-              <Text style={[styles.clientTypePillLabel, clientType === 'commercial' && styles.clientTypePillLabelActive]}>
-                Commercial
-              </Text>
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.metaText}>
-            {models.length ? `${index + 1}/${models.length}` : '0/0'}
-          </Text>
-          <TouchableOpacity
-            style={styles.filterTrigger}
-            onPress={() => setFilterOpen((o) => !o)}
-          >
-            <Text style={styles.filterTriggerLabel}>Filter</Text>
-          </TouchableOpacity>
-        </View>
+        <Text style={styles.metaText}>
+          {models.length ? `${index + 1}/${models.length}` : '0/0'}
+        </Text>
       </View>
 
-      {filterOpen && (
-        <View style={styles.filterSlideOut}>
-          <View style={styles.filterGroup}>
-            <Text style={styles.filterLabel}>Height</Text>
-            <View style={styles.filterPills}>
-              {([
-                { key: 'all', label: 'All' },
-                { key: 'short', label: '< 175' },
-                { key: 'medium', label: '175–182' },
-                { key: 'tall', label: '> 182' },
-              ] as const).map((opt) => (
-                <TouchableOpacity
-                  key={opt.key}
-                  style={[styles.filterPill, filters.size === opt.key && styles.filterPillActive]}
-                  onPress={() => onChangeFilters({ ...filters, size: opt.key as WebFilters['size'] })}
-                >
-                  <Text style={[styles.filterPillLabel, filters.size === opt.key && styles.filterPillLabelActive]}>
-                    {opt.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-          <View style={styles.filterGroup}>
-            <Text style={styles.filterLabel}>Category</Text>
-            <View style={styles.filterPills}>
-              <TouchableOpacity
-                style={[styles.filterPill, filters.category === '' && styles.filterPillActive]}
-                onPress={() => onChangeFilters({ ...filters, category: '' })}
-              >
-                <Text style={[styles.filterPillLabel, filters.category === '' && styles.filterPillLabelActive]}>All</Text>
-              </TouchableOpacity>
-              {AGENCY_SEGMENT_TYPES.map((seg) => (
-                <TouchableOpacity
-                  key={seg}
-                  style={[styles.filterPill, filters.category === seg && styles.filterPillActive]}
-                  onPress={() => onChangeFilters({ ...filters, category: filters.category === seg ? '' : seg })}
-                >
-                  <Text style={[styles.filterPillLabel, filters.category === seg && styles.filterPillLabelActive]}>{seg}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-          <View style={styles.filterGroup}>
-            <Text style={styles.filterLabel}>Country</Text>
-            {filters.countryCode ? (
-              /* ── selected state: chip + clear + Near me ── */
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, alignItems: 'center' }}>
-                <View style={[styles.filterPill, styles.filterPillActive, { flexDirection: 'row', alignItems: 'center', gap: 6 }]}>
-                  <Text style={[styles.filterPillLabel, styles.filterPillLabelActive]}>{selectedCountryLabel}</Text>
-                  <TouchableOpacity
-                    onPress={() => {
-                      onChangeFilters({ ...filters, countryCode: '', city: '', nearby: false });
-                      setCountryQuery('');
-                      setCountryDropdownOpen(false);
-                    }}
-                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                  >
-                    <Text style={[styles.filterPillLabel, styles.filterPillLabelActive, { fontSize: 13, lineHeight: 14 }]}>×</Text>
-                  </TouchableOpacity>
-                </View>
-                <TouchableOpacity
-                  style={styles.filterPill}
-                  onPress={() => {
-                    onChangeFilters({ ...filters, countryCode: '', city: '', nearby: false });
-                    setCountryQuery('');
-                    setCountryDropdownOpen(true);
-                  }}
-                >
-                  <Text style={styles.filterPillLabel}>Change</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.filterPill, filters.nearby && styles.filterPillActive]}
-                  onPress={() => onChangeFilters({ ...filters, nearby: !filters.nearby, countryCode: '', city: '' })}
-                >
-                  <Text style={[styles.filterPillLabel, filters.nearby && styles.filterPillLabelActive]}>
-                    {userCity ? `Near me (${userCity})` : 'Near me'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              /* ── unselected state: search input + Near me + dropdown list ── */
-              <View>
-                <View style={{ flexDirection: 'row', gap: spacing.xs, alignItems: 'center' }}>
-                  <TextInput
-                    value={countryQuery}
-                    onChangeText={(v) => { setCountryQuery(v); setCountryDropdownOpen(true); }}
-                    onFocus={() => setCountryDropdownOpen(true)}
-                    placeholder="Search country…"
-                    placeholderTextColor={colors.textSecondary}
-                    style={[styles.input, { flex: 1, height: 32, paddingVertical: 4, fontSize: 11 }]}
-                  />
-                  <TouchableOpacity
-                    style={[styles.filterPill, filters.nearby && styles.filterPillActive]}
-                    onPress={() => {
-                      onChangeFilters({ ...filters, nearby: !filters.nearby, countryCode: '', city: '' });
-                      setCountryDropdownOpen(false);
-                    }}
-                  >
-                    <Text style={[styles.filterPillLabel, filters.nearby && styles.filterPillLabelActive]}>
-                      {userCity ? `Near me (${userCity})` : 'Near me'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-                {countryDropdownOpen && filteredCountryOptions.length > 0 && (
-                  <View style={{
-                    marginTop: 4,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    borderRadius: 8,
-                    backgroundColor: colors.surface,
-                    maxHeight: 180,
-                    overflow: 'hidden',
-                    zIndex: 10,
-                  }}>
-                    <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled>
-                      {filteredCountryOptions.map((c) => (
-                        <TouchableOpacity
-                          key={c.code}
-                          style={{
-                            paddingHorizontal: spacing.md,
-                            paddingVertical: spacing.xs,
-                            borderBottomWidth: 1,
-                            borderBottomColor: colors.border,
-                          }}
-                          onPress={() => {
-                            onChangeFilters({ ...filters, countryCode: c.code, city: '', nearby: false });
-                            setCountryQuery('');
-                            setCountryDropdownOpen(false);
-                          }}
-                        >
-                          <Text style={{ ...typography.body, fontSize: 12, color: colors.textPrimary }}>
-                            {c.label}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </View>
-                )}
-              </View>
-            )}
-          </View>
-          {filters.countryCode && (
-            <View style={styles.filterGroup}>
-              <Text style={styles.filterLabel}>City</Text>
-              <TextInput
-                value={filters.city}
-                onChangeText={(v) => onChangeFilters({ ...filters, city: v })}
-                placeholder="e.g. Berlin, Hamburg, Munich..."
-                placeholderTextColor={colors.textSecondary}
-                style={[styles.input, { height: 32, paddingVertical: 4, fontSize: 11 }]}
-              />
-            </View>
-          )}
-          <View style={styles.filterGroup}>
-            <Text style={styles.filterLabel}>Hair color</Text>
-            <TextInput
-              value={filters.hairColor}
-              onChangeText={(v) => onChangeFilters({ ...filters, hairColor: v })}
-              placeholder="e.g. Brown, Blonde..."
-              placeholderTextColor={colors.textSecondary}
-              style={[styles.input, { height: 32, paddingVertical: 4, fontSize: 11 }]}
-            />
-          </View>
-          <View style={{ flexDirection: 'row', gap: spacing.md }}>
-            <View style={[styles.filterGroup, { flex: 1 }]}>
-              <Text style={styles.filterLabel}>Hips (min–max)</Text>
-              <View style={{ flexDirection: 'row', gap: 4 }}>
-                <TextInput value={filters.hipsMin} onChangeText={(v) => onChangeFilters({ ...filters, hipsMin: v })} placeholder="min" placeholderTextColor={colors.textSecondary} keyboardType="numeric" style={[styles.input, { flex: 1, height: 32, paddingVertical: 4, fontSize: 11 }]} />
-                <TextInput value={filters.hipsMax} onChangeText={(v) => onChangeFilters({ ...filters, hipsMax: v })} placeholder="max" placeholderTextColor={colors.textSecondary} keyboardType="numeric" style={[styles.input, { flex: 1, height: 32, paddingVertical: 4, fontSize: 11 }]} />
-              </View>
-            </View>
-            <View style={[styles.filterGroup, { flex: 1 }]}>
-              <Text style={styles.filterLabel}>Waist (min–max)</Text>
-              <View style={{ flexDirection: 'row', gap: 4 }}>
-                <TextInput value={filters.waistMin} onChangeText={(v) => onChangeFilters({ ...filters, waistMin: v })} placeholder="min" placeholderTextColor={colors.textSecondary} keyboardType="numeric" style={[styles.input, { flex: 1, height: 32, paddingVertical: 4, fontSize: 11 }]} />
-                <TextInput value={filters.waistMax} onChangeText={(v) => onChangeFilters({ ...filters, waistMax: v })} placeholder="max" placeholderTextColor={colors.textSecondary} keyboardType="numeric" style={[styles.input, { flex: 1, height: 32, paddingVertical: 4, fontSize: 11 }]} />
-              </View>
-            </View>
-          </View>
-          <View style={{ flexDirection: 'row', gap: spacing.md }}>
-            <View style={[styles.filterGroup, { flex: 1 }]}>
-              <Text style={styles.filterLabel}>Chest (min–max)</Text>
-              <View style={{ flexDirection: 'row', gap: 4 }}>
-                <TextInput value={filters.chestMin} onChangeText={(v) => onChangeFilters({ ...filters, chestMin: v })} placeholder="min" placeholderTextColor={colors.textSecondary} keyboardType="numeric" style={[styles.input, { flex: 1, height: 32, paddingVertical: 4, fontSize: 11 }]} />
-                <TextInput value={filters.chestMax} onChangeText={(v) => onChangeFilters({ ...filters, chestMax: v })} placeholder="max" placeholderTextColor={colors.textSecondary} keyboardType="numeric" style={[styles.input, { flex: 1, height: 32, paddingVertical: 4, fontSize: 11 }]} />
-              </View>
-            </View>
-            <View style={[styles.filterGroup, { flex: 1 }]}>
-              <Text style={styles.filterLabel}>Legs inseam (min–max)</Text>
-              <View style={{ flexDirection: 'row', gap: 4 }}>
-                <TextInput value={filters.legsInseamMin} onChangeText={(v) => onChangeFilters({ ...filters, legsInseamMin: v })} placeholder="min" placeholderTextColor={colors.textSecondary} keyboardType="numeric" style={[styles.input, { flex: 1, height: 32, paddingVertical: 4, fontSize: 11 }]} />
-                <TextInput value={filters.legsInseamMax} onChangeText={(v) => onChangeFilters({ ...filters, legsInseamMax: v })} placeholder="max" placeholderTextColor={colors.textSecondary} keyboardType="numeric" style={[styles.input, { flex: 1, height: 32, paddingVertical: 4, fontSize: 11 }]} />
-              </View>
-            </View>
-          </View>
+      {isPackageMode && packageName ? (
+        <View style={styles.packageBanner}>
+          <Text style={styles.packageBannerText}>
+            {uiCopy.discover.viewingPackage}: {packageName}
+          </Text>
+          <TouchableOpacity onPress={onExitPackage} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Text style={styles.packageBannerExit}>{uiCopy.discover.exitPackage}</Text>
+          </TouchableOpacity>
         </View>
+      ) : (
+        <ModelFiltersPanel
+          filters={filters}
+          onChangeFilters={onChangeFilters}
+          onSaveFilters={onSaveFilters}
+          filterSaveStatus={filterSaveStatus === 'idle' ? null : filterSaveStatus}
+          userCity={userCity}
+        />
       )}
 
       <View style={styles.activeProjectRow}>
@@ -1783,6 +1589,20 @@ const DiscoverView: React.FC<DiscoverProps> = ({
                         current.agencyName ? ` · ${current.agencyName}` : ''
                       }`}
                 </Text>
+                {(current.isSportsWinter || current.isSportsSummer) && (
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
+                    {current.isSportsWinter && (
+                      <View style={styles.sportsBadge}>
+                        <Text style={styles.sportsBadgeLabel}>{uiCopy.sportCategories.winterSports}</Text>
+                      </View>
+                    )}
+                    {current.isSportsSummer && (
+                      <View style={styles.sportsBadge}>
+                        <Text style={styles.sportsBadgeLabel}>{uiCopy.sportCategories.summerSports}</Text>
+                      </View>
+                    )}
+                  </View>
+                )}
               </View>
             </View>
             <View style={styles.cardButtonRow}>
@@ -3809,6 +3629,32 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.textSecondary,
   },
+  packageBanner: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  packageBannerText: {
+    ...typography.body,
+    fontSize: 13,
+    color: colors.textPrimary,
+    fontWeight: '600',
+    flex: 1,
+  },
+  packageBannerExit: {
+    ...typography.body,
+    fontSize: 13,
+    color: colors.accent,
+    fontWeight: '600',
+    marginLeft: spacing.md,
+  },
   activeProjectRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -3898,6 +3744,23 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 2,
     marginTop: 6,
+  } as any,
+  sportsBadge: {
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.45)',
+  },
+  sportsBadgeLabel: {
+    ...typography.label,
+    fontSize: 9,
+    letterSpacing: 0.6,
+    color: '#FFFFFF',
+    textShadowColor: '#000000',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   } as any,
   coverImageShell: {
     height: 360,

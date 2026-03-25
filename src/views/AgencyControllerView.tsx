@@ -11,12 +11,13 @@ import {
   Linking,
   Alert,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import countries from 'i18n-iso-countries';
 import enLocale from 'i18n-iso-countries/langs/en.json';
 import { colors, spacing, typography } from '../theme/theme';
-import { AGENCY_SEGMENT_TYPES } from '../constants/agencyTypes';
+import { AGENCY_SEGMENT_TYPES, SPORTS_CATEGORIES } from '../constants/agencyTypes';
 import { showAppAlert } from '../utils/crossPlatformAlert';
 import { useAuth } from '../context/AuthContext';
 import { getAgencyModels, updateModelVisibility } from '../services/apiService';
@@ -53,6 +54,7 @@ import {
   getB2BConversationTitleForViewer,
 } from '../services/b2bOrgChatSupabase';
 import type { Conversation } from '../services/messengerSupabase';
+import { sendMessage } from '../services/messengerSupabase';
 import { getApplicationById } from '../store/applicationsStore';
 import { OrgMessengerInline } from '../components/OrgMessengerInline';
 import { AgencySettingsTab } from '../components/AgencySettingsTab';
@@ -64,7 +66,7 @@ import {
   syncPolaroidsToModel,
   uploadModelPhoto,
 } from '../services/modelPhotosSupabase';
-import { getTerritoriesForModel, upsertTerritoriesForModel, bulkUpsertTerritoriesForModels } from '../services/territoriesSupabase';
+import { getTerritoriesForModel, getTerritoriesForAgency, upsertTerritoriesForModel, bulkAddTerritoriesForModels } from '../services/territoriesSupabase';
 import { supabase } from '../../lib/supabase';
 import {
   ensureAgencyOrganization,
@@ -103,6 +105,8 @@ import {
 import { MonthCalendarView, type CalendarDayEvent } from '../components/MonthCalendarView';
 import { ScreenScrollView } from '../components/ScreenScrollView';
 import { uiCopy } from '../constants/uiCopy';
+import { type ModelFilters, defaultModelFilters, filterModels } from '../utils/modelFilters';
+import ModelFiltersPanel from '../components/ModelFiltersPanel';
 
 const STATUS_LABELS: Record<ChatStatus, string> = {
   in_negotiation: 'In negotiation',
@@ -313,15 +317,12 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
     });
   }, [selectedManualEvent?.id]);
 
-  /** Recruiting threads for Messages → Recruiting chats (Supabase). */
+  /** Recruiting threads for Messages → Recruiting chats (Supabase).
+   *  All agency members (owner + booker) see all threads for their agency. */
   const refreshBookingThreads = useCallback(() => {
     if (!currentAgencyId) return;
-    const uid = session?.user?.id;
-    getMyAgencyMemberRole(currentAgencyId).then((m) => {
-      const filterBooker = m?.member_role === 'booker' && uid ? uid : undefined;
-      return getRecruitingThreadsForAgency(currentAgencyId, { createdByUserId: filterBooker });
-    }).then(setBookingChatThreads);
-  }, [currentAgencyId, session?.user?.id]);
+    getRecruitingThreadsForAgency(currentAgencyId, {}).then(setBookingChatThreads);
+  }, [currentAgencyId]);
 
   useEffect(() => {
     if (tab === 'messages' && currentAgencyId) {
@@ -339,7 +340,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         { key: 'calendar', label: 'Calendar' },
         { key: 'recruiting', label: 'Recruiting' },
         { key: 'bookers', label: 'Team' },
-        { key: 'guestLinks', label: 'Guest Links' },
+        { key: 'guestLinks', label: uiCopy.guestLinks.tabTitle },
         { key: 'settings', label: uiCopy.agencySettings.tabLabel },
       ];
       return agencyTeamRole === 'owner'
@@ -473,13 +474,14 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         )}
 
         {tab === 'guestLinks' && (
-        <GuestLinksTab
-          agencyId={currentAgencyId}
-          agencyEmail={currentAgency?.email ?? ''}
-          agencyName={currentAgency?.name ?? ''}
-          models={fullModels}
-        />
-      )}
+          <GuestLinksTab
+            agencyId={currentAgencyId}
+            agencyEmail={currentAgency?.email ?? ''}
+            agencyName={currentAgency?.name ?? ''}
+            models={fullModels}
+            viewerUserId={session?.user?.id ?? null}
+          />
+        )}
 
       {tab === 'settings' && agencyTeamRole === 'owner' && (
         <>
@@ -1363,7 +1365,7 @@ const MyModelsTab: React.FC<{
   onRefresh: () => void;
 }> = ({ models, agencyId, onRefresh }) => {
   const [selectedModel, setSelectedModel] = useState<SupabaseModel | null>(null);
-  const [countryFilter, setCountryFilter] = useState('');
+  const [filters, setFilters] = useState<ModelFilters>(defaultModelFilters);
   const [editField, setEditField] = useState<Record<string, string>>({});
 
   const [showAddForm, setShowAddForm] = useState(false);
@@ -1393,11 +1395,26 @@ const MyModelsTab: React.FC<{
 
   const [territoryCountryCodes, setTerritoryCountryCodes] = useState<string[]>([]);
   const [territorySearch, setTerritorySearch] = useState('');
+  const [territorySaving, setTerritorySaving] = useState(false);
+  const [territorySaveFeedback, setTerritorySaveFeedback] = useState<'saved' | 'error' | null>(null);
 
   const [editModelCategories, setEditModelCategories] = useState<string[]>([]);
+  const [editSportsWinter, setEditSportsWinter] = useState(false);
+  const [editSportsSummer, setEditSportsSummer] = useState(false);
+
+  /** model_id → sorted country codes for territory badges in the roster list */
+  const [rosterTerritoriesMap, setRosterTerritoriesMap] = useState<Record<string, string[]>>({});
+
+  useEffect(() => {
+    if (agencyId) {
+      getTerritoriesForAgency(agencyId).then(setRosterTerritoriesMap);
+    }
+  }, [agencyId]);
 
   useEffect(() => {
     setEditModelCategories(selectedModel?.categories ?? []);
+    setEditSportsWinter(selectedModel?.is_sports_winter ?? false);
+    setEditSportsSummer(selectedModel?.is_sports_summer ?? false);
   }, [selectedModel?.id]);
 
   // Bulk selection state
@@ -1426,7 +1443,7 @@ const MyModelsTab: React.FC<{
   const handleBulkAssignTerritories = async () => {
     if (bulkSelectedCountries.length === 0 || selectedModelIds.size === 0) return;
     setBulkAssigning(true);
-    const { succeededIds, failedIds } = await bulkUpsertTerritoriesForModels(
+    const { succeededIds, failedIds } = await bulkAddTerritoriesForModels(
       Array.from(selectedModelIds),
       agencyId,
       bulkSelectedCountries,
@@ -1435,6 +1452,7 @@ const MyModelsTab: React.FC<{
     setShowBulkTerritoryModal(false);
     setSelectedModelIds(new Set());
     setBulkSelectedCountries([]);
+    void getTerritoriesForAgency(agencyId).then(setRosterTerritoriesMap);
     if (failedIds.length === 0) {
       setBulkFeedback(uiCopy.territoryModal.bulkAssignSuccess);
     } else {
@@ -1445,10 +1463,29 @@ const MyModelsTab: React.FC<{
     setTimeout(() => setBulkFeedback(null), 3000);
   };
 
-  const countries = useMemo(() =>
-    Array.from(new Set(models.map((m) => m.country || m.city || 'Unknown').filter(Boolean))).sort(),
-    [models]
-  );
+  /** Save territories independently — dedicated button in the territory section. */
+  const handleSaveTerritoriesOnly = async () => {
+    if (!selectedModel) return;
+    if (territoryCountryCodes.length === 0) {
+      showAppAlert(uiCopy.modelRoster.territoriesRequiredTitle, uiCopy.modelRoster.territoriesRequiredBody);
+      return;
+    }
+    setTerritorySaving(true);
+    setTerritorySaveFeedback(null);
+    try {
+      await upsertTerritoriesForModel(selectedModel.id, agencyId, territoryCountryCodes);
+      void getTerritoriesForAgency(agencyId).then(setRosterTerritoriesMap);
+      setTerritorySaveFeedback('saved');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('handleSaveTerritoriesOnly error:', err);
+      setTerritorySaveFeedback('error');
+      showAppAlert('Could not save territories', msg);
+    } finally {
+      setTerritorySaving(false);
+      setTimeout(() => setTerritorySaveFeedback(null), 3000);
+    }
+  };
 
   const visibleIsoCountries = useMemo(() => {
     const q = territorySearch.trim().toLowerCase();
@@ -1458,10 +1495,7 @@ const MyModelsTab: React.FC<{
       .slice(0, 40);
   }, [isoCountryList, territorySearch]);
 
-  const filtered = useMemo(() => {
-    if (!countryFilter) return models;
-    return models.filter((m) => (m.country || m.city || '') === countryFilter);
-  }, [models, countryFilter]);
+  const filtered = useMemo(() => filterModels(models, filters), [models, filters]);
 
   useEffect(() => {
     setSaveFeedback(null);
@@ -1509,7 +1543,7 @@ const MyModelsTab: React.FC<{
         }),
       );
     });
-    void getTerritoriesForModel(selectedModel.id).then((rows) => {
+    void getTerritoriesForModel(selectedModel.id, agencyId).then((rows) => {
       setTerritoryCountryCodes(rows.map((r) => r.country_code.toUpperCase()));
     });
   }, [selectedModel?.id]);
@@ -1591,7 +1625,6 @@ const MyModelsTab: React.FC<{
       setAddFields({});
       setAddModelImageFiles([]);
       setShowAddForm(false);
-      setCountryFilter('');
 
       // Uploads should not make creation fail.
       if (filesToUpload.length > 0) {
@@ -1658,12 +1691,49 @@ const MyModelsTab: React.FC<{
 
   const handleSaveModel = async () => {
     if (!selectedModel) return;
-    const visiblePortfolio = modelPhotos.filter((p) => p.is_visible_to_clients);
-    if (visiblePortfolio.length === 0) {
-      Alert.alert(uiCopy.modelRoster.portfolioRequiredTitle, uiCopy.modelRoster.portfolioRequiredBody);
+
+    // ── STEP 0: Territory is required — cannot save without at least one ──
+    if (territoryCountryCodes.length === 0) {
+      Alert.alert(
+        uiCopy.modelRoster.territoriesRequiredTitle,
+        uiCopy.modelRoster.territoriesRequiredBody,
+      );
       return;
     }
+
     setSaveFeedback('saving');
+
+    // ── STEP 1: Save territories — block on failure, show error to user ──
+    try {
+      await upsertTerritoriesForModel(selectedModel.id, agencyId, territoryCountryCodes);
+      void getTerritoriesForAgency(agencyId).then(setRosterTerritoriesMap);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('handleSaveModel territory error:', err);
+      setSaveFeedback('error');
+      setTimeout(() => setSaveFeedback(null), 4000);
+      showAppAlert(
+        'Could not save territories',
+        `${msg}\n\nApply migration_territories_rpc_definitive.sql in Supabase SQL Editor.`,
+      );
+      return;
+    }
+
+    // ── STEP 2: Portfolio check only blocks photo + model-field saves ──
+    const visiblePortfolio = modelPhotos.filter((p) => p.is_visible_to_clients);
+    if (visiblePortfolio.length === 0) {
+      setSaveFeedback('success');
+      onRefresh();
+      Alert.alert(uiCopy.modelRoster.portfolioRequiredTitle, uiCopy.modelRoster.portfolioRequiredBody);
+      setTimeout(() => {
+        setSaveFeedback(null);
+        setSelectedModel(null);
+        setEditField({});
+      }, 1800);
+      return;
+    }
+
+    // ── STEP 3: Save model fields + photos ──
     try {
       const updates: any = {};
       if (editField.name !== undefined) updates.name = editField.name;
@@ -1678,14 +1748,30 @@ const MyModelsTab: React.FC<{
       if (editField.city !== undefined) updates.city = editField.city;
       if (editField.country !== undefined) updates.country = editField.country;
       if (editField.current_location !== undefined) updates.current_location = editField.current_location;
-      if (editField.is_visible_commercial !== undefined) updates.is_visible_commercial = editField.is_visible_commercial === 'true';
-      if (editField.is_visible_fashion !== undefined) updates.is_visible_fashion = editField.is_visible_fashion === 'true';
-      // Store NULL when no categories selected → model visible in all category filters.
+      // Derive visibility flags from categories — no separate Visibility toggle.
+      const hasFashion = editModelCategories.some((c) => c === 'Fashion' || c === 'High Fashion');
+      const hasCommercial = editModelCategories.includes('Commercial');
+      const noCategory = editModelCategories.length === 0;
+      updates.is_visible_fashion = noCategory || hasFashion;
+      updates.is_visible_commercial = noCategory || hasCommercial;
       updates.categories = editModelCategories.length > 0 ? editModelCategories : null;
       updates.show_polas_on_profile = showPolasOnProfile;
+      // Sports columns: only include if migration has been applied (graceful skip on unknown column error).
+      updates.is_sports_winter = editSportsWinter;
+      updates.is_sports_summer = editSportsSummer;
 
       const { error: modelUpdateError } = await supabase.from('models').update(updates).eq('id', selectedModel.id);
-      if (modelUpdateError) throw modelUpdateError;
+      if (modelUpdateError) {
+        // If sports columns are missing (migration not yet applied), retry without them.
+        const isMissingColumn = modelUpdateError.message?.includes('is_sports_');
+        if (isMissingColumn) {
+          const { is_sports_winter: _w, is_sports_summer: _s, ...updatesWithoutSports } = updates;
+          const { error: retryError } = await supabase.from('models').update(updatesWithoutSports).eq('id', selectedModel.id);
+          if (retryError) throw retryError;
+        } else {
+          throw modelUpdateError;
+        }
+      }
 
       const photoPayload = modelPhotos.map((p, index) => ({
         id: p.id,
@@ -1717,21 +1803,19 @@ const MyModelsTab: React.FC<{
         polaroidPhotos.filter((p) => p.is_visible_to_clients).map((p) => p.url),
       );
 
-      // Persist representation territories (agency ↔ model ↔ country).
-      await upsertTerritoriesForModel(selectedModel.id, agencyId, territoryCountryCodes);
-
       setSaveFeedback('success');
-      onRefresh();
-      setTimeout(() => {
-        setSaveFeedback(null);
-        setSelectedModel(null);
-        setEditField({});
-      }, 1800);
     } catch (err) {
       console.error('handleSaveModel error:', err);
       setSaveFeedback('error');
-      setTimeout(() => setSaveFeedback(null), 3000);
     }
+
+    // ── STEP 4: Always refresh + close panel ──
+    onRefresh();
+    setTimeout(() => {
+      setSaveFeedback(null);
+      setSelectedModel(null);
+      setEditField({});
+    }, 1800);
   };
 
   const movePhoto = (idx: number, dir: number) => {
@@ -1921,24 +2005,9 @@ const MyModelsTab: React.FC<{
             />
           </View>
         ))}
-        <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary, marginTop: spacing.sm }}>Visibility</Text>
-        <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: 4, marginBottom: spacing.md }}>
-          <TouchableOpacity
-            style={[s.visPill, (ef('is_visible_commercial', selectedModel.is_visible_commercial) === 'true' || (editField.is_visible_commercial === undefined && selectedModel.is_visible_commercial)) && s.visPillActive]}
-            onPress={() => setEditField((prev) => ({ ...prev, is_visible_commercial: prev.is_visible_commercial === 'true' || (prev.is_visible_commercial === undefined && selectedModel.is_visible_commercial) ? 'false' : 'true' }))}
-          >
-            <Text style={[s.visPillLabel, (ef('is_visible_commercial', selectedModel.is_visible_commercial) === 'true' || (editField.is_visible_commercial === undefined && selectedModel.is_visible_commercial)) && s.visPillLabelActive]}>Commercial</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[s.visPill, (ef('is_visible_fashion', selectedModel.is_visible_fashion) === 'true' || (editField.is_visible_fashion === undefined && selectedModel.is_visible_fashion)) && s.visPillActive]}
-            onPress={() => setEditField((prev) => ({ ...prev, is_visible_fashion: prev.is_visible_fashion === 'true' || (prev.is_visible_fashion === undefined && selectedModel.is_visible_fashion) ? 'false' : 'true' }))}
-          >
-            <Text style={[s.visPillLabel, (ef('is_visible_fashion', selectedModel.is_visible_fashion) === 'true' || (editField.is_visible_fashion === undefined && selectedModel.is_visible_fashion)) && s.visPillLabelActive]}>Fashion</Text>
-          </TouchableOpacity>
-        </View>
-
         <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary, marginTop: spacing.sm }}>
-          Categories <Text style={{ fontWeight: '400' }}>(leave empty = visible in all)</Text>
+          Categories{' '}
+          <Text style={{ fontWeight: '400' }}>(leave empty = visible to all clients)</Text>
         </Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: 4, marginBottom: spacing.lg }}>
           {AGENCY_SEGMENT_TYPES.map((seg) => {
@@ -1954,6 +2023,28 @@ const MyModelsTab: React.FC<{
                 }
               >
                 <Text style={[s.visPillLabel, active && s.visPillLabelActive]}>{seg}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary, marginTop: spacing.sm }}>
+          {uiCopy.sportCategories.sectionLabel}{' '}
+          <Text style={{ fontWeight: '400' }}>{uiCopy.sportCategories.sectionHint}</Text>
+        </Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: 4, marginBottom: spacing.lg }}>
+          {SPORTS_CATEGORIES.map((sport) => {
+            const active = sport === 'Winter Sports' ? editSportsWinter : editSportsSummer;
+            const toggle = sport === 'Winter Sports'
+              ? () => setEditSportsWinter((v) => !v)
+              : () => setEditSportsSummer((v) => !v);
+            return (
+              <TouchableOpacity
+                key={sport}
+                style={[s.visPill, active && s.visPillActive]}
+                onPress={toggle}
+              >
+                <Text style={[s.visPillLabel, active && s.visPillLabelActive]}>{sport}</Text>
               </TouchableOpacity>
             );
           })}
@@ -2174,11 +2265,39 @@ const MyModelsTab: React.FC<{
           </View>
 
           {/* Territories of Representation */}
-          <View style={{ marginTop: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.md }}>
-            <Text style={s.sectionLabel}>{uiCopy.modelRoster.territoriesTitle}</Text>
-            <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm }}>
-              {uiCopy.modelRoster.territoriesHint}
-            </Text>
+          <View style={{
+            marginTop: spacing.lg,
+            borderTopWidth: 1,
+            borderTopColor: territoryCountryCodes.length === 0 ? (colors.buttonSkipRed ?? '#c0392b') : colors.border,
+            paddingTop: spacing.md,
+          }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.xs }}>
+              <Text style={s.sectionLabel}>{uiCopy.modelRoster.territoriesTitle}</Text>
+              <View style={{
+                paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4,
+                backgroundColor: colors.buttonSkipRed ?? '#c0392b',
+              }}>
+                <Text style={{ ...typography.label, fontSize: 8, color: '#fff', letterSpacing: 0.5 }}>REQUIRED</Text>
+              </View>
+            </View>
+            {territoryCountryCodes.length > 0 ? (
+              <Text style={{ ...typography.label, fontSize: 10, color: colors.accentGreen ?? colors.textSecondary, marginBottom: spacing.xs, letterSpacing: 0.5 }}>
+                {territoryCountryCodes.slice().sort().join(' · ')}
+              </Text>
+            ) : (
+              <View style={{
+                borderWidth: 1,
+                borderColor: colors.buttonSkipRed ?? '#c0392b',
+                borderRadius: 8,
+                padding: spacing.sm,
+                marginBottom: spacing.sm,
+                backgroundColor: 'rgba(192,57,43,0.05)',
+              }}>
+                <Text style={{ ...typography.body, fontSize: 11, color: colors.buttonSkipRed ?? '#c0392b' }}>
+                  {uiCopy.modelRoster.territoriesRequiredInline}
+                </Text>
+              </View>
+            )}
 
             <TextInput
               value={territorySearch}
@@ -2252,6 +2371,36 @@ const MyModelsTab: React.FC<{
                 );
               })}
             </ScrollView>
+
+            {/* Dedicated Save Territories button — saves territories independently */}
+            <TouchableOpacity
+              onPress={handleSaveTerritoriesOnly}
+              disabled={territorySaving || territoryCountryCodes.length === 0}
+              style={{
+                marginTop: spacing.sm,
+                borderRadius: 999,
+                paddingVertical: spacing.sm,
+                paddingHorizontal: spacing.md,
+                alignItems: 'center',
+                backgroundColor:
+                  territorySaveFeedback === 'saved'
+                    ? (colors.accentGreen ?? '#2e7d32')
+                    : territorySaveFeedback === 'error'
+                    ? (colors.buttonSkipRed ?? '#c0392b')
+                    : (colors.buttonOptionGreen ?? '#2e7d32'),
+                opacity: territorySaving || territoryCountryCodes.length === 0 ? 0.5 : 1,
+              }}
+            >
+              <Text style={{ ...typography.label, fontSize: 11, color: '#fff', letterSpacing: 0.5 }}>
+                {territorySaving
+                  ? 'Saving territories…'
+                  : territorySaveFeedback === 'saved'
+                  ? '✓ Territories saved'
+                  : territorySaveFeedback === 'error'
+                  ? 'Save failed — tap to retry'
+                  : `Save territories (${territoryCountryCodes.length})`}
+              </Text>
+            </TouchableOpacity>
           </View>
 
           {/* Show on profile toggle */}
@@ -2414,16 +2563,10 @@ const MyModelsTab: React.FC<{
       </View>
 
       <Text style={s.sectionLabel}>My Models</Text>
-      <View style={{ flexDirection: 'row', gap: 4, marginBottom: spacing.md, flexWrap: 'wrap' }}>
-        <TouchableOpacity style={[s.filterPill, !countryFilter && s.filterPillActive]} onPress={() => setCountryFilter('')}>
-          <Text style={[s.filterPillLabel, !countryFilter && s.filterPillLabelActive]}>All</Text>
-        </TouchableOpacity>
-        {countries.map((c) => (
-          <TouchableOpacity key={c} style={[s.filterPill, countryFilter === c && s.filterPillActive]} onPress={() => setCountryFilter(c)}>
-            <Text style={[s.filterPillLabel, countryFilter === c && s.filterPillLabelActive]}>{c}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      <ModelFiltersPanel
+        filters={filters}
+        onChangeFilters={setFilters}
+      />
 
       {/* Add Model Manually */}
       <TouchableOpacity style={[s.apiBtn, { alignSelf: 'flex-start', marginBottom: spacing.md }]} onPress={() => setShowAddForm((v) => !v)}>
@@ -2599,18 +2742,68 @@ const MyModelsTab: React.FC<{
               <View style={{ flex: 1 }}>
                 <Text style={s.modelName}>{m.name}</Text>
                 <Text style={s.metaText}>{m.city ?? '—'} · H{m.height} C{m.bust ?? (m as any).chest ?? '—'} W{m.waist ?? '—'} H{m.hips ?? '—'}</Text>
+                {(rosterTerritoriesMap[m.id] ?? []).length > 0 ? (
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 2, marginTop: 3 }}>
+                    {(rosterTerritoriesMap[m.id] ?? []).slice(0, 6).map((code) => (
+                      <View
+                        key={code}
+                        style={{
+                          paddingHorizontal: 4,
+                          paddingVertical: 1,
+                          borderRadius: 3,
+                          borderWidth: 1,
+                          borderColor: colors.accentGreen ?? '#2e7d32',
+                          backgroundColor: 'transparent',
+                        }}
+                      >
+                        <Text style={{ ...typography.label, fontSize: 8, color: colors.accentGreen ?? '#2e7d32', letterSpacing: 0.3 }}>
+                          {code}
+                        </Text>
+                      </View>
+                    ))}
+                    {(rosterTerritoriesMap[m.id] ?? []).length > 6 && (
+                      <View style={{ paddingHorizontal: 4, paddingVertical: 1, borderRadius: 3, borderWidth: 1, borderColor: colors.border }}>
+                        <Text style={{ ...typography.label, fontSize: 8, color: colors.textSecondary }}>
+                          +{(rosterTerritoriesMap[m.id] ?? []).length - 6}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                ) : (
+                  <View style={{
+                    flexDirection: 'row', alignItems: 'center', marginTop: 3,
+                    paddingHorizontal: 5, paddingVertical: 1,
+                    borderRadius: 3, borderWidth: 1,
+                    borderColor: '#B8860B',
+                    backgroundColor: 'rgba(184,134,11,0.08)',
+                    alignSelf: 'flex-start',
+                  }}>
+                    <Text style={{ ...typography.label, fontSize: 8, color: '#B8860B', letterSpacing: 0.3 }}>
+                      {uiCopy.modelRoster.territoriesMissingBadge}
+                    </Text>
+                  </View>
+                )}
                 {(m.agency_relationship_status === 'pending_link' || (!m.user_id && m.email)) && (
                   <Text style={{ ...typography.label, fontSize: 9, color: '#B8860B', marginTop: 2 }}>Pending app account link</Text>
                 )}
               </View>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, maxWidth: 80 }}>
-                {m.is_visible_commercial && <View style={s.visTag}><Text style={s.visTagLabel}>C</Text></View>}
-                {m.is_visible_fashion && <View style={[s.visTag, { borderColor: colors.accentBrown }]}><Text style={[s.visTagLabel, { color: colors.accentBrown }]}>F</Text></View>}
-                {(m.categories ?? []).map((cat: string) => (
-                  <View key={cat} style={[s.visTag, { borderColor: colors.accentBlue ?? colors.border }]}>
-                    <Text style={[s.visTagLabel, { color: colors.accentBlue ?? colors.textSecondary }]}>{cat.charAt(0)}</Text>
+                {(m.categories ?? []).length === 0 ? (
+                  <View style={[s.visTag, { borderColor: colors.border }]}>
+                    <Text style={[s.visTagLabel, { color: colors.textSecondary }]}>All</Text>
                   </View>
-                ))}
+                ) : (
+                  (m.categories ?? []).map((cat: string) => {
+                    const isFashion = cat === 'Fashion' || cat === 'High Fashion';
+                    return (
+                      <View key={cat} style={[s.visTag, { borderColor: isFashion ? colors.accentBrown : colors.border }]}>
+                        <Text style={[s.visTagLabel, { color: isFashion ? colors.accentBrown : colors.textSecondary }]}>
+                          {cat === 'High Fashion' ? 'HF' : cat.charAt(0)}
+                        </Text>
+                      </View>
+                    );
+                  })
+                )}
               </View>
               <Text style={{ fontSize: 14, color: colors.textSecondary, marginLeft: spacing.sm }}>›</Text>
             </TouchableOpacity>
@@ -2683,9 +2876,22 @@ const MyModelsTab: React.FC<{
                 </Text>
               </TouchableOpacity>
             </View>
-            <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.sm }}>
+            <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: 2 }}>
               {uiCopy.bulkActions.selectedCount.replace('{count}', String(selectedModelIds.size))}
             </Text>
+            <View style={{
+              flexDirection: 'row', alignItems: 'center', gap: 4,
+              marginBottom: spacing.sm,
+              backgroundColor: 'rgba(46,125,50,0.08)',
+              borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4,
+            }}>
+              <Text style={{ ...typography.label, fontSize: 9, color: colors.accentGreen ?? '#2e7d32' }}>
+                + ADDITIVE
+              </Text>
+              <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, flex: 1 }}>
+                {uiCopy.territoryModal.bulkAdditiveNote}
+              </Text>
+            </View>
 
             <TextInput
               value={bulkTerritorySearch}
@@ -3494,14 +3700,30 @@ const GuestLinksTab: React.FC<{
   agencyEmail: string;
   agencyName: string;
   models: SupabaseModel[];
-}> = ({ agencyId, agencyEmail, agencyName, models }) => {
-  const [links, setLinks] = useState<GuestLink[]>([]);
+  viewerUserId: string | null;
+}> = ({ agencyId, agencyEmail, agencyName, models, viewerUserId }) => {
+  const copy = uiCopy.guestLinks;
+
+  // Package creation
+  const [label, setLabel] = useState('');
+  const [modelSearch, setModelSearch] = useState('');
   const [selectedModelIds, setSelectedModelIds] = useState<Set<string>>(new Set());
-  const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  // Package list
+  const [links, setLinks] = useState<GuestLink[]>([]);
+  const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null);
+
+  // Send in App modal
+  const [sendInAppTarget, setSendInAppTarget] = useState<GuestLink | null>(null);
+  const [agencyOrgId, setAgencyOrgId] = useState<string | null>(null);
+  const [b2bConversations, setB2bConversations] = useState<Conversation[]>([]);
+  const [convTitles, setConvTitles] = useState<Record<string, string>>({});
+  const [sendInAppStatus, setSendInAppStatus] = useState<'idle' | 'loading' | 'sending' | 'success' | 'error'>('idle');
 
   useEffect(() => {
-    if (agencyId) getGuestLinksForAgency(agencyId).then(setLinks);
+    if (agencyId) void getGuestLinksForAgency(agencyId).then(setLinks);
   }, [agencyId]);
 
   const toggleModel = (id: string) => {
@@ -3512,26 +3734,40 @@ const GuestLinksTab: React.FC<{
     });
   };
 
-  const handleGenerate = async () => {
-    if (selectedModelIds.size === 0) return;
-    const link = await createGuestLink({
-      agency_id: agencyId,
-      model_ids: Array.from(selectedModelIds),
-      agency_email: agencyEmail,
-      agency_name: agencyName,
-    });
-    if (link) {
-      setLinks((prev) => [link, ...prev]);
-      setGeneratedUrl(buildGuestUrl(link.id));
-      setSelectedModelIds(new Set());
+  const handleCreatePackage = async () => {
+    if (!label.trim()) { setCreateError(copy.packageNameRequired); return; }
+    if (selectedModelIds.size === 0) { setCreateError(copy.noModelsSelected); return; }
+    setCreateError(null);
+    setCreating(true);
+    try {
+      const link = await createGuestLink({
+        agency_id: agencyId,
+        model_ids: Array.from(selectedModelIds),
+        agency_email: agencyEmail,
+        agency_name: agencyName,
+        label: label.trim(),
+      });
+      if (link) {
+        setLinks((prev) => [link, ...prev]);
+        setLabel('');
+        setSelectedModelIds(new Set());
+      } else {
+        setCreateError(copy.createPackageError);
+      }
+    } catch (e) {
+      console.error('handleCreatePackage error:', e);
+      setCreateError(copy.createPackageError);
+    } finally {
+      setCreating(false);
     }
   };
 
-  const handleCopy = () => {
-    if (generatedUrl && typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(generatedUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+  const handleCopyGuestLink = (link: GuestLink) => {
+    const url = buildGuestUrl(link.id);
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      void navigator.clipboard.writeText(url);
+      setCopiedLinkId(link.id);
+      setTimeout(() => setCopiedLinkId(null), 2000);
     }
   };
 
@@ -3540,61 +3776,300 @@ const GuestLinksTab: React.FC<{
     if (ok) setLinks((prev) => prev.map((l) => l.id === id ? { ...l, is_active: false } : l));
   };
 
+  const handleOpenSendInApp = async (link: GuestLink) => {
+    setSendInAppTarget(link);
+    setSendInAppStatus('loading');
+    try {
+      let oid = agencyOrgId;
+      if (!oid) {
+        oid = await ensureAgencyOrganization(agencyId);
+        if (!oid) oid = await getOrganizationIdForAgency(agencyId);
+        if (oid) setAgencyOrgId(oid);
+      }
+      if (!oid) { setSendInAppStatus('error'); return; }
+      const convs = await listB2BConversationsForOrganization(oid);
+      setB2bConversations(convs);
+      const titles: Record<string, string> = {};
+      await Promise.all(
+        convs.map(async (c) => {
+          const t = await getB2BConversationTitleForViewer({ conversation: c, viewerOrganizationId: oid! });
+          titles[c.id] = t;
+        }),
+      );
+      setConvTitles(titles);
+      setSendInAppStatus('idle');
+    } catch (e) {
+      console.error('handleOpenSendInApp error:', e);
+      setSendInAppStatus('error');
+    }
+  };
+
+  const handleSendToConversation = async (conversationId: string) => {
+    if (!sendInAppTarget || !viewerUserId) return;
+    setSendInAppStatus('sending');
+    try {
+      const result = await sendMessage(
+        conversationId,
+        viewerUserId,
+        uiCopy.b2bChat.sharedPackageBody,
+        undefined,
+        undefined,
+        {
+          messageType: 'package',
+          metadata: {
+            package_id: sendInAppTarget.id,
+            guest_link: buildGuestUrl(sendInAppTarget.id),
+            preview_model_ids: sendInAppTarget.model_ids.slice(0, 4),
+            package_label: String(sendInAppTarget.model_ids.length),
+          },
+        },
+      );
+      if (result) {
+        setSendInAppStatus('success');
+        setTimeout(() => { setSendInAppTarget(null); setSendInAppStatus('idle'); }, 1500);
+      } else {
+        setSendInAppStatus('error');
+      }
+    } catch (e) {
+      console.error('handleSendToConversation error:', e);
+      setSendInAppStatus('error');
+    }
+  };
+
   return (
-    <ScreenScrollView contentStyle={{ paddingHorizontal: spacing.lg, paddingTop: spacing.md }}>
-      <Text style={s.sectionLabel}>Create Guest Link</Text>
-      <Text style={{ ...typography.body, color: colors.textSecondary, fontSize: 12, marginBottom: spacing.md }}>
-        Select models to share with a guest. The guest can view them and contact you via email.
-      </Text>
+    <>
+      <ScreenScrollView contentStyle={{ paddingHorizontal: spacing.lg, paddingTop: spacing.md }}>
 
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.md }}>
-        {models.map((m) => (
-          <TouchableOpacity
-            key={m.id}
-            style={[s.filterPill, selectedModelIds.has(m.id) && s.filterPillActive]}
-            onPress={() => toggleModel(m.id)}
-          >
-            <Text style={[s.filterPillLabel, selectedModelIds.has(m.id) && s.filterPillLabelActive]}>{m.name}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+        {/* ── Create Package ─────────────────────────────────────────────── */}
+        <Text style={s.sectionLabel}>{copy.createSection}</Text>
 
-      <TouchableOpacity
-        style={[s.saveBtn, selectedModelIds.size === 0 && { opacity: 0.4 }]}
-        onPress={handleGenerate}
-        disabled={selectedModelIds.size === 0}
-      >
-        <Text style={s.saveBtnLabel}>Generate Link</Text>
-      </TouchableOpacity>
+        <TextInput
+          style={[s.editInput, { marginBottom: spacing.sm }]}
+          placeholder={copy.packageNamePlaceholder}
+          placeholderTextColor={colors.textSecondary}
+          value={label}
+          onChangeText={(t) => { setLabel(t); setCreateError(null); }}
+        />
 
-      {generatedUrl && (
-        <View style={{ marginTop: spacing.md, padding: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: 10 }}>
-          <Text style={{ ...typography.body, fontSize: 12, color: colors.textPrimary, marginBottom: spacing.xs }} numberOfLines={2}>{generatedUrl}</Text>
-          <TouchableOpacity onPress={handleCopy} style={[s.filterPill, s.filterPillActive, { alignSelf: 'flex-start' }]}>
-            <Text style={[s.filterPillLabel, s.filterPillLabelActive]}>{copied ? 'Copied!' : 'Copy Link'}</Text>
-          </TouchableOpacity>
+        <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.xs }}>
+          {copy.selectModelsHint}
+        </Text>
+
+        {/* Model search */}
+        <TextInput
+          style={[s.editInput, { marginBottom: spacing.sm, fontSize: 12 }]}
+          placeholder="Search models…"
+          placeholderTextColor={colors.textSecondary}
+          value={modelSearch}
+          onChangeText={setModelSearch}
+        />
+
+        {/* Selected count hint */}
+        {selectedModelIds.size > 0 && (
+          <Text style={{ ...typography.body, fontSize: 11, color: colors.buttonOptionGreen, marginBottom: spacing.xs }}>
+            {selectedModelIds.size} model{selectedModelIds.size === 1 ? '' : 's'} selected
+          </Text>
+        )}
+
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.md }}>
+          {models
+            .filter((m) =>
+              modelSearch.trim() === '' ||
+              m.name.toLowerCase().includes(modelSearch.trim().toLowerCase()),
+            )
+            .map((m) => (
+              <TouchableOpacity
+                key={m.id}
+                style={[s.filterPill, selectedModelIds.has(m.id) && s.filterPillActive]}
+                onPress={() => toggleModel(m.id)}
+              >
+                <Text style={[s.filterPillLabel, selectedModelIds.has(m.id) && s.filterPillLabelActive]}>{m.name}</Text>
+              </TouchableOpacity>
+            ))}
+          {models.filter((m) =>
+            modelSearch.trim() === '' ||
+            m.name.toLowerCase().includes(modelSearch.trim().toLowerCase()),
+          ).length === 0 && modelSearch.trim() !== '' && (
+            <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary }}>
+              No models found for "{modelSearch}"
+            </Text>
+          )}
         </View>
-      )}
 
-      {links.length > 0 && (
-        <>
-          <Text style={[s.sectionLabel, { marginTop: spacing.xl }]}>Existing Links</Text>
-          {links.map((l) => (
-            <View key={l.id} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-              <View style={{ flex: 1 }}>
-                <Text style={{ ...typography.label, fontSize: 12, color: colors.textPrimary }}>{l.model_ids.length} models · {l.is_active ? 'Active' : 'Inactive'}</Text>
-                <Text style={{ ...typography.body, fontSize: 10, color: colors.textSecondary }}>{new Date(l.created_at).toLocaleDateString()}</Text>
+        {createError !== null && (
+          <Text style={{ ...typography.body, fontSize: 11, color: '#e74c3c', marginBottom: spacing.xs }}>{createError}</Text>
+        )}
+
+        <TouchableOpacity
+          style={[s.saveBtn, (selectedModelIds.size === 0 || creating) && { opacity: 0.4 }]}
+          onPress={handleCreatePackage}
+          disabled={selectedModelIds.size === 0 || creating}
+        >
+          <Text style={s.saveBtnLabel}>{creating ? '…' : copy.createPackageButton}</Text>
+        </TouchableOpacity>
+
+        {/* ── My Packages ────────────────────────────────────────────────── */}
+        {links.length > 0 ? (
+          <>
+            <Text style={[s.sectionLabel, { marginTop: spacing.xl }]}>{copy.packagesSection}</Text>
+            {links.map((l) => (
+              <View
+                key={l.id}
+                style={{
+                  borderWidth: 1, borderColor: colors.border, borderRadius: 12,
+                  padding: spacing.md, marginBottom: spacing.sm, backgroundColor: colors.surface,
+                }}
+              >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
+                  <Text style={{ ...typography.label, fontSize: 13, color: colors.textPrimary, flex: 1 }} numberOfLines={1}>
+                    {l.label ?? 'Package'}
+                  </Text>
+                  <View style={[
+                    { borderRadius: 999, paddingHorizontal: 6, paddingVertical: 2, marginLeft: 8 },
+                    l.is_active
+                      ? { backgroundColor: 'rgba(76,175,80,0.12)', borderWidth: 1, borderColor: colors.buttonOptionGreen }
+                      : { backgroundColor: colors.border },
+                  ]}>
+                    <Text style={{ ...typography.label, fontSize: 9, color: l.is_active ? colors.buttonOptionGreen : colors.textSecondary }}>
+                      {l.is_active ? copy.activeLabel : copy.inactiveLabel}
+                    </Text>
+                  </View>
+                </View>
+
+                <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm }}>
+                  {copy.modelsCount(l.model_ids.length)} · {new Date(l.created_at).toLocaleDateString()}
+                </Text>
+
+                {l.is_active && (
+                  <>
+                    <View style={{ flexDirection: 'row', gap: spacing.xs, flexWrap: 'wrap', marginBottom: 6 }}>
+                      <TouchableOpacity
+                        style={[s.filterPill, { borderColor: colors.textSecondary }]}
+                        onPress={() => handleCopyGuestLink(l)}
+                      >
+                        <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary }}>
+                          {copiedLinkId === l.id ? copy.copiedButton : copy.copyGuestLinkButton}
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[s.filterPill, { borderColor: colors.buttonOptionGreen }]}
+                        onPress={() => handleOpenSendInApp(l)}
+                      >
+                        <Text style={{ ...typography.label, fontSize: 10, color: colors.buttonOptionGreen }}>
+                          {copy.sendInAppButton}
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[s.filterPill, { borderColor: '#e74c3c' }]}
+                        onPress={() => handleDeactivate(l.id)}
+                      >
+                        <Text style={{ ...typography.label, fontSize: 10, color: '#e74c3c' }}>{copy.deactivateButton}</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    <View style={{ flexDirection: 'row', gap: spacing.lg }}>
+                      <Text style={{ ...typography.body, fontSize: 9, color: colors.textSecondary, flex: 1 }}>
+                        {copy.guestLinkHint}
+                      </Text>
+                      <Text style={{ ...typography.body, fontSize: 9, color: colors.buttonOptionGreen, flex: 1 }}>
+                        {copy.inAppHint}
+                      </Text>
+                    </View>
+                  </>
+                )}
               </View>
-              {l.is_active && (
-                <TouchableOpacity onPress={() => handleDeactivate(l.id)}>
-                  <Text style={{ fontSize: 11, color: '#e74c3c' }}>Deactivate</Text>
-                </TouchableOpacity>
+            ))}
+          </>
+        ) : (
+          <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginTop: spacing.lg, textAlign: 'center' }}>
+            {copy.noLinksYet}
+          </Text>
+        )}
+      </ScreenScrollView>
+
+      {/* ── Send in App Modal ──────────────────────────────────────────── */}
+      {sendInAppTarget !== null && (
+        <Modal transparent animationType="fade" visible>
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' }}>
+            <View style={{
+              backgroundColor: colors.background,
+              borderTopLeftRadius: 20, borderTopRightRadius: 20,
+              padding: spacing.lg, maxHeight: '75%',
+            }}>
+              <Text style={{ ...typography.heading, fontSize: 16, color: colors.textPrimary, marginBottom: 4 }}>
+                {copy.sendInAppModalTitle}
+              </Text>
+              <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.md }}>
+                {sendInAppTarget.label
+                  ? `"${sendInAppTarget.label}" — ${copy.sendInAppModalHint}`
+                  : copy.sendInAppModalHint}
+              </Text>
+
+              {(sendInAppStatus === 'loading' || sendInAppStatus === 'sending') && (
+                <View style={{ alignItems: 'center', paddingVertical: spacing.lg }}>
+                  <ActivityIndicator color={colors.accentGreen} />
+                  <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginTop: spacing.xs }}>
+                    {sendInAppStatus === 'loading' ? copy.sendInAppLoading : copy.sendInAppSending}
+                  </Text>
+                </View>
+              )}
+
+              {sendInAppStatus === 'success' && (
+                <Text style={{ ...typography.label, fontSize: 14, color: colors.buttonOptionGreen, textAlign: 'center', paddingVertical: spacing.lg }}>
+                  {copy.sendInAppSuccess}
+                </Text>
+              )}
+
+              {sendInAppStatus === 'error' && (
+                <Text style={{ ...typography.body, fontSize: 12, color: '#e74c3c', marginBottom: spacing.sm }}>
+                  {copy.sendInAppError}
+                </Text>
+              )}
+
+              {(sendInAppStatus === 'idle' || sendInAppStatus === 'error') && (
+                <>
+                  {b2bConversations.length === 0 ? (
+                    <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.md }}>
+                      {copy.sendInAppNoChats}
+                    </Text>
+                  ) : (
+                    <ScrollView style={{ maxHeight: 300 }}>
+                      {b2bConversations.map((c) => (
+                        <TouchableOpacity
+                          key={c.id}
+                          style={{
+                            paddingVertical: spacing.sm, paddingHorizontal: spacing.sm,
+                            borderBottomWidth: 1, borderBottomColor: colors.border,
+                            flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                          }}
+                          onPress={() => handleSendToConversation(c.id)}
+                        >
+                          <Text style={{ ...typography.label, fontSize: 13, color: colors.textPrimary }} numberOfLines={1}>
+                            {convTitles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback}
+                          </Text>
+                          <Text style={{ ...typography.label, fontSize: 11, color: colors.buttonOptionGreen }}>
+                            {copy.sendInAppButton} →
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  )}
+
+                  <TouchableOpacity
+                    style={[s.saveBtn, { marginTop: spacing.md, backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.border }]}
+                    onPress={() => { setSendInAppTarget(null); setSendInAppStatus('idle'); }}
+                  >
+                    <Text style={{ ...typography.label, color: colors.textPrimary }}>{copy.sendInAppCancelButton}</Text>
+                  </TouchableOpacity>
+                </>
               )}
             </View>
-          ))}
-        </>
+          </View>
+        </Modal>
       )}
-    </ScreenScrollView>
+    </>
   );
 };
 

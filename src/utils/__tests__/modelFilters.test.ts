@@ -1,0 +1,244 @@
+import { filterModels, defaultModelFilters, type ModelFilters } from '../modelFilters';
+import type { SupabaseModel } from '../../services/modelsSupabase';
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function makeModel(overrides: Partial<SupabaseModel>): SupabaseModel {
+  return {
+    id: 'test-id',
+    agency_id: 'agency-1',
+    user_id: null,
+    name: 'Test Model',
+    email: null,
+    mediaslide_sync_id: null,
+    height: 175,
+    bust: null,
+    waist: 65,
+    hips: 90,
+    chest: 85,
+    legs_inseam: 80,
+    shoe_size: null,
+    city: 'Berlin',
+    country: 'Germany',
+    country_code: 'DE',
+    hair_color: 'Brown',
+    eye_color: 'Blue',
+    current_location: null,
+    portfolio_images: [],
+    polaroids: [],
+    video_url: null,
+    is_visible_commercial: true,
+    is_visible_fashion: true,
+    categories: null,
+    is_sports_winter: false,
+    is_sports_summer: false,
+    ...overrides,
+  };
+}
+
+const noFilter: ModelFilters = { ...defaultModelFilters };
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+describe('filterModels', () => {
+  describe('no active filters', () => {
+    it('returns all models when no filter is active', () => {
+      const models = [makeModel({ id: '1' }), makeModel({ id: '2' }), makeModel({ id: '3' })];
+      expect(filterModels(models, noFilter)).toHaveLength(3);
+    });
+
+    it('returns empty array when model list is empty', () => {
+      expect(filterModels([], noFilter)).toHaveLength(0);
+    });
+  });
+
+  describe('height (size bucket)', () => {
+    const short = makeModel({ id: 'short', height: 170 });
+    const medium = makeModel({ id: 'medium', height: 178 });
+    const tall = makeModel({ id: 'tall', height: 185 });
+    const models = [short, medium, tall];
+
+    it('size=all returns all models', () => {
+      expect(filterModels(models, { ...noFilter, size: 'all' })).toHaveLength(3);
+    });
+
+    it('size=short returns only models < 175', () => {
+      const result = filterModels(models, { ...noFilter, size: 'short' });
+      expect(result.map((m) => m.id)).toEqual(['short']);
+    });
+
+    it('size=medium returns only models 175–182', () => {
+      const result = filterModels(models, { ...noFilter, size: 'medium' });
+      expect(result.map((m) => m.id)).toEqual(['medium']);
+    });
+
+    it('size=tall returns only models > 182', () => {
+      const result = filterModels(models, { ...noFilter, size: 'tall' });
+      expect(result.map((m) => m.id)).toEqual(['tall']);
+    });
+
+    it('boundary: height=174 is short', () => {
+      expect(filterModels([makeModel({ height: 174 })], { ...noFilter, size: 'short' })).toHaveLength(1);
+      expect(filterModels([makeModel({ height: 174 })], { ...noFilter, size: 'medium' })).toHaveLength(0);
+    });
+
+    it('boundary: height=175 is medium', () => {
+      expect(filterModels([makeModel({ height: 175 })], { ...noFilter, size: 'medium' })).toHaveLength(1);
+      expect(filterModels([makeModel({ height: 175 })], { ...noFilter, size: 'short' })).toHaveLength(0);
+    });
+
+    it('boundary: height=183 is tall', () => {
+      expect(filterModels([makeModel({ height: 183 })], { ...noFilter, size: 'tall' })).toHaveLength(1);
+      expect(filterModels([makeModel({ height: 183 })], { ...noFilter, size: 'medium' })).toHaveLength(0);
+    });
+  });
+
+  describe('hair color', () => {
+    const brown = makeModel({ id: 'brown', hair_color: 'Brown' });
+    const blonde = makeModel({ id: 'blonde', hair_color: 'Blonde' });
+    const noHair = makeModel({ id: 'nohair', hair_color: null });
+    const models = [brown, blonde, noHair];
+
+    it('matches exact hair color (case-insensitive)', () => {
+      const result = filterModels(models, { ...noFilter, hairColor: 'brown' });
+      expect(result.map((m) => m.id)).toEqual(['brown']);
+    });
+
+    it('matches partial hair color', () => {
+      const result = filterModels(models, { ...noFilter, hairColor: 'lond' });
+      expect(result.map((m) => m.id)).toEqual(['blonde']);
+    });
+
+    it('excludes models with null hair_color when filter active', () => {
+      const result = filterModels(models, { ...noFilter, hairColor: 'brown' });
+      expect(result.map((m) => m.id)).not.toContain('nohair');
+    });
+
+    it('empty hairColor includes all', () => {
+      expect(filterModels(models, { ...noFilter, hairColor: '' })).toHaveLength(3);
+    });
+  });
+
+  describe('measurements', () => {
+    const modelA = makeModel({ id: 'A', hips: 85, waist: 60, chest: 80, legs_inseam: 75 });
+    const modelB = makeModel({ id: 'B', hips: 95, waist: 70, chest: 90, legs_inseam: 85 });
+    const models = [modelA, modelB];
+
+    it('filters by hipsMin', () => {
+      expect(filterModels(models, { ...noFilter, hipsMin: '90' }).map((m) => m.id)).toEqual(['B']);
+    });
+
+    it('filters by hipsMax', () => {
+      expect(filterModels(models, { ...noFilter, hipsMax: '90' }).map((m) => m.id)).toEqual(['A']);
+    });
+
+    it('filters by waistMin and waistMax range', () => {
+      expect(filterModels(models, { ...noFilter, waistMin: '62', waistMax: '72' }).map((m) => m.id)).toEqual(['B']);
+    });
+
+    it('filters by chestMin', () => {
+      expect(filterModels(models, { ...noFilter, chestMin: '85' }).map((m) => m.id)).toEqual(['B']);
+    });
+
+    it('filters by chestMax', () => {
+      expect(filterModels(models, { ...noFilter, chestMax: '85' }).map((m) => m.id)).toEqual(['A']);
+    });
+
+    it('filters by legsInseamMin', () => {
+      expect(filterModels(models, { ...noFilter, legsInseamMin: '80' }).map((m) => m.id)).toEqual(['B']);
+    });
+
+    it('filters by legsInseamMax', () => {
+      expect(filterModels(models, { ...noFilter, legsInseamMax: '80' }).map((m) => m.id)).toEqual(['A']);
+    });
+
+    it('excludes models with null measurement when min/max filter active', () => {
+      const nullHips = makeModel({ id: 'null-hips', hips: null });
+      expect(filterModels([nullHips], { ...noFilter, hipsMin: '80' })).toHaveLength(0);
+    });
+  });
+
+  describe('category', () => {
+    const fashionOnly = makeModel({ id: 'fashion', is_visible_fashion: true, is_visible_commercial: false, categories: ['Fashion'] });
+    const highFashion = makeModel({ id: 'highfashion', is_visible_fashion: true, is_visible_commercial: false, categories: ['High Fashion'] });
+    const commercial = makeModel({ id: 'commercial', is_visible_fashion: false, is_visible_commercial: true, categories: ['Commercial'] });
+    const both = makeModel({ id: 'both', is_visible_fashion: true, is_visible_commercial: true, categories: ['Fashion', 'Commercial'] });
+    const models = [fashionOnly, highFashion, commercial, both];
+
+    it('category="" returns all models', () => {
+      expect(filterModels(models, { ...noFilter, category: '' })).toHaveLength(4);
+    });
+
+    it('category=Fashion returns fashion-visible models (includes High Fashion)', () => {
+      const result = filterModels(models, { ...noFilter, category: 'Fashion' });
+      expect(result.map((m) => m.id).sort()).toEqual(['both', 'fashion', 'highfashion']);
+    });
+
+    it('category=High Fashion returns only models with High Fashion in categories', () => {
+      const result = filterModels(models, { ...noFilter, category: 'High Fashion' });
+      expect(result.map((m) => m.id)).toEqual(['highfashion']);
+    });
+
+    it('category=Commercial returns only commercial-visible models', () => {
+      const result = filterModels(models, { ...noFilter, category: 'Commercial' });
+      expect(result.map((m) => m.id).sort()).toEqual(['both', 'commercial']);
+    });
+  });
+
+  describe('sports', () => {
+    const winterModel = makeModel({ id: 'winter', is_sports_winter: true, is_sports_summer: false });
+    const summerModel = makeModel({ id: 'summer', is_sports_winter: false, is_sports_summer: true });
+    const bothSports = makeModel({ id: 'both', is_sports_winter: true, is_sports_summer: true });
+    const noSports = makeModel({ id: 'none', is_sports_winter: false, is_sports_summer: false });
+    const models = [winterModel, summerModel, bothSports, noSports];
+
+    it('sportsWinter=true filters to winter models', () => {
+      const result = filterModels(models, { ...noFilter, sportsWinter: true });
+      expect(result.map((m) => m.id).sort()).toEqual(['both', 'winter']);
+    });
+
+    it('sportsSummer=true filters to summer models', () => {
+      const result = filterModels(models, { ...noFilter, sportsSummer: true });
+      expect(result.map((m) => m.id).sort()).toEqual(['both', 'summer']);
+    });
+
+    it('both sportsWinter and sportsSummer returns only models with both', () => {
+      const result = filterModels(models, { ...noFilter, sportsWinter: true, sportsSummer: true });
+      expect(result.map((m) => m.id)).toEqual(['both']);
+    });
+  });
+
+  describe('combined filters', () => {
+    it('applies multiple filters simultaneously', () => {
+      const models = [
+        makeModel({ id: 'match', height: 178, hair_color: 'Brown', hips: 88, is_visible_fashion: true }),
+        makeModel({ id: 'wrong-height', height: 185, hair_color: 'Brown', hips: 88, is_visible_fashion: true }),
+        makeModel({ id: 'wrong-hair', height: 178, hair_color: 'Blonde', hips: 88, is_visible_fashion: true }),
+        makeModel({ id: 'wrong-hips', height: 178, hair_color: 'Brown', hips: 100, is_visible_fashion: true }),
+      ];
+      const result = filterModels(models, {
+        ...noFilter,
+        size: 'medium',
+        hairColor: 'Brown',
+        hipsMax: '90',
+        category: 'Fashion',
+      });
+      expect(result.map((m) => m.id)).toEqual(['match']);
+    });
+  });
+
+  describe('nearby filter', () => {
+    const berlin = makeModel({ id: 'berlin', city: 'Berlin' });
+    const munich = makeModel({ id: 'munich', city: 'Munich' });
+    const models = [berlin, munich];
+
+    it('nearby=true with userCity filters by city substring', () => {
+      const result = filterModels(models, { ...noFilter, nearby: true }, 'Berlin');
+      expect(result.map((m) => m.id)).toEqual(['berlin']);
+    });
+
+    it('nearby=true without userCity returns all models', () => {
+      expect(filterModels(models, { ...noFilter, nearby: true }, undefined)).toHaveLength(2);
+    });
+  });
+});

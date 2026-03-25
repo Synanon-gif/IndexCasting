@@ -69,14 +69,45 @@ export async function updateModelVisibility(id, { isVisibleCommercial, isVisible
 }
 
 /**
- * Models for client view, filtered by client type (fashion/commercial) and optional category.
+ * Models for client view.
+ * @param {'fashion'|'commercial'|'all'} clientType - 'all' = no visibility restriction.
+ * @param {string} [countryCode] - ISO-2 country code to filter by territory / real location.
+ * @param {string} [city] - Free-text city filter (requires countryCode).
  * @param {string} [category] - One of 'Fashion' | 'High Fashion' | 'Commercial'. Empty = all.
+ * @param {boolean} [sportsWinter] - Filter to models with is_sports_winter = true.
+ * @param {boolean} [sportsSummer] - Filter to models with is_sports_summer = true.
+ * @param {object} [measurementFilters] - Height range, hair color, hips/waist/chest/inseam ranges.
  */
-export async function getModelsForClient(clientType, countryCode, city, category) {
+export async function getModelsForClient(
+  clientType,
+  countryCode,
+  city,
+  category,
+  sportsWinter,
+  sportsSummer,
+  measurementFilters = {},
+) {
+  const ct = clientType || 'all';
   const cat = category || undefined;
+  const sw = sportsWinter || undefined;
+  const ss = sportsSummer || undefined;
+  const mf = {
+    heightMin: measurementFilters.heightMin || undefined,
+    heightMax: measurementFilters.heightMax || undefined,
+    hairColor: measurementFilters.hairColor || undefined,
+    hipsMin: measurementFilters.hipsMin || undefined,
+    hipsMax: measurementFilters.hipsMax || undefined,
+    waistMin: measurementFilters.waistMin || undefined,
+    waistMax: measurementFilters.waistMax || undefined,
+    chestMin: measurementFilters.chestMin || undefined,
+    chestMax: measurementFilters.chestMax || undefined,
+    legsInseamMin: measurementFilters.legsInseamMin || undefined,
+    legsInseamMax: measurementFilters.legsInseamMax || undefined,
+  };
+  const hasMF = Object.values(mf).some(Boolean);
   const list = countryCode
-    ? await getModelsForClientFromSupabaseHybridLocation(clientType, countryCode, city ?? undefined, cat)
-    : await getModelsForClientFromSupabase(clientType, cat);
+    ? await getModelsForClientFromSupabaseHybridLocation(ct, countryCode, city ?? undefined, cat, sw, ss, hasMF ? mf : undefined)
+    : await getModelsForClientFromSupabase(ct, cat, sw, ss, hasMF ? mf : undefined);
   return list.map((m) => ({
     id: m.id,
     name: m.name,
@@ -88,13 +119,17 @@ export async function getModelsForClient(clientType, countryCode, city, category
     hairColor: m.hair_color,
     height: m.height,
     bust: m.bust ?? 0,
+    chest: m.chest ?? 0,
     waist: m.waist ?? 0,
     hips: m.hips ?? 0,
+    legsInseam: m.legs_inseam ?? 0,
     gallery: m.portfolio_images || [],
     polaroids: m.polaroids || [],
     isVisibleCommercial: m.is_visible_commercial,
     isVisibleFashion: m.is_visible_fashion,
     categories: m.categories ?? null,
+    isSportsWinter: m.is_sports_winter ?? false,
+    isSportsSummer: m.is_sports_summer ?? false,
     agencyId: m.territory_agency_id ?? m.agency_id ?? null,
     agencyName: m.agency_name || null,
   }));

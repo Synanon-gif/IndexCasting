@@ -83,9 +83,8 @@ export const ClientOrganizationTeamSection: React.FC<{
 
   const handleInvite = async () => {
     if (!organizationId || !inviteEmail.trim()) return;
-    const canManageClientSettings = memberRole === 'owner' || memberRole === 'employee';
-    if (!canManageClientSettings) {
-      Alert.alert('Permission', 'Only owner/employee members can send invitations.');
+    if (memberRole !== 'owner') {
+      Alert.alert('Permission', 'Only the organization owner can send invitations.');
       return;
     }
     setInviteBusy(true);
@@ -129,9 +128,12 @@ export const ClientOrganizationTeamSection: React.FC<{
   const pendingInv = invitations.filter((i) => i.status === 'pending');
   const acceptedInv = invitations.filter((i) => i.status === 'accepted');
 
-  const canManageClientSettings = memberRole === 'owner' || memberRole === 'employee';
-  // Bookers are external team members and cannot see invitation lists (owner + employee only).
-  const invitationListHiddenForMember = !canManageClientSettings && realClientId;
+  // Owner + Employee can view the team and invitation list
+  const canViewTeam = memberRole === 'owner' || memberRole === 'employee';
+  // Only the organization owner may send invitations
+  const canInvite = memberRole === 'owner';
+  // Bookers are external team members and cannot see invitation lists
+  const invitationListHiddenForMember = !canViewTeam && realClientId;
 
   return (
     <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
@@ -188,7 +190,7 @@ export const ClientOrganizationTeamSection: React.FC<{
         ))
       )}
 
-      {canManageClientSettings && organizationId ? (
+      {canInvite && organizationId ? (
         <View style={styles.inviteBox}>
           <Text style={styles.sectionTitle}>Invite member</Text>
           <Text style={styles.label}>Email</Text>
@@ -223,7 +225,7 @@ export const ClientOrganizationTeamSection: React.FC<{
         </View>
       ) : organizationId ? (
         <Text style={[styles.muted, { marginTop: spacing.md }]}>
-          Only organization owners and employees can send invitations. Contact your organization owner if you need access.
+          Only the organization owner can send invitations.
         </Text>
       ) : (
         <Text style={[styles.muted, { marginTop: spacing.md }]}>

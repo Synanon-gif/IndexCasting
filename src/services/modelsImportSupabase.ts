@@ -163,6 +163,8 @@ export async function importModelAndMerge(params: ImportModelPayload): Promise<{
       current_location: params.current_location ?? null,
       is_visible_commercial: params.is_visible_commercial ?? true,
       is_visible_fashion: params.is_visible_fashion ?? false,
+      // is_sports_winter / is_sports_summer intentionally omitted → DB default false.
+      // Sports assignments are managed manually by the agency, never overwritten by API imports.
       portfolio_images: params.portfolio_images ?? [],
       polaroids: params.polaroids ?? [],
       birthday: birthday ?? null,
