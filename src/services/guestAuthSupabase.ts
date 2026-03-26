@@ -143,7 +143,14 @@ export async function deleteGuestUserContent(userId: string): Promise<void> {
     }
 
     // Profile row is deleted via CASCADE on auth.users deletion.
-    await supabase.auth.admin?.deleteUser(userId);
+    // The actual auth.users deletion is handled by the server-side Edge Function
+    // to avoid exposing the service_role key in the frontend bundle.
+    const { error: fnError } = await supabase.functions.invoke('delete-user', {
+      body: { userId },
+    });
+    if (fnError) {
+      console.error('deleteGuestUserContent edge function error:', fnError);
+    }
   } catch (e) {
     console.error('deleteGuestUserContent exception:', e);
   }

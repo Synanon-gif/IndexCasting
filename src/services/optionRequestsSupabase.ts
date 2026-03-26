@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase';
+import { pooledSubscribe } from './realtimeChannelPool';
 
 const OPTION_REQUEST_SELECT =
   'id, client_id, model_id, agency_id, requested_date, status, project_id, client_name, model_name, proposed_price, agency_counter_price, client_price_status, final_status, request_type, currency, start_time, end_time, model_approval, model_approved_at, model_account_linked, booker_id, organization_id, created_by, agency_assignee_user_id, created_at, updated_at';
@@ -62,13 +63,33 @@ export type SupabaseOptionDocument = {
   created_at: string;
 };
 
-export async function getOptionRequests(): Promise<SupabaseOptionRequest[]> {
-  const { data, error } = await supabase
-    .from('option_requests')
-    .select(OPTION_REQUEST_SELECT)
-    .order('created_at', { ascending: false });
-  if (error) { console.error('getOptionRequests error:', error); return []; }
-  return (data ?? []) as SupabaseOptionRequest[];
+export type OptionRequestListOptions = {
+  /** Max rows per page. Defaults to 100. */
+  limit?: number;
+  /**
+   * Cursor: ISO timestamp of the oldest loaded item.
+   * Pass to load earlier items ("Load more").
+   */
+  afterCreatedAt?: string;
+};
+
+export async function getOptionRequests(
+  opts?: OptionRequestListOptions,
+): Promise<SupabaseOptionRequest[]> {
+  try {
+    let q = supabase
+      .from('option_requests')
+      .select(OPTION_REQUEST_SELECT)
+      .order('created_at', { ascending: false })
+      .limit(opts?.limit ?? 100);
+    if (opts?.afterCreatedAt) q = q.lt('created_at', opts.afterCreatedAt);
+    const { data, error } = await q;
+    if (error) { console.error('getOptionRequests error:', error); return []; }
+    return (data ?? []) as SupabaseOptionRequest[];
+  } catch (e) {
+    console.error('getOptionRequests exception:', e);
+    return [];
+  }
 }
 
 export async function getOptionRequestById(id: string): Promise<SupabaseOptionRequest | null> {
@@ -81,27 +102,40 @@ export async function getOptionRequestById(id: string): Promise<SupabaseOptionRe
   return data as SupabaseOptionRequest | null;
 }
 
-export async function getOptionRequestsByProject(projectId: string): Promise<SupabaseOptionRequest[]> {
-  const { data, error } = await supabase
-    .from('option_requests')
-    .select(OPTION_REQUEST_SELECT)
-    .eq('project_id', projectId)
-    .order('created_at', { ascending: false });
-  if (error) { console.error('getOptionRequestsByProject error:', error); return []; }
-  return (data ?? []) as SupabaseOptionRequest[];
+export async function getOptionRequestsByProject(
+  projectId: string,
+  opts?: OptionRequestListOptions,
+): Promise<SupabaseOptionRequest[]> {
+  try {
+    let q = supabase
+      .from('option_requests')
+      .select(OPTION_REQUEST_SELECT)
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: false })
+      .limit(opts?.limit ?? 100);
+    if (opts?.afterCreatedAt) q = q.lt('created_at', opts.afterCreatedAt);
+    const { data, error } = await q;
+    if (error) { console.error('getOptionRequestsByProject error:', error); return []; }
+    return (data ?? []) as SupabaseOptionRequest[];
+  } catch (e) {
+    console.error('getOptionRequestsByProject exception:', e);
+    return [];
+  }
 }
 
 /** Sichtbare Option-Requests für die aktuelle Session (RLS: Client-Organisation / Legacy client_id). */
-export async function getOptionRequestsForCurrentClient(): Promise<SupabaseOptionRequest[]> {
+export async function getOptionRequestsForCurrentClient(
+  opts?: OptionRequestListOptions,
+): Promise<SupabaseOptionRequest[]> {
   try {
-    const { data, error } = await supabase
+    let q = supabase
       .from('option_requests')
       .select(OPTION_REQUEST_SELECT)
-      .order('created_at', { ascending: false });
-    if (error) {
-      console.error('getOptionRequestsForCurrentClient error:', error);
-      return [];
-    }
+      .order('created_at', { ascending: false })
+      .limit(opts?.limit ?? 100);
+    if (opts?.afterCreatedAt) q = q.lt('created_at', opts.afterCreatedAt);
+    const { data, error } = await q;
+    if (error) { console.error('getOptionRequestsForCurrentClient error:', error); return []; }
     return (data ?? []) as SupabaseOptionRequest[];
   } catch (e) {
     console.error('getOptionRequestsForCurrentClient exception:', e);
@@ -114,17 +148,20 @@ export async function getOptionRequestsForClient(_clientId: string): Promise<Sup
   return getOptionRequestsForCurrentClient();
 }
 
-export async function getOptionRequestsForAgency(agencyId: string): Promise<SupabaseOptionRequest[]> {
+export async function getOptionRequestsForAgency(
+  agencyId: string,
+  opts?: OptionRequestListOptions,
+): Promise<SupabaseOptionRequest[]> {
   try {
-    const { data, error } = await supabase
+    let q = supabase
       .from('option_requests')
       .select(OPTION_REQUEST_SELECT)
       .eq('agency_id', agencyId)
-      .order('created_at', { ascending: false });
-    if (error) {
-      console.error('getOptionRequestsForAgency error:', error);
-      return [];
-    }
+      .order('created_at', { ascending: false })
+      .limit(opts?.limit ?? 100);
+    if (opts?.afterCreatedAt) q = q.lt('created_at', opts.afterCreatedAt);
+    const { data, error } = await q;
+    if (error) { console.error('getOptionRequestsForAgency error:', error); return []; }
     return (data ?? []) as SupabaseOptionRequest[];
   } catch (e) {
     console.error('getOptionRequestsForAgency exception:', e);
@@ -328,14 +365,52 @@ export async function clientConfirmJobOnSupabase(id: string): Promise<boolean> {
   return true;
 }
 
-export async function getOptionMessages(requestId: string): Promise<SupabaseOptionMessage[]> {
-  const { data, error } = await supabase
-    .from('option_request_messages')
-    .select('*')
-    .eq('option_request_id', requestId)
-    .order('created_at', { ascending: true });
-  if (error) { console.error('getOptionMessages error:', error); return []; }
-  return (data ?? []) as SupabaseOptionMessage[];
+export type GetOptionMessagesOptions = {
+  /** Max messages to load. Defaults to 50. */
+  limit?: number;
+  /**
+   * Cursor: ID of the oldest currently loaded message.
+   * Pass to retrieve older messages ("Load more").
+   */
+  beforeId?: string;
+};
+
+/**
+ * Loads the latest `limit` messages for an option request.
+ * Replaces unbounded full-history load — at scale each open option chat
+ * was pulling the entire message history on every mount.
+ */
+export async function getOptionMessages(
+  requestId: string,
+  opts?: GetOptionMessagesOptions,
+): Promise<SupabaseOptionMessage[]> {
+  const limit = opts?.limit ?? 50;
+  try {
+    let q = supabase
+      .from('option_request_messages')
+      .select('*')
+      .eq('option_request_id', requestId)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (opts?.beforeId) {
+      const { data: cursorRow } = await supabase
+        .from('option_request_messages')
+        .select('created_at')
+        .eq('id', opts.beforeId)
+        .maybeSingle();
+      if (cursorRow) {
+        q = q.lt('created_at', (cursorRow as { created_at: string }).created_at);
+      }
+    }
+
+    const { data, error } = await q;
+    if (error) { console.error('getOptionMessages error:', error); return []; }
+    return ((data ?? []) as SupabaseOptionMessage[]).reverse();
+  } catch (e) {
+    console.error('getOptionMessages exception:', e);
+    return [];
+  }
 }
 
 export async function addOptionMessage(
@@ -446,25 +521,30 @@ export async function sendAgencyInvitation(agencyName: string, email: string, in
   return data?.token ?? null;
 }
 
+/**
+ * Subscribe to new messages in an option request chat.
+ * Uses the shared channel pool — multiple components for the same request
+ * share one WebSocket channel. Returns a cleanup function.
+ */
 export function subscribeToOptionMessages(
   requestId: string,
-  onMessage: (msg: SupabaseOptionMessage) => void
-) {
-  const channel = supabase
-    .channel(`option-${requestId}`)
-    .on(
-      'postgres_changes',
-      {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'option_request_messages',
-        filter: `option_request_id=eq.${requestId}`,
-      },
-      (payload) => {
-        onMessage(payload.new as SupabaseOptionMessage);
-      }
-    )
-    .subscribe();
-
-  return () => { supabase.removeChannel(channel); };
+  onMessage: (msg: SupabaseOptionMessage) => void,
+): () => void {
+  return pooledSubscribe(
+    `option-${requestId}`,
+    (channel, dispatch) =>
+      channel
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'option_request_messages',
+            filter: `option_request_id=eq.${requestId}`,
+          },
+          dispatch,
+        )
+        .subscribe(),
+    (payload) => onMessage((payload as { new: SupabaseOptionMessage }).new),
+  );
 }

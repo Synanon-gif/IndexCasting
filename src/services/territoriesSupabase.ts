@@ -223,50 +223,90 @@ export async function addTerritoriesForModel(
 /**
  * ADDITIVE bulk-assign: adds territories to multiple models without removing existing ones.
  * Used by the bulk selection panel under "My Models".
+ *
+ * Uses bulk_add_model_territories RPC (migration_add_territories_bulk_rpc.sql)
+ * instead of a for-loop → 1 DB round-trip instead of N × 2 (one per model).
+ * Falls back to serial per-model if the RPC is not yet deployed.
  */
 export async function bulkAddTerritoriesForModels(
   modelIds: string[],
   agencyId: string,
   countryCodes: string[],
 ): Promise<{ succeededIds: string[]; failedIds: string[] }> {
+  if (modelIds.length === 0) return { succeededIds: [], failedIds: [] };
+
+  try {
+    const { error } = await supabase.rpc('bulk_add_model_territories', {
+      p_model_ids:     modelIds,
+      p_agency_id:     agencyId,
+      p_country_codes: countryCodes,
+    });
+
+    if (!error) {
+      return { succeededIds: [...modelIds], failedIds: [] };
+    }
+
+    // RPC not yet deployed — fall back to serial per-model calls
+    console.warn('bulkAddTerritoriesForModels: bulk RPC unavailable, falling back to serial', error);
+  } catch (e) {
+    console.warn('bulkAddTerritoriesForModels: bulk RPC threw, falling back to serial', e);
+  }
+
   const succeededIds: string[] = [];
   const failedIds: string[] = [];
-
   for (const modelId of modelIds) {
     try {
       await addTerritoriesForModel(modelId, agencyId, countryCodes);
       succeededIds.push(modelId);
     } catch (e) {
-      console.error('bulkAddTerritoriesForModels error for model', modelId, e);
+      console.error('bulkAddTerritoriesForModels serial fallback error for model', modelId, e);
       failedIds.push(modelId);
     }
   }
-
   return { succeededIds, failedIds };
 }
 
 /**
  * REPLACE bulk-assign: replaces territories for multiple models (full replace per model).
  * @deprecated Use bulkAddTerritoriesForModels for bulk panel — it preserves existing territories.
+ *
+ * Uses bulk_save_model_territories RPC (migration_add_territories_bulk_rpc.sql).
+ * Falls back to serial per-model if the RPC is not yet deployed.
  */
 export async function bulkUpsertTerritoriesForModels(
   modelIds: string[],
   agencyId: string,
   countryCodes: string[],
 ): Promise<{ succeededIds: string[]; failedIds: string[] }> {
+  if (modelIds.length === 0) return { succeededIds: [], failedIds: [] };
+
+  try {
+    const { error } = await supabase.rpc('bulk_save_model_territories', {
+      p_model_ids:     modelIds,
+      p_agency_id:     agencyId,
+      p_country_codes: countryCodes,
+    });
+
+    if (!error) {
+      return { succeededIds: [...modelIds], failedIds: [] };
+    }
+
+    console.warn('bulkUpsertTerritoriesForModels: bulk RPC unavailable, falling back to serial', error);
+  } catch (e) {
+    console.warn('bulkUpsertTerritoriesForModels: bulk RPC threw, falling back to serial', e);
+  }
+
   const succeededIds: string[] = [];
   const failedIds: string[] = [];
-
   for (const modelId of modelIds) {
     try {
       await upsertTerritoriesForModel(modelId, agencyId, countryCodes);
       succeededIds.push(modelId);
     } catch (e) {
-      console.error('bulkUpsertTerritoriesForModels error for model', modelId, e);
+      console.error('bulkUpsertTerritoriesForModels serial fallback error for model', modelId, e);
       failedIds.push(modelId);
     }
   }
-
   return { succeededIds, failedIds };
 }
 

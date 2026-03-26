@@ -16,6 +16,30 @@ import { supabase } from '../../lib/supabase';
 import type { SupabaseModel } from './modelsSupabase';
 import { getModelByIdFromSupabase } from './modelsSupabase';
 import { getModelFromMediaslide, syncModelData } from './mediaslideConnector';
+import { fetchAllSupabasePages } from './supabaseFetchAll';
+
+/**
+ * Lightweight concurrency limiter — avoids external p-limit dependency.
+ * Runs `tasks` with at most `concurrency` in-flight at any time.
+ */
+async function runWithConcurrency<T>(
+  tasks: Array<() => Promise<T>>,
+  concurrency: number,
+): Promise<T[]> {
+  const results: T[] = new Array(tasks.length);
+  let nextIdx = 0;
+
+  async function worker(): Promise<void> {
+    while (nextIdx < tasks.length) {
+      const i = nextIdx++;
+      results[i] = await tasks[i]();
+    }
+  }
+
+  const slots = Math.min(concurrency, tasks.length);
+  await Promise.all(Array.from({ length: slots }, worker));
+  return results;
+}
 
 // ---------------------------------------------------------------------------
 // Typen – vereinfachtes Mediaslide-Model
@@ -270,42 +294,59 @@ export async function handleMediaslideWebhook(payload: {
  *   oder liefert wenigstens eine Liste von IDs, die aktualisiert werden sollen.
  * - Hier zeigen wir exemplarisch, wie man alle Models mit `mediaslide_sync_id` synchronisiert.
  */
+/**
+ * Cron-Entry-Point.
+ *
+ * Fixes:
+ *   1. fetchAllSupabasePages → loads ALL sync models, not just the first 1000.
+ *      (idx_models_mediaslide_sync_id makes this fast.)
+ *   2. runWithConcurrency(5) → 5 parallel syncs instead of strict serial await-loop.
+ *      Reduces wall-clock time from O(n) to O(n/5) without hammering the Mediaslide API.
+ */
 export async function runMediaslideCronSync(): Promise<void> {
-  const { data, error } = await supabase
-    .from('models')
-    .select('id, mediaslide_sync_id')
-    .not('mediaslide_sync_id', 'is', null);
+  let allRows: { id: string; mediaslide_sync_id: string }[];
 
-  if (error) {
+  try {
+    allRows = (await fetchAllSupabasePages(async (from, to) => {
+      const { data, error } = await supabase
+        .from('models')
+        .select('id, mediaslide_sync_id')
+        .not('mediaslide_sync_id', 'is', null)
+        .range(from, to);
+      return {
+        data: data as { id: string; mediaslide_sync_id: string }[] | null,
+        error,
+      };
+    })).filter((r) => Boolean(r.mediaslide_sync_id));
+  } catch (e: any) {
     await logMediaslideError({
       operation: 'runMediaslideCronSync',
       message: 'Failed to load models with mediaslide_sync_id',
-      details: error,
+      details: e,
     });
     return;
   }
 
-  const rows = (data ?? []) as { id: string; mediaslide_sync_id: string | null }[];
+  if (allRows.length === 0) return;
 
-  for (const row of rows) {
-    if (!row.mediaslide_sync_id) continue;
+  const tasks = allRows.map((row) => async () => {
     try {
-      // Optional: Upstream-Trigger bei Mediaslide (falls erforderlich)
       await syncModelData(row.mediaslide_sync_id);
-      // Dann lokalen Abgleich fahren
       await syncSingleModelFromMediaslide({
         localModelId: row.id,
         mediaslideId: row.mediaslide_sync_id,
       });
     } catch (e: any) {
       await logMediaslideError({
-        operation: 'runMediaslideCronSync:loop',
+        operation: 'runMediaslideCronSync:task',
         modelId: row.id,
         mediaslideId: row.mediaslide_sync_id,
         message: e?.message || 'Error while cron-syncing single model',
         details: e,
       });
     }
-  }
+  });
+
+  await runWithConcurrency(tasks, 5);
 }
 

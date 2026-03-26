@@ -53,15 +53,31 @@ export async function getConsentHistory(userId: string): Promise<ConsentRecord[]
   return (data ?? []) as ConsentRecord[];
 }
 
+/**
+ * Permanently deletes a user account via the server-side Edge Function.
+ * The service_role key is NOT used here — deletion happens inside the
+ * `delete-user` Edge Function which is the only place the service key lives.
+ *
+ * For the DSGVO soft-delete flow (user requests deletion, 30-day grace period)
+ * prefer updating profiles.deletion_requested_at instead of calling this directly.
+ */
 export async function deleteUserData(userId: string): Promise<boolean> {
-  const { error } = await supabase.auth.admin.deleteUser(userId);
-  if (error) {
-    console.error('deleteUserData error:', error);
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .delete()
-      .eq('id', userId);
-    if (profileError) { console.error('deleteProfile error:', profileError); return false; }
+  try {
+    const { data, error } = await supabase.functions.invoke('delete-user', {
+      body: { userId },
+    });
+    if (error) {
+      console.error('deleteUserData edge function error:', error);
+      return false;
+    }
+    const result = data as { ok?: boolean; error?: string };
+    if (!result?.ok) {
+      console.error('deleteUserData edge function returned not ok:', result?.error);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('deleteUserData exception:', e);
+    return false;
   }
-  return true;
 }

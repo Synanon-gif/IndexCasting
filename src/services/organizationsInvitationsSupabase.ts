@@ -45,13 +45,11 @@ export type InvitationPreview = {
 };
 
 function randomInviteToken(): string {
-  const u = () =>
-    'xxxxxxxxxxxx4xxxyxxxxxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-      const r = (Math.random() * 16) | 0;
-      const v = c === 'x' ? r : (r & 0x3) | 0x8;
-      return v.toString(16);
-    });
-  return `${u()}${u()}`.replace(/-/g, '');
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 export function buildOrganizationInviteUrl(token: string): string {
@@ -153,17 +151,22 @@ export async function listOrganizationMembers(organizationId: string): Promise<
     }
     const rows = (members ?? []) as OrganizationMemberRow[];
     if (rows.length === 0) return [];
-    const ids = rows.map((r) => r.user_id);
-    const { data: profiles, error: pErr } = await supabase
-      .from('profiles')
-      .select('id, display_name, email')
-      .in('id', ids);
-    if (pErr) console.error('listOrganizationMembers profiles error:', pErr);
-    const map = new Map((profiles ?? []).map((p: { id: string; display_name: string | null; email: string | null }) => [p.id, p]));
+
+    // Use the SECURITY DEFINER RPC to fetch emails for org members.
+    // Direct SELECT of profiles.email is no longer possible for the authenticated role.
+    const { data: memberEmails, error: emailErr } = await supabase
+      .rpc('get_org_member_emails', { p_org_id: organizationId });
+    if (emailErr) console.error('listOrganizationMembers email RPC error:', emailErr);
+
+    const emailMap = new Map(
+      ((memberEmails ?? []) as { user_id: string; display_name: string | null; email: string | null }[])
+        .map((r) => [r.user_id, r])
+    );
+
     return rows.map((m) => ({
       ...m,
-      display_name: map.get(m.user_id)?.display_name ?? null,
-      email: map.get(m.user_id)?.email ?? null,
+      display_name: emailMap.get(m.user_id)?.display_name ?? null,
+      email: emailMap.get(m.user_id)?.email ?? null,
     }));
   } catch (e) {
     console.error('listOrganizationMembers exception:', e);
@@ -317,6 +320,58 @@ export async function updateOrganizationName(
   }
 }
 
+/**
+ * Transfers org ownership to an existing member of the organization.
+ * Only the current owner can call this.
+ * Required before the former owner can delete their account (ON DELETE RESTRICT).
+ */
+export async function transferOrgOwnership(
+  organizationId: string,
+  newOwnerUserId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const { data, error } = await supabase.rpc('transfer_org_ownership', {
+      p_organization_id: organizationId,
+      p_new_owner_id: newOwnerUserId,
+    });
+    if (error) {
+      console.error('transferOrgOwnership error:', error);
+      return { ok: false, error: error.message };
+    }
+    const j = data as { ok?: boolean; error?: string };
+    if (!j?.ok) return { ok: false, error: j?.error ?? 'transfer_failed' };
+    return { ok: true };
+  } catch (e) {
+    console.error('transferOrgOwnership exception:', e);
+    return { ok: false, error: e instanceof Error ? e.message : 'unknown' };
+  }
+}
+
+/**
+ * Dissolves the organization: removes all members, invitations, and the org row.
+ * Only the current owner can call this.
+ * After dissolving, the owner can delete their own account without FK violations.
+ */
+export async function dissolveOrganization(
+  organizationId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const { data, error } = await supabase.rpc('dissolve_organization', {
+      p_organization_id: organizationId,
+    });
+    if (error) {
+      console.error('dissolveOrganization error:', error);
+      return { ok: false, error: error.message };
+    }
+    const j = data as { ok?: boolean; error?: string };
+    if (!j?.ok) return { ok: false, error: j?.error ?? 'dissolve_failed' };
+    return { ok: true };
+  } catch (e) {
+    console.error('dissolveOrganization exception:', e);
+    return { ok: false, error: e instanceof Error ? e.message : 'unknown' };
+  }
+}
+
 /** Fetch a single organization row by id (reads name, type, owner_id). */
 export async function getOrganizationById(
   organizationId: string,
@@ -335,6 +390,30 @@ export async function getOrganizationById(
   } catch (e) {
     console.error('getOrganizationById exception:', e);
     return null;
+  }
+}
+
+/**
+ * Revokes (hard-deletes) a pending invitation.
+ * Only the org owner can call this — enforced by the invitations_delete_owner_only RLS policy.
+ */
+export async function revokeOrganizationInvitation(
+  invitationId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const { error } = await supabase
+      .from('invitations')
+      .delete()
+      .eq('id', invitationId)
+      .eq('status', 'pending');
+    if (error) {
+      console.error('revokeOrganizationInvitation error:', error);
+      return { ok: false, error: error.message };
+    }
+    return { ok: true };
+  } catch (e) {
+    console.error('revokeOrganizationInvitation exception:', e);
+    return { ok: false, error: e instanceof Error ? e.message : 'unknown' };
   }
 }
 

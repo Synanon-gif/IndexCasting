@@ -10,14 +10,14 @@ export async function getProfileDisplayNamesForUserIds(userIds: string[]): Promi
   try {
     for (let i = 0; i < uniq.length; i += PROFILE_IN_CHUNK) {
       const chunk = uniq.slice(i, i + PROFILE_IN_CHUNK);
-      const { data, error } = await supabase.from('profiles').select('id, display_name, email').in('id', chunk);
+      const { data, error } = await supabase.from('profiles').select('id, display_name').in('id', chunk);
       if (error) {
         console.error('getProfileDisplayNamesForUserIds error:', error);
         continue;
       }
       for (const p of data ?? []) {
-        const row = p as { id: string; display_name: string | null; email: string | null };
-        map[row.id] = row.display_name?.trim() || row.email?.trim() || row.id.slice(0, 8);
+        const row = p as { id: string; display_name: string | null };
+        map[row.id] = row.display_name?.trim() || row.id.slice(0, 8);
       }
     }
     return map;

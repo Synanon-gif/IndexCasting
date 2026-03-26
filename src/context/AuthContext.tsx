@@ -126,6 +126,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   async function bootstrapThenLoadProfile(userId: string) {
     // Check if this is a guest user before running the B2B bootstrap RPC.
     // Guests have no organization and must not trigger org-creation side effects.
+
+    // The DB trigger handle_new_user() does NOT write is_guest from raw_user_meta_data.
+    // When a guest signs in via Magic Link (OTP), is_guest is only in user_metadata.
+    // We upsert the profile with is_guest=true here so the DB row reflects reality
+    // before we query it below.
+    try {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (currentUser?.user_metadata?.is_guest === true) {
+        const { createGuestProfile } = await import('../services/guestAuthSupabase');
+        await createGuestProfile(
+          userId,
+          currentUser.email ?? '',
+        );
+      }
+    } catch (e) {
+      console.error('bootstrapThenLoadProfile guest upsert error:', e);
+    }
+
     let isGuestUser = false;
     try {
       const { data: guestCheck } = await supabase

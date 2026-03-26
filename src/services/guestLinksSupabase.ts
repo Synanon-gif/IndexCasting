@@ -75,6 +75,45 @@ export async function deactivateGuestLink(linkId: string): Promise<boolean> {
   return true;
 }
 
+/**
+ * Minimal model shape returned by the get_guest_link_models RPC.
+ * Contains only the fields needed by GuestView — no sensitive internal data.
+ */
+export type GuestLinkModel = {
+  id: string;
+  name: string;
+  height: number | null;
+  bust: number | null;
+  waist: number | null;
+  hips: number | null;
+  city: string | null;
+  hair_color: string | null;
+  eye_color: string | null;
+  sex: string | null;
+  portfolio_images: string[];
+};
+
+/**
+ * Fetches the models for an active guest link via a SECURITY DEFINER RPC.
+ * Safe for anon callers — the RPC enforces the is_active + expiry guard.
+ * Returns [] if the link is invalid/expired or on error.
+ */
+export async function getGuestLinkModels(linkId: string): Promise<GuestLinkModel[]> {
+  try {
+    const { data, error } = await supabase.rpc('get_guest_link_models', {
+      p_link_id: linkId,
+    });
+    if (error) {
+      console.error('getGuestLinkModels RPC error:', error);
+      return [];
+    }
+    return (data ?? []) as GuestLinkModel[];
+  } catch (e) {
+    console.error('getGuestLinkModels exception:', e);
+    return [];
+  }
+}
+
 export function buildGuestUrl(linkId: string): string {
   if (typeof window !== 'undefined') {
     const base = window.location.origin + (window.location.pathname || '');

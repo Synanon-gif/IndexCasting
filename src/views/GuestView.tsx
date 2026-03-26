@@ -4,8 +4,7 @@ import {
   ActivityIndicator, TextInput, Platform,
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
-import { getGuestLink, type GuestLink } from '../services/guestLinksSupabase';
-import { getModelByIdFromSupabase, type SupabaseModel } from '../services/modelsSupabase';
+import { getGuestLink, getGuestLinkModels, type GuestLink, type GuestLinkModel } from '../services/guestLinksSupabase';
 import { signInOrCreateGuestWithOtp } from '../services/guestAuthSupabase';
 import { uiCopy } from '../constants/uiCopy';
 
@@ -25,7 +24,7 @@ type ViewPhase =
 
 export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
   const [link, setLink] = useState<GuestLink | null>(null);
-  const [models, setModels] = useState<SupabaseModel[]>([]);
+  const [models, setModels] = useState<GuestLinkModel[]>([]);
   const [loading, setLoading] = useState(true);
   const [phase, setPhase] = useState<ViewPhase>('legal');
   const [pageError, setPageError] = useState<string | null>(null);
@@ -51,10 +50,8 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
           return;
         }
         setLink(g);
-        const results = await Promise.all(
-          g.model_ids.map((id) => getModelByIdFromSupabase(id)),
-        );
-        setModels(results.filter((m): m is SupabaseModel => m !== null));
+        const results = await getGuestLinkModels(linkId);
+        setModels(results);
       } catch (e) {
         console.error('GuestView load error:', e);
         setPageError(copy.loadError);

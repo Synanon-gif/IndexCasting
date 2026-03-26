@@ -8,6 +8,7 @@
 import { supabase } from '../../lib/supabase';
 import { formatSenderDisplayLine } from '../utils/messengerSenderLabel';
 import { fetchAllSupabasePages } from './supabaseFetchAll';
+import { pooledSubscribe } from './realtimeChannelPool';
 
 export type ConversationType = 'option' | 'booking' | 'direct';
 
@@ -132,16 +133,58 @@ export async function getOrCreateConversation(
   return { ok: true, conversation: data as Conversation };
 }
 
-export async function getMessages(conversationId: string): Promise<Message[]> {
-  return fetchAllSupabasePages(async (from, to) => {
-    const { data, error } = await supabase
+/** Options for cursor-based message pagination. */
+export type GetMessagesOptions = {
+  /** Max number of messages to load. Defaults to 50. */
+  limit?: number;
+  /**
+   * Cursor: ID of the oldest currently loaded message.
+   * When provided, only messages older than this cursor are returned
+   * ("Load more" / infinite scroll upward).
+   */
+  beforeId?: string;
+};
+
+/**
+ * Loads the latest `limit` messages for a conversation in ascending order.
+ * For subsequent "Load more" calls pass `beforeId` with the oldest loaded message ID.
+ *
+ * Replaces unbounded fetchAllSupabasePages (which loaded every message in memory).
+ * At 500 agencies chatting simultaneously, each loading thousands of messages,
+ * the old approach produced millions of DB rows in transit per minute.
+ */
+export async function getMessages(
+  conversationId: string,
+  opts?: GetMessagesOptions,
+): Promise<Message[]> {
+  const limit = opts?.limit ?? 50;
+  try {
+    let q = supabase
       .from('messages')
       .select('*')
       .eq('conversation_id', conversationId)
-      .order('created_at', { ascending: true })
-      .range(from, to);
-    return { data: data as Message[] | null, error };
-  });
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (opts?.beforeId) {
+      const { data: cursorRow } = await supabase
+        .from('messages')
+        .select('created_at')
+        .eq('id', opts.beforeId)
+        .maybeSingle();
+      if (cursorRow) {
+        q = q.lt('created_at', (cursorRow as { created_at: string }).created_at);
+      }
+    }
+
+    const { data, error } = await q;
+    if (error) { console.error('getMessages error:', error); return []; }
+    // Reverse DESC result back to ascending order for rendering
+    return ((data ?? []) as Message[]).reverse();
+  } catch (e) {
+    console.error('getMessages exception:', e);
+    return [];
+  }
 }
 
 export async function sendMessage(
@@ -177,17 +220,17 @@ export { formatSenderDisplayLine };
 
 async function fetchProfilesForSenders(
   ids: string[]
-): Promise<Record<string, { display_name: string | null; email: string | null; role: string | null }>> {
+): Promise<Record<string, { display_name: string | null; role: string | null }>> {
   if (ids.length === 0) return {};
   try {
-    const { data, error } = await supabase.from('profiles').select('id, display_name, email, role').in('id', ids);
+    const { data, error } = await supabase.from('profiles').select('id, display_name, role').in('id', ids);
     if (error) {
       console.error('fetchProfilesForSenders error:', error);
       return {};
     }
-    const map: Record<string, { display_name: string | null; email: string | null; role: string | null }> = {};
+    const map: Record<string, { display_name: string | null; role: string | null }> = {};
     for (const row of data ?? []) {
-      const r = row as { id: string; display_name: string | null; email: string | null; role: string | null };
+      const r = row as { id: string; display_name: string | null; role: string | null };
       map[r.id] = r;
     }
     return map;
@@ -245,9 +288,12 @@ async function fetchOrgRoleLabelsForSenders(
   }
 }
 
-export async function getMessagesWithSenderInfo(conversationId: string): Promise<MessageWithSender[]> {
+export async function getMessagesWithSenderInfo(
+  conversationId: string,
+  opts?: GetMessagesOptions,
+): Promise<MessageWithSender[]> {
   try {
-    const messages = await getMessages(conversationId);
+    const messages = await getMessages(conversationId, opts);
     const conv = await getConversationById(conversationId);
     const senderIds = [...new Set(messages.map((m) => m.sender_id))];
     const profiles = await fetchProfilesForSenders(senderIds);
@@ -258,7 +304,7 @@ export async function getMessagesWithSenderInfo(conversationId: string): Promise
     );
     return messages.map((m) => {
       const p = profiles[m.sender_id];
-      const name = p?.display_name?.trim() || p?.email?.trim() || 'User';
+      const name = p?.display_name?.trim() || 'User';
       const orgRole = orgLabels[m.sender_id] ?? null;
       const profileRole = p?.role ?? null;
       return {
@@ -291,29 +337,40 @@ export async function markAllAsRead(conversationId: string, userId: string): Pro
     .is('read_at', null);
 }
 
+/**
+ * Subscribe to new messages in a conversation.
+ * Uses the shared channel pool — opening the same conversation from multiple
+ * components reuses one WebSocket channel instead of creating duplicates.
+ * Returns a cleanup function (call on unmount / useFocusEffect cleanup).
+ */
 export function subscribeToConversation(
   conversationId: string,
-  onMessage: (msg: Message) => void
-) {
-  const channel = supabase
-    .channel(`conversation-${conversationId}`)
-    .on(
-      'postgres_changes',
-      {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'messages',
-        filter: `conversation_id=eq.${conversationId}`,
-      },
-      (payload) => {
-        onMessage(payload.new as Message);
-      }
-    )
-    .subscribe();
-
-  return () => { supabase.removeChannel(channel); };
+  onMessage: (msg: Message) => void,
+): () => void {
+  return pooledSubscribe(
+    `conversation-${conversationId}`,
+    (channel, dispatch) =>
+      channel
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'messages',
+            filter: `conversation_id=eq.${conversationId}`,
+          },
+          dispatch,
+        )
+        .subscribe(),
+    (payload) => onMessage((payload as { new: Message }).new),
+  );
 }
 
+/**
+ * Uploads a file to the private chat-files bucket and returns the storage path.
+ * The bucket MUST be set to private in the Supabase dashboard.
+ * Use getSignedChatFileUrl() to generate time-limited download URLs for display.
+ */
 export async function uploadChatFile(
   conversationId: string,
   file: File | Blob,
@@ -324,6 +381,34 @@ export async function uploadChatFile(
     .from('chat-files')
     .upload(path, file);
   if (error) { console.error('uploadChatFile error:', error); return null; }
-  const { data } = supabase.storage.from('chat-files').getPublicUrl(path);
-  return data.publicUrl;
+  return path;
+}
+
+/**
+ * Creates a time-limited signed URL for a chat file stored in the private bucket.
+ * Call this whenever you need to display/download a file attachment.
+ * @param pathOrLegacyUrl – storage path (new) or a legacy public URL (old rows)
+ * @param expiresInSeconds – URL validity window; default 1 hour
+ */
+export async function getSignedChatFileUrl(
+  pathOrLegacyUrl: string,
+  expiresInSeconds = 3600
+): Promise<string | null> {
+  if (!pathOrLegacyUrl) return null;
+
+  // Legacy rows stored the full public URL; detect and extract the path.
+  const storagePath = pathOrLegacyUrl.includes('/storage/v1/object/public/chat-files/')
+    ? pathOrLegacyUrl.split('/storage/v1/object/public/chat-files/')[1]
+    : pathOrLegacyUrl;
+
+  try {
+    const { data, error } = await supabase.storage
+      .from('chat-files')
+      .createSignedUrl(storagePath, expiresInSeconds);
+    if (error) { console.error('getSignedChatFileUrl error:', error); return null; }
+    return data.signedUrl;
+  } catch (e) {
+    console.error('getSignedChatFileUrl exception:', e);
+    return null;
+  }
 }

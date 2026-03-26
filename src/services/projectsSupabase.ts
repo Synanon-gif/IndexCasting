@@ -7,6 +7,7 @@ import { supabase } from '../../lib/supabase';
 export type SupabaseProject = {
   id: string;
   owner_id: string;
+  organization_id: string | null;
   name: string;
   created_at: string;
   updated_at: string;
@@ -18,24 +19,68 @@ export type SupabaseProjectModel = {
   added_at: string;
 };
 
-export async function getProjectsForOwner(ownerId: string): Promise<SupabaseProject[]> {
-  const { data, error } = await supabase
-    .from('client_projects')
-    .select('*')
-    .eq('owner_id', ownerId)
-    .order('created_at', { ascending: false });
-  if (error) { console.error('getProjectsForOwner error:', error); return []; }
-  return (data ?? []) as SupabaseProject[];
+/**
+ * Fetches all projects visible to the current user.
+ * RLS enforces that only the owner or org members can see these projects.
+ * Pass organizationId to filter by org; omit for a full list.
+ */
+export async function getProjectsForOrg(organizationId: string): Promise<SupabaseProject[]> {
+  try {
+    const { data, error } = await supabase
+      .from('client_projects')
+      .select('*')
+      .eq('organization_id', organizationId)
+      .order('created_at', { ascending: false });
+    if (error) { console.error('getProjectsForOrg error:', error); return []; }
+    return (data ?? []) as SupabaseProject[];
+  } catch (e) {
+    console.error('getProjectsForOrg exception:', e);
+    return [];
+  }
 }
 
-export async function createProject(ownerId: string, name: string): Promise<SupabaseProject | null> {
-  const { data, error } = await supabase
-    .from('client_projects')
-    .insert({ owner_id: ownerId, name })
-    .select()
-    .single();
-  if (error) { console.error('createProject error:', error); return null; }
-  return data as SupabaseProject;
+/** @deprecated Use getProjectsForOrg(organizationId) for org-aware access. */
+export async function getProjectsForOwner(ownerId: string): Promise<SupabaseProject[]> {
+  try {
+    const { data, error } = await supabase
+      .from('client_projects')
+      .select('*')
+      .eq('owner_id', ownerId)
+      .order('created_at', { ascending: false });
+    if (error) { console.error('getProjectsForOwner error:', error); return []; }
+    return (data ?? []) as SupabaseProject[];
+  } catch (e) {
+    console.error('getProjectsForOwner exception:', e);
+    return [];
+  }
+}
+
+/**
+ * Creates a project, linking it to the given organization for org-wide access.
+ * Provide organizationId for all new projects — legacy callers without an org
+ * can omit it (falls back to personal owner_id scope).
+ */
+export async function createProject(
+  ownerId: string,
+  name: string,
+  organizationId?: string | null,
+): Promise<SupabaseProject | null> {
+  try {
+    const { data, error } = await supabase
+      .from('client_projects')
+      .insert({
+        owner_id: ownerId,
+        name,
+        ...(organizationId ? { organization_id: organizationId } : {}),
+      })
+      .select()
+      .single();
+    if (error) { console.error('createProject error:', error); return null; }
+    return data as SupabaseProject;
+  } catch (e) {
+    console.error('createProject exception:', e);
+    return null;
+  }
 }
 
 export async function updateProject(projectId: string, name: string): Promise<boolean> {

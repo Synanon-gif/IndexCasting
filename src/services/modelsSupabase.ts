@@ -220,6 +220,20 @@ export async function getModelsForClientFromSupabaseByTerritory(
   });
 }
 
+export type HybridLocationModel = SupabaseModel & {
+  has_real_location: boolean;
+  territory_country_code?: string | null;
+  agency_name?: string | null;
+  territory_agency_id?: string | null;
+};
+
+/**
+ * Hybrid-Discovery via RPC get_models_by_location (migration_get_models_by_location_rpc.sql).
+ *
+ * Replaces two separate fetchAllSupabasePages streams (models + models_with_territories),
+ * which at 100k concurrent clients created 200k+ parallel DB round-trip sequences.
+ * Now a single UNION query runs server-side per pagination page.
+ */
 export async function getModelsForClientFromSupabaseHybridLocation(
   clientType: 'fashion' | 'commercial' | 'all',
   countryCode: string,
@@ -228,100 +242,35 @@ export async function getModelsForClientFromSupabaseHybridLocation(
   sportsWinter?: boolean,
   sportsSummer?: boolean,
   measurementFilters?: ClientMeasurementFilters,
-): Promise<
-  Array<
-    SupabaseModel & {
-      has_real_location: boolean;
-      territory_country_code?: string | null;
-      agency_name?: string | null;
-      territory_agency_id?: string | null;
-    }
-  >
-> {
+): Promise<HybridLocationModel[]> {
   const iso = countryCode.trim().toUpperCase();
+  const f = measurementFilters ?? {};
 
-  const applyVisibility = (q: any) => {
-    if (clientType === 'fashion') return q.eq('is_visible_fashion', true);
-    if (clientType === 'commercial') return q.eq('is_visible_commercial', true);
-    return q.or('is_visible_fashion.eq.true,is_visible_commercial.eq.true');
-  };
-
-  // 1) REAL LOCATION group: models with models.country_code = selected country.
-  const realRows = await fetchAllSupabasePages(async (from, to) => {
-    let q = supabase
-      .from('models')
-      .select('*')
-      .eq('country_code', iso)
-      .or('agency_relationship_status.is.null,agency_relationship_status.eq.active,agency_relationship_status.eq.pending_link')
-      .order('name')
-      .range(from, to);
-
-    q = applyVisibility(q);
-    if (city && city.trim()) {
-      q = q.ilike('city', city.trim());
-    }
-    if (category) q = q.or(buildCategoryOrFilter(category));
-    if (sportsWinter) q = q.eq('is_sports_winter', true);
-    if (sportsSummer) q = q.eq('is_sports_summer', true);
-    if (measurementFilters) q = applyMeasurementFilters(q, measurementFilters);
-
-    const { data, error } = await q;
-    return { data: data as SupabaseModel[] | null, error };
-  });
-
-  // 2) TERRITORY FALLBACK group: models WITHOUT real location (models.country_code IS NULL),
-  // represented in the selected country via model_agency_territories.
-  const fallbackRows = await fetchAllSupabasePages(async (from, to) => {
-    let q = supabase
-      .from('models_with_territories')
-      .select('*')
-      .eq('territory_country_code', iso)
-      .is('country_code', null)
-      .or('agency_relationship_status.is.null,agency_relationship_status.eq.active,agency_relationship_status.eq.pending_link')
-      .order('name')
-      .range(from, to);
-    q = applyVisibility(q);
-    if (category) q = q.or(buildCategoryOrFilter(category));
-    if (sportsWinter) q = q.eq('is_sports_winter', true);
-    if (sportsSummer) q = q.eq('is_sports_summer', true);
-    if (measurementFilters) q = applyMeasurementFilters(q, measurementFilters);
-    const { data, error } = await q;
-
-    return {
-      data: data as Array<
-        SupabaseModel & {
-          territory_country_code: string;
-          agency_name: string;
-          territory_agency_id?: string | null;
-        }
-      > | null,
-      error,
-    };
-  });
-
-  const realById = new Map<string, any>();
-  for (const r of realRows) {
-    realById.set(r.id, {
-      ...(r as any),
-      has_real_location: true,
-      territory_country_code: null,
-      agency_name: null,
-      territory_agency_id: null,
+  return fetchAllSupabasePages(async (from, to) => {
+    const { data, error } = await supabase.rpc('get_models_by_location', {
+      p_iso:              iso,
+      p_client_type:      clientType,
+      p_from:             from,
+      p_to:               to,
+      p_city:             city?.trim() ?? null,
+      p_category:         category ?? null,
+      p_sports_winter:    sportsWinter ?? false,
+      p_sports_summer:    sportsSummer ?? false,
+      p_height_min:       f.heightMin      ?? null,
+      p_height_max:       f.heightMax      ?? null,
+      p_hair_color:       f.hairColor      ?? null,
+      p_hips_min:         f.hipsMin        ?? null,
+      p_hips_max:         f.hipsMax        ?? null,
+      p_waist_min:        f.waistMin       ?? null,
+      p_waist_max:        f.waistMax       ?? null,
+      p_chest_min:        f.chestMin       ?? null,
+      p_chest_max:        f.chestMax       ?? null,
+      p_legs_inseam_min:  f.legsInseamMin  ?? null,
+      p_legs_inseam_max:  f.legsInseamMax  ?? null,
+      p_sex:              f.sex            ?? null,
     });
-  }
-
-  const merged: any[] = [];
-  merged.push(...realById.values());
-  for (const fb of fallbackRows as any[]) {
-    if (realById.has(fb.id)) continue; // prioritize real location
-    merged.push({
-      ...(fb as any),
-      has_real_location: false,
-    });
-  }
-
-  merged.sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
-  return merged;
+    return { data: data as HybridLocationModel[] | null, error };
+  });
 }
 
 export async function getModelsForAgencyFromSupabase(agencyId: string): Promise<SupabaseModel[]> {

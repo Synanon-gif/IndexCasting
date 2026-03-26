@@ -50,17 +50,33 @@ export type SupabaseApplication = {
   agencies?: SupabaseApplicationAgencyEmbed;
 };
 
-export async function getApplications(): Promise<SupabaseApplication[]> {
-  const { data, error } = await supabase
-    .from('model_applications')
-    .select('*')
-    .order('created_at', { ascending: false });
+export type ApplicationListOptions = {
+  /** Max rows per page. Defaults to 100. */
+  limit?: number;
+  /**
+   * Cursor: ISO timestamp of the oldest loaded item.
+   * Pass to load earlier items ("Load more").
+   */
+  afterCreatedAt?: string;
+};
 
-  if (error) {
-    console.error('getApplications error:', error);
+export async function getApplications(
+  opts?: ApplicationListOptions,
+): Promise<SupabaseApplication[]> {
+  try {
+    let q = supabase
+      .from('model_applications')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(opts?.limit ?? 100);
+    if (opts?.afterCreatedAt) q = q.lt('created_at', opts.afterCreatedAt);
+    const { data, error } = await q;
+    if (error) { console.error('getApplications error:', error); return []; }
+    return (data ?? []) as SupabaseApplication[];
+  } catch (e) {
+    console.error('getApplications exception:', e);
     return [];
   }
-  return (data ?? []) as SupabaseApplication[];
 }
 
 /** Single application row (RLS: agency or applicant). */
@@ -82,18 +98,25 @@ export async function fetchApplicationById(applicationId: string): Promise<Supab
   }
 }
 
-export async function getApplicationsByStatus(status: string): Promise<SupabaseApplication[]> {
-  const { data, error } = await supabase
-    .from('model_applications')
-    .select('*')
-    .eq('status', status)
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    console.error('getApplicationsByStatus error:', error);
+export async function getApplicationsByStatus(
+  status: string,
+  opts?: ApplicationListOptions,
+): Promise<SupabaseApplication[]> {
+  try {
+    let q = supabase
+      .from('model_applications')
+      .select('*')
+      .eq('status', status)
+      .order('created_at', { ascending: false })
+      .limit(opts?.limit ?? 100);
+    if (opts?.afterCreatedAt) q = q.lt('created_at', opts.afterCreatedAt);
+    const { data, error } = await q;
+    if (error) { console.error('getApplicationsByStatus error:', error); return []; }
+    return (data ?? []) as SupabaseApplication[];
+  } catch (e) {
+    console.error('getApplicationsByStatus exception:', e);
     return [];
   }
-  return (data ?? []) as SupabaseApplication[];
 }
 
 /** Bewerbungen des eingeloggten Models (für "My Applications"). Agency-Name nur als Embed (ein Feld). */

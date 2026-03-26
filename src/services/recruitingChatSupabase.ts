@@ -1,5 +1,6 @@
 import { supabase } from '../../lib/supabase';
 import { uiCopy } from '../constants/uiCopy';
+import { pooledSubscribe } from './realtimeChannelPool';
 
 /**
  * Recruiting-Chat (Agentur ↔ Model nach Bewerbungsannahme).
@@ -28,13 +29,33 @@ export type SupabaseRecruitingMessage = {
   created_at: string;
 };
 
-export async function getThreads(): Promise<SupabaseRecruitingThread[]> {
-  const { data, error } = await supabase
-    .from('recruiting_chat_threads')
-    .select('*')
-    .order('created_at', { ascending: false });
-  if (error) { console.error('getThreads error:', error); return []; }
-  return (data ?? []) as SupabaseRecruitingThread[];
+export type ThreadListOptions = {
+  /** Max rows per page. Defaults to 100. */
+  limit?: number;
+  /**
+   * Cursor: ISO timestamp of the oldest loaded thread.
+   * Pass to load earlier threads ("Load more").
+   */
+  afterCreatedAt?: string;
+};
+
+export async function getThreads(
+  opts?: ThreadListOptions,
+): Promise<SupabaseRecruitingThread[]> {
+  try {
+    let q = supabase
+      .from('recruiting_chat_threads')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(opts?.limit ?? 100);
+    if (opts?.afterCreatedAt) q = q.lt('created_at', opts.afterCreatedAt);
+    const { data, error } = await q;
+    if (error) { console.error('getThreads error:', error); return []; }
+    return (data ?? []) as SupabaseRecruitingThread[];
+  } catch (e) {
+    console.error('getThreads exception:', e);
+    return [];
+  }
 }
 
 export async function getThread(threadId: string): Promise<SupabaseRecruitingThread | null> {
@@ -90,19 +111,24 @@ export async function createThread(
 /** Threads für eine Agentur (Booking Chats). */
 export async function getThreadsForAgency(
   agencyId: string,
-  options?: { createdByUserId?: string | null }
+  options?: { createdByUserId?: string | null } & ThreadListOptions,
 ): Promise<SupabaseRecruitingThread[]> {
-  let q = supabase
-    .from('recruiting_chat_threads')
-    .select('id, application_id, model_name, agency_id, organization_id, created_by, created_at')
-    .eq('agency_id', agencyId)
-    .order('created_at', { ascending: false });
-  if (options?.createdByUserId) {
-    q = q.eq('created_by', options.createdByUserId);
+  try {
+    let q = supabase
+      .from('recruiting_chat_threads')
+      .select('id, application_id, model_name, agency_id, organization_id, created_by, created_at')
+      .eq('agency_id', agencyId)
+      .order('created_at', { ascending: false })
+      .limit(options?.limit ?? 100);
+    if (options?.createdByUserId) q = q.eq('created_by', options.createdByUserId);
+    if (options?.afterCreatedAt) q = q.lt('created_at', options.afterCreatedAt);
+    const { data, error } = await q;
+    if (error) { console.error('getThreadsForAgency error:', error); return []; }
+    return (data ?? []) as SupabaseRecruitingThread[];
+  } catch (e) {
+    console.error('getThreadsForAgency exception:', e);
+    return [];
   }
-  const { data, error } = await q;
-  if (error) { console.error('getThreadsForAgency error:', error); return []; }
-  return (data ?? []) as SupabaseRecruitingThread[];
 }
 
 /** agency_id setzen (z. B. nach Accept, wenn Thread vorher ohne agency erstellt wurde). */
@@ -139,14 +165,51 @@ export async function updateThreadChatType(
   }
 }
 
-export async function getMessages(threadId: string): Promise<SupabaseRecruitingMessage[]> {
-  const { data, error } = await supabase
-    .from('recruiting_chat_messages')
-    .select('*')
-    .eq('thread_id', threadId)
-    .order('created_at', { ascending: true });
-  if (error) { console.error('getMessages error:', error); return []; }
-  return (data ?? []) as SupabaseRecruitingMessage[];
+export type GetRecruitingMessagesOptions = {
+  /** Max messages to load. Defaults to 50. */
+  limit?: number;
+  /**
+   * Cursor: ID of the oldest currently loaded message.
+   * Pass to retrieve older messages ("Load more").
+   */
+  beforeId?: string;
+};
+
+/**
+ * Loads the latest `limit` recruiting messages for a thread.
+ * Replaces unbounded full-history load.
+ */
+export async function getMessages(
+  threadId: string,
+  opts?: GetRecruitingMessagesOptions,
+): Promise<SupabaseRecruitingMessage[]> {
+  const limit = opts?.limit ?? 50;
+  try {
+    let q = supabase
+      .from('recruiting_chat_messages')
+      .select('*')
+      .eq('thread_id', threadId)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (opts?.beforeId) {
+      const { data: cursorRow } = await supabase
+        .from('recruiting_chat_messages')
+        .select('created_at')
+        .eq('id', opts.beforeId)
+        .maybeSingle();
+      if (cursorRow) {
+        q = q.lt('created_at', (cursorRow as { created_at: string }).created_at);
+      }
+    }
+
+    const { data, error } = await q;
+    if (error) { console.error('getMessages error:', error); return []; }
+    return ((data ?? []) as SupabaseRecruitingMessage[]).reverse();
+  } catch (e) {
+    console.error('getMessages exception:', e);
+    return [];
+  }
 }
 
 export async function addMessage(threadId: string, fromRole: 'agency' | 'model', text: string): Promise<SupabaseRecruitingMessage | null> {
@@ -159,27 +222,32 @@ export async function addMessage(threadId: string, fromRole: 'agency' | 'model',
   return data as SupabaseRecruitingMessage;
 }
 
+/**
+ * Subscribe to new messages in a recruiting chat thread.
+ * Uses the shared channel pool — opening the same thread from multiple
+ * components reuses one WebSocket channel. Returns a cleanup function.
+ */
 export function subscribeToThreadMessages(
   threadId: string,
-  onMessage: (msg: SupabaseRecruitingMessage) => void
-) {
-  const channel = supabase
-    .channel(`recruiting-${threadId}`)
-    .on(
-      'postgres_changes',
-      {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'recruiting_chat_messages',
-        filter: `thread_id=eq.${threadId}`,
-      },
-      (payload) => {
-        onMessage(payload.new as SupabaseRecruitingMessage);
-      }
-    )
-    .subscribe();
-
-  return () => { supabase.removeChannel(channel); };
+  onMessage: (msg: SupabaseRecruitingMessage) => void,
+): () => void {
+  return pooledSubscribe(
+    `recruiting-${threadId}`,
+    (channel, dispatch) =>
+      channel
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'recruiting_chat_messages',
+            filter: `thread_id=eq.${threadId}`,
+          },
+          dispatch,
+        )
+        .subscribe(),
+    (payload) => onMessage((payload as { new: SupabaseRecruitingMessage }).new),
+  );
 }
 
 /**

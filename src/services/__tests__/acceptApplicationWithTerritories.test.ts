@@ -19,7 +19,9 @@ import { supabase } from '../../../lib/supabase';
 import { bulkUpsertTerritoriesForModels } from '../territoriesSupabase';
 
 describe('bulkUpsertTerritoriesForModels', () => {
-  beforeEach(() => jest.clearAllMocks());
+  // resetAllMocks clears queued mockResolvedValueOnce values between tests.
+  // clearAllMocks only resets call history, not the implementation queue.
+  beforeEach(() => jest.resetAllMocks());
 
   it('handles empty model ids list gracefully', async () => {
     const { succeededIds, failedIds } = await bulkUpsertTerritoriesForModels([], 'a1', ['DE']);
@@ -28,30 +30,22 @@ describe('bulkUpsertTerritoriesForModels', () => {
     expect(failedIds).toEqual([]);
   });
 
-  it('records succeededIds when save succeeds', async () => {
+  it('records succeededIds when bulk RPC succeeds', async () => {
+    // New behavior: bulk_save_model_territories succeeds → all models returned as succeeded.
+    // Only 1 RPC call is made (no per-model serial calls).
     (supabase.rpc as jest.Mock)
-      .mockResolvedValueOnce({ data: true, error: null })   // save_model_territories
-      .mockResolvedValueOnce({ data: [], error: null });     // get_territories_for_model
+      .mockResolvedValueOnce({ data: true, error: null }); // bulk_save_model_territories
 
     const { succeededIds, failedIds } = await bulkUpsertTerritoriesForModels(
       ['model-1'], 'a1', ['DE'],
     );
     expect(succeededIds).toContain('model-1');
     expect(failedIds).toEqual([]);
+    expect((supabase.rpc as jest.Mock).mock.calls).toHaveLength(1);
   });
 
-  it('records failedIds when save RPC returns error', async () => {
-    (supabase.rpc as jest.Mock).mockResolvedValue({
-      data: null, error: { message: 'Not authorized' },
-    });
-    const { succeededIds, failedIds } = await bulkUpsertTerritoriesForModels(
-      ['model-err'], 'a1', ['DE'],
-    );
-    expect(failedIds).toContain('model-err');
-    expect(succeededIds).toEqual([]);
-  });
-
-  it('records failedIds when RPC throws', async () => {
+  it('falls back to serial and records failedIds when all RPCs throw', async () => {
+    // All rpc calls throw → bulk throws → serial fallback → serial save also throws → failedIds
     (supabase.rpc as jest.Mock).mockRejectedValue(new Error('network timeout'));
     const { succeededIds, failedIds } = await bulkUpsertTerritoriesForModels(
       ['model-err'], 'a1', ['DE'],
@@ -60,11 +54,15 @@ describe('bulkUpsertTerritoriesForModels', () => {
     expect(succeededIds).toEqual([]);
   });
 
-  it('processes each model independently (partial failure)', async () => {
+  it('processes each model independently in serial fallback (partial failure)', async () => {
+    // bulk throws → serial fallback
+    // model-ok: serial save succeeds, refetch succeeds → succeededIds
+    // model-err: serial save throws → failedIds
     (supabase.rpc as jest.Mock)
-      .mockResolvedValueOnce({ data: true, error: null })             // model-ok: save
-      .mockResolvedValueOnce({ data: [], error: null })               // model-ok: refetch
-      .mockResolvedValueOnce({ data: null, error: { message: 'auth failed' } }); // model-err: save fails
+      .mockRejectedValueOnce(new Error('bulk unavailable'))  // bulk throws → serial fallback
+      .mockResolvedValueOnce({ data: true, error: null })    // model-ok: save succeeds
+      .mockResolvedValueOnce({ data: [], error: null })      // model-ok: get_territories refetch
+      .mockRejectedValueOnce(new Error('auth failed'));      // model-err: save throws
 
     const { succeededIds, failedIds } = await bulkUpsertTerritoriesForModels(
       ['model-ok', 'model-err'], 'a1', ['DE'],

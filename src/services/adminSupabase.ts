@@ -47,18 +47,18 @@ export async function getAllProfiles(filter?: {
   inactiveOnly?: boolean;
   role?: string;
 }): Promise<AdminProfile[]> {
-  let query = supabase
-    .from('profiles')
-    .select('id, email, display_name, role, is_active, is_admin, tos_accepted, privacy_accepted, agency_model_rights_accepted, activation_documents_sent, verification_email, company_name, phone, country, created_at, deactivated_at, deactivated_reason')
-    .order('created_at', { ascending: false });
-
-  if (filter?.activeOnly) query = query.eq('is_active', true);
-  if (filter?.inactiveOnly) query = query.eq('is_active', false);
-  if (filter?.role) query = query.eq('role', filter.role);
-
-  const { data, error } = await query;
-  if (error) { console.error('getAllProfiles error:', error); return []; }
-  return (data ?? []) as AdminProfile[];
+  try {
+    const { data, error } = await supabase.rpc('admin_get_profiles', {
+      p_active_only:   filter?.activeOnly   ?? null,
+      p_inactive_only: filter?.inactiveOnly ?? null,
+      p_role:          filter?.role         ?? null,
+    });
+    if (error) { console.error('getAllProfiles error:', error); return []; }
+    return (data ?? []) as AdminProfile[];
+  } catch (e) {
+    console.error('getAllProfiles exception:', e);
+    return [];
+  }
 }
 
 export async function activateAccount(userId: string): Promise<boolean> {
