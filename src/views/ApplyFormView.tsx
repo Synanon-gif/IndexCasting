@@ -20,6 +20,7 @@ import { uploadApplicationImage } from '../services/applicationsSupabase';
 import { useAuth } from '../context/AuthContext';
 import { splitProfileDisplayName } from '../utils/applicantNameFromProfile';
 import { uiCopy } from '../constants/uiCopy';
+import { FILTER_COUNTRIES, ETHNICITY_OPTIONS } from '../utils/modelFilters';
 
 type ImageSlot = 'closeUp' | 'fullBody' | 'profile';
 
@@ -51,6 +52,11 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [city, setCity] = useState('');
   const [gender, setGender] = useState<string>('');
   const [hairColor, setHairColor] = useState('');
+  const [countryCode, setCountryCode] = useState('');
+  const [countryQuery, setCountryQuery] = useState('');
+  const [countryDropdownOpen, setCountryDropdownOpen] = useState(false);
+  const [ethnicity, setEthnicity] = useState('');
+  const [ethnicityDropdownOpen, setEthnicityDropdownOpen] = useState(false);
   const [instagramLink, setInstagramLink] = useState('');
   const [images, setImages] = useState<Record<ImageSlot, string>>({
     closeUp: '',
@@ -154,7 +160,15 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       return;
     }
     if (!city.trim()) {
-      setError('Please enter city.');
+      setError('Please enter your city.');
+      return;
+    }
+    if (!gender) {
+      setError('Please select Female or Male.');
+      return;
+    }
+    if (!countryCode) {
+      setError('Please select your country.');
       return;
     }
     if (!applicantUserId) {
@@ -184,9 +198,11 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         lastName: lastName.trim(),
         age: ageNum,
         height: heightNum,
-        gender: (gender === 'female' || gender === 'male' || gender === 'diverse' ? gender : '') as 'female' | 'male' | 'diverse' | '',
+        gender: (gender === 'female' || gender === 'male' ? gender : '') as 'female' | 'male' | 'diverse' | '',
         hairColor: hairColor.trim(),
         city: city.trim(),
+        countryCode: countryCode || undefined,
+        ethnicity: ethnicity || undefined,
         instagramLink: instagramLink.trim(),
         images: imageUrls,
       });
@@ -312,20 +328,115 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             style={styles.input}
           />
         </View>
+        {/* Sex — Female / Male only (mandatory, matches filter logic) */}
         <View style={styles.field}>
-          <Text style={styles.label}>Gender</Text>
+          <Text style={styles.label}>Sex <Text style={{ color: colors.buttonSkipRed }}>*</Text></Text>
           <View style={styles.row}>
-            {(['female', 'male', 'diverse'] as const).map((g) => (
+            {(['female', 'male'] as const).map((g) => (
               <TouchableOpacity
                 key={g}
                 style={[styles.genderPill, gender === g && styles.genderPillActive]}
                 onPress={() => setGender(g)}
               >
-                <Text style={[styles.genderPillLabel, gender === g && styles.genderPillLabelActive]}>{g === 'female' ? 'Female' : g === 'male' ? 'Male' : 'Diverse'}</Text>
+                <Text style={[styles.genderPillLabel, gender === g && styles.genderPillLabelActive]}>
+                  {g === 'female' ? 'Female' : 'Male'}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
         </View>
+
+        {/* Country — mandatory, searchable dropdown matching FILTER_COUNTRIES */}
+        <View style={[styles.field, { zIndex: 200 }]}>
+          <Text style={styles.label}>Country <Text style={{ color: colors.buttonSkipRed }}>*</Text></Text>
+          {countryCode ? (
+            <View style={styles.row}>
+              <View style={styles.chip}>
+                <Text style={styles.chipLabel}>
+                  {FILTER_COUNTRIES.find((c) => c.code === countryCode)?.label ?? countryCode}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => { setCountryCode(''); setCountryQuery(''); }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={styles.chipRemove}>×</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <View style={{ position: 'relative' }}>
+              <TextInput
+                value={countryQuery}
+                onChangeText={(v) => { setCountryQuery(v); setCountryDropdownOpen(true); setEthnicityDropdownOpen(false); }}
+                onFocus={() => { setCountryDropdownOpen(true); setEthnicityDropdownOpen(false); }}
+                placeholder="Search country…"
+                placeholderTextColor={colors.textSecondary}
+                style={styles.input}
+              />
+              {countryDropdownOpen && (
+                <View style={styles.dropdown}>
+                  <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled showsVerticalScrollIndicator style={{ maxHeight: 180 }}>
+                    {FILTER_COUNTRIES
+                      .filter((c) => !countryQuery.trim() || c.label.toLowerCase().includes(countryQuery.toLowerCase()) || c.code.toLowerCase().includes(countryQuery.toLowerCase()))
+                      .map((c, i, arr) => (
+                        <TouchableOpacity
+                          key={c.code}
+                          style={[styles.dropdownItem, i < arr.length - 1 && styles.dropdownItemBorder]}
+                          onPress={() => { setCountryCode(c.code); setCountryQuery(''); setCountryDropdownOpen(false); }}
+                        >
+                          <Text style={styles.dropdownItemText}>{c.label}</Text>
+                        </TouchableOpacity>
+                      ))}
+                  </ScrollView>
+                </View>
+              )}
+            </View>
+          )}
+        </View>
+
+        {/* Ethnicity — optional, single-select dropdown matching ETHNICITY_OPTIONS */}
+        <View style={[styles.field, { zIndex: 100 }]}>
+          <Text style={styles.label}>Ethnicity <Text style={{ ...typography.label, color: colors.textSecondary }}>(optional)</Text></Text>
+          {ethnicity ? (
+            <View style={styles.row}>
+              <View style={styles.chip}>
+                <Text style={styles.chipLabel}>{ethnicity}</Text>
+                <TouchableOpacity
+                  onPress={() => setEthnicity('')}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={styles.chipRemove}>×</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <View style={{ position: 'relative' }}>
+              <TouchableOpacity
+                style={[styles.input, { justifyContent: 'center' }]}
+                onPress={() => { setEthnicityDropdownOpen((o) => !o); setCountryDropdownOpen(false); }}
+              >
+                <Text style={{ ...typography.body, color: colors.textSecondary }}>Select ethnicity…</Text>
+              </TouchableOpacity>
+              {ethnicityDropdownOpen && (
+                <View style={styles.dropdown}>
+                  <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled showsVerticalScrollIndicator style={{ maxHeight: 180 }}>
+                    {ETHNICITY_OPTIONS.map((eth, i) => (
+                      <TouchableOpacity
+                        key={eth}
+                        style={[styles.dropdownItem, i < ETHNICITY_OPTIONS.length - 1 && styles.dropdownItemBorder]}
+                        onPress={() => { setEthnicity(eth); setEthnicityDropdownOpen(false); }}
+                      >
+                        <Text style={styles.dropdownItemText}>{eth}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+            </View>
+          )}
+        </View>
+
+        {/* Hair color */}
         <View style={styles.field}>
           <Text style={styles.label}>Hair color</Text>
           <TextInput
@@ -495,6 +606,56 @@ const styles = StyleSheet.create({
   },
   genderPillLabelActive: {
     color: colors.surface,
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.textPrimary,
+    borderRadius: 999,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  chipLabel: {
+    ...typography.label,
+    fontSize: 11,
+    color: colors.surface,
+  },
+  chipRemove: {
+    ...typography.label,
+    fontSize: 14,
+    color: colors.surface,
+    lineHeight: 16,
+  },
+  dropdown: {
+    position: 'absolute',
+    top: 52,
+    left: 0,
+    right: 0,
+    zIndex: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 16,
+    overflow: 'hidden',
+  },
+  dropdownItem: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+  },
+  dropdownItemBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  dropdownItemText: {
+    ...typography.body,
+    fontSize: 13,
+    color: colors.textPrimary,
   },
   sectionLabel: {
     ...typography.label,

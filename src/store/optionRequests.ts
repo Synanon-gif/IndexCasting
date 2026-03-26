@@ -190,7 +190,8 @@ export function addOptionRequest(
 
   (async () => {
     const { data: { user } } = await supabase.auth.getUser();
-    const clientId = user?.id ?? 'user-client';
+    if (!user?.id) return;
+    const clientId = user.id;
 
     let organizationId: string | null = null;
     if (user?.id) {
@@ -565,6 +566,14 @@ export async function clientAcceptCounterStore(threadId: string): Promise<boolea
     notify();
   }
   return true;
+}
+
+/** Clear all cached data and reset hydration state (call on sign-out). */
+export function resetOptionRequestsStore(): void {
+  requestsCache = [];
+  messagesCache = [];
+  hydrated = false;
+  notify();
 }
 
 /** Client confirms job → job_confirmed; update calendar to Job, system message. */

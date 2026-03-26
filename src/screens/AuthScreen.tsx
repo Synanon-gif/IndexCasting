@@ -6,7 +6,6 @@ import { uiCopy } from '../constants/uiCopy';
 
 type AuthScreenProps = {
   initialMode?: 'login' | 'signup';
-  onDemoLogin: (role: 'model' | 'agency' | 'client' | 'apply') => void;
   /** When true (plain login, no ?invite= in URL), stale invite tokens are cleared so sign-in cannot join the wrong org. */
   clearStaleInviteOnSignIn?: boolean;
   /** Einladung: Rolle fix (Agentur-Booker = agent, Client-Mitarbeiter = client). */
@@ -19,7 +18,6 @@ type AuthScreenProps = {
 
 export const AuthScreen: React.FC<AuthScreenProps> = ({
   initialMode = 'login',
-  onDemoLogin,
   clearStaleInviteOnSignIn = false,
   inviteAuth,
 }) => {
@@ -186,21 +184,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           )}
         </TouchableOpacity>
 
-        <View style={styles.divider}>
-          <View style={styles.dividerLine} />
-          <Text style={styles.dividerText}>or try demo</Text>
-          <View style={styles.dividerLine} />
-        </View>
-
-        <View style={styles.demoRow}>
-          {(['client', 'agency', 'model'] as const).map((d) => (
-            <TouchableOpacity key={d} style={styles.demoBtn} onPress={() => onDemoLogin(d)}>
-              <Text style={styles.demoLabel}>
-                {d.charAt(0).toUpperCase() + d.slice(1)}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
       </View>
     </View>
   );
@@ -287,21 +270,4 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   submitLabel: { ...typography.label, color: colors.surface },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    width: '100%',
-    marginVertical: spacing.lg,
-  },
-  dividerLine: { flex: 1, height: 1, backgroundColor: colors.border },
-  dividerText: { ...typography.label, fontSize: 10, color: colors.textSecondary, marginHorizontal: spacing.sm },
-  demoRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, justifyContent: 'center' },
-  demoBtn: {
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  demoLabel: { ...typography.label, fontSize: 11, color: colors.textSecondary },
 });

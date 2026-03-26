@@ -15,6 +15,7 @@ import {
   type InvitationRow,
 } from '../services/organizationsInvitationsSupabase';
 import { uiCopy } from '../constants/uiCopy';
+import { useAuth } from '../context/AuthContext';
 
 const inputStyle = {
   borderWidth: 1,
@@ -27,16 +28,17 @@ const inputStyle = {
 } as const;
 
 function roleLabel(role: string): string {
-  if (role === 'owner') return 'Owner';
-  if (role === 'booker') return 'Booker';
-  if (role === 'employee') return 'Employee';
+  if (role === 'owner') return uiCopy.team.roleOwner;
+  if (role === 'booker') return uiCopy.team.roleBooker;
+  if (role === 'employee') return uiCopy.team.roleEmployee;
   return role;
 }
 
 export const ClientOrganizationTeamSection: React.FC<{
-  /** Supabase profile id when logged in as client; null in demo mode */
+  /** Supabase profile id of the authenticated client; null when not available. */
   realClientId: string | null;
 }> = ({ realClientId }) => {
+  const { profile, updateDisplayName } = useAuth();
   const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [teamMembers, setTeamMembers] = useState<Awaited<ReturnType<typeof listOrganizationMembers>>>([]);
   const [invitations, setInvitations] = useState<InvitationRow[]>([]);
@@ -45,6 +47,12 @@ export const ClientOrganizationTeamSection: React.FC<{
   const [inviteBusy, setInviteBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [memberRole, setMemberRole] = useState<'owner' | 'employee' | 'booker' | null>(null);
+  const [nameInput, setNameInput] = useState(profile?.display_name ?? '');
+
+  useEffect(() => {
+    setNameInput(profile?.display_name ?? '');
+  }, [profile?.display_name]);
+  const [nameBusy, setNameBusy] = useState(false);
 
   const loadTeam = useCallback(async () => {
     if (!realClientId) {
@@ -81,10 +89,23 @@ export const ClientOrganizationTeamSection: React.FC<{
     void loadTeam();
   }, [loadTeam]);
 
+  const handleSaveName = async () => {
+    if (!nameInput.trim()) return;
+    setNameBusy(true);
+    const { error } = await updateDisplayName(nameInput);
+    setNameBusy(false);
+    if (error) {
+      Alert.alert(uiCopy.common.error, uiCopy.team.ownerDisplayNameError);
+    } else {
+      Alert.alert(uiCopy.team.ownerDisplayNameLabel, uiCopy.team.ownerDisplayNameSaved);
+      void loadTeam();
+    }
+  };
+
   const handleInvite = async () => {
     if (!organizationId || !inviteEmail.trim()) return;
     if (memberRole !== 'owner') {
-      Alert.alert('Permission', 'Only the organization owner can send invitations.');
+      Alert.alert(uiCopy.team.permissionAlertTitle, uiCopy.team.permissionAlertOwnerOnly);
       return;
     }
     setInviteBusy(true);
@@ -97,16 +118,10 @@ export const ClientOrganizationTeamSection: React.FC<{
       if (row) {
         setInviteEmail('');
         const link = buildOrganizationInviteUrl(row.token);
-        Alert.alert(
-          'Invitation created',
-          `Share this link securely with the invitee (e.g. by email):\n\n${link}`,
-        );
+        Alert.alert(uiCopy.alerts.invitationCreated, uiCopy.team.invitationCreatedWithLink(link));
         void loadTeam();
       } else {
-        Alert.alert(
-          'Error',
-          'Could not create invitation. Ensure your member role has permission and RLS allows inserts.',
-        );
+        Alert.alert(uiCopy.common.error, uiCopy.team.invitationErrorBody);
       }
     } finally {
       setInviteBusy(false);
@@ -116,13 +131,13 @@ export const ClientOrganizationTeamSection: React.FC<{
   if (!realClientId) {
     return (
       <Text style={styles.muted}>
-        Sign in with a client account to manage your organization team.
+        {uiCopy.team.noClientSignIn}
       </Text>
     );
   }
 
   if (loading) {
-    return <Text style={styles.muted}>Loading team…</Text>;
+    return <Text style={styles.muted}>{uiCopy.team.loadingTeam}</Text>;
   }
 
   const pendingInv = invitations.filter((i) => i.status === 'pending');
@@ -142,9 +157,30 @@ export const ClientOrganizationTeamSection: React.FC<{
         {uiCopy.team.ownerRoleExplainerClient}
       </Text>
 
-      <Text style={styles.sectionTitle}>Team members</Text>
+      {canInvite && (
+        <View style={styles.nameBox}>
+          <Text style={styles.sectionTitle}>{uiCopy.team.ownerDisplayNameLabel}</Text>
+          <Text style={styles.lead}>{uiCopy.team.ownerDisplayNameHint}</Text>
+          <TextInput
+            value={nameInput}
+            onChangeText={setNameInput}
+            placeholder={uiCopy.team.ownerDisplayNamePlaceholder}
+            placeholderTextColor={colors.textSecondary}
+            style={[inputStyle, { marginBottom: spacing.sm }]}
+          />
+          <TouchableOpacity
+            style={[styles.primaryBtn, (!nameInput.trim() || nameBusy) && styles.primaryBtnDisabled]}
+            onPress={() => void handleSaveName()}
+            disabled={nameBusy || !nameInput.trim()}
+          >
+            <Text style={styles.primaryBtnLabel}>{nameBusy ? '…' : uiCopy.team.ownerDisplayNameSave}</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      <Text style={styles.sectionTitle}>{uiCopy.team.teamMembers}</Text>
       {teamMembers.length === 0 ? (
-        <Text style={styles.muted}>No members loaded.</Text>
+        <Text style={styles.muted}>{uiCopy.team.noMembersLoaded}</Text>
       ) : (
         teamMembers.map((m) => (
           <View key={m.id} style={styles.row}>
@@ -158,52 +194,52 @@ export const ClientOrganizationTeamSection: React.FC<{
         ))
       )}
 
-      <Text style={[styles.sectionTitle, styles.sectionSpacer]}>Pending invitations</Text>
+      <Text style={[styles.sectionTitle, styles.sectionSpacer]}>{uiCopy.team.pendingInvitations}</Text>
       {invitationListHiddenForMember ? (
-        <Text style={styles.muted}>Visible to organization owners and employees only.</Text>
+        <Text style={styles.muted}>{uiCopy.team.invitationsHiddenForMember}</Text>
       ) : pendingInv.length === 0 ? (
-        <Text style={styles.muted}>None.</Text>
+        <Text style={styles.muted}>{uiCopy.team.noPendingInvitations}</Text>
       ) : (
         pendingInv.map((i) => (
           <View key={i.id} style={styles.row}>
             <Text style={styles.rowTitle}>
               {i.email} · {roleLabel(i.role)}
             </Text>
-            <Text style={styles.mutedSmall}>Expires {new Date(i.expires_at).toLocaleDateString()}</Text>
+            <Text style={styles.mutedSmall}>{uiCopy.team.inviteExpiresLabel} {new Date(i.expires_at).toLocaleDateString()}</Text>
           </View>
         ))
       )}
 
-      <Text style={[styles.sectionTitle, styles.sectionSpacer]}>Accepted invitations</Text>
+      <Text style={[styles.sectionTitle, styles.sectionSpacer]}>{uiCopy.team.acceptedInvitations}</Text>
       {invitationListHiddenForMember ? (
-        <Text style={styles.muted}>Visible to organization owners and employees only.</Text>
+        <Text style={styles.muted}>{uiCopy.team.invitationsHiddenForMember}</Text>
       ) : acceptedInv.length === 0 ? (
-        <Text style={styles.muted}>None yet.</Text>
+        <Text style={styles.muted}>{uiCopy.team.noAcceptedInvitations}</Text>
       ) : (
         acceptedInv.map((i) => (
           <View key={i.id} style={styles.row}>
             <Text style={styles.rowTitle}>
               {i.email} · {roleLabel(i.role)}
             </Text>
-            <Text style={styles.mutedSmall}>Accepted {new Date(i.created_at).toLocaleDateString()}</Text>
+            <Text style={styles.mutedSmall}>{uiCopy.team.inviteAcceptedLabel} {new Date(i.created_at).toLocaleDateString()}</Text>
           </View>
         ))
       )}
 
       {canInvite && organizationId ? (
         <View style={styles.inviteBox}>
-          <Text style={styles.sectionTitle}>Invite member</Text>
-          <Text style={styles.label}>Email</Text>
+          <Text style={styles.sectionTitle}>{uiCopy.team.inviteSection}</Text>
+          <Text style={styles.label}>{uiCopy.team.inviteEmailLabel}</Text>
           <TextInput
             value={inviteEmail}
             onChangeText={setInviteEmail}
-            placeholder="name@company.com"
+            placeholder={uiCopy.team.inviteEmailPlaceholder}
             placeholderTextColor={colors.textSecondary}
             style={[inputStyle, { marginBottom: spacing.sm }]}
             autoCapitalize="none"
             keyboardType="email-address"
           />
-          <Text style={styles.label}>Role</Text>
+          <Text style={styles.label}>{uiCopy.team.inviteRoleLabel}</Text>
           <View style={styles.roleRow}>
             {(['employee'] as const).map((r) => (
               <TouchableOpacity
@@ -211,7 +247,7 @@ export const ClientOrganizationTeamSection: React.FC<{
                 style={[styles.rolePill, inviteRole === r && styles.rolePillActive]}
                 onPress={() => setInviteRole(r)}
               >
-                <Text style={[styles.rolePillText, inviteRole === r && styles.rolePillTextActive]}>Employee</Text>
+                <Text style={[styles.rolePillText, inviteRole === r && styles.rolePillTextActive]}>{uiCopy.team.inviteRoleEmployee}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -220,16 +256,16 @@ export const ClientOrganizationTeamSection: React.FC<{
             onPress={() => void handleInvite()}
             disabled={inviteBusy || !inviteEmail.trim()}
           >
-            <Text style={styles.primaryBtnLabel}>{inviteBusy ? '…' : 'Send invitation'}</Text>
+            <Text style={styles.primaryBtnLabel}>{inviteBusy ? '…' : uiCopy.team.sendInvitation}</Text>
           </TouchableOpacity>
         </View>
       ) : organizationId ? (
         <Text style={[styles.muted, { marginTop: spacing.md }]}>
-          Only the organization owner can send invitations.
+          {uiCopy.team.ownerOnlyInviteNote}
         </Text>
       ) : (
         <Text style={[styles.muted, { marginTop: spacing.md }]}>
-          Organization could not be loaded. Ensure your profile is a client account.
+          {uiCopy.team.orgNotLoaded}
         </Text>
       )}
     </ScrollView>
@@ -278,6 +314,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: 4,
   },
+  nameBox: { marginTop: spacing.lg, marginBottom: spacing.lg, gap: spacing.xs },
   inviteBox: { marginTop: spacing.lg, gap: spacing.xs },
   roleRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: spacing.md },
   rolePill: {

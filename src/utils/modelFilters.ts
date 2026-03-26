@@ -4,13 +4,18 @@
  * Agency My Models view (client-side filtering on already-fetched models).
  */
 import type { SupabaseModel } from '../services/modelsSupabase';
+import type { ModelApplication } from '../store/applicationsStore';
 
 // ── Type ──────────────────────────────────────────────────────────────────────
 
 export type ModelFilters = {
   /** Biological sex filter: 'all' = no restriction. */
   sex: 'all' | 'male' | 'female';
-  size: 'all' | 'short' | 'medium' | 'tall';
+  /** Numeric height range in cm; empty string = no restriction. */
+  heightMin: string;
+  heightMax: string;
+  /** Multi-select ethnicity filter; empty array = no restriction (show all). */
+  ethnicities: string[];
   /** ISO-2 country code, '' = all countries */
   countryCode: string;
   /** Free-text city substring, '' = all cities */
@@ -37,7 +42,9 @@ export type ModelFilters = {
 
 export const defaultModelFilters: ModelFilters = {
   sex: 'all',
-  size: 'all',
+  heightMin: '',
+  heightMax: '',
+  ethnicities: [],
   countryCode: '',
   city: '',
   nearby: false,
@@ -131,6 +138,55 @@ export const FILTER_COUNTRIES: Array<{ code: string; label: string }> = [
   { code: 'VN', label: 'Vietnam' },
 ];
 
+// ── Hair & Eye color options ──────────────────────────────────────────────────
+
+/** Predefined hair colour options — used in model edit panel and filter pill selector. */
+export const HAIR_COLOR_OPTIONS: string[] = [
+  'Black',
+  'Brown',
+  'Dark Brown',
+  'Auburn',
+  'Blonde',
+  'Platinum Blonde',
+  'Red',
+  'Grey',
+  'Silver',
+  'White',
+  'Other',
+];
+
+/** Predefined eye colour options — used in model edit panel pill selector. */
+export const EYE_COLOR_OPTIONS: string[] = [
+  'Brown',
+  'Blue',
+  'Green',
+  'Grey',
+  'Hazel',
+  'Amber',
+  'Other',
+];
+
+// ── Ethnicity options ─────────────────────────────────────────────────────────
+
+/** Broad ethnicity groups shown in the multi-select filter. Max 20, industry-standard. */
+export const ETHNICITY_OPTIONS: string[] = [
+  'White / Caucasian',
+  'Black / African',
+  'Black / African American',
+  'East Asian',
+  'South Asian',
+  'Southeast Asian',
+  'Hispanic / Latina/o',
+  'Middle Eastern',
+  'North African',
+  'Mixed / Multiracial',
+  'Pacific Islander',
+  'Indigenous / Native',
+  'Caribbean',
+  'Central Asian',
+  'Other',
+];
+
 // ── Client-side filter function ───────────────────────────────────────────────
 
 /**
@@ -156,10 +212,11 @@ export function filterModels(
     if (filters.sex === 'male'   && m.sex !== 'male')   return false;
     if (filters.sex === 'female' && m.sex !== 'female') return false;
 
-    // ── Height (size bucket) ──
-    if (filters.size === 'short'  && m.height >= 175) return false;
-    if (filters.size === 'medium' && (m.height < 175 || m.height > 182)) return false;
-    if (filters.size === 'tall'   && m.height <= 182) return false;
+    // ── Height (numeric range) ──
+    const hMin = pInt(filters.heightMin);
+    const hMax = pInt(filters.heightMax);
+    if (hMin !== undefined && (m.height == null || m.height < hMin)) return false;
+    if (hMax !== undefined && (m.height == null || m.height > hMax)) return false;
 
     // ── Country (ISO-2 code) ──
     if (filters.countryCode) {
@@ -219,6 +276,55 @@ export function filterModels(
     // ── Sports ──
     if (filters.sportsWinter && !m.is_sports_winter) return false;
     if (filters.sportsSummer && !m.is_sports_summer) return false;
+
+    // ── Ethnicity (multi-select; [] = show all) ──
+    if (filters.ethnicities.length > 0 && !filters.ethnicities.includes(m.ethnicity ?? '')) return false;
+
+    return true;
+  });
+}
+
+/**
+ * Applies ModelFilters to a list of ModelApplication objects (Recruiting queue).
+ *
+ * Only the fields that exist on ModelApplication are evaluated:
+ *   - sex   → app.gender
+ *   - size  → app.height (bucket)
+ *   - city  → app.city (substring, no countryCode required)
+ *   - hairColor → app.hairColor (substring)
+ *
+ * Fields not present on ModelApplication (measurements, category, sports,
+ * countryCode, nearby) are silently skipped so the panel stays consistent
+ * with Client Discover and Agency My Models without breaking anything.
+ */
+export function filterApplicationsByModelFilters(
+  apps: ModelApplication[],
+  filters: ModelFilters,
+): ModelApplication[] {
+  return apps.filter((app) => {
+    // ── Sex / Gender ──
+    if (filters.sex === 'male'   && app.gender !== 'male')   return false;
+    if (filters.sex === 'female' && app.gender !== 'female') return false;
+
+    // ── Height (numeric range) ──
+    const hMin = parseInt(filters.heightMin, 10);
+    const hMax = parseInt(filters.heightMax, 10);
+    const h = app.height ?? 0;
+    if (!isNaN(hMin) && h < hMin) return false;
+    if (!isNaN(hMax) && h > hMax) return false;
+
+    // ── Hair color (substring, case-insensitive) ──
+    if (filters.hairColor.trim()) {
+      if (!(app.hairColor ?? '').toLowerCase().includes(filters.hairColor.trim().toLowerCase())) return false;
+    }
+
+    // ── City (substring, case-insensitive; no countryCode dependency) ──
+    if (filters.city.trim()) {
+      if (!(app.city ?? '').toLowerCase().includes(filters.city.trim().toLowerCase())) return false;
+    }
+
+    // ── Ethnicity (multi-select; [] = show all) ──
+    if (filters.ethnicities.length > 0 && !filters.ethnicities.includes(app.ethnicity ?? '')) return false;
 
     return true;
   });

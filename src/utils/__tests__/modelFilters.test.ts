@@ -52,44 +52,44 @@ describe('filterModels', () => {
     });
   });
 
-  describe('height (size bucket)', () => {
+  describe('height (numeric range)', () => {
     const short = makeModel({ id: 'short', height: 170 });
     const medium = makeModel({ id: 'medium', height: 178 });
     const tall = makeModel({ id: 'tall', height: 185 });
     const models = [short, medium, tall];
 
-    it('size=all returns all models', () => {
-      expect(filterModels(models, { ...noFilter, size: 'all' })).toHaveLength(3);
+    it('no height filter returns all models', () => {
+      expect(filterModels(models, { ...noFilter, heightMin: '', heightMax: '' })).toHaveLength(3);
     });
 
-    it('size=short returns only models < 175', () => {
-      const result = filterModels(models, { ...noFilter, size: 'short' });
+    it('heightMax=174 returns only models at or below 174', () => {
+      const result = filterModels(models, { ...noFilter, heightMax: '174' });
       expect(result.map((m) => m.id)).toEqual(['short']);
     });
 
-    it('size=medium returns only models 175–182', () => {
-      const result = filterModels(models, { ...noFilter, size: 'medium' });
+    it('heightMin=175 heightMax=182 returns only models in 175–182', () => {
+      const result = filterModels(models, { ...noFilter, heightMin: '175', heightMax: '182' });
       expect(result.map((m) => m.id)).toEqual(['medium']);
     });
 
-    it('size=tall returns only models > 182', () => {
-      const result = filterModels(models, { ...noFilter, size: 'tall' });
+    it('heightMin=183 returns only models at or above 183', () => {
+      const result = filterModels(models, { ...noFilter, heightMin: '183' });
       expect(result.map((m) => m.id)).toEqual(['tall']);
     });
 
-    it('boundary: height=174 is short', () => {
-      expect(filterModels([makeModel({ height: 174 })], { ...noFilter, size: 'short' })).toHaveLength(1);
-      expect(filterModels([makeModel({ height: 174 })], { ...noFilter, size: 'medium' })).toHaveLength(0);
+    it('boundary: heightMax=174 excludes height=175', () => {
+      expect(filterModels([makeModel({ height: 174 })], { ...noFilter, heightMax: '174' })).toHaveLength(1);
+      expect(filterModels([makeModel({ height: 175 })], { ...noFilter, heightMax: '174' })).toHaveLength(0);
     });
 
-    it('boundary: height=175 is medium', () => {
-      expect(filterModels([makeModel({ height: 175 })], { ...noFilter, size: 'medium' })).toHaveLength(1);
-      expect(filterModels([makeModel({ height: 175 })], { ...noFilter, size: 'short' })).toHaveLength(0);
+    it('boundary: heightMin=175 excludes height=174', () => {
+      expect(filterModels([makeModel({ height: 175 })], { ...noFilter, heightMin: '175' })).toHaveLength(1);
+      expect(filterModels([makeModel({ height: 174 })], { ...noFilter, heightMin: '175' })).toHaveLength(0);
     });
 
-    it('boundary: height=183 is tall', () => {
-      expect(filterModels([makeModel({ height: 183 })], { ...noFilter, size: 'tall' })).toHaveLength(1);
-      expect(filterModels([makeModel({ height: 183 })], { ...noFilter, size: 'medium' })).toHaveLength(0);
+    it('boundary: heightMin=183 excludes height=182', () => {
+      expect(filterModels([makeModel({ height: 183 })], { ...noFilter, heightMin: '183' })).toHaveLength(1);
+      expect(filterModels([makeModel({ height: 182 })], { ...noFilter, heightMin: '183' })).toHaveLength(0);
     });
   });
 
@@ -218,7 +218,8 @@ describe('filterModels', () => {
       ];
       const result = filterModels(models, {
         ...noFilter,
-        size: 'medium',
+        heightMin: '175',
+        heightMax: '182',
         hairColor: 'Brown',
         hipsMax: '90',
         category: 'Fashion',
@@ -268,6 +269,32 @@ describe('filterModels', () => {
 
     it('nearby=true without userCity returns all models', () => {
       expect(filterModels(models, { ...noFilter, nearby: true }, undefined)).toHaveLength(2);
+    });
+  });
+
+  describe('ethnicity filter', () => {
+    const asian = makeModel({ id: 'asian', ethnicity: 'East Asian' } as any);
+    const black = makeModel({ id: 'black', ethnicity: 'Black / African' } as any);
+    const noEthnicity = makeModel({ id: 'none', ethnicity: undefined } as any);
+    const models = [asian, black, noEthnicity];
+
+    it('ethnicities=[] returns all models', () => {
+      expect(filterModels(models, { ...noFilter, ethnicities: [] })).toHaveLength(3);
+    });
+
+    it('single ethnicity selection filters correctly', () => {
+      const result = filterModels(models, { ...noFilter, ethnicities: ['East Asian'] });
+      expect(result.map((m) => m.id)).toEqual(['asian']);
+    });
+
+    it('multi-select returns all matching ethnicities', () => {
+      const result = filterModels(models, { ...noFilter, ethnicities: ['East Asian', 'Black / African'] });
+      expect(result.map((m) => m.id)).toEqual(['asian', 'black']);
+    });
+
+    it('excludes model with no ethnicity set when filter is active', () => {
+      const result = filterModels(models, { ...noFilter, ethnicities: ['East Asian'] });
+      expect(result.map((m) => m.id)).not.toContain('none');
     });
   });
 });

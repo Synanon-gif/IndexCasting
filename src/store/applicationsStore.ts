@@ -39,6 +39,8 @@ export type ModelApplication = {
   createdAt: number;
   status: ApplicationStatus;
   chatThreadId?: string;
+  ethnicity?: string;
+  countryCode?: string;
 };
 
 /** Normalize image keys from DB (camelCase or snake_case) so UI always has closeUp, fullBody, profile. */
@@ -68,6 +70,8 @@ function toLocal(a: SupabaseApplication): ModelApplication {
     createdAt: new Date(a.created_at).getTime(),
     status: a.status,
     chatThreadId: a.recruiting_thread_id ?? undefined,
+    ethnicity: a.ethnicity ?? undefined,
+    countryCode: a.country_code ?? undefined,
   };
 }
 
@@ -118,6 +122,8 @@ export async function addApplication(data: Omit<ModelApplication, 'id' | 'create
     gender: data.gender || undefined,
     hair_color: data.hairColor || undefined,
     city: data.city || undefined,
+    country_code: data.countryCode || undefined,
+    ethnicity: data.ethnicity || undefined,
     instagram_link: data.instagramLink || undefined,
     images: data.images as Record<string, string>,
   });
@@ -192,5 +198,12 @@ export async function rejectApplication(applicationId: string): Promise<void> {
 export async function refreshApplications(): Promise<void> {
   const apps = await fetchApps();
   cache = apps.map(toLocal);
+  notify();
+}
+
+/** Clear all cached data and reset hydration state (call on sign-out). */
+export function resetApplicationsStore(): void {
+  cache = [];
+  hydrated = false;
   notify();
 }

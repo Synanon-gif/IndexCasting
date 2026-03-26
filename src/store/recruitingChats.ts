@@ -11,6 +11,7 @@ import {
   createThread as createThreadInDb,
   getMessages as fetchMessages,
   addMessage as addMessageInDb,
+  uploadRecruitingChatFile,
   findLatestThreadIdForApplication,
   updateThreadAgency,
   agencyStartRecruitingChatRpc,
@@ -28,6 +29,8 @@ export type RecruitingMessage = {
   threadId: string;
   from: 'agency' | 'model';
   text: string;
+  fileUrl: string | null;
+  fileType: string | null;
   createdAt: number;
 };
 
@@ -278,6 +281,8 @@ export async function loadMessagesForThread(threadId: string): Promise<Recruitin
     threadId: m.thread_id,
     from: m.from_role as 'agency' | 'model',
     text: m.text,
+    fileUrl: m.file_url ?? null,
+    fileType: m.file_type ?? null,
     createdAt: new Date(m.created_at).getTime(),
   }));
   messagesCache = messagesCache.filter((m) => m.threadId !== threadId);
@@ -286,18 +291,26 @@ export async function loadMessagesForThread(threadId: string): Promise<Recruitin
   return mapped;
 }
 
-export function addRecruitingMessage(threadId: string, from: 'agency' | 'model', text: string): void {
+export function addRecruitingMessage(
+  threadId: string,
+  from: 'agency' | 'model',
+  text: string,
+  fileUrl?: string | null,
+  fileType?: string | null,
+): void {
   const tempMsg: RecruitingMessage = {
     id: `rec-msg-${Date.now()}`,
     threadId,
     from,
     text,
+    fileUrl: fileUrl ?? null,
+    fileType: fileType ?? null,
     createdAt: Date.now(),
   };
   messagesCache.push(tempMsg);
   notify();
 
-  addMessageInDb(threadId, from, text).then((result) => {
+  addMessageInDb(threadId, from, text, fileUrl, fileType).then((result) => {
     if (result) {
       const idx = messagesCache.findIndex((m) => m.id === tempMsg.id);
       if (idx >= 0) {
@@ -306,12 +319,31 @@ export function addRecruitingMessage(threadId: string, from: 'agency' | 'model',
           threadId: result.thread_id,
           from: result.from_role as 'agency' | 'model',
           text: result.text,
+          fileUrl: result.file_url ?? null,
+          fileType: result.file_type ?? null,
           createdAt: new Date(result.created_at).getTime(),
         };
         notify();
       }
     }
   });
+}
+
+/**
+ * Upload a file for a recruiting chat thread and add a message with the attachment.
+ * Returns the sent message or null on upload/send failure.
+ */
+export async function addRecruitingMessageWithFile(
+  threadId: string,
+  from: 'agency' | 'model',
+  file: File | Blob,
+  fileName: string,
+  caption?: string,
+): Promise<void> {
+  const path = await uploadRecruitingChatFile(threadId, file, fileName);
+  if (!path) return;
+  const mimeType = (file as File).type || 'application/octet-stream';
+  addRecruitingMessage(threadId, from, caption ?? '', path, mimeType);
 }
 
 const STORAGE_MODEL_THREAD_IDS = 'ci_model_booking_thread_ids';
@@ -340,4 +372,12 @@ export function addModelBookingThreadId(threadId: string): void {
   if (ids.includes(threadId)) return;
   ids.unshift(threadId);
   saveModelThreadIds(ids);
+}
+
+/** Clear all cached data and reset hydration state (call on sign-out). */
+export function resetRecruitingChatsStore(): void {
+  threadsCache = [];
+  messagesCache = [];
+  hydrated = false;
+  notify();
 }

@@ -14,6 +14,8 @@ export type SupabaseModel = {
   agency_relationship_ended_at?: string | null;
   email: string | null;
   mediaslide_sync_id: string | null;
+  /** Netwalk model ID for bidirectional sync (see netwalkSyncService). */
+  netwalk_model_id?: string | null;
   name: string;
   height: number;
   bust: number | null;
@@ -43,6 +45,8 @@ export type SupabaseModel = {
   country_code?: string | null;
   /** Biological sex: 'male' | 'female' | null (not yet specified). */
   sex?: 'male' | 'female' | null;
+  /** Ethnic background — free text matching ETHNICITY_OPTIONS. Null = not specified. */
+  ethnicity?: string | null;
 };
 
 export async function getModelsFromSupabase(): Promise<SupabaseModel[]> {
@@ -127,6 +131,8 @@ export type ClientMeasurementFilters = {
   legsInseamMax?: number;
   /** Filter by biological sex: 'male' | 'female'. Omit for all. */
   sex?: 'male' | 'female';
+  /** Multi-select ethnicity filter. Empty or omitted = no restriction. */
+  ethnicities?: string[];
 };
 
 /** Apply measurement/hair/sex filters to any Supabase query builder — used in all three client functions. */
@@ -143,6 +149,7 @@ function applyMeasurementFilters(q: any, f: ClientMeasurementFilters): any {
   if (f.legsInseamMin) q = q.gte('legs_inseam', f.legsInseamMin);
   if (f.legsInseamMax) q = q.lte('legs_inseam', f.legsInseamMax);
   if (f.sex) q = q.eq('sex', f.sex);
+  if (f.ethnicities?.length) q = q.in('ethnicity', f.ethnicities);
   return q;
 }
 
@@ -268,6 +275,7 @@ export async function getModelsForClientFromSupabaseHybridLocation(
       p_legs_inseam_min:  f.legsInseamMin  ?? null,
       p_legs_inseam_max:  f.legsInseamMax  ?? null,
       p_sex:              f.sex            ?? null,
+      p_ethnicities:      f.ethnicities?.length ? f.ethnicities : null,
     });
     return { data: data as HybridLocationModel[] | null, error };
   });

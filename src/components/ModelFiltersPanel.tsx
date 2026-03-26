@@ -20,7 +20,7 @@ import {
 import { colors, spacing, typography } from '../theme/theme';
 import { uiCopy } from '../constants/uiCopy';
 import { AGENCY_SEGMENT_TYPES } from '../constants/agencyTypes';
-import { FILTER_COUNTRIES, type ModelFilters } from '../utils/modelFilters';
+import { FILTER_COUNTRIES, ETHNICITY_OPTIONS, type ModelFilters } from '../utils/modelFilters';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -46,6 +46,7 @@ const ModelFiltersPanel: React.FC<Props> = ({
   const [filterOpen, setFilterOpen] = useState(false);
   const [countryQuery, setCountryQuery] = useState('');
   const [countryDropdownOpen, setCountryDropdownOpen] = useState(false);
+  const [ethnicityDropdownOpen, setEthnicityDropdownOpen] = useState(false);
 
   const selectedCountryLabel = useMemo(
     () => FILTER_COUNTRIES.find((c) => c.code === filters.countryCode)?.label ?? null,
@@ -62,13 +63,14 @@ const ModelFiltersPanel: React.FC<Props> = ({
 
   const activeFilterCount = useMemo(() => {
     let n = 0;
+    const pI = (v: string) => !isNaN(parseInt(v, 10));
     if (filters.sex !== 'all') n++;
-    if (filters.size !== 'all') n++;
+    if (pI(filters.heightMin) || pI(filters.heightMax)) n++;
+    if (filters.ethnicities.length > 0) n++;
     if (filters.category) n++;
     if (filters.sportsWinter || filters.sportsSummer) n++;
     if (filters.countryCode || filters.nearby) n++;
     if (filters.hairColor.trim()) n++;
-    const pI = (v: string) => !isNaN(parseInt(v, 10));
     if (pI(filters.hipsMin) || pI(filters.hipsMax)) n++;
     if (pI(filters.waistMin) || pI(filters.waistMax)) n++;
     if (pI(filters.chestMin) || pI(filters.chestMax)) n++;
@@ -78,7 +80,7 @@ const ModelFiltersPanel: React.FC<Props> = ({
 
   const resetFilters = () =>
     onChangeFilters({
-      sex: 'all', size: 'all', countryCode: '', city: '', nearby: false,
+      sex: 'all', heightMin: '', heightMax: '', ethnicities: [], countryCode: '', city: '', nearby: false,
       category: '', sportsWinter: false, sportsSummer: false,
       hairColor: '', hipsMin: '', hipsMax: '',
       waistMin: '', waistMax: '', chestMin: '', chestMax: '',
@@ -93,7 +95,7 @@ const ModelFiltersPanel: React.FC<Props> = ({
         onPress={() => setFilterOpen((o) => !o)}
       >
         <Text style={[styles.filterTriggerLabel, activeFilterCount > 0 && { color: colors.surface }]}>
-          {activeFilterCount > 0 ? `Filter (${activeFilterCount})` : 'Filter'}
+          {activeFilterCount > 0 ? uiCopy.filters.triggerLabelWithCount(activeFilterCount) : uiCopy.filters.triggerLabel}
         </Text>
       </TouchableOpacity>
 
@@ -101,12 +103,12 @@ const ModelFiltersPanel: React.FC<Props> = ({
         <View style={styles.filterSlideOut}>
           {/* ── Sex ── */}
           <View style={styles.filterGroup}>
-            <Text style={styles.filterLabel}>Sex</Text>
+            <Text style={styles.filterLabel}>{uiCopy.filters.sectionSex}</Text>
             <View style={styles.filterPills}>
               {([
-                { key: 'all',    label: 'All' },
-                { key: 'female', label: 'Female' },
-                { key: 'male',   label: 'Male' },
+                { key: 'all',    label: uiCopy.filters.sexAll },
+                { key: 'female', label: uiCopy.filters.sexFemale },
+                { key: 'male',   label: uiCopy.filters.sexMale },
               ] as const).map((opt) => (
                 <TouchableOpacity
                   key={opt.key}
@@ -123,37 +125,136 @@ const ModelFiltersPanel: React.FC<Props> = ({
 
           {/* ── Height ── */}
           <View style={styles.filterGroup}>
-            <Text style={styles.filterLabel}>Height</Text>
-            <View style={styles.filterPills}>
-              {([
-                { key: 'all',    label: 'All' },
-                { key: 'short',  label: '< 175' },
-                { key: 'medium', label: '175–182' },
-                { key: 'tall',   label: '> 182' },
-              ] as const).map((opt) => (
-                <TouchableOpacity
-                  key={opt.key}
-                  style={[styles.filterPill, filters.size === opt.key && styles.filterPillActive]}
-                  onPress={() => onChangeFilters({ ...filters, size: opt.key })}
-                >
-                  <Text style={[styles.filterPillLabel, filters.size === opt.key && styles.filterPillLabelActive]}>
-                    {opt.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+            <Text style={styles.filterLabel}>{uiCopy.filters.sectionHeight}</Text>
+            <View style={{ flexDirection: 'row', gap: 4 }}>
+              <TextInput
+                value={filters.heightMin}
+                onChangeText={(v) => onChangeFilters({ ...filters, heightMin: v })}
+                placeholder={uiCopy.filters.heightFromPlaceholder}
+                placeholderTextColor={colors.textSecondary}
+                keyboardType="numeric"
+                style={[styles.input, { flex: 1, height: 32, paddingVertical: 4, fontSize: 11 }]}
+              />
+              <TextInput
+                value={filters.heightMax}
+                onChangeText={(v) => onChangeFilters({ ...filters, heightMax: v })}
+                placeholder={uiCopy.filters.heightToPlaceholder}
+                placeholderTextColor={colors.textSecondary}
+                keyboardType="numeric"
+                style={[styles.input, { flex: 1, height: 32, paddingVertical: 4, fontSize: 11 }]}
+              />
+            </View>
+          </View>
+
+          {/* ── Ethnicity (multi-select dropdown) ── */}
+          <View style={[styles.filterGroup, { zIndex: 90 }]}>
+            <Text style={styles.filterLabel}>{uiCopy.filters.sectionEthnicity}</Text>
+
+            {/* Selected chips */}
+            {filters.ethnicities.length > 0 && (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.xs }}>
+                {filters.ethnicities.map((eth) => (
+                  <TouchableOpacity
+                    key={eth}
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 4,
+                      backgroundColor: colors.textPrimary,
+                      borderRadius: 999, paddingHorizontal: spacing.sm, paddingVertical: 3,
+                    }}
+                    onPress={() =>
+                      onChangeFilters({
+                        ...filters,
+                        ethnicities: filters.ethnicities.filter((e) => e !== eth),
+                      })
+                    }
+                  >
+                    <Text style={{ ...typography.label, fontSize: 10, color: colors.surface }}>
+                      {eth}
+                    </Text>
+                    <Text style={{ ...typography.label, fontSize: 12, color: colors.surface, lineHeight: 14 }}>×</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {/* Toggle button */}
+            <View style={{ position: 'relative' }}>
+              <TouchableOpacity
+                style={[
+                  styles.filterPill,
+                  ethnicityDropdownOpen && { borderColor: colors.accentBrown },
+                  { alignSelf: 'flex-start' },
+                ]}
+                onPress={() => {
+                  setEthnicityDropdownOpen((o) => !o);
+                  setCountryDropdownOpen(false);
+                }}
+              >
+                <Text style={styles.filterPillLabel}>
+                  {filters.ethnicities.length > 0
+                    ? uiCopy.filters.ethnicitySelected(filters.ethnicities.length)
+                    : uiCopy.filters.ethnicityPlaceholder}
+                </Text>
+              </TouchableOpacity>
+
+              {/* Dropdown list — z-index guard prevents overlap */}
+              {ethnicityDropdownOpen && (
+                <View style={{
+                  position: 'absolute',
+                  top: 34, left: 0, right: 0,
+                  zIndex: 999,
+                  borderWidth: 1, borderColor: colors.border, borderRadius: 8,
+                  backgroundColor: colors.surface,
+                  maxHeight: 200,
+                  shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 8,
+                  shadowOffset: { width: 0, height: 4 }, elevation: 16,
+                  overflow: 'hidden',
+                }}>
+                  <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled showsVerticalScrollIndicator>
+                    {ETHNICITY_OPTIONS.map((eth, i) => {
+                      const selected = filters.ethnicities.includes(eth);
+                      return (
+                        <TouchableOpacity
+                          key={eth}
+                          style={{
+                            paddingHorizontal: spacing.md, paddingVertical: 9,
+                            borderBottomWidth: i < ETHNICITY_OPTIONS.length - 1 ? 1 : 0,
+                            borderBottomColor: colors.border,
+                            backgroundColor: selected ? '#F3EEE7' : colors.surface,
+                            flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                          }}
+                          onPress={() => {
+                            const next = selected
+                              ? filters.ethnicities.filter((e) => e !== eth)
+                              : [...filters.ethnicities, eth];
+                            onChangeFilters({ ...filters, ethnicities: next });
+                          }}
+                        >
+                          <Text style={{ ...typography.body, fontSize: 12, color: selected ? colors.accentBrown : colors.textPrimary }}>
+                            {eth}
+                          </Text>
+                          {selected && (
+                            <Text style={{ ...typography.label, fontSize: 11, color: colors.accentBrown }}>✓</Text>
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              )}
             </View>
           </View>
 
           {/* ── Category ── */}
           <View style={styles.filterGroup}>
-            <Text style={styles.filterLabel}>Category</Text>
+            <Text style={styles.filterLabel}>{uiCopy.filters.sectionCategory}</Text>
             <View style={styles.filterPills}>
               <TouchableOpacity
                 style={[styles.filterPill, filters.category === '' && styles.filterPillActive]}
                 onPress={() => onChangeFilters({ ...filters, category: '' })}
               >
                 <Text style={[styles.filterPillLabel, filters.category === '' && styles.filterPillLabelActive]}>
-                  All
+                  {uiCopy.filters.categoryAll}
                 </Text>
               </TouchableOpacity>
               {AGENCY_SEGMENT_TYPES.map((seg) => (
@@ -195,7 +296,7 @@ const ModelFiltersPanel: React.FC<Props> = ({
 
           {/* ── Country ── */}
           <View style={[styles.filterGroup, { zIndex: 100 }]}>
-            <Text style={styles.filterLabel}>Country</Text>
+            <Text style={styles.filterLabel}>{uiCopy.filters.sectionCountry}</Text>
             {filters.countryCode ? (
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, alignItems: 'center' }}>
                 <View style={{
@@ -225,14 +326,14 @@ const ModelFiltersPanel: React.FC<Props> = ({
                     setCountryDropdownOpen(true);
                   }}
                 >
-                  <Text style={styles.filterPillLabel}>Change</Text>
+                  <Text style={styles.filterPillLabel}>{uiCopy.filters.countryChangePill}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.filterPill, filters.nearby && styles.filterPillActive]}
                   onPress={() => onChangeFilters({ ...filters, nearby: !filters.nearby, countryCode: '', city: '' })}
                 >
                   <Text style={[styles.filterPillLabel, filters.nearby && styles.filterPillLabelActive]}>
-                    {userCity ? `Near me (${userCity})` : 'Near me'}
+                    {userCity ? uiCopy.filters.nearMeLabelWithCity(userCity) : uiCopy.filters.nearMeLabel}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -243,7 +344,7 @@ const ModelFiltersPanel: React.FC<Props> = ({
                     value={countryQuery}
                     onChangeText={(v) => { setCountryQuery(v); setCountryDropdownOpen(true); }}
                     onFocus={() => setCountryDropdownOpen(true)}
-                    placeholder="Search country…"
+                    placeholder={uiCopy.filters.countrySearchPlaceholder}
                     placeholderTextColor={colors.textSecondary}
                     style={[styles.input, { flex: 1, height: 32, paddingVertical: 4, fontSize: 11 }]}
                   />
@@ -255,7 +356,7 @@ const ModelFiltersPanel: React.FC<Props> = ({
                     }}
                   >
                     <Text style={[styles.filterPillLabel, filters.nearby && styles.filterPillLabelActive]}>
-                      {userCity ? `Near me (${userCity})` : 'Near me'}
+                      {userCity ? uiCopy.filters.nearMeLabelWithCity(userCity) : uiCopy.filters.nearMeLabel}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -302,11 +403,11 @@ const ModelFiltersPanel: React.FC<Props> = ({
           {/* ── City (only when country selected) ── */}
           {filters.countryCode && (
             <View style={styles.filterGroup}>
-              <Text style={styles.filterLabel}>City</Text>
+              <Text style={styles.filterLabel}>{uiCopy.filters.sectionCity}</Text>
               <TextInput
                 value={filters.city}
                 onChangeText={(v) => onChangeFilters({ ...filters, city: v })}
-                placeholder="e.g. Berlin, Hamburg, Munich..."
+                placeholder={uiCopy.filters.cityPlaceholder}
                 placeholderTextColor={colors.textSecondary}
                 style={[styles.input, { height: 32, paddingVertical: 4, fontSize: 11 }]}
               />
@@ -315,11 +416,11 @@ const ModelFiltersPanel: React.FC<Props> = ({
 
           {/* ── Hair color ── */}
           <View style={styles.filterGroup}>
-            <Text style={styles.filterLabel}>Hair color</Text>
+            <Text style={styles.filterLabel}>{uiCopy.filters.sectionHairColor}</Text>
             <TextInput
               value={filters.hairColor}
               onChangeText={(v) => onChangeFilters({ ...filters, hairColor: v })}
-              placeholder="e.g. Brown, Blonde…"
+              placeholder={uiCopy.filters.hairColorPlaceholder}
               placeholderTextColor={colors.textSecondary}
               style={[styles.input, { height: 32, paddingVertical: 4, fontSize: 11 }]}
             />
@@ -328,17 +429,17 @@ const ModelFiltersPanel: React.FC<Props> = ({
           {/* ── Hips + Waist ── */}
           <View style={{ flexDirection: 'row', gap: spacing.md }}>
             <View style={[styles.filterGroup, { flex: 1 }]}>
-              <Text style={styles.filterLabel}>Hips (min–max)</Text>
+              <Text style={styles.filterLabel}>{uiCopy.filters.sectionHips}</Text>
               <View style={{ flexDirection: 'row', gap: 4 }}>
-                <TextInput value={filters.hipsMin} onChangeText={(v) => onChangeFilters({ ...filters, hipsMin: v })} placeholder="min" placeholderTextColor={colors.textSecondary} keyboardType="numeric" style={[styles.input, { flex: 1, height: 32, paddingVertical: 4, fontSize: 11 }]} />
-                <TextInput value={filters.hipsMax} onChangeText={(v) => onChangeFilters({ ...filters, hipsMax: v })} placeholder="max" placeholderTextColor={colors.textSecondary} keyboardType="numeric" style={[styles.input, { flex: 1, height: 32, paddingVertical: 4, fontSize: 11 }]} />
+                <TextInput value={filters.hipsMin} onChangeText={(v) => onChangeFilters({ ...filters, hipsMin: v })} placeholder={uiCopy.filters.measurementMin} placeholderTextColor={colors.textSecondary} keyboardType="numeric" style={[styles.input, { flex: 1, height: 32, paddingVertical: 4, fontSize: 11 }]} />
+                <TextInput value={filters.hipsMax} onChangeText={(v) => onChangeFilters({ ...filters, hipsMax: v })} placeholder={uiCopy.filters.measurementMax} placeholderTextColor={colors.textSecondary} keyboardType="numeric" style={[styles.input, { flex: 1, height: 32, paddingVertical: 4, fontSize: 11 }]} />
               </View>
             </View>
             <View style={[styles.filterGroup, { flex: 1 }]}>
-              <Text style={styles.filterLabel}>Waist (min–max)</Text>
+              <Text style={styles.filterLabel}>{uiCopy.filters.sectionWaist}</Text>
               <View style={{ flexDirection: 'row', gap: 4 }}>
-                <TextInput value={filters.waistMin} onChangeText={(v) => onChangeFilters({ ...filters, waistMin: v })} placeholder="min" placeholderTextColor={colors.textSecondary} keyboardType="numeric" style={[styles.input, { flex: 1, height: 32, paddingVertical: 4, fontSize: 11 }]} />
-                <TextInput value={filters.waistMax} onChangeText={(v) => onChangeFilters({ ...filters, waistMax: v })} placeholder="max" placeholderTextColor={colors.textSecondary} keyboardType="numeric" style={[styles.input, { flex: 1, height: 32, paddingVertical: 4, fontSize: 11 }]} />
+                <TextInput value={filters.waistMin} onChangeText={(v) => onChangeFilters({ ...filters, waistMin: v })} placeholder={uiCopy.filters.measurementMin} placeholderTextColor={colors.textSecondary} keyboardType="numeric" style={[styles.input, { flex: 1, height: 32, paddingVertical: 4, fontSize: 11 }]} />
+                <TextInput value={filters.waistMax} onChangeText={(v) => onChangeFilters({ ...filters, waistMax: v })} placeholder={uiCopy.filters.measurementMax} placeholderTextColor={colors.textSecondary} keyboardType="numeric" style={[styles.input, { flex: 1, height: 32, paddingVertical: 4, fontSize: 11 }]} />
               </View>
             </View>
           </View>
@@ -346,17 +447,17 @@ const ModelFiltersPanel: React.FC<Props> = ({
           {/* ── Chest + Legs inseam ── */}
           <View style={{ flexDirection: 'row', gap: spacing.md }}>
             <View style={[styles.filterGroup, { flex: 1 }]}>
-              <Text style={styles.filterLabel}>Chest (min–max)</Text>
+              <Text style={styles.filterLabel}>{uiCopy.filters.sectionChest}</Text>
               <View style={{ flexDirection: 'row', gap: 4 }}>
-                <TextInput value={filters.chestMin} onChangeText={(v) => onChangeFilters({ ...filters, chestMin: v })} placeholder="min" placeholderTextColor={colors.textSecondary} keyboardType="numeric" style={[styles.input, { flex: 1, height: 32, paddingVertical: 4, fontSize: 11 }]} />
-                <TextInput value={filters.chestMax} onChangeText={(v) => onChangeFilters({ ...filters, chestMax: v })} placeholder="max" placeholderTextColor={colors.textSecondary} keyboardType="numeric" style={[styles.input, { flex: 1, height: 32, paddingVertical: 4, fontSize: 11 }]} />
+                <TextInput value={filters.chestMin} onChangeText={(v) => onChangeFilters({ ...filters, chestMin: v })} placeholder={uiCopy.filters.measurementMin} placeholderTextColor={colors.textSecondary} keyboardType="numeric" style={[styles.input, { flex: 1, height: 32, paddingVertical: 4, fontSize: 11 }]} />
+                <TextInput value={filters.chestMax} onChangeText={(v) => onChangeFilters({ ...filters, chestMax: v })} placeholder={uiCopy.filters.measurementMax} placeholderTextColor={colors.textSecondary} keyboardType="numeric" style={[styles.input, { flex: 1, height: 32, paddingVertical: 4, fontSize: 11 }]} />
               </View>
             </View>
             <View style={[styles.filterGroup, { flex: 1 }]}>
-              <Text style={styles.filterLabel}>Legs inseam (min–max)</Text>
+              <Text style={styles.filterLabel}>{uiCopy.filters.sectionLegsInseam}</Text>
               <View style={{ flexDirection: 'row', gap: 4 }}>
-                <TextInput value={filters.legsInseamMin} onChangeText={(v) => onChangeFilters({ ...filters, legsInseamMin: v })} placeholder="min" placeholderTextColor={colors.textSecondary} keyboardType="numeric" style={[styles.input, { flex: 1, height: 32, paddingVertical: 4, fontSize: 11 }]} />
-                <TextInput value={filters.legsInseamMax} onChangeText={(v) => onChangeFilters({ ...filters, legsInseamMax: v })} placeholder="max" placeholderTextColor={colors.textSecondary} keyboardType="numeric" style={[styles.input, { flex: 1, height: 32, paddingVertical: 4, fontSize: 11 }]} />
+                <TextInput value={filters.legsInseamMin} onChangeText={(v) => onChangeFilters({ ...filters, legsInseamMin: v })} placeholder={uiCopy.filters.measurementMin} placeholderTextColor={colors.textSecondary} keyboardType="numeric" style={[styles.input, { flex: 1, height: 32, paddingVertical: 4, fontSize: 11 }]} />
+                <TextInput value={filters.legsInseamMax} onChangeText={(v) => onChangeFilters({ ...filters, legsInseamMax: v })} placeholder={uiCopy.filters.measurementMax} placeholderTextColor={colors.textSecondary} keyboardType="numeric" style={[styles.input, { flex: 1, height: 32, paddingVertical: 4, fontSize: 11 }]} />
               </View>
             </View>
           </View>
@@ -378,10 +479,10 @@ const ModelFiltersPanel: React.FC<Props> = ({
                 }}
               >
                 <Text style={{ ...typography.label, fontSize: 11, color: colors.surface, letterSpacing: 0.4 }}>
-                  {filterSaveStatus === 'saving' ? 'Saving…'
-                    : filterSaveStatus === 'saved' ? '✓ Filters saved'
-                    : filterSaveStatus === 'error' ? 'Save failed — retry'
-                    : 'Save filters'}
+                  {filterSaveStatus === 'saving' ? uiCopy.filters.saveFiltersSaving
+                    : filterSaveStatus === 'saved' ? uiCopy.filters.saveFiltersSaved
+                    : filterSaveStatus === 'error' ? uiCopy.filters.saveFiltersError
+                    : uiCopy.filters.saveFilters}
                 </Text>
               </TouchableOpacity>
             )}
@@ -393,7 +494,7 @@ const ModelFiltersPanel: React.FC<Props> = ({
               }}
             >
               <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary }}>
-                Reset
+                {uiCopy.filters.resetFilters}
               </Text>
             </TouchableOpacity>
           </View>

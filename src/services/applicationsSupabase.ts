@@ -46,6 +46,8 @@ export type SupabaseApplication = {
   accepted_by_agency_id: string | null;
   created_at: string;
   updated_at: string;
+  ethnicity?: string | null;
+  country_code?: string | null;
   /** Nur bei getApplicationsForApplicant; Key = PostgREST-Name für FK agency_id → agencies. */
   agencies?: SupabaseApplicationAgencyEmbed;
 };
@@ -149,6 +151,8 @@ export async function insertApplication(app: {
   gender?: string;
   hair_color?: string;
   city?: string;
+  country_code?: string;
+  ethnicity?: string;
   instagram_link?: string;
   images?: Record<string, string>;
   agency_id?: string;
@@ -193,6 +197,8 @@ export async function insertApplication(app: {
         gender: app.gender || null,
         hair_color: app.hair_color || null,
         city: app.city || null,
+        country_code: app.country_code || null,
+        ethnicity: app.ethnicity || null,
         instagram_link: app.instagram_link || null,
         images: app.images || {},
         agency_id: app.agency_id || null,
@@ -217,22 +223,27 @@ export async function updateApplicationStatus(
   status: 'accepted' | 'rejected',
   extra?: { recruiting_thread_id?: string; accepted_by_agency_id?: string }
 ): Promise<boolean> {
-  const { data, error } = await supabase
-    .from('model_applications')
-    .update({ status, ...extra })
-    .eq('id', id)
-    .select('id')
-    .maybeSingle();
+  try {
+    const { data, error } = await supabase
+      .from('model_applications')
+      .update({ status, ...extra })
+      .eq('id', id)
+      .select('id')
+      .maybeSingle();
 
-  if (error) {
-    console.error('updateApplicationStatus error:', error);
+    if (error) {
+      console.error('updateApplicationStatus error:', error);
+      return false;
+    }
+    if (!data?.id) {
+      console.warn('updateApplicationStatus: no row updated (check id / RLS)', id);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('updateApplicationStatus exception:', e);
     return false;
   }
-  if (!data?.id) {
-    console.warn('updateApplicationStatus: no row updated (check id / RLS)', id);
-    return false;
-  }
-  return true;
 }
 
 /** Set recruiting thread on a pending application (so agency can chat before accepting). */
@@ -294,20 +305,27 @@ export async function updateApplicationsProfileForApplicant(
     height?: number;
     city?: string | null;
     hair_color?: string | null;
+    country_code?: string | null;
+    ethnicity?: string | null;
     instagram_link?: string | null;
   },
 ): Promise<boolean> {
-  const { error } = await supabase
-    .from('model_applications')
-    .update(payload)
-    .eq('applicant_user_id', applicantUserId)
-    .in('status', ['pending', 'rejected']);
+  try {
+    const { error } = await supabase
+      .from('model_applications')
+      .update(payload)
+      .eq('applicant_user_id', applicantUserId)
+      .in('status', ['pending', 'rejected']);
 
-  if (error) {
-    console.error('updateApplicationsProfileForApplicant error:', error);
+    if (error) {
+      console.error('updateApplicationsProfileForApplicant error:', error);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('updateApplicationsProfileForApplicant exception:', e);
     return false;
   }
-  return true;
 }
 
 /** Nach Accept: Model-Eintrag anlegen und Bewerber der Agentur zuordnen. */
@@ -355,8 +373,10 @@ export async function createModelFromApplication(applicationId: string): Promise
         waist: null,
         hips: null,
         city: app.city || null,
+        country_code: (app as any).country_code || null,
         hair_color: app.hair_color || null,
         eye_color: null,
+        ethnicity: app.ethnicity || null,
         // Map application gender ('female' | 'male' | 'diverse') → model sex ('female' | 'male').
         sex: (app.gender === 'female' || app.gender === 'male') ? app.gender : null,
         portfolio_images: imgs,

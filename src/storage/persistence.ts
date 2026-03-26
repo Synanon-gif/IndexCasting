@@ -65,7 +65,11 @@ export type PersistedClientProject = {
 export type PersistedClientFilters = {
   /** Biological sex filter: 'all' | 'male' | 'female' */
   sex?: 'all' | 'male' | 'female';
-  size: 'all' | 'short' | 'medium' | 'tall';
+  /** Numeric height range in cm; empty string = no restriction. */
+  heightMin: string;
+  heightMax: string;
+  /** Multi-select ethnicity filter; empty array = no restriction. */
+  ethnicities: string[];
   /** @deprecated use countryCode + city + nearby instead */
   location?: string;
   /** ISO-2 country code, empty string = all countries */

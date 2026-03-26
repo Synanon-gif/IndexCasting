@@ -17,7 +17,6 @@ import * as ImagePicker from 'expo-image-picker';
 import countries from 'i18n-iso-countries';
 import enLocale from 'i18n-iso-countries/langs/en.json';
 import { colors, spacing, typography } from '../theme/theme';
-import { AGENCY_SEGMENT_TYPES, SPORTS_CATEGORIES } from '../constants/agencyTypes';
 import { showAppAlert } from '../utils/crossPlatformAlert';
 import { useAuth } from '../context/AuthContext';
 import { getAgencyModels, updateModelVisibility } from '../services/apiService';
@@ -107,6 +106,12 @@ import { ScreenScrollView } from '../components/ScreenScrollView';
 import { uiCopy } from '../constants/uiCopy';
 import { type ModelFilters, defaultModelFilters, filterModels } from '../utils/modelFilters';
 import ModelFiltersPanel from '../components/ModelFiltersPanel';
+import ModelEditDetailsPanel, { buildEditState, type ModelEditState } from '../components/ModelEditDetailsPanel';
+import { importModelAndMerge } from '../services/modelsImportSupabase';
+import { runMediaslideCronSync } from '../services/mediaslideSyncService';
+import { runNetwalkCronSync } from '../services/netwalkSyncService';
+import { getAgencyApiKeys, saveAgencyApiConnection } from '../services/agencySettingsSupabase';
+import { checkModelCompleteness, type CompletenessContext } from '../utils/modelCompleteness';
 
 const STATUS_LABELS: Record<ChatStatus, string> = {
   in_negotiation: 'In negotiation',
@@ -1366,7 +1371,7 @@ const MyModelsTab: React.FC<{
 }> = ({ models, agencyId, onRefresh }) => {
   const [selectedModel, setSelectedModel] = useState<SupabaseModel | null>(null);
   const [filters, setFilters] = useState<ModelFilters>(defaultModelFilters);
-  const [editField, setEditField] = useState<Record<string, string>>({});
+  const [editState, setEditState] = useState<ModelEditState>(buildEditState({ name: '' }));
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [addFields, setAddFields] = useState<Record<string, string>>({});
@@ -1384,6 +1389,15 @@ const MyModelsTab: React.FC<{
     typeof window !== 'undefined' ? window.localStorage.getItem('ci_netwalk_api_key') ?? '' : ''
   );
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
+  const [syncLoading, setSyncLoading] = useState(false);
+
+  // Import from Link state
+  const [importLinkUrl, setImportLinkUrl] = useState('');
+  const [importLinkLoading, setImportLinkLoading] = useState(false);
+  const [importLinkFeedback, setImportLinkFeedback] = useState<{ ok: boolean; message: string } | null>(null);
+
+  // Profile completeness state for the selected model
+  const [completenessIssues, setCompletenessIssues] = useState<ReturnType<typeof checkModelCompleteness>>([]);
   const [saveFeedback, setSaveFeedback] = useState<'saving' | 'success' | 'error' | null>(null);
 
   const [polasSource, setPolasSource] = useState<'mediaslide' | 'netwalk' | 'manual'>('manual');
@@ -1399,10 +1413,6 @@ const MyModelsTab: React.FC<{
   const [territorySaving, setTerritorySaving] = useState(false);
   const [territorySaveFeedback, setTerritorySaveFeedback] = useState<'saved' | 'error' | null>(null);
 
-  const [editModelCategories, setEditModelCategories] = useState<string[]>([]);
-  const [editSportsWinter, setEditSportsWinter] = useState(false);
-  const [editSportsSummer, setEditSportsSummer] = useState(false);
-  const [editSex, setEditSex] = useState<'male' | 'female' | null>(null);
 
   /** model_id → sorted country codes for territory badges in the roster list */
   const [rosterTerritoriesMap, setRosterTerritoriesMap] = useState<Record<string, string[]>>({});
@@ -1413,12 +1423,44 @@ const MyModelsTab: React.FC<{
     }
   }, [agencyId]);
 
+  // Load API keys from DB (org-wide) on mount; fall back to localStorage until loaded.
   useEffect(() => {
-    setEditModelCategories(selectedModel?.categories ?? []);
-    setEditSportsWinter(selectedModel?.is_sports_winter ?? false);
-    setEditSportsSummer(selectedModel?.is_sports_summer ?? false);
-    setEditSex((selectedModel?.sex as 'male' | 'female' | null | undefined) ?? null);
+    if (!agencyId) return;
+    getAgencyApiKeys(agencyId).then((keys) => {
+      if (!keys) return;
+      if (keys.mediaslide_api_key) {
+        setMediaslideKey(keys.mediaslide_api_key);
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem('ci_mediaslide_api_key', keys.mediaslide_api_key);
+        }
+      }
+      if (keys.netwalk_api_key) {
+        setNetwalkKey(keys.netwalk_api_key);
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem('ci_netwalk_api_key', keys.netwalk_api_key);
+        }
+      }
+    }).catch((e) => console.error('Failed to load agency API keys:', e));
+  }, [agencyId]);
+
+  useEffect(() => {
+    if (selectedModel) {
+      setEditState(buildEditState(selectedModel));
+    }
   }, [selectedModel?.id]);
+
+  // Recalculate completeness whenever the selected model or its territories change.
+  useEffect(() => {
+    if (!selectedModel) {
+      setCompletenessIssues([]);
+      return;
+    }
+    const ctx: CompletenessContext = {
+      hasTerritories: territoryCountryCodes.length > 0,
+      hasVisiblePhoto: modelPhotos.some((p) => p.is_visible_to_clients),
+    };
+    setCompletenessIssues(checkModelCompleteness(selectedModel, ctx));
+  }, [selectedModel?.id, territoryCountryCodes, modelPhotos]);
 
   // Bulk selection state
   const [selectedModelIds, setSelectedModelIds] = useState<Set<string>>(new Set());
@@ -1589,40 +1631,62 @@ const MyModelsTab: React.FC<{
     // Capture files in a local const BEFORE state resets (closure-safe).
     const filesToUpload = [...addModelImageFiles];
 
+    const heightInt = toNullableInt(addFields.height);
+    // Height is recommended, not mandatory. The completeness banner will flag
+    // it as a Recommended issue once the model is in My Models.
+
     setAddLoading(true);
     setAddModelFeedback(null);
     try {
       const emailTrim = addFields.email?.trim() || null;
-      const { data: created, error } = await supabase
-        .from('models')
-        .insert({
-          agency_id: agencyId,
-          name,
-          email: emailTrim,
-          agency_relationship_status: emailTrim ? 'pending_link' : 'active',
-          agency_relationship_ended_at: null,
-          height: toNullableInt(addFields.height),
-          bust: toNullableInt(addFields.bust),
-          waist: toNullableInt(addFields.waist),
-          hips: toNullableInt(addFields.hips),
-          city: addFields.city || null,
-          country: countryText || null,
-          country_code: derivedCountryCode,
-          hair_color: addFields.hair_color || null,
-          eye_color: addFields.eye_color || null,
-          sex: addSex,
-          is_visible_fashion: true,
-          is_visible_commercial: true,
-        })
-        .select('id')
-        .single();
-      if (error || !created?.id) {
-        throw new Error(
-          `Insert failed: ${error?.message ?? 'unknown error'}${error?.details ? ` (${error.details})` : ''}`,
-        );
+
+      // Use importModelAndMerge so that a model with the same email or name+birthday
+      // is merged instead of creating a duplicate.
+      const mergeResult = await importModelAndMerge({
+        agency_id: agencyId,
+        name,
+        email: emailTrim,
+        height: heightInt,
+        bust:        toNullableInt(addFields.bust),
+        waist:       toNullableInt(addFields.waist),
+        hips:        toNullableInt(addFields.hips),
+        city:        addFields.city || null,
+        country_code: derivedCountryCode,
+        hair_color:  addFields.hair_color || null,
+        eye_color:   addFields.eye_color || null,
+        sex:         addSex,
+      });
+
+      if (!mergeResult) {
+        throw new Error('Could not create or merge model — check console for details.');
       }
 
-      const createdModelId = (created as { id: string }).id;
+      // If merged (not created): also set agency_id and relationship status via direct update
+      // when the existing record belongs to another agency or has no agency yet.
+      if (!mergeResult.created) {
+        await supabase
+          .from('models')
+          .update({
+            agency_id: agencyId,
+            agency_relationship_status: emailTrim ? 'pending_link' : 'active',
+            agency_relationship_ended_at: null,
+          })
+          .eq('id', mergeResult.model_id)
+          .is('agency_id', null); // only set if currently unowned
+      } else {
+        // Newly created: set relationship fields not covered by importModelAndMerge.
+        await supabase
+          .from('models')
+          .update({
+            agency_relationship_status: emailTrim ? 'pending_link' : 'active',
+            agency_relationship_ended_at: null,
+            is_visible_fashion: true,
+            is_visible_commercial: true,
+          })
+          .eq('id', mergeResult.model_id);
+      }
+
+      const createdModelId = mergeResult.model_id;
       const modelDisplayName = name;
 
       // Reset form immediately after successful insert.
@@ -1664,9 +1728,17 @@ const MyModelsTab: React.FC<{
       const fresh = await getModelByIdFromSupabase(createdModelId);
       if (fresh) {
         setSelectedModel(fresh);
-        setAddModelFeedback(`${modelDisplayName} added successfully.`);
+        setAddModelFeedback(
+          mergeResult.created
+            ? `${modelDisplayName} added successfully.`
+            : `${modelDisplayName} merged with existing profile.`,
+        );
       } else {
-        setAddModelFeedback(`${modelDisplayName} was created. Please refresh the list once.`);
+        setAddModelFeedback(
+          mergeResult.created
+            ? `${modelDisplayName} was created. Please refresh the list once.`
+            : `${modelDisplayName} merged. Please refresh the list once.`,
+        );
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -1682,16 +1754,142 @@ const MyModelsTab: React.FC<{
     }
   };
 
-  const saveApiKey = (provider: 'mediaslide' | 'netwalk', key: string) => {
+  const saveApiKey = async (provider: 'mediaslide' | 'netwalk', key: string) => {
     const storageKey = provider === 'mediaslide' ? 'ci_mediaslide_api_key' : 'ci_netwalk_api_key';
+    // Update local state + cache immediately for instant UI feedback.
     if (typeof window !== 'undefined') window.localStorage.setItem(storageKey, key);
     if (provider === 'mediaslide') { setMediaslideKey(key); setShowMediaslideInput(false); }
     else { setNetwalkKey(key); setShowNetwalkInput(false); }
+    // Persist org-wide to DB (best-effort; failure does not block local usage).
+    if (agencyId) {
+      const result = await saveAgencyApiConnection(agencyId, provider, key || null);
+      if (!result.ok) {
+        console.error('saveApiKey: could not persist to DB:', result.message);
+      }
+    }
   };
 
-  const handleSync = () => {
-    setSyncFeedback('Sync initiated...');
-    setTimeout(() => setSyncFeedback(null), 3000);
+  const handleSync = async () => {
+    if (syncLoading) return;
+    setSyncLoading(true);
+    const providers = [mediaslideKey && 'Mediaslide', netwalkKey && 'Netwalk'].filter(Boolean).join(' & ');
+    setSyncFeedback(`Syncing models from ${providers || 'connected providers'}…`);
+    try {
+      await Promise.all([
+        mediaslideKey ? runMediaslideCronSync(mediaslideKey) : Promise.resolve(),
+        netwalkKey    ? runNetwalkCronSync(netwalkKey)        : Promise.resolve(),
+      ]);
+      // Refresh models list so the incomplete-count banner reflects the new state.
+      onRefresh();
+      // Compute incomplete count from the freshly loaded models after refresh.
+      // We use a short delay to let onRefresh propagate new data into `models`.
+      setTimeout(() => {
+        const incompleteAfterSync = models.filter(
+          (m) =>
+            (m.portfolio_images ?? []).length === 0 ||
+            !(rosterTerritoriesMap[m.id] ?? []).length,
+        ).length;
+        setSyncFeedback(
+          incompleteAfterSync > 0
+            ? `Sync complete. ${uiCopy.modelRoster.incompleteModelsBanner(incompleteAfterSync)}.`
+            : 'Sync complete — all models have required fields.',
+        );
+      }, 800);
+    } catch (e: any) {
+      console.error('handleSync error:', e);
+      setSyncFeedback('Sync failed — see console for details.');
+    } finally {
+      setSyncLoading(false);
+      setTimeout(() => setSyncFeedback(null), 8000);
+    }
+  };
+
+  /**
+   * Import & Merge a model profile from a URL that returns a JSON payload.
+   * The JSON is expected to contain at minimum: name (string), height (number).
+   * Optional fields: email, mediaslide_sync_id, bust/waist/hips/chest/legs_inseam/
+   * shoe_size, city, country_code, hair_color, eye_color, sex, ethnicity,
+   * categories, portfolio_images (string[]), polaroids (string[]).
+   */
+  const handleImportByLink = async () => {
+    const url = importLinkUrl.trim();
+    if (!url || importLinkLoading) return;
+    setImportLinkLoading(true);
+    setImportLinkFeedback(null);
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      const raw = await res.json();
+
+      // Support both a single object and an array (take first element).
+      const data: Record<string, unknown> = Array.isArray(raw) ? raw[0] : raw;
+
+      const name = typeof data.name === 'string' ? data.name.trim() : '';
+      // name is mandatory — height is recommended only (completeness banner flags it).
+      if (!name) {
+        setImportLinkFeedback({ ok: false, message: 'Invalid payload: "name" (string) is required.' });
+        return;
+      }
+
+      const toNum = (v: unknown) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : null; };
+      const toStr = (v: unknown) => typeof v === 'string' && v.trim() ? v.trim() : null;
+      const toArr = (v: unknown): string[] => Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [];
+
+      const portfolioImages = toArr(data.portfolio_images);
+      const territories     = toArr(data.territories ?? data.territory_codes);
+
+      const result = await importModelAndMerge({
+        agency_id: agencyId,
+        mediaslide_sync_id: toStr(data.mediaslide_sync_id),
+        email:        toStr(data.email),
+        name,
+        height:       toNum(data.height) ?? undefined,
+        bust:         toNum(data.bust),
+        waist:        toNum(data.waist),
+        hips:         toNum(data.hips),
+        chest:        toNum(data.chest),
+        legs_inseam:  toNum(data.legs_inseam),
+        shoe_size:    toNum(data.shoe_size),
+        city:         toStr(data.city),
+        country_code: toStr(data.country_code),
+        hair_color:   toStr(data.hair_color),
+        eye_color:    toStr(data.eye_color),
+        ethnicity:    toStr(data.ethnicity),
+        sex:          (data.sex === 'male' || data.sex === 'female') ? data.sex : null,
+        categories:   toArr(data.categories).length > 0 ? toArr(data.categories) : null,
+        portfolio_images: portfolioImages,
+        polaroids:    toArr(data.polaroids),
+        forceUpdateMeasurements: Boolean(data.mediaslide_sync_id),
+      });
+
+      if (!result) {
+        setImportLinkFeedback({ ok: false, message: 'Import failed. Check console for details.' });
+        return;
+      }
+
+      // Check which mandatory fields are missing in the imported payload so the
+      // agency immediately knows what to fix — even before opening the model.
+      const missingRequired: string[] = [];
+      if (portfolioImages.length === 0) missingRequired.push('Photos');
+      if (territories.length === 0)     missingRequired.push('Territory');
+
+      const baseMsg = result.created
+        ? `Model "${name}" added to My Models.`
+        : `Model "${name}" merged with existing profile.`;
+
+      const warningMsg = missingRequired.length > 0
+        ? ` Missing required fields: ${missingRequired.join(', ')} — model will not appear to clients until resolved.`
+        : '';
+
+      setImportLinkFeedback({ ok: true, message: baseMsg + warningMsg });
+      setImportLinkUrl('');
+      onRefresh();
+    } catch (e: any) {
+      console.error('handleImportByLink error:', e);
+      setImportLinkFeedback({ ok: false, message: e?.message ?? 'Unknown error' });
+    } finally {
+      setImportLinkLoading(false);
+    }
   };
 
   const handleSaveModel = async () => {
@@ -1724,47 +1922,48 @@ const MyModelsTab: React.FC<{
       return;
     }
 
-    // ── STEP 2: Portfolio check only blocks photo + model-field saves ──
+    // ── STEP 2: Portfolio alert (non-blocking) — photos are required for
+    //   full client visibility but must not prevent the agency from saving
+    //   measurements, name, or other fields. The completeness banner in the
+    //   edit panel already shows a Critical alert for missing photos.
     const visiblePortfolio = modelPhotos.filter((p) => p.is_visible_to_clients);
     if (visiblePortfolio.length === 0) {
-      setSaveFeedback('success');
-      onRefresh();
       Alert.alert(uiCopy.modelRoster.portfolioRequiredTitle, uiCopy.modelRoster.portfolioRequiredBody);
-      setTimeout(() => {
-        setSaveFeedback(null);
-        setSelectedModel(null);
-        setEditField({});
-      }, 1800);
-      return;
+      // Continue saving all other model fields below.
     }
 
     // ── STEP 3: Save model fields + photos ──
     try {
+      const pInt = (v: string) => { const n = parseInt(v, 10); return isNaN(n) ? null : n; };
       const updates: any = {};
-      if (editField.name !== undefined) updates.name = editField.name;
-      if (editField.email !== undefined) updates.email = editField.email.trim() || null;
-      if (editField.height !== undefined) updates.height = parseInt(editField.height, 10);
-      if (editField.bust !== undefined) updates.bust = parseInt(editField.bust, 10);
-      if (editField.waist !== undefined) updates.waist = parseInt(editField.waist, 10);
-      if (editField.hips !== undefined) updates.hips = parseInt(editField.hips, 10);
-      if (editField.legs_inseam !== undefined) updates.legs_inseam = parseInt(editField.legs_inseam, 10);
-      if (editField.hair_color !== undefined) updates.hair_color = editField.hair_color;
-      if (editField.eye_color !== undefined) updates.eye_color = editField.eye_color;
-      if (editField.city !== undefined) updates.city = editField.city;
-      if (editField.country !== undefined) updates.country = editField.country;
-      if (editField.current_location !== undefined) updates.current_location = editField.current_location;
+      updates.name = editState.name;
+      updates.email = editState.email.trim() || null;
+      updates.height = pInt(editState.height) ?? selectedModel.height;
+      // Save to both chest and bust for backwards compatibility.
+      const chestVal = pInt(editState.chest);
+      if (chestVal !== null) { updates.chest = chestVal; updates.bust = chestVal; }
+      updates.waist = pInt(editState.waist);
+      updates.hips = pInt(editState.hips);
+      updates.legs_inseam = pInt(editState.legs_inseam);
+      updates.shoe_size = pInt(editState.shoe_size);
+      updates.hair_color = editState.hair_color || null;
+      updates.eye_color = editState.eye_color || null;
+      updates.ethnicity = editState.ethnicity ?? null;
+      updates.city = editState.city || null;
+      updates.country_code = editState.country_code || null;
+      updates.current_location = editState.current_location || null;
       // Derive visibility flags from categories — no separate Visibility toggle.
-      const hasFashion = editModelCategories.some((c) => c === 'Fashion' || c === 'High Fashion');
-      const hasCommercial = editModelCategories.includes('Commercial');
-      const noCategory = editModelCategories.length === 0;
+      const hasFashion = editState.categories.some((c) => c === 'Fashion' || c === 'High Fashion');
+      const hasCommercial = editState.categories.includes('Commercial');
+      const noCategory = editState.categories.length === 0;
       updates.is_visible_fashion = noCategory || hasFashion;
       updates.is_visible_commercial = noCategory || hasCommercial;
-      updates.categories = editModelCategories.length > 0 ? editModelCategories : null;
+      updates.categories = editState.categories.length > 0 ? editState.categories : null;
       updates.show_polas_on_profile = showPolasOnProfile;
       // Sports columns: only include if migration has been applied (graceful skip on unknown column error).
-      updates.is_sports_winter = editSportsWinter;
-      updates.is_sports_summer = editSportsSummer;
-      updates.sex = editSex;
+      updates.is_sports_winter = editState.is_sports_winter;
+      updates.is_sports_summer = editState.is_sports_summer;
+      updates.sex = editState.sex;
 
       const { error: modelUpdateError } = await supabase.from('models').update(updates).eq('id', selectedModel.id);
       if (modelUpdateError) {
@@ -1817,10 +2016,21 @@ const MyModelsTab: React.FC<{
 
     // ── STEP 4: Always refresh + close panel ──
     onRefresh();
+    // Refresh completeness after save (model fields may have changed).
+    if (selectedModel) {
+      const freshModel = await getModelByIdFromSupabase(selectedModel.id).catch(() => null);
+      if (freshModel) {
+        const ctx: CompletenessContext = {
+          hasTerritories: territoryCountryCodes.length > 0,
+          hasVisiblePhoto: modelPhotos.some((p) => p.is_visible_to_clients),
+        };
+        setCompletenessIssues(checkModelCompleteness(freshModel, ctx));
+      }
+    }
     setTimeout(() => {
       setSaveFeedback(null);
       setSelectedModel(null);
-      setEditField({});
+      setEditState(buildEditState({ name: '' }));
     }, 1800);
   };
 
@@ -1979,102 +2189,18 @@ const MyModelsTab: React.FC<{
   };
 
   if (selectedModel) {
-    const ef = (field: string, fallback: any) => editField[field] ?? String(fallback ?? '');
     const needsAccountLink = !selectedModel.user_id;
     return (
       <ScreenScrollView>
-        <TouchableOpacity onPress={() => { setSelectedModel(null); setEditField({}); }} style={{ marginBottom: spacing.md }}>
+        <TouchableOpacity onPress={() => { setSelectedModel(null); setEditState(buildEditState({ name: '' })); }} style={{ marginBottom: spacing.md }}>
           <Text style={s.backLabel}>← Back to models</Text>
         </TouchableOpacity>
         <Text style={s.heading}>{selectedModel.name}</Text>
-        {[
-          { key: 'name', label: 'Name', val: selectedModel.name },
-          { key: 'email', label: 'Model email', val: selectedModel.email ?? '' },
-          { key: 'height', label: 'Height (cm)', val: selectedModel.height },
-          { key: 'bust', label: 'Chest', val: selectedModel.bust ?? selectedModel.chest },
-          { key: 'waist', label: 'Waist', val: selectedModel.waist },
-          { key: 'hips', label: 'Hips', val: selectedModel.hips },
-          { key: 'legs_inseam', label: 'Legs inseam', val: selectedModel.legs_inseam },
-          { key: 'hair_color', label: 'Hair color', val: selectedModel.hair_color },
-          { key: 'eye_color', label: 'Eye color', val: selectedModel.eye_color },
-          { key: 'city', label: 'City', val: selectedModel.city },
-          { key: 'country', label: 'Country', val: selectedModel.country },
-          { key: 'current_location', label: 'Current location', val: selectedModel.current_location },
-        ].map(({ key, label, val }) => (
-          <View key={key} style={{ marginBottom: spacing.sm }}>
-            <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary }}>{label}</Text>
-            <TextInput
-              value={ef(key, val)}
-              onChangeText={(v) => setEditField((prev) => ({ ...prev, [key]: v }))}
-              style={s.editInput}
-              placeholderTextColor={colors.textSecondary}
-            />
-          </View>
-        ))}
-        <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary, marginTop: spacing.sm }}>
-          Sex
-        </Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: 4, marginBottom: spacing.lg }}>
-          {(['female', 'male'] as const).map((option) => {
-            const active = editSex === option;
-            return (
-              <TouchableOpacity
-                key={option}
-                style={[s.visPill, active && s.visPillActive]}
-                onPress={() => setEditSex(active ? null : option)}
-              >
-                <Text style={[s.visPillLabel, active && s.visPillLabelActive]}>
-                  {option === 'female' ? 'Female' : 'Male'}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
 
-        <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary, marginTop: spacing.sm }}>
-          Categories{' '}
-          <Text style={{ fontWeight: '400' }}>(leave empty = visible to all clients)</Text>
-        </Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: 4, marginBottom: spacing.lg }}>
-          {AGENCY_SEGMENT_TYPES.map((seg) => {
-            const active = editModelCategories.includes(seg);
-            return (
-              <TouchableOpacity
-                key={seg}
-                style={[s.visPill, active && s.visPillActive]}
-                onPress={() =>
-                  setEditModelCategories((prev) =>
-                    active ? prev.filter((c) => c !== seg) : [...prev, seg]
-                  )
-                }
-              >
-                <Text style={[s.visPillLabel, active && s.visPillLabelActive]}>{seg}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary, marginTop: spacing.sm }}>
-          {uiCopy.sportCategories.sectionLabel}{' '}
-          <Text style={{ fontWeight: '400' }}>{uiCopy.sportCategories.sectionHint}</Text>
-        </Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: 4, marginBottom: spacing.lg }}>
-          {SPORTS_CATEGORIES.map((sport) => {
-            const active = sport === 'Winter Sports' ? editSportsWinter : editSportsSummer;
-            const toggle = sport === 'Winter Sports'
-              ? () => setEditSportsWinter((v) => !v)
-              : () => setEditSportsSummer((v) => !v);
-            return (
-              <TouchableOpacity
-                key={sport}
-                style={[s.visPill, active && s.visPillActive]}
-                onPress={toggle}
-              >
-                <Text style={[s.visPillLabel, active && s.visPillLabelActive]}>{sport}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        <ModelEditDetailsPanel
+          state={editState}
+          onChange={(patch) => setEditState((prev) => ({ ...prev, ...patch }))}
+        />
 
         {/* Model Photos Management */}
         <View style={{ marginTop: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.md }}>
@@ -2487,6 +2613,35 @@ const MyModelsTab: React.FC<{
           </View>
         )}
 
+        {/* ── Profile Completeness Banner ───────────────────────────────── */}
+        {completenessIssues.length > 0 && (
+          <View style={{
+            borderRadius: 10,
+            borderWidth: 1,
+            borderColor: completenessIssues.some((i) => i.severity === 'critical') ? '#c0392b' : colors.border,
+            backgroundColor: completenessIssues.some((i) => i.severity === 'critical') ? '#fff5f5' : '#fffbf2',
+            padding: spacing.md,
+            marginBottom: spacing.md,
+          }}>
+            <Text style={{ ...typography.label, fontSize: 12, color: completenessIssues.some((i) => i.severity === 'critical') ? '#c0392b' : '#b7740a', marginBottom: spacing.xs }}>
+              {uiCopy.modelCompleteness.bannerTitle}
+            </Text>
+            <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm }}>
+              {uiCopy.modelCompleteness.bannerSubtitle}
+            </Text>
+            {completenessIssues.map((issue) => (
+              <View key={issue.field} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing.xs, marginBottom: 4 }}>
+                <Text style={{ fontSize: 11, color: issue.severity === 'critical' ? '#c0392b' : '#b7740a', lineHeight: 16 }}>
+                  {issue.severity === 'critical' ? '●' : '○'}
+                </Text>
+                <Text style={{ ...typography.body, fontSize: 11, color: issue.severity === 'critical' ? '#c0392b' : colors.textSecondary, flex: 1, lineHeight: 16 }}>
+                  {issue.label}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
+
         {saveFeedback === 'success' && (
           <View style={{ backgroundColor: '#1a7a4a', borderRadius: 8, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, marginBottom: spacing.sm, alignItems: 'center' }}>
             <Text style={{ ...typography.label, fontSize: 13, color: '#fff' }}>Settings saved successfully</Text>
@@ -2520,7 +2675,7 @@ const MyModelsTab: React.FC<{
                     const ok = await removeModelFromAgency(selectedModel.id, agencyId);
                     if (ok) {
                       setSelectedModel(null);
-                      setEditField({});
+                      setEditState(buildEditState({ name: '' }));
                       onRefresh();
                     }
                   },
@@ -2581,11 +2736,57 @@ const MyModelsTab: React.FC<{
           </View>
         )}
         {(mediaslideKey || netwalkKey) && (
-          <TouchableOpacity style={[s.saveBtn, { alignSelf: 'flex-start', paddingHorizontal: spacing.lg }]} onPress={handleSync}>
-            <Text style={s.saveBtnLabel}>Sync Models</Text>
+          <TouchableOpacity
+            style={[s.saveBtn, { alignSelf: 'flex-start', paddingHorizontal: spacing.lg }, syncLoading && { opacity: 0.6 }]}
+            onPress={handleSync}
+            disabled={syncLoading}
+          >
+            <Text style={s.saveBtnLabel}>{syncLoading ? 'Syncing…' : 'Sync Models'}</Text>
           </TouchableOpacity>
         )}
-        {syncFeedback && <Text style={{ ...typography.body, fontSize: 12, color: colors.accentGreen, marginTop: spacing.xs }}>{syncFeedback}</Text>}
+        {syncFeedback && (
+          <Text style={{ ...typography.body, fontSize: 12, color: colors.accentGreen, marginTop: spacing.xs }}>
+            {syncFeedback}
+          </Text>
+        )}
+      </View>
+
+      {/* ── Import from Link ─────────────────────────────────────────────── */}
+      <View style={s.apiSection}>
+        <Text style={s.sectionLabel}>Import from Link</Text>
+        <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.sm }}>
+          Paste a URL that returns a JSON model profile (name, height, measurements, photos).
+          If a profile with the same email or Mediaslide ID already exists it will be merged.
+        </Text>
+        <View style={{ flexDirection: 'row', gap: spacing.sm, alignItems: 'center' }}>
+          <TextInput
+            value={importLinkUrl}
+            onChangeText={setImportLinkUrl}
+            placeholder="https://…/model.json"
+            placeholderTextColor={colors.textSecondary}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            style={[s.editInput, { flex: 1 }]}
+          />
+          <TouchableOpacity
+            style={[s.apiConnectBtn, (!importLinkUrl.trim() || importLinkLoading) && { opacity: 0.5 }]}
+            onPress={handleImportByLink}
+            disabled={!importLinkUrl.trim() || importLinkLoading}
+          >
+            <Text style={s.saveBtnLabel}>{importLinkLoading ? 'Importing…' : 'Import & Merge'}</Text>
+          </TouchableOpacity>
+        </View>
+        {importLinkFeedback && (
+          <Text style={{
+            ...typography.body,
+            fontSize: 12,
+            color: importLinkFeedback.ok ? colors.accentGreen : '#e74c3c',
+            marginTop: spacing.xs,
+          }}>
+            {importLinkFeedback.message}
+          </Text>
+        )}
       </View>
 
       <Text style={s.sectionLabel}>My Models</Text>
@@ -2748,6 +2949,39 @@ const MyModelsTab: React.FC<{
         )}
       </View>
 
+      {/* Org-wide banner: shows count of models missing required fields */}
+      {(() => {
+        const incompleteCount = filtered.filter(
+          (m) =>
+            (m.portfolio_images ?? []).length === 0 ||
+            (rosterTerritoriesMap[m.id] ?? []).length === 0,
+        ).length;
+        if (incompleteCount === 0) return null;
+        return (
+          <View style={{
+            borderRadius: 8,
+            borderWidth: 1,
+            borderColor: '#c0392b',
+            backgroundColor: 'rgba(192,57,43,0.06)',
+            padding: spacing.md,
+            marginBottom: spacing.md,
+            flexDirection: 'row',
+            alignItems: 'flex-start',
+            gap: spacing.sm,
+          }}>
+            <Text style={{ fontSize: 14, color: '#c0392b', lineHeight: 20 }}>⚠</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={{ ...typography.label, fontSize: 12, color: '#c0392b', marginBottom: 2 }}>
+                {uiCopy.modelRoster.incompleteModelsBanner(incompleteCount)}
+              </Text>
+              <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary }}>
+                {uiCopy.modelRoster.incompleteModelsBannerSuffix}
+              </Text>
+            </View>
+          </View>
+        );
+      })()}
+
       {filtered.map((m) => {
         const isChecked = selectedModelIds.has(m.id);
         return (
@@ -2826,6 +3060,20 @@ const MyModelsTab: React.FC<{
                   }}>
                     <Text style={{ ...typography.label, fontSize: 8, color: '#B8860B', letterSpacing: 0.3 }}>
                       {uiCopy.modelRoster.territoriesMissingBadge}
+                    </Text>
+                  </View>
+                )}
+                {(m.portfolio_images ?? []).length === 0 && (
+                  <View style={{
+                    flexDirection: 'row', alignItems: 'center', marginTop: 3,
+                    paddingHorizontal: 5, paddingVertical: 1,
+                    borderRadius: 3, borderWidth: 1,
+                    borderColor: '#c0392b',
+                    backgroundColor: 'rgba(192,57,43,0.07)',
+                    alignSelf: 'flex-start',
+                  }}>
+                    <Text style={{ ...typography.label, fontSize: 8, color: '#c0392b', letterSpacing: 0.3 }}>
+                      {uiCopy.modelRoster.photosMissingBadge}
                     </Text>
                   </View>
                 )}
@@ -3629,9 +3877,16 @@ const OrganizationTeamTab: React.FC<{
   invitations: InvitationRow[];
   onRefresh: () => void;
 }> = ({ organizationId, canInvite, members, invitations, onRefresh }) => {
+  const { profile, updateDisplayName } = useAuth();
   const [inviteEmail, setInviteEmail] = useState('');
   const [busy, setBusy] = useState(false);
   const [lastLink, setLastLink] = useState<string | null>(null);
+  const [nameInput, setNameInput] = useState(profile?.display_name ?? '');
+  const [nameBusy, setNameBusy] = useState(false);
+
+  useEffect(() => {
+    setNameInput(profile?.display_name ?? '');
+  }, [profile?.display_name]);
 
   const handleInvite = async () => {
     if (!organizationId || !inviteEmail.trim()) return;
@@ -3649,6 +3904,19 @@ const OrganizationTeamTab: React.FC<{
       Alert.alert(uiCopy.alerts.invitationCreated, uiCopy.alerts.invitationCreatedBody);
     } else {
       Alert.alert(uiCopy.common.error, uiCopy.alerts.invitationFailed);
+    }
+  };
+
+  const handleSaveName = async () => {
+    if (!nameInput.trim()) return;
+    setNameBusy(true);
+    const { error } = await updateDisplayName(nameInput);
+    setNameBusy(false);
+    if (error) {
+      Alert.alert(uiCopy.common.error, uiCopy.team.ownerDisplayNameError);
+    } else {
+      Alert.alert(uiCopy.team.ownerDisplayNameLabel, uiCopy.team.ownerDisplayNameSaved);
+      onRefresh();
     }
   };
 
@@ -3675,6 +3943,28 @@ const OrganizationTeamTab: React.FC<{
           {uiCopy.team.noOrganizationYet}
         </Text>
       )}
+
+      {canInvite && (
+        <View style={{ marginTop: spacing.lg, gap: spacing.xs }}>
+          <Text style={s.sectionLabel}>{uiCopy.team.ownerDisplayNameLabel}</Text>
+          <Text style={s.metaText}>{uiCopy.team.ownerDisplayNameHint}</Text>
+          <TextInput
+            value={nameInput}
+            onChangeText={setNameInput}
+            placeholder={uiCopy.team.ownerDisplayNamePlaceholder}
+            placeholderTextColor={colors.textSecondary}
+            style={s.editInput}
+          />
+          <TouchableOpacity
+            style={[s.saveBtn, (!nameInput.trim() || nameBusy) && { opacity: 0.55 }]}
+            onPress={() => void handleSaveName()}
+            disabled={nameBusy || !nameInput.trim()}
+          >
+            <Text style={s.saveBtnLabel}>{nameBusy ? '…' : uiCopy.team.ownerDisplayNameSave}</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       <View style={{ gap: spacing.sm, marginTop: spacing.md }}>
         <Text style={s.sectionLabel}>{uiCopy.team.members}</Text>
         {members.length === 0 ? (

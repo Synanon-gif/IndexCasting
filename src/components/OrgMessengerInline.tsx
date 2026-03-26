@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,8 @@ import {
   Linking,
   Pressable,
   Image,
+  Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { uiCopy } from '../constants/uiCopy';
@@ -18,6 +20,8 @@ import {
   getMessagesWithSenderInfo,
   sendMessage as sendMessengerMessage,
   subscribeToConversation,
+  uploadChatFile,
+  getSignedChatFileUrl,
   type MessagePayloadType,
   type MessageWithSender,
 } from '../services/messengerSupabase';
@@ -82,6 +86,11 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   const [bookingModelNames, setBookingModelNames] = useState<Record<string, string>>({});
   /** model_id → first portfolio_images URL, for package card previews */
   const [packageModelPhotos, setPackageModelPhotos] = useState<Record<string, string>>({});
+  /** storage path → signed URL cache for file attachments */
+  const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const reload = () => void getMessagesWithSenderInfo(conversationId).then(setMsgs);
 
@@ -142,12 +151,74 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
     );
   }, [msgs, packageModelPhotos]);
 
+  // Resolve signed URLs for all file attachments in the current message list
+  useEffect(() => {
+    const paths = msgs
+      .map((m) => (m as { file_url?: string | null }).file_url)
+      .filter((p): p is string => !!p && !signedUrls[p]);
+    if (paths.length === 0) return;
+    void Promise.all(
+      paths.map(async (path) => {
+        const url = await getSignedChatFileUrl(path);
+        if (url) setSignedUrls((prev) => ({ ...prev, [path]: url }));
+      }),
+    );
+  }, [msgs]);
+
+  /** Detect bare URLs in text and return the first one found */
+  function extractUrl(text: string): string | null {
+    const match = text.match(/https?:\/\/[^\s]+/);
+    return match ? match[0] : null;
+  }
+
   const sendChat = async () => {
     const text = input.trim();
     if (!text || !viewerUserId) return;
-    await sendMessengerMessage(conversationId, viewerUserId, text);
+    // Auto-promote plain text containing a URL to a 'link' message
+    const url = extractUrl(text);
+    if (url) {
+      await sendMessengerMessage(conversationId, viewerUserId, text, undefined, undefined, {
+        messageType: 'link',
+        metadata: { url },
+      });
+    } else {
+      await sendMessengerMessage(conversationId, viewerUserId, text);
+    }
     setInput('');
     reload();
+  };
+
+  const handleFileSelected = async (file: File) => {
+    if (!viewerUserId) return;
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const path = await uploadChatFile(conversationId, file, file.name);
+      if (!path) {
+        setUploadError(uiCopy.b2bChat.uploadFailed);
+        return;
+      }
+      await sendMessengerMessage(
+        conversationId,
+        viewerUserId,
+        '',
+        path,
+        file.type || 'application/octet-stream',
+      );
+      reload();
+    } catch (e) {
+      console.error('handleFileSelected error:', e);
+      setUploadError(uiCopy.b2bChat.uploadFailed);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const openFileInput = () => {
+    if (Platform.OS === 'web' && fileInputRef.current) {
+      fileInputRef.current.click();
+    }
   };
 
   const sendRich = async (type: MessagePayloadType, text: string, metadata?: Record<string, unknown>) => {
@@ -188,11 +259,45 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
       <ScrollView style={{ maxHeight: 220 }}>
         {msgs.map((m) => {
           const pt = payloadType(m);
+          const rawFileUrl = (m as { file_url?: string | null }).file_url ?? null;
+          const fileType = (m as { file_type?: string | null }).file_type ?? null;
+          const resolvedFileUrl = rawFileUrl ? (signedUrls[rawFileUrl] ?? null) : null;
+          const isImage = !!fileType && fileType.startsWith('image/');
           return (
             <View key={m.id} style={styles.msgBlock}>
               <Text style={styles.senderLine}>{m.senderLabel}</Text>
-              {pt === 'text' ? (
-                <Text style={styles.chatBubbleText}>{m.text ?? ''}</Text>
+              {/* File / image attachment */}
+              {rawFileUrl ? (
+                isImage ? (
+                  resolvedFileUrl ? (
+                    <Pressable onPress={() => openUrl(resolvedFileUrl)}>
+                      <Image
+                        source={{ uri: resolvedFileUrl }}
+                        style={styles.attachedImage}
+                        resizeMode="cover"
+                      />
+                    </Pressable>
+                  ) : (
+                    <View style={styles.attachedImagePlaceholder}>
+                      <ActivityIndicator size="small" color={colors.textSecondary} />
+                    </View>
+                  )
+                ) : (
+                  <Pressable
+                    style={styles.fileCard}
+                    onPress={() => resolvedFileUrl && openUrl(resolvedFileUrl)}
+                  >
+                    <Text style={styles.fileCardIcon}>📎</Text>
+                    <Text style={styles.fileCardLabel} numberOfLines={1}>
+                      {uiCopy.b2bChat.fileAttachment}
+                    </Text>
+                    <Text style={styles.fileCardOpen}>{uiCopy.b2bChat.openFile}</Text>
+                  </Pressable>
+                )
+              ) : null}
+              {/* Text content */}
+              {pt === 'text' && m.text ? (
+                <Text style={styles.chatBubbleText}>{m.text}</Text>
               ) : null}
               {pt === 'link' ? (
                 <Pressable onPress={() => metaString(m, 'url') && openUrl(metaString(m, 'url')!)}>
@@ -325,19 +430,47 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
         })}
       </ScrollView>
 
+      {uploadError ? (
+        <Text style={styles.uploadError}>{uploadError}</Text>
+      ) : null}
       <View style={styles.chatPanelInputRow}>
+        {/* Hidden file input for web */}
+        {Platform.OS === 'web' ? (
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void handleFileSelected(file);
+            }}
+          />
+        ) : null}
+        <TouchableOpacity
+          style={[styles.attachBtn, (!viewerUserId || uploading) && { opacity: 0.4 }]}
+          onPress={openFileInput}
+          disabled={!viewerUserId || uploading}
+        >
+          {uploading ? (
+            <ActivityIndicator size="small" color={colors.textSecondary} />
+          ) : (
+            <Text style={styles.attachBtnLabel}>📎</Text>
+          )}
+        </TouchableOpacity>
         <TextInput
           value={input}
           onChangeText={setInput}
           placeholder={uiCopy.b2bChat.messagePlaceholder}
           placeholderTextColor={colors.textSecondary}
           style={styles.chatPanelInput}
-          editable={!!viewerUserId}
+          editable={!!viewerUserId && !uploading}
+          onSubmitEditing={sendChat}
         />
         <TouchableOpacity
-          style={[styles.chatPanelSend, !viewerUserId && { opacity: 0.5 }]}
+          style={[styles.chatPanelSend, (!viewerUserId || uploading) && { opacity: 0.5 }]}
           onPress={sendChat}
-          disabled={!viewerUserId}
+          disabled={!viewerUserId || uploading}
         >
           <Text style={styles.chatPanelSendLabel}>{uiCopy.b2bChat.send}</Text>
         </TouchableOpacity>
@@ -581,10 +714,74 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: colors.textPrimary,
   },
+  attachedImage: {
+    width: '100%',
+    maxWidth: 200,
+    height: 140,
+    borderRadius: 8,
+    marginBottom: spacing.xs,
+    backgroundColor: colors.border,
+  },
+  attachedImagePlaceholder: {
+    width: 200,
+    height: 140,
+    borderRadius: 8,
+    backgroundColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.xs,
+  },
+  fileCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    marginBottom: spacing.xs,
+    backgroundColor: colors.surface,
+    alignSelf: 'flex-start',
+  },
+  fileCardIcon: {
+    fontSize: 14,
+  },
+  fileCardLabel: {
+    ...typography.body,
+    fontSize: 11,
+    color: colors.textPrimary,
+    flex: 1,
+  },
+  fileCardOpen: {
+    ...typography.label,
+    fontSize: 10,
+    color: colors.accentGreen,
+  },
+  uploadError: {
+    ...typography.body,
+    fontSize: 11,
+    color: '#e53925',
+    marginBottom: spacing.xs,
+  },
+  attachBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+  },
+  attachBtnLabel: {
+    fontSize: 14,
+  },
   chatPanelInputRow: {
     flexDirection: 'row',
     gap: spacing.sm,
     marginTop: spacing.sm,
+    alignItems: 'center',
   },
   chatPanelInput: {
     flex: 1,

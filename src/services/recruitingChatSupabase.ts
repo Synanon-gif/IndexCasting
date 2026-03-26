@@ -26,6 +26,8 @@ export type SupabaseRecruitingMessage = {
   thread_id: string;
   from_role: 'agency' | 'model';
   text: string;
+  file_url: string | null;
+  file_type: string | null;
   created_at: string;
 };
 
@@ -59,13 +61,18 @@ export async function getThreads(
 }
 
 export async function getThread(threadId: string): Promise<SupabaseRecruitingThread | null> {
-  const { data, error } = await supabase
-    .from('recruiting_chat_threads')
-    .select('*')
-    .eq('id', threadId)
-    .maybeSingle();
-  if (error) { console.error('getThread error:', error); return null; }
-  return data as SupabaseRecruitingThread | null;
+  try {
+    const { data, error } = await supabase
+      .from('recruiting_chat_threads')
+      .select('*')
+      .eq('id', threadId)
+      .maybeSingle();
+    if (error) { console.error('getThread error:', error); return null; }
+    return data as SupabaseRecruitingThread | null;
+  } catch (e) {
+    console.error('getThread exception:', e);
+    return null;
+  }
 }
 
 /** Latest thread for an application (heals orphaned threads if the app row was never linked). */
@@ -95,17 +102,22 @@ export async function createThread(
   agencyId?: string | null,
   meta?: { organizationId?: string | null; createdBy?: string | null }
 ): Promise<string | null> {
-  const payload: Record<string, unknown> = { application_id: applicationId, model_name: modelName };
-  if (agencyId != null) payload.agency_id = agencyId;
-  if (meta?.organizationId != null) payload.organization_id = meta.organizationId;
-  if (meta?.createdBy != null) payload.created_by = meta.createdBy;
-  const { data, error } = await supabase
-    .from('recruiting_chat_threads')
-    .insert(payload)
-    .select('id')
-    .single();
-  if (error) { console.error('createThread error:', error); return null; }
-  return data?.id ?? null;
+  try {
+    const payload: Record<string, unknown> = { application_id: applicationId, model_name: modelName };
+    if (agencyId != null) payload.agency_id = agencyId;
+    if (meta?.organizationId != null) payload.organization_id = meta.organizationId;
+    if (meta?.createdBy != null) payload.created_by = meta.createdBy;
+    const { data, error } = await supabase
+      .from('recruiting_chat_threads')
+      .insert(payload)
+      .select('id')
+      .single();
+    if (error) { console.error('createThread error:', error); return null; }
+    return data?.id ?? null;
+  } catch (e) {
+    console.error('createThread exception:', e);
+    return null;
+  }
 }
 
 /** Threads für eine Agentur (Booking Chats). */
@@ -212,14 +224,68 @@ export async function getMessages(
   }
 }
 
-export async function addMessage(threadId: string, fromRole: 'agency' | 'model', text: string): Promise<SupabaseRecruitingMessage | null> {
-  const { data, error } = await supabase
-    .from('recruiting_chat_messages')
-    .insert({ thread_id: threadId, from_role: fromRole, text })
-    .select()
-    .single();
-  if (error) { console.error('addMessage error:', error); return null; }
-  return data as SupabaseRecruitingMessage;
+export async function addMessage(
+  threadId: string,
+  fromRole: 'agency' | 'model',
+  text: string,
+  fileUrl?: string | null,
+  fileType?: string | null,
+): Promise<SupabaseRecruitingMessage | null> {
+  try {
+    const payload: Record<string, unknown> = { thread_id: threadId, from_role: fromRole, text };
+    if (fileUrl != null) payload.file_url = fileUrl;
+    if (fileType != null) payload.file_type = fileType;
+    const { data, error } = await supabase
+      .from('recruiting_chat_messages')
+      .insert(payload)
+      .select()
+      .single();
+    if (error) { console.error('addMessage error:', error); return null; }
+    return data as SupabaseRecruitingMessage;
+  } catch (e) {
+    console.error('addMessage exception:', e);
+    return null;
+  }
+}
+
+/**
+ * Uploads a file for a recruiting chat thread to the private chat-files bucket.
+ * Returns the storage path; use getSignedRecruitingChatFileUrl() to get a display URL.
+ */
+export async function uploadRecruitingChatFile(
+  threadId: string,
+  file: File | Blob,
+  fileName: string,
+): Promise<string | null> {
+  const path = `recruiting/${threadId}/${Date.now()}_${fileName}`;
+  const { error } = await supabase.storage.from('chat-files').upload(path, file);
+  if (error) { console.error('uploadRecruitingChatFile error:', error); return null; }
+  return path;
+}
+
+/**
+ * Creates a time-limited signed URL for a recruiting chat file attachment.
+ * @param pathOrLegacyUrl – storage path or legacy public URL
+ * @param expiresInSeconds – default 1 hour
+ */
+export async function getSignedRecruitingChatFileUrl(
+  pathOrLegacyUrl: string,
+  expiresInSeconds = 3600,
+): Promise<string | null> {
+  if (!pathOrLegacyUrl) return null;
+  const storagePath = pathOrLegacyUrl.includes('/storage/v1/object/public/chat-files/')
+    ? pathOrLegacyUrl.split('/storage/v1/object/public/chat-files/')[1]
+    : pathOrLegacyUrl;
+  try {
+    const { data, error } = await supabase.storage
+      .from('chat-files')
+      .createSignedUrl(storagePath, expiresInSeconds);
+    if (error) { console.error('getSignedRecruitingChatFileUrl error:', error); return null; }
+    return data.signedUrl;
+  } catch (e) {
+    console.error('getSignedRecruitingChatFileUrl exception:', e);
+    return null;
+  }
 }
 
 /**

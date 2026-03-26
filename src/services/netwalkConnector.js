@@ -1,45 +1,44 @@
 /**
- * Mediaslide API abstraction layer.
- * All Mediaslide calls go through this module. Replace BASE_URL with your real Mediaslide API
- * when connecting the live backend.
+ * Netwalk API abstraction layer.
+ * Mirrors the structure of mediaslideConnector.js.
+ * All Netwalk calls go through this module.
  *
- * SETUP: Set EXPO_PUBLIC_MEDIASLIDE_API_URL in .env (or Supabase secrets).
- * Example: https://api.mediaslide.com/v1
+ * SETUP: Set EXPO_PUBLIC_NETWALK_API_URL in .env (or Supabase secrets).
+ * Example: https://api.netwalk.com/v1
+ *
+ * Until EXPO_PUBLIC_NETWALK_API_URL is set, all functions operate in mock mode
+ * by reading data from Supabase (same model, no real Netwalk call).
  */
 
 // ---------------------------------------------------------------------------
 // CONFIGURATION — reads from env; falls back to null (mock mode)
 // ---------------------------------------------------------------------------
-const MEDIASLIDE_API_BASE_URL =
-  (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_MEDIASLIDE_API_URL) ||
-  (typeof process !== 'undefined' && process.env?.MEDIASLIDE_API_BASE_URL) ||
+const NETWALK_API_BASE_URL =
+  (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_NETWALK_API_URL) ||
+  (typeof process !== 'undefined' && process.env?.NETWALK_API_BASE_URL) ||
   null;
 
-const getBaseUrl = () => MEDIASLIDE_API_BASE_URL || '';
+const getBaseUrl = () => NETWALK_API_BASE_URL || '';
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/**
- * Build Authorization header value from an optional API key.
- * Falls back to empty string if no key is provided (unauthenticated mock calls).
- */
 function authHeader(apiKey) {
   return apiKey ? `Bearer ${apiKey}` : '';
 }
 
 /**
- * Sync model data from Mediaslide into our DB (models table).
- * When MEDIASLIDE_API_BASE_URL is set, POSTs to Mediaslide; otherwise uses local mock.
+ * Sync model data from Netwalk into our DB.
+ * When NETWALK_API_BASE_URL is set, POSTs to Netwalk; otherwise returns mock.
  *
- * @param {string} mediaslideSyncId
- * @param {string=} apiKey  Optional Mediaslide API key.
+ * @param {string} netwalkModelId
+ * @param {string=} apiKey  Optional Netwalk API key.
  */
-export async function syncModelData(mediaslideSyncId, apiKey) {
+export async function syncModelData(netwalkModelId, apiKey) {
   await delay(200);
   if (!getBaseUrl()) {
-    return { synced: true, modelId: mediaslideSyncId, source: 'mock' };
+    return { synced: true, modelId: netwalkModelId, source: 'mock' };
   }
   const url = `${getBaseUrl()}/api/models/sync`;
   const res = await fetch(url, {
@@ -48,39 +47,39 @@ export async function syncModelData(mediaslideSyncId, apiKey) {
       'Content-Type': 'application/json',
       ...(apiKey ? { Authorization: authHeader(apiKey) } : {}),
     },
-    body: JSON.stringify({ mediaslide_id: mediaslideSyncId }),
+    body: JSON.stringify({ netwalk_id: netwalkModelId }),
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 /**
- * Fetch a single model by Mediaslide ID.
- * Returns a MediaslideModelPayload-compatible object or null.
+ * Fetch a single model by Netwalk ID.
+ * Returns a NetwalkModelPayload-compatible object or null.
  *
  * Mock fields include all measurement + appearance fields so that
- * mediaslideSyncService.ts can map them correctly during dev/test.
+ * netwalkSyncService.ts can map them correctly during dev/test.
  *
- * @param {string} id          Mediaslide model ID (mediaslide_sync_id).
- * @param {string=} apiKey     Optional Mediaslide API key.
+ * @param {string} id          Netwalk model ID (netwalk_model_id).
+ * @param {string=} apiKey     Optional Netwalk API key.
  */
-export async function getModelFromMediaslide(id, apiKey) {
+export async function getModelFromNetwalk(id, apiKey) {
   await delay(150);
   if (!getBaseUrl()) {
-    // In mock mode, `id` is the external mediaslide_sync_id string, NOT a local UUID.
+    // In mock mode, `id` is the external netwalk_model_id string, NOT a local UUID.
     // Query by the correct column instead of the primary key.
     const { supabase } = await import('../../lib/supabase');
     const { data, error } = await supabase
       .from('models')
       .select('*')
-      .eq('mediaslide_sync_id', id)
+      .eq('netwalk_model_id', id)
       .maybeSingle();
-    if (error) console.error('getModelFromMediaslide mock lookup error:', error);
+    if (error) console.error('getModelFromNetwalk mock lookup error:', error);
     const model = data ?? null;
     if (!model) return null;
     return {
       id: model.id,
-      mediaslide_sync_id: model.mediaslide_sync_id,
+      netwalk_model_id: model.netwalk_model_id ?? null,
       name: model.name,
       updated_at: model.updated_at ?? null,
       measurements: {
@@ -118,13 +117,13 @@ export async function getModelFromMediaslide(id, apiKey) {
 }
 
 /**
- * Push availability (blocked/available dates) to Mediaslide.
+ * Push availability (blocked/available dates) to Netwalk.
  *
  * @param {string} id
  * @param {{ blocked: string[], available: string[] }} dates
  * @param {string=} apiKey
  */
-export async function pushAvailabilityToMediaslide(id, dates, apiKey) {
+export async function pushAvailabilityToNetwalk(id, dates, apiKey) {
   await delay(150);
   if (!getBaseUrl()) return { ok: true };
   const res = await fetch(`${getBaseUrl()}/api/models/${id}/availability`, {
@@ -139,13 +138,13 @@ export async function pushAvailabilityToMediaslide(id, dates, apiKey) {
 }
 
 /**
- * Push visibility (commercial/fashion) to Mediaslide.
+ * Push visibility (commercial/fashion) to Netwalk.
  *
  * @param {string} id
  * @param {{ isVisibleCommercial: boolean, isVisibleFashion: boolean }} visibility
  * @param {string=} apiKey
  */
-export async function pushVisibilityToMediaslide(id, visibility, apiKey) {
+export async function pushVisibilityToNetwalk(id, visibility, apiKey) {
   await delay(150);
   if (!getBaseUrl()) return { ok: true };
   const res = await fetch(`${getBaseUrl()}/api/models/${id}/visibility`, {

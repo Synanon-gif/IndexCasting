@@ -89,12 +89,6 @@ function clearInviteQueryParam() {
   window.history.replaceState({}, '', u.pathname + u.search + u.hash);
 }
 
-const ROLE_TO_USER_ID: Record<string, string> = {
-  client: 'user-client',
-  agency: 'user-agent',
-  model: 'user-model-1',
-};
-
 function roleFromProfile(profileRole: string | undefined): Role | null {
   if (profileRole === 'client') return 'client';
   if (profileRole === 'agent') return 'agency';
@@ -113,12 +107,10 @@ function AppContent() {
   const [invitePreviewError, setInvitePreviewError] = useState<string | null>(null);
   const [inviteAuthPhase, setInviteAuthPhase] = useState<'gate' | 'auth'>('gate');
   const [inviteAuthMode, setInviteAuthMode] = useState<'login' | 'signup'>('signup');
-  const [demoRole, setDemoRole] = useState<Role | null>(null);
   const [clientType, setClientTypeState] = useState<ClientType>(() => loadClientType() ?? 'fashion');
   const { setCurrentUserId } = useAppData();
 
-  const isDemo = demoRole !== null;
-  const effectiveRole: Role | null = isDemo ? demoRole : roleFromProfile(profile?.role);
+  const effectiveRole: Role | null = roleFromProfile(profile?.role);
 
   // Computed early (before hooks) so it can be used in useEffect and render guards.
   // True when the user is fully authenticated and NOT a Magic-Link guest.
@@ -199,9 +191,8 @@ function AppContent() {
 
   useEffect(() => {
     if (!effectiveRole || effectiveRole === 'apply') setCurrentUserId(null);
-    else if (isDemo && ROLE_TO_USER_ID[effectiveRole]) setCurrentUserId(ROLE_TO_USER_ID[effectiveRole]);
     else if (session?.user) setCurrentUserId(session.user.id);
-  }, [effectiveRole, isDemo, session, setCurrentUserId]);
+  }, [effectiveRole, session, setCurrentUserId]);
 
   if (loading) {
     return (
@@ -255,7 +246,7 @@ function AppContent() {
 
   // Authenticated guest user (Magic Link) → limited-access chat view.
   // Must come before the regular role-based routing to prevent accidental access.
-  if (!isDemo && session && profile?.is_guest === true) {
+  if (session && profile?.is_guest === true) {
     return (
       <>
         <View style={styles.shell}>
@@ -266,7 +257,7 @@ function AppContent() {
     );
   }
 
-  if (!session && !isDemo) {
+  if (!session) {
     const inviteLockedRole =
       invitePreview?.org_type === 'agency' ? 'agent' : invitePreview?.org_type === 'client' ? 'client' : undefined;
     const inviteRoleLabel =
@@ -301,7 +292,6 @@ function AppContent() {
       <>
         <AuthScreen
           initialMode={inviteAuthMode}
-          onDemoLogin={(r) => setDemoRole(r)}
           clearStaleInviteOnSignIn={!inviteTokenState}
           inviteAuth={
             inviteTokenState && invitePreview && inviteLockedRole
@@ -321,13 +311,13 @@ function AppContent() {
   if (!effectiveRole) {
     return (
       <>
-        <AuthScreen onDemoLogin={(r) => setDemoRole(r)} clearStaleInviteOnSignIn={!inviteTokenState} />
+        <AuthScreen clearStaleInviteOnSignIn={!inviteTokenState} />
         <StatusBar style="dark" />
       </>
     );
   }
 
-  if (!isDemo && profile) {
+  if (profile) {
     if (!profile.tos_accepted || !profile.privacy_accepted) {
       return (
         <>
@@ -359,11 +349,7 @@ function AppContent() {
   }
 
   const handleBackToRoleSelection = () => {
-    if (isDemo) {
-      setDemoRole(null);
-    } else {
-      signOut();
-    }
+    signOut();
   };
 
   return (
@@ -379,7 +365,7 @@ function AppContent() {
         {effectiveRole === 'model' && (
           <ModelView
             onBackToRoleSelection={handleBackToRoleSelection}
-            userId={!isDemo && session?.user ? session.user.id : undefined}
+            userId={session?.user?.id}
           />
         )}
         {effectiveRole === 'agency' && <AgencyView onBackToRoleSelection={handleBackToRoleSelection} />}

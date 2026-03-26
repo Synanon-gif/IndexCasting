@@ -7,7 +7,6 @@ import { colors } from '../theme/theme';
 
 type ModelViewProps = {
   onBackToRoleSelection: () => void;
-  /** Wenn gesetzt: echte Anmeldung; Model für User laden. Fehlt: Demo-Modus, direkt Profil. */
   userId?: string | null;
 };
 
@@ -15,17 +14,17 @@ export const ModelView: React.FC<ModelViewProps> = ({ onBackToRoleSelection, use
   const [modelId, setModelId] = useState<string | null | 'loading'>('loading');
 
   useEffect(() => {
-    if (userId === undefined || userId === null) {
-      setModelId('demo');
+    if (!userId) {
+      setModelId(null);
       return;
     }
+    let cancelled = false;
     setModelId('loading');
-    getModelForUserFromSupabase(userId).then((m) => setModelId(m ? m.id : null));
+    getModelForUserFromSupabase(userId).then((m) => {
+      if (!cancelled) setModelId(m ? m.id : null);
+    });
+    return () => { cancelled = true; };
   }, [userId]);
-
-  if (modelId === 'demo') {
-    return <ModelProfileScreen onBackToRoleSelection={onBackToRoleSelection} />;
-  }
 
   if (modelId === 'loading') {
     return (

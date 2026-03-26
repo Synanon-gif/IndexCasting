@@ -25,13 +25,19 @@ import {
   subscribeApplications,
   getApplicationById,
   type ModelApplication,
-  type Gender,
 } from '../store/applicationsStore';
 import { tryStartRecruitingChat } from '../store/recruitingChats';
 import { loadAgencyShortlistIds, saveAgencyShortlistIds } from '../storage/agencyRecruitingShortlist';
 import { mergeAgencyRecruitingMyListIds } from '../utils/agencyRecruitingMyList';
 import { upsertTerritoriesForModel } from '../services/territoriesSupabase';
 import { uiCopy } from '../constants/uiCopy';
+import ModelFiltersPanel from '../components/ModelFiltersPanel';
+import {
+  defaultModelFilters,
+  filterApplicationsByModelFilters,
+  FILTER_COUNTRIES,
+  type ModelFilters,
+} from '../utils/modelFilters';
 
 countries.registerLocale(enLocale);
 const ISO_COUNTRY_NAMES: Record<string, string> = countries.getNames('en', {
@@ -41,32 +47,6 @@ const ISO_COUNTRY_LIST = Object.entries(ISO_COUNTRY_NAMES)
   .map(([code, name]) => ({ code, name }))
   .sort((a, b) => a.name.localeCompare(b.name));
 
-type HeightFilter = 'all' | 'short' | 'medium' | 'tall';
-
-function filterApplications(
-  list: ModelApplication[],
-  heightFilter: HeightFilter,
-  minHeight: number | null,
-  maxHeight: number | null,
-  genderFilter: Gender | '',
-  hairFilter: string,
-  cityFilter: string
-): ModelApplication[] {
-  return list.filter((a) => {
-    const h = a.height ?? 0;
-    if (typeof minHeight === 'number' && !Number.isNaN(minHeight) && h < minHeight) return false;
-    if (typeof maxHeight === 'number' && !Number.isNaN(maxHeight) && h > maxHeight) return false;
-    if (heightFilter !== 'all') {
-      if (heightFilter === 'short' && h >= 175) return false;
-      if (heightFilter === 'medium' && (h < 175 || h > 182)) return false;
-      if (heightFilter === 'tall' && h <= 182) return false;
-    }
-    if (genderFilter && (a.gender ?? '') !== genderFilter) return false;
-    if (hairFilter && !((a.hairColor ?? '').toLowerCase().includes(hairFilter.toLowerCase()))) return false;
-    if (cityFilter && !(a.city || '').toLowerCase().includes(cityFilter.toLowerCase())) return false;
-    return true;
-  });
-}
 
 export const AgencyRecruitingView: React.FC<{
   onBack: () => void;
@@ -77,13 +57,7 @@ export const AgencyRecruitingView: React.FC<{
   const [recruitTab, setRecruitTab] = useState<'pending' | 'shortlist' | 'accepted'>('pending');
   /** All pending apps without a recruiting thread (from store). */
   const [allSwipeQueue, setAllSwipeQueue] = useState<ModelApplication[]>([]);
-  const [heightFilter, setHeightFilter] = useState<HeightFilter>('all');
-  const [minHeight, setMinHeight] = useState<string>('');
-  const [maxHeight, setMaxHeight] = useState<string>('');
-  const [genderFilter, setGenderFilter] = useState<Gender | ''>('');
-  const [hairFilter, setHairFilter] = useState('');
-  const [cityFilter, setCityFilter] = useState('');
-  const [filterOpen, setFilterOpen] = useState(false);
+  const [filters, setFilters] = useState<ModelFilters>(defaultModelFilters);
   const [index, setIndex] = useState(0);
   const [feedback, setFeedback] = useState<string | null>(null);
   /** Application shown in the details modal (pending card or shortlist). */
@@ -116,26 +90,13 @@ export const AgencyRecruitingView: React.FC<{
     [allSwipeQueue, shortlistSet]
   );
 
-  const applications = filterApplications(
-    pendingNotShortlisted,
-    heightFilter,
-    minHeight ? Number(minHeight) : null,
-    maxHeight ? Number(maxHeight) : null,
-    genderFilter,
-    hairFilter,
-    cityFilter
-  );
+  const applications = filterApplicationsByModelFilters(pendingNotShortlisted, filters);
   const current = applications[index] ?? null;
 
   const filteredFromStore = () =>
-    filterApplications(
+    filterApplicationsByModelFilters(
       getPendingSwipeQueueApplications().filter((a) => !shortlistSet.has(a.id)),
-      heightFilter,
-      minHeight ? Number(minHeight) : null,
-      maxHeight ? Number(maxHeight) : null,
-      genderFilter,
-      hairFilter,
-      cityFilter
+      filters,
     );
   const acceptedList = getAcceptedApplications();
   /** My list = explicit shortlist ∪ every pending application that already has a recruiting chat (always in sync with Messages → Recruiting chats). */
@@ -151,15 +112,6 @@ export const AgencyRecruitingView: React.FC<{
   const shortlistApps = mergedMyListIds
     .map((id) => getApplicationById(id))
     .filter((a): a is ModelApplication => !!a && a.status !== 'rejected');
-  const uniqueCities = React.useMemo(
-    () => Array.from(new Set(allSwipeQueue.map((a) => a.city).filter(Boolean))).sort(),
-    [allSwipeQueue]
-  );
-  const uniqueHair = React.useMemo(
-    () => Array.from(new Set(allSwipeQueue.map((a) => a.hairColor).filter(Boolean))).sort(),
-    [allSwipeQueue]
-  );
-
   const refreshSwipeQueue = () => {
     setAllSwipeQueue(getPendingSwipeQueueApplications());
     setPendingWithChatApps(
@@ -432,69 +384,9 @@ export const AgencyRecruitingView: React.FC<{
         </ScrollView>
       ) : (
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: spacing.xl }} showsVerticalScrollIndicator={false}>
-      <TouchableOpacity style={styles.filterToggle} onPress={() => setFilterOpen((o) => !o)}>
-        <Text style={styles.filterToggleLabel}>Filters</Text>
-        <Text style={styles.filterToggleArrow}>{filterOpen ? '▼' : '▶'}</Text>
-      </TouchableOpacity>
-      {filterOpen && (
-        <View style={[styles.filterRow, { marginBottom: spacing.md }]}>
-          <Text style={styles.filterLabel}>Height</Text>
-          <View style={styles.filterPills}>
-            {(['all', 'short', 'medium', 'tall'] as const).map((h) => (
-              <TouchableOpacity key={h} style={[styles.filterPill, heightFilter === h && styles.filterPillActive]} onPress={() => setHeightFilter(h)}>
-                <Text style={[styles.filterPillText, heightFilter === h && styles.filterPillTextActive]}>{h === 'all' ? 'All' : h === 'short' ? '<175' : h === 'medium' ? '175–182' : '>182'}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          <View style={styles.heightRangeRow}>
-            <Text style={styles.filterLabel}>Height range (cm)</Text>
-            <View style={styles.heightInputsRow}>
-              <TextInput
-                value={minHeight}
-                onChangeText={setMinHeight}
-                placeholder="Min"
-                keyboardType="number-pad"
-                style={styles.heightInput}
-              />
-              <Text style={styles.heightDash}>–</Text>
-              <TextInput
-                value={maxHeight}
-                onChangeText={setMaxHeight}
-                placeholder="Max"
-                keyboardType="number-pad"
-                style={styles.heightInput}
-              />
-            </View>
-          </View>
-          <Text style={styles.filterLabel}>Gender</Text>
-          <View style={styles.filterPills}>
-            {(['', 'female', 'male', 'diverse'] as const).map((g) => (
-              <TouchableOpacity key={g || 'all'} style={[styles.filterPill, genderFilter === g && styles.filterPillActive]} onPress={() => setGenderFilter(g)}>
-                <Text style={[styles.filterPillText, genderFilter === g && styles.filterPillTextActive]}>{g ? (g === 'female' ? 'Female' : g === 'male' ? 'Male' : 'Diverse') : 'All'}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          <Text style={styles.filterLabel}>Hair</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
-            <TouchableOpacity style={[styles.filterPill, !hairFilter && styles.filterPillActive]} onPress={() => setHairFilter('')}>
-              <Text style={[styles.filterPillText, !hairFilter && styles.filterPillTextActive]}>All</Text>
-            </TouchableOpacity>
-            {uniqueHair.map((h) => (
-              <TouchableOpacity key={h} style={[styles.filterPill, hairFilter === h && styles.filterPillActive]} onPress={() => setHairFilter(h)}>
-                <Text style={[styles.filterPillText, hairFilter === h && styles.filterPillTextActive]}>{h}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-          <Text style={styles.filterLabel}>City search</Text>
-          <TextInput
-            value={cityFilter}
-            onChangeText={setCityFilter}
-            placeholder="Search by city"
-            placeholderTextColor={colors.textSecondary}
-            style={styles.citySearchInput}
-          />
-        </View>
-      )}
+      <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.sm }}>
+        <ModelFiltersPanel filters={filters} onChangeFilters={setFilters} />
+      </View>
 
       <View style={{ height: 8 }} />
 
@@ -625,6 +517,12 @@ export const AgencyRecruitingView: React.FC<{
                   <Text style={styles.detailBody}>Height: {detailApplication.height} cm</Text>
                   <Text style={styles.detailBody}>Gender: {detailApplication.gender || '—'}</Text>
                   <Text style={styles.detailBody}>Hair color: {detailApplication.hairColor || '—'}</Text>
+                  <Text style={styles.detailBody}>
+                    Country: {detailApplication.countryCode
+                      ? (FILTER_COUNTRIES.find((c) => c.code === detailApplication.countryCode)?.label ?? detailApplication.countryCode)
+                      : '—'}
+                  </Text>
+                  <Text style={styles.detailBody}>Ethnicity: {detailApplication.ethnicity || '—'}</Text>
                   <Text style={styles.detailBody}>City: {detailApplication.city || '—'}</Text>
                   <Text style={styles.detailBody}>Instagram: {detailApplication.instagramLink || '—'}</Text>
                 </>
@@ -803,30 +701,6 @@ const styles = StyleSheet.create({
     ...typography.label,
     color: colors.textSecondary,
   },
-  filterToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  filterToggleLabel: {
-    ...typography.label,
-    color: colors.textPrimary,
-  },
-  filterToggleArrow: {
-    ...typography.label,
-    color: colors.textSecondary,
-    fontSize: 10,
-  },
-  filterRow: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
   filterLabel: {
     ...typography.label,
     fontSize: 11,
@@ -871,15 +745,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  filterPills: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
-  },
-  filterScroll: {
-    marginBottom: spacing.xs,
-    maxHeight: 36,
   },
   filterPill: {
     paddingHorizontal: spacing.sm,
@@ -1122,31 +987,6 @@ const styles = StyleSheet.create({
   closeLabel: {
     ...typography.label,
     fontSize: 11,
-    color: colors.textSecondary,
-  },
-  heightRangeRow: {
-    marginTop: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  heightInputsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  heightInput: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 999,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    ...typography.body,
-    fontSize: 12,
-    color: colors.textPrimary,
-  },
-  heightDash: {
-    ...typography.body,
-    fontSize: 14,
     color: colors.textSecondary,
   },
   citySearchInput: {

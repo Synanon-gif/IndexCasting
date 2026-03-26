@@ -152,21 +152,33 @@ export async function listOrganizationMembers(organizationId: string): Promise<
     const rows = (members ?? []) as OrganizationMemberRow[];
     if (rows.length === 0) return [];
 
-    // Use the SECURITY DEFINER RPC to fetch emails for org members.
-    // Direct SELECT of profiles.email is no longer possible for the authenticated role.
+    const userIds = rows.map((m) => m.user_id);
+
+    // display_name is granted directly to authenticated on profiles (not sensitive).
+    // Fetch it independently so the member list always shows names, even if the
+    // email RPC is unavailable.
+    const { data: profileRows } = await supabase
+      .from('profiles')
+      .select('id, display_name')
+      .in('id', userIds);
+    const displayNameMap = new Map(
+      ((profileRows ?? []) as { id: string; display_name: string | null }[])
+        .map((p) => [p.id, p.display_name])
+    );
+
+    // Use the SECURITY DEFINER RPC only for email (column-level restricted).
     const { data: memberEmails, error: emailErr } = await supabase
       .rpc('get_org_member_emails', { p_org_id: organizationId });
     if (emailErr) console.error('listOrganizationMembers email RPC error:', emailErr);
-
     const emailMap = new Map(
-      ((memberEmails ?? []) as { user_id: string; display_name: string | null; email: string | null }[])
-        .map((r) => [r.user_id, r])
+      ((memberEmails ?? []) as { user_id: string; email: string | null }[])
+        .map((r) => [r.user_id, r.email])
     );
 
     return rows.map((m) => ({
       ...m,
-      display_name: emailMap.get(m.user_id)?.display_name ?? null,
-      email: emailMap.get(m.user_id)?.email ?? null,
+      display_name: displayNameMap.get(m.user_id) ?? null,
+      email: emailMap.get(m.user_id) ?? null,
     }));
   } catch (e) {
     console.error('listOrganizationMembers exception:', e);

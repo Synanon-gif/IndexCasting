@@ -202,11 +202,13 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   const [feedback, setFeedback] = useState<string | null>(null);
   const [filters, setFilters] = useState<ModelFilters>(() => {
     const saved = loadClientFilters();
-    if (saved && typeof saved.size === 'string') {
+    if (saved) {
       return {
         ...defaultModelFilters,
         sex: (saved as any).sex ?? 'all',
-        size: saved.size,
+        heightMin: (saved as any).heightMin ?? '',
+        heightMax: (saved as any).heightMax ?? '',
+        ethnicities: (saved as any).ethnicities ?? [],
         countryCode: saved.countryCode ?? '',
         city: saved.city ?? '',
         nearby: saved.nearby ?? false,
@@ -341,7 +343,9 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   // Auto-save ALL filters to localStorage on every change.
   useEffect(() => {
     const persisted: PersistedClientFilters = {
-      size: filters.size,
+      heightMin: filters.heightMin,
+      heightMax: filters.heightMax,
+      ethnicities: filters.ethnicities,
       countryCode: filters.countryCode,
       city: filters.city,
       nearby: filters.nearby,
@@ -360,7 +364,8 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     };
     saveClientFilters(persisted);
   }, [
-    filters.size, filters.countryCode, filters.city, filters.nearby,
+    filters.heightMin, filters.heightMax, filters.ethnicities,
+    filters.countryCode, filters.city, filters.nearby,
     filters.category, filters.sportsWinter, filters.sportsSummer,
     filters.hairColor, filters.hipsMin, filters.hipsMax,
     filters.waistMin, filters.waistMax, filters.chestMin, filters.chestMax,
@@ -368,11 +373,9 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   ]);
 
   const auth = useAuth();
-  /** Nur echte Auth-UUID – Supabase erwartet UUID für client_id / owner_id (kein Demo-String „user-client"). */
   const realClientId =
     auth?.profile?.role === 'client' && auth.profile.id ? auth.profile.id : null;
   const isRealClient = !!realClientId;
-  const effectiveClientId = realClientId ?? 'user-client';
 
   // Resolve the client organisation for this user (owner or employee).
   // We use getMyClientMemberRole first so employees resolve their employer's
@@ -400,7 +403,9 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     setFilterSaveStatus('saving');
     const preset: PersistedClientFilters = {
       sex: filters.sex,
-      size: filters.size,
+      heightMin: filters.heightMin,
+      heightMax: filters.heightMax,
+      ethnicities: filters.ethnicities,
       countryCode: filters.countryCode,
       city: filters.city,
       nearby: filters.nearby,
@@ -504,17 +509,15 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       const effectiveClientType = !cat ? 'all' : cat === 'Commercial' ? 'commercial' : 'fashion';
       const effectiveCategory = cat === 'High Fashion' ? 'High Fashion' : undefined;
 
-      // Convert height bucket → numeric range for backend filtering.
+      // Convert height range strings → numeric values for backend filtering.
       const pInt = (v: string) => { const n = parseInt(v, 10); return isNaN(n) ? undefined : n; };
-      let heightMin: number | undefined;
-      let heightMax: number | undefined;
-      if (filters.size === 'short')  { heightMax = 174; }
-      if (filters.size === 'medium') { heightMin = 175; heightMax = 182; }
-      if (filters.size === 'tall')   { heightMin = 183; }
+      const heightMin = pInt(filters.heightMin);
+      const heightMax = pInt(filters.heightMax);
 
       const measurementFilters = {
         heightMin,
         heightMax,
+        ethnicities: filters.ethnicities.length ? filters.ethnicities : undefined,
         hairColor: filters.hairColor.trim() || undefined,
         hipsMin:        pInt(filters.hipsMin),
         hipsMax:        pInt(filters.hipsMax),
@@ -559,8 +562,9 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       setModels(mapped);
     })();
   }, [
-    filters.sex, filters.countryCode, filters.city, filters.category,
-    filters.sportsWinter, filters.sportsSummer, filters.size,
+    filters.sex, filters.heightMin, filters.heightMax, filters.ethnicities,
+    filters.countryCode, filters.city, filters.category,
+    filters.sportsWinter, filters.sportsSummer,
     filters.hairColor, filters.hipsMin, filters.hipsMax,
     filters.waistMin, filters.waistMax, filters.chestMin, filters.chestMax,
     filters.legsInseamMin, filters.legsInseamMax,
@@ -2094,8 +2098,8 @@ const AgenciesView: React.FC<{
   const showNotFound = search.trim().length > 2 && filtered.length === 0;
 
   const handleSendInvitation = async () => {
-    if (!invitationEmail.trim()) return;
-    await sendAgencyInvitation(search.trim(), invitationEmail.trim(), clientUserId ?? 'user-client');
+    if (!invitationEmail.trim() || !clientUserId) return;
+    await sendAgencyInvitation(search.trim(), invitationEmail.trim(), clientUserId);
     setInvitationFeedback('Invitation link sent.');
     setInvitationEmail('');
     setTimeout(() => setInvitationFeedback(null), 3000);

@@ -1,27 +1,32 @@
 /**
- * MediaslideSyncService
+ * NetwalkSyncService
  *
- * - Kann per Webhook (einzelnes Model) oder per Cron (Batch) aufgerufen werden.
- * - Spiegelt Maße/Grunddaten eines Models aus Mediaslide in unsere `models`-Tabelle.
- * - Konfliktlösung:
- *   - Wir gehen davon aus, dass beide Systeme einen `updated_at`-Zeitstempel haben.
- *   - Standard: Feldgruppen werden nach dem jeweils neueren Zeitstempel entschieden.
- *   - Konflikte werden ins Log geschrieben (Supabase-Tabelle `mediaslide_sync_logs`).
+ * Mirrors mediaslideSyncService.ts exactly for Netwalk.
  *
- * WICHTIG: Für echte Nutzung sollte die Migration
- *   `supabase/migration_mediaslide_sync_logs.sql`
- * im Supabase-Dashboard ausgeführt werden.
+ * - Webhook (single model) or Cron (batch).
+ * - Syncs measurements + base data from Netwalk into the `models` table.
+ * - Conflict resolution: uses `updated_at` timestamps — local wins on tie or
+ *   missing remote timestamp.
+ * - Errors are logged to `mediaslide_sync_logs` (shared table; `operation`
+ *   field distinguishes Mediaslide vs Netwalk entries).
+ *
+ * IMPORTANT: Run `supabase/migration_mediaslide_sync_logs.sql` in Supabase
+ * before using this service in production.
  */
 import { supabase } from '../../lib/supabase';
 import type { SupabaseModel } from './modelsSupabase';
 import { getModelByIdFromSupabase } from './modelsSupabase';
-import { getModelFromMediaslide, syncModelData } from './mediaslideConnector';
+import { getModelFromNetwalk, syncModelData } from './netwalkConnector';
 import { fetchAllSupabasePages } from './supabaseFetchAll';
+import { logMediaslideError } from './mediaslideSyncService';
 
-/**
- * Lightweight concurrency limiter — avoids external p-limit dependency.
- * Runs `tasks` with at most `concurrency` in-flight at any time.
- */
+// Re-export the shared log helper under a Netwalk-specific alias for clarity.
+export const logNetwalkError = logMediaslideError;
+
+// ---------------------------------------------------------------------------
+// Concurrency limiter (shared pattern from mediaslideSyncService)
+// ---------------------------------------------------------------------------
+
 async function runWithConcurrency<T>(
   tasks: Array<() => Promise<T>>,
   concurrency: number,
@@ -42,10 +47,10 @@ async function runWithConcurrency<T>(
 }
 
 // ---------------------------------------------------------------------------
-// Typen – vereinfachtes Mediaslide-Model
+// Typen
 // ---------------------------------------------------------------------------
 
-type MediaslideMeasurements = {
+type NetwalkMeasurements = {
   height?: number | null;
   bust?: number | null;
   waist?: number | null;
@@ -55,23 +60,19 @@ type MediaslideMeasurements = {
   shoe_size?: number | null;
 };
 
-type MediaslideModelPayload = {
+type NetwalkModelPayload = {
   id: string;
   updated_at?: string | null;
-  mediaslide_sync_id?: string | null;
+  netwalk_model_id?: string | null;
   name?: string | null;
-  measurements?: MediaslideMeasurements;
+  measurements?: NetwalkMeasurements;
   city?: string | null;
   country?: string | null;
-  /** ISO-3166-1 alpha-2 code (e.g. "DE"). Preferred over legacy country string. */
   country_code?: string | null;
   hair_color?: string | null;
   eye_color?: string | null;
-  /** Biological sex: 'male' | 'female' | null */
   sex?: 'male' | 'female' | null;
-  /** Ethnic background matching ETHNICITY_OPTIONS. */
   ethnicity?: string | null;
-  /** Marketing categories, e.g. ['Fashion', 'Commercial']. */
   categories?: string[] | null;
   visibility?: {
     isVisibleCommercial?: boolean;
@@ -80,35 +81,7 @@ type MediaslideModelPayload = {
 };
 
 // ---------------------------------------------------------------------------
-// Logging für fehlgeschlagene API-Calls
-// ---------------------------------------------------------------------------
-
-export async function logMediaslideError(params: {
-  operation: string;
-  modelId?: string | null;
-  mediaslideId?: string | null;
-  statusCode?: number | null;
-  message: string;
-  details?: unknown;
-}) {
-  const payload = {
-    operation: params.operation,
-    model_id: params.modelId ?? null,
-    mediaslide_id: params.mediaslideId ?? null,
-    status_code: params.statusCode ?? null,
-    message: params.message,
-    details: params.details ?? null,
-  };
-
-  const { error } = await supabase.from('mediaslide_sync_logs').insert(payload);
-  if (error) {
-    // Fallback: zumindest im Server-Log sichtbar machen
-    console.error('logMediaslideError failed', error, payload);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Konfliktlösung
+// Conflict resolution (identical logic to mediaslideSyncService)
 // ---------------------------------------------------------------------------
 
 function toTimestamp(value?: string | null): number | null {
@@ -117,15 +90,9 @@ function toTimestamp(value?: string | null): number | null {
   return Number.isNaN(t) ? null : t;
 }
 
-/**
- * Entscheidet, welche Messwerte übernommen werden.
- * Strategie:
- * - Wenn einer der Zeitstempel fehlt → bevorzugt lokales Model (wir überschreiben nichts).
- * - Sonst gewinnt der jeweils neuere Zeitstempel pro Feldgruppe.
- */
 function resolveMeasurementsConflict(args: {
   local: SupabaseModel;
-  remote: MediaslideMeasurements;
+  remote: NetwalkMeasurements;
   localUpdatedAt?: string | null;
   remoteUpdatedAt?: string | null;
 }): Partial<SupabaseModel> {
@@ -134,26 +101,17 @@ function resolveMeasurementsConflict(args: {
   const remoteTs = toTimestamp(remoteUpdatedAt);
 
   const result: Partial<SupabaseModel> = {};
-
   const remoteIsNewer = remoteTs !== null && (localTs === null || remoteTs > localTs);
 
-  const fields: (keyof MediaslideMeasurements & keyof SupabaseModel)[] = [
-    'height',
-    'bust',
-    'waist',
-    'hips',
-    'chest',
-    'legs_inseam',
-    'shoe_size',
+  const fields: (keyof NetwalkMeasurements & keyof SupabaseModel)[] = [
+    'height', 'bust', 'waist', 'hips', 'chest', 'legs_inseam', 'shoe_size',
   ];
 
   for (const f of fields) {
     const remoteVal = remote[f];
-    if (remoteVal === undefined) continue; // Remote hat für dieses Feld nichts geschickt
+    if (remoteVal === undefined) continue;
     if (remoteIsNewer) {
       (result as any)[f] = remoteVal;
-    } else {
-      // lokaler Wert bleibt, wir schreiben nichts
     }
   }
 
@@ -161,54 +119,53 @@ function resolveMeasurementsConflict(args: {
 }
 
 // ---------------------------------------------------------------------------
-// Zentrale Sync-Funktion (für Webhook & Cron)
+// Core sync function
 // ---------------------------------------------------------------------------
 
-export async function syncSingleModelFromMediaslide(args: {
+export async function syncSingleModelFromNetwalk(args: {
   localModelId: string;
-  mediaslideId: string;
+  netwalkId: string;
   apiKey?: string;
 }): Promise<{ ok: boolean; conflict?: boolean }> {
-  const { localModelId, mediaslideId, apiKey } = args;
+  const { localModelId, netwalkId, apiKey } = args;
 
   const local = await getModelByIdFromSupabase(localModelId);
   if (!local) {
-    await logMediaslideError({
-      operation: 'syncSingleModelFromMediaslide',
+    await logNetwalkError({
+      operation: 'syncSingleModelFromNetwalk',
       modelId: localModelId,
-      mediaslideId,
+      mediaslideId: netwalkId,
       message: 'Local model not found',
     });
     return { ok: false };
   }
 
-  let remote: MediaslideModelPayload | null = null;
+  let remote: NetwalkModelPayload | null = null;
   try {
-    remote = (await getModelFromMediaslide(mediaslideId, apiKey)) as MediaslideModelPayload | null;
+    remote = (await getModelFromNetwalk(netwalkId, apiKey)) as NetwalkModelPayload | null;
   } catch (e: any) {
-    await logMediaslideError({
-      operation: 'getModelFromMediaslide',
+    await logNetwalkError({
+      operation: 'getModelFromNetwalk',
       modelId: localModelId,
-      mediaslideId,
-      message: e?.message || 'Failed to fetch model from Mediaslide',
+      mediaslideId: netwalkId,
+      message: e?.message || 'Failed to fetch model from Netwalk',
       details: e,
     });
     return { ok: false };
   }
 
   if (!remote) {
-    await logMediaslideError({
-      operation: 'getModelFromMediaslide',
+    await logNetwalkError({
+      operation: 'getModelFromNetwalk',
       modelId: localModelId,
-      mediaslideId,
-      message: 'Remote model not found',
+      mediaslideId: netwalkId,
+      message: 'Remote model not found in Netwalk',
     });
     return { ok: false };
   }
 
   const updates: Partial<SupabaseModel> = {};
 
-  // Basisdaten
   if (typeof remote.name === 'string' && remote.name.trim()) {
     updates.name = remote.name.trim();
   }
@@ -221,7 +178,6 @@ export async function syncSingleModelFromMediaslide(args: {
   if (remote.ethnicity !== undefined) (updates as any).ethnicity = remote.ethnicity ?? null;
   if (remote.categories !== undefined) (updates as any).categories = remote.categories ?? null;
 
-  // Maße mit Konfliktlösung
   if (remote.measurements) {
     Object.assign(
       updates,
@@ -234,7 +190,6 @@ export async function syncSingleModelFromMediaslide(args: {
     );
   }
 
-  // Sichtbarkeit
   if (remote.visibility) {
     const v = remote.visibility;
     if (typeof v.isVisibleCommercial === 'boolean') {
@@ -253,30 +208,28 @@ export async function syncSingleModelFromMediaslide(args: {
     .from('models')
     .update({
       ...updates,
-      mediaslide_sync_id: mediaslideId,
+      netwalk_model_id: netwalkId,
     })
     .eq('id', local.id);
 
   if (error) {
-    await logMediaslideError({
-      operation: 'updateLocalModelFromMediaslide',
+    await logNetwalkError({
+      operation: 'updateLocalModelFromNetwalk',
       modelId: localModelId,
-      mediaslideId,
-      message: 'Failed to update local model from Mediaslide',
+      mediaslideId: netwalkId,
+      message: 'Failed to update local model from Netwalk',
       details: error,
     });
     return { ok: false };
   }
 
-  // After a successful sync, check critical completeness fields and log a
-  // warning if any are missing. This makes the issue visible to all agency
-  // members via the sync log, and is picked up by the My Models banner.
+  // After a successful sync, log a completeness_warning if any mandatory
+  // fields are missing. All agency members can see this via the sync log.
   const freshModel = await getModelByIdFromSupabase(localModelId);
   if (freshModel) {
     const missingRequired: string[] = [];
     if (!freshModel.name?.trim())                          missingRequired.push('name');
     if ((freshModel.portfolio_images ?? []).length === 0)  missingRequired.push('portfolio_images');
-    // Territory presence is checked via a separate query for accuracy.
     const { data: terr } = await supabase
       .from('model_agency_territories')
       .select('id')
@@ -285,10 +238,10 @@ export async function syncSingleModelFromMediaslide(args: {
     if (!terr || terr.length === 0) missingRequired.push('territory');
 
     if (missingRequired.length > 0) {
-      await logMediaslideError({
+      await logNetwalkError({
         operation: 'completeness_warning',
         modelId: localModelId,
-        mediaslideId,
+        mediaslideId: netwalkId,
         message: `Model synced but missing required fields — will not appear to clients: ${missingRequired.join(', ')}`,
         details: { missing_required_fields: missingRequired },
       });
@@ -299,25 +252,20 @@ export async function syncSingleModelFromMediaslide(args: {
 }
 
 // ---------------------------------------------------------------------------
-// Webhook-Entry-Point
+// Webhook entry point
 // ---------------------------------------------------------------------------
 
-/**
- * Handler für einen Mediaslide-Webhook.
- * Erwartet minimal: lokales Model und Mediaslide-ID.
- * Kann z. B. in einer API-Route aufgerufen werden.
- */
-export async function handleMediaslideWebhook(payload: {
+export async function handleNetwalkWebhook(payload: {
   localModelId: string;
-  mediaslideId: string;
+  netwalkId: string;
   apiKey?: string;
 }): Promise<{ ok: boolean }> {
-  const result = await syncSingleModelFromMediaslide(payload);
+  const result = await syncSingleModelFromNetwalk(payload);
   if (!result.ok) {
-    await logMediaslideError({
-      operation: 'handleMediaslideWebhook',
+    await logNetwalkError({
+      operation: 'handleNetwalkWebhook',
       modelId: payload.localModelId,
-      mediaslideId: payload.mediaslideId,
+      mediaslideId: payload.netwalkId,
       message: 'Webhook sync failed',
     });
   }
@@ -325,44 +273,28 @@ export async function handleMediaslideWebhook(payload: {
 }
 
 // ---------------------------------------------------------------------------
-// Cron-Job-Entry-Point
+// Cron entry point
 // ---------------------------------------------------------------------------
 
-/**
- * Kann in einem Cron-Job (Supabase Edge Function, externes Cron, etc.) aufgerufen werden.
- * Idee:
- * - `syncModelData` ruft die Mediaslide-API an und stößt einen Abgleich an (z. B. Push in unsere DB),
- *   oder liefert wenigstens eine Liste von IDs, die aktualisiert werden sollen.
- * - Hier zeigen wir exemplarisch, wie man alle Models mit `mediaslide_sync_id` synchronisiert.
- */
-/**
- * Cron-Entry-Point.
- *
- * Fixes:
- *   1. fetchAllSupabasePages → loads ALL sync models, not just the first 1000.
- *      (idx_models_mediaslide_sync_id makes this fast.)
- *   2. runWithConcurrency(5) → 5 parallel syncs instead of strict serial await-loop.
- *      Reduces wall-clock time from O(n) to O(n/5) without hammering the Mediaslide API.
- */
-export async function runMediaslideCronSync(apiKey?: string): Promise<void> {
-  let allRows: { id: string; mediaslide_sync_id: string }[];
+export async function runNetwalkCronSync(apiKey?: string): Promise<void> {
+  let allRows: { id: string; netwalk_model_id: string }[];
 
   try {
     allRows = (await fetchAllSupabasePages(async (from, to) => {
       const { data, error } = await supabase
         .from('models')
-        .select('id, mediaslide_sync_id')
-        .not('mediaslide_sync_id', 'is', null)
+        .select('id, netwalk_model_id')
+        .not('netwalk_model_id', 'is', null)
         .range(from, to);
       return {
-        data: data as { id: string; mediaslide_sync_id: string }[] | null,
+        data: data as { id: string; netwalk_model_id: string }[] | null,
         error,
       };
-    })).filter((r) => Boolean(r.mediaslide_sync_id));
+    })).filter((r) => Boolean(r.netwalk_model_id));
   } catch (e: any) {
-    await logMediaslideError({
-      operation: 'runMediaslideCronSync',
-      message: 'Failed to load models with mediaslide_sync_id',
+    await logNetwalkError({
+      operation: 'runNetwalkCronSync',
+      message: 'Failed to load models with netwalk_model_id',
       details: e,
     });
     return;
@@ -372,18 +304,18 @@ export async function runMediaslideCronSync(apiKey?: string): Promise<void> {
 
   const tasks = allRows.map((row) => async () => {
     try {
-      await syncModelData(row.mediaslide_sync_id, apiKey);
-      await syncSingleModelFromMediaslide({
+      await syncModelData(row.netwalk_model_id, apiKey);
+      await syncSingleModelFromNetwalk({
         localModelId: row.id,
-        mediaslideId: row.mediaslide_sync_id,
+        netwalkId: row.netwalk_model_id,
         apiKey,
       });
     } catch (e: any) {
-      await logMediaslideError({
-        operation: 'runMediaslideCronSync:task',
+      await logNetwalkError({
+        operation: 'runNetwalkCronSync:task',
         modelId: row.id,
-        mediaslideId: row.mediaslide_sync_id,
-        message: e?.message || 'Error while cron-syncing single model',
+        mediaslideId: row.netwalk_model_id,
+        message: e?.message || 'Error while cron-syncing single model from Netwalk',
         details: e,
       });
     }
@@ -391,4 +323,3 @@ export async function runMediaslideCronSync(apiKey?: string): Promise<void> {
 
   await runWithConcurrency(tasks, 5);
 }
-

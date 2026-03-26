@@ -6,6 +6,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Modal, Alert, TextInput, Platform } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { getApplicationsForApplicant, deleteApplication, updateApplicationsProfileForApplicant } from '../services/applicationsSupabase';
+import { FILTER_COUNTRIES, ETHNICITY_OPTIONS } from '../utils/modelFilters';
 import { refreshApplications } from '../store/applicationsStore';
 import type { SupabaseApplication } from '../services/applicationsSupabase';
 import { getAgencyChatDisplayById } from '../services/agenciesSupabase';
@@ -73,13 +74,19 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
     height: string;
     city: string;
     hair: string;
+    countryCode: string;
+    ethnicity: string;
     instagram: string;
   } | null>(null);
+  const [settingsCountryQuery, setSettingsCountryQuery] = useState('');
+  const [settingsCountryDropdownOpen, setSettingsCountryDropdownOpen] = useState(false);
+  const [settingsEthnicityDropdownOpen, setSettingsEthnicityDropdownOpen] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
 
-  const load = () => {
+  const load = (signal?: { cancelled: boolean }) => {
     setLoading(true);
     getApplicationsForApplicant(applicantUserId).then(async (list) => {
+      if (signal?.cancelled) return;
       setApplications(list);
       setLoading(false);
       const map: Record<string, string> = {};
@@ -90,6 +97,7 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
       }
       const allIds = [...new Set(list.map((x) => x.agency_id).filter(Boolean))] as string[];
       for (const id of allIds) {
+        if (signal?.cancelled) break;
         if (map[id]) continue;
         try {
           const row = await getAgencyChatDisplayById(id);
@@ -98,12 +106,14 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
           /* ignore */
         }
       }
-      setAgencyNames(map);
+      if (!signal?.cancelled) setAgencyNames(map);
     });
   };
 
   useEffect(() => {
-    load();
+    const signal = { cancelled: false };
+    load(signal);
+    return () => { signal.cancelled = true; };
   }, [applicantUserId]);
 
   useEffect(() => {
@@ -119,6 +129,8 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
       height: a.height ? String(a.height) : '',
       city: a.city ?? '',
       hair: a.hair_color ?? '',
+      countryCode: a.country_code ?? '',
+      ethnicity: a.ethnicity ?? '',
       instagram: a.instagram_link ?? '',
     });
   }, [applications]);
@@ -133,6 +145,8 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
       height: typeof heightNum === 'number' && !Number.isNaN(heightNum) ? heightNum : undefined,
       city: profileDraft.city.trim() || null,
       hair_color: profileDraft.hair.trim() || null,
+      country_code: profileDraft.countryCode || null,
+      ethnicity: profileDraft.ethnicity || null,
       instagram_link: profileDraft.instagram.trim() || null,
     });
     setSavingProfile(false);
@@ -361,6 +375,97 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
                     style={styles.settingsInput}
                   />
                 </View>
+
+                {/* Country */}
+                <View style={[styles.settingsField, { zIndex: 200 }]}>
+                  <Text style={styles.settingsLabel}>Country</Text>
+                  {profileDraft.countryCode ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <View style={styles.settingsChip}>
+                        <Text style={styles.settingsChipLabel}>
+                          {FILTER_COUNTRIES.find((c) => c.code === profileDraft.countryCode)?.label ?? profileDraft.countryCode}
+                        </Text>
+                        <TouchableOpacity
+                          onPress={() => { setProfileDraft((p) => p ? { ...p, countryCode: '' } : p); setSettingsCountryQuery(''); }}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Text style={styles.settingsChipRemove}>×</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ) : (
+                    <View style={{ position: 'relative' }}>
+                      <TextInput
+                        value={settingsCountryQuery}
+                        onChangeText={(v) => { setSettingsCountryQuery(v); setSettingsCountryDropdownOpen(true); setSettingsEthnicityDropdownOpen(false); }}
+                        onFocus={() => { setSettingsCountryDropdownOpen(true); setSettingsEthnicityDropdownOpen(false); }}
+                        placeholder="Search country…"
+                        placeholderTextColor={colors.textSecondary}
+                        style={styles.settingsInput}
+                      />
+                      {settingsCountryDropdownOpen && (
+                        <View style={styles.settingsDropdown}>
+                          <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled showsVerticalScrollIndicator style={{ maxHeight: 160 }}>
+                            {FILTER_COUNTRIES
+                              .filter((c) => !settingsCountryQuery.trim() || c.label.toLowerCase().includes(settingsCountryQuery.toLowerCase()) || c.code.toLowerCase().includes(settingsCountryQuery.toLowerCase()))
+                              .map((c, i, arr) => (
+                                <TouchableOpacity
+                                  key={c.code}
+                                  style={[styles.settingsDropdownItem, i < arr.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}
+                                  onPress={() => { setProfileDraft((p) => p ? { ...p, countryCode: c.code } : p); setSettingsCountryQuery(''); setSettingsCountryDropdownOpen(false); }}
+                                >
+                                  <Text style={styles.settingsDropdownItemText}>{c.label}</Text>
+                                </TouchableOpacity>
+                              ))}
+                          </ScrollView>
+                        </View>
+                      )}
+                    </View>
+                  )}
+                </View>
+
+                {/* Ethnicity */}
+                <View style={[styles.settingsField, { zIndex: 100 }]}>
+                  <Text style={styles.settingsLabel}>Ethnicity</Text>
+                  {profileDraft.ethnicity ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <View style={styles.settingsChip}>
+                        <Text style={styles.settingsChipLabel}>{profileDraft.ethnicity}</Text>
+                        <TouchableOpacity
+                          onPress={() => setProfileDraft((p) => p ? { ...p, ethnicity: '' } : p)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Text style={styles.settingsChipRemove}>×</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ) : (
+                    <View style={{ position: 'relative' }}>
+                      <TouchableOpacity
+                        style={[styles.settingsInput, { justifyContent: 'center' }]}
+                        onPress={() => { setSettingsEthnicityDropdownOpen((o) => !o); setSettingsCountryDropdownOpen(false); }}
+                      >
+                        <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary }}>Select ethnicity…</Text>
+                      </TouchableOpacity>
+                      {settingsEthnicityDropdownOpen && (
+                        <View style={styles.settingsDropdown}>
+                          <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled showsVerticalScrollIndicator style={{ maxHeight: 160 }}>
+                            {ETHNICITY_OPTIONS.map((eth, i) => (
+                              <TouchableOpacity
+                                key={eth}
+                                style={[styles.settingsDropdownItem, i < ETHNICITY_OPTIONS.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}
+                                onPress={() => { setProfileDraft((p) => p ? { ...p, ethnicity: eth } : p); setSettingsEthnicityDropdownOpen(false); }}
+                              >
+                                <Text style={styles.settingsDropdownItemText}>{eth}</Text>
+                              </TouchableOpacity>
+                            ))}
+                          </ScrollView>
+                        </View>
+                      )}
+                    </View>
+                  )}
+                </View>
+
                 <View style={styles.settingsField}>
                   <Text style={styles.settingsLabel}>Hair color</Text>
                   <TextInput
@@ -523,6 +628,52 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.textPrimary,
     backgroundColor: colors.surface,
+  },
+  settingsChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.textPrimary,
+    borderRadius: 999,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  settingsChipLabel: {
+    ...typography.label,
+    fontSize: 11,
+    color: colors.surface,
+  },
+  settingsChipRemove: {
+    ...typography.label,
+    fontSize: 14,
+    color: colors.surface,
+    lineHeight: 16,
+  },
+  settingsDropdown: {
+    position: 'absolute',
+    top: 44,
+    left: 0,
+    right: 0,
+    zIndex: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    backgroundColor: colors.surface,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 16,
+    overflow: 'hidden',
+  },
+  settingsDropdownItem: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+  },
+  settingsDropdownItemText: {
+    ...typography.body,
+    fontSize: 12,
+    color: colors.textPrimary,
   },
   confirmOverlay: {
     flex: 1,

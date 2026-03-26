@@ -46,6 +46,7 @@ type AuthState = {
   refreshProfile: () => Promise<void>;
   acceptTerms: (agencyRights?: boolean) => Promise<{ error: string | null }>;
   markDocumentsSent: () => Promise<{ error: string | null }>;
+  updateDisplayName: (name: string) => Promise<{ error: string | null }>;
 };
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -255,7 +256,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { linkModelByEmail } = await import('../services/modelsSupabase');
         await linkModelByEmail();
         await loadProfile(data.user.id);
-      } catch {}
+      } catch (e) {
+        console.error('signUp linkModelByEmail error:', e);
+      }
     }
     return { error: null };
   };
@@ -296,7 +299,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return { error: 'Your account has been deactivated. Please contact the administrator.' };
         }
       }
-    } catch {}
+    } catch (e) {
+      console.error('signIn profile load error:', e);
+    }
     return { error: null };
   };
 
@@ -304,6 +309,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await supabase.auth.signOut();
     setSession(null);
     setProfile(null);
+    try {
+      const { resetApplicationsStore } = await import('../store/applicationsStore');
+      const { resetRecruitingChatsStore } = await import('../store/recruitingChats');
+      const { resetOptionRequestsStore } = await import('../store/optionRequests');
+      resetApplicationsStore();
+      resetRecruitingChatsStore();
+      resetOptionRequestsStore();
+    } catch (e) {
+      console.error('signOut store reset error:', e);
+    }
   };
 
   const acceptTerms = async (agencyRights = false) => {
@@ -344,6 +359,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { error: null };
   };
 
+  const updateDisplayName = async (name: string) => {
+    if (!session?.user) return { error: 'Not authenticated' };
+    const trimmed = name.trim();
+    if (!trimmed) return { error: 'Name must not be empty.' };
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ display_name: trimmed })
+        .eq('id', session.user.id);
+      if (error) return { error: error.message };
+      await loadProfile(session.user.id);
+      return { error: null };
+    } catch (e) {
+      console.error('updateDisplayName error:', e);
+      return { error: 'Could not update name.' };
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -357,6 +390,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         refreshProfile,
         acceptTerms,
         markDocumentsSent,
+        updateDisplayName,
       }}
     >
       {children}

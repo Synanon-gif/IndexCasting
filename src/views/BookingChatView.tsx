@@ -4,17 +4,19 @@
  * This view is shown AFTER the agency has accepted the model's application.
  * Before acceptance, the chat is a Recruiting Chat (handled in AgencyRecruitingView).
  */
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, Modal, ScrollView, Image, Platform } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, Modal, ScrollView, Image, Platform, ActivityIndicator, Linking, Pressable } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import {
   getRecruitingMessages,
   addRecruitingMessage,
+  addRecruitingMessageWithFile,
   getRecruitingThread,
   subscribeRecruitingChats,
   loadMessagesForThread,
   addModelBookingThreadId,
 } from '../store/recruitingChats';
+import { getSignedRecruitingChatFileUrl } from '../services/recruitingChatSupabase';
 import { getApplicationById } from '../store/applicationsStore';
 import { getThread } from '../services/recruitingChatSupabase';
 import { getAgencyChatDisplayById } from '../services/agenciesSupabase';
@@ -34,6 +36,10 @@ export const BookingChatView: React.FC<Props> = ({ threadId, fromRole, onClose, 
   const [messages, setMessages] = useState(() => getRecruitingMessages(threadId));
   const [agencyName, setAgencyName] = useState<string | null>(initialAgencyName ?? null);
   const [agencyLogoUrl, setAgencyLogoUrl] = useState<string | null>(null);
+  const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const thread = getRecruitingThread(threadId);
   const application = thread ? getApplicationById(thread.applicationId) : undefined;
 
@@ -70,11 +76,52 @@ export const BookingChatView: React.FC<Props> = ({ threadId, fromRole, onClose, 
     });
   }, [threadId, fromRole, applicationAgencyId, application?.agencyId]);
 
+  // Resolve signed URLs for file attachments
+  useEffect(() => {
+    let cancelled = false;
+    const paths = messages
+      .map((m) => m.fileUrl)
+      .filter((p): p is string => !!p && !signedUrls[p]);
+    if (paths.length === 0) return;
+    void Promise.all(
+      paths.map(async (path) => {
+        const url = await getSignedRecruitingChatFileUrl(path);
+        if (url && !cancelled) setSignedUrls((prev) => ({ ...prev, [path]: url }));
+      }),
+    );
+    return () => { cancelled = true; };
+  }, [messages]);
+
   const sendMessage = () => {
     const t = chatInput.trim();
     if (!t) return;
+    // Auto-promote messages containing a URL to include the link
     addRecruitingMessage(threadId, fromRole, t);
     setChatInput('');
+  };
+
+  const openUrl = (url: string) => {
+    void Linking.openURL(url).catch(() => {});
+  };
+
+  const handleFileSelected = async (file: File) => {
+    setUploading(true);
+    setUploadError(null);
+    try {
+      await addRecruitingMessageWithFile(threadId, fromRole, file, file.name);
+    } catch (e) {
+      console.error('handleFileSelected error:', e);
+      setUploadError('Upload failed. Please try again.');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const openFileInput = () => {
+    if (Platform.OS === 'web' && fileInputRef.current) {
+      fileInputRef.current.click();
+    }
   };
 
   const displayAgencyName = agencyName || initialAgencyName || 'Agency';
@@ -154,29 +201,88 @@ export const BookingChatView: React.FC<Props> = ({ threadId, fromRole, onClose, 
             </View>
           )}
           <ScrollView style={styles.messages} contentContainerStyle={styles.messagesContent}>
-            {messages.map((msg) => (
-              <View
-                key={msg.id}
-                style={[
-                  styles.bubble,
-                  msg.from === fromRole ? styles.bubbleSelf : styles.bubbleOther,
-                ]}
-              >
-                <Text style={[styles.bubbleText, msg.from === fromRole && styles.bubbleTextSelf]}>
-                  {msg.text}
-                </Text>
-              </View>
-            ))}
+            {messages.map((msg) => {
+              const isSelf = msg.from === fromRole;
+              const resolvedFileUrl = msg.fileUrl ? (signedUrls[msg.fileUrl] ?? null) : null;
+              const isImage = !!msg.fileType && msg.fileType.startsWith('image/');
+              return (
+                <View key={msg.id} style={[styles.bubbleWrapper, isSelf && styles.bubbleWrapperSelf]}>
+                  {/* Image attachment */}
+                  {msg.fileUrl && isImage ? (
+                    resolvedFileUrl ? (
+                      <Pressable onPress={() => openUrl(resolvedFileUrl)}>
+                        <Image
+                          source={{ uri: resolvedFileUrl }}
+                          style={styles.attachedImage}
+                          resizeMode="cover"
+                        />
+                      </Pressable>
+                    ) : (
+                      <View style={styles.attachedImagePlaceholder}>
+                        <ActivityIndicator size="small" color={colors.textSecondary} />
+                      </View>
+                    )
+                  ) : null}
+                  {/* Non-image file attachment */}
+                  {msg.fileUrl && !isImage ? (
+                    <Pressable
+                      style={[styles.fileCard, isSelf && styles.fileCardSelf]}
+                      onPress={() => resolvedFileUrl && openUrl(resolvedFileUrl)}
+                    >
+                      <Text style={styles.fileCardIcon}>📎</Text>
+                      <Text style={[styles.fileCardLabel, isSelf && styles.fileCardLabelSelf]} numberOfLines={1}>
+                        Attachment
+                      </Text>
+                      <Text style={styles.fileCardOpen}>Open</Text>
+                    </Pressable>
+                  ) : null}
+                  {/* Text content */}
+                  {msg.text ? (
+                    <View style={[styles.bubble, isSelf ? styles.bubbleSelf : styles.bubbleOther]}>
+                      <Text style={[styles.bubbleText, isSelf && styles.bubbleTextSelf]}>
+                        {msg.text}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+              );
+            })}
           </ScrollView>
+          {uploadError ? <Text style={styles.uploadError}>{uploadError}</Text> : null}
           <View style={styles.inputRow}>
+            {Platform.OS === 'web' ? (
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void handleFileSelected(file);
+                }}
+              />
+            ) : null}
+            <TouchableOpacity
+              style={[styles.attachBtn, (!fromRole || uploading) && { opacity: 0.4 }]}
+              onPress={openFileInput}
+              disabled={uploading}
+            >
+              {uploading ? (
+                <ActivityIndicator size="small" color={colors.textSecondary} />
+              ) : (
+                <Text style={styles.attachBtnLabel}>📎</Text>
+              )}
+            </TouchableOpacity>
             <TextInput
               value={chatInput}
               onChangeText={setChatInput}
-              placeholder="Message..."
+              placeholder="Message…"
               placeholderTextColor={colors.textSecondary}
               style={styles.input}
+              editable={!uploading}
+              onSubmitEditing={sendMessage}
             />
-            <TouchableOpacity style={styles.send} onPress={sendMessage}>
+            <TouchableOpacity style={[styles.send, uploading && { opacity: 0.5 }]} onPress={sendMessage} disabled={uploading}>
               <Text style={styles.sendLabel}>Send</Text>
             </TouchableOpacity>
           </View>
@@ -342,6 +448,83 @@ const styles = StyleSheet.create({
   },
   bubbleTextSelf: {
     color: colors.surface,
+  },
+  bubbleWrapper: {
+    alignSelf: 'flex-start',
+    maxWidth: '85%',
+    marginBottom: spacing.xs,
+  },
+  bubbleWrapperSelf: {
+    alignSelf: 'flex-end',
+  },
+  attachedImage: {
+    width: 200,
+    height: 150,
+    borderRadius: 10,
+    backgroundColor: colors.border,
+    marginBottom: 2,
+  },
+  attachedImagePlaceholder: {
+    width: 200,
+    height: 150,
+    borderRadius: 10,
+    backgroundColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
+  fileCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    backgroundColor: colors.surface,
+    marginBottom: 2,
+  },
+  fileCardSelf: {
+    backgroundColor: colors.textPrimary,
+    borderColor: colors.textPrimary,
+  },
+  fileCardIcon: {
+    fontSize: 14,
+  },
+  fileCardLabel: {
+    ...typography.body,
+    fontSize: 12,
+    color: colors.textPrimary,
+    flex: 1,
+  },
+  fileCardLabelSelf: {
+    color: colors.surface,
+  },
+  fileCardOpen: {
+    ...typography.label,
+    fontSize: 10,
+    color: colors.accentGreen,
+  },
+  uploadError: {
+    ...typography.body,
+    fontSize: 11,
+    color: '#e53925',
+    marginBottom: spacing.xs,
+    marginHorizontal: spacing.xs,
+  },
+  attachBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+  },
+  attachBtnLabel: {
+    fontSize: 16,
   },
   inputRow: {
     flexDirection: 'row',
