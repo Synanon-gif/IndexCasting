@@ -172,6 +172,7 @@ export const uiCopy = {
      */
     signUpOwnerHint:
       'The first signup as Client or Agency (without an invitation link) creates your organization and assigns you as the Organization Owner. People who register using an invite link you send become employees or bookers — they are not owners.',
+    companyNameRequired: 'Please enter your agency or company name.',
   },
   /** Soft delete: profile stays 30 days, then purge via admin/cron; email reusable after auth user removed. */
   accountDeletion: {
@@ -375,6 +376,10 @@ export const uiCopy = {
     chatPermissionDenied: 'Permission denied. Verify GRANT EXECUTE on the function in SQL.',
     chatFunctionMissing: 'Function missing or API schema stale. Re-run the SQL migration, then reload pgrst.',
     chatGenericFailed: 'Could not start recruiting chat. Check your connection and try again.',
+    /** Swipe limit — displayed in the pending queue. */
+    dailySwipeCounter: (used: number, limit: number) => `Daily Swipes: ${used} / ${limit}`,
+    limitReachedMessage: "You've reached your daily limit. Upgrade to continue.",
+    upgradeCTA: 'Upgrade Plan',
   },
   /** Organization name validation and management errors. */
   org: {
@@ -448,6 +453,51 @@ export const uiCopy = {
     /** Shown where the old “Admin: Yes/No” toggle was removed */
     adminFlagNotEditableInApp:
       'Platform admin access cannot be granted from this screen. It is set only in the database.',
+    /** Organizations tab */
+    orgsTabTitle: 'Organizations',
+    orgsSearchPlaceholder: 'Search organizations...',
+    orgsEmpty: 'No organizations found.',
+    orgActiveLabel: 'Active',
+    orgInactiveLabel: 'Inactive',
+    orgDeactivateBtn: 'Deactivate',
+    orgActivateBtn: 'Activate',
+    orgEditNameLabel: 'Name',
+    orgChangeOwnerLabel: 'Transfer Owner',
+    orgChangeOwnerPlaceholder: 'Select new owner...',
+    orgAdminNotesLabel: 'Admin Notes (internal only)',
+    orgAdminNotesPlaceholder: 'Internal notes, not visible to users...',
+    orgSaveChanges: 'Save Changes',
+    orgSaved: 'Organization updated.',
+    orgSaveFailed: 'Could not update organization. Check console.',
+    orgToggleActiveFailed: 'Could not change organization status.',
+    orgMembersCount: '{n} member(s)',
+    /** Models tab */
+    modelsTabTitle: 'Models',
+    modelsSearchPlaceholder: 'Search models...',
+    modelsEmpty: 'No models found.',
+    modelActiveLabel: 'Active',
+    modelInactiveLabel: 'Inactive (hidden from discovery)',
+    modelDeactivateBtn: 'Deactivate',
+    modelActivateBtn: 'Activate',
+    modelAdminNotesLabel: 'Admin Notes (internal only)',
+    modelAdminNotesPlaceholder: 'Internal notes, not visible to users...',
+    modelNotesSaved: 'Notes saved.',
+    modelNotesFailed: 'Could not save notes.',
+    modelToggleActiveFailed: 'Could not change model status.',
+    /** Org-deactivated gate screen */
+    orgDeactivatedTitle: 'Organization Deactivated',
+    orgDeactivatedBody: 'Your organization has been deactivated. Please contact support.',
+    /** Agency swipe limit admin controls */
+    swipeLimitTitle: 'Swipe Limit',
+    swipeLimitUsed: 'Used today',
+    swipeLimitMax: 'Daily limit',
+    swipeLimitLastReset: 'Last reset',
+    swipeLimitSave: 'Save Limit',
+    swipeLimitReset: 'Reset Usage',
+    swipeLimitSaveSuccess: 'Limit saved.',
+    swipeLimitResetSuccess: 'Usage reset.',
+    swipeLimitSaveFailed: 'Could not save limit.',
+    swipeLimitResetFailed: 'Could not reset usage.',
   },
   /** Agency — model profile edit panel (My Models detail view). */
   modelEdit: {

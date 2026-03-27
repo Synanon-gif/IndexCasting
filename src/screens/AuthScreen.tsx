@@ -51,6 +51,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       if (e) setError(e);
     } else {
       const r = inviteAuth?.lockedProfileRole ?? role;
+      if (!inviteAuth && (r === 'client' || r === 'agent') && !companyName.trim()) {
+        setError(uiCopy.auth.companyNameRequired);
+        setBusy(false);
+        return;
+      }
       const company =
         !inviteAuth && (r === 'client' || r === 'agent') ? companyName.trim() || undefined : undefined;
       const { error: e } = await signUp(

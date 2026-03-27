@@ -164,6 +164,7 @@ export async function getModelsForClientFromSupabase(
     let q = supabase
       .from('models')
       .select('*')
+      .eq('is_active', true)
       .or('agency_relationship_status.is.null,agency_relationship_status.eq.active,agency_relationship_status.eq.pending_link')
       .order('name')
       .range(from, to);
@@ -201,6 +202,7 @@ export async function getModelsForClientFromSupabaseByTerritory(
       .from('models_with_territories')
       .select('*')
       .eq('territory_country_code', iso)
+      .eq('is_active', true)
       .or('agency_relationship_status.is.null,agency_relationship_status.eq.active,agency_relationship_status.eq.pending_link')
       .order('name')
       .range(from, to);

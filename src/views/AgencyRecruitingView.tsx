@@ -30,6 +30,11 @@ import { tryStartRecruitingChat } from '../store/recruitingChats';
 import { loadAgencyShortlistIds, saveAgencyShortlistIds } from '../storage/agencyRecruitingShortlist';
 import { mergeAgencyRecruitingMyListIds } from '../utils/agencyRecruitingMyList';
 import { upsertTerritoriesForModel } from '../services/territoriesSupabase';
+import {
+  getMyAgencyUsageLimits,
+  incrementMyAgencySwipeCount,
+  type AgencyUsageLimits,
+} from '../services/agencyUsageLimitsSupabase';
 import { uiCopy } from '../constants/uiCopy';
 import ModelFiltersPanel from '../components/ModelFiltersPanel';
 import {
@@ -68,6 +73,12 @@ export const AgencyRecruitingView: React.FC<{
   const [shortlistIds, setShortlistIds] = useState<string[]>([]);
   /** Pending applications with an active recruiting thread (same rows as Messages → Recruiting chats). */
   const [pendingWithChatApps, setPendingWithChatApps] = useState<ModelApplication[]>([]);
+
+  /** Organisation-wide daily swipe usage. Loaded once on mount and updated locally after each action. */
+  const [usageLimits, setUsageLimits] = useState<AgencyUsageLimits | null>(null);
+
+  const isLimitReached =
+    usageLimits !== null && usageLimits.swipes_used_today >= usageLimits.daily_swipe_limit;
 
   // Territory modal state (shown before accept)
   const [pendingAcceptApp, setPendingAcceptApp] = useState<ModelApplication | null>(null);
@@ -131,6 +142,7 @@ export const AgencyRecruitingView: React.FC<{
       return;
     }
     loadAgencyShortlistIds(agencyId).then(setShortlistIds);
+    getMyAgencyUsageLimits().then(setUsageLimits);
   }, [agencyId]);
 
   useEffect(() => {
@@ -185,8 +197,17 @@ export const AgencyRecruitingView: React.FC<{
     setAcceptingWithTerritories(false);
   };
 
-  const handleYes = () => {
-    if (current) handleAcceptForApp(current);
+  const handleYes = async () => {
+    if (!current) return;
+    const result = await incrementMyAgencySwipeCount();
+    setUsageLimits((prev) =>
+      prev ? { ...prev, swipes_used_today: result.swipes_used, daily_swipe_limit: result.limit } : prev,
+    );
+    if (!result.allowed) {
+      showFeedback(uiCopy.recruiting.limitReachedMessage);
+      return;
+    }
+    handleAcceptForApp(current);
   };
 
   const handleDeclineForApp = async (app: ModelApplication) => {
@@ -205,8 +226,17 @@ export const AgencyRecruitingView: React.FC<{
     }
   };
 
-  const handleNo = () => {
-    if (current) void handleDeclineForApp(current);
+  const handleNo = async () => {
+    if (!current) return;
+    const result = await incrementMyAgencySwipeCount();
+    setUsageLimits((prev) =>
+      prev ? { ...prev, swipes_used_today: result.swipes_used, daily_swipe_limit: result.limit } : prev,
+    );
+    if (!result.allowed) {
+      showFeedback(uiCopy.recruiting.limitReachedMessage);
+      return;
+    }
+    void handleDeclineForApp(current);
   };
 
   const handleAddToList = () => {
@@ -390,6 +420,24 @@ export const AgencyRecruitingView: React.FC<{
 
       <View style={{ height: 8 }} />
 
+      {usageLimits && (
+        <View style={styles.swipeCounterRow}>
+          <Text style={styles.swipeCounterText}>
+            {uiCopy.recruiting.dailySwipeCounter(
+              usageLimits.swipes_used_today,
+              usageLimits.daily_swipe_limit,
+            )}
+          </Text>
+        </View>
+      )}
+
+      {isLimitReached && (
+        <View style={styles.limitBanner}>
+          <Text style={styles.limitBannerText}>{uiCopy.recruiting.limitReachedMessage}</Text>
+          <Text style={styles.limitBannerCTA}>{uiCopy.recruiting.upgradeCTA}</Text>
+        </View>
+      )}
+
       {current ? (
         <View style={styles.cardWrap}>
           <View style={styles.card}>
@@ -424,12 +472,20 @@ export const AgencyRecruitingView: React.FC<{
             </TouchableOpacity>
             <View style={styles.cardActions}>
               <View style={styles.cardActionsRowCentered}>
-                <TouchableOpacity style={styles.buttonAccept} onPress={() => handleYes()}>
+                <TouchableOpacity
+                  style={[styles.buttonAccept, isLimitReached && styles.buttonDisabled]}
+                  onPress={() => void handleYes()}
+                  disabled={isLimitReached}
+                >
                   <Text style={styles.buttonAcceptLabel}>Accept application</Text>
                 </TouchableOpacity>
               </View>
               <View style={styles.cardActionsRow}>
-                <TouchableOpacity style={styles.buttonNo} onPress={handleNo}>
+                <TouchableOpacity
+                  style={[styles.buttonNo, isLimitReached && styles.buttonDisabled]}
+                  onPress={() => void handleNo()}
+                  disabled={isLimitReached}
+                >
                   <Text style={styles.buttonNoLabel}>No</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.buttonSecondary} onPress={handleAddToList}>
@@ -1053,6 +1109,39 @@ const styles = StyleSheet.create({
     bottom: spacing.xl,
     ...typography.label,
     color: 'rgba(255,255,255,0.7)',
+  },
+  swipeCounterRow: {
+    alignItems: 'center',
+    paddingVertical: spacing.xs,
+  },
+  swipeCounterText: {
+    ...typography.label,
+    color: colors.textSecondary,
+    fontSize: 12,
+  },
+  limitBanner: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+    backgroundColor: '#FFF3CD',
+    borderRadius: 10,
+    padding: spacing.md,
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  limitBannerText: {
+    ...typography.label,
+    color: '#856404',
+    textAlign: 'center',
+    fontSize: 13,
+  },
+  limitBannerCTA: {
+    ...typography.label,
+    color: '#533f03',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  buttonDisabled: {
+    opacity: 0.35,
   },
 });
 

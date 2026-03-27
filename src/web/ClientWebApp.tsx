@@ -3250,7 +3250,7 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
   realClientId,
   onClose,
 }) => {
-  const { signOut } = useAuth();
+  const { signOut, profile, updateDisplayName } = useAuth();
   const [displayName, setDisplayName] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [phone, setPhone] = useState('');
@@ -3281,23 +3281,26 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
     });
   }, [realClientId]);
 
-  // Load company name from Supabase (authoritative) and fall back to localStorage.
+  // Load settings: Supabase profile is authoritative for display_name; localStorage fills the rest.
   useEffect(() => {
     if (typeof window !== 'undefined') {
       try {
         const raw = window.localStorage.getItem('ci_client_settings');
         if (raw) {
           const s = JSON.parse(raw);
-          setDisplayName(s.displayName ?? '');
           setCompanyName(s.companyName ?? '');
           setPhone(s.phone ?? '');
           setWebsite(s.website ?? '');
           setInstagram(s.instagram ?? '');
           setLinkedin(s.linkedin ?? '');
+          // Only use localStorage display name as fallback; Supabase takes precedence below.
+          if (!profile?.display_name) setDisplayName(s.displayName ?? '');
         }
       } catch {}
     }
-  }, []);
+    // Always override with the authoritative Supabase value when available.
+    if (profile?.display_name) setDisplayName(profile.display_name);
+  }, [profile?.display_name]);
 
   useEffect(() => {
     if (!clientOrgId) return;
@@ -3313,6 +3316,11 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
         window.localStorage.setItem('ci_client_settings', JSON.stringify({
           displayName, companyName, phone, website, instagram, linkedin,
         }));
+      }
+      // Persist display name to Supabase (profiles.display_name) so it is
+      // visible to admins and consistent across devices.
+      if (displayName.trim()) {
+        await updateDisplayName(displayName.trim());
       }
       // Only the org owner may update the organization name.
       if (clientIsOwner && clientOrgId && companyName.trim()) {

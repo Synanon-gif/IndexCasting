@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { Platform, View, StyleSheet, ActivityIndicator, Text, Dimensions } from 'react-native';
+import { Platform, View, StyleSheet, ActivityIndicator, Text, Dimensions, TouchableOpacity } from 'react-native';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { AppDataProvider, useAppData } from './src/context/AppDataContext';
 import { AuthScreen } from './src/screens/AuthScreen';
@@ -97,7 +97,7 @@ function roleFromProfile(profileRole: string | undefined): Role | null {
 }
 
 function AppContent() {
-  const { session, loading, profile, signOut, refreshProfile } = useAuth();
+  const { session, loading, profile, signOut, refreshProfile, orgDeactivated, clearOrgDeactivated } = useAuth();
   const [sharedParams] = useState<{ name: string; ids: string[] } | null>(getSharedParams);
   const [bookingThreadId, setBookingThreadId] = useState<string | null>(getBookingThreadId);
   const [guestLinkId] = useState<string | null>(getGuestLinkId);
@@ -199,6 +199,30 @@ function AppContent() {
       <View style={[styles.shell, { justifyContent: 'center', alignItems: 'center' }]}>
         <ActivityIndicator size="large" color={colors.textPrimary} />
       </View>
+    );
+  }
+
+  // Org-deactivation gate: shown briefly before the session clears, then user lands on AuthScreen.
+  if (orgDeactivated) {
+    return (
+      <>
+        <View style={[styles.shell, { justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 }]}>
+          <Text style={{ fontSize: 28, marginBottom: 16 }}>🔒</Text>
+          <Text style={{ fontWeight: '700', fontSize: 18, color: colors.textPrimary, marginBottom: 12, textAlign: 'center' }}>
+            {uiCopy.adminDashboard.orgDeactivatedTitle}
+          </Text>
+          <Text style={{ fontSize: 14, color: colors.textSecondary, textAlign: 'center', lineHeight: 22, marginBottom: 28 }}>
+            {uiCopy.adminDashboard.orgDeactivatedBody}
+          </Text>
+          <TouchableOpacity
+            onPress={() => { clearOrgDeactivated(); void signOut(); }}
+            style={{ paddingVertical: 12, paddingHorizontal: 32, backgroundColor: colors.textPrimary, borderRadius: 8 }}
+          >
+            <Text style={{ fontWeight: '600', color: colors.surface }}>Sign Out</Text>
+          </TouchableOpacity>
+        </View>
+        <StatusBar style="dark" />
+      </>
     );
   }
 

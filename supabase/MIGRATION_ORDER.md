@@ -130,6 +130,19 @@ Files must be run in exactly this sequence on any new instance (staging, product
 93. `migration_fix_org_owner_delete_restrict.sql`  ← MED-5: ON DELETE RESTRICT + transfer RPC
 94. `migration_client_projects_org_scope.sql`      ← MED-1: Projects org-shared
 
+### Phase 12 – Admin Org & Model Control
+95. `migration_admin_org_model_control.sql`        ← Adds is_active + admin_notes to orgs & models; SECURITY DEFINER admin RPCs; org-deactivation gate RPC; get_models_by_location updated with is_active filter
+96. `migration_admin_org_model_patch.sql`          ← PATCH: apply this instead of #95 if the REVOKE statements caused a rollback. Fully idempotent. No REVOKE commands.
+
+### Phase 13 – Admin RLS Fix & Full B2B Backfill
+97. `migration_admin_org_rls_and_full_backfill.sql` ← CRIT: Adds admin SELECT RLS on organizations + organization_members so fallback query works; creates agencies rows for agents without one; full idempotent backfill for all orphaned B2B profiles.
+
+### Phase 14 – Monetization: Agency Swipe Limits
+98. `migration_agency_swipe_limits.sql` ← Creates `agency_usage_limits` table; RLS (member SELECT + admin ALL); 4 SECURITY DEFINER RPCs (`get_my_agency_usage_limit`, `increment_my_agency_swipe_count`, `admin_set_agency_swipe_limit`, `admin_reset_agency_swipe_count`); AFTER INSERT trigger on `organizations` to auto-create limit row for new agency orgs; backfill for existing agency orgs.
+
+### Phase 15 – Org Deduplication & Naming Fix
+99. `migration_fix_org_naming_and_dedup.sql` ← **v2** – Priority-based dedup for ALL duplicate cases (both agency_id IS NULL orphans AND cases where both orgs have agency_id IS NOT NULL but same owner): keeps org whose name ≠ owner display_name, tie-breaks by oldest created_at; moves members before deleting; defensive client dedup; adds UNIQUE(owner_id) WHERE type='agency'; fixes ensure_agency_for_current_agent() and ensure_client_organization() (no display_name fallback); syncs organizations.name from agencies.name for linked orgs.
+
 ---
 
 ## Files NOT to run in production

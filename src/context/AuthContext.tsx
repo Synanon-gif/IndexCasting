@@ -47,6 +47,9 @@ type AuthState = {
   acceptTerms: (agencyRights?: boolean) => Promise<{ error: string | null }>;
   markDocumentsSent: () => Promise<{ error: string | null }>;
   updateDisplayName: (name: string) => Promise<{ error: string | null }>;
+  /** Set when the user was signed out due to org deactivation. Cleared on next successful sign-in. */
+  orgDeactivated: boolean;
+  clearOrgDeactivated: () => void;
 };
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -57,6 +60,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [orgDeactivated, setOrgDeactivated] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: s } }) => {
@@ -79,8 +83,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  /** Returns { profile }, { deactivated: true, reason?: 'deactivated'|'deletion' } (signs out), or null if no profile. */
-  async function loadProfile(userId: string): Promise<{ profile: Profile } | { deactivated: true; reason?: 'deactivated' | 'deletion' } | null> {
+  /** Returns { profile }, { deactivated: true, reason } (signs out), or null if no profile. */
+  async function loadProfile(userId: string): Promise<{ profile: Profile } | { deactivated: true; reason?: 'deactivated' | 'deletion' | 'org_deactivated' } | null> {
     const { data } = await supabase
       .from('profiles')
       .select(PROFILE_FIELDS)
@@ -107,6 +111,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setProfile(null);
       return { deactivated: true, reason: 'deactivated' };
     }
+    // Org deactivation gate: if the user's org is deactivated, block access for all members.
+    if (!isGuest && (role === 'client' || role === 'agent') && isActive) {
+      try {
+        const { data: orgActive } = await supabase.rpc('get_my_org_active_status');
+        if (orgActive === false) {
+          setOrgDeactivated(true);
+          await supabase.auth.signOut();
+          setSession(null);
+          setProfile(null);
+          return { deactivated: true, reason: 'org_deactivated' };
+        }
+      } catch (e) {
+        console.error('loadProfile org active check error:', e);
+      }
+    }
     const profileData = {
       ...data,
       is_active: isGuest ? true : isActive,
@@ -119,6 +138,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       activation_documents_sent: data.activation_documents_sent ?? false,
       deletion_requested_at: data.deletion_requested_at ?? null,
     } as Profile;
+    setOrgDeactivated(false);
     setProfile(profileData);
     return { profile: profileData };
   }
@@ -296,8 +316,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (result.reason === 'deletion') {
             return { error: uiCopy.auth.accountScheduledForDeletion };
           }
+          if (result.reason === 'org_deactivated') {
+            return { error: uiCopy.adminDashboard.orgDeactivatedBody };
+          }
           return { error: 'Your account has been deactivated. Please contact the administrator.' };
         }
+        setOrgDeactivated(false);
       }
     } catch (e) {
       console.error('signIn profile load error:', e);
@@ -377,6 +401,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const clearOrgDeactivated = () => setOrgDeactivated(false);
+
   return (
     <AuthContext.Provider
       value={{
@@ -391,6 +417,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         acceptTerms,
         markDocumentsSent,
         updateDisplayName,
+        orgDeactivated,
+        clearOrgDeactivated,
       }}
     >
       {children}
