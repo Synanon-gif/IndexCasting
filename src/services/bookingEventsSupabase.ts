@@ -1,5 +1,6 @@
 import { supabase } from '../../lib/supabase';
 import { uiCopy } from '../constants/uiCopy';
+import { createNotifications } from './notificationsSupabase';
 
 /**
  * Booking Events – single source of truth for the booking lifecycle.
@@ -127,6 +128,11 @@ export async function updateBookingEventStatus(
       return { ok: false, message: uiCopy.bookingStatus.updateFailed };
     }
 
+    // Fire-and-forget notifications after successful transition
+    if (newStatus === 'agency_accepted' || newStatus === 'model_confirmed') {
+      void notifyBookingStatusChange(id, newStatus);
+    }
+
     return { ok: true };
   } catch (e) {
     console.error('updateBookingEventStatus exception:', e);
@@ -221,6 +227,106 @@ export async function getBookingEventsInRange(params: {
   } catch (e) {
     console.error('getBookingEventsInRange exception:', e);
     return [];
+  }
+}
+
+/**
+ * Erstellt ein booking_event NUR wenn die Buchung vollständig bestätigt ist.
+ * Guard: model_account_linked = false (Agency reicht) ODER model_approval = 'approved'.
+ * Gibt null zurück wenn die Voraussetzungen nicht erfüllt sind (kein Fehler).
+ */
+export async function createConfirmedBookingEvent(
+  params: CreateBookingEventParams & {
+    modelAccountLinked: boolean;
+    modelApproval: 'pending' | 'approved' | 'rejected';
+  },
+): Promise<BookingEvent | null> {
+  const { modelAccountLinked, modelApproval, ...eventParams } = params;
+
+  const isConfirmed =
+    !modelAccountLinked || modelApproval === 'approved';
+
+  if (!isConfirmed) {
+    console.info(
+      'createConfirmedBookingEvent: skipped – awaiting model confirmation',
+      { modelAccountLinked, modelApproval },
+    );
+    return null;
+  }
+
+  return createBookingEvent(eventParams);
+}
+
+/**
+ * Sends notifications to the appropriate parties when a booking changes status.
+ *
+ * agency_accepted  → notify client org + model user
+ * model_confirmed  → notify agency org + client org
+ */
+async function notifyBookingStatusChange(
+  bookingId: string,
+  newStatus: 'agency_accepted' | 'model_confirmed',
+): Promise<void> {
+  try {
+    const booking = await getBookingEventById(bookingId);
+    if (!booking) return;
+
+    if (newStatus === 'agency_accepted') {
+      const notifications = [];
+      if (booking.client_org_id) {
+        notifications.push({
+          organization_id: booking.client_org_id,
+          type: 'booking_accepted',
+          title: uiCopy.notifications.bookingAccepted.title,
+          message: uiCopy.notifications.bookingAccepted.message,
+          metadata: { booking_id: bookingId },
+        });
+      }
+      // Notify the model's linked user if available
+      if (booking.model_id) {
+        const { data: modelRow } = await supabase
+          .from('models')
+          .select('user_id')
+          .eq('id', booking.model_id)
+          .maybeSingle();
+        const userId = (modelRow as { user_id?: string | null } | null)?.user_id;
+        if (userId) {
+          notifications.push({
+            user_id: userId,
+            type: 'booking_accepted',
+            title: uiCopy.notifications.bookingAccepted.title,
+            message: uiCopy.notifications.bookingAccepted.message,
+            metadata: { booking_id: bookingId },
+          });
+        }
+      }
+      await createNotifications(notifications);
+    }
+
+    if (newStatus === 'model_confirmed') {
+      const notifications = [];
+      if (booking.agency_org_id) {
+        notifications.push({
+          organization_id: booking.agency_org_id,
+          type: 'model_confirmed',
+          title: uiCopy.notifications.modelConfirmed.title,
+          message: uiCopy.notifications.modelConfirmed.message,
+          metadata: { booking_id: bookingId },
+        });
+      }
+      if (booking.client_org_id) {
+        notifications.push({
+          organization_id: booking.client_org_id,
+          type: 'model_confirmed',
+          title: uiCopy.notifications.modelConfirmed.title,
+          message: uiCopy.notifications.modelConfirmed.message,
+          metadata: { booking_id: bookingId },
+        });
+      }
+      await createNotifications(notifications);
+    }
+  } catch (e) {
+    console.error('notifyBookingStatusChange exception:', e);
   }
 }
 

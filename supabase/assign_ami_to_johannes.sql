@@ -1,22 +1,9 @@
--- AMI S. der Agentur Johannes@thepoetryofpeople.com zuordnen.
--- Legt die Agentur an, falls es noch keine mit dieser E-Mail gibt.
--- Einmal im Supabase SQL Editor ausführen.
-
-DO $$
-DECLARE
-  aid uuid;
-BEGIN
-  SELECT id INTO aid FROM public.agencies WHERE LOWER(TRIM(email)) = 'johannes@thepoetryofpeople.com' LIMIT 1;
-  IF aid IS NULL THEN
-    INSERT INTO public.agencies (id, name, city, focus, email)
-    VALUES (
-      'a1000000-0000-4000-8000-000000000099'::uuid,
-      'The Poetry of People',
-      'Berlin',
-      'High-Fashion',
-      'Johannes@thepoetryofpeople.com'
-    );
-    aid := 'a1000000-0000-4000-8000-000000000099'::uuid;
-  END IF;
-  UPDATE public.models SET agency_id = aid WHERE name = 'AMI S.';
-END $$;
+-- HINWEIS (Security Audit): Diese Datei enthielt echte PII (E-Mail-Adresse,
+-- Agenturname, Personenname). Sie wurde für das Repo entschärft.
+-- Das Original-Skript ist intern dokumentiert und darf nicht erneut
+-- in das Repository committed werden.
+--
+-- Für die Produktions-DB: Skript lokal ausführen, NICHT einchecken.
+-- Wenn die Daten bereits in der Git-History sind, bitte mit
+-- "git filter-repo --path supabase/assign_ami_to_johannes.sql --invert-paths"
+-- oder BFG Repo-Cleaner aus der History entfernen.

@@ -176,7 +176,7 @@ export const AgencyRecruitingView: React.FC<{
         await upsertTerritoriesForModel(result.modelId, agencyId, selectedCountryCodes);
       }
       setPendingAcceptApp(null);
-      showFeedback('Model accepted. Open the thread under Messages → Recruiting chats.');
+      showFeedback(uiCopy.agencyRecruiting.acceptSuccessHint);
       onOpenBookingChat(result.threadId);
       refreshSwipeQueue();
       setDetailApplication(null);
@@ -192,7 +192,7 @@ export const AgencyRecruitingView: React.FC<{
         return Math.min(prev, apps.length - 1);
       });
     } else {
-      showFeedback('Could not accept application. Please try again.');
+      showFeedback(uiCopy.agencyRecruiting.acceptFailHint);
     }
     setAcceptingWithTerritories(false);
   };
@@ -333,7 +333,12 @@ export const AgencyRecruitingView: React.FC<{
           ) : (
             acceptedList.map((app) => (
               <View key={app.id} style={styles.bookingChatRow}>
-                <Text style={styles.bookingChatName}>{app.firstName} {app.lastName}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.bookingChatName}>{app.firstName} {app.lastName}</Text>
+                  {app.status === 'pending_model_confirmation' && (
+                    <Text style={styles.awaitingConfirmationLabel}>Awaiting model confirmation</Text>
+                  )}
+                </View>
                 <TouchableOpacity style={styles.bookingChatOpen} onPress={() => app.chatThreadId && onOpenBookingChat(app.chatThreadId)}>
                   <Text style={styles.bookingChatOpenLabel}>Chat</Text>
                 </TouchableOpacity>
@@ -1142,6 +1147,12 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.35,
+  },
+  awaitingConfirmationLabel: {
+    ...typography.body,
+    fontSize: 11,
+    color: '#E65100',
+    marginTop: 2,
   },
 });
 

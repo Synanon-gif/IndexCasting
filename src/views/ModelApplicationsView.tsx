@@ -7,7 +7,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator
 import { colors, spacing, typography } from '../theme/theme';
 import { getApplicationsForApplicant, deleteApplication, updateApplicationsProfileForApplicant } from '../services/applicationsSupabase';
 import { FILTER_COUNTRIES, ETHNICITY_OPTIONS } from '../utils/modelFilters';
-import { refreshApplications } from '../store/applicationsStore';
+import { refreshApplications, confirmApplicationByModel, rejectApplicationByModel } from '../store/applicationsStore';
 import type { SupabaseApplication } from '../services/applicationsSupabase';
 import { getAgencyChatDisplayById } from '../services/agenciesSupabase';
 import { ApplyFormView } from './ApplyFormView';
@@ -30,15 +30,17 @@ type MessageRow = {
 };
 
 function toStatusLabel(status: string): string {
-  if (status === 'pending') return 'Pending';
-  if (status === 'accepted') return 'Accepted';
-  if (status === 'rejected') return 'Declined';
+  if (status === 'pending') return uiCopy.modelApplications.statusPending;
+  if (status === 'pending_model_confirmation') return uiCopy.modelApplications.statusRepresentationRequest;
+  if (status === 'accepted') return uiCopy.modelApplications.statusAccepted;
+  if (status === 'rejected') return uiCopy.modelApplications.statusDeclined;
   return status;
 }
 
 function statusColor(status: string): string {
   if (status === 'accepted') return colors.accentGreen;
   if (status === 'rejected') return colors.textSecondary;
+  if (status === 'pending_model_confirmation') return '#E65100';
   return '#F9A825';
 }
 
@@ -68,6 +70,8 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [agencyNames, setAgencyNames] = useState<Record<string, string>>({});
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [profileDraft, setProfileDraft] = useState<{
     firstName: string;
     lastName: string;
@@ -192,7 +196,7 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
       await refreshApplications();
       load();
     } else if (Platform.OS === 'web') {
-      Alert.alert('Could not delete', 'Please try again or check your connection.');
+      Alert.alert(uiCopy.modelApplications.deleteFailedTitle, uiCopy.modelApplications.deleteFailedBody);
     } else {
       Alert.alert(uiCopy.alerts.deleteFailed, uiCopy.alerts.tryAgain);
     }
@@ -216,6 +220,34 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
         },
       ]
     );
+  };
+
+  const handleConfirmRepresentation = async (appId: string) => {
+    setConfirmingId(appId);
+    const result = await confirmApplicationByModel(appId, applicantUserId);
+    setConfirmingId(null);
+    if (result) {
+      await refreshApplications();
+      load();
+    } else if (Platform.OS === 'web') {
+      Alert.alert('Error', 'Could not confirm representation. Please try again.');
+    } else {
+      Alert.alert('Error', 'Could not confirm representation. Please try again.');
+    }
+  };
+
+  const handleRejectRepresentation = async (appId: string) => {
+    setRejectingId(appId);
+    const ok = await rejectApplicationByModel(appId, applicantUserId);
+    setRejectingId(null);
+    if (ok) {
+      await refreshApplications();
+      load();
+    } else if (Platform.OS === 'web') {
+      Alert.alert('Error', 'Could not decline representation. Please try again.');
+    } else {
+      Alert.alert('Error', 'Could not decline representation. Please try again.');
+    }
   };
 
   if (showApplyForm) {
@@ -287,6 +319,37 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
                             </TouchableOpacity>
                           )}
                         </View>
+
+                        {app.status === 'pending_model_confirmation' && (
+                          <View style={styles.confirmationBanner}>
+                            <Text style={styles.confirmationBannerTitle}>
+                              {embeddedAgencyName(app)?.trim() || (app.agency_id ? agencyNames[app.agency_id] : null) || 'An agency'} wants to represent you
+                            </Text>
+                            <Text style={styles.confirmationBannerSubtitle}>
+                              Accept to join their portfolio, or decline.
+                            </Text>
+                            <View style={styles.confirmationBannerActions}>
+                              <TouchableOpacity
+                                style={styles.confirmationAcceptBtn}
+                                onPress={() => void handleConfirmRepresentation(app.id)}
+                                disabled={confirmingId === app.id || rejectingId === app.id}
+                              >
+                                <Text style={styles.confirmationAcceptLabel}>
+                                  {confirmingId === app.id ? 'Confirming…' : 'Accept Representation'}
+                                </Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={styles.confirmationDeclineBtn}
+                                onPress={() => void handleRejectRepresentation(app.id)}
+                                disabled={confirmingId === app.id || rejectingId === app.id}
+                              >
+                                <Text style={styles.confirmationDeclineLabel}>
+                                  {rejectingId === app.id ? 'Declining…' : 'Decline'}
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        )}
                       </View>
                       {(app.status === 'pending' || app.status === 'rejected') && (
                         <TouchableOpacity
@@ -709,4 +772,54 @@ const styles = StyleSheet.create({
     backgroundColor: colors.buttonSkipRed,
   },
   confirmBtnDangerLabel: { ...typography.label, color: colors.surface },
+  confirmationBanner: {
+    marginTop: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: 10,
+    backgroundColor: '#FFF3E0',
+    borderWidth: 1,
+    borderColor: '#E65100',
+  },
+  confirmationBannerTitle: {
+    ...typography.label,
+    fontSize: 12,
+    color: '#BF360C',
+    marginBottom: 2,
+  },
+  confirmationBannerSubtitle: {
+    ...typography.body,
+    fontSize: 11,
+    color: '#E65100',
+    marginBottom: spacing.sm,
+  },
+  confirmationBannerActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  confirmationAcceptBtn: {
+    flex: 1,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    borderRadius: 8,
+    backgroundColor: colors.accentGreen,
+    alignItems: 'center',
+  },
+  confirmationAcceptLabel: {
+    ...typography.label,
+    fontSize: 11,
+    color: colors.surface,
+  },
+  confirmationDeclineBtn: {
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.buttonSkipRed,
+    alignItems: 'center',
+  },
+  confirmationDeclineLabel: {
+    ...typography.label,
+    fontSize: 11,
+    color: colors.buttonSkipRed,
+  },
 });

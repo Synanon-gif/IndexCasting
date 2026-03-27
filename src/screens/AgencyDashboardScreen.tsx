@@ -30,24 +30,33 @@ export const AgencyDashboardScreen: React.FC<AgencyDashboardScreenProps> = ({
   const currentAgencyId = agencies.find((a: any) => a.code === 'a1')?.id ?? agencies[0]?.id ?? '';
 
   useEffect(() => {
-    getAgencies().then(setAgencies);
+    let cancelled = false;
+    getAgencies()
+      .then((data) => { if (!cancelled) setAgencies(data); })
+      .catch((e) => console.error('[AgencyDashboard] getAgencies error:', e));
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
     if (!currentAgencyId) return;
-    getAgencyModels(currentAgencyId).then((data: any) => {
-      setItems(
-        data.map((m: any) => ({
-          id: m.id,
-          name: m.name,
-          traction: m.traction ?? 0,
-          visibility: {
-            commercial: m.isVisibleCommercial ?? true,
-            highFashion: m.isVisibleFashion ?? false,
-          },
-        })),
-      );
-    });
+    let cancelled = false;
+    getAgencyModels(currentAgencyId)
+      .then((data: any) => {
+        if (cancelled) return;
+        setItems(
+          data.map((m: any) => ({
+            id: m.id,
+            name: m.name,
+            traction: m.traction ?? 0,
+            visibility: {
+              commercial: m.isVisibleCommercial ?? true,
+              highFashion: m.isVisibleFashion ?? false,
+            },
+          })),
+        );
+      })
+      .catch((e) => console.error('[AgencyDashboard] getAgencyModels error:', e));
+    return () => { cancelled = true; };
   }, [currentAgencyId]);
 
   const toggleVisibility = (

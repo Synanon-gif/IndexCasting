@@ -1,13 +1,15 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { View, Text } from 'react-native';
+import { View, Text, ActivityIndicator } from 'react-native';
 import { colors } from '../theme/theme';
+import { AuthProvider, useAuth } from '../context/AuthContext';
 import { LoginScreen } from '../screens/LoginScreen';
 import { CustomerSwipeScreen } from '../screens/CustomerSwipeScreen';
 import { ModelProfileScreen } from '../screens/ModelProfileScreen';
 import { AgencyDashboardScreen } from '../screens/AgencyDashboardScreen';
+import { NotificationBell } from '../components/NotificationBell';
 
 type AuthStackParamList = {
   Login: undefined;
@@ -60,7 +62,11 @@ function AppTabs({ role }: AppTabsProps) {
   return (
     <Tab.Navigator
       screenOptions={{
-        headerShown: false,
+        headerShown: true,
+        headerStyle: { backgroundColor: colors.background },
+        headerShadowVisible: false,
+        headerTitle: '',
+        headerRight: () => <NotificationBell />,
         tabBarStyle: {
           backgroundColor: colors.background,
           borderTopColor: colors.border,
@@ -103,9 +109,26 @@ function AppTabs({ role }: AppTabsProps) {
   );
 }
 
-export function RootNavigator() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [role, setRole] = useState<UserRole | null>(null);
+function RootNavigatorInner() {
+  const { session, profile, loading } = useAuth();
+
+  const isAuthenticated = !!session && !!profile;
+  const role: UserRole | null =
+    profile?.role === 'model'
+      ? 'model'
+      : profile?.role === 'agent'
+      ? 'agency'
+      : profile?.role === 'client'
+      ? 'client'
+      : null;
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
+        <ActivityIndicator color={colors.textPrimary} />
+      </View>
+    );
+  }
 
   return (
     <NavigationContainer theme={navTheme}>
@@ -122,9 +145,8 @@ export function RootNavigator() {
             {(props) => (
               <LoginScreen
                 {...props}
-                onSelectRole={(selectedRole) => {
-                  setRole(selectedRole);
-                  setIsAuthenticated(true);
+                onSelectRole={() => {
+                  // Role comes from profile.role after sign-in via useAuth.
                 }}
               />
             )}
@@ -132,6 +154,18 @@ export function RootNavigator() {
         </Stack.Navigator>
       )}
     </NavigationContainer>
+  );
+}
+
+/**
+ * Standalone navigator — must be rendered inside <AuthProvider>.
+ * The production app uses App.tsx which already wraps everything in AuthProvider.
+ */
+export function RootNavigator() {
+  return (
+    <AuthProvider>
+      <RootNavigatorInner />
+    </AuthProvider>
   );
 }
 

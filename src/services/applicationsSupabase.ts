@@ -28,6 +28,8 @@ export async function uploadApplicationImage(file: Blob | File, slot: string): P
 /** Von PostgREST: Embed über FK agency_id (nicht accepted_by_agency_id). */
 export type SupabaseApplicationAgencyEmbed = { name: string } | null;
 
+export type ApplicationStatus = 'pending' | 'pending_model_confirmation' | 'accepted' | 'rejected';
+
 export type SupabaseApplication = {
   id: string;
   applicant_user_id: string | null;
@@ -41,7 +43,7 @@ export type SupabaseApplication = {
   city: string | null;
   instagram_link: string | null;
   images: Record<string, string>;
-  status: 'pending' | 'accepted' | 'rejected';
+  status: ApplicationStatus;
   recruiting_thread_id: string | null;
   accepted_by_agency_id: string | null;
   created_at: string;
@@ -220,7 +222,7 @@ export async function insertApplication(app: {
 
 export async function updateApplicationStatus(
   id: string,
-  status: 'accepted' | 'rejected',
+  status: ApplicationStatus,
   extra?: { recruiting_thread_id?: string; accepted_by_agency_id?: string }
 ): Promise<boolean> {
   try {
@@ -324,6 +326,76 @@ export async function updateApplicationsProfileForApplicant(
     return true;
   } catch (e) {
     console.error('updateApplicationsProfileForApplicant exception:', e);
+    return false;
+  }
+}
+
+/**
+ * Model bestätigt die Vertretungsanfrage der Agentur.
+ * Setzt status → 'accepted' und legt den Model-Eintrag an.
+ * Darf nur vom Applicant selbst aufgerufen werden (RLS enforced).
+ */
+export async function confirmApplicationByModel(
+  applicationId: string,
+  applicantUserId: string,
+): Promise<{ modelId: string | null } | null> {
+  try {
+    const { data, error } = await supabase
+      .from('model_applications')
+      .update({ status: 'accepted' })
+      .eq('id', applicationId)
+      .eq('applicant_user_id', applicantUserId)
+      .eq('status', 'pending_model_confirmation')
+      .select('id')
+      .maybeSingle();
+
+    if (error) {
+      console.error('confirmApplicationByModel update error:', error);
+      return null;
+    }
+    if (!data?.id) {
+      console.warn('confirmApplicationByModel: no row updated (wrong id / status / RLS)', applicationId);
+      return null;
+    }
+
+    const modelId = await createModelFromApplication(applicationId);
+    return { modelId };
+  } catch (e) {
+    console.error('confirmApplicationByModel exception:', e);
+    return null;
+  }
+}
+
+/**
+ * Model lehnt die Vertretungsanfrage der Agentur ab.
+ * Setzt status → 'rejected'.
+ * Darf nur vom Applicant selbst aufgerufen werden (RLS enforced).
+ */
+export async function rejectApplicationByModel(
+  applicationId: string,
+  applicantUserId: string,
+): Promise<boolean> {
+  try {
+    const { data, error } = await supabase
+      .from('model_applications')
+      .update({ status: 'rejected' })
+      .eq('id', applicationId)
+      .eq('applicant_user_id', applicantUserId)
+      .eq('status', 'pending_model_confirmation')
+      .select('id')
+      .maybeSingle();
+
+    if (error) {
+      console.error('rejectApplicationByModel error:', error);
+      return false;
+    }
+    if (!data?.id) {
+      console.warn('rejectApplicationByModel: no row updated (wrong id / status / RLS)', applicationId);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('rejectApplicationByModel exception:', e);
     return false;
   }
 }

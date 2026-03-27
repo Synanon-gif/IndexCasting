@@ -9,6 +9,8 @@ import { supabase } from '../../lib/supabase';
 import { formatSenderDisplayLine } from '../utils/messengerSenderLabel';
 import { fetchAllSupabasePages } from './supabaseFetchAll';
 import { pooledSubscribe } from './realtimeChannelPool';
+import { createNotifications } from './notificationsSupabase';
+import { uiCopy } from '../constants/uiCopy';
 
 export type ConversationType = 'option' | 'booking' | 'direct';
 
@@ -213,10 +215,40 @@ export async function sendMessage(
 
   await supabase.from('conversations').update({ updated_at: new Date().toISOString() }).eq('id', conversationId);
 
+  // Notify all participants except the sender
+  void notifyConversationParticipants(conversationId, senderId);
+
   return data as Message;
 }
 
 export { formatSenderDisplayLine };
+
+/**
+ * Creates a "new_message" notification for every conversation participant
+ * except the sender. Fire-and-forget — never throws.
+ */
+async function notifyConversationParticipants(
+  conversationId: string,
+  senderId: string,
+): Promise<void> {
+  try {
+    const conv = await getConversationById(conversationId);
+    if (!conv) return;
+    const recipients = (conv.participant_ids ?? []).filter((id) => id !== senderId);
+    if (recipients.length === 0) return;
+    await createNotifications(
+      recipients.map((userId) => ({
+        user_id: userId,
+        type: 'new_message',
+        title: uiCopy.notifications.newMessage.title,
+        message: uiCopy.notifications.newMessage.message,
+        metadata: { conversation_id: conversationId },
+      })),
+    );
+  } catch (e) {
+    console.error('notifyConversationParticipants exception:', e);
+  }
+}
 
 async function fetchProfilesForSenders(
   ids: string[]

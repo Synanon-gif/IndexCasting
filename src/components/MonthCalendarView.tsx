@@ -50,7 +50,7 @@ export const MonthCalendarView: React.FC<MonthCalendarViewProps> = ({
   onNextMonth,
 }) => {
   const grid = React.useMemo(() => getMonthGrid(year, month), [year, month]);
-  const monthLabel = new Date(year, month).toLocaleString('de', { month: 'long', year: 'numeric' });
+  const monthLabel = new Date(year, month).toLocaleString('en-US', { month: 'long', year: 'numeric' });
 
   return (
     <View style={s.wrapper}>

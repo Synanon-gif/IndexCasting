@@ -29,7 +29,13 @@ import {
   type SharedBookingNote,
 } from '../services/calendarSupabase';
 import { getBookingEventsForModel } from '../services/bookingEventsSupabase';
-import { modelUpdateOptionSchedule } from '../services/optionRequestsSupabase';
+import {
+  modelUpdateOptionSchedule,
+  getPendingModelConfirmations,
+  modelConfirmOptionRequest,
+  modelRejectOptionRequest,
+  type SupabaseOptionRequest,
+} from '../services/optionRequestsSupabase';
 import { getAgencyById, type Agency } from '../services/agenciesSupabase';
 import { getThread } from '../services/recruitingChatSupabase';
 import { BookingChatView } from '../views/BookingChatView';
@@ -101,6 +107,9 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   const [deletingCalendarEntry, setDeletingCalendarEntry] = useState(false);
   const [optionChatAgency, setOptionChatAgency] = useState<Agency | null>(null);
   const [bookingAgencyByThread, setBookingAgencyByThread] = useState<Record<string, string>>({});
+  const [pendingConfirmations, setPendingConfirmations] = useState<SupabaseOptionRequest[]>([]);
+  const [confirmingBookingId, setConfirmingBookingId] = useState<string | null>(null);
+  const [rejectingBookingId, setRejectingBookingId] = useState<string | null>(null);
 
   const handleShareLocation = async () => {
     if (!profile) return;
@@ -158,30 +167,27 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   }, [tab, bookingThreadIds]);
 
   useEffect(() => {
+    let cancelled = false;
+    const applyModel = (m: { id: string; name: string; height: number; bust?: number | null; waist?: number | null; hips?: number | null; city?: string | null; current_location?: string | null; hair_color?: string | null }) => {
+      if (cancelled) return;
+      setProfile({
+        id: m.id, name: m.name, height: m.height,
+        bust: m.bust ?? 0, waist: m.waist ?? 0, hips: m.hips ?? 0,
+        city: m.city ?? '', currentLocation: m.current_location ?? '', hairColor: m.hair_color ?? '',
+      });
+      loadCalendar(m.id);
+      loadOptionsForModel(m.id);
+    };
     if (userId) {
-      getModelForUserFromSupabase(userId).then((m) => {
-        if (!m) return;
-        setProfile({
-          id: m.id, name: m.name, height: m.height,
-          bust: m.bust ?? 0, waist: m.waist ?? 0, hips: m.hips ?? 0,
-          city: m.city ?? '', currentLocation: m.current_location ?? '', hairColor: m.hair_color ?? '',
-        });
-        loadCalendar(m.id);
-        loadOptionsForModel(m.id);
-      });
+      getModelForUserFromSupabase(userId)
+        .then((m) => { if (m) applyModel(m); })
+        .catch((e) => console.error('[ModelProfileScreen] getModelForUser error:', e));
     } else {
-      getModelsFromSupabase().then((list) => {
-        const m = list[0];
-        if (!m) return;
-        setProfile({
-          id: m.id, name: m.name, height: m.height,
-          bust: m.bust ?? 0, waist: m.waist ?? 0, hips: m.hips ?? 0,
-          city: m.city ?? '', currentLocation: m.current_location ?? '', hairColor: m.hair_color ?? '',
-        });
-        loadCalendar(m.id);
-        loadOptionsForModel(m.id);
-      });
+      getModelsFromSupabase()
+        .then((list) => { const m = list[0]; if (m) applyModel(m); })
+        .catch((e) => console.error('[ModelProfileScreen] getModels error:', e));
     }
+    return () => { cancelled = true; };
   }, [userId]);
 
   useEffect(() => {
@@ -202,6 +208,36 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
       .map(bookingEventToCalendarEntry)
       .filter((be) => !(be.option_request_id && coveredOptionIds.has(be.option_request_id)));
     setCalEntries([...legacyEntries, ...beEntries]);
+  };
+
+  const loadPendingConfirmations = async (modelId: string) => {
+    const items = await getPendingModelConfirmations(modelId);
+    setPendingConfirmations(items);
+  };
+
+  useEffect(() => {
+    if (profile?.id) {
+      void loadPendingConfirmations(profile.id);
+    }
+  }, [profile?.id]);
+
+  const handleConfirmBooking = async (id: string) => {
+    setConfirmingBookingId(id);
+    const ok = await modelConfirmOptionRequest(id);
+    setConfirmingBookingId(null);
+    if (ok && profile) {
+      await loadPendingConfirmations(profile.id);
+      await loadCalendar(profile.id);
+    }
+  };
+
+  const handleRejectBooking = async (id: string) => {
+    setRejectingBookingId(id);
+    const ok = await modelRejectOptionRequest(id);
+    setRejectingBookingId(null);
+    if (ok && profile) {
+      await loadPendingConfirmations(profile.id);
+    }
   };
 
   const outstandingOptions = useMemo(() =>
@@ -319,7 +355,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
         {([
           { key: 'calendar', label: 'Calendar' },
           { key: 'messages', label: 'Messages' },
-          { key: 'options', label: `Options${outstandingOptions.length ? ` (${outstandingOptions.length})` : ''}` },
+          { key: 'options', label: `Options${(outstandingOptions.length + pendingConfirmations.length) ? ` (${outstandingOptions.length + pendingConfirmations.length})` : ''}` },
           { key: 'profile', label: 'Profile' },
         ] as { key: ModelTab; label: string }[]).map((t) => (
           <TouchableOpacity key={t.key} onPress={() => setTab(t.key)} style={st.tabItem}>
@@ -593,7 +629,70 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
 
       {tab === 'options' && (
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1, paddingBottom: spacing.xl * 2 }}>
-          <Text style={st.sectionLabel}>Job tickets</Text>
+
+          {pendingConfirmations.length > 0 && (
+            <>
+              <Text style={st.sectionLabel}>Booking requests</Text>
+              <Text style={st.metaText}>
+                The agency has accepted these bookings on your behalf. Please confirm or decline.
+              </Text>
+              {pendingConfirmations.map((req) => (
+                <View
+                  key={req.id}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#E65100',
+                    borderRadius: 12,
+                    padding: spacing.md,
+                    marginTop: spacing.sm,
+                    backgroundColor: '#FFF3E0',
+                  }}
+                >
+                  <Text style={{ ...typography.label, color: '#BF360C', marginBottom: 2 }}>
+                    {req.request_type === 'casting' ? 'Casting' : req.request_type === 'job' ? 'Job' : 'Option'}
+                    {req.client_name ? ` · ${req.client_name}` : ''}
+                  </Text>
+                  <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.sm }}>
+                    {req.requested_date}
+                    {req.start_time ? ` · ${String(req.start_time).slice(0, 5)}` : ''}
+                    {req.end_time ? `–${String(req.end_time).slice(0, 5)}` : ''}
+                  </Text>
+                  <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                    <TouchableOpacity
+                      onPress={() => void handleConfirmBooking(req.id)}
+                      disabled={confirmingBookingId === req.id || rejectingBookingId === req.id}
+                      style={{
+                        flex: 1, borderRadius: 999,
+                        backgroundColor: colors.accentGreen,
+                        paddingVertical: spacing.sm, alignItems: 'center',
+                        opacity: (confirmingBookingId === req.id || rejectingBookingId === req.id) ? 0.5 : 1,
+                      }}
+                    >
+                      <Text style={{ ...typography.label, color: '#fff' }}>
+                        {confirmingBookingId === req.id ? 'Confirming…' : 'Accept'}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => void handleRejectBooking(req.id)}
+                      disabled={confirmingBookingId === req.id || rejectingBookingId === req.id}
+                      style={{
+                        flex: 1, borderRadius: 999, borderWidth: 1,
+                        borderColor: colors.buttonSkipRed,
+                        paddingVertical: spacing.sm, alignItems: 'center',
+                        opacity: (confirmingBookingId === req.id || rejectingBookingId === req.id) ? 0.5 : 1,
+                      }}
+                    >
+                      <Text style={{ ...typography.label, color: colors.buttonSkipRed }}>
+                        {rejectingBookingId === req.id ? 'Declining…' : 'Decline'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+            </>
+          )}
+
+          <Text style={[st.sectionLabel, { marginTop: pendingConfirmations.length > 0 ? spacing.xl : 0 }]}>Job tickets</Text>
           <Text style={st.metaText}>
             Confirmed options and jobs. Fee details are not shown to models (agency–client only).
           </Text>

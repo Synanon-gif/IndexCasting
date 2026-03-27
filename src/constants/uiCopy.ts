@@ -690,6 +690,56 @@ export const uiCopy = {
     loadingChat: 'Loading chat…',
     chatError: 'Could not load chat. Please try again.',
   },
+  /** Model – "My Applications" view status labels and feedback strings. */
+  modelApplications: {
+    statusPending: 'Pending',
+    statusRepresentationRequest: 'Representation request',
+    statusAccepted: 'Accepted',
+    statusDeclined: 'Declined',
+    deleteFailedTitle: 'Could not delete',
+    deleteFailedBody: 'Please try again or check your connection.',
+    tab_applications: 'Applications',
+    tab_messages: 'Messages',
+    tab_settings: 'Settings',
+    emptyState: 'No applications yet.',
+    loadingApplications: 'Loading applications…',
+  },
+  /** Agency – Recruiting view feedback strings. */
+  agencyRecruiting: {
+    acceptSuccessHint: 'Model accepted. Open the thread under Messages → Recruiting chats.',
+    acceptFailHint: 'Could not accept application. Please try again.',
+    rejectSuccessHint: 'Application declined.',
+    rejectFailHint: 'Could not decline application. Please try again.',
+    representationRequestSent: 'Representation request sent to the model.',
+  },
+  /** Notification bell + list */
+  notifications: {
+    title: 'Notifications',
+    markAsRead: 'Mark as read',
+    markAllRead: 'Mark all as read',
+    empty: 'No new notifications',
+    loading: 'Loading notifications…',
+    newMessage: {
+      title: 'New message',
+      message: 'You have a new message.',
+    },
+    bookingAccepted: {
+      title: 'Booking accepted',
+      message: 'A booking has been accepted.',
+    },
+    modelConfirmed: {
+      title: 'Model confirmed',
+      message: 'A model has confirmed the booking.',
+    },
+    newOptionRequest: {
+      title: 'New request',
+      message: 'A new option/job request has arrived.',
+    },
+    awaitingModelConfirmation: {
+      title: 'Awaiting confirmation',
+      message: 'The model needs to confirm this booking.',
+    },
+  },
 } as const;
 
 export type UiCopyKey = typeof uiCopy;

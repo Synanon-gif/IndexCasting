@@ -16,15 +16,20 @@ export type Verification = {
 };
 
 export async function getVerification(userId: string): Promise<Verification | null> {
-  const { data, error } = await supabase
-    .from('verifications')
-    .select('*')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error) { console.error('getVerification error:', error); return null; }
-  return data as Verification | null;
+  try {
+    const { data, error } = await supabase
+      .from('verifications')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) { console.error('getVerification error:', error); return null; }
+    return data as Verification | null;
+  } catch (e) {
+    console.error('getVerification exception:', e);
+    return null;
+  }
 }
 
 export async function submitVerification(
@@ -32,24 +37,29 @@ export async function submitVerification(
   file: File | Blob,
   fileName: string
 ): Promise<Verification | null> {
-  const path = `verifications/${userId}/${Date.now()}_${fileName}`;
+  try {
+    const path = `verifications/${userId}/${Date.now()}_${fileName}`;
 
-  const { error: uploadError } = await supabase.storage
-    .from('documents')
-    .upload(path, file, { upsert: false });
-  if (uploadError) { console.error('submitVerification upload error:', uploadError); return null; }
+    const { error: uploadError } = await supabase.storage
+      .from('documents')
+      .upload(path, file, { upsert: false });
+    if (uploadError) { console.error('submitVerification upload error:', uploadError); return null; }
 
-  const { data, error } = await supabase
-    .from('verifications')
-    .insert({
-      user_id: userId,
-      id_document_path: path,
-      status: 'pending',
-    })
-    .select()
-    .single();
-  if (error) { console.error('submitVerification db error:', error); return null; }
-  return data as Verification;
+    const { data, error } = await supabase
+      .from('verifications')
+      .insert({
+        user_id: userId,
+        id_document_path: path,
+        status: 'pending',
+      })
+      .select()
+      .single();
+    if (error) { console.error('submitVerification db error:', error); return null; }
+    return data as Verification;
+  } catch (e) {
+    console.error('submitVerification exception:', e);
+    return null;
+  }
 }
 
 export async function reviewVerification(
@@ -57,20 +67,30 @@ export async function reviewVerification(
   status: 'verified' | 'rejected',
   agencyId: string
 ): Promise<boolean> {
-  const { error } = await supabase
-    .from('verifications')
-    .update({ status, verified_by_agency_id: agencyId })
-    .eq('id', verificationId);
-  if (error) { console.error('reviewVerification error:', error); return false; }
-  return true;
+  try {
+    const { error } = await supabase
+      .from('verifications')
+      .update({ status, verified_by_agency_id: agencyId })
+      .eq('id', verificationId);
+    if (error) { console.error('reviewVerification error:', error); return false; }
+    return true;
+  } catch (e) {
+    console.error('reviewVerification exception:', e);
+    return false;
+  }
 }
 
 export async function getPendingVerifications(): Promise<Verification[]> {
-  const { data, error } = await supabase
-    .from('verifications')
-    .select('*')
-    .eq('status', 'pending')
-    .order('created_at', { ascending: true });
-  if (error) { console.error('getPendingVerifications error:', error); return []; }
-  return (data ?? []) as Verification[];
+  try {
+    const { data, error } = await supabase
+      .from('verifications')
+      .select('*')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true });
+    if (error) { console.error('getPendingVerifications error:', error); return []; }
+    return (data ?? []) as Verification[];
+  } catch (e) {
+    console.error('getPendingVerifications exception:', e);
+    return [];
+  }
 }

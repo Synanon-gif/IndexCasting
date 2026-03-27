@@ -15,16 +15,21 @@ export async function recordConsent(
   version: string,
   ipAddress?: string
 ): Promise<boolean> {
-  const { error } = await supabase
-    .from('consent_log')
-    .insert({
-      user_id: userId,
-      consent_type: consentType,
-      version,
-      ip_address: ipAddress || null,
-    });
-  if (error) { console.error('recordConsent error:', error); return false; }
-  return true;
+  try {
+    const { error } = await supabase
+      .from('consent_log')
+      .insert({
+        user_id: userId,
+        consent_type: consentType,
+        version,
+        ip_address: ipAddress || null,
+      });
+    if (error) { console.error('recordConsent error:', error); return false; }
+    return true;
+  } catch (e) {
+    console.error('recordConsent exception:', e);
+    return false;
+  }
 }
 
 export async function hasAcceptedVersion(

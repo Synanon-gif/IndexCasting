@@ -379,5 +379,8 @@ export function resetRecruitingChatsStore(): void {
   threadsCache = [];
   messagesCache = [];
   hydrated = false;
+  if (typeof window !== 'undefined') {
+    try { window.localStorage.removeItem(STORAGE_MODEL_THREAD_IDS); } catch { /* ignore */ }
+  }
   notify();
 }

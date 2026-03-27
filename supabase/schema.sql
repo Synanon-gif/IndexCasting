@@ -1,4 +1,16 @@
 -- =============================================================================
+-- VERALTET / DEPRECATED – NUR HISTORISCHE REFERENZ
+-- =============================================================================
+-- Diese Datei ist ein einmaliger Snapshot und entspricht NICHT mehr dem
+-- aktuellen Datenbankzustand. Der tatsächliche Stand ergibt sich
+-- ausschließlich aus der geordneten Anwendung aller Migrations-Dateien
+-- gemäß MIGRATION_ORDER.md.
+--
+-- NICHT in einer bestehenden Produktions-DB ausführen!
+-- Für einen DB-Reset: alle Migrationen in der in MIGRATION_ORDER.md
+-- angegebenen Reihenfolge auf einer leeren DB ausführen.
+-- =============================================================================
+--
 -- Casting Index – Vollständiges Supabase-Schema
 -- Basiert auf: Models, Agenturen, Clients, Swiping, Optionsanfragen, Chats,
 -- Bewerbungen (Apply), Freundschaften Client–Agentur, Projekte.

@@ -28,10 +28,15 @@ export async function requestAccountDeletion(): Promise<RequestAccountDeletionRe
 
 /** Löschwunsch zurückziehen (innerhalb der 30 Tage). */
 export async function cancelAccountDeletion(): Promise<boolean> {
-  const { error } = await supabase.rpc('cancel_account_deletion');
-  if (error) {
-    console.error('cancelAccountDeletion error:', error);
+  try {
+    const { error } = await supabase.rpc('cancel_account_deletion');
+    if (error) {
+      console.error('cancelAccountDeletion error:', error);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('cancelAccountDeletion exception:', e);
     return false;
   }
-  return true;
 }

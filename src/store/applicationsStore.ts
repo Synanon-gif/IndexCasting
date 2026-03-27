@@ -10,12 +10,14 @@ import {
   insertApplication as insertApp,
   updateApplicationStatus,
   createModelFromApplication,
+  confirmApplicationByModel as confirmByModelService,
+  rejectApplicationByModel as rejectByModelService,
   type SupabaseApplication,
 } from '../services/applicationsSupabase';
 import { startRecruitingChat, addRecruitingMessage } from './recruitingChats';
 import { updateThreadAgency, updateThreadChatType } from '../services/recruitingChatSupabase';
 
-export type ApplicationStatus = 'pending' | 'accepted' | 'rejected';
+export type ApplicationStatus = 'pending' | 'pending_model_confirmation' | 'accepted' | 'rejected';
 
 export type Gender = 'female' | 'male' | 'diverse' | '';
 
@@ -134,8 +136,11 @@ export async function addApplication(data: Omit<ModelApplication, 'id' | 'create
   return local;
 }
 
+/** Enthält accepted UND pending_model_confirmation (Vertretungsanfrage noch offen). */
 export function getAcceptedApplications(): ModelApplication[] {
-  return cache.filter((a) => a.status === 'accepted' && a.chatThreadId);
+  return cache.filter(
+    (a) => (a.status === 'accepted' || a.status === 'pending_model_confirmation') && a.chatThreadId,
+  );
 }
 
 export function getApplicationById(id: string): ModelApplication | undefined {
@@ -144,9 +149,15 @@ export function getApplicationById(id: string): ModelApplication | undefined {
 
 export type AcceptApplicationResult = {
   threadId: string;
-  modelId: string | null;
+  /** Null bis das Model seine Bestätigung gibt. */
+  modelId: null;
 };
 
+/**
+ * Agency akzeptiert eine Bewerbung: setzt status → 'pending_model_confirmation'.
+ * Das Model muss anschließend confirmApplicationByModel aufrufen, bevor
+ * ein Model-Eintrag erstellt wird.
+ */
 export async function acceptApplication(
   applicationId: string,
   agencyId: string,
@@ -162,10 +173,10 @@ export async function acceptApplication(
     addRecruitingMessage(
       threadId,
       'agency',
-      'Welcome to our selection. We have received your application and would like to invite you to the next step.',
+      'We would like to represent you. Please confirm or decline our request in your application.',
     );
   }
-  const ok = await updateApplicationStatus(applicationId, 'accepted', {
+  const ok = await updateApplicationStatus(applicationId, 'pending_model_confirmation', {
     recruiting_thread_id: threadId,
     accepted_by_agency_id: agencyId,
   });
@@ -173,15 +184,52 @@ export async function acceptApplication(
 
   await updateThreadAgency(threadId, agencyId);
 
-  // Mark chat as active_model so UI can display the correct label/state
-  await updateThreadChatType(threadId, 'active_model');
-
-  const modelId = await createModelFromApplication(applicationId);
-
-  app.status = 'accepted';
+  app.status = 'pending_model_confirmation';
   app.chatThreadId = threadId;
   notify();
-  return { threadId, modelId };
+  return { threadId, modelId: null };
+}
+
+/**
+ * Model bestätigt die Vertretungsanfrage.
+ * Erst jetzt wird der Model-Eintrag angelegt.
+ */
+export async function confirmApplicationByModel(
+  applicationId: string,
+  applicantUserId: string,
+): Promise<{ modelId: string | null } | null> {
+  const app = cache.find((a) => a.id === applicationId);
+  if (!app || app.status !== 'pending_model_confirmation') return null;
+
+  const result = await confirmByModelService(applicationId, applicantUserId);
+  if (!result) return null;
+
+  // Recruiting-Chat als active_model markieren (jetzt wirklich aktives Verhältnis)
+  if (app.chatThreadId) {
+    await updateThreadChatType(app.chatThreadId, 'active_model');
+  }
+
+  app.status = 'accepted';
+  notify();
+  return result;
+}
+
+/**
+ * Model lehnt die Vertretungsanfrage ab.
+ */
+export async function rejectApplicationByModel(
+  applicationId: string,
+  applicantUserId: string,
+): Promise<boolean> {
+  const app = cache.find((a) => a.id === applicationId);
+  if (!app || app.status !== 'pending_model_confirmation') return false;
+
+  const ok = await rejectByModelService(applicationId, applicantUserId);
+  if (!ok) return false;
+
+  app.status = 'rejected';
+  notify();
+  return true;
 }
 
 export async function rejectApplication(applicationId: string): Promise<void> {

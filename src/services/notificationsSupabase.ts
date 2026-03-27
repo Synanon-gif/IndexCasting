@@ -1,0 +1,237 @@
+/**
+ * Notification service — Supabase-backed.
+ * Handles creating, reading, marking as read, and real-time subscriptions
+ * for the `notifications` table.
+ *
+ * Each notification targets either a specific user (user_id) or every
+ * member of an organization (organization_id). RLS enforces visibility.
+ */
+import { supabase } from '../../lib/supabase';
+import { pooledSubscribe } from './realtimeChannelPool';
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+export type NotificationType =
+  | 'new_message'
+  | 'booking_accepted'
+  | 'model_confirmed'
+  | 'new_option_request'
+  | 'awaiting_model_confirmation';
+
+export type Notification = {
+  id: string;
+  user_id: string | null;
+  organization_id: string | null;
+  type: NotificationType | string;
+  title: string;
+  message: string;
+  metadata: Record<string, unknown>;
+  is_read: boolean;
+  created_at: string;
+};
+
+export type CreateNotificationParams = {
+  /** Target a specific user. Provide either user_id or organization_id (or both). */
+  user_id?: string | null;
+  /** Target all members of an organization. */
+  organization_id?: string | null;
+  type: NotificationType | string;
+  title: string;
+  message: string;
+  metadata?: Record<string, unknown>;
+};
+
+// ── Create ────────────────────────────────────────────────────────────────────
+
+/**
+ * Inserts one notification row. Silently logs errors — callers must not throw.
+ */
+export async function createNotification(
+  params: CreateNotificationParams,
+): Promise<void> {
+  try {
+    const { error } = await supabase.from('notifications').insert({
+      user_id: params.user_id ?? null,
+      organization_id: params.organization_id ?? null,
+      type: params.type,
+      title: params.title,
+      message: params.message,
+      metadata: params.metadata ?? {},
+    });
+    if (error) {
+      console.error('createNotification error:', error);
+    }
+  } catch (e) {
+    console.error('createNotification exception:', e);
+  }
+}
+
+/**
+ * Creates multiple notifications in parallel. Each call is fire-and-forget —
+ * failure of one does not affect the others.
+ */
+export async function createNotifications(
+  notifications: CreateNotificationParams[],
+): Promise<void> {
+  await Promise.all(notifications.map(createNotification));
+}
+
+// ── Read ──────────────────────────────────────────────────────────────────────
+
+/**
+ * Fetches all notifications visible to the current authenticated user.
+ * Includes both direct (user_id) and organization-scoped rows — RLS handles
+ * the filtering automatically.
+ */
+export async function getNotificationsForCurrentUser(): Promise<Notification[]> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    if (error) {
+      console.error('getNotificationsForCurrentUser error:', error);
+      return [];
+    }
+    return (data ?? []) as Notification[];
+  } catch (e) {
+    console.error('getNotificationsForCurrentUser exception:', e);
+    return [];
+  }
+}
+
+// ── Mark as read ──────────────────────────────────────────────────────────────
+
+export async function markNotificationAsRead(id: string): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('notifications')
+      .update({ is_read: true })
+      .eq('id', id);
+    if (error) {
+      console.error('markNotificationAsRead error:', error);
+    }
+  } catch (e) {
+    console.error('markNotificationAsRead exception:', e);
+  }
+}
+
+export async function markAllNotificationsAsRead(): Promise<void> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { error } = await supabase
+      .from('notifications')
+      .update({ is_read: true })
+      .eq('is_read', false)
+      .or(
+        `user_id.eq.${user.id},organization_id.in.(${await getUserOrganizationIds(user.id)})`,
+      );
+    if (error) {
+      console.error('markAllNotificationsAsRead error:', error);
+    }
+  } catch (e) {
+    console.error('markAllNotificationsAsRead exception:', e);
+  }
+}
+
+// ── Real-time subscription ─────────────────────────────────────────────────────
+
+/**
+ * Subscribes to new notifications for the given user.
+ * Uses the shared channel pool to avoid duplicate WebSocket channels.
+ * Returns a cleanup function — call on component unmount.
+ */
+export function subscribeToUserNotifications(
+  userId: string,
+  onNotification: (n: Notification) => void,
+): () => void {
+  return pooledSubscribe(
+    `notifications-user-${userId}`,
+    (channel, dispatch) =>
+      channel
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'notifications',
+            filter: `user_id=eq.${userId}`,
+          },
+          dispatch,
+        )
+        .subscribe(),
+    (payload) => onNotification((payload as { new: Notification }).new),
+  );
+}
+
+/**
+ * Subscribes to new notifications targeted at an organization.
+ * Returns a cleanup function — call on component unmount.
+ */
+export function subscribeToOrgNotifications(
+  organizationId: string,
+  onNotification: (n: Notification) => void,
+): () => void {
+  return pooledSubscribe(
+    `notifications-org-${organizationId}`,
+    (channel, dispatch) =>
+      channel
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'notifications',
+            filter: `organization_id=eq.${organizationId}`,
+          },
+          dispatch,
+        )
+        .subscribe(),
+    (payload) => onNotification((payload as { new: Notification }).new),
+  );
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Returns a comma-separated list of organization IDs the user belongs to,
+ * for use in Supabase `.or()` filter strings. Returns empty string on error.
+ */
+async function getUserOrganizationIds(userId: string): Promise<string> {
+  try {
+    const { data, error } = await supabase
+      .from('organization_members')
+      .select('organization_id')
+      .eq('user_id', userId);
+    if (error || !data) return '';
+    return (data as { organization_id: string }[])
+      .map((r) => r.organization_id)
+      .join(',');
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Convenience: fetches the organization IDs for a user as an array.
+ * Used by the store to wire org-level subscriptions.
+ */
+export async function fetchUserOrganizationIds(userId: string): Promise<string[]> {
+  try {
+    const { data, error } = await supabase
+      .from('organization_members')
+      .select('organization_id')
+      .eq('user_id', userId);
+    if (error || !data) return [];
+    return (data as { organization_id: string }[]).map((r) => r.organization_id);
+  } catch {
+    return [];
+  }
+}

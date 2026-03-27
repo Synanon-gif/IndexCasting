@@ -55,14 +55,25 @@ export async function getAllProfiles(filter?: {
     });
     if (!error) return (data ?? []) as AdminProfile[];
 
-    // RPC failed — fall back to a direct table query.
-    // Works because the 'profiles_select_authenticated' RLS policy allows
-    // any authenticated user to SELECT all profiles.
-    console.warn('[Admin] admin_get_profiles RPC failed, using direct query:', error.message);
+    // RPC failed — fall back to a direct table query only when the caller is a
+    // confirmed admin. Without this guard, any authenticated user could trigger
+    // the fallback and enumerate all profile IDs and roles.
+    console.warn('[Admin] admin_get_profiles RPC failed, checking admin status before fallback:', error.message);
+    const isAdmin = await isCurrentUserAdmin();
+    if (!isAdmin) {
+      console.error('[Admin] getAllProfiles: non-admin fallback attempt blocked.');
+      return [];
+    }
     return await _getAllProfilesDirect(filter);
   } catch (e) {
     console.error('[Admin] getAllProfiles exception:', e);
-    return await _getAllProfilesDirect(filter).catch(() => []);
+    try {
+      const isAdmin = await isCurrentUserAdmin();
+      if (!isAdmin) return [];
+      return await _getAllProfilesDirect(filter);
+    } catch {
+      return [];
+    }
   }
 }
 
@@ -71,13 +82,18 @@ async function _getAllProfilesDirect(filter?: {
   inactiveOnly?: boolean;
   role?: string;
 }): Promise<AdminProfile[]> {
-  let q = supabase.from('profiles').select('*').order('created_at', { ascending: false });
-  if (filter?.activeOnly)   q = q.eq('is_active', true);
-  if (filter?.inactiveOnly) q = q.eq('is_active', false);
-  if (filter?.role)         q = q.eq('role', filter.role);
-  const { data, error } = await q;
-  if (error) { console.error('[Admin] _getAllProfilesDirect error:', error); return []; }
-  return (data ?? []) as AdminProfile[];
+  try {
+    let q = supabase.from('profiles').select('*').order('created_at', { ascending: false });
+    if (filter?.activeOnly)   q = q.eq('is_active', true);
+    if (filter?.inactiveOnly) q = q.eq('is_active', false);
+    if (filter?.role)         q = q.eq('role', filter.role);
+    const { data, error } = await q;
+    if (error) { console.error('[Admin] _getAllProfilesDirect error:', error); return []; }
+    return (data ?? []) as AdminProfile[];
+  } catch (e) {
+    console.error('[Admin] _getAllProfilesDirect exception:', e);
+    return [];
+  }
 }
 
 export async function activateAccount(userId: string): Promise<boolean> {

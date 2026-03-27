@@ -1382,12 +1382,8 @@ const MyModelsTab: React.FC<{
 
   const [showMediaslideInput, setShowMediaslideInput] = useState(false);
   const [showNetwalkInput, setShowNetwalkInput] = useState(false);
-  const [mediaslideKey, setMediaslideKey] = useState(() =>
-    typeof window !== 'undefined' ? window.localStorage.getItem('ci_mediaslide_api_key') ?? '' : ''
-  );
-  const [netwalkKey, setNetwalkKey] = useState(() =>
-    typeof window !== 'undefined' ? window.localStorage.getItem('ci_netwalk_api_key') ?? '' : ''
-  );
+  const [mediaslideKey, setMediaslideKey] = useState('');
+  const [netwalkKey, setNetwalkKey] = useState('');
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
   const [syncLoading, setSyncLoading] = useState(false);
 
@@ -1423,23 +1419,13 @@ const MyModelsTab: React.FC<{
     }
   }, [agencyId]);
 
-  // Load API keys from DB (org-wide) on mount; fall back to localStorage until loaded.
+  // Load API keys from DB (org-wide) on mount — kept in memory only, never in localStorage.
   useEffect(() => {
     if (!agencyId) return;
     getAgencyApiKeys(agencyId).then((keys) => {
       if (!keys) return;
-      if (keys.mediaslide_api_key) {
-        setMediaslideKey(keys.mediaslide_api_key);
-        if (typeof window !== 'undefined') {
-          window.localStorage.setItem('ci_mediaslide_api_key', keys.mediaslide_api_key);
-        }
-      }
-      if (keys.netwalk_api_key) {
-        setNetwalkKey(keys.netwalk_api_key);
-        if (typeof window !== 'undefined') {
-          window.localStorage.setItem('ci_netwalk_api_key', keys.netwalk_api_key);
-        }
-      }
+      if (keys.mediaslide_api_key) setMediaslideKey(keys.mediaslide_api_key);
+      if (keys.netwalk_api_key) setNetwalkKey(keys.netwalk_api_key);
     }).catch((e) => console.error('Failed to load agency API keys:', e));
   }, [agencyId]);
 
@@ -1755,9 +1741,8 @@ const MyModelsTab: React.FC<{
   };
 
   const saveApiKey = async (provider: 'mediaslide' | 'netwalk', key: string) => {
-    const storageKey = provider === 'mediaslide' ? 'ci_mediaslide_api_key' : 'ci_netwalk_api_key';
-    // Update local state + cache immediately for instant UI feedback.
-    if (typeof window !== 'undefined') window.localStorage.setItem(storageKey, key);
+    // Update in-memory state immediately for instant UI feedback.
+    // Keys are never written to localStorage — DB is the single source of truth.
     if (provider === 'mediaslide') { setMediaslideKey(key); setShowMediaslideInput(false); }
     else { setNetwalkKey(key); setShowNetwalkInput(false); }
     // Persist org-wide to DB (best-effort; failure does not block local usage).

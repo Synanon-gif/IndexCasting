@@ -1,5 +1,9 @@
 import { supabase } from '../../lib/supabase';
 import { pooledSubscribe } from './realtimeChannelPool';
+import { createBookingEvent } from './bookingEventsSupabase';
+import type { BookingEventType } from './bookingEventsSupabase';
+import { createNotification, createNotifications } from './notificationsSupabase';
+import { uiCopy } from '../constants/uiCopy';
 
 const OPTION_REQUEST_SELECT =
   'id, client_id, model_id, agency_id, requested_date, status, project_id, client_name, model_name, proposed_price, agency_counter_price, client_price_status, final_status, request_type, currency, start_time, end_time, model_approval, model_approved_at, model_account_linked, booker_id, organization_id, created_by, agency_assignee_user_id, created_at, updated_at';
@@ -222,7 +226,20 @@ export async function insertOptionRequest(req: {
     .select(OPTION_REQUEST_SELECT)
     .single();
   if (error) { console.error('insertOptionRequest error:', error); return null; }
-  return data as SupabaseOptionRequest;
+
+  const inserted = data as SupabaseOptionRequest;
+  // Notify agency org (or agency user as fallback) about the new request
+  void createNotification({
+    ...(inserted.organization_id
+      ? { organization_id: inserted.organization_id }
+      : { user_id: inserted.agency_id }),
+    type: 'new_option_request',
+    title: uiCopy.notifications.newOptionRequest.title,
+    message: uiCopy.notifications.newOptionRequest.message,
+    metadata: { option_request_id: inserted.id },
+  });
+
+  return inserted;
 }
 
 export async function updateOptionRequestStatus(
@@ -507,6 +524,242 @@ export async function uploadOptionDocument(
   return data as SupabaseOptionDocument;
 }
 
+// =============================================================================
+// Booking Confirmation Flow (Agency → [Model]) → Calendar
+// =============================================================================
+
+/**
+ * Erstellt aus einem bestätigten option_request ein booking_event.
+ * Wird intern von agencyAcceptRequest und modelConfirmOptionRequest aufgerufen.
+ */
+async function createBookingEventFromRequest(req: SupabaseOptionRequest): Promise<void> {
+  try {
+    const eventType: BookingEventType =
+      req.request_type === 'casting' ? 'casting'
+      : req.final_status === 'job_confirmed' ? 'job'
+      : 'option';
+
+    const { data: agencyOrg } = await supabase
+      .from('organizations')
+      .select('id')
+      .eq('agency_id', req.agency_id)
+      .maybeSingle();
+
+    await createBookingEvent({
+      model_id: req.model_id,
+      client_org_id: req.organization_id ?? null,
+      agency_org_id: (agencyOrg as { id: string } | null)?.id ?? null,
+      date: req.requested_date,
+      type: eventType,
+      title: req.client_name ? `${req.client_name} – ${eventType}` : null,
+      note: null,
+      source_option_request_id: req.id,
+    });
+  } catch (e) {
+    console.error('createBookingEventFromRequest exception:', e);
+  }
+}
+
+/**
+ * Agency akzeptiert die gesamte Buchungsanfrage.
+ *
+ * - model_account_linked = false → sofortige Bestätigung; booking_event wird erstellt.
+ * - model_account_linked = true  → wartet auf Model-Bestätigung; kein booking_event noch.
+ *
+ * Verwendet client_price_status = 'accepted' als internes Agency-Accept-Signal
+ * (kompatibel zum bestehenden Preisverhandlungsflow).
+ */
+export async function agencyAcceptRequest(
+  id: string,
+): Promise<'confirmed' | 'awaiting_model_confirmation' | null> {
+  try {
+    const { data: req, error: fetchErr } = await supabase
+      .from('option_requests')
+      .select(OPTION_REQUEST_SELECT)
+      .eq('id', id)
+      .maybeSingle();
+
+    if (fetchErr || !req) {
+      console.error('agencyAcceptRequest fetch error:', fetchErr);
+      return null;
+    }
+
+    const r = req as SupabaseOptionRequest;
+    const modelAccountLinked = r.model_account_linked ?? false;
+
+    if (!modelAccountLinked) {
+      // Kein Model-Account → Agency-Bestätigung reicht aus
+      const { error } = await supabase
+        .from('option_requests')
+        .update({
+          client_price_status: 'accepted',
+          final_status: 'option_confirmed',
+          model_approval: 'approved',
+          model_approved_at: new Date().toISOString(),
+          status: 'confirmed',
+        })
+        .eq('id', id);
+
+      if (error) {
+        console.error('agencyAcceptRequest (no account) update error:', error);
+        return null;
+      }
+
+      const confirmed: SupabaseOptionRequest = { ...r, status: 'confirmed', final_status: 'option_confirmed' };
+      await createBookingEventFromRequest(confirmed);
+      return 'confirmed';
+    }
+
+    // Model hat Account → wartet auf Model-Bestätigung
+    const { error } = await supabase
+      .from('option_requests')
+      .update({
+        client_price_status: 'accepted',
+        final_status: 'option_confirmed',
+        // model_approval bleibt 'pending'
+      })
+      .eq('id', id);
+
+    if (error) {
+      console.error('agencyAcceptRequest (with account) update error:', error);
+      return null;
+    }
+
+    // Notify model user that their confirmation is needed
+    void notifyModelAwaitingConfirmation(r.model_id);
+
+    return 'awaiting_model_confirmation';
+  } catch (e) {
+    console.error('agencyAcceptRequest exception:', e);
+    return null;
+  }
+}
+
+/**
+ * Agency lehnt die Buchungsanfrage ab.
+ */
+export async function agencyRejectRequest(id: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('option_requests')
+      .update({ status: 'rejected' })
+      .eq('id', id);
+
+    if (error) {
+      console.error('agencyRejectRequest error:', error);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('agencyRejectRequest exception:', e);
+    return false;
+  }
+}
+
+/**
+ * Model bestätigt die Buchungsanfrage.
+ * Darf nur aufgerufen werden wenn model_account_linked = true.
+ * RLS stellt sicher, dass nur das richtige Model die Zeile updaten kann.
+ */
+export async function modelConfirmOptionRequest(id: string): Promise<boolean> {
+  try {
+    const { data: req, error: fetchErr } = await supabase
+      .from('option_requests')
+      .select(OPTION_REQUEST_SELECT)
+      .eq('id', id)
+      .maybeSingle();
+
+    if (fetchErr || !req) {
+      console.error('modelConfirmOptionRequest fetch error:', fetchErr);
+      return false;
+    }
+
+    const r = req as SupabaseOptionRequest;
+
+    if (r.model_approval !== 'pending' || !r.model_account_linked) {
+      console.warn('modelConfirmOptionRequest: invalid state', { model_approval: r.model_approval, model_account_linked: r.model_account_linked });
+      return false;
+    }
+
+    const { error } = await supabase
+      .from('option_requests')
+      .update({
+        model_approval: 'approved',
+        model_approved_at: new Date().toISOString(),
+        status: 'confirmed',
+      })
+      .eq('id', id);
+
+    if (error) {
+      console.error('modelConfirmOptionRequest update error:', error);
+      return false;
+    }
+
+    const confirmed: SupabaseOptionRequest = { ...r, status: 'confirmed', model_approval: 'approved' };
+    await createBookingEventFromRequest(confirmed);
+
+    // Notify agency org + client user about model confirmation
+    void notifyModelConfirmedOption(r);
+
+    return true;
+  } catch (e) {
+    console.error('modelConfirmOptionRequest exception:', e);
+    return false;
+  }
+}
+
+/**
+ * Model lehnt die Buchungsanfrage ab.
+ */
+export async function modelRejectOptionRequest(id: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('option_requests')
+      .update({
+        model_approval: 'rejected',
+        status: 'rejected',
+      })
+      .eq('id', id);
+
+    if (error) {
+      console.error('modelRejectOptionRequest error:', error);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('modelRejectOptionRequest exception:', e);
+    return false;
+  }
+}
+
+/**
+ * Lädt alle option_requests, die auf Model-Bestätigung warten.
+ * Wird in der Model-UI angezeigt (Pending confirmations).
+ */
+export async function getPendingModelConfirmations(
+  modelId: string,
+): Promise<SupabaseOptionRequest[]> {
+  try {
+    const { data, error } = await supabase
+      .from('option_requests')
+      .select(OPTION_REQUEST_SELECT)
+      .eq('model_id', modelId)
+      .eq('model_approval', 'pending')
+      .eq('model_account_linked', true)
+      .neq('status', 'rejected')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('getPendingModelConfirmations error:', error);
+      return [];
+    }
+    return (data ?? []) as SupabaseOptionRequest[];
+  } catch (e) {
+    console.error('getPendingModelConfirmations exception:', e);
+    return [];
+  }
+}
+
 export async function sendAgencyInvitation(agencyName: string, email: string, invitedBy?: string): Promise<string | null> {
   const { data, error } = await supabase
     .from('agency_invitations')
@@ -547,4 +800,64 @@ export function subscribeToOptionMessages(
         .subscribe(),
     (payload) => onMessage((payload as { new: SupabaseOptionMessage }).new),
   );
+}
+
+// ── Notification helpers ──────────────────────────────────────────────────────
+
+/** Notify a model's linked user that they need to confirm an option request. */
+async function notifyModelAwaitingConfirmation(modelId: string): Promise<void> {
+  try {
+    const { data: modelRow } = await supabase
+      .from('models')
+      .select('user_id')
+      .eq('id', modelId)
+      .maybeSingle();
+    const userId = (modelRow as { user_id?: string | null } | null)?.user_id;
+    if (!userId) return;
+    await createNotification({
+      user_id: userId,
+      type: 'awaiting_model_confirmation',
+      title: uiCopy.notifications.awaitingModelConfirmation.title,
+      message: uiCopy.notifications.awaitingModelConfirmation.message,
+      metadata: { model_id: modelId },
+    });
+  } catch (e) {
+    console.error('notifyModelAwaitingConfirmation exception:', e);
+  }
+}
+
+/** Notify agency org + client user when a model confirms an option request. */
+async function notifyModelConfirmedOption(req: SupabaseOptionRequest): Promise<void> {
+  try {
+    const notifications = [];
+    // Agency org (or agency user as fallback)
+    if (req.organization_id) {
+      notifications.push({
+        organization_id: req.organization_id,
+        type: 'model_confirmed',
+        title: uiCopy.notifications.modelConfirmed.title,
+        message: uiCopy.notifications.modelConfirmed.message,
+        metadata: { option_request_id: req.id },
+      });
+    } else {
+      notifications.push({
+        user_id: req.agency_id,
+        type: 'model_confirmed',
+        title: uiCopy.notifications.modelConfirmed.title,
+        message: uiCopy.notifications.modelConfirmed.message,
+        metadata: { option_request_id: req.id },
+      });
+    }
+    // Client user
+    notifications.push({
+      user_id: req.client_id,
+      type: 'model_confirmed',
+      title: uiCopy.notifications.modelConfirmed.title,
+      message: uiCopy.notifications.modelConfirmed.message,
+      metadata: { option_request_id: req.id },
+    });
+    await createNotifications(notifications);
+  } catch (e) {
+    console.error('notifyModelConfirmedOption exception:', e);
+  }
 }

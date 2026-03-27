@@ -53,6 +53,10 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
           }));
         setModels(list);
       })
+      .catch((e) => {
+        console.error('[SharedSelectionView] Failed to load models:', e);
+        if (!cancelled) setModels([]);
+      })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
