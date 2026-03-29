@@ -9,4 +9,8 @@ module.exports = {
   moduleNameMapper: {
     '^react-native$': '<rootDir>/jest/react-native-stub.cjs',
   },
+  transform: {
+    '^.+\\.(ts|tsx|js|jsx)$': ['ts-jest', { diagnostics: false }],
+  },
+  transformIgnorePatterns: ['/node_modules/'],
 };

@@ -24,10 +24,10 @@ export async function getModelData(id) {
 
   const blocked = availabilityOverrides.has(id)
     ? availabilityOverrides.get(id).blocked
-    : ['2026-03-21', '2026-03-22'];
+    : [];
   const available = availabilityOverrides.has(id)
     ? availabilityOverrides.get(id).available
-    : ['2026-03-23', '2026-03-24', '2026-03-25'];
+    : [];
 
   return {
     id: base.id,
@@ -40,7 +40,9 @@ export async function getModelData(id) {
     },
     portfolio: {
       images: base.portfolio_images || [],
-      polaroids: base.polaroids || [],
+      // Discovery NEVER shows polaroids — enforced here and at RLS level.
+      // Polaroids are only accessible via Polaroid Packages (get_guest_link_models RPC, type='polaroid').
+      polaroids: [],
     },
     calendar: { blocked, available },
     isVisibleCommercial: base.is_visible_commercial,
@@ -125,7 +127,7 @@ export async function getModelsForClient(
     hips: m.hips ?? 0,
     legsInseam: m.legs_inseam ?? 0,
     gallery: m.portfolio_images || [],
-    polaroids: m.polaroids || [],
+    polaroids: [],
     isVisibleCommercial: m.is_visible_commercial,
     isVisibleFashion: m.is_visible_fashion,
     categories: m.categories ?? null,

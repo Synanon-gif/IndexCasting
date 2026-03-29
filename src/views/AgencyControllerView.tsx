@@ -58,13 +58,8 @@ import { getApplicationById } from '../store/applicationsStore';
 import { OrgMessengerInline } from '../components/OrgMessengerInline';
 import { AgencySettingsTab } from '../components/AgencySettingsTab';
 // Recruiting chats (BookingChatView) live under Messages → Recruiting chats.
-import {
-  getPhotosForModel,
-  upsertPhotosForModel,
-  syncPortfolioToModel,
-  syncPolaroidsToModel,
-  uploadModelPhoto,
-} from '../services/modelPhotosSupabase';
+import { uploadModelPhoto } from '../services/modelPhotosSupabase';
+import { ModelMediaSettingsPanel } from '../components/ModelMediaSettingsPanel';
 import { getTerritoriesForModel, getTerritoriesForAgency, upsertTerritoriesForModel, bulkAddTerritoriesForModels } from '../services/territoriesSupabase';
 import { supabase } from '../../lib/supabase';
 import {
@@ -1396,13 +1391,8 @@ const MyModelsTab: React.FC<{
   const [completenessIssues, setCompletenessIssues] = useState<ReturnType<typeof checkModelCompleteness>>([]);
   const [saveFeedback, setSaveFeedback] = useState<'saving' | 'success' | 'error' | null>(null);
 
-  const [polasSource, setPolasSource] = useState<'mediaslide' | 'netwalk' | 'manual'>('manual');
-  type LocalPhoto = { id?: string; url: string; visible: boolean; is_visible_to_clients: boolean };
-  const [modelPhotos, setModelPhotos] = useState<LocalPhoto[]>([]);
-  const [polaroidPhotos, setPolaroidPhotos] = useState<LocalPhoto[]>([]);
-  const [newPhotoUrl, setNewPhotoUrl] = useState('');
-  const [newPolaroidUrl, setNewPolaroidUrl] = useState('');
-  const [showPolasOnProfile, setShowPolasOnProfile] = useState(true);
+  /** Tracked by ModelMediaSettingsPanel callback — used for profile completeness check. */
+  const [hasVisiblePortfolio, setHasVisiblePortfolio] = useState(false);
 
   const [territoryCountryCodes, setTerritoryCountryCodes] = useState<string[]>([]);
   const [territorySearch, setTerritorySearch] = useState('');
@@ -1443,10 +1433,10 @@ const MyModelsTab: React.FC<{
     }
     const ctx: CompletenessContext = {
       hasTerritories: territoryCountryCodes.length > 0,
-      hasVisiblePhoto: modelPhotos.some((p) => p.is_visible_to_clients),
+      hasVisiblePhoto: hasVisiblePortfolio,
     };
     setCompletenessIssues(checkModelCompleteness(selectedModel, ctx));
-  }, [selectedModel?.id, territoryCountryCodes, modelPhotos]);
+  }, [selectedModel?.id, territoryCountryCodes, hasVisiblePortfolio]);
 
   // Bulk selection state
   const [selectedModelIds, setSelectedModelIds] = useState<Set<string>>(new Set());
@@ -1531,49 +1521,9 @@ const MyModelsTab: React.FC<{
   useEffect(() => {
     setSaveFeedback(null);
     if (!selectedModel) {
-      setModelPhotos([]);
-      setPolaroidPhotos([]);
       setTerritoryCountryCodes([]);
       return;
     }
-    void getPhotosForModel(selectedModel.id, 'portfolio').then((photos) => {
-      if (photos.length > 0) {
-        setModelPhotos(
-          photos.map((p) => {
-            const isVisibleToClients = Boolean(p.is_visible_to_clients ?? p.visible);
-            return {
-              id: p.id,
-              url: p.url,
-              visible: isVisibleToClients,
-              is_visible_to_clients: isVisibleToClients,
-            };
-          }),
-        );
-      } else if ((selectedModel.portfolio_images ?? []).length > 0) {
-        // Fallback: model_photos table may be blocked by RLS (run migration_model_photos_agency_owner_rls.sql).
-        // Use portfolio_images from models table as display source.
-        setModelPhotos(
-          (selectedModel.portfolio_images ?? []).map((url) => ({
-            url,
-            visible: true,
-            is_visible_to_clients: true,
-          })),
-        );
-      }
-    });
-    void getPhotosForModel(selectedModel.id, 'polaroid').then((photos) => {
-      setPolaroidPhotos(
-        photos.map((p) => {
-          const isVisibleToClients = Boolean(p.is_visible_to_clients ?? p.visible);
-          return {
-            id: p.id,
-            url: p.url,
-            visible: isVisibleToClients,
-            is_visible_to_clients: isVisibleToClients,
-          };
-        }),
-      );
-    });
     void getTerritoriesForModel(selectedModel.id, agencyId).then((rows) => {
       setTerritoryCountryCodes(rows.map((r) => r.country_code.toUpperCase()));
     });
@@ -1907,14 +1857,10 @@ const MyModelsTab: React.FC<{
       return;
     }
 
-    // ── STEP 2: Portfolio alert (non-blocking) — photos are required for
-    //   full client visibility but must not prevent the agency from saving
-    //   measurements, name, or other fields. The completeness banner in the
-    //   edit panel already shows a Critical alert for missing photos.
-    const visiblePortfolio = modelPhotos.filter((p) => p.is_visible_to_clients);
-    if (visiblePortfolio.length === 0) {
+    // ── STEP 2: Portfolio alert (non-blocking) — completeness banner already
+    //   shows a warning; photos are managed independently by ModelMediaSettingsPanel.
+    if (!hasVisiblePortfolio) {
       Alert.alert(uiCopy.modelRoster.portfolioRequiredTitle, uiCopy.modelRoster.portfolioRequiredBody);
-      // Continue saving all other model fields below.
     }
 
     // ── STEP 3: Save model fields + photos ──
@@ -1944,7 +1890,6 @@ const MyModelsTab: React.FC<{
       updates.is_visible_fashion = noCategory || hasFashion;
       updates.is_visible_commercial = noCategory || hasCommercial;
       updates.categories = editState.categories.length > 0 ? editState.categories : null;
-      updates.show_polas_on_profile = showPolasOnProfile;
       // Sports columns: only include if migration has been applied (graceful skip on unknown column error).
       updates.is_sports_winter = editState.is_sports_winter;
       updates.is_sports_summer = editState.is_sports_summer;
@@ -1963,36 +1908,7 @@ const MyModelsTab: React.FC<{
         }
       }
 
-      const photoPayload = modelPhotos.map((p, index) => ({
-        id: p.id,
-        url: p.url,
-        sort_order: index,
-        visible: p.visible,
-        is_visible_to_clients: p.is_visible_to_clients,
-        source: null,
-        api_external_id: null,
-        photo_type: 'portfolio' as const,
-      }));
-      const polaroidPayload = polaroidPhotos.map((p, index) => ({
-        id: p.id,
-        url: p.url,
-        sort_order: index,
-        visible: p.visible,
-        is_visible_to_clients: p.is_visible_to_clients,
-        source: null,
-        api_external_id: null,
-        photo_type: 'polaroid' as const,
-      }));
-      await upsertPhotosForModel(selectedModel.id, [...photoPayload, ...polaroidPayload]);
-      await syncPortfolioToModel(
-        selectedModel.id,
-        modelPhotos.filter((p) => p.is_visible_to_clients).map((p) => p.url),
-      );
-      await syncPolaroidsToModel(
-        selectedModel.id,
-        polaroidPhotos.filter((p) => p.is_visible_to_clients).map((p) => p.url),
-      );
-
+      // Photos are managed directly by ModelMediaSettingsPanel (immediate save on change).
       setSaveFeedback('success');
     } catch (err) {
       console.error('handleSaveModel error:', err);
@@ -2007,7 +1923,7 @@ const MyModelsTab: React.FC<{
       if (freshModel) {
         const ctx: CompletenessContext = {
           hasTerritories: territoryCountryCodes.length > 0,
-          hasVisiblePhoto: modelPhotos.some((p) => p.is_visible_to_clients),
+          hasVisiblePhoto: hasVisiblePortfolio,
         };
         setCompletenessIssues(checkModelCompleteness(freshModel, ctx));
       }
@@ -2019,60 +1935,8 @@ const MyModelsTab: React.FC<{
     }, 1800);
   };
 
-  const movePhoto = (idx: number, dir: number) => {
-    const next = [...modelPhotos];
-    const target = idx + dir;
-    if (target < 0 || target >= next.length) return;
-    [next[idx], next[target]] = [next[target], next[idx]];
-    setModelPhotos(next);
-  };
-  const movePolaroid = (idx: number, dir: number) => {
-    const next = [...polaroidPhotos];
-    const target = idx + dir;
-    if (target < 0 || target >= next.length) return;
-    [next[idx], next[target]] = [next[target], next[idx]];
-    setPolaroidPhotos(next);
-  };
-  const togglePhotoVisibility = (photo: LocalPhoto, idx: number) => {
-    const next = [...modelPhotos];
-    next[idx] = {
-      ...photo,
-      visible: !photo.is_visible_to_clients,
-      is_visible_to_clients: !photo.is_visible_to_clients,
-    };
-    setModelPhotos(next);
-  };
-  const togglePolaroidVisibility = (photo: LocalPhoto, idx: number) => {
-    const next = [...polaroidPhotos];
-    next[idx] = {
-      ...photo,
-      visible: !photo.is_visible_to_clients,
-      is_visible_to_clients: !photo.is_visible_to_clients,
-    };
-    setPolaroidPhotos(next);
-  };
-  const addPhoto = () => {
-    if (!newPhotoUrl.trim()) return;
-    setModelPhotos([
-      ...modelPhotos,
-      { url: newPhotoUrl.trim(), visible: true, is_visible_to_clients: true },
-    ]);
-    setNewPhotoUrl('');
-  };
-
-  const setCoverPhoto = (idx: number) => {
-    if (idx <= 0 || idx >= modelPhotos.length) return;
-    const next = [...modelPhotos];
-    const [cover] = next.splice(idx, 1);
-    next.unshift(cover);
-    setModelPhotos(next);
-  };
-
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [linkAccountEmail, setLinkAccountEmail] = useState('');
   const [linkAccountLoading, setLinkAccountLoading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const polaroidFileInputRef = useRef<HTMLInputElement | null>(null);
   const addModelFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleAddModelPhotoFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2080,97 +1944,6 @@ const MyModelsTab: React.FC<{
     e.target.value = '';
     if (files.length === 0) return;
     setAddModelImageFiles((prev) => [...prev, ...files]);
-  };
-
-  const handlePhotoFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target?.files ?? []);
-    if (files.length === 0 || !selectedModel) return;
-    const imageFiles = files.filter((f) => f.type?.startsWith('image/'));
-    if (imageFiles.length === 0) return;
-    e.target.value = '';
-    setUploadingPhoto(true);
-    try {
-      const uploadedUrls: string[] = [];
-      for (const file of imageFiles) {
-        const url = await uploadModelPhoto(selectedModel.id, file);
-        if (url) uploadedUrls.push(url);
-      }
-      if (uploadedUrls.length) {
-        setModelPhotos((prev) => [
-          ...prev,
-          ...uploadedUrls.map((url) => ({ url, visible: true, is_visible_to_clients: true })),
-        ]);
-      }
-    } finally {
-      setUploadingPhoto(false);
-    }
-  };
-
-  const handlePolaroidFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target?.files ?? []);
-    if (files.length === 0 || !selectedModel) return;
-    const imageFiles = files.filter((f) => f.type?.startsWith('image/'));
-    if (imageFiles.length === 0) return;
-    e.target.value = '';
-    setUploadingPhoto(true);
-    try {
-      const uploadedUrls: string[] = [];
-      for (const file of imageFiles) {
-        const url = await uploadModelPhoto(selectedModel.id, file);
-        if (url) uploadedUrls.push(url);
-      }
-      if (uploadedUrls.length) {
-        setPolaroidPhotos((prev) => [
-          ...prev,
-          ...uploadedUrls.map((url) => ({ url, visible: true, is_visible_to_clients: true })),
-        ]);
-      }
-    } finally {
-      setUploadingPhoto(false);
-    }
-  };
-
-  const pickFromLibrary = async (target: 'portfolio' | 'polaroid') => {
-    if (!selectedModel) return;
-    if (Platform.OS === 'web') {
-      if (target === 'portfolio') fileInputRef.current?.click();
-      else polaroidFileInputRef.current?.click();
-      return;
-    }
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert('Permission needed', 'Allow photo library access to upload images.');
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.85,
-      allowsMultipleSelection: true,
-    });
-    if (result.canceled || !result.assets?.length) return;
-    setUploadingPhoto(true);
-    try {
-      for (const asset of result.assets) {
-        const res = await fetch(asset.uri);
-        const blob = await res.blob();
-        const url = await uploadModelPhoto(selectedModel.id, blob);
-        if (url) {
-          if (target === 'portfolio') {
-            setModelPhotos((prev) => [
-              ...prev,
-              { url, visible: true, is_visible_to_clients: true },
-            ]);
-          } else {
-            setPolaroidPhotos((prev) => [
-              ...prev,
-              { url, visible: true, is_visible_to_clients: true },
-            ]);
-          }
-        }
-      }
-    } finally {
-      setUploadingPhoto(false);
-    }
   };
 
   if (selectedModel) {
@@ -2187,227 +1960,22 @@ const MyModelsTab: React.FC<{
           onChange={(patch) => setEditState((prev) => ({ ...prev, ...patch }))}
         />
 
-        {/* Model Photos Management */}
-        <View style={{ marginTop: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.md }}>
-          <Text style={s.sectionLabel}>{uiCopy.modelRoster.portfolioTitle}</Text>
-          <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm }}>
-            {uiCopy.modelRoster.portfolioHint}
-          </Text>
+        {/* Model Media Management – Portfolio, Polaroids, Private Folder */}
+        <View style={{ marginTop: spacing.lg }}>
+          <ModelMediaSettingsPanel
+            modelId={selectedModel.id}
+            agencyId={agencyId}
+            onHasVisiblePortfolioChange={setHasVisiblePortfolio}
+          />
+        </View>
 
-          {/* Polas API connection */}
-          <View style={{ marginBottom: spacing.md }}>
-            <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary, marginBottom: 4 }}>
-              Polas Source
-            </Text>
-            <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-              <TouchableOpacity
-                style={[s.apiBtn, polasSource === 'mediaslide' && { borderColor: colors.accent }]}
-                onPress={() => setPolasSource('mediaslide')}
-              >
-                <Text style={s.apiBtnLabel}>Mediaslide</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[s.apiBtn, polasSource === 'netwalk' && { borderColor: colors.accent }]}
-                onPress={() => setPolasSource('netwalk')}
-              >
-                <Text style={s.apiBtnLabel}>Netwalk</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[s.apiBtn, polasSource === 'manual' && { borderColor: colors.accent }]}
-                onPress={() => setPolasSource('manual')}
-              >
-                <Text style={s.apiBtnLabel}>Manual</Text>
-              </TouchableOpacity>
-            </View>
-            <Text style={{ ...typography.body, fontSize: 10, color: colors.textSecondary, marginTop: 4 }}>
-              {polasSource === 'manual' ? 'Upload photos manually' : `Photos synced from ${polasSource} API`}
-            </Text>
-          </View>
-
-          {/* Photo list with reorder and Set as cover */}
-          <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary, marginBottom: 4 }}>
-            {modelPhotos.length} image(s) — first = cover
-          </Text>
-          {modelPhotos.map((photo, idx) => (
-            <View key={photo.id || `photo-${idx}`} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-              {typeof Image !== 'undefined' && photo.url ? (
-                <Image source={{ uri: photo.url }} style={{ width: 40, height: 40, borderRadius: 4, marginRight: 8, backgroundColor: colors.border }} resizeMode="cover" />
-              ) : null}
-              <View style={{ flex: 1 }}>
-                <Text style={{ ...typography.body, fontSize: 11 }} numberOfLines={1}>{photo.url ? (photo.url.length > 50 ? photo.url.slice(0, 47) + '…' : photo.url) : `Photo ${idx + 1}`}</Text>
-                <Text style={{ ...typography.label, fontSize: 9, color: photo.is_visible_to_clients ? colors.buttonOptionGreen : colors.textSecondary }}>
-                  {uiCopy.modelRoster.visibleInClientSwipe}:{' '}
-                  {photo.is_visible_to_clients ? uiCopy.common.yes : uiCopy.common.no}
-                </Text>
-              </View>
-              <View style={{ flexDirection: 'row', gap: 4, alignItems: 'center' }}>
-                {idx > 0 && (
-                  <TouchableOpacity onPress={() => setCoverPhoto(idx)} style={[s.filterPill, { paddingHorizontal: 6, paddingVertical: 2 }]}>
-                    <Text style={[s.filterPillLabel, { fontSize: 10 }]}>Cover</Text>
-                  </TouchableOpacity>
-                )}
-                {idx === 0 && <Text style={{ ...typography.label, fontSize: 9, color: colors.buttonOptionGreen }}>Cover</Text>}
-                <TouchableOpacity onPress={() => movePhoto(idx, -1)} disabled={idx === 0}>
-                  <Text style={{ fontSize: 16, color: idx === 0 ? colors.textSecondary : colors.textPrimary }}>↑</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => movePhoto(idx, 1)} disabled={idx === modelPhotos.length - 1}>
-                  <Text style={{ fontSize: 16, color: idx === modelPhotos.length - 1 ? colors.textSecondary : colors.textPrimary }}>↓</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => togglePhotoVisibility(photo, idx)}>
-                  <Text style={{ fontSize: 14 }}>{photo.is_visible_to_clients ? '👁' : '🚫'}</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ))}
-
-          {/* Upload and URL */}
-          {polasSource === 'manual' && (
-            <View style={{ marginTop: spacing.sm }}>
-              {typeof window !== 'undefined' && (
-                <>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    ref={fileInputRef}
-                    onChange={handlePhotoFile}
-                    style={{ display: 'none' }}
-                  />
-                  <TouchableOpacity
-                    onPress={() => fileInputRef.current?.click()}
-                    disabled={uploadingPhoto}
-                    style={[s.apiBtn, { marginBottom: 8 }]}
-                  >
-                    <Text style={s.apiBtnLabel}>{uploadingPhoto ? 'Uploading…' : '+ Upload photo'}</Text>
-                  </TouchableOpacity>
-                </>
-              )}
-              {Platform.OS !== 'web' && (
-                <TouchableOpacity
-                  onPress={() => void pickFromLibrary('portfolio')}
-                  disabled={uploadingPhoto}
-                  style={[s.apiBtn, { marginBottom: 8 }]}
-                >
-                  <Text style={s.apiBtnLabel}>
-                    {uploadingPhoto ? 'Uploading…' : uiCopy.modelRoster.pickFromLibrary}
-                  </Text>
-                </TouchableOpacity>
-              )}
-              <TextInput
-                value={newPhotoUrl}
-                onChangeText={setNewPhotoUrl}
-                placeholder="Or paste photo URL"
-                placeholderTextColor={colors.textSecondary}
-                style={[s.editInput, { height: 36 }]}
-              />
-              <TouchableOpacity onPress={addPhoto} style={[s.apiBtn, { marginTop: 4 }]}>
-                <Text style={s.apiBtnLabel}>+ Add URL</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          <View style={{ marginTop: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.md }}>
-            <Text style={s.sectionLabel}>{uiCopy.modelRoster.polaroidsTitle}</Text>
-            <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm }}>
-              {uiCopy.modelRoster.polaroidsHint}
-            </Text>
-            {polaroidPhotos.map((photo, idx) => (
-              <View
-                key={photo.id || `pola-${idx}`}
-                style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border }}
-              >
-                {typeof Image !== 'undefined' && photo.url ? (
-                  <Image
-                    source={{ uri: photo.url }}
-                    style={{ width: 40, height: 40, borderRadius: 4, marginRight: 8, backgroundColor: colors.border }}
-                    resizeMode="cover"
-                  />
-                ) : null}
-                <View style={{ flex: 1 }}>
-                  <Text style={{ ...typography.body, fontSize: 11 }} numberOfLines={1}>
-                    {photo.url ? (photo.url.length > 50 ? photo.url.slice(0, 47) + '…' : photo.url) : `Polaroid ${idx + 1}`}
-                  </Text>
-                  <Text style={{ ...typography.label, fontSize: 9, color: photo.is_visible_to_clients ? colors.buttonOptionGreen : colors.textSecondary }}>
-                    {uiCopy.modelRoster.visibleInClientSwipe}:{' '}
-                    {photo.is_visible_to_clients ? uiCopy.common.yes : uiCopy.common.no}
-                  </Text>
-                </View>
-                <View style={{ flexDirection: 'row', gap: 4, alignItems: 'center' }}>
-                  <TouchableOpacity onPress={() => movePolaroid(idx, -1)} disabled={idx === 0}>
-                    <Text style={{ fontSize: 16, color: idx === 0 ? colors.textSecondary : colors.textPrimary }}>↑</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => movePolaroid(idx, 1)} disabled={idx === polaroidPhotos.length - 1}>
-                    <Text style={{ fontSize: 16, color: idx === polaroidPhotos.length - 1 ? colors.textSecondary : colors.textPrimary }}>↓</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => togglePolaroidVisibility(photo, idx)}>
-                    <Text style={{ fontSize: 14 }}>{photo.is_visible_to_clients ? '👁' : '🚫'}</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))}
-            {polasSource === 'manual' && (
-              <View style={{ marginTop: spacing.sm }}>
-                {typeof window !== 'undefined' && (
-                  <>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      ref={polaroidFileInputRef}
-                      onChange={handlePolaroidFile}
-                      style={{ display: 'none' }}
-                    />
-                    <TouchableOpacity
-                      onPress={() => polaroidFileInputRef.current?.click()}
-                      disabled={uploadingPhoto}
-                      style={[s.apiBtn, { marginBottom: 8 }]}
-                    >
-                      <Text style={s.apiBtnLabel}>{uploadingPhoto ? 'Uploading…' : '+ Upload polaroid'}</Text>
-                    </TouchableOpacity>
-                  </>
-                )}
-                {Platform.OS !== 'web' && (
-                  <TouchableOpacity
-                    onPress={() => void pickFromLibrary('polaroid')}
-                    disabled={uploadingPhoto}
-                    style={[s.apiBtn, { marginBottom: 8 }]}
-                  >
-                    <Text style={s.apiBtnLabel}>
-                      {uploadingPhoto ? 'Uploading…' : `${uiCopy.modelRoster.pickFromLibrary} (polaroid)`}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-                <TextInput
-                  value={newPolaroidUrl}
-                  onChangeText={setNewPolaroidUrl}
-                  placeholder={uiCopy.modelRoster.addPolaroidUrlPlaceholder}
-                  placeholderTextColor={colors.textSecondary}
-                  style={[s.editInput, { height: 36 }]}
-                />
-                <TouchableOpacity
-                  onPress={() => {
-                    if (!newPolaroidUrl.trim()) return;
-                    setPolaroidPhotos((prev) => [
-                      ...prev,
-                      { url: newPolaroidUrl.trim(), visible: true, is_visible_to_clients: true },
-                    ]);
-                    setNewPolaroidUrl('');
-                  }}
-                  style={[s.apiBtn, { marginTop: 4 }]}
-                >
-                  <Text style={s.apiBtnLabel}>+ Add polaroid URL</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-
-          {/* Territories of Representation */}
-          <View style={{
-            marginTop: spacing.lg,
-            borderTopWidth: 1,
-            borderTopColor: territoryCountryCodes.length === 0 ? (colors.buttonSkipRed ?? '#c0392b') : colors.border,
-            paddingTop: spacing.md,
-          }}>
+        {/* Territories of Representation */}
+        <View style={{
+          marginTop: spacing.lg,
+          borderTopWidth: 1,
+          borderTopColor: territoryCountryCodes.length === 0 ? (colors.buttonSkipRed ?? '#c0392b') : colors.border,
+          paddingTop: spacing.md,
+        }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.xs }}>
               <Text style={s.sectionLabel}>{uiCopy.modelRoster.territoriesTitle}</Text>
               <View style={{
@@ -2539,14 +2107,6 @@ const MyModelsTab: React.FC<{
               </Text>
             </TouchableOpacity>
           </View>
-
-          {/* Show on profile toggle */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: spacing.md, gap: spacing.sm }}>
-            <TouchableOpacity onPress={() => setShowPolasOnProfile(!showPolasOnProfile)} style={[s.apiBtn, showPolasOnProfile && { borderColor: colors.accent }]}>
-              <Text style={s.apiBtnLabel}>{showPolasOnProfile ? '✓ Show polas on profile' : 'Show polas on profile'}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
 
         {needsAccountLink && (
           <View style={{ marginTop: spacing.lg, padding: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: 12, backgroundColor: colors.surface }}>
@@ -4029,6 +3589,7 @@ const GuestLinksTab: React.FC<{
   const [label, setLabel] = useState('');
   const [modelSearch, setModelSearch] = useState('');
   const [selectedModelIds, setSelectedModelIds] = useState<Set<string>>(new Set());
+  const [packageType, setPackageType] = useState<'portfolio' | 'polaroid'>('portfolio');
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [packageModelFilters, setPackageModelFilters] = useState<ModelFilters>(defaultModelFilters);
@@ -4090,11 +3651,13 @@ const GuestLinksTab: React.FC<{
         agency_email: agencyEmail,
         agency_name: agencyName,
         label: label.trim(),
+        type: packageType,
       });
       if (link) {
         setLinks((prev) => [link, ...prev]);
         setLabel('');
         setSelectedModelIds(new Set());
+        setPackageType('portfolio');
       } else {
         setCreateError(copy.createPackageError);
       }
@@ -4277,6 +3840,32 @@ const GuestLinksTab: React.FC<{
           )}
         </View>
 
+        {/* Package Type Selector */}
+        <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.xs }}>
+          {copy.packageTypeLabel}
+        </Text>
+        <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.xs }}>
+          <TouchableOpacity
+            style={[s.filterPill, packageType === 'portfolio' && s.filterPillActive]}
+            onPress={() => setPackageType('portfolio')}
+          >
+            <Text style={[s.filterPillLabel, packageType === 'portfolio' && s.filterPillLabelActive]}>
+              {copy.packageTypePortfolio}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[s.filterPill, packageType === 'polaroid' && s.filterPillActive]}
+            onPress={() => setPackageType('polaroid')}
+          >
+            <Text style={[s.filterPillLabel, packageType === 'polaroid' && s.filterPillLabelActive]}>
+              {copy.packageTypePolaroid}
+            </Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={{ ...typography.body, fontSize: 10, color: colors.textSecondary, marginBottom: spacing.sm }}>
+          {packageType === 'polaroid' ? copy.packageTypePolaroidHint : copy.packageTypePortfolioHint}
+        </Text>
+
         {createError !== null && (
           <Text style={{ ...typography.body, fontSize: 11, color: '#e74c3c', marginBottom: spacing.xs }}>{createError}</Text>
         )}
@@ -4305,15 +3894,29 @@ const GuestLinksTab: React.FC<{
                   <Text style={{ ...typography.label, fontSize: 13, color: colors.textPrimary, flex: 1 }} numberOfLines={1}>
                     {l.label ?? 'Package'}
                   </Text>
-                  <View style={[
-                    { borderRadius: 999, paddingHorizontal: 6, paddingVertical: 2, marginLeft: 8 },
-                    l.is_active
-                      ? { backgroundColor: 'rgba(76,175,80,0.12)', borderWidth: 1, borderColor: colors.buttonOptionGreen }
-                      : { backgroundColor: colors.border },
-                  ]}>
-                    <Text style={{ ...typography.label, fontSize: 9, color: l.is_active ? colors.buttonOptionGreen : colors.textSecondary }}>
-                      {l.is_active ? copy.activeLabel : copy.inactiveLabel}
-                    </Text>
+                  <View style={{ flexDirection: 'row', gap: 4, alignItems: 'center' }}>
+                    {/* Package type badge */}
+                    <View style={{
+                      borderRadius: 999, paddingHorizontal: 6, paddingVertical: 2,
+                      backgroundColor: l.type === 'polaroid' ? 'rgba(255,152,0,0.1)' : 'rgba(33,150,243,0.1)',
+                      borderWidth: 1,
+                      borderColor: l.type === 'polaroid' ? '#FF9800' : '#2196F3',
+                    }}>
+                      <Text style={{ ...typography.label, fontSize: 9, color: l.type === 'polaroid' ? '#FF9800' : '#2196F3' }}>
+                        {l.type === 'polaroid' ? copy.packageTypePolaroid : copy.packageTypePortfolio}
+                      </Text>
+                    </View>
+                    {/* Active / Inactive badge */}
+                    <View style={[
+                      { borderRadius: 999, paddingHorizontal: 6, paddingVertical: 2 },
+                      l.is_active
+                        ? { backgroundColor: 'rgba(76,175,80,0.12)', borderWidth: 1, borderColor: colors.buttonOptionGreen }
+                        : { backgroundColor: colors.border },
+                    ]}>
+                      <Text style={{ ...typography.label, fontSize: 9, color: l.is_active ? colors.buttonOptionGreen : colors.textSecondary }}>
+                        {l.is_active ? copy.activeLabel : copy.inactiveLabel}
+                      </Text>
+                    </View>
                   </View>
                 </View>
 

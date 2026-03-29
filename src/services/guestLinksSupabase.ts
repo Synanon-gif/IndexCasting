@@ -4,6 +4,8 @@ import { supabase } from '../../lib/supabase';
  * Gast-Links (Agentur) – in Supabase, pro agency_id; guest_links inkl. model_ids.
  * Alle Daten pro Partei gespeichert und abrufbar.
  */
+export type PackageType = 'portfolio' | 'polaroid';
+
 export type GuestLink = {
   id: string;
   agency_id: string;
@@ -15,6 +17,8 @@ export type GuestLink = {
   expires_at: string | null;
   is_active: boolean;
   tos_accepted_by_guest: boolean;
+  /** 'portfolio' = portfolio images only; 'polaroid' = polaroids only. */
+  type: PackageType;
   created_at: string;
 };
 
@@ -25,23 +29,31 @@ export async function createGuestLink(params: {
   agency_name?: string;
   label?: string;
   expires_at?: string;
+  /** 'portfolio' shows portfolio images only; 'polaroid' shows polaroids only. */
+  type: PackageType;
 }): Promise<GuestLink | null> {
-  const { data: { user } } = await supabase.auth.getUser();
-  const { data, error } = await supabase
-    .from('guest_links')
-    .insert({
-      agency_id: params.agency_id,
-      model_ids: params.model_ids,
-      agency_email: params.agency_email || null,
-      agency_name: params.agency_name || null,
-      label: params.label || null,
-      created_by: user?.id || null,
-      expires_at: params.expires_at || null,
-    })
-    .select()
-    .single();
-  if (error) { console.error('createGuestLink error:', error); return null; }
-  return data as GuestLink;
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    const { data, error } = await supabase
+      .from('guest_links')
+      .insert({
+        agency_id: params.agency_id,
+        model_ids: params.model_ids,
+        agency_email: params.agency_email || null,
+        agency_name: params.agency_name || null,
+        label: params.label || null,
+        created_by: user?.id || null,
+        expires_at: params.expires_at || null,
+        type: params.type,
+      })
+      .select()
+      .single();
+    if (error) { console.error('createGuestLink error:', error); return null; }
+    return data as GuestLink;
+  } catch (e) {
+    console.error('createGuestLink exception:', e);
+    return null;
+  }
 }
 
 export async function getGuestLink(linkId: string): Promise<GuestLink | null> {
@@ -78,6 +90,9 @@ export async function deactivateGuestLink(linkId: string): Promise<boolean> {
 /**
  * Minimal model shape returned by the get_guest_link_models RPC.
  * Contains only the fields needed by GuestView — no sensitive internal data.
+ * Private photos are never included. Image arrays are mutually exclusive:
+ *   Portfolio package → portfolio_images populated, polaroids = []
+ *   Polaroid package  → polaroids populated, portfolio_images = []
  */
 export type GuestLinkModel = {
   id: string;
@@ -91,6 +106,7 @@ export type GuestLinkModel = {
   eye_color: string | null;
   sex: string | null;
   portfolio_images: string[];
+  polaroids: string[];
 };
 
 /**

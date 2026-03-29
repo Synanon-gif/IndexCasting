@@ -16,8 +16,7 @@ import { showAppAlert } from '../utils/crossPlatformAlert';
 import { uiCopy } from '../constants/uiCopy';
 import { useAuth } from '../context/AuthContext';
 import { getModelsForClient, getModelData } from '../services/apiService';
-import { getModelByIdFromSupabase, type SupabaseModel } from '../services/modelsSupabase';
-import { getGuestLink } from '../services/guestLinksSupabase';
+import { getGuestLink, getGuestLinkModels, type GuestLinkModel, type PackageType } from '../services/guestLinksSupabase';
 import { getAgencies, type Agency } from '../services/agenciesSupabase';
 import { AGENCY_SEGMENT_TYPES } from '../constants/agencyTypes';
 import { type ModelFilters, defaultModelFilters, FILTER_COUNTRIES } from '../utils/modelFilters';
@@ -235,6 +234,8 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     name: string;
     models: ModelSummary[];
     guestLink: string;
+    packageType: PackageType;
+    rawModels: GuestLinkModel[];
   } | null>(null);
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const [pendingModel, setPendingModel] = useState<ModelSummary | null>(null);
@@ -550,7 +551,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         hips: m.hips ?? 0,
         chest: m.chest ?? 0,
         legsInseam: m.legsInseam ?? m.legs_inseam ?? 0,
-        coverUrl: m.gallery?.[0] ?? m.polaroids?.[0] ?? '',
+        coverUrl: m.gallery?.[0] ?? '',
         agencyId: m.agencyId ?? m.agency_id ?? null,
         agencyName: m.agencyName ?? m.agency_name ?? null,
         countryCode: m.countryCode ?? null,
@@ -576,11 +577,22 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       setDetailData(null);
       getModelData(detailId)
         .then((data: any) => {
-          setDetailData(data);
+          if (packageViewState) {
+            const raw = packageViewState.rawModels.find((m) => m.id === detailId);
+            const correctImages = packageViewState.packageType === 'polaroid'
+              ? (raw?.polaroids ?? [])
+              : (raw?.portfolio_images ?? []);
+            setDetailData({
+              ...data,
+              portfolio: { ...data.portfolio, images: correctImages, polaroids: [] },
+            });
+          } else {
+            setDetailData(data);
+          }
         })
         .finally(() => setDetailLoading(false));
     }
-  }, [detailId]);
+  }, [detailId, packageViewState]);
 
   const activeProject = useMemo(
     () => projects.find((p) => p.id === activeProjectId) || null,
@@ -759,35 +771,37 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         clearFeedbackLater();
         return;
       }
-      const rows = await Promise.all(gl.model_ids.map((id) => getModelByIdFromSupabase(id)));
-      const packageModels: ModelSummary[] = rows
-        .filter((m): m is SupabaseModel => m !== null)
-        .map((m) => ({
-          id: m.id,
-          name: m.name,
-          city: m.city ?? '',
-          hairColor: m.hair_color ?? '',
-          height: m.height,
-          bust: m.bust ?? 0,
-          waist: m.waist ?? 0,
-          hips: m.hips ?? 0,
-          chest: m.chest ?? 0,
-          legsInseam: m.legs_inseam ?? 0,
-          coverUrl: m.portfolio_images?.[0] ?? m.polaroids?.[0] ?? '',
-          agencyId: m.agency_id ?? null,
-          agencyName: null,
-          countryCode: m.country ?? null,
-          hasRealLocation: false,
-        }));
+      const glModels = await getGuestLinkModels(packageId);
+      const packageModels: ModelSummary[] = glModels.map((m) => ({
+        id: m.id,
+        name: m.name,
+        city: m.city ?? '',
+        hairColor: m.hair_color ?? '',
+        height: m.height ?? 0,
+        bust: m.bust ?? 0,
+        waist: m.waist ?? 0,
+        hips: m.hips ?? 0,
+        chest: 0,
+        legsInseam: 0,
+        coverUrl: gl.type === 'polaroid'
+          ? (m.polaroids?.[0] ?? '')
+          : (m.portfolio_images?.[0] ?? ''),
+        agencyId: null,
+        agencyName: null,
+        countryCode: null,
+        hasRealLocation: false,
+      }));
       const packageName = gl.agency_name
-        ? `${gl.agency_name} (${gl.model_ids.length} models)`
-        : `Package (${gl.model_ids.length} models)`;
+        ? `${gl.agency_name} (${glModels.length} models)`
+        : `Package (${glModels.length} models)`;
       setFeedback(null);
       setPackageViewState({
         packageId,
         name: packageName,
         models: packageModels,
         guestLink: typeof meta.guest_link === 'string' ? meta.guest_link : '',
+        packageType: gl.type,
+        rawModels: glModels,
       });
       setCurrentIndex(0);
       setTab('discover');

@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { getModelsFromSupabase } from '../services/modelsSupabase';
+import { uiCopy } from '../constants/uiCopy';
 
 type ClientModel = {
   id: string;
@@ -20,7 +21,6 @@ type ClientModel = {
   hips: number;
   city: string;
   hairColor: string;
-  polaroids: string[];
   gallery: string[];
 };
 
@@ -36,7 +36,7 @@ const initialFilters: Filters = {
   hairColor: 'all',
 };
 
-const AVAILABLE_DATES = ['2026-03-21', '2026-03-22', '2026-03-23'];
+const AVAILABLE_DATES: string[] = [];
 
 export const CustomerSwipeScreen: React.FC = () => {
   const [models, setModels] = useState<ClientModel[]>([]);
@@ -60,7 +60,6 @@ export const CustomerSwipeScreen: React.FC = () => {
           hips: m.hips ?? 0,
           city: m.city ?? '',
           hairColor: m.hair_color ?? '',
-          polaroids: m.polaroids ?? [],
           gallery: m.portfolio_images ?? [],
         })),
       );
@@ -115,7 +114,7 @@ export const CustomerSwipeScreen: React.FC = () => {
     setOptionSuccess(null);
     setTimeout(() => {
       setIsSendingOption(false);
-      setOptionSuccess(`Option sent for ${date} (simulated agency API).`);
+      setOptionSuccess(uiCopy.swipe.optionSuccessMessage(date));
       setTimeout(() => setOptionSuccess(null), 2600);
     }, 900);
   };
@@ -123,7 +122,7 @@ export const CustomerSwipeScreen: React.FC = () => {
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
-        <Text style={styles.headerLabel}>The Swipe</Text>
+        <Text style={styles.headerLabel}>{uiCopy.swipe.headerLabel}</Text>
         <View style={styles.headerRight}>
           <Text style={styles.counter}>
             {filteredModels.length ? index + 1 : 0}/{filteredModels.length}
@@ -132,7 +131,7 @@ export const CustomerSwipeScreen: React.FC = () => {
             style={styles.filterPill}
             onPress={() => setIsFilterOpen(true)}
           >
-            <Text style={styles.filterLabel}>Filter</Text>
+            <Text style={styles.filterLabel}>{uiCopy.swipe.filterButton}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -145,7 +144,7 @@ export const CustomerSwipeScreen: React.FC = () => {
         >
           <View style={styles.imageWrapper}>
             <Image
-              source={{ uri: current.gallery[0] ?? current.polaroids[0] }}
+              source={{ uri: current.gallery[0] }}
               style={styles.image}
               resizeMode="cover"
             />
@@ -159,29 +158,27 @@ export const CustomerSwipeScreen: React.FC = () => {
               </Text>
             </View>
             <View style={styles.measurementsCol}>
-              <Text style={styles.measurementsLabel}>Height</Text>
+              <Text style={styles.measurementsLabel}>{uiCopy.swipe.measurementHeight}</Text>
               <Text style={styles.measurementsValue}>{current.height}</Text>
             </View>
             <View style={styles.measurementsCol}>
-              <Text style={styles.measurementsLabel}>Bust</Text>
+              <Text style={styles.measurementsLabel}>{uiCopy.swipe.measurementBust}</Text>
               <Text style={styles.measurementsValue}>{current.bust}</Text>
             </View>
             <View style={styles.measurementsCol}>
-              <Text style={styles.measurementsLabel}>Waist</Text>
+              <Text style={styles.measurementsLabel}>{uiCopy.swipe.measurementWaist}</Text>
               <Text style={styles.measurementsValue}>{current.waist}</Text>
             </View>
             <View style={styles.measurementsCol}>
-              <Text style={styles.measurementsLabel}>Hips</Text>
+              <Text style={styles.measurementsLabel}>{uiCopy.swipe.measurementHips}</Text>
               <Text style={styles.measurementsValue}>{current.hips}</Text>
             </View>
           </View>
         </TouchableOpacity>
       ) : (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyTitle}>No results</Text>
-          <Text style={styles.emptyCopy}>
-            Adjust filters to see available talent.
-          </Text>
+          <Text style={styles.emptyTitle}>{uiCopy.swipe.emptyTitle}</Text>
+          <Text style={styles.emptyCopy}>{uiCopy.swipe.emptyCopy}</Text>
         </View>
       )}
 
@@ -190,7 +187,7 @@ export const CustomerSwipeScreen: React.FC = () => {
           style={[styles.actionButton, styles.skipButton]}
           onPress={handleNext}
         >
-          <Text style={styles.actionLabelSecondary}>Skip</Text>
+          <Text style={styles.actionLabelSecondary}>{uiCopy.swipe.skipAction}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.actionButton, styles.optionButton]}
@@ -198,7 +195,7 @@ export const CustomerSwipeScreen: React.FC = () => {
           disabled={!current || isSendingOption}
         >
           <Text style={styles.actionLabelPrimary}>
-            {isSendingOption ? 'Sending…' : 'Option'}
+            {isSendingOption ? uiCopy.swipe.optionSending : uiCopy.swipe.optionAction}
           </Text>
         </TouchableOpacity>
       </View>
@@ -250,13 +247,13 @@ const FilterDrawer: React.FC<FilterDrawerProps> = ({
     <Modal visible={visible} transparent animationType="fade">
       <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
         <View style={styles.drawer}>
-          <Text style={styles.drawerTitle}>Filters</Text>
+          <Text style={styles.drawerTitle}>{uiCopy.swipe.filterDrawerTitle}</Text>
 
           <View style={styles.drawerSection}>
-            <Text style={styles.drawerLabel}>Height</Text>
+            <Text style={styles.drawerLabel}>{uiCopy.swipe.filterHeight}</Text>
             <View style={styles.chipRow}>
               {[
-                { key: 'all', label: 'All' },
+                { key: 'all', label: uiCopy.swipe.filterAll },
                 { key: 'short', label: '< 175' },
                 { key: 'medium', label: '175–182' },
                 { key: 'tall', label: '> 182' },
@@ -274,12 +271,12 @@ const FilterDrawer: React.FC<FilterDrawerProps> = ({
           </View>
 
           <View style={styles.drawerSection}>
-            <Text style={styles.drawerLabel}>City</Text>
+            <Text style={styles.drawerLabel}>{uiCopy.swipe.filterCity}</Text>
             <View style={styles.chipRow}>
               {['all', 'Paris', 'Milan', 'Berlin'].map((city) => (
                 <Chip
                   key={city}
-                  label={city === 'all' ? 'All' : city}
+                  label={city === 'all' ? uiCopy.swipe.filterAll : city}
                   active={filters.city === city}
                   onPress={() =>
                     update({ city: city as Filters['city'] })
@@ -290,12 +287,12 @@ const FilterDrawer: React.FC<FilterDrawerProps> = ({
           </View>
 
           <View style={styles.drawerSection}>
-            <Text style={styles.drawerLabel}>Hair</Text>
+            <Text style={styles.drawerLabel}>{uiCopy.swipe.filterHair}</Text>
             <View style={styles.chipRow}>
               {['all', 'Blonde', 'Dark Brown', 'Black'].map((color) => (
                 <Chip
                   key={color}
-                  label={color === 'all' ? 'All' : color}
+                  label={color === 'all' ? uiCopy.swipe.filterAll : color}
                   active={filters.hairColor === color}
                   onPress={() =>
                     update({ hairColor: color as Filters['hairColor'] })
@@ -309,7 +306,7 @@ const FilterDrawer: React.FC<FilterDrawerProps> = ({
             style={styles.clearButton}
             onPress={() => onChangeFilters(initialFilters)}
           >
-            <Text style={styles.clearLabel}>Clear filters</Text>
+            <Text style={styles.clearLabel}>{uiCopy.swipe.filterClear}</Text>
           </TouchableOpacity>
         </View>
       </TouchableOpacity>
@@ -350,7 +347,7 @@ const DetailModal: React.FC<DetailModalProps> = ({ model, onClose }) => {
             <View style={styles.detailHeaderRow}>
               <Text style={styles.detailName}>{model.name}</Text>
               <TouchableOpacity onPress={onClose}>
-                <Text style={styles.closeLabel}>Close</Text>
+                <Text style={styles.closeLabel}>{uiCopy.swipe.detailClose}</Text>
               </TouchableOpacity>
             </View>
             <Text style={styles.detailSub}>
@@ -359,30 +356,21 @@ const DetailModal: React.FC<DetailModalProps> = ({ model, onClose }) => {
 
             <View style={styles.detailHero}>
               <Image
-                source={{ uri: model.gallery[0] ?? model.polaroids[0] }}
+                source={{ uri: model.gallery[0] }}
                 style={styles.detailHeroImage}
               />
             </View>
 
             <View style={styles.detailMeasurementsRow}>
-              <DetailMeasurement label="Height" value={model.height} />
-              <DetailMeasurement label="Bust" value={model.bust} />
-              <DetailMeasurement label="Waist" value={model.waist} />
-              <DetailMeasurement label="Hips" value={model.hips} />
+              <DetailMeasurement label={uiCopy.swipe.measurementHeight} value={model.height} />
+              <DetailMeasurement label={uiCopy.swipe.measurementBust} value={model.bust} />
+              <DetailMeasurement label={uiCopy.swipe.measurementWaist} value={model.waist} />
+              <DetailMeasurement label={uiCopy.swipe.measurementHips} value={model.hips} />
             </View>
 
-            <Text style={styles.detailSectionLabel}>Polas</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <View style={styles.polaRow}>
-                {model.polaroids.map((url) => (
-                  <Image key={url} source={{ uri: url }} style={styles.pola} />
-                ))}
-              </View>
-            </ScrollView>
-
-            <Text style={styles.detailSectionLabel}>Video</Text>
+            <Text style={styles.detailSectionLabel}>{uiCopy.swipe.detailVideoLabel}</Text>
             <View style={styles.videoPlaceholder}>
-              <Text style={styles.videoLabel}>Video placeholder</Text>
+              <Text style={styles.videoLabel}>{uiCopy.swipe.detailVideoPlaceholder}</Text>
             </View>
           </ScrollView>
         </View>
@@ -425,10 +413,8 @@ const DatePickerModal: React.FC<DatePickerModalProps> = ({
         onPress={onClose}
       >
         <View style={styles.dateCard}>
-          <Text style={styles.dateTitle}>Send option</Text>
-          <Text style={styles.dateSub}>
-            Choose a preferred date for the option.
-          </Text>
+          <Text style={styles.dateTitle}>{uiCopy.swipe.sendOptionTitle}</Text>
+          <Text style={styles.dateSub}>{uiCopy.swipe.sendOptionSubtitle}</Text>
           <View style={styles.chipRow}>
             {AVAILABLE_DATES.map((d) => (
               <Chip

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, Image,
-  ActivityIndicator, TextInput, Platform,
+  ActivityIndicator, TextInput, Platform, Modal,
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { getGuestLink, getGuestLinkModels, type GuestLink, type GuestLinkModel } from '../services/guestLinksSupabase';
@@ -32,6 +32,10 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
   // Legal gate
   const [tosAccepted, setTosAccepted] = useState(false);
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
+
+  // Gallery lightbox
+  const [galleryModel, setGalleryModel] = useState<GuestLinkModel | null>(null);
+  const [galleryIndex, setGalleryIndex] = useState(0);
 
   // Request form
   const [selectedModelIds, setSelectedModelIds] = useState<Set<string>>(new Set());
@@ -219,9 +223,9 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
                 onPress={() => toggleModel(m.id)}
                 activeOpacity={0.8}
               >
-                {m.portfolio_images?.[0] ? (
+                {getCoverImage(m) ? (
                   <Image
-                    source={{ uri: m.portfolio_images[0] }}
+                    source={{ uri: getCoverImage(m)! }}
                     style={styles.modelImage}
                     resizeMode="cover"
                   />
@@ -303,14 +307,97 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
     );
   }
 
+  // ─── Gallery lightbox helper ────────────────────────────────────────────────
+  // Images are strictly separated by package type — never mixed.
+  const getGalleryImages = (m: GuestLinkModel): string[] =>
+    link?.type === 'polaroid'
+      ? (m.polaroids ?? [])
+      : (m.portfolio_images ?? []);
+
+  const getCoverImage = (m: GuestLinkModel): string | undefined =>
+    link?.type === 'polaroid' ? m.polaroids?.[0] : m.portfolio_images?.[0];
+
+  const openGallery = (m: GuestLinkModel, startIndex = 0) => {
+    setGalleryModel(m);
+    setGalleryIndex(startIndex);
+  };
+
+  const closeGallery = () => {
+    setGalleryModel(null);
+    setGalleryIndex(0);
+  };
+
+  const galleryImages = galleryModel ? getGalleryImages(galleryModel) : [];
+
   // ─── Browse models ──────────────────────────────────────────────────────────
   return (
     <View style={styles.container}>
+      {/* ── Gallery lightbox ── */}
+      <Modal
+        visible={!!galleryModel}
+        transparent
+        animationType="fade"
+        onRequestClose={closeGallery}
+      >
+        <View style={styles.galleryOverlay}>
+          {/* Close */}
+          <TouchableOpacity style={styles.galleryClose} onPress={closeGallery}>
+            <Text style={styles.galleryCloseLabel}>✕</Text>
+          </TouchableOpacity>
+
+          {/* Counter */}
+          <Text style={styles.galleryCounter}>
+            {galleryIndex + 1} / {galleryImages.length}
+          </Text>
+
+          {/* Main image */}
+          {galleryImages[galleryIndex] ? (
+            <Image
+              source={{ uri: galleryImages[galleryIndex] }}
+              style={styles.galleryImage}
+              resizeMode="contain"
+            />
+          ) : null}
+
+          {/* Navigation */}
+          <View style={styles.galleryNav}>
+            <TouchableOpacity
+              onPress={() => setGalleryIndex((i) => Math.max(0, i - 1))}
+              disabled={galleryIndex === 0}
+              style={[styles.galleryNavBtn, galleryIndex === 0 && { opacity: 0.3 }]}
+            >
+              <Text style={styles.galleryNavLabel}>‹</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setGalleryIndex((i) => Math.min(galleryImages.length - 1, i + 1))}
+              disabled={galleryIndex === galleryImages.length - 1}
+              style={[styles.galleryNavBtn, galleryIndex === galleryImages.length - 1 && { opacity: 0.3 }]}
+            >
+              <Text style={styles.galleryNavLabel}>›</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Model info overlay */}
+          {galleryModel && (
+            <View style={styles.galleryModelInfo}>
+              <Text style={styles.galleryModelName}>{galleryModel.name}</Text>
+              <Text style={styles.galleryModelMeta}>
+                {galleryModel.height}cm
+                {galleryModel.bust ? ` · Bust ${galleryModel.bust}` : ''}
+                {galleryModel.waist ? ` · Waist ${galleryModel.waist}` : ''}
+                {galleryModel.hips ? ` · Hips ${galleryModel.hips}` : ''}
+              </Text>
+            </View>
+          )}
+        </View>
+      </Modal>
+
+      {/* ── Header ── */}
       <View style={styles.header}>
         <Text style={styles.brand}>INDEX CASTING</Text>
         <View style={styles.headerMetaRow}>
           <Text style={styles.headerSub}>
-            {copy.browseTitle} · {link?.agency_name || 'Agency'} · {models.length} models
+            {link?.type === 'polaroid' ? 'Polaroid Package' : 'Portfolio Package'} · {link?.agency_name || 'Agency'} · {models.length} models
           </Text>
           <View style={styles.guestBadgePill}>
             <Text style={styles.guestBadgePillLabel}>{copy.guestAccessBadge}</Text>
@@ -319,38 +406,57 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
         <Text style={styles.guestAccessNote}>{copy.guestAccessSubtitle}</Text>
       </View>
 
+      {/* ── Model grid ── */}
       <ScrollView style={styles.scrollArea} contentContainerStyle={styles.grid}>
-        {models.map((m) => (
-          <View key={m.id} style={styles.modelCard}>
-            {m.portfolio_images?.[0] ? (
-              <Image
-                source={{ uri: m.portfolio_images[0] }}
-                style={styles.modelImage}
-                resizeMode="cover"
-              />
-            ) : (
-              <View style={styles.modelImagePlaceholder}>
-                <Text style={styles.placeholderText}>{m.name.charAt(0)}</Text>
+        {models.map((m) => {
+          const allImages = getGalleryImages(m);
+          const imageCount = allImages.length;
+          return (
+            <View key={m.id} style={styles.modelCard}>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => imageCount > 0 ? openGallery(m, 0) : undefined}
+                disabled={imageCount === 0}
+              >
+                {getCoverImage(m) ? (
+                  <View>
+                    <Image
+                      source={{ uri: getCoverImage(m)! }}
+                      style={styles.modelImage}
+                      resizeMode="cover"
+                    />
+                    {imageCount > 1 && (
+                      <View style={styles.imageCountBadge}>
+                        <Text style={styles.imageCountLabel}>{imageCount}</Text>
+                      </View>
+                    )}
+                  </View>
+                ) : (
+                  <View style={styles.modelImagePlaceholder}>
+                    <Text style={styles.placeholderText}>{m.name.charAt(0)}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+              <View style={styles.modelInfo}>
+                <Text style={styles.modelName}>{m.name}</Text>
+                <Text style={styles.modelMeta}>
+                  {m.height}cm{m.bust ? ` · Bust ${m.bust}` : ''}
+                  {m.waist ? ` · Waist ${m.waist}` : ''}
+                  {m.hips ? ` · Hips ${m.hips}` : ''}
+                </Text>
+                <Text style={styles.modelMeta}>
+                  {m.sex ? `${m.sex === 'female' ? 'Female' : 'Male'}` : ''}
+                  {m.hair_color ? `${m.sex ? ' · ' : ''}${m.hair_color}` : ''}
+                  {m.eye_color ? ` · ${m.eye_color}` : ''}
+                  {m.city ? ` · ${m.city}` : ''}
+                </Text>
               </View>
-            )}
-            <View style={styles.modelInfo}>
-              <Text style={styles.modelName}>{m.name}</Text>
-              <Text style={styles.modelMeta}>
-                {m.height}cm{m.bust ? ` · Bust ${m.bust}` : ''}
-                {m.waist ? ` · Waist ${m.waist}` : ''}
-                {m.hips ? ` · Hips ${m.hips}` : ''}
-              </Text>
-              <Text style={styles.modelMeta}>
-                {m.sex ? `${m.sex === 'female' ? 'Female' : 'Male'}` : ''}
-                {m.hair_color ? `${m.sex ? ' · ' : ''}${m.hair_color}` : ''}
-                {m.eye_color ? ` · ${m.eye_color}` : ''}
-                {m.city ? ` · ${m.city}` : ''}
-              </Text>
             </View>
-          </View>
-        ))}
+          );
+        })}
       </ScrollView>
 
+      {/* ── Contact bar ── */}
       <View style={styles.contactBar}>
         <TouchableOpacity
           style={styles.contactBtn}
@@ -610,4 +716,82 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   contactBtnLabel: { ...typography.label, color: colors.surface },
+  // Image count badge on model card
+  imageCountBadge: {
+    position: 'absolute',
+    bottom: 6,
+    right: 6,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 10,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  imageCountLabel: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  // Gallery lightbox
+  galleryOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.93)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  galleryClose: {
+    position: 'absolute',
+    top: 48,
+    right: 24,
+    zIndex: 10,
+    padding: 8,
+  },
+  galleryCloseLabel: {
+    color: '#fff',
+    fontSize: 26,
+  },
+  galleryCounter: {
+    position: 'absolute',
+    top: 52,
+    left: 0,
+    right: 0,
+    textAlign: 'center',
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 13,
+  },
+  galleryImage: {
+    width: '100%',
+    height: '70%',
+  },
+  galleryNav: {
+    flexDirection: 'row',
+    gap: 48,
+    marginTop: 24,
+  },
+  galleryNavBtn: {
+    padding: 12,
+  },
+  galleryNavLabel: {
+    color: '#fff',
+    fontSize: 42,
+    lineHeight: 44,
+  },
+  galleryModelInfo: {
+    position: 'absolute',
+    bottom: 60,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  galleryModelName: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  galleryModelMeta: {
+    color: 'rgba(255,255,255,0.65)',
+    fontSize: 12,
+  },
 });
