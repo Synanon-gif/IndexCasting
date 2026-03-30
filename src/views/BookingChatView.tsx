@@ -20,6 +20,9 @@ import { getSignedRecruitingChatFileUrl } from '../services/recruitingChatSupaba
 import { getApplicationById } from '../store/applicationsStore';
 import { getThread } from '../services/recruitingChatSupabase';
 import { getAgencyChatDisplayById } from '../services/agenciesSupabase';
+import { BOTTOM_TAB_BAR_HEIGHT } from '../navigation/bottomTabNavigation';
+
+type BookingChatPresentation = 'modal' | 'insetAboveBottomNav';
 
 type Props = {
   threadId: string;
@@ -29,9 +32,21 @@ type Props = {
   initialAgencyName?: string | null;
   /** agency_id der zugehörigen Bewerbung – zuverlässiger als globaler Applications-Store. */
   applicationAgencyId?: string | null;
+  /** Default `modal` (fullscreen). `insetAboveBottomNav` keeps the app bottom tab bar visible (shell layouts). */
+  presentation?: BookingChatPresentation;
+  /** Distance from screen bottom to reserve for the tab bar + safe area when using `insetAboveBottomNav`. */
+  bottomInset?: number;
 };
 
-export const BookingChatView: React.FC<Props> = ({ threadId, fromRole, onClose, initialAgencyName, applicationAgencyId }) => {
+export const BookingChatView: React.FC<Props> = ({
+  threadId,
+  fromRole,
+  onClose,
+  initialAgencyName,
+  applicationAgencyId,
+  presentation = 'modal',
+  bottomInset = BOTTOM_TAB_BAR_HEIGHT,
+}) => {
   const [chatInput, setChatInput] = useState('');
   const [messages, setMessages] = useState(() => getRecruitingMessages(threadId));
   const [agencyName, setAgencyName] = useState<string | null>(initialAgencyName ?? null);
@@ -134,10 +149,9 @@ export const BookingChatView: React.FC<Props> = ({ threadId, fromRole, onClose, 
     }
   };
 
-  return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <View style={styles.card}>
+  const chatBody = (
+    <View style={styles.overlay}>
+      <View style={styles.card}>
           <View style={styles.header}>
             <View style={{ flex: 1 }}>
               {fromRole === 'model' ? (
@@ -288,11 +302,31 @@ export const BookingChatView: React.FC<Props> = ({ threadId, fromRole, onClose, 
           </View>
         </View>
       </View>
+  );
+
+  if (presentation === 'insetAboveBottomNav') {
+    return (
+      <View style={[styles.insetShell, { bottom: bottomInset }]} pointerEvents="box-none">
+        {chatBody}
+      </View>
+    );
+  }
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      {chatBody}
     </Modal>
   );
 };
 
 const styles = StyleSheet.create({
+  insetShell: {
+    position: 'absolute' as const,
+    left: 0,
+    right: 0,
+    top: 0,
+    zIndex: 900,
+  },
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.2)',

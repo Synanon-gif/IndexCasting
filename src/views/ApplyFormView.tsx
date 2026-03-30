@@ -347,7 +347,7 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         </View>
 
         {/* Country — mandatory, searchable dropdown matching FILTER_COUNTRIES */}
-        <View style={[styles.field, { zIndex: 200 }]}>
+        <View style={styles.field}>
           <Text style={styles.label}>Country <Text style={{ color: colors.buttonSkipRed }}>*</Text></Text>
           {countryCode ? (
             <View style={styles.row}>
@@ -364,7 +364,7 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
               </View>
             </View>
           ) : (
-            <View style={{ position: 'relative' }}>
+            <View>
               <TextInput
                 value={countryQuery}
                 onChangeText={(v) => { setCountryQuery(v); setCountryDropdownOpen(true); setEthnicityDropdownOpen(false); }}
@@ -395,7 +395,7 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         </View>
 
         {/* Ethnicity — optional, single-select dropdown matching ETHNICITY_OPTIONS */}
-        <View style={[styles.field, { zIndex: 100 }]}>
+        <View style={styles.field}>
           <Text style={styles.label}>Ethnicity <Text style={{ ...typography.label, color: colors.textSecondary }}>(optional)</Text></Text>
           {ethnicity ? (
             <View style={styles.row}>
@@ -410,7 +410,7 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
               </View>
             </View>
           ) : (
-            <View style={{ position: 'relative' }}>
+            <View>
               <TouchableOpacity
                 style={[styles.input, { justifyContent: 'center' }]}
                 onPress={() => { setEthnicityDropdownOpen((o) => !o); setCountryDropdownOpen(false); }}
@@ -628,11 +628,8 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   dropdown: {
-    position: 'absolute',
-    top: 52,
-    left: 0,
-    right: 0,
-    zIndex: 999,
+    marginTop: spacing.xs,
+    alignSelf: 'stretch',
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 12,

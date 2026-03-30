@@ -150,6 +150,15 @@ export const uiCopy = {
     calendarCalloutBody:
       'Sign in with an account whose profile role is Client. A valid login UUID is required to write entries to Supabase.',
     editEvent: 'Edit event',
+    /** Sticky bottom navigation (Client workspace). */
+    bottomTabs: {
+      discover: 'Discover',
+      projects: 'My Projects',
+      calendar: 'Calendar',
+      agencies: 'Agencies',
+      team: 'Team',
+      messages: 'Messages',
+    },
   },
   auth: {
     inviteLine: 'Invitation: {org} · {role}',
@@ -422,7 +431,21 @@ export const uiCopy = {
   bulkActions: {
     selectedCount: '{count} model(s) selected',
     assignTerritories: 'Assign Territories',
+    setLocation: 'Set Current Location',
     clearSelection: 'Clear selection',
+  },
+  /** Bulk / single model location modal. */
+  locationModal: {
+    title: 'Set Model Location',
+    subtitle: 'This location will be used for proximity-based client discovery.',
+    countryLabel: 'Country',
+    countryPlaceholder: 'Search country…',
+    cityLabel: 'City (optional)',
+    cityPlaceholder: 'e.g. Berlin',
+    confirm: 'Save Location',
+    successSingle: 'Location updated.',
+    successBulk: (n: number) => `Location updated for ${n} model(s).`,
+    error: 'Could not save location. Please try again.',
   },
   /** Calendar input validation. */
   calendarValidation: {
@@ -539,6 +562,10 @@ export const uiCopy = {
     cityLabel: 'City',
     currentLocationLabel: 'Current Location',
     categoryLabel: 'Categories',
+    shareLocationToggle: 'Share approximate location',
+    shareLocationHint: 'Enables radius-based discovery. Only a rounded area (~5 km) is shared — never exact GPS.',
+    shareLocationSaved: 'Location saved.',
+    shareLocationError: 'Could not save location. Please try again.',
   },
   /** Sports categories on model profiles and client filters. */
   sportCategories: {
@@ -562,6 +589,11 @@ export const uiCopy = {
     copiedButton: 'Copied!',
     sendInAppButton: 'Send in App',
     deactivateButton: 'Deactivate',
+    deleteButton: 'Delete',
+    deleteConfirmTitle: 'Delete Package?',
+    deleteConfirmMessage: 'This link will be permanently removed and can no longer be opened.',
+    deleteConfirmOk: 'Delete',
+    deleteConfirmCancel: 'Cancel',
     noLinksYet: 'No packages yet. Create your first package above.',
     createPackageError: 'Could not create package. Please check your connection and try again.',
     activeLabel: 'Active',
@@ -591,10 +623,24 @@ export const uiCopy = {
     packageTypePortfolioHint: 'Shows only portfolio images — used for standard client discovery.',
     packageTypePolaroidHint: 'Shows only polaroid images — used for casting agencies that require measurement shots.',
   },
-  /** Client Discover tab — package mode overlay. */
+  /** Client Discover tab — package mode overlay + agency chat action. */
   discover: {
     viewingPackage: 'Viewing Package',
     exitPackage: 'Exit Package',
+    chatWithAgency: 'Chat with Agency',
+    chatWithAgencyLoading: 'Opening chat…',
+  },
+  /** Client Projects tab — project management actions. */
+  projects: {
+    deleteConfirm: 'Delete this project? All models will be removed from it.',
+    open: 'Open',
+    overview: 'Overview',
+    overviewTitle: 'Project Overview',
+    deleteFromProject: 'Delete from Project',
+    deleteFromProjectConfirm: 'Remove this model from the project?',
+    emptyOverview: 'No models in this project yet.',
+    removeError: 'Could not remove model. Please try again.',
+    back: '← Back',
   },
   /** Agency — model profile completeness alerts shown in the My Models edit panel. */
   modelCompleteness: {
@@ -641,6 +687,7 @@ export const uiCopy = {
     countrySearchPlaceholder: 'Search country…',
     sectionCity: 'City',
     cityPlaceholder: 'e.g. Berlin, Hamburg, Munich...',
+    cityPriorityHint: 'Models in this city appear first, followed by all models in the selected country.',
     sectionHairColor: 'Hair color',
     hairColorPlaceholder: 'e.g. Brown, Blonde…',
     sectionHips: 'Hips (min–max)',

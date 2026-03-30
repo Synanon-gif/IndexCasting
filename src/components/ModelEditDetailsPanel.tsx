@@ -44,6 +44,8 @@ export type ModelEditState = {
   country_code: string;
   city: string;
   current_location: string;
+  /** When true, approximate lat/lng is stored in model_locations for radius-based discovery. */
+  shareApproximateLocation: boolean;
   categories: string[];
   is_sports_winter: boolean;
   is_sports_summer: boolean;
@@ -67,6 +69,8 @@ export function buildEditState(m: {
   country?: string | null;
   city?: string | null;
   current_location?: string | null;
+  /** Pre-populated from model_locations.share_approximate_location if available. */
+  shareApproximateLocation?: boolean;
   categories?: string[] | null;
   is_sports_winter?: boolean;
   is_sports_summer?: boolean;
@@ -88,6 +92,7 @@ export function buildEditState(m: {
     country_code: m.country_code ?? '',
     city: m.city ?? '',
     current_location: m.current_location ?? '',
+    shareApproximateLocation: m.shareApproximateLocation ?? true,
     categories: m.categories ?? [],
     is_sports_winter: m.is_sports_winter ?? false,
     is_sports_summer: m.is_sports_summer ?? false,
@@ -300,7 +305,7 @@ const ModelEditDetailsPanel: React.FC<Props> = ({ state, onChange }) => {
       {/* ── Ethnicity ── */}
       <Text style={styles.sectionHeader}>{uiCopy.modelEdit.sectionEthnicity}</Text>
 
-      <View style={[styles.group, { zIndex: 90 }]}>
+      <View style={styles.group}>
         {state.ethnicity && (
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.xs }}>
             <TouchableOpacity
@@ -313,7 +318,7 @@ const ModelEditDetailsPanel: React.FC<Props> = ({ state, onChange }) => {
           </View>
         )}
 
-        <View style={{ position: 'relative' }}>
+        <View>
           <TouchableOpacity
             style={[styles.pill, ethnicityDropdownOpen && { borderColor: colors.accentBrown }]}
             onPress={() => {
@@ -361,7 +366,7 @@ const ModelEditDetailsPanel: React.FC<Props> = ({ state, onChange }) => {
       <Text style={styles.sectionHeader}>{uiCopy.modelEdit.sectionLocation}</Text>
 
       {/* Country dropdown */}
-      <View style={[styles.group, { zIndex: 100 }]}>
+      <View style={styles.group}>
         <Text style={styles.label}>{uiCopy.modelEdit.countryLabel}</Text>
 
         {state.country_code ? (
@@ -381,7 +386,7 @@ const ModelEditDetailsPanel: React.FC<Props> = ({ state, onChange }) => {
             </View>
           </View>
         ) : (
-          <View style={{ position: 'relative' }}>
+          <View>
             <TextInput
               value={countryQuery}
               onChangeText={(v) => {
@@ -399,7 +404,7 @@ const ModelEditDetailsPanel: React.FC<Props> = ({ state, onChange }) => {
             />
 
             {countryDropdownOpen && filteredCountryOptions.length > 0 && (
-              <View style={[styles.dropdown, { zIndex: 200 }]}>
+              <View style={styles.dropdown}>
                 <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled showsVerticalScrollIndicator>
                   {filteredCountryOptions.map((c, i) => (
                     <TouchableOpacity
@@ -444,6 +449,23 @@ const ModelEditDetailsPanel: React.FC<Props> = ({ state, onChange }) => {
           placeholderTextColor={colors.textSecondary}
           style={styles.input}
         />
+      </View>
+
+      {/* Share approximate location toggle */}
+      <View style={styles.group}>
+        <TouchableOpacity
+          style={styles.toggleRow}
+          onPress={() => set({ shareApproximateLocation: !state.shareApproximateLocation })}
+          activeOpacity={0.7}
+        >
+          <View style={styles.toggleTextBlock}>
+            <Text style={styles.label}>{uiCopy.modelEdit.shareLocationToggle}</Text>
+            <Text style={styles.toggleHint}>{uiCopy.modelEdit.shareLocationHint}</Text>
+          </View>
+          <View style={[styles.toggleTrack, state.shareApproximateLocation && styles.toggleTrackActive]}>
+            <View style={[styles.toggleThumb, state.shareApproximateLocation && styles.toggleThumbActive]} />
+          </View>
+        </TouchableOpacity>
       </View>
 
       {/* ── Segment & Sport ── */}
@@ -592,11 +614,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   dropdown: {
-    position: 'absolute',
-    top: 34,
-    left: 0,
-    right: 0,
-    zIndex: 999,
+    marginTop: spacing.xs,
+    alignSelf: 'stretch',
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 8,
@@ -635,5 +654,42 @@ const styles = StyleSheet.create({
     ...typography.label,
     fontSize: 11,
     color: colors.accentBrown,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  toggleTextBlock: {
+    flex: 1,
+    gap: 2,
+  },
+  toggleHint: {
+    ...typography.label,
+    fontSize: 9,
+    color: colors.textSecondary,
+    lineHeight: 13,
+  },
+  toggleTrack: {
+    width: 36,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: colors.border,
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  toggleTrackActive: {
+    backgroundColor: colors.accentBrown,
+  },
+  toggleThumb: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: colors.surface,
+    alignSelf: 'flex-start',
+  },
+  toggleThumbActive: {
+    alignSelf: 'flex-end',
   },
 });

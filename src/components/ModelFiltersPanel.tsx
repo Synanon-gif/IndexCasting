@@ -146,8 +146,8 @@ const ModelFiltersPanel: React.FC<Props> = ({
             </View>
           </View>
 
-          {/* ── Ethnicity (multi-select dropdown) ── */}
-          <View style={[styles.filterGroup, { zIndex: 90 }]}>
+          {/* ── Ethnicity (multi-select dropdown) — list expands in layout (no overlay on fields below) ── */}
+          <View style={styles.filterGroup}>
             <Text style={styles.filterLabel}>{uiCopy.filters.sectionEthnicity}</Text>
 
             {/* Selected chips */}
@@ -178,7 +178,7 @@ const ModelFiltersPanel: React.FC<Props> = ({
             )}
 
             {/* Toggle button */}
-            <View style={{ position: 'relative' }}>
+            <View>
               <TouchableOpacity
                 style={[
                   styles.filterPill,
@@ -197,19 +197,8 @@ const ModelFiltersPanel: React.FC<Props> = ({
                 </Text>
               </TouchableOpacity>
 
-              {/* Dropdown list — z-index guard prevents overlap */}
               {ethnicityDropdownOpen && (
-                <View style={{
-                  position: 'absolute',
-                  top: 34, left: 0, right: 0,
-                  zIndex: 999,
-                  borderWidth: 1, borderColor: colors.border, borderRadius: 8,
-                  backgroundColor: colors.surface,
-                  maxHeight: 200,
-                  shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 8,
-                  shadowOffset: { width: 0, height: 4 }, elevation: 16,
-                  overflow: 'hidden',
-                }}>
+                <View style={styles.filterDropdownPanel}>
                   <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled showsVerticalScrollIndicator>
                     {ETHNICITY_OPTIONS.map((eth, i) => {
                       const selected = filters.ethnicities.includes(eth);
@@ -295,7 +284,7 @@ const ModelFiltersPanel: React.FC<Props> = ({
           </View>
 
           {/* ── Country ── */}
-          <View style={[styles.filterGroup, { zIndex: 100 }]}>
+          <View style={styles.filterGroup}>
             <Text style={styles.filterLabel}>{uiCopy.filters.sectionCountry}</Text>
             {filters.countryCode ? (
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, alignItems: 'center' }}>
@@ -338,12 +327,12 @@ const ModelFiltersPanel: React.FC<Props> = ({
                 </TouchableOpacity>
               </View>
             ) : (
-              <View style={{ position: 'relative' }}>
+              <View>
                 <View style={{ flexDirection: 'row', gap: spacing.xs, alignItems: 'center' }}>
                   <TextInput
                     value={countryQuery}
-                    onChangeText={(v) => { setCountryQuery(v); setCountryDropdownOpen(true); }}
-                    onFocus={() => setCountryDropdownOpen(true)}
+                    onChangeText={(v) => { setCountryQuery(v); setCountryDropdownOpen(true); setEthnicityDropdownOpen(false); }}
+                    onFocus={() => { setCountryDropdownOpen(true); setEthnicityDropdownOpen(false); }}
                     placeholder={uiCopy.filters.countrySearchPlaceholder}
                     placeholderTextColor={colors.textSecondary}
                     style={[styles.input, { flex: 1, height: 32, paddingVertical: 4, fontSize: 11 }]}
@@ -361,17 +350,7 @@ const ModelFiltersPanel: React.FC<Props> = ({
                   </TouchableOpacity>
                 </View>
                 {countryDropdownOpen && filteredCountryOptions.length > 0 && (
-                  <View style={{
-                    position: 'absolute',
-                    top: 36, left: 0, right: 0,
-                    zIndex: 999,
-                    borderWidth: 1, borderColor: colors.border, borderRadius: 8,
-                    backgroundColor: colors.surface,
-                    maxHeight: 200,
-                    shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 8,
-                    shadowOffset: { width: 0, height: 4 }, elevation: 12,
-                    overflow: 'hidden',
-                  }}>
+                  <View style={styles.filterDropdownPanel}>
                     <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled showsVerticalScrollIndicator>
                       {filteredCountryOptions.map((c, i) => (
                         <TouchableOpacity
@@ -535,6 +514,22 @@ const styles = StyleSheet.create({
   filterGroup: {
     gap: spacing.xs,
     marginBottom: spacing.sm,
+  },
+  /** In-flow dropdown: reserves vertical space so following fields are not covered */
+  filterDropdownPanel: {
+    marginTop: spacing.xs,
+    alignSelf: 'stretch',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    backgroundColor: colors.surface,
+    maxHeight: 200,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 16,
+    overflow: 'hidden',
   },
   filterLabel: {
     ...typography.label,

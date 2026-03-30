@@ -440,7 +440,7 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
                 </View>
 
                 {/* Country */}
-                <View style={[styles.settingsField, { zIndex: 200 }]}>
+                <View style={styles.settingsField}>
                   <Text style={styles.settingsLabel}>Country</Text>
                   {profileDraft.countryCode ? (
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -457,7 +457,7 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
                       </View>
                     </View>
                   ) : (
-                    <View style={{ position: 'relative' }}>
+                    <View>
                       <TextInput
                         value={settingsCountryQuery}
                         onChangeText={(v) => { setSettingsCountryQuery(v); setSettingsCountryDropdownOpen(true); setSettingsEthnicityDropdownOpen(false); }}
@@ -488,7 +488,7 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
                 </View>
 
                 {/* Ethnicity */}
-                <View style={[styles.settingsField, { zIndex: 100 }]}>
+                <View style={styles.settingsField}>
                   <Text style={styles.settingsLabel}>Ethnicity</Text>
                   {profileDraft.ethnicity ? (
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -503,7 +503,7 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
                       </View>
                     </View>
                   ) : (
-                    <View style={{ position: 'relative' }}>
+                    <View>
                       <TouchableOpacity
                         style={[styles.settingsInput, { justifyContent: 'center' }]}
                         onPress={() => { setSettingsEthnicityDropdownOpen((o) => !o); setSettingsCountryDropdownOpen(false); }}
@@ -713,11 +713,8 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   settingsDropdown: {
-    position: 'absolute',
-    top: 44,
-    left: 0,
-    right: 0,
-    zIndex: 999,
+    marginTop: spacing.xs,
+    alignSelf: 'stretch',
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 8,

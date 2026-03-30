@@ -20,6 +20,7 @@ import type { ClientType } from './src/views/ClientView';
 import { loadClientType, saveClientType } from './src/storage/persistence';
 import { supabaseUrl, supabaseAnonKey } from './src/config/env';
 import { AppErrorBoundary } from './src/components/AppErrorBoundary';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import {
   getInvitationPreview,
   acceptOrganizationInvitation,
@@ -429,7 +430,9 @@ export default function App() {
       <ConfigGuard>
         <AuthProvider>
           <AppDataProvider>
-            <AppContent />
+            <SafeAreaProvider>
+              <AppContent />
+            </SafeAreaProvider>
           </AppDataProvider>
         </AuthProvider>
       </ConfigGuard>

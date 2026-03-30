@@ -1,7 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { handleTabPress, BOTTOM_TAB_BAR_HEIGHT } from '../navigation/bottomTabNavigation';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Linking, Alert, ActivityIndicator, Image } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
-import { getModelsFromSupabase, getModelForUserFromSupabase } from '../services/modelsSupabase';
+import { getModelsFromSupabase, getModelForUserFromSupabase, type SupabaseModel } from '../services/modelsSupabase';
+import { upsertModelLocation, roundCoord } from '../services/modelLocationsSupabase';
 import { supabase } from '../../lib/supabase';
 import { getModelBookingThreadIds, getRecruitingThread, getRecruitingMessages, addRecruitingMessage } from '../store/recruitingChats';
 import {
@@ -50,6 +53,7 @@ type ModelProfile = {
   waist: number;
   hips: number;
   city: string;
+  countryCode: string | null;
   currentLocation: string;
   hairColor: string;
 };
@@ -119,6 +123,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
         navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: false, timeout: 10000 })
       );
       const { latitude, longitude } = position.coords;
+
       const res = await fetch(
         `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`,
         { headers: { 'Accept-Language': 'en' } }
@@ -126,8 +131,27 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
       const data = await res.json();
       const cityName =
         data.address?.city ?? data.address?.town ?? data.address?.village ?? data.address?.state ?? 'Unknown';
+      const countryCode: string =
+        (data.address?.country_code as string | undefined)?.toUpperCase() ??
+        profile.countryCode ??
+        'XX';
 
+      // Update legacy current_location text field
       await supabase.from('models').update({ current_location: cityName }).eq('id', profile.id);
+
+      // Write privacy-safe approximate location to model_locations
+      await upsertModelLocation(
+        profile.id,
+        {
+          country_code: countryCode,
+          city: cityName,
+          lat: roundCoord(latitude),
+          lng: roundCoord(longitude),
+          share_approximate_location: true,
+        },
+        'model',
+      );
+
       setProfile((prev) => prev ? { ...prev, currentLocation: cityName } : prev);
       Alert.alert('Location Updated', `Your current city has been set to: ${cityName}`);
     } catch (err: any) {
@@ -168,12 +192,13 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
 
   useEffect(() => {
     let cancelled = false;
-    const applyModel = (m: { id: string; name: string; height: number; bust?: number | null; waist?: number | null; hips?: number | null; city?: string | null; current_location?: string | null; hair_color?: string | null }) => {
+    const applyModel = (m: Partial<SupabaseModel> & { id: string; name: string; height: number }) => {
       if (cancelled) return;
       setProfile({
         id: m.id, name: m.name, height: m.height,
         bust: m.bust ?? 0, waist: m.waist ?? 0, hips: m.hips ?? 0,
-        city: m.city ?? '', currentLocation: m.current_location ?? '', hairColor: m.hair_color ?? '',
+        city: m.city ?? '', countryCode: m.country_code ?? null,
+        currentLocation: m.current_location ?? '', hairColor: m.hair_color ?? '',
       });
       loadCalendar(m.id);
       loadOptionsForModel(m.id);
@@ -319,6 +344,39 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     await rejectOptionAsModel(threadId);
   };
 
+  const insets = useSafeAreaInsets();
+  const bottomTabInset = BOTTOM_TAB_BAR_HEIGHT + insets.bottom;
+
+  const resetModelTabRoot = useCallback(() => {
+    switch (tab) {
+      case 'calendar':
+        setOpenEntry(null);
+        setSelectedDate(null);
+        break;
+      case 'messages':
+        setOpenBookingThreadId(null);
+        break;
+      case 'options':
+        setSelectedOptionThread(null);
+        setOptChatInput('');
+        break;
+      default:
+        break;
+    }
+  }, [tab]);
+
+  const handleModelTabPress = useCallback(
+    (key: ModelTab) => {
+      handleTabPress({
+        current: tab,
+        next: key,
+        setTab,
+        onReselectRoot: resetModelTabRoot,
+      });
+    },
+    [tab, resetModelTabRoot],
+  );
+
   if (!profile) {
     return (
       <View style={st.container}>
@@ -351,20 +409,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
       </View>
       <Text style={st.heading}>{profile.name}</Text>
 
-      <View style={st.tabRow}>
-        {([
-          { key: 'calendar', label: 'Calendar' },
-          { key: 'messages', label: 'Messages' },
-          { key: 'options', label: `Options${(outstandingOptions.length + pendingConfirmations.length) ? ` (${outstandingOptions.length + pendingConfirmations.length})` : ''}` },
-          { key: 'profile', label: 'Profile' },
-        ] as { key: ModelTab; label: string }[]).map((t) => (
-          <TouchableOpacity key={t.key} onPress={() => setTab(t.key)} style={st.tabItem}>
-            <Text style={[st.tabLabel, tab === t.key && st.tabLabelActive]}>{t.label}</Text>
-            {tab === t.key && <View style={st.tabUnderline} />}
-          </TouchableOpacity>
-        ))}
-      </View>
-
+      <View style={{ flex: 1, paddingBottom: bottomTabInset }}>
       {tab === 'profile' && (
         <ScrollView style={{ flex: 1 }}>
           <View style={st.section}>
@@ -763,6 +808,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
           ))}
         </ScrollView>
       )}
+      </View>
 
       {openBookingThreadId && (
         <BookingChatView
@@ -770,11 +816,36 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
           fromRole="model"
           initialAgencyName={bookingAgencyByThread[openBookingThreadId]}
           onClose={() => setOpenBookingThreadId(null)}
+          presentation="insetAboveBottomNav"
+          bottomInset={bottomTabInset}
         />
       )}
 
+      <View style={[st.bottomTabBar, { paddingBottom: insets.bottom }]}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.tabRow}>
+          {([
+            { key: 'calendar' as const, label: 'Calendar' },
+            { key: 'messages' as const, label: 'Messages' },
+            {
+              key: 'options' as const,
+              label: `Options${
+                outstandingOptions.length + pendingConfirmations.length
+                  ? ` (${outstandingOptions.length + pendingConfirmations.length})`
+                  : ''
+              }`,
+            },
+            { key: 'profile' as const, label: 'Profile' },
+          ]).map((t) => (
+            <TouchableOpacity key={t.key} onPress={() => handleModelTabPress(t.key)} style={st.tabItem}>
+              <Text style={[st.tabLabel, tab === t.key && st.tabLabelActive]}>{t.label}</Text>
+              {tab === t.key && <View style={st.tabUnderline} />}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
       {selectedOptionThread && (
-        <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.1)', justifyContent: 'center', alignItems: 'center', padding: spacing.lg }}>
+        <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: bottomTabInset, backgroundColor: 'rgba(0,0,0,0.1)', justifyContent: 'center', alignItems: 'center', padding: spacing.lg, zIndex: 995 }}>
           <View style={{ width: '100%', maxWidth: 420, maxHeight: '80%', backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.border, padding: spacing.md }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
@@ -816,7 +887,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
             left: 0,
             right: 0,
             top: 0,
-            bottom: 0,
+            bottom: bottomTabInset,
             backgroundColor: 'rgba(0,0,0,0.08)',
             justifyContent: 'center',
             alignItems: 'center',
@@ -1206,7 +1277,18 @@ const st = StyleSheet.create({
   brand: { ...typography.heading, color: colors.textPrimary, marginBottom: spacing.xs },
   heading: { ...typography.heading, fontSize: 18, color: colors.textPrimary, marginBottom: spacing.md },
   label: { ...typography.label, color: colors.textSecondary, marginBottom: spacing.sm },
-  tabRow: { flexDirection: 'row', gap: spacing.lg, marginBottom: spacing.lg, borderBottomWidth: 1, borderBottomColor: colors.border, paddingBottom: spacing.sm },
+  tabRow: { flexDirection: 'row', gap: spacing.lg, alignItems: 'center', paddingHorizontal: spacing.sm },
+  bottomTabBar: {
+    position: 'absolute' as const,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1000,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    backgroundColor: colors.background,
+    paddingVertical: spacing.sm,
+  },
   tabItem: { alignItems: 'center' },
   tabLabel: { ...typography.label, color: colors.textSecondary },
   tabLabelActive: { color: colors.accentGreen },

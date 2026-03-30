@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { handleTabPress, BOTTOM_TAB_BAR_HEIGHT } from '../navigation/bottomTabNavigation';
 import {
   View,
   Text,
@@ -16,6 +18,7 @@ import { showAppAlert } from '../utils/crossPlatformAlert';
 import { uiCopy } from '../constants/uiCopy';
 import { useAuth } from '../context/AuthContext';
 import { getModelsForClient, getModelData } from '../services/apiService';
+import { getModelsNearLocation, roundCoord, type NearbyModel } from '../services/modelLocationsSupabase';
 import { getGuestLink, getGuestLinkModels, type GuestLinkModel, type PackageType } from '../services/guestLinksSupabase';
 import { getAgencies, type Agency } from '../services/agenciesSupabase';
 import { AGENCY_SEGMENT_TYPES } from '../constants/agencyTypes';
@@ -89,6 +92,7 @@ import {
   updateOrganizationName,
   getOrganizationById,
 } from '../services/organizationsInvitationsSupabase';
+import { removeModelFromProject } from '../services/projectsSupabase';
 import { supabase } from '../../lib/supabase';
 import { MonthCalendarView, type CalendarDayEvent } from '../components/MonthCalendarView';
 import { ClientOrganizationTeamSection } from '../components/ClientOrganizationTeamSection';
@@ -237,16 +241,23 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     packageType: PackageType;
     rawModels: GuestLinkModel[];
   } | null>(null);
+  const [projectOverviewId, setProjectOverviewId] = useState<string | null>(null);
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const [pendingModel, setPendingModel] = useState<ModelSummary | null>(null);
   const [optionDatePickerOpen, setOptionDatePickerOpen] = useState(false);
   const [optionDateModel, setOptionDateModel] = useState<ModelSummary | null>(null);
   const [openThreadIdOnMessages, setOpenThreadIdOnMessages] = useState<string | null>(null);
   const [pendingClientB2BChat, setPendingClientB2BChat] = useState<{ conversationId: string; title: string } | null>(null);
+  const [isChatWithAgencyLoading, setIsChatWithAgencyLoading] = useState(false);
   const [hasNew, setHasNew] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [msgFilter, setMsgFilter] = useState<'current' | 'archived'>('current');
   const [userCity, setUserCity] = useState<string | null>(null);
+  /** Rounded approximate lat/lng for Near me radius queries (~5 km precision). Never exact GPS. */
+  const [userLat, setUserLat] = useState<number | null>(null);
+  const [userLng, setUserLng] = useState<number | null>(null);
+  /** Near me models fetched from the radius RPC (separate from territory-based baseModels). */
+  const [nearbyModels, setNearbyModels] = useState<ModelSummary[]>([]);
   const [calendarItems, setCalendarItems] = useState<ClientCalendarItem[]>([]);
   const [manualCalendarEvents, setManualCalendarEvents] = useState<UserCalendarEvent[]>([]);
   const [bookingEventEntries, setBookingEventEntries] = useState<CalendarEntry[]>([]);
@@ -314,6 +325,10 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         try {
+          // Store rounded (privacy-safe) coordinates — never exact GPS
+          setUserLat(roundCoord(pos.coords.latitude));
+          setUserLng(roundCoord(pos.coords.longitude));
+
           const res = await fetch(
             `https://nominatim.openstreetmap.org/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&format=json`,
             { headers: { 'Accept-Language': 'en' } },
@@ -571,6 +586,78 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     filters.legsInseamMin, filters.legsInseamMax,
   ]);
 
+  // Radius-based Near me discovery — only when nearby toggle is active AND we have coordinates.
+  useEffect(() => {
+    if (!filters.nearby || userLat == null || userLng == null) {
+      setNearbyModels([]);
+      return;
+    }
+    void (async () => {
+      try {
+        const cat = filters.category;
+        const effectiveClientType = !cat ? 'all' : cat === 'Commercial' ? 'commercial' : 'fashion';
+        const effectiveCategory = cat === 'High Fashion' ? 'High Fashion' : undefined;
+        const pInt = (v: string) => { const n = parseInt(v, 10); return isNaN(n) ? undefined : n; };
+        const measurementFilters = {
+          heightMin:      pInt(filters.heightMin),
+          heightMax:      pInt(filters.heightMax),
+          ethnicities:    filters.ethnicities.length ? filters.ethnicities : undefined,
+          hairColor:      filters.hairColor.trim() || undefined,
+          hipsMin:        pInt(filters.hipsMin),
+          hipsMax:        pInt(filters.hipsMax),
+          waistMin:       pInt(filters.waistMin),
+          waistMax:       pInt(filters.waistMax),
+          chestMin:       pInt(filters.chestMin),
+          chestMax:       pInt(filters.chestMax),
+          legsInseamMin:  pInt(filters.legsInseamMin),
+          legsInseamMax:  pInt(filters.legsInseamMax),
+          sex: (filters.sex !== 'all' ? filters.sex : undefined) as 'male' | 'female' | undefined,
+        };
+        const nearby: NearbyModel[] = await getModelsNearLocation(
+          userLat,
+          userLng,
+          50,
+          effectiveClientType as 'fashion' | 'commercial' | 'all',
+          measurementFilters,
+          effectiveCategory,
+          filters.sportsWinter || undefined,
+          filters.sportsSummer || undefined,
+        );
+        const mapped: ModelSummary[] = nearby.map((m) => ({
+          id: m.id,
+          name: m.name,
+          city: m.location_city ?? m.city ?? '',
+          hairColor: m.hair_color ?? '',
+          height: m.height,
+          bust: m.bust ?? 0,
+          waist: m.waist ?? 0,
+          hips: m.hips ?? 0,
+          chest: m.chest ?? 0,
+          legsInseam: m.legs_inseam ?? 0,
+          coverUrl: m.portfolio_images?.[0] ?? '',
+          agencyId: m.territory_agency_id ?? m.agency_id ?? null,
+          agencyName: m.agency_name ?? null,
+          countryCode: m.location_country_code ?? null,
+          hasRealLocation: true,
+          isSportsWinter: m.is_sports_winter ?? false,
+          isSportsSummer: m.is_sports_summer ?? false,
+          sex: m.sex ?? null,
+        }));
+        setNearbyModels(mapped);
+      } catch (e) {
+        console.error('getModelsNearLocation error:', e);
+        setNearbyModels([]);
+      }
+    })();
+  }, [
+    filters.nearby, userLat, userLng,
+    filters.sex, filters.heightMin, filters.heightMax, filters.ethnicities,
+    filters.category, filters.sportsWinter, filters.sportsSummer,
+    filters.hairColor, filters.hipsMin, filters.hipsMax,
+    filters.waistMin, filters.waistMax, filters.chestMin, filters.chestMax,
+    filters.legsInseamMin, filters.legsInseamMax,
+  ]);
+
   useEffect(() => {
     if (detailId) {
       setDetailLoading(true);
@@ -613,14 +700,22 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   );
 
   const filteredModels = useMemo(() => {
-    // All measurement/category/sport/height/hair filters are now applied server-side.
-    // Only "nearby" (user location detection) remains client-side because it depends
-    // on the device's geo-position, not a fixed query parameter.
-    if (!filters.nearby || !userCity) return baseModels;
-    return baseModels.filter((m) =>
-      (m.city || '').toLowerCase().includes(userCity.toLowerCase()),
-    );
-  }, [baseModels, filters.nearby, userCity]);
+    // When "Near me" is active and we have radius-based results → use nearbyModels (sorted by distance).
+    // Fallback: if geolocation was denied but city is known → city-substring filter on baseModels.
+    // Otherwise → use baseModels as-is (all server-side filters already applied).
+    if (filters.nearby) {
+      if (userLat != null && userLng != null) {
+        return nearbyModels;  // radius RPC results, already sorted by distance
+      }
+      if (userCity) {
+        // Geolocation permission denied but city resolved via Nominatim
+        return baseModels.filter((m) =>
+          (m.city || '').toLowerCase().includes(userCity.toLowerCase()),
+        );
+      }
+    }
+    return baseModels;
+  }, [baseModels, nearbyModels, filters.nearby, userLat, userLng, userCity]);
 
   const currentModel = useMemo(
     () =>
@@ -657,6 +752,19 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     clearFeedbackLater();
   };
 
+  const handleDeleteProject = (projectId: string) => {
+    const project = projects.find((p) => p.id === projectId);
+    if (!project) return;
+    const confirmed = typeof window !== 'undefined'
+      ? window.confirm(uiCopy.projects.deleteConfirm)
+      : true;
+    if (!confirmed) return;
+    setProjects((prev) => prev.filter((p) => p.id !== projectId));
+    if (activeProjectId === projectId) setActiveProjectId(null);
+    setFeedback(`Deleted project "${project.name}".`);
+    clearFeedbackLater();
+  };
+
   const addModelToProject = (projectId: string, model: ModelSummary) => {
     setProjects((prev) =>
       prev.map((p) =>
@@ -674,6 +782,29 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     if (projectName) {
       setFeedback(`Added ${model.name} to "${projectName}".`);
       clearFeedbackLater();
+    }
+  };
+
+  const openProjectDiscovery = (projectId: string) => {
+    setSharedProjectId(projectId);
+    setTab('discover');
+  };
+
+  const openProjectOverview = (id: string) => setProjectOverviewId(id);
+  const closeProjectOverview = () => setProjectOverviewId(null);
+
+  const handleRemoveModelFromProject = async (projectId: string, modelId: string) => {
+    setProjects((prev) =>
+      prev.map((p) =>
+        p.id === projectId
+          ? { ...p, models: p.models.filter((m) => m.id !== modelId) }
+          : p,
+      ),
+    );
+    try {
+      await removeModelFromProject(projectId, modelId);
+    } catch (e) {
+      console.error('handleRemoveModelFromProject error:', e);
     }
   };
 
@@ -756,9 +887,13 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
 
   const exitSharedMode = () => {
     setSharedProjectId(null);
+    setTab('projects');
   };
 
-  const exitPackageMode = () => setPackageViewState(null);
+  const exitPackageMode = () => {
+    setPackageViewState(null);
+    setTab('messages');
+  };
 
   const handlePackagePress = async (meta: Record<string, unknown>) => {
     const packageId = typeof meta.package_id === 'string' ? meta.package_id : null;
@@ -862,9 +997,96 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     setOptionDatePickerOpen(true);
   };
 
+  const insets = useSafeAreaInsets();
+  const bottomTabInset = BOTTOM_TAB_BAR_HEIGHT + insets.bottom;
+
+  const resetDiscoverTabRoot = useCallback(() => {
+    setDetailId(null);
+    setDetailData(null);
+    setProjectPickerOpen(false);
+    setPendingModel(null);
+    setOptionDatePickerOpen(false);
+    setOptionDateModel(null);
+    setCurrentIndex(0);
+  }, []);
+
+  const resetProjectsTabRoot = useCallback(() => {
+    setProjectOverviewId(null);
+  }, []);
+
+  const resetMessagesTabRoot = useCallback(() => {
+    setOpenThreadIdOnMessages(null);
+    setPendingClientB2BChat(null);
+  }, []);
+
+  const resetCalendarTabRoot = useCallback(() => {
+    setSelectedCalendarItem(null);
+    setSelectedManualEvent(null);
+    setShowAddManualEvent(false);
+    setClientNotesDraft('');
+    setClientSharedNoteDraft('');
+  }, []);
+
+  const handleBottomTabPress = useCallback(
+    (key: TopTab) => {
+      handleTabPress({
+        current: tab,
+        next: key,
+        setTab,
+        onReselectRoot: () => {
+          switch (tab) {
+            case 'discover':
+              resetDiscoverTabRoot();
+              break;
+            case 'projects':
+              resetProjectsTabRoot();
+              break;
+            case 'messages':
+              resetMessagesTabRoot();
+              break;
+            case 'calendar':
+              resetCalendarTabRoot();
+              break;
+            case 'team':
+            case 'agencies':
+            default:
+              break;
+          }
+        },
+      });
+    },
+    [tab, resetDiscoverTabRoot, resetProjectsTabRoot, resetMessagesTabRoot, resetCalendarTabRoot],
+  );
+
+  const handleChatWithAgency = async (agencyId: string) => {
+    if (!realClientId) {
+      showAppAlert(uiCopy.alerts.signInRequired, uiCopy.b2bChat.signInToChatBody);
+      return;
+    }
+    setIsChatWithAgencyLoading(true);
+    try {
+      const result = await ensureClientAgencyChat({
+        agencyId,
+        actingUserId: realClientId,
+        clientUserId: realClientId,
+      });
+      if (result.ok) {
+        setPendingClientB2BChat({ conversationId: result.conversationId, title: uiCopy.b2bChat.agencyFallback });
+        setTab('messages');
+      } else {
+        showAppAlert(uiCopy.b2bChat.chatFailedTitle, result.reason || uiCopy.b2bChat.chatFailedGeneric);
+      }
+    } catch (e) {
+      console.error('handleChatWithAgency exception:', e);
+      showAppAlert(uiCopy.b2bChat.chatFailedTitle, uiCopy.b2bChat.chatFailedGeneric);
+    } finally {
+      setIsChatWithAgencyLoading(false);
+    }
+  };
+
   return (
     <View style={styles.root}>
-      <View style={styles.appShell}>
+      <View style={[styles.appShell, { paddingBottom: bottomTabInset }]}>
         <View style={styles.topBar}>
           <View style={styles.topBarRow}>
             <TouchableOpacity
@@ -911,6 +1133,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             current={currentModel}
             index={currentIndex}
             activeProject={activeProject}
+            sharedProjectName={sharedProject?.name ?? null}
             filters={filters}
             onChangeFilters={setFilters}
             onSaveFilters={handleSaveFilters}
@@ -919,6 +1142,8 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             onAddToProject={openProjectPickerForModel}
             onOpenDetails={openDetails}
             onOpenOptionDatePicker={openOptionDatePicker}
+            onChatWithAgency={handleChatWithAgency}
+            isChatWithAgencyLoading={isChatWithAgencyLoading}
             isSharedMode={isSharedMode}
             isPackageMode={isPackageMode}
             packageName={packageViewState?.name ?? null}
@@ -927,7 +1152,13 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
           />
         )}
 
-        {tab === 'projects' && (
+        {tab === 'projects' && projectOverviewId ? (
+          <ProjectOverviewView
+            project={projects.find((p) => p.id === projectOverviewId) ?? null}
+            onBack={closeProjectOverview}
+            onRemoveModel={handleRemoveModelFromProject}
+          />
+        ) : tab === 'projects' ? (
           <ProjectsView
             projects={projects}
             activeProjectId={activeProjectId}
@@ -935,15 +1166,17 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             newProjectName={newProjectName}
             setNewProjectName={setNewProjectName}
             onCreateProject={createProject}
+            onDeleteProject={handleDeleteProject}
             onOpenDetails={openDetails}
-            onOpenSharedLink={openSharedLinkForProject}
+            onOpenProject={openProjectDiscovery}
+            onOpenOverview={openProjectOverview}
             onShareFolder={handleShareFolder}
             onOpenOptionChat={(threadId) => {
               setOpenThreadIdOnMessages(threadId);
               setTab('messages');
             }}
           />
-        )}
+        ) : null}
 
         {tab === 'agencies' && (
           <AgenciesView
@@ -1509,35 +1742,33 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         <SettingsPanel realClientId={realClientId} onClose={() => setSettingsOpen(false)} />
       )}
 
-      {!isSharedMode && !isPackageMode && (
-        <View style={styles.bottomTabBar}>
-          {(['discover', 'messages', 'calendar', 'team', 'agencies', 'projects'] as TopTab[]).map((key) => (
-            <TouchableOpacity
-              key={key}
-              onPress={() => setTab(key)}
-              style={styles.bottomTabItem}
-            >
-              <Text style={[styles.bottomTabLabel, tab === key && styles.bottomTabLabelActive]}>
-                {key === 'discover'
-                  ? 'Discover'
-                  : key === 'projects'
-                  ? 'My Projects'
-                  : key === 'calendar'
-                  ? 'Calendar'
-                  : key === 'agencies'
-                  ? 'Agencies'
-                  : key === 'team'
-                  ? 'Team'
-                  : 'Messages'}
-              </Text>
-              {key === 'messages' && hasNew && (
-                <View style={styles.bottomTabDot} />
-              )}
-              {tab === key && <View style={styles.bottomTabUnderline} />}
-            </TouchableOpacity>
-          ))}
-        </View>
-      )}
+      <View style={[styles.bottomTabBar, { paddingBottom: insets.bottom }]}>
+        {(['discover', 'messages', 'calendar', 'team', 'agencies', 'projects'] as TopTab[]).map((key) => (
+          <TouchableOpacity
+            key={key}
+            onPress={() => handleBottomTabPress(key)}
+            style={styles.bottomTabItem}
+          >
+            <Text style={[styles.bottomTabLabel, tab === key && styles.bottomTabLabelActive]}>
+              {key === 'discover'
+                ? uiCopy.clientWeb.bottomTabs.discover
+                : key === 'projects'
+                ? uiCopy.clientWeb.bottomTabs.projects
+                : key === 'calendar'
+                ? uiCopy.clientWeb.bottomTabs.calendar
+                : key === 'agencies'
+                ? uiCopy.clientWeb.bottomTabs.agencies
+                : key === 'team'
+                ? uiCopy.clientWeb.bottomTabs.team
+                : uiCopy.clientWeb.bottomTabs.messages}
+            </Text>
+            {key === 'messages' && hasNew && (
+              <View style={styles.bottomTabDot} />
+            )}
+            {tab === key && <View style={styles.bottomTabUnderline} />}
+          </TouchableOpacity>
+        ))}
+      </View>
     </View>
   );
 };
@@ -1547,6 +1778,7 @@ type DiscoverProps = {
   current: ModelSummary | null;
   index: number;
   activeProject: Project | null;
+  sharedProjectName: string | null;
   filters: ModelFilters;
   onChangeFilters: (f: ModelFilters) => void;
   onSaveFilters: () => void;
@@ -1555,6 +1787,8 @@ type DiscoverProps = {
   onAddToProject: (model: ModelSummary) => void;
   onOpenDetails: (id: string) => void;
   onOpenOptionDatePicker: (model: ModelSummary) => void;
+  onChatWithAgency: (agencyId: string) => void;
+  isChatWithAgencyLoading: boolean;
   isSharedMode: boolean;
   isPackageMode: boolean;
   packageName: string | null;
@@ -1567,6 +1801,7 @@ const DiscoverView: React.FC<DiscoverProps> = ({
   current,
   index,
   activeProject,
+  sharedProjectName,
   filters,
   onChangeFilters,
   onSaveFilters,
@@ -1576,6 +1811,8 @@ const DiscoverView: React.FC<DiscoverProps> = ({
   userCity,
   onOpenDetails,
   onOpenOptionDatePicker,
+  onChatWithAgency,
+  isChatWithAgencyLoading,
   isSharedMode,
   isPackageMode,
   packageName,
@@ -1612,7 +1849,7 @@ const DiscoverView: React.FC<DiscoverProps> = ({
       <View style={styles.activeProjectRow}>
         <Text style={styles.metaText}>Active project</Text>
         <Text style={styles.activeProjectName}>
-          {activeProject ? activeProject.name : isSharedMode ? 'Shared view' : 'None'}
+          {activeProject ? activeProject.name : isSharedMode ? (sharedProjectName ?? 'Project') : 'None'}
         </Text>
       </View>
 
@@ -1680,6 +1917,21 @@ const DiscoverView: React.FC<DiscoverProps> = ({
                 <Text style={styles.addToSelectionLabel}>Add to selection</Text>
               </TouchableOpacity>
             </View>
+            {!isPackageMode && current.agencyId && (
+              <View style={styles.cardButtonRowSecondary}>
+                <TouchableOpacity
+                  style={[styles.chatWithAgencyButton, isChatWithAgencyLoading && { opacity: 0.5 }]}
+                  onPress={() => onChatWithAgency(current.agencyId!)}
+                  disabled={isChatWithAgencyLoading}
+                >
+                  <Text style={styles.chatWithAgencyLabel}>
+                    {isChatWithAgencyLoading
+                      ? uiCopy.discover.chatWithAgencyLoading
+                      : uiCopy.discover.chatWithAgency}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         </View>
       ) : (
@@ -1974,8 +2226,10 @@ type ProjectsProps = {
   newProjectName: string;
   setNewProjectName: (v: string) => void;
   onCreateProject: () => void;
+  onDeleteProject: (id: string) => void;
   onOpenDetails: (id: string) => void;
-  onOpenSharedLink: (id: string) => void;
+  onOpenProject: (id: string) => void;
+  onOpenOverview: (id: string) => void;
   onShareFolder: (project: Project) => void;
   onOpenOptionChat: (threadId: string) => void;
 };
@@ -1987,15 +2241,16 @@ const ProjectsView: React.FC<ProjectsProps> = ({
   newProjectName,
   setNewProjectName,
   onCreateProject,
-  onOpenDetails,
-  onOpenSharedLink,
+  onDeleteProject,
+  onOpenProject,
+  onOpenOverview,
   onShareFolder,
   onOpenOptionChat,
 }) => {
   return (
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionLabel}>My projects</Text>
+        <Text style={styles.sectionLabel}>My Projects</Text>
       </View>
 
       <View style={styles.newProjectRow}>
@@ -2013,41 +2268,54 @@ const ProjectsView: React.FC<ProjectsProps> = ({
 
       <ScrollView style={styles.projectsList}>
         {projects.map((p) => (
-          <TouchableOpacity
+          <View
             key={p.id}
             style={[
-              styles.projectRow,
-              activeProjectId === p.id && styles.projectRowActive,
+              styles.projectCard,
+              activeProjectId === p.id && styles.projectCardActive,
             ]}
-            onPress={() => onSelectProject(p.id)}
           >
-            <View style={styles.projectHeader}>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => onSelectProject(p.id)}
+              style={styles.projectCardTopRow}
+            >
               <Text style={styles.projectName}>{p.name}</Text>
-              <Text style={styles.metaText}>
+              <Text style={styles.projectModelCount}>
                 {p.models.length} model{p.models.length === 1 ? '' : 's'}
               </Text>
-              <View style={styles.projectActionsRow}>
-                <TouchableOpacity onPress={() => onOpenSharedLink(p.id)}>
-                  <Text style={styles.sharedLinkLabel}>Open shared link</Text>
-                </TouchableOpacity>
-                {p.models.length > 0 && (
-                  <TouchableOpacity onPress={() => onShareFolder(p)}>
-                    <Text style={styles.shareFolderLabel}>Share folder</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+            </TouchableOpacity>
+
+            <View style={styles.projectPrimaryActions}>
+              <TouchableOpacity
+                style={styles.projectActionBtn}
+                onPress={() => onOpenProject(p.id)}
+              >
+                <Text style={styles.projectActionBtnLabel}>{uiCopy.projects.open}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.projectActionBtn, styles.projectActionBtnSecondary]}
+                onPress={() => onOpenOverview(p.id)}
+              >
+                <Text style={[styles.projectActionBtnLabel, styles.projectActionBtnLabelSecondary]}>
+                  {uiCopy.projects.overview}
+                </Text>
+              </TouchableOpacity>
             </View>
-            <View style={styles.projectModelsRow}>
-              {p.models.map((m) => (
-                <TouchableOpacity
-                  key={m.id}
-                  style={styles.modelChip}
-                  onPress={() => onOpenDetails(m.id)}
-                >
-                  <Text style={styles.modelChipLabel}>{m.name}</Text>
+
+            <View style={styles.projectSecondaryActions}>
+              {p.models.length > 0 && (
+                <TouchableOpacity onPress={() => onShareFolder(p)}>
+                  <Text style={styles.shareFolderLabel}>Share folder</Text>
                 </TouchableOpacity>
-              ))}
+              )}
+              <TouchableOpacity
+                onPress={(e) => { e.stopPropagation(); onDeleteProject(p.id); }}
+              >
+                <Text style={styles.deleteProjectLabel}>Delete</Text>
+              </TouchableOpacity>
             </View>
+
             {getOptionRequestsByProjectId(p.id).length > 0 && (
               <View style={styles.projectOptionChats}>
                 <Text style={styles.projectOptionChatsLabel}>Option chats</Text>
@@ -2063,7 +2331,7 @@ const ProjectsView: React.FC<ProjectsProps> = ({
                 ))}
               </View>
             )}
-          </TouchableOpacity>
+          </View>
         ))}
 
         {projects.length === 0 && (
@@ -2074,6 +2342,102 @@ const ProjectsView: React.FC<ProjectsProps> = ({
             </Text>
           </View>
         )}
+      </ScrollView>
+    </View>
+  );
+};
+
+type ProjectOverviewProps = {
+  project: Project | null;
+  onBack: () => void;
+  onRemoveModel: (projectId: string, modelId: string) => Promise<void>;
+};
+
+const ProjectOverviewView: React.FC<ProjectOverviewProps> = ({
+  project,
+  onBack,
+  onRemoveModel,
+}) => {
+  const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
+  const [errorId, setErrorId] = useState<string | null>(null);
+
+  const handleDelete = async (modelId: string) => {
+    if (!project) return;
+    const confirmed =
+      typeof window !== 'undefined'
+        ? window.confirm(uiCopy.projects.deleteFromProjectConfirm)
+        : true;
+    if (!confirmed) return;
+    setBusyIds((prev) => new Set(prev).add(modelId));
+    setErrorId(null);
+    try {
+      await onRemoveModel(project.id, modelId);
+    } catch {
+      setErrorId(modelId);
+    } finally {
+      setBusyIds((prev) => {
+        const next = new Set(prev);
+        next.delete(modelId);
+        return next;
+      });
+    }
+  };
+
+  if (!project) return null;
+
+  return (
+    <View style={styles.section}>
+      <View style={styles.overviewHeader}>
+        <TouchableOpacity onPress={onBack} style={styles.overviewBackBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Text style={styles.overviewBackLabel}>{uiCopy.projects.back}</Text>
+        </TouchableOpacity>
+        <Text style={styles.overviewTitle}>{project.name}</Text>
+      </View>
+
+      <ScrollView style={styles.overviewList}>
+        {project.models.length === 0 && (
+          <View style={styles.emptyProjects}>
+            <Text style={styles.emptyCopy}>{uiCopy.projects.emptyOverview}</Text>
+          </View>
+        )}
+        {project.models.map((m) => (
+          <View key={m.id} style={styles.overviewModelRow}>
+            <Image
+              source={{ uri: m.coverUrl }}
+              style={styles.overviewModelImage}
+              resizeMode="cover"
+            />
+            <View style={styles.overviewModelInfo}>
+              <Text style={styles.overviewModelName}>{m.name}</Text>
+              <Text style={styles.overviewModelMeta}>
+                {[
+                  m.height ? `${m.height} cm` : null,
+                  m.bust || m.chest ? `Chest ${m.bust || m.chest}` : null,
+                  m.waist ? `Waist ${m.waist}` : null,
+                  m.hips ? `Hips ${m.hips}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </Text>
+              {m.city ? <Text style={styles.overviewModelCity}>{m.city}</Text> : null}
+              {errorId === m.id && (
+                <Text style={styles.overviewModelError}>{uiCopy.projects.removeError}</Text>
+              )}
+            </View>
+            <TouchableOpacity
+              style={[
+                styles.overviewDeleteBtn,
+                busyIds.has(m.id) && styles.overviewDeleteBtnBusy,
+              ]}
+              onPress={() => handleDelete(m.id)}
+              disabled={busyIds.has(m.id)}
+            >
+              <Text style={styles.overviewDeleteBtnLabel}>
+                {busyIds.has(m.id) ? uiCopy.common.loading : uiCopy.projects.deleteFromProject}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ))}
       </ScrollView>
     </View>
   );
@@ -3495,6 +3859,7 @@ const settingsInputStyle: any = {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
+    width: '100%',
     backgroundColor: colors.background,
   },
   appShell: {
@@ -3503,7 +3868,6 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
-    paddingBottom: spacing.sm,
   },
   topBar: {
     marginBottom: spacing.lg,
@@ -3514,16 +3878,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   bottomTabBar: {
+    position: 'absolute' as const,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1000,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
+    flexWrap: 'wrap' as const,
     gap: spacing.sm,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     backgroundColor: colors.background,
     paddingVertical: spacing.sm,
-    paddingBottom: spacing.md,
     paddingHorizontal: spacing.lg,
+    maxWidth: 1200,
+    width: '100%',
     alignSelf: 'center',
   },
   bottomTabItem: {
@@ -3892,6 +4263,20 @@ const styles = StyleSheet.create({
     ...typography.label,
     fontSize: 11,
     color: colors.textSecondary,
+  },
+  chatWithAgencyButton: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.accentGreen,
+    backgroundColor: 'transparent',
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chatWithAgencyLabel: {
+    ...typography.label,
+    fontSize: 11,
+    color: colors.accentGreen,
   },
   skipButton: {
     flex: 1,
@@ -4327,6 +4712,149 @@ const styles = StyleSheet.create({
     ...typography.label,
     fontSize: 11,
     color: colors.buttonOptionGreen,
+  },
+  deleteProjectLabel: {
+    ...typography.label,
+    fontSize: 11,
+    color: '#e74c3c',
+  },
+  projectCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    marginBottom: spacing.sm,
+    backgroundColor: colors.surface,
+  },
+  projectCardActive: {
+    borderColor: colors.accentBrown,
+  },
+  projectCardTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  projectModelCount: {
+    ...typography.label,
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
+  projectPrimaryActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  projectActionBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.sm,
+    borderRadius: 10,
+    backgroundColor: colors.accentBrown,
+    alignItems: 'center',
+  },
+  projectActionBtnSecondary: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  projectActionBtnLabel: {
+    ...typography.label,
+    fontSize: 13,
+    color: '#fff',
+    fontWeight: '600',
+  },
+  projectActionBtnLabelSecondary: {
+    color: colors.textPrimary,
+  },
+  projectSecondaryActions: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    alignItems: 'center',
+  },
+  overviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  overviewBackBtn: {
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+  },
+  overviewBackLabel: {
+    ...typography.body,
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  overviewTitle: {
+    ...typography.heading,
+    fontSize: 16,
+    color: colors.textPrimary,
+    flex: 1,
+  },
+  overviewList: {
+    flex: 1,
+  },
+  overviewModelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    gap: spacing.sm,
+  },
+  overviewModelImage: {
+    width: 72,
+    height: 72,
+    borderRadius: 8,
+    backgroundColor: colors.border,
+  },
+  overviewModelInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  overviewModelName: {
+    ...typography.body,
+    color: colors.textPrimary,
+    fontWeight: '600',
+  },
+  overviewModelMeta: {
+    ...typography.label,
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
+  overviewModelCity: {
+    ...typography.label,
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
+  overviewModelError: {
+    ...typography.label,
+    fontSize: 11,
+    color: '#e74c3c',
+    marginTop: 2,
+  },
+  overviewDeleteBtn: {
+    paddingVertical: 7,
+    paddingHorizontal: spacing.sm,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e74c3c',
+    alignItems: 'center',
+  },
+  overviewDeleteBtnBusy: {
+    opacity: 0.4,
+  },
+  overviewDeleteBtnLabel: {
+    ...typography.label,
+    fontSize: 11,
+    color: '#e74c3c',
+    fontWeight: '600',
   },
   filterGroup: {
     flex: 1,

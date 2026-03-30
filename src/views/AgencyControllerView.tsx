@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { handleTabPress, BOTTOM_TAB_BAR_HEIGHT } from '../navigation/bottomTabNavigation';
 import {
   View,
   Text,
@@ -61,6 +63,8 @@ import { AgencySettingsTab } from '../components/AgencySettingsTab';
 import { uploadModelPhoto } from '../services/modelPhotosSupabase';
 import { ModelMediaSettingsPanel } from '../components/ModelMediaSettingsPanel';
 import { getTerritoriesForModel, getTerritoriesForAgency, upsertTerritoriesForModel, bulkAddTerritoriesForModels } from '../services/territoriesSupabase';
+import { bulkUpsertModelLocations, upsertModelLocation } from '../services/modelLocationsSupabase';
+import { FILTER_COUNTRIES as LOCATION_COUNTRIES } from '../utils/modelFilters';
 import { supabase } from '../../lib/supabase';
 import {
   ensureAgencyOrganization,
@@ -77,7 +81,7 @@ import {
   type ClientOrganizationDirectoryRow,
 } from '../services/clientOrganizationsDirectorySupabase';
 import { getAgencies, type Agency } from '../services/agenciesSupabase';
-import { createGuestLink, getGuestLinksForAgency, buildGuestUrl, deactivateGuestLink, type GuestLink } from '../services/guestLinksSupabase';
+import { createGuestLink, getGuestLinksForAgency, buildGuestUrl, deactivateGuestLink, deleteGuestLink, type GuestLink } from '../services/guestLinksSupabase';
 import {
   getCalendarEntriesForAgency,
   getBookingEventsAsCalendarEntries,
@@ -363,6 +367,39 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
 
   const clearPendingB2BChat = useCallback(() => setPendingB2BChat(null), []);
 
+  const insets = useSafeAreaInsets();
+  const bottomTabInset = BOTTOM_TAB_BAR_HEIGHT + insets.bottom;
+
+  const resetAgencyTabRoot = useCallback(() => {
+    switch (tab) {
+      case 'messages':
+        setOpenBookingThreadId(null);
+        setPendingB2BChat(null);
+        break;
+      case 'calendar':
+        setSelectedCalendarItem(null);
+        setSelectedManualEvent(null);
+        setShowAddManualEvent(false);
+        setAgencyNotesDraft('');
+        setAgencySharedNoteDraft('');
+        break;
+      default:
+        break;
+    }
+  }, [tab]);
+
+  const handleAgencyTabPress = useCallback(
+    (key: AgencyTab) => {
+      handleTabPress({
+        current: tab,
+        next: key,
+        setTab,
+        onReselectRoot: resetAgencyTabRoot,
+      });
+    },
+    [tab, resetAgencyTabRoot],
+  );
+
   return (
     <View style={s.container}>
       <TouchableOpacity style={s.backRow} onPress={onBackToRoleSelection} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
@@ -383,7 +420,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         </TouchableOpacity>
       </View>
 
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, paddingBottom: bottomTabInset }}>
       {tab === 'dashboard' && (
         <DashboardTab models={models} />
       )}
@@ -433,6 +470,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
           currentUserId={session?.user?.id ?? null}
           pendingOpenB2BChat={pendingB2BChat}
           onPendingB2BChatConsumed={clearPendingB2BChat}
+          onBookingCardPress={() => setTab('calendar')}
         />
       )}
 
@@ -538,28 +576,30 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
       )}
       </View>
 
-      <View style={s.bottomBar}>
+      {openBookingThreadId != null && (
+        <BookingChatView
+          threadId={openBookingThreadId}
+          fromRole="agency"
+          onClose={() => setOpenBookingThreadId(null)}
+          presentation="insetAboveBottomNav"
+          bottomInset={bottomTabInset}
+        />
+      )}
+
+      <View style={[s.bottomBar, { paddingBottom: insets.bottom }]}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={s.tabRow}
         >
           {agencyBottomTabs.map((t) => (
-            <TouchableOpacity key={t.key} onPress={() => setTab(t.key)} style={s.tabItem}>
+            <TouchableOpacity key={t.key} onPress={() => handleAgencyTabPress(t.key)} style={s.tabItem}>
               <Text style={[s.tabLabel, tab === t.key && s.tabLabelActive]}>{t.label}</Text>
               {tab === t.key && <View style={s.tabUnderline} />}
             </TouchableOpacity>
           ))}
         </ScrollView>
       </View>
-
-      {openBookingThreadId != null && (
-        <BookingChatView
-          threadId={openBookingThreadId}
-          fromRole="agency"
-          onClose={() => setOpenBookingThreadId(null)}
-        />
-      )}
 
       {selectedCalendarItem && (
         <View
@@ -568,7 +608,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
             left: 0,
             right: 0,
             top: 0,
-            bottom: 0,
+            bottom: bottomTabInset,
             backgroundColor: 'rgba(0,0,0,0.08)',
             justifyContent: 'center',
             alignItems: 'center',
@@ -1422,6 +1462,17 @@ const MyModelsTab: React.FC<{
   useEffect(() => {
     if (selectedModel) {
       setEditState(buildEditState(selectedModel));
+      // Load existing model_location to pre-populate shareApproximateLocation toggle
+      import('../services/modelLocationsSupabase').then(({ getModelLocation }) => {
+        getModelLocation(selectedModel.id).then((loc) => {
+          if (loc) {
+            setEditState((prev) => ({
+              ...prev,
+              shareApproximateLocation: loc.share_approximate_location,
+            }));
+          }
+        });
+      });
     }
   }, [selectedModel?.id]);
 
@@ -1446,6 +1497,14 @@ const MyModelsTab: React.FC<{
   const [bulkAssigning, setBulkAssigning] = useState(false);
   const [bulkFeedback, setBulkFeedback] = useState<string | null>(null);
 
+  // Bulk location modal state
+  const [showBulkLocationModal, setShowBulkLocationModal] = useState(false);
+  const [bulkLocationCountry, setBulkLocationCountry] = useState('');
+  const [bulkLocationCity, setBulkLocationCity] = useState('');
+  const [bulkLocationCountrySearch, setBulkLocationCountrySearch] = useState('');
+  const [bulkLocationCountryDropdownOpen, setBulkLocationCountryDropdownOpen] = useState(false);
+  const [bulkLocationAssigning, setBulkLocationAssigning] = useState(false);
+
   const isoCountryList = useMemo(() => {
     const list = Object.entries(ISO_COUNTRY_NAMES)
       .map(([code, name]) => ({ code: code.toUpperCase(), name }))
@@ -1460,6 +1519,43 @@ const MyModelsTab: React.FC<{
       (c) => c.name.toLowerCase().includes(q) || c.code.toLowerCase().includes(q),
     );
   }, [isoCountryList, bulkTerritorySearch]);
+
+  // Filtered country list for location modal (uses FILTER_COUNTRIES for consistent naming)
+  const bulkLocationFilteredCountries = useMemo(() => {
+    const q = bulkLocationCountrySearch.trim().toLowerCase();
+    if (!q) return LOCATION_COUNTRIES;
+    return LOCATION_COUNTRIES.filter(
+      (c) => c.label.toLowerCase().includes(q) || c.code.toLowerCase().includes(q),
+    );
+  }, [bulkLocationCountrySearch]);
+
+  const selectedLocationCountryLabel = useMemo(
+    () => LOCATION_COUNTRIES.find((c) => c.code === bulkLocationCountry)?.label ?? null,
+    [bulkLocationCountry],
+  );
+
+  const handleBulkSetLocation = async () => {
+    if (!bulkLocationCountry || selectedModelIds.size === 0) return;
+    setBulkLocationAssigning(true);
+    try {
+      const count = await bulkUpsertModelLocations(
+        Array.from(selectedModelIds),
+        { country_code: bulkLocationCountry, city: bulkLocationCity.trim() || null },
+      );
+      setShowBulkLocationModal(false);
+      setSelectedModelIds(new Set());
+      setBulkLocationCountry('');
+      setBulkLocationCity('');
+      setBulkLocationCountrySearch('');
+      setBulkFeedback(uiCopy.locationModal.successBulk(count));
+    } catch (err) {
+      console.error('handleBulkSetLocation error:', err);
+      setBulkFeedback(uiCopy.locationModal.error);
+    } finally {
+      setBulkLocationAssigning(false);
+      setTimeout(() => setBulkFeedback(null), 4000);
+    }
+  };
 
   const handleBulkAssignTerritories = async () => {
     if (bulkSelectedCountries.length === 0 || selectedModelIds.size === 0) return;
@@ -1906,6 +2002,19 @@ const MyModelsTab: React.FC<{
         } else {
           throw modelUpdateError;
         }
+      }
+
+      // Persist location to model_locations (agency-managed, no GPS coordinates from panel)
+      if (editState.country_code) {
+        await upsertModelLocation(
+          selectedModel.id,
+          {
+            country_code: editState.country_code,
+            city: editState.city || null,
+            share_approximate_location: editState.shareApproximateLocation,
+          },
+          'agency',
+        );
       }
 
       // Photos are managed directly by ModelMediaSettingsPanel (immediate save on change).
@@ -2685,6 +2794,25 @@ const MyModelsTab: React.FC<{
               {uiCopy.bulkActions.assignTerritories}
             </Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={{
+              backgroundColor: colors.accentBrown,
+              borderRadius: 999,
+              paddingHorizontal: spacing.md,
+              paddingVertical: spacing.sm,
+            }}
+            onPress={() => {
+              setBulkLocationCountry('');
+              setBulkLocationCity('');
+              setBulkLocationCountrySearch('');
+              setBulkLocationCountryDropdownOpen(false);
+              setShowBulkLocationModal(true);
+            }}
+          >
+            <Text style={{ ...typography.label, fontSize: 12, color: colors.surface }}>
+              {uiCopy.bulkActions.setLocation}
+            </Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -2815,6 +2943,145 @@ const MyModelsTab: React.FC<{
         </View>
       </Modal>
 
+      {/* Bulk location modal */}
+      <Modal
+        visible={showBulkLocationModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowBulkLocationModal(false)}
+      >
+        <View style={{
+          flex: 1, backgroundColor: 'rgba(0,0,0,0.25)',
+          justifyContent: 'center', alignItems: 'center', padding: spacing.lg,
+        }}>
+          <View style={{
+            width: '100%', maxWidth: 480,
+            backgroundColor: colors.surface,
+            borderRadius: 18, borderWidth: 1, borderColor: colors.border,
+            padding: spacing.md, maxHeight: '90%',
+          }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.sm }}>
+              <Text style={{ ...typography.heading, fontSize: 15, color: colors.textPrimary, flex: 1 }}>
+                {uiCopy.locationModal.title}
+              </Text>
+              <TouchableOpacity onPress={() => setShowBulkLocationModal(false)}>
+                <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary }}>
+                  {uiCopy.common.cancel}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.sm }}>
+              {uiCopy.bulkActions.selectedCount.replace('{count}', String(selectedModelIds.size))} — {uiCopy.locationModal.subtitle}
+            </Text>
+
+            {/* Country */}
+            <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary, marginBottom: 4 }}>
+              {uiCopy.locationModal.countryLabel}
+            </Text>
+            {bulkLocationCountry ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.sm }}>
+                <View style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 4,
+                  backgroundColor: colors.textPrimary, borderRadius: 999,
+                  paddingHorizontal: spacing.sm, paddingVertical: 3,
+                }}>
+                  <Text style={{ ...typography.label, fontSize: 11, color: colors.surface }}>
+                    {selectedLocationCountryLabel}
+                  </Text>
+                  <TouchableOpacity onPress={() => setBulkLocationCountry('')}>
+                    <Text style={{ ...typography.label, fontSize: 13, color: colors.surface, lineHeight: 14 }}>×</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <View style={{ marginBottom: spacing.sm }}>
+                <TextInput
+                  value={bulkLocationCountrySearch}
+                  onChangeText={(v) => {
+                    setBulkLocationCountrySearch(v);
+                    setBulkLocationCountryDropdownOpen(true);
+                  }}
+                  onFocus={() => setBulkLocationCountryDropdownOpen(true)}
+                  placeholder={uiCopy.locationModal.countryPlaceholder}
+                  placeholderTextColor={colors.textSecondary}
+                  style={{
+                    borderWidth: 1, borderColor: colors.border, borderRadius: 999,
+                    paddingHorizontal: spacing.md, paddingVertical: spacing.xs,
+                    ...typography.body, fontSize: 12, color: colors.textPrimary,
+                  }}
+                />
+                {bulkLocationCountryDropdownOpen && bulkLocationFilteredCountries.length > 0 && (
+                  <View style={{
+                    marginTop: 4, borderWidth: 1, borderColor: colors.border,
+                    borderRadius: 8, backgroundColor: colors.surface, maxHeight: 180,
+                    shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 6,
+                    shadowOffset: { width: 0, height: 2 }, elevation: 8, overflow: 'hidden',
+                  }}>
+                    <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled showsVerticalScrollIndicator>
+                      {bulkLocationFilteredCountries.map((c) => (
+                        <TouchableOpacity
+                          key={c.code}
+                          style={{ paddingHorizontal: spacing.md, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.border }}
+                          onPress={() => {
+                            setBulkLocationCountry(c.code);
+                            setBulkLocationCountrySearch('');
+                            setBulkLocationCountryDropdownOpen(false);
+                          }}
+                        >
+                          <Text style={{ ...typography.body, fontSize: 12, color: colors.textPrimary }}>
+                            {c.label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* City */}
+            <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary, marginBottom: 4 }}>
+              {uiCopy.locationModal.cityLabel}
+            </Text>
+            <TextInput
+              value={bulkLocationCity}
+              onChangeText={setBulkLocationCity}
+              placeholder={uiCopy.locationModal.cityPlaceholder}
+              placeholderTextColor={colors.textSecondary}
+              style={{
+                borderWidth: 1, borderColor: colors.border, borderRadius: 8,
+                paddingHorizontal: spacing.md, paddingVertical: spacing.xs,
+                ...typography.body, fontSize: 12, color: colors.textPrimary,
+                marginBottom: spacing.md,
+              }}
+            />
+
+            {!bulkLocationCountry && (
+              <Text style={{ ...typography.label, fontSize: 11, color: colors.buttonSkipRed, marginBottom: spacing.sm }}>
+                Country is required.
+              </Text>
+            )}
+
+            <TouchableOpacity
+              style={{
+                backgroundColor: colors.textPrimary,
+                borderRadius: 999,
+                paddingVertical: spacing.sm,
+                alignItems: 'center',
+                opacity: !bulkLocationCountry || bulkLocationAssigning ? 0.4 : 1,
+              }}
+              onPress={handleBulkSetLocation}
+              disabled={!bulkLocationCountry || bulkLocationAssigning}
+            >
+              <Text style={{ ...typography.label, color: colors.surface }}>
+                {bulkLocationAssigning ? uiCopy.common.saving : uiCopy.locationModal.confirm}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
     </ScreenScrollView>
   );
 };
@@ -2938,6 +3205,7 @@ type AgencyMessagesTabProps = {
   currentUserId: string | null;
   pendingOpenB2BChat: { conversationId: string; title: string } | null;
   onPendingB2BChatConsumed: () => void;
+  onBookingCardPress?: () => void;
 };
 
 const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
@@ -2948,6 +3216,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   currentUserId,
   pendingOpenB2BChat,
   onPendingB2BChatConsumed,
+  onBookingCardPress,
 }) => {
   const [messagesSection, setMessagesSection] = useState<'optionRequests' | 'recruiting' | 'clientRequests'>('clientRequests');
   const [b2bConversations, setB2bConversations] = useState<Conversation[]>([]);
@@ -3160,7 +3429,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                   agencyId={agencyId}
                   guestLinks={guestLinksForChat}
                   modelsForShare={modelsForShare}
-                  onBookingCardPress={() => setTab('calendar')}
+                  onBookingCardPress={onBookingCardPress}
                 />
               ) : null}
             </>
@@ -3683,6 +3952,30 @@ const GuestLinksTab: React.FC<{
     if (ok) setLinks((prev) => prev.map((l) => l.id === id ? { ...l, is_active: false } : l));
   };
 
+  const handleDeletePackage = (id: string) => {
+    Alert.alert(
+      copy.deleteConfirmTitle,
+      copy.deleteConfirmMessage,
+      [
+        { text: copy.deleteConfirmCancel, style: 'cancel' },
+        {
+          text: copy.deleteConfirmOk,
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const ok = await deleteGuestLink(id);
+              if (ok) {
+                setLinks((prev) => prev.filter((l) => l.id !== id));
+              }
+            } catch (e) {
+              console.error('handleDeletePackage error:', e);
+            }
+          },
+        },
+      ],
+    );
+  };
+
   const handleOpenSendInApp = async (link: GuestLink) => {
     setSendInAppTarget(link);
     setSendInAppStatus('loading');
@@ -3963,6 +4256,13 @@ const GuestLinksTab: React.FC<{
                     </View>
                   </>
                 )}
+
+                <TouchableOpacity
+                  style={[s.filterPill, { borderColor: '#c0392b', marginTop: spacing.xs, alignSelf: 'flex-start' }]}
+                  onPress={() => handleDeletePackage(l.id)}
+                >
+                  <Text style={{ ...typography.label, fontSize: 10, color: '#c0392b' }}>{copy.deleteButton}</Text>
+                </TouchableOpacity>
               </View>
             ))}
           </>
@@ -4127,7 +4427,17 @@ const s = StyleSheet.create({
   brand: { ...typography.heading, color: colors.textPrimary, marginBottom: spacing.md },
   heading: { ...typography.heading, fontSize: 18, color: colors.textPrimary, marginBottom: spacing.md },
   tabRow: { flexDirection: 'row', gap: spacing.lg, alignItems: 'center' },
-  bottomBar: { borderTopWidth: 1, borderTopColor: colors.border, paddingVertical: spacing.sm, backgroundColor: colors.background },
+  bottomBar: {
+    position: 'absolute' as const,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1000,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.background,
+  },
   tabItem: { alignItems: 'center' },
   tabLabel: { ...typography.label, color: colors.textSecondary },
   tabLabelActive: { color: colors.accentGreen },

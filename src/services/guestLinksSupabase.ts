@@ -87,6 +87,20 @@ export async function deactivateGuestLink(linkId: string): Promise<boolean> {
   return true;
 }
 
+export async function deleteGuestLink(linkId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('guest_links')
+      .delete()
+      .eq('id', linkId);
+    if (error) { console.error('deleteGuestLink error:', error); return false; }
+    return true;
+  } catch (e) {
+    console.error('deleteGuestLink exception:', e);
+    return false;
+  }
+}
+
 /**
  * Minimal model shape returned by the get_guest_link_models RPC.
  * Contains only the fields needed by GuestView — no sensitive internal data.

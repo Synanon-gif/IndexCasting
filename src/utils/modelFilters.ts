@@ -187,6 +187,35 @@ export const ETHNICITY_OPTIONS: string[] = [
   'Other',
 ];
 
+// ── Haversine distance ────────────────────────────────────────────────────────
+
+/**
+ * Calculates the great-circle distance between two coordinates using the
+ * Haversine formula. Returns the distance in kilometres.
+ *
+ * Used for client-side "Near me" filtering in Agency My Models view
+ * (where models are already fetched and have model_location attached).
+ * For the Client Discover view the distance calculation runs server-side
+ * inside the get_models_near_location RPC.
+ */
+export function haversineKm(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number,
+): number {
+  const R = 6371; // Earth radius in km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 // ── Client-side filter function ───────────────────────────────────────────────
 
 /**
@@ -198,12 +227,18 @@ export const ETHNICITY_OPTIONS: string[] = [
  *
  * @param models   - Full model list, already fetched from Supabase.
  * @param filters  - Active filter state.
- * @param userCity - Detected city for "Near me" filter (optional).
+ * @param userCity - Detected city for "Near me" fallback (optional).
+ * @param userLat  - Rounded client latitude for radius-based Near me (optional).
+ * @param userLng  - Rounded client longitude for radius-based Near me (optional).
+ * @param nearMeRadiusKm - Radius in km for "Near me" filter (default 50).
  */
 export function filterModels(
-  models: SupabaseModel[],
+  models: (SupabaseModel & { model_location?: { lat_approx?: number | null; lng_approx?: number | null } | null })[],
   filters: ModelFilters,
   userCity?: string,
+  userLat?: number | null,
+  userLng?: number | null,
+  nearMeRadiusKm: number = 50,
 ): SupabaseModel[] {
   const pInt = (v: string) => { const n = parseInt(v, 10); return isNaN(n) ? undefined : n; };
 
@@ -230,9 +265,18 @@ export function filterModels(
       if (!(m.city || '').toLowerCase().includes(cityQ)) return false;
     }
 
-    // ── Nearby (user's detected city) ──
-    if (filters.nearby && userCity) {
-      if (!(m.city || '').toLowerCase().includes(userCity.toLowerCase())) return false;
+    // ── Nearby ──
+    // Priority 1: radius-based using model_location coordinates (when available)
+    // Priority 2: city-substring fallback (when coordinates not available)
+    if (filters.nearby) {
+      const loc = (m as any).model_location as { lat_approx?: number | null; lng_approx?: number | null } | null | undefined;
+      if (userLat != null && userLng != null && loc?.lat_approx != null && loc?.lng_approx != null) {
+        const dist = haversineKm(userLat, userLng, loc.lat_approx, loc.lng_approx);
+        if (dist > nearMeRadiusKm) return false;
+      } else if (userCity) {
+        // Fallback: city-substring match (no coordinates available)
+        if (!(m.city || '').toLowerCase().includes(userCity.toLowerCase())) return false;
+      }
     }
 
     // ── Hair color (case-insensitive substring) ──
