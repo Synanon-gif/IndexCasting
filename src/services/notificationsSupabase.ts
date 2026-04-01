@@ -9,6 +9,10 @@
 import { supabase } from '../../lib/supabase';
 import { pooledSubscribe } from './realtimeChannelPool';
 
+/** Spezifische Felder für notifications — kein SELECT * mehr. */
+const NOTIFICATION_SELECT =
+  'id, user_id, organization_id, type, title, message, metadata, is_read, created_at' as const;
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type NotificationType =
@@ -16,7 +20,10 @@ export type NotificationType =
   | 'booking_accepted'
   | 'model_confirmed'
   | 'new_option_request'
-  | 'awaiting_model_confirmation';
+  | 'awaiting_model_confirmation'
+  | 'agency_counter_offer'
+  | 'job_confirmed'
+  | 'client_rejected_counter';
 
 export type Notification = {
   id: string;
@@ -90,7 +97,7 @@ export async function getNotificationsForCurrentUser(): Promise<Notification[]> 
 
     const { data, error } = await supabase
       .from('notifications')
-      .select('*')
+      .select(NOTIFICATION_SELECT)
       .order('created_at', { ascending: false })
       .limit(100);
 
@@ -196,6 +203,63 @@ export function subscribeToOrgNotifications(
         .subscribe(),
     (payload) => onNotification((payload as { new: Notification }).new),
   );
+}
+
+// ── Push Token Registration ───────────────────────────────────────────────────
+
+export type PushTokenPlatform = 'ios' | 'android' | 'web';
+
+/**
+ * Registriert (oder reaktiviert) einen Expo-Push-Token für den eingeloggten User.
+ * Wird beim App-Start nach Erteilung der Notification-Permission aufgerufen.
+ *
+ * Idempotent: Bei erneutem Aufruf mit demselben Token wird nur `is_active = true`
+ * gesetzt (ON CONFLICT DO UPDATE).
+ */
+export async function registerPushToken(
+  token: string,
+  platform: PushTokenPlatform,
+): Promise<void> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { error } = await supabase
+      .from('push_tokens')
+      .upsert(
+        { user_id: user.id, token, platform, is_active: true },
+        { onConflict: 'user_id,token' },
+      );
+
+    if (error) {
+      console.error('registerPushToken error:', error);
+    }
+  } catch (e) {
+    console.error('registerPushToken exception:', e);
+  }
+}
+
+/**
+ * Deaktiviert einen Push-Token (z.B. beim Logout oder wenn der User
+ * Notifications deaktiviert). Soft-delete via is_active = false.
+ */
+export async function deregisterPushToken(token: string): Promise<void> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { error } = await supabase
+      .from('push_tokens')
+      .update({ is_active: false })
+      .eq('user_id', user.id)
+      .eq('token', token);
+
+    if (error) {
+      console.error('deregisterPushToken error:', error);
+    }
+  } catch (e) {
+    console.error('deregisterPushToken exception:', e);
+  }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

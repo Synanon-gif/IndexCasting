@@ -11,6 +11,26 @@ import { fetchAllSupabasePages } from './supabaseFetchAll';
 import { pooledSubscribe } from './realtimeChannelPool';
 import { createNotifications } from './notificationsSupabase';
 import { uiCopy } from '../constants/uiCopy';
+import {
+  validateText,
+  sanitizeHtml,
+  validateUrl,
+  extractSafeUrls,
+  validateFile,
+  checkMagicBytes,
+  checkExtensionConsistency,
+  normalizeInput,
+  CHAT_ALLOWED_MIME_TYPES,
+  logSecurityEvent,
+} from '../../lib/validation';
+
+/** Spezifische Felder für conversations — kein SELECT * mehr. */
+const CONVERSATION_SELECT =
+  'id, type, context_id, context_type, participant_ids, title, created_at, updated_at, created_by, client_organization_id, agency_organization_id, guest_user_id' as const;
+
+/** Spezifische Felder für messages — kein SELECT * mehr. */
+const MESSAGE_SELECT =
+  'id, conversation_id, sender_id, text, file_url, file_type, read_at, created_at, message_type, metadata' as const;
 
 export type ConversationType = 'option' | 'booking' | 'direct';
 
@@ -60,7 +80,7 @@ export async function getConversationsForUser(userId: string): Promise<Conversat
   return fetchAllSupabasePages(async (from, to) => {
     const { data, error } = await supabase
       .from('conversations')
-      .select('*')
+      .select(CONVERSATION_SELECT)
       .contains('participant_ids', [userId])
       .order('updated_at', { ascending: false })
       .range(from, to);
@@ -70,7 +90,7 @@ export async function getConversationsForUser(userId: string): Promise<Conversat
 
 export async function getConversationById(conversationId: string): Promise<Conversation | null> {
   try {
-    const { data, error } = await supabase.from('conversations').select('*').eq('id', conversationId).maybeSingle();
+    const { data, error } = await supabase.from('conversations').select(CONVERSATION_SELECT).eq('id', conversationId).maybeSingle();
     if (error) {
       console.error('getConversationById error:', error);
       return null;
@@ -96,7 +116,7 @@ export async function getOrCreateConversation(
   if (contextId) {
     const { data: existing } = await supabase
       .from('conversations')
-      .select('*')
+      .select(CONVERSATION_SELECT)
       .eq('type', type)
       .eq('context_id', contextId)
       .maybeSingle();
@@ -123,7 +143,7 @@ export async function getOrCreateConversation(
     if (contextId && isDup) {
       const { data: again } = await supabase
         .from('conversations')
-        .select('*')
+        .select(CONVERSATION_SELECT)
         .eq('type', type)
         .eq('context_id', contextId)
         .maybeSingle();
@@ -163,7 +183,7 @@ export async function getMessages(
   try {
     let q = supabase
       .from('messages')
-      .select('*')
+      .select(MESSAGE_SELECT)
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: false })
       .limit(limit);
@@ -200,10 +220,45 @@ export async function sendMessage(
     metadata?: Record<string, unknown> | null;
   }
 ): Promise<Message | null> {
+  // Validate and sanitize text content before storage
+  let safeText: string | null = null;
+  if (text != null && text.trim().length > 0) {
+    // Normalize first: strip invisible chars, collapse repetition, NFC
+    const normalized = normalizeInput(text);
+
+    const textCheck = validateText(normalized, { maxLength: 2000, allowEmpty: false });
+    if (!textCheck.ok) {
+      console.warn('sendMessage: text validation failed', textCheck.error);
+      void logSecurityEvent({ type: 'large_payload', userId: senderId, metadata: { service: 'messengerSupabase', field: 'text' } });
+      return null;
+    }
+    // Sanitize to strip any injected HTML/scripts; content stored as safe plain text
+    safeText = sanitizeHtml(normalized);
+
+    // Validate any URLs present in the message
+    const urls = extractSafeUrls(normalized);
+    const allUrlsInText = normalized.match(/https?:\/\/[^\s]+/gi) ?? [];
+    if (allUrlsInText.length > urls.length) {
+      console.warn('sendMessage: message contains unsafe URLs');
+      void logSecurityEvent({ type: 'invalid_url', userId: senderId, metadata: { service: 'messengerSupabase' } });
+      return null;
+    }
+    // Explicit link metadata URL also validated
+    const metaUrl = opts?.metadata?.url;
+    if (typeof metaUrl === 'string') {
+      const urlCheck = validateUrl(metaUrl);
+      if (!urlCheck.ok) {
+        console.warn('sendMessage: metadata URL failed validation', urlCheck.error);
+        void logSecurityEvent({ type: 'invalid_url', userId: senderId, metadata: { service: 'messengerSupabase', field: 'metadata.url' } });
+        return null;
+      }
+    }
+  }
+
   const insertRow: Record<string, unknown> = {
     conversation_id: conversationId,
     sender_id: senderId,
-    text: text ?? null,
+    text: safeText,
     file_url: fileUrl ?? null,
     file_type: fileType ?? null,
     message_type: opts?.messageType ?? 'text',
@@ -361,12 +416,13 @@ export async function markAsRead(messageId: string): Promise<boolean> {
 }
 
 export async function markAllAsRead(conversationId: string, userId: string): Promise<void> {
-  await supabase
+  const { error } = await supabase
     .from('messages')
     .update({ read_at: new Date().toISOString() })
     .eq('conversation_id', conversationId)
     .neq('sender_id', userId)
     .is('read_at', null);
+  if (error) console.error('markAllAsRead error:', error);
 }
 
 /**
@@ -402,12 +458,36 @@ export function subscribeToConversation(
  * Uploads a file to the private chat-files bucket and returns the storage path.
  * The bucket MUST be set to private in the Supabase dashboard.
  * Use getSignedChatFileUrl() to generate time-limited download URLs for display.
+ *
+ * Validates MIME type, file size, and magic bytes before upload.
  */
 export async function uploadChatFile(
   conversationId: string,
   file: File | Blob,
   fileName: string
 ): Promise<string | null> {
+  // MIME type + size check
+  const mimeCheck = validateFile(file, CHAT_ALLOWED_MIME_TYPES);
+  if (!mimeCheck.ok) {
+    console.warn('uploadChatFile: file validation failed', mimeCheck.error);
+    void logSecurityEvent({ type: 'file_rejected', metadata: { service: 'messengerSupabase', reason: 'mime' } });
+    return null;
+  }
+  // Magic byte check — prevents renamed executables
+  const magicCheck = await checkMagicBytes(file);
+  if (!magicCheck.ok) {
+    console.warn('uploadChatFile: magic bytes check failed', magicCheck.error);
+    void logSecurityEvent({ type: 'magic_bytes_fail', metadata: { service: 'messengerSupabase' } });
+    return null;
+  }
+  // Extension consistency check — MIME + magic bytes + extension must align
+  const extCheck = checkExtensionConsistency(file);
+  if (!extCheck.ok) {
+    console.warn('uploadChatFile: extension consistency check failed', extCheck.error);
+    void logSecurityEvent({ type: 'extension_mismatch', metadata: { service: 'messengerSupabase' } });
+    return null;
+  }
+
   const path = `chat/${conversationId}/${Date.now()}_${fileName}`;
   const { error } = await supabase.storage
     .from('chat-files')

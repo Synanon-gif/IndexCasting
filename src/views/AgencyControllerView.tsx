@@ -53,6 +53,8 @@ import {
   ensureClientAgencyChat,
   listB2BConversationsForOrganization,
   getB2BConversationTitleForViewer,
+  ensureAgencyModelDirectChat,
+  listAgencyModelDirectConversations,
 } from '../services/b2bOrgChatSupabase';
 import type { Conversation } from '../services/messengerSupabase';
 import { sendMessage } from '../services/messengerSupabase';
@@ -74,6 +76,7 @@ import {
   createOrganizationInvitation,
   buildOrganizationInviteUrl,
   getMyAgencyMemberRole,
+  dissolveOrganization,
   type InvitationRow,
 } from '../services/organizationsInvitationsSupabase';
 import {
@@ -158,6 +161,8 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   const { signOut, profile, session } = useAuth();
   const [tab, setTab] = useState<AgencyTab>('dashboard');
   const [deletingAccount, setDeletingAccount] = useState(false);
+  const [dissolvingOrg, setDissolvingOrg] = useState(false);
+  const [orgDissolved, setOrgDissolved] = useState(false);
   const [models, setModels] = useState<AgencyModel[]>([]);
   const [fullModels, setFullModels] = useState<SupabaseModel[]>([]);
   const [agencies, setAgencies] = useState<Agency[]>([]);
@@ -281,7 +286,10 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
       const [items, manual, beEntries] = await Promise.all([
         getCalendarEntriesForAgency(currentAgencyId),
         getManualEventsForOwner(currentAgencyId, 'agency'),
-        getBookingEventsAsCalendarEntries(currentAgencyId, 'agency'),
+        // booking_events.agency_org_id is organizations.id, not agencies.id.
+        agencyOrganizationId
+          ? getBookingEventsAsCalendarEntries(agencyOrganizationId, 'agency')
+          : Promise.resolve([]),
       ]);
       setCalendarItems(items);
       setManualCalendarEvents(manual);
@@ -347,18 +355,10 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         { key: 'guestLinks', label: uiCopy.guestLinks.tabTitle },
         { key: 'settings', label: uiCopy.agencySettings.tabLabel },
       ];
-      return agencyTeamRole === 'owner'
-        ? all
-        : all.filter((t) => t.key !== 'settings');
+      return all;
     },
     [agencyTeamRole],
   );
-
-  useEffect(() => {
-    if (tab === 'settings' && agencyTeamRole !== 'owner') {
-      setTab('dashboard');
-    }
-  }, [tab, agencyTeamRole]);
 
   const openAgencyBookingChat = (threadId: string) => {
     refreshBookingThreads();
@@ -467,6 +467,9 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
             setOpenBookingThreadId(threadId);
           }}
           agencyId={currentAgencyId || null}
+          agencyName={currentAgency?.name ?? null}
+          agencyOrganizationId={agencyOrganizationId}
+          agencyModels={fullModels}
           currentUserId={session?.user?.id ?? null}
           pendingOpenB2BChat={pendingB2BChat}
           onPendingB2BChatConsumed={clearPendingB2BChat}
@@ -532,6 +535,51 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
           />
           <ScreenScrollView>
             <View style={{ marginTop: spacing.md, marginBottom: spacing.lg }}>
+              {/* Dissolve organization — owners only */}
+              {agencyOrganizationId && !orgDissolved && (
+                <View style={{ marginBottom: spacing.lg, paddingBottom: spacing.lg, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                  <Text style={s.sectionLabel}>{uiCopy.accountDeletion.dissolveOrgTitle}</Text>
+                  <Text style={[s.metaText, { marginBottom: spacing.sm }]}>{uiCopy.accountDeletion.dissolveOrgDescription}</Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      Alert.alert(
+                        uiCopy.accountDeletion.dissolveOrgConfirmTitle,
+                        uiCopy.accountDeletion.dissolveOrgConfirmMessage,
+                        [
+                          { text: uiCopy.common.cancel, style: 'cancel' },
+                          {
+                            text: uiCopy.accountDeletion.dissolveOrgButton,
+                            style: 'destructive',
+                            onPress: async () => {
+                              setDissolvingOrg(true);
+                              const result = await dissolveOrganization(agencyOrganizationId);
+                              setDissolvingOrg(false);
+                              if (result.ok) {
+                                setOrgDissolved(true);
+                                Alert.alert(uiCopy.accountDeletion.dissolveOrgTitle, uiCopy.accountDeletion.dissolveOrgSuccess);
+                              } else {
+                                Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.dissolveOrgFailed);
+                              }
+                            },
+                          },
+                        ]
+                      );
+                    }}
+                    disabled={dissolvingOrg}
+                    style={{ borderRadius: 999, borderWidth: 1, borderColor: '#e74c3c', paddingVertical: spacing.sm, alignItems: 'center', opacity: dissolvingOrg ? 0.6 : 1 }}
+                  >
+                    <Text style={{ ...typography.label, fontSize: 12, color: '#e74c3c' }}>
+                      {dissolvingOrg ? uiCopy.accountDeletion.dissolveOrgWorking : uiCopy.accountDeletion.dissolveOrgButton}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+              {orgDissolved && (
+                <View style={{ marginBottom: spacing.md, padding: spacing.sm, backgroundColor: 'rgba(0,120,0,0.08)', borderRadius: 8 }}>
+                  <Text style={{ ...typography.label, fontSize: 12, color: colors.textPrimary }}>{uiCopy.accountDeletion.dissolveOrgSuccess}</Text>
+                </View>
+              )}
+              {/* Delete personal account */}
               <Text style={s.sectionLabel}>{uiCopy.accountDeletion.sectionTitle}</Text>
               <Text style={[s.metaText, { marginBottom: spacing.sm }]}>{uiCopy.accountDeletion.description}</Text>
               <TouchableOpacity
@@ -573,6 +621,47 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
             </View>
           </ScreenScrollView>
         </>
+      )}
+
+      {tab === 'settings' && agencyTeamRole !== 'owner' && (
+        <ScreenScrollView>
+          <View style={{ marginTop: spacing.md, marginBottom: spacing.lg }}>
+            <Text style={s.sectionLabel}>{uiCopy.accountDeletion.sectionTitle}</Text>
+            <Text style={[s.metaText, { marginBottom: spacing.sm }]}>{uiCopy.accountDeletion.personalDeleteDescription}</Text>
+            <TouchableOpacity
+              onPress={() => {
+                Alert.alert(
+                  uiCopy.accountDeletion.personalDeleteConfirmTitle,
+                  uiCopy.accountDeletion.personalDeleteConfirmMessage,
+                  [
+                    { text: uiCopy.common.cancel, style: 'cancel' },
+                    {
+                      text: uiCopy.accountDeletion.button,
+                      style: 'destructive',
+                      onPress: async () => {
+                        setDeletingAccount(true);
+                        const { requestPersonalAccountDeletion } = await import('../services/accountSupabase');
+                        const res = await requestPersonalAccountDeletion();
+                        setDeletingAccount(false);
+                        if (res.ok) {
+                          await signOut();
+                          return;
+                        }
+                        Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.failed);
+                      },
+                    },
+                  ]
+                );
+              }}
+              disabled={deletingAccount}
+              style={{ borderRadius: 999, borderWidth: 1, borderColor: '#e74c3c', paddingVertical: spacing.sm, alignItems: 'center' }}
+            >
+              <Text style={{ ...typography.label, fontSize: 12, color: '#e74c3c' }}>
+                {deletingAccount ? uiCopy.accountDeletion.buttonWorking : uiCopy.accountDeletion.button}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </ScreenScrollView>
       )}
       </View>
 
@@ -1179,24 +1268,33 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
     });
   }, [items, modelQuery, fromDate, toDate]);
 
+  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
+
   const sorted = useMemo(
     () =>
-      [...filtered].sort((a, b) =>
-        (a.option.requested_date || '').localeCompare(
-          b.option.requested_date || '',
+      [...filtered]
+        .filter((a) => {
+          const date = a.calendar_entry?.date ?? a.option.requested_date;
+          return date != null && date >= today;
+        })
+        .sort((a, b) =>
+          (a.option.requested_date || '').localeCompare(
+            b.option.requested_date || '',
+          ),
         ),
-      ),
-    [filtered],
+    [filtered, today],
   );
 
   const sortedManual = useMemo(
     () =>
-      [...manualEvents].sort((a, b) => {
-        const d = (a.date || '').localeCompare(b.date || '');
-        if (d !== 0) return d;
-        return (a.start_time || '').localeCompare(b.start_time || '');
-      }),
-    [manualEvents],
+      [...manualEvents]
+        .filter((ev) => (ev.date || '') >= today)
+        .sort((a, b) => {
+          const d = (a.date || '').localeCompare(b.date || '');
+          if (d !== 0) return d;
+          return (a.start_time || '').localeCompare(b.start_time || '');
+        }),
+    [manualEvents, today],
   );
 
   const renderBadge = (item: AgencyCalendarItem) => {
@@ -3202,6 +3300,9 @@ type AgencyMessagesTabProps = {
   onRefreshRecruitingThreads: () => void;
   onOpenRecruitingThread: (threadId: string) => void;
   agencyId: string | null;
+  agencyName: string | null;
+  agencyOrganizationId: string | null;
+  agencyModels: SupabaseModel[];
   currentUserId: string | null;
   pendingOpenB2BChat: { conversationId: string; title: string } | null;
   onPendingB2BChatConsumed: () => void;
@@ -3213,12 +3314,18 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   onRefreshRecruitingThreads,
   onOpenRecruitingThread,
   agencyId,
+  agencyName,
+  agencyOrganizationId: agencyOrganizationIdProp,
+  agencyModels,
   currentUserId,
   pendingOpenB2BChat,
   onPendingB2BChatConsumed,
   onBookingCardPress,
 }) => {
   const [messagesSection, setMessagesSection] = useState<'optionRequests' | 'recruiting' | 'clientRequests'>('clientRequests');
+  const [messagesSearch, setMessagesSearch] = useState('');
+  const [modelDirectConvs, setModelDirectConvs] = useState<Conversation[]>([]);
+  const [searchChatBusy, setSearchChatBusy] = useState<string | null>(null);
   const [b2bConversations, setB2bConversations] = useState<Conversation[]>([]);
   const [agencyOrgIdB2b, setAgencyOrgIdB2b] = useState<string | null>(null);
   const [b2bTitles, setB2bTitles] = useState<Record<string, string>>({});
@@ -3271,6 +3378,16 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
     if (!agencyOrgIdB2b) return;
     void listB2BConversationsForOrganization(agencyOrgIdB2b).then(setB2bConversations);
   }, [agencyOrgIdB2b]);
+
+  const refreshModelDirectConvs = useCallback(() => {
+    const orgId = agencyOrgIdB2b ?? agencyOrganizationIdProp;
+    if (!orgId) return;
+    void listAgencyModelDirectConversations(orgId).then(setModelDirectConvs);
+  }, [agencyOrgIdB2b, agencyOrganizationIdProp]);
+
+  useEffect(() => {
+    refreshModelDirectConvs();
+  }, [refreshModelDirectConvs]);
 
   useEffect(() => {
     refreshB2bList();
@@ -3365,11 +3482,200 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
     setChatInput('');
   };
 
+  const searchActive = messagesSearch.trim().length > 0;
+  const searchQ = messagesSearch.trim().toLowerCase();
+
+  const searchedB2b = useMemo(
+    () => b2bConversations.filter((c) => (b2bTitles[c.id] ?? '').toLowerCase().includes(searchQ)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [b2bConversations, b2bTitles, messagesSearch],
+  );
+  const searchedRecruiting = useMemo(
+    () => recruitingThreads.filter((t) => (t.modelName ?? '').toLowerCase().includes(searchQ)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [recruitingThreads, messagesSearch],
+  );
+  const searchedOptionRequests = useMemo(
+    () => requests.filter((r) =>
+      (r.modelName ?? '').toLowerCase().includes(searchQ) ||
+      (r.clientName ?? '').toLowerCase().includes(searchQ),
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [requests, messagesSearch],
+  );
+  const searchedModels = useMemo(
+    () => agencyModels.filter((m) => (m.name ?? '').toLowerCase().includes(searchQ)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [agencyModels, messagesSearch],
+  );
+
+  const getModelDirectConvId = (modelId: string): string | undefined =>
+    modelDirectConvs.find((c) => c.context_id === `agency-model:${agencyId}:${modelId}`)?.id;
+
+  const handleStartModelChat = async (model: SupabaseModel) => {
+    if (!agencyId || !currentUserId) return;
+    const orgId = agencyOrgIdB2b ?? agencyOrganizationIdProp;
+    if (!orgId) {
+      Alert.alert(uiCopy.common.error, uiCopy.messages.modelDirectChatFailed);
+      return;
+    }
+    setSearchChatBusy(model.id);
+    try {
+      const result = await ensureAgencyModelDirectChat({
+        agencyId,
+        agencyOrganizationId: orgId,
+        modelId: model.id,
+        modelUserId: model.user_id ?? null,
+        actingUserId: currentUserId,
+        modelName: model.name,
+        agencyName: agencyName ?? agencyId,
+      });
+      if (!result.ok) {
+        Alert.alert(uiCopy.common.error, uiCopy.messages.modelDirectChatFailed);
+        return;
+      }
+      refreshModelDirectConvs();
+      setMessagesSearch('');
+      setMessagesSection('clientRequests');
+      setActiveConnectionChatId(result.conversationId);
+      setActiveConnectionChatTitle(model.name);
+    } finally {
+      setSearchChatBusy(null);
+    }
+  };
+
   return (
     <ScreenScrollView>
       <Text style={s.sectionLabel}>Messages</Text>
       <Text style={[s.metaText, { marginBottom: spacing.sm }]}>{uiCopy.b2bChat.messagesIntroAgency}</Text>
 
+      <TextInput
+        value={messagesSearch}
+        onChangeText={setMessagesSearch}
+        placeholder={uiCopy.messages.searchPlaceholder}
+        placeholderTextColor={colors.textSecondary}
+        style={[s.chatInput, { marginBottom: spacing.md }]}
+        clearButtonMode="while-editing"
+      />
+
+      {searchActive ? (
+        <View>
+          {/* Client chats */}
+          {searchedB2b.length > 0 && (
+            <View style={{ marginBottom: spacing.md }}>
+              <Text style={[s.metaText, { fontWeight: '600', marginBottom: spacing.xs }]}>{uiCopy.messages.searchSectionClientChats}</Text>
+              {searchedB2b.map((c) => (
+                <View key={c.id} style={[s.modelRow, { flexDirection: 'row', alignItems: 'center', gap: spacing.sm }]}>
+                  <Text style={[s.modelName, { flex: 1 }]}>{b2bTitles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback}</Text>
+                  <TouchableOpacity
+                    style={[s.filterPill, s.filterPillActive]}
+                    onPress={() => {
+                      setMessagesSearch('');
+                      setMessagesSection('clientRequests');
+                      setActiveConnectionChatId(c.id);
+                      setActiveConnectionChatTitle(b2bTitles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback);
+                    }}
+                  >
+                    <Text style={[s.filterPillLabel, s.filterPillLabelActive]}>{uiCopy.messages.openChat}</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* Recruiting chats */}
+          {searchedRecruiting.length > 0 && (
+            <View style={{ marginBottom: spacing.md }}>
+              <Text style={[s.metaText, { fontWeight: '600', marginBottom: spacing.xs }]}>{uiCopy.messages.searchSectionRecruiting}</Text>
+              {searchedRecruiting.map((t) => (
+                <TouchableOpacity
+                  key={t.id}
+                  style={s.modelRow}
+                  onPress={() => {
+                    setMessagesSearch('');
+                    onOpenRecruitingThread(t.id);
+                  }}
+                >
+                  <Text style={s.modelName}>{t.modelName}</Text>
+                  <Text style={s.backLabel}>Chat</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          {/* Option requests */}
+          {searchedOptionRequests.length > 0 && (
+            <View style={{ marginBottom: spacing.md }}>
+              <Text style={[s.metaText, { fontWeight: '600', marginBottom: spacing.xs }]}>{uiCopy.messages.searchSectionOptionRequests}</Text>
+              {searchedOptionRequests.map((r) => (
+                <TouchableOpacity
+                  key={r.threadId}
+                  style={s.modelRow}
+                  onPress={() => {
+                    setMessagesSearch('');
+                    setMessagesSection('optionRequests');
+                    setSelectedThreadId(r.threadId);
+                  }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.modelName}>{r.modelName} · {r.date}</Text>
+                    <Text style={s.metaText}>{r.clientName}</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          {/* Models — start new or open existing */}
+          {searchedModels.length > 0 && (
+            <View style={{ marginBottom: spacing.md }}>
+              <Text style={[s.metaText, { fontWeight: '600', marginBottom: spacing.xs }]}>{uiCopy.messages.searchSectionModels}</Text>
+              {searchedModels.map((m) => {
+                const existingConvId = getModelDirectConvId(m.id);
+                const hasAccount = !!m.user_id;
+                const busy = searchChatBusy === m.id;
+                return (
+                  <View key={m.id} style={[s.modelRow, { flexDirection: 'row', alignItems: 'center', gap: spacing.sm }]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.modelName}>{m.name}</Text>
+                      {!hasAccount && (
+                        <Text style={[s.metaText, { color: colors.textSecondary }]}>{uiCopy.messages.modelNoAccount}</Text>
+                      )}
+                    </View>
+                    {existingConvId ? (
+                      <TouchableOpacity
+                        style={[s.filterPill, s.filterPillActive]}
+                        onPress={() => {
+                          setMessagesSearch('');
+                          setMessagesSection('clientRequests');
+                          setActiveConnectionChatId(existingConvId);
+                          setActiveConnectionChatTitle(m.name);
+                        }}
+                      >
+                        <Text style={[s.filterPillLabel, s.filterPillLabelActive]}>{uiCopy.messages.openChat}</Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity
+                        style={[s.filterPill, (!hasAccount || busy) && { opacity: 0.5 }]}
+                        disabled={!hasAccount || busy}
+                        onPress={() => handleStartModelChat(m)}
+                      >
+                        <Text style={s.filterPillLabel}>{busy ? uiCopy.common.loading : uiCopy.messages.startChat}</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+          )}
+
+          {searchedB2b.length === 0 && searchedRecruiting.length === 0 &&
+           searchedOptionRequests.length === 0 && searchedModels.length === 0 && (
+            <Text style={s.metaText}>{uiCopy.messages.searchNoResults}</Text>
+          )}
+        </View>
+      ) : (
+        <>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: spacing.md }}>
         {(['clientRequests', 'recruiting', 'optionRequests'] as const).map((key) => (
           <TouchableOpacity
@@ -3680,6 +3986,8 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
       )}
         </>
       ) : null}
+      </>
+      )}
     </ScreenScrollView>
   );
 };

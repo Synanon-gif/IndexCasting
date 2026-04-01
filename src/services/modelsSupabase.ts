@@ -5,6 +5,21 @@
 import { supabase } from '../../lib/supabase';
 import { fetchAllSupabasePages } from './supabaseFetchAll';
 
+/**
+ * Alle Stammdaten-Felder — für Detail-Ansicht und vollständige Supabase-Roundtrips.
+ * Entspricht 1:1 dem SupabaseModel-Interface.
+ */
+const MODEL_DETAIL_SELECT =
+  'id, agency_id, user_id, agency_relationship_status, agency_relationship_ended_at, email, mediaslide_sync_id, netwalk_model_id, name, height, bust, waist, hips, chest, legs_inseam, shoe_size, city, country, hair_color, eye_color, current_location, portfolio_images, polaroids, video_url, is_visible_commercial, is_visible_fashion, categories, is_sports_winter, is_sports_summer, created_at, updated_at, country_code, sex, ethnicity' as const;
+
+/**
+ * Reduzierte Felder für Listen-Ansichten (Swipe, Roster).
+ * Bewusst ohne portfolio_images/polaroids-Arrays — diese werden per
+ * modelPhotosSupabase.ts lazy geladen.
+ */
+const MODEL_LIST_SELECT =
+  'id, agency_id, user_id, agency_relationship_status, name, height, bust, waist, hips, chest, legs_inseam, shoe_size, city, country, hair_color, eye_color, current_location, is_visible_commercial, is_visible_fashion, categories, is_sports_winter, is_sports_summer, country_code, sex, ethnicity, mediaslide_sync_id' as const;
+
 export type SupabaseModel = {
   id: string;
   agency_id: string;
@@ -53,7 +68,7 @@ export async function getModelsFromSupabase(): Promise<SupabaseModel[]> {
   try {
     const { data, error } = await supabase
       .from('models')
-      .select('*')
+      .select(MODEL_DETAIL_SELECT)
       .order('name');
 
     if (error) {
@@ -72,7 +87,7 @@ export async function getModelForUserFromSupabase(userId: string): Promise<Supab
   try {
     const { data, error } = await supabase
       .from('models')
-      .select('*')
+      .select(MODEL_DETAIL_SELECT)
       .eq('user_id', userId)
       .maybeSingle();
 
@@ -91,7 +106,7 @@ export async function getModelByIdFromSupabase(id: string): Promise<SupabaseMode
   try {
     const { data, error } = await supabase
       .from('models')
-      .select('*')
+      .select(MODEL_DETAIL_SELECT)
       .eq('id', id)
       .maybeSingle();
 
@@ -163,7 +178,7 @@ export async function getModelsForClientFromSupabase(
   return fetchAllSupabasePages(async (from, to) => {
     let q = supabase
       .from('models')
-      .select('*')
+      .select(MODEL_LIST_SELECT)
       .eq('is_active', true)
       .or('agency_relationship_status.is.null,agency_relationship_status.eq.active,agency_relationship_status.eq.pending_link')
       .order('name')
@@ -200,7 +215,7 @@ export async function getModelsForClientFromSupabaseByTerritory(
   return fetchAllSupabasePages(async (from, to) => {
     let q = supabase
       .from('models_with_territories')
-      .select('*')
+      .select(MODEL_LIST_SELECT + ', territory_country_code, agency_name, territory_agency_id')
       .eq('territory_country_code', iso)
       .eq('is_active', true)
       .or('agency_relationship_status.is.null,agency_relationship_status.eq.active,agency_relationship_status.eq.pending_link')
@@ -287,7 +302,7 @@ export async function getModelsForAgencyFromSupabase(agencyId: string): Promise<
   return fetchAllSupabasePages(async (from, to) => {
     const { data, error } = await supabase
       .from('models')
-      .select('*')
+      .select(MODEL_DETAIL_SELECT)
       .eq('agency_id', agencyId)
       .or('agency_relationship_status.is.null,agency_relationship_status.eq.active,agency_relationship_status.eq.pending_link')
       .order('name')
@@ -300,22 +315,31 @@ export async function updateModelVisibilityInSupabase(
   id: string,
   payload: { is_visible_commercial?: boolean; is_visible_fashion?: boolean }
 ): Promise<boolean> {
-  const { error } = await supabase
-    .from('models')
-    .update(payload)
-    .eq('id', id);
+  try {
+    const { error } = await supabase
+      .from('models')
+      .update(payload)
+      .eq('id', id);
 
-  if (error) {
-    console.error('updateModelVisibilityInSupabase error:', error);
+    if (error) {
+      console.error('updateModelVisibilityInSupabase error:', error);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('updateModelVisibilityInSupabase exception:', e);
     return false;
   }
-  return true;
 }
 
 /** Nach Sign-up/Sign-in: Model-Eintrag mit aktueller User-E-Mail verknüpfen (von Agentur angelegtes Model). */
 export async function linkModelByEmail(): Promise<void> {
-  const { error } = await supabase.rpc('link_model_by_email');
-  if (error) console.error('linkModelByEmail error:', error);
+  try {
+    const { error } = await supabase.rpc('link_model_by_email');
+    if (error) console.error('linkModelByEmail error:', error);
+  } catch (e) {
+    console.error('linkModelByEmail exception:', e);
+  }
 }
 
 /**

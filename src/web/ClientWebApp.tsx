@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { handleTabPress, BOTTOM_TAB_BAR_HEIGHT } from '../navigation/bottomTabNavigation';
 import {
@@ -18,6 +18,15 @@ import { showAppAlert } from '../utils/crossPlatformAlert';
 import { uiCopy } from '../constants/uiCopy';
 import { useAuth } from '../context/AuthContext';
 import { getModelsForClient, getModelData } from '../services/apiService';
+import {
+  recordInteraction,
+  getDiscoveryModels,
+  loadSessionIds,
+  saveSessionId,
+  clearSessionIds,
+  type DiscoveryModel,
+  type DiscoveryCursor,
+} from '../services/clientDiscoverySupabase';
 import { getModelsNearLocation, roundCoord, type NearbyModel } from '../services/modelLocationsSupabase';
 import { getGuestLink, getGuestLinkModels, type GuestLinkModel, type PackageType } from '../services/guestLinksSupabase';
 import { getAgencies, type Agency } from '../services/agenciesSupabase';
@@ -91,6 +100,7 @@ import {
   getMyClientMemberRole,
   updateOrganizationName,
   getOrganizationById,
+  dissolveOrganization,
 } from '../services/organizationsInvitationsSupabase';
 import { removeModelFromProject } from '../services/projectsSupabase';
 import { supabase } from '../../lib/supabase';
@@ -296,6 +306,16 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   /** UUID of the client organisation this user belongs to (owner or employee). */
   const [clientOrgId, setClientOrgId] = useState<string | null>(null);
 
+  /**
+   * Model IDs already shown in the current discovery session.
+   * Persisted to localStorage so sessions survive page refreshes.
+   * Stored in a ref to avoid triggering re-renders on every swipe.
+   */
+  const sessionSeenIds = useRef<Set<string>>(new Set());
+
+  /** Cursor for keyset pagination — updated after each successful ranked load. */
+  const [discoveryCursor, setDiscoveryCursor] = useState<DiscoveryCursor>(null);
+
   useEffect(() => {
     if (!selectedCalendarItem) return;
     const o = selectedCalendarItem.option;
@@ -403,11 +423,16 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         const roleData = await getMyClientMemberRole();
         if (roleData?.organization_id) {
           setClientOrgId(roleData.organization_id);
+          // Restore session from localStorage so refreshes don't repeat models.
+          sessionSeenIds.current = loadSessionIds(roleData.organization_id);
           return;
         }
         // Owner with no org record yet – create it.
         const oid = await ensureClientOrganization();
         setClientOrgId(oid);
+        if (oid) {
+          sessionSeenIds.current = loadSessionIds(oid);
+        }
       } catch (e) {
         console.error('ClientWebApp: failed to resolve clientOrgId', e);
       }
@@ -485,7 +510,10 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         getCalendarEntriesForClient(realClientId),
         getManualEventsForOwner(realClientId, 'client'),
         clientOrgId ? getManualEventsForOrg(clientOrgId, 'client') : Promise.resolve([]),
-        getBookingEventsAsCalendarEntries(realClientId, 'client'),
+        // booking_events.client_org_id is an organizations.id, not auth.uid().
+        clientOrgId
+          ? getBookingEventsAsCalendarEntries(clientOrgId, 'client')
+          : Promise.resolve([]),
       ]);
       // Merge personal and org events, deduplicating by id.
       const seen = new Set<string>();
@@ -516,6 +544,14 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   }, [realClientId]);
 
   useEffect(() => {
+    // Reset session dedup on every new filter-driven query (new discovery context).
+    if (clientOrgId) {
+      clearSessionIds(clientOrgId);
+    }
+    sessionSeenIds.current = new Set();
+    setCurrentIndex(0);
+    setDiscoveryCursor(null);
+
     void (async () => {
       const countryIso = filters.countryCode.trim() || undefined;
       const cityFilter = countryIso && filters.city.trim() ? filters.city.trim() : undefined;
@@ -527,25 +563,86 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
 
       // Convert height range strings → numeric values for backend filtering.
       const pInt = (v: string) => { const n = parseInt(v, 10); return isNaN(n) ? undefined : n; };
-      const heightMin = pInt(filters.heightMin);
-      const heightMax = pInt(filters.heightMax);
 
       const measurementFilters = {
-        heightMin,
-        heightMax,
-        ethnicities: filters.ethnicities.length ? filters.ethnicities : undefined,
-        hairColor: filters.hairColor.trim() || undefined,
-        hipsMin:        pInt(filters.hipsMin),
-        hipsMax:        pInt(filters.hipsMax),
-        waistMin:       pInt(filters.waistMin),
-        waistMax:       pInt(filters.waistMax),
-        chestMin:       pInt(filters.chestMin),
-        chestMax:       pInt(filters.chestMax),
-        legsInseamMin:  pInt(filters.legsInseamMin),
-        legsInseamMax:  pInt(filters.legsInseamMax),
+        heightMin:     pInt(filters.heightMin),
+        heightMax:     pInt(filters.heightMax),
+        ethnicities:   filters.ethnicities.length ? filters.ethnicities : undefined,
+        hairColor:     filters.hairColor.trim() || undefined,
+        hipsMin:       pInt(filters.hipsMin),
+        hipsMax:       pInt(filters.hipsMax),
+        waistMin:      pInt(filters.waistMin),
+        waistMax:      pInt(filters.waistMax),
+        chestMin:      pInt(filters.chestMin),
+        chestMax:      pInt(filters.chestMax),
+        legsInseamMin: pInt(filters.legsInseamMin),
+        legsInseamMax: pInt(filters.legsInseamMax),
         sex: (filters.sex !== 'all' ? filters.sex : undefined) as 'male' | 'female' | undefined,
       };
 
+      const mapToModelSummary = (raw: DiscoveryModel[]): ModelSummary[] =>
+        raw.map((m: DiscoveryModel) => ({
+          id: m.id,
+          name: m.name,
+          city: m.city ?? '',
+          hairColor: m.hair_color ?? '',
+          height: m.height,
+          bust: m.bust ?? 0,
+          waist: m.waist ?? 0,
+          hips: m.hips ?? 0,
+          chest: m.chest ?? 0,
+          legsInseam: m.legs_inseam ?? 0,
+          coverUrl: m.portfolio_images?.[0] ?? '',
+          agencyId: m.territory_agency_id ?? m.agency_id ?? null,
+          agencyName: m.agency_name ?? null,
+          countryCode: m.country_code ?? m.territory_country_code ?? null,
+          hasRealLocation: !!m.country_code,
+          isSportsWinter: m.is_sports_winter ?? false,
+          isSportsSummer: m.is_sports_summer ?? false,
+          sex: m.sex ?? null,
+        }));
+
+      // Ranked discovery: use get_discovery_models RPC when a client org +
+      // country code are known. Falls back to the unranked legacy path otherwise.
+      if (clientOrgId && countryIso) {
+        const discoveryFilters = {
+          countryCode:  countryIso,
+          clientCity:   userCity ?? null,
+          category:     effectiveCategory ?? null,
+          sportsWinter: filters.sportsWinter || false,
+          sportsSummer: filters.sportsSummer || false,
+          ...measurementFilters,
+        };
+
+        const { models: ranked, nextCursor } = await getDiscoveryModels(
+          clientOrgId,
+          discoveryFilters,
+          null,
+          sessionSeenIds.current,
+        );
+
+        if (ranked.length === 0 && sessionSeenIds.current.size > 0) {
+          // Empty-state recovery: session had IDs that excluded everything.
+          // Clear session and try one more time without exclusion.
+          clearSessionIds(clientOrgId);
+          sessionSeenIds.current = new Set();
+          const { models: recovered, nextCursor: recoveredCursor } = await getDiscoveryModels(
+            clientOrgId,
+            discoveryFilters,
+            null,
+            new Set(),
+          );
+          setModels(mapToModelSummary(recovered));
+          setDiscoveryCursor(recoveredCursor);
+          return;
+        }
+
+        setModels(mapToModelSummary(ranked));
+        setDiscoveryCursor(nextCursor);
+        return;
+      }
+
+      // Legacy unranked path (no clientOrgId resolved yet, or no country filter).
       const data: any[] = await getModelsForClient(
         effectiveClientType,
         countryIso,
@@ -578,12 +675,14 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       setModels(mapped);
     })();
   }, [
+    clientOrgId,
     filters.sex, filters.heightMin, filters.heightMax, filters.ethnicities,
     filters.countryCode, filters.city, filters.category,
     filters.sportsWinter, filters.sportsSummer,
     filters.hairColor, filters.hipsMin, filters.hipsMax,
     filters.waistMin, filters.waistMax, filters.chestMin, filters.chestMax,
     filters.legsInseamMin, filters.legsInseamMax,
+    userCity,
   ]);
 
   // Radius-based Near me discovery — only when nearby toggle is active AND we have coordinates.
@@ -785,6 +884,25 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     }
   };
 
+  // Record "viewed" whenever the current discovery card changes and the user is
+  // a real client (not a guest / shared-link viewer). Also adds the model to the
+  // session dedup set so it won't be re-requested in subsequent paginated loads.
+  const currentModelForEffect = useMemo(
+    () =>
+      filteredModels.length && !packageViewState && !sharedProjectId
+        ? filteredModels[currentIndex % filteredModels.length]
+        : null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filteredModels, currentIndex, packageViewState, sharedProjectId],
+  );
+
+  useEffect(() => {
+    if (!currentModelForEffect || !clientOrgId) return;
+    sessionSeenIds.current.add(currentModelForEffect.id);
+    saveSessionId(clientOrgId, currentModelForEffect.id);
+    void recordInteraction(currentModelForEffect.id, 'viewed');
+  }, [currentModelForEffect?.id, clientOrgId]);
+
   const openProjectDiscovery = (projectId: string) => {
     setSharedProjectId(projectId);
     setTab('discover');
@@ -835,6 +953,10 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
 
   const onNext = () => {
     if (!filteredModels.length) return;
+    const current = filteredModels[currentIndex % filteredModels.length];
+    if (current && clientOrgId) {
+      void recordInteraction(current.id, 'rejected');
+    }
     setCurrentIndex((prev) => (prev + 1) % filteredModels.length);
   };
 
@@ -1936,8 +2058,8 @@ const DiscoverView: React.FC<DiscoverProps> = ({
         </View>
       ) : (
         <View style={styles.emptyDiscover}>
-          <Text style={styles.emptyTitle}>No models available</Text>
-          <Text style={styles.emptyCopy}>Adjust filters or check back later for new talent.</Text>
+          <Text style={styles.emptyTitle}>{uiCopy.discover.noMoreModels}</Text>
+          <Text style={styles.emptyCopy}>{uiCopy.discover.noMoreModelsSub}</Text>
         </View>
       )}
 
@@ -2018,16 +2140,26 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
     return map;
   }, [items, manualEvents, bookingEventEntries]);
 
+  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
+
   const sorted = useMemo(
     () =>
-      [...items].sort((a, b) =>
-        (a.option.requested_date || '').localeCompare(b.option.requested_date || ''),
-      ),
-    [items],
+      [...items]
+        .filter((a) => {
+          const date = a.calendar_entry?.date ?? a.option.requested_date;
+          return date != null && date >= today;
+        })
+        .sort((a, b) =>
+          (a.option.requested_date || '').localeCompare(b.option.requested_date || ''),
+        ),
+    [items, today],
   );
   const sortedManual = useMemo(
-    () => [...manualEvents].sort((a, b) => a.date.localeCompare(b.date) || (a.start_time || '').localeCompare(b.start_time || '')),
-    [manualEvents],
+    () =>
+      [...manualEvents]
+        .filter((ev) => (ev.date || '') >= today)
+        .sort((a, b) => a.date.localeCompare(b.date) || (a.start_time || '').localeCompare(b.start_time || '')),
+    [manualEvents, today],
   );
 
   const renderBadge = (item: ClientCalendarItem) => {
@@ -2629,7 +2761,8 @@ const ClientB2BChatsPanel: React.FC<{
   onPendingConsumed?: () => void;
   onBookingCardPress?: (meta: Record<string, unknown>) => void;
   onPackagePress?: (meta: Record<string, unknown>) => void;
-}> = ({ clientUserId, pendingOpen, onPendingConsumed, onBookingCardPress, onPackagePress }) => {
+  searchQuery?: string;
+}> = ({ clientUserId, pendingOpen, onPendingConsumed, onBookingCardPress, onPackagePress, searchQuery = '' }) => {
   const auth = useAuth();
   const [rows, setRows] = useState<Conversation[]>([]);
   const [titles, setTitles] = useState<Record<string, string>>({});
@@ -2717,15 +2850,19 @@ const ClientB2BChatsPanel: React.FC<{
       (titles[activeConversationId] ?? optimisticThreadTitle ?? null)) ??
     uiCopy.b2bChat.chatPartnerFallback;
 
+  const filteredRows = searchQuery.trim()
+    ? rows.filter((c) => (titles[c.id] ?? '').toLowerCase().includes(searchQuery.trim().toLowerCase()))
+    : rows;
+
   if (rows.length === 0 && !activeConversationId) {
     return <Text style={styles.metaText}>{uiCopy.b2bChat.noAgencyChatsYetClient}</Text>;
   }
 
   return (
     <View style={{ marginTop: spacing.sm }}>
-      {rows.length > 0 ? (
+      {filteredRows.length > 0 ? (
         <ScrollView style={{ maxHeight: 220 }}>
-          {rows.map((c) => (
+          {filteredRows.map((c) => (
             <TouchableOpacity
               key={c.id}
               style={[styles.threadRow, selectedId === c.id && styles.threadRowActive]}
@@ -2738,6 +2875,8 @@ const ClientB2BChatsPanel: React.FC<{
             </TouchableOpacity>
           ))}
         </ScrollView>
+      ) : searchQuery.trim() ? (
+        <Text style={styles.metaText}>{uiCopy.messages.searchNoResults}</Text>
       ) : null}
       {activeConversationId ? (
         <OrgMessengerInline
@@ -2766,6 +2905,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   onPackagePress,
 }) => {
   const [clientMsgTab, setClientMsgTab] = useState<'b2bChats' | 'optionRequests'>('b2bChats');
+  const [clientMsgSearch, setClientMsgSearch] = useState('');
   const [requests, setRequests] = useState(getOptionRequests());
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [chatInput, setChatInput] = useState('');
@@ -2809,9 +2949,14 @@ const MessagesView: React.FC<MessagesViewProps> = ({
     });
   };
 
-  const visibleRequests = requests.filter((r) =>
-    msgFilter === 'archived' ? archivedIds.has(r.threadId) : !archivedIds.has(r.threadId)
-  );
+  const visibleRequests = requests.filter((r) => {
+    if (msgFilter === 'archived' ? !archivedIds.has(r.threadId) : archivedIds.has(r.threadId)) return false;
+    if (clientMsgSearch.trim()) {
+      const q = clientMsgSearch.trim().toLowerCase();
+      return (r.modelName ?? '').toLowerCase().includes(q) || (r.clientName ?? '').toLowerCase().includes(q);
+    }
+    return true;
+  });
 
   const request = selectedThreadId ? getRequestByThreadId(selectedThreadId) : null;
   const messages = selectedThreadId ? getMessages(selectedThreadId) : [];
@@ -2832,6 +2977,15 @@ const MessagesView: React.FC<MessagesViewProps> = ({
 
   return (
     <View style={styles.section}>
+      {showClientMessagesTabs && (
+        <TextInput
+          value={clientMsgSearch}
+          onChangeText={setClientMsgSearch}
+          placeholder={uiCopy.messages.searchPlaceholderClient}
+          placeholderTextColor={colors.textSecondary}
+          style={[styles.searchInput, { marginBottom: spacing.sm }]}
+        />
+      )}
       {showClientMessagesTabs && (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: spacing.md }}>
           <TouchableOpacity
@@ -2859,6 +3013,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
           onPendingConsumed={onPendingClientB2BChatConsumed}
           onBookingCardPress={onBookingCardPress}
           onPackagePress={onPackagePress}
+          searchQuery={clientMsgSearch}
         />
       ) : (
         <>
@@ -3639,6 +3794,8 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
   const [saving, setSaving] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'profile' | 'team'>('profile');
   const [deleting, setDeleting] = useState(false);
+  const [dissolvingOrg, setDissolvingOrg] = useState(false);
+  const [orgDissolved, setOrgDissolved] = useState(false);
   const [clientIsOwner, setClientIsOwner] = useState(false);
   const [ownerRoleLoading, setOwnerRoleLoading] = useState(true);
   const [clientOrgId, setClientOrgId] = useState<string | null>(null);
@@ -3743,6 +3900,58 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
     );
   };
 
+  const handleRequestPersonalAccountDeletion = () => {
+    Alert.alert(
+      uiCopy.accountDeletion.personalDeleteConfirmTitle,
+      uiCopy.accountDeletion.personalDeleteConfirmMessage,
+      [
+        { text: uiCopy.common.cancel, style: 'cancel' },
+        {
+          text: uiCopy.accountDeletion.button,
+          style: 'destructive',
+          onPress: async () => {
+            setDeleting(true);
+            const { requestPersonalAccountDeletion } = await import('../services/accountSupabase');
+            const res = await requestPersonalAccountDeletion();
+            setDeleting(false);
+            if (res.ok) {
+              onClose();
+              await signOut();
+              return;
+            }
+            Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.failed);
+          },
+        },
+      ]
+    );
+  };
+
+  const handleDissolveOrganization = () => {
+    if (!clientOrgId) return;
+    Alert.alert(
+      uiCopy.accountDeletion.dissolveOrgConfirmTitle,
+      uiCopy.accountDeletion.dissolveOrgConfirmMessage,
+      [
+        { text: uiCopy.common.cancel, style: 'cancel' },
+        {
+          text: uiCopy.accountDeletion.dissolveOrgButton,
+          style: 'destructive',
+          onPress: async () => {
+            setDissolvingOrg(true);
+            const result = await dissolveOrganization(clientOrgId);
+            setDissolvingOrg(false);
+            if (result.ok) {
+              setOrgDissolved(true);
+              Alert.alert(uiCopy.accountDeletion.dissolveOrgTitle, uiCopy.accountDeletion.dissolveOrgSuccess);
+            } else {
+              Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.dissolveOrgFailed);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <View style={{
       position: 'absolute', left: 0, right: 0, top: 0, bottom: 0,
@@ -3810,17 +4019,48 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
               </TouchableOpacity>
 
               <View style={{ marginTop: spacing.xl, paddingTop: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border }}>
-                <Text style={{ ...typography.label, fontSize: 12, color: colors.textPrimary, marginBottom: 4 }}>
-                  {uiCopy.accountDeletion.sectionTitle}
-                </Text>
                 {!realClientId ? (
-                  <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary }}>
-                    {uiCopy.accountDeletion.notAvailableSignedOut}
-                  </Text>
+                  <>
+                    <Text style={{ ...typography.label, fontSize: 12, color: colors.textPrimary, marginBottom: 4 }}>
+                      {uiCopy.accountDeletion.sectionTitle}
+                    </Text>
+                    <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary }}>
+                      {uiCopy.accountDeletion.notAvailableSignedOut}
+                    </Text>
+                  </>
                 ) : ownerRoleLoading ? (
                   <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary }}>{uiCopy.common.loading}</Text>
                 ) : clientIsOwner ? (
                   <>
+                    {/* Dissolve organization — owners only */}
+                    {!orgDissolved && (
+                      <View style={{ marginBottom: spacing.lg, paddingBottom: spacing.lg, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                        <Text style={{ ...typography.label, fontSize: 12, color: colors.textPrimary, marginBottom: 4 }}>
+                          {uiCopy.accountDeletion.dissolveOrgTitle}
+                        </Text>
+                        <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm }}>
+                          {uiCopy.accountDeletion.dissolveOrgDescription}
+                        </Text>
+                        <TouchableOpacity
+                          onPress={handleDissolveOrganization}
+                          disabled={dissolvingOrg}
+                          style={{ borderRadius: 999, borderWidth: 1, borderColor: '#e74c3c', paddingVertical: spacing.sm, alignItems: 'center', opacity: dissolvingOrg ? 0.6 : 1 }}
+                        >
+                          <Text style={{ ...typography.label, fontSize: 12, color: '#e74c3c' }}>
+                            {dissolvingOrg ? uiCopy.accountDeletion.dissolveOrgWorking : uiCopy.accountDeletion.dissolveOrgButton}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                    {orgDissolved && (
+                      <View style={{ marginBottom: spacing.md, padding: spacing.sm, backgroundColor: 'rgba(0,120,0,0.08)', borderRadius: 8 }}>
+                        <Text style={{ ...typography.body, fontSize: 11, color: colors.textPrimary }}>{uiCopy.accountDeletion.dissolveOrgSuccess}</Text>
+                      </View>
+                    )}
+                    {/* Delete personal account */}
+                    <Text style={{ ...typography.label, fontSize: 12, color: colors.textPrimary, marginBottom: 4 }}>
+                      {uiCopy.accountDeletion.sectionTitle}
+                    </Text>
                     <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm }}>
                       {uiCopy.accountDeletion.description}
                     </Text>
@@ -3835,9 +4075,24 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
                     </TouchableOpacity>
                   </>
                 ) : (
-                  <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary }}>
-                    {uiCopy.accountDeletion.ownerOnly}
-                  </Text>
+                  <>
+                    {/* Non-owner employee: personal account deletion only */}
+                    <Text style={{ ...typography.label, fontSize: 12, color: colors.textPrimary, marginBottom: 4 }}>
+                      {uiCopy.accountDeletion.sectionTitle}
+                    </Text>
+                    <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm }}>
+                      {uiCopy.accountDeletion.personalDeleteDescription}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={handleRequestPersonalAccountDeletion}
+                      disabled={deleting}
+                      style={{ borderRadius: 999, borderWidth: 1, borderColor: '#e74c3c', paddingVertical: spacing.sm, alignItems: 'center' }}
+                    >
+                      <Text style={{ ...typography.label, fontSize: 12, color: '#e74c3c' }}>
+                        {deleting ? uiCopy.accountDeletion.buttonWorking : uiCopy.accountDeletion.button}
+                      </Text>
+                    </TouchableOpacity>
+                  </>
                 )}
               </View>
             </>
@@ -4966,6 +5221,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: spacing.xs,
+  },
+  searchInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    fontSize: 14,
+    color: colors.textPrimary,
+    backgroundColor: colors.background,
   },
   threadList: {
     flex: 1,

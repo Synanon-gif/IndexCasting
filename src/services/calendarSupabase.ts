@@ -1,5 +1,10 @@
 import { supabase } from '../../lib/supabase';
+import { OPTION_REQUEST_SELECT } from './optionRequestsSupabase';
 import type { SupabaseOptionRequest } from './optionRequestsSupabase';
+
+/** Alle Felder der calendar_entries-Tabelle — kein SELECT * mehr. */
+const CALENDAR_ENTRY_SELECT =
+  'id, model_id, date, start_time, end_time, title, entry_type, status, booking_id, note, created_at, created_by_agency, option_request_id, client_name, booking_details' as const;
 import {
   getBookingEventsForOrg,
   getBookingEventsInRange,
@@ -66,7 +71,7 @@ export async function getCalendarForModel(modelId: string): Promise<CalendarEntr
   try {
     const { data, error } = await supabase
       .from('calendar_entries')
-      .select('*')
+      .select(CALENDAR_ENTRY_SELECT)
       .eq('model_id', modelId)
       .order('date', { ascending: true });
     if (error) { console.error('getCalendarForModel error:', error); return []; }
@@ -85,7 +90,7 @@ export async function getCalendarRange(
   try {
     const { data, error } = await supabase
       .from('calendar_entries')
-      .select('*')
+      .select(CALENDAR_ENTRY_SELECT)
       .eq('model_id', modelId)
       .gte('date', startDate)
       .lte('date', endDate)
@@ -198,26 +203,31 @@ export async function insertCalendarEntry(
     booking_details?: BookingDetails;
   }
 ): Promise<CalendarEntry | null> {
-  const { data, error } = await supabase
-    .from('calendar_entries')
-    .insert({
-      model_id: modelId,
-      date,
-      status,
-      note: options?.note || null,
-      start_time: options?.start_time || null,
-      end_time: options?.end_time || null,
-      title: options?.title || null,
-      entry_type: options?.entry_type || 'personal',
-      created_by_agency: options?.created_by_agency ?? null,
-      option_request_id: options?.option_request_id ?? null,
-      client_name: options?.client_name ?? null,
-      booking_details: options?.booking_details ?? null,
-    })
-    .select()
-    .single();
-  if (error) { console.error('insertCalendarEntry error:', error); return null; }
-  return data as CalendarEntry;
+  try {
+    const { data, error } = await supabase
+      .from('calendar_entries')
+      .insert({
+        model_id: modelId,
+        date,
+        status,
+        note: options?.note || null,
+        start_time: options?.start_time || null,
+        end_time: options?.end_time || null,
+        title: options?.title || null,
+        entry_type: options?.entry_type || 'personal',
+        created_by_agency: options?.created_by_agency ?? null,
+        option_request_id: options?.option_request_id ?? null,
+        client_name: options?.client_name ?? null,
+        booking_details: options?.booking_details ?? null,
+      })
+      .select()
+      .single();
+    if (error) { console.error('insertCalendarEntry error:', error); return null; }
+    return data as CalendarEntry;
+  } catch (e) {
+    console.error('insertCalendarEntry exception:', e);
+    return null;
+  }
 }
 
 /**
@@ -226,13 +236,18 @@ export async function insertCalendarEntry(
  * Use deleteCalendarEntryById instead.
  */
 export async function deleteCalendarEntry(modelId: string, date: string): Promise<boolean> {
-  const { error } = await supabase
-    .from('calendar_entries')
-    .delete()
-    .eq('model_id', modelId)
-    .eq('date', date);
-  if (error) { console.error('deleteCalendarEntry error:', error); return false; }
-  return true;
+  try {
+    const { error } = await supabase
+      .from('calendar_entries')
+      .delete()
+      .eq('model_id', modelId)
+      .eq('date', date);
+    if (error) { console.error('deleteCalendarEntry error:', error); return false; }
+    return true;
+  } catch (e) {
+    console.error('deleteCalendarEntry exception:', e);
+    return false;
+  }
 }
 
 export async function updateCalendarEntryById(
@@ -299,32 +314,37 @@ export async function getCalendarEntriesForClient(clientId: string): Promise<Cli
     console.warn('getCalendarEntriesForClient: clientId must be auth user UUID');
     return [];
   }
-  const { data: options, error: optError } = await supabase
-    .from('option_requests')
-    .select('*')
-    .eq('client_id', clientId)
-    .order('requested_date', { ascending: true });
-  if (optError) {
-    console.error('getCalendarEntriesForClient options error:', optError);
+  try {
+    const { data: options, error: optError } = await supabase
+      .from('option_requests')
+      .select(OPTION_REQUEST_SELECT)
+      .eq('client_id', clientId)
+      .order('requested_date', { ascending: true });
+    if (optError) {
+      console.error('getCalendarEntriesForClient options error:', optError);
+      return [];
+    }
+    const optionList = (options ?? []) as SupabaseOptionRequest[];
+    if (optionList.length === 0) return [];
+
+    const optionIds = optionList.map((o) => o.id);
+    const { data: entries, error: calError } = await supabase
+      .from('calendar_entries')
+      .select(CALENDAR_ENTRY_SELECT)
+      .in('option_request_id', optionIds);
+    if (calError) {
+      console.error('getCalendarEntriesForClient calendar error:', calError);
+    }
+    const entryList = (entries ?? []) as CalendarEntry[];
+
+    return optionList.map((opt) => ({
+      option: opt,
+      calendar_entry: entryList.find((e) => e.option_request_id === opt.id) ?? null,
+    }));
+  } catch (e) {
+    console.error('getCalendarEntriesForClient exception:', e);
     return [];
   }
-  const optionList = (options ?? []) as SupabaseOptionRequest[];
-  if (optionList.length === 0) return [];
-
-  const optionIds = optionList.map((o) => o.id);
-  const { data: entries, error: calError } = await supabase
-    .from('calendar_entries')
-    .select('*')
-    .in('option_request_id', optionIds);
-  if (calError) {
-    console.error('getCalendarEntriesForClient calendar error:', calError);
-  }
-  const entryList = (entries ?? []) as CalendarEntry[];
-
-  return optionList.map((opt) => ({
-    option: opt,
-    calendar_entry: entryList.find((e) => e.option_request_id === opt.id) ?? null,
-  }));
 }
 
 /** Optionen/Jobs/Castings der Agentur – aus Supabase (option_requests + calendar_entries), pro agency_id gespeichert. */
@@ -333,32 +353,37 @@ export async function getCalendarEntriesForAgency(agencyId: string): Promise<Age
     console.warn('getCalendarEntriesForAgency: agencyId must be UUID');
     return [];
   }
-  const { data: options, error: optError } = await supabase
-    .from('option_requests')
-    .select('*')
-    .eq('agency_id', agencyId)
-    .order('requested_date', { ascending: true });
-  if (optError) {
-    console.error('getCalendarEntriesForAgency options error:', optError);
+  try {
+    const { data: options, error: optError } = await supabase
+      .from('option_requests')
+      .select(OPTION_REQUEST_SELECT)
+      .eq('agency_id', agencyId)
+      .order('requested_date', { ascending: true });
+    if (optError) {
+      console.error('getCalendarEntriesForAgency options error:', optError);
+      return [];
+    }
+    const optionList = (options ?? []) as SupabaseOptionRequest[];
+    if (optionList.length === 0) return [];
+
+    const optionIds = optionList.map((o) => o.id);
+    const { data: entries, error: calError } = await supabase
+      .from('calendar_entries')
+      .select(CALENDAR_ENTRY_SELECT)
+      .in('option_request_id', optionIds);
+    if (calError) {
+      console.error('getCalendarEntriesForAgency calendar error:', calError);
+    }
+    const entryList = (entries ?? []) as CalendarEntry[];
+
+    return optionList.map((opt) => ({
+      option: opt,
+      calendar_entry: entryList.find((e) => e.option_request_id === opt.id) ?? null,
+    }));
+  } catch (e) {
+    console.error('getCalendarEntriesForAgency exception:', e);
     return [];
   }
-  const optionList = (options ?? []) as SupabaseOptionRequest[];
-  if (optionList.length === 0) return [];
-
-  const optionIds = optionList.map((o) => o.id);
-  const { data: entries, error: calError } = await supabase
-    .from('calendar_entries')
-    .select('*')
-    .in('option_request_id', optionIds);
-  if (calError) {
-    console.error('getCalendarEntriesForAgency calendar error:', calError);
-  }
-  const entryList = (entries ?? []) as CalendarEntry[];
-
-  return optionList.map((opt) => ({
-    option: opt,
-    calendar_entry: entryList.find((e) => e.option_request_id === opt.id) ?? null,
-  }));
 }
 
 /** Append a note every party can see (stored in calendar_entries.booking_details.shared_notes). */

@@ -192,8 +192,10 @@ describe('modelConfirmOptionRequest', () => {
   let consoleErrorSpy: jest.SpyInstance;
   let consoleWarnSpy: jest.SpyInstance;
 
+  // Use resetAllMocks (not just clearAllMocks) to also drain mockReturnValueOnce queues,
+  // preventing cross-test mock leakage when tests short-circuit early.
   beforeEach(() => {
-    jest.clearAllMocks();
+    jest.resetAllMocks();
     consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
     consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
   });
@@ -203,8 +205,16 @@ describe('modelConfirmOptionRequest', () => {
     consoleWarnSpy.mockRestore();
   });
 
+  // A request where the agency has already accepted (final_status = option_confirmed),
+  // which is the required precondition before the model can confirm.
+  const AGENCY_ACCEPTED_REQUEST = {
+    ...BASE_REQUEST,
+    final_status: 'option_confirmed' as const,
+    client_price_status: 'accepted' as const,
+  };
+
   it('returns false when model_approval is not pending', async () => {
-    const alreadyApproved = { ...BASE_REQUEST, model_approval: 'approved' as const };
+    const alreadyApproved = { ...AGENCY_ACCEPTED_REQUEST, model_approval: 'approved' as const };
     from.mockReturnValueOnce({
       select: () => ({
         eq: () => ({
@@ -217,7 +227,7 @@ describe('modelConfirmOptionRequest', () => {
   });
 
   it('returns false when model_account_linked is false', async () => {
-    const noAccount = { ...BASE_REQUEST, model_account_linked: false };
+    const noAccount = { ...AGENCY_ACCEPTED_REQUEST, model_account_linked: false };
     from.mockReturnValueOnce({
       select: () => ({
         eq: () => ({
@@ -228,12 +238,24 @@ describe('modelConfirmOptionRequest', () => {
     await expect(modelConfirmOptionRequest('req-1')).resolves.toBe(false);
   });
 
-  it('returns true and creates booking_event on success', async () => {
+  it('returns false when agency has not accepted yet (final_status = option_pending)', async () => {
     from.mockReturnValueOnce({
-      // fetch option_request
       select: () => ({
         eq: () => ({
           maybeSingle: jest.fn().mockResolvedValue({ data: BASE_REQUEST, error: null }),
+        }),
+      }),
+    });
+    await expect(modelConfirmOptionRequest('req-1')).resolves.toBe(false);
+    expect(mockCreateBookingEvent).not.toHaveBeenCalled();
+  });
+
+  it('returns true and creates booking_event on success', async () => {
+    from.mockReturnValueOnce({
+      // fetch option_request (agency already accepted → final_status = option_confirmed)
+      select: () => ({
+        eq: () => ({
+          maybeSingle: jest.fn().mockResolvedValue({ data: AGENCY_ACCEPTED_REQUEST, error: null }),
         }),
       }),
     })
@@ -260,7 +282,7 @@ describe('modelConfirmOptionRequest', () => {
     from.mockReturnValueOnce({
       select: () => ({
         eq: () => ({
-          maybeSingle: jest.fn().mockResolvedValue({ data: BASE_REQUEST, error: null }),
+          maybeSingle: jest.fn().mockResolvedValue({ data: AGENCY_ACCEPTED_REQUEST, error: null }),
         }),
       }),
     })
@@ -278,7 +300,7 @@ describe('modelRejectOptionRequest', () => {
   let consoleErrorSpy: jest.SpyInstance;
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    jest.resetAllMocks();
     consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
   });
 
@@ -309,7 +331,7 @@ describe('getPendingModelConfirmations', () => {
   let consoleErrorSpy: jest.SpyInstance;
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    jest.resetAllMocks();
     consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
   });
 

@@ -4,8 +4,9 @@ import { createBookingEvent } from './bookingEventsSupabase';
 import type { BookingEventType } from './bookingEventsSupabase';
 import { createNotification, createNotifications } from './notificationsSupabase';
 import { uiCopy } from '../constants/uiCopy';
+import { normalizeInput, validateText, sanitizeHtml, logSecurityEvent } from '../../lib/validation';
 
-const OPTION_REQUEST_SELECT =
+export const OPTION_REQUEST_SELECT =
   'id, client_id, model_id, agency_id, requested_date, status, project_id, client_name, model_name, proposed_price, agency_counter_price, client_price_status, final_status, request_type, currency, start_time, end_time, model_approval, model_approved_at, model_account_linked, booker_id, organization_id, created_by, agency_assignee_user_id, created_at, updated_at';
 
 /**
@@ -370,6 +371,27 @@ export async function clientAcceptCounterPrice(id: string): Promise<boolean> {
   return true;
 }
 
+/**
+ * Client lehnt das Gegenangebot der Agency ab.
+ * Setzt status=rejected + client_price_status=rejected atomar.
+ */
+export async function clientRejectCounterOfferOnSupabase(id: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('option_requests')
+      .update({
+        client_price_status: 'rejected',
+        status: 'rejected',
+      })
+      .eq('id', id);
+    if (error) { console.error('clientRejectCounterOfferOnSupabase error:', error); return false; }
+    return true;
+  } catch (e) {
+    console.error('clientRejectCounterOfferOnSupabase exception:', e);
+    return false;
+  }
+}
+
 export async function clientConfirmJobOnSupabase(id: string): Promise<boolean> {
   const { error } = await supabase
     .from('option_requests')
@@ -437,9 +459,20 @@ export async function addOptionMessage(
 ): Promise<SupabaseOptionMessage | null> {
   try {
     const { data: { user } } = await supabase.auth.getUser();
+
+    // Normalize, validate, and sanitize text — same pipeline as messengerSupabase.sendMessage
+    const normalized = normalizeInput(text);
+    const textCheck = validateText(normalized, { maxLength: 2000, allowEmpty: false });
+    if (!textCheck.ok) {
+      console.warn('addOptionMessage: text validation failed', textCheck.error);
+      void logSecurityEvent({ type: 'large_payload', userId: user?.id ?? null, metadata: { service: 'optionRequestsSupabase', field: 'text' } });
+      return null;
+    }
+    const safeText = sanitizeHtml(normalized);
+
     const { data, error } = await supabase
       .from('option_request_messages')
-      .insert({ option_request_id: requestId, from_role: fromRole, text })
+      .insert({ option_request_id: requestId, from_role: fromRole, text: safeText })
       .select('id, option_request_id, from_role, text, booker_id, booker_name, created_at')
       .single();
     if (error) {
@@ -465,35 +498,50 @@ export async function updateModelApproval(
   id: string,
   approval: 'approved' | 'rejected'
 ): Promise<boolean> {
-  const { error } = await supabase
-    .from('option_requests')
-    .update({
-      model_approval: approval,
-      model_approved_at: approval === 'approved' ? new Date().toISOString() : null,
-    })
-    .eq('id', id);
-  if (error) { console.error('updateModelApproval error:', error); return false; }
-  return true;
+  try {
+    const { error } = await supabase
+      .from('option_requests')
+      .update({
+        model_approval: approval,
+        model_approved_at: approval === 'approved' ? new Date().toISOString() : null,
+      })
+      .eq('id', id);
+    if (error) { console.error('updateModelApproval error:', error); return false; }
+    return true;
+  } catch (e) {
+    console.error('updateModelApproval exception:', e);
+    return false;
+  }
 }
 
 export async function getOptionRequestsForModel(modelId: string): Promise<SupabaseOptionRequest[]> {
-  const { data, error } = await supabase
-    .from('option_requests')
-    .select(OPTION_REQUEST_SELECT)
-    .eq('model_id', modelId)
-    .order('created_at', { ascending: false });
-  if (error) { console.error('getOptionRequestsForModel error:', error); return []; }
-  return (data ?? []) as SupabaseOptionRequest[];
+  try {
+    const { data, error } = await supabase
+      .from('option_requests')
+      .select(OPTION_REQUEST_SELECT)
+      .eq('model_id', modelId)
+      .order('created_at', { ascending: false });
+    if (error) { console.error('getOptionRequestsForModel error:', error); return []; }
+    return (data ?? []) as SupabaseOptionRequest[];
+  } catch (e) {
+    console.error('getOptionRequestsForModel exception:', e);
+    return [];
+  }
 }
 
 export async function getOptionDocuments(requestId: string): Promise<SupabaseOptionDocument[]> {
-  const { data, error } = await supabase
-    .from('option_documents')
-    .select('*')
-    .eq('option_request_id', requestId)
-    .order('created_at', { ascending: true });
-  if (error) { console.error('getOptionDocuments error:', error); return []; }
-  return (data ?? []) as SupabaseOptionDocument[];
+  try {
+    const { data, error } = await supabase
+      .from('option_documents')
+      .select('*')
+      .eq('option_request_id', requestId)
+      .order('created_at', { ascending: true });
+    if (error) { console.error('getOptionDocuments error:', error); return []; }
+    return (data ?? []) as SupabaseOptionDocument[];
+  } catch (e) {
+    console.error('getOptionDocuments exception:', e);
+    return [];
+  }
 }
 
 export async function uploadOptionDocument(
@@ -502,12 +550,22 @@ export async function uploadOptionDocument(
   file: File | Blob,
   fileName: string
 ): Promise<SupabaseOptionDocument | null> {
+  try {
   const path = `options/${requestId}/${Date.now()}_${fileName}`;
   const { error: uploadError } = await supabase.storage
     .from('chat-files')
     .upload(path, file);
   if (uploadError) { console.error('uploadOptionDocument storage error:', uploadError); return null; }
-  const { data: urlData } = supabase.storage.from('chat-files').getPublicUrl(path);
+
+  // Use a time-limited signed URL (1 hour) instead of a permanent public URL.
+  // This prevents unauthenticated access to option documents via raw URL.
+  const { data: signedData, error: signedError } = await supabase.storage
+    .from('chat-files')
+    .createSignedUrl(path, 3600);
+  if (signedError || !signedData?.signedUrl) {
+    console.error('uploadOptionDocument signed URL error:', signedError);
+    return null;
+  }
 
   const { data, error } = await supabase
     .from('option_documents')
@@ -515,13 +573,17 @@ export async function uploadOptionDocument(
       option_request_id: requestId,
       uploaded_by: uploadedBy,
       file_name: fileName,
-      file_url: urlData.publicUrl,
+      file_url: signedData.signedUrl,
       file_type: fileName.split('.').pop() || null,
     })
     .select()
     .single();
   if (error) { console.error('uploadOptionDocument error:', error); return null; }
   return data as SupabaseOptionDocument;
+  } catch (e) {
+    console.error('uploadOptionDocument exception:', e);
+    return null;
+  }
 }
 
 // =============================================================================
@@ -626,7 +688,7 @@ export async function agencyAcceptRequest(
     }
 
     // Notify model user that their confirmation is needed
-    void notifyModelAwaitingConfirmation(r.model_id);
+    void notifyModelAwaitingConfirmation(r.model_id, id);
 
     return 'awaiting_model_confirmation';
   } catch (e) {
@@ -637,12 +699,18 @@ export async function agencyAcceptRequest(
 
 /**
  * Agency lehnt die Buchungsanfrage ab.
+ * Setzt status UND final_status atomar, damit keine inkonsistente Kombination
+ * (status=rejected + final_status=option_pending) entsteht.
  */
 export async function agencyRejectRequest(id: string): Promise<boolean> {
   try {
     const { error } = await supabase
       .from('option_requests')
-      .update({ status: 'rejected' })
+      .update({
+        status: 'rejected',
+        final_status: 'option_pending',
+        client_price_status: 'rejected',
+      })
       .eq('id', id);
 
     if (error) {
@@ -678,6 +746,13 @@ export async function modelConfirmOptionRequest(id: string): Promise<boolean> {
 
     if (r.model_approval !== 'pending' || !r.model_account_linked) {
       console.warn('modelConfirmOptionRequest: invalid state', { model_approval: r.model_approval, model_account_linked: r.model_account_linked });
+      return false;
+    }
+
+    // Agency must have accepted first (final_status transitions to option_confirmed
+    // when agency calls agencyAcceptRequest or agencyAcceptClientPrice).
+    if (r.final_status !== 'option_confirmed') {
+      console.warn('modelConfirmOptionRequest: agency has not accepted yet', { final_status: r.final_status });
       return false;
     }
 
@@ -805,7 +880,7 @@ export function subscribeToOptionMessages(
 // ── Notification helpers ──────────────────────────────────────────────────────
 
 /** Notify a model's linked user that they need to confirm an option request. */
-async function notifyModelAwaitingConfirmation(modelId: string): Promise<void> {
+async function notifyModelAwaitingConfirmation(modelId: string, optionRequestId: string): Promise<void> {
   try {
     const { data: modelRow } = await supabase
       .from('models')
@@ -819,7 +894,7 @@ async function notifyModelAwaitingConfirmation(modelId: string): Promise<void> {
       type: 'awaiting_model_confirmation',
       title: uiCopy.notifications.awaitingModelConfirmation.title,
       message: uiCopy.notifications.awaitingModelConfirmation.message,
-      metadata: { model_id: modelId },
+      metadata: { model_id: modelId, option_request_id: optionRequestId },
     });
   } catch (e) {
     console.error('notifyModelAwaitingConfirmation exception:', e);

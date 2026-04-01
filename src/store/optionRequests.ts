@@ -19,11 +19,14 @@ import {
   setAgencyCounterOffer,
   agencyAcceptClientPrice,
   agencyRejectClientPrice as agencyRejectClientPriceDb,
+  agencyAcceptRequest,
   clientAcceptCounterPrice,
+  clientRejectCounterOfferOnSupabase,
   clientConfirmJobOnSupabase,
   type SupabaseOptionRequest,
   type SupabaseOptionMessage,
 } from '../services/optionRequestsSupabase';
+import { createNotification, createNotifications } from '../services/notificationsSupabase';
 import { supabase } from '../../lib/supabase';
 import { getModelByIdFromSupabase } from '../services/modelsSupabase';
 import { getAgencyById } from '../services/agenciesSupabase';
@@ -294,11 +297,7 @@ export function addOptionRequest(
       }
 
       if (local.modelAccountLinked === false) {
-        addOptionMessage(
-          result.id,
-          'agency',
-          'No model app account on file — you can negotiate and confirm with the client without waiting for model approval. The booking will appear in client and agency calendars when confirmed.',
-        );
+        addOptionMessage(result.id, 'agency', uiCopy.systemMessages.noModelAccount);
       }
       notify();
     }
@@ -315,15 +314,15 @@ export async function approveOptionAsModel(threadId: string): Promise<boolean> {
   notify();
   const ok = await updateModelApproval(req.id, 'approved');
   if (ok) {
-    const msg: ChatMessage = {
+    const approvedText = uiCopy.systemMessages.modelApprovedBooking;
+    messagesCache.push({
       id: `msg-${Date.now()}`,
       threadId,
       from: 'agency',
-      text: '✓ Approved by Model',
+      text: approvedText,
       createdAt: Date.now(),
-    };
-    messagesCache.push(msg);
-    addOptionMessage(req.id, 'agency', '✓ Approved by Model');
+    });
+    addOptionMessage(req.id, 'agency', approvedText);
     notify();
   }
   return ok;
@@ -496,27 +495,42 @@ async function ensureOptionCalendarEntry(opt: SupabaseOptionRequest): Promise<vo
   );
 }
 
-/** Agency accepts client price → option_confirmed; create calendar entry and system message. */
+/**
+ * Agency accepts request — unified path.
+ * Routes through agencyAcceptRequest which handles:
+ *   - model_account_linked check
+ *   - booking_event creation (if no model account)
+ *   - model notification (if model has account)
+ * Falls back to price-only agencyAcceptClientPrice if agencyAcceptRequest returns null
+ * (e.g. RLS prevents the fetch for older requests).
+ */
 export async function agencyAcceptClientPriceStore(threadId: string): Promise<boolean> {
   const req = requestsCache.find((r) => r.threadId === threadId);
   if (!req) return false;
-  const ok = await agencyAcceptClientPrice(req.id);
-  if (!ok) return false;
+
+  const result = await agencyAcceptRequest(req.id);
+
+  if (result === null) {
+    // Fallback to price-only path for edge cases.
+    const ok = await agencyAcceptClientPrice(req.id);
+    if (!ok) return false;
+  }
+
   const updated = await getOptionRequestById(req.id);
   if (updated) {
     Object.assign(req, toLocalRequest(updated));
     if (updated.final_status === 'option_confirmed') {
       await ensureOptionCalendarEntry(updated);
-      await addOptionMessage(req.id, 'agency', 'Agency accepted client price.');
-      const sys: ChatMessage = { id: `msg-${Date.now()}`, threadId, from: 'agency', text: 'Agency accepted client price.', createdAt: Date.now() };
-      messagesCache.push(sys);
+      const text = uiCopy.systemMessages.agencyAcceptedPrice;
+      await addOptionMessage(req.id, 'agency', text);
+      messagesCache.push({ id: `msg-${Date.now()}`, threadId, from: 'agency', text, createdAt: Date.now() });
     }
     notify();
   }
   return true;
 }
 
-/** Agency sends counter offer; system message + local/web notification hook. */
+/** Agency sends counter offer; system message + web push + persistent DB notification. */
 export async function agencyCounterOfferStore(threadId: string, counterPrice: number, currency: string): Promise<boolean> {
   const req = requestsCache.find((r) => r.threadId === threadId);
   if (!req) return false;
@@ -525,11 +539,26 @@ export async function agencyCounterOfferStore(threadId: string, counterPrice: nu
   req.agencyCounterPrice = counterPrice;
   req.clientPriceStatus = 'pending';
   req.finalStatus = 'option_pending';
-  const text = `Agency proposed ${counterPrice} ${currency}.`;
+  const text = uiCopy.systemMessages.agencyCounterOffer(counterPrice, currency);
   await addOptionMessage(req.id, 'agency', text);
   messagesCache.push({ id: `msg-${Date.now()}`, threadId, from: 'agency', text, createdAt: Date.now() });
+
+  // Web push (browser Notification API)
   const agency = req.agencyId ? await getAgencyById(req.agencyId) : null;
   notifyClientAgencyCounterOffer(agency?.name ?? 'Agency');
+
+  // Persistent DB notification so the client sees it in the notification bell.
+  const full = await getOptionRequestById(req.id);
+  if (full?.client_id) {
+    void createNotification({
+      user_id: full.client_id,
+      type: 'agency_counter_offer',
+      title: uiCopy.notifications.agencyCounterOffer.title,
+      message: uiCopy.notifications.agencyCounterOffer.message,
+      metadata: { option_request_id: req.id, counter_price: counterPrice, currency },
+    });
+  }
+
   notify();
   return true;
 }
@@ -541,7 +570,7 @@ export async function agencyRejectClientPriceStore(threadId: string): Promise<bo
   const ok = await agencyRejectClientPriceDb(req.id);
   if (!ok) return false;
   req.clientPriceStatus = 'rejected';
-  const text = 'Agency declined the proposed fee. A counter-offer can be sent below.';
+  const text = uiCopy.systemMessages.agencyDeclinedPrice;
   await addOptionMessage(req.id, 'agency', text);
   messagesCache.push({ id: `msg-${Date.now()}`, threadId, from: 'agency', text, createdAt: Date.now() });
   notify();
@@ -559,9 +588,9 @@ export async function clientAcceptCounterStore(threadId: string): Promise<boolea
     Object.assign(req, toLocalRequest(updated));
     if (updated.final_status === 'option_confirmed') {
       await ensureOptionCalendarEntry(updated);
-      await addOptionMessage(req.id, 'client', 'Client accepted agency proposal.');
-      const sys: ChatMessage = { id: `msg-${Date.now()}`, threadId, from: 'client', text: 'Client accepted agency proposal.', createdAt: Date.now() };
-      messagesCache.push(sys);
+      const text = uiCopy.systemMessages.clientAcceptedCounter;
+      await addOptionMessage(req.id, 'client', text);
+      messagesCache.push({ id: `msg-${Date.now()}`, threadId, from: 'client', text, createdAt: Date.now() });
     }
     notify();
   }
@@ -576,7 +605,7 @@ export function resetOptionRequestsStore(): void {
   notify();
 }
 
-/** Client confirms job → job_confirmed; update calendar to Job, system message. */
+/** Client confirms job → job_confirmed; update calendar to Job, system message + notifications. */
 export async function clientConfirmJobStore(threadId: string): Promise<boolean> {
   const req = requestsCache.find((r) => r.threadId === threadId);
   if (!req) return false;
@@ -585,8 +614,81 @@ export async function clientConfirmJobStore(threadId: string): Promise<boolean> 
   req.finalStatus = 'job_confirmed';
   req.status = 'confirmed';
   await updateCalendarEntryToJob(req.id);
-  await addOptionMessage(req.id, 'client', 'Job confirmed by client.');
-  messagesCache.push({ id: `msg-${Date.now()}`, threadId, from: 'client', text: 'Job confirmed by client.', createdAt: Date.now() });
+  const text = uiCopy.systemMessages.jobConfirmedByClient;
+  await addOptionMessage(req.id, 'client', text);
+  messagesCache.push({ id: `msg-${Date.now()}`, threadId, from: 'client', text, createdAt: Date.now() });
+
+  // Notify agency + model about job confirmation.
+  const full = await getOptionRequestById(req.id);
+  if (full) {
+    const notifications: Parameters<typeof createNotifications>[0] = [];
+    if (full.organization_id) {
+      notifications.push({
+        organization_id: full.organization_id,
+        type: 'job_confirmed',
+        title: uiCopy.notifications.jobConfirmed.title,
+        message: uiCopy.notifications.jobConfirmed.message,
+        metadata: { option_request_id: full.id },
+      });
+    } else {
+      notifications.push({
+        user_id: full.agency_id,
+        type: 'job_confirmed',
+        title: uiCopy.notifications.jobConfirmed.title,
+        message: uiCopy.notifications.jobConfirmed.message,
+        metadata: { option_request_id: full.id },
+      });
+    }
+    if (full.model_account_linked) {
+      const { data: modelRow } = await supabase
+        .from('models')
+        .select('user_id')
+        .eq('id', full.model_id)
+        .maybeSingle();
+      const modelUserId = (modelRow as { user_id?: string | null } | null)?.user_id;
+      if (modelUserId) {
+        notifications.push({
+          user_id: modelUserId,
+          type: 'job_confirmed',
+          title: uiCopy.notifications.jobConfirmed.title,
+          message: uiCopy.notifications.jobConfirmed.message,
+          metadata: { option_request_id: full.id },
+        });
+      }
+    }
+    if (notifications.length > 0) void createNotifications(notifications);
+  }
+
+  notify();
+  return true;
+}
+
+/** Client rejects agency counter offer → request is closed. */
+export async function clientRejectCounterStore(threadId: string): Promise<boolean> {
+  const req = requestsCache.find((r) => r.threadId === threadId);
+  if (!req) return false;
+  const ok = await clientRejectCounterOfferOnSupabase(req.id);
+  if (!ok) return false;
+  req.clientPriceStatus = 'rejected';
+  req.status = 'rejected';
+  const text = uiCopy.systemMessages.clientRejectedCounter;
+  await addOptionMessage(req.id, 'client', text);
+  messagesCache.push({ id: `msg-${Date.now()}`, threadId, from: 'client', text, createdAt: Date.now() });
+
+  // Notify agency about rejection.
+  const full = await getOptionRequestById(req.id);
+  if (full) {
+    void createNotification({
+      ...(full.organization_id
+        ? { organization_id: full.organization_id }
+        : { user_id: full.agency_id }),
+      type: 'client_rejected_counter',
+      title: uiCopy.notifications.clientRejectedCounter.title,
+      message: uiCopy.notifications.clientRejectedCounter.message,
+      metadata: { option_request_id: req.id },
+    });
+  }
+
   notify();
   return true;
 }

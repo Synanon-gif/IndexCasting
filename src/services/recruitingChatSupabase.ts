@@ -1,6 +1,17 @@
 import { supabase } from '../../lib/supabase';
 import { uiCopy } from '../constants/uiCopy';
 import { pooledSubscribe } from './realtimeChannelPool';
+import {
+  validateText,
+  sanitizeHtml,
+  extractSafeUrls,
+  validateFile,
+  checkMagicBytes,
+  checkExtensionConsistency,
+  normalizeInput,
+  CHAT_ALLOWED_MIME_TYPES,
+  logSecurityEvent,
+} from '../../lib/validation';
 
 /**
  * Recruiting-Chat (Agentur ↔ Model nach Bewerbungsannahme).
@@ -232,7 +243,28 @@ export async function addMessage(
   fileType?: string | null,
 ): Promise<SupabaseRecruitingMessage | null> {
   try {
-    const payload: Record<string, unknown> = { thread_id: threadId, from_role: fromRole, text };
+    // Normalize: strip invisible chars, collapse repetition, NFC
+    const normalized = normalizeInput(text);
+
+    // Validate text length
+    const textCheck = validateText(normalized, { maxLength: 2000, allowEmpty: false });
+    if (!textCheck.ok) {
+      console.warn('addMessage: text validation failed', textCheck.error);
+      void logSecurityEvent({ type: 'large_payload', metadata: { service: 'recruitingChatSupabase', field: 'text' } });
+      return null;
+    }
+    // Reject messages with unsafe URLs
+    const allUrls = normalized.match(/https?:\/\/[^\s]+/gi) ?? [];
+    const safeUrls = extractSafeUrls(normalized);
+    if (allUrls.length > safeUrls.length) {
+      console.warn('addMessage: message contains unsafe URLs');
+      void logSecurityEvent({ type: 'invalid_url', metadata: { service: 'recruitingChatSupabase' } });
+      return null;
+    }
+    // Sanitize before storage
+    const safeText = sanitizeHtml(normalized);
+
+    const payload: Record<string, unknown> = { thread_id: threadId, from_role: fromRole, text: safeText };
     if (fileUrl != null) payload.file_url = fileUrl;
     if (fileType != null) payload.file_type = fileType;
     const { data, error } = await supabase
@@ -251,12 +283,36 @@ export async function addMessage(
 /**
  * Uploads a file for a recruiting chat thread to the private chat-files bucket.
  * Returns the storage path; use getSignedRecruitingChatFileUrl() to get a display URL.
+ *
+ * Validates MIME type, file size, and magic bytes before upload.
  */
 export async function uploadRecruitingChatFile(
   threadId: string,
   file: File | Blob,
   fileName: string,
 ): Promise<string | null> {
+  // MIME type + size check
+  const mimeCheck = validateFile(file, CHAT_ALLOWED_MIME_TYPES);
+  if (!mimeCheck.ok) {
+    console.warn('uploadRecruitingChatFile: file validation failed', mimeCheck.error);
+    void logSecurityEvent({ type: 'file_rejected', metadata: { service: 'recruitingChatSupabase', reason: 'mime' } });
+    return null;
+  }
+  // Magic byte check — prevents renamed executables
+  const magicCheck = await checkMagicBytes(file);
+  if (!magicCheck.ok) {
+    console.warn('uploadRecruitingChatFile: magic bytes check failed', magicCheck.error);
+    void logSecurityEvent({ type: 'magic_bytes_fail', metadata: { service: 'recruitingChatSupabase' } });
+    return null;
+  }
+  // Extension consistency check
+  const extCheck = checkExtensionConsistency(file);
+  if (!extCheck.ok) {
+    console.warn('uploadRecruitingChatFile: extension consistency check failed', extCheck.error);
+    void logSecurityEvent({ type: 'extension_mismatch', metadata: { service: 'recruitingChatSupabase' } });
+    return null;
+  }
+
   const path = `recruiting/${threadId}/${Date.now()}_${fileName}`;
   const { error } = await supabase.storage.from('chat-files').upload(path, file);
   if (error) { console.error('uploadRecruitingChatFile error:', error); return null; }
@@ -429,9 +485,11 @@ export function formatRecruitingChatRpcError(err: unknown): string {
   if (msg.includes('does not exist') && msg.includes('function')) {
     return uiCopy.recruiting.chatFunctionMissing;
   }
+  // Do NOT forward raw DB error details to the UI — information disclosure risk.
+  // Log internally for debugging instead.
   const detail = raw.replace(/\s+/g, ' ').trim();
   if (detail.length > 0) {
-    return `Technical: ${detail.length > 320 ? `${detail.slice(0, 320)}…` : detail}`;
+    console.error('formatRecruitingChatRpcError detail:', detail);
   }
   return uiCopy.recruiting.chatGenericFailed;
 }

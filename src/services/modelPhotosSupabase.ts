@@ -1,4 +1,38 @@
 import { supabase } from '../../lib/supabase';
+import {
+  validateFile,
+  checkMagicBytes,
+  checkExtensionConsistency,
+  ALLOWED_MIME_TYPES,
+  logSecurityEvent,
+} from '../../lib/validation';
+import imageCompression from 'browser-image-compression';
+
+/** Allowed MIME types for model photos (images only — no PDFs in portfolio). */
+const PHOTO_ALLOWED_TYPES = ALLOWED_MIME_TYPES.filter((t) => t.startsWith('image/'));
+
+/**
+ * Strips EXIF metadata (including GPS coordinates) from an image by
+ * re-encoding it through the Canvas API via browser-image-compression.
+ * Works in browsers and Capacitor WKWebView (iOS/Android).
+ * Returns the original file if compression fails (graceful degradation).
+ */
+async function stripExifAndCompress(file: File | Blob): Promise<File | Blob> {
+  if (!(file instanceof File)) return file;
+  try {
+    const compressed = await imageCompression(file, {
+      maxSizeMB: 15,
+      useWebWorker: true,
+      // Setting these ensures Canvas re-encoding, which strips EXIF
+      maxWidthOrHeight: 4096,
+      fileType: file.type as 'image/jpeg' | 'image/png' | 'image/webp',
+    });
+    return compressed;
+  } catch (e) {
+    console.warn('stripExifAndCompress: compression failed, using original', e);
+    return file;
+  }
+}
 
 /**
  * Model-Fotos (Portfolio, Polaroids, Private) – in Supabase gespeichert, pro model_id.
@@ -30,60 +64,70 @@ export async function getPhotosForModel(
   modelId: string,
   type?: ModelPhotoType,
 ): Promise<ModelPhoto[]> {
-  let query = supabase
-    .from('model_photos')
-    .select('*')
-    .eq('model_id', modelId)
-    .order('sort_order', { ascending: true });
+  try {
+    let query = supabase
+      .from('model_photos')
+      .select('*')
+      .eq('model_id', modelId)
+      .order('sort_order', { ascending: true });
 
-  if (type) {
-    query = query.eq('photo_type', type);
-  }
+    if (type) {
+      query = query.eq('photo_type', type);
+    }
 
-  const { data, error } = await query;
-  if (error) {
-    console.error('getPhotosForModel error:', error);
+    const { data, error } = await query;
+    if (error) {
+      console.error('getPhotosForModel error:', error);
+      return [];
+    }
+
+    // Keep legacy `visible` in sync with `is_visible_to_clients` for older UI code.
+    return (data ?? []).map((row: any) => {
+      const isVisibleToClients = Boolean(row.is_visible_to_clients ?? row.visible ?? true);
+      return {
+        ...(row as ModelPhoto),
+        visible: isVisibleToClients,
+        is_visible_to_clients: row.is_visible_to_clients ?? isVisibleToClients,
+      };
+    });
+  } catch (e) {
+    console.error('getPhotosForModel exception:', e);
     return [];
   }
-
-  // Keep legacy `visible` in sync with `is_visible_to_clients` for older UI code.
-  return (data ?? []).map((row: any) => {
-    const isVisibleToClients = Boolean(row.is_visible_to_clients ?? row.visible ?? true);
-    return {
-      ...(row as ModelPhoto),
-      visible: isVisibleToClients,
-      is_visible_to_clients: row.is_visible_to_clients ?? isVisibleToClients,
-    };
-  });
 }
 
 export async function upsertPhotosForModel(
   modelId: string,
   photos: Array<Omit<ModelPhoto, 'id' | 'model_id'> & { id?: string }>,
 ): Promise<ModelPhoto[]> {
-  const payload = photos.map((p, index) => ({
-    id: p.id ?? undefined,
-    model_id: modelId,
-    url: p.url,
-    sort_order: p.sort_order ?? index,
-    visible: p.visible,
-    is_visible_to_clients: p.is_visible_to_clients ?? p.visible,
-    source: p.source ?? null,
-    api_external_id: p.api_external_id ?? null,
-    photo_type: p.photo_type,
-  }));
+  try {
+    const payload = photos.map((p, index) => ({
+      id: p.id ?? undefined,
+      model_id: modelId,
+      url: p.url,
+      sort_order: p.sort_order ?? index,
+      visible: p.visible,
+      is_visible_to_clients: p.is_visible_to_clients ?? p.visible,
+      source: p.source ?? null,
+      api_external_id: p.api_external_id ?? null,
+      photo_type: p.photo_type,
+    }));
 
-  const { data, error } = await supabase
-    .from('model_photos')
-    .upsert(payload, { onConflict: 'id' })
-    .select('*')
-    .order('sort_order', { ascending: true });
+    const { data, error } = await supabase
+      .from('model_photos')
+      .upsert(payload, { onConflict: 'id' })
+      .select('*')
+      .order('sort_order', { ascending: true });
 
-  if (error) {
-    console.error('upsertPhotosForModel error:', error);
+    if (error) {
+      console.error('upsertPhotosForModel error:', error);
+      return [];
+    }
+    return (data ?? []) as ModelPhoto[];
+  } catch (e) {
+    console.error('upsertPhotosForModel exception:', e);
     return [];
   }
-  return (data ?? []) as ModelPhoto[];
 }
 
 export async function addPhoto(
@@ -205,16 +249,21 @@ export async function updatePhoto(
     payload.visible = fields.is_visible_to_clients;
   }
 
-  const { error } = await supabase
-    .from('model_photos')
-    .update(payload)
-    .eq('id', photoId);
+  try {
+    const { error } = await supabase
+      .from('model_photos')
+      .update(payload)
+      .eq('id', photoId);
 
-  if (error) {
-    console.error('updatePhoto error:', error);
+    if (error) {
+      console.error('updatePhoto error:', error);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('updatePhoto exception:', e);
     return false;
   }
-  return true;
 }
 
 export async function reorderPhotos(
@@ -222,22 +271,26 @@ export async function reorderPhotos(
   orderedIds: string[],
 ): Promise<boolean> {
   if (!orderedIds.length) return true;
+  try {
+    const updates = orderedIds.map((id, index) => ({
+      id,
+      model_id: modelId,
+      sort_order: index,
+    }));
 
-  const updates = orderedIds.map((id, index) => ({
-    id,
-    model_id: modelId,
-    sort_order: index,
-  }));
+    const { error } = await supabase
+      .from('model_photos')
+      .upsert(updates, { onConflict: 'id' });
 
-  const { error } = await supabase
-    .from('model_photos')
-    .upsert(updates, { onConflict: 'id' });
-
-  if (error) {
-    console.error('reorderPhotos error:', error);
+    if (error) {
+      console.error('reorderPhotos error:', error);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('reorderPhotos exception:', e);
     return false;
   }
-  return true;
 }
 
 /** Public bucket for images that everyone may see (model portfolio, etc.). Keep "documents" private. */
@@ -250,11 +303,35 @@ const PRIVATE_PHOTOS_PREFIX = 'model-private-photos';
 
 /** Upload a portfolio or polaroid photo for a model; returns public URL or null. */
 export async function uploadModelPhoto(modelId: string, file: Blob | File): Promise<string | null> {
-  const ext = file instanceof File ? (file.name.split('.').pop() || 'jpg') : 'jpg';
+  // MIME whitelist + size check (images only for portfolio)
+  const mimeCheck = validateFile(file, PHOTO_ALLOWED_TYPES);
+  if (!mimeCheck.ok) {
+    console.warn('uploadModelPhoto: file validation failed', mimeCheck.error);
+    void logSecurityEvent({ type: 'file_rejected', metadata: { service: 'modelPhotosSupabase', fn: 'uploadModelPhoto', reason: 'mime' } });
+    return null;
+  }
+  // Magic byte check — prevents renamed executables
+  const magicCheck = await checkMagicBytes(file);
+  if (!magicCheck.ok) {
+    console.warn('uploadModelPhoto: magic bytes check failed', magicCheck.error);
+    void logSecurityEvent({ type: 'magic_bytes_fail', metadata: { service: 'modelPhotosSupabase', fn: 'uploadModelPhoto' } });
+    return null;
+  }
+  // Extension consistency check
+  const extCheck = checkExtensionConsistency(file);
+  if (!extCheck.ok) {
+    console.warn('uploadModelPhoto: extension consistency check failed', extCheck.error);
+    void logSecurityEvent({ type: 'extension_mismatch', metadata: { service: 'modelPhotosSupabase', fn: 'uploadModelPhoto' } });
+    return null;
+  }
+  // Strip EXIF metadata (GPS, camera info) via Canvas re-encoding
+  const safeFile = await stripExifAndCompress(file);
+
+  const ext = safeFile instanceof File ? (safeFile.name.split('.').pop() || 'jpg') : 'jpg';
   const path = `${MODEL_PHOTOS_PREFIX}/${modelId}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
   try {
-    const { error } = await supabase.storage.from(PUBLIC_IMAGES_BUCKET).upload(path, file, {
-      contentType: file.type || 'image/jpeg',
+    const { error } = await supabase.storage.from(PUBLIC_IMAGES_BUCKET).upload(path, safeFile, {
+      contentType: safeFile.type || 'image/jpeg',
       upsert: false,
     });
     if (error) {
@@ -278,11 +355,35 @@ export async function uploadPrivateModelPhoto(
   modelId: string,
   file: Blob | File,
 ): Promise<string | null> {
-  const ext = file instanceof File ? (file.name.split('.').pop() || 'jpg') : 'jpg';
+  // MIME whitelist + size check (images only)
+  const mimeCheck = validateFile(file, PHOTO_ALLOWED_TYPES);
+  if (!mimeCheck.ok) {
+    console.warn('uploadPrivateModelPhoto: file validation failed', mimeCheck.error);
+    void logSecurityEvent({ type: 'file_rejected', metadata: { service: 'modelPhotosSupabase', fn: 'uploadPrivateModelPhoto', reason: 'mime' } });
+    return null;
+  }
+  // Magic byte check — prevents renamed executables
+  const magicCheck = await checkMagicBytes(file);
+  if (!magicCheck.ok) {
+    console.warn('uploadPrivateModelPhoto: magic bytes check failed', magicCheck.error);
+    void logSecurityEvent({ type: 'magic_bytes_fail', metadata: { service: 'modelPhotosSupabase', fn: 'uploadPrivateModelPhoto' } });
+    return null;
+  }
+  // Extension consistency check
+  const extCheck = checkExtensionConsistency(file);
+  if (!extCheck.ok) {
+    console.warn('uploadPrivateModelPhoto: extension consistency check failed', extCheck.error);
+    void logSecurityEvent({ type: 'extension_mismatch', metadata: { service: 'modelPhotosSupabase', fn: 'uploadPrivateModelPhoto' } });
+    return null;
+  }
+  // Strip EXIF metadata (GPS, camera info) via Canvas re-encoding
+  const safeFile = await stripExifAndCompress(file);
+
+  const ext = safeFile instanceof File ? (safeFile.name.split('.').pop() || 'jpg') : 'jpg';
   const path = `${PRIVATE_PHOTOS_PREFIX}/${modelId}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
   try {
-    const { error: uploadError } = await supabase.storage.from(PRIVATE_BUCKET).upload(path, file, {
-      contentType: file.type || 'image/jpeg',
+    const { error: uploadError } = await supabase.storage.from(PRIVATE_BUCKET).upload(path, safeFile, {
+      contentType: safeFile.type || 'image/jpeg',
       upsert: false,
     });
     if (uploadError) {

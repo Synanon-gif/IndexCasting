@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,16 @@ import {
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { getModelsFromSupabase } from '../services/modelsSupabase';
+import {
+  recordInteraction,
+  loadSessionIds,
+  saveSessionId,
+  clearSessionIds,
+} from '../services/clientDiscoverySupabase';
+import { useAuth } from '../context/AuthContext';
+import { getMyClientMemberRole } from '../services/organizationsInvitationsSupabase';
 import { uiCopy } from '../constants/uiCopy';
+import { addOptionRequest } from '../store/optionRequests';
 
 type ClientModel = {
   id: string;
@@ -36,9 +45,26 @@ const initialFilters: Filters = {
   hairColor: 'all',
 };
 
-const AVAILABLE_DATES: string[] = [];
+/** Generate the next N weekdays (Mon–Fri) starting from tomorrow as ISO date strings. */
+function getUpcomingWeekdays(count = 14): string[] {
+  const dates: string[] = [];
+  const cursor = new Date();
+  cursor.setHours(0, 0, 0, 0);
+  cursor.setDate(cursor.getDate() + 1); // start from tomorrow
+  while (dates.length < count) {
+    const day = cursor.getDay();
+    if (day !== 0 && day !== 6) {
+      dates.push(cursor.toISOString().slice(0, 10));
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return dates;
+}
 
 export const CustomerSwipeScreen: React.FC = () => {
+  const auth = useAuth();
+  const [clientOrgId, setClientOrgId] = useState<string | null>(null);
+
   const [models, setModels] = useState<ClientModel[]>([]);
   const [index, setIndex] = useState(0);
   const [filters, setFilters] = useState<Filters>(initialFilters);
@@ -47,6 +73,30 @@ export const CustomerSwipeScreen: React.FC = () => {
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [isSendingOption, setIsSendingOption] = useState(false);
   const [optionSuccess, setOptionSuccess] = useState<string | null>(null);
+
+  /**
+   * Model IDs already shown in this session — excluded from the visible queue
+   * to prevent duplicates. Stored in a ref to avoid re-renders.
+   */
+  const sessionSeenIds = useRef<Set<string>>(new Set());
+
+  // Resolve client org ID for interaction recording and load persisted session.
+  useEffect(() => {
+    const userId = auth?.profile?.id;
+    if (!userId || auth?.profile?.role !== 'client') return;
+    void (async () => {
+      try {
+        const roleData = await getMyClientMemberRole();
+        if (roleData?.organization_id) {
+          setClientOrgId(roleData.organization_id);
+          // Restore session so refreshes don't repeat already-shown models.
+          sessionSeenIds.current = loadSessionIds(roleData.organization_id);
+        }
+      } catch (e) {
+        console.error('CustomerSwipeScreen: failed to resolve clientOrgId', e);
+      }
+    })();
+  }, [auth?.profile?.id, auth?.profile?.role]);
 
   useEffect(() => {
     getModelsFromSupabase().then((list) => {
@@ -66,8 +116,19 @@ export const CustomerSwipeScreen: React.FC = () => {
     });
   }, []);
 
+  // Reset session dedup when filters change (new discovery context).
+  useEffect(() => {
+    if (clientOrgId) {
+      clearSessionIds(clientOrgId);
+    }
+    sessionSeenIds.current = new Set();
+    setIndex(0);
+  }, [filters, clientOrgId]);
+
   const filteredModels = useMemo(() => {
     return models.filter((m) => {
+      // Session dedup: skip models already shown in this session.
+      if (sessionSeenIds.current.has(m.id)) return false;
       if (filters.city !== 'all' && m.city !== filters.city) return false;
       if (filters.hairColor !== 'all' && m.hairColor !== filters.hairColor) {
         return false;
@@ -89,10 +150,22 @@ export const CustomerSwipeScreen: React.FC = () => {
     }
   }, [filteredModels, index]);
 
-  const current = filteredModels[index];
+  const current = filteredModels[index] ?? null;
+
+  // Record "viewed", persist to localStorage, and add to in-memory dedup set.
+  useEffect(() => {
+    if (!current || !clientOrgId) return;
+    sessionSeenIds.current.add(current.id);
+    saveSessionId(clientOrgId, current.id);
+    void recordInteraction(current.id, 'viewed');
+  }, [current?.id, clientOrgId]);
 
   const handleNext = () => {
     if (!filteredModels.length) return;
+    // Record rejection before advancing.
+    if (current && clientOrgId) {
+      void recordInteraction(current.id, 'rejected');
+    }
     if (index < filteredModels.length - 1) {
       setIndex(index + 1);
     } else {
@@ -108,16 +181,27 @@ export const CustomerSwipeScreen: React.FC = () => {
     setIsDatePickerOpen(true);
   };
 
-  const handleSelectDate = (date: string) => {
+  const handleSelectDate = useCallback((date: string) => {
+    const model = detailModel ?? current;
+    if (!model) return;
     setIsDatePickerOpen(false);
     setIsSendingOption(true);
     setOptionSuccess(null);
-    setTimeout(() => {
-      setIsSendingOption(false);
-      setOptionSuccess(uiCopy.swipe.optionSuccessMessage(date));
-      setTimeout(() => setOptionSuccess(null), 2600);
-    }, 900);
-  };
+
+    const clientName = auth?.profile?.name ?? auth?.profile?.email ?? 'Client';
+    addOptionRequest(
+      clientName,
+      model.name,
+      model.id,
+      date,
+      undefined,
+      { requestType: 'option' },
+    );
+
+    setIsSendingOption(false);
+    setOptionSuccess(uiCopy.swipe.optionSuccessMessage(date));
+    setTimeout(() => setOptionSuccess(null), 2600);
+  }, [detailModel, current, auth?.profile]);
 
   return (
     <View style={styles.container}>
@@ -177,8 +261,8 @@ export const CustomerSwipeScreen: React.FC = () => {
         </TouchableOpacity>
       ) : (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyTitle}>{uiCopy.swipe.emptyTitle}</Text>
-          <Text style={styles.emptyCopy}>{uiCopy.swipe.emptyCopy}</Text>
+          <Text style={styles.emptyTitle}>{uiCopy.discover.noMoreModels}</Text>
+          <Text style={styles.emptyCopy}>{uiCopy.discover.noMoreModelsSub}</Text>
         </View>
       )}
 
@@ -405,6 +489,7 @@ const DatePickerModal: React.FC<DatePickerModalProps> = ({
   onClose,
   onSelectDate,
 }) => {
+  const availableDates = useMemo(() => getUpcomingWeekdays(14), []);
   return (
     <Modal visible={visible} transparent animationType="fade">
       <TouchableOpacity
@@ -416,7 +501,7 @@ const DatePickerModal: React.FC<DatePickerModalProps> = ({
           <Text style={styles.dateTitle}>{uiCopy.swipe.sendOptionTitle}</Text>
           <Text style={styles.dateSub}>{uiCopy.swipe.sendOptionSubtitle}</Text>
           <View style={styles.chipRow}>
-            {AVAILABLE_DATES.map((d) => (
+            {availableDates.map((d) => (
               <Chip
                 key={d}
                 label={d}

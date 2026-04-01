@@ -45,8 +45,12 @@ describe('formatRecruitingChatRpcError', () => {
     expect(formatRecruitingChatRpcError({ message: 'wrong agency for application' })).toContain('different agency');
   });
 
-  it('includes technical detail for unknown errors', () => {
-    expect(formatRecruitingChatRpcError({ message: 'xyz_unknown_code', details: 'foo' })).toContain('Technical:');
+  it('returns generic error message for unknown errors (no internal details exposed)', () => {
+    const result = formatRecruitingChatRpcError({ message: 'xyz_unknown_code', details: 'foo' });
+    expect(result).not.toContain('Technical:');
+    expect(result).not.toContain('xyz_unknown_code');
+    expect(result).not.toContain('foo');
+    expect(result.length).toBeGreaterThan(0);
   });
 });
 

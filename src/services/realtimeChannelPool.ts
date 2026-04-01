@@ -19,11 +19,19 @@
 import { supabase } from '../../lib/supabase';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
-/** Max concurrent open Supabase Realtime channels per client session. */
-const MAX_CHANNELS = 25;
+/**
+ * Max concurrent open Supabase Realtime channels per client session.
+ * Bei 100k Usern mit mehreren parallelen Chat-Fenstern (Messenger +
+ * Option-Chat + Recruiting) reichen 25 nicht mehr aus. 50 deckt
+ * typische Multi-Tab-Sessions ohne Plan-Limit zu reißen.
+ */
+const MAX_CHANNELS = 50;
 
-/** How long (ms) an idle channel stays open after the last subscriber leaves. */
-const IDLE_EVICT_MS = 20_000;
+/**
+ * Idle-Timeout: 30s statt 20s — gibt mehr Spielraum bei schnellen
+ * Navigation-Sequenzen (Tab-Wechsel zwischen Chats).
+ */
+const IDLE_EVICT_MS = 30_000;
 
 type DispatchFn = (payload: unknown) => void;
 
@@ -107,13 +115,22 @@ export function pooledSubscribe(
   entry.callbacks.add(callback);
   entry.refCount++;
 
+  // Guard against double-invocation (React Strict Mode, accidental double-unmount).
+  let cleaned = false;
+
   return () => {
+    if (cleaned) return;
+    cleaned = true;
+
     const e = pool.get(key);
     if (!e) return;
     e.callbacks.delete(callback);
     e.refCount = Math.max(0, e.refCount - 1);
 
     if (e.refCount === 0) {
+      // Clear any existing idle timer before setting a new one to prevent
+      // multiple concurrent timers for the same channel.
+      if (e.idleTimer !== null) clearTimeout(e.idleTimer);
       // Keep channel open briefly — user might navigate back.
       e.idleTimer = setTimeout(() => {
         supabase.removeChannel(e.channel);

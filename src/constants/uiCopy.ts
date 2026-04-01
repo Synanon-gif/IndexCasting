@@ -197,6 +197,17 @@ export const uiCopy = {
     ownerOnly:
       'Only the organization owner can delete this workspace account. Contact your owner if you need to leave the team.',
     notAvailableSignedOut: 'Sign in with a full account to manage deletion.',
+    personalDeleteDescription: 'Remove your personal account from this platform. You will be removed from your organization and your account will be scheduled for deletion.',
+    personalDeleteConfirmTitle: 'Delete your account?',
+    personalDeleteConfirmMessage: 'You will be removed from your organization and your account will be scheduled for deletion. Data is kept for 30 days, then permanently removed. Continue?',
+    dissolveOrgTitle: 'Delete organization',
+    dissolveOrgDescription: 'This permanently removes the organization, all team members, and invitations. This cannot be undone. After deleting the organization, you can also delete your personal account.',
+    dissolveOrgConfirmTitle: 'Delete organization?',
+    dissolveOrgConfirmMessage: 'Are you sure? All team members will be removed and the organization cannot be recovered. This cannot be undone.',
+    dissolveOrgButton: 'Delete organization',
+    dissolveOrgWorking: 'Deleting organization…',
+    dissolveOrgSuccess: 'Organization deleted. You can now delete your personal account below.',
+    dissolveOrgFailed: 'Could not delete the organization. Please try again.',
   },
   app: {
     crashTitle: 'Something went wrong',
@@ -371,6 +382,19 @@ export const uiCopy = {
     ensureClientTargetNeedsOrg:
       'This client has no workspace yet. They must sign in as a client (or accept a team invitation) so their organization exists before you can chat.',
     contactLink: 'Contact',
+  },
+  messages: {
+    searchPlaceholder: 'Search chats and models…',
+    searchPlaceholderClient: 'Search agency chats…',
+    searchSectionClientChats: 'Client chats',
+    searchSectionRecruiting: 'Recruiting chats',
+    searchSectionOptionRequests: 'Option requests',
+    searchSectionModels: 'Models — start new chat',
+    searchNoResults: 'No results for your search.',
+    modelNoAccount: 'No account yet',
+    startChat: 'Start chat',
+    openChat: 'Open chat',
+    modelDirectChatFailed: 'Could not open chat with this model. Please try again.',
   },
   /** Recruiting chat RPC errors and messages. */
   recruiting: {
@@ -629,6 +653,8 @@ export const uiCopy = {
     exitPackage: 'Exit Package',
     chatWithAgency: 'Chat with Agency',
     chatWithAgencyLoading: 'Opening chat…',
+    noMoreModels: 'No more models right now.',
+    noMoreModelsSub: 'Check back soon for new talent, or adjust your filters.',
   },
   /** Client Projects tab — project management actions. */
   projects: {
@@ -792,6 +818,28 @@ export const uiCopy = {
       title: 'Awaiting confirmation',
       message: 'The model needs to confirm this booking.',
     },
+    agencyCounterOffer: {
+      title: 'Counter offer received',
+      message: 'The agency has proposed a different fee. Please review and respond.',
+    },
+    jobConfirmed: {
+      title: 'Job confirmed',
+      message: 'The client has confirmed this option as a job.',
+    },
+    clientRejectedCounter: {
+      title: 'Counter offer declined',
+      message: 'The client has declined the counter offer.',
+    },
+  },
+  systemMessages: {
+    agencyAcceptedPrice: 'Agency accepted the proposed fee.',
+    agencyDeclinedPrice: 'Agency declined the proposed fee. A counter offer can be sent below.',
+    agencyCounterOffer: (price: number, currency: string) => `Agency proposed ${price} ${currency}.`,
+    clientAcceptedCounter: 'Client accepted the agency proposal.',
+    clientRejectedCounter: 'Client declined the counter offer.',
+    jobConfirmedByClient: 'Job confirmed by client.',
+    noModelAccount: 'No model app account on file — you can negotiate and confirm with the client without waiting for model approval. The booking will appear in client and agency calendars when confirmed.',
+    modelApprovedBooking: '✓ Approved by Model',
   },
   modelMedia: {
     portfolioTitle: 'Portfolio',
@@ -842,6 +890,24 @@ export const uiCopy = {
     measurementBust: 'Bust',
     measurementWaist: 'Waist',
     measurementHips: 'Hips',
+  },
+  validation: {
+    messageTooLong: 'Message is too long (max 2000 characters).',
+    messageEmpty: 'Message cannot be empty.',
+    unsafeUrl: 'Only HTTPS links are allowed.',
+    blockedProtocol: 'This link type is not allowed for security reasons.',
+    fileTooLarge: 'File is too large. Maximum size is 200 MB.',
+    fileTypeNotAllowed: 'This file type is not allowed. Please upload an image (JPEG, PNG, WebP) or PDF.',
+    fileContentMismatch: 'File content does not match its type. Renamed files are not allowed.',
+    fileEmpty: 'The selected file is empty.',
+    rateLimitMessages: 'You are sending messages too quickly. Please wait a moment.',
+    rateLimitUploads: 'Too many uploads. Please wait before uploading again.',
+    uploadFailed: 'Upload failed. Please try again.',
+    genericValidationError: 'Your input could not be processed. Please check and try again.',
+  },
+  messenger: {
+    sendFailed: 'Could not send message. Please try again.',
+    loadFailed: 'Could not load messages. Please refresh.',
   },
 } as const;
 

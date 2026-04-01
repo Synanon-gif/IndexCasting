@@ -31,6 +31,16 @@ import {
   bookingStatusLabel,
   type BookingEventStatus,
 } from '../services/bookingEventsSupabase';
+import {
+  validateText,
+  validateUrl,
+  validateFile,
+  checkMagicBytes,
+  extractSafeUrls,
+  messageLimiter,
+  uploadLimiter,
+  CHAT_ALLOWED_MIME_TYPES,
+} from '../../lib/validation';
 
 /** Organization-scoped B2B thread (client org ↔ agency org). Not a user-to-user or "connection" chat. */
 export type OrgMessengerInlineProps = {
@@ -90,6 +100,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const reload = () => void getMessagesWithSenderInfo(conversationId).then(setMsgs);
@@ -165,27 +176,55 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
     );
   }, [msgs]);
 
-  /** Detect bare URLs in text and return the first one found */
-  function extractUrl(text: string): string | null {
-    const match = text.match(/https?:\/\/[^\s]+/);
-    return match ? match[0] : null;
-  }
-
   const sendChat = async () => {
     const text = input.trim();
     if (!text || !viewerUserId) return;
-    // Auto-promote plain text containing a URL to a 'link' message
-    const url = extractUrl(text);
-    if (url) {
-      await sendMessengerMessage(conversationId, viewerUserId, text, undefined, undefined, {
-        messageType: 'link',
-        metadata: { url },
-      });
-    } else {
-      await sendMessengerMessage(conversationId, viewerUserId, text);
+    setSendError(null);
+
+    // Rate limit check
+    const rateCheck = messageLimiter.check(viewerUserId);
+    if (!rateCheck.ok) {
+      setSendError(uiCopy.validation.rateLimitMessages);
+      return;
     }
-    setInput('');
-    reload();
+
+    // Text length + content validation
+    const textCheck = validateText(text, { maxLength: 2000, allowEmpty: false });
+    if (!textCheck.ok) {
+      setSendError(uiCopy.validation.messageTooLong);
+      return;
+    }
+
+    // Extract URLs in the text and validate each one
+    const allRawUrls = text.match(/https?:\/\/[^\s]+/gi) ?? [];
+    const safeUrls = extractSafeUrls(text);
+    if (allRawUrls.length > safeUrls.length) {
+      setSendError(uiCopy.validation.unsafeUrl);
+      return;
+    }
+
+    try {
+      // Auto-promote plain text containing a URL to a 'link' message.
+      const firstUrl = safeUrls[0] ?? null;
+      if (firstUrl) {
+        const urlCheck = validateUrl(firstUrl);
+        if (!urlCheck.ok) {
+          setSendError(uiCopy.validation.unsafeUrl);
+          return;
+        }
+        await sendMessengerMessage(conversationId, viewerUserId, text, undefined, undefined, {
+          messageType: 'link',
+          metadata: { url: firstUrl },
+        });
+      } else {
+        await sendMessengerMessage(conversationId, viewerUserId, text);
+      }
+      setInput('');
+      reload();
+    } catch (e) {
+      console.error('sendChat error:', e);
+      setSendError(uiCopy.messenger.sendFailed);
+    }
   };
 
   const handleFileSelected = async (file: File) => {
@@ -193,9 +232,30 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
     setUploading(true);
     setUploadError(null);
     try {
+      // Rate limit check
+      const rateCheck = uploadLimiter.check(viewerUserId);
+      if (!rateCheck.ok) {
+        setUploadError(uiCopy.validation.rateLimitUploads);
+        return;
+      }
+
+      // MIME type + size validation
+      const mimeCheck = validateFile(file, CHAT_ALLOWED_MIME_TYPES);
+      if (!mimeCheck.ok) {
+        setUploadError(uiCopy.validation.fileTypeNotAllowed);
+        return;
+      }
+
+      // Magic byte check — prevents renamed executables
+      const magicCheck = await checkMagicBytes(file);
+      if (!magicCheck.ok) {
+        setUploadError(uiCopy.validation.fileContentMismatch);
+        return;
+      }
+
       const path = await uploadChatFile(conversationId, file, file.name);
       if (!path) {
-        setUploadError(uiCopy.b2bChat.uploadFailed);
+        setUploadError(uiCopy.validation.uploadFailed);
         return;
       }
       await sendMessengerMessage(
@@ -208,7 +268,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
       reload();
     } catch (e) {
       console.error('handleFileSelected error:', e);
-      setUploadError(uiCopy.b2bChat.uploadFailed);
+      setUploadError(uiCopy.validation.uploadFailed);
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -223,15 +283,26 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
 
   const sendRich = async (type: MessagePayloadType, text: string, metadata?: Record<string, unknown>) => {
     if (!viewerUserId) return;
-    await sendMessengerMessage(conversationId, viewerUserId, text, undefined, undefined, {
-      messageType: type,
-      metadata: metadata ?? null,
-    });
-    setShareOpen(null);
-    reload();
+    try {
+      await sendMessengerMessage(conversationId, viewerUserId, text, undefined, undefined, {
+        messageType: type,
+        metadata: metadata ?? null,
+      });
+      setShareOpen(null);
+      reload();
+    } catch (e) {
+      console.error('sendRich error:', e);
+      setSendError(uiCopy.messenger.sendFailed);
+    }
   };
 
   const openUrl = (url: string) => {
+    // Only open validated https:// URLs
+    const check = validateUrl(url);
+    if (!check.ok) {
+      console.warn('openUrl: blocked unsafe URL', url);
+      return;
+    }
     void Linking.openURL(url).catch(() => {});
   };
 
@@ -430,6 +501,9 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
         })}
       </ScrollView>
 
+      {sendError ? (
+        <Text style={styles.uploadError}>{sendError}</Text>
+      ) : null}
       {uploadError ? (
         <Text style={styles.uploadError}>{uploadError}</Text>
       ) : null}
@@ -439,7 +513,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt"
+            accept="image/jpeg,image/png,image/webp,application/pdf"
             style={{ display: 'none' }}
             onChange={(e) => {
               const file = e.target.files?.[0];
@@ -460,7 +534,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
         </TouchableOpacity>
         <TextInput
           value={input}
-          onChangeText={setInput}
+          onChangeText={(v) => { setInput(v); if (sendError) setSendError(null); }}
           placeholder={uiCopy.b2bChat.messagePlaceholder}
           placeholderTextColor={colors.textSecondary}
           style={styles.chatPanelInput}

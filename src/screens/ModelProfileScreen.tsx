@@ -6,7 +6,7 @@ import { colors, spacing, typography } from '../theme/theme';
 import { getModelsFromSupabase, getModelForUserFromSupabase, type SupabaseModel } from '../services/modelsSupabase';
 import { upsertModelLocation, roundCoord } from '../services/modelLocationsSupabase';
 import { supabase } from '../../lib/supabase';
-import { getModelBookingThreadIds, getRecruitingThread, getRecruitingMessages, addRecruitingMessage } from '../store/recruitingChats';
+import { getModelBookingThreadIds, getRecruitingThread, getRecruitingMessages, addRecruitingMessage, subscribeRecruitingChats } from '../store/recruitingChats';
 import {
   getOptionRequests,
   subscribe,
@@ -44,6 +44,9 @@ import { getThread } from '../services/recruitingChatSupabase';
 import { BookingChatView } from '../views/BookingChatView';
 import { useAuth } from '../context/AuthContext';
 import { uiCopy } from '../constants/uiCopy';
+import { listModelAgencyDirectConversations } from '../services/b2bOrgChatSupabase';
+import type { Conversation } from '../services/messengerSupabase';
+import { OrgMessengerInline } from '../components/OrgMessengerInline';
 
 type ModelProfile = {
   id: string;
@@ -111,6 +114,8 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   const [deletingCalendarEntry, setDeletingCalendarEntry] = useState(false);
   const [optionChatAgency, setOptionChatAgency] = useState<Agency | null>(null);
   const [bookingAgencyByThread, setBookingAgencyByThread] = useState<Record<string, string>>({});
+  const [agencyDirectConvs, setAgencyDirectConvs] = useState<Conversation[]>([]);
+  const [openDirectConvId, setOpenDirectConvId] = useState<string | null>(null);
   const [pendingConfirmations, setPendingConfirmations] = useState<SupabaseOptionRequest[]>([]);
   const [confirmingBookingId, setConfirmingBookingId] = useState<string | null>(null);
   const [rejectingBookingId, setRejectingBookingId] = useState<string | null>(null);
@@ -163,8 +168,11 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
 
   useEffect(() => {
     setBookingThreadIds(getModelBookingThreadIds());
-    const interval = setInterval(() => setBookingThreadIds(getModelBookingThreadIds()), 3000);
-    return () => clearInterval(interval);
+    // Subscribe to store changes instead of polling every 3 s.
+    const unsub = subscribeRecruitingChats(() => {
+      setBookingThreadIds(getModelBookingThreadIds());
+    });
+    return unsub;
   }, []);
 
   useEffect(() => {
@@ -189,6 +197,17 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
       cancelled = true;
     };
   }, [tab, bookingThreadIds]);
+
+  useEffect(() => {
+    if (tab !== 'messages' || !userId) return;
+    let cancelled = false;
+    void listModelAgencyDirectConversations(userId).then((convs) => {
+      if (!cancelled) setAgencyDirectConvs(convs);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, userId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -657,6 +676,28 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
             )}
           </View>
 
+          {agencyDirectConvs.length > 0 && (
+            <>
+              <Text style={[st.sectionLabel, { marginTop: spacing.lg }]}>Direct messages</Text>
+              <Text style={st.metaText}>Messages sent directly by your agency</Text>
+              <View style={{ gap: spacing.xs, marginTop: spacing.md }}>
+                {agencyDirectConvs.map((conv) => (
+                  <TouchableOpacity
+                    key={conv.id}
+                    style={st.chatRow}
+                    onPress={() => setOpenDirectConvId(conv.id)}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={st.chatRowKicker}>{uiCopy.model.agencyLabel}</Text>
+                      <Text style={st.chatRowLabel}>{conv.title ?? uiCopy.model.agencyLabel}</Text>
+                    </View>
+                    <Text style={st.chatRowOpen}>Chat</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </>
+          )}
+
           <Text style={[st.sectionLabel, { marginTop: spacing.lg }]}>Option chats</Text>
           {options.filter((o) => o.status !== 'rejected').map((o) => (
             <TouchableOpacity key={o.threadId} style={st.chatRow} onPress={() => setSelectedOptionThread(o.threadId)}>
@@ -694,7 +735,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                   }}
                 >
                   <Text style={{ ...typography.label, color: '#BF360C', marginBottom: 2 }}>
-                    {req.request_type === 'casting' ? 'Casting' : req.request_type === 'job' ? 'Job' : 'Option'}
+                    {req.request_type === 'casting' ? 'Casting' : 'Option'}
                     {req.client_name ? ` · ${req.client_name}` : ''}
                   </Text>
                   <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.sm }}>
@@ -819,6 +860,27 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
           presentation="insetAboveBottomNav"
           bottomInset={bottomTabInset}
         />
+      )}
+
+      {openDirectConvId && (
+        <View style={{
+          position: 'absolute', left: 0, right: 0, top: 0, bottom: bottomTabInset,
+          backgroundColor: colors.background, zIndex: 1000,
+        }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+            <Text style={{ ...typography.label, fontSize: 13, color: colors.textSecondary }}>
+              {agencyDirectConvs.find((c) => c.id === openDirectConvId)?.title ?? uiCopy.model.agencyLabel}
+            </Text>
+            <TouchableOpacity onPress={() => setOpenDirectConvId(null)}>
+              <Text style={{ ...typography.label, color: colors.textPrimary }}>Close</Text>
+            </TouchableOpacity>
+          </View>
+          <OrgMessengerInline
+            conversationId={openDirectConvId}
+            headerTitle={agencyDirectConvs.find((c) => c.id === openDirectConvId)?.title ?? uiCopy.model.agencyLabel}
+            viewerUserId={userId ?? null}
+          />
+        </View>
       )}
 
       <View style={[st.bottomTabBar, { paddingBottom: insets.bottom }]}>

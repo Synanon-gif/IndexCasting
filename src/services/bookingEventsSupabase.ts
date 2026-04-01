@@ -2,6 +2,10 @@ import { supabase } from '../../lib/supabase';
 import { uiCopy } from '../constants/uiCopy';
 import { createNotifications } from './notificationsSupabase';
 
+/** Alle Felder der booking_events-Tabelle — kein SELECT * mehr. */
+const BOOKING_EVENT_SELECT =
+  'id, model_id, client_org_id, agency_org_id, date, type, status, title, note, source_option_request_id, created_by, created_at, updated_at' as const;
+
 /**
  * Booking Events – single source of truth for the booking lifecycle.
  * Table: booking_events (created in migration_system_hardening.sql)
@@ -144,7 +148,7 @@ export async function getBookingEventsForModel(modelId: string): Promise<Booking
   try {
     const { data, error } = await supabase
       .from('booking_events')
-      .select('*')
+      .select(BOOKING_EVENT_SELECT)
       .eq('model_id', modelId)
       .order('date', { ascending: true });
 
@@ -167,7 +171,7 @@ export async function getBookingEventsForOrg(
     const column = role === 'agency' ? 'agency_org_id' : 'client_org_id';
     const { data, error } = await supabase
       .from('booking_events')
-      .select('*')
+      .select(BOOKING_EVENT_SELECT)
       .eq(column, orgId)
       .order('date', { ascending: true });
 
@@ -187,7 +191,7 @@ export async function getBookingEventById(id: string): Promise<BookingEvent | nu
   try {
     const { data, error } = await supabase
       .from('booking_events')
-      .select('*')
+      .select(BOOKING_EVENT_SELECT)
       .eq('id', id)
       .maybeSingle();
 
@@ -213,7 +217,7 @@ export async function getBookingEventsInRange(params: {
     const column = params.role === 'agency' ? 'agency_org_id' : 'client_org_id';
     const { data, error } = await supabase
       .from('booking_events')
-      .select('*')
+      .select(BOOKING_EVENT_SELECT)
       .eq(column, params.orgId)
       .gte('date', params.startDate)
       .lte('date', params.endDate)

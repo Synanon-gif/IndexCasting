@@ -26,6 +26,25 @@ export async function requestAccountDeletion(): Promise<RequestAccountDeletionRe
   }
 }
 
+/**
+ * Soft-delete for any user regardless of org role.
+ * Removes the caller from organization_members and sets deletion_requested_at.
+ * Use this for non-owner bookers/employees who want to leave and delete their account.
+ */
+export async function requestPersonalAccountDeletion(): Promise<{ ok: boolean; reason?: string }> {
+  try {
+    const { error } = await supabase.rpc('request_personal_account_deletion');
+    if (error) {
+      console.error('requestPersonalAccountDeletion error:', error);
+      return { ok: false, reason: error.message || 'failed' };
+    }
+    return { ok: true };
+  } catch (e) {
+    console.error('requestPersonalAccountDeletion exception:', e);
+    return { ok: false, reason: 'failed' };
+  }
+}
+
 /** Löschwunsch zurückziehen (innerhalb der 30 Tage). */
 export async function cancelAccountDeletion(): Promise<boolean> {
   try {
