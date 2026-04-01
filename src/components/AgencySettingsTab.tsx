@@ -7,6 +7,7 @@ import type { Agency } from '../services/agenciesSupabase';
 import { updateAgencySettings } from '../services/agencySettingsSupabase';
 import { showAppAlert } from '../utils/crossPlatformAlert';
 import { ScreenScrollView } from './ScreenScrollView';
+import { AgencyStorageWidget } from './AgencyStorageWidget';
 
 type Props = {
   agency: Agency | null;
@@ -180,6 +181,10 @@ export const AgencySettingsTab: React.FC<Props> = ({ agency, organizationId, onS
         ))}
       </View>
 
+      {/* ── Storage Usage ─────────────────────────────────────── */}
+      <View style={styles.storageDivider} />
+      <AgencyStorageWidget />
+
       <TouchableOpacity style={[styles.saveBtn, saving && { opacity: 0.6 }]} disabled={saving} onPress={() => void onSave()}>
         <Text style={styles.saveLabel}>{saving ? uiCopy.common.saving : uiCopy.agencySettings.save}</Text>
       </TouchableOpacity>
@@ -214,6 +219,12 @@ const styles = StyleSheet.create({
   segmentChipOn: { borderColor: colors.accentGreen, backgroundColor: colors.surface },
   segmentLabel: { ...typography.body, fontSize: 13, color: colors.textSecondary },
   segmentLabelOn: { color: colors.accentGreen, fontWeight: '600' },
+  storageDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginTop: spacing.lg,
+    marginBottom: spacing.lg,
+  },
   saveBtn: {
     backgroundColor: colors.buttonOptionGreen,
     borderRadius: 12,

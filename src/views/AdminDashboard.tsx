@@ -30,13 +30,19 @@ import {
   adminGetAgencyUsageLimits,
   adminSetAgencySwipeLimit,
   adminResetAgencySwipeCount,
+  adminGetOrgStorageUsage,
+  adminSetStorageLimit,
+  adminSetUnlimitedStorage,
+  adminResetToDefaultStorageLimit,
   type AdminProfile,
   type AdminLogEntry,
   type AdminOrgMembership,
   type AdminOrganization,
   type AdminModel,
   type AdminAgencyUsageLimits,
+  type AdminStorageOverride,
 } from '../services/adminSupabase';
+import { formatStorageBytes } from '../services/agencyStorageSupabase';
 import { supabase } from '../../lib/supabase';
 
 type AdminTab = 'accounts' | 'organizations' | 'models' | 'logs' | 'edit';
@@ -88,6 +94,13 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
   const [orgSwipeLimitDraft, setOrgSwipeLimitDraft] = useState<Record<string, string>>({});
   const [orgSwipeSavingId, setOrgSwipeSavingId] = useState<string | null>(null);
   const [orgSwipeResettingId, setOrgSwipeResettingId] = useState<string | null>(null);
+
+  // Agency storage override editing (per org id)
+  const [orgStorageData, setOrgStorageData] = useState<Record<string, AdminStorageOverride | null>>({});
+  const [orgStorageLimitDraft, setOrgStorageLimitDraft] = useState<Record<string, string>>({});
+  const [orgStorageSavingId, setOrgStorageSavingId] = useState<string | null>(null);
+  const [orgStorageUnlimitingId, setOrgStorageUnlimitingId] = useState<string | null>(null);
+  const [orgStorageResettingId, setOrgStorageResettingId] = useState<string | null>(null);
 
   const loadData = async () => {
     setLoading(true);
@@ -316,14 +329,23 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
       setOrgMembers([]);
     }
 
-    // Load swipe limits for agency organisations.
+    // Load swipe limits and storage data for agency organisations.
     if (org.type === 'agency') {
-      const limits = await adminGetAgencyUsageLimits(org.id);
+      const [limits, storageData] = await Promise.all([
+        adminGetAgencyUsageLimits(org.id),
+        adminGetOrgStorageUsage(org.id),
+      ]);
       setOrgSwipeLimits((prev) => ({ ...prev, [org.id]: limits }));
       setOrgSwipeLimitDraft((prev) => ({
         ...prev,
         [org.id]: String(limits?.daily_swipe_limit ?? 10),
       }));
+      setOrgStorageData((prev) => ({ ...prev, [org.id]: storageData }));
+      // Default draft shows current custom limit in GB (or empty for default/unlimited).
+      const currentGb = storageData?.storage_limit_bytes
+        ? (storageData.storage_limit_bytes / (1024 ** 3)).toFixed(1)
+        : '';
+      setOrgStorageLimitDraft((prev) => ({ ...prev, [org.id]: currentGb }));
     }
   };
 
@@ -392,6 +414,85 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
       showFeedback(uiCopy.adminDashboard.swipeLimitResetFailed, false);
     }
     setOrgSwipeResettingId(null);
+  };
+
+  // ── Storage Override Handlers ─────────────────────────────────────────────
+
+  const handleSaveStorageLimit = async (org: AdminOrganization) => {
+    const raw = orgStorageLimitDraft[org.id] ?? '';
+    const gb = parseFloat(raw);
+    if (isNaN(gb) || gb <= 0) {
+      showFeedback(uiCopy.storage.storageLimitValidationNegative, false);
+      return;
+    }
+    if (gb > 1024) {
+      showFeedback(uiCopy.storage.storageLimitValidationTooLarge, false);
+      return;
+    }
+    const bytes = Math.round(gb * 1024 * 1024 * 1024);
+    setOrgStorageSavingId(org.id);
+    const ok = await adminSetStorageLimit(org.id, bytes);
+    if (ok) {
+      showFeedback(uiCopy.storage.storageLimitSaveSuccess);
+      const updated = await adminGetOrgStorageUsage(org.id);
+      setOrgStorageData((prev) => ({ ...prev, [org.id]: updated }));
+    } else {
+      showFeedback(uiCopy.storage.storageLimitSaveFailed, false);
+    }
+    setOrgStorageSavingId(null);
+  };
+
+  const confirmSetUnlimitedStorage = (org: AdminOrganization) => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      if (window.confirm(uiCopy.storage.storageLimitConfirmUnlimited)) {
+        void handleSetUnlimitedStorage(org);
+      }
+      return;
+    }
+    Alert.alert(uiCopy.storage.storageLimitTitle, uiCopy.storage.storageLimitConfirmUnlimited, [
+      { text: uiCopy.common.cancel, style: 'cancel' },
+      { text: uiCopy.storage.storageLimitSetUnlimited, onPress: () => void handleSetUnlimitedStorage(org) },
+    ]);
+  };
+
+  const handleSetUnlimitedStorage = async (org: AdminOrganization) => {
+    setOrgStorageUnlimitingId(org.id);
+    const ok = await adminSetUnlimitedStorage(org.id);
+    if (ok) {
+      showFeedback(uiCopy.storage.storageLimitUnlimitedSuccess);
+      const updated = await adminGetOrgStorageUsage(org.id);
+      setOrgStorageData((prev) => ({ ...prev, [org.id]: updated }));
+    } else {
+      showFeedback(uiCopy.storage.storageLimitUnlimitedFailed, false);
+    }
+    setOrgStorageUnlimitingId(null);
+  };
+
+  const confirmResetStorageLimit = (org: AdminOrganization) => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      if (window.confirm(uiCopy.storage.storageLimitConfirmReset)) {
+        void handleResetStorageLimit(org);
+      }
+      return;
+    }
+    Alert.alert(uiCopy.storage.storageLimitTitle, uiCopy.storage.storageLimitConfirmReset, [
+      { text: uiCopy.common.cancel, style: 'cancel' },
+      { text: uiCopy.storage.storageLimitReset, style: 'destructive', onPress: () => void handleResetStorageLimit(org) },
+    ]);
+  };
+
+  const handleResetStorageLimit = async (org: AdminOrganization) => {
+    setOrgStorageResettingId(org.id);
+    const ok = await adminResetToDefaultStorageLimit(org.id);
+    if (ok) {
+      showFeedback(uiCopy.storage.storageLimitResetSuccess);
+      const updated = await adminGetOrgStorageUsage(org.id);
+      setOrgStorageData((prev) => ({ ...prev, [org.id]: updated }));
+      setOrgStorageLimitDraft((prev) => ({ ...prev, [org.id]: '' }));
+    } else {
+      showFeedback(uiCopy.storage.storageLimitResetFailed, false);
+    }
+    setOrgStorageResettingId(null);
   };
 
   // ── Models ───────────────────────────────────────────────────────────────────
@@ -817,6 +918,97 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
                               {isResetting
                                 ? <ActivityIndicator size="small" color="#fff" />
                                 : <Text style={styles.btnLabel}>{uiCopy.adminDashboard.swipeLimitReset}</Text>
+                              }
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      );
+                    })()}
+
+                    {/* Storage limit controls (agency orgs only) */}
+                    {org.type === 'agency' && (() => {
+                      const sd = orgStorageData[org.id];
+                      const isSaving    = orgStorageSavingId    === org.id;
+                      const isUnlimited = orgStorageUnlimitingId === org.id;
+                      const isResetting = orgStorageResettingId  === org.id;
+
+                      const modeBadge = sd?.is_unlimited
+                        ? uiCopy.storage.storageLimitUnlimited
+                        : sd?.storage_limit_bytes != null
+                        ? uiCopy.storage.storageLimitCustom
+                        : uiCopy.storage.storageLimitDefault;
+
+                      return (
+                        <View style={styles.storageLimitSection}>
+                          <Text style={styles.editLabel}>{uiCopy.storage.storageLimitTitle}</Text>
+                          {sd ? (
+                            <View style={styles.swipeLimitStats}>
+                              <Text style={styles.swipeLimitStat}>
+                                {uiCopy.storage.storageLimitUsed}:{' '}
+                                <Text style={{ fontWeight: '700' }}>{formatStorageBytes(sd.used_bytes)}</Text>
+                              </Text>
+                              <Text style={styles.swipeLimitStat}>
+                                {uiCopy.storage.storageLimitEffective}:{' '}
+                                <Text style={{ fontWeight: '700' }}>
+                                  {sd.is_unlimited
+                                    ? uiCopy.storage.storageLimitUnlimited
+                                    : formatStorageBytes(sd.effective_limit_bytes ?? 5368709120)}
+                                </Text>
+                              </Text>
+                              <View style={[
+                                styles.storageModeTag,
+                                sd.is_unlimited && styles.storageModeTagUnlimited,
+                                sd.storage_limit_bytes != null && !sd.is_unlimited && styles.storageModeTagCustom,
+                              ]}>
+                                <Text style={styles.storageModeTagText}>{modeBadge}</Text>
+                              </View>
+                            </View>
+                          ) : (
+                            <Text style={styles.cardMeta}>No storage row yet (will be created on save).</Text>
+                          )}
+
+                          {/* Custom limit input row */}
+                          <View style={{ flexDirection: 'row', gap: spacing.sm, alignItems: 'center', marginTop: spacing.xs }}>
+                            <TextInput
+                              style={[styles.editInput, { flex: 1 }]}
+                              value={orgStorageLimitDraft[org.id] ?? ''}
+                              onChangeText={(v) => setOrgStorageLimitDraft((d) => ({ ...d, [org.id]: v }))}
+                              keyboardType="decimal-pad"
+                              placeholder={uiCopy.storage.storageLimitInputPlaceholder}
+                              placeholderTextColor={colors.textSecondary}
+                            />
+                            <TouchableOpacity
+                              style={[styles.btnSmall, styles.btnGreen, isSaving && { opacity: 0.5 }]}
+                              onPress={() => void handleSaveStorageLimit(org)}
+                              disabled={isSaving}
+                            >
+                              {isSaving
+                                ? <ActivityIndicator size="small" color="#fff" />
+                                : <Text style={styles.btnLabel}>{uiCopy.storage.storageLimitSetCustom}</Text>
+                              }
+                            </TouchableOpacity>
+                          </View>
+
+                          {/* Unlimited + Reset buttons */}
+                          <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xs }}>
+                            <TouchableOpacity
+                              style={[styles.btnSmall, styles.btnDark, isUnlimited && { opacity: 0.5 }]}
+                              onPress={() => confirmSetUnlimitedStorage(org)}
+                              disabled={isUnlimited}
+                            >
+                              {isUnlimited
+                                ? <ActivityIndicator size="small" color="#fff" />
+                                : <Text style={styles.btnLabel}>{uiCopy.storage.storageLimitSetUnlimited}</Text>
+                              }
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={[styles.btnSmall, styles.btnRed, isResetting && { opacity: 0.5 }]}
+                              onPress={() => confirmResetStorageLimit(org)}
+                              disabled={isResetting}
+                            >
+                              {isResetting
+                                ? <ActivityIndicator size="small" color="#fff" />
+                                : <Text style={styles.btnLabel}>{uiCopy.storage.storageLimitReset}</Text>
                               }
                             </TouchableOpacity>
                           </View>
@@ -1302,5 +1494,31 @@ const styles = StyleSheet.create({
     ...typography.label,
     fontSize: 12,
     color: colors.textSecondary,
+  },
+
+  // Storage limit section inside expanded org card
+  storageLimitSection: {
+    marginTop: spacing.md,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  storageModeTag: {
+    paddingVertical: 2,
+    paddingHorizontal: 7,
+    borderRadius: 4,
+    backgroundColor: colors.border,
+    alignSelf: 'flex-start' as const,
+  },
+  storageModeTagUnlimited: {
+    backgroundColor: '#D1FAE5',
+  },
+  storageModeTagCustom: {
+    backgroundColor: '#DBEAFE',
+  },
+  storageModeTagText: {
+    ...typography.label,
+    fontSize: 10,
+    color: colors.textPrimary,
   },
 });

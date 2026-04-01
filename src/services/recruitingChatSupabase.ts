@@ -12,6 +12,21 @@ import {
   CHAT_ALLOWED_MIME_TYPES,
   logSecurityEvent,
 } from '../../lib/validation';
+import { checkAndIncrementStorage, decrementStorage } from './agencyStorageSupabase';
+
+/** Reads the actual stored size of a recruiting chat file from storage.objects metadata. Best-effort — returns null on failure. */
+async function getActualChatFileSize(bucket: string, path: string): Promise<number | null> {
+  try {
+    const folder = path.substring(0, path.lastIndexOf('/'));
+    const filename = path.substring(path.lastIndexOf('/') + 1);
+    const { data, error } = await supabase.storage.from(bucket).list(folder, { search: filename });
+    if (error || !data?.length) return null;
+    const size = data[0]?.metadata?.size;
+    return typeof size === 'number' ? size : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Recruiting-Chat (Agentur ↔ Model nach Bewerbungsannahme).
@@ -313,9 +328,36 @@ export async function uploadRecruitingChatFile(
     return null;
   }
 
+  // Agency storage limit check — non-agency users pass through automatically.
+  const storageCheck = await checkAndIncrementStorage(file.size);
+  if (!storageCheck.allowed) {
+    console.warn('uploadRecruitingChatFile: storage limit reached', storageCheck);
+    return null;
+  }
+
+  const claimedSize = file instanceof File ? file.size : (file as Blob).size;
   const path = `recruiting/${threadId}/${Date.now()}_${fileName}`;
   const { error } = await supabase.storage.from('chat-files').upload(path, file);
-  if (error) { console.error('uploadRecruitingChatFile error:', error); return null; }
+  if (error) {
+    console.error('uploadRecruitingChatFile error:', error);
+    await decrementStorage(claimedSize);
+    return null;
+  }
+
+  // BUG 3 FIX: read actual size from storage.objects post-upload and reconcile
+  // any drift between the client-reported size and what was actually stored.
+  const actualSize = await getActualChatFileSize('chat-files', path) ?? claimedSize;
+  if (actualSize !== claimedSize) {
+    if (actualSize > claimedSize) {
+      const driftResult = await checkAndIncrementStorage(actualSize - claimedSize);
+      if (!driftResult.allowed) {
+        console.warn('[storage] uploadRecruitingChatFile: post-upload size drift exceeded limit — counter undercounted', { actualSize, claimedSize });
+      }
+    } else {
+      await decrementStorage(claimedSize - actualSize);
+    }
+  }
+
   return path;
 }
 

@@ -171,10 +171,19 @@ describe('deletePhoto', () => {
     const { deletePhoto } = await import('../modelPhotosSupabase');
 
     mockStorageFrom.mockReturnValue({ remove: mockStorageRemove.mockResolvedValue({ error: null }) });
-    mockFrom.mockReturnValue({
+
+    // First from() call: SELECT file_size_bytes (BUG 1 fix — reliable decrement).
+    const selectChain = {
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      maybeSingle: jest.fn().mockResolvedValue({ data: { file_size_bytes: 204800 }, error: null }),
+    };
+    // Second from() call: DELETE after storage removal.
+    const deleteChain = {
       delete: jest.fn().mockReturnThis(),
       eq: jest.fn().mockResolvedValue({ error: null }),
-    });
+    };
+    mockFrom.mockReturnValueOnce(selectChain).mockReturnValueOnce(deleteChain);
 
     const publicUrl =
       'https://xyz.supabase.co/storage/v1/object/public/documentspictures/model-photos/model-1/img.jpg';
@@ -190,10 +199,17 @@ describe('deletePhoto', () => {
     const { deletePhoto } = await import('../modelPhotosSupabase');
 
     mockStorageFrom.mockReturnValue({ remove: mockStorageRemove.mockResolvedValue({ error: null }) });
-    mockFrom.mockReturnValue({
+
+    const selectChain = {
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      maybeSingle: jest.fn().mockResolvedValue({ data: { file_size_bytes: 0 }, error: null }),
+    };
+    const deleteChain = {
       delete: jest.fn().mockReturnThis(),
       eq: jest.fn().mockResolvedValue({ error: { message: 'permission denied' } }),
-    });
+    };
+    mockFrom.mockReturnValueOnce(selectChain).mockReturnValueOnce(deleteChain);
 
     const result = await deletePhoto('photo-id-2', 'https://xyz.supabase.co/storage/v1/object/public/documentspictures/model-photos/x/y.jpg');
     expect(result).toBe(false);
@@ -273,10 +289,18 @@ describe('deletePhoto — bucket selection by URL', () => {
     const { deletePhoto } = await import('../modelPhotosSupabase');
 
     mockStorageFrom.mockReturnValue({ remove: mockStorageRemove.mockResolvedValue({ error: null }) });
-    mockFrom.mockReturnValue({
-      delete: jest.fn().mockReturnThis(),
-      eq: jest.fn().mockResolvedValue({ error: null }),
-    });
+
+    // First from(): SELECT file_size_bytes; second from(): DELETE.
+    mockFrom
+      .mockReturnValueOnce({
+        select: jest.fn().mockReturnThis(),
+        eq: jest.fn().mockReturnThis(),
+        maybeSingle: jest.fn().mockResolvedValue({ data: { file_size_bytes: 102400 }, error: null }),
+      })
+      .mockReturnValueOnce({
+        delete: jest.fn().mockReturnThis(),
+        eq: jest.fn().mockResolvedValue({ error: null }),
+      });
 
     // Private photos are stored under /documents/ (NOT /documentspictures/)
     const privateUrl =
@@ -292,10 +316,17 @@ describe('deletePhoto — bucket selection by URL', () => {
     const { deletePhoto } = await import('../modelPhotosSupabase');
 
     mockStorageFrom.mockReturnValue({ remove: mockStorageRemove.mockResolvedValue({ error: null }) });
-    mockFrom.mockReturnValue({
-      delete: jest.fn().mockReturnThis(),
-      eq: jest.fn().mockResolvedValue({ error: null }),
-    });
+
+    mockFrom
+      .mockReturnValueOnce({
+        select: jest.fn().mockReturnThis(),
+        eq: jest.fn().mockReturnThis(),
+        maybeSingle: jest.fn().mockResolvedValue({ data: { file_size_bytes: 307200 }, error: null }),
+      })
+      .mockReturnValueOnce({
+        delete: jest.fn().mockReturnThis(),
+        eq: jest.fn().mockResolvedValue({ error: null }),
+      });
 
     const publicUrl =
       'https://xyz.supabase.co/storage/v1/object/public/documentspictures/model-photos/model-1/portfolio.jpg';

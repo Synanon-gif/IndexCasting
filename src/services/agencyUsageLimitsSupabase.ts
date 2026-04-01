@@ -52,7 +52,8 @@ export async function incrementMyAgencySwipeCount(): Promise<SwipeCheckResult> {
     return data as SwipeCheckResult;
   } catch (err) {
     console.error('[agencyUsageLimits] incrementMyAgencySwipeCount error:', err);
-    // Fail open: never block the recruiting flow due to a transient error.
-    return { allowed: true, swipes_used: 0, limit: 10 };
+    // Fail closed: a transient DB error must not silently bypass the daily limit.
+    // The UI should show a "try again" message rather than allowing unlimited swipes.
+    return { allowed: false, swipes_used: 0, limit: 0, error: 'Could not verify swipe limit. Please try again.' };
   }
 }

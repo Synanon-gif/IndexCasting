@@ -56,16 +56,32 @@ export async function createGuestLink(params: {
   }
 }
 
-export async function getGuestLink(linkId: string): Promise<GuestLink | null> {
-  const { data, error } = await supabase
-    .from('guest_links')
-    .select('*')
-    .eq('id', linkId)
-    .eq('is_active', true)
-    .maybeSingle();
-  if (error) { console.error('getGuestLink error:', error); return null; }
-  if (data?.expires_at && new Date(data.expires_at) < new Date()) return null;
-  return data as GuestLink | null;
+/**
+ * Minimal link metadata shape returned by the get_guest_link_info RPC.
+ * Does NOT include agency_id or model_ids — prevents enumeration by anon callers.
+ */
+export type GuestLinkInfo = Pick<
+  GuestLink,
+  'id' | 'label' | 'agency_name' | 'type' | 'is_active' | 'expires_at' | 'tos_accepted_by_guest'
+>;
+
+/**
+ * Fetches display-safe metadata for a single active guest link via a
+ * SECURITY DEFINER RPC (C-3 security fix). Safe for anon callers.
+ * Returns null if the link is invalid, expired, or inactive.
+ */
+export async function getGuestLink(linkId: string): Promise<GuestLinkInfo | null> {
+  try {
+    const { data, error } = await supabase.rpc('get_guest_link_info', {
+      p_link_id: linkId,
+    });
+    if (error) { console.error('getGuestLink RPC error:', error); return null; }
+    if (!data || (data as GuestLinkInfo[]).length === 0) return null;
+    return (data as GuestLinkInfo[])[0] ?? null;
+  } catch (e) {
+    console.error('getGuestLink exception:', e);
+    return null;
+  }
 }
 
 export async function getGuestLinksForAgency(agencyId: string): Promise<GuestLink[]> {

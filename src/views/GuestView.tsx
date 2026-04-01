@@ -1,10 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, Image,
   ActivityIndicator, TextInput, Platform, Modal,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, typography } from '../theme/theme';
-import { getGuestLink, getGuestLinkModels, type GuestLink, type GuestLinkModel } from '../services/guestLinksSupabase';
+import { supabase } from '../../lib/supabase';
+import {
+  getGuestLink, getGuestLinkModels,
+  type GuestLinkInfo, type GuestLinkModel,
+} from '../services/guestLinksSupabase';
 import { signInOrCreateGuestWithOtp } from '../services/guestAuthSupabase';
 import { uiCopy } from '../constants/uiCopy';
 
@@ -22,12 +27,15 @@ type ViewPhase =
   | 'check_email'
   | 'error';
 
+const GUEST_PENDING_KEY = 'guest_pending_request';
+
 export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
-  const [link, setLink] = useState<GuestLink | null>(null);
+  const [link, setLink] = useState<GuestLinkInfo | null>(null);
   const [models, setModels] = useState<GuestLinkModel[]>([]);
   const [loading, setLoading] = useState(true);
   const [phase, setPhase] = useState<ViewPhase>('legal');
   const [pageError, setPageError] = useState<string | null>(null);
+  const realtimeChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   // Legal gate
   const [tosAccepted, setTosAccepted] = useState(false);
@@ -44,25 +52,59 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
   const [email, setEmail] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const g = await getGuestLink(linkId);
-        if (!g) {
-          setPageError(copy.invalidOrExpired);
-          setLoading(false);
-          return;
-        }
-        setLink(g);
-        const results = await getGuestLinkModels(linkId);
-        setModels(results);
-      } catch (e) {
-        console.error('GuestView load error:', e);
-        setPageError(copy.loadError);
-      } finally {
+  const loadLinkData = async () => {
+    try {
+      const g = await getGuestLink(linkId);
+      if (!g) {
+        setPageError(copy.invalidOrExpired);
         setLoading(false);
+        return;
       }
-    })();
+      setLink(g);
+      const results = await getGuestLinkModels(linkId);
+      setModels(results);
+    } catch (e) {
+      console.error('GuestView load error:', e);
+      setPageError(copy.loadError);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadLinkData();
+
+    // M-5: Subscribe to Realtime changes on this specific guest link so that
+    // deactivation or model-list changes during an active session are reflected
+    // without requiring a manual page reload.
+    const channel = supabase
+      .channel(`guest_link_watch_${linkId}`)
+      .on(
+        'postgres_changes',
+        {
+          event:  'UPDATE',
+          schema: 'public',
+          table:  'guest_links',
+          filter: `id=eq.${linkId}`,
+        },
+        () => {
+          // Re-fetch link metadata and models when the link is updated.
+          loadLinkData();
+        },
+      )
+      .subscribe();
+
+    realtimeChannelRef.current = channel;
+
+    return () => {
+      if (realtimeChannelRef.current) {
+        supabase.removeChannel(realtimeChannelRef.current);
+        realtimeChannelRef.current = null;
+      }
+    };
+    // loadLinkData is defined inside the component; eslint-disable below prevents
+    // the exhaustive-deps warning from requiring it in the dependency array.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [linkId]);
 
   const toggleModel = (id: string) => {
@@ -85,20 +127,22 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
 
     setPhase('submitting');
 
-    // Store the request payload in sessionStorage so GuestChatView can pick it up
-    // after the Magic Link auth and create the booking request message.
+    // M-5/M-6: Persist the request payload so GuestChatView can pick it up after
+    // Magic Link auth. Use sessionStorage on web, AsyncStorage on native.
+    const pendingPayload = JSON.stringify({
+      link_id:         linkId,
+      selected_models: Array.from(selectedModelIds),
+      requested_date:  requestDate.trim() || null,
+      message:         requestMessage.trim(),
+      email:           trimmedEmail,
+    });
     if (Platform.OS === 'web' && typeof sessionStorage !== 'undefined') {
-      sessionStorage.setItem(
-        'guest_pending_request',
-        JSON.stringify({
-          link_id: linkId,
-          agency_id: link?.agency_id,
-          selected_models: Array.from(selectedModelIds),
-          requested_date: requestDate.trim() || null,
-          message: requestMessage.trim(),
-          email: trimmedEmail,
-        }),
-      );
+      sessionStorage.setItem(GUEST_PENDING_KEY, pendingPayload);
+    } else {
+      // Native platforms (iOS / Android) — AsyncStorage persists across app restarts.
+      AsyncStorage.setItem(GUEST_PENDING_KEY, pendingPayload).catch((err) => {
+        console.warn('GuestView: AsyncStorage write failed', err);
+      });
     }
 
     const result = await signInOrCreateGuestWithOtp(trimmedEmail);

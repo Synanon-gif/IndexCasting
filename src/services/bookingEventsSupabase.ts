@@ -122,13 +122,22 @@ export async function updateBookingEventStatus(
       };
     }
 
-    const { error } = await supabase
+    // Optimistic lock: only update if the status has not changed since we fetched it.
+    // Without this guard two concurrent callers could race past the ALLOWED_TRANSITIONS
+    // check and both write conflicting states (last-write-wins without error).
+    const { data: updated, error } = await supabase
       .from('booking_events')
       .update({ status: newStatus })
-      .eq('id', id);
+      .eq('id', id)
+      .eq('status', currentStatus)
+      .select('id');
 
     if (error) {
       console.error('updateBookingEventStatus update error:', error);
+      return { ok: false, message: uiCopy.bookingStatus.updateFailed };
+    }
+    if (!updated || updated.length === 0) {
+      // Another caller already changed the status; surface this as a conflict.
       return { ok: false, message: uiCopy.bookingStatus.updateFailed };
     }
 

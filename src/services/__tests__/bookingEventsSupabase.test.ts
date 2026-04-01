@@ -138,32 +138,48 @@ describe('createBookingEvent', () => {
 describe('updateBookingEventStatus', () => {
   beforeEach(() => jest.clearAllMocks());
 
+  /**
+   * Builds a mock for the UPDATE path that matches the optimistic-lock chain:
+   *   .update(payload).eq('id', id).eq('status', currentStatus).select('id')
+   * resolving to { data, error }.
+   */
+  const makeUpdateChain = (result: { data: unknown; error: unknown }) => {
+    const selectFn   = jest.fn().mockResolvedValue(result);
+    const eq2Fn      = jest.fn().mockReturnValue({ select: selectFn });
+    const eq1Fn      = jest.fn().mockReturnValue({ eq: eq2Fn });
+    const updateFn   = jest.fn().mockReturnValue({ eq: eq1Fn });
+    return { update: updateFn };
+  };
+
   it('allows valid transition pending → agency_accepted', async () => {
-    const chain = makeChain(null);
-    chain.maybeSingle.mockResolvedValue({ data: { status: 'pending' }, error: null });
-    chain.update.mockReturnValue(chain);
-    chain.eq.mockImplementation(() => {
-      chain.maybeSingle.mockResolvedValue({ data: { status: 'pending' }, error: null });
-      return chain;
-    });
+    // First from() call: fetch current status
+    const fetchChain = makeChain(null);
+    fetchChain.maybeSingle.mockResolvedValue({ data: { status: 'pending' }, error: null });
 
-    (supabase.from as jest.Mock).mockImplementation((table: string) => {
-      if (table === 'booking_events') return chain;
-      return chain;
-    });
+    // Second from() call: optimistic-lock update returning 1 row
+    const updateMock = makeUpdateChain({ data: [{ id: 'evt-1' }], error: null });
 
-    // First call: fetch current status; second call: update
-    let callCount = 0;
-    chain.maybeSingle.mockImplementation(async () => {
-      callCount++;
-      if (callCount === 1) return { data: { status: 'pending' }, error: null };
-      return { data: { status: 'agency_accepted' }, error: null };
-    });
-    const updateChain = { ...chain, error: null };
-    chain.update.mockReturnValue({ eq: jest.fn().mockResolvedValue({ error: null }) });
+    (supabase.from as jest.Mock)
+      .mockReturnValueOnce(fetchChain)
+      .mockReturnValueOnce(updateMock);
 
     const result = await updateBookingEventStatus('evt-1', 'agency_accepted');
     expect(result.ok).toBe(true);
+  });
+
+  it('returns false when optimistic lock fires (0 rows updated — concurrent write)', async () => {
+    const fetchChain = makeChain(null);
+    fetchChain.maybeSingle.mockResolvedValue({ data: { status: 'pending' }, error: null });
+
+    // 0 rows updated → another caller changed the status first
+    const updateMock = makeUpdateChain({ data: [], error: null });
+
+    (supabase.from as jest.Mock)
+      .mockReturnValueOnce(fetchChain)
+      .mockReturnValueOnce(updateMock);
+
+    const result = await updateBookingEventStatus('evt-1', 'agency_accepted');
+    expect(result.ok).toBe(false);
   });
 
   it('rejects invalid transition pending → model_confirmed', async () => {

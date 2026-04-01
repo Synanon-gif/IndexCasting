@@ -1,6 +1,7 @@
 jest.mock('../../../lib/supabase', () => ({
   supabase: {
     from: jest.fn(),
+    rpc:  jest.fn(),
     auth: {
       getUser: jest.fn().mockResolvedValue({ data: { user: { id: 'user-1' } } }),
     },
@@ -33,13 +34,14 @@ describe('notificationsSupabase', () => {
     consoleErrorSpy.mockRestore();
   });
 
-  // ── Test 1: createNotification inserts correctly ───────────────────────────
-  it('createNotification inserts a row with the correct fields', async () => {
+  // ── Test 1a: createNotification (self) goes through direct INSERT ──────────
+  it('createNotification (self-target) inserts a row with the correct fields', async () => {
     const insertMock = jest.fn().mockResolvedValue({ error: null });
     from.mockReturnValue({ insert: insertMock });
 
+    // user_id = 'user-1' matches the mocked auth.uid() → self-notification → direct INSERT
     await createNotification({
-      user_id: 'user-abc',
+      user_id: 'user-1',
       type: 'new_message',
       title: 'New message',
       message: 'You have a new message.',
@@ -48,12 +50,31 @@ describe('notificationsSupabase', () => {
     expect(from).toHaveBeenCalledWith('notifications');
     expect(insertMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        user_id: 'user-abc',
+        user_id: 'user-1',
         type: 'new_message',
         title: 'New message',
         message: 'You have a new message.',
       }),
     );
+  });
+
+  // ── Test 1b: createNotification (cross-party) routes through RPC ───────────
+  it('createNotification (cross-party) calls send_notification RPC', async () => {
+    (supabase.rpc as jest.Mock).mockResolvedValue({ error: null });
+
+    // user_id = 'other-user' is different from caller 'user-1' → cross-party → RPC
+    await createNotification({
+      user_id: 'other-user',
+      type: 'booking_accepted',
+      title: 'Booking accepted',
+      message: 'Your booking has been accepted.',
+    });
+
+    expect(supabase.rpc).toHaveBeenCalledWith('send_notification', expect.objectContaining({
+      p_target_user_id: 'other-user',
+      p_type:           'booking_accepted',
+    }));
+    expect(from).not.toHaveBeenCalled();
   });
 
   // ── Test 2: getNotificationsForCurrentUser returns only owned rows ─────────
@@ -87,14 +108,15 @@ describe('notificationsSupabase', () => {
     expect(eqMock).toHaveBeenCalledWith('id', 'notif-123');
   });
 
-  // ── Test 4: createNotification does NOT throw on Supabase error ────────────
-  it('createNotification logs error and does not throw when Supabase fails', async () => {
+  // ── Test 4a: createNotification (self) logs error without throwing ─────────
+  it('createNotification (self-target) logs error and does not throw when Supabase fails', async () => {
     const insertMock = jest.fn().mockResolvedValue({ error: { message: 'RLS denied' } });
     from.mockReturnValue({ insert: insertMock });
 
+    // Self-target: user_id = caller's own id → goes through direct INSERT
     await expect(
       createNotification({
-        user_id: 'user-xyz',
+        user_id: 'user-1',
         type: 'new_message',
         title: 'New message',
         message: 'You have a new message.',
@@ -104,6 +126,25 @@ describe('notificationsSupabase', () => {
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       'createNotification error:',
       expect.objectContaining({ message: 'RLS denied' }),
+    );
+  });
+
+  // ── Test 4b: createNotification (cross-party) logs RPC error without throw ─
+  it('createNotification (cross-party) logs RPC error and does not throw', async () => {
+    (supabase.rpc as jest.Mock).mockResolvedValue({ error: { message: 'no relationship' } });
+
+    await expect(
+      createNotification({
+        user_id: 'unrelated-user',
+        type: 'new_message',
+        title: 'Test',
+        message: 'Test message',
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      'createNotification (cross-party RPC) error:',
+      expect.objectContaining({ message: 'no relationship' }),
     );
   });
 

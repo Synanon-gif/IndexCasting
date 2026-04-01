@@ -5,6 +5,7 @@ import type { BookingEventType } from './bookingEventsSupabase';
 import { createNotification, createNotifications } from './notificationsSupabase';
 import { uiCopy } from '../constants/uiCopy';
 import { normalizeInput, validateText, sanitizeHtml, logSecurityEvent } from '../../lib/validation';
+import { checkAndIncrementStorage, decrementStorage } from './agencyStorageSupabase';
 
 export const OPTION_REQUEST_SELECT =
   'id, client_id, model_id, agency_id, requested_date, status, project_id, client_name, model_name, proposed_price, agency_counter_price, client_price_status, final_status, request_type, currency, start_time, end_time, model_approval, model_approved_at, model_account_linked, booker_id, organization_id, created_by, agency_assignee_user_id, created_at, updated_at';
@@ -229,16 +230,22 @@ export async function insertOptionRequest(req: {
   if (error) { console.error('insertOptionRequest error:', error); return null; }
 
   const inserted = data as SupabaseOptionRequest;
-  // Notify agency org (or agency user as fallback) about the new request
-  void createNotification({
-    ...(inserted.organization_id
-      ? { organization_id: inserted.organization_id }
-      : { user_id: inserted.agency_id }),
-    type: 'new_option_request',
-    title: uiCopy.notifications.newOptionRequest.title,
-    message: uiCopy.notifications.newOptionRequest.message,
-    metadata: { option_request_id: inserted.id },
-  });
+
+  // Notify the AGENCY org about the new request.
+  // IMPORTANT: inserted.organization_id is the CLIENT org (used for RLS scoping).
+  // We must look up the agency org separately via agency_id.
+  void (async () => {
+    const agencyOrgId = await fetchAgencyOrgId(inserted.agency_id);
+    await createNotification({
+      ...(agencyOrgId
+        ? { organization_id: agencyOrgId }
+        : { user_id: inserted.agency_id }), // agency_id used only as last-resort (legacy orgs without an org row)
+      type: 'new_option_request',
+      title: uiCopy.notifications.newOptionRequest.title,
+      message: uiCopy.notifications.newOptionRequest.message,
+      metadata: { option_request_id: inserted.id },
+    });
+  })();
 
   return inserted;
 }
@@ -360,14 +367,24 @@ export async function agencyRejectClientPrice(id: string): Promise<boolean> {
 }
 
 export async function clientAcceptCounterPrice(id: string): Promise<boolean> {
-  const { error } = await supabase
+  // Guard: only accept when a counter-offer is actually pending.
+  // Without this, a stale UI state (race condition or duplicate tap) could
+  // confirm an already-superseded price version.
+  const { data, error } = await supabase
     .from('option_requests')
     .update({
       client_price_status: 'accepted',
       final_status: 'option_confirmed',
     })
-    .eq('id', id);
+    .eq('id', id)
+    .eq('client_price_status', 'pending')
+    .eq('final_status', 'option_pending')
+    .select('id');
   if (error) { console.error('clientAcceptCounterPrice error:', error); return false; }
+  if (!data || data.length === 0) {
+    console.warn('clientAcceptCounterPrice: no row updated — counter-offer no longer pending');
+    return false;
+  }
   return true;
 }
 
@@ -393,15 +410,36 @@ export async function clientRejectCounterOfferOnSupabase(id: string): Promise<bo
 }
 
 export async function clientConfirmJobOnSupabase(id: string): Promise<boolean> {
-  const { error } = await supabase
-    .from('option_requests')
-    .update({
-      final_status: 'job_confirmed',
-      status: 'confirmed',
-    })
-    .eq('id', id);
-  if (error) { console.error('clientConfirmJobOnSupabase error:', error); return false; }
-  return true;
+  try {
+    const { data: updated, error } = await supabase
+      .from('option_requests')
+      .update({
+        final_status: 'job_confirmed',
+        status: 'confirmed',
+      })
+      .eq('id', id)
+      .select(OPTION_REQUEST_SELECT)
+      .maybeSingle();
+
+    if (error) {
+      console.error('clientConfirmJobOnSupabase error:', error);
+      return false;
+    }
+
+    if (!updated) {
+      console.warn('clientConfirmJobOnSupabase: no row updated (check id / RLS)', id);
+      return false;
+    }
+
+    // Create a booking_event so calendar entries are generated for all parties.
+    // Without this the Option→Job conversion had no calendar side-effect.
+    await createBookingEventFromRequest(updated as SupabaseOptionRequest);
+
+    return true;
+  } catch (e) {
+    console.error('clientConfirmJobOnSupabase exception:', e);
+    return false;
+  }
 }
 
 export type GetOptionMessagesOptions = {
@@ -499,6 +537,45 @@ export async function updateModelApproval(
   approval: 'approved' | 'rejected'
 ): Promise<boolean> {
   try {
+    // Auth-Guard: only the model linked to this request may approve/reject.
+    // Fetch the request and verify the current user is the model's linked user.
+    const { data: { user }, error: authErr } = await supabase.auth.getUser();
+    if (authErr || !user) {
+      console.error('updateModelApproval: no authenticated user', authErr);
+      return false;
+    }
+
+    const { data: req, error: fetchErr } = await supabase
+      .from('option_requests')
+      .select('model_id')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (fetchErr || !req) {
+      console.error('updateModelApproval: request fetch failed', fetchErr);
+      return false;
+    }
+
+    const { data: modelRow, error: modelErr } = await supabase
+      .from('models')
+      .select('user_id')
+      .eq('id', (req as { model_id: string }).model_id)
+      .maybeSingle();
+
+    if (modelErr || !modelRow) {
+      console.error('updateModelApproval: model fetch failed', modelErr);
+      return false;
+    }
+
+    const modelUserId = (modelRow as { user_id: string | null }).user_id;
+    if (modelUserId !== user.id) {
+      console.error('updateModelApproval: caller is not the linked model user', {
+        callerId: user.id,
+        modelUserId,
+      });
+      return false;
+    }
+
     const { error } = await supabase
       .from('option_requests')
       .update({
@@ -506,6 +583,7 @@ export async function updateModelApproval(
         model_approved_at: approval === 'approved' ? new Date().toISOString() : null,
       })
       .eq('id', id);
+
     if (error) { console.error('updateModelApproval error:', error); return false; }
     return true;
   } catch (e) {
@@ -551,11 +629,22 @@ export async function uploadOptionDocument(
   fileName: string
 ): Promise<SupabaseOptionDocument | null> {
   try {
+  // Agency storage limit check — non-agency users pass through automatically.
+  const storageCheck = await checkAndIncrementStorage(file.size);
+  if (!storageCheck.allowed) {
+    console.warn('uploadOptionDocument: storage limit reached', storageCheck);
+    return null;
+  }
+
   const path = `options/${requestId}/${Date.now()}_${fileName}`;
   const { error: uploadError } = await supabase.storage
     .from('chat-files')
     .upload(path, file);
-  if (uploadError) { console.error('uploadOptionDocument storage error:', uploadError); return null; }
+  if (uploadError) {
+    console.error('uploadOptionDocument storage error:', uploadError);
+    await decrementStorage(file.size);
+    return null;
+  }
 
   // Use a time-limited signed URL (1 hour) instead of a permanent public URL.
   // This prevents unauthenticated access to option documents via raw URL.
@@ -589,6 +678,28 @@ export async function uploadOptionDocument(
 // =============================================================================
 // Booking Confirmation Flow (Agency → [Model]) → Calendar
 // =============================================================================
+
+/**
+ * Resolves the agency's organization ID from an agencies.id value.
+ * Shared by notification helpers and booking-event creation to avoid
+ * re-implementing the same lookup in multiple places.
+ *
+ * NOTE: option_requests.organization_id is the CLIENT org, NOT the agency org.
+ * Always use this helper when you need to notify the agency side.
+ */
+async function fetchAgencyOrgId(agencyId: string): Promise<string | null> {
+  try {
+    const { data } = await supabase
+      .from('organizations')
+      .select('id')
+      .eq('agency_id', agencyId)
+      .maybeSingle();
+    return (data as { id: string } | null)?.id ?? null;
+  } catch (e) {
+    console.error('fetchAgencyOrgId exception:', e);
+    return null;
+  }
+}
 
 /**
  * Erstellt aus einem bestätigten option_request ein booking_event.
@@ -699,8 +810,12 @@ export async function agencyAcceptRequest(
 
 /**
  * Agency lehnt die Buchungsanfrage ab.
- * Setzt status UND final_status atomar, damit keine inkonsistente Kombination
- * (status=rejected + final_status=option_pending) entsteht.
+ * Setzt status=rejected + final_status=null atomar.
+ *
+ * Bewusste Entscheidung: final_status=null statt 'option_pending',
+ * weil 'option_pending' eine AKTIVE Verhandlung signalisiert.
+ * Abgelehnte Requests mit final_status='option_pending' würden in
+ * Client-seitigen Queries die aktiven Optionen verunreinigen.
  */
 export async function agencyRejectRequest(id: string): Promise<boolean> {
   try {
@@ -708,7 +823,7 @@ export async function agencyRejectRequest(id: string): Promise<boolean> {
       .from('option_requests')
       .update({
         status: 'rejected',
-        final_status: 'option_pending',
+        final_status: null,
         client_price_status: 'rejected',
       })
       .eq('id', id);
@@ -905,25 +1020,22 @@ async function notifyModelAwaitingConfirmation(modelId: string, optionRequestId:
 async function notifyModelConfirmedOption(req: SupabaseOptionRequest): Promise<void> {
   try {
     const notifications = [];
-    // Agency org (or agency user as fallback)
-    if (req.organization_id) {
-      notifications.push({
-        organization_id: req.organization_id,
-        type: 'model_confirmed',
-        title: uiCopy.notifications.modelConfirmed.title,
-        message: uiCopy.notifications.modelConfirmed.message,
-        metadata: { option_request_id: req.id },
-      });
-    } else {
-      notifications.push({
-        user_id: req.agency_id,
-        type: 'model_confirmed',
-        title: uiCopy.notifications.modelConfirmed.title,
-        message: uiCopy.notifications.modelConfirmed.message,
-        metadata: { option_request_id: req.id },
-      });
-    }
-    // Client user
+
+    // IMPORTANT: req.organization_id is the CLIENT org, not the agency org.
+    // Resolve the agency org via agency_id — same pattern as createBookingEventFromRequest.
+    const agencyOrgId = await fetchAgencyOrgId(req.agency_id);
+
+    notifications.push({
+      ...(agencyOrgId
+        ? { organization_id: agencyOrgId }
+        : { user_id: req.agency_id }), // fallback: only for legacy orgs without an org row
+      type: 'model_confirmed',
+      title: uiCopy.notifications.modelConfirmed.title,
+      message: uiCopy.notifications.modelConfirmed.message,
+      metadata: { option_request_id: req.id },
+    });
+
+    // Also notify the client user
     notifications.push({
       user_id: req.client_id,
       type: 'model_confirmed',
@@ -931,6 +1043,7 @@ async function notifyModelConfirmedOption(req: SupabaseOptionRequest): Promise<v
       message: uiCopy.notifications.modelConfirmed.message,
       metadata: { option_request_id: req.id },
     });
+
     await createNotifications(notifications);
   } catch (e) {
     console.error('notifyModelConfirmedOption exception:', e);

@@ -604,3 +604,101 @@ export async function adminResetAgencySwipeCount(organizationId: string): Promis
     return false;
   }
 }
+
+// ─── Agency Storage Override (Admin) ─────────────────────────────────────────
+
+export interface AdminStorageOverride {
+  organization_id: string;
+  used_bytes: number;
+  /** null = default 5 GB applies */
+  storage_limit_bytes: number | null;
+  is_unlimited: boolean;
+  /** Resolved effective cap in bytes; null when is_unlimited = true */
+  effective_limit_bytes: number | null;
+}
+
+/**
+ * Fetches the storage snapshot for a single organization.
+ * Auto-creates the usage row if it doesn't exist yet.
+ */
+export async function adminGetOrgStorageUsage(
+  organizationId: string,
+): Promise<AdminStorageOverride | null> {
+  try {
+    const { data, error } = await supabase.rpc('admin_get_org_storage_usage', {
+      p_org_id: organizationId,
+    });
+    if (error) throw error;
+    if (!data || (data as { error?: string }).error) return null;
+    const raw = data as Record<string, unknown>;
+    return {
+      organization_id:       String(raw.organization_id),
+      used_bytes:            Number(raw.used_bytes ?? 0),
+      storage_limit_bytes:   raw.storage_limit_bytes != null ? Number(raw.storage_limit_bytes) : null,
+      is_unlimited:          Boolean(raw.is_unlimited),
+      effective_limit_bytes: raw.effective_limit_bytes != null ? Number(raw.effective_limit_bytes) : null,
+    };
+  } catch (e) {
+    console.error('adminGetOrgStorageUsage error:', e);
+    return null;
+  }
+}
+
+/**
+ * Sets a custom storage limit (in bytes) for an organization.
+ * Accepted range: 1 byte – 1 TB. Clears the unlimited flag.
+ */
+export async function adminSetStorageLimit(
+  organizationId: string,
+  limitBytes: number,
+): Promise<boolean> {
+  try {
+    const { error } = await supabase.rpc('admin_set_storage_limit', {
+      p_organization_id: organizationId,
+      p_new_limit_bytes:  limitBytes,
+    });
+    if (error) throw error;
+    await writeAdminLog(
+      `Set storage limit to ${limitBytes} bytes for org ${organizationId}`,
+    );
+    return true;
+  } catch (e) {
+    console.error('adminSetStorageLimit error:', e);
+    return false;
+  }
+}
+
+/**
+ * Grants unlimited storage to an organization (bypasses all upload limits).
+ */
+export async function adminSetUnlimitedStorage(organizationId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase.rpc('admin_set_unlimited_storage', {
+      p_organization_id: organizationId,
+    });
+    if (error) throw error;
+    await writeAdminLog(`Set unlimited storage for org ${organizationId}`);
+    return true;
+  } catch (e) {
+    console.error('adminSetUnlimitedStorage error:', e);
+    return false;
+  }
+}
+
+/**
+ * Resets an organization's storage limit back to the platform default (5 GB).
+ * Clears both the custom limit and the unlimited flag.
+ */
+export async function adminResetToDefaultStorageLimit(organizationId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase.rpc('admin_reset_to_default_storage_limit', {
+      p_organization_id: organizationId,
+    });
+    if (error) throw error;
+    await writeAdminLog(`Reset storage limit to default for org ${organizationId}`);
+    return true;
+  } catch (e) {
+    console.error('adminResetToDefaultStorageLimit error:', e);
+    return false;
+  }
+}

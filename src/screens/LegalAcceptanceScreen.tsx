@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Linking } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { useAuth } from '../context/AuthContext';
+import { uiCopy } from '../constants/uiCopy';
 
 export const LegalAcceptanceScreen: React.FC = () => {
   const { profile, acceptTerms, signOut } = useAuth();
@@ -13,6 +14,9 @@ export const LegalAcceptanceScreen: React.FC = () => {
 
   const isAgency = profile?.role === 'agent';
   const canSubmit = tosChecked && privacyChecked && (!isAgency || agencyRightsChecked);
+
+  const openTos = () => Linking.openURL(uiCopy.legal.tosUrl).catch((e) => console.error('openTos error:', e));
+  const openPrivacy = () => Linking.openURL(uiCopy.legal.privacyUrl).catch((e) => console.error('openPrivacy error:', e));
 
   const handleAccept = async () => {
     if (!canSubmit) return;
@@ -27,17 +31,18 @@ export const LegalAcceptanceScreen: React.FC = () => {
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.brand}>INDEX CASTING</Text>
-        <Text style={styles.title}>Terms & Conditions</Text>
-        <Text style={styles.subtitle}>
-          Please accept the following to continue using the platform.
-        </Text>
+        <Text style={styles.title}>{uiCopy.legal.title}</Text>
+        <Text style={styles.subtitle}>{uiCopy.legal.subtitle}</Text>
 
         <TouchableOpacity style={styles.checkRow} onPress={() => setTosChecked(!tosChecked)}>
           <View style={[styles.checkbox, tosChecked && styles.checkboxChecked]}>
             {tosChecked && <Text style={styles.checkmark}>✓</Text>}
           </View>
           <Text style={styles.checkLabel}>
-            I accept the <Text style={styles.link}>Terms of Service</Text>
+            {uiCopy.legal.tosCheckLabel}{' '}
+            <Text style={styles.link} onPress={openTos}>
+              {uiCopy.legal.tosLabel}
+            </Text>
           </Text>
         </TouchableOpacity>
 
@@ -46,7 +51,11 @@ export const LegalAcceptanceScreen: React.FC = () => {
             {privacyChecked && <Text style={styles.checkmark}>✓</Text>}
           </View>
           <Text style={styles.checkLabel}>
-            I accept the <Text style={styles.link}>Privacy Policy</Text> (GDPR compliant)
+            {uiCopy.legal.privacyCheckLabel}{' '}
+            <Text style={styles.link} onPress={openPrivacy}>
+              {uiCopy.legal.privacyLabel}
+            </Text>{' '}
+            {uiCopy.legal.privacySuffix}
           </Text>
         </TouchableOpacity>
 
@@ -55,9 +64,7 @@ export const LegalAcceptanceScreen: React.FC = () => {
             <View style={[styles.checkbox, agencyRightsChecked && styles.checkboxChecked]}>
               {agencyRightsChecked && <Text style={styles.checkmark}>✓</Text>}
             </View>
-            <Text style={styles.checkLabel}>
-              I confirm that I hold all necessary rights to use and share the personal data of the models I represent.
-            </Text>
+            <Text style={styles.checkLabel}>{uiCopy.legal.agencyRightsLabel}</Text>
           </TouchableOpacity>
         )}
 
@@ -71,12 +78,12 @@ export const LegalAcceptanceScreen: React.FC = () => {
           {busy ? (
             <ActivityIndicator color={colors.surface} />
           ) : (
-            <Text style={styles.acceptLabel}>Accept & Continue</Text>
+            <Text style={styles.acceptLabel}>{uiCopy.legal.acceptButton}</Text>
           )}
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.logoutBtn} onPress={signOut}>
-          <Text style={styles.logoutLabel}>Logout</Text>
+          <Text style={styles.logoutLabel}>{uiCopy.legal.logoutButton}</Text>
         </TouchableOpacity>
       </ScrollView>
     </View>

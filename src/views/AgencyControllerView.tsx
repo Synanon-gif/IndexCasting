@@ -1829,8 +1829,8 @@ const MyModelsTab: React.FC<{
       if (filesToUpload.length > 0) {
         const uploadedUrls: string[] = [];
         for (const file of filesToUpload) {
-          const url = await uploadModelPhoto(createdModelId, file);
-          if (url) uploadedUrls.push(url);
+          const result = await uploadModelPhoto(createdModelId, file);
+          if (result) uploadedUrls.push(result.url);
         }
         if (uploadedUrls.length > 0) {
           await upsertPhotosForModel(

@@ -7,6 +7,8 @@ import {
   logSecurityEvent,
 } from '../../lib/validation';
 import imageCompression from 'browser-image-compression';
+import { checkAndIncrementStorage, decrementStorage } from './agencyStorageSupabase';
+import { uiCopy } from '../constants/uiCopy';
 
 /** Allowed MIME types for model photos (images only — no PDFs in portfolio). */
 const PHOTO_ALLOWED_TYPES = ALLOWED_MIME_TYPES.filter((t) => t.startsWith('image/'));
@@ -58,6 +60,14 @@ export type ModelPhoto = {
   source: string | null;
   api_external_id: string | null;
   photo_type: ModelPhotoType;
+  /** Actual file size in bytes stored at upload time. Used for reliable storage decrement. */
+  file_size_bytes?: number;
+};
+
+/** Result type for upload functions — includes the actual size verified from storage.objects. */
+export type UploadPhotoResult = {
+  url: string;
+  fileSizeBytes: number;
 };
 
 export async function getPhotosForModel(
@@ -134,6 +144,7 @@ export async function addPhoto(
   modelId: string,
   url: string,
   type: ModelPhotoType,
+  fileSizeBytes?: number,
 ): Promise<ModelPhoto | null> {
   const { data: maxSortData } = await supabase
     .from('model_photos')
@@ -161,6 +172,7 @@ export async function addPhoto(
         source: null,
         api_external_id: null,
         photo_type: type,
+        file_size_bytes: fileSizeBytes ?? 0,
       })
       .select('*')
       .single();
@@ -179,9 +191,21 @@ export async function addPhoto(
 /**
  * Deletes a photo from both Supabase Storage and the model_photos table.
  * Bucket is inferred from the URL: 'documents' for private, 'documentspictures' for others.
+ *
+ * BUG 1 FIX: reads file_size_bytes from the DB row before deletion instead of
+ * using a fragile storage.list() call. This guarantees the decrement always
+ * fires with the correct value regardless of network conditions.
  */
 export async function deletePhoto(photoId: string, url: string): Promise<boolean> {
   try {
+    // Read the stored file size from DB — always reliable, no network guesswork.
+    const { data: photoRow } = await supabase
+      .from('model_photos')
+      .select('file_size_bytes')
+      .eq('id', photoId)
+      .maybeSingle();
+    const freedBytes: number = (photoRow as { file_size_bytes?: number } | null)?.file_size_bytes ?? 0;
+
     const storagePath = extractStoragePath(url);
     if (storagePath) {
       const bucket = url.includes('/documents/') && !url.includes('/documentspictures/')
@@ -203,6 +227,12 @@ export async function deletePhoto(photoId: string, url: string): Promise<boolean
       console.error('deletePhoto db error:', dbError);
       return false;
     }
+
+    // Always decrement with the DB-stored size (may be 0 for legacy rows, which is safe).
+    if (freedBytes > 0) {
+      await decrementStorage(freedBytes);
+    }
+
     return true;
   } catch (e) {
     console.error('deletePhoto exception:', e);
@@ -301,8 +331,37 @@ const MODEL_PHOTOS_PREFIX = 'model-photos';
 const PRIVATE_BUCKET = 'documents';
 const PRIVATE_PHOTOS_PREFIX = 'model-private-photos';
 
-/** Upload a portfolio or polaroid photo for a model; returns public URL or null. */
-export async function uploadModelPhoto(modelId: string, file: Blob | File): Promise<string | null> {
+/**
+ * Reads the actual file size from storage.objects metadata immediately after upload.
+ * This is the server-side truth — independent of the frontend-provided file.size.
+ * Returns null if the lookup fails (caller should fall back to claimed size).
+ */
+async function getActualStorageSize(bucket: string, path: string): Promise<number | null> {
+  try {
+    const folder = path.substring(0, path.lastIndexOf('/'));
+    const filename = path.substring(path.lastIndexOf('/') + 1);
+    const { data, error } = await supabase.storage.from(bucket).list(folder, { search: filename });
+    if (error || !data?.length) return null;
+    const size = data[0]?.metadata?.size;
+    return typeof size === 'number' ? size : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Uploads a portfolio or polaroid photo for a model.
+ * Returns { url, fileSizeBytes } on success or null on failure.
+ *
+ * fileSizeBytes is the ACTUAL size verified from storage.objects after upload
+ * (not the frontend-provided file.size). This value should be passed to addPhoto()
+ * so it is stored in model_photos.file_size_bytes for reliable delete-decrement.
+ * Any drift between the pre-increment (file.size) and the actual size is reconciled.
+ */
+export async function uploadModelPhoto(
+  modelId: string,
+  file: Blob | File,
+): Promise<UploadPhotoResult | null> {
   // MIME whitelist + size check (images only for portfolio)
   const mimeCheck = validateFile(file, PHOTO_ALLOWED_TYPES);
   if (!mimeCheck.ok) {
@@ -326,6 +385,14 @@ export async function uploadModelPhoto(modelId: string, file: Blob | File): Prom
   }
   // Strip EXIF metadata (GPS, camera info) via Canvas re-encoding
   const safeFile = await stripExifAndCompress(file);
+  const claimedSize = safeFile instanceof File ? safeFile.size : (safeFile as Blob).size;
+
+  // Agency storage limit check (uses frontend-reported size for pre-check).
+  const storageCheck = await checkAndIncrementStorage(claimedSize);
+  if (!storageCheck.allowed) {
+    console.warn('uploadModelPhoto: storage limit reached', storageCheck);
+    return null;
+  }
 
   const ext = safeFile instanceof File ? (safeFile.name.split('.').pop() || 'jpg') : 'jpg';
   const path = `${MODEL_PHOTOS_PREFIX}/${modelId}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
@@ -336,25 +403,50 @@ export async function uploadModelPhoto(modelId: string, file: Blob | File): Prom
     });
     if (error) {
       console.error('uploadModelPhoto error:', error);
+      await decrementStorage(claimedSize);
       return null;
     }
+
+    // BUG 3 FIX: read actual file size from storage.objects metadata post-upload.
+    // This corrects any drift between the frontend-provided size and what was stored.
+    const actualSize = await getActualStorageSize(PUBLIC_IMAGES_BUCKET, path) ?? claimedSize;
+    if (actualSize !== claimedSize) {
+      if (actualSize > claimedSize) {
+        const driftResult = await checkAndIncrementStorage(actualSize - claimedSize);
+        if (!driftResult.allowed) {
+          console.warn('[storage] uploadModelPhoto: post-upload size drift exceeded limit — counter undercounted', { actualSize, claimedSize });
+        }
+      } else {
+        await decrementStorage(claimedSize - actualSize);
+      }
+    }
+
     const { data } = supabase.storage.from(PUBLIC_IMAGES_BUCKET).getPublicUrl(path);
-    return data?.publicUrl ?? null;
+    return { url: data?.publicUrl ?? '', fileSizeBytes: actualSize };
   } catch (e) {
     console.error('uploadModelPhoto exception:', e);
+    await decrementStorage(claimedSize);
     return null;
+  }
+}
+
+/** Error thrown when the agency storage limit is exceeded. */
+export class StorageLimitError extends Error {
+  constructor() {
+    super(uiCopy.storage.limitReached);
+    this.name = 'StorageLimitError';
   }
 }
 
 /**
  * Uploads a private (agency-only) photo to the private 'documents' bucket.
- * Returns a signed URL valid for 1 hour, or null on failure.
- * Private photos are NEVER accessible via public URLs.
+ * Returns { url, fileSizeBytes } on success, or null on failure.
+ * The url is a supabase-private:// scheme string — never a public URL.
  */
 export async function uploadPrivateModelPhoto(
   modelId: string,
   file: Blob | File,
-): Promise<string | null> {
+): Promise<UploadPhotoResult | null> {
   // MIME whitelist + size check (images only)
   const mimeCheck = validateFile(file, PHOTO_ALLOWED_TYPES);
   if (!mimeCheck.ok) {
@@ -378,6 +470,13 @@ export async function uploadPrivateModelPhoto(
   }
   // Strip EXIF metadata (GPS, camera info) via Canvas re-encoding
   const safeFile = await stripExifAndCompress(file);
+  const claimedSize = safeFile instanceof File ? safeFile.size : (safeFile as Blob).size;
+
+  const storageCheck = await checkAndIncrementStorage(claimedSize);
+  if (!storageCheck.allowed) {
+    console.warn('uploadPrivateModelPhoto: storage limit reached', storageCheck);
+    return null;
+  }
 
   const ext = safeFile instanceof File ? (safeFile.name.split('.').pop() || 'jpg') : 'jpg';
   const path = `${PRIVATE_PHOTOS_PREFIX}/${modelId}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
@@ -388,13 +487,28 @@ export async function uploadPrivateModelPhoto(
     });
     if (uploadError) {
       console.error('uploadPrivateModelPhoto upload error:', uploadError);
+      await decrementStorage(claimedSize);
       return null;
     }
-    // Store the storage path as the URL so we can derive signed URLs on demand.
-    // Format: supabase-private://<bucket>/<path>  — resolved at render time.
-    return `supabase-private://${PRIVATE_BUCKET}/${path}`;
+
+    // BUG 3 FIX: read actual size from storage.objects and reconcile.
+    const actualSize = await getActualStorageSize(PRIVATE_BUCKET, path) ?? claimedSize;
+    if (actualSize !== claimedSize) {
+      if (actualSize > claimedSize) {
+        const driftResult = await checkAndIncrementStorage(actualSize - claimedSize);
+        if (!driftResult.allowed) {
+          console.warn('[storage] uploadPrivateModelPhoto: post-upload size drift exceeded limit — counter undercounted', { actualSize, claimedSize });
+        }
+      } else {
+        await decrementStorage(claimedSize - actualSize);
+      }
+    }
+
+    // Store path as the URL — resolved to a signed URL at render time.
+    return { url: `supabase-private://${PRIVATE_BUCKET}/${path}`, fileSizeBytes: actualSize };
   } catch (e) {
     console.error('uploadPrivateModelPhoto exception:', e);
+    await decrementStorage(claimedSize);
     return null;
   }
 }

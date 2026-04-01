@@ -1,4 +1,19 @@
 import { supabase } from '../../lib/supabase';
+import { checkAndIncrementStorage, decrementStorage } from './agencyStorageSupabase';
+
+/** Reads the actual stored file size from storage.objects metadata. Best-effort — returns null on failure. */
+async function getActualDocumentSize(bucket: string, path: string): Promise<number | null> {
+  try {
+    const folder = path.substring(0, path.lastIndexOf('/'));
+    const filename = path.substring(path.lastIndexOf('/') + 1);
+    const { data, error } = await supabase.storage.from(bucket).list(folder, { search: filename });
+    if (error || !data?.length) return null;
+    const size = data[0]?.metadata?.size;
+    return typeof size === 'number' ? size : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Nutzerdokumente (Verträge, Rechnungen, Ausweise) – Supabase Storage + documents-Tabelle.
@@ -11,6 +26,8 @@ export type Document = {
   file_path: string;
   encrypted: boolean;
   created_at: string;
+  /** Actual file size stored at upload time. Used for reliable storage decrement. */
+  file_size_bytes?: number;
 };
 
 export async function getDocumentsForUser(userId: string): Promise<Document[]> {
@@ -29,12 +46,37 @@ export async function uploadDocument(
   file: File | Blob,
   fileName: string
 ): Promise<Document | null> {
+  const claimedSize = file instanceof File ? file.size : (file as Blob).size;
   const path = `documents/${userId}/${Date.now()}_${fileName}`;
+
+  // Agency storage limit check — non-agency users pass through automatically.
+  const storageCheck = await checkAndIncrementStorage(claimedSize);
+  if (!storageCheck.allowed) {
+    console.warn('uploadDocument: storage limit reached', storageCheck);
+    return null;
+  }
 
   const { error: uploadError } = await supabase.storage
     .from('documents')
     .upload(path, file);
-  if (uploadError) { console.error('uploadDocument storage error:', uploadError); return null; }
+  if (uploadError) {
+    console.error('uploadDocument storage error:', uploadError);
+    await decrementStorage(claimedSize);
+    return null;
+  }
+
+  // BUG 3 FIX: verify actual size server-side and reconcile with the pre-increment.
+  const actualSize = await getActualDocumentSize('documents', path) ?? claimedSize;
+  if (actualSize !== claimedSize) {
+    if (actualSize > claimedSize) {
+      const driftResult = await checkAndIncrementStorage(actualSize - claimedSize);
+      if (!driftResult.allowed) {
+        console.warn('[storage] uploadDocument: post-upload size drift exceeded limit — counter undercounted', { actualSize, claimedSize });
+      }
+    } else {
+      await decrementStorage(claimedSize - actualSize);
+    }
+  }
 
   const { data, error } = await supabase
     .from('documents')
@@ -43,6 +85,7 @@ export async function uploadDocument(
       type: docType,
       file_path: path,
       encrypted: false,
+      file_size_bytes: actualSize,
     })
     .select()
     .single();
@@ -57,9 +100,54 @@ export async function getDocumentUrl(filePath: string): Promise<string | null> {
   return data?.signedUrl ?? null;
 }
 
+/**
+ * Deletes a document from Storage and the documents table, then decrements storage usage.
+ *
+ * BUG 1 FIX: reads file_size_bytes from the DB row before deletion instead of
+ * using a fragile storage.list() call. Guarantees reliable decrement.
+ */
 export async function deleteDocument(docId: string, filePath: string): Promise<boolean> {
-  await supabase.storage.from('documents').remove([filePath]);
-  const { error } = await supabase.from('documents').delete().eq('id', docId);
-  if (error) { console.error('deleteDocument error:', error); return false; }
-  return true;
+  try {
+    // Read the stored file size from DB — always reliable, no storage.list() needed.
+    const { data: docRow } = await supabase
+      .from('documents')
+      .select('file_size_bytes')
+      .eq('id', docId)
+      .maybeSingle();
+    const freedBytes: number = (docRow as { file_size_bytes?: number } | null)?.file_size_bytes ?? 0;
+
+    // Remove from Storage first and verify success before deleting the DB row.
+    // If the order were reversed and the Storage removal failed after DB delete,
+    // we would have an orphaned file with no DB reference (unreachable, wasted space).
+    // In the current order a Storage failure leaves the DB row intact — the
+    // document remains accessible and a retry is possible.
+    const { error: storageError } = await supabase.storage
+      .from('documents')
+      .remove([filePath]);
+
+    if (storageError) {
+      console.error('deleteDocument storage error:', storageError);
+      return false;
+    }
+
+    const { error: dbError } = await supabase
+      .from('documents')
+      .delete()
+      .eq('id', docId);
+
+    if (dbError) {
+      console.error('deleteDocument db error:', dbError);
+      return false;
+    }
+
+    // Decrement with the DB-stored size (may be 0 for legacy rows, which is safe).
+    if (freedBytes > 0) {
+      await decrementStorage(freedBytes);
+    }
+
+    return true;
+  } catch (e) {
+    console.error('deleteDocument exception:', e);
+    return false;
+  }
 }

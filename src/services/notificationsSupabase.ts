@@ -57,13 +57,40 @@ export async function createNotification(
   params: CreateNotificationParams,
 ): Promise<void> {
   try {
+    const { data: { user } } = await supabase.auth.getUser();
+    const callerId = user?.id ?? null;
+    const targetUserId = params.user_id ?? null;
+
+    // Cross-party notification (sender ≠ target, no org scope):
+    // Use the SECURITY DEFINER RPC that validates the sender↔target relationship.
+    // This prevents spam/phishing across unrelated organizations.
+    const isCrossParty =
+      targetUserId !== null &&
+      targetUserId !== callerId &&
+      !params.organization_id;
+
+    if (isCrossParty) {
+      const { error: rpcError } = await supabase.rpc('send_notification', {
+        p_target_user_id: targetUserId,
+        p_type:           params.type,
+        p_title:          params.title,
+        p_message:        params.message,
+        p_metadata:       params.metadata ?? {},
+      });
+      if (rpcError) {
+        console.error('createNotification (cross-party RPC) error:', rpcError);
+      }
+      return;
+    }
+
+    // Self-targeting or org-wide notifications go through direct INSERT (policy allows these).
     const { error } = await supabase.from('notifications').insert({
-      user_id: params.user_id ?? null,
+      user_id:         targetUserId,
       organization_id: params.organization_id ?? null,
-      type: params.type,
-      title: params.title,
-      message: params.message,
-      metadata: params.metadata ?? {},
+      type:            params.type,
+      title:           params.title,
+      message:         params.message,
+      metadata:        params.metadata ?? {},
     });
     if (error) {
       console.error('createNotification error:', error);
