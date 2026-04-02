@@ -1,5 +1,6 @@
 import { supabase } from '../../lib/supabase';
 import { splitProfileDisplayName } from '../utils/applicantNameFromProfile';
+import { validateFile } from '../../lib/validation';
 
 /**
  * Model-Bewerbungen (Apply) – in Supabase gespeichert.
@@ -11,6 +12,13 @@ const APPLICATION_IMAGES_PREFIX = 'model-applications';
 
 /** Upload one application image (blob or file) to Storage; returns public URL or null. */
 export async function uploadApplicationImage(file: Blob | File, slot: string): Promise<string | null> {
+  // MIME type and size validation — application images must be jpeg/png/webp.
+  const fileValidation = validateFile(file);
+  if (!fileValidation.ok) {
+    console.error('uploadApplicationImage: file validation failed', fileValidation.error);
+    return null;
+  }
+
   const ext = file instanceof File ? (file.name.split('.').pop() || 'jpg') : 'jpg';
   const path = `${APPLICATION_IMAGES_PREFIX}/${Date.now()}-${slot}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
   const { error } = await supabase.storage.from(PUBLIC_IMAGES_BUCKET).upload(path, file, {
@@ -220,16 +228,39 @@ export async function insertApplication(app: {
   }
 }
 
+/**
+ * Updates application status with an enforced prior-state guard.
+ *
+ * Allowed transitions and their required prior status:
+ *   pending_model_confirmation  ← must currently be 'pending'
+ *   rejected                    ← must currently be 'pending'
+ *   accepted                    ← must currently be 'pending_model_confirmation'
+ *                                 (model confirmation path — use confirmApplicationByModel instead)
+ *
+ * The prior-state filter makes the UPDATE atomic: if two simultaneous calls
+ * race (e.g. double-tap accept), only the first wins; the second gets no-row-
+ * updated and returns false without corrupting state.
+ */
 export async function updateApplicationStatus(
   id: string,
   status: ApplicationStatus,
   extra?: { recruiting_thread_id?: string; accepted_by_agency_id?: string }
 ): Promise<boolean> {
+  const priorStatusMap: Record<ApplicationStatus, ApplicationStatus> = {
+    pending_model_confirmation: 'pending',
+    rejected: 'pending',
+    accepted: 'pending_model_confirmation',
+    pending: 'pending', // self-loop guard (should not be called in practice)
+  };
+
+  const requiredPrior = priorStatusMap[status];
+
   try {
     const { data, error } = await supabase
       .from('model_applications')
       .update({ status, ...extra })
       .eq('id', id)
+      .eq('status', requiredPrior)
       .select('id')
       .maybeSingle();
 
@@ -238,7 +269,10 @@ export async function updateApplicationStatus(
       return false;
     }
     if (!data?.id) {
-      console.warn('updateApplicationStatus: no row updated (check id / RLS)', id);
+      console.warn(
+        'updateApplicationStatus: no row updated — wrong prior status or concurrent update',
+        { id, targetStatus: status, requiredPrior },
+      );
       return false;
     }
     return true;

@@ -20,6 +20,9 @@ export type GuestLink = {
   /** 'portfolio' = portfolio images only; 'polaroid' = polaroids only. */
   type: PackageType;
   created_at: string;
+  /** Soft-delete timestamp. Non-null means the link has been deleted.
+   *  Kept in DB so existing chat-metadata packageId references remain resolvable. */
+  deleted_at: string | null;
 };
 
 export async function createGuestLink(params: {
@@ -85,30 +88,50 @@ export async function getGuestLink(linkId: string): Promise<GuestLinkInfo | null
 }
 
 export async function getGuestLinksForAgency(agencyId: string): Promise<GuestLink[]> {
-  const { data, error } = await supabase
-    .from('guest_links')
-    .select('*')
-    .eq('agency_id', agencyId)
-    .order('created_at', { ascending: false });
-  if (error) { console.error('getGuestLinksForAgency error:', error); return []; }
-  return (data ?? []) as GuestLink[];
+  try {
+    const { data, error } = await supabase
+      .from('guest_links')
+      .select('*')
+      .eq('agency_id', agencyId)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false });
+    if (error) { console.error('getGuestLinksForAgency error:', error); return []; }
+    return (data ?? []) as GuestLink[];
+  } catch (e) {
+    console.error('getGuestLinksForAgency exception:', e);
+    return [];
+  }
 }
 
 export async function deactivateGuestLink(linkId: string): Promise<boolean> {
-  const { error } = await supabase
-    .from('guest_links')
-    .update({ is_active: false })
-    .eq('id', linkId);
-  if (error) { console.error('deactivateGuestLink error:', error); return false; }
-  return true;
+  try {
+    const { error } = await supabase
+      .from('guest_links')
+      .update({ is_active: false })
+      .eq('id', linkId);
+    if (error) { console.error('deactivateGuestLink error:', error); return false; }
+    return true;
+  } catch (e) {
+    console.error('deactivateGuestLink exception:', e);
+    return false;
+  }
 }
 
+/**
+ * Soft-deletes a guest link by setting deleted_at to the current timestamp.
+ *
+ * Hard DELETE is intentionally avoided: existing chat-metadata references
+ * (BookingChatMetadata.packageId) remain resolvable so older conversations do
+ * not break. The RLS policy and getGuestLinksForAgency filter out deleted rows
+ * for normal reads (WHERE deleted_at IS NULL).
+ */
 export async function deleteGuestLink(linkId: string): Promise<boolean> {
   try {
     const { error } = await supabase
       .from('guest_links')
-      .delete()
-      .eq('id', linkId);
+      .update({ is_active: false, deleted_at: new Date().toISOString() })
+      .eq('id', linkId)
+      .is('deleted_at', null);
     if (error) { console.error('deleteGuestLink error:', error); return false; }
     return true;
   } catch (e) {

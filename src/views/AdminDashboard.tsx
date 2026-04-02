@@ -5,6 +5,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  FlatList,
   TextInput,
   ActivityIndicator,
   Alert,
@@ -34,6 +35,9 @@ import {
   adminSetStorageLimit,
   adminSetUnlimitedStorage,
   adminResetToDefaultStorageLimit,
+  adminGetBillingStatus,
+  adminSetBypassPaywall,
+  adminSetOrgPlan,
   type AdminProfile,
   type AdminLogEntry,
   type AdminOrgMembership,
@@ -41,6 +45,7 @@ import {
   type AdminModel,
   type AdminAgencyUsageLimits,
   type AdminStorageOverride,
+  type AdminBillingStatus,
 } from '../services/adminSupabase';
 import { formatStorageBytes } from '../services/agencyStorageSupabase';
 import { supabase } from '../../lib/supabase';
@@ -62,6 +67,8 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
   const [modelSearch, setModelSearch] = useState('');
   const [deactivateReason, setDeactivateReason] = useState('');
   const [actionTarget, setActionTarget] = useState<string | null>(null);
+  const [activatingId, setActivatingId] = useState<string | null>(null);
+  const [deactivatingId, setDeactivatingId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ msg: string; ok: boolean } | null>(null);
   const [editingProfile, setEditingProfile] = useState<AdminProfile | null>(null);
   const [editFields, setEditFields] = useState<Record<string, string>>({});
@@ -101,6 +108,12 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
   const [orgStorageSavingId, setOrgStorageSavingId] = useState<string | null>(null);
   const [orgStorageUnlimitingId, setOrgStorageUnlimitingId] = useState<string | null>(null);
   const [orgStorageResettingId, setOrgStorageResettingId] = useState<string | null>(null);
+
+  // Billing & subscription (per org id)
+  const [orgBillingData, setOrgBillingData] = useState<Record<string, AdminBillingStatus | null>>({});
+  const [orgPlanDraft, setOrgPlanDraft] = useState<Record<string, string>>({});
+  const [orgCustomPlanDraft, setOrgCustomPlanDraft] = useState<Record<string, string>>({});
+  const [orgBillingBusyId, setOrgBillingBusyId] = useState<string | null>(null);
 
   const loadData = async () => {
     setLoading(true);
@@ -170,20 +183,32 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
   });
 
   const handleActivate = async (userId: string) => {
-    const ok = await activateAccount(userId);
-    if (ok) { showFeedback('Account activated'); await loadData(); }
-    else showFeedback('Activation failed.', false);
+    if (activatingId) return;
+    setActivatingId(userId);
+    try {
+      const ok = await activateAccount(userId);
+      if (ok) { showFeedback('Account activated'); await loadData(); }
+      else showFeedback('Activation failed.', false);
+    } finally {
+      setActivatingId(null);
+    }
   };
 
   const handleDeactivate = async (userId: string) => {
-    const ok = await deactivateAccount(userId, deactivateReason || undefined);
-    if (ok) {
-      showFeedback('Account deactivated');
-      setDeactivateReason('');
-      setActionTarget(null);
-      await loadData();
-    } else {
-      showFeedback('Deactivation failed.', false);
+    if (deactivatingId) return;
+    setDeactivatingId(userId);
+    try {
+      const ok = await deactivateAccount(userId, deactivateReason || undefined);
+      if (ok) {
+        showFeedback('Account deactivated');
+        setDeactivateReason('');
+        setActionTarget(null);
+        await loadData();
+      } else {
+        showFeedback('Deactivation failed.', false);
+      }
+    } finally {
+      setDeactivatingId(null);
     }
   };
 
@@ -329,11 +354,12 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
       setOrgMembers([]);
     }
 
-    // Load swipe limits and storage data for agency organisations.
+    // Load swipe limits, storage data, and billing status for agency organisations.
     if (org.type === 'agency') {
-      const [limits, storageData] = await Promise.all([
+      const [limits, storageData, billingStatus] = await Promise.all([
         adminGetAgencyUsageLimits(org.id),
         adminGetOrgStorageUsage(org.id),
+        adminGetBillingStatus(org.id),
       ]);
       setOrgSwipeLimits((prev) => ({ ...prev, [org.id]: limits }));
       setOrgSwipeLimitDraft((prev) => ({
@@ -341,11 +367,29 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
         [org.id]: String(limits?.daily_swipe_limit ?? 10),
       }));
       setOrgStorageData((prev) => ({ ...prev, [org.id]: storageData }));
-      // Default draft shows current custom limit in GB (or empty for default/unlimited).
       const currentGb = storageData?.storage_limit_bytes
         ? (storageData.storage_limit_bytes / (1024 ** 3)).toFixed(1)
         : '';
       setOrgStorageLimitDraft((prev) => ({ ...prev, [org.id]: currentGb }));
+      setOrgBillingData((prev) => ({ ...prev, [org.id]: billingStatus }));
+      setOrgPlanDraft((prev) => ({
+        ...prev,
+        [org.id]: billingStatus?.subscription?.plan ?? '',
+      }));
+      setOrgCustomPlanDraft((prev) => ({
+        ...prev,
+        [org.id]: billingStatus?.admin_override?.custom_plan ?? '',
+      }));
+    }
+
+    // Also load billing status for client orgs (they have subscriptions too)
+    if (org.type === 'client') {
+      const billingStatus = await adminGetBillingStatus(org.id).catch(() => null);
+      setOrgBillingData((prev) => ({ ...prev, [org.id]: billingStatus }));
+      setOrgPlanDraft((prev) => ({
+        ...prev,
+        [org.id]: billingStatus?.subscription?.plan ?? '',
+      }));
     }
   };
 
@@ -495,6 +539,37 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
     setOrgStorageResettingId(null);
   };
 
+  // ── Billing & Paywall Handlers ────────────────────────────────────────────────
+
+  const handleSetBypassPaywall = async (org: AdminOrganization, bypass: boolean) => {
+    setOrgBillingBusyId(org.id);
+    const customPlan = orgCustomPlanDraft[org.id]?.trim() || null;
+    const ok = await adminSetBypassPaywall(org.id, bypass, customPlan);
+    if (ok) {
+      showFeedback(uiCopy.billing.adminBypassSuccess);
+      const updated = await adminGetBillingStatus(org.id);
+      setOrgBillingData((prev) => ({ ...prev, [org.id]: updated }));
+    } else {
+      showFeedback(uiCopy.billing.adminBypassFailed, false);
+    }
+    setOrgBillingBusyId(null);
+  };
+
+  const handleSetOrgPlan = async (org: AdminOrganization) => {
+    const plan = orgPlanDraft[org.id]?.trim();
+    if (!plan) { showFeedback('Enter a plan name.', false); return; }
+    setOrgBillingBusyId(org.id);
+    const ok = await adminSetOrgPlan(org.id, plan);
+    if (ok) {
+      showFeedback(uiCopy.billing.adminSetPlanSuccess);
+      const updated = await adminGetBillingStatus(org.id);
+      setOrgBillingData((prev) => ({ ...prev, [org.id]: updated }));
+    } else {
+      showFeedback(uiCopy.billing.adminSetPlanFailed, false);
+    }
+    setOrgBillingBusyId(null);
+  };
+
   // ── Models ───────────────────────────────────────────────────────────────────
 
   const filteredModels = models.filter((m) => {
@@ -598,37 +673,46 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
 
       ) : tab === 'accounts' ? (
         /* ── Accounts ── */
-        <ScrollView style={styles.scrollArea} keyboardShouldPersistTaps="handled">
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search by name, email, company..."
-            placeholderTextColor={colors.textSecondary}
-            value={search}
-            onChangeText={setSearch}
-          />
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing.md }}>
-            <View style={{ flexDirection: 'row', gap: spacing.xs }}>
-              {(['all', 'inactive', 'active', 'client', 'agent', 'model'] as const).map((f) => {
-                const count = f === 'all' ? profiles.length
-                  : f === 'inactive' ? profiles.filter(p => !p.is_active).length
-                  : f === 'active' ? profiles.filter(p => p.is_active).length
-                  : profiles.filter(p => p.role === f).length;
-                return (
-                  <TouchableOpacity
-                    key={f}
-                    style={[styles.pill, filter === f && styles.pillActive]}
-                    onPress={() => setFilter(f)}
-                  >
-                    <Text style={[styles.pillText, filter === f && styles.pillTextActive]}>
-                      {f === 'agent' ? 'Agency' : f.charAt(0).toUpperCase() + f.slice(1)} ({count})
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </ScrollView>
-
-          {filteredProfiles.map((p) => {
+        <FlatList
+          style={styles.scrollArea}
+          keyboardShouldPersistTaps="handled"
+          data={filteredProfiles}
+          keyExtractor={(p) => p.id}
+          ListHeaderComponent={(
+            <>
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search by name, email, company..."
+                placeholderTextColor={colors.textSecondary}
+                value={search}
+                onChangeText={setSearch}
+              />
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing.md }}>
+                <View style={{ flexDirection: 'row', gap: spacing.xs }}>
+                  {(['all', 'inactive', 'active', 'client', 'agent', 'model'] as const).map((f) => {
+                    const count = f === 'all' ? profiles.length
+                      : f === 'inactive' ? profiles.filter(p => !p.is_active).length
+                      : f === 'active' ? profiles.filter(p => p.is_active).length
+                      : profiles.filter(p => p.role === f).length;
+                    return (
+                      <TouchableOpacity
+                        key={f}
+                        style={[styles.pill, filter === f && styles.pillActive]}
+                        onPress={() => setFilter(f)}
+                      >
+                        <Text style={[styles.pillText, filter === f && styles.pillTextActive]}>
+                          {f === 'agent' ? 'Agency' : f.charAt(0).toUpperCase() + f.slice(1)} ({count})
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+            </>
+          )}
+          ListEmptyComponent={<Text style={styles.emptyText}>No accounts matching the current filter.</Text>}
+          ListFooterComponent={<View style={{ height: 40 }} />}
+          renderItem={({ item: p }) => {
             const membership = profileOrgMap[p.id];
             const orgRoleLabel = membership?.orgRole === 'owner' ? 'Owner'
               : membership?.orgRole === 'booker' ? 'Booker'
@@ -668,8 +752,12 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
                 <View style={{ alignItems: 'flex-end', gap: 4, justifyContent: 'center' }}>
                   {!p.is_active ? (
                     <View style={{ gap: 4 }}>
-                      <TouchableOpacity style={styles.btnGreen} onPress={() => handleActivate(p.id)}>
-                        <Text style={styles.btnLabel}>Activate</Text>
+                      <TouchableOpacity
+                        style={[styles.btnGreen, activatingId === p.id && { opacity: 0.5 }]}
+                        onPress={() => handleActivate(p.id)}
+                        disabled={activatingId !== null}
+                      >
+                        <Text style={styles.btnLabel}>{activatingId === p.id ? 'Activating…' : 'Activate'}</Text>
                       </TouchableOpacity>
                       <TouchableOpacity style={styles.btnDark} onPress={() => confirmAdminPurge(p)}>
                         <Text style={styles.btnLabel}>Delete</Text>
@@ -686,8 +774,12 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
                             value={deactivateReason}
                             onChangeText={setDeactivateReason}
                           />
-                          <TouchableOpacity style={styles.btnRed} onPress={() => handleDeactivate(p.id)}>
-                            <Text style={styles.btnLabel}>Confirm</Text>
+                          <TouchableOpacity
+                            style={[styles.btnRed, deactivatingId === p.id && { opacity: 0.5 }]}
+                            onPress={() => handleDeactivate(p.id)}
+                            disabled={deactivatingId !== null}
+                          >
+                            <Text style={styles.btnLabel}>{deactivatingId === p.id ? 'Deactivating…' : 'Confirm'}</Text>
                           </TouchableOpacity>
                           <TouchableOpacity onPress={() => { setActionTarget(null); setDeactivateReason(''); }}>
                             <Text style={{ fontSize: 11, color: colors.textSecondary, textAlign: 'center' }}>Cancel</Text>
@@ -706,56 +798,57 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
                 </View>
               </View>
             </TouchableOpacity>
-            );
-          })}
-          {filteredProfiles.length === 0 && (
-            <Text style={styles.emptyText}>No accounts matching the current filter.</Text>
-          )}
-          <View style={{ height: 40 }} />
-        </ScrollView>
+          );
+        }}
+        />
 
       ) : tab === 'organizations' ? (
         /* ── Organizations ── */
-        <ScrollView style={styles.scrollArea} keyboardShouldPersistTaps="handled">
-          <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm, alignItems: 'center' }}>
-            <TextInput
-              style={[styles.searchInput, { flex: 1, marginBottom: 0 }]}
-              placeholder={uiCopy.adminDashboard.orgsSearchPlaceholder}
-              placeholderTextColor={colors.textSecondary}
-              value={orgSearch}
-              onChangeText={setOrgSearch}
-            />
-            <TouchableOpacity style={styles.btnDark} onPress={loadData}>
-              <Text style={styles.btnLabel}>↺ Reload</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md, flexWrap: 'wrap' }}>
-            <Text style={styles.summaryChip}>
-              All: {organizations.length}
-            </Text>
-            {migrationApplied && (
-              <>
-                <Text style={[styles.summaryChip, { color: '#2ecc71' }]}>
-                  Active: {organizations.filter(o => o.is_active === true).length}
+        <FlatList
+          style={styles.scrollArea}
+          keyboardShouldPersistTaps="handled"
+          data={filteredOrgs}
+          keyExtractor={(org) => org.id}
+          ListHeaderComponent={(
+            <>
+              <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm, alignItems: 'center' }}>
+                <TextInput
+                  style={[styles.searchInput, { flex: 1, marginBottom: 0 }]}
+                  placeholder={uiCopy.adminDashboard.orgsSearchPlaceholder}
+                  placeholderTextColor={colors.textSecondary}
+                  value={orgSearch}
+                  onChangeText={setOrgSearch}
+                />
+                <TouchableOpacity style={styles.btnDark} onPress={loadData}>
+                  <Text style={styles.btnLabel}>↺ Reload</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md, flexWrap: 'wrap' }}>
+                <Text style={styles.summaryChip}>
+                  All: {organizations.length}
                 </Text>
-                <Text style={[styles.summaryChip, { color: '#e74c3c' }]}>
-                  Inactive: {organizations.filter(o => o.is_active === false).length}
+                {migrationApplied && (
+                  <>
+                    <Text style={[styles.summaryChip, { color: '#2ecc71' }]}>
+                      Active: {organizations.filter(o => o.is_active === true).length}
+                    </Text>
+                    <Text style={[styles.summaryChip, { color: '#e74c3c' }]}>
+                      Inactive: {organizations.filter(o => o.is_active === false).length}
+                    </Text>
+                  </>
+                )}
+                <Text style={styles.summaryChip}>
+                  Agencies: {organizations.filter(o => o.type === 'agency').length}
                 </Text>
-              </>
-            )}
-            <Text style={styles.summaryChip}>
-              Agencies: {organizations.filter(o => o.type === 'agency').length}
-            </Text>
-            <Text style={styles.summaryChip}>
-              Clients: {organizations.filter(o => o.type === 'client').length}
-            </Text>
-          </View>
-
-          {filteredOrgs.length === 0 && (
-            <Text style={styles.emptyText}>{uiCopy.adminDashboard.orgsEmpty}</Text>
+                <Text style={styles.summaryChip}>
+                  Clients: {organizations.filter(o => o.type === 'client').length}
+                </Text>
+              </View>
+            </>
           )}
-
-          {filteredOrgs.map((org) => {
+          ListEmptyComponent={<Text style={styles.emptyText}>{uiCopy.adminDashboard.orgsEmpty}</Text>}
+          ListFooterComponent={<View style={{ height: 40 }} />}
+          renderItem={({ item: org }) => {
             const isExpanded = expandedOrgId === org.id;
             const isSaving = orgSavingId === org.id;
             const isToggling = orgTogglingId === org.id;
@@ -1016,6 +1109,118 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
                       );
                     })()}
 
+                    {/* ── Billing & Subscription Section ───────────────────── */}
+                    {(() => {
+                      const billing      = orgBillingData[org.id];
+                      const sub          = billing?.subscription ?? null;
+                      const override     = billing?.admin_override ?? null;
+                      const isBillingBusy = orgBillingBusyId === org.id;
+                      const bypassOn     = override?.bypass_paywall === true;
+
+                      const statusLabel = (s: string | null | undefined) => {
+                        switch (s) {
+                          case 'active':   return uiCopy.billing.statusActive;
+                          case 'trialing': return uiCopy.billing.statusTrialing;
+                          case 'past_due': return uiCopy.billing.statusPastDue;
+                          case 'canceled': return uiCopy.billing.statusCanceled;
+                          default:         return s ?? '—';
+                        }
+                      };
+
+                      return (
+                        <View style={styles.billingSectionAdmin}>
+                          <Text style={styles.editLabel}>{uiCopy.billing.adminBillingTitle}</Text>
+
+                          {/* Subscription info */}
+                          {sub ? (
+                            <View style={styles.swipeLimitStats}>
+                              <Text style={styles.swipeLimitStat}>
+                                {uiCopy.billing.adminSubscriptionStatus}:{' '}
+                                <Text style={{ fontWeight: '700' }}>{statusLabel(sub.status)}</Text>
+                              </Text>
+                              {sub.plan && (
+                                <Text style={styles.swipeLimitStat}>
+                                  Plan: <Text style={{ fontWeight: '700' }}>{sub.plan}</Text>
+                                </Text>
+                              )}
+                              {sub.trial_ends_at && (
+                                <Text style={styles.swipeLimitStat}>
+                                  {uiCopy.billing.adminTrialEndsAt}:{' '}
+                                  <Text style={{ fontWeight: '700' }}>
+                                    {new Date(sub.trial_ends_at).toLocaleDateString()}
+                                  </Text>
+                                </Text>
+                              )}
+                            </View>
+                          ) : (
+                            <Text style={styles.cardMeta}>{uiCopy.billing.adminNoSubscription}</Text>
+                          )}
+
+                          {/* Manual plan set */}
+                          <View style={{ flexDirection: 'row', gap: spacing.sm, alignItems: 'center', marginTop: spacing.sm }}>
+                            <TextInput
+                              style={[styles.editInput, { flex: 1 }]}
+                              value={orgPlanDraft[org.id] ?? ''}
+                              onChangeText={(v) => setOrgPlanDraft((d) => ({ ...d, [org.id]: v }))}
+                              placeholder={uiCopy.billing.adminCustomPlanPlaceholder}
+                              placeholderTextColor={colors.textSecondary}
+                              autoCapitalize="none"
+                            />
+                            <TouchableOpacity
+                              style={[styles.btnSmall, styles.btnGreen, isBillingBusy && { opacity: 0.5 }]}
+                              onPress={() => void handleSetOrgPlan(org)}
+                              disabled={isBillingBusy}
+                            >
+                              {isBillingBusy
+                                ? <ActivityIndicator size="small" color="#fff" />
+                                : <Text style={styles.btnLabel}>{uiCopy.billing.adminSetPlan}</Text>
+                              }
+                            </TouchableOpacity>
+                          </View>
+
+                          {/* Bypass paywall toggle */}
+                          <View style={{ marginTop: spacing.sm }}>
+                            <Text style={styles.swipeLimitStat}>
+                              {uiCopy.billing.adminBypassPaywall}:{' '}
+                              {bypassOn
+                                ? <Text style={{ color: '#2ecc71', fontWeight: '700' }}>ON</Text>
+                                : <Text style={{ color: colors.textSecondary }}>OFF</Text>
+                              }
+                            </Text>
+                            {bypassOn && override?.custom_plan && (
+                              <Text style={styles.swipeLimitStat}>
+                                {uiCopy.billing.adminCustomPlan}: {override.custom_plan}
+                              </Text>
+                            )}
+                            <TextInput
+                              style={[styles.editInput, { marginTop: spacing.xs }]}
+                              value={orgCustomPlanDraft[org.id] ?? ''}
+                              onChangeText={(v) => setOrgCustomPlanDraft((d) => ({ ...d, [org.id]: v }))}
+                              placeholder={`${uiCopy.billing.adminCustomPlan} (optional)`}
+                              placeholderTextColor={colors.textSecondary}
+                              autoCapitalize="none"
+                            />
+                            <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xs }}>
+                              <TouchableOpacity
+                                style={[styles.btnSmall, styles.btnGreen, isBillingBusy && { opacity: 0.5 }]}
+                                onPress={() => void handleSetBypassPaywall(org, true)}
+                                disabled={isBillingBusy}
+                              >
+                                <Text style={styles.btnLabel}>Enable Override</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={[styles.btnSmall, styles.btnRed, isBillingBusy && { opacity: 0.5 }]}
+                                onPress={() => void handleSetBypassPaywall(org, false)}
+                                disabled={isBillingBusy}
+                              >
+                                <Text style={styles.btnLabel}>Disable Override</Text>
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        </View>
+                      );
+                    })()}
+
                     <TouchableOpacity
                       style={[styles.saveBtn, isSaving && { opacity: 0.5 }]}
                       onPress={() => handleSaveOrg(org)}
@@ -1027,45 +1232,51 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
                 )}
               </View>
             );
-          })}
-          <View style={{ height: 40 }} />
-        </ScrollView>
+          }}
+          />
 
       ) : tab === 'models' ? (
         /* ── Models ── */
-        <ScrollView style={styles.scrollArea} keyboardShouldPersistTaps="handled">
-          <TextInput
-            style={styles.searchInput}
-            placeholder={uiCopy.adminDashboard.modelsSearchPlaceholder}
-            placeholderTextColor={colors.textSecondary}
-            value={modelSearch}
-            onChangeText={setModelSearch}
-          />
-          <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md, flexWrap: 'wrap' }}>
-            <Text style={styles.summaryChip}>All: {models.length}</Text>
-            {migrationApplied && (
-              <>
-                <Text style={[styles.summaryChip, { color: '#2ecc71' }]}>
-                  Active: {models.filter(m => m.is_active === true).length}
-                </Text>
-                <Text style={[styles.summaryChip, { color: '#e74c3c' }]}>
-                  Inactive: {models.filter(m => m.is_active === false).length}
-                </Text>
-              </>
-            )}
-          </View>
-
-          {filteredModels.length === 0 && (
-            <Text style={styles.emptyText}>{uiCopy.adminDashboard.modelsEmpty}</Text>
+        <FlatList
+          style={styles.scrollArea}
+          keyboardShouldPersistTaps="handled"
+          data={filteredModels}
+          keyExtractor={(model) => model.id}
+          ListHeaderComponent={(
+            <TextInput
+              style={styles.searchInput}
+              placeholder={uiCopy.adminDashboard.modelsSearchPlaceholder}
+              placeholderTextColor={colors.textSecondary}
+              value={modelSearch}
+              onChangeText={setModelSearch}
+            />
           )}
-
-          {filteredModels.map((model) => {
+          ListEmptyComponent={<Text style={styles.emptyText}>{uiCopy.adminDashboard.modelsEmpty}</Text>}
+          ListFooterComponent={(
+            <>
+              <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md, flexWrap: 'wrap' }}>
+                <Text style={styles.summaryChip}>All: {models.length}</Text>
+                {migrationApplied && (
+                  <>
+                    <Text style={[styles.summaryChip, { color: '#2ecc71' }]}>
+                      Active: {models.filter(m => m.is_active === true).length}
+                    </Text>
+                    <Text style={[styles.summaryChip, { color: '#e74c3c' }]}>
+                      Inactive: {models.filter(m => m.is_active === false).length}
+                    </Text>
+                  </>
+                )}
+              </View>
+              <View style={{ height: 40 }} />
+            </>
+          )}
+          renderItem={({ item: model }) => {
             const isToggling = modelTogglingId === model.id;
             const isSaving = modelSavingId === model.id;
             const notesDraft = model.id in modelNotesDraft ? modelNotesDraft[model.id] : (model.admin_notes ?? '');
 
             return (
-              <View key={model.id} style={styles.card}>
+              <View style={styles.card}>
                 <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
                   <View style={{ flex: 1 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 3 }}>
@@ -1123,15 +1334,17 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
                 )}
               </View>
             );
-          })}
-          <View style={{ height: 40 }} />
-        </ScrollView>
+          }}
+          />
 
       ) : tab === 'logs' ? (
         /* ── Audit Log ── */
-        <ScrollView style={styles.scrollArea}>
-          {logs.map((log) => (
-            <View key={log.id} style={styles.logEntry}>
+        <FlatList
+          style={styles.scrollArea}
+          data={logs}
+          keyExtractor={(log) => log.id}
+          renderItem={({ item: log }) => (
+            <View style={styles.logEntry}>
               <Text style={styles.logAction}>{log.action}</Text>
               <Text style={styles.logMeta}>
                 Target: {log.target_user_id ? log.target_user_id.slice(0, 8) + '...' : 'N/A'}
@@ -1141,9 +1354,10 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
                 <Text style={styles.logDetails}>{JSON.stringify(log.details)}</Text>
               )}
             </View>
-          ))}
-          {logs.length === 0 && <Text style={styles.emptyText}>No audit log entries yet.</Text>}
-        </ScrollView>
+          )}
+          ListEmptyComponent={<Text style={styles.emptyText}>No audit log entries yet.</Text>}
+          ListFooterComponent={<View style={{ height: 40 }} />}
+        />
 
       ) : (
         /* ── Edit Profile ── */
@@ -1498,6 +1712,14 @@ const styles = StyleSheet.create({
 
   // Storage limit section inside expanded org card
   storageLimitSection: {
+    marginTop: spacing.md,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+
+  // Billing section inside expanded org card
+  billingSectionAdmin: {
     marginTop: spacing.md,
     paddingTop: spacing.sm,
     borderTopWidth: 1,

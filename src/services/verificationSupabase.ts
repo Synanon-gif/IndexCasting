@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase';
+import { validateFile } from '../../lib/validation';
 
 /**
  * Verifizierungen (Model) – in Supabase: verifications (user_id) + Storage (documents).
@@ -38,6 +39,13 @@ export async function submitVerification(
   fileName: string
 ): Promise<Verification | null> {
   try {
+    // MIME type and size validation — ID documents must be image or PDF only.
+    const fileValidation = validateFile(file);
+    if (!fileValidation.ok) {
+      console.error('submitVerification: file validation failed', fileValidation.error);
+      return null;
+    }
+
     const path = `verifications/${userId}/${Date.now()}_${fileName}`;
 
     const { error: uploadError } = await supabase.storage

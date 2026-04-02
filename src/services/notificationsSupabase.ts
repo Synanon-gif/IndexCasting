@@ -20,10 +20,12 @@ export type NotificationType =
   | 'booking_accepted'
   | 'model_confirmed'
   | 'new_option_request'
+  | 'new_option_message'
   | 'awaiting_model_confirmation'
   | 'agency_counter_offer'
   | 'job_confirmed'
-  | 'client_rejected_counter';
+  | 'client_rejected_counter'
+  | 'new_recruiting_message';
 
 export type Notification = {
   id: string;

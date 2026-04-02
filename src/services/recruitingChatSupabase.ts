@@ -1,6 +1,7 @@
 import { supabase } from '../../lib/supabase';
 import { uiCopy } from '../constants/uiCopy';
 import { pooledSubscribe } from './realtimeChannelPool';
+import { createNotification } from './notificationsSupabase';
 import {
   validateText,
   sanitizeHtml,
@@ -98,6 +99,62 @@ export async function getThread(threadId: string): Promise<SupabaseRecruitingThr
   } catch (e) {
     console.error('getThread exception:', e);
     return null;
+  }
+}
+
+/**
+ * Batch lookup: resolves threadId → agencyName for a list of thread IDs.
+ * Replaces the N+1 loop (1 getThread + 1 getAgencyById per thread) with
+ * exactly 2 queries regardless of how many thread IDs are passed.
+ *
+ * Returns a map of { [threadId]: agencyName }.
+ */
+export async function getAgencyNamesByThreadIds(
+  threadIds: string[],
+): Promise<Record<string, string>> {
+  if (!threadIds.length) return {};
+
+  try {
+    const { data: threads, error: tErr } = await supabase
+      .from('recruiting_chat_threads')
+      .select('id, agency_id')
+      .in('id', threadIds);
+
+    if (tErr || !threads?.length) {
+      if (tErr) console.error('getAgencyNamesByThreadIds threads error:', tErr);
+      return {};
+    }
+
+    const agencyIds = [...new Set(
+      threads.map((t: { id: string; agency_id: string | null }) => t.agency_id).filter(Boolean) as string[],
+    )];
+
+    if (!agencyIds.length) return {};
+
+    const { data: agencies, error: aErr } = await supabase
+      .from('agencies')
+      .select('id, name')
+      .in('id', agencyIds);
+
+    if (aErr) {
+      console.error('getAgencyNamesByThreadIds agencies error:', aErr);
+      return {};
+    }
+
+    const agencyNameById = Object.fromEntries(
+      (agencies ?? []).map((a: { id: string; name: string }) => [a.id, a.name]),
+    );
+
+    const result: Record<string, string> = {};
+    for (const t of threads as Array<{ id: string; agency_id: string | null }>) {
+      if (t.agency_id && agencyNameById[t.agency_id]) {
+        result[t.id] = agencyNameById[t.agency_id];
+      }
+    }
+    return result;
+  } catch (e) {
+    console.error('getAgencyNamesByThreadIds exception:', e);
+    return {};
   }
 }
 
@@ -288,6 +345,42 @@ export async function addMessage(
       .select()
       .single();
     if (error) { console.error('addMessage error:', error); return null; }
+
+    // Fire-and-forget: notify the opposing party about the new recruiting message.
+    void (async () => {
+      const { data: thread } = await supabase
+        .from('recruiting_chat_threads')
+        .select('organization_id, application_id')
+        .eq('id', threadId)
+        .maybeSingle();
+      if (!thread) return;
+
+      if (fromRole === 'agency' && thread.application_id) {
+        const { data: app } = await supabase
+          .from('model_applications')
+          .select('applicant_user_id')
+          .eq('id', thread.application_id)
+          .maybeSingle();
+        if (app?.applicant_user_id) {
+          await createNotification({
+            user_id: app.applicant_user_id as string,
+            type: 'new_recruiting_message',
+            title: uiCopy.notifications.newRecruitingMessage.title,
+            message: uiCopy.notifications.newRecruitingMessage.message,
+            metadata: { thread_id: threadId },
+          });
+        }
+      } else if (fromRole === 'model' && thread.organization_id) {
+        await createNotification({
+          organization_id: thread.organization_id as string,
+          type: 'new_recruiting_message',
+          title: uiCopy.notifications.newRecruitingMessage.title,
+          message: uiCopy.notifications.newRecruitingMessage.message,
+          metadata: { thread_id: threadId },
+        });
+      }
+    })();
+
     return data as SupabaseRecruitingMessage;
   } catch (e) {
     console.error('addMessage exception:', e);

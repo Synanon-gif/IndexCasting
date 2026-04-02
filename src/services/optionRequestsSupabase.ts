@@ -64,6 +64,12 @@ export type SupabaseOptionDocument = {
   option_request_id: string;
   uploaded_by: string;
   file_name: string;
+  /**
+   * Storage object path (e.g. "options/{requestId}/{timestamp}_{name}").
+   * Use resolveOptionDocumentUrl() to obtain a short-lived signed URL for display.
+   * Legacy rows created before the VULN-M3 fix may contain a full https:// URL here;
+   * resolveOptionDocumentUrl() handles both formats transparently.
+   */
   file_url: string;
   file_type: string | null;
   created_at: string;
@@ -252,23 +258,34 @@ export async function insertOptionRequest(req: {
 
 export async function updateOptionRequestStatus(
   id: string,
-  status: 'in_negotiation' | 'confirmed' | 'rejected'
+  status: 'in_negotiation' | 'confirmed' | 'rejected',
+  fromStatus?: 'pending' | 'in_negotiation' | 'confirmed' | 'rejected'
 ): Promise<boolean> {
-  const { data, error } = await supabase
-    .from('option_requests')
-    .update({ status })
-    .eq('id', id)
-    .select('id')
-    .maybeSingle();
-  if (error) {
-    console.error('updateOptionRequestStatus error:', error);
+  try {
+    let q = supabase
+      .from('option_requests')
+      .update({ status })
+      .eq('id', id);
+    if (fromStatus) {
+      // Optimistic concurrency guard: the update only succeeds if the row is
+      // still in the expected prior state, preventing invalid state skips
+      // (e.g. rejected → confirmed) via concurrent or replayed requests.
+      q = q.eq('status', fromStatus);
+    }
+    const { data, error } = await q.select('id').maybeSingle();
+    if (error) {
+      console.error('updateOptionRequestStatus error:', error);
+      return false;
+    }
+    if (!data?.id) {
+      console.warn('updateOptionRequestStatus: no row updated — concurrent state change or wrong fromStatus', { id, fromStatus, targetStatus: status });
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('updateOptionRequestStatus exception:', e);
     return false;
   }
-  if (!data?.id) {
-    console.warn('updateOptionRequestStatus: no row updated (check id / RLS)', id);
-    return false;
-  }
-  return true;
 }
 
 /** Datum/Zeit der Option (Client/Agentur). Trigger sync_option_dates_to_calendars pflegt Kalender + gespiegelte Events. */
@@ -328,80 +345,148 @@ export async function modelUpdateOptionSchedule(
   }
 }
 
+/**
+ * Agency sets a counter-offer price.
+ * Guard: only allowed while still in_negotiation — prevents counter-offers on
+ * already-confirmed or rejected requests (e.g. from a stale UI screen).
+ */
 export async function setAgencyCounterOffer(
   id: string,
   counterPrice: number
 ): Promise<boolean> {
-  const { error } = await supabase
-    .from('option_requests')
-    .update({
-      agency_counter_price: counterPrice,
-      client_price_status: 'pending',
-      final_status: 'option_pending',
-    })
-    .eq('id', id);
-  if (error) { console.error('setAgencyCounterOffer error:', error); return false; }
-  return true;
+  try {
+    const { data, error } = await supabase
+      .from('option_requests')
+      .update({
+        agency_counter_price: counterPrice,
+        client_price_status: 'pending',
+        final_status: 'option_pending',
+      })
+      .eq('id', id)
+      .eq('status', 'in_negotiation')
+      .select('id')
+      .maybeSingle();
+    if (error) { console.error('setAgencyCounterOffer error:', error); return false; }
+    if (!data?.id) {
+      console.warn('setAgencyCounterOffer: no row updated — request not in_negotiation', id);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('setAgencyCounterOffer exception:', e);
+    return false;
+  }
 }
 
+/**
+ * Agency accepts the client's proposed price.
+ * Guard: client_price_status must currently be 'pending' (client has an active
+ * offer) AND request must still be in_negotiation — prevents accepting a price
+ * that has already been superseded by a newer counter-offer round.
+ */
 export async function agencyAcceptClientPrice(id: string): Promise<boolean> {
-  const { error } = await supabase
-    .from('option_requests')
-    .update({
-      client_price_status: 'accepted',
-      final_status: 'option_confirmed',
-    })
-    .eq('id', id);
-  if (error) { console.error('agencyAcceptClientPrice error:', error); return false; }
-  return true;
+  try {
+    const { data, error } = await supabase
+      .from('option_requests')
+      .update({
+        client_price_status: 'accepted',
+        final_status: 'option_confirmed',
+      })
+      .eq('id', id)
+      .eq('status', 'in_negotiation')
+      .eq('client_price_status', 'pending')
+      .select('id')
+      .maybeSingle();
+    if (error) { console.error('agencyAcceptClientPrice error:', error); return false; }
+    if (!data?.id) {
+      console.warn('agencyAcceptClientPrice: no row updated — offer no longer pending or request not in_negotiation', id);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('agencyAcceptClientPrice exception:', e);
+    return false;
+  }
 }
 
-/** Agency declines the client's proposed fee; counter-offer UI becomes the next step. */
+/**
+ * Agency declines the client's proposed fee; counter-offer UI becomes the next step.
+ * Guard: only actionable while the request is still in active negotiation.
+ */
 export async function agencyRejectClientPrice(id: string): Promise<boolean> {
-  const { error } = await supabase
-    .from('option_requests')
-    .update({ client_price_status: 'rejected' })
-    .eq('id', id);
-  if (error) { console.error('agencyRejectClientPrice error:', error); return false; }
-  return true;
+  try {
+    const { data, error } = await supabase
+      .from('option_requests')
+      .update({ client_price_status: 'rejected' })
+      .eq('id', id)
+      .eq('status', 'in_negotiation')
+      .eq('client_price_status', 'pending')
+      .select('id')
+      .maybeSingle();
+    if (error) { console.error('agencyRejectClientPrice error:', error); return false; }
+    if (!data?.id) {
+      console.warn('agencyRejectClientPrice: no row updated — offer not pending or request not in_negotiation', id);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('agencyRejectClientPrice exception:', e);
+    return false;
+  }
 }
 
 export async function clientAcceptCounterPrice(id: string): Promise<boolean> {
-  // Guard: only accept when a counter-offer is actually pending.
-  // Without this, a stale UI state (race condition or duplicate tap) could
-  // confirm an already-superseded price version.
-  const { data, error } = await supabase
-    .from('option_requests')
-    .update({
-      client_price_status: 'accepted',
-      final_status: 'option_confirmed',
-    })
-    .eq('id', id)
-    .eq('client_price_status', 'pending')
-    .eq('final_status', 'option_pending')
-    .select('id');
-  if (error) { console.error('clientAcceptCounterPrice error:', error); return false; }
-  if (!data || data.length === 0) {
-    console.warn('clientAcceptCounterPrice: no row updated — counter-offer no longer pending');
+  try {
+    // Guard: only accept when a counter-offer is actually pending.
+    // Without this, a stale UI state (race condition or duplicate tap) could
+    // confirm an already-superseded price version.
+    const { data, error } = await supabase
+      .from('option_requests')
+      .update({
+        client_price_status: 'accepted',
+        final_status: 'option_confirmed',
+      })
+      .eq('id', id)
+      .eq('client_price_status', 'pending')
+      .eq('final_status', 'option_pending')
+      .select('id');
+    if (error) { console.error('clientAcceptCounterPrice error:', error); return false; }
+    if (!data || data.length === 0) {
+      console.warn('clientAcceptCounterPrice: no row updated — counter-offer no longer pending');
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('clientAcceptCounterPrice exception:', e);
     return false;
   }
-  return true;
 }
 
 /**
  * Client lehnt das Gegenangebot der Agency ab.
  * Setzt status=rejected + client_price_status=rejected atomar.
+ *
+ * Guard: verhindert Reject eines bereits bestätigten oder bereits abgelehnten
+ * Requests (VULN-H2). Double-layer mit DB-Trigger trg_validate_option_status.
  */
 export async function clientRejectCounterOfferOnSupabase(id: string): Promise<boolean> {
   try {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('option_requests')
       .update({
         client_price_status: 'rejected',
         status: 'rejected',
       })
-      .eq('id', id);
+      .eq('id', id)
+      .neq('status', 'confirmed')    // VULN-H2: kein Reject nach Bestätigung
+      .neq('status', 'rejected')     // Idempotenz-Schutz
+      .select('id')
+      .maybeSingle();
     if (error) { console.error('clientRejectCounterOfferOnSupabase error:', error); return false; }
+    if (!data?.id) {
+      console.warn('clientRejectCounterOfferOnSupabase: no row updated — request already confirmed or rejected', id);
+      return false;
+    }
     return true;
   } catch (e) {
     console.error('clientRejectCounterOfferOnSupabase exception:', e);
@@ -411,6 +496,8 @@ export async function clientRejectCounterOfferOnSupabase(id: string): Promise<bo
 
 export async function clientConfirmJobOnSupabase(id: string): Promise<boolean> {
   try {
+    // Guard: only allow job confirmation from option_confirmed state.
+    // This prevents double-confirms from stale UI screens.
     const { data: updated, error } = await supabase
       .from('option_requests')
       .update({
@@ -418,6 +505,7 @@ export async function clientConfirmJobOnSupabase(id: string): Promise<boolean> {
         status: 'confirmed',
       })
       .eq('id', id)
+      .eq('final_status', 'option_confirmed')
       .select(OPTION_REQUEST_SELECT)
       .maybeSingle();
 
@@ -427,12 +515,16 @@ export async function clientConfirmJobOnSupabase(id: string): Promise<boolean> {
     }
 
     if (!updated) {
-      console.warn('clientConfirmJobOnSupabase: no row updated (check id / RLS)', id);
+      console.warn('clientConfirmJobOnSupabase: no row updated — not in option_confirmed state or concurrent call', id);
       return false;
     }
 
-    // Create a booking_event so calendar entries are generated for all parties.
-    // Without this the Option→Job conversion had no calendar side-effect.
+    // The DB trigger tr_auto_booking_event_on_confirm handles new booking_events
+    // when status transitions in_negotiation → confirmed. For the option→job
+    // promotion path (status was already 'confirmed'), the trigger does not fire
+    // again, so we call createBookingEventFromRequest explicitly here.
+    // uidx_booking_events_per_option_request ensures idempotency if both paths
+    // somehow race.
     await createBookingEventFromRequest(updated as SupabaseOptionRequest);
 
     return true;
@@ -525,6 +617,35 @@ export async function addOptionMessage(
         .is('agency_assignee_user_id', null);
       if (claimErr) console.error('addOptionMessage claim assignee error:', claimErr);
     }
+
+    // Fire-and-forget: notify the opposing party about the new message.
+    void (async () => {
+      const { data: req } = await supabase
+        .from('option_requests')
+        .select('client_id, organization_id')
+        .eq('id', requestId)
+        .maybeSingle();
+      if (!req) return;
+
+      if (fromRole === 'agency' && req.client_id) {
+        await createNotification({
+          user_id: req.client_id as string,
+          type: 'new_option_message',
+          title: uiCopy.notifications.newOptionMessage.title,
+          message: uiCopy.notifications.newOptionMessage.message,
+          metadata: { option_request_id: requestId },
+        });
+      } else if (fromRole === 'client' && req.organization_id) {
+        await createNotification({
+          organization_id: req.organization_id as string,
+          type: 'new_option_message',
+          title: uiCopy.notifications.newOptionMessage.title,
+          message: uiCopy.notifications.newOptionMessage.message,
+          metadata: { option_request_id: requestId },
+        });
+      }
+    })();
+
     return data as SupabaseOptionMessage;
   } catch (e) {
     console.error('addOptionMessage exception:', e);
@@ -622,6 +743,35 @@ export async function getOptionDocuments(requestId: string): Promise<SupabaseOpt
   }
 }
 
+/**
+ * Returns a short-lived signed URL (1 hour) for displaying an option document.
+ *
+ * VULN-M3 fix: documents now store the raw storage path in file_url rather than
+ * a pre-generated signed URL. This function must be used wherever the URL is
+ * needed for display or download — never persist the returned URL.
+ *
+ * Backward-compatible: if file_url is already a full https:// URL (legacy rows
+ * created before the fix), it is returned as-is.
+ */
+export async function resolveOptionDocumentUrl(doc: SupabaseOptionDocument): Promise<string | null> {
+  try {
+    if (doc.file_url.startsWith('http://') || doc.file_url.startsWith('https://')) {
+      return doc.file_url;
+    }
+    const { data, error } = await supabase.storage
+      .from('chat-files')
+      .createSignedUrl(doc.file_url, 3600);
+    if (error || !data?.signedUrl) {
+      console.error('resolveOptionDocumentUrl error:', error);
+      return null;
+    }
+    return data.signedUrl;
+  } catch (e) {
+    console.error('resolveOptionDocumentUrl exception:', e);
+    return null;
+  }
+}
+
 export async function uploadOptionDocument(
   requestId: string,
   uploadedBy: string,
@@ -629,6 +779,14 @@ export async function uploadOptionDocument(
   fileName: string
 ): Promise<SupabaseOptionDocument | null> {
   try {
+  // MIME type and size validation before any storage interaction.
+  const { validateFile } = await import('../../lib/validation');
+  const fileValidation = validateFile(file);
+  if (!fileValidation.ok) {
+    console.error('uploadOptionDocument: file validation failed', fileValidation.error);
+    return null;
+  }
+
   // Agency storage limit check — non-agency users pass through automatically.
   const storageCheck = await checkAndIncrementStorage(file.size);
   if (!storageCheck.allowed) {
@@ -646,23 +804,16 @@ export async function uploadOptionDocument(
     return null;
   }
 
-  // Use a time-limited signed URL (1 hour) instead of a permanent public URL.
-  // This prevents unauthenticated access to option documents via raw URL.
-  const { data: signedData, error: signedError } = await supabase.storage
-    .from('chat-files')
-    .createSignedUrl(path, 3600);
-  if (signedError || !signedData?.signedUrl) {
-    console.error('uploadOptionDocument signed URL error:', signedError);
-    return null;
-  }
-
+  // VULN-M3 fix: store the storage PATH (not a pre-generated signed URL) in
+  // file_url. Signed URLs expire after 1 hour, making persisted URLs useless.
+  // Use resolveOptionDocumentUrl() at display time to get a fresh signed URL.
   const { data, error } = await supabase
     .from('option_documents')
     .insert({
       option_request_id: requestId,
       uploaded_by: uploadedBy,
       file_name: fileName,
-      file_url: signedData.signedUrl,
+      file_url: path,
       file_type: fileName.split('.').pop() || null,
     })
     .select()
@@ -761,8 +912,12 @@ export async function agencyAcceptRequest(
     const modelAccountLinked = r.model_account_linked ?? false;
 
     if (!modelAccountLinked) {
-      // Kein Model-Account → Agency-Bestätigung reicht aus
-      const { error } = await supabase
+      // Kein Model-Account → Agency-Bestätigung reicht aus.
+      // Guard: .eq('status', 'in_negotiation') makes the UPDATE atomic — a
+      // double-tap or concurrent call returns no row and is safely ignored.
+      // The booking_event is now created by the DB trigger
+      // tr_auto_booking_event_on_confirm (migration_chaos_hardening_2026_04.sql).
+      const { data: updateData, error } = await supabase
         .from('option_requests')
         .update({
           client_price_status: 'accepted',
@@ -771,30 +926,43 @@ export async function agencyAcceptRequest(
           model_approved_at: new Date().toISOString(),
           status: 'confirmed',
         })
-        .eq('id', id);
+        .eq('id', id)
+        .eq('status', 'in_negotiation')
+        .select('id')
+        .maybeSingle();
 
       if (error) {
         console.error('agencyAcceptRequest (no account) update error:', error);
         return null;
       }
+      if (!updateData?.id) {
+        console.warn('agencyAcceptRequest: no row updated — already accepted or concurrent call', id);
+        return null;
+      }
 
-      const confirmed: SupabaseOptionRequest = { ...r, status: 'confirmed', final_status: 'option_confirmed' };
-      await createBookingEventFromRequest(confirmed);
       return 'confirmed';
     }
 
-    // Model hat Account → wartet auf Model-Bestätigung
-    const { error } = await supabase
+    // Model hat Account → wartet auf Model-Bestätigung.
+    // Same atomic guard: only transition if still in_negotiation.
+    const { data: updateData, error } = await supabase
       .from('option_requests')
       .update({
         client_price_status: 'accepted',
         final_status: 'option_confirmed',
         // model_approval bleibt 'pending'
       })
-      .eq('id', id);
+      .eq('id', id)
+      .eq('status', 'in_negotiation')
+      .select('id')
+      .maybeSingle();
 
     if (error) {
       console.error('agencyAcceptRequest (with account) update error:', error);
+      return null;
+    }
+    if (!updateData?.id) {
+      console.warn('agencyAcceptRequest: no row updated — already processed or concurrent call', id);
       return null;
     }
 
@@ -812,24 +980,34 @@ export async function agencyAcceptRequest(
  * Agency lehnt die Buchungsanfrage ab.
  * Setzt status=rejected + final_status=null atomar.
  *
+ * Guard: .eq('status', 'in_negotiation') verhindert Ablehnung eines bereits
+ * bestätigten Requests (VULN-H2). Der DB-Trigger trg_validate_option_status
+ * erzwingt dies zusätzlich auf DB-Ebene — die doppelte Schicht sorgt dafür,
+ * dass der Caller eine klare Warnung erhält, bevor die DB ein Exception wirft.
+ *
  * Bewusste Entscheidung: final_status=null statt 'option_pending',
  * weil 'option_pending' eine AKTIVE Verhandlung signalisiert.
- * Abgelehnte Requests mit final_status='option_pending' würden in
- * Client-seitigen Queries die aktiven Optionen verunreinigen.
  */
 export async function agencyRejectRequest(id: string): Promise<boolean> {
   try {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('option_requests')
       .update({
         status: 'rejected',
         final_status: null,
         client_price_status: 'rejected',
       })
-      .eq('id', id);
+      .eq('id', id)
+      .eq('status', 'in_negotiation') // VULN-H2: verhindert Reject nach Confirm
+      .select('id')
+      .maybeSingle();
 
     if (error) {
       console.error('agencyRejectRequest error:', error);
+      return false;
+    }
+    if (!data?.id) {
+      console.warn('agencyRejectRequest: no row updated — request not in_negotiation or already rejected', id);
       return false;
     }
     return true;
@@ -871,22 +1049,32 @@ export async function modelConfirmOptionRequest(id: string): Promise<boolean> {
       return false;
     }
 
-    const { error } = await supabase
+    const { data: confirmData, error } = await supabase
       .from('option_requests')
       .update({
         model_approval: 'approved',
         model_approved_at: new Date().toISOString(),
         status: 'confirmed',
       })
-      .eq('id', id);
+      .eq('id', id)
+      // Race condition guard: only confirm if still in the expected state.
+      // Prevents double-confirm when two requests arrive in parallel.
+      .eq('model_approval', 'pending')
+      .eq('final_status', 'option_confirmed')
+      .select('id')
+      .maybeSingle();
 
     if (error) {
       console.error('modelConfirmOptionRequest update error:', error);
       return false;
     }
+    if (!confirmData?.id) {
+      console.warn('modelConfirmOptionRequest: no row updated — concurrent state change', { id });
+      return false;
+    }
 
-    const confirmed: SupabaseOptionRequest = { ...r, status: 'confirmed', model_approval: 'approved' };
-    await createBookingEventFromRequest(confirmed);
+    // booking_event is created by the DB trigger tr_auto_booking_event_on_confirm
+    // (migration_chaos_hardening_2026_04.sql) — no client-side call needed here.
 
     // Notify agency org + client user about model confirmation
     void notifyModelConfirmedOption(r);
@@ -903,16 +1091,25 @@ export async function modelConfirmOptionRequest(id: string): Promise<boolean> {
  */
 export async function modelRejectOptionRequest(id: string): Promise<boolean> {
   try {
-    const { error } = await supabase
+    const { data: rejectData, error } = await supabase
       .from('option_requests')
       .update({
         model_approval: 'rejected',
         status: 'rejected',
       })
-      .eq('id', id);
+      .eq('id', id)
+      // Guard: only reject when the model approval is still pending.
+      // Prevents transitioning an already-approved or already-rejected row.
+      .eq('model_approval', 'pending')
+      .select('id')
+      .maybeSingle();
 
     if (error) {
       console.error('modelRejectOptionRequest error:', error);
+      return false;
+    }
+    if (!rejectData?.id) {
+      console.warn('modelRejectOptionRequest: no row updated — concurrent state change', { id });
       return false;
     }
     return true;
@@ -951,17 +1148,22 @@ export async function getPendingModelConfirmations(
 }
 
 export async function sendAgencyInvitation(agencyName: string, email: string, invitedBy?: string): Promise<string | null> {
-  const { data, error } = await supabase
-    .from('agency_invitations')
-    .insert({
-      agency_name: agencyName,
-      email,
-      invited_by: invitedBy || null,
-    })
-    .select('token')
-    .single();
-  if (error) { console.error('sendAgencyInvitation error:', error); return null; }
-  return data?.token ?? null;
+  try {
+    const { data, error } = await supabase
+      .from('agency_invitations')
+      .insert({
+        agency_name: agencyName,
+        email,
+        invited_by: invitedBy || null,
+      })
+      .select('token')
+      .single();
+    if (error) { console.error('sendAgencyInvitation error:', error); return null; }
+    return data?.token ?? null;
+  } catch (e) {
+    console.error('sendAgencyInvitation exception:', e);
+    return null;
+  }
 }
 
 /**

@@ -7,9 +7,10 @@ import {
   TouchableOpacity,
   Modal,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
-import { getModelsFromSupabase } from '../services/modelsSupabase';
+import { getModelsPagedFromSupabase, type SwipeFilters } from '../services/modelsSupabase';
 import {
   recordInteraction,
   loadSessionIds,
@@ -20,6 +21,8 @@ import { useAuth } from '../context/AuthContext';
 import { getMyClientMemberRole } from '../services/organizationsInvitationsSupabase';
 import { uiCopy } from '../constants/uiCopy';
 import { addOptionRequest } from '../store/optionRequests';
+
+const SWIPE_PAGE_SIZE = 25;
 
 type ClientModel = {
   id: string;
@@ -33,7 +36,7 @@ type ClientModel = {
   gallery: string[];
 };
 
-type Filters = {
+type Filters = SwipeFilters & {
   height: 'all' | 'short' | 'medium' | 'tall';
   city: 'all' | 'Paris' | 'Milan' | 'Berlin';
   hairColor: 'all' | 'Blonde' | 'Dark Brown' | 'Black';
@@ -73,6 +76,9 @@ export const CustomerSwipeScreen: React.FC = () => {
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [isSendingOption, setIsSendingOption] = useState(false);
   const [optionSuccess, setOptionSuccess] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const pageOffsetRef = useRef(0);
 
   /**
    * Model IDs already shown in this session — excluded from the visible queue
@@ -98,10 +104,47 @@ export const CustomerSwipeScreen: React.FC = () => {
     })();
   }, [auth?.profile?.id, auth?.profile?.role]);
 
+  const loadNextPage = useCallback(async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      const page = await getModelsPagedFromSupabase(
+        pageOffsetRef.current,
+        SWIPE_PAGE_SIZE,
+        filters,
+      );
+      const mapped = page.map((m) => ({
+        id: m.id,
+        name: m.name,
+        height: m.height,
+        bust: m.bust ?? 0,
+        waist: m.waist ?? 0,
+        hips: m.hips ?? 0,
+        city: m.city ?? '',
+        hairColor: m.hair_color ?? '',
+        gallery: m.portfolio_images ?? [],
+      }));
+      setModels((prev) => [...prev, ...mapped]);
+      pageOffsetRef.current += mapped.length;
+      if (page.length < SWIPE_PAGE_SIZE) setHasMore(false);
+    } catch (e) {
+      console.error('CustomerSwipeScreen: loadNextPage error', e);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadingMore, hasMore, filters]);
+
+  // Initial load
   useEffect(() => {
-    getModelsFromSupabase().then((list) => {
-      setModels(
-        list.map((m) => ({
+    pageOffsetRef.current = 0;
+    setModels([]);
+    setHasMore(true);
+    setIndex(0);
+    void (async () => {
+      setLoadingMore(true);
+      try {
+        const page = await getModelsPagedFromSupabase(0, SWIPE_PAGE_SIZE, filters);
+        const mapped = page.map((m) => ({
           id: m.id,
           name: m.name,
           height: m.height,
@@ -111,10 +154,18 @@ export const CustomerSwipeScreen: React.FC = () => {
           city: m.city ?? '',
           hairColor: m.hair_color ?? '',
           gallery: m.portfolio_images ?? [],
-        })),
-      );
-    });
-  }, []);
+        }));
+        setModels(mapped);
+        pageOffsetRef.current = mapped.length;
+        if (page.length < SWIPE_PAGE_SIZE) setHasMore(false);
+      } catch (e) {
+        console.error('CustomerSwipeScreen: initial load error', e);
+      } finally {
+        setLoadingMore(false);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters]);
 
   // Reset session dedup when filters change (new discovery context).
   useEffect(() => {
@@ -122,30 +173,25 @@ export const CustomerSwipeScreen: React.FC = () => {
       clearSessionIds(clientOrgId);
     }
     sessionSeenIds.current = new Set();
-    setIndex(0);
   }, [filters, clientOrgId]);
 
   const filteredModels = useMemo(() => {
     return models.filter((m) => {
       // Session dedup: skip models already shown in this session.
       if (sessionSeenIds.current.has(m.id)) return false;
-      if (filters.city !== 'all' && m.city !== filters.city) return false;
-      if (filters.hairColor !== 'all' && m.hairColor !== filters.hairColor) {
-        return false;
-      }
-      if (filters.height !== 'all') {
-        if (filters.height === 'short' && m.height >= 175) return false;
-        if (filters.height === 'medium' && (m.height < 175 || m.height > 182)) {
-          return false;
-        }
-        if (filters.height === 'tall' && m.height <= 182) return false;
-      }
       return true;
     });
-  }, [models, filters]);
+  }, [models]);
+
+  // Pre-fetch next page when approaching end of queue
+  useEffect(() => {
+    if (filteredModels.length > 0 && index >= filteredModels.length - 5 && hasMore) {
+      void loadNextPage();
+    }
+  }, [index, filteredModels.length, hasMore, loadNextPage]);
 
   useEffect(() => {
-    if (index >= filteredModels.length) {
+    if (index >= filteredModels.length && filteredModels.length > 0) {
       setIndex(0);
     }
   }, [filteredModels, index]);
@@ -220,7 +266,11 @@ export const CustomerSwipeScreen: React.FC = () => {
         </View>
       </View>
 
-      {current ? (
+      {loadingMore && models.length === 0 ? (
+        <View style={styles.emptyState}>
+          <ActivityIndicator color={colors.accentBrown} />
+        </View>
+      ) : current ? (
         <TouchableOpacity
           activeOpacity={0.9}
           style={styles.card}

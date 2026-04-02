@@ -1,5 +1,6 @@
 import { supabase } from '../../lib/supabase';
 import { checkAndIncrementStorage, decrementStorage } from './agencyStorageSupabase';
+import { validateFile } from '../../lib/validation';
 
 /** Reads the actual stored file size from storage.objects metadata. Best-effort — returns null on failure. */
 async function getActualDocumentSize(bucket: string, path: string): Promise<number | null> {
@@ -47,6 +48,14 @@ export async function uploadDocument(
   fileName: string
 ): Promise<Document | null> {
   const claimedSize = file instanceof File ? file.size : (file as Blob).size;
+
+  // MIME type, magic bytes, and size validation before any storage interaction.
+  const fileValidation = validateFile(file);
+  if (!fileValidation.ok) {
+    console.error('uploadDocument: file validation failed', fileValidation.error);
+    return null;
+  }
+
   const path = `documents/${userId}/${Date.now()}_${fileName}`;
 
   // Agency storage limit check — non-agency users pass through automatically.
@@ -89,7 +98,20 @@ export async function uploadDocument(
     })
     .select()
     .single();
-  if (error) { console.error('uploadDocument db error:', error); return null; }
+
+  if (error) {
+    console.error('uploadDocument db error:', error);
+    // Storage-Orphan cleanup: the file was uploaded successfully but the DB row
+    // failed. Remove the storage object to keep Storage and DB in sync.
+    const { error: removeErr } = await supabase.storage.from('documents').remove([path]);
+    if (removeErr) {
+      console.error('uploadDocument orphan cleanup failed — manual removal needed:', { path, removeErr });
+    } else {
+      await decrementStorage(actualSize);
+    }
+    return null;
+  }
+
   return data as Document;
 }
 

@@ -67,12 +67,33 @@ export type AgencyCalendarItem = {
   calendar_entry: CalendarEntry | null;
 };
 
-export async function getCalendarForModel(modelId: string): Promise<CalendarEntry[]> {
+/**
+ * Loads calendar entries for a model, scoped to a rolling date window.
+ *
+ * PERF-VULN-M2: added default date bounds (90 days back, 365 days forward)
+ * to prevent unbounded fetches. For specific date ranges, use getCalendarRange().
+ * Pass explicit startDate/endDate to override the defaults.
+ */
+export async function getCalendarForModel(
+  modelId: string,
+  opts?: { startDate?: string; endDate?: string },
+): Promise<CalendarEntry[]> {
   try {
+    const today = new Date();
+    const defaultStart = new Date(today);
+    defaultStart.setDate(defaultStart.getDate() - 90);
+    const defaultEnd = new Date(today);
+    defaultEnd.setDate(defaultEnd.getDate() + 365);
+
+    const startDate = opts?.startDate ?? defaultStart.toISOString().slice(0, 10);
+    const endDate   = opts?.endDate   ?? defaultEnd.toISOString().slice(0, 10);
+
     const { data, error } = await supabase
       .from('calendar_entries')
       .select(CALENDAR_ENTRY_SELECT)
       .eq('model_id', modelId)
+      .gte('date', startDate)
+      .lte('date', endDate)
       .order('date', { ascending: true });
     if (error) { console.error('getCalendarForModel error:', error); return []; }
     return (data ?? []) as CalendarEntry[];
@@ -231,19 +252,35 @@ export async function insertCalendarEntry(
 }
 
 /**
- * @deprecated Deletes ALL calendar entries for a model on a given date which can cause
- * unintended data loss when multiple entry types exist on the same day.
- * Use deleteCalendarEntryById instead.
+ * @deprecated This function deletes ALL calendar entries for a model on a given
+ * date, which causes unintended data loss when multiple entry types coexist on
+ * the same day (e.g. a personal block + an option).
+ *
+ * Use deleteCalendarEntryById instead — it targets a single row by its primary key.
+ *
+ * This implementation has been hardened to refuse bulk deletes: it looks up the
+ * first matching row and delegates to deleteCalendarEntryById. If more than one
+ * row exists on that date, only the oldest is removed and a warning is logged so
+ * the caller can be migrated.
  */
 export async function deleteCalendarEntry(modelId: string, date: string): Promise<boolean> {
+  console.warn(
+    'deleteCalendarEntry is deprecated and targets entries by ID now. Migrate to deleteCalendarEntryById.',
+    { modelId, date },
+  );
   try {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('calendar_entries')
-      .delete()
+      .select('id')
       .eq('model_id', modelId)
-      .eq('date', date);
-    if (error) { console.error('deleteCalendarEntry error:', error); return false; }
-    return true;
+      .eq('date', date)
+      .is('option_request_id', null)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (error) { console.error('deleteCalendarEntry select error:', error); return false; }
+    if (!data?.id) return true;
+    return deleteCalendarEntryById(data.id);
   } catch (e) {
     console.error('deleteCalendarEntry exception:', e);
     return false;
@@ -386,7 +423,14 @@ export async function getCalendarEntriesForAgency(agencyId: string): Promise<Age
   }
 }
 
-/** Append a note every party can see (stored in calendar_entries.booking_details.shared_notes). */
+/**
+ * Append a note every party can see (stored in calendar_entries.booking_details.shared_notes).
+ *
+ * Concurrency guard: each row is updated with an optimistic lock on `updated_at`.
+ * If a concurrent write has already changed the row, the guard fails and we
+ * re-fetch before retrying (one retry). This prevents the classic read-modify-write
+ * race where two simultaneous notes overwrite each other's append.
+ */
 export async function appendSharedBookingNote(
   optionRequestId: string,
   role: 'client' | 'agency' | 'model',
@@ -394,38 +438,59 @@ export async function appendSharedBookingNote(
 ): Promise<boolean> {
   const trimmed = text.trim();
   if (!trimmed) return false;
-  try {
+
+  const newNote: SharedBookingNote = {
+    role,
+    at: new Date().toISOString(),
+    text: trimmed.slice(0, 4000),
+  };
+
+  const attemptAppend = async (): Promise<boolean> => {
     const { data, error } = await supabase
       .from('calendar_entries')
-      .select('id, booking_details')
+      .select('id, booking_details, updated_at')
       .eq('option_request_id', optionRequestId);
     if (error) {
       console.error('appendSharedBookingNote select error:', error);
       return false;
     }
-    const rows = data as { id: string; booking_details: BookingDetails | null }[];
+    const rows = data as { id: string; booking_details: BookingDetails | null; updated_at: string }[];
     if (!rows.length) return false;
-    const entry: SharedBookingNote = {
-      role,
-      at: new Date().toISOString(),
-      text: trimmed.slice(0, 4000),
-    };
-    const updates = rows.map((row) => {
+
+    let allUpdated = true;
+    for (const row of rows) {
       const prev = Array.isArray(row.booking_details?.shared_notes)
         ? row.booking_details!.shared_notes!
         : [];
-      return {
-        id: row.id,
-        booking_details: {
-          ...(row.booking_details || {}),
-          shared_notes: [...prev, entry],
-        } as BookingDetails,
+      const newDetails: BookingDetails = {
+        ...(row.booking_details || {}),
+        shared_notes: [...prev, newNote],
       };
-    });
-    const { error: updError } = await supabase.from('calendar_entries').upsert(updates, { onConflict: 'id' });
-    if (updError) {
-      console.error('appendSharedBookingNote upsert error:', updError);
-      return false;
+      // Optimistic lock: only update if updated_at has not changed since we read it.
+      const { data: updated, error: updError } = await supabase
+        .from('calendar_entries')
+        .update({ booking_details: newDetails })
+        .eq('id', row.id)
+        .eq('updated_at', row.updated_at)
+        .select('id')
+        .maybeSingle();
+      if (updError) {
+        console.error('appendSharedBookingNote update error:', updError);
+        allUpdated = false;
+      } else if (!updated?.id) {
+        console.warn('appendSharedBookingNote: optimistic lock miss — concurrent write detected, will retry', row.id);
+        allUpdated = false;
+      }
+    }
+    return allUpdated;
+  };
+
+  try {
+    const ok = await attemptAppend();
+    if (!ok) {
+      // One retry after a brief yield to allow the concurrent write to complete.
+      await new Promise((r) => setTimeout(r, 120));
+      return attemptAppend();
     }
     return true;
   } catch (e) {

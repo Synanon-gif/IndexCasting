@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { uiCopy } from '../constants/uiCopy';
 import { supabase } from '../../lib/supabase';
 import type { Session, User } from '@supabase/supabase-js';
@@ -189,10 +189,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return loadProfile(userId);
   }
 
-  const refreshProfile = async () => {
+  const refreshProfile = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) await loadProfile(user.id);
-  };
+  // loadProfile is defined in the same closure and stable across renders
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const signUp = async (
     email: string,
@@ -401,26 +403,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const clearOrgDeactivated = () => setOrgDeactivated(false);
+  const clearOrgDeactivated = useCallback(() => setOrgDeactivated(false), []);
+
+  const contextValue = useMemo(() => ({
+    session,
+    user: session?.user ?? null,
+    loading,
+    signUp,
+    signIn,
+    signOut,
+    profile,
+    refreshProfile,
+    acceptTerms,
+    markDocumentsSent,
+    updateDisplayName,
+    orgDeactivated,
+    clearOrgDeactivated,
+  // Functions defined inline (signUp, signIn, signOut, acceptTerms, markDocumentsSent,
+  // updateDisplayName) are recreated only when their closure deps change.
+  // session, loading, profile, orgDeactivated are the real state drivers.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [session, loading, profile, orgDeactivated]);
 
   return (
-    <AuthContext.Provider
-      value={{
-        session,
-        user: session?.user ?? null,
-        loading,
-        signUp,
-        signIn,
-        signOut,
-        profile,
-        refreshProfile,
-        acceptTerms,
-        markDocumentsSent,
-        updateDisplayName,
-        orgDeactivated,
-        clearOrgDeactivated,
-      }}
-    >
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );

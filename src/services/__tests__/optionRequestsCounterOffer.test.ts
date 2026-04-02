@@ -119,22 +119,32 @@ describe('clientAcceptCounterPrice — optimistic guard', () => {
 // ─── setAgencyCounterOffer ────────────────────────────────────────────────────
 
 describe('setAgencyCounterOffer', () => {
-  it('returns true on successful counter-offer creation', async () => {
-    from.mockReturnValue({
-      update: () => ({
-        eq: jest.fn().mockResolvedValue({ error: null }),
-      }),
-    });
+  it('returns true when request is in_negotiation (1 row updated)', async () => {
+    // Chains: .update().eq(id).eq(status,'in_negotiation').select().maybeSingle()
+    // maybeSingle is the terminal call → use makeChain with 'maybeSingle'
+    const chain = makeChain({ data: { id: 'req-1' }, error: null }, 'maybeSingle');
+    from.mockReturnValue(chain);
+
     const result = await setAgencyCounterOffer('req-1', 2500);
     expect(result).toBe(true);
   });
 
+  it('returns false when request is already confirmed (0 rows — status guard fires)', async () => {
+    const chain = makeChain({ data: null, error: null }, 'maybeSingle');
+    from.mockReturnValue(chain);
+
+    const result = await setAgencyCounterOffer('req-1', 2500);
+    expect(result).toBe(false);
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('not in_negotiation'),
+      'req-1',
+    );
+  });
+
   it('returns false on DB error', async () => {
-    from.mockReturnValue({
-      update: () => ({
-        eq: jest.fn().mockResolvedValue({ error: { message: 'constraint violation' } }),
-      }),
-    });
+    const chain = makeChain({ data: null, error: { message: 'constraint violation' } }, 'maybeSingle');
+    from.mockReturnValue(chain);
+
     const result = await setAgencyCounterOffer('req-1', 2500);
     expect(result).toBe(false);
     expect(consoleErrorSpy).toHaveBeenCalled();
@@ -144,47 +154,66 @@ describe('setAgencyCounterOffer', () => {
 // ─── agencyAcceptClientPrice ──────────────────────────────────────────────────
 
 describe('agencyAcceptClientPrice', () => {
-  it('returns true on success', async () => {
-    from.mockReturnValue({
-      update: () => ({
-        eq: jest.fn().mockResolvedValue({ error: null }),
-      }),
-    });
+  it('returns true when offer is pending and request is in_negotiation', async () => {
+    // Chains: .update().eq(id).eq(status,'in_negotiation').eq(client_price_status,'pending').select().maybeSingle()
+    const chain = makeChain({ data: { id: 'req-1' }, error: null }, 'maybeSingle');
+    from.mockReturnValue(chain);
+
     const result = await agencyAcceptClientPrice('req-1');
     expect(result).toBe(true);
   });
 
-  it('returns false on DB error', async () => {
-    from.mockReturnValue({
-      update: () => ({
-        eq: jest.fn().mockResolvedValue({ error: { message: 'rls' } }),
-      }),
-    });
+  it('returns false when offer is no longer pending (stale accept — 0 rows)', async () => {
+    const chain = makeChain({ data: null, error: null }, 'maybeSingle');
+    from.mockReturnValue(chain);
+
     const result = await agencyAcceptClientPrice('req-1');
     expect(result).toBe(false);
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('offer no longer pending'),
+      'req-1',
+    );
+  });
+
+  it('returns false on DB error', async () => {
+    const chain = makeChain({ data: null, error: { message: 'rls' } }, 'maybeSingle');
+    from.mockReturnValue(chain);
+
+    const result = await agencyAcceptClientPrice('req-1');
+    expect(result).toBe(false);
+    expect(consoleErrorSpy).toHaveBeenCalled();
   });
 });
 
 // ─── clientRejectCounterOfferOnSupabase ───────────────────────────────────────
+// VULN-H2 fix: now includes .neq('status','confirmed').neq('status','rejected')
+// guards and terminates with .select('id').maybeSingle().
 
 describe('clientRejectCounterOfferOnSupabase', () => {
-  it('returns true on success', async () => {
-    from.mockReturnValue({
-      update: () => ({
-        eq: jest.fn().mockResolvedValue({ error: null }),
-      }),
-    });
-    const result = await clientRejectCounterOfferOnSupabase('req-1');
-    expect(result).toBe(true);
+  it('returns true on success (request in_negotiation)', async () => {
+    // Chain: update → eq → neq('confirmed') → neq('rejected') → select → maybeSingle
+    from.mockReturnValue(
+      makeChain({ data: { id: 'req-1' }, error: null }, 'maybeSingle'),
+    );
+    expect(await clientRejectCounterOfferOnSupabase('req-1')).toBe(true);
   });
 
   it('returns false on DB error', async () => {
-    from.mockReturnValue({
-      update: () => ({
-        eq: jest.fn().mockResolvedValue({ error: { message: 'timeout' } }),
-      }),
-    });
-    const result = await clientRejectCounterOfferOnSupabase('req-1');
-    expect(result).toBe(false);
+    from.mockReturnValue(
+      makeChain({ data: null, error: { message: 'timeout' } }, 'maybeSingle'),
+    );
+    expect(await clientRejectCounterOfferOnSupabase('req-1')).toBe(false);
+    expect(consoleErrorSpy).toHaveBeenCalled();
+  });
+
+  it('returns false when request is confirmed (0 rows — VULN-H2 guard)', async () => {
+    from.mockReturnValue(
+      makeChain({ data: null, error: null }, 'maybeSingle'),
+    );
+    expect(await clientRejectCounterOfferOnSupabase('confirmed-req')).toBe(false);
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('confirmed or rejected'),
+      'confirmed-req',
+    );
   });
 });

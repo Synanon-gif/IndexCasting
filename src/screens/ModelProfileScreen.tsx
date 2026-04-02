@@ -40,7 +40,7 @@ import {
   type SupabaseOptionRequest,
 } from '../services/optionRequestsSupabase';
 import { getAgencyById, type Agency } from '../services/agenciesSupabase';
-import { getThread } from '../services/recruitingChatSupabase';
+import { getAgencyNamesByThreadIds } from '../services/recruitingChatSupabase';
 import { BookingChatView } from '../views/BookingChatView';
 import { useAuth } from '../context/AuthContext';
 import { uiCopy } from '../constants/uiCopy';
@@ -178,21 +178,11 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   useEffect(() => {
     if (tab !== 'messages' || bookingThreadIds.length === 0) return;
     let cancelled = false;
-    (async () => {
-      const map: Record<string, string> = {};
-      for (const id of bookingThreadIds) {
-        try {
-          const t = await getThread(id);
-          if (t?.agency_id) {
-            const a = await getAgencyById(t.agency_id);
-            if (a?.name) map[id] = a.name;
-          }
-        } catch {
-          /* ignore */
-        }
-      }
+    // Resolves all thread→agencyName mappings in exactly 2 queries (batch),
+    // replacing the previous N+1 loop (2 queries per thread).
+    void getAgencyNamesByThreadIds(bookingThreadIds).then((map) => {
       if (!cancelled) setBookingAgencyByThread((prev) => ({ ...prev, ...map }));
-    })();
+    });
     return () => {
       cancelled = true;
     };

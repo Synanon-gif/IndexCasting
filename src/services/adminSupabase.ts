@@ -32,14 +32,19 @@ export type AdminLogEntry = {
 };
 
 export async function isCurrentUserAdmin(): Promise<boolean> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return false;
-  const { data } = await supabase
-    .from('profiles')
-    .select('is_admin')
-    .eq('id', user.id)
-    .maybeSingle();
-  return data?.is_admin === true;
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return false;
+    const { data } = await supabase
+      .from('profiles')
+      .select('is_admin')
+      .eq('id', user.id)
+      .maybeSingle();
+    return data?.is_admin === true;
+  } catch (e) {
+    console.error('isCurrentUserAdmin exception:', e);
+    return false;
+  }
 }
 
 export async function getAllProfiles(filter?: {
@@ -97,22 +102,32 @@ async function _getAllProfilesDirect(filter?: {
 }
 
 export async function activateAccount(userId: string): Promise<boolean> {
-  const { error } = await supabase.rpc('admin_set_account_active', {
-    target_id: userId,
-    active: true,
-  });
-  if (error) { console.error('activateAccount error:', error); return false; }
-  return true;
+  try {
+    const { error } = await supabase.rpc('admin_set_account_active', {
+      target_id: userId,
+      active: true,
+    });
+    if (error) { console.error('activateAccount error:', error); return false; }
+    return true;
+  } catch (e) {
+    console.error('activateAccount exception:', e);
+    return false;
+  }
 }
 
 export async function deactivateAccount(userId: string, reason?: string): Promise<boolean> {
-  const { error } = await supabase.rpc('admin_set_account_active', {
-    target_id: userId,
-    active: false,
-    reason: reason || null,
-  });
-  if (error) { console.error('deactivateAccount error:', error); return false; }
-  return true;
+  try {
+    const { error } = await supabase.rpc('admin_set_account_active', {
+      target_id: userId,
+      active: false,
+      reason: reason || null,
+    });
+    if (error) { console.error('deactivateAccount error:', error); return false; }
+    return true;
+  } catch (e) {
+    console.error('deactivateAccount exception:', e);
+    return false;
+  }
 }
 
 export async function adminUpdateProfileField(
@@ -120,13 +135,18 @@ export async function adminUpdateProfileField(
   fieldName: string,
   fieldValue: string
 ): Promise<boolean> {
-  const { error } = await supabase.rpc('admin_update_profile', {
-    target_id: userId,
-    field_name: fieldName,
-    field_value: fieldValue,
-  });
-  if (error) { console.error('adminUpdateProfileField error:', error); return false; }
-  return true;
+  try {
+    const { error } = await supabase.rpc('admin_update_profile', {
+      target_id: userId,
+      field_name: fieldName,
+      field_value: fieldValue,
+    });
+    if (error) { console.error('adminUpdateProfileField error:', error); return false; }
+    return true;
+  } catch (e) {
+    console.error('adminUpdateProfileField exception:', e);
+    return false;
+  }
 }
 
 /** Admin: Vollständiges Profil-Update (umgeht RLS, speichert zuverlässig). */
@@ -143,26 +163,38 @@ export async function adminUpdateProfileFull(
     is_active?: boolean;
   }
 ): Promise<boolean> {
-  const { error } = await supabase.rpc('admin_update_profile_full', {
-    target_id: targetId,
-    p_display_name: fields.display_name ?? null,
-    p_email: fields.email ?? null,
-    p_company_name: fields.company_name ?? null,
-    p_phone: fields.phone ?? null,
-    p_website: fields.website ?? null,
-    p_country: fields.country ?? null,
-    p_role: fields.role ?? null,
-    p_is_active: fields.is_active ?? null,
-    p_is_admin: null,
-  });
-  if (error) {
-    console.error('adminUpdateProfileFull error:', error);
+  try {
+    const { error } = await supabase.rpc('admin_update_profile_full', {
+      target_id: targetId,
+      p_display_name: fields.display_name ?? null,
+      p_email: fields.email ?? null,
+      p_company_name: fields.company_name ?? null,
+      p_phone: fields.phone ?? null,
+      p_website: fields.website ?? null,
+      p_country: fields.country ?? null,
+      p_role: fields.role ?? null,
+      p_is_active: fields.is_active ?? null,
+      p_is_admin: null,
+    });
+    if (error) {
+      console.error('adminUpdateProfileFull error:', error);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('adminUpdateProfileFull exception:', e);
     return false;
   }
-  return true;
 }
 
 export async function getAdminLogs(limit = 100, offset = 0): Promise<AdminLogEntry[]> {
+  // Defense-in-depth client-side guard (DB RLS is the authoritative enforcement).
+  // This prevents non-admin users from hitting the table query at all. (VULN-03 fix)
+  const callerIsAdmin = await isCurrentUserAdmin();
+  if (!callerIsAdmin) {
+    console.error('[Admin] getAdminLogs: non-admin access attempt blocked.');
+    return [];
+  }
   try {
     const { data, error } = await supabase
       .from('admin_logs')
@@ -261,14 +293,21 @@ export async function adminSetOrganizationMemberRole(
 }
 
 export async function writeAdminLog(action: string, targetUserId?: string, details?: Record<string, unknown>): Promise<void> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return;
-  await supabase.from('admin_logs').insert({
-    admin_id: user.id,
-    action,
-    target_user_id: targetUserId || null,
-    details: details || {},
-  });
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { error } = await supabase.from('admin_logs').insert({
+      admin_id: user.id,
+      action,
+      target_user_id: targetUserId || null,
+      details: details || {},
+    });
+    if (error) {
+      console.error('writeAdminLog: failed to persist audit entry', { action, targetUserId, error });
+    }
+  } catch (e) {
+    console.error('writeAdminLog exception — audit trail entry lost:', { action, targetUserId, e });
+  }
 }
 
 // ─── Organization admin types & functions ────────────────────────────────────
@@ -699,6 +738,102 @@ export async function adminResetToDefaultStorageLimit(organizationId: string): P
     return true;
   } catch (e) {
     console.error('adminResetToDefaultStorageLimit error:', e);
+    return false;
+  }
+}
+
+// ─── Billing & Paywall Admin ─────────────────────────────────────────────────
+
+export interface AdminOrgSubscription {
+  organization_id: string;
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
+  plan: string | null;
+  status: 'trialing' | 'active' | 'past_due' | 'canceled';
+  current_period_end: string | null;
+  trial_ends_at: string;
+  created_at: string;
+}
+
+export interface AdminBillingStatus {
+  subscription: AdminOrgSubscription | null;
+  admin_override: {
+    organization_id: string;
+    bypass_paywall: boolean;
+    custom_plan: string | null;
+  } | null;
+}
+
+/**
+ * Fetches full billing status for an organization (subscription + override).
+ * Uses the admin_get_org_subscription RPC — requires is_admin.
+ */
+export async function adminGetBillingStatus(
+  organizationId: string,
+): Promise<AdminBillingStatus | null> {
+  try {
+    const { data, error } = await supabase.rpc('admin_get_org_subscription', {
+      p_org_id: organizationId,
+    });
+    if (error) throw error;
+    const raw = data as Record<string, unknown>;
+    return {
+      subscription:    (raw.subscription    as AdminOrgSubscription | null) ?? null,
+      admin_override:  (raw.admin_override  as AdminBillingStatus['admin_override']) ?? null,
+    };
+  } catch (e) {
+    console.error('adminGetBillingStatus error:', e);
+    return null;
+  }
+}
+
+/**
+ * Enables or disables the paywall bypass for an organization.
+ * Optionally sets a custom plan label.
+ * THE only path to set bypass_paywall — enforced server-side.
+ */
+export async function adminSetBypassPaywall(
+  organizationId: string,
+  bypass: boolean,
+  customPlan?: string | null,
+): Promise<boolean> {
+  try {
+    const { error } = await supabase.rpc('admin_set_bypass_paywall', {
+      p_org_id:      organizationId,
+      p_bypass:      bypass,
+      p_custom_plan: customPlan ?? null,
+    });
+    if (error) throw error;
+    await writeAdminLog(
+      `${bypass ? 'Enabled' : 'Disabled'} paywall bypass for org ${organizationId}${customPlan ? ` (plan: ${customPlan})` : ''}`,
+    );
+    return true;
+  } catch (e) {
+    console.error('adminSetBypassPaywall error:', e);
+    return false;
+  }
+}
+
+/**
+ * Manually sets the subscription plan and status for an organization.
+ * Also syncs the daily swipe limit in agency_usage_limits.
+ */
+export async function adminSetOrgPlan(
+  organizationId: string,
+  plan: string,
+  status: 'trialing' | 'active' | 'past_due' | 'canceled' = 'active',
+): Promise<boolean> {
+  try {
+    const { error } = await supabase.rpc('admin_set_org_plan', {
+      p_org_id: organizationId,
+      p_plan:   plan,
+      p_status: status,
+    });
+    if (error) throw error;
+    await writeAdminLog(`Set plan '${plan}' (${status}) for org ${organizationId}`);
+    return true;
+  } catch (e) {
+    console.error('adminSetOrgPlan error:', e);
     return false;
   }
 }

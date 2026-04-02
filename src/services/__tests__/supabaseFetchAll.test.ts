@@ -13,13 +13,13 @@ describe('fetchAllSupabasePages', () => {
     expect(calls).toBe(2);
   });
 
-  it('stops on error and returns partial data', async () => {
+  it('throws on page error instead of returning silent partial data', async () => {
     const errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
-    const result = await fetchAllSupabasePages<{ id: number }>(async () => ({
-      data: null,
-      error: { message: 'fail', code: 'x', details: '', hint: '' } as any,
-    }));
+    const pgErr = { message: 'fail', code: 'x', details: '', hint: '' } as any;
+    await expect(
+      fetchAllSupabasePages<{ id: number }>(async () => ({ data: null, error: pgErr })),
+    ).rejects.toMatchObject({ message: 'fail' });
+    expect(errSpy).toHaveBeenCalled();
     errSpy.mockRestore();
-    expect(result).toEqual([]);
   });
 });

@@ -88,37 +88,24 @@ describe('agencyAcceptRequest', () => {
 
   it('returns awaiting_model_confirmation when model has account', async () => {
     const reqWithAccount = { ...BASE_REQUEST, model_account_linked: true };
-    let callIdx = 0;
-    from.mockImplementation(() => {
-      callIdx++;
-      if (callIdx === 1) {
-        // fetch option_request
-        return {
-          select: () => ({
-            eq: () => ({
-              maybeSingle: jest.fn().mockResolvedValue({ data: reqWithAccount, error: null }),
-            }),
-          }),
-        };
-      }
-      // update call
-      return {
-        update: () => ({
-          eq: jest.fn().mockResolvedValue({ error: null }),
-        }),
-      };
-    });
+
+    // Update chain: .update().eq(id).eq(status,'in_negotiation').select('id').maybeSingle()
+    const updateChain: any = {
+      eq: jest.fn().mockReturnThis(),
+      select: jest.fn().mockReturnThis(),
+      maybeSingle: jest.fn().mockResolvedValue({ data: { id: 'req-1' }, error: null }),
+    };
 
     from.mockReturnValueOnce({
+      // fetch option_request
       select: () => ({
         eq: () => ({
           maybeSingle: jest.fn().mockResolvedValue({ data: reqWithAccount, error: null }),
         }),
       }),
     }).mockReturnValueOnce({
-      update: () => ({
-        eq: jest.fn().mockResolvedValue({ error: null }),
-      }),
+      // update option_request (with model account → awaiting confirmation)
+      update: () => updateChain,
     });
 
     const result = await agencyAcceptRequest('req-1');
@@ -126,34 +113,34 @@ describe('agencyAcceptRequest', () => {
     expect(mockCreateBookingEvent).not.toHaveBeenCalled();
   });
 
-  it('returns confirmed and creates booking_event when model has no account', async () => {
+  it('returns confirmed when model has no account (booking_event created by DB trigger)', async () => {
     const reqNoAccount = { ...BASE_REQUEST, model_account_linked: false };
 
+    // Update chain: .update().eq(id).eq(status,'in_negotiation').select('id').maybeSingle()
+    const updateChain: any = {
+      eq: jest.fn().mockReturnThis(),
+      select: jest.fn().mockReturnThis(),
+      maybeSingle: jest.fn().mockResolvedValue({ data: { id: 'req-1' }, error: null }),
+    };
+
     from.mockReturnValueOnce({
+      // fetch option_request
       select: () => ({
         eq: () => ({
           maybeSingle: jest.fn().mockResolvedValue({ data: reqNoAccount, error: null }),
         }),
       }),
-    })
-    .mockReturnValueOnce({
+    }).mockReturnValueOnce({
       // update option_request
-      update: () => ({
-        eq: jest.fn().mockResolvedValue({ error: null }),
-      }),
-    })
-    .mockReturnValueOnce({
-      // fetch organizations for booking_event
-      select: () => ({
-        eq: () => ({
-          maybeSingle: jest.fn().mockResolvedValue({ data: { id: 'org-agency-1' }, error: null }),
-        }),
-      }),
+      update: () => updateChain,
     });
+    // Note: No 3rd mock needed — createBookingEventFromRequest is now handled by
+    // the DB trigger tr_auto_booking_event_on_confirm (migration_chaos_hardening_2026_04.sql).
+    // The client-side call was removed from agencyAcceptRequest.
 
     const result = await agencyAcceptRequest('req-1');
     expect(result).toBe('confirmed');
-    expect(mockCreateBookingEvent).toHaveBeenCalledTimes(1);
+    expect(mockCreateBookingEvent).not.toHaveBeenCalled();
   });
 });
 
@@ -170,20 +157,21 @@ describe('agencyRejectRequest', () => {
   });
 
   it('returns true on success', async () => {
-    from.mockReturnValue({
-      update: () => ({
-        eq: jest.fn().mockResolvedValue({ error: null }),
-      }),
-    });
+    // Chain: update → eq('id') → eq('status','in_negotiation') → select → maybeSingle
+    const maybeSingle = jest.fn().mockResolvedValue({ data: { id: 'req-1' }, error: null });
+    const select      = jest.fn().mockReturnValue({ maybeSingle });
+    const eqStatus    = jest.fn().mockReturnValue({ select });
+    const eqId        = jest.fn().mockReturnValue({ eq: eqStatus });
+    from.mockReturnValue({ update: () => ({ eq: eqId }) });
     await expect(agencyRejectRequest('req-1')).resolves.toBe(true);
   });
 
   it('returns false on DB error', async () => {
-    from.mockReturnValue({
-      update: () => ({
-        eq: jest.fn().mockResolvedValue({ error: { message: 'error' } }),
-      }),
-    });
+    const maybeSingle = jest.fn().mockResolvedValue({ data: null, error: { message: 'error' } });
+    const select      = jest.fn().mockReturnValue({ maybeSingle });
+    const eqStatus    = jest.fn().mockReturnValue({ select });
+    const eqId        = jest.fn().mockReturnValue({ eq: eqStatus });
+    from.mockReturnValue({ update: () => ({ eq: eqId }) });
     await expect(agencyRejectRequest('req-1')).resolves.toBe(false);
   });
 });
@@ -250,7 +238,14 @@ describe('modelConfirmOptionRequest', () => {
     expect(mockCreateBookingEvent).not.toHaveBeenCalled();
   });
 
-  it('returns true and creates booking_event on success', async () => {
+  it('returns true on success (booking_event now created by DB trigger)', async () => {
+    // Chain: update → eq(id) → eq(model_approval) → eq(final_status) → select → maybeSingle
+    const maybeSingleConfirm = jest.fn().mockResolvedValue({ data: { id: 'req-1' }, error: null });
+    const selectConfirm      = jest.fn().mockReturnValue({ maybeSingle: maybeSingleConfirm });
+    // eslint-disable-next-line prefer-const
+    let eqConfirm: jest.Mock;
+    eqConfirm = jest.fn().mockImplementation(() => ({ eq: eqConfirm, select: selectConfirm }));
+
     from.mockReturnValueOnce({
       // fetch option_request (agency already accepted → final_status = option_confirmed)
       select: () => ({
@@ -260,25 +255,21 @@ describe('modelConfirmOptionRequest', () => {
       }),
     })
     .mockReturnValueOnce({
-      // update
-      update: () => ({
-        eq: jest.fn().mockResolvedValue({ error: null }),
-      }),
-    })
-    .mockReturnValueOnce({
-      // fetch org for booking_event
-      select: () => ({
-        eq: () => ({
-          maybeSingle: jest.fn().mockResolvedValue({ data: { id: 'org-agency-1' }, error: null }),
-        }),
-      }),
+      // update with multi-eq race-condition guard chain
+      update: () => ({ eq: eqConfirm }),
     });
 
     await expect(modelConfirmOptionRequest('req-1')).resolves.toBe(true);
-    expect(mockCreateBookingEvent).toHaveBeenCalledTimes(1);
+    expect(mockCreateBookingEvent).not.toHaveBeenCalled();
   });
 
   it('returns false on DB error during update', async () => {
+    const maybeSingle = jest.fn().mockResolvedValue({ data: null, error: { message: 'rls' } });
+    const select      = jest.fn().mockReturnValue({ maybeSingle });
+    // eslint-disable-next-line prefer-const
+    let eqChain: jest.Mock;
+    eqChain = jest.fn().mockImplementation(() => ({ eq: eqChain, select }));
+
     from.mockReturnValueOnce({
       select: () => ({
         eq: () => ({
@@ -287,9 +278,7 @@ describe('modelConfirmOptionRequest', () => {
       }),
     })
     .mockReturnValueOnce({
-      update: () => ({
-        eq: jest.fn().mockResolvedValue({ error: { message: 'rls' } }),
-      }),
+      update: () => ({ eq: eqChain }),
     });
 
     await expect(modelConfirmOptionRequest('req-1')).resolves.toBe(false);
@@ -298,31 +287,47 @@ describe('modelConfirmOptionRequest', () => {
 
 describe('modelRejectOptionRequest', () => {
   let consoleErrorSpy: jest.SpyInstance;
+  let consoleWarnSpy: jest.SpyInstance;
 
   beforeEach(() => {
     jest.resetAllMocks();
     consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    consoleWarnSpy  = jest.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
   afterEach(() => {
     consoleErrorSpy.mockRestore();
+    consoleWarnSpy.mockRestore();
   });
 
   it('returns true on success', async () => {
-    from.mockReturnValue({
-      update: () => ({
-        eq: jest.fn().mockResolvedValue({ error: null }),
-      }),
-    });
+    // Chain: update → eq(id) → eq(model_approval,'pending') → select → maybeSingle
+    const maybeSingle = jest.fn().mockResolvedValue({ data: { id: 'req-1' }, error: null });
+    const select      = jest.fn().mockReturnValue({ maybeSingle });
+    // eslint-disable-next-line prefer-const
+    let eqChain: jest.Mock;
+    eqChain = jest.fn().mockImplementation(() => ({ eq: eqChain, select }));
+    from.mockReturnValue({ update: () => ({ eq: eqChain }) });
     await expect(modelRejectOptionRequest('req-1')).resolves.toBe(true);
   });
 
   it('returns false on DB error', async () => {
-    from.mockReturnValue({
-      update: () => ({
-        eq: jest.fn().mockResolvedValue({ error: { message: 'error' } }),
-      }),
-    });
+    const maybeSingle = jest.fn().mockResolvedValue({ data: null, error: { message: 'error' } });
+    const select      = jest.fn().mockReturnValue({ maybeSingle });
+    // eslint-disable-next-line prefer-const
+    let eqChain: jest.Mock;
+    eqChain = jest.fn().mockImplementation(() => ({ eq: eqChain, select }));
+    from.mockReturnValue({ update: () => ({ eq: eqChain }) });
+    await expect(modelRejectOptionRequest('req-1')).resolves.toBe(false);
+  });
+
+  it('returns false when no row updated (concurrent state change)', async () => {
+    const maybeSingle = jest.fn().mockResolvedValue({ data: null, error: null });
+    const select      = jest.fn().mockReturnValue({ maybeSingle });
+    // eslint-disable-next-line prefer-const
+    let eqChain: jest.Mock;
+    eqChain = jest.fn().mockImplementation(() => ({ eq: eqChain, select }));
+    from.mockReturnValue({ update: () => ({ eq: eqChain }) });
     await expect(modelRejectOptionRequest('req-1')).resolves.toBe(false);
   });
 });

@@ -85,11 +85,14 @@ describe('applicationsSupabase (recruiting helpers)', () => {
   });
 
   it('updateApplicationStatus accepts pending_model_confirmation as valid status', async () => {
+    // Now chains: .update().eq(id).eq(priorStatus).select().maybeSingle()
     const maybeSingle = jest.fn().mockResolvedValue({ data: { id: 'app-1' }, error: null });
     from.mockReturnValue({
       update: () => ({
         eq: () => ({
-          select: () => ({ maybeSingle }),
+          eq: () => ({
+            select: () => ({ maybeSingle }),
+          }),
         }),
       }),
     });
@@ -98,12 +101,15 @@ describe('applicationsSupabase (recruiting helpers)', () => {
     ).resolves.toBe(true);
   });
 
-  it('updateApplicationStatus returns false when RLS updates zero rows', async () => {
+  it('updateApplicationStatus returns false when prior-status guard matches zero rows', async () => {
+    // Guard fires: the prior status doesn't match → 0 rows updated → false
     const maybeSingle = jest.fn().mockResolvedValue({ data: null, error: null });
     from.mockReturnValue({
       update: () => ({
         eq: () => ({
-          select: () => ({ maybeSingle }),
+          eq: () => ({
+            select: () => ({ maybeSingle }),
+          }),
         }),
       }),
     });
@@ -111,11 +117,14 @@ describe('applicationsSupabase (recruiting helpers)', () => {
   });
 
   it('updateApplicationStatus returns true when a row is updated', async () => {
+    // accepted ← requires prior status = 'pending_model_confirmation'
     const maybeSingle = jest.fn().mockResolvedValue({ data: { id: 'app-1' }, error: null });
     from.mockReturnValue({
       update: () => ({
         eq: () => ({
-          select: () => ({ maybeSingle }),
+          eq: () => ({
+            select: () => ({ maybeSingle }),
+          }),
         }),
       }),
     });

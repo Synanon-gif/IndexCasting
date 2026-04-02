@@ -831,6 +831,14 @@ export const uiCopy = {
       title: 'Counter offer declined',
       message: 'The client has declined the counter offer.',
     },
+    newOptionMessage: {
+      title: 'New message on request',
+      message: 'A new message has been added to an option/job request.',
+    },
+    newRecruitingMessage: {
+      title: 'New recruiting message',
+      message: 'You have a new message in your recruiting chat.',
+    },
   },
   systemMessages: {
     agencyAcceptedPrice: 'Agency accepted the proposed fee.',
@@ -963,6 +971,76 @@ export const uiCopy = {
     storageLimitConfirmReset: 'Reset this organization to the default 5 GB storage limit?',
     storageLimitValidationNegative: 'Limit must be greater than 0 GB.',
     storageLimitValidationTooLarge: 'Limit cannot exceed 1024 GB (1 TB).',
+  },
+
+  billing: {
+    // ── Paywall screen ──────────────────────────────────────────────────────
+    paywallTitle: 'Choose Your Plan',
+    paywallSubtitle: 'Unlock the full power of Index Casting',
+    trialBadge: 'Free Trial',
+    trialActive: 'Your free trial is active',
+    trialDaysLeft: (days: number) => `${days} day${days === 1 ? '' : 's'} remaining`,
+    trialExpiredTitle: 'Your trial has ended',
+    trialExpiredBody: 'Choose a plan to continue using Index Casting.',
+    accessBlocked: 'Your account is currently inactive.',
+    accessBlockedBody: 'Please subscribe to regain access.',
+
+    // ── Plans ───────────────────────────────────────────────────────────────
+    planNameAgencyBasic:      'Agency Basic',
+    planNameAgencyPro:        'Agency Pro',
+    planNameAgencyEnterprise: 'Agency Enterprise',
+    planNameClient:           'Client',
+    planNameAdmin:            'Admin Access',
+    planNameTrial:            'Free Trial',
+
+    // ── Feature limits ──────────────────────────────────────────────────────
+    swipesPerDay:      (n: number) => `${n} swipes / day`,
+    swipesUnlimited:   'Unlimited swipes',
+    storageLimit:      (gb: number) => `${gb} GB storage`,
+    storageUnlimited:  'Unlimited storage',
+    fullPlatformAccess: 'Full platform access',
+    realtimeMessaging: 'Real-time messaging',
+    castingManagement: 'Casting management',
+
+    // ── CTAs ────────────────────────────────────────────────────────────────
+    upgradeCTA:          'Get Started',
+    upgradeNow:          'Upgrade Now',
+    manageSubscription:  'Manage Subscription',
+    continueFreeTrial:   'Continue Free Trial',
+    contactSales:        'Contact Sales',
+
+    // ── Status labels ───────────────────────────────────────────────────────
+    statusActive:      'Active',
+    statusTrialing:    'Trial',
+    statusPastDue:     'Past Due',
+    statusCanceled:    'Canceled',
+    statusAdminAccess: 'Admin Override',
+
+    // ── Admin billing panel ─────────────────────────────────────────────────
+    adminBillingTitle:            'Billing & Subscription',
+    adminBypassPaywall:           'Bypass Paywall',
+    adminBypassPaywallOn:         'Full access enabled (no payment required)',
+    adminBypassPaywallOff:        'Normal billing rules apply',
+    adminCustomPlan:              'Custom Plan',
+    adminCustomPlanPlaceholder:   'e.g. agency_pro',
+    adminSetPlan:                 'Set Plan',
+    adminSetPlanSuccess:          'Plan updated successfully.',
+    adminSetPlanFailed:           'Could not update plan.',
+    adminBypassSuccess:           'Paywall bypass updated.',
+    adminBypassFailed:            'Could not update paywall bypass.',
+    adminNoSubscription:          'No subscription record found.',
+    adminSubscriptionStatus:      'Subscription Status',
+    adminTrialEndsAt:             'Trial Ends',
+    adminCurrentPeriodEnd:        'Billing Period End',
+    adminStripeCustomer:          'Stripe Customer ID',
+    adminStripeSubscription:      'Stripe Subscription ID',
+
+    // ── Errors ──────────────────────────────────────────────────────────────
+    checkoutFailed:      'Could not open checkout. Please try again.',
+    checkoutLoading:     'Preparing checkout…',
+    accessCheckFailed:   'Could not verify platform access. Please try again.',
+    swipeLimitReached:   'Daily swipe limit reached. Upgrade your plan for more swipes.',
+    storageLimitReached: 'Storage limit reached. Upgrade your plan for more storage.',
   },
 } as const;
 

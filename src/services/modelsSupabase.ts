@@ -82,6 +82,54 @@ export async function getModelsFromSupabase(): Promise<SupabaseModel[]> {
   }
 }
 
+export type SwipeFilters = {
+  height?: 'all' | 'short' | 'medium' | 'tall';
+  city?: 'all' | string;
+  hairColor?: 'all' | string;
+};
+
+/**
+ * Paginated model fetch for the Swipe/Discovery screen.
+ * Filters are applied server-side so only the requested slice is transferred.
+ * Uses .range() for offset pagination — acceptable for Discovery where inserts
+ * during a session are rare and page drift is tolerable.
+ */
+export async function getModelsPagedFromSupabase(
+  offset: number,
+  limit: number,
+  filters?: SwipeFilters,
+): Promise<SupabaseModel[]> {
+  try {
+    let query = supabase
+      .from('models')
+      .select(MODEL_DETAIL_SELECT)
+      .order('name')
+      .range(offset, offset + limit - 1);
+
+    if (filters?.city && filters.city !== 'all') {
+      query = query.eq('city', filters.city);
+    }
+    if (filters?.hairColor && filters.hairColor !== 'all') {
+      query = query.eq('hair_color', filters.hairColor);
+    }
+    if (filters?.height && filters.height !== 'all') {
+      if (filters.height === 'short')  query = query.lt('height', 175);
+      if (filters.height === 'medium') query = query.gte('height', 175).lte('height', 182);
+      if (filters.height === 'tall')   query = query.gt('height', 182);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      console.error('getModelsPagedFromSupabase error:', error);
+      return [];
+    }
+    return (data ?? []) as SupabaseModel[];
+  } catch (e) {
+    console.error('getModelsPagedFromSupabase exception:', e);
+    return [];
+  }
+}
+
 /** Ein Model, das dem eingeloggten User zugeordnet ist (user_id oder E-Mail-Link). */
 export async function getModelForUserFromSupabase(userId: string): Promise<SupabaseModel | null> {
   try {
@@ -168,6 +216,27 @@ function applyMeasurementFilters(q: any, f: ClientMeasurementFilters): any {
   return q;
 }
 
+/**
+ * Enforces the platform access gate server-side.
+ * Throws with code 'platform_access_denied' when the caller's org has no
+ * active subscription / trial / admin override. Used before direct-table
+ * model discovery queries where the RLS on `models` is USING(true).
+ */
+async function assertPlatformAccess(): Promise<void> {
+  const { data, error } = await supabase.rpc('can_access_platform');
+  if (error) {
+    console.error('assertPlatformAccess RPC error:', error);
+    throw new Error('platform_access_check_failed');
+  }
+  const result = data as { allowed: boolean; reason?: string } | null;
+  if (!result?.allowed) {
+    throw Object.assign(new Error('platform_access_denied'), {
+      code: 'platform_access_denied',
+      reason: result?.reason ?? 'unknown',
+    });
+  }
+}
+
 export async function getModelsForClientFromSupabase(
   clientType: 'fashion' | 'commercial' | 'all',
   category?: string,
@@ -175,6 +244,7 @@ export async function getModelsForClientFromSupabase(
   sportsSummer?: boolean,
   measurementFilters?: ClientMeasurementFilters,
 ): Promise<SupabaseModel[]> {
+  await assertPlatformAccess();
   return fetchAllSupabasePages(async (from, to) => {
     let q = supabase
       .from('models')
@@ -211,6 +281,7 @@ export async function getModelsForClientFromSupabaseByTerritory(
     }
   >
 > {
+  await assertPlatformAccess();
   const iso = countryCode.trim().toUpperCase();
   return fetchAllSupabasePages(async (from, to) => {
     let q = supabase

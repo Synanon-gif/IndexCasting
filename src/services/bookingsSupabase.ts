@@ -24,35 +24,75 @@ export type Booking = {
   updated_at: string;
 };
 
-export async function getBookingsForAgency(agencyId: string): Promise<Booking[]> {
-  const { data, error } = await supabase
-    .from('bookings')
-    .select('*')
-    .eq('agency_id', agencyId)
-    .order('booking_date', { ascending: false });
-  if (error) { console.error('getBookingsForAgency error:', error); return []; }
-  return (data ?? []) as Booking[];
+export type BookingListOptions = {
+  /** Max rows per page. Defaults to 200 to cap transfer size. */
+  limit?: number;
+  /** Zero-based offset for pagination. Defaults to 0. */
+  offset?: number;
+};
+
+export async function getBookingsForAgency(
+  agencyId: string,
+  opts?: BookingListOptions,
+): Promise<Booking[]> {
+  try {
+    const limit = opts?.limit ?? 200;
+    const offset = opts?.offset ?? 0;
+    const { data, error } = await supabase
+      .from('bookings')
+      .select('*')
+      .eq('agency_id', agencyId)
+      .order('booking_date', { ascending: false })
+      .range(offset, offset + limit - 1);
+    if (error) { console.error('getBookingsForAgency error:', error); return []; }
+    return (data ?? []) as Booking[];
+  } catch (e) {
+    console.error('getBookingsForAgency exception:', e);
+    return [];
+  }
 }
 
-export async function getBookingsForModel(modelId: string): Promise<Booking[]> {
-  const { data, error } = await supabase
-    .from('bookings')
-    .select('*')
-    .eq('model_id', modelId)
-    .order('booking_date', { ascending: false });
-  if (error) { console.error('getBookingsForModel error:', error); return []; }
-  return (data ?? []) as Booking[];
+export async function getBookingsForModel(
+  modelId: string,
+  opts?: BookingListOptions,
+): Promise<Booking[]> {
+  try {
+    const limit = opts?.limit ?? 200;
+    const offset = opts?.offset ?? 0;
+    const { data, error } = await supabase
+      .from('bookings')
+      .select('*')
+      .eq('model_id', modelId)
+      .order('booking_date', { ascending: false })
+      .range(offset, offset + limit - 1);
+    if (error) { console.error('getBookingsForModel error:', error); return []; }
+    return (data ?? []) as Booking[];
+  } catch (e) {
+    console.error('getBookingsForModel exception:', e);
+    return [];
+  }
 }
 
 /** Ehemalige und laufende Buchungen des Kunden – aus Supabase, pro client_id. */
-export async function getBookingsForClient(clientId: string): Promise<Booking[]> {
-  const { data, error } = await supabase
-    .from('bookings')
-    .select('*')
-    .eq('client_id', clientId)
-    .order('booking_date', { ascending: false });
-  if (error) { console.error('getBookingsForClient error:', error); return []; }
-  return (data ?? []) as Booking[];
+export async function getBookingsForClient(
+  clientId: string,
+  opts?: BookingListOptions,
+): Promise<Booking[]> {
+  try {
+    const limit = opts?.limit ?? 200;
+    const offset = opts?.offset ?? 0;
+    const { data, error } = await supabase
+      .from('bookings')
+      .select('*')
+      .eq('client_id', clientId)
+      .order('booking_date', { ascending: false })
+      .range(offset, offset + limit - 1);
+    if (error) { console.error('getBookingsForClient error:', error); return []; }
+    return (data ?? []) as Booking[];
+  } catch (e) {
+    console.error('getBookingsForClient exception:', e);
+    return [];
+  }
 }
 
 export async function createBooking(booking: {
@@ -90,26 +130,63 @@ export async function createBooking(booking: {
 
 export async function updateBookingStatus(
   bookingId: string,
-  status: 'confirmed' | 'completed' | 'cancelled' | 'invoiced'
+  status: 'confirmed' | 'completed' | 'cancelled' | 'invoiced',
+  fromStatus?: 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'invoiced'
 ): Promise<boolean> {
-  const { error } = await supabase
-    .from('bookings')
-    .update({ status })
-    .eq('id', bookingId);
-  if (error) { console.error('updateBookingStatus error:', error); return false; }
-  return true;
+  try {
+    let q = supabase
+      .from('bookings')
+      .update({ status })
+      .eq('id', bookingId);
+    if (fromStatus) {
+      // Optimistic concurrency guard: only transitions from the expected
+      // prior state succeed. Returns 0 rows if another request already
+      // changed the status, preventing double-confirm / double-cancel.
+      q = q.eq('status', fromStatus);
+    }
+    const { data, error } = await q.select('id');
+    if (error) { console.error('updateBookingStatus error:', error); return false; }
+    if (!data || data.length === 0) {
+      console.warn('updateBookingStatus: no row updated — concurrent state change or wrong fromStatus', { bookingId, fromStatus, targetStatus: status });
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('updateBookingStatus exception:', e);
+    return false;
+  }
 }
 
+/**
+ * Revenue aggregation via the get_agency_revenue() DB RPC.
+ *
+ * PERF-VULN-M7 fix: replaced JS-side reduce over an unbounded row fetch.
+ * The RPC runs SUM() in Postgres and returns a single JSONB object — zero
+ * network overhead from row serialisation regardless of booking count.
+ * Requires migration_hardening_2026_04_final.sql.
+ */
 export async function getAgencyRevenue(agencyId: string): Promise<{
   total_fees: number;
   total_commission: number;
   booking_count: number;
 }> {
-  const bookings = await getBookingsForAgency(agencyId);
-  const completed = bookings.filter(b => b.status === 'completed' || b.status === 'invoiced');
-  return {
-    total_fees: completed.reduce((sum, b) => sum + (b.fee_total ?? 0), 0),
-    total_commission: completed.reduce((sum, b) => sum + (b.commission_amount ?? 0), 0),
-    booking_count: completed.length,
-  };
+  const empty = { total_fees: 0, total_commission: 0, booking_count: 0 };
+  try {
+    const { data, error } = await supabase.rpc('get_agency_revenue', {
+      p_agency_id: agencyId,
+    });
+    if (error) {
+      console.error('getAgencyRevenue RPC error:', error);
+      return empty;
+    }
+    const result = data as { total_fees: number; total_commission: number; booking_count: number } | null;
+    return {
+      total_fees:       Number(result?.total_fees ?? 0),
+      total_commission: Number(result?.total_commission ?? 0),
+      booking_count:    Number(result?.booking_count ?? 0),
+    };
+  } catch (e) {
+    console.error('getAgencyRevenue exception:', e);
+    return empty;
+  }
 }

@@ -20,6 +20,17 @@ import { supabase } from '../../lib/supabase';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
 /**
+ * Synthetic payload dispatched to all callbacks of a channel that is forcibly
+ * evicted from the pool (because the pool is full and no idle slot is available).
+ * Consumers can inspect payload.type === 'CHANNEL_EVICTED' and trigger a
+ * re-subscribe or show a "Reconnecting…" indicator.
+ */
+export type ChannelEvictedPayload = {
+  type: 'CHANNEL_EVICTED';
+  key: string;
+};
+
+/**
  * Max concurrent open Supabase Realtime channels per client session.
  * Bei 100k Usern mit mehreren parallelen Chat-Fenstern (Messenger +
  * Option-Chat + Recruiting) reichen 25 nicht mehr aus. 50 deckt
@@ -71,6 +82,16 @@ function evictOne(): void {
 
   const entry = pool.get(target)!;
   if (entry.idleTimer !== null) clearTimeout(entry.idleTimer);
+
+  // Notify active subscribers so they can react (re-subscribe, show UI indicator).
+  // Only fired when the evicted channel still has active listeners (refCount > 0).
+  if (entry.refCount > 0) {
+    const evictedPayload: ChannelEvictedPayload = { type: 'CHANNEL_EVICTED', key: target };
+    for (const cb of entry.callbacks) {
+      try { cb(evictedPayload); } catch { /* subscriber errors must not break eviction */ }
+    }
+  }
+
   supabase.removeChannel(entry.channel);
   pool.delete(target);
 }

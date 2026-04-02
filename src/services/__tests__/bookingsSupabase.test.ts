@@ -9,6 +9,7 @@
 jest.mock('../../../lib/supabase', () => ({
   supabase: {
     from: jest.fn(),
+    rpc:  jest.fn(),
   },
 }));
 
@@ -24,6 +25,18 @@ import {
 } from '../bookingsSupabase';
 
 const from = supabase.from as jest.Mock;
+const rpc  = supabase.rpc  as jest.Mock;
+
+/** Builds a paginated chain: select → eq → order → range (terminal). */
+const pageChain = (result: unknown) => ({
+  select: () => ({
+    eq: () => ({
+      order: () => ({
+        range: jest.fn().mockResolvedValue(result),
+      }),
+    }),
+  }),
+});
 
 const BASE_BOOKING: Booking = {
   id:                'booking-1',
@@ -57,41 +70,22 @@ afterEach(() => {
 
 describe('getBookingsForAgency', () => {
   it('returns bookings array on success', async () => {
-    from.mockReturnValue({
-      select: () => ({
-        eq: () => ({
-          order: jest.fn().mockResolvedValue({ data: [BASE_BOOKING], error: null }),
-        }),
-      }),
-    });
+    from.mockReturnValue(pageChain({ data: [BASE_BOOKING], error: null }));
     const result = await getBookingsForAgency('agency-1');
     expect(result).toHaveLength(1);
     expect(result[0].agency_id).toBe('agency-1');
   });
 
   it('returns empty array on DB error', async () => {
-    from.mockReturnValue({
-      select: () => ({
-        eq: () => ({
-          order: jest.fn().mockResolvedValue({ data: null, error: { message: 'rls' } }),
-        }),
-      }),
-    });
+    from.mockReturnValue(pageChain({ data: null, error: { message: 'rls' } }));
     const result = await getBookingsForAgency('agency-1');
     expect(result).toEqual([]);
     expect(consoleErrorSpy).toHaveBeenCalled();
   });
 
   it('returns empty array when data is null without error', async () => {
-    from.mockReturnValue({
-      select: () => ({
-        eq: () => ({
-          order: jest.fn().mockResolvedValue({ data: null, error: null }),
-        }),
-      }),
-    });
-    const result = await getBookingsForAgency('agency-1');
-    expect(result).toEqual([]);
+    from.mockReturnValue(pageChain({ data: null, error: null }));
+    expect(await getBookingsForAgency('agency-1')).toEqual([]);
   });
 });
 
@@ -99,25 +93,12 @@ describe('getBookingsForAgency', () => {
 
 describe('getBookingsForModel', () => {
   it('returns bookings for a model', async () => {
-    from.mockReturnValue({
-      select: () => ({
-        eq: () => ({
-          order: jest.fn().mockResolvedValue({ data: [BASE_BOOKING], error: null }),
-        }),
-      }),
-    });
-    const result = await getBookingsForModel('model-1');
-    expect(result).toHaveLength(1);
+    from.mockReturnValue(pageChain({ data: [BASE_BOOKING], error: null }));
+    expect(await getBookingsForModel('model-1')).toHaveLength(1);
   });
 
   it('returns empty array on error', async () => {
-    from.mockReturnValue({
-      select: () => ({
-        eq: () => ({
-          order: jest.fn().mockResolvedValue({ data: null, error: { message: 'error' } }),
-        }),
-      }),
-    });
+    from.mockReturnValue(pageChain({ data: null, error: { message: 'error' } }));
     expect(await getBookingsForModel('model-1')).toEqual([]);
   });
 });
@@ -126,24 +107,12 @@ describe('getBookingsForModel', () => {
 
 describe('getBookingsForClient', () => {
   it('returns bookings for a client', async () => {
-    from.mockReturnValue({
-      select: () => ({
-        eq: () => ({
-          order: jest.fn().mockResolvedValue({ data: [BASE_BOOKING], error: null }),
-        }),
-      }),
-    });
+    from.mockReturnValue(pageChain({ data: [BASE_BOOKING], error: null }));
     expect(await getBookingsForClient('client-1')).toHaveLength(1);
   });
 
   it('returns empty array on error', async () => {
-    from.mockReturnValue({
-      select: () => ({
-        eq: () => ({
-          order: jest.fn().mockResolvedValue({ data: null, error: { message: 'rls' } }),
-        }),
-      }),
-    });
+    from.mockReturnValue(pageChain({ data: null, error: { message: 'rls' } }));
     expect(await getBookingsForClient('client-1')).toEqual([]);
   });
 });
@@ -232,33 +201,43 @@ describe('createBooking', () => {
 
 // ─── updateBookingStatus ──────────────────────────────────────────────────────
 
+/** Creates a self-referencing eq mock chain that also exposes a select method. */
+function makeEqChain(selectResult: { data: unknown; error: unknown }) {
+  const selectMock = jest.fn().mockResolvedValue(selectResult);
+  // eslint-disable-next-line prefer-const
+  let eqMock: jest.Mock;
+  eqMock = jest.fn().mockImplementation(() => ({ eq: eqMock, select: selectMock }));
+  return eqMock;
+}
+
 describe('updateBookingStatus', () => {
   it('returns true on success', async () => {
     from.mockReturnValue({
-      update: () => ({
-        eq: jest.fn().mockResolvedValue({ error: null }),
-      }),
+      update: () => ({ eq: makeEqChain({ data: [{ id: 'booking-1' }], error: null }) }),
     });
     expect(await updateBookingStatus('booking-1', 'completed')).toBe(true);
   });
 
   it('returns false on DB error', async () => {
     from.mockReturnValue({
-      update: () => ({
-        eq: jest.fn().mockResolvedValue({ error: { message: 'not found' } }),
-      }),
+      update: () => ({ eq: makeEqChain({ data: null, error: { message: 'not found' } }) }),
     });
     expect(await updateBookingStatus('booking-1', 'cancelled')).toBe(false);
     expect(consoleErrorSpy).toHaveBeenCalled();
+  });
+
+  it('returns false when no row updated (concurrent state change)', async () => {
+    from.mockReturnValue({
+      update: () => ({ eq: makeEqChain({ data: [], error: null }) }),
+    });
+    expect(await updateBookingStatus('booking-1', 'confirmed', 'pending')).toBe(false);
   });
 
   it('handles all valid status transitions without throwing', async () => {
     const statuses: Booking['status'][] = ['confirmed', 'completed', 'cancelled', 'invoiced'];
     for (const status of statuses) {
       from.mockReturnValue({
-        update: () => ({
-          eq: jest.fn().mockResolvedValue({ error: null }),
-        }),
+        update: () => ({ eq: makeEqChain({ data: [{ id: 'booking-1' }], error: null }) }),
       });
       expect(await updateBookingStatus('booking-1', status)).toBe(true);
     }
@@ -266,54 +245,40 @@ describe('updateBookingStatus', () => {
 });
 
 // ─── getAgencyRevenue ─────────────────────────────────────────────────────────
+// PERF-VULN-M7 fix: getAgencyRevenue now calls the get_agency_revenue RPC
+// instead of loading all rows and reducing in JS. Tests verify RPC usage.
 
 describe('getAgencyRevenue', () => {
-  it('calculates totals correctly from completed and invoiced bookings', async () => {
-    const completedBooking: Booking = { ...BASE_BOOKING, status: 'completed', fee_total: 2000, commission_amount: 400 };
-    const invoicedBooking: Booking  = { ...BASE_BOOKING, id: 'booking-2', status: 'invoiced', fee_total: 3000, commission_amount: 600 };
-    const confirmedBooking: Booking = { ...BASE_BOOKING, id: 'booking-3', status: 'confirmed', fee_total: 5000, commission_amount: 1000 };
-
-    from.mockReturnValue({
-      select: () => ({
-        eq: () => ({
-          order: jest.fn().mockResolvedValue({
-            data: [completedBooking, invoicedBooking, confirmedBooking],
-            error: null,
-          }),
-        }),
-      }),
+  it('returns aggregated totals from the RPC (not from())', async () => {
+    rpc.mockResolvedValue({
+      data: { total_fees: 5000, total_commission: 1000, booking_count: 2 },
+      error: null,
     });
-
     const result = await getAgencyRevenue('agency-1');
-    expect(result.booking_count).toBe(2);          // confirmed excluded
-    expect(result.total_fees).toBe(5000);           // 2000 + 3000
-    expect(result.total_commission).toBe(1000);     // 400 + 600
+    expect(rpc).toHaveBeenCalledWith('get_agency_revenue', { p_agency_id: 'agency-1' });
+    expect(from).not.toHaveBeenCalled();
+    expect(result.booking_count).toBe(2);
+    expect(result.total_fees).toBe(5000);
+    expect(result.total_commission).toBe(1000);
   });
 
-  it('returns zeros when no bookings exist', async () => {
-    from.mockReturnValue({
-      select: () => ({
-        eq: () => ({
-          order: jest.fn().mockResolvedValue({ data: [], error: null }),
-        }),
-      }),
-    });
+  it('returns zeros when RPC returns null data (no bookings)', async () => {
+    rpc.mockResolvedValue({ data: null, error: null });
     const result = await getAgencyRevenue('agency-1');
     expect(result).toEqual({ booking_count: 0, total_fees: 0, total_commission: 0 });
   });
 
-  it('handles null fee_total and commission_amount gracefully', async () => {
-    const nullFeeBooking: Booking = { ...BASE_BOOKING, status: 'completed', fee_total: null, commission_amount: null };
-    from.mockReturnValue({
-      select: () => ({
-        eq: () => ({
-          order: jest.fn().mockResolvedValue({ data: [nullFeeBooking], error: null }),
-        }),
-      }),
-    });
+  it('returns zeros on RPC error (fail-safe)', async () => {
+    rpc.mockResolvedValue({ data: null, error: { message: 'unauthorized' } });
     const result = await getAgencyRevenue('agency-1');
-    expect(result.total_fees).toBe(0);
-    expect(result.total_commission).toBe(0);
-    expect(result.booking_count).toBe(1);
+    expect(result).toEqual({ booking_count: 0, total_fees: 0, total_commission: 0 });
+    expect(consoleErrorSpy).toHaveBeenCalled();
+  });
+
+  it('returns zeros on exception', async () => {
+    rpc.mockImplementation(() => { throw new Error('network'); });
+    const result = await getAgencyRevenue('agency-1');
+    expect(result).toEqual({ booking_count: 0, total_fees: 0, total_commission: 0 });
+    expect(consoleErrorSpy).toHaveBeenCalled();
   });
 });

@@ -3,6 +3,8 @@ import { StatusBar } from 'expo-status-bar';
 import { Platform, View, StyleSheet, ActivityIndicator, Text, Dimensions, TouchableOpacity } from 'react-native';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { AppDataProvider, useAppData } from './src/context/AppDataContext';
+import { SubscriptionProvider, useSubscription } from './src/context/SubscriptionContext';
+import PaywallScreen from './src/screens/PaywallScreen';
 import { AuthScreen } from './src/screens/AuthScreen';
 import { InviteAcceptanceScreen } from './src/screens/InviteAcceptanceScreen';
 import { LegalAcceptanceScreen } from './src/screens/LegalAcceptanceScreen';
@@ -95,6 +97,34 @@ function roleFromProfile(profileRole: string | undefined): Role | null {
   if (profileRole === 'agent') return 'agency';
   if (profileRole === 'model') return 'model';
   return null;
+}
+
+/**
+ * Full-app-lock for client organizations.
+ *
+ * When a client org's access is blocked (trial expired, no active subscription),
+ * the ENTIRE client workspace is replaced with PaywallScreen — no tabs, no
+ * navigation, no way to bypass via the frontend.
+ *
+ * Security note: this is UI-only. Every server-side RPC is independently blocked
+ * via can_access_platform() so a frontend bypass attempt grants nothing.
+ */
+function ClientPaywallGuard({ children }: { children: React.ReactNode }) {
+  const { loaded, isBlocked, isClientOrg } = useSubscription();
+
+  if (!loaded) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
+        <ActivityIndicator size="large" color={colors.textPrimary} />
+      </View>
+    );
+  }
+
+  if (isBlocked && isClientOrg) {
+    return <PaywallScreen />;
+  }
+
+  return <>{children}</>;
 }
 
 function AppContent() {
@@ -381,11 +411,13 @@ function AppContent() {
     <>
       <View style={styles.shell}>
         {effectiveRole === 'client' && (
-          <ClientView
-            clientType={clientType}
-            onClientTypeChange={setClientType}
-            onBackToRoleSelection={handleBackToRoleSelection}
-          />
+          <ClientPaywallGuard>
+            <ClientView
+              clientType={clientType}
+              onClientTypeChange={setClientType}
+              onBackToRoleSelection={handleBackToRoleSelection}
+            />
+          </ClientPaywallGuard>
         )}
         {effectiveRole === 'model' && (
           <ModelView
@@ -431,7 +463,9 @@ export default function App() {
         <AuthProvider>
           <AppDataProvider>
             <SafeAreaProvider>
-              <AppContent />
+              <SubscriptionProvider>
+                <AppContent />
+              </SubscriptionProvider>
             </SafeAreaProvider>
           </AppDataProvider>
         </AuthProvider>
