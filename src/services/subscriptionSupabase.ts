@@ -122,10 +122,13 @@ export async function getMyOrgSubscription(): Promise<OrgSubscription | null> {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
 
+    // MED-04: ORDER BY created_at ASC ensures the same org is selected as in
+    // the create-checkout-session Edge Function and can_access_platform() RPC.
     const { data: membership } = await supabase
       .from('organization_members')
       .select('organization_id')
       .eq('user_id', user.id)
+      .order('created_at', { ascending: true })
       .limit(1)
       .maybeSingle();
 
@@ -154,10 +157,12 @@ export async function getMyAdminOverride(): Promise<AdminOverride | null> {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
 
+    // MED-04: ORDER BY created_at ASC for consistent org selection
     const { data: membership } = await supabase
       .from('organization_members')
       .select('organization_id')
       .eq('user_id', user.id)
+      .order('created_at', { ascending: true })
       .limit(1)
       .maybeSingle();
 

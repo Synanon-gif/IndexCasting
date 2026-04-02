@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase';
+import { extractBucketAndPath } from '../storage/storageUrl';
 
 /**
  * Gast-Links (Agentur) – in Supabase, pro agency_id; guest_links inkl. model_ids.
@@ -162,10 +163,59 @@ export type GuestLinkModel = {
   polaroids: string[];
 };
 
+// Signed-URL TTL for guest-visible model images (M-3 fix, Security Audit 2026-04).
+// After a guest link expires or is deactivated, previously seen raw public-bucket
+// URLs would remain permanently accessible. By rewriting image URLs to signed URLs
+// with a short TTL at fetch time, newly-loaded sessions receive URLs that expire,
+// limiting exposure without breaking the in-session UX.
+// Full mitigation (making the documentspictures bucket private) is a separate
+// infrastructure migration tracked as a follow-up item.
+const GUEST_IMAGE_SIGNED_TTL_SECONDS = 900; // 15 minutes
+const DOCUMENTSPICTURES_BUCKET = 'documentspictures';
+
+/**
+ * Extracts the storage object path from any supported URL / URI format:
+ *   - supabase-storage://documentspictures/path  (canonical new form)
+ *   - https://…/object/public/documentspictures/path  (legacy public URL)
+ * Returns null when the URL cannot be parsed or does not belong to the bucket.
+ */
+function extractStoragePath(url: string, bucket: string): string | null {
+  const extracted = extractBucketAndPath(url);
+  if (!extracted || extracted.bucket !== bucket) return null;
+  return extracted.path || null;
+}
+
+/**
+ * Rewrites an array of public-bucket image URLs to signed URLs with a short TTL.
+ * Falls back to the original URL when signing fails (e.g. guest not yet authenticated).
+ */
+async function signImageUrls(urls: string[]): Promise<string[]> {
+  if (urls.length === 0) return urls;
+  return Promise.all(
+    urls.map(async (url) => {
+      const path = extractStoragePath(url, DOCUMENTSPICTURES_BUCKET);
+      if (!path) return url;
+      try {
+        const { data, error } = await supabase.storage
+          .from(DOCUMENTSPICTURES_BUCKET)
+          .createSignedUrl(path, GUEST_IMAGE_SIGNED_TTL_SECONDS);
+        if (error || !data?.signedUrl) return url;
+        return data.signedUrl;
+      } catch {
+        return url;
+      }
+    }),
+  );
+}
+
 /**
  * Fetches the models for an active guest link via a SECURITY DEFINER RPC.
  * Safe for anon callers — the RPC enforces the is_active + expiry guard.
  * Returns [] if the link is invalid/expired or on error.
+ *
+ * M-3 fix (Security Audit 2026-04): image URLs are rewritten to signed URLs
+ * with a 15-minute TTL so that links acquired in this session expire after the
+ * TTL rather than remaining permanently accessible via public-bucket URLs.
  */
 export async function getGuestLinkModels(linkId: string): Promise<GuestLinkModel[]> {
   try {
@@ -176,7 +226,17 @@ export async function getGuestLinkModels(linkId: string): Promise<GuestLinkModel
       console.error('getGuestLinkModels RPC error:', error);
       return [];
     }
-    return (data ?? []) as GuestLinkModel[];
+    const models = (data ?? []) as GuestLinkModel[];
+
+    // Rewrite image arrays to signed URLs (M-3 fix).
+    const signed = await Promise.all(
+      models.map(async (m) => ({
+        ...m,
+        portfolio_images: await signImageUrls(m.portfolio_images),
+        polaroids:        await signImageUrls(m.polaroids),
+      })),
+    );
+    return signed;
   } catch (e) {
     console.error('getGuestLinkModels exception:', e);
     return [];
@@ -188,5 +248,5 @@ export function buildGuestUrl(linkId: string): string {
     const base = window.location.origin + (window.location.pathname || '');
     return `${base}?guest=${linkId}`;
   }
-  return `https://app.castingindex.com?guest=${linkId}`;
+  return `https://indexcasting.com?guest=${linkId}`;
 }

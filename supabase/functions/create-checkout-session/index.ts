@@ -30,10 +30,19 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import Stripe from 'npm:stripe@14';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+const ALWAYS_ALLOWED_ORIGINS = ['https://indexcasting.com'];
+
+function getCorsHeaders(req: Request, extraAllowedOrigins: string[] = []): Record<string, string> {
+  const origin = req.headers.get('Origin') ?? '';
+  const allowed = [...ALWAYS_ALLOWED_ORIGINS, ...extraAllowedOrigins];
+  // Reflect the exact origin if it is in the allowlist; otherwise use the canonical domain.
+  const allowOrigin = allowed.includes(origin) ? origin : ALWAYS_ALLOWED_ORIGINS[0];
+  return {
+    'Access-Control-Allow-Origin': allowOrigin,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Vary': 'Origin',
+  };
+}
 
 type PlanType = 'agency_basic' | 'agency_pro' | 'agency_enterprise' | 'client';
 
@@ -72,20 +81,23 @@ interface CheckoutRequest {
 }
 
 Deno.serve(async (req: Request) => {
+  const appUrl = Deno.env.get('APP_URL') ?? 'https://indexcasting.com';
+  const allowedOrigins = buildAllowedOrigins(appUrl);
+  const cors = getCorsHeaders(req, allowedOrigins);
+
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: cors });
   }
 
   const supabaseUrl     = Deno.env.get('SUPABASE_URL');
   const serviceRoleKey  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   const anonKey         = Deno.env.get('SUPABASE_ANON_KEY');
   const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY');
-  const appUrl          = Deno.env.get('APP_URL') ?? 'https://indexcasting.com';
 
   if (!supabaseUrl || !serviceRoleKey || !anonKey || !stripeSecretKey) {
     return new Response(
       JSON.stringify({ ok: false, error: 'Server misconfiguration' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } },
     );
   }
 
@@ -94,7 +106,7 @@ Deno.serve(async (req: Request) => {
   if (!authHeader) {
     return new Response(
       JSON.stringify({ ok: false, error: 'Missing authorization header' }),
-      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } },
     );
   }
 
@@ -106,7 +118,7 @@ Deno.serve(async (req: Request) => {
   if (authError || !user) {
     return new Response(
       JSON.stringify({ ok: false, error: 'Unauthorized' }),
-      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } },
     );
   }
 
@@ -117,7 +129,7 @@ Deno.serve(async (req: Request) => {
   } catch {
     return new Response(
       JSON.stringify({ ok: false, error: 'Invalid JSON body' }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
     );
   }
 
@@ -125,7 +137,7 @@ Deno.serve(async (req: Request) => {
   if (!body.plan || !validPlans.includes(body.plan)) {
     return new Response(
       JSON.stringify({ ok: false, error: 'Invalid or missing plan' }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
     );
   }
 
@@ -148,7 +160,7 @@ Deno.serve(async (req: Request) => {
     console.error('[create-checkout-session] No org membership for user:', user.id, memberError);
     return new Response(
       JSON.stringify({ ok: false, error: 'No organization found for this user' }),
-      { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      { status: 422, headers: { ...cors, 'Content-Type': 'application/json' } },
     );
   }
 
@@ -158,7 +170,7 @@ Deno.serve(async (req: Request) => {
   if (memberRow.role !== 'owner') {
     return new Response(
       JSON.stringify({ ok: false, error: 'Only the organization owner can manage billing' }),
-      { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } },
     );
   }
 
@@ -175,7 +187,7 @@ Deno.serve(async (req: Request) => {
     console.error('[create-checkout-session] Missing price env for plan:', body.plan);
     return new Response(
       JSON.stringify({ ok: false, error: 'Pricing not configured for this plan' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } },
     );
   }
 
@@ -201,14 +213,14 @@ Deno.serve(async (req: Request) => {
       .eq('id', orgId)
       .maybeSingle();
 
-    const { data: profile } = await adminClient
+    const { data: profileRow } = await adminClient
       .from('profiles')
       .select('email, display_name')
       .eq('id', user.id)
       .maybeSingle();
 
     const customer = await stripe.customers.create({
-      email:    profile?.email ?? user.email ?? undefined,
+      email:    profileRow?.email ?? user.email ?? undefined,
       name:     orgRow?.name ?? undefined,
       metadata: { organization_id: orgId, user_id: user.id },
     });
@@ -224,18 +236,16 @@ Deno.serve(async (req: Request) => {
   }
 
   // ── Validate and resolve redirect URLs (VULN-02 fix) ─────────────────────
-  const allowedOrigins = buildAllowedOrigins(appUrl);
-
   if (body.success_url && !isAllowedRedirectUrl(body.success_url, allowedOrigins)) {
     return new Response(
       JSON.stringify({ ok: false, error: 'Invalid success_url: origin not in allowlist' }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
     );
   }
   if (body.cancel_url && !isAllowedRedirectUrl(body.cancel_url, allowedOrigins)) {
     return new Response(
       JSON.stringify({ ok: false, error: 'Invalid cancel_url: origin not in allowlist' }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } },
     );
   }
 
@@ -267,13 +277,13 @@ Deno.serve(async (req: Request) => {
 
     return new Response(
       JSON.stringify({ ok: true, checkout_url: session.url }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      { status: 200, headers: { ...cors, 'Content-Type': 'application/json' } },
     );
   } catch (err) {
     console.error('[create-checkout-session] Stripe error:', err);
     return new Response(
       JSON.stringify({ ok: false, error: 'Failed to create checkout session' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } },
     );
   }
 });

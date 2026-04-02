@@ -97,7 +97,6 @@ import { sendAgencyInvitation } from '../services/optionRequestsSupabase';
 import {
   ensureClientOrganization,
   getClientOrganizationIdForUser,
-  getMyClientMemberRole,
   updateOrganizationName,
   getOrganizationById,
   dissolveOrganization,
@@ -414,20 +413,19 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   const isRealClient = !!realClientId;
 
   // Resolve the client organisation for this user (owner or employee).
-  // We use getMyClientMemberRole first so employees resolve their employer's
-  // org rather than accidentally creating their own via ensureClientOrganization.
+  // profile.organization_id is loaded by AuthContext via get_my_org_context() —
+  // it already covers both owners and employees without an additional RPC call.
   useEffect(() => {
     if (!realClientId) { setClientOrgId(null); return; }
+    const profileOrgId = auth.profile?.organization_id;
+    if (profileOrgId) {
+      setClientOrgId(profileOrgId);
+      sessionSeenIds.current = loadSessionIds(profileOrgId);
+      return;
+    }
+    // Fallback: org not yet bootstrapped (e.g. brand-new owner) — create it.
     void (async () => {
       try {
-        const roleData = await getMyClientMemberRole();
-        if (roleData?.organization_id) {
-          setClientOrgId(roleData.organization_id);
-          // Restore session from localStorage so refreshes don't repeat models.
-          sessionSeenIds.current = loadSessionIds(roleData.organization_id);
-          return;
-        }
-        // Owner with no org record yet – create it.
         const oid = await ensureClientOrganization();
         setClientOrgId(oid);
         if (oid) {
@@ -437,7 +435,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         console.error('ClientWebApp: failed to resolve clientOrgId', e);
       }
     })();
-  }, [realClientId]);
+  }, [realClientId, auth.profile?.organization_id]);
 
   // Save filters to Supabase (explicit user action via "Save Filters" button).
   const handleSaveFilters = useCallback(async () => {
@@ -3796,25 +3794,9 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
   const [deleting, setDeleting] = useState(false);
   const [dissolvingOrg, setDissolvingOrg] = useState(false);
   const [orgDissolved, setOrgDissolved] = useState(false);
-  const [clientIsOwner, setClientIsOwner] = useState(false);
-  const [ownerRoleLoading, setOwnerRoleLoading] = useState(true);
-  const [clientOrgId, setClientOrgId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!realClientId) {
-      setClientIsOwner(false);
-      setOwnerRoleLoading(false);
-      return;
-    }
-    setOwnerRoleLoading(true);
-    void getMyClientMemberRole().then((row) => {
-      setClientIsOwner(row?.member_role === 'owner');
-      setOwnerRoleLoading(false);
-      if (row?.organization_id) {
-        setClientOrgId(row.organization_id);
-      }
-    });
-  }, [realClientId]);
+  const clientIsOwner = profile?.org_member_role === 'owner';
+  const ownerRoleLoading = !!realClientId && !profile?.org_member_role;
+  const clientOrgId = profile?.organization_id ?? null;
 
   // Load settings: Supabase profile is authoritative for display_name; localStorage fills the rest.
   useEffect(() => {

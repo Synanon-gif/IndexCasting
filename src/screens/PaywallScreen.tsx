@@ -24,6 +24,7 @@ import {
 } from 'react-native';
 import { uiCopy } from '../constants/uiCopy';
 import { useSubscription } from '../context/SubscriptionContext';
+import { useAuth } from '../context/AuthContext';
 import { createCheckoutSession, type PlanType } from '../services/subscriptionSupabase';
 import { colors, spacing, typography } from '../theme/theme';
 
@@ -153,7 +154,11 @@ function PlanCardView({ plan, loadingPlan, onSelect }: PlanCardProps) {
 
 export default function PaywallScreen() {
   const { trialDaysLeft, accessStatus, orgType } = useSubscription();
+  const { profile } = useAuth();
   const [loadingPlan, setLoadingPlan] = useState<PlanType | null>(null);
+
+  // Only owners may initiate a subscription purchase.
+  const isOwner = profile?.org_member_role === 'owner';
 
   const isTrialExpired = accessStatus?.reason === 'no_active_subscription';
   const isTrialActive  = accessStatus?.reason === 'trial_active';
@@ -224,15 +229,22 @@ export default function PaywallScreen() {
         </View>
       )}
 
-      {/* Plan cards — filtered by org type */}
-      {visibleCards.map((plan) => (
-        <PlanCardView
-          key={plan.id}
-          plan={plan}
-          loadingPlan={loadingPlan}
-          onSelect={handleSelectPlan}
-        />
-      ))}
+      {/* Plan cards — only owners may initiate checkout; others see a contact note */}
+      {isOwner ? (
+        visibleCards.map((plan) => (
+          <PlanCardView
+            key={plan.id}
+            plan={plan}
+            loadingPlan={loadingPlan}
+            onSelect={handleSelectPlan}
+          />
+        ))
+      ) : (
+        <View style={styles.nonOwnerNotice}>
+          <Text style={styles.nonOwnerTitle}>{uiCopy.billing.nonOwnerPaywallTitle}</Text>
+          <Text style={styles.nonOwnerBody}>{uiCopy.billing.nonOwnerPaywallBody}</Text>
+        </View>
+      )}
 
       {/* Footer — only agency orgs see the enterprise contact note */}
       {!isClientPaywall && (
@@ -414,6 +426,28 @@ const styles = StyleSheet.create({
   },
   ctaTextHighlighted: {
     color: colors.accentGreen,
+  },
+
+  // Non-owner notice
+  nonOwnerNotice: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    alignItems: 'center',
+  },
+  nonOwnerTitle: {
+    ...typography.label,
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+    textAlign: 'center',
+  },
+  nonOwnerBody: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
   },
 
   // Footer

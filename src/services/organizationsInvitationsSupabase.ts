@@ -2,9 +2,13 @@ import { Platform } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { buildInviteAbsoluteUrl, buildInviteDeepLinkPath } from './inviteUrlHelpers';
 import { uiCopy } from '../constants/uiCopy';
+import {
+  isValidRoleForOrgType,
+  type OrganizationType,
+  type OrgMemberRole,
+} from './orgRoleTypes';
 
-export type OrganizationType = 'agency' | 'client';
-export type OrgMemberRole = 'owner' | 'booker' | 'employee';
+export type { OrganizationType, OrgMemberRole };
 export type InvitationRole = 'booker' | 'employee';
 export type InvitationStatus = 'pending' | 'accepted';
 
@@ -216,6 +220,21 @@ export async function createOrganizationInvitation(params: {
       console.error('createOrganizationInvitation: no user', userErr);
       return null;
     }
+
+    // Org-Typ laden und Rollen-Gültigkeit vor dem DB-Insert prüfen.
+    // Verhindert, dass booker in Client-Orgs oder employee in Agency-Orgs eingeladen werden.
+    const org = await getOrganizationById(params.organizationId);
+    if (!org) {
+      console.error('createOrganizationInvitation: organization not found', params.organizationId);
+      return null;
+    }
+    if (!isValidRoleForOrgType(params.role, org.type)) {
+      console.error(
+        `createOrganizationInvitation: role "${params.role}" is not valid for ${org.type} organizations`,
+      );
+      return null;
+    }
+
     const ttl = params.ttlHours ?? 48;
     const expires = new Date(Date.now() + ttl * 60 * 60 * 1000).toISOString();
     const token = randomInviteToken();

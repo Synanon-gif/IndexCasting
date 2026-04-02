@@ -1035,6 +1035,10 @@ export const uiCopy = {
     adminStripeCustomer:          'Stripe Customer ID',
     adminStripeSubscription:      'Stripe Subscription ID',
 
+    // ── Non-owner paywall notice ─────────────────────────────────────────────
+    nonOwnerPaywallTitle: 'Subscription Required',
+    nonOwnerPaywallBody:  'Only your organization owner can manage and activate the subscription. Please contact them to upgrade.',
+
     // ── Errors ──────────────────────────────────────────────────────────────
     checkoutFailed:      'Could not open checkout. Please try again.',
     checkoutLoading:     'Preparing checkout…',

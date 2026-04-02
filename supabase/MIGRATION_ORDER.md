@@ -220,6 +220,19 @@ Files must be run in exactly this sequence on any new instance (staging, product
 ### Phase 29c – Portfolio Bulk-Delete Size Fix
 142. `migration_fix_portfolio_bulk_delete_size.sql`       ← REPLACE `get_model_portfolio_file_paths`: uses `model_photos.file_size_bytes` (stored at upload time, Phase 28b) as the primary size source with `COALESCE(NULLIF(..., 0), storage.objects lookup, 0)` fallback. Fixes counter staying inflated when portfolio files were already removed from storage before bulk-delete. Run after Phase 29b (#141).
 
+### Phase 30 – Security Audit Fixes (Pre-Launch 2026-04, Pentest Round)
+143. `migration_org_role_type_enforcement.sql`            ← CRITICAL: Adds BEFORE INSERT/UPDATE trigger on organization_members enforcing role-type binding (agency→owner/booker, client→owner/employee); SECURITY DEFINER `check_org_access()` helper; SECURITY DEFINER `get_my_org_context()` RPC; updated RLS policies (INSERT/UPDATE owner-only). Run before Phase 30b.
+144. `migration_fix_organizations_update_policy.sql`      ← Tightens organizations UPDATE policy to owner-only for name/settings fields; blocks non-owner members from modifying org metadata.
+145. `migration_security_from_role_uploaded_by.sql`       ← Adds `uploaded_by` column to model_photos; RLS tightened so only the uploader (agency member) can delete their own uploads; prevents cross-agency photo deletion.
+146. `migration_security_revoke_anon_location_rpc.sql`    ← SECURITY: Revokes anon EXECUTE on `get_models_by_location` RPC (was inadvertently public); requires authenticated role.
+147. `migration_security_verifications_storage_2026_04.sql` ← Tightens verifications storage bucket policies: scopes SELECT/INSERT/DELETE to owner's own files; removes overly-broad service-role bypass.
+148. `migration_storage_private_documentspictures.sql`    ← Sets `documentspictures` bucket to PRIVATE; adds signed-URL-only SELECT policy; prevents direct public URL access to identity documents and sensitive files.
+149. `migration_backend_rate_limits_otp_guest.sql`        ← Backend rate limiting for OTP and guest auth flows: adds `auth_rate_limits` table; SECURITY DEFINER RPC `check_and_increment_rate_limit()` with configurable window/max; applied to guest magic-link and OTP endpoints.
+150. `migration_security_pentest_fixes_2026_04.sql`       ← Consolidated pentest fix batch (2026-04): patches identified during external security review; see file header for individual issue list.
+151. `migration_security_profiles_is_admin_lock.sql`      ← CRIT-02: REVOKE UPDATE(is_admin, role) on profiles FROM authenticated; BEFORE UPDATE trigger `trg_prevent_privilege_escalation` blocks authenticated users from elevating own is_admin/role. Run after Phase 30 (#150).
+152. `migration_security_invitation_email_guard.sql`      ← CRIT-01: Restores email match + profile role check in `accept_organization_invitation`; keeps single-org guard from Phase 21. Run after #151.
+153. `migration_security_fix_org_context_order.sql`       ← HIGH-04: Adds ORDER BY created_at ASC to `get_my_org_context()` for deterministic org selection; aligns with can_access_platform() and checkout Edge Function ordering. Run after #152.
+
 ---
 
 ## Files NOT to run in production

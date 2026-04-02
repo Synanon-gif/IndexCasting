@@ -127,6 +127,37 @@ function ClientPaywallGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/**
+ * Full-app-lock for agency organizations.
+ *
+ * HIGH-01 fix: Agency workspace was missing a paywall gate entirely.
+ * Without this guard, agency users with an expired subscription/trial could
+ * still see the full agency UI — API calls would fail via RLS, but errors
+ * were silently ignored leaving users confused with a broken UI.
+ *
+ * This gate mirrors ClientPaywallGuard but targets agency orgs
+ * (orgType === 'agency', i.e. isClientOrg === false).
+ *
+ * Security note: UI-only. Backend enforcement via can_access_platform() RLS.
+ */
+function AgencyPaywallGuard({ children }: { children: React.ReactNode }) {
+  const { loaded, isBlocked, isClientOrg, orgType } = useSubscription();
+
+  if (!loaded) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
+        <ActivityIndicator size="large" color={colors.textPrimary} />
+      </View>
+    );
+  }
+
+  if (isBlocked && orgType === 'agency' && !isClientOrg) {
+    return <PaywallScreen />;
+  }
+
+  return <>{children}</>;
+}
+
 function AppContent() {
   const { session, loading, profile, signOut, refreshProfile, orgDeactivated, clearOrgDeactivated } = useAuth();
   const [sharedParams] = useState<{ name: string; ids: string[] } | null>(getSharedParams);
@@ -279,7 +310,8 @@ function AppContent() {
     );
   }
 
-  if (bookingThreadId) {
+  // Booking deeplink requires an active session — unauthenticated users fall through to AuthScreen.
+  if (bookingThreadId && session) {
     return (
       <>
         <View style={styles.shell}>
@@ -425,7 +457,11 @@ function AppContent() {
             userId={session?.user?.id}
           />
         )}
-        {effectiveRole === 'agency' && <AgencyView onBackToRoleSelection={handleBackToRoleSelection} />}
+        {effectiveRole === 'agency' && (
+          <AgencyPaywallGuard>
+            <AgencyView onBackToRoleSelection={handleBackToRoleSelection} />
+          </AgencyPaywallGuard>
+        )}
       </View>
       <StatusBar style="dark" />
     </>

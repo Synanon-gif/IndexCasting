@@ -14,6 +14,7 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native';
+import { StorageImage } from './StorageImage';
 import { colors, spacing, typography } from '../theme/theme';
 import { uiCopy } from '../constants/uiCopy';
 import {
@@ -412,9 +413,9 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
                       <View style={styles.avatarRow}>
                         {previewIds.slice(0, 4).map((modelId) => (
                           packageModelPhotos[modelId] ? (
-                            <Image
+                            <StorageImage
                               key={modelId}
-                              source={{ uri: packageModelPhotos[modelId] }}
+                              uri={packageModelPhotos[modelId]}
                               style={styles.avatar}
                               resizeMode="cover"
                             />

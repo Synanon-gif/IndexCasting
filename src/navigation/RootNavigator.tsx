@@ -5,14 +5,14 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, Text, ActivityIndicator } from 'react-native';
 import { colors } from '../theme/theme';
 import { AuthProvider, useAuth } from '../context/AuthContext';
-import { LoginScreen } from '../screens/LoginScreen';
+import { AuthScreen } from '../screens/AuthScreen';
 import { CustomerSwipeScreen } from '../screens/CustomerSwipeScreen';
 import { ModelProfileScreen } from '../screens/ModelProfileScreen';
 import { AgencyDashboardScreen } from '../screens/AgencyDashboardScreen';
 import { NotificationBell } from '../components/NotificationBell';
 
 type AuthStackParamList = {
-  Login: undefined;
+  Auth: undefined;
 };
 
 type AppTabParamList = {
@@ -141,15 +141,8 @@ function RootNavigatorInner() {
             contentStyle: { backgroundColor: colors.background },
           }}
         >
-          <Stack.Screen name="Login">
-            {(props) => (
-              <LoginScreen
-                {...props}
-                onSelectRole={() => {
-                  // Role comes from profile.role after sign-in via useAuth.
-                }}
-              />
-            )}
+          <Stack.Screen name="Auth">
+            {() => <AuthScreen />}
           </Stack.Screen>
         </Stack.Navigator>
       )}

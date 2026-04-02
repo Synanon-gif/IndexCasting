@@ -9,6 +9,11 @@ import {
 import imageCompression from 'browser-image-compression';
 import { checkAndIncrementStorage, decrementStorage } from './agencyStorageSupabase';
 import { uiCopy } from '../constants/uiCopy';
+import {
+  toStorageUri,
+  resolveStorageUrl,
+  invalidateStorageUrlCache,
+} from '../storage/storageUrl';
 
 /** Allowed MIME types for model photos (images only — no PDFs in portfolio). */
 const PHOTO_ALLOWED_TYPES = ALLOWED_MIME_TYPES.filter((t) => t.startsWith('image/'));
@@ -228,6 +233,9 @@ export async function deletePhoto(photoId: string, url: string): Promise<boolean
       return false;
     }
 
+    // Evict the signed URL from cache so subsequent renders re-sign (avoid dangling URLs).
+    invalidateStorageUrlCache(url);
+
     // Always decrement with the DB-stored size (may be 0 for legacy rows, which is safe).
     if (freedBytes > 0) {
       await decrementStorage(freedBytes);
@@ -323,7 +331,12 @@ export async function reorderPhotos(
   }
 }
 
-/** Public bucket for images that everyone may see (model portfolio, etc.). Keep "documents" private. */
+/**
+ * Bucket for portfolio / polaroid images.
+ * M-3 (Security Audit 2026-04): this bucket is set to PRIVATE. All stored URLs
+ * use the supabase-storage:// URI scheme and are resolved to short-lived signed
+ * URLs at render time via resolveStorageUrl (storageUrl.ts).
+ */
 const PUBLIC_IMAGES_BUCKET = 'documentspictures';
 const MODEL_PHOTOS_PREFIX = 'model-photos';
 
@@ -421,8 +434,9 @@ export async function uploadModelPhoto(
       }
     }
 
-    const { data } = supabase.storage.from(PUBLIC_IMAGES_BUCKET).getPublicUrl(path);
-    return { url: data?.publicUrl ?? '', fileSizeBytes: actualSize };
+    // M-3 fix: store the canonical supabase-storage:// URI instead of a public URL.
+    // The bucket is private; all reads go through resolveStorageUrl → signed URL.
+    return { url: toStorageUri(PUBLIC_IMAGES_BUCKET, path), fileSizeBytes: actualSize };
   } catch (e) {
     console.error('uploadModelPhoto exception:', e);
     await decrementStorage(claimedSize);
@@ -514,26 +528,16 @@ export async function uploadPrivateModelPhoto(
 }
 
 /**
- * Resolves a private photo URL to a short-lived signed URL (1 hour).
- * If the url is already a regular http(s) URL, it is returned as-is.
+ * Resolves any storage URL / URI (supabase-private://, supabase-storage://, or
+ * legacy public URL) to a short-lived signed URL (1 hour).
+ * Plain https:// URLs that are not Supabase Storage URLs are returned as-is.
+ *
+ * Delegates to resolveStorageUrl (storageUrl.ts) which caches results.
  */
 export async function getSignedPrivatePhotoUrl(url: string): Promise<string | null> {
-  if (!url.startsWith('supabase-private://')) return url;
-  try {
-    const withoutScheme = url.replace('supabase-private://', '');
-    const slashIdx = withoutScheme.indexOf('/');
-    const bucket = withoutScheme.slice(0, slashIdx);
-    const path = withoutScheme.slice(slashIdx + 1);
-    const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 3600);
-    if (error) {
-      console.error('getSignedPrivatePhotoUrl error:', error);
-      return null;
-    }
-    return data?.signedUrl ?? null;
-  } catch (e) {
-    console.error('getSignedPrivatePhotoUrl exception:', e);
-    return null;
-  }
+  if (!url) return null;
+  const resolved = await resolveStorageUrl(url, 3_600);
+  return resolved || null;
 }
 
 /** Update models.portfolio_images from ordered URLs (first = cover for client swipe). */

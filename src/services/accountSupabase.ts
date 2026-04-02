@@ -35,8 +35,9 @@ export async function requestPersonalAccountDeletion(): Promise<{ ok: boolean; r
   try {
     const { error } = await supabase.rpc('request_personal_account_deletion');
     if (error) {
+      // Log internally; never expose raw DB/RPC error messages to the UI.
       console.error('requestPersonalAccountDeletion error:', error);
-      return { ok: false, reason: error.message || 'failed' };
+      return { ok: false, reason: 'failed' };
     }
     return { ok: true };
   } catch (e) {

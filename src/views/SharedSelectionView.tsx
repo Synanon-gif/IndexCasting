@@ -9,8 +9,8 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  Image,
 } from 'react-native';
+import { StorageImage } from '../components/StorageImage';
 import { colors, spacing, typography } from '../theme/theme';
 import { getModelData } from '../services/apiService';
 
@@ -90,8 +90,8 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
           {models.map((m) => (
             <View key={m.id} style={styles.card}>
               <View style={styles.cardImageWrap}>
-                <Image
-                  source={{ uri: m.coverUrl }}
+                <StorageImage
+                  uri={m.coverUrl}
                   style={styles.cardImage}
                   resizeMode="cover"
                 />

@@ -17,6 +17,7 @@ import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   ActivityIndicator, TextInput, Modal, Platform,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, typography } from '../theme/theme';
 import { uiCopy } from '../constants/uiCopy';
 import { useAuth } from '../context/AuthContext';
@@ -34,6 +35,8 @@ import type { Conversation } from '../services/messengerSupabase';
 
 const copy = uiCopy.guestFlow;
 
+const GUEST_PENDING_KEY = 'guest_pending_request';
+
 type PendingRequest = {
   link_id: string;
   agency_id: string;
@@ -43,37 +46,56 @@ type PendingRequest = {
   email: string;
 };
 
-function readPendingRequest(): PendingRequest | null {
-  if (Platform.OS !== 'web' || typeof sessionStorage === 'undefined') return null;
+/**
+ * Reads the pending guest booking request from the appropriate storage.
+ * Web: sessionStorage (set synchronously by GuestView before Magic-Link redirect).
+ * Native: AsyncStorage (set by GuestView before OTP auth on iOS/Android).
+ */
+async function readPendingRequest(): Promise<PendingRequest | null> {
   try {
-    const raw = sessionStorage.getItem('guest_pending_request');
+    if (Platform.OS === 'web' && typeof sessionStorage !== 'undefined') {
+      const raw = sessionStorage.getItem(GUEST_PENDING_KEY);
+      return raw ? (JSON.parse(raw) as PendingRequest) : null;
+    }
+    // Native: AsyncStorage
+    const raw = await AsyncStorage.getItem(GUEST_PENDING_KEY);
     return raw ? (JSON.parse(raw) as PendingRequest) : null;
   } catch {
     return null;
   }
 }
 
-function clearPendingRequest(): void {
-  if (Platform.OS !== 'web' || typeof sessionStorage === 'undefined') return;
-  sessionStorage.removeItem('guest_pending_request');
+async function clearPendingRequest(): Promise<void> {
+  try {
+    if (Platform.OS === 'web' && typeof sessionStorage !== 'undefined') {
+      sessionStorage.removeItem(GUEST_PENDING_KEY);
+      return;
+    }
+    await AsyncStorage.removeItem(GUEST_PENDING_KEY);
+  } catch {
+    // Non-fatal; pending will naturally expire
+  }
 }
 
-/** Looks up the organization row for a given agency_id. */
-async function getAgencyOrgId(agencyId: string): Promise<string | null> {
+/**
+ * Resolves the agency organization_id from a guest link ID via a
+ * SECURITY DEFINER RPC.  This eliminates trust in the client-supplied
+ * agency_id from sessionStorage: the org is derived from the verified
+ * link row in the database (active, non-expired, non-deleted).
+ * C-2 fix — Security Pentest 2026-04.
+ */
+async function getAgencyOrgIdForLink(linkId: string): Promise<string | null> {
   try {
-    const { data, error } = await supabase
-      .from('organizations')
-      .select('id')
-      .eq('agency_id', agencyId)
-      .eq('type', 'agency')
-      .maybeSingle();
+    const { data, error } = await supabase.rpc('get_agency_org_id_for_link', {
+      p_link_id: linkId,
+    });
     if (error) {
-      console.error('getAgencyOrgId error:', error);
+      console.error('getAgencyOrgIdForLink error:', error);
       return null;
     }
-    return data?.id ?? null;
+    return (data as string | null) ?? null;
   } catch (e) {
-    console.error('getAgencyOrgId exception:', e);
+    console.error('getAgencyOrgIdForLink exception:', e);
     return null;
   }
 }
@@ -102,14 +124,14 @@ export const GuestChatView: React.FC = () => {
     setChatError(null);
 
     try {
-      const pending = readPendingRequest();
+      const pending = await readPendingRequest();
       setPendingRequest(pending);
       if (pending?.selected_models) {
         setSelectedModelIds(pending.selected_models);
       }
 
-      const agencyId = pending?.agency_id ?? null;
-      if (!agencyId) {
+      const linkId = pending?.link_id ?? null;
+      if (!linkId) {
         // No pending request: try to find an existing conversation
         // by scanning conversations where user is participant + guest_user_id = userId
         const { data: convs } = await supabase
@@ -128,8 +150,9 @@ export const GuestChatView: React.FC = () => {
         return;
       }
 
-      // Resolve agency org
-      const orgId = await getAgencyOrgId(agencyId);
+      // Resolve agency org from the verified link (not from sessionStorage agency_id).
+      // get_agency_org_id_for_link() validates the link is active + non-expired server-side.
+      const orgId = await getAgencyOrgIdForLink(linkId);
       if (!orgId) {
         setChatError('Could not find the agency workspace. Please contact the agency directly.');
         setLoading(false);
@@ -158,10 +181,10 @@ export const GuestChatView: React.FC = () => {
           guest_link_id: pending.link_id,
         };
         await sendGuestBookingRequest(convResult.conversation.id, userId, payload);
-        clearPendingRequest();
+        await clearPendingRequest();
       } else if (pending && !convResult.created) {
         // Conversation existed — still clear pending to avoid re-sending on refresh
-        clearPendingRequest();
+        await clearPendingRequest();
       }
     } catch (e) {
       console.error('GuestChatView initChat exception:', e);

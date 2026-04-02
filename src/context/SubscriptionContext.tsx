@@ -18,6 +18,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { AppState, type AppStateStatus } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import {
   getMyOrgAccessStatus,
@@ -25,6 +26,11 @@ import {
   type OrgAccessStatus,
   type PlanType,
 } from '../services/subscriptionSupabase';
+
+// MED-01: Re-check subscription every 5 minutes while app is in foreground.
+// Prevents a user with an expired trial/subscription from continuing to use
+// the app in the same session without the paywall gate appearing.
+const SUBSCRIPTION_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -96,6 +102,29 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       }
     });
     return () => subscription.unsubscribe();
+  }, [fetchAccessStatus]);
+
+  // MED-01: Re-fetch when app comes back to foreground (e.g. user switches apps
+  // and returns after subscription expires or trial ends).
+  useEffect(() => {
+    const handleAppStateChange = (nextState: AppStateStatus) => {
+      if (nextState === 'active') {
+        void fetchAccessStatus();
+      }
+    };
+    const sub = AppState.addEventListener('change', handleAppStateChange);
+    return () => sub.remove();
+  }, [fetchAccessStatus]);
+
+  // MED-01: Periodic refresh every 5 minutes while app is foregrounded.
+  // Ensures subscription state stays current during long sessions.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (AppState.currentState === 'active') {
+        void fetchAccessStatus();
+      }
+    }, SUBSCRIPTION_REFRESH_INTERVAL_MS);
+    return () => clearInterval(interval);
   }, [fetchAccessStatus]);
 
   const value = useMemo<SubscriptionState>(() => {

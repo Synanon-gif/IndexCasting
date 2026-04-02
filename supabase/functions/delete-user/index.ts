@@ -19,12 +19,21 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+const ALLOWED_ORIGINS = ['https://indexcasting.com'];
+
+function getCorsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get('Origin') ?? '';
+  const allowOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    'Access-Control-Allow-Origin': allowOrigin,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Vary': 'Origin',
+  };
+}
 
 Deno.serve(async (req: Request) => {
+  const corsHeaders = getCorsHeaders(req);
+
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
@@ -72,6 +81,17 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // Validate UUID format before passing to auth.admin.deleteUser.
+    // Prevents unexpected behaviour from malformed inputs (e.g. path traversal
+    // attempts or injection strings). M-2 fix — Security Pentest 2026-04.
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_REGEX.test(targetUserId)) {
+      return new Response(
+        JSON.stringify({ ok: false, error: 'Invalid userId format' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
     const isSelf = callerUser.id === targetUserId;
 
     // Admins may delete any account; regular users may only delete their own.
@@ -98,9 +118,10 @@ Deno.serve(async (req: Request) => {
     const { error: deleteError } = await adminClient.auth.admin.deleteUser(targetUserId);
 
     if (deleteError) {
+      // Log internally but never expose internal error details to the caller.
       console.error('delete-user edge function error:', deleteError);
       return new Response(
-        JSON.stringify({ ok: false, error: deleteError.message }),
+        JSON.stringify({ ok: false, error: 'Failed to delete account. Please try again later.' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
     }

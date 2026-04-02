@@ -62,6 +62,53 @@ function mapStripeStatus(
 
 // ─── Upsert helper ─────────────────────────────────────────────────────────────
 
+/**
+ * CRIT-03: Subscription Linking Attack prevention.
+ *
+ * Before upserting, verify that the stripe_subscription_id (when provided)
+ * is not already linked to a DIFFERENT organization. If it is, this is a
+ * subscription reassignment attack — reject with a hard error so Stripe
+ * retries and the anomaly is visible in logs/alerts.
+ *
+ * Legitimate scenario: the same org sends multiple events for the same
+ * subscription (idempotent) → allowed.
+ * Attack scenario: Stripe metadata changed to point sub to a new org →
+ * blocked.
+ */
+async function checkSubscriptionLinking(
+  supabase: ReturnType<typeof createClient>,
+  orgId: string,
+  stripeSubscriptionId: string | null | undefined,
+): Promise<void> {
+  if (!stripeSubscriptionId) return;
+
+  const { data, error } = await supabase
+    .from('organization_subscriptions')
+    .select('organization_id')
+    .eq('stripe_subscription_id', stripeSubscriptionId)
+    .maybeSingle();
+
+  if (error) {
+    // If we can't verify, fail safe — do not allow the upsert
+    console.error('[stripe-webhook] subscription_linking_check error:', error);
+    throw new Error(`subscription_linking_check_failed: ${error.message}`);
+  }
+
+  if (data && data.organization_id !== orgId) {
+    // CRITICAL: this stripe_subscription_id already belongs to a different org
+    console.error(
+      '[stripe-webhook] SUBSCRIPTION_LINKING_ATTACK: stripe_subscription_id',
+      stripeSubscriptionId,
+      'is already mapped to org', data.organization_id,
+      '— attempted reassignment to org', orgId, 'BLOCKED',
+    );
+    throw new Error(
+      `subscription_linking_attack: stripe_subscription_id ${stripeSubscriptionId} ` +
+      `is already linked to organization ${data.organization_id}`,
+    );
+  }
+}
+
 async function upsertSubscription(
   supabase: ReturnType<typeof createClient>,
   orgId: string,
@@ -73,6 +120,9 @@ async function upsertSubscription(
     current_period_end?: string | null;
   },
 ): Promise<void> {
+  // CRIT-03: Verify stripe_subscription_id is not hijacked to another org
+  await checkSubscriptionLinking(supabase, orgId, fields.stripe_subscription_id);
+
   const { error } = await supabase
     .from('organization_subscriptions')
     .upsert(
@@ -142,10 +192,12 @@ Deno.serve(async (req: Request) => {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  // ── Idempotency guard — prevent replay-attack double-processing ────────────
-  // Within Stripe's 300-second signature tolerance window the same event can
-  // arrive multiple times (Stripe retries, network duplicates, manual replay).
-  // We persist the event.id on first success; duplicates return 200 early.
+  // ── Idempotency guard — pre-check for already-processed events ────────────
+  // Phase 1: quick SELECT — return early if the event was already committed.
+  // Phase 2: run business logic (upsert is inherently idempotent).
+  // Phase 3: INSERT the event_id to mark it as done (after success).
+  // This ordering avoids the "reserve-before-success" trap: if business logic
+  // throws after an early INSERT, the event would be silently skipped on retry.
   {
     const { data: existing } = await supabase
       .from('stripe_processed_events')
@@ -160,24 +212,7 @@ Deno.serve(async (req: Request) => {
         headers: { 'Content-Type': 'application/json' },
       });
     }
-
-    // Reserve the event.id before processing (INSERT fails on conflict = safe).
-    const { error: reserveError } = await supabase
-      .from('stripe_processed_events')
-      .insert({ event_id: event.id });
-
-    if (reserveError) {
-      // Rare: concurrent delivery of the same event between SELECT and INSERT.
-      if (reserveError.code === '23505') {
-        // Primary key violation — another instance won the race; skip.
-        console.log('[stripe-webhook] Concurrent duplicate ignored:', event.id);
-        return new Response(JSON.stringify({ received: true, idempotent: true }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-      console.error('[stripe-webhook] Failed to reserve event.id — proceeding anyway:', reserveError);
-    }
+    // NOTE: event_id is inserted AFTER business logic succeeds (see bottom of try block).
   }
 
   const env: Record<string, string | undefined> = {
@@ -197,13 +232,21 @@ Deno.serve(async (req: Request) => {
 
         if (!orgId) {
           console.error('[stripe-webhook] checkout.session.completed: missing organization_id in metadata');
-          break;
+          // HIGH-02: Return 400 so Stripe retries and ops can investigate —
+          // do NOT mark as processed since the business logic did not run.
+          return new Response(
+            JSON.stringify({ error: 'missing_organization_id', event_id: event.id }),
+            { status: 400, headers: { 'Content-Type': 'application/json' } },
+          );
         }
 
         const orgExists = await validateOrg(supabase, orgId);
         if (!orgExists) {
           console.error('[stripe-webhook] checkout.session.completed: org not found:', orgId);
-          break;
+          return new Response(
+            JSON.stringify({ error: 'organization_not_found', organization_id: orgId, event_id: event.id }),
+            { status: 400, headers: { 'Content-Type': 'application/json' } },
+          );
         }
 
         const planFromMeta = session.metadata?.plan ?? null;
@@ -240,14 +283,20 @@ Deno.serve(async (req: Request) => {
         const orgId = sub.metadata?.organization_id;
 
         if (!orgId) {
-          console.warn('[stripe-webhook] subscription.updated: missing org metadata, skipping');
-          break;
+          console.error('[stripe-webhook] subscription.updated: missing org metadata');
+          return new Response(
+            JSON.stringify({ error: 'missing_organization_id', event_id: event.id }),
+            { status: 400, headers: { 'Content-Type': 'application/json' } },
+          );
         }
 
         const orgExists = await validateOrg(supabase, orgId);
         if (!orgExists) {
           console.error('[stripe-webhook] subscription.updated: org not found:', orgId);
-          break;
+          return new Response(
+            JSON.stringify({ error: 'organization_not_found', organization_id: orgId, event_id: event.id }),
+            { status: 400, headers: { 'Content-Type': 'application/json' } },
+          );
         }
 
         // Resolve plan from price ID or metadata
@@ -294,14 +343,20 @@ Deno.serve(async (req: Request) => {
         const orgId = sub.metadata?.organization_id;
 
         if (!orgId) {
-          console.warn('[stripe-webhook] subscription.deleted: missing org metadata, skipping');
-          break;
+          console.error('[stripe-webhook] subscription.deleted: missing org metadata');
+          return new Response(
+            JSON.stringify({ error: 'missing_organization_id', event_id: event.id }),
+            { status: 400, headers: { 'Content-Type': 'application/json' } },
+          );
         }
 
         const orgExists = await validateOrg(supabase, orgId);
         if (!orgExists) {
           console.error('[stripe-webhook] subscription.deleted: org not found:', orgId);
-          break;
+          return new Response(
+            JSON.stringify({ error: 'organization_not_found', organization_id: orgId, event_id: event.id }),
+            { status: 400, headers: { 'Content-Type': 'application/json' } },
+          );
         }
 
         const customerId = typeof sub.customer === 'string' ? sub.customer : sub.customer?.id ?? null;
@@ -333,14 +388,20 @@ Deno.serve(async (req: Request) => {
         const orgId = sub.metadata?.organization_id;
 
         if (!orgId) {
-          console.warn('[stripe-webhook] invoice.paid: missing org metadata on subscription', subId);
-          break;
+          console.error('[stripe-webhook] invoice.paid: missing org metadata on subscription', subId);
+          return new Response(
+            JSON.stringify({ error: 'missing_organization_id', subscription_id: subId, event_id: event.id }),
+            { status: 400, headers: { 'Content-Type': 'application/json' } },
+          );
         }
 
         const orgExists = await validateOrg(supabase, orgId);
         if (!orgExists) {
           console.error('[stripe-webhook] invoice.paid: org not found:', orgId);
-          break;
+          return new Response(
+            JSON.stringify({ error: 'organization_not_found', organization_id: orgId, event_id: event.id }),
+            { status: 400, headers: { 'Content-Type': 'application/json' } },
+          );
         }
 
         const periodEnd = sub.current_period_end
@@ -361,6 +422,22 @@ Deno.serve(async (req: Request) => {
 
       default:
         console.log('[stripe-webhook] Unhandled event type:', event.type);
+    }
+
+    // Phase 3: mark event as processed — only reached when business logic succeeded.
+    // 23505 = concurrent duplicate insert (race); safe to ignore.
+    // Any other error → return 500 so Stripe retries. Without this, a failed
+    // insert would cause the same event to run business logic again on retry.
+    // (MED-02 fix)
+    const { error: markError } = await supabase
+      .from('stripe_processed_events')
+      .insert({ event_id: event.id });
+    if (markError && markError.code !== '23505') {
+      console.error('[stripe-webhook] Failed to mark event as processed — forcing retry:', markError);
+      return new Response(
+        JSON.stringify({ error: 'failed_to_mark_processed', event_id: event.id }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } },
+      );
     }
 
     return new Response(JSON.stringify({ received: true }), {

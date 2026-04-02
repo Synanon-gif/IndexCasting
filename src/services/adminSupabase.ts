@@ -149,6 +149,23 @@ export async function adminUpdateProfileField(
   }
 }
 
+/** Admin: Purge all public data for a user (profile + CASCADE). Call auth.admin.deleteUser(id) via Edge Function/Dashboard to complete. */
+export async function adminPurgeUserData(
+  targetUserId: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const { error } = await supabase.rpc('admin_purge_user_data', { target_id: targetUserId });
+    if (error) {
+      console.error('adminPurgeUserData error:', error);
+      return { ok: false, error: error.message };
+    }
+    return { ok: true };
+  } catch (e) {
+    console.error('adminPurgeUserData exception:', e);
+    return { ok: false, error: 'Failed to purge user data' };
+  }
+}
+
 /** Admin: Vollständiges Profil-Update (umgeht RLS, speichert zuverlässig). */
 export async function adminUpdateProfileFull(
   targetId: string,
@@ -209,18 +226,6 @@ export async function getAdminLogs(limit = 100, offset = 0): Promise<AdminLogEnt
   }
 }
 
-/** Admin: Purge all public data for a user (profile + CASCADE). Call auth.admin.deleteUser(id) via Edge Function/Dashboard to complete. */
-export async function adminPurgeUserData(
-  targetUserId: string
-): Promise<{ ok: true } | { ok: false; error: string }> {
-  const { error } = await supabase.rpc('admin_purge_user_data', { target_id: targetUserId });
-  if (error) {
-    console.error('adminPurgeUserData error:', error);
-    return { ok: false, error: error.message };
-  }
-  return { ok: true };
-}
-
 export type AdminOrgMembership = {
   organization_id: string;
   org_name: string;
@@ -245,8 +250,13 @@ export async function adminListOrgMemberships(targetUserId: string): Promise<Adm
           member_role: r.member_role as AdminOrgMembership['member_role'],
         }));
     }
-    // Fallback: direct join query
-    console.warn('[Admin] admin_list_org_memberships RPC failed, using direct query:', error.message);
+    // Fallback: direct join query — admin check required before proceeding.
+    console.warn('[Admin] admin_list_org_memberships RPC failed, checking admin status:', error.message);
+    const isAdminFallback = await isCurrentUserAdmin();
+    if (!isAdminFallback) {
+      console.error('[Admin] adminListOrgMemberships: non-admin fallback attempt blocked.');
+      return [];
+    }
     const { data: direct, error: dErr } = await supabase
       .from('organization_members')
       .select('organization_id, role, organizations(id, name, type)')

@@ -93,12 +93,22 @@ export type SwipeFilters = {
  * Filters are applied server-side so only the requested slice is transferred.
  * Uses .range() for offset pagination — acceptable for Discovery where inserts
  * during a session are rare and page drift is tolerable.
+ *
+ * HIGH-03: Platform access is enforced server-side before fetching models.
+ * Without this check, a user with an expired subscription/trial could
+ * still discover models by calling this function directly (e.g. via
+ * Postman or a modified app). The RLS on `models` is the authoritative
+ * protection; this call is belt-and-suspenders defense-in-depth.
  */
 export async function getModelsPagedFromSupabase(
   offset: number,
   limit: number,
   filters?: SwipeFilters,
 ): Promise<SupabaseModel[]> {
+  // HIGH-03: Enforce platform access before any model data is returned.
+  // Throws with code 'platform_access_denied' if subscription/trial is invalid.
+  await assertPlatformAccess();
+
   try {
     let query = supabase
       .from('models')
@@ -150,6 +160,17 @@ export async function getModelForUserFromSupabase(userId: string): Promise<Supab
   }
 }
 
+/**
+ * Fetch a single model by ID — for agency-internal operations (create, edit,
+ * sync, roster management) and B2B contexts (messenger, option requests).
+ *
+ * Security: This function relies on RLS for data isolation — agency members
+ * see only their own models, clients only see models with active territories
+ * (enforced by migration_models_rls_clients_via_territories.sql).
+ * Do NOT use this for client-facing model discovery — use
+ * getModelByIdForClientFromSupabase() which additionally enforces the
+ * subscription/paywall gate. (HIGH-03)
+ */
 export async function getModelByIdFromSupabase(id: string): Promise<SupabaseModel | null> {
   try {
     const { data, error } = await supabase
@@ -167,6 +188,19 @@ export async function getModelByIdFromSupabase(id: string): Promise<SupabaseMode
     console.error('getModelByIdFromSupabase exception:', e);
     return null;
   }
+}
+
+/**
+ * HIGH-03: Client-facing model detail fetch with paywall enforcement.
+ *
+ * Use this variant whenever a CLIENT user is loading a model by ID
+ * (e.g. detail view from search results, shared link context with auth).
+ * assertPlatformAccess() is called first so that expired-trial / no-sub
+ * clients cannot enumerate model data even if they bypass the UI.
+ */
+export async function getModelByIdForClientFromSupabase(id: string): Promise<SupabaseModel | null> {
+  await assertPlatformAccess();
+  return getModelByIdFromSupabase(id);
 }
 
 /**
@@ -338,6 +372,12 @@ export async function getModelsForClientFromSupabaseHybridLocation(
   sportsSummer?: boolean,
   measurementFilters?: ClientMeasurementFilters,
 ): Promise<HybridLocationModel[]> {
+  // Defense-in-depth paywall guard (H-4 fix, Security Audit 2026-04).
+  // The get_models_by_location RPC already enforces has_platform_access() server-side,
+  // but this client-side check provides an early exit and consistent UX with the
+  // other discovery functions (getModelsForClientFromSupabase / ByTerritory).
+  await assertPlatformAccess();
+
   const iso = countryCode.trim().toUpperCase();
   const f = measurementFilters ?? {};
 

@@ -3,12 +3,12 @@ import {
   View,
   Text,
   StyleSheet,
-  Image,
   TouchableOpacity,
   Modal,
   ScrollView,
   ActivityIndicator,
 } from 'react-native';
+import { StorageImage } from '../components/StorageImage';
 import { colors, spacing, typography } from '../theme/theme';
 import { getModelsPagedFromSupabase, type SwipeFilters } from '../services/modelsSupabase';
 import {
@@ -18,7 +18,6 @@ import {
   clearSessionIds,
 } from '../services/clientDiscoverySupabase';
 import { useAuth } from '../context/AuthContext';
-import { getMyClientMemberRole } from '../services/organizationsInvitationsSupabase';
 import { uiCopy } from '../constants/uiCopy';
 import { addOptionRequest } from '../store/optionRequests';
 
@@ -86,23 +85,16 @@ export const CustomerSwipeScreen: React.FC = () => {
    */
   const sessionSeenIds = useRef<Set<string>>(new Set());
 
-  // Resolve client org ID for interaction recording and load persisted session.
+  // Resolve client org ID — available directly from profile.organization_id loaded by AuthContext.
   useEffect(() => {
     const userId = auth?.profile?.id;
     if (!userId || auth?.profile?.role !== 'client') return;
-    void (async () => {
-      try {
-        const roleData = await getMyClientMemberRole();
-        if (roleData?.organization_id) {
-          setClientOrgId(roleData.organization_id);
-          // Restore session so refreshes don't repeat already-shown models.
-          sessionSeenIds.current = loadSessionIds(roleData.organization_id);
-        }
-      } catch (e) {
-        console.error('CustomerSwipeScreen: failed to resolve clientOrgId', e);
-      }
-    })();
-  }, [auth?.profile?.id, auth?.profile?.role]);
+    const orgId = auth?.profile?.organization_id;
+    if (orgId) {
+      setClientOrgId(orgId);
+      sessionSeenIds.current = loadSessionIds(orgId);
+    }
+  }, [auth?.profile?.id, auth?.profile?.role, auth?.profile?.organization_id]);
 
   const loadNextPage = useCallback(async () => {
     if (loadingMore || !hasMore) return;
@@ -277,8 +269,8 @@ export const CustomerSwipeScreen: React.FC = () => {
           onPress={() => handleOpenDetail(current)}
         >
           <View style={styles.imageWrapper}>
-            <Image
-              source={{ uri: current.gallery[0] }}
+            <StorageImage
+              uri={current.gallery[0]}
               style={styles.image}
               resizeMode="cover"
             />
@@ -489,9 +481,10 @@ const DetailModal: React.FC<DetailModalProps> = ({ model, onClose }) => {
             </Text>
 
             <View style={styles.detailHero}>
-              <Image
-                source={{ uri: model.gallery[0] }}
+              <StorageImage
+                uri={model.gallery[0]}
                 style={styles.detailHeroImage}
+                resizeMode="cover"
               />
             </View>
 

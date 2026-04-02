@@ -11,7 +11,6 @@ import {
   listInvitationsForOrganization,
   createOrganizationInvitation,
   buildOrganizationInviteUrl,
-  getMyClientMemberRole,
   type InvitationRow,
 } from '../services/organizationsInvitationsSupabase';
 import { uiCopy } from '../constants/uiCopy';
@@ -46,7 +45,6 @@ export const ClientOrganizationTeamSection: React.FC<{
   const [inviteRole, setInviteRole] = useState<'employee'>('employee');
   const [inviteBusy, setInviteBusy] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [memberRole, setMemberRole] = useState<'owner' | 'employee' | 'booker' | null>(null);
   const [nameInput, setNameInput] = useState(profile?.display_name ?? '');
 
   useEffect(() => {
@@ -59,7 +57,6 @@ export const ClientOrganizationTeamSection: React.FC<{
       setOrganizationId(null);
       setTeamMembers([]);
       setInvitations([]);
-      setMemberRole(null);
       setLoading(false);
       return;
     }
@@ -67,8 +64,6 @@ export const ClientOrganizationTeamSection: React.FC<{
     try {
       const oid = await ensureClientOrganization();
       setOrganizationId(oid);
-      const roleRow = await getMyClientMemberRole();
-      setMemberRole((roleRow?.member_role as 'owner' | 'employee' | 'booker' | null) ?? null);
       if (oid) {
         const [members, inv] = await Promise.all([
           listOrganizationMembers(oid),
@@ -104,7 +99,7 @@ export const ClientOrganizationTeamSection: React.FC<{
 
   const handleInvite = async () => {
     if (!organizationId || !inviteEmail.trim()) return;
-    if (memberRole !== 'owner') {
+    if (profile?.org_member_role !== 'owner') {
       Alert.alert(uiCopy.team.permissionAlertTitle, uiCopy.team.permissionAlertOwnerOnly);
       return;
     }
@@ -144,9 +139,9 @@ export const ClientOrganizationTeamSection: React.FC<{
   const acceptedInv = invitations.filter((i) => i.status === 'accepted');
 
   // Owner + Employee can view the team and invitation list
-  const canViewTeam = memberRole === 'owner' || memberRole === 'employee';
+  const canViewTeam = profile?.org_member_role === 'owner' || profile?.org_member_role === 'employee';
   // Only the organization owner may send invitations
-  const canInvite = memberRole === 'owner';
+  const canInvite = profile?.org_member_role === 'owner';
   // Bookers are external team members and cannot see invitation lists
   const invitationListHiddenForMember = !canViewTeam && realClientId;
 

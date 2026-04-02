@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { uiCopy } from '../constants/uiCopy';
 import { supabase } from '../../lib/supabase';
 import type { Session, User } from '@supabase/supabase-js';
+import type { OrganizationType, OrgMemberRole } from '../services/orgRoleTypes';
 
 export type Profile = {
   id: string;
@@ -22,6 +23,10 @@ export type Profile = {
   country: string | null;
   verification_email: string | null;
   deletion_requested_at: string | null;
+  /** Org-Kontext — null für Models und Guests (kein Org-Mitglied). */
+  organization_id: string | null;
+  org_type: OrganizationType | null;
+  org_member_role: OrgMemberRole | null;
 };
 
 type AuthState = {
@@ -112,9 +117,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { deactivated: true, reason: 'deactivated' };
     }
     // Org deactivation gate: if the user's org is deactivated, block access for all members.
+    // Fail-closed: any exception (network, timeout, RPC error) is treated as deactivated to
+    // prevent a deactivated org from slipping through during an outage.
     if (!isGuest && (role === 'client' || role === 'agent') && isActive) {
       try {
-        const { data: orgActive } = await supabase.rpc('get_my_org_active_status');
+        const { data: orgActive, error: orgErr } = await supabase.rpc('get_my_org_active_status');
+        if (orgErr) throw orgErr;
         if (orgActive === false) {
           setOrgDeactivated(true);
           await supabase.auth.signOut();
@@ -123,10 +131,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return { deactivated: true, reason: 'org_deactivated' };
         }
       } catch (e) {
-        console.error('loadProfile org active check error:', e);
+        console.error('loadProfile org active check failed — failing closed:', e);
+        setOrgDeactivated(true);
+        await supabase.auth.signOut();
+        setSession(null);
+        setProfile(null);
+        return { deactivated: true, reason: 'org_deactivated' };
       }
     }
-    const profileData = {
+    // Org-Kontext laden (null für Models und Guests — kein Org-Mitglied)
+    let orgContext: { organization_id: string | null; org_type: OrganizationType | null; org_member_role: OrgMemberRole | null } = {
+      organization_id: null,
+      org_type: null,
+      org_member_role: null,
+    };
+    if (!isGuest && (role === 'client' || role === 'agent')) {
+      try {
+        const { data: orgCtx, error: orgCtxErr } = await supabase.rpc('get_my_org_context');
+        if (orgCtxErr) {
+          console.error('loadProfile get_my_org_context error:', orgCtxErr);
+        } else if (orgCtx) {
+          const row = Array.isArray(orgCtx) ? orgCtx[0] : orgCtx;
+          if (row?.organization_id) {
+            orgContext = {
+              organization_id: row.organization_id as string,
+              org_type: row.org_type as OrganizationType,
+              org_member_role: row.org_member_role as OrgMemberRole,
+            };
+          }
+        }
+      } catch (e) {
+        console.error('loadProfile get_my_org_context exception:', e);
+      }
+    }
+
+    const profileData: Profile = {
       ...data,
       is_active: isGuest ? true : isActive,
       is_admin: data.is_admin ?? false,
@@ -137,7 +176,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       agency_model_rights_accepted: data.agency_model_rights_accepted ?? false,
       activation_documents_sent: data.activation_documents_sent ?? false,
       deletion_requested_at: data.deletion_requested_at ?? null,
-    } as Profile;
+      organization_id: orgContext.organization_id,
+      org_type: orgContext.org_type,
+      org_member_role: orgContext.org_member_role,
+    };
     setOrgDeactivated(false);
     setProfile(profileData);
     return { profile: profileData };

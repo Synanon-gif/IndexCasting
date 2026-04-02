@@ -923,7 +923,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
             <View style={{ flexDirection: 'row', gap: spacing.sm }}>
               <TextInput value={optChatInput} onChangeText={setOptChatInput} placeholder="Message..." placeholderTextColor={colors.textSecondary}
                 style={{ flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 999, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, ...typography.body, fontSize: 12, color: colors.textPrimary }} />
-              <TouchableOpacity onPress={() => { if (optChatInput.trim()) { addMessage(selectedOptionThread, 'agency', optChatInput.trim()); setOptChatInput(''); } }}
+              <TouchableOpacity onPress={() => { if (optChatInput.trim()) { addMessage(selectedOptionThread, 'model', optChatInput.trim()); setOptChatInput(''); } }}
                 style={{ borderRadius: 999, backgroundColor: colors.buttonOptionGreen, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, justifyContent: 'center' }}>
                 <Text style={{ ...typography.label, fontSize: 11, color: '#fff' }}>Send</Text>
               </TouchableOpacity>

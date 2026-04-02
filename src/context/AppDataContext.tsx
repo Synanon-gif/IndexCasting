@@ -3,13 +3,14 @@
  * Models now loaded from Supabase. Projects still localStorage (migrated later).
  */
 
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import {
   getModelsFromSupabase,
   getModelsForClientFromSupabase,
   updateModelVisibilityInSupabase,
   type SupabaseModel,
 } from '../services/modelsSupabase';
+import { useAuth } from './AuthContext';
 
 const CURRENT_USER_KEY = 'ci_current_user_id';
 
@@ -54,6 +55,7 @@ type AppDataState = {
 const AppDataContext = createContext<AppDataState | null>(null);
 
 export function AppDataProvider({ children }: { children: React.ReactNode }) {
+  const { profile } = useAuth();
   const [currentUserId, setCurrentUserIdState] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
     return window.localStorage.getItem(CURRENT_USER_KEY);
@@ -68,7 +70,10 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const currentUser: User | null = currentUserId ? { id: currentUserId, role: 'client' } : null;
+  // Role is derived from the authenticated profile — never hardcoded to 'client'.
+  const currentUser: User | null = currentUserId
+    ? { id: currentUserId, role: profile?.role ?? 'client' }
+    : null;
   const userProjects = useMemo(() => currentUser ? projects.filter(p => p.owner_id === currentUser.id) : [], [currentUser, projects]);
 
   const createProjectAction = useCallback((name: string) => {

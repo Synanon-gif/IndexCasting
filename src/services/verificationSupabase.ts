@@ -46,7 +46,12 @@ export async function submitVerification(
       return null;
     }
 
-    const path = `verifications/${userId}/${Date.now()}_${fileName}`;
+    // Sanitize fileName to prevent path traversal attacks (../,  slashes, null bytes).
+    const sanitizedFileName = fileName
+      .replace(/[^a-zA-Z0-9._-]/g, '_')
+      .replace(/\.{2,}/g, '_')
+      .slice(0, 200);
+    const path = `verifications/${userId}/${Date.now()}_${sanitizedFileName}`;
 
     const { error: uploadError } = await supabase.storage
       .from('documents')
@@ -88,13 +93,15 @@ export async function reviewVerification(
   }
 }
 
+/**
+ * Returns pending verifications scoped to the calling user's agency.
+ * Uses the SECURITY DEFINER RPC get_pending_verifications_for_my_agency()
+ * so that RLS does not block agency members and cross-agency leakage is
+ * impossible at the DB level. C-6 fix — Security Pentest 2026-04.
+ */
 export async function getPendingVerifications(): Promise<Verification[]> {
   try {
-    const { data, error } = await supabase
-      .from('verifications')
-      .select('*')
-      .eq('status', 'pending')
-      .order('created_at', { ascending: true });
+    const { data, error } = await supabase.rpc('get_pending_verifications_for_my_agency');
     if (error) { console.error('getPendingVerifications error:', error); return []; }
     return (data ?? []) as Verification[];
   } catch (e) {

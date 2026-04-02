@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { StorageImage } from '../components/StorageImage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { handleTabPress, BOTTOM_TAB_BAR_HEIGHT } from '../navigation/bottomTabNavigation';
 import {
@@ -75,7 +76,6 @@ import {
   listInvitationsForOrganization,
   createOrganizationInvitation,
   buildOrganizationInviteUrl,
-  getMyAgencyMemberRole,
   dissolveOrganization,
   type InvitationRow,
 } from '../services/organizationsInvitationsSupabase';
@@ -171,7 +171,6 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
     Awaited<ReturnType<typeof listOrganizationMembers>>
   >([]);
   const [pendingInvites, setPendingInvites] = useState<InvitationRow[]>([]);
-  const [agencyTeamRole, setAgencyTeamRole] = useState<'owner' | 'booker' | 'employee' | null>(null);
   const [calendarItems, setCalendarItems] = useState<AgencyCalendarItem[]>([]);
   const [manualCalendarEvents, setManualCalendarEvents] = useState<UserCalendarEvent[]>([]);
   const [bookingEventEntries, setBookingEventEntries] = useState<CalendarEntry[]>([]);
@@ -250,8 +249,6 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
     }
     if (!oid) oid = await getOrganizationIdForAgency(currentAgencyId);
     setAgencyOrganizationId(oid);
-    const mem = await getMyAgencyMemberRole(currentAgencyId);
-    setAgencyTeamRole((mem?.member_role as 'owner' | 'booker' | 'employee' | null) ?? null);
     if (oid) {
       setTeamMembers(await listOrganizationMembers(oid));
       setPendingInvites(await listInvitationsForOrganization(oid));
@@ -357,7 +354,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
       ];
       return all;
     },
-    [agencyTeamRole],
+    [],
   );
 
   const openAgencyBookingChat = (threadId: string) => {
@@ -507,7 +504,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         {tab === 'bookers' && (
           <OrganizationTeamTab
             organizationId={agencyOrganizationId}
-            canInvite={agencyTeamRole === 'owner'}
+            canInvite={profile?.org_member_role === 'owner'}
             members={teamMembers}
             invitations={pendingInvites}
             onRefresh={() => void loadAgencyTeam()}
@@ -524,7 +521,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
           />
         )}
 
-      {tab === 'settings' && agencyTeamRole === 'owner' && (
+      {tab === 'settings' && profile?.org_member_role === 'owner' && (
         <>
           <AgencySettingsTab
             agency={currentAgency}
@@ -623,7 +620,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         </>
       )}
 
-      {tab === 'settings' && agencyTeamRole !== 'owner' && (
+      {tab === 'settings' && profile?.org_member_role !== 'owner' && (
         <ScreenScrollView>
           <View style={{ marginTop: spacing.md, marginBottom: spacing.lg }}>
             <Text style={s.sectionLabel}>{uiCopy.accountDeletion.sectionTitle}</Text>
@@ -2761,8 +2758,8 @@ const MyModelsTab: React.FC<{
             </TouchableOpacity>
             <TouchableOpacity style={[s.modelRow, { flex: 1, marginLeft: spacing.xs }]} onPress={() => setSelectedModel(m)}>
               {(m.portfolio_images ?? [])[0] ? (
-                <Image
-                  source={{ uri: (m.portfolio_images ?? [])[0] }}
+                <StorageImage
+                  uri={(m.portfolio_images ?? [])[0]}
                   style={{ width: 44, height: 44, borderRadius: 6, marginRight: spacing.sm, backgroundColor: colors.border }}
                   resizeMode="cover"
                 />
@@ -3760,7 +3757,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                 >
                   <View style={s.bookingChatThumbWrap}>
                     {thumbUri ? (
-                      <Image source={{ uri: thumbUri }} style={s.bookingChatThumb} resizeMode="contain" />
+                      <StorageImage uri={thumbUri} style={s.bookingChatThumb} resizeMode="contain" />
                     ) : (
                       <View style={[s.bookingChatThumb, s.bookingChatThumbPlaceholder]}>
                         <Text style={s.bookingChatThumbPlaceholderText} numberOfLines={1}>{thread.modelName}</Text>

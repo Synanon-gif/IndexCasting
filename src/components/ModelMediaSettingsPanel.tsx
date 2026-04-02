@@ -26,11 +26,11 @@ import {
 } from 'react-native';
 
 import { uiCopy } from '../constants/uiCopy';
+import { resolveStorageUrl } from '../storage/storageUrl';
 import {
   addPhoto,
   deletePhoto,
   getPhotosForModel,
-  getSignedPrivatePhotoUrl,
   ModelPhoto,
   reorderPhotos,
   syncPolaroidsToModel,
@@ -57,14 +57,13 @@ type Props = {
 const copy = uiCopy.modelMedia;
 
 // ---------------------------------------------------------------------------
-// Helper: resolve private (signed) URLs
+// Helper: resolve storage URLs to signed URLs for all photo types.
+// M-3 fix: portfolio and polaroid photos now live in a private bucket and
+// require signed URL resolution, identical to private photos.
 // ---------------------------------------------------------------------------
 async function resolveDisplayUrl(photo: ModelPhoto): Promise<ResolvedPhoto> {
-  if (photo.photo_type === 'private') {
-    const signed = await getSignedPrivatePhotoUrl(photo.url);
-    return { ...photo, displayUrl: signed ?? photo.url };
-  }
-  return { ...photo, displayUrl: photo.url };
+  const displayUrl = await resolveStorageUrl(photo.url, 3_600);
+  return { ...photo, displayUrl };
 }
 
 // ---------------------------------------------------------------------------
