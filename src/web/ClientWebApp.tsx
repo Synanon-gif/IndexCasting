@@ -4582,7 +4582,7 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
                   </>
                 )}
 
-                {/* ── GDPR Data Export (Art. 20) ─────────────────────── */}
+                {/* ── GDPR Data Export + Consent Withdrawal (Art. 20 + Art. 7) ─── */}
                 <View style={{ marginTop: spacing.lg, paddingTop: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border }}>
                   <Text style={{ ...typography.label, fontSize: 12, color: colors.textPrimary, marginBottom: 4 }}>
                     Privacy & Your Data
@@ -4597,10 +4597,30 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
                       const { downloadUserDataExport } = await import('../services/gdprComplianceSupabase');
                       await downloadUserDataExport(user.id);
                     }}
-                    style={{ borderRadius: 999, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.sm, alignItems: 'center' }}
+                    style={{ borderRadius: 999, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.sm, alignItems: 'center', marginBottom: spacing.sm }}
                   >
                     <Text style={{ ...typography.label, fontSize: 12, color: colors.textSecondary }}>
                       Download my data
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* Consent Withdrawal (GDPR Art. 7) */}
+                  <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm, marginTop: spacing.sm }}>
+                    Under GDPR Art. 7 you may withdraw your consent to optional data processing at any time. This does not affect the lawfulness of processing already carried out.
+                  </Text>
+                  <TouchableOpacity
+                    onPress={async () => {
+                      const confirmed = window?.confirm?.('Withdraw marketing & analytics consent? This does not delete your account or affect core platform functionality.');
+                      if (!confirmed) return;
+                      const { withdrawConsent } = await import('../services/consentSupabase');
+                      await withdrawConsent('marketing', 'user_requested');
+                      await withdrawConsent('analytics', 'user_requested');
+                      alert('Your optional consent has been withdrawn. It may take up to 24 hours to take full effect.');
+                    }}
+                    style={{ borderRadius: 999, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.sm, alignItems: 'center' }}
+                  >
+                    <Text style={{ ...typography.label, fontSize: 12, color: colors.textSecondary }}>
+                      Withdraw optional consent
                     </Text>
                   </TouchableOpacity>
                 </View>

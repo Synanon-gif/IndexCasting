@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Modal } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { useAuth } from '../context/AuthContext';
 import { uiCopy } from '../constants/uiCopy';
+import { TermsScreen } from './TermsScreen';
+import { PrivacyScreen } from './PrivacyScreen';
 
 type AuthScreenProps = {
   initialMode?: 'login' | 'signup';
@@ -32,6 +34,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [termsVisible, setTermsVisible] = useState(false);
+  const [privacyVisible, setPrivacyVisible] = useState(false);
 
   useEffect(() => {
     if (role === 'model') setCompanyName('');
@@ -73,6 +77,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
   return (
     <View style={styles.container}>
+      <Modal visible={termsVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setTermsVisible(false)}>
+        <TermsScreen onClose={() => setTermsVisible(false)} />
+      </Modal>
+      <Modal visible={privacyVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setPrivacyVisible(false)}>
+        <PrivacyScreen onClose={() => setPrivacyVisible(false)} />
+      </Modal>
+
       <View style={styles.content}>
         <Text style={styles.brand}>INDEX CASTING</Text>
         <Text style={styles.subtitle}>B2B platform for fashion casting</Text>
@@ -189,6 +200,16 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           )}
         </TouchableOpacity>
 
+        <View style={styles.legalFooter}>
+          <TouchableOpacity onPress={() => setTermsVisible(true)}>
+            <Text style={styles.legalLink}>{uiCopy.legal.tosLabel}</Text>
+          </TouchableOpacity>
+          <Text style={styles.legalSep}>·</Text>
+          <TouchableOpacity onPress={() => setPrivacyVisible(true)}>
+            <Text style={styles.legalLink}>{uiCopy.legal.privacyLabel}</Text>
+          </TouchableOpacity>
+        </View>
+
       </View>
     </View>
   );
@@ -275,4 +296,22 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   submitLabel: { ...typography.label, color: colors.surface },
+  legalFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.md,
+  },
+  legalLink: {
+    ...typography.body,
+    fontSize: 11,
+    color: colors.textSecondary,
+    textDecorationLine: 'underline',
+  },
+  legalSep: {
+    ...typography.body,
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
 });

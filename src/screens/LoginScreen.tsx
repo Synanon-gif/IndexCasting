@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, spacing, typography } from '../theme/theme';
 import type { UserRole } from '../navigation/RootNavigator';
 import { uiCopy } from '../constants/uiCopy';
+import { TermsScreen } from './TermsScreen';
+import { PrivacyScreen } from './PrivacyScreen';
 
 type Props = {
   onSelectRole: (role: UserRole) => void;
@@ -11,6 +13,8 @@ type Props = {
 
 export const LoginScreen: React.FC<Props> = ({ onSelectRole }) => {
   const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
+  const [termsVisible, setTermsVisible] = useState(false);
+  const [privacyVisible, setPrivacyVisible] = useState(false);
 
   const roleLabel =
     selectedRole === 'client'
@@ -23,6 +27,13 @@ export const LoginScreen: React.FC<Props> = ({ onSelectRole }) => {
 
   return (
     <View style={styles.container}>
+      <Modal visible={termsVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setTermsVisible(false)}>
+        <TermsScreen onClose={() => setTermsVisible(false)} />
+      </Modal>
+      <Modal visible={privacyVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setPrivacyVisible(false)}>
+        <PrivacyScreen onClose={() => setPrivacyVisible(false)} />
+      </Modal>
+
       <View style={styles.topBlock}>
         <Text style={styles.brand}>INDEX CASTING</Text>
         <Text style={styles.subtitle}>B2B platform for fashion casting.</Text>
@@ -101,6 +112,16 @@ export const LoginScreen: React.FC<Props> = ({ onSelectRole }) => {
           </Text>
         </TouchableOpacity>
         <Text style={styles.helperText}>{uiCopy.login.dummyFlow}</Text>
+
+        <View style={styles.legalFooter}>
+          <TouchableOpacity onPress={() => setTermsVisible(true)}>
+            <Text style={styles.legalLink}>{uiCopy.legal.tosLabel}</Text>
+          </TouchableOpacity>
+          <Text style={styles.legalSep}>·</Text>
+          <TouchableOpacity onPress={() => setPrivacyVisible(true)}>
+            <Text style={styles.legalLink}>{uiCopy.legal.privacyLabel}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
@@ -181,6 +202,24 @@ const styles = StyleSheet.create({
   },
   helperText: {
     ...typography.body,
+    color: colors.textSecondary,
+  },
+  legalFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+  },
+  legalLink: {
+    ...typography.body,
+    fontSize: 11,
+    color: colors.textSecondary,
+    textDecorationLine: 'underline',
+  },
+  legalSep: {
+    ...typography.body,
+    fontSize: 11,
     color: colors.textSecondary,
   },
 });

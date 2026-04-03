@@ -11,6 +11,7 @@ import {
   listInvitationsForOrganization,
   createOrganizationInvitation,
   buildOrganizationInviteUrl,
+  removeOrganizationMember,
   type InvitationRow,
 } from '../services/organizationsInvitationsSupabase';
 import { uiCopy } from '../constants/uiCopy';
@@ -46,6 +47,7 @@ export const ClientOrganizationTeamSection: React.FC<{
   const [inviteBusy, setInviteBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [nameInput, setNameInput] = useState(profile?.display_name ?? '');
+  const [removingUserId, setRemovingUserId] = useState<string | null>(null);
 
   useEffect(() => {
     setNameInput(profile?.display_name ?? '');
@@ -129,6 +131,38 @@ export const ClientOrganizationTeamSection: React.FC<{
     }
   };
 
+  const handleRemoveMember = (targetUserId: string, displayName: string) => {
+    if (!organizationId) return;
+    Alert.alert(
+      'Remove Member',
+      `Remove ${displayName} from the organization? Their session will be invalidated immediately.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            setRemovingUserId(targetUserId);
+            try {
+              const result = await removeOrganizationMember(targetUserId, organizationId);
+              if (result.ok) {
+                setTeamMembers((prev) => prev.filter((m) => m.user_id !== targetUserId));
+                Alert.alert('Member Removed', 'The member has been removed and their session has been invalidated.');
+              } else {
+                Alert.alert(uiCopy.common.error, result.error ?? 'Failed to remove member.');
+              }
+            } catch (e) {
+              console.error('handleRemoveMember error:', e);
+              Alert.alert(uiCopy.common.error, 'An unexpected error occurred.');
+            } finally {
+              setRemovingUserId(null);
+            }
+          },
+        },
+      ],
+    );
+  };
+
   if (!realClientId) {
     return (
       <Text style={styles.muted}>
@@ -183,16 +217,31 @@ export const ClientOrganizationTeamSection: React.FC<{
       {teamMembers.length === 0 ? (
         <Text style={styles.muted}>{uiCopy.team.noMembersLoaded}</Text>
       ) : (
-        teamMembers.map((m) => (
-          <View key={m.id} style={styles.row}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.rowTitle}>
-                {m.display_name || m.email || m.user_id.slice(0, 8)} · {roleLabel(m.role)}
-              </Text>
-              <Text style={styles.mutedSmall}>{m.email || '—'}</Text>
+        teamMembers.map((m) => {
+          const isSelf = m.user_id === realClientId;
+          const displayName = m.display_name || m.email || m.user_id.slice(0, 8);
+          return (
+            <View key={m.id} style={styles.row}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.rowTitle}>
+                  {displayName} · {roleLabel(m.role)}
+                </Text>
+                <Text style={styles.mutedSmall}>{m.email || '—'}</Text>
+              </View>
+              {canInvite && !isSelf && m.role !== 'owner' && (
+                <TouchableOpacity
+                  onPress={() => handleRemoveMember(m.user_id, displayName)}
+                  disabled={removingUserId === m.user_id}
+                  style={styles.removeBtn}
+                >
+                  <Text style={styles.removeBtnLabel}>
+                    {removingUserId === m.user_id ? '…' : 'Remove'}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
-          </View>
-        ))
+          );
+        })
       )}
 
       <Text style={[styles.sectionTitle, styles.sectionSpacer]}>{uiCopy.team.pendingInvitations}</Text>
@@ -303,6 +352,21 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  removeBtn: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#C0392B',
+    marginLeft: spacing.sm,
+  },
+  removeBtnLabel: {
+    ...typography.label,
+    fontSize: 11,
+    color: '#C0392B',
   },
   rowTitle: {
     ...typography.label,

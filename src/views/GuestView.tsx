@@ -60,6 +60,8 @@ import {
 } from '../services/guestLinksSupabase';
 import { signInOrCreateGuestWithOtp } from '../services/guestAuthSupabase';
 import { uiCopy } from '../constants/uiCopy';
+import { TermsScreen } from '../screens/TermsScreen';
+import { PrivacyScreen } from '../screens/PrivacyScreen';
 
 const copy = uiCopy.guestFlow;
 
@@ -89,6 +91,8 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
   // Legal gate
   const [tosAccepted, setTosAccepted] = useState(false);
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
+  const [termsVisible, setTermsVisible] = useState(false);
+  const [guestPrivacyVisible, setGuestPrivacyVisible] = useState(false);
 
   // Gallery lightbox
   const [galleryModel, setGalleryModel] = useState<GuestLinkModel | null>(null);
@@ -255,6 +259,13 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
   if (phase === 'legal') {
     return (
       <View style={styles.centered}>
+        <Modal visible={termsVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setTermsVisible(false)}>
+          <TermsScreen onClose={() => setTermsVisible(false)} />
+        </Modal>
+        <Modal visible={guestPrivacyVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setGuestPrivacyVisible(false)}>
+          <PrivacyScreen onClose={() => setGuestPrivacyVisible(false)} />
+        </Modal>
+
         <Text style={styles.brand}>INDEX CASTING</Text>
         <View style={styles.guestAccessBanner}>
           <Text style={styles.guestAccessBadge}>{copy.guestAccessBadge}</Text>
@@ -274,7 +285,12 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
           <View style={[styles.checkbox, tosAccepted && styles.checkboxChecked]}>
             {tosAccepted && <Text style={styles.checkmark}>✓</Text>}
           </View>
-          <Text style={styles.checkLabel}>{copy.legalTosLabel}</Text>
+          <Text style={styles.checkLabel}>
+            {copy.legalTosLabel}{' '}
+            <Text style={styles.legalLinkInline} onPress={() => setTermsVisible(true)}>
+              {uiCopy.legal.tosLabel}
+            </Text>
+          </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -285,7 +301,12 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
           <View style={[styles.checkbox, privacyAccepted && styles.checkboxChecked]}>
             {privacyAccepted && <Text style={styles.checkmark}>✓</Text>}
           </View>
-          <Text style={styles.checkLabel}>{copy.legalPrivacyLabel}</Text>
+          <Text style={styles.checkLabel}>
+            {copy.legalPrivacyLabel}{' '}
+            <Text style={styles.legalLinkInline} onPress={() => setGuestPrivacyVisible(true)}>
+              {uiCopy.legal.privacyLabel}
+            </Text>
+          </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -722,6 +743,7 @@ const styles = StyleSheet.create({
   checkboxChecked: { backgroundColor: colors.textPrimary, borderColor: colors.textPrimary },
   checkmark: { color: colors.surface, fontSize: 14, fontWeight: '700' },
   checkLabel: { ...typography.body, color: colors.textPrimary },
+  legalLinkInline: { ...typography.body, color: colors.textSecondary, textDecorationLine: 'underline' },
   primaryBtn: {
     width: '100%',
     maxWidth: 400,

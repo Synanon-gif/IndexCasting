@@ -22,6 +22,7 @@ import { useAuth } from '../context/AuthContext';
 import { splitProfileDisplayName } from '../utils/applicantNameFromProfile';
 import { uiCopy } from '../constants/uiCopy';
 import { FILTER_COUNTRIES, ETHNICITY_OPTIONS } from '../utils/modelFilters';
+import { confirmImageRights } from '../services/gdprComplianceSupabase';
 
 type ImageSlot = 'closeUp' | 'fullBody' | 'profile';
 
@@ -67,6 +68,7 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [imageRightsConfirmed, setImageRightsConfirmed] = useState(false);
   const fileInputRefs = useRef<Record<ImageSlot, HTMLInputElement | null>>({
     closeUp: null,
     fullBody: null,
@@ -183,10 +185,23 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       setError('Please log in as a model to submit an application.');
       return;
     }
+    const hasImages = Object.values(fileRefs.current).some(Boolean) ||
+      Object.values(images).some((u) => u.startsWith('data:image'));
+    if (hasImages && !imageRightsConfirmed) {
+      setError('Please confirm you have all necessary rights and consents to share the uploaded photos.');
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
     try {
       const imageUrls: Record<string, string> = {};
+      if (hasImages && applicantUserId) {
+        await confirmImageRights({
+          userId: applicantUserId,
+          modelId: null,
+        }).catch((e) => console.error('[ApplyFormView] confirmImageRights error:', e));
+      }
       for (const slot of (Object.keys(SLOT_LABELS) as ImageSlot[])) {
         const file = fileRefs.current[slot];
         const dataUrl = images[slot];
@@ -490,6 +505,19 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           </View>
         ))}
 
+        <TouchableOpacity
+          style={styles.rightsCheckRow}
+          onPress={() => setImageRightsConfirmed((v) => !v)}
+          accessibilityRole="checkbox"
+        >
+          <View style={[styles.rightsCheckbox, imageRightsConfirmed && styles.rightsCheckboxChecked]}>
+            {imageRightsConfirmed && <Text style={styles.rightsCheckmark}>✓</Text>}
+          </View>
+          <Text style={styles.rightsCheckLabel}>
+            I confirm I have all necessary rights and consents to share these photos as part of my application.
+          </Text>
+        </TouchableOpacity>
+
         {error && <Text style={styles.errorText}>{error}</Text>}
 
         <TouchableOpacity
@@ -704,6 +732,36 @@ const styles = StyleSheet.create({
   },
   submitButtonDisabled: {
     opacity: 0.6,
+  },
+  rightsCheckRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+    width: '100%',
+  },
+  rightsCheckbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+    flexShrink: 0,
+  },
+  rightsCheckboxChecked: {
+    backgroundColor: colors.textPrimary,
+    borderColor: colors.textPrimary,
+  },
+  rightsCheckmark: { color: colors.surface, fontSize: 12, fontWeight: '700' },
+  rightsCheckLabel: {
+    ...typography.body,
+    fontSize: 11,
+    color: colors.textSecondary,
+    flex: 1,
+    lineHeight: 16,
   },
   submitLabel: {
     ...typography.label,

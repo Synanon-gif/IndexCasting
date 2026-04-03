@@ -10,6 +10,7 @@ import { ScreenScrollView } from './ScreenScrollView';
 import { AgencyStorageWidget } from './AgencyStorageWidget';
 import { supabase } from '../../lib/supabase';
 import { exportUserData, downloadUserDataExport } from '../services/gdprComplianceSupabase';
+import { withdrawConsent } from '../services/consentSupabase';
 
 type Props = {
   agency: Agency | null;
@@ -29,6 +30,25 @@ export const AgencySettingsTab: React.FC<Props> = ({ agency, organizationId, onS
   const [segments, setSegments] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [exportingData, setExportingData] = useState(false);
+  const [withdrawingConsent, setWithdrawingConsent] = useState(false);
+
+  const onWithdrawConsent = async () => {
+    const confirmed = Platform.OS === 'web'
+      ? (window as Window & typeof globalThis).confirm?.('Withdraw optional marketing & analytics consent? This does not affect core platform functionality.')
+      : true;
+    if (!confirmed) return;
+    setWithdrawingConsent(true);
+    try {
+      await withdrawConsent('marketing', 'user_requested');
+      await withdrawConsent('analytics', 'user_requested');
+      showAppAlert('Consent Withdrawn', 'Your optional consent has been withdrawn. It may take up to 24 hours to take full effect.');
+    } catch (e) {
+      console.error('AgencySettingsTab onWithdrawConsent error:', e);
+      showAppAlert(uiCopy.common.error, 'Could not withdraw consent. Please try again later.');
+    } finally {
+      setWithdrawingConsent(false);
+    }
+  };
 
   const onExportData = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -231,6 +251,17 @@ export const AgencySettingsTab: React.FC<Props> = ({ agency, organizationId, onS
         onPress={() => void onExportData()}
       >
         <Text style={styles.gdprBtnLabel}>{exportingData ? 'Preparing export…' : 'Download my data'}</Text>
+      </TouchableOpacity>
+
+      <Text style={styles.hint}>
+        Under GDPR Art. 7, you may withdraw your consent to optional data processing (marketing, analytics) at any time.
+      </Text>
+      <TouchableOpacity
+        style={[styles.gdprBtn, withdrawingConsent && { opacity: 0.6 }]}
+        disabled={withdrawingConsent}
+        onPress={() => void onWithdrawConsent()}
+      >
+        <Text style={styles.gdprBtnLabel}>{withdrawingConsent ? 'Withdrawing…' : 'Withdraw optional consent'}</Text>
       </TouchableOpacity>
     </ScreenScrollView>
   );

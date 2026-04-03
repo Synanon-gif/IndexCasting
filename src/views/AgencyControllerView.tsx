@@ -63,7 +63,7 @@ import { getApplicationById } from '../store/applicationsStore';
 import { OrgMessengerInline } from '../components/OrgMessengerInline';
 import { AgencySettingsTab } from '../components/AgencySettingsTab';
 // Recruiting chats (BookingChatView) live under Messages → Recruiting chats.
-import { uploadModelPhoto } from '../services/modelPhotosSupabase';
+import { uploadModelPhoto, upsertPhotosForModel, syncPortfolioToModel } from '../services/modelPhotosSupabase';
 import { confirmImageRights, guardImageUpload } from '../services/gdprComplianceSupabase';
 import { ModelMediaSettingsPanel } from '../components/ModelMediaSettingsPanel';
 import { getTerritoriesForModel, getTerritoriesForAgency, upsertTerritoriesForModel, bulkAddTerritoriesForModels } from '../services/territoriesSupabase';
@@ -78,6 +78,7 @@ import {
   createOrganizationInvitation,
   buildOrganizationInviteUrl,
   dissolveOrganization,
+  removeOrganizationMember,
   type InvitationRow,
 } from '../services/organizationsInvitationsSupabase';
 import {
@@ -572,6 +573,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
             members={teamMembers}
             invitations={pendingInvites}
             onRefresh={() => void loadAgencyTeam()}
+            currentUserId={session?.user?.id ?? null}
           />
         )}
 
@@ -4311,13 +4313,41 @@ const OrganizationTeamTab: React.FC<{
   members: Awaited<ReturnType<typeof listOrganizationMembers>>;
   invitations: InvitationRow[];
   onRefresh: () => void;
-}> = ({ organizationId, canInvite, members, invitations, onRefresh }) => {
+  currentUserId?: string | null;
+}> = ({ organizationId, canInvite, members, invitations, onRefresh, currentUserId }) => {
   const { profile, updateDisplayName } = useAuth();
   const [inviteEmail, setInviteEmail] = useState('');
   const [busy, setBusy] = useState(false);
   const [lastLink, setLastLink] = useState<string | null>(null);
   const [nameInput, setNameInput] = useState(profile?.display_name ?? '');
   const [nameBusy, setNameBusy] = useState(false);
+  const [removingUserId, setRemovingUserId] = useState<string | null>(null);
+
+  const handleRemoveMember = (targetUserId: string, displayName: string) => {
+    if (!organizationId) return;
+    Alert.alert(
+      'Remove Member',
+      `Remove ${displayName} from the organization? Their session will be invalidated immediately.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            setRemovingUserId(targetUserId);
+            const result = await removeOrganizationMember(targetUserId, organizationId);
+            setRemovingUserId(null);
+            if (result.ok) {
+              onRefresh();
+              Alert.alert('Member Removed', 'The member has been removed and their session invalidated.');
+            } else {
+              Alert.alert(uiCopy.common.error, result.error ?? 'Failed to remove member.');
+            }
+          },
+        },
+      ],
+    );
+  };
 
   useEffect(() => {
     setNameInput(profile?.display_name ?? '');
@@ -4405,16 +4435,31 @@ const OrganizationTeamTab: React.FC<{
         {members.length === 0 ? (
           <Text style={s.metaText}>No members loaded.</Text>
         ) : (
-          members.map((m) => (
-            <View key={m.id} style={s.modelRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={s.modelName}>
-                  {m.display_name || m.email || m.user_id.slice(0, 8)} · {roleLabel(m.role)}
-                </Text>
-                <Text style={s.metaText}>{m.email ?? '—'}</Text>
+          members.map((m) => {
+            const isSelf = m.user_id === currentUserId;
+            const displayName = m.display_name || m.email || m.user_id.slice(0, 8);
+            return (
+              <View key={m.id} style={[s.modelRow, { alignItems: 'center' }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.modelName}>
+                    {displayName} · {roleLabel(m.role)}
+                  </Text>
+                  <Text style={s.metaText}>{m.email ?? '—'}</Text>
+                </View>
+                {canInvite && !isSelf && m.role !== 'owner' && (
+                  <TouchableOpacity
+                    onPress={() => handleRemoveMember(m.user_id, displayName)}
+                    disabled={removingUserId === m.user_id}
+                    style={{ paddingHorizontal: spacing.sm, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: '#C0392B' }}
+                  >
+                    <Text style={{ ...typography.label, fontSize: 11, color: '#C0392B' }}>
+                      {removingUserId === m.user_id ? '…' : 'Remove'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
-            </View>
-          ))
+            );
+          })
         )}
       </View>
       <View style={{ marginTop: spacing.lg, gap: spacing.sm }}>

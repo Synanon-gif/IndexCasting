@@ -334,6 +334,14 @@ export async function updateOptionRequestSchedule(
       console.error('updateOptionRequestSchedule RPC error:', error);
       return false;
     }
+    if (data === true) {
+      void logOptionAction('', 'option_schedule_updated', id, {
+        updated_by: 'agency',
+        date: dateNorm,
+        start_time: fields.start_time ?? null,
+        end_time: fields.end_time ?? null,
+      });
+    }
     return data === true;
   } catch (e) {
     console.error('updateOptionRequestSchedule exception:', e);
@@ -361,6 +369,12 @@ export async function modelUpdateOptionSchedule(
       console.error('modelUpdateOptionSchedule error:', error);
       return false;
     }
+    void logOptionAction('', 'option_schedule_updated', optionId, {
+      updated_by: 'model',
+      date: d,
+      start_time: startTime ?? null,
+      end_time: endTime ?? null,
+    });
     return true;
   } catch (e) {
     console.error('modelUpdateOptionSchedule exception:', e);
@@ -893,7 +907,13 @@ export async function uploadOptionDocument(
     .select()
     .single();
   if (error) { console.error('uploadOptionDocument error:', error); return null; }
-  return data as SupabaseOptionDocument;
+  const doc = data as SupabaseOptionDocument;
+  void logOptionAction('', 'option_document_uploaded', requestId, {
+    document_id: doc.id,
+    file_name: fileName,
+    uploaded_by: uploadedBy,
+  });
+  return doc;
   } catch (e) {
     console.error('uploadOptionDocument exception:', e);
     return null;
