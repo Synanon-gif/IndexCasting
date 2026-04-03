@@ -204,25 +204,24 @@ describe('createBooking', () => {
 /** Creates a self-referencing eq mock chain that also exposes a select method. */
 function makeEqChain(selectResult: { data: unknown; error: unknown }) {
   const selectMock = jest.fn().mockResolvedValue(selectResult);
-  // eslint-disable-next-line prefer-const
-  let eqMock: jest.Mock;
-  eqMock = jest.fn().mockImplementation(() => ({ eq: eqMock, select: selectMock }));
+   
+  const eqMock: jest.Mock = jest.fn().mockImplementation(() => ({ eq: eqMock, select: selectMock }));
   return eqMock;
 }
 
 describe('updateBookingStatus', () => {
-  it('returns true on success', async () => {
+  it('returns true on success with fromStatus guard', async () => {
     from.mockReturnValue({
       update: () => ({ eq: makeEqChain({ data: [{ id: 'booking-1' }], error: null }) }),
     });
-    expect(await updateBookingStatus('booking-1', 'completed')).toBe(true);
+    expect(await updateBookingStatus('booking-1', 'completed', 'confirmed')).toBe(true);
   });
 
   it('returns false on DB error', async () => {
     from.mockReturnValue({
       update: () => ({ eq: makeEqChain({ data: null, error: { message: 'not found' } }) }),
     });
-    expect(await updateBookingStatus('booking-1', 'cancelled')).toBe(false);
+    expect(await updateBookingStatus('booking-1', 'cancelled', 'confirmed')).toBe(false);
     expect(consoleErrorSpy).toHaveBeenCalled();
   });
 
@@ -233,13 +232,19 @@ describe('updateBookingStatus', () => {
     expect(await updateBookingStatus('booking-1', 'confirmed', 'pending')).toBe(false);
   });
 
-  it('handles all valid status transitions without throwing', async () => {
-    const statuses: Booking['status'][] = ['confirmed', 'completed', 'cancelled', 'invoiced'];
-    for (const status of statuses) {
+  it('handles all valid status transitions with fromStatus guard', async () => {
+    type FromStatus = 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'invoiced';
+    const transitions: Array<[Booking['status'], FromStatus]> = [
+      ['confirmed',  'pending'],
+      ['completed',  'confirmed'],
+      ['cancelled',  'confirmed'],
+      ['invoiced',   'completed'],
+    ];
+    for (const [status, fromStatus] of transitions) {
       from.mockReturnValue({
         update: () => ({ eq: makeEqChain({ data: [{ id: 'booking-1' }], error: null }) }),
       });
-      expect(await updateBookingStatus('booking-1', status)).toBe(true);
+      expect(await updateBookingStatus('booking-1', status, fromStatus)).toBe(true);
     }
   });
 });

@@ -27,12 +27,12 @@ export const uiCopy = {
     calendarEntryUpdated: 'Calendar entry was updated.',
     calendarSaveFailed: 'Could not save. Check date format YYYY-MM-DD.',
     calendarNotSaved:
-      'Entry was not saved. Check: (1) date YYYY-MM-DD, (2) profile email must match agency email, (3) run migration_calendar_entries_multi_slot_rls_email.sql in Supabase.',
+      'Entry was not saved. Check: (1) date format YYYY-MM-DD, (2) your profile email must match the agency email.',
     invitationCreated: 'Invitation created',
     invitationCreatedBody:
       'Share the invite link securely with the booker (e.g. by email). In-app email delivery will follow later.',
     invitationFailed:
-      'Could not create invitation. Are you signed in as owner, and does Supabase RLS allow it?',
+      'Could not create invitation. Make sure you are signed in as the organization owner.',
     invitationLink: 'Invitation link',
     showLastLink: 'Show last link',
     deleteFailed: 'Delete failed',
@@ -41,9 +41,9 @@ export const uiCopy = {
     signInAsClientForCalendar:
       'Please sign in as a client — calendar entries require a valid user ID.',
     migrationRequired:
-      'Could not save the entry. Run migration migration_calendar_entries_multi_slot_rls_email.sql in Supabase (e.g. remove UNIQUE model_id+date) and sign in again.',
+      'Could not save the entry. Please sign in again or contact support if this issue persists.',
     calendarUpdatedGeneric: 'Calendar was updated.',
-    couldNotSaveCheckMigration: 'Could not save. Has the Supabase migration been applied?',
+    couldNotSaveCheckMigration: 'Could not save. Please try again or contact support.',
     deletePersonalEntryTitle: 'Delete entry',
     deletePersonalEntryMessage:
       'Are you sure you want to delete this personal calendar entry? This action cannot be undone.',
@@ -82,7 +82,7 @@ export const uiCopy = {
     permissionAlertOwnerOnly: 'Only the organization owner can send invitations.',
     invitationCreatedWithLink: (link: string) =>
       `Share this link securely with the invitee (e.g. by email):\n\n${link}`,
-    invitationErrorBody: 'Could not create invitation. Ensure your member role has permission and RLS allows inserts.',
+    invitationErrorBody: 'Could not create invitation. Ensure you are signed in as the organization owner.',
     inviteBooker: 'Invite booker',
     inviteSendLink: 'Send invitation (create link)',
     /** First user who completes agency signup (after admin activation) — profile email must match agency email — is the sole Organization Owner. */
@@ -112,9 +112,9 @@ export const uiCopy = {
     editEntry: 'Edit entry',
     reschedule: 'Reschedule',
     rescheduleHelpAgency:
-      'Updates the option, model calendar, and mirrored entries (migration migration_calendar_reschedule_sync.sql).',
+      'Updates the option, model calendar, and all mirrored entries for all parties.',
     rescheduleHelpClient:
-      'Date and time apply to all parties (option + calendar) once migration migration_calendar_reschedule_sync.sql is active.',
+      'Date and time apply to all parties (option + calendar) once saved.',
     saveSchedule: 'Save schedule',
     /** Client web: booking detail overlay — reschedule option/job */
     bookingUpdated: 'The booking was updated.',
@@ -124,7 +124,7 @@ export const uiCopy = {
     deletePersonalCalendarEntry: 'Delete personal entry',
     manualBlockHelp: 'Edit or remove your personal block.',
     optionScheduleHelp:
-      'Date/time for all parties (migration migration_calendar_reschedule_sync.sql + RPC model_update_option_schedule).',
+      'Date and time are applied for all parties once saved.',
     bookingEvent: 'Booking event',
     date: 'Date',
     status: 'Status',
@@ -149,7 +149,7 @@ export const uiCopy = {
   clientWeb: {
     calendarCalloutTitle: 'Saving to calendar:',
     calendarCalloutBody:
-      'Sign in with an account whose profile role is Client. A valid login UUID is required to write entries to Supabase.',
+      'Sign in with a Client account to save calendar entries.',
     editEvent: 'Edit event',
     /** Sticky bottom navigation (Client workspace). */
     bottomTabs: {
@@ -213,9 +213,9 @@ export const uiCopy = {
   app: {
     crashTitle: 'Something went wrong',
     crashBody:
-      'A render error occurred. This is not caused by GitHub or Supabase — see the message below. On web, open the console (F12).',
+      'Something went wrong in the application. Please reload the page or try again.',
     supabaseMissing:
-      'Supabase is not configured.\n\nCheck .env.local:\nNEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY',
+      'The application is not properly configured. Please contact support.',
   },
   apply: {
     displayNameMissing:
@@ -255,7 +255,7 @@ export const uiCopy = {
     fieldCity: 'City',
     fieldCountry: 'Country',
     save: 'Save settings',
-    saveFailed: 'Could not save settings. If you are the organization owner, run the latest Supabase migration for agency settings.',
+    saveFailed: 'Could not save settings. Make sure you are signed in as the organization owner and try again.',
     saveSuccess: 'Settings saved.',
     bookerNoAccess: 'Only the organization owner can edit agency settings.',
   },
@@ -367,12 +367,12 @@ export const uiCopy = {
     chatFailedGeneric: 'Could not create or load the chat. Check your network and try again.',
     /** PostgREST: RPC missing in Supabase project */
     migrationRequiredResolveRpc:
-      'Database function missing: run migration_resolve_b2b_chat_organization_ids.sql in the Supabase SQL Editor, then try again.',
+      'This feature is temporarily unavailable. Please contact support.',
     /** PostgREST: create chat RPC missing */
     migrationRequiredCreateB2bRpc:
-      'Database function missing: run migration_rpc_create_b2b_org_conversation.sql in the Supabase SQL Editor, then try again.',
+      'Could not start chat. Please try again or contact support.',
     migrationRequiredB2bOrgDirectory:
-      'Database functions missing: run migration_b2b_org_directory_and_pair_resolve.sql in the Supabase SQL Editor, then try again.',
+      'Could not load the directory. Please try again or contact support.',
     /** ensureClientAgencyChat — agency org row missing after lookup + bootstrap */
     ensureAgencyOrgMissing:
       'Agency workspace is not linked yet. The Organization Owner — the first user who signs in with the agency email after activation — must sign in once so the organization exists; then all team members can start chats.',
@@ -405,10 +405,10 @@ export const uiCopy = {
     chatSignInAgain: 'Please sign in again.',
     chatApplicationNotFound: 'Application not found.',
     chatLinkFailed: 'Could not link the recruiting thread to the application. Check the database or contact support.',
-    chatSchemaMismatch: 'Server does not recognize this call. Apply SQL migrations in Supabase and reload the API schema, then try again.',
-    chatServerError: 'Server error (500). Check Postgres/API logs in Supabase.',
-    chatPermissionDenied: 'Permission denied. Verify GRANT EXECUTE on the function in SQL.',
-    chatFunctionMissing: 'Function missing or API schema stale. Re-run the SQL migration, then reload pgrst.',
+    chatSchemaMismatch: 'Could not start chat. Please try again or contact support.',
+    chatServerError: 'A server error occurred. Please try again later.',
+    chatPermissionDenied: 'You do not have permission to perform this action.',
+    chatFunctionMissing: 'This feature is temporarily unavailable. Please contact support.',
     chatGenericFailed: 'Could not start recruiting chat. Check your connection and try again.',
     /** Swipe limit — displayed in the pending queue. */
     dailySwipeCounter: (used: number, limit: number) => `Daily Swipes: ${used} / ${limit}`,
@@ -480,10 +480,10 @@ export const uiCopy = {
   adminDashboard: {
     deletePermanentlyTitle: 'Delete account permanently',
     deletePermanentlyMessage:
-      'This will delete all profile data in the database for this user. You may also need to remove the Auth user in Supabase Dashboard → Authentication → Users so they cannot sign in again. Continue?',
+      'This will permanently delete all profile data for this user. The user will no longer be able to sign in. Continue?',
     deleteData: 'Delete data',
     purgeSuccess:
-      'Profile data deleted. Remove the user in Supabase Authentication if they should not be able to sign in again.',
+      'Profile data deleted successfully.',
     purgeFailed: 'Purge failed.',
     purgeFailedWithDetails: 'Purge failed: {details}',
     /** profiles.role — model / agent / client only */

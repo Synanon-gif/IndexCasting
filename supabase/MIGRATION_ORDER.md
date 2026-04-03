@@ -233,6 +233,19 @@ Files must be run in exactly this sequence on any new instance (staging, product
 152. `migration_security_invitation_email_guard.sql`      ← CRIT-01: Restores email match + profile role check in `accept_organization_invitation`; keeps single-org guard from Phase 21. Run after #151.
 153. `migration_security_fix_org_context_order.sql`       ← HIGH-04: Adds ORDER BY created_at ASC to `get_my_org_context()` for deterministic org selection; aligns with can_access_platform() and checkout Edge Function ordering. Run after #152.
 
+### Phase 31 – Full Penetration Test Security Fixes (2026-04 Adversarial Audit)
+154. `migration_guest_link_revoke_fix_2026_04.sql`        ← Adds `deleted_at IS NULL` guard to `get_guest_link_info` / `get_guest_link_models`; REVOKE PUBLIC on both RPCs; rate-limit wired into both RPCs; agency_id cross-org guard in `get_guest_link_models`. Run after #153.
+155. `migration_restrict_embeddings_rls_2026_04.sql`      ← Scopes model_embeddings SELECT to agent/client roles only; tightens UPSERT WITH CHECK to own-agency models. Run after #154.
+156. `migration_super_admin_2026_04.sql`                  ← Adds `is_super_admin` column to profiles; replaces admin_logs policies (SELECT→super_admin only, INSERT→is_admin only); adds trigger to protect is_super_admin from escalation. Run after #155.
+157. `migration_security_admin_override_audit_2026_04.sql` ← Adds audit logging to admin_set_bypass_paywall + admin_set_org_plan; tightens admin_logs to SELECT+INSERT only (no DELETE); restricts admin_overrides direct write (RPC-only). Run after #156.
+158. `migration_security_advisor_fixes_2026_04.sql`       ← Security Advisor: recreates views with security_invoker=true; pins search_path on 14 functions; moves pg_trgm to extensions schema; tightens badges/boosts WITH CHECK; adds RESTRICTIVE deny policies on guest_link_rate_limit + stripe_processed_events; REVOKE SELECT on replication_slot_health FROM authenticated. Run after #157.
+159. `migration_hardening_2026_04_final.sql`              ← Consolidated hardening: get_agency_revenue RPC; booking + option_request RLS tightening; performance indexes. Run after #158.
+160. `migration_scale_indexes_2026_04.sql`                ← Additional 100k-scale indexes for conversations, messages, model_photos. Run after #159.
+161. `migration_chaos_hardening_2026_04.sql`              ← Chaos testing fixes: dedup indexes for model_applications; guest_links soft-delete + updated RLS; atomic booking_event trigger on option_request update; model_traction view security_invoker. Run after #160.
+162. `migration_security_audit_2026_04.sql`               ← VULN-01/06: fixes can_access_platform() (removes 'trialing' from subscription_active check, adds ORDER BY); VULN-04: tightens agency_invitations UPDATE to own-agency only; VULN-09: validates p_role enum in admin_update_profile_full. Run after #161.
+163. `migration_access_gate_enforcement.sql`              ← BYPASS-01/02/03 (CRITICAL): adds has_platform_access() to get_models_by_location(), option_requests INSERT, messages INSERT. Introduces has_platform_access() boolean helper. Run after #162.
+164. `migration_pentest_fullaudit_fixes_2026_04.sql`      ← Full adversarial pentest fixes: C-1 match_models paywall; C-2 models+model_photos client SELECT paywall; C-3/H-3 recruiting_threads UPDATE agency_id hijacking; C-4 conversations INSERT org validation + removes permissive bypass policies; H-2 recruiting_messages from_role role validation; H-6 stippen scope; H-5 validate_guest_booking_models RPC. Run after #163.
+
 ---
 
 ## Files NOT to run in production

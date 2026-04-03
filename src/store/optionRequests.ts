@@ -382,7 +382,9 @@ export function setRequestStatus(threadId: string, status: ChatStatus): void {
   req.status = status;
   notify();
 
-  void updateOptionRequestStatus(req.id, status).then((ok) => {
+  // Pass prev as fromStatus so the DB UPDATE only succeeds when the row is
+  // still in the expected prior state — prevents blind status jumps and races.
+  void updateOptionRequestStatus(req.id, status, prev).then((ok) => {
     if (!ok) {
       req.status = prev;
       notify();

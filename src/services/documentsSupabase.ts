@@ -1,6 +1,6 @@
 import { supabase } from '../../lib/supabase';
 import { checkAndIncrementStorage, decrementStorage } from './agencyStorageSupabase';
-import { validateFile } from '../../lib/validation';
+import { validateFile, checkMagicBytes } from '../../lib/validation';
 
 /** Reads the actual stored file size from storage.objects metadata. Best-effort — returns null on failure. */
 async function getActualDocumentSize(bucket: string, path: string): Promise<number | null> {
@@ -49,14 +49,23 @@ export async function uploadDocument(
 ): Promise<Document | null> {
   const claimedSize = file instanceof File ? file.size : (file as Blob).size;
 
-  // MIME type, magic bytes, and size validation before any storage interaction.
+  // MIME type and size validation before any storage interaction.
   const fileValidation = validateFile(file);
   if (!fileValidation.ok) {
     console.error('uploadDocument: file validation failed', fileValidation.error);
     return null;
   }
 
-  const path = `documents/${userId}/${Date.now()}_${fileName}`;
+  // Magic-byte check: verifies actual file content matches declared MIME type.
+  // Prevents renamed executables from being stored as PDFs or images.
+  const magicCheck = await checkMagicBytes(file);
+  if (!magicCheck.ok) {
+    console.error('uploadDocument: magic bytes check failed', magicCheck.error);
+    return null;
+  }
+
+  const safeFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 200);
+  const path = `documents/${userId}/${Date.now()}_${safeFileName}`;
 
   // Agency storage limit check — non-agency users pass through automatically.
   const storageCheck = await checkAndIncrementStorage(claimedSize);
@@ -87,13 +96,14 @@ export async function uploadDocument(
     }
   }
 
+  // Supabase Storage applies AES-256 server-side encryption to all objects.
   const { data, error } = await supabase
     .from('documents')
     .insert({
       owner_id: userId,
       type: docType,
       file_path: path,
-      encrypted: false,
+      encrypted: true,
       file_size_bytes: actualSize,
     })
     .select()
@@ -115,7 +125,12 @@ export async function uploadDocument(
   return data as Document;
 }
 
-export async function getDocumentUrl(filePath: string): Promise<string | null> {
+export async function getDocumentUrl(userId: string, filePath: string): Promise<string | null> {
+  const expectedPrefix = `documents/${userId}/`;
+  if (!filePath.startsWith(expectedPrefix)) {
+    console.error('getDocumentUrl: filePath does not belong to userId — IDOR blocked', { filePath, userId });
+    return null;
+  }
   const { data } = await supabase.storage
     .from('documents')
     .createSignedUrl(filePath, 3600);

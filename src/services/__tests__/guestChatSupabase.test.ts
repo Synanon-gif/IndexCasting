@@ -9,6 +9,7 @@ import {
 const mockMaybeSingle = jest.fn();
 const mockInsertSingle = jest.fn();
 const mockSendMessage = jest.fn();
+const mockRpc = jest.fn();
 
 jest.mock('../../../lib/supabase', () => ({
   supabase: {
@@ -24,6 +25,7 @@ jest.mock('../../../lib/supabase', () => ({
         }),
       }),
     }),
+    rpc: (...args: unknown[]) => mockRpc(...args),
   },
 }));
 
@@ -109,7 +111,12 @@ describe('createGuestConversation', () => {
 
 // ─── sendGuestBookingRequest ───────────────────────────────────────────────────
 describe('sendGuestBookingRequest', () => {
-  beforeEach(() => mockSendMessage.mockReset());
+  beforeEach(() => {
+    mockSendMessage.mockReset();
+    mockRpc.mockReset();
+    // Default: validate_guest_booking_models returns valid=true
+    mockRpc.mockResolvedValue({ data: true, error: null });
+  });
 
   const payload = {
     selected_models: ['model-1', 'model-2'],
@@ -146,6 +153,29 @@ describe('sendGuestBookingRequest', () => {
     mockSendMessage.mockResolvedValue(null);
     const result = await sendGuestBookingRequest('conv-1', 'guest-1', payload);
     expect(result).toBeNull();
+  });
+
+  it('returns null when validate_guest_booking_models rejects the model IDs', async () => {
+    mockRpc.mockResolvedValue({ data: false, error: null });
+    mockSendMessage.mockResolvedValue({ id: 'msg-x' });
+    const result = await sendGuestBookingRequest('conv-1', 'guest-1', payload);
+    expect(result).toBeNull();
+    expect(mockSendMessage).not.toHaveBeenCalled();
+  });
+
+  it('returns null when validate_guest_booking_models RPC errors', async () => {
+    mockRpc.mockResolvedValue({ data: null, error: { message: 'rpc error' } });
+    const result = await sendGuestBookingRequest('conv-1', 'guest-1', payload);
+    expect(result).toBeNull();
+  });
+
+  it('skips validation and sends message when no guest_link_id is provided', async () => {
+    const noLinkPayload = { ...payload, guest_link_id: null };
+    const fakeMsgRow = { id: 'msg-2', conversation_id: 'conv-1', sender_id: 'guest-1' };
+    mockSendMessage.mockResolvedValue(fakeMsgRow);
+    const result = await sendGuestBookingRequest('conv-1', 'guest-1', noLinkPayload);
+    expect(result).toEqual(fakeMsgRow);
+    expect(mockRpc).not.toHaveBeenCalled();
   });
 });
 

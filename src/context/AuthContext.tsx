@@ -11,6 +11,7 @@ export type Profile = {
   role: string;
   is_active: boolean;
   is_admin: boolean;
+  is_super_admin: boolean;
   is_guest: boolean;
   has_completed_signup: boolean;
   tos_accepted: boolean;
@@ -59,7 +60,7 @@ type AuthState = {
 
 const AuthContext = createContext<AuthState | null>(null);
 
-const PROFILE_FIELDS = 'id, email, display_name, role, is_active, is_admin, is_guest, has_completed_signup, tos_accepted, privacy_accepted, agency_model_rights_accepted, activation_documents_sent, company_name, phone, website, country, verification_email, deletion_requested_at';
+const PROFILE_FIELDS = 'id, email, display_name, role, is_active, is_admin, is_super_admin, is_guest, has_completed_signup, tos_accepted, privacy_accepted, agency_model_rights_accepted, activation_documents_sent, company_name, phone, website, country, verification_email, deletion_requested_at';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -169,6 +170,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       ...data,
       is_active: isGuest ? true : isActive,
       is_admin: data.is_admin ?? false,
+      is_super_admin: data.is_super_admin ?? false,
       is_guest: isGuest,
       has_completed_signup: data.has_completed_signup ?? false,
       tos_accepted: data.tos_accepted ?? false,
@@ -235,7 +237,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) await loadProfile(user.id);
   // loadProfile is defined in the same closure and stable across renders
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, []);
 
   const signUp = async (

@@ -17,6 +17,7 @@ import {
 import { colors, spacing, typography } from '../theme/theme';
 import { addApplication } from '../store/applicationsStore';
 import { uploadApplicationImage } from '../services/applicationsSupabase';
+import { convertHeicToJpegIfNeeded } from '../services/imageUtils';
 import { useAuth } from '../context/AuthContext';
 import { splitProfileDisplayName } from '../utils/applicantNameFromProfile';
 import { uiCopy } from '../constants/uiCopy';
@@ -81,20 +82,27 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     setLastName(lastName);
   }, [nameLocked, profile?.display_name]);
 
-  const assignImageFile = (slot: ImageSlot, file: File) => {
+  const assignImageFile = async (slot: ImageSlot, file: File) => {
     if (!file.type.startsWith('image/')) return;
-    fileRefs.current[slot] = file;
-    const reader = new FileReader();
-    reader.onload = () => {
-      setImages((prev) => ({ ...prev, [slot]: reader.result as string }));
-    };
-    reader.readAsDataURL(file);
+    const converted = await convertHeicToJpegIfNeeded(file);
+    const asFile = converted instanceof File ? converted : new File([converted], file.name.replace(/\.hei[cf]$/i, '.jpg'), { type: converted.type });
+    fileRefs.current[slot] = asFile;
+    if (Platform.OS === 'web') {
+      const objectUrl = URL.createObjectURL(asFile);
+      setImages((prev) => ({ ...prev, [slot]: objectUrl }));
+    } else {
+      const reader = new FileReader();
+      reader.onload = () => {
+        setImages((prev) => ({ ...prev, [slot]: reader.result as string }));
+      };
+      reader.readAsDataURL(asFile);
+    }
   };
 
   const handleFileChange = (slot: ImageSlot) => (e: { target?: { files?: FileList | null } }) => {
     const file = e?.target?.files?.[0];
     if (!file) return;
-    assignImageFile(slot, file);
+    void assignImageFile(slot, file);
   };
 
   const triggerFileInput = (slot: ImageSlot) => {
@@ -130,7 +138,7 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           e.preventDefault();
           e.stopPropagation();
           const file = e.dataTransfer?.files?.[0];
-          if (file) assignImageFile(slot, file);
+          if (file) void assignImageFile(slot, file);
         },
       },
       node,

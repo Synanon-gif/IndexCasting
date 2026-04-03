@@ -95,8 +95,11 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   const [input, setInput] = useState('');
   const [shareOpen, setShareOpen] = useState<'package' | 'model' | null>(null);
   const [bookingModelNames, setBookingModelNames] = useState<Record<string, string>>({});
+  /** Tracks model IDs whose name fetch is already in-flight or resolved, preventing duplicate requests. */
+  const fetchedModelIds = useRef<Set<string>>(new Set());
   /** model_id → first portfolio_images URL, for package card previews */
   const [packageModelPhotos, setPackageModelPhotos] = useState<Record<string, string>>({});
+  const fetchedPackagePhotoIds = useRef<Set<string>>(new Set());
   /** storage path → signed URL cache for file attachments */
   const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState(false);
@@ -115,7 +118,9 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
     return unsub;
   }, [conversationId]);
 
-  // Resolve booking model names for booking cards
+  // Resolve booking model names for booking cards.
+  // Uses fetchedModelIds ref to prevent duplicate in-flight requests when a model
+  // has no name (row?.name undefined), which would otherwise re-trigger on every msgs update.
   useEffect(() => {
     const bookingModelIds = Array.from(
       new Set(
@@ -125,8 +130,10 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
           .filter((v): v is string => typeof v === 'string' && v.trim().length > 0),
       ),
     );
-    const missing = bookingModelIds.filter((id) => !bookingModelNames[id]);
+    const missing = bookingModelIds.filter((id) => !fetchedModelIds.current.has(id));
     if (missing.length === 0) return;
+
+    missing.forEach((id) => fetchedModelIds.current.add(id));
 
     void Promise.all(
       missing.map(async (modelId) => {
@@ -135,9 +142,10 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
         setBookingModelNames((prev) => ({ ...prev, [modelId]: row.name }));
       }),
     );
-  }, [msgs, bookingModelNames]);
+  }, [msgs]);
 
-  // Resolve model preview photos for package cards
+  // Resolve model preview photos for package cards.
+  // Uses fetchedPackagePhotoIds ref to avoid refetching when a model has no photo.
   useEffect(() => {
     const previewIds = Array.from(
       new Set(
@@ -146,8 +154,10 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
           .flatMap((m) => metaStringArray(m, 'preview_model_ids')),
       ),
     );
-    const missing = previewIds.filter((id) => !packageModelPhotos[id]);
+    const missing = previewIds.filter((id) => !fetchedPackagePhotoIds.current.has(id));
     if (missing.length === 0) return;
+
+    missing.forEach((id) => fetchedPackagePhotoIds.current.add(id));
 
     void Promise.all(
       missing.map(async (modelId) => {
@@ -161,13 +171,18 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
         }
       }),
     );
-  }, [msgs, packageModelPhotos]);
+  }, [msgs]);
 
-  // Resolve signed URLs for all file attachments in the current message list
+  // Resolve signed URLs for all file attachments in the current message list.
+  // signedUrls is captured via the filter so it must be in the dependency array.
+  // Using a ref snapshot avoids the stale-closure issue while keeping the exhaustive-deps rule satisfied.
+  const signedUrlsRef = useRef(signedUrls);
+  signedUrlsRef.current = signedUrls;
+
   useEffect(() => {
     const paths = msgs
       .map((m) => (m as { file_url?: string | null }).file_url)
-      .filter((p): p is string => !!p && !signedUrls[p]);
+      .filter((p): p is string => !!p && !signedUrlsRef.current[p]);
     if (paths.length === 0) return;
     void Promise.all(
       paths.map(async (path) => {
@@ -175,6 +190,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
         if (url) setSignedUrls((prev) => ({ ...prev, [path]: url }));
       }),
     );
+   
   }, [msgs]);
 
   const sendChat = async () => {
@@ -514,7 +530,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/jpeg,image/png,image/webp,application/pdf"
+            accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
             style={{ display: 'none' }}
             onChange={(e) => {
               const file = e.target.files?.[0];

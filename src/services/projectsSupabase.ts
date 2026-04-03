@@ -110,16 +110,29 @@ export async function getProjectModels(projectId: string): Promise<string[]> {
   return (data ?? []).map((d: any) => d.model_id);
 }
 
+/**
+ * Adds a model to a client project.
+ *
+ * Delegates to the add_model_to_project SECURITY DEFINER RPC which validates:
+ *   1. The project belongs to the caller's client organization.
+ *   2. The model's agency has an active connection with the client organization.
+ * Prevents clients from adding models from agencies they have no relationship with.
+ */
 export async function addModelToProject(projectId: string, modelId: string): Promise<boolean> {
-  const { error } = await supabase
-    .from('client_project_models')
-    .insert({ project_id: projectId, model_id: modelId });
-  if (error) {
-    if (error.code === '23505') return true; // Already exists
-    console.error('addModelToProject error:', error);
+  try {
+    const { data, error } = await supabase.rpc('add_model_to_project', {
+      p_project_id: projectId,
+      p_model_id:   modelId,
+    });
+    if (error) {
+      console.error('addModelToProject RPC error:', error);
+      return false;
+    }
+    return data === true;
+  } catch (e) {
+    console.error('addModelToProject exception:', e);
     return false;
   }
-  return true;
 }
 
 export async function removeModelFromProject(projectId: string, modelId: string): Promise<boolean> {

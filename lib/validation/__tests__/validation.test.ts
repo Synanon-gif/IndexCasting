@@ -203,6 +203,38 @@ describe('Magic bytes validation (fake file type)', () => {
     expect(result.ok).toBe(true);
   });
 
+  test('checkMagicBytes accepts real HEIC magic bytes (ftyp box + heic brand)', async () => {
+    // box size (4 bytes) + "ftyp" + "heic" brand
+    const realHeic = makeBlobWithBytes('image/heic', [
+      0x00, 0x00, 0x00, 0x18, // box size = 24
+      0x66, 0x74, 0x79, 0x70, // "ftyp"
+      0x68, 0x65, 0x69, 0x63, // "heic" brand
+    ]);
+    const result = await checkMagicBytes(realHeic);
+    expect(result.ok).toBe(true);
+  });
+
+  test('checkMagicBytes accepts HEIF magic bytes (mif1 brand)', async () => {
+    const realHeif = makeBlobWithBytes('image/heif', [
+      0x00, 0x00, 0x00, 0x18,
+      0x66, 0x74, 0x79, 0x70, // "ftyp"
+      0x6d, 0x69, 0x66, 0x31, // "mif1" brand
+    ]);
+    const result = await checkMagicBytes(realHeif);
+    expect(result.ok).toBe(true);
+  });
+
+  test('checkMagicBytes rejects file claiming image/heic but missing ftyp box', async () => {
+    // Random bytes — no ftyp at offset 4
+    const fakeHeic = makeBlobWithBytes('image/heic', [
+      0x00, 0x00, 0x00, 0x18,
+      0x4d, 0x5a, 0x00, 0x00, // "MZ" (PE header, not ftyp)
+      0x00, 0x00, 0x00, 0x00,
+    ]);
+    const result = await checkMagicBytes(fakeHeic);
+    expect(result.ok).toBe(false);
+  });
+
   test('validateFile rejects disallowed MIME types', () => {
     const exe = makeBlob('application/x-msdownload', 1024);
     const result = validateFile(exe);

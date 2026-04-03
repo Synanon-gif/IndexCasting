@@ -156,7 +156,7 @@ export const CustomerSwipeScreen: React.FC = () => {
         setLoadingMore(false);
       }
     })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [filters]);
 
   // Reset session dedup when filters change (new discovery context).

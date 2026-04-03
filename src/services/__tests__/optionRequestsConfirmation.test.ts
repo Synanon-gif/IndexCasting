@@ -242,9 +242,8 @@ describe('modelConfirmOptionRequest', () => {
     // Chain: update → eq(id) → eq(model_approval) → eq(final_status) → select → maybeSingle
     const maybeSingleConfirm = jest.fn().mockResolvedValue({ data: { id: 'req-1' }, error: null });
     const selectConfirm      = jest.fn().mockReturnValue({ maybeSingle: maybeSingleConfirm });
-    // eslint-disable-next-line prefer-const
-    let eqConfirm: jest.Mock;
-    eqConfirm = jest.fn().mockImplementation(() => ({ eq: eqConfirm, select: selectConfirm }));
+     
+    const eqConfirm: jest.Mock = jest.fn().mockImplementation(() => ({ eq: eqConfirm, select: selectConfirm }));
 
     from.mockReturnValueOnce({
       // fetch option_request (agency already accepted → final_status = option_confirmed)
@@ -266,9 +265,8 @@ describe('modelConfirmOptionRequest', () => {
   it('returns false on DB error during update', async () => {
     const maybeSingle = jest.fn().mockResolvedValue({ data: null, error: { message: 'rls' } });
     const select      = jest.fn().mockReturnValue({ maybeSingle });
-    // eslint-disable-next-line prefer-const
-    let eqChain: jest.Mock;
-    eqChain = jest.fn().mockImplementation(() => ({ eq: eqChain, select }));
+     
+    const eqChain: jest.Mock = jest.fn().mockImplementation(() => ({ eq: eqChain, select }));
 
     from.mockReturnValueOnce({
       select: () => ({
@@ -304,9 +302,8 @@ describe('modelRejectOptionRequest', () => {
     // Chain: update → eq(id) → eq(model_approval,'pending') → select → maybeSingle
     const maybeSingle = jest.fn().mockResolvedValue({ data: { id: 'req-1' }, error: null });
     const select      = jest.fn().mockReturnValue({ maybeSingle });
-    // eslint-disable-next-line prefer-const
-    let eqChain: jest.Mock;
-    eqChain = jest.fn().mockImplementation(() => ({ eq: eqChain, select }));
+     
+    const eqChain: jest.Mock = jest.fn().mockImplementation(() => ({ eq: eqChain, select }));
     from.mockReturnValue({ update: () => ({ eq: eqChain }) });
     await expect(modelRejectOptionRequest('req-1')).resolves.toBe(true);
   });
@@ -314,9 +311,8 @@ describe('modelRejectOptionRequest', () => {
   it('returns false on DB error', async () => {
     const maybeSingle = jest.fn().mockResolvedValue({ data: null, error: { message: 'error' } });
     const select      = jest.fn().mockReturnValue({ maybeSingle });
-    // eslint-disable-next-line prefer-const
-    let eqChain: jest.Mock;
-    eqChain = jest.fn().mockImplementation(() => ({ eq: eqChain, select }));
+     
+    const eqChain: jest.Mock = jest.fn().mockImplementation(() => ({ eq: eqChain, select }));
     from.mockReturnValue({ update: () => ({ eq: eqChain }) });
     await expect(modelRejectOptionRequest('req-1')).resolves.toBe(false);
   });
@@ -324,9 +320,8 @@ describe('modelRejectOptionRequest', () => {
   it('returns false when no row updated (concurrent state change)', async () => {
     const maybeSingle = jest.fn().mockResolvedValue({ data: null, error: null });
     const select      = jest.fn().mockReturnValue({ maybeSingle });
-    // eslint-disable-next-line prefer-const
-    let eqChain: jest.Mock;
-    eqChain = jest.fn().mockImplementation(() => ({ eq: eqChain, select }));
+     
+    const eqChain: jest.Mock = jest.fn().mockImplementation(() => ({ eq: eqChain, select }));
     from.mockReturnValue({ update: () => ({ eq: eqChain }) });
     await expect(modelRejectOptionRequest('req-1')).resolves.toBe(false);
   });

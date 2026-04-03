@@ -42,3 +42,16 @@ Du bist der Lead Product Engineer für IndexCasting. Dein Ziel ist es, das "digi
 - Encryption: Weise mich darauf hin, wenn sensible Daten (ID-Dokumente, private Mail) in `storage` Buckets ohne Verschlüsselung geladen werden.
 - Right to Erasure: Jedes neue User-Modul muss eine Logik für `deleteUserContent` enthalten, die alle verknüpften Daten (Bilder, Messages) sauber löscht.
 - Watermarking: Schlage bei Model-Portfolios automatisch Watermarking-Logik vor, bevor Bilder im `guest_link` öffentlich werden.
+
+## 8. Organisationen, Rollen & Multi-Tenant-Datenschutz
+
+### Exklusiv für Owner (Billing & Verwaltung)
+- **Agency Owner:** Als einzige Rolle in der Agency: Bookers **einladen oder entfernen**, die **eigene Organisation löschen** und **bei der Paywall / Abrechnung zahlen**.
+- **Client Owner:** Als einzige Rolle beim Client: Employees **einladen oder entfernen**, die **eigene Organisation löschen** und **bei der Paywall / Abrechnung zahlen**.
+
+### Parität im Tagesgeschäft (alles außer Owner-Exklusivrechten)
+- **Agency:** Booker und Agency Owner sind im Produkt **funktional gleichwertig** — Kalender, Messages, Model-Portfolio, Casting-Flows und **alle übrigen Features**, die keine Owner-Exklusivrechte sind.
+- **Client:** Employee und Client Owner sind im Produkt **funktional gleichwertig** — Casting/Option Request, Verhandeln, Kommunikation und **alle übrigen Features**, die keine Owner-Exklusivrechte sind.
+
+### Tenant-Isolation (nicht verhandelbar)
+- **Keine Daten-Leaks:** Organisationsdaten dürfen **niemals unbeabsichtigt** für andere Organisationen oder unberechtigte User sichtbar sein. Jede Abfrage, Subscription und Storage-Zugriff muss **strikt auf die jeweilige Org / berechtigte Identität** begrenzt sein (RLS, Filter, keine „breiten“ Queries ohne Org-Kontext).

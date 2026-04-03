@@ -4,7 +4,7 @@ import { createBookingEvent } from './bookingEventsSupabase';
 import type { BookingEventType } from './bookingEventsSupabase';
 import { createNotification, createNotifications } from './notificationsSupabase';
 import { uiCopy } from '../constants/uiCopy';
-import { normalizeInput, validateText, sanitizeHtml, logSecurityEvent } from '../../lib/validation';
+import { normalizeInput, validateText, sanitizeHtml, extractSafeUrls, logSecurityEvent } from '../../lib/validation';
 import { checkAndIncrementStorage, decrementStorage } from './agencyStorageSupabase';
 
 export const OPTION_REQUEST_SELECT =
@@ -214,8 +214,8 @@ export async function insertOptionRequest(req: {
       agency_id: req.agency_id,
       requested_date: req.requested_date,
       project_id: req.project_id || null,
-      client_name: req.client_name || null,
-      model_name: req.model_name || null,
+      client_name: req.client_name ? sanitizeHtml(normalizeInput(req.client_name)) : null,
+      model_name: req.model_name ? sanitizeHtml(normalizeInput(req.model_name)) : null,
       proposed_price: req.proposed_price || null,
       agency_counter_price: null,
       client_price_status: 'pending',
@@ -598,6 +598,14 @@ export async function addOptionMessage(
       void logSecurityEvent({ type: 'large_payload', userId: user?.id ?? null, metadata: { service: 'optionRequestsSupabase', field: 'text' } });
       return null;
     }
+    // Reject messages containing unsafe URLs (mirrors messengerSupabase.sendMessage)
+    const allUrls = normalized.match(/https?:\/\/[^\s]+/gi) ?? [];
+    const safeUrls = extractSafeUrls(normalized);
+    if (allUrls.length > safeUrls.length) {
+      console.warn('addOptionMessage: message contains unsafe URLs');
+      void logSecurityEvent({ type: 'invalid_url', userId: user?.id ?? null, metadata: { service: 'optionRequestsSupabase' } });
+      return null;
+    }
     const safeText = sanitizeHtml(normalized);
 
     const { data, error } = await supabase
@@ -697,15 +705,23 @@ export async function updateModelApproval(
       return false;
     }
 
-    const { error } = await supabase
+    const { data: updatedRows, error } = await supabase
       .from('option_requests')
       .update({
         model_approval: approval,
         model_approved_at: approval === 'approved' ? new Date().toISOString() : null,
       })
-      .eq('id', id);
+      .eq('id', id)
+      // Race-condition guard: only update if still in pending state.
+      // Prevents double-approve / concurrent approve+reject conflicts.
+      .eq('model_approval', 'pending')
+      .select('id');
 
     if (error) { console.error('updateModelApproval error:', error); return false; }
+    if (!updatedRows || updatedRows.length === 0) {
+      console.warn('updateModelApproval: no row updated — already approved/rejected or concurrent request', { id, approval });
+      return false;
+    }
     return true;
   } catch (e) {
     console.error('updateModelApproval exception:', e);

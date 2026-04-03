@@ -106,6 +106,10 @@ export async function createGuestConversation(
 /**
  * Sends the initial booking request message into the guest conversation.
  * message_type = 'booking_request' (stored as text, metadata carries structured data).
+ *
+ * H-5 fix: validates selected_models server-side against the guest link's
+ * authorised model_ids before inserting the message. Prevents JS-state
+ * manipulation to request models not in the package.
  */
 export async function sendGuestBookingRequest(
   conversationId: string,
@@ -113,6 +117,25 @@ export async function sendGuestBookingRequest(
   payload: GuestBookingRequestPayload,
 ): Promise<Message | null> {
   try {
+    // Server-side validation of selected model IDs against the guest link.
+    if (payload.guest_link_id && payload.selected_models.length > 0) {
+      const { data: valid, error: validErr } = await supabase.rpc(
+        'validate_guest_booking_models',
+        {
+          p_link_id:   payload.guest_link_id,
+          p_model_ids: payload.selected_models,
+        },
+      );
+      if (validErr) {
+        console.error('sendGuestBookingRequest: model validation RPC error', validErr);
+        return null;
+      }
+      if (!valid) {
+        console.warn('sendGuestBookingRequest: one or more selected_models are not in the guest link — blocked');
+        return null;
+      }
+    }
+
     const summary =
       payload.message.trim() ||
       `Booking request for ${payload.selected_models.length} model(s)${payload.requested_date ? ` on ${payload.requested_date}` : ''}.`;

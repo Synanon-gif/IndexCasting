@@ -7,6 +7,7 @@ import {
   logSecurityEvent,
 } from '../../lib/validation';
 import imageCompression from 'browser-image-compression';
+import { convertHeicToJpegIfNeeded } from './imageUtils';
 import { checkAndIncrementStorage, decrementStorage } from './agencyStorageSupabase';
 import { uiCopy } from '../constants/uiCopy';
 import {
@@ -375,6 +376,8 @@ export async function uploadModelPhoto(
   modelId: string,
   file: Blob | File,
 ): Promise<UploadPhotoResult | null> {
+  // Convert HEIC/HEIF to JPEG before validation (browser-image-compression doesn't support HEIC)
+  file = await convertHeicToJpegIfNeeded(file);
   // MIME whitelist + size check (images only for portfolio)
   const mimeCheck = validateFile(file, PHOTO_ALLOWED_TYPES);
   if (!mimeCheck.ok) {
@@ -461,6 +464,8 @@ export async function uploadPrivateModelPhoto(
   modelId: string,
   file: Blob | File,
 ): Promise<UploadPhotoResult | null> {
+  // Convert HEIC/HEIF to JPEG before validation
+  file = await convertHeicToJpegIfNeeded(file);
   // MIME whitelist + size check (images only)
   const mimeCheck = validateFile(file, PHOTO_ALLOWED_TYPES);
   if (!mimeCheck.ok) {

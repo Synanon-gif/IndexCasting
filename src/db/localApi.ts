@@ -37,9 +37,9 @@ function save(key: string, value: unknown): void {
 // In-memory tables (initialized from localStorage or seed)
 let users: User[] = load(STORAGE_KEYS.users, []);
 let models: Model[] = load(STORAGE_KEYS.models, []);
-let projects: Project[] = load(STORAGE_KEYS.projects, []);
-let conversations: Conversation[] = load(STORAGE_KEYS.conversations, []);
-let messages: Message[] = load(STORAGE_KEYS.messages, []);
+const projects: Project[] = load(STORAGE_KEYS.projects, []);
+const conversations: Conversation[] = load(STORAGE_KEYS.conversations, []);
+const messages: Message[] = load(STORAGE_KEYS.messages, []);
 
 const listeners = new Set<() => void>();
 function notify() {

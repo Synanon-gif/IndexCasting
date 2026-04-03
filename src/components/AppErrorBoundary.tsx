@@ -14,7 +14,11 @@ export class AppErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
-    console.error('[AppErrorBoundary]', error.message, error.stack, info.componentStack);
+    if (__DEV__) {
+      console.error('[AppErrorBoundary]', error.message, error.stack, info.componentStack);
+    } else {
+      console.error('[AppErrorBoundary] render error caught');
+    }
   }
 
   handleReload = (): void => {
@@ -26,18 +30,18 @@ export class AppErrorBoundary extends Component<Props, State> {
 
   render(): ReactNode {
     if (this.state.error) {
-      const msg = this.state.error.message || String(this.state.error);
-      const stack = this.state.error.stack || '';
       return (
         <View style={styles.wrap}>
           <Text style={styles.title}>{uiCopy.app.crashTitle}</Text>
           <Text style={styles.hint}>{uiCopy.app.crashBody}</Text>
-          <ScrollView style={styles.scroll}>
-            <Text selectable style={styles.mono}>
-              {msg}
-              {stack ? `\n\n${stack}` : ''}
-            </Text>
-          </ScrollView>
+          {__DEV__ && (
+            <ScrollView style={styles.scroll}>
+              <Text selectable style={styles.mono}>
+                {this.state.error.message || String(this.state.error)}
+                {this.state.error.stack ? `\n\n${this.state.error.stack}` : ''}
+              </Text>
+            </ScrollView>
+          )}
           {Platform.OS === 'web' && (
             <TouchableOpacity style={styles.btn} onPress={this.handleReload}>
               <Text style={styles.btnLabel}>{uiCopy.common.reloadPage}</Text>

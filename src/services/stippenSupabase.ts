@@ -15,51 +15,76 @@ export type ModelTraction = {
 };
 
 export async function stippModel(userId: string, modelId: string): Promise<boolean> {
-  const { error } = await supabase
-    .from('stippen')
-    .insert({ from_user_id: userId, to_model_id: modelId });
-  if (error) {
-    if (error.code === '23505') return true; // Already stippt
-    console.error('stippModel error:', error);
+  try {
+    const { error } = await supabase
+      .from('stippen')
+      .insert({ from_user_id: userId, to_model_id: modelId });
+    if (error) {
+      if (error.code === '23505') return true; // Already stippt
+      console.error('stippModel error:', error);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('stippModel exception:', e);
     return false;
   }
-  return true;
 }
 
 export async function unstippModel(userId: string, modelId: string): Promise<boolean> {
-  const { error } = await supabase
-    .from('stippen')
-    .delete()
-    .eq('from_user_id', userId)
-    .eq('to_model_id', modelId);
-  if (error) { console.error('unstippModel error:', error); return false; }
-  return true;
+  try {
+    const { error } = await supabase
+      .from('stippen')
+      .delete()
+      .eq('from_user_id', userId)
+      .eq('to_model_id', modelId);
+    if (error) { console.error('unstippModel error:', error); return false; }
+    return true;
+  } catch (e) {
+    console.error('unstippModel exception:', e);
+    return false;
+  }
 }
 
 export async function getUserStipps(userId: string): Promise<string[]> {
-  const { data, error } = await supabase
-    .from('stippen')
-    .select('to_model_id')
-    .eq('from_user_id', userId);
-  if (error) { console.error('getUserStipps error:', error); return []; }
-  return (data ?? []).map((d: any) => d.to_model_id);
+  try {
+    const { data, error } = await supabase
+      .from('stippen')
+      .select('to_model_id')
+      .eq('from_user_id', userId);
+    if (error) { console.error('getUserStipps error:', error); return []; }
+    return (data ?? []).map((d: { to_model_id: string }) => d.to_model_id);
+  } catch (e) {
+    console.error('getUserStipps exception:', e);
+    return [];
+  }
 }
 
 export async function getModelTraction(): Promise<ModelTraction[]> {
-  const { data, error } = await supabase
-    .from('model_traction')
-    .select('*')
-    .order('stippen_count', { ascending: false });
-  if (error) { console.error('getModelTraction error:', error); return []; }
-  return (data ?? []) as ModelTraction[];
+  try {
+    const { data, error } = await supabase
+      .from('model_traction')
+      .select('*')
+      .order('stippen_count', { ascending: false });
+    if (error) { console.error('getModelTraction error:', error); return []; }
+    return (data ?? []) as ModelTraction[];
+  } catch (e) {
+    console.error('getModelTraction exception:', e);
+    return [];
+  }
 }
 
 export async function getModelTractionById(modelId: string): Promise<number> {
-  const { data, error } = await supabase
-    .from('model_traction')
-    .select('stippen_count')
-    .eq('model_id', modelId)
-    .maybeSingle();
-  if (error) { console.error('getModelTractionById error:', error); return 0; }
-  return data?.stippen_count ?? 0;
+  try {
+    const { data, error } = await supabase
+      .from('model_traction')
+      .select('stippen_count')
+      .eq('model_id', modelId)
+      .maybeSingle();
+    if (error) { console.error('getModelTractionById error:', error); return 0; }
+    return data?.stippen_count ?? 0;
+  } catch (e) {
+    console.error('getModelTractionById exception:', e);
+    return 0;
+  }
 }

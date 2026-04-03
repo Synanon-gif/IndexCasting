@@ -3551,8 +3551,11 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
         onChangeText={setMessagesSearch}
         placeholder={uiCopy.messages.searchPlaceholder}
         placeholderTextColor={colors.textSecondary}
-        style={[s.chatInput, { marginBottom: spacing.md }]}
+        style={[s.messagesSearchBar, { marginBottom: spacing.sm }]}
         clearButtonMode="while-editing"
+        multiline={false}
+        numberOfLines={1}
+        returnKeyType="search"
       />
 
       {searchActive ? (
@@ -4837,6 +4840,24 @@ const s = StyleSheet.create({
   chatBubbleClient: { backgroundColor: '#E2E0DB' },
   chatBubbleText: { ...typography.body, fontSize: 12, color: colors.textPrimary },
   chatBubbleTextAgency: { color: colors.surface },
+  /** Single-line search on Messages tab — never use flex:1 (RN Web expands to huge height). */
+  messagesSearchBar: {
+    alignSelf: 'stretch',
+    width: '100%' as const,
+    maxWidth: 400,
+    height: 40,
+    minHeight: 40,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 999,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 0,
+    ...typography.body,
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.textPrimary,
+    backgroundColor: colors.surface,
+  },
   chatInput: {
     flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 999,
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,

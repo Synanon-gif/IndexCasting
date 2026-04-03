@@ -11,64 +11,95 @@ export async function findSimilarModels(
   threshold = 0.7,
   count = 10
 ): Promise<Array<{ model_id: string; similarity: number }>> {
-  const { data, error } = await supabase.rpc('match_models', {
-    query_embedding: queryEmbedding,
-    match_threshold: threshold,
-    match_count: count,
-  });
-  if (error) { console.error('findSimilarModels error:', error); return []; }
-  return (data ?? []) as Array<{ model_id: string; similarity: number }>;
+  try {
+    const { data, error } = await supabase.rpc('match_models', {
+      query_embedding: queryEmbedding,
+      match_threshold: threshold,
+      match_count: count,
+    });
+    if (error) { console.error('findSimilarModels error:', error); return []; }
+    return (data ?? []) as Array<{ model_id: string; similarity: number }>;
+  } catch (e) {
+    console.error('findSimilarModels exception:', e);
+    return [];
+  }
 }
 
 export async function upsertModelEmbedding(modelId: string, embedding: number[]): Promise<boolean> {
-  const { error } = await supabase
-    .from('model_embeddings')
-    .upsert({ model_id: modelId, embedding, updated_at: new Date().toISOString() });
-  if (error) { console.error('upsertModelEmbedding error:', error); return false; }
-  return true;
+  try {
+    const { error } = await supabase
+      .from('model_embeddings')
+      .upsert({ model_id: modelId, embedding, updated_at: new Date().toISOString() });
+    if (error) { console.error('upsertModelEmbedding error:', error); return false; }
+    return true;
+  } catch (e) {
+    console.error('upsertModelEmbedding exception:', e);
+    return false;
+  }
 }
 
 export async function upsertClientPreference(userId: string, embedding: number[]): Promise<boolean> {
-  const { error } = await supabase
-    .from('client_preference_embeddings')
-    .upsert({ user_id: userId, embedding, updated_at: new Date().toISOString() });
-  if (error) { console.error('upsertClientPreference error:', error); return false; }
-  return true;
+  try {
+    const { error } = await supabase
+      .from('client_preference_embeddings')
+      .upsert({ user_id: userId, embedding, updated_at: new Date().toISOString() });
+    if (error) { console.error('upsertClientPreference error:', error); return false; }
+    return true;
+  } catch (e) {
+    console.error('upsertClientPreference exception:', e);
+    return false;
+  }
 }
 
 // ---- Daily Boost ----
 
 export async function boostModel(modelId: string): Promise<boolean> {
-  const { error } = await supabase
-    .from('boosts')
-    .insert({ model_id: modelId });
-  if (error) {
-    if (error.code === '23505') return false; // Already boosted today
-    console.error('boostModel error:', error);
+  try {
+    const { error } = await supabase
+      .from('boosts')
+      .insert({ model_id: modelId });
+    if (error) {
+      if (error.code === '23505') return false; // Already boosted today
+      console.error('boostModel error:', error);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('boostModel exception:', e);
     return false;
   }
-  return true;
 }
 
 export async function hasModelBoostedToday(modelId: string): Promise<boolean> {
-  const today = new Date().toISOString().slice(0, 10);
-  const { data } = await supabase
-    .from('boosts')
-    .select('id')
-    .eq('model_id', modelId)
-    .eq('boosted_at', today)
-    .maybeSingle();
-  return !!data;
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const { data, error } = await supabase
+      .from('boosts')
+      .select('id')
+      .eq('model_id', modelId)
+      .eq('boosted_at', today)
+      .maybeSingle();
+    if (error) { console.error('hasModelBoostedToday error:', error); return false; }
+    return !!data;
+  } catch (e) {
+    console.error('hasModelBoostedToday exception:', e);
+    return false;
+  }
 }
 
 export async function getBoostedModelIds(): Promise<string[]> {
-  const today = new Date().toISOString().slice(0, 10);
-  const { data, error } = await supabase
-    .from('boosts')
-    .select('model_id')
-    .eq('boosted_at', today);
-  if (error) return [];
-  return (data ?? []).map((d: any) => d.model_id);
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const { data, error } = await supabase
+      .from('boosts')
+      .select('model_id')
+      .eq('boosted_at', today);
+    if (error) { console.error('getBoostedModelIds error:', error); return []; }
+    return (data ?? []).map((d: { model_id: string }) => d.model_id);
+  } catch (e) {
+    console.error('getBoostedModelIds exception:', e);
+    return [];
+  }
 }
 
 // ---- Gamification: Badges ----
@@ -81,29 +112,40 @@ export type Badge = {
 };
 
 export async function getUserBadges(userId: string): Promise<Badge[]> {
-  const { data, error } = await supabase
-    .from('badges')
-    .select('*')
-    .eq('user_id', userId)
-    .order('earned_at', { ascending: false });
-  if (error) return [];
-  return (data ?? []) as Badge[];
+  try {
+    const { data, error } = await supabase
+      .from('badges')
+      .select('*')
+      .eq('user_id', userId)
+      .order('earned_at', { ascending: false });
+    if (error) { console.error('getUserBadges error:', error); return []; }
+    return (data ?? []) as Badge[];
+  } catch (e) {
+    console.error('getUserBadges exception:', e);
+    return [];
+  }
 }
 
 export async function awardBadge(userId: string, badgeType: string): Promise<boolean> {
-  const { data: existing } = await supabase
-    .from('badges')
-    .select('id')
-    .eq('user_id', userId)
-    .eq('badge_type', badgeType)
-    .maybeSingle();
-  if (existing) return false; // Already has badge
+  try {
+    const { data: existing, error: checkError } = await supabase
+      .from('badges')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('badge_type', badgeType)
+      .maybeSingle();
+    if (checkError) { console.error('awardBadge check error:', checkError); return false; }
+    if (existing) return false; // Already has badge
 
-  const { error } = await supabase
-    .from('badges')
-    .insert({ user_id: userId, badge_type: badgeType });
-  if (error) { console.error('awardBadge error:', error); return false; }
-  return true;
+    const { error } = await supabase
+      .from('badges')
+      .insert({ user_id: userId, badge_type: badgeType });
+    if (error) { console.error('awardBadge error:', error); return false; }
+    return true;
+  } catch (e) {
+    console.error('awardBadge exception:', e);
+    return false;
+  }
 }
 
 // ---- Gamification: Streaks ----
@@ -116,50 +158,60 @@ export type Streak = {
 };
 
 export async function getStreak(userId: string): Promise<Streak | null> {
-  const { data, error } = await supabase
-    .from('streaks')
-    .select('*')
-    .eq('user_id', userId)
-    .maybeSingle();
-  if (error) return null;
-  return data as Streak | null;
+  try {
+    const { data, error } = await supabase
+      .from('streaks')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (error) { console.error('getStreak error:', error); return null; }
+    return data as Streak | null;
+  } catch (e) {
+    console.error('getStreak exception:', e);
+    return null;
+  }
 }
 
 export async function updateStreak(userId: string): Promise<Streak | null> {
-  const today = new Date().toISOString().slice(0, 10);
-  const existing = await getStreak(userId);
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const existing = await getStreak(userId);
 
-  if (!existing) {
+    if (!existing) {
+      const { data, error } = await supabase
+        .from('streaks')
+        .insert({ user_id: userId, current_streak: 1, longest_streak: 1, last_active_date: today })
+        .select()
+        .single();
+      if (error) { console.error('updateStreak insert error:', error); return null; }
+      return data as Streak;
+    }
+
+    if (existing.last_active_date === today) return existing;
+
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().slice(0, 10);
+
+    const newStreak = existing.last_active_date === yesterdayStr
+      ? existing.current_streak + 1
+      : 1;
+    const newLongest = Math.max(existing.longest_streak, newStreak);
+
     const { data, error } = await supabase
       .from('streaks')
-      .insert({ user_id: userId, current_streak: 1, longest_streak: 1, last_active_date: today })
+      .update({
+        current_streak: newStreak,
+        longest_streak: newLongest,
+        last_active_date: today,
+      })
+      .eq('user_id', userId)
       .select()
       .single();
-    if (error) return null;
+    if (error) { console.error('updateStreak update error:', error); return null; }
     return data as Streak;
+  } catch (e) {
+    console.error('updateStreak exception:', e);
+    return null;
   }
-
-  if (existing.last_active_date === today) return existing;
-
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayStr = yesterday.toISOString().slice(0, 10);
-
-  const newStreak = existing.last_active_date === yesterdayStr
-    ? existing.current_streak + 1
-    : 1;
-  const newLongest = Math.max(existing.longest_streak, newStreak);
-
-  const { data, error } = await supabase
-    .from('streaks')
-    .update({
-      current_streak: newStreak,
-      longest_streak: newLongest,
-      last_active_date: today,
-    })
-    .eq('user_id', userId)
-    .select()
-    .single();
-  if (error) return null;
-  return data as Streak;
 }

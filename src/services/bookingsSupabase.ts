@@ -131,20 +131,18 @@ export async function createBooking(booking: {
 export async function updateBookingStatus(
   bookingId: string,
   status: 'confirmed' | 'completed' | 'cancelled' | 'invoiced',
-  fromStatus?: 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'invoiced'
+  fromStatus: 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'invoiced',
 ): Promise<boolean> {
   try {
-    let q = supabase
+    // Optimistic concurrency guard: only the transition from the expected prior
+    // state succeeds. Returns 0 rows if another request already changed the
+    // status, preventing double-confirm / double-cancel races.
+    const { data, error } = await supabase
       .from('bookings')
       .update({ status })
-      .eq('id', bookingId);
-    if (fromStatus) {
-      // Optimistic concurrency guard: only transitions from the expected
-      // prior state succeed. Returns 0 rows if another request already
-      // changed the status, preventing double-confirm / double-cancel.
-      q = q.eq('status', fromStatus);
-    }
-    const { data, error } = await q.select('id');
+      .eq('id', bookingId)
+      .eq('status', fromStatus)
+      .select('id');
     if (error) { console.error('updateBookingStatus error:', error); return false; }
     if (!data || data.length === 0) {
       console.warn('updateBookingStatus: no row updated — concurrent state change or wrong fromStatus', { bookingId, fromStatus, targetStatus: status });

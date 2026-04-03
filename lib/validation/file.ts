@@ -14,6 +14,8 @@ export const ALLOWED_MIME_TYPES = [
   'image/jpeg',
   'image/png',
   'image/webp',
+  'image/heic',
+  'image/heif',
   'application/pdf',
 ] as const;
 
@@ -43,6 +45,9 @@ const MAGIC_BYTES: Record<string, number[][]> = {
   'application/pdf': [
     [0x25, 0x50, 0x44, 0x46], // "%PDF"
   ],
+  // HEIC/HEIF: special-cased below (ftyp box at offset 4, brand at offset 8)
+  'image/heic': [],
+  'image/heif': [],
 };
 
 /**
@@ -79,6 +84,26 @@ export async function checkMagicBytes(file: File | Blob): Promise<ValidationResu
   const header = await readFileHeader(file, 12);
   if (!header || header.length === 0) {
     // Cannot read file in this environment — allow (MIME check is still enforced)
+    return { ok: true };
+  }
+
+  // HEIC/HEIF special case: ftyp box at offset 4-7, HEIC brand at offset 8-11
+  if (mimeType === 'image/heic' || mimeType === 'image/heif') {
+    const heicHeader = await readFileHeader(file, 12);
+    if (!heicHeader || heicHeader.length < 12) return { ok: true };
+    const isFtyp =
+      heicHeader[4] === 0x66 && // 'f'
+      heicHeader[5] === 0x74 && // 't'
+      heicHeader[6] === 0x79 && // 'y'
+      heicHeader[7] === 0x70;   // 'p'
+    if (!isFtyp) {
+      return { ok: false, error: 'File content does not match the declared type (HEIC/HEIF).' };
+    }
+    const brand = String.fromCharCode(heicHeader[8], heicHeader[9], heicHeader[10], heicHeader[11]);
+    const validBrands = ['heic', 'heix', 'hevc', 'hevx', 'mif1', 'msf1', 'heif', 'heim', 'heis', 'hevm', 'hevs'];
+    if (!validBrands.includes(brand)) {
+      return { ok: false, error: 'File content does not match the declared type (HEIC/HEIF).' };
+    }
     return { ok: true };
   }
 
@@ -161,6 +186,8 @@ const MIME_TO_EXTENSIONS: Record<string, string[]> = {
   'image/jpeg': ['jpg', 'jpeg'],
   'image/png':  ['png'],
   'image/webp': ['webp'],
+  'image/heic': ['heic', 'heif'],
+  'image/heif': ['heif', 'heic'],
   'application/pdf': ['pdf'],
 };
 

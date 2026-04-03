@@ -107,6 +107,30 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [linkId]);
 
+  // Polling fallback: anon users have no RLS-based SELECT on guest_links, so
+  // Supabase Realtime delivers no events to unauthenticated guests (C-3 fix
+  // removed the broad anon SELECT policy). Poll every 60 s as a safety net so
+  // that deactivation / expiry is always detected within one poll cycle — even
+  // when the Realtime channel is silent.
+  useEffect(() => {
+    const POLL_INTERVAL_MS = 60_000;
+
+    const id = setInterval(async () => {
+      try {
+        const g = await getGuestLink(linkId);
+        if (!g) {
+          setPageError(copy.invalidOrExpired);
+          clearInterval(id);
+        }
+      } catch {
+        // Silently ignore network errors — the next poll cycle will retry.
+      }
+    }, POLL_INTERVAL_MS);
+
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkId]);
+
   const toggleModel = (id: string) => {
     setSelectedModelIds((prev) => {
       const next = new Set(prev);

@@ -344,13 +344,15 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         try {
-          // Store rounded (privacy-safe) coordinates — never exact GPS
-          setUserLat(roundCoord(pos.coords.latitude));
-          setUserLng(roundCoord(pos.coords.longitude));
+          // Round coordinates before storing and before sending to any external API (privacy).
+          const lat = roundCoord(pos.coords.latitude);
+          const lng = roundCoord(pos.coords.longitude);
+          setUserLat(lat);
+          setUserLng(lng);
 
           const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&format=json`,
-            { headers: { 'Accept-Language': 'en' } },
+            `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
+            { headers: { 'Accept-Language': 'en', 'User-Agent': 'IndexCasting/1.0' } },
           );
           const data = await res.json();
           const city =
@@ -359,9 +361,11 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             data.address?.village ||
             null;
           if (city) setUserCity(city);
-        } catch {}
+        } catch (e) {
+          console.warn('[geolocation] reverse geocoding failed:', e);
+        }
       },
-      () => {},
+      (err) => { console.warn('[geolocation] position error:', err.code, err.message); },
       { timeout: 10000 },
     );
   }, []);
@@ -492,7 +496,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         legsInseamMax: preset.legsInseamMax ?? prev.legsInseamMax,
       }));
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [realClientId]);
 
   const loadClientCalendar = async () => {
@@ -890,7 +894,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       filteredModels.length && !packageViewState && !sharedProjectId
         ? filteredModels[currentIndex % filteredModels.length]
         : null,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
     [filteredModels, currentIndex, packageViewState, sharedProjectId],
   );
 
@@ -2982,6 +2986,9 @@ const MessagesView: React.FC<MessagesViewProps> = ({
           placeholder={uiCopy.messages.searchPlaceholderClient}
           placeholderTextColor={colors.textSecondary}
           style={[styles.searchInput, { marginBottom: spacing.sm }]}
+          multiline={false}
+          numberOfLines={1}
+          returnKeyType="search"
         />
       )}
       {showClientMessagesTabs && (
@@ -5204,15 +5211,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: spacing.xs,
   },
+  /** Messages tab — compact pill search (matches agency web). */
   searchInput: {
+    alignSelf: 'stretch',
+    width: '100%' as const,
+    maxWidth: 400,
+    height: 40,
+    minHeight: 40,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    fontSize: 14,
+    borderRadius: 999,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 0,
+    fontSize: 13,
+    lineHeight: 18,
     color: colors.textPrimary,
-    backgroundColor: colors.background,
+    backgroundColor: colors.surface,
   },
   threadList: {
     flex: 1,

@@ -1,27 +1,45 @@
 import { supabase } from '../../lib/supabase';
 import { splitProfileDisplayName } from '../utils/applicantNameFromProfile';
-import { validateFile } from '../../lib/validation';
+import { validateFile, checkMagicBytes } from '../../lib/validation';
+import { convertHeicToJpegIfNeeded } from './imageUtils';
+import { toStorageUri, resolveStorageUrl } from '../storage/storageUrl';
 
 /**
  * Model-Bewerbungen (Apply) – in Supabase gespeichert.
- * model_applications (inkl. images = URLs); Bewerbungsfotos in Storage (documentspictures/model-applications/…).
- * Public bucket so image URLs work; "documents" stays private.
+ * model_applications (inkl. images = Storage-URIs); Bewerbungsfotos in Storage
+ * (documentspictures/model-applications/…) im privaten Bucket.
+ *
+ * M-3 fix: uploadApplicationImage now stores the canonical supabase-storage://
+ * URI (not a public URL) matching the pattern used by model_photos. Callers
+ * must use resolveApplicationImageUrl() to display images.
  */
-const PUBLIC_IMAGES_BUCKET = 'documentspictures';
+const APPLICATION_IMAGES_BUCKET = 'documentspictures';
 const APPLICATION_IMAGES_PREFIX = 'model-applications';
 
-/** Upload one application image (blob or file) to Storage; returns public URL or null. */
+/**
+ * Upload one application image to Storage.
+ * Returns a canonical supabase-storage:// URI for persistent DB storage,
+ * or null on failure. Use resolveApplicationImageUrl() to get a signed URL
+ * for display.
+ */
 export async function uploadApplicationImage(file: Blob | File, slot: string): Promise<string | null> {
-  // MIME type and size validation — application images must be jpeg/png/webp.
-  const fileValidation = validateFile(file);
-  if (!fileValidation.ok) {
-    console.error('uploadApplicationImage: file validation failed', fileValidation.error);
+  file = await convertHeicToJpegIfNeeded(file);
+
+  const mimeValidation = validateFile(file);
+  if (!mimeValidation.ok) {
+    console.error('uploadApplicationImage: file validation failed', mimeValidation.error);
+    return null;
+  }
+
+  const magicCheck = await checkMagicBytes(file);
+  if (!magicCheck.ok) {
+    console.error('uploadApplicationImage: magic bytes check failed', magicCheck.error);
     return null;
   }
 
   const ext = file instanceof File ? (file.name.split('.').pop() || 'jpg') : 'jpg';
   const path = `${APPLICATION_IMAGES_PREFIX}/${Date.now()}-${slot}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-  const { error } = await supabase.storage.from(PUBLIC_IMAGES_BUCKET).upload(path, file, {
+  const { error } = await supabase.storage.from(APPLICATION_IMAGES_BUCKET).upload(path, file, {
     contentType: file.type || 'image/jpeg',
     upsert: false,
   });
@@ -29,8 +47,16 @@ export async function uploadApplicationImage(file: Blob | File, slot: string): P
     console.error('uploadApplicationImage error:', error);
     return null;
   }
-  const { data } = supabase.storage.from(PUBLIC_IMAGES_BUCKET).getPublicUrl(path);
-  return data?.publicUrl ?? null;
+  return toStorageUri(APPLICATION_IMAGES_BUCKET, path);
+}
+
+/**
+ * Resolves a stored application image URI or legacy URL to a short-lived
+ * signed URL suitable for display. Backward-compatible: handles both the new
+ * supabase-storage:// URI format and legacy full public URLs.
+ */
+export async function resolveApplicationImageUrl(uriOrUrl: string): Promise<string> {
+  return resolveStorageUrl(uriOrUrl);
 }
 
 /** Von PostgREST: Embed über FK agency_id (nicht accepted_by_agency_id). */

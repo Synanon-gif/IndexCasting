@@ -47,6 +47,24 @@ export async function isCurrentUserAdmin(): Promise<boolean> {
   }
 }
 
+/** Returns true only for the platform Super-Admin (is_super_admin = true).
+ *  Super-Admin is the sole identity allowed to read admin_logs. */
+export async function isCurrentUserSuperAdmin(): Promise<boolean> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return false;
+    const { data } = await supabase
+      .from('profiles')
+      .select('is_super_admin')
+      .eq('id', user.id)
+      .maybeSingle();
+    return data?.is_super_admin === true;
+  } catch (e) {
+    console.error('isCurrentUserSuperAdmin exception:', e);
+    return false;
+  }
+}
+
 export async function getAllProfiles(filter?: {
   activeOnly?: boolean;
   inactiveOnly?: boolean;
@@ -205,11 +223,11 @@ export async function adminUpdateProfileFull(
 }
 
 export async function getAdminLogs(limit = 100, offset = 0): Promise<AdminLogEntry[]> {
-  // Defense-in-depth client-side guard (DB RLS is the authoritative enforcement).
-  // This prevents non-admin users from hitting the table query at all. (VULN-03 fix)
-  const callerIsAdmin = await isCurrentUserAdmin();
-  if (!callerIsAdmin) {
-    console.error('[Admin] getAdminLogs: non-admin access attempt blocked.');
+  // Only Super-Admin can read audit logs — regular admins are blocked by RLS.
+  // Client-side guard mirrors the DB policy (super_admin_logs_select).
+  const callerIsSuperAdmin = await isCurrentUserSuperAdmin();
+  if (!callerIsSuperAdmin) {
+    console.error('[Admin] getAdminLogs: requires is_super_admin — access blocked.');
     return [];
   }
   try {
@@ -303,6 +321,9 @@ export async function adminSetOrganizationMemberRole(
 }
 
 export async function writeAdminLog(action: string, targetUserId?: string, details?: Record<string, unknown>): Promise<void> {
+  // Any admin can insert log entries — they cannot READ the log (is_super_admin
+  // required for SELECT), so they cannot learn what is logged or craft entries
+  // to obscure specific existing records.
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
