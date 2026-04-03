@@ -281,6 +281,14 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   const [userLng, setUserLng] = useState<number | null>(null);
   /** Near me models fetched from the radius RPC (separate from territory-based baseModels). */
   const [nearbyModels, setNearbyModels] = useState<ModelSummary[]>([]);
+  /**
+   * GDPR: user has consented to location data being sent to Nominatim (OpenStreetMap).
+   * Stored in localStorage so it persists across sessions.
+   */
+  const [geoConsentGiven, setGeoConsentGiven] = useState<boolean>(
+    () => typeof window !== 'undefined' && window.localStorage.getItem('ic_geo_consent_v1') === '1',
+  );
+  const [showGeoConsentBanner, setShowGeoConsentBanner] = useState(false);
   const [calendarItems, setCalendarItems] = useState<ClientCalendarItem[]>([]);
   const [manualCalendarEvents, setManualCalendarEvents] = useState<UserCalendarEvent[]>([]);
   const [bookingEventEntries, setBookingEventEntries] = useState<CalendarEntry[]>([]);
@@ -353,8 +361,23 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     });
   }, [selectedManualEvent?.id]);
 
+  /**
+   * GDPR-compliant geolocation:
+   * Only triggered when the user explicitly enables "Near me" AND has consented
+   * to sharing their location with OpenStreetMap Nominatim (third-party geocoder).
+   * If no consent has been recorded yet, the consent banner is shown first.
+   */
   useEffect(() => {
+    if (!filters.nearby) return;
     if (!navigator.geolocation) return;
+    // If coordinates are already resolved, skip re-requesting.
+    if (userLat !== null && userLng !== null) return;
+
+    if (!geoConsentGiven) {
+      setShowGeoConsentBanner(true);
+      return;
+    }
+
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         try {
@@ -382,7 +405,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       (err) => { console.warn('[geolocation] position error:', err.code, err.message); },
       { timeout: 10000 },
     );
-  }, []);
+  }, [filters.nearby, geoConsentGiven, userLat, userLng]);
 
   // Sync projects FROM Supabase when the client org is resolved.
   // Supabase is the source of truth; localStorage is only a fallback for guests.
@@ -1280,8 +1303,65 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     }
   };
 
+  const handleGeoConsentAccept = () => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('ic_geo_consent_v1', '1');
+    }
+    setGeoConsentGiven(true);
+    setShowGeoConsentBanner(false);
+  };
+
+  const handleGeoConsentDecline = () => {
+    setShowGeoConsentBanner(false);
+    setFilters((prev) => ({ ...prev, nearby: false }));
+  };
+
   return (
     <View style={styles.root}>
+      {/* GDPR: Geolocation + Nominatim consent banner — shown the first time "Near me" is activated */}
+      {showGeoConsentBanner && (
+        <View style={{
+          position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.55)', zIndex: 9999,
+          alignItems: 'center', justifyContent: 'center', padding: spacing.lg,
+        }}>
+          <View style={{
+            backgroundColor: colors.surface, borderRadius: 12, padding: spacing.lg,
+            maxWidth: 420, width: '100%', gap: spacing.md,
+          }}>
+            <Text style={{ ...typography.heading, fontSize: 16, color: colors.textPrimary }}>
+              Location Access
+            </Text>
+            <Text style={{ ...typography.body, color: colors.textSecondary, lineHeight: 20 }}>
+              To show models near you, IndexCasting will request your device location and send
+              your approximate coordinates to{' '}
+              <Text style={{ color: colors.textPrimary }}>OpenStreetMap Nominatim</Text>
+              {' '}(a third-party geocoder) to determine your city.
+            </Text>
+            <Text style={{ ...typography.caption, color: colors.textSecondary }}>
+              Your coordinates are rounded to ~5 km precision and are not stored on our servers.
+              You can withdraw consent at any time by disabling the "Near me" filter.
+            </Text>
+            <View style={{ flexDirection: 'row', gap: spacing.sm, justifyContent: 'flex-end' }}>
+              <TouchableOpacity
+                onPress={handleGeoConsentDecline}
+                style={{ paddingHorizontal: spacing.md, paddingVertical: spacing.sm }}
+              >
+                <Text style={{ color: colors.textSecondary, fontWeight: '500' }}>Decline</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleGeoConsentAccept}
+                style={{
+                  backgroundColor: colors.primary, borderRadius: 8,
+                  paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
+                }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '600' }}>Allow Location</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
       <View style={[styles.appShell, { paddingBottom: bottomTabInset }]}>
         <View style={styles.topBar}>
           <View style={styles.topBarRow}>

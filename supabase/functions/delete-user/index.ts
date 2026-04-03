@@ -115,6 +115,53 @@ Deno.serve(async (req: Request) => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
+    // ── GDPR: Explicit storage cleanup ────────────────────────────────────────
+    // Storage objects are keyed by user-id and are NOT covered by DB cascades.
+    //
+    // Cascade chain (auth.users → public schema) that runs automatically:
+    //   profiles (CASCADE) → organization_members, push_tokens, notifications,
+    //   activity_logs, bookers, badges, consent_log, legal_acceptances,
+    //   verifications, post_likes (all CASCADE).
+    //   models.user_id → SET NULL (model record stays; agency owns the content).
+    //
+    // Storage paths that MUST be deleted explicitly:
+    //   documents/{userId}/*    – option-request documents uploaded by user
+    //   verifications/{userId}/* – identity verification uploads
+    const storageCleanupErrors: string[] = [];
+
+    const storageBuckets: Array<{ bucket: string; prefix: string }> = [
+      { bucket: 'documents', prefix: `documents/${targetUserId}/` },
+      { bucket: 'documentspictures', prefix: `verifications/${targetUserId}/` },
+    ];
+
+    for (const { bucket, prefix } of storageBuckets) {
+      try {
+        // List all objects under the user's prefix (max 1000 per call; iterate if needed).
+        const { data: objects, error: listError } = await adminClient.storage
+          .from(bucket)
+          .list(prefix, { limit: 1000 });
+
+        if (listError) {
+          console.error(`delete-user: storage list error (${bucket}/${prefix}):`, listError.message);
+          storageCleanupErrors.push(`list:${bucket}`);
+          continue;
+        }
+
+        if (objects && objects.length > 0) {
+          const paths = objects.map((obj) => `${prefix}${obj.name}`);
+          const { error: removeError } = await adminClient.storage.from(bucket).remove(paths);
+          if (removeError) {
+            console.error(`delete-user: storage remove error (${bucket}):`, removeError.message);
+            storageCleanupErrors.push(`remove:${bucket}`);
+          }
+        }
+      } catch (storageEx) {
+        console.error(`delete-user: storage exception (${bucket}):`, storageEx);
+        storageCleanupErrors.push(`exception:${bucket}`);
+      }
+    }
+
+    // ── Auth deletion (triggers all DB cascades) ──────────────────────────────
     const { error: deleteError } = await adminClient.auth.admin.deleteUser(targetUserId);
 
     if (deleteError) {
@@ -127,7 +174,10 @@ Deno.serve(async (req: Request) => {
     }
 
     return new Response(
-      JSON.stringify({ ok: true }),
+      JSON.stringify({
+        ok: true,
+        ...(storageCleanupErrors.length > 0 && { storage_warnings: storageCleanupErrors }),
+      }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
   } catch (e) {

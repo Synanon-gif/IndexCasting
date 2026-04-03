@@ -135,8 +135,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   // Supabase-Client mit Service Role für interne Abfragen
-  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (!supabaseUrl || !serviceKey) {
+    console.error('[send-push] SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY env var is not set');
+    return new Response('Service Unavailable: missing configuration', { status: 503 });
+  }
   const supabase = createClient(supabaseUrl, serviceKey);
 
   // Alle Ziel-User-IDs ermitteln (direkte User + Org-Members)
