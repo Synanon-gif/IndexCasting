@@ -243,6 +243,28 @@ export async function getGuestLinkModels(linkId: string): Promise<GuestLinkModel
   }
 }
 
+/**
+ * Auditable guest link revocation via SECURITY DEFINER RPC.
+ * Verifies caller belongs to the owning agency, logs unauthorized attempts
+ * as security_events, and creates an audit_trail entry on success.
+ * Prefer this over deleteGuestLink() for audit-sensitive contexts.
+ */
+export async function revokeGuestAccess(linkId: string): Promise<boolean> {
+  try {
+    const { data, error } = await supabase.rpc('revoke_guest_access', {
+      p_link_id: linkId,
+    });
+    if (error) {
+      console.error('revokeGuestAccess error:', error);
+      return false;
+    }
+    return data === true;
+  } catch (e) {
+    console.error('revokeGuestAccess exception:', e);
+    return false;
+  }
+}
+
 export function buildGuestUrl(linkId: string): string {
   if (typeof window !== 'undefined') {
     const base = window.location.origin + (window.location.pathname || '');

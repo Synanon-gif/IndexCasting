@@ -383,26 +383,21 @@ export async function setAgencyCounterOffer(
 
 /**
  * Agency accepts the client's proposed price.
- * Guard: client_price_status must currently be 'pending' (client has an active
- * offer) AND request must still be in_negotiation — prevents accepting a price
- * that has already been superseded by a newer counter-offer round.
+ * Routes through the SECURITY DEFINER RPC agency_confirm_client_price()
+ * which validates server-side that the caller is an actual agency org member.
+ *
+ * EXPLOIT-C1 fix: The previous direct UPDATE allowed any participant
+ * (incl. the client) to flip client_price_status to 'accepted'.
+ * The RPC enforces role at DB level, independent of client-side RLS.
  */
 export async function agencyAcceptClientPrice(id: string): Promise<boolean> {
   try {
-    const { data, error } = await supabase
-      .from('option_requests')
-      .update({
-        client_price_status: 'accepted',
-        final_status: 'option_confirmed',
-      })
-      .eq('id', id)
-      .eq('status', 'in_negotiation')
-      .eq('client_price_status', 'pending')
-      .select('id')
-      .maybeSingle();
-    if (error) { console.error('agencyAcceptClientPrice error:', error); return false; }
-    if (!data?.id) {
-      console.warn('agencyAcceptClientPrice: no row updated — offer no longer pending or request not in_negotiation', id);
+    const { data, error } = await supabase.rpc('agency_confirm_client_price', {
+      p_request_id: id,
+    });
+    if (error) { console.error('agencyAcceptClientPrice RPC error:', error); return false; }
+    if (!data) {
+      console.warn('agencyAcceptClientPrice: RPC returned false — request not in expected state or caller not agency member', id);
       return false;
     }
     return true;
@@ -438,27 +433,23 @@ export async function agencyRejectClientPrice(id: string): Promise<boolean> {
   }
 }
 
+/**
+ * Client accepts the agency's counter-offer price.
+ * Routes through the SECURITY DEFINER RPC client_accept_counter_offer()
+ * which validates server-side that the caller is the actual client.
+ *
+ * EXPLOIT-C1 fix: The previous direct UPDATE allowed any participant
+ * (incl. the agency) to self-approve their own counter-offer.
+ * The RPC enforces role at DB level, independent of client-side RLS.
+ */
 export async function clientAcceptCounterPrice(id: string): Promise<boolean> {
   try {
-    // Guard: only accept when a counter-offer is actually pending AND the
-    // request is still in active negotiation. Mirrors the agencyAcceptClientPrice
-    // guard to prevent accepting a counter-offer at the wrong workflow state
-    // (e.g. if the request was rejected or already confirmed concurrently).
-    const { data, error } = await supabase
-      .from('option_requests')
-      .update({
-        client_price_status: 'accepted',
-        final_status: 'option_confirmed',
-      })
-      .eq('id', id)
-      .eq('status', 'in_negotiation')
-      .eq('client_price_status', 'pending')
-      .eq('final_status', 'option_pending')
-      .select('id')
-      .maybeSingle();
-    if (error) { console.error('clientAcceptCounterPrice error:', error); return false; }
-    if (!data?.id) {
-      console.warn('clientAcceptCounterPrice: no row updated — counter-offer no longer pending or request not in_negotiation');
+    const { data, error } = await supabase.rpc('client_accept_counter_offer', {
+      p_request_id: id,
+    });
+    if (error) { console.error('clientAcceptCounterPrice RPC error:', error); return false; }
+    if (!data) {
+      console.warn('clientAcceptCounterPrice: RPC returned false — counter-offer no longer pending or caller not client', id);
       return false;
     }
     return true;

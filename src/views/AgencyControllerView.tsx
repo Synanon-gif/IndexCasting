@@ -64,6 +64,7 @@ import { OrgMessengerInline } from '../components/OrgMessengerInline';
 import { AgencySettingsTab } from '../components/AgencySettingsTab';
 // Recruiting chats (BookingChatView) live under Messages → Recruiting chats.
 import { uploadModelPhoto } from '../services/modelPhotosSupabase';
+import { confirmImageRights } from '../services/gdprComplianceSupabase';
 import { ModelMediaSettingsPanel } from '../components/ModelMediaSettingsPanel';
 import { getTerritoriesForModel, getTerritoriesForAgency, upsertTerritoriesForModel, bulkAddTerritoriesForModels } from '../services/territoriesSupabase';
 import { bulkUpsertModelLocations, upsertModelLocation } from '../services/modelLocationsSupabase';
@@ -1649,6 +1650,7 @@ const MyModelsTab: React.FC<{
   const [addLoading, setAddLoading] = useState(false);
   const [addModelImageFiles, setAddModelImageFiles] = useState<File[]>([]);
   const [addModelFeedback, setAddModelFeedback] = useState<string | null>(null);
+  const [addModelImageRightsConfirmed, setAddModelImageRightsConfirmed] = useState(false);
 
   const [showMediaslideInput, setShowMediaslideInput] = useState(false);
   const [showNetwalkInput, setShowNetwalkInput] = useState(false);
@@ -1963,10 +1965,24 @@ const MyModelsTab: React.FC<{
       setAddFields({});
       setAddSex(null);
       setAddModelImageFiles([]);
+      setAddModelImageRightsConfirmed(false);
       setShowAddForm(false);
 
       // Uploads should not make creation fail.
       if (filesToUpload.length > 0) {
+        // EXPLOIT-C2 fix: Require image rights confirmation before any upload.
+        if (!addModelImageRightsConfirmed) {
+          setAddModelFeedback('Please confirm you have all image rights before uploading photos.');
+          setAddLoading(false);
+          return;
+        }
+        // Record the rights confirmation in the audit table.
+        const { data: { user: currentUser } } = await supabase.auth.getUser();
+        if (currentUser) {
+          await confirmImageRights(currentUser.id, createdModelId).catch((e) =>
+            console.error('confirmImageRights error (non-fatal):', e)
+          );
+        }
         const uploadedUrls: string[] = [];
         for (const file of filesToUpload) {
           const result = await uploadModelPhoto(createdModelId, file);
@@ -2834,6 +2850,24 @@ const MyModelsTab: React.FC<{
               />
             )}
           </View>
+          {addModelImageFiles.length > 0 && (
+            <TouchableOpacity
+              style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 10, marginTop: 4 }}
+              onPress={() => setAddModelImageRightsConfirmed(!addModelImageRightsConfirmed)}
+            >
+              <View style={{
+                width: 18, height: 18, borderRadius: 3, borderWidth: 1.5,
+                borderColor: addModelImageRightsConfirmed ? colors.accentGreen : colors.textSecondary,
+                backgroundColor: addModelImageRightsConfirmed ? colors.accentGreen : 'transparent',
+                marginRight: 8, marginTop: 2, alignItems: 'center', justifyContent: 'center',
+              }}>
+                {addModelImageRightsConfirmed && <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>✓</Text>}
+              </View>
+              <Text style={[s.metaText, { flex: 1 }]}>
+                I confirm I hold all necessary rights and consents to upload these images.
+              </Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             style={[s.saveBtn, (!addFields.name?.trim() || addLoading) && { opacity: 0.4 }]}
             onPress={handleAddModel}

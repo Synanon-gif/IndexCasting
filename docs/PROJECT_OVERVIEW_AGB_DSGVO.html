@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>IndexCasting – Projektübersicht für AGB &amp; Datenschutz (DSGVO)</title>
+  <style>
+    :root {
+      --text: #1a1a1a;
+      --muted: #555;
+      --border: #ccc;
+      --bg: #fff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      line-height: 1.55;
+      color: var(--text);
+      background: var(--bg);
+      max-width: 52rem;
+      margin: 0 auto;
+      padding: 2rem 1.25rem 4rem;
+    }
+    h1 { font-size: 1.5rem; margin-top: 0; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+    h2 { font-size: 1.2rem; margin-top: 2rem; }
+    h3 { font-size: 1.05rem; margin-top: 1.25rem; }
+    p, li { margin: 0.5rem 0; }
+    ul { padding-left: 1.25rem; }
+    hr { border: none; border-top: 1px solid var(--border); margin: 1.5rem 0; }
+    .meta { color: var(--muted); font-size: 0.95rem; }
+    .note { background: #f6f6f6; padding: 0.75rem 1rem; border-radius: 6px; margin: 1rem 0; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.95rem; margin: 0.75rem 0; }
+    th, td { border: 1px solid var(--border); padding: 0.45rem 0.6rem; text-align: left; vertical-align: top; }
+    th { background: #f0f0f0; }
+    code { font-size: 0.9em; background: #f0f0f0; padding: 0.1em 0.35em; border-radius: 3px; }
+    @media print {
+      body { padding: 0; max-width: none; }
+      a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 0.85em; color: #666; }
+    }
+  </style>
+</head>
+<body>
+
+  <p class="meta"><strong>Stand:</strong> April 2026 · <strong>Quelle:</strong> gleicher Inhalt wie <code>PROJECT_OVERVIEW_AGB_DSGVO.md</code></p>
+  <p class="note"><strong>Download als PDF:</strong> Browser-Menü <em>Drucken</em> → Ziel <em>Als PDF speichern</em>. <strong>Word:</strong> Datei in Word öffnen (oder PDF in Word importieren), falls unterstützt.</p>
+
+  <h1>IndexCasting – Projektübersicht für AGB &amp; Datenschutz (DSGVO)</h1>
+
+  <p><strong>Zweck dieser Datei:</strong> Sachliche Beschreibung des Produkts, der Rollen, der Datenverarbeitung und der technischen Infrastruktur – als <strong>Arbeitsgrundlage</strong> für Anwälte und Datenschutzbeauftragte bei der Ausarbeitung von AGB, Datenschutzerklärung und ggf. Auftragsverarbeitungsverträgen.</p>
+  <p><strong>Kein Rechtsrat:</strong> Dieses Dokument ersetzt keine Rechtsberatung. Inhalte basieren auf dem Code- und Architekturstand des Repositories und können sich ändern.</p>
+
+  <hr />
+
+  <h2>1. Produkt in einem Satz</h2>
+  <p><strong>IndexCasting</strong> ist eine digitale Plattform (Web/App) für <strong>Fashion-Castings</strong>: Agenturen verwalten Model-Roster und Recruiting, <strong>Clients</strong> entdecken Models und verhandeln Optionen, <strong>Models</strong> nutzen Profil, Verfügbarkeit und Kommunikation – mit Fokus auf <strong>schnelle Messaging</strong>, <strong>Swipe-/Auswahl-UX</strong> und <strong>Mediaslide-konforme Modeldaten</strong> (Maße, Kategorien).</p>
+
+  <hr />
+
+  <h2>2. Zielgruppen und Rollen</h2>
+  <h3>2.1 Nutzertypen (fachlich)</h3>
+  <table>
+    <thead><tr><th>Rolle</th><th>Kurzbeschreibung</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Model</strong></td><td>Eigene Profildaten, Portfolio/Polaroids, Bewerbungen, Kalenderbezug, Chat mit Agentur (z. B. Recruiting).</td></tr>
+      <tr><td><strong>Agency (Agentur)</strong></td><td>Verwaltung von Models, Casting-/Recruiting-Flows, Kommunikation mit Models und Clients, ggf. Einladungen (Booker).</td></tr>
+      <tr><td><strong>Client (Kunde/Marke)</strong></td><td>Entdecken von Models (Discover), Projekte, Optionsanfragen, Kalender, Kommunikation mit Agenturen.</td></tr>
+      <tr><td><strong>Guest</strong></td><td>Eingeschränkter Zugriff (z. B. Gast-Links / Gast-Chat), je nach Implementierung – gesondert in der Datenschutzerklärung abgrenzen.</td></tr>
+      <tr><td><strong>Admin / Super-Admin</strong></td><td>Plattformverwaltung (sofern aktiv), getrennt von normalen B2B-Nutzern.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>2.2 Organisationen (Multi-Tenant)</h3>
+  <ul>
+    <li><strong>Agency-Organisation:</strong> Rollen typischerweise <strong>Owner</strong> (Abrechnung, Teamverwaltung, Löschrechte) und <strong>Booker</strong> (tagesgeschäftlich mit Owner weitgehend gleichberechtigt, außer Owner-exklusiven Funktionen).</li>
+    <li><strong>Client-Organisation:</strong> Rollen <strong>Owner</strong> und <strong>Employee</strong> (analog: Parität im Tagesgeschäft, Owner für Abrechnung/Team/Löschung).</li>
+  </ul>
+  <p>Daten sind <strong>pro Organisation</strong> und <strong>pro Berechtigung</strong> abgegrenzt (Row Level Security in der Datenbank).</p>
+
+  <hr />
+
+  <h2>3. Technische Infrastruktur (relevant für DSGVO / AV-Verträge)</h2>
+  <table>
+    <thead><tr><th>Komponente</th><th>Verwendung</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Supabase</strong> (PostgreSQL, Auth, Realtime, Storage, Edge Functions)</td><td>Zentrale Datenhaltung, Authentifizierung, Dateispeicher, serverseitige Webhooks.</td></tr>
+      <tr><td><strong>Supabase Auth</strong></td><td>Registrierung, Login, Sessions; Nutzer-IDs verknüpfen Profile und Berechtigungen.</td></tr>
+      <tr><td><strong>Supabase Storage</strong></td><td>Private Buckets für Bilder/Dokumente (z. B. Model-Fotos, Bewerbungsbilder, Chat-Dateien); Auslieferung über <strong>signierte URLs</strong> (zeitlich begrenzt), keine öffentlichen Dauer-URLs für sensible Medien vorgesehen.</td></tr>
+      <tr><td><strong>Stripe</strong></td><td>Abonnements/Bezahlung (über Edge Function <code>stripe-webhook</code>); Abrechnungsdaten und Metadaten können Stripe verarbeiten – <strong>Stripe</strong> als Auftragsverarbeiter bzw. eigenständiger Verantwortlicher je nach Vertragsmodell klären.</td></tr>
+      <tr><td><strong>Client-Anwendung</strong></td><td>React Native / Expo (u. a. Web-Build), UI überwiegend englischsprachig (<code>uiCopy</code>).</td></tr>
+    </tbody>
+  </table>
+  <p><strong>Hosting-Region:</strong> Im Vertrag mit Supabase/Cloud-Anbieter konkret festhalten (EU/EEA für Standard-DSGVO-Setup empfehlenswert – <strong>vertraglich verifizieren</strong>).</p>
+
+  <hr />
+
+  <h2>4. Kategorien personenbezogener Daten (überblick)</h2>
+  <p>Die folgende Liste ist <strong>typisch</strong> für die Plattform; Umfang hängt von Nutzung und Konfiguration ab.</p>
+
+  <h3>4.1 Stammdaten &amp; Konto</h3>
+  <ul>
+    <li>E-Mail, Anzeigename, Profilfelder in <code>profiles</code> (inkl. Flags wie AGB-/Datenschutz-Zustimmung, ggf. „Signup abgeschlossen“, Gast-Flag).</li>
+    <li>Organisationsbezug: <code>organization_id</code>, Org-Typ, Mitgliedsrolle.</li>
+    <li>Kontaktdaten von <strong>Clients</strong> (z. B. Firma, Telefon, Website, Social) in Einstellungen, soweit im Produkt erfasst.</li>
+  </ul>
+
+  <h3>4.2 Model-spezifisch</h3>
+  <ul>
+    <li>Name, Maße (Height, Bust, Waist, Hips etc.), Haar-/Augenfarbe, Stadt/Land, ggf. biologisches Geschlecht je nach Schema.</li>
+    <li><strong>Sichtbarkeit:</strong> z. B. <code>is_visible_fashion</code> / <code>is_visible_commercial</code> – steuert, ob Models in der <strong>Client-Discover</strong>-Ansicht erscheinen.</li>
+    <li>Verknüpfung zur Agentur (<code>agency_id</code>), Status der Beziehung (z. B. aktiv, ausstehende App-Verknüpfung, beendet).</li>
+    <li>Portfolio- und Polaroid-Bilder (Metadaten + URLs; Dateien in Storage).</li>
+  </ul>
+
+  <h3>4.3 Bewerbungen (Recruiting)</h3>
+  <ul>
+    <li>Bewerbungsdaten in <code>model_applications</code> (inkl. Bilder, Status pending/accepted/rejected).</li>
+    <li>Chats: <code>recruiting_chat_threads</code> / <code>recruiting_chat_messages</code> zwischen Agentur und Model.</li>
+  </ul>
+
+  <h3>4.4 Client–Agentur–Geschäftsprozesse</h3>
+  <ul>
+    <li><strong>Verbindungen</strong> Client ↔ Agentur (<code>client_agency_connections</code>).</li>
+    <li><strong>Projekte</strong> und Zuordnung von Models (<code>client_projects</code>, <code>client_project_models</code>).</li>
+    <li><strong>Optionsanfragen</strong> und Nachrichten (<code>option_requests</code>, <code>option_request_messages</code>), ggf. Dokumente (<code>option_documents</code>).</li>
+    <li><strong>Kalenderereignisse</strong> (<code>user_calendar_events</code> und verwandte Strukturen) für Verfügbarkeit und Jobs.</li>
+  </ul>
+
+  <h3>4.5 Kommunikation allgemein</h3>
+  <ul>
+    <li>Konversationen und Nachrichten (<code>conversations</code>, <code>messages</code> bzw. domänenspezifische Chat-Tabellen).</li>
+    <li>Chat-Anhänge in Storage (z. B. Bucket <code>chat-files</code>).</li>
+  </ul>
+
+  <h3>4.6 Dokumente &amp; Verifizierung</h3>
+  <ul>
+    <li>Nutzer- oder modelbezogene Dokumente (z. B. Ausweise, Verträge) in <code>documents</code> / Storage-Bucket <code>documents</code> – <strong>besonders sensible Kategorie</strong> für Datenschutz und Zugriffsbeschränkung.</li>
+    <li>Verifizierungsdaten (<code>verifications</code>), soweit genutzt.</li>
+  </ul>
+
+  <h3>4.7 Technische Metadaten</h3>
+  <ul>
+    <li>Logs (auch Admin-Logs, falls geführt), Zeitstempel, IDs für Support und Sicherheit.</li>
+  </ul>
+
+  <hr />
+
+  <h2>5. Hauptfunktionen (für Vertragsbeschreibung / Leistungsbeschreibung)</h2>
+  <ol>
+    <li><strong>Discover / Model-Katalog (Client):</strong> Filterung nach u. a. Fashion/Commercial, Region/Kategorie; Anzeige nur bei gesetzter Sichtbarkeit und passender Client-Ansicht.</li>
+    <li><strong>Projekte &amp; Shortlists:</strong> Models zu Kundenprojekten hinzufügen.</li>
+    <li><strong>Option Requests:</strong> Termin-/Optionsverhandlung zwischen Client und Agentur.</li>
+    <li><strong>Messaging:</strong> Echtzeitnahe Kommunikation (Supabase Realtime).</li>
+    <li><strong>Recruiting:</strong> Bewerbungen bearbeiten, Chats, Statuswechsel.</li>
+    <li><strong>Agentur:</strong> Model manuell anlegen, Fotos hochladen, Territorien, Kalender, Team/Einladungen (je nach Rolle).</li>
+    <li><strong>Gast-Zugänge:</strong> Gast-Chat / Gast-Flows (eigenes Kapitel in Datenschutz &amp; AGB).</li>
+    <li><strong>Abonnement / Paywall:</strong> Über Stripe angebunden – Preise, Laufzeiten, Kündigung in AGB und auf der Website.</li>
+  </ol>
+
+  <hr />
+
+  <h2>6. Rechtsgrundlagen &amp; Betroffenenrechte (Orientierung, keine Rechtsberatung)</h2>
+  <p>Für die Texte in <strong>Datenschutzerklärung</strong> und <strong>Einwilligungen</strong> typischerweise zu klären:</p>
+  <ul>
+    <li><strong>Vertragserfüllung</strong> (Art. 6 Abs. 1 lit. b DSGVO) für Kernfunktionen zwischen Nutzern und Plattform.</li>
+    <li><strong>Berechtigtes Interesse</strong> (Art. 6 Abs. 1 lit. f) z. B. für Sicherheit, Missbrauchsbekämpfung, <strong>nur</strong> mit Interessenabwägung und Transparenz.</li>
+    <li><strong>Einwilligung</strong> (Art. 6 Abs. 1 lit. a) für Marketing, nicht notwendige Cookies/Tracking, optionale Features.</li>
+    <li><strong>Besondere Kategorien</strong> (Art. 9): soweit Gesundheit, ethnische Herkunft o. Ä. <strong>nicht</strong> verarbeitet werden sollen, dies festhalten; Bilder von Personen können in der Praxis sensibel sein (Schutzrechte der abgebildeten Personen).</li>
+  </ul>
+  <p><strong>Betroffenenrechte:</strong> Auskunft, Berichtigung, Löschung, Einschränkung, Datenübertragbarkeit, Widerspruch, Beschwerde bei Aufsichtsbehörde – im Produkt teilweise über Kontenverwaltung und Support; <strong>Selbstauskunft/Löschung</strong> ggf. über dokumentierte Prozesse (z. B. Kontolöschung mit Frist/Archiv, falls implementiert).</p>
+
+  <hr />
+
+  <h2>7. Auftragsverarbeitung (AVV)</h2>
+  <p>Typische <strong>Auftragsverarbeiter</strong> im Sinne von Art. 28 DSGVO:</p>
+  <ul>
+    <li><strong>Supabase</strong> (Hosting, DB, Auth, Storage)</li>
+    <li><strong>Stripe</strong> (Zahlungsabwicklung)</li>
+    <li>ggf. <strong>E-Mail-Provider</strong>, <strong>Analytics</strong>, <strong>Error-Tracking</strong>, <strong>Push-Notifications</strong> – jeweils nur wenn im Projekt produktiv angebunden und in der Datenschutzerklärung genannt.</li>
+  </ul>
+  <p>Mit jedem Auftragsverarbeiter einen <strong>AVV</strong> oder die Standardvertragsklauseln nachweisen.</p>
+
+  <hr />
+
+  <h2>8. Internationale Übermittlungen</h2>
+  <p>Falls Supabase oder andere Dienste außerhalb EU/EEA hosten oder Unterauftragsverarbeiter in Drittstaaten nutzen: <strong>Angemessenheitsbeschluss</strong>, <strong>Standardvertragsklauseln (SCC)</strong> oder spezielle Regelungen (Schweiz/UK) – <strong>aktuellen Stand</strong> mit Supabase-Dokumentation und Vertrag abgleichen.</p>
+
+  <hr />
+
+  <h2>9. Sicherheit (kurz, technisch)</h2>
+  <ul>
+    <li><strong>Row Level Security (RLS)</strong> auf Tabellen: Zugriff nur im jeweiligen Organisations-/Nutzerkontext.</li>
+    <li><strong>Kein <code>service_role</code>-Key im Frontend</strong> (Regel im Projekt).</li>
+    <li><strong>Private Storage-Buckets</strong>; Medien über <strong>Signed URLs</strong> mit begrenzter Gültigkeit.</li>
+    <li><strong>DSGVO-Minimierung:</strong> nur erforderliche Daten speichern; Löschkonzepte für Konten und Inhalte (<code>deleteUserContent</code> o. Ä. wo implementiert) in der Datenschutzerklärung beschreiben.</li>
+  </ul>
+
+  <hr />
+
+  <h2>10. Was du in AGB konkret beschreiben solltest</h2>
+  <ul>
+    <li><strong>Vertragspartner</strong> (Betreiberfirma, Register, Kontakt).</li>
+    <li><strong>Leistungsgegenstand:</strong> Nutzung der Software-as-a-Service-Plattform wie oben skizziert.</li>
+    <li><strong>Registrierung, Verfügbarkeit, Änderungen</strong> am Produkt.</li>
+    <li><strong>Pflichten der Nutzer:</strong> zulässige Inhalte, keine Rechtsverletzungen, Geheimhaltung von Zugangsdaten.</li>
+    <li><strong>Inhalte von Nutzern:</strong> Wer haftet für hochgeladene Bilder/Texte (Models, Agenturen, Clients).</li>
+    <li><strong>Abrechnung:</strong> Stripe, Laufzeit, Kündigung, Mahnungen – mit Stripe-AGB verlinken.</li>
+    <li><strong>Haftungsbeschränkung</strong> und <strong>Schlussbestimmungen</strong> (nur mit Anwalt abstimmen).</li>
+    <li><strong>Geltendes Recht und Gerichtsstand</strong> (Unternehmenssitz).</li>
+  </ul>
+
+  <hr />
+
+  <h2>11. Was du in der Datenschutzerklärung konkret beschreiben solltest</h2>
+  <ul>
+    <li><strong>Verantwortlicher</strong> (Name, Adresse).</li>
+    <li><strong>Datenschutzbeauftragter</strong> (falls vorgeschrieben).</li>
+    <li><strong>Zwecke und Rechtsgrundlagen</strong> je Datenkategorie (siehe Abschnitt 4).</li>
+    <li><strong>Empfänger/Kategorien von Empfängern</strong> (Supabase, Stripe, …).</li>
+    <li><strong>Speicherdauer</strong> oder Kriterien zur Festlegung.</li>
+    <li><strong>Pflicht zur Bereitstellung</strong> oder freiwillige Angaben.</li>
+    <li><strong>Automatisierte Entscheidungen</strong> (falls keine: explizit „keine“).</li>
+    <li><strong>Cookies/Local Storage</strong> auf Web (falls genutzt).</li>
+    <li><strong>Kontaktweg</strong> für Betroffenenanfragen.</li>
+  </ul>
+
+  <hr />
+
+  <h2>12. Änderungshistorie dieser Datei</h2>
+  <table>
+    <thead><tr><th>Datum</th><th>Änderung</th></tr></thead>
+    <tbody>
+      <tr><td>2026-04</td><td>Erste Version aus Codebase/README_DATA/supabase/README zusammengestellt</td></tr>
+    </tbody>
+  </table>
+
+  <hr />
+
+  <h2>13. Pflegehinweis für das Entwicklungsteam</h2>
+  <p>Wenn sich <strong>neue Features</strong> ergeben (z. B. neues Tracking, neuer Drittanbieter, neue Datenfelder), diese Datei <strong>aktualisieren</strong>, damit Rechtstexte und tatsächliche Verarbeitung <strong>übereinstimmen</strong>.</p>
+
+</body>
+</html>

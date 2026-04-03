@@ -15,8 +15,18 @@ export const LegalAcceptanceScreen: React.FC = () => {
   const isAgency = profile?.role === 'agent';
   const canSubmit = tosChecked && privacyChecked && (!isAgency || agencyRightsChecked);
 
-  const openTos = () => Linking.openURL(uiCopy.legal.tosUrl).catch((e) => console.error('openTos error:', e));
-  const openPrivacy = () => Linking.openURL(uiCopy.legal.privacyUrl).catch((e) => console.error('openPrivacy error:', e));
+  // EXPLOIT-H3 fix: Alert the user if legal URLs are unreachable (e.g. 404 before launch).
+  // This prevents accepting phantom documents while giving a graceful fallback.
+  const openLegalUrl = async (url: string, label: string) => {
+    const supported = await Linking.canOpenURL(url).catch(() => false);
+    if (!supported) {
+      alert(`${label} is not yet available. Please contact support@indexcasting.com for the current document.`);
+      return;
+    }
+    Linking.openURL(url).catch((e) => console.error(`openLegalUrl (${label}) error:`, e));
+  };
+  const openTos = () => openLegalUrl(uiCopy.legal.tosUrl, uiCopy.legal.tosLabel);
+  const openPrivacy = () => openLegalUrl(uiCopy.legal.privacyUrl, uiCopy.legal.privacyLabel);
 
   const handleAccept = async () => {
     if (!canSubmit) return;

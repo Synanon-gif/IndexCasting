@@ -13,6 +13,7 @@
 jest.mock('../../../lib/supabase', () => ({
   supabase: {
     from: jest.fn(),
+    rpc: jest.fn(),
     auth: { getUser: jest.fn().mockResolvedValue({ data: { user: { id: 'user-1' } } }) },
   },
 }));
@@ -26,6 +27,7 @@ import {
 } from '../optionRequestsSupabase';
 
 const from = supabase.from as jest.Mock;
+const rpc  = supabase.rpc as jest.Mock;
 
 /** Builds a chainable Supabase query mock that resolves to `result` at the terminal call. */
 const makeChain = (result: unknown, terminalMethod = 'select') => {
@@ -56,63 +58,51 @@ afterEach(() => {
 });
 
 // ─── clientAcceptCounterPrice ─────────────────────────────────────────────────
+// EXPLOIT-C1 fix: now routes through SECURITY DEFINER RPC client_accept_counter_offer().
+// Tests mock supabase.rpc() instead of supabase.from().
 
-// clientAcceptCounterPrice now uses .maybeSingle() as the terminal call,
-// returning a single object (not an array). The guards also include
-// .eq('status', 'in_negotiation') in addition to the price-status guards.
-describe('clientAcceptCounterPrice — optimistic guard', () => {
-  it('returns true when the counter-offer is still pending (row matched)', async () => {
-    // DB returns { data: { id: 'req-1' }, error: null } via maybeSingle
-    const chain = makeChain({ data: { id: 'req-1' }, error: null }, 'maybeSingle');
-    from.mockReturnValue(chain);
-
+describe('clientAcceptCounterPrice — RPC route (EXPLOIT-C1 fix)', () => {
+  it('returns true when the RPC returns true (counter-offer still pending)', async () => {
+    rpc.mockResolvedValue({ data: true, error: null });
     const result = await clientAcceptCounterPrice('req-1');
     expect(result).toBe(true);
+    expect(rpc).toHaveBeenCalledWith('client_accept_counter_offer', { p_request_id: 'req-1' });
   });
 
-  it('returns false when counter-offer was already accepted (0 rows — stale accept)', async () => {
-    // maybeSingle returns null when no row matched
-    const chain = makeChain({ data: null, error: null }, 'maybeSingle');
-    from.mockReturnValue(chain);
-
+  it('returns false when the RPC returns false (stale accept — offer already changed)', async () => {
+    rpc.mockResolvedValue({ data: false, error: null });
     const result = await clientAcceptCounterPrice('req-1');
     expect(result).toBe(false);
     expect(consoleWarnSpy).toHaveBeenCalledWith(
       expect.stringContaining('counter-offer no longer pending'),
+      'req-1',
     );
   });
 
-  it('returns false when counter-offer was rejected by another session (null data)', async () => {
-    const chain = makeChain({ data: null, error: null }, 'maybeSingle');
-    from.mockReturnValue(chain);
-
-    const result = await clientAcceptCounterPrice('req-1');
-    expect(result).toBe(false);
-  });
-
-  it('returns false on DB error', async () => {
-    const chain = makeChain({ data: null, error: { message: 'rls violation' } }, 'maybeSingle');
-    from.mockReturnValue(chain);
-
+  it('returns false on RPC error (e.g. role validation failed)', async () => {
+    rpc.mockResolvedValue({ data: null, error: { message: 'caller is not the client' } });
     const result = await clientAcceptCounterPrice('req-1');
     expect(result).toBe(false);
     expect(consoleErrorSpy).toHaveBeenCalled();
   });
 
-  it('correctly rejects a double-accept scenario (second call returns null)', async () => {
-    // First accept: row matched → succeeds
-    const firstChain = makeChain({ data: { id: 'req-1' }, error: null }, 'maybeSingle');
-    // Second accept (race): null because client_price_status is now 'accepted'
-    const secondChain = makeChain({ data: null, error: null }, 'maybeSingle');
+  it('returns false on exception', async () => {
+    rpc.mockRejectedValue(new Error('network error'));
+    const result = await clientAcceptCounterPrice('req-1');
+    expect(result).toBe(false);
+    expect(consoleErrorSpy).toHaveBeenCalled();
+  });
 
-    from.mockReturnValueOnce(firstChain).mockReturnValueOnce(secondChain);
+  it('correctly rejects a double-accept scenario (second RPC call returns false)', async () => {
+    rpc
+      .mockResolvedValueOnce({ data: true,  error: null })
+      .mockResolvedValueOnce({ data: false, error: null });
 
     const [first, second] = await Promise.all([
       clientAcceptCounterPrice('req-1'),
       clientAcceptCounterPrice('req-1'),
     ]);
 
-    // Only one should succeed; the other is blocked by the guard
     expect([first, second]).toContain(true);
     expect([first, second]).toContain(false);
   });
@@ -154,33 +144,36 @@ describe('setAgencyCounterOffer', () => {
 });
 
 // ─── agencyAcceptClientPrice ──────────────────────────────────────────────────
+// EXPLOIT-C1 fix: now routes through SECURITY DEFINER RPC agency_confirm_client_price().
+// Tests mock supabase.rpc() instead of supabase.from().
 
-describe('agencyAcceptClientPrice', () => {
-  it('returns true when offer is pending and request is in_negotiation', async () => {
-    // Chains: .update().eq(id).eq(status,'in_negotiation').eq(client_price_status,'pending').select().maybeSingle()
-    const chain = makeChain({ data: { id: 'req-1' }, error: null }, 'maybeSingle');
-    from.mockReturnValue(chain);
-
+describe('agencyAcceptClientPrice — RPC route (EXPLOIT-C1 fix)', () => {
+  it('returns true when the RPC returns true (agency member, offer still pending)', async () => {
+    rpc.mockResolvedValue({ data: true, error: null });
     const result = await agencyAcceptClientPrice('req-1');
     expect(result).toBe(true);
+    expect(rpc).toHaveBeenCalledWith('agency_confirm_client_price', { p_request_id: 'req-1' });
   });
 
-  it('returns false when offer is no longer pending (stale accept — 0 rows)', async () => {
-    const chain = makeChain({ data: null, error: null }, 'maybeSingle');
-    from.mockReturnValue(chain);
-
+  it('returns false when the RPC returns false (offer already changed / not in expected state)', async () => {
+    rpc.mockResolvedValue({ data: false, error: null });
     const result = await agencyAcceptClientPrice('req-1');
     expect(result).toBe(false);
     expect(consoleWarnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('offer no longer pending'),
+      expect.stringContaining('not in expected state'),
       'req-1',
     );
   });
 
-  it('returns false on DB error', async () => {
-    const chain = makeChain({ data: null, error: { message: 'rls' } }, 'maybeSingle');
-    from.mockReturnValue(chain);
+  it('returns false on RPC error (e.g. caller is not an agency member)', async () => {
+    rpc.mockResolvedValue({ data: null, error: { message: 'caller is not a member of the agency' } });
+    const result = await agencyAcceptClientPrice('req-1');
+    expect(result).toBe(false);
+    expect(consoleErrorSpy).toHaveBeenCalled();
+  });
 
+  it('returns false on exception', async () => {
+    rpc.mockRejectedValue(new Error('network timeout'));
     const result = await agencyAcceptClientPrice('req-1');
     expect(result).toBe(false);
     expect(consoleErrorSpy).toHaveBeenCalled();
