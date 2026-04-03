@@ -34,6 +34,7 @@ import { QUICK_REPLIES } from '../constants/quickReplies';
 import { buildGuestUrl, type GuestLink } from '../services/guestLinksSupabase';
 import {
   bookingStatusLabel,
+  updateBookingEventStatus,
   type BookingEventStatus,
 } from '../services/bookingEventsSupabase';
 import {
@@ -74,6 +75,18 @@ export type OrgMessengerInlineProps = {
    * If not provided, the button is hidden.
    */
   onPackagePress?: (metadata: Record<string, unknown>) => void;
+  /**
+   * Role of the viewer. Used to determine which booking status-change actions to show.
+   * 'agency' can accept (pending→agency_accepted) and cancel.
+   * 'model' can confirm (agency_accepted→model_confirmed).
+   * 'client' is read-only (status displayed only).
+   */
+  viewerRole?: 'agency' | 'client' | 'model';
+  /**
+   * Called after a booking status has been successfully updated so the parent
+   * can refresh calendar / request lists.
+   */
+  onBookingStatusUpdated?: (bookingEventId: string, newStatus: BookingEventStatus) => void;
 };
 
 function payloadType(m: MessageWithSender): MessagePayloadType {
@@ -104,6 +117,8 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   containerStyle,
   onBookingCardPress,
   onPackagePress,
+  viewerRole,
+  onBookingStatusUpdated,
 }) => {
   const [msgs, setMsgs] = useState<MessageWithSender[]>([]);
   const [input, setInput] = useState('');
@@ -120,6 +135,25 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   const [sending, setSending] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [bookingActionLoading, setBookingActionLoading] = useState<string | null>(null);
+
+  const handleBookingAction = async (bookingEventId: string, newStatus: BookingEventStatus) => {
+    if (!bookingEventId || bookingActionLoading) return;
+    setBookingActionLoading(bookingEventId + ':' + newStatus);
+    try {
+      const result = await updateBookingEventStatus(bookingEventId, newStatus);
+      if (result.ok) {
+        onBookingStatusUpdated?.(bookingEventId, newStatus);
+        reload();
+      } else {
+        setSendError(result.message ?? 'Could not update booking status.');
+      }
+    } catch {
+      setSendError('Could not update booking status.');
+    } finally {
+      setBookingActionLoading(null);
+    }
+  };
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const reload = () => void getMessagesWithSenderInfo(conversationId).then(setMsgs);
@@ -535,20 +569,64 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
                     </Text>
                     {(() => {
                       const rawStatus = metaString(m, 'status') ?? 'pending';
+                      const bookingId = metaString(m, 'booking_event_id') ?? metaString(m, 'booking_id');
                       const label = bookingStatusLabel(rawStatus as BookingEventStatus);
                       const isCancelled = rawStatus === 'cancelled';
-                      const isConfirmed =
-                        rawStatus === 'model_confirmed' || rawStatus === 'completed';
+                      const isConfirmed = rawStatus === 'model_confirmed' || rawStatus === 'completed';
+                      const isActionLoading = (key: string) =>
+                        bookingActionLoading === (bookingId + ':' + key);
+
                       return (
-                        <View
-                          style={[
-                            styles.statusBadge,
-                            isCancelled && styles.statusBadgeCancelled,
-                            isConfirmed && styles.statusBadgeConfirmed,
-                          ]}
-                        >
-                          <Text style={styles.statusBadgeLabel}>{label}</Text>
-                        </View>
+                        <>
+                          <View
+                            style={[
+                              styles.statusBadge,
+                              isCancelled && styles.statusBadgeCancelled,
+                              isConfirmed && styles.statusBadgeConfirmed,
+                            ]}
+                          >
+                            <Text style={styles.statusBadgeLabel}>{label}</Text>
+                          </View>
+
+                          {/* Booking status action buttons — only when a booking_event_id is available */}
+                          {bookingId && !isCancelled && !isConfirmed && (
+                            <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                              {viewerRole === 'agency' && rawStatus === 'pending' && (
+                                <TouchableOpacity
+                                  onPress={(e) => { e.stopPropagation?.(); void handleBookingAction(bookingId, 'agency_accepted'); }}
+                                  disabled={!!bookingActionLoading}
+                                  style={[styles.actionBtn, styles.actionBtnConfirm]}
+                                >
+                                  {isActionLoading('agency_accepted')
+                                    ? <ActivityIndicator size="small" color={colors.surface} />
+                                    : <Text style={styles.actionBtnLabel}>Accept</Text>}
+                                </TouchableOpacity>
+                              )}
+                              {viewerRole === 'model' && rawStatus === 'agency_accepted' && (
+                                <TouchableOpacity
+                                  onPress={(e) => { e.stopPropagation?.(); void handleBookingAction(bookingId, 'model_confirmed'); }}
+                                  disabled={!!bookingActionLoading}
+                                  style={[styles.actionBtn, styles.actionBtnConfirm]}
+                                >
+                                  {isActionLoading('model_confirmed')
+                                    ? <ActivityIndicator size="small" color={colors.surface} />
+                                    : <Text style={styles.actionBtnLabel}>Confirm</Text>}
+                                </TouchableOpacity>
+                              )}
+                              {(viewerRole === 'agency' || viewerRole === 'client') && (
+                                <TouchableOpacity
+                                  onPress={(e) => { e.stopPropagation?.(); void handleBookingAction(bookingId, 'cancelled'); }}
+                                  disabled={!!bookingActionLoading}
+                                  style={[styles.actionBtn, styles.actionBtnCancel]}
+                                >
+                                  {isActionLoading('cancelled')
+                                    ? <ActivityIndicator size="small" color={colors.textPrimary} />
+                                    : <Text style={[styles.actionBtnLabel, { color: colors.textPrimary }]}>Cancel</Text>}
+                                </TouchableOpacity>
+                              )}
+                            </View>
+                          )}
+                        </>
                       );
                     })()}
                   </View>
@@ -888,6 +966,26 @@ const styles = StyleSheet.create({
     ...typography.label,
     fontSize: 10,
     color: colors.textPrimary,
+  },
+  actionBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 72,
+  },
+  actionBtnConfirm: {
+    backgroundColor: colors.textPrimary,
+  },
+  actionBtnCancel: {
+    backgroundColor: colors.border,
+  },
+  actionBtnLabel: {
+    ...typography.label,
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.surface,
   },
   attachedImage: {
     width: '100%',

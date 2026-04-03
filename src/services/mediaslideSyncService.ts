@@ -17,6 +17,7 @@ import type { SupabaseModel } from './modelsSupabase';
 import { getModelByIdFromSupabase } from './modelsSupabase';
 import { getModelFromMediaslide, syncModelData } from './mediaslideConnector';
 import { fetchAllSupabasePages } from './supabaseFetchAll';
+import { upsertTerritoriesForModelCountryAgencyPairs } from './territoriesSupabase';
 
 /**
  * Lightweight concurrency limiter — avoids external p-limit dependency.
@@ -73,6 +74,11 @@ type MediaslideModelPayload = {
   ethnicity?: string | null;
   /** Marketing categories, e.g. ['Fashion', 'Commercial']. */
   categories?: string[] | null;
+  /**
+   * ISO-3166-1 alpha-2 territory codes the model should be listed under.
+   * When present, these are upserted into model_agency_territories after sync.
+   */
+  territory_codes?: string[] | null;
   visibility?: {
     isVisibleCommercial?: boolean;
     isVisibleFashion?: boolean;
@@ -208,20 +214,28 @@ export async function syncSingleModelFromMediaslide(args: {
 
   const updates: Partial<SupabaseModel> = {};
 
-  // Basisdaten
-  if (typeof remote.name === 'string' && remote.name.trim()) {
-    updates.name = remote.name.trim();
-  }
-  if (remote.city !== undefined) updates.city = remote.city ?? null;
-  if (remote.country !== undefined) updates.country = remote.country ?? null;
-  if (remote.country_code !== undefined) (updates as any).country_code = remote.country_code ?? null;
-  if (remote.hair_color !== undefined) updates.hair_color = remote.hair_color ?? null;
-  if (remote.eye_color !== undefined) updates.eye_color = remote.eye_color ?? null;
-  if (remote.sex !== undefined) (updates as any).sex = remote.sex ?? null;
-  if (remote.ethnicity !== undefined) (updates as any).ethnicity = remote.ethnicity ?? null;
-  if (remote.categories !== undefined) (updates as any).categories = remote.categories ?? null;
+  // Timestamp resolution: only overwrite scalar fields if Remote is strictly newer
+  // than the local record. This prevents Mediaslide cron-sync from silently
+  // reverting manual corrections an agency made to Name, City, etc.
+  const localTs  = toTimestamp(local.updated_at);
+  const remoteTs = toTimestamp(remote.updated_at);
+  const remoteScalarIsNewer = remoteTs !== null && (localTs === null || remoteTs > localTs);
 
-  // Maße mit Konfliktlösung
+  if (remoteScalarIsNewer) {
+    if (typeof remote.name === 'string' && remote.name.trim()) {
+      updates.name = remote.name.trim();
+    }
+    if (remote.city !== undefined) updates.city = remote.city ?? null;
+    if (remote.country !== undefined) updates.country = remote.country ?? null;
+    if (remote.country_code !== undefined) (updates as any).country_code = remote.country_code ?? null;
+    if (remote.hair_color !== undefined) updates.hair_color = remote.hair_color ?? null;
+    if (remote.eye_color !== undefined) updates.eye_color = remote.eye_color ?? null;
+    if (remote.sex !== undefined) (updates as any).sex = remote.sex ?? null;
+    if (remote.ethnicity !== undefined) (updates as any).ethnicity = remote.ethnicity ?? null;
+    if (remote.categories !== undefined) (updates as any).categories = remote.categories ?? null;
+  }
+
+  // Maße mit Konfliktlösung (eigene Zeitstempel-Logik bleibt)
   if (remote.measurements) {
     Object.assign(
       updates,
@@ -249,12 +263,10 @@ export async function syncSingleModelFromMediaslide(args: {
     return { ok: true };
   }
 
+  // Update non-restricted columns via direct client UPDATE.
   const { error } = await supabase
     .from('models')
-    .update({
-      ...updates,
-      mediaslide_sync_id: mediaslideId,
-    })
+    .update(updates)
     .eq('id', local.id);
 
   if (error) {
@@ -266,6 +278,41 @@ export async function syncSingleModelFromMediaslide(args: {
       details: error,
     });
     return { ok: false };
+  }
+
+  // mediaslide_sync_id is REVOKED for authenticated users (security hardening).
+  // Use the SECURITY DEFINER RPC that validates agency membership before writing.
+  const { error: rpcError } = await supabase.rpc('update_model_sync_ids', {
+    p_model_id: local.id,
+    p_mediaslide_id: mediaslideId,
+  });
+  if (rpcError) {
+    await logMediaslideError({
+      operation: 'update_model_sync_ids',
+      modelId: localModelId,
+      mediaslideId,
+      message: 'Failed to set mediaslide_sync_id via RPC',
+      details: rpcError,
+    });
+    // Non-fatal for data sync — log and continue; the model data itself was updated.
+  }
+
+  // Sync territories if provided in the remote payload.
+  if (remote.territory_codes && remote.territory_codes.length > 0 && local.agency_id) {
+    try {
+      await upsertTerritoriesForModelCountryAgencyPairs(
+        local.id,
+        remote.territory_codes.map((cc: string) => ({ country_code: cc, agency_id: local.agency_id as string })),
+      );
+    } catch (e) {
+      await logMediaslideError({
+        operation: 'syncTerritories',
+        modelId: localModelId,
+        mediaslideId,
+        message: 'Failed to sync territories from Mediaslide',
+        details: e,
+      });
+    }
   }
 
   // After a successful sync, check critical completeness fields and log a

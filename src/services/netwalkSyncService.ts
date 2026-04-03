@@ -19,6 +19,7 @@ import { getModelByIdFromSupabase } from './modelsSupabase';
 import { getModelFromNetwalk, syncModelData } from './netwalkConnector';
 import { fetchAllSupabasePages } from './supabaseFetchAll';
 import { logMediaslideError } from './mediaslideSyncService';
+import { upsertTerritoriesForModelCountryAgencyPairs } from './territoriesSupabase';
 
 // Re-export the shared log helper under a Netwalk-specific alias for clarity.
 export const logNetwalkError = logMediaslideError;
@@ -74,6 +75,8 @@ type NetwalkModelPayload = {
   sex?: 'male' | 'female' | null;
   ethnicity?: string | null;
   categories?: string[] | null;
+  /** ISO-3166-1 alpha-2 territory codes to upsert after sync. */
+  territory_codes?: string[] | null;
   visibility?: {
     isVisibleCommercial?: boolean;
     isVisibleFashion?: boolean;
@@ -166,17 +169,24 @@ export async function syncSingleModelFromNetwalk(args: {
 
   const updates: Partial<SupabaseModel> = {};
 
-  if (typeof remote.name === 'string' && remote.name.trim()) {
-    updates.name = remote.name.trim();
+  // Timestamp resolution: only overwrite scalar fields if Remote is strictly newer.
+  const localTs  = toTimestamp(local.updated_at);
+  const remoteTs = toTimestamp(remote.updated_at);
+  const remoteScalarIsNewer = remoteTs !== null && (localTs === null || remoteTs > localTs);
+
+  if (remoteScalarIsNewer) {
+    if (typeof remote.name === 'string' && remote.name.trim()) {
+      updates.name = remote.name.trim();
+    }
+    if (remote.city !== undefined) updates.city = remote.city ?? null;
+    if (remote.country !== undefined) updates.country = remote.country ?? null;
+    if (remote.country_code !== undefined) (updates as any).country_code = remote.country_code ?? null;
+    if (remote.hair_color !== undefined) updates.hair_color = remote.hair_color ?? null;
+    if (remote.eye_color !== undefined) updates.eye_color = remote.eye_color ?? null;
+    if (remote.sex !== undefined) (updates as any).sex = remote.sex ?? null;
+    if (remote.ethnicity !== undefined) (updates as any).ethnicity = remote.ethnicity ?? null;
+    if (remote.categories !== undefined) (updates as any).categories = remote.categories ?? null;
   }
-  if (remote.city !== undefined) updates.city = remote.city ?? null;
-  if (remote.country !== undefined) updates.country = remote.country ?? null;
-  if (remote.country_code !== undefined) (updates as any).country_code = remote.country_code ?? null;
-  if (remote.hair_color !== undefined) updates.hair_color = remote.hair_color ?? null;
-  if (remote.eye_color !== undefined) updates.eye_color = remote.eye_color ?? null;
-  if (remote.sex !== undefined) (updates as any).sex = remote.sex ?? null;
-  if (remote.ethnicity !== undefined) (updates as any).ethnicity = remote.ethnicity ?? null;
-  if (remote.categories !== undefined) (updates as any).categories = remote.categories ?? null;
 
   if (remote.measurements) {
     Object.assign(
@@ -204,12 +214,10 @@ export async function syncSingleModelFromNetwalk(args: {
     return { ok: true };
   }
 
+  // Update non-restricted columns via direct client UPDATE.
   const { error } = await supabase
     .from('models')
-    .update({
-      ...updates,
-      netwalk_model_id: netwalkId,
-    })
+    .update(updates)
     .eq('id', local.id);
 
   if (error) {
@@ -221,6 +229,41 @@ export async function syncSingleModelFromNetwalk(args: {
       details: error,
     });
     return { ok: false };
+  }
+
+  // netwalk_model_id is REVOKED for authenticated users (security hardening).
+  // Use the SECURITY DEFINER RPC that validates agency membership before writing.
+  const { error: rpcError } = await supabase.rpc('update_model_sync_ids', {
+    p_model_id: local.id,
+    p_netwalk_model_id: netwalkId,
+  });
+  if (rpcError) {
+    await logNetwalkError({
+      operation: 'update_model_sync_ids',
+      modelId: localModelId,
+      mediaslideId: netwalkId,
+      message: 'Failed to set netwalk_model_id via RPC',
+      details: rpcError,
+    });
+    // Non-fatal — model data was updated; only the external ID stamp failed.
+  }
+
+  // Sync territories if provided in the remote payload.
+  if (remote.territory_codes && remote.territory_codes.length > 0 && local.agency_id) {
+    try {
+      await upsertTerritoriesForModelCountryAgencyPairs(
+        local.id,
+        remote.territory_codes.map((cc: string) => ({ country_code: cc, agency_id: local.agency_id as string })),
+      );
+    } catch (e) {
+      await logNetwalkError({
+        operation: 'syncTerritories',
+        modelId: localModelId,
+        mediaslideId: netwalkId,
+        message: 'Failed to sync territories from Netwalk',
+        details: e,
+      });
+    }
   }
 
   // After a successful sync, log a completeness_warning if any mandatory

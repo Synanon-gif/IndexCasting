@@ -99,9 +99,12 @@ export async function updateBookingEventStatus(
   newStatus: BookingEventStatus,
 ): Promise<{ ok: boolean; message?: string }> {
   try {
+    // Fetch full booking data upfront so we can pass it to notifications
+    // without a second DB round-trip (eliminates the getBookingEventById call
+    // that was previously inside notifyBookingStatusChange).
     const { data: current, error: fetchError } = await supabase
       .from('booking_events')
-      .select('status')
+      .select(BOOKING_EVENT_SELECT)
       .eq('id', id)
       .maybeSingle();
 
@@ -141,9 +144,10 @@ export async function updateBookingEventStatus(
       return { ok: false, message: uiCopy.bookingStatus.updateFailed };
     }
 
-    // Fire-and-forget notifications after successful transition
+    // Fire-and-forget notifications after successful transition.
+    // Pass the already-fetched booking data to avoid a redundant DB round-trip.
     if (newStatus === 'agency_accepted' || newStatus === 'model_confirmed') {
-      void notifyBookingStatusChange(id, newStatus);
+      void notifyBookingStatusChange(current as BookingEvent, newStatus);
     }
 
     return { ok: true };
@@ -153,13 +157,36 @@ export async function updateBookingEventStatus(
   }
 }
 
-export async function getBookingEventsForModel(modelId: string): Promise<BookingEvent[]> {
+export type BookingEventsQueryOpts = {
+  /** Inclusive lower bound (YYYY-MM-DD). Defaults to 90 days ago. */
+  startDate?: string;
+  /** Inclusive upper bound (YYYY-MM-DD). Defaults to 365 days from today. */
+  endDate?: string;
+  /** Max rows. Defaults to 500. */
+  limit?: number;
+};
+
+/**
+ * Returns booking events for a model within an optional date window.
+ * Bounded by default to prevent full-table scans at scale.
+ */
+export async function getBookingEventsForModel(
+  modelId: string,
+  opts?: BookingEventsQueryOpts,
+): Promise<BookingEvent[]> {
   try {
+    const today = new Date();
+    const start = opts?.startDate ?? new Date(today.getTime() - 90 * 86400000).toISOString().slice(0, 10);
+    const end   = opts?.endDate   ?? new Date(today.getTime() + 365 * 86400000).toISOString().slice(0, 10);
+
     const { data, error } = await supabase
       .from('booking_events')
       .select(BOOKING_EVENT_SELECT)
       .eq('model_id', modelId)
-      .order('date', { ascending: true });
+      .gte('date', start)
+      .lte('date', end)
+      .order('date', { ascending: true })
+      .limit(opts?.limit ?? 500);
 
     if (error) {
       console.error('getBookingEventsForModel error:', error);
@@ -172,17 +199,29 @@ export async function getBookingEventsForModel(modelId: string): Promise<Booking
   }
 }
 
+/**
+ * Returns booking events for an org within an optional date window.
+ * Bounded by default to prevent full-table scans at scale.
+ */
 export async function getBookingEventsForOrg(
   orgId: string,
   role: 'agency' | 'client',
+  opts?: BookingEventsQueryOpts,
 ): Promise<BookingEvent[]> {
   try {
+    const today = new Date();
+    const start = opts?.startDate ?? new Date(today.getTime() - 90 * 86400000).toISOString().slice(0, 10);
+    const end   = opts?.endDate   ?? new Date(today.getTime() + 365 * 86400000).toISOString().slice(0, 10);
     const column = role === 'agency' ? 'agency_org_id' : 'client_org_id';
+
     const { data, error } = await supabase
       .from('booking_events')
       .select(BOOKING_EVENT_SELECT)
       .eq(column, orgId)
-      .order('date', { ascending: true });
+      .gte('date', start)
+      .lte('date', end)
+      .order('date', { ascending: true })
+      .limit(opts?.limit ?? 500);
 
     if (error) {
       console.error(`getBookingEventsForOrg (${role}) error:`, error);
@@ -272,18 +311,16 @@ export async function createConfirmedBookingEvent(
 
 /**
  * Sends notifications to the appropriate parties when a booking changes status.
+ * Accepts the booking object directly to avoid a redundant DB fetch.
  *
  * agency_accepted  → notify client org + model user
  * model_confirmed  → notify agency org + client org
  */
 async function notifyBookingStatusChange(
-  bookingId: string,
+  booking: BookingEvent,
   newStatus: 'agency_accepted' | 'model_confirmed',
 ): Promise<void> {
   try {
-    const booking = await getBookingEventById(bookingId);
-    if (!booking) return;
-
     if (newStatus === 'agency_accepted') {
       const notifications = [];
       if (booking.client_org_id) {
@@ -292,7 +329,7 @@ async function notifyBookingStatusChange(
           type: 'booking_accepted',
           title: uiCopy.notifications.bookingAccepted.title,
           message: uiCopy.notifications.bookingAccepted.message,
-          metadata: { booking_id: bookingId },
+          metadata: { booking_id: booking.id },
         });
       }
       // Notify the model's linked user if available
@@ -309,7 +346,7 @@ async function notifyBookingStatusChange(
             type: 'booking_accepted',
             title: uiCopy.notifications.bookingAccepted.title,
             message: uiCopy.notifications.bookingAccepted.message,
-            metadata: { booking_id: bookingId },
+            metadata: { booking_id: booking.id },
           });
         }
       }
@@ -324,7 +361,7 @@ async function notifyBookingStatusChange(
           type: 'model_confirmed',
           title: uiCopy.notifications.modelConfirmed.title,
           message: uiCopy.notifications.modelConfirmed.message,
-          metadata: { booking_id: bookingId },
+          metadata: { booking_id: booking.id },
         });
       }
       if (booking.client_org_id) {
@@ -333,7 +370,7 @@ async function notifyBookingStatusChange(
           type: 'model_confirmed',
           title: uiCopy.notifications.modelConfirmed.title,
           message: uiCopy.notifications.modelConfirmed.message,
-          metadata: { booking_id: bookingId },
+          metadata: { booking_id: booking.id },
         });
       }
       await createNotifications(notifications);

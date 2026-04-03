@@ -16,6 +16,16 @@ function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.trim());
 }
 
+/**
+ * Splits an array into chunks of at most `size` elements.
+ * Used to prevent Supabase REST URL-length overflow when passing large IN-clause arrays.
+ */
+function chunkArray<T>(arr: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
+  return chunks;
+}
+
 export type CalendarEntryType =
   | 'personal'
   | 'gosee'
@@ -293,6 +303,10 @@ export async function updateCalendarEntryById(
     Pick<CalendarEntry, 'date' | 'start_time' | 'end_time' | 'title' | 'note' | 'status'>
   >
 ): Promise<boolean> {
+  if (!isUuid(entryId)) {
+    console.error('updateCalendarEntryById: entryId must be a valid UUID');
+    return false;
+  }
   try {
     if (updates.date != null && !/^\d{4}-\d{2}-\d{2}$/.test(String(updates.date).trim())) {
       console.error('updateCalendarEntryById: invalid date');
@@ -311,6 +325,10 @@ export async function updateCalendarEntryById(
 }
 
 export async function deleteCalendarEntryById(entryId: string): Promise<boolean> {
+  if (!isUuid(entryId)) {
+    console.error('deleteCalendarEntryById: entryId must be a valid UUID');
+    return false;
+  }
   try {
     const { error } = await supabase.from('calendar_entries').delete().eq('id', entryId);
     if (error) {
@@ -351,6 +369,26 @@ export async function getCalendarEntriesForModel(modelId: string): Promise<Calen
   return getCalendarForModel(modelId);
 }
 
+/**
+ * Fetches calendar_entries in chunked IN-queries to avoid Supabase REST URL-length limits.
+ * Supabase REST serialises IN-clauses as query params; >100 UUIDs risks exceeding ~8 KB header limits.
+ */
+async function fetchCalendarEntriesByOptionIds(optionIds: string[]): Promise<CalendarEntry[]> {
+  if (optionIds.length === 0) return [];
+  const chunks = chunkArray(optionIds, 100);
+  const results = await Promise.all(
+    chunks.map(async (chunk) => {
+      const { data, error } = await supabase
+        .from('calendar_entries')
+        .select(CALENDAR_ENTRY_SELECT)
+        .in('option_request_id', chunk);
+      if (error) console.error('fetchCalendarEntriesByOptionIds chunk error:', error);
+      return (data ?? []) as CalendarEntry[];
+    }),
+  );
+  return results.flat();
+}
+
 /** Optionen/Jobs/Castings des Kunden – aus Supabase (option_requests + calendar_entries), pro client_id gespeichert. */
 export async function getCalendarEntriesForClient(clientId: string): Promise<ClientCalendarItem[]> {
   if (!isUuid(clientId)) {
@@ -372,14 +410,7 @@ export async function getCalendarEntriesForClient(clientId: string): Promise<Cli
     if (optionList.length === 0) return [];
 
     const optionIds = optionList.map((o) => o.id);
-    const { data: entries, error: calError } = await supabase
-      .from('calendar_entries')
-      .select(CALENDAR_ENTRY_SELECT)
-      .in('option_request_id', optionIds);
-    if (calError) {
-      console.error('getCalendarEntriesForClient calendar error:', calError);
-    }
-    const entryList = (entries ?? []) as CalendarEntry[];
+    const entryList = await fetchCalendarEntriesByOptionIds(optionIds);
 
     return optionList.map((opt) => ({
       option: opt,
@@ -412,14 +443,7 @@ export async function getCalendarEntriesForAgency(agencyId: string): Promise<Age
     if (optionList.length === 0) return [];
 
     const optionIds = optionList.map((o) => o.id);
-    const { data: entries, error: calError } = await supabase
-      .from('calendar_entries')
-      .select(CALENDAR_ENTRY_SELECT)
-      .in('option_request_id', optionIds);
-    if (calError) {
-      console.error('getCalendarEntriesForAgency calendar error:', calError);
-    }
-    const entryList = (entries ?? []) as CalendarEntry[];
+    const entryList = await fetchCalendarEntriesByOptionIds(optionIds);
 
     return optionList.map((opt) => ({
       option: opt,

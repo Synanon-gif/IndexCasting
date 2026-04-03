@@ -38,14 +38,32 @@ function timingSafeEqual(a: string, b: string): boolean {
  * Allowed notification types.  Any payload with a type outside this set is
  * rejected before push tokens are looked up, preventing spoofed push
  * notifications with arbitrary type values. M-1 fix — Security Pentest 2026-04.
+ *
+ * IMPORTANT: Keep in sync with NotificationType in src/services/notificationsSupabase.ts
+ * and all createNotification() call sites across the app.
  */
 const ALLOWED_NOTIFICATION_TYPES = new Set([
+  // Core messaging
   'new_message',
-  'booking_request',
-  'booking_confirmed',
-  'booking_cancelled',
+  'new_option_message',
+  'new_recruiting_message',
+  // Option / Casting / Job request lifecycle
+  'new_option_request',
   'option_request',
   'option_update',
+  'awaiting_model_confirmation',
+  'agency_counter_offer',
+  'client_rejected_counter',
+  'job_confirmed',
+  'request_rejected_by_agency',
+  'request_rejected_by_model',
+  'model_confirmed',
+  // Booking lifecycle
+  'booking_request',
+  'booking_accepted',
+  'booking_confirmed',
+  'booking_cancelled',
+  // System / Admin
   'verification_approved',
   'verification_rejected',
   'invitation',

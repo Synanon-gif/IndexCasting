@@ -242,10 +242,12 @@ export async function insertOptionRequest(req: {
   // We must look up the agency org separately via agency_id.
   void (async () => {
     const agencyOrgId = await fetchAgencyOrgId(inserted.agency_id);
+    if (!agencyOrgId) {
+      console.error('[notifications] insertOptionRequest: agency org not found for agency_id', inserted.agency_id, '— notification skipped.');
+      return;
+    }
     await createNotification({
-      ...(agencyOrgId
-        ? { organization_id: agencyOrgId }
-        : { user_id: inserted.agency_id }), // agency_id used only as last-resort (legacy orgs without an org row)
+      organization_id: agencyOrgId,
       type: 'new_option_request',
       title: uiCopy.notifications.newOptionRequest.title,
       message: uiCopy.notifications.newOptionRequest.message,
@@ -438,9 +440,10 @@ export async function agencyRejectClientPrice(id: string): Promise<boolean> {
 
 export async function clientAcceptCounterPrice(id: string): Promise<boolean> {
   try {
-    // Guard: only accept when a counter-offer is actually pending.
-    // Without this, a stale UI state (race condition or duplicate tap) could
-    // confirm an already-superseded price version.
+    // Guard: only accept when a counter-offer is actually pending AND the
+    // request is still in active negotiation. Mirrors the agencyAcceptClientPrice
+    // guard to prevent accepting a counter-offer at the wrong workflow state
+    // (e.g. if the request was rejected or already confirmed concurrently).
     const { data, error } = await supabase
       .from('option_requests')
       .update({
@@ -448,12 +451,14 @@ export async function clientAcceptCounterPrice(id: string): Promise<boolean> {
         final_status: 'option_confirmed',
       })
       .eq('id', id)
+      .eq('status', 'in_negotiation')
       .eq('client_price_status', 'pending')
       .eq('final_status', 'option_pending')
-      .select('id');
+      .select('id')
+      .maybeSingle();
     if (error) { console.error('clientAcceptCounterPrice error:', error); return false; }
-    if (!data || data.length === 0) {
-      console.warn('clientAcceptCounterPrice: no row updated — counter-offer no longer pending');
+    if (!data?.id) {
+      console.warn('clientAcceptCounterPrice: no row updated — counter-offer no longer pending or request not in_negotiation');
       return false;
     }
     return true;
@@ -628,10 +633,12 @@ export async function addOptionMessage(
     }
 
     // Fire-and-forget: notify the opposing party about the new message.
+    // agency sends → notify client user (client_id)
+    // client sends → notify agency org (resolved from agency_id, NOT organization_id which is the CLIENT org)
     void (async () => {
       const { data: req } = await supabase
         .from('option_requests')
-        .select('client_id, organization_id')
+        .select('client_id, agency_id, organization_id')
         .eq('id', requestId)
         .maybeSingle();
       if (!req) return;
@@ -644,14 +651,20 @@ export async function addOptionMessage(
           message: uiCopy.notifications.newOptionMessage.message,
           metadata: { option_request_id: requestId },
         });
-      } else if (fromRole === 'client' && req.organization_id) {
-        await createNotification({
-          organization_id: req.organization_id as string,
-          type: 'new_option_message',
-          title: uiCopy.notifications.newOptionMessage.title,
-          message: uiCopy.notifications.newOptionMessage.message,
-          metadata: { option_request_id: requestId },
-        });
+      } else if (fromRole === 'client' && req.agency_id) {
+        // Resolve the agency organisation — req.organization_id is the CLIENT org, not the agency.
+        const agencyOrgId = await fetchAgencyOrgId(req.agency_id as string);
+        if (!agencyOrgId) {
+          console.error('[notifications] addOptionMessage: agency org not found for agency_id', req.agency_id, '— notification skipped.');
+        } else {
+          await createNotification({
+            organization_id: agencyOrgId,
+            type: 'new_option_message',
+            title: uiCopy.notifications.newOptionMessage.title,
+            message: uiCopy.notifications.newOptionMessage.message,
+            metadata: { option_request_id: requestId },
+          });
+        }
       }
     })();
 
@@ -876,7 +889,10 @@ async function fetchAgencyOrgId(agencyId: string): Promise<string | null> {
 
 /**
  * Erstellt aus einem bestätigten option_request ein booking_event.
- * Wird intern von agencyAcceptRequest und modelConfirmOptionRequest aufgerufen.
+ * Idempotent: ein Unique-Constraint-Fehler (23505) auf uidx_booking_events_per_option_request
+ * wird stillschweigend ignoriert — die DB-Trigger-Logik hat das Event bereits angelegt.
+ * Wird intern von clientConfirmJobOnSupabase aufgerufen (status war bereits confirmed;
+ * der Trigger tr_auto_booking_event_on_confirm feuert nicht erneut).
  */
 async function createBookingEventFromRequest(req: SupabaseOptionRequest): Promise<void> {
   try {
@@ -891,16 +907,31 @@ async function createBookingEventFromRequest(req: SupabaseOptionRequest): Promis
       .eq('agency_id', req.agency_id)
       .maybeSingle();
 
-    await createBookingEvent({
-      model_id: req.model_id,
-      client_org_id: req.organization_id ?? null,
-      agency_org_id: (agencyOrg as { id: string } | null)?.id ?? null,
-      date: req.requested_date,
-      type: eventType,
-      title: req.client_name ? `${req.client_name} – ${eventType}` : null,
-      note: null,
-      source_option_request_id: req.id,
-    });
+    const { data: user } = await supabase.auth.getUser();
+    const { error } = await supabase
+      .from('booking_events')
+      .insert({
+        model_id: req.model_id,
+        client_org_id: req.organization_id ?? null,
+        agency_org_id: (agencyOrg as { id: string } | null)?.id ?? null,
+        date: req.requested_date,
+        type: eventType,
+        status: 'pending' as const,
+        title: req.client_name ? `${req.client_name} – ${eventType}` : null,
+        note: null,
+        source_option_request_id: req.id,
+        created_by: user.user?.id ?? null,
+      });
+
+    if (error) {
+      // 23505 = unique_violation: the DB trigger already created this booking_event.
+      // Silently ignore — idempotency is guaranteed by uidx_booking_events_per_option_request.
+      if ((error as any).code === '23505') {
+        console.info('createBookingEventFromRequest: booking_event already exists (idempotent, skipped)', req.id);
+        return;
+      }
+      console.error('createBookingEventFromRequest insert error:', error);
+    }
   } catch (e) {
     console.error('createBookingEventFromRequest exception:', e);
   }
@@ -1051,7 +1082,7 @@ export async function agencyRejectRequest(id: string): Promise<boolean> {
       })
       .eq('id', id)
       .eq('status', 'in_negotiation') // VULN-H2: verhindert Reject nach Confirm
-      .select('id')
+      .select('id, client_id, organization_id')
       .maybeSingle();
 
     if (error) {
@@ -1062,6 +1093,19 @@ export async function agencyRejectRequest(id: string): Promise<boolean> {
       console.warn('agencyRejectRequest: no row updated — request not in_negotiation or already rejected', id);
       return false;
     }
+
+    // Notify the client about the rejection (fire-and-forget).
+    const row = data as { id: string; client_id: string | null; organization_id: string | null };
+    if (row.client_id) {
+      void createNotification({
+        user_id: row.client_id,
+        type: 'request_rejected_by_agency',
+        title: uiCopy.notifications.requestRejectedByAgency.title,
+        message: uiCopy.notifications.requestRejectedByAgency.message,
+        metadata: { option_request_id: id },
+      });
+    }
+
     return true;
   } catch (e) {
     console.error('agencyRejectRequest exception:', e);
@@ -1140,6 +1184,7 @@ export async function modelConfirmOptionRequest(id: string): Promise<boolean> {
 
 /**
  * Model lehnt die Buchungsanfrage ab.
+ * Sendet Notifications an Agency-Org und Client nach erfolgreicher Ablehnung.
  */
 export async function modelRejectOptionRequest(id: string): Promise<boolean> {
   try {
@@ -1153,7 +1198,7 @@ export async function modelRejectOptionRequest(id: string): Promise<boolean> {
       // Guard: only reject when the model approval is still pending.
       // Prevents transitioning an already-approved or already-rejected row.
       .eq('model_approval', 'pending')
-      .select('id')
+      .select('id, agency_id, client_id, organization_id')
       .maybeSingle();
 
     if (error) {
@@ -1164,6 +1209,42 @@ export async function modelRejectOptionRequest(id: string): Promise<boolean> {
       console.warn('modelRejectOptionRequest: no row updated — concurrent state change', { id });
       return false;
     }
+
+    // Notify agency and client about the model rejection (fire-and-forget).
+    void (async () => {
+      try {
+        const row = rejectData as { id: string; agency_id: string | null; client_id: string | null; organization_id: string | null };
+        const notifications: Parameters<typeof createNotifications>[0] = [];
+
+        if (row.agency_id) {
+          const agencyOrgId = await fetchAgencyOrgId(row.agency_id);
+          if (!agencyOrgId) {
+            console.error('[notifications] modelRejectOptionRequest: agency org not found for agency_id', row.agency_id, '— agency notification skipped.');
+          } else {
+            notifications.push({
+              organization_id: agencyOrgId,
+              type: 'request_rejected_by_model',
+              title: uiCopy.notifications.requestRejectedByModel.title,
+              message: uiCopy.notifications.requestRejectedByModel.message,
+              metadata: { option_request_id: id },
+            });
+          }
+        }
+        if (row.client_id) {
+          notifications.push({
+            user_id: row.client_id,
+            type: 'request_rejected_by_model',
+            title: uiCopy.notifications.requestRejectedByModel.title,
+            message: uiCopy.notifications.requestRejectedByModel.message,
+            metadata: { option_request_id: id },
+          });
+        }
+        if (notifications.length > 0) await createNotifications(notifications);
+      } catch (e) {
+        console.error('modelRejectOptionRequest notification exception:', e);
+      }
+    })();
+
     return true;
   } catch (e) {
     console.error('modelRejectOptionRequest exception:', e);
@@ -1279,15 +1360,17 @@ async function notifyModelConfirmedOption(req: SupabaseOptionRequest): Promise<v
     // Resolve the agency org via agency_id — same pattern as createBookingEventFromRequest.
     const agencyOrgId = await fetchAgencyOrgId(req.agency_id);
 
-    notifications.push({
-      ...(agencyOrgId
-        ? { organization_id: agencyOrgId }
-        : { user_id: req.agency_id }), // fallback: only for legacy orgs without an org row
-      type: 'model_confirmed',
-      title: uiCopy.notifications.modelConfirmed.title,
-      message: uiCopy.notifications.modelConfirmed.message,
-      metadata: { option_request_id: req.id },
-    });
+    if (!agencyOrgId) {
+      console.error('[notifications] notifyModelConfirmedOption: agency org not found for agency_id', req.agency_id, '— agency notification skipped.');
+    } else {
+      notifications.push({
+        organization_id: agencyOrgId,
+        type: 'model_confirmed',
+        title: uiCopy.notifications.modelConfirmed.title,
+        message: uiCopy.notifications.modelConfirmed.message,
+        metadata: { option_request_id: req.id },
+      });
+    }
 
     // Also notify the client user
     notifications.push({

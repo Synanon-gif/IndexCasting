@@ -29,7 +29,6 @@ import {
 import { tryStartRecruitingChat } from '../store/recruitingChats';
 import { loadAgencyShortlistIds, saveAgencyShortlistIds } from '../storage/agencyRecruitingShortlist';
 import { mergeAgencyRecruitingMyListIds } from '../utils/agencyRecruitingMyList';
-import { upsertTerritoriesForModel } from '../services/territoriesSupabase';
 import {
   getMyAgencyUsageLimits,
   incrementMyAgencySwipeCount,
@@ -171,11 +170,11 @@ export const AgencyRecruitingView: React.FC<{
       return;
     }
     setAcceptingWithTerritories(true);
-    const result = await acceptApplication(pendingAcceptApp.id, agencyId);
+    // Pass territory codes to acceptApplication — they are stored as pending_territories
+    // on the application record and transferred to model_agency_territories automatically
+    // via DB trigger when the model confirms (status → 'accepted').
+    const result = await acceptApplication(pendingAcceptApp.id, agencyId, selectedCountryCodes);
     if (result) {
-      if (result.modelId) {
-        await upsertTerritoriesForModel(result.modelId, agencyId, selectedCountryCodes);
-      }
       setPendingAcceptApp(null);
       showFeedback(uiCopy.agencyRecruiting.acceptSuccessHint);
       onOpenBookingChat(result.threadId);

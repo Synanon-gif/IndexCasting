@@ -211,7 +211,11 @@ describe('getBookingEventsForModel', () => {
     const chain = makeChain(null);
     chain.select.mockReturnValue(chain);
     chain.eq.mockReturnValue(chain);
-    chain.order.mockResolvedValue({ data: events, error: null });
+    chain.gte.mockReturnValue(chain);
+    chain.lte.mockReturnValue(chain);
+    chain.order.mockReturnValue(chain);
+    // BUG-10 fix: chain now ends with .limit()
+    chain.limit = jest.fn(() => Promise.resolve({ data: events, error: null }));
     (supabase.from as jest.Mock).mockReturnValue(chain);
 
     const result = await getBookingEventsForModel('model-1');
@@ -222,7 +226,10 @@ describe('getBookingEventsForModel', () => {
     const chain = makeChain(null);
     chain.select.mockReturnValue(chain);
     chain.eq.mockReturnValue(chain);
-    chain.order.mockResolvedValue({ data: null, error: { message: 'fail' } });
+    chain.gte.mockReturnValue(chain);
+    chain.lte.mockReturnValue(chain);
+    chain.order.mockReturnValue(chain);
+    chain.limit = jest.fn(() => Promise.resolve({ data: null, error: { message: 'fail' } }));
     (supabase.from as jest.Mock).mockReturnValue(chain);
 
     const result = await getBookingEventsForModel('model-1');
@@ -241,7 +248,11 @@ describe('getBookingEventsForOrg', () => {
     const chain = makeChain(null);
     chain.select.mockReturnValue(chain);
     chain.eq.mockReturnValue(chain);
-    chain.order.mockResolvedValue({ data: events, error: null });
+    chain.gte.mockReturnValue(chain);
+    chain.lte.mockReturnValue(chain);
+    chain.order.mockReturnValue(chain);
+    // BUG-10 fix: chain now ends with .limit() not .order()
+    chain.limit = jest.fn(() => Promise.resolve({ data: events, error: null }));
     (supabase.from as jest.Mock).mockReturnValue(chain);
 
     const result = await getBookingEventsForOrg('org-1', 'agency');
@@ -254,7 +265,10 @@ describe('getBookingEventsForOrg', () => {
     const chain = makeChain(null);
     chain.select.mockReturnValue(chain);
     chain.eq.mockReturnValue(chain);
-    chain.order.mockResolvedValue({ data: events, error: null });
+    chain.gte.mockReturnValue(chain);
+    chain.lte.mockReturnValue(chain);
+    chain.order.mockReturnValue(chain);
+    chain.limit = jest.fn(() => Promise.resolve({ data: events, error: null }));
     (supabase.from as jest.Mock).mockReturnValue(chain);
 
     await getBookingEventsForOrg('org-2', 'client');

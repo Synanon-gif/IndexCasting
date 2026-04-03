@@ -162,13 +162,20 @@ export async function markAllNotificationsAsRead(): Promise<void> {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
+    const orgIds = await getUserOrganizationIds(user.id);
+
+    // Build the OR filter carefully: if the user has no org memberships,
+    // an empty `organization_id.in.()` clause is invalid in PostgREST.
+    // Only include the org clause when there are org IDs to filter on.
+    const orFilter = orgIds
+      ? `user_id.eq.${user.id},organization_id.in.(${orgIds})`
+      : `user_id.eq.${user.id}`;
+
     const { error } = await supabase
       .from('notifications')
       .update({ is_read: true })
       .eq('is_read', false)
-      .or(
-        `user_id.eq.${user.id},organization_id.in.(${await getUserOrganizationIds(user.id)})`,
-      );
+      .or(orFilter);
     if (error) {
       console.error('markAllNotificationsAsRead error:', error);
     }

@@ -97,6 +97,7 @@ import {
 import { updateOptionRequestSchedule } from '../services/optionRequestsSupabase';
 import {
   getManualEventsForOwner,
+  getManualEventsForOrg,
   insertManualEvent,
   updateManualEvent,
   deleteManualEvent,
@@ -298,14 +299,26 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
     if (!currentAgencyId) return;
     setCalendarLoading(true);
     try {
-      const [items, manual, beEntries] = await Promise.all([
+      const [items, orgEvents, ownerEvents, beEntries] = await Promise.all([
         getCalendarEntriesForAgency(currentAgencyId),
+        // Org-wide events: visible to all bookers in the same agency org.
+        agencyOrganizationId
+          ? getManualEventsForOrg(agencyOrganizationId, 'agency')
+          : Promise.resolve([]),
+        // Owner-only fallback: events without an organization_id (pre-org migration).
         getManualEventsForOwner(currentAgencyId, 'agency'),
         // booking_events.agency_org_id is organizations.id, not agencies.id.
         agencyOrganizationId
           ? getBookingEventsAsCalendarEntries(agencyOrganizationId, 'agency')
           : Promise.resolve([]),
       ]);
+      // Merge org-wide + personal events, deduplicating by id.
+      const seen = new Set<string>();
+      const manual: UserCalendarEvent[] = [];
+      for (const ev of [...orgEvents, ...ownerEvents]) {
+        if (!seen.has(ev.id)) { seen.add(ev.id); manual.push(ev); }
+      }
+      manual.sort((a, b) => a.date.localeCompare(b.date) || (a.start_time ?? '').localeCompare(b.start_time ?? ''));
       setCalendarItems(items);
       setManualCalendarEvents(manual);
       setBookingEventEntries(beEntries);
@@ -1886,8 +1899,11 @@ const MyModelsTab: React.FC<{
     const filesToUpload = [...addModelImageFiles];
 
     const heightInt = toNullableInt(addFields.height);
-    // Height is recommended, not mandatory. The completeness banner will flag
-    // it as a Recommended issue once the model is in My Models.
+    // Height is marked NOT NULL in the DB schema.
+    // If the user left it blank and no existing model is found to merge into,
+    // the insert would fail. We default to 0 so the row can be created —
+    // the completeness banner will flag the missing height immediately.
+    const heightForInsert: number = heightInt ?? 0;
 
     setAddLoading(true);
     setAddModelFeedback(null);
@@ -1900,7 +1916,7 @@ const MyModelsTab: React.FC<{
         agency_id: agencyId,
         name,
         email: emailTrim,
-        height: heightInt,
+        height: heightForInsert,
         bust:        toNullableInt(addFields.bust),
         waist:       toNullableInt(addFields.waist),
         hips:        toNullableInt(addFields.hips),
@@ -2113,12 +2129,21 @@ const MyModelsTab: React.FC<{
       const toStr = (v: unknown) => typeof v === 'string' && v.trim() ? v.trim() : null;
       const toArr = (v: unknown): string[] => Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [];
 
-      const portfolioImages = toArr(data.portfolio_images);
-      const territories     = toArr(data.territories ?? data.territory_codes);
+      const portfolioImages  = toArr(data.portfolio_images);
+      const territoryCodes   = toArr(data.territories ?? data.territory_codes);
+      const mediaslideSyncId = toStr(data.mediaslide_sync_id);
+      const netwalkModelId   = toStr(data.netwalk_model_id ?? data.netwalk_id);
+
+      // Convert flat country-code strings to the ModelMergeTerritoryInput shape
+      // (each territory must also carry the current agency_id for DB upsert).
+      const territoriesInput = agencyId
+        ? territoryCodes.map((cc) => ({ country_code: cc, agency_id: agencyId }))
+        : [];
 
       const result = await importModelAndMerge({
         agency_id: agencyId,
-        mediaslide_sync_id: toStr(data.mediaslide_sync_id),
+        mediaslide_sync_id: mediaslideSyncId,
+        netwalk_model_id:   netwalkModelId,
         email:        toStr(data.email),
         name,
         height:       toNum(data.height) ?? undefined,
@@ -2137,7 +2162,8 @@ const MyModelsTab: React.FC<{
         categories:   toArr(data.categories).length > 0 ? toArr(data.categories) : null,
         portfolio_images: portfolioImages,
         polaroids:    toArr(data.polaroids),
-        forceUpdateMeasurements: Boolean(data.mediaslide_sync_id),
+        territories:  territoriesInput.length > 0 ? territoriesInput : undefined,
+        forceUpdateMeasurements: Boolean(mediaslideSyncId || netwalkModelId),
       });
 
       if (!result) {
@@ -2148,9 +2174,8 @@ const MyModelsTab: React.FC<{
       // Check which mandatory fields are missing in the imported payload so the
       // agency immediately knows what to fix — even before opening the model.
       const missingRequired: string[] = [];
-      if (portfolioImages.length === 0) missingRequired.push('Photos');
-      if (territories.length === 0)     missingRequired.push('Territory');
-
+      if (portfolioImages.length === 0)  missingRequired.push('Photos');
+      if (territoryCodes.length === 0)   missingRequired.push('Territory');
       const baseMsg = result.created
         ? `Model "${name}" added to My Models.`
         : `Model "${name}" merged with existing profile.`;
@@ -3888,6 +3913,8 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                   guestLinks={guestLinksForChat}
                   modelsForShare={modelsForShare}
                   onBookingCardPress={onBookingCardPress}
+                  viewerRole="agency"
+                  onBookingStatusUpdated={() => onBookingCardPress?.()}
                 />
               ) : null}
             </>

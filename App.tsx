@@ -35,6 +35,7 @@ import {
   isInviteFlowActive,
 } from './src/storage/inviteToken';
 import { uiCopy } from './src/constants/uiCopy';
+import { initializePushNotifications, teardownPushNotifications } from './src/services/pushNotifications';
 
 /** Web: volle Höhe sofort beim Modul-Load (vor erstem React-Paint) – verhindert weißen/leeren Screen. */
 function ensureWebRootHasHeight() {
@@ -255,6 +256,16 @@ function AppContent() {
     if (!effectiveRole || effectiveRole === 'apply') setCurrentUserId(null);
     else if (session?.user) setCurrentUserId(session.user.id);
   }, [effectiveRole, session, setCurrentUserId]);
+
+  // Register Expo push token once a real (non-guest) session is active.
+  // Deregister on logout (session cleared) to stop delivering pushes to this device.
+  useEffect(() => {
+    if (isAuthenticatedNonGuest) {
+      void initializePushNotifications();
+    } else if (!session) {
+      void teardownPushNotifications();
+    }
+  }, [isAuthenticatedNonGuest, session]);
 
   if (loading) {
     return (

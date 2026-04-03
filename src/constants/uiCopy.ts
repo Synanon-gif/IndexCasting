@@ -477,6 +477,8 @@ export const uiCopy = {
     invalidDateFormat: 'Invalid date format. Use YYYY-MM-DD.',
     insertFailed: 'Could not save calendar entry. Please try again.',
     duplicateEvent: 'An event with the same title already exists on this date.',
+    conflictWarningTitle: 'Schedule Conflict',
+    conflictWarningMessage: 'This model already has a booking on this date: {{entries}}. You can still submit the request.',
   },
   adminDashboard: {
     deletePermanentlyTitle: 'Delete account permanently',
@@ -839,6 +841,14 @@ export const uiCopy = {
     newRecruitingMessage: {
       title: 'New recruiting message',
       message: 'You have a new message in your recruiting chat.',
+    },
+    requestRejectedByAgency: {
+      title: 'Request declined',
+      message: 'The agency has declined your option/job request.',
+    },
+    requestRejectedByModel: {
+      title: 'Model declined',
+      message: 'The model has declined the option/job request.',
     },
   },
   systemMessages: {

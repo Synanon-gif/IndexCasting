@@ -1,6 +1,10 @@
 import { supabase } from '../../lib/supabase';
 import { uiCopy } from '../constants/uiCopy';
 
+/** Explizite Feldliste — kein SELECT * mehr (verhindert ungewollten Datenabfluss bei neuen Spalten). */
+const USER_CALENDAR_EVENT_SELECT =
+  'id, owner_id, owner_type, date, start_time, end_time, title, color, note, organization_id, created_by, source_option_request_id, reminder_at, created_at, updated_at' as const;
+
 /**
  * Manuelle Kalender-Ereignisse – pro Partei (Kunde/Agentur) in Supabase gespeichert.
  * Nur die jeweilige Partei sieht und verwaltet ihre eigenen Events (RLS).
@@ -41,7 +45,7 @@ export async function getManualEventsForOwner(
   }
   const { data, error } = await supabase
     .from('user_calendar_events')
-    .select('*')
+    .select(USER_CALENDAR_EVENT_SELECT)
     .eq('owner_id', ownerId)
     .eq('owner_type', ownerType)
     .order('date', { ascending: true })
@@ -71,7 +75,7 @@ export async function getManualEventsForOrg(
   try {
     const { data, error } = await supabase
       .from('user_calendar_events')
-      .select('*')
+      .select(USER_CALENDAR_EVENT_SELECT)
       .eq('organization_id', orgId)
       .eq('owner_type', ownerType)
       .order('date', { ascending: true })
@@ -116,8 +120,8 @@ export async function insertManualEvent(event: {
       return { ok: false, errorMessage: uiCopy.calendarValidation.invalidDateFormat };
     }
 
-    // Duplicate guard: check for an existing event with the same date + title
-    // in the same org/owner to prevent accidental double-inserts.
+    // Application-level duplicate pre-check (best-effort; the DB UNIQUE index
+    // uidx_user_calendar_events_manual_dedup is the authoritative race-free guard).
     const { data: existing, error: dupErr } = await supabase
       .from('user_calendar_events')
       .select('id')
@@ -130,8 +134,12 @@ export async function insertManualEvent(event: {
     if (dupErr) {
       console.warn('insertManualEvent duplicate check error:', dupErr);
     } else if (existing?.id) {
-      console.warn('insertManualEvent: duplicate event detected for', dateNorm, event.title);
-      return { ok: false, errorMessage: uiCopy.calendarValidation.duplicateEvent ?? 'An event with the same title already exists on this date.', isDuplicate: true };
+      console.warn('insertManualEvent: duplicate event detected (pre-check)', dateNorm, event.title);
+      return {
+        ok: false,
+        errorMessage: uiCopy.calendarValidation.duplicateEvent ?? 'An event with the same title already exists on this date.',
+        isDuplicate: true,
+      };
     }
 
     const { data, error } = await supabase
@@ -155,6 +163,16 @@ export async function insertManualEvent(event: {
       )
       .single();
     if (error) {
+      // Postgres unique-violation code 23505 means the DB-level constraint caught a
+      // concurrent duplicate that slipped past the pre-check above (TOCTOU closed).
+      if ((error as any).code === '23505') {
+        console.warn('insertManualEvent: duplicate caught by DB unique constraint', dateNorm, event.title);
+        return {
+          ok: false,
+          errorMessage: uiCopy.calendarValidation.duplicateEvent ?? 'An event with the same title already exists on this date.',
+          isDuplicate: true,
+        };
+      }
       console.error('insertManualEvent error:', error);
       return { ok: false, errorMessage: error.message || uiCopy.calendarValidation.insertFailed };
     }
@@ -169,6 +187,10 @@ export async function updateManualEvent(
   id: string,
   updates: Partial<Pick<UserCalendarEvent, 'date' | 'start_time' | 'end_time' | 'title' | 'color' | 'note' | 'reminder_at'>>
 ): Promise<boolean> {
+  if (!isUuid(id)) {
+    console.error('updateManualEvent: id must be a valid UUID');
+    return false;
+  }
   try {
     if (updates.date != null) {
       const d = String(updates.date).trim();
@@ -194,6 +216,10 @@ export async function updateManualEvent(
 }
 
 export async function deleteManualEvent(id: string): Promise<boolean> {
+  if (!isUuid(id)) {
+    console.error('deleteManualEvent: id must be a valid UUID');
+    return false;
+  }
   try {
     const { error } = await supabase.from('user_calendar_events').delete().eq('id', id);
     if (error) {

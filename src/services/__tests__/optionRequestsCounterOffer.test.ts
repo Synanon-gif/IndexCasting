@@ -57,20 +57,22 @@ afterEach(() => {
 
 // ─── clientAcceptCounterPrice ─────────────────────────────────────────────────
 
+// clientAcceptCounterPrice now uses .maybeSingle() as the terminal call,
+// returning a single object (not an array). The guards also include
+// .eq('status', 'in_negotiation') in addition to the price-status guards.
 describe('clientAcceptCounterPrice — optimistic guard', () => {
-  it('returns true when the counter-offer is still pending (1 row updated)', async () => {
-    // DB returns data with 1 row → update succeeded
-    const chain = makeChain({ data: [{ id: 'req-1' }], error: null });
+  it('returns true when the counter-offer is still pending (row matched)', async () => {
+    // DB returns { data: { id: 'req-1' }, error: null } via maybeSingle
+    const chain = makeChain({ data: { id: 'req-1' }, error: null }, 'maybeSingle');
     from.mockReturnValue(chain);
 
     const result = await clientAcceptCounterPrice('req-1');
     expect(result).toBe(true);
   });
 
-  it('returns false when counter-offer was already accepted (0 rows updated — stale accept)', async () => {
-    // DB returns empty data → the WHERE guards on client_price_status='pending'
-    // and final_status='option_pending' matched 0 rows (stale / already changed).
-    const chain = makeChain({ data: [], error: null });
+  it('returns false when counter-offer was already accepted (0 rows — stale accept)', async () => {
+    // maybeSingle returns null when no row matched
+    const chain = makeChain({ data: null, error: null }, 'maybeSingle');
     from.mockReturnValue(chain);
 
     const result = await clientAcceptCounterPrice('req-1');
@@ -81,7 +83,7 @@ describe('clientAcceptCounterPrice — optimistic guard', () => {
   });
 
   it('returns false when counter-offer was rejected by another session (null data)', async () => {
-    const chain = makeChain({ data: null, error: null });
+    const chain = makeChain({ data: null, error: null }, 'maybeSingle');
     from.mockReturnValue(chain);
 
     const result = await clientAcceptCounterPrice('req-1');
@@ -89,7 +91,7 @@ describe('clientAcceptCounterPrice — optimistic guard', () => {
   });
 
   it('returns false on DB error', async () => {
-    const chain = makeChain({ data: null, error: { message: 'rls violation' } });
+    const chain = makeChain({ data: null, error: { message: 'rls violation' } }, 'maybeSingle');
     from.mockReturnValue(chain);
 
     const result = await clientAcceptCounterPrice('req-1');
@@ -97,11 +99,11 @@ describe('clientAcceptCounterPrice — optimistic guard', () => {
     expect(consoleErrorSpy).toHaveBeenCalled();
   });
 
-  it('correctly rejects a double-accept scenario (second call returns 0 rows)', async () => {
-    // First accept: 1 row updated → succeeds
-    const firstChain = makeChain({ data: [{ id: 'req-1' }], error: null });
-    // Second accept (race): 0 rows because client_price_status is now 'accepted'
-    const secondChain = makeChain({ data: [], error: null });
+  it('correctly rejects a double-accept scenario (second call returns null)', async () => {
+    // First accept: row matched → succeeds
+    const firstChain = makeChain({ data: { id: 'req-1' }, error: null }, 'maybeSingle');
+    // Second accept (race): null because client_price_status is now 'accepted'
+    const secondChain = makeChain({ data: null, error: null }, 'maybeSingle');
 
     from.mockReturnValueOnce(firstChain).mockReturnValueOnce(secondChain);
 

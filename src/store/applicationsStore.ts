@@ -157,10 +157,15 @@ export type AcceptApplicationResult = {
  * Agency akzeptiert eine Bewerbung: setzt status → 'pending_model_confirmation'.
  * Das Model muss anschließend confirmApplicationByModel aufrufen, bevor
  * ein Model-Eintrag erstellt wird.
+ *
+ * territoryCodes: ISO-3166-1 alpha-2 Ländercodes, die die Agency beim Accept gewählt hat.
+ * Sie werden als pending_territories auf dem Application-Record gespeichert und beim
+ * Model-Confirm automatisch via DB-Trigger auf model_agency_territories übertragen.
  */
 export async function acceptApplication(
   applicationId: string,
   agencyId: string,
+  territoryCodes?: string[],
 ): Promise<AcceptApplicationResult | null> {
   const app = cache.find((a) => a.id === applicationId);
   if (!app || app.status !== 'pending') return null;
@@ -179,6 +184,11 @@ export async function acceptApplication(
   const ok = await updateApplicationStatus(applicationId, 'pending_model_confirmation', {
     recruiting_thread_id: threadId,
     accepted_by_agency_id: agencyId,
+    // Persist territory codes so they survive until the model confirms.
+    // The DB trigger tr_transfer_pending_territories applies them on status → 'accepted'.
+    ...(territoryCodes && territoryCodes.length > 0
+      ? { pending_territories: JSON.stringify(territoryCodes) }
+      : {}),
   });
   if (!ok) return null;
 

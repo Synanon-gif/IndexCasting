@@ -32,7 +32,7 @@ import { getModelByIdFromSupabase } from '../services/modelsSupabase';
 import { getAgencyById } from '../services/agenciesSupabase';
 import { resolveAgencyForModelAndCountry } from '../services/territoriesSupabase';
 import { createBookingMessageInClientAgencyChat } from '../services/bookingChatIntegrationSupabase';
-import { upsertCalendarEntry, updateCalendarEntryToJob } from '../services/calendarSupabase';
+import { updateCalendarEntryToJob, checkCalendarConflict } from '../services/calendarSupabase';
 import { notifyClientAgencyCounterOffer } from '../services/pushNotifications';
 import { showAppAlert } from '../utils/crossPlatformAlert';
 import { uiCopy } from '../constants/uiCopy';
@@ -250,6 +250,25 @@ export function addOptionRequest(
       }
     } catch {}
 
+    // Calendar conflict check — informational only (fail-open).
+    // Warns the user when the model already has a confirmed booking on the
+    // requested date so they can decide whether to proceed.
+    const conflictResult = await checkCalendarConflict(
+      modelId,
+      date,
+      extra?.startTime ?? null,
+      extra?.endTime ?? null,
+    );
+    if (conflictResult.has_conflict) {
+      const conflictTitles = conflictResult.conflicting_entries
+        .map((e) => e.title ?? e.entry_type)
+        .join(', ');
+      showAppAlert(
+        uiCopy.calendarValidation.conflictWarningTitle ?? 'Schedule Conflict',
+        (uiCopy.calendarValidation.conflictWarningMessage ?? 'This model already has a booking on this date: {{entries}}. You can still submit the request.').replace('{{entries}}', conflictTitles),
+      );
+    }
+
     const result = await insertOptionRequest({
       client_id: clientId,
       model_id: modelId,
@@ -407,36 +426,14 @@ export function setRequestStatus(threadId: string, status: ChatStatus): void {
 
   // Pass prev as fromStatus so the DB UPDATE only succeeds when the row is
   // still in the expected prior state — prevents blind status jumps and races.
+  // Calendar entries for the confirmed path are created atomically by the DB trigger
+  // fn_ensure_calendar_on_option_confirmed — no client-side upsert needed here.
   void updateOptionRequestStatus(req.id, status, prev).then((ok) => {
     if (!ok) {
       req.status = prev;
       notify();
       console.error('[setRequestStatus] Supabase rejected status update', req.id);
-      return;
     }
-    if (status !== 'confirmed') return;
-
-    /** Manual “confirmed” must mirror option_requests into calendar_entries with option_request_id (client calendar join). */
-    void (async () => {
-      try {
-        const full = await getOptionRequestById(req.id);
-        if (!full) return;
-        const entryType = full.request_type === 'casting' ? 'casting' : 'option';
-        const title = `${entryType === 'casting' ? 'Casting' : 'Option'} – ${full.client_name ?? 'Client'}`;
-        await upsertCalendarEntry(full.model_id, full.requested_date, 'booked', undefined, {
-          start_time: full.start_time ?? undefined,
-          end_time: full.end_time ?? undefined,
-          title,
-          entry_type: entryType,
-          option_request_id: full.id,
-          client_name: full.client_name ?? undefined,
-          booking_details: {},
-          created_by_agency: false,
-        });
-      } catch (e) {
-        console.error('[setRequestStatus] calendar sync failed', e);
-      }
-    })();
   });
 }
 
@@ -499,27 +496,6 @@ export async function refreshOptionRequestInCache(threadId: string): Promise<voi
   }
 }
 
-async function ensureOptionCalendarEntry(opt: SupabaseOptionRequest): Promise<void> {
-  const entryType = opt.request_type === 'casting' ? 'casting' : 'option';
-  const title = `${entryType === 'casting' ? 'Casting' : 'Option'} – ${opt.client_name ?? 'Client'}`;
-  await upsertCalendarEntry(
-    opt.model_id,
-    opt.requested_date,
-    'tentative',
-    undefined,
-    {
-      start_time: opt.start_time ?? undefined,
-      end_time: opt.end_time ?? undefined,
-      title,
-      entry_type: entryType,
-      option_request_id: opt.id,
-      client_name: opt.client_name ?? undefined,
-      booking_details: {},
-      created_by_agency: false,
-    }
-  );
-}
-
 /**
  * Agency accepts request — unified path.
  * Routes through agencyAcceptRequest which handles:
@@ -545,7 +521,8 @@ export async function agencyAcceptClientPriceStore(threadId: string): Promise<bo
   if (updated) {
     Object.assign(req, toLocalRequest(updated));
     if (updated.final_status === 'option_confirmed') {
-      await ensureOptionCalendarEntry(updated);
+      // Calendar entry is created by the DB trigger fn_ensure_calendar_on_option_confirmed
+      // (migration_calendar_booking_audit_fixes_2026_04.sql) — no client-side call needed.
       const text = uiCopy.systemMessages.agencyAcceptedPrice;
       await addOptionMessage(req.id, 'agency', text);
       messagesCache.push({ id: `msg-${Date.now()}`, threadId, from: 'agency', text, createdAt: Date.now() });
@@ -602,7 +579,7 @@ export async function agencyRejectClientPriceStore(threadId: string): Promise<bo
   return true;
 }
 
-/** Client accepts agency counter → option_confirmed; create calendar entry and system message. */
+/** Client accepts agency counter → option_confirmed; system message (calendar entry via DB trigger). */
 export async function clientAcceptCounterStore(threadId: string): Promise<boolean> {
   const req = requestsCache.find((r) => r.threadId === threadId);
   if (!req) return false;
@@ -612,7 +589,8 @@ export async function clientAcceptCounterStore(threadId: string): Promise<boolea
   if (updated) {
     Object.assign(req, toLocalRequest(updated));
     if (updated.final_status === 'option_confirmed') {
-      await ensureOptionCalendarEntry(updated);
+      // Calendar entry is created by the DB trigger fn_ensure_calendar_on_option_confirmed
+      // (migration_calendar_booking_audit_fixes_2026_04.sql) — no client-side call needed.
       const text = uiCopy.systemMessages.clientAcceptedCounter;
       await addOptionMessage(req.id, 'client', text);
       messagesCache.push({ id: `msg-${Date.now()}`, threadId, from: 'client', text, createdAt: Date.now() });
@@ -657,15 +635,17 @@ export async function clientConfirmJobStore(threadId: string): Promise<boolean> 
       .maybeSingle();
     const agencyOrgId = (agencyOrgRow as { id: string } | null)?.id;
 
-    notifications.push({
-      ...(agencyOrgId
-        ? { organization_id: agencyOrgId }
-        : { user_id: full.agency_id }),
-      type: 'job_confirmed',
-      title: uiCopy.notifications.jobConfirmed.title,
-      message: uiCopy.notifications.jobConfirmed.message,
-      metadata: { option_request_id: full.id },
-    });
+    if (!agencyOrgId) {
+      console.error('[notifications] clientConfirmJobStore: agency org not found for agency_id', full.agency_id, '— agency notification skipped.');
+    } else {
+      notifications.push({
+        organization_id: agencyOrgId,
+        type: 'job_confirmed',
+        title: uiCopy.notifications.jobConfirmed.title,
+        message: uiCopy.notifications.jobConfirmed.message,
+        metadata: { option_request_id: full.id },
+      });
+    }
 
     if (full.model_account_linked) {
       const { data: modelRow } = await supabase
@@ -713,15 +693,17 @@ export async function clientRejectCounterStore(threadId: string): Promise<boolea
       .eq('agency_id', full.agency_id)
       .maybeSingle();
     const agencyOrgId = (agencyOrgRow as { id: string } | null)?.id;
-    void createNotification({
-      ...(agencyOrgId
-        ? { organization_id: agencyOrgId }
-        : { user_id: full.agency_id }),
-      type: 'client_rejected_counter',
-      title: uiCopy.notifications.clientRejectedCounter.title,
-      message: uiCopy.notifications.clientRejectedCounter.message,
-      metadata: { option_request_id: req.id },
-    });
+    if (!agencyOrgId) {
+      console.error('[notifications] clientRejectCounterStore: agency org not found for agency_id', full.agency_id, '— notification skipped.');
+    } else {
+      void createNotification({
+        organization_id: agencyOrgId,
+        type: 'client_rejected_counter',
+        title: uiCopy.notifications.clientRejectedCounter.title,
+        message: uiCopy.notifications.clientRejectedCounter.message,
+        metadata: { option_request_id: req.id },
+      });
+    }
   }
 
   notify();

@@ -3,10 +3,12 @@ import { syncSingleModelFromNetwalk } from '../netwalkSyncService';
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
 const fromMock = jest.fn();
+const rpcMock = jest.fn().mockResolvedValue({ error: null });
 
 jest.mock('../../../lib/supabase', () => ({
   supabase: {
     from: (...args: unknown[]) => fromMock(...args),
+    rpc: (...args: unknown[]) => rpcMock(...args),
   },
 }));
 
@@ -29,6 +31,10 @@ jest.mock('../mediaslideSyncService', () => ({
 
 jest.mock('../supabaseFetchAll', () => ({
   fetchAllSupabasePages: jest.fn().mockResolvedValue([]),
+}));
+
+jest.mock('../territoriesSupabase', () => ({
+  upsertTerritoriesForModelCountryAgencyPairs: jest.fn().mockResolvedValue(undefined),
 }));
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
