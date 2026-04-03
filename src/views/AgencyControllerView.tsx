@@ -114,6 +114,13 @@ import { runMediaslideCronSync } from '../services/mediaslideSyncService';
 import { runNetwalkCronSync } from '../services/netwalkSyncService';
 import { getAgencyApiKeys, saveAgencyApiConnection } from '../services/agencySettingsSupabase';
 import { checkModelCompleteness, type CompletenessContext } from '../utils/modelCompleteness';
+import { calendarEntryColor } from '../utils/calendarColors';
+import { DashboardSummaryBar } from '../components/DashboardSummaryBar';
+import { OrgMetricsPanel } from '../components/OrgMetricsPanel';
+import { GlobalSearchBar } from '../components/GlobalSearchBar';
+import { getMyAgencyUsageLimits, type AgencyUsageLimits } from '../services/agencyUsageLimitsSupabase';
+import { getLatestActivityLog, type ActivityLog } from '../services/activityLogsSupabase';
+import { uiCopy as _uiCopy } from '../constants/uiCopy';
 
 const STATUS_LABELS: Record<ChatStatus, string> = {
   in_negotiation: 'In negotiation',
@@ -208,6 +215,8 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   const [savingManualEventEdit, setSavingManualEventEdit] = useState(false);
   const [bookingChatThreads, setBookingChatThreads] = useState<RecruitingThread[]>([]);
   const [openBookingThreadId, setOpenBookingThreadId] = useState<string | null>(null);
+  const [swipeLimits, setSwipeLimits] = useState<AgencyUsageLimits | null>(null);
+  const [latestActivity, setLatestActivity] = useState<ActivityLog | null>(null);
   /** After starting a chat from Clients, open Messages with this thread. */
   const [pendingB2BChat, setPendingB2BChat] = useState<{ conversationId: string; title: string } | null>(null);
   const currentAgency = useMemo(() => {
@@ -225,6 +234,15 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   useEffect(() => {
     getAgencies().then(setAgencies);
   }, []);
+
+  // Load swipe limits and activity log for the dashboard tab.
+  useEffect(() => {
+    if (tab !== 'dashboard') return;
+    void getMyAgencyUsageLimits().then(setSwipeLimits);
+    if (agencyOrganizationId) {
+      void getLatestActivityLog(agencyOrganizationId).then(setLatestActivity);
+    }
+  }, [tab, agencyOrganizationId]);
 
   useEffect(() => {
     if (!currentAgencyId) return;
@@ -417,9 +435,40 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         </TouchableOpacity>
       </View>
 
+      {agencyOrganizationId && (
+        <View style={{ paddingHorizontal: spacing.sm, paddingBottom: spacing.xs, zIndex: 200 }}>
+          <GlobalSearchBar
+            orgId={agencyOrganizationId}
+            onSelectModel={() => setTab('myModels')}
+            onSelectConversation={() => setTab('messages')}
+            onSelectOption={() => setTab('messages')}
+          />
+        </View>
+      )}
+
       <View style={{ flex: 1, paddingBottom: bottomTabInset }}>
       {tab === 'dashboard' && (
-        <DashboardTab models={models} />
+        <View style={{ flex: 1 }}>
+          {agencyOrganizationId && session?.user?.id && (
+            <DashboardSummaryBar
+              orgId={agencyOrganizationId}
+              userId={session.user.id}
+              onPressRequests={() => setTab('messages')}
+              onPressMessages={() => setTab('messages')}
+              onPressCalendar={() => setTab('calendar')}
+            />
+          )}
+          {swipeLimits && (
+            <SwipeLimitBanner
+              used={swipeLimits.swipes_used_today}
+              limit={swipeLimits.daily_swipe_limit}
+            />
+          )}
+          <DashboardTab models={models} />
+          {latestActivity && (
+            <ActivityLogFooter log={latestActivity} />
+          )}
+        </View>
       )}
 
       {tab === 'recruiting' && (
@@ -523,6 +572,12 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
 
       {tab === 'settings' && profile?.org_member_role === 'owner' && (
         <>
+          {agencyOrganizationId && (
+            <OrgMetricsPanel
+              orgId={agencyOrganizationId}
+              userRole={profile?.org_member_role ?? 'owner'}
+            />
+          )}
           <AgencySettingsTab
             agency={currentAgency}
             organizationId={agencyOrganizationId}
@@ -1164,6 +1219,80 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   );
 };
 
+const SwipeLimitBanner: React.FC<{ used: number; limit: number }> = ({ used, limit }) => {
+  const copy = _uiCopy.dashboard;
+  const exceeded = used >= limit;
+  return (
+    <View style={[swipeBannerStyles.container, exceeded && swipeBannerStyles.exceeded]}>
+      <Text style={[swipeBannerStyles.text, exceeded && swipeBannerStyles.textExceeded]}>
+        {exceeded
+          ? copy.swipeLimitReached
+          : copy.swipesUsed.replace('{used}', String(used)).replace('{total}', String(limit))}
+      </Text>
+    </View>
+  );
+};
+
+const swipeBannerStyles = StyleSheet.create({
+  container: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    backgroundColor: '#fef3c7',
+    borderBottomWidth: 1,
+    borderBottomColor: '#fde68a',
+  },
+  exceeded: {
+    backgroundColor: '#fee2e2',
+    borderBottomColor: '#fecaca',
+  },
+  text: {
+    fontSize: 12,
+    color: '#92400e',
+    textAlign: 'center',
+  },
+  textExceeded: {
+    color: '#991b1b',
+    fontWeight: '600',
+  },
+});
+
+const ActivityLogFooter: React.FC<{ log: ActivityLog }> = ({ log }) => {
+  const copy = _uiCopy.dashboard;
+  const timeAgo = (dateStr: string): string => {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}h ago`;
+    return `${Math.floor(hours / 24)}d ago`;
+  };
+
+  const label = log.action_type.replace(/_/g, ' ');
+
+  return (
+    <View style={activityFooterStyles.container}>
+      <Text style={activityFooterStyles.text}>
+        {copy.lastActionPrefix} {label} {copy.lastActionBy} {log.actor_name} • {timeAgo(log.created_at)}
+      </Text>
+    </View>
+  );
+};
+
+const activityFooterStyles = StyleSheet.create({
+  container: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  text: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+});
+
 const DashboardTab: React.FC<{ models: AgencyModel[] }> = ({ models }) => (
   <ScreenScrollView>
     <Text style={s.sectionLabel}>Traction</Text>
@@ -1220,9 +1349,7 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
       if (!date) return;
       if (!map[date]) map[date] = [];
       const entryType = item.calendar_entry?.entry_type;
-      let color = '#1565C0';
-      if (entryType === 'booking') color = colors.buttonSkipRed;
-      else if (entryType === 'casting' || entryType === 'gosee') color = colors.textSecondary;
+      const color = calendarEntryColor(entryType);
       map[date].push({
         id: item.option.id,
         color,
@@ -1943,6 +2070,31 @@ const MyModelsTab: React.FC<{
     setImportLinkLoading(true);
     setImportLinkFeedback(null);
     try {
+      let parsed: URL;
+      try {
+        parsed = new URL(url);
+      } catch {
+        setImportLinkFeedback({ ok: false, message: 'Invalid URL format.' });
+        return;
+      }
+      if (parsed.protocol !== 'https:') {
+        setImportLinkFeedback({ ok: false, message: 'Only HTTPS URLs are allowed.' });
+        return;
+      }
+      const hostname = parsed.hostname.toLowerCase();
+      const isPrivate =
+        hostname === 'localhost' ||
+        /^127\./.test(hostname) ||
+        /^10\./.test(hostname) ||
+        /^192\.168\./.test(hostname) ||
+        /^172\.(1[6-9]|2\d|3[01])\./.test(hostname) ||
+        /^::1$/.test(hostname) ||
+        /^0\./.test(hostname) ||
+        hostname === '169.254.169.254';
+      if (isPrivate) {
+        setImportLinkFeedback({ ok: false, message: 'Private network targets are not allowed.' });
+        return;
+      }
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
       const raw = await res.json();
@@ -4222,6 +4374,9 @@ const GuestLinksTab: React.FC<{
     setCreateError(null);
     setCreating(true);
     try {
+      const defaultExpiryDays = 30;
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + defaultExpiryDays);
       const link = await createGuestLink({
         agency_id: agencyId,
         model_ids: Array.from(selectedModelIds),
@@ -4229,6 +4384,7 @@ const GuestLinksTab: React.FC<{
         agency_name: agencyName,
         label: label.trim(),
         type: packageType,
+        expires_at: expiresAt.toISOString(),
       });
       if (link) {
         setLinks((prev) => [link, ...prev]);

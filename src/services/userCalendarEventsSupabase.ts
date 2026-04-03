@@ -19,6 +19,8 @@ export type UserCalendarEvent = {
   created_by: string | null;
   /** Populated by DB trigger when this event was mirrored from an option_request. */
   source_option_request_id: string | null;
+  /** Optional in-app reminder timestamp. NULL = no reminder. */
+  reminder_at?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -87,7 +89,7 @@ export async function getManualEventsForOrg(
 
 export type InsertManualEventResult =
   | { ok: true; event: UserCalendarEvent }
-  | { ok: false; errorMessage: string };
+  | { ok: false; errorMessage: string; isDuplicate?: boolean };
 
 export async function insertManualEvent(event: {
   owner_id: string;
@@ -100,6 +102,7 @@ export async function insertManualEvent(event: {
   note?: string;
   organization_id?: string | null;
   created_by?: string | null;
+  reminder_at?: string | null;
 }): Promise<InsertManualEventResult> {
   try {
     if (!isUuid(event.owner_id)) {
@@ -112,6 +115,25 @@ export async function insertManualEvent(event: {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dateNorm)) {
       return { ok: false, errorMessage: uiCopy.calendarValidation.invalidDateFormat };
     }
+
+    // Duplicate guard: check for an existing event with the same date + title
+    // in the same org/owner to prevent accidental double-inserts.
+    const { data: existing, error: dupErr } = await supabase
+      .from('user_calendar_events')
+      .select('id')
+      .eq('owner_id', event.owner_id)
+      .eq('owner_type', event.owner_type)
+      .eq('date', dateNorm)
+      .eq('title', event.title)
+      .limit(1)
+      .maybeSingle();
+    if (dupErr) {
+      console.warn('insertManualEvent duplicate check error:', dupErr);
+    } else if (existing?.id) {
+      console.warn('insertManualEvent: duplicate event detected for', dateNorm, event.title);
+      return { ok: false, errorMessage: uiCopy.calendarValidation.duplicateEvent ?? 'An event with the same title already exists on this date.', isDuplicate: true };
+    }
+
     const { data, error } = await supabase
       .from('user_calendar_events')
       .insert({
@@ -125,10 +147,11 @@ export async function insertManualEvent(event: {
         note: event.note ?? null,
         organization_id: event.organization_id ?? null,
         created_by: event.created_by ?? null,
+        reminder_at: event.reminder_at ?? null,
         updated_at: new Date().toISOString(),
       })
       .select(
-        'id, owner_id, owner_type, date, start_time, end_time, title, color, note, organization_id, created_by, created_at, updated_at'
+        'id, owner_id, owner_type, date, start_time, end_time, title, color, note, organization_id, created_by, reminder_at, created_at, updated_at'
       )
       .single();
     if (error) {
@@ -144,7 +167,7 @@ export async function insertManualEvent(event: {
 
 export async function updateManualEvent(
   id: string,
-  updates: Partial<Pick<UserCalendarEvent, 'date' | 'start_time' | 'end_time' | 'title' | 'color' | 'note'>>
+  updates: Partial<Pick<UserCalendarEvent, 'date' | 'start_time' | 'end_time' | 'title' | 'color' | 'note' | 'reminder_at'>>
 ): Promise<boolean> {
   try {
     if (updates.date != null) {

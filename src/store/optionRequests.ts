@@ -266,6 +266,14 @@ export function addOptionRequest(
       organization_id: organizationId,
       created_by: user?.id ?? null,
     });
+    if (!result) {
+      // DB insert failed: roll back the optimistic stub so the UI stays consistent.
+      requestsCache = requestsCache.filter((x) => x.id !== req.id);
+      messagesCache = messagesCache.filter((m) => m.id !== autoMessage.id);
+      notify();
+      console.error('[addOptionRequest] insertOptionRequest returned null – optimistic entry rolled back');
+      return;
+    }
     if (result) {
       const local = toLocalRequest(result);
       const r = requestsCache.find((x) => x.id === req.id);
@@ -309,31 +317,46 @@ export function addOptionRequest(
 export async function approveOptionAsModel(threadId: string): Promise<boolean> {
   const req = requestsCache.find((r) => r.threadId === threadId);
   if (!req) return false;
+  const prevApproval = req.modelApproval;
+  const prevApprovedAt = req.modelApprovedAt;
   req.modelApproval = 'approved';
   req.modelApprovedAt = new Date().toISOString();
   notify();
   const ok = await updateModelApproval(req.id, 'approved');
-  if (ok) {
-    const approvedText = uiCopy.systemMessages.modelApprovedBooking;
-    messagesCache.push({
-      id: `msg-${Date.now()}`,
-      threadId,
-      from: 'agency',
-      text: approvedText,
-      createdAt: Date.now(),
-    });
-    addOptionMessage(req.id, 'agency', approvedText);
+  if (!ok) {
+    // Roll back optimistic change on failure.
+    req.modelApproval = prevApproval;
+    req.modelApprovedAt = prevApprovedAt;
     notify();
+    console.error('[approveOptionAsModel] updateModelApproval failed – rolled back', req.id);
+    return false;
   }
-  return ok;
+  const approvedText = uiCopy.systemMessages.modelApprovedBooking;
+  messagesCache.push({
+    id: `msg-${Date.now()}`,
+    threadId,
+    from: 'agency',
+    text: approvedText,
+    createdAt: Date.now(),
+  });
+  addOptionMessage(req.id, 'agency', approvedText);
+  notify();
+  return true;
 }
 
 export async function rejectOptionAsModel(threadId: string): Promise<boolean> {
   const req = requestsCache.find((r) => r.threadId === threadId);
   if (!req) return false;
+  const prevApproval = req.modelApproval;
   req.modelApproval = 'rejected';
   notify();
-  return updateModelApproval(req.id, 'rejected');
+  const ok = await updateModelApproval(req.id, 'rejected');
+  if (!ok) {
+    req.modelApproval = prevApproval;
+    notify();
+    console.error('[rejectOptionAsModel] updateModelApproval failed – rolled back', req.id);
+  }
+  return ok;
 }
 
 export function getOutstandingOptionsForModel(modelId: string): OptionRequest[] {
@@ -620,27 +643,30 @@ export async function clientConfirmJobStore(threadId: string): Promise<boolean> 
   await addOptionMessage(req.id, 'client', text);
   messagesCache.push({ id: `msg-${Date.now()}`, threadId, from: 'client', text, createdAt: Date.now() });
 
-  // Notify agency + model about job confirmation.
+  // Notify agency org + model about job confirmation.
+  // full.organization_id is the CLIENT org — do NOT notify it here (client triggered this action).
+  // Resolve the agency org the same way createBookingEventFromRequest does.
   const full = await getOptionRequestById(req.id);
   if (full) {
     const notifications: Parameters<typeof createNotifications>[0] = [];
-    if (full.organization_id) {
-      notifications.push({
-        organization_id: full.organization_id,
-        type: 'job_confirmed',
-        title: uiCopy.notifications.jobConfirmed.title,
-        message: uiCopy.notifications.jobConfirmed.message,
-        metadata: { option_request_id: full.id },
-      });
-    } else {
-      notifications.push({
-        user_id: full.agency_id,
-        type: 'job_confirmed',
-        title: uiCopy.notifications.jobConfirmed.title,
-        message: uiCopy.notifications.jobConfirmed.message,
-        metadata: { option_request_id: full.id },
-      });
-    }
+
+    const { data: agencyOrgRow } = await supabase
+      .from('organizations')
+      .select('id')
+      .eq('agency_id', full.agency_id)
+      .maybeSingle();
+    const agencyOrgId = (agencyOrgRow as { id: string } | null)?.id;
+
+    notifications.push({
+      ...(agencyOrgId
+        ? { organization_id: agencyOrgId }
+        : { user_id: full.agency_id }),
+      type: 'job_confirmed',
+      title: uiCopy.notifications.jobConfirmed.title,
+      message: uiCopy.notifications.jobConfirmed.message,
+      metadata: { option_request_id: full.id },
+    });
+
     if (full.model_account_linked) {
       const { data: modelRow } = await supabase
         .from('models')
@@ -677,12 +703,19 @@ export async function clientRejectCounterStore(threadId: string): Promise<boolea
   await addOptionMessage(req.id, 'client', text);
   messagesCache.push({ id: `msg-${Date.now()}`, threadId, from: 'client', text, createdAt: Date.now() });
 
-  // Notify agency about rejection.
+  // Notify agency org about the rejection.
+  // full.organization_id is the CLIENT org — resolve agency org explicitly.
   const full = await getOptionRequestById(req.id);
   if (full) {
+    const { data: agencyOrgRow } = await supabase
+      .from('organizations')
+      .select('id')
+      .eq('agency_id', full.agency_id)
+      .maybeSingle();
+    const agencyOrgId = (agencyOrgRow as { id: string } | null)?.id;
     void createNotification({
-      ...(full.organization_id
-        ? { organization_id: full.organization_id }
+      ...(agencyOrgId
+        ? { organization_id: agencyOrgId }
         : { user_id: full.agency_id }),
       type: 'client_rejected_counter',
       title: uiCopy.notifications.clientRejectedCounter.title,

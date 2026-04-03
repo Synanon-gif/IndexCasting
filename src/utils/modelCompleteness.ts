@@ -186,3 +186,24 @@ export function hasBlockingIssues(
 ): boolean {
   return checkModelCompleteness(model, ctx).some((i) => i.severity === 'critical');
 }
+
+/**
+ * Returns the profile completion percentage (0–100).
+ *
+ * Weights: critical issues count double against recommended issues.
+ * Total possible issues = 3 critical + 9 recommended = 3*2 + 9*1 = 15 points.
+ * Completion = (15 - deducted) / 15 * 100, clamped to [0, 100].
+ */
+export function getCompletionPercent(
+  model: Partial<SupabaseModel>,
+  ctx: CompletenessContext,
+): number {
+  const issues = checkModelCompleteness(model, ctx);
+  const criticalCount    = issues.filter((i) => i.severity === 'critical').length;
+  const recommendedCount = issues.filter((i) => i.severity === 'recommended').length;
+
+  const MAX_POINTS = 3 * 2 + 9 * 1; // 15 = max weight when all issues present
+  const deducted = criticalCount * 2 + recommendedCount * 1;
+  const score = Math.max(0, MAX_POINTS - deducted);
+  return Math.round((score / MAX_POINTS) * 100);
+}

@@ -79,6 +79,7 @@ export const AgencyRecruitingView: React.FC<{
 
   const isLimitReached =
     usageLimits !== null && usageLimits.swipes_used_today >= usageLimits.daily_swipe_limit;
+  const [isActing, setIsActing] = useState(false);
 
   // Territory modal state (shown before accept)
   const [pendingAcceptApp, setPendingAcceptApp] = useState<ModelApplication | null>(null);
@@ -198,16 +199,21 @@ export const AgencyRecruitingView: React.FC<{
   };
 
   const handleYes = async () => {
-    if (!current) return;
-    const result = await incrementMyAgencySwipeCount();
-    setUsageLimits((prev) =>
-      prev ? { ...prev, swipes_used_today: result.swipes_used, daily_swipe_limit: result.limit } : prev,
-    );
-    if (!result.allowed) {
-      showFeedback(uiCopy.recruiting.limitReachedMessage);
-      return;
+    if (!current || isActing) return;
+    setIsActing(true);
+    try {
+      const result = await incrementMyAgencySwipeCount();
+      setUsageLimits((prev) =>
+        prev ? { ...prev, swipes_used_today: result.swipes_used, daily_swipe_limit: result.limit } : prev,
+      );
+      if (!result.allowed) {
+        showFeedback(uiCopy.recruiting.limitReachedMessage);
+        return;
+      }
+      handleAcceptForApp(current);
+    } finally {
+      setIsActing(false);
     }
-    handleAcceptForApp(current);
   };
 
   const handleDeclineForApp = async (app: ModelApplication) => {
@@ -227,16 +233,21 @@ export const AgencyRecruitingView: React.FC<{
   };
 
   const handleNo = async () => {
-    if (!current) return;
-    const result = await incrementMyAgencySwipeCount();
-    setUsageLimits((prev) =>
-      prev ? { ...prev, swipes_used_today: result.swipes_used, daily_swipe_limit: result.limit } : prev,
-    );
-    if (!result.allowed) {
-      showFeedback(uiCopy.recruiting.limitReachedMessage);
-      return;
+    if (!current || isActing) return;
+    setIsActing(true);
+    try {
+      const result = await incrementMyAgencySwipeCount();
+      setUsageLimits((prev) =>
+        prev ? { ...prev, swipes_used_today: result.swipes_used, daily_swipe_limit: result.limit } : prev,
+      );
+      if (!result.allowed) {
+        showFeedback(uiCopy.recruiting.limitReachedMessage);
+        return;
+      }
+      await handleDeclineForApp(current);
+    } finally {
+      setIsActing(false);
     }
-    void handleDeclineForApp(current);
   };
 
   const handleAddToList = () => {
@@ -478,18 +489,18 @@ export const AgencyRecruitingView: React.FC<{
             <View style={styles.cardActions}>
               <View style={styles.cardActionsRowCentered}>
                 <TouchableOpacity
-                  style={[styles.buttonAccept, isLimitReached && styles.buttonDisabled]}
+                  style={[styles.buttonAccept, (isLimitReached || isActing) && styles.buttonDisabled]}
                   onPress={() => void handleYes()}
-                  disabled={isLimitReached}
+                  disabled={isLimitReached || isActing}
                 >
-                  <Text style={styles.buttonAcceptLabel}>Accept application</Text>
+                  <Text style={styles.buttonAcceptLabel}>{isActing ? 'Working…' : 'Accept application'}</Text>
                 </TouchableOpacity>
               </View>
               <View style={styles.cardActionsRow}>
                 <TouchableOpacity
-                  style={[styles.buttonNo, isLimitReached && styles.buttonDisabled]}
+                  style={[styles.buttonNo, (isLimitReached || isActing) && styles.buttonDisabled]}
                   onPress={() => void handleNo()}
-                  disabled={isLimitReached}
+                  disabled={isLimitReached || isActing}
                 >
                   <Text style={styles.buttonNoLabel}>No</Text>
                 </TouchableOpacity>

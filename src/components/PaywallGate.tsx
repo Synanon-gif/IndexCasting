@@ -31,33 +31,10 @@ import { colors } from '../theme/theme';
 
 interface PaywallGateProps {
   children: React.ReactNode;
-  /**
-   * UNSAFE: skips the paywall UI gate and always renders children.
-   *
-   * Use ONLY for provably non-sensitive screens where no paid data is exposed
-   * (e.g. public profile preview, guest-link landing). Never set this on a
-   * screen that displays subscription-gated content — the bypass does NOT
-   * affect server-side RPC guards, but it does remove the UI lock that prevents
-   * accidental navigation to partially-rendered gated screens.
-   *
-   * The deliberately verbose name makes accidental misuse visible in code
-   * review. Every usage must be justified with a comment at the call site.
-   * (VULN-07 fix)
-   */
-  _unsafeBypassForPublicPreviewOnly?: boolean;
 }
 
-export default function PaywallGate({ children, _unsafeBypassForPublicPreviewOnly = false }: PaywallGateProps) {
+export default function PaywallGate({ children }: PaywallGateProps) {
   const { loaded, isBlocked } = useSubscription();
-
-  if (__DEV__ && _unsafeBypassForPublicPreviewOnly) {
-    // Loud warning in development so reviewers catch accidental misuse early.
-    console.error(
-      '[PaywallGate] _unsafeBypassForPublicPreviewOnly is TRUE. ' +
-      'Ensure this screen is genuinely non-sensitive and does not expose paid features. ' +
-      'Server-side RPCs remain the authoritative access gate regardless.',
-    );
-  }
 
   if (!loaded) {
     return (
@@ -67,7 +44,7 @@ export default function PaywallGate({ children, _unsafeBypassForPublicPreviewOnl
     );
   }
 
-  if (!_unsafeBypassForPublicPreviewOnly && isBlocked) {
+  if (isBlocked) {
     return <PaywallScreen />;
   }
 

@@ -26,9 +26,12 @@ Falls du die Reihenfolge anpassen willst: Zuerst alle Enums und Tabellen, dann R
 
 Die Tabelle `models` hat bereits die Spalte `portfolio_images` (TEXT[]); sie wird vom Code mit der geordneten URL-Liste synchron gehalten (erstes Bild = Cover für Client-Swipe).
 
-**Storage (Bilder sichtbar für alle):** Model-Fotos und Bewerbungs-Bilder liegen im **öffentlichen** Bucket **`documentspictures`** (Pfade `model-photos/{modelId}/...` und `model-applications/...`). Der Bucket **`documents`** bleibt **privat** für andere Dateien. Im Supabase Dashboard unter **Storage**:
-1. Bucket **documentspictures** anlegen, auf **Public** stellen.
-2. Policy für **Upload**: Authentifizierte Nutzer müssen in diesen Bucket schreiben dürfen (Insert für bucket_id = 'documentspictures' für Rolle `authenticated`).
+**Storage (Privater Bucket mit Signed URLs):** Model-Fotos und Bewerbungsbilder liegen im **privaten** Bucket **`documentspictures`** (Pfade `model-photos/{modelId}/...` und `model-applications/...`). Der Bucket **`documents`** ist ebenfalls **privat**. Bilder werden **niemals** über öffentliche URLs ausgeliefert – ausschließlich über kurzlebige **Signed URLs** (TTL 3600 s), die der Client über `supabase.storage.from('documentspictures').createSignedUrl(path, ttl)` anfordert. Im Supabase Dashboard unter **Storage**:
+
+1. Bucket **documentspictures** anlegen, auf **Private** stellen (NICHT Public).
+2. **Storage Policy für Upload** (`INSERT`): Nur `authenticated` Nutzer dürfen in ihren eigenen Pfad schreiben – Policy per SQL (siehe `migration_storage_private_documentspictures.sql`).
+3. **Storage Policy für Download** (`SELECT`): Scoped auf Agency, Model und berechtigte Clients via RLS-Policy (`documentspictures_select_scoped` in `migration_security_verifications_storage_2026_04.sql`).
+4. Kein direkter Public-URL-Zugriff: `getPublicUrl` darf im Anwendungscode **nicht** für diesen Bucket verwendet werden – immer `createSignedUrl`.
 
 ## Enums
 

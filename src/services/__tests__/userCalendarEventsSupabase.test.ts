@@ -28,7 +28,7 @@ const singleMock = jest.fn();
 /** Build a chainable mock that resolves at the terminal call with `result`. */
 function makeChain(result: unknown) {
   const chain: Record<string, jest.Mock> = {};
-  const methods = ['select', 'insert', 'update', 'delete', 'eq', 'order', 'single', 'maybeSingle', 'upsert'];
+  const methods = ['select', 'insert', 'update', 'delete', 'eq', 'neq', 'not', 'is', 'order', 'single', 'maybeSingle', 'upsert', 'limit'];
   methods.forEach((m) => {
     chain[m] = jest.fn(() => {
       if (m === 'single' || m === 'maybeSingle') return Promise.resolve(result);
@@ -162,8 +162,13 @@ describe('getManualEventsForOwner', () => {
 
 describe('insertManualEvent', () => {
   it('returns ok:true with the inserted event', async () => {
-    const chain = makeChain({ data: SAMPLE_EVENT, error: null });
-    supabase.from.mockReturnValue(chain);
+    // First supabase.from call is the duplicate check (maybeSingle → null = no dup).
+    const dupCheckChain = makeChain({ data: null, error: null });
+    // Second supabase.from call is the actual insert (single → SAMPLE_EVENT).
+    const insertChain = makeChain({ data: SAMPLE_EVENT, error: null });
+    supabase.from
+      .mockReturnValueOnce(dupCheckChain)
+      .mockReturnValueOnce(insertChain);
 
     const res = await insertManualEvent({
       owner_id: VALID_USER_ID,
@@ -175,6 +180,20 @@ describe('insertManualEvent', () => {
     });
     expect(res.ok).toBe(true);
     if (res.ok) expect(res.event.id).toBe(VALID_UUID);
+  });
+
+  it('returns ok:false when a duplicate event already exists', async () => {
+    const dupCheckChain = makeChain({ data: { id: VALID_UUID }, error: null });
+    supabase.from.mockReturnValueOnce(dupCheckChain);
+
+    const res = await insertManualEvent({
+      owner_id: VALID_USER_ID,
+      owner_type: 'client',
+      date: '2026-06-01',
+      title: 'Team planning',
+    });
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.isDuplicate).toBe(true);
   });
 
   it('returns ok:false for invalid date', async () => {
@@ -198,8 +217,12 @@ describe('insertManualEvent', () => {
   });
 
   it('returns ok:false on supabase error', async () => {
-    const chain = makeChain({ data: null, error: { message: 'insert error' } });
-    supabase.from.mockReturnValue(chain);
+    // Dup check passes (no existing event), insert fails.
+    const dupCheckChain = makeChain({ data: null, error: null });
+    const insertChain = makeChain({ data: null, error: { message: 'insert error' } });
+    supabase.from
+      .mockReturnValueOnce(dupCheckChain)
+      .mockReturnValueOnce(insertChain);
 
     const res = await insertManualEvent({
       owner_id: VALID_USER_ID,

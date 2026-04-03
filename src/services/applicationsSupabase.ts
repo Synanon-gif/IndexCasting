@@ -164,7 +164,8 @@ export async function getApplicationsForApplicant(applicantUserId: string): Prom
       .from('model_applications')
       .select('*, agencies!agency_id ( name )')
       .eq('applicant_user_id', applicantUserId)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(200);
 
     if (error) {
       console.error('getApplicationsForApplicant error:', error);
@@ -460,90 +461,25 @@ export async function rejectApplicationByModel(
   }
 }
 
-/** Nach Accept: Model-Eintrag anlegen und Bewerber der Agentur zuordnen. */
+/**
+ * Nach Accept: Model-Eintrag anlegen und Bewerber der Agentur zuordnen.
+ *
+ * Delegiert an die SECURITY DEFINER RPC `create_model_from_accepted_application`,
+ * damit der Aufrufer (Bewerber oder Agentur-Mitglied) keine direkte INSERT-Berechtigung
+ * auf `models` braucht (RLS verlangt Agentur-Mitgliedschaft, die ein Bewerber nicht hat).
+ */
 export async function createModelFromApplication(applicationId: string): Promise<string | null> {
   try {
-    const { data: app, error: fetchErr } = await supabase
-      .from('model_applications')
-      .select('*')
-      .eq('id', applicationId)
-      .single();
+    const { data, error } = await supabase.rpc('create_model_from_accepted_application', {
+      p_application_id: applicationId,
+    });
 
-    if (fetchErr || !app || app.status !== 'accepted' || !app.accepted_by_agency_id) {
-      if (fetchErr) console.error('createModelFromApplication fetch error:', fetchErr);
+    if (error) {
+      console.error('createModelFromApplication RPC error:', error);
       return null;
     }
 
-    // Guard: if the applicant already has a linked model row, return the existing model id.
-    if (app.applicant_user_id) {
-      const { data: existing } = await supabase
-        .from('models')
-        .select('id')
-        .eq('user_id', app.applicant_user_id)
-        .maybeSingle();
-      if (existing?.id) {
-        console.warn('createModelFromApplication: model already exists for user_id', app.applicant_user_id);
-        return (existing as { id: string }).id;
-      }
-    }
-
-    const name = `${(app as any).first_name || ''} ${(app as any).last_name || ''}`.trim() || 'Model';
-    const imgs = app.images && typeof app.images === 'object'
-      ? ([app.images.profile, app.images.fullBody, app.images.closeUp].filter(Boolean) as string[])
-      : [];
-
-    const { data: model, error: insertErr } = await supabase
-      .from('models')
-      .insert({
-        agency_id: app.accepted_by_agency_id,
-        user_id: app.applicant_user_id || null,
-        agency_relationship_status: 'active',
-        agency_relationship_ended_at: null,
-        name,
-        height: app.height || 0,
-        bust: null,
-        waist: null,
-        hips: null,
-        city: app.city || null,
-        country_code: (app as any).country_code || null,
-        hair_color: app.hair_color || null,
-        eye_color: null,
-        ethnicity: app.ethnicity || null,
-        // Map application gender ('female' | 'male' | 'diverse') → model sex ('female' | 'male').
-        sex: (app.gender === 'female' || app.gender === 'male') ? app.gender : null,
-        portfolio_images: imgs,
-        polaroids: [],
-        is_visible_commercial: false,
-        is_visible_fashion: true,
-      })
-      .select('id')
-      .single();
-
-    if (insertErr) {
-      console.error('createModelFromApplication insert error:', insertErr);
-      return null;
-    }
-
-    const modelId = (model as { id: string }).id;
-
-    if (imgs.length > 0 && modelId) {
-      const rows = imgs.map((url, i) => ({
-        model_id: modelId,
-        url,
-        sort_order: i,
-        visible: true,
-        is_visible_to_clients: true,
-        photo_type: 'portfolio' as const,
-        source: 'application',
-        api_external_id: null as string | null,
-      }));
-      const { error: phErr } = await supabase.from('model_photos').insert(rows);
-      if (phErr) {
-        console.error('createModelFromApplication model_photos error:', phErr);
-      }
-    }
-
-    return modelId ?? null;
+    return (data as string | null) ?? null;
   } catch (e) {
     console.error('createModelFromApplication exception:', e);
     return null;

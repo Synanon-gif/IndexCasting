@@ -13,6 +13,8 @@ import {
   Image,
   Platform,
   ActivityIndicator,
+  AppState,
+  type AppStateStatus,
 } from 'react-native';
 import { StorageImage } from './StorageImage';
 import { colors, spacing, typography } from '../theme/theme';
@@ -23,10 +25,12 @@ import {
   subscribeToConversation,
   uploadChatFile,
   getSignedChatFileUrl,
+  markAllAsRead,
   type MessagePayloadType,
   type MessageWithSender,
 } from '../services/messengerSupabase';
 import { getModelByIdFromSupabase } from '../services/modelsSupabase';
+import { QUICK_REPLIES } from '../constants/quickReplies';
 import { buildGuestUrl, type GuestLink } from '../services/guestLinksSupabase';
 import {
   bookingStatusLabel,
@@ -43,11 +47,20 @@ import {
   CHAT_ALLOWED_MIME_TYPES,
 } from '../../lib/validation';
 
+/** Structured context displayed in the thread sub-header. */
+export type ThreadContext = {
+  type: 'Option' | 'Casting' | 'Booking' | string;
+  modelName?: string;
+  date?: string;
+};
+
 /** Organization-scoped B2B thread (client org ↔ agency org). Not a user-to-user or "connection" chat. */
 export type OrgMessengerInlineProps = {
   conversationId: string;
   headerTitle: string;
   viewerUserId: string | null;
+  /** Structured thread context shown as sub-header: "Option • Model X • 12 June". */
+  threadContext?: ThreadContext | null;
   /** When set, show Share package / model actions (agency workspace). */
   agencyId?: string | null;
   guestLinks?: GuestLink[];
@@ -84,6 +97,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   conversationId,
   headerTitle,
   viewerUserId,
+  threadContext,
   agencyId,
   guestLinks = [],
   modelsForShare = [],
@@ -103,6 +117,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   /** storage path → signed URL cache for file attachments */
   const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState(false);
+  const [sending, setSending] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -111,11 +126,24 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
 
   useEffect(() => {
     reload();
+    if (viewerUserId) void markAllAsRead(conversationId, viewerUserId);
   }, [conversationId]);
 
   useEffect(() => {
     const unsub = subscribeToConversation(conversationId, () => reload());
     return unsub;
+  }, [conversationId]);
+
+  // Reconnect: when the app returns to foreground after being backgrounded,
+  // force a reload and re-subscribe so no messages are missed during sleep.
+  useEffect(() => {
+    const handleAppState = (nextState: AppStateStatus) => {
+      if (nextState === 'active') {
+        reload();
+      }
+    };
+    const sub = AppState.addEventListener('change', handleAppState);
+    return () => sub.remove();
   }, [conversationId]);
 
   // Resolve booking model names for booking cards.
@@ -195,7 +223,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
 
   const sendChat = async () => {
     const text = input.trim();
-    if (!text || !viewerUserId) return;
+    if (!text || !viewerUserId || sending || uploading) return;
     setSendError(null);
 
     // Rate limit check
@@ -220,6 +248,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
       return;
     }
 
+    setSending(true);
     try {
       // Auto-promote plain text containing a URL to a 'link' message.
       const firstUrl = safeUrls[0] ?? null;
@@ -241,6 +270,8 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
     } catch (e) {
       console.error('sendChat error:', e);
       setSendError(uiCopy.messenger.sendFailed);
+    } finally {
+      setSending(false);
     }
   };
 
@@ -299,7 +330,8 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   };
 
   const sendRich = async (type: MessagePayloadType, text: string, metadata?: Record<string, unknown>) => {
-    if (!viewerUserId) return;
+    if (!viewerUserId || sending) return;
+    setSending(true);
     try {
       await sendMessengerMessage(conversationId, viewerUserId, text, undefined, undefined, {
         messageType: type,
@@ -310,6 +342,8 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
     } catch (e) {
       console.error('sendRich error:', e);
       setSendError(uiCopy.messenger.sendFailed);
+    } finally {
+      setSending(false);
     }
   };
 
@@ -325,9 +359,16 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
 
   const showShare = !!agencyId && (guestLinks.length > 0 || modelsForShare.length > 0);
 
+  const threadContextLabel = threadContext
+    ? [threadContext.type, threadContext.modelName, threadContext.date].filter(Boolean).join(' • ')
+    : null;
+
   return (
     <View style={[styles.chatPanel, containerStyle]}>
       <Text style={styles.chatPanelTitle}>{headerTitle}</Text>
+      {threadContextLabel ? (
+        <Text style={styles.threadContextSubheader}>{threadContextLabel}</Text>
+      ) : null}
 
       {showShare ? (
         <View style={styles.shareRow}>
@@ -549,21 +590,26 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
             <Text style={styles.attachBtnLabel}>📎</Text>
           )}
         </TouchableOpacity>
+        <QuickReplyChips onSelect={(text) => setInput(text)} />
         <TextInput
           value={input}
           onChangeText={(v) => { setInput(v); if (sendError) setSendError(null); }}
           placeholder={uiCopy.b2bChat.messagePlaceholder}
           placeholderTextColor={colors.textSecondary}
           style={styles.chatPanelInput}
-          editable={!!viewerUserId && !uploading}
+          editable={!!viewerUserId && !uploading && !sending}
           onSubmitEditing={sendChat}
         />
         <TouchableOpacity
-          style={[styles.chatPanelSend, (!viewerUserId || uploading) && { opacity: 0.5 }]}
+          style={[styles.chatPanelSend, (!viewerUserId || uploading || sending) && { opacity: 0.5 }]}
           onPress={sendChat}
-          disabled={!viewerUserId || uploading}
+          disabled={!viewerUserId || uploading || sending}
         >
-          <Text style={styles.chatPanelSendLabel}>{uiCopy.b2bChat.send}</Text>
+          {sending ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Text style={styles.chatPanelSendLabel}>{uiCopy.b2bChat.send}</Text>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -581,7 +627,8 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
                 ? guestLinks.map((g) => (
                     <TouchableOpacity
                       key={g.id}
-                      style={styles.pickRow}
+                      style={[styles.pickRow, sending && { opacity: 0.4 }]}
+                      disabled={sending}
                       onPress={() =>
                         void sendRich('package', uiCopy.b2bChat.sharedPackageBody, {
                           package_id: g.id,
@@ -600,7 +647,8 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
                 : modelsForShare.map((mod) => (
                     <TouchableOpacity
                       key={mod.id}
-                      style={styles.pickRow}
+                      style={[styles.pickRow, sending && { opacity: 0.4 }]}
+                      disabled={sending}
                       onPress={() =>
                         void sendRich(
                           'model',
@@ -625,6 +673,36 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   );
 };
 
+/** Horizontal scrollable quick reply chips shown above the message input. */
+const QuickReplyChips: React.FC<{ onSelect: (text: string) => void }> = ({ onSelect }) => {
+  const { ScrollView: HScroll } = require('react-native');
+  return (
+    <HScroll
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={{ marginBottom: spacing.xs }}
+      contentContainerStyle={{ gap: spacing.xs, paddingVertical: spacing.xs }}
+    >
+      {QUICK_REPLIES.map((reply) => (
+        <TouchableOpacity
+          key={reply}
+          onPress={() => onSelect(reply)}
+          style={{
+            borderRadius: 999,
+            borderWidth: 1,
+            borderColor: colors.border,
+            paddingHorizontal: spacing.sm + 2,
+            paddingVertical: 4,
+            backgroundColor: colors.background,
+          }}
+        >
+          <Text style={{ fontSize: 11, color: colors.textPrimary }}>{reply}</Text>
+        </TouchableOpacity>
+      ))}
+    </HScroll>
+  );
+};
+
 const styles = StyleSheet.create({
   chatPanel: {
     marginTop: spacing.lg,
@@ -638,7 +716,13 @@ const styles = StyleSheet.create({
     ...typography.label,
     color: colors.textPrimary,
     fontFamily: 'serif',
+    marginBottom: spacing.xs,
+  },
+  threadContextSubheader: {
+    fontSize: 11,
+    color: colors.textSecondary,
     marginBottom: spacing.sm,
+    letterSpacing: 0.3,
   },
   shareRow: {
     flexDirection: 'row',

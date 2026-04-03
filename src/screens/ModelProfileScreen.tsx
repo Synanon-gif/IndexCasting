@@ -59,6 +59,7 @@ type ModelProfile = {
   countryCode: string | null;
   currentLocation: string;
   hairColor: string;
+  mediaslideSyncId: string | null;
 };
 
 type ModelTab = 'calendar' | 'messages' | 'options' | 'profile';
@@ -66,10 +67,11 @@ type ModelTab = 'calendar' | 'messages' | 'options' | 'profile';
 const HOURS = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`);
 const ENTRY_COLORS: Record<string, string> = {
   personal: '#2E7D32',
-  booking: '#C62828', // Job / booking in red
-  option: '#1565C0', // Options in blue
-  gosee: '#757575', // Casting / gosee in grey
-  casting: '#757575',
+  booking:  '#B71C1C',
+  job:      '#1B5E20',
+  option:   '#E65100',
+  gosee:    '#0288D1',
+  casting:  '#1565C0',
 };
 
 type ModelProfileScreenProps = {
@@ -119,6 +121,8 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   const [pendingConfirmations, setPendingConfirmations] = useState<SupabaseOptionRequest[]>([]);
   const [confirmingBookingId, setConfirmingBookingId] = useState<string | null>(null);
   const [rejectingBookingId, setRejectingBookingId] = useState<string | null>(null);
+  const [actingOnOption, setActingOnOption] = useState(false);
+  const [addingEntry, setAddingEntry] = useState(false);
 
   const handleShareLocation = async () => {
     if (!profile) return;
@@ -129,8 +133,12 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
       );
       const { latitude, longitude } = position.coords;
 
+      // Round before sending to any third-party service to avoid exposing exact GPS.
+      const latRounded = roundCoord(latitude);
+      const lngRounded = roundCoord(longitude);
+
       const res = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`,
+        `https://nominatim.openstreetmap.org/reverse?lat=${latRounded}&lon=${lngRounded}&format=json`,
         { headers: { 'Accept-Language': 'en' } }
       );
       const data = await res.json();
@@ -150,8 +158,8 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
         {
           country_code: countryCode,
           city: cityName,
-          lat: roundCoord(latitude),
-          lng: roundCoord(longitude),
+          lat: latRounded,
+          lng: lngRounded,
           share_approximate_location: true,
         },
         'model',
@@ -208,6 +216,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
         bust: m.bust ?? 0, waist: m.waist ?? 0, hips: m.hips ?? 0,
         city: m.city ?? '', countryCode: m.country_code ?? null,
         currentLocation: m.current_location ?? '', hairColor: m.hair_color ?? '',
+        mediaslideSyncId: (m as any).mediaslide_sync_id ?? null,
       });
       loadCalendar(m.id);
       loadOptionsForModel(m.id);
@@ -330,27 +339,44 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   };
 
   const handleAddPersonalEntry = async () => {
-    if (!profile || !selectedDate) return;
-    const created = await insertCalendarEntry(profile.id, selectedDate, 'blocked', {
-      start_time: newEntryStart,
-      end_time: newEntryEnd,
-      title: newEntryTitle.trim() || 'Personal',
-      entry_type: 'personal',
-    });
-    if (!created) {
-      Alert.alert('Calendar', uiCopy.alerts.calendarNotSaved);
-      return;
+    if (!profile || !selectedDate || addingEntry) return;
+    setAddingEntry(true);
+    try {
+      const created = await insertCalendarEntry(profile.id, selectedDate, 'blocked', {
+        start_time: newEntryStart,
+        end_time: newEntryEnd,
+        title: newEntryTitle.trim() || 'Personal',
+        entry_type: 'personal',
+      });
+      if (!created) {
+        Alert.alert('Calendar', uiCopy.alerts.calendarNotSaved);
+        return;
+      }
+      setNewEntryTitle('');
+      loadCalendar(profile.id);
+    } finally {
+      setAddingEntry(false);
     }
-    setNewEntryTitle('');
-    loadCalendar(profile.id);
   };
 
   const handleApproveOption = async (threadId: string) => {
-    await approveOptionAsModel(threadId);
+    if (actingOnOption) return;
+    setActingOnOption(true);
+    try {
+      await approveOptionAsModel(threadId);
+    } finally {
+      setActingOnOption(false);
+    }
   };
 
   const handleRejectOption = async (threadId: string) => {
-    await rejectOptionAsModel(threadId);
+    if (actingOnOption) return;
+    setActingOnOption(true);
+    try {
+      await rejectOptionAsModel(threadId);
+    } finally {
+      setActingOnOption(false);
+    }
   };
 
   const insets = useSafeAreaInsets();
@@ -425,6 +451,11 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
             <Text style={st.sectionLabel}>Status</Text>
             <Text style={st.metaText}>Current location: {profile.currentLocation}</Text>
             <Text style={st.metaText}>Base: {profile.city} · Hair: {profile.hairColor}</Text>
+            {profile.mediaslideSyncId ? (
+              <Text style={[st.metaText, { marginTop: 4, fontSize: 10, color: '#6b7280', letterSpacing: 0.5 }]}>
+                Mediaslide ID: {profile.mediaslideSyncId}
+              </Text>
+            ) : null}
           </View>
           <View style={st.section}>
             <Text style={st.sectionLabel}>Share Location</Text>
@@ -631,8 +662,12 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                     </ScrollView>
                   </View>
                 </View>
-                <TouchableOpacity onPress={handleAddPersonalEntry} style={{ borderRadius: 999, backgroundColor: '#2E7D32', paddingVertical: spacing.sm, alignItems: 'center' }}>
-                  <Text style={{ ...typography.label, color: '#fff' }}>Add entry</Text>
+                <TouchableOpacity
+                  onPress={handleAddPersonalEntry}
+                  disabled={addingEntry}
+                  style={{ borderRadius: 999, backgroundColor: '#2E7D32', paddingVertical: spacing.sm, alignItems: 'center', opacity: addingEntry ? 0.5 : 1 }}
+                >
+                  <Text style={{ ...typography.label, color: '#fff' }}>{addingEntry ? 'Saving…' : 'Add entry'}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -810,13 +845,15 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                 <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
                   <TouchableOpacity
                     onPress={() => handleApproveOption(o.threadId)}
-                    style={{ flex: 1, borderRadius: 999, backgroundColor: colors.buttonOptionGreen, paddingVertical: spacing.sm, alignItems: 'center' }}
+                    disabled={actingOnOption}
+                    style={{ flex: 1, borderRadius: 999, backgroundColor: colors.buttonOptionGreen, paddingVertical: spacing.sm, alignItems: 'center', opacity: actingOnOption ? 0.5 : 1 }}
                   >
                     <Text style={{ ...typography.label, color: '#fff' }}>Approve</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => handleRejectOption(o.threadId)}
-                    style={{ flex: 1, borderRadius: 999, borderWidth: 1, borderColor: colors.buttonSkipRed, paddingVertical: spacing.sm, alignItems: 'center' }}
+                    disabled={actingOnOption}
+                    style={{ flex: 1, borderRadius: 999, borderWidth: 1, borderColor: colors.buttonSkipRed, paddingVertical: spacing.sm, alignItems: 'center', opacity: actingOnOption ? 0.5 : 1 }}
                   >
                     <Text style={{ ...typography.label, color: colors.buttonSkipRed }}>Decline</Text>
                   </TouchableOpacity>

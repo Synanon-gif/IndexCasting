@@ -326,19 +326,25 @@ export async function deleteCalendarEntryById(entryId: string): Promise<boolean>
 
 /** Set calendar entries linked to this option_request to Job (booking) type and title. */
 export async function updateCalendarEntryToJob(optionRequestId: string): Promise<boolean> {
-  const { data: rows, error: selErr } = await supabase
-    .from('calendar_entries')
-    .select('id, client_name')
-    .eq('option_request_id', optionRequestId);
-  if (selErr || !rows?.length) return !selErr;
-  const clientName = (rows[0] as any).client_name || 'Client';
-  const ids = rows.map((r: any) => r.id);
-  const { error: updErr } = await supabase
-    .from('calendar_entries')
-    .update({ entry_type: 'booking', status: 'booked', title: `Job – ${clientName}` })
-    .in('id', ids);
-  if (updErr) { console.error('updateCalendarEntryToJob error:', updErr); return false; }
-  return true;
+  try {
+    const { data: rows, error: selErr } = await supabase
+      .from('calendar_entries')
+      .select('id, client_name')
+      .eq('option_request_id', optionRequestId);
+    if (selErr) { console.error('updateCalendarEntryToJob select error:', selErr); return false; }
+    if (!rows?.length) return true;
+    const clientName = (rows[0] as any).client_name || 'Client';
+    const ids = rows.map((r: any) => r.id);
+    const { error: updErr } = await supabase
+      .from('calendar_entries')
+      .update({ entry_type: 'booking', status: 'booked', title: `Job – ${clientName}` })
+      .in('id', ids);
+    if (updErr) { console.error('updateCalendarEntryToJob update error:', updErr); return false; }
+    return true;
+  } catch (e) {
+    console.error('updateCalendarEntryToJob exception:', e);
+    return false;
+  }
 }
 
 export async function getCalendarEntriesForModel(modelId: string): Promise<CalendarEntry[]> {
@@ -356,7 +362,8 @@ export async function getCalendarEntriesForClient(clientId: string): Promise<Cli
       .from('option_requests')
       .select(OPTION_REQUEST_SELECT)
       .eq('client_id', clientId)
-      .order('requested_date', { ascending: true });
+      .order('requested_date', { ascending: true })
+      .limit(500);
     if (optError) {
       console.error('getCalendarEntriesForClient options error:', optError);
       return [];
@@ -395,7 +402,8 @@ export async function getCalendarEntriesForAgency(agencyId: string): Promise<Age
       .from('option_requests')
       .select(OPTION_REQUEST_SELECT)
       .eq('agency_id', agencyId)
-      .order('requested_date', { ascending: true });
+      .order('requested_date', { ascending: true })
+      .limit(500);
     if (optError) {
       console.error('getCalendarEntriesForAgency options error:', optError);
       return [];
@@ -565,37 +573,96 @@ export async function updateBookingDetails(
   role: 'client' | 'agency' | 'model'
 ): Promise<boolean> {
   // role is currently informational for auditing / future logic
+  //
+  // Concurrency guard: reads updated_at and uses it as an optimistic lock so
+  // two simultaneous partial-update calls cannot silently overwrite each other.
+  // On lock miss, one retry is attempted after a brief yield (same pattern as
+  // appendSharedBookingNote).
+  const attemptUpdate = async (): Promise<boolean> => {
+    try {
+      const { data, error } = await supabase
+        .from('calendar_entries')
+        .select('id, booking_details, updated_at')
+        .eq('option_request_id', optionRequestId);
+      if (error) {
+        console.error('updateBookingDetails select error:', error);
+        return false;
+      }
+      const rows = data as { id: string; booking_details: any; updated_at: string }[];
+      if (!rows.length) return true;
+
+      let allUpdated = true;
+      for (const row of rows) {
+        const merged: BookingDetails = {
+          ...(row.booking_details || {}),
+          ...partialDetails,
+        };
+        const { data: updated, error: updError } = await supabase
+          .from('calendar_entries')
+          .update({ booking_details: merged })
+          .eq('id', row.id)
+          .eq('updated_at', row.updated_at)
+          .select('id')
+          .maybeSingle();
+        if (updError) {
+          console.error('updateBookingDetails update error:', updError);
+          allUpdated = false;
+        } else if (!updated?.id) {
+          console.warn('updateBookingDetails: optimistic lock miss on row', row.id);
+          allUpdated = false;
+        }
+      }
+      return allUpdated;
+    } catch (e) {
+      console.error('updateBookingDetails unexpected error:', e);
+      return false;
+    }
+  };
+
+  const ok = await attemptUpdate();
+  if (!ok) {
+    await new Promise((r) => setTimeout(r, 120));
+    return attemptUpdate();
+  }
+  return true;
+}
+
+// ─── Conflict Detection ────────────────────────────────────────────────────────
+
+export type ConflictResult = {
+  has_conflict: boolean;
+  conflicting_entries: Array<{
+    id: string;
+    entry_type: string;
+    start_time: string | null;
+    end_time: string | null;
+    title: string | null;
+  }>;
+};
+
+/**
+ * Checks whether a model has existing calendar entries that overlap the given
+ * date + time window. Returns { has_conflict: false } on error (fail-open:
+ * conflict check is informational only, never blocks the user).
+ */
+export async function checkCalendarConflict(
+  modelId: string,
+  date: string,
+  startTime: string | null,
+  endTime: string | null,
+): Promise<ConflictResult> {
   try {
-    const { data, error } = await supabase
-      .from('calendar_entries')
-      .select('id, booking_details')
-      .eq('option_request_id', optionRequestId);
-    if (error) {
-      console.error('updateBookingDetails select error:', error);
-      return false;
-    }
-    const rows = data as { id: string; booking_details: any }[];
-    if (!rows.length) return true;
-
-    const updates = rows.map((row) => ({
-      id: row.id,
-      booking_details: {
-        ...(row.booking_details || {}),
-        ...partialDetails,
-      } as BookingDetails,
-    }));
-
-    const { error: updError } = await supabase
-      .from('calendar_entries')
-      .upsert(updates, { onConflict: 'id' });
-    if (updError) {
-      console.error('updateBookingDetails update error:', updError);
-      return false;
-    }
-    return true;
-  } catch (e) {
-    console.error('updateBookingDetails unexpected error:', e);
-    return false;
+    const { data, error } = await supabase.rpc('check_calendar_conflict', {
+      p_model_id: modelId,
+      p_date: date,
+      p_start: startTime,
+      p_end: endTime,
+    });
+    if (error) throw error;
+    return data as ConflictResult;
+  } catch (err) {
+    console.error('[calendarSupabase] checkCalendarConflict error:', err);
+    return { has_conflict: false, conflicting_entries: [] };
   }
 }
 

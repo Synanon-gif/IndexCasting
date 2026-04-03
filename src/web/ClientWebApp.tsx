@@ -101,11 +101,24 @@ import {
   getOrganizationById,
   dissolveOrganization,
 } from '../services/organizationsInvitationsSupabase';
-import { removeModelFromProject } from '../services/projectsSupabase';
+import {
+  removeModelFromProject,
+  createProject as createProjectOnSupabase,
+  deleteProject as deleteProjectOnSupabase,
+  getProjectsForOrg,
+  addModelToProject as addModelToProjectOnSupabase,
+  type SupabaseProject,
+} from '../services/projectsSupabase';
 import { supabase } from '../../lib/supabase';
 import { MonthCalendarView, type CalendarDayEvent } from '../components/MonthCalendarView';
 import { ClientOrganizationTeamSection } from '../components/ClientOrganizationTeamSection';
 import { OrgMessengerInline } from '../components/OrgMessengerInline';
+import { OrgMetricsPanel } from '../components/OrgMetricsPanel';
+
+/** Thin wrapper to pass client org metrics panel with owner role. */
+const ClientOrgMetricsPanelWrapper: React.FC<{ orgId: string }> = ({ orgId }) => (
+  <OrgMetricsPanel orgId={orgId} userRole="owner" />
+);
 
 type TopTab = 'discover' | 'projects' | 'agencies' | 'messages' | 'calendar' | 'team';
 
@@ -203,6 +216,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   onBackToRoleSelection,
 }) => {
   const [tab, setTab] = useState<TopTab>('discover');
+  const [showActiveOptions, setShowActiveOptions] = useState(false);
   const [models, setModels] = useState<ModelSummary[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [projects, setProjects] = useState<Project[]>(() => persistedProjectsToProjects(loadClientProjects()));
@@ -370,7 +384,47 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     );
   }, []);
 
-  // Persist client projects and selection to localStorage (survives refresh)
+  // Sync projects FROM Supabase when the client org is resolved.
+  // Supabase is the source of truth; localStorage is only a fallback for guests.
+  useEffect(() => {
+    if (!clientOrgId) return;
+    void (async () => {
+      try {
+        const remote = await getProjectsForOrg(clientOrgId);
+        if (remote.length > 0) {
+          // Merge: keep model lists from localStorage (not stored in Supabase here),
+          // but use Supabase UUIDs as the canonical IDs.
+          const local = loadClientProjects();
+          const merged = remote.map((rp: SupabaseProject) => {
+            const match = local.find((lp) => lp.id === rp.id || lp.name === rp.name);
+            return {
+              id: rp.id,
+              name: rp.name,
+              models: match
+                ? match.models.map((m) => ({
+                    ...m,
+                    chest: 0,
+                    legsInseam: 0,
+                    countryCode: undefined,
+                    hasRealLocation: undefined,
+                    agencyId: undefined,
+                    agencyName: undefined,
+                    isSportsWinter: undefined,
+                    isSportsSummer: undefined,
+                    sex: undefined,
+                  }))
+                : [],
+            };
+          });
+          setProjects(merged as Project[]);
+        }
+      } catch (e) {
+        console.error('ClientWebApp: failed to sync projects from Supabase', e);
+      }
+    })();
+  }, [clientOrgId]);
+
+  // Persist client projects and selection to localStorage (survives refresh / offline)
   useEffect(() => {
     saveClientProjects(projectsToPersisted(projects));
   }, [projects]);
@@ -832,21 +886,27 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     }
   }, [filteredModels.length, currentIndex]);
 
-  const createProjectInternal = (name: string): Project | null => {
+  const createProjectInternal = async (name: string): Promise<Project | null> => {
     const trimmed = name.trim();
     if (!trimmed) return null;
-    const project: Project = {
-      id: String(Date.now()),
-      name: trimmed,
-      models: [],
-    };
+    // Persist to Supabase to get a real UUID; fall back to timestamp ID for guests.
+    let id: string = String(Date.now());
+    if (realClientId) {
+      try {
+        const remote = await createProjectOnSupabase(realClientId, trimmed, clientOrgId ?? undefined);
+        if (remote?.id) id = remote.id;
+      } catch (e) {
+        console.error('createProjectInternal: Supabase createProject failed, using local ID', e);
+      }
+    }
+    const project: Project = { id, name: trimmed, models: [] };
     setProjects((prev) => [...prev, project]);
     setActiveProjectId(project.id);
     return project;
   };
 
-  const createProject = () => {
-    const created = createProjectInternal(newProjectName);
+  const createProject = async () => {
+    const created = await createProjectInternal(newProjectName);
     if (!created) return;
     setNewProjectName('');
     setFeedback(`Created project "${created.name}".`);
@@ -864,6 +924,10 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     if (activeProjectId === projectId) setActiveProjectId(null);
     setFeedback(`Deleted project "${project.name}".`);
     clearFeedbackLater();
+    // Persist deletion to Supabase (no-op if projectId is a legacy timestamp ID).
+    void deleteProjectOnSupabase(projectId).catch((e) =>
+      console.error('handleDeleteProject: Supabase delete failed', e),
+    );
   };
 
   const addModelToProject = (projectId: string, model: ModelSummary) => {
@@ -884,6 +948,10 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       setFeedback(`Added ${model.name} to "${projectName}".`);
       clearFeedbackLater();
     }
+    // Persist to Supabase (uses SECURITY DEFINER RPC that validates agency connection).
+    void addModelToProjectOnSupabase(projectId, model.id).catch((e) =>
+      console.error('addModelToProject: Supabase RPC failed', e),
+    );
   };
 
   // Record "viewed" whenever the current discovery card changes and the user is
@@ -940,9 +1008,9 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     setPendingModel(null);
   };
 
-  const handleCreateProjectAndAdd = (name: string) => {
+  const handleCreateProjectAndAdd = async (name: string) => {
     if (!pendingModel) return;
-    const created = createProjectInternal(name);
+    const created = await createProjectInternal(name);
     if (!created) return;
     addModelToProject(created.id, pendingModel);
     setProjectPickerOpen(false);
@@ -953,13 +1021,17 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     setTimeout(() => setFeedback(null), 2400);
   };
 
+  const isNavigatingRef = useRef(false);
   const onNext = () => {
-    if (!filteredModels.length) return;
+    if (!filteredModels.length || isNavigatingRef.current) return;
+    isNavigatingRef.current = true;
     const current = filteredModels[currentIndex % filteredModels.length];
     if (current && clientOrgId) {
       void recordInteraction(current.id, 'rejected');
     }
     setCurrentIndex((prev) => (prev + 1) % filteredModels.length);
+    // Release mutex after a brief frame to debounce rapid taps.
+    setTimeout(() => { isNavigatingRef.current = false; }, 300);
   };
 
   const openSharedLinkForProject = (projectId: string) => {
@@ -1251,7 +1323,11 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
           )}
         </View>
 
-        {tab === 'discover' && (
+        {tab === 'discover' && showActiveOptions && (
+          <ActiveOptionsView onClose={() => setShowActiveOptions(false)} />
+        )}
+
+        {tab === 'discover' && !showActiveOptions && (
           <DiscoverView
             models={filteredModels}
             current={currentModel}
@@ -1273,6 +1349,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             packageName={packageViewState?.name ?? null}
             onExitPackage={exitPackageMode}
             userCity={userCity}
+            onShowActiveOptions={() => setShowActiveOptions(true)}
           />
         )}
 
@@ -1379,6 +1456,9 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             <Text style={{ ...typography.heading, fontSize: 18, color: colors.textPrimary, marginBottom: spacing.sm }}>
               Team
             </Text>
+            {clientOrgId && auth.profile?.org_member_role === 'owner' && (
+              <ClientOrgMetricsPanelWrapper orgId={clientOrgId} />
+            )}
             <ClientOrganizationTeamSection realClientId={realClientId} />
           </View>
         )}
@@ -1396,6 +1476,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         data={detailData}
         onClose={closeDetails}
         onOptionRequest={handleOptionRequest}
+        isPackageMode={isPackageMode}
       />
 
       {selectedCalendarItem && (
@@ -1897,6 +1978,33 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   );
 };
 
+/** Compact banner showing which filters are currently active. */
+const FilterExplanationBanner: React.FC<{ filters: ModelFilters }> = ({ filters }) => {
+  const parts: string[] = [];
+  if (filters.heightMin || filters.heightMax) {
+    const ht = [filters.heightMin, filters.heightMax].filter(Boolean).join('–');
+    parts.push(`Height ${ht} cm`);
+  }
+  if (filters.sex !== 'all') parts.push(filters.sex.charAt(0).toUpperCase() + filters.sex.slice(1));
+  if (filters.countryCode) parts.push(filters.countryCode.toUpperCase());
+  if (filters.city) parts.push(filters.city);
+  if (filters.category) parts.push(filters.category);
+  if (parts.length === 0) return null;
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, paddingHorizontal: spacing.xs, paddingVertical: spacing.xs }}>
+      <Text style={{ fontSize: 11, color: colors.textSecondary }}>
+        {uiCopy.dashboard.filterExplanation}
+      </Text>
+      {parts.map((p) => (
+        <Text key={p} style={{ fontSize: 11, color: colors.textPrimary, fontWeight: '600' }}>{p}</Text>
+      ))}
+      <Text style={{ fontSize: 11, color: colors.textSecondary }}>
+        {'  •  '}{uiCopy.dashboard.filterSeenHidden}
+      </Text>
+    </View>
+  );
+};
+
 type DiscoverProps = {
   models: ModelSummary[];
   current: ModelSummary | null;
@@ -1918,7 +2026,54 @@ type DiscoverProps = {
   packageName: string | null;
   onExitPackage?: () => void;
   userCity: string | null;
+  onShowActiveOptions?: () => void;
 };
+
+/**
+ * Watermark overlay for guest-link / package views.
+ * Renders a grid of semi-transparent diagonal "PREVIEW" labels.
+ * pointerEvents="none" ensures the overlay never blocks taps on images below.
+ */
+const GuestWatermark: React.FC = () => (
+  <View
+    pointerEvents="none"
+    style={{
+      position: 'absolute',
+      top: 0, left: 0, right: 0, bottom: 0,
+      overflow: 'hidden',
+      zIndex: 10,
+    }}
+  >
+    {[0, 1, 2, 3, 4].map((row) =>
+      [0, 1].map((col) => (
+        <View
+          key={`${row}-${col}`}
+          style={{
+            position: 'absolute',
+            top: `${row * 25}%` as unknown as number,
+            left: `${col * 50}%` as unknown as number,
+            width: '60%' as unknown as number,
+            alignItems: 'center',
+            transform: [{ rotate: '-30deg' }],
+          }}
+        >
+          <Text
+            style={{
+              color: 'rgba(255,255,255,0.28)',
+              fontSize: 13,
+              fontWeight: '700',
+              letterSpacing: 2,
+              textTransform: 'uppercase',
+            }}
+            selectable={false}
+          >
+            PREVIEW · IndexCasting
+          </Text>
+        </View>
+      ))
+    )}
+  </View>
+);
 
 const DiscoverView: React.FC<DiscoverProps> = ({
   models,
@@ -1941,14 +2096,27 @@ const DiscoverView: React.FC<DiscoverProps> = ({
   isPackageMode,
   packageName,
   onExitPackage,
+  onShowActiveOptions,
 }) => {
   return (
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionLabel}>Discover</Text>
-        <Text style={styles.metaText}>
-          {models.length ? `${index + 1}/${models.length}` : '0/0'}
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+          {onShowActiveOptions && (
+            <TouchableOpacity
+              onPress={onShowActiveOptions}
+              style={{ backgroundColor: colors.background, borderRadius: 6, paddingHorizontal: spacing.sm, paddingVertical: 4, borderWidth: 1, borderColor: colors.border }}
+            >
+              <Text style={{ fontSize: 11, color: colors.textPrimary, fontWeight: '600' }}>
+                {uiCopy.dashboard.activeOptionsTitle}
+              </Text>
+            </TouchableOpacity>
+          )}
+          <Text style={styles.metaText}>
+            {models.length ? `${index + 1}/${models.length}` : '0/0'}
+          </Text>
+        </View>
       </View>
 
       {isPackageMode && packageName ? (
@@ -1961,13 +2129,16 @@ const DiscoverView: React.FC<DiscoverProps> = ({
           </TouchableOpacity>
         </View>
       ) : (
-        <ModelFiltersPanel
-          filters={filters}
-          onChangeFilters={onChangeFilters}
-          onSaveFilters={onSaveFilters}
-          filterSaveStatus={filterSaveStatus === 'idle' ? null : filterSaveStatus}
-          userCity={userCity}
-        />
+        <>
+          <ModelFiltersPanel
+            filters={filters}
+            onChangeFilters={onChangeFilters}
+            onSaveFilters={onSaveFilters}
+            filterSaveStatus={filterSaveStatus === 'idle' ? null : filterSaveStatus}
+            userCity={userCity}
+          />
+          <FilterExplanationBanner filters={filters} />
+        </>
       )}
 
       <View style={styles.activeProjectRow}>
@@ -1993,6 +2164,7 @@ const DiscoverView: React.FC<DiscoverProps> = ({
                 />
               </TouchableOpacity>
               <View style={styles.coverGradientOverlay} />
+              {isPackageMode && <GuestWatermark />}
               <View style={styles.coverMeasurementsOverlay}>
                 <Text style={styles.coverNameOnImage}>{current.name}</Text>
                 <Text style={styles.coverMeasurementsLabel}>
@@ -2348,6 +2520,90 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
             </TouchableOpacity>
           );
         })}
+      </ScrollView>
+    </View>
+  );
+};
+
+/** Displays the client's active option requests grouped by status. */
+const ActiveOptionsView: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const [requests, setRequests] = React.useState(getOptionRequests());
+  const copy = uiCopy.dashboard;
+
+  React.useEffect(() => {
+    setRequests(getOptionRequests());
+    const unsub = subscribe(() => setRequests(getOptionRequests()));
+    return unsub;
+  }, []);
+
+  const grouped = React.useMemo(() => {
+    const negotiating = requests.filter((r) => r.status === 'in_negotiation');
+    const confirmed   = requests.filter((r) => r.status === 'confirmed');
+    const rejected    = requests.filter((r) => r.status === 'rejected');
+    return { negotiating, confirmed, rejected };
+  }, [requests]);
+
+  const renderRow = (r: ReturnType<typeof getOptionRequests>[0]) => (
+    <View key={r.threadId} style={{
+      flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+      paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border,
+    }}>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textPrimary }}>{r.modelName}</Text>
+        {r.date ? <Text style={{ fontSize: 11, color: colors.textSecondary }}>{r.date}</Text> : null}
+      </View>
+      <View style={{
+        backgroundColor: r.status === 'confirmed' ? '#dcfce7' : r.status === 'rejected' ? '#fee2e2' : '#fef3c7',
+        borderRadius: 6, paddingHorizontal: spacing.sm, paddingVertical: 2,
+      }}>
+        <Text style={{
+          fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5,
+          color: r.status === 'confirmed' ? '#16a34a' : r.status === 'rejected' ? '#dc2626' : '#92400e',
+        }}>
+          {r.status === 'in_negotiation' ? 'Sent' : r.status === 'confirmed' ? 'Confirmed' : 'Rejected'}
+        </Text>
+      </View>
+    </View>
+  );
+
+  return (
+    <View style={{ flex: 1 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+        <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Text style={{ fontSize: 18, color: colors.textPrimary, marginRight: spacing.md }}>‹</Text>
+        </TouchableOpacity>
+        <Text style={{ fontSize: 16, fontWeight: '700', color: colors.textPrimary }}>{copy.activeOptionsTitle}</Text>
+      </View>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: spacing.md }}>
+        {requests.length === 0 && (
+          <Text style={{ fontSize: 13, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.xl }}>
+            {copy.activeOptionsEmpty}
+          </Text>
+        )}
+        {grouped.negotiating.length > 0 && (
+          <View style={{ marginBottom: spacing.md }}>
+            <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 1, marginBottom: spacing.sm }}>
+              Sent ({grouped.negotiating.length})
+            </Text>
+            {grouped.negotiating.map(renderRow)}
+          </View>
+        )}
+        {grouped.confirmed.length > 0 && (
+          <View style={{ marginBottom: spacing.md }}>
+            <Text style={{ fontSize: 11, fontWeight: '600', color: colors.accentGreen, textTransform: 'uppercase', letterSpacing: 1, marginBottom: spacing.sm }}>
+              Confirmed ({grouped.confirmed.length})
+            </Text>
+            {grouped.confirmed.map(renderRow)}
+          </View>
+        )}
+        {grouped.rejected.length > 0 && (
+          <View style={{ marginBottom: spacing.md }}>
+            <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 1, marginBottom: spacing.sm }}>
+              Rejected ({grouped.rejected.length})
+            </Text>
+            {grouped.rejected.map(renderRow)}
+          </View>
+        )}
       </ScrollView>
     </View>
   );
@@ -3320,6 +3576,8 @@ const OptionDatePickerModal: React.FC<OptionDatePickerModalProps> = ({
   const [currency, setCurrency] = useState<'EUR' | 'USD' | 'GBP' | 'CHF'>('EUR');
   const [sendVia, setSendVia] = useState<'app' | 'email'>('app');
   const [requestType, setRequestType] = useState<'option' | 'casting'>('option');
+  const [roleDescription, setRoleDescription] = useState('');
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   if (!open || !model) return null;
 
@@ -3332,7 +3590,15 @@ const OptionDatePickerModal: React.FC<OptionDatePickerModalProps> = ({
   const nextMonth = () => setCalMonth((p) => p.month === 11 ? { year: p.year + 1, month: 0 } : { ...p, month: p.month + 1 });
 
   const handleSubmit = () => {
-    if (!selectedDate) return;
+    setSubmitError(null);
+    if (!selectedDate) {
+      setSubmitError(uiCopy.dashboard.optionChecklistDate);
+      return;
+    }
+    if (!roleDescription.trim()) {
+      setSubmitError(uiCopy.dashboard.optionChecklistRole);
+      return;
+    }
     const p = requestType === 'option' && price.trim() ? parseFloat(price) : undefined;
     if (sendVia === 'email') {
       const subject = encodeURIComponent(`${requestType === 'casting' ? 'Casting' : 'Option'} Request – ${model.name} – ${selectedDate}`);
@@ -3472,6 +3738,23 @@ const OptionDatePickerModal: React.FC<OptionDatePickerModalProps> = ({
         )}
 
         <View style={{ marginTop: spacing.md }}>
+          <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary, marginBottom: 4 }}>
+            Role / Job description <Text style={{ color: '#dc2626' }}>*</Text>
+          </Text>
+          <TextInput
+            value={roleDescription}
+            onChangeText={(t) => { setRoleDescription(t); setSubmitError(null); }}
+            placeholder="e.g. Runway model, Photographer, Brand ambassador"
+            placeholderTextColor={colors.textSecondary}
+            style={[styles.input, { height: 36 }]}
+          />
+        </View>
+
+        {submitError ? (
+          <Text style={{ fontSize: 12, color: '#dc2626', marginTop: spacing.sm }}>{submitError}</Text>
+        ) : null}
+
+        <View style={{ marginTop: spacing.md }}>
           <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary, marginBottom: 4 }}>Send via</Text>
           <View style={{ flexDirection: 'row', gap: spacing.sm }}>
             {(['app', 'email'] as const).map((v) => (
@@ -3494,8 +3777,8 @@ const OptionDatePickerModal: React.FC<OptionDatePickerModalProps> = ({
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleSubmit}
-            disabled={!selectedDate}
-            style={[styles.primaryButton, { flex: 1, opacity: selectedDate ? 1 : 0.4 }]}
+            disabled={!selectedDate || !roleDescription.trim()}
+            style={[styles.primaryButton, { flex: 1, opacity: (selectedDate && roleDescription.trim()) ? 1 : 0.4 }]}
           >
             <Text style={styles.primaryLabel}>{sendVia === 'email' ? 'Open in Email' : requestType === 'casting' ? 'Send casting request' : 'Send option'}</Text>
           </TouchableOpacity>
@@ -3511,6 +3794,7 @@ type DetailProps = {
   data: MediaslideModel | null;
   onClose: () => void;
   onOptionRequest?: (modelName: string, modelId: string, date: string) => void;
+  isPackageMode?: boolean;
 };
 
 const ProjectDetailView: React.FC<DetailProps> = ({
@@ -3519,6 +3803,7 @@ const ProjectDetailView: React.FC<DetailProps> = ({
   data,
   onClose,
   onOptionRequest,
+  isPackageMode = false,
 }) => {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<string | null>(null);
@@ -3579,11 +3864,14 @@ const ProjectDetailView: React.FC<DetailProps> = ({
             >
               {(data.portfolio?.images || []).map((url, idx) => (
                 <TouchableOpacity key={url} onPress={() => setLightboxIndex(idx)} activeOpacity={0.85}>
-                  <Image
-                    source={{ uri: url }}
-                    style={styles.detailPortfolioImage}
-                    resizeMode="cover"
-                  />
+                  <View style={{ position: 'relative', overflow: 'hidden', borderRadius: 12 }}>
+                    <Image
+                      source={{ uri: url }}
+                      style={styles.detailPortfolioImage}
+                      resizeMode="cover"
+                    />
+                    {isPackageMode && <GuestWatermark />}
+                  </View>
                 </TouchableOpacity>
               ))}
               {(!data.portfolio?.images || data.portfolio.images.length === 0) && (
@@ -3659,11 +3947,14 @@ const ProjectDetailView: React.FC<DetailProps> = ({
                 onPress={() => setLightboxIndex(null)}
               />
 
-              <Image
-                source={{ uri: currentUrl ?? '' }}
-                style={styles.lightboxImage}
-                resizeMode="contain"
-              />
+              <View style={{ position: 'relative' }}>
+                <Image
+                  source={{ uri: currentUrl ?? '' }}
+                  style={styles.lightboxImage}
+                  resizeMode="contain"
+                />
+                {isPackageMode && <GuestWatermark />}
+              </View>
 
               {/* Pfeil links */}
               {hasPrev && (

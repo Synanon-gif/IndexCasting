@@ -306,7 +306,8 @@ export async function updateOptionRequestSchedule(
         start_time: fields.start_time ?? null,
         end_time: fields.end_time ?? null,
       })
-      .eq('id', id);
+      .eq('id', id)
+      .neq('status', 'rejected');
     if (error) {
       console.error('updateOptionRequestSchedule error:', error);
       return false;
@@ -729,13 +730,17 @@ export async function updateModelApproval(
   }
 }
 
-export async function getOptionRequestsForModel(modelId: string): Promise<SupabaseOptionRequest[]> {
+export async function getOptionRequestsForModel(
+  modelId: string,
+  limit = 200,
+): Promise<SupabaseOptionRequest[]> {
   try {
     const { data, error } = await supabase
       .from('option_requests')
       .select(OPTION_REQUEST_SELECT)
       .eq('model_id', modelId)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(limit);
     if (error) { console.error('getOptionRequestsForModel error:', error); return []; }
     return (data ?? []) as SupabaseOptionRequest[];
   } catch (e) {
@@ -750,7 +755,8 @@ export async function getOptionDocuments(requestId: string): Promise<SupabaseOpt
       .from('option_documents')
       .select('*')
       .eq('option_request_id', requestId)
-      .order('created_at', { ascending: true });
+      .order('created_at', { ascending: true })
+      .limit(100);
     if (error) { console.error('getOptionDocuments error:', error); return []; }
     return (data ?? []) as SupabaseOptionDocument[];
   } catch (e) {
@@ -959,14 +965,44 @@ export async function agencyAcceptRequest(
       return 'confirmed';
     }
 
-    // Model hat Account → wartet auf Model-Bestätigung.
+    // If the model has already pre-approved (via updateModelApproval), the agency
+    // accepting immediately finalises the booking — no second model step needed.
+    // This avoids the model_approval deadlock: modelConfirmOptionRequest requires
+    // model_approval = 'pending', but it would already be 'approved' after pre-approval.
+    if (r.model_approval === 'approved') {
+      const { data: updateData, error } = await supabase
+        .from('option_requests')
+        .update({
+          client_price_status: 'accepted',
+          final_status: 'option_confirmed',
+          model_approved_at: r.model_approved_at ?? new Date().toISOString(),
+          status: 'confirmed',
+        })
+        .eq('id', id)
+        .eq('status', 'in_negotiation')
+        .select('id')
+        .maybeSingle();
+
+      if (error) {
+        console.error('agencyAcceptRequest (pre-approved model) update error:', error);
+        return null;
+      }
+      if (!updateData?.id) {
+        console.warn('agencyAcceptRequest: no row updated — already processed or concurrent call', id);
+        return null;
+      }
+
+      return 'confirmed';
+    }
+
+    // Model hat Account aber noch nicht vorab genehmigt → wartet auf Model-Bestätigung.
     // Same atomic guard: only transition if still in_negotiation.
     const { data: updateData, error } = await supabase
       .from('option_requests')
       .update({
         client_price_status: 'accepted',
         final_status: 'option_confirmed',
-        // model_approval bleibt 'pending'
+        // model_approval bleibt 'pending' → modelConfirmOptionRequest wird ausgeführt
       })
       .eq('id', id)
       .eq('status', 'in_negotiation')
