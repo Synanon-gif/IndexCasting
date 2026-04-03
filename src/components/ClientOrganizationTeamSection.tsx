@@ -75,6 +75,9 @@ export const ClientOrganizationTeamSection: React.FC<{
         setTeamMembers([]);
         setInvitations([]);
       }
+    } catch (e) {
+      console.error('ClientOrganizationTeamSection loadTeam error:', e);
+      Alert.alert(uiCopy.common.error, uiCopy.team.loadTeamError ?? 'Could not load team data.');
     } finally {
       setLoading(false);
     }
@@ -118,6 +121,9 @@ export const ClientOrganizationTeamSection: React.FC<{
       } else {
         Alert.alert(uiCopy.common.error, uiCopy.team.invitationErrorBody);
       }
+    } catch (e) {
+      console.error('ClientOrganizationTeamSection handleInvite error:', e);
+      Alert.alert(uiCopy.common.error, uiCopy.team.invitationErrorBody);
     } finally {
       setInviteBusy(false);
     }

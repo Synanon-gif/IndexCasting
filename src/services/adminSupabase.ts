@@ -320,7 +320,12 @@ export async function adminSetOrganizationMemberRole(
   }
 }
 
-export async function writeAdminLog(action: string, targetUserId?: string, details?: Record<string, unknown>): Promise<void> {
+export async function writeAdminLog(
+  action: string,
+  targetUserId?: string,
+  details?: Record<string, unknown>,
+  orgId?: string,
+): Promise<void> {
   // Any admin can insert log entries — they cannot READ the log (is_super_admin
   // required for SELECT), so they cannot learn what is logged or craft entries
   // to obscure specific existing records.
@@ -331,13 +336,14 @@ export async function writeAdminLog(action: string, targetUserId?: string, detai
       admin_id: user.id,
       action,
       target_user_id: targetUserId || null,
+      org_id: orgId || null,
       details: details || {},
     });
     if (error) {
-      console.error('writeAdminLog: failed to persist audit entry', { action, targetUserId, error });
+      console.error('writeAdminLog: failed to persist audit entry', { action, targetUserId, orgId, error });
     }
   } catch (e) {
-    console.error('writeAdminLog exception — audit trail entry lost:', { action, targetUserId, e });
+    console.error('writeAdminLog exception — audit trail entry lost:', { action, targetUserId, orgId, e });
   }
 }
 
@@ -649,7 +655,7 @@ export async function adminSetAgencySwipeLimit(
       p_limit:           limit,
     });
     if (error) throw error;
-    await writeAdminLog(`Set daily swipe limit to ${limit} for org ${organizationId}`);
+    await writeAdminLog(`Set daily swipe limit to ${limit} for org ${organizationId}`, undefined, { limit }, organizationId);
     return true;
   } catch (e) {
     console.error('adminSetAgencySwipeLimit error:', e);
@@ -667,7 +673,7 @@ export async function adminResetAgencySwipeCount(organizationId: string): Promis
       p_organization_id: organizationId,
     });
     if (error) throw error;
-    await writeAdminLog(`Reset swipe count for org ${organizationId}`);
+    await writeAdminLog(`Reset swipe count for org ${organizationId}`, undefined, undefined, organizationId);
     return true;
   } catch (e) {
     console.error('adminResetAgencySwipeCount error:', e);
@@ -730,6 +736,9 @@ export async function adminSetStorageLimit(
     if (error) throw error;
     await writeAdminLog(
       `Set storage limit to ${limitBytes} bytes for org ${organizationId}`,
+      undefined,
+      { limitBytes },
+      organizationId,
     );
     return true;
   } catch (e) {
@@ -747,7 +756,7 @@ export async function adminSetUnlimitedStorage(organizationId: string): Promise<
       p_organization_id: organizationId,
     });
     if (error) throw error;
-    await writeAdminLog(`Set unlimited storage for org ${organizationId}`);
+    await writeAdminLog(`Set unlimited storage for org ${organizationId}`, undefined, undefined, organizationId);
     return true;
   } catch (e) {
     console.error('adminSetUnlimitedStorage error:', e);
@@ -765,7 +774,7 @@ export async function adminResetToDefaultStorageLimit(organizationId: string): P
       p_organization_id: organizationId,
     });
     if (error) throw error;
-    await writeAdminLog(`Reset storage limit to default for org ${organizationId}`);
+    await writeAdminLog(`Reset storage limit to default for org ${organizationId}`, undefined, undefined, organizationId);
     return true;
   } catch (e) {
     console.error('adminResetToDefaultStorageLimit error:', e);
@@ -837,6 +846,9 @@ export async function adminSetBypassPaywall(
     if (error) throw error;
     await writeAdminLog(
       `${bypass ? 'Enabled' : 'Disabled'} paywall bypass for org ${organizationId}${customPlan ? ` (plan: ${customPlan})` : ''}`,
+      undefined,
+      { bypass, customPlan },
+      organizationId,
     );
     return true;
   } catch (e) {
@@ -861,7 +873,7 @@ export async function adminSetOrgPlan(
       p_status: status,
     });
     if (error) throw error;
-    await writeAdminLog(`Set plan '${plan}' (${status}) for org ${organizationId}`);
+    await writeAdminLog(`Set plan '${plan}' (${status}) for org ${organizationId}`, undefined, { plan, status }, organizationId);
     return true;
   } catch (e) {
     console.error('adminSetOrgPlan error:', e);

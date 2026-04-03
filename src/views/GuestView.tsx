@@ -1,7 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, Image,
-  ActivityIndicator, TextInput, Platform, Modal, type ViewStyle,
+  View, Text, StyleSheet, TouchableOpacity, ScrollView, FlatList, Image,
+  ActivityIndicator, TextInput, Platform, Modal, type ViewStyle, type ListRenderItemInfo,
 } from 'react-native';
 
 /**
@@ -55,7 +55,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, typography } from '../theme/theme';
 import { supabase } from '../../lib/supabase';
 import {
-  getGuestLink, getGuestLinkModels,
+  getGuestLink, getGuestLinkModels, acceptGuestLinkTos,
   type GuestLinkInfo, type GuestLinkModel,
 } from '../services/guestLinksSupabase';
 import { signInOrCreateGuestWithOtp } from '../services/guestAuthSupabase';
@@ -84,6 +84,7 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
   const [phase, setPhase] = useState<ViewPhase>('legal');
   const [pageError, setPageError] = useState<string | null>(null);
   const realtimeChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const loadingRef = useRef(false);
 
   // Legal gate
   const [tosAccepted, setTosAccepted] = useState(false);
@@ -101,6 +102,8 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
   const [formError, setFormError] = useState<string | null>(null);
 
   const loadLinkData = async () => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     try {
       const g = await getGuestLink(linkId);
       if (!g) {
@@ -116,6 +119,7 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
       setPageError(copy.loadError);
     } finally {
       setLoading(false);
+      loadingRef.current = false;
     }
   };
 
@@ -287,7 +291,15 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
         <TouchableOpacity
           style={[styles.primaryBtn, (!tosAccepted || !privacyAccepted) && styles.primaryBtnDisabled]}
           disabled={!tosAccepted || !privacyAccepted}
-          onPress={() => setPhase('browse')}
+          onPress={async () => {
+            // Persist ToS acceptance to guest_links.tos_accepted_by_guest for the audit trail.
+            // Non-fatal: if the RPC fails the guest can still browse; the in-memory
+            // state is set. The next successful call will update the DB record.
+            if (link?.id) {
+              void acceptGuestLinkTos(link.id);
+            }
+            setPhase('browse');
+          }}
         >
           <Text style={styles.primaryBtnLabel}>{copy.legalContinue}</Text>
         </TouchableOpacity>
@@ -525,22 +537,30 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
         <Text style={styles.guestAccessNote}>{copy.guestAccessSubtitle}</Text>
       </View>
 
-      {/* ── Model grid ── */}
-      <ScrollView style={styles.scrollArea} contentContainerStyle={styles.grid}>
-        {models.map((m) => {
+      {/* ── Model grid (FlatList for virtualised / lazy rendering) ── */}
+      <FlatList
+        style={styles.scrollArea}
+        contentContainerStyle={styles.grid}
+        data={models}
+        keyExtractor={(m) => m.id}
+        initialNumToRender={6}
+        maxToRenderPerBatch={6}
+        windowSize={5}
+        renderItem={({ item: m }: ListRenderItemInfo<GuestLinkModel>) => {
           const allImages = getGalleryImages(m);
           const imageCount = allImages.length;
+          const coverImage = getCoverImage(m);
           return (
-            <View key={m.id} style={styles.modelCard}>
+            <View style={styles.modelCard}>
               <TouchableOpacity
                 activeOpacity={0.85}
                 onPress={() => imageCount > 0 ? openGallery(m, 0) : undefined}
                 disabled={imageCount === 0}
               >
-                {getCoverImage(m) ? (
+                {coverImage ? (
                   <View>
                     <Image
-                      source={{ uri: getCoverImage(m)! }}
+                      source={{ uri: coverImage }}
                       style={styles.modelImage}
                       resizeMode="cover"
                     />
@@ -573,8 +593,8 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
               </View>
             </View>
           );
-        })}
-      </ScrollView>
+        }}
+      />
 
       {/* ── Contact bar ── */}
       <View style={styles.contactBar}>

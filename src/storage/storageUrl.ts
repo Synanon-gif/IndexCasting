@@ -117,8 +117,8 @@ export function publicUrlToStorageUri(url: string): string {
  * Resolves any storage URL / URI to a short-lived Supabase signed URL.
  *
  * Non-storage URLs (external CDN, data: URIs, etc.) are returned unchanged.
- * On signing failure the original URL is returned as a fallback so the UI
- * remains functional.
+ * On signing failure returns null — callers should hide the image rather
+ * than falling back to a potentially-public URL (H5 security fix).
  *
  * Signed URLs are cached in-memory until CACHE_GRACE_SECONDS before expiry.
  *
@@ -128,8 +128,8 @@ export function publicUrlToStorageUri(url: string): string {
 export async function resolveStorageUrl(
   url: string,
   ttlSeconds: number = DEFAULT_SIGNED_TTL_SECONDS,
-): Promise<string> {
-  if (!url) return url;
+): Promise<string | null> {
+  if (!url) return null;
 
   // Fast path: already a valid, non-expired signed URL in cache
   const cached = urlCache.get(url);
@@ -139,7 +139,7 @@ export async function resolveStorageUrl(
 
   const extracted = extractBucketAndPath(url);
   if (!extracted) {
-    // Not a Supabase Storage URL — return as-is
+    // Not a Supabase Storage URL — return as-is (external CDN, data: URI, etc.)
     return url;
   }
 
@@ -150,7 +150,7 @@ export async function resolveStorageUrl(
 
     if (error || !data?.signedUrl) {
       console.error('[storageUrl] resolveStorageUrl failed', error, { url });
-      return url;
+      return null;
     }
 
     urlCache.set(url, {
@@ -161,18 +161,20 @@ export async function resolveStorageUrl(
     return data.signedUrl;
   } catch (e) {
     console.error('[storageUrl] resolveStorageUrl exception', e);
-    return url;
+    return null;
   }
 }
 
 /**
  * Resolves multiple storage URLs in parallel.
+ * URLs that fail to sign are omitted from the result (null-safe).
  */
 export async function resolveStorageUrls(
   urls: string[],
   ttlSeconds: number = DEFAULT_SIGNED_TTL_SECONDS,
 ): Promise<string[]> {
-  return Promise.all(urls.map((u) => resolveStorageUrl(u, ttlSeconds)));
+  const results = await Promise.all(urls.map((u) => resolveStorageUrl(u, ttlSeconds)));
+  return results.filter((u): u is string => u !== null);
 }
 
 /**

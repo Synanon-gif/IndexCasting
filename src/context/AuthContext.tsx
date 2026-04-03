@@ -389,6 +389,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       console.error('signOut store reset error:', e);
     }
+    try {
+      const { clearAllPersistence } = await import('../storage/persistence');
+      clearAllPersistence();
+    } catch (e) {
+      console.error('signOut persistence clear error:', e);
+    }
   };
 
   const acceptTerms = async (agencyRights = false) => {
@@ -414,14 +420,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       ...(agencyRights ? [{ user_id: session.user.id, document_type: 'agency_model_rights', document_version: '1.0' }] : []),
     ]);
 
-    // EXPLOIT-H2 fix: Sync to consent_log so that GDPR withdrawal flows work.
+    // Sync to consent_log so that GDPR withdrawal flows work.
     // consent_log is the authoritative source for withdraw_consent() RPC.
     // Errors here are non-fatal — legal_acceptances is the primary audit record.
     try {
       const { recordConsent } = await import('../services/consentSupabase');
-      await recordConsent('terms_of_service', '1.0');
-      await recordConsent('privacy_policy', '1.0');
-      if (agencyRights) await recordConsent('agency_model_rights', '1.0');
+      await recordConsent(session.user.id, 'terms', '1.0');
+      await recordConsent(session.user.id, 'privacy', '1.0');
+      if (agencyRights) await recordConsent(session.user.id, 'image_rights', '1.0');
     } catch (consentErr) {
       console.warn('acceptTerms: consent_log sync failed (non-fatal):', consentErr);
     }

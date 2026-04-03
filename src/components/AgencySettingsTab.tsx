@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { uiCopy } from '../constants/uiCopy';
 import { AGENCY_SEGMENT_TYPES } from '../constants/agencyTypes';
@@ -8,6 +8,8 @@ import { updateAgencySettings } from '../services/agencySettingsSupabase';
 import { showAppAlert } from '../utils/crossPlatformAlert';
 import { ScreenScrollView } from './ScreenScrollView';
 import { AgencyStorageWidget } from './AgencyStorageWidget';
+import { supabase } from '../../lib/supabase';
+import { exportUserData, downloadUserDataExport } from '../services/gdprComplianceSupabase';
 
 type Props = {
   agency: Agency | null;
@@ -26,6 +28,31 @@ export const AgencySettingsTab: React.FC<Props> = ({ agency, organizationId, onS
   const [country, setCountry] = useState('');
   const [segments, setSegments] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
+  const [exportingData, setExportingData] = useState(false);
+
+  const onExportData = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    setExportingData(true);
+    try {
+      if (Platform.OS === 'web') {
+        await downloadUserDataExport(user.id);
+        showAppAlert('Download started', 'Your data export has been downloaded as a JSON file.');
+      } else {
+        const result = await exportUserData(user.id);
+        if (result.ok) {
+          showAppAlert('Data Export', 'Your personal data export was prepared. Please use the web version of IndexCasting to download your data as a file.');
+        } else {
+          showAppAlert(uiCopy.common.error, 'Could not export your data. Please try again later.');
+        }
+      }
+    } catch (e) {
+      console.error('AgencySettingsTab onExportData error:', e);
+      showAppAlert(uiCopy.common.error, 'Could not export your data. Please try again later.');
+    } finally {
+      setExportingData(false);
+    }
+  };
 
   useEffect(() => {
     if (!agency) return;
@@ -74,6 +101,9 @@ export const AgencySettingsTab: React.FC<Props> = ({ agency, organizationId, onS
       }
       showAppAlert(uiCopy.common.success, uiCopy.agencySettings.saveSuccess);
       onSaved();
+    } catch (e) {
+      console.error('AgencySettingsTab onSave error:', e);
+      showAppAlert(uiCopy.common.error, uiCopy.agencySettings.saveError ?? 'Could not save settings.');
     } finally {
       setSaving(false);
     }
@@ -188,6 +218,20 @@ export const AgencySettingsTab: React.FC<Props> = ({ agency, organizationId, onS
       <TouchableOpacity style={[styles.saveBtn, saving && { opacity: 0.6 }]} disabled={saving} onPress={() => void onSave()}>
         <Text style={styles.saveLabel}>{saving ? uiCopy.common.saving : uiCopy.agencySettings.save}</Text>
       </TouchableOpacity>
+
+      {/* ── GDPR / Privacy ──────────────────────────────────────── */}
+      <View style={styles.gdprDivider} />
+      <Text style={styles.section}>Privacy & Your Data (GDPR)</Text>
+      <Text style={styles.hint}>
+        Under GDPR Art. 20 you have the right to receive a copy of your personal data.
+      </Text>
+      <TouchableOpacity
+        style={[styles.gdprBtn, exportingData && { opacity: 0.6 }]}
+        disabled={exportingData}
+        onPress={() => void onExportData()}
+      >
+        <Text style={styles.gdprBtnLabel}>{exportingData ? 'Preparing export…' : 'Download my data'}</Text>
+      </TouchableOpacity>
     </ScreenScrollView>
   );
 };
@@ -234,4 +278,20 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl,
   },
   saveLabel: { ...typography.label, color: '#fff' },
+  gdprDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginTop: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  gdprBtn: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+    marginTop: spacing.sm,
+    marginBottom: spacing.xl,
+  },
+  gdprBtnLabel: { ...typography.label, color: colors.textSecondary },
 });

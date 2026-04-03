@@ -265,6 +265,27 @@ export async function revokeGuestAccess(linkId: string): Promise<boolean> {
   }
 }
 
+/**
+ * Records the guest's acceptance of ToS/Privacy for a specific link.
+ * Uses a SECURITY DEFINER RPC so that the anon role can write this field
+ * without broad UPDATE permissions on guest_links.
+ */
+export async function acceptGuestLinkTos(linkId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase.rpc('accept_guest_link_tos', {
+      p_link_id: linkId,
+    });
+    if (error) {
+      console.error('acceptGuestLinkTos error:', error);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('acceptGuestLinkTos exception:', e);
+    return false;
+  }
+}
+
 export function buildGuestUrl(linkId: string): string {
   if (typeof window !== 'undefined') {
     const base = window.location.origin + (window.location.pathname || '');

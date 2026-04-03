@@ -6,6 +6,7 @@ import { createNotification, createNotifications } from './notificationsSupabase
 import { uiCopy } from '../constants/uiCopy';
 import { normalizeInput, validateText, sanitizeHtml, extractSafeUrls, logSecurityEvent } from '../../lib/validation';
 import { checkAndIncrementStorage, decrementStorage } from './agencyStorageSupabase';
+import { logBookingAction, logOptionAction } from './gdprComplianceSupabase';
 
 export const OPTION_REQUEST_SELECT =
   'id, client_id, model_id, agency_id, requested_date, status, project_id, client_name, model_name, proposed_price, agency_counter_price, client_price_status, final_status, request_type, currency, start_time, end_time, model_approval, model_approved_at, model_account_linked, booker_id, organization_id, created_by, agency_assignee_user_id, created_at, updated_at';
@@ -237,6 +238,14 @@ export async function insertOptionRequest(req: {
 
   const inserted = data as SupabaseOptionRequest;
 
+  void logOptionAction(inserted.organization_id ?? '', 'option_sent', inserted.id, {
+    client_id: inserted.client_id,
+    agency_id: inserted.agency_id,
+    model_id: inserted.model_id,
+    proposed_price: inserted.proposed_price,
+    request_type: inserted.request_type,
+  });
+
   // Notify the AGENCY org about the new request.
   // IMPORTANT: inserted.organization_id is the CLIENT org (used for RLS scoping).
   // We must look up the agency org separately via agency_id.
@@ -274,7 +283,7 @@ export async function updateOptionRequestStatus(
       // (e.g. rejected → confirmed) via concurrent or replayed requests.
       q = q.eq('status', fromStatus);
     }
-    const { data, error } = await q.select('id').maybeSingle();
+    const { data, error } = await q.select('id, organization_id').maybeSingle();
     if (error) {
       console.error('updateOptionRequestStatus error:', error);
       return false;
@@ -283,6 +292,11 @@ export async function updateOptionRequestStatus(
       console.warn('updateOptionRequestStatus: no row updated — concurrent state change or wrong fromStatus', { id, fromStatus, targetStatus: status });
       return false;
     }
+    const orgId = (data as { id: string; organization_id: string | null }).organization_id ?? '';
+    const auditAction = status === 'confirmed' ? 'option_confirmed'
+      : status === 'rejected' ? 'option_rejected'
+      : 'option_price_proposed';
+    void logOptionAction(orgId, auditAction, id, { status }, { status: fromStatus });
     return true;
   } catch (e) {
     console.error('updateOptionRequestStatus exception:', e);
@@ -290,7 +304,16 @@ export async function updateOptionRequestStatus(
   }
 }
 
-/** Datum/Zeit der Option (Client/Agentur). Trigger sync_option_dates_to_calendars pflegt Kalender + gespiegelte Events. */
+/**
+ * Agency-only: update the date/time of an option request.
+ *
+ * EXPLOIT-M1 fix: routes through the SECURITY DEFINER RPC
+ * agency_update_option_schedule() which validates server-side that the caller
+ * is a member of the agency org for this request. The previous direct UPDATE
+ * had no role guard — a client user could change dates of confirmed options.
+ *
+ * Trigger sync_option_dates_to_calendars still fires on the UPDATE inside the RPC.
+ */
 export async function updateOptionRequestSchedule(
   id: string,
   fields: { requested_date: string; start_time?: string | null; end_time?: string | null }
@@ -301,20 +324,17 @@ export async function updateOptionRequestSchedule(
       console.error('updateOptionRequestSchedule: invalid date');
       return false;
     }
-    const { error } = await supabase
-      .from('option_requests')
-      .update({
-        requested_date: dateNorm,
-        start_time: fields.start_time ?? null,
-        end_time: fields.end_time ?? null,
-      })
-      .eq('id', id)
-      .neq('status', 'rejected');
+    const { data, error } = await supabase.rpc('agency_update_option_schedule', {
+      p_option_id:  id,
+      p_date:       dateNorm,
+      p_start_time: fields.start_time ?? null,
+      p_end_time:   fields.end_time ?? null,
+    });
     if (error) {
-      console.error('updateOptionRequestSchedule error:', error);
+      console.error('updateOptionRequestSchedule RPC error:', error);
       return false;
     }
-    return true;
+    return data === true;
   } catch (e) {
     console.error('updateOptionRequestSchedule exception:', e);
     return false;
@@ -367,13 +387,14 @@ export async function setAgencyCounterOffer(
       })
       .eq('id', id)
       .eq('status', 'in_negotiation')
-      .select('id')
+      .select('id, organization_id')
       .maybeSingle();
     if (error) { console.error('setAgencyCounterOffer error:', error); return false; }
     if (!data?.id) {
       console.warn('setAgencyCounterOffer: no row updated — request not in_negotiation', id);
       return false;
     }
+    void logOptionAction((data as { id: string; organization_id: string | null }).organization_id ?? '', 'option_price_countered', id, { counter_price: counterPrice });
     return true;
   } catch (e) {
     console.error('setAgencyCounterOffer exception:', e);
@@ -400,6 +421,14 @@ export async function agencyAcceptClientPrice(id: string): Promise<boolean> {
       console.warn('agencyAcceptClientPrice: RPC returned false — request not in expected state or caller not agency member', id);
       return false;
     }
+    void (async () => {
+      try {
+        const { data: row } = await supabase.from('option_requests').select('organization_id').eq('id', id).maybeSingle();
+        void logOptionAction((row as { organization_id: string | null } | null)?.organization_id ?? '', 'option_price_accepted', id, { accepted_by: 'agency' }, { client_price_status: 'pending' });
+      } catch (_e) {
+        void logOptionAction('', 'option_price_accepted', id, { accepted_by: 'agency' }, { client_price_status: 'pending' });
+      }
+    })();
     return true;
   } catch (e) {
     console.error('agencyAcceptClientPrice exception:', e);
@@ -419,13 +448,14 @@ export async function agencyRejectClientPrice(id: string): Promise<boolean> {
       .eq('id', id)
       .eq('status', 'in_negotiation')
       .eq('client_price_status', 'pending')
-      .select('id')
+      .select('id, organization_id')
       .maybeSingle();
     if (error) { console.error('agencyRejectClientPrice error:', error); return false; }
     if (!data?.id) {
       console.warn('agencyRejectClientPrice: no row updated — offer not pending or request not in_negotiation', id);
       return false;
     }
+    void logOptionAction((data as { id: string; organization_id: string | null }).organization_id ?? '', 'option_price_rejected', id, { rejected_by: 'agency' }, { client_price_status: 'pending' });
     return true;
   } catch (e) {
     console.error('agencyRejectClientPrice exception:', e);
@@ -452,6 +482,14 @@ export async function clientAcceptCounterPrice(id: string): Promise<boolean> {
       console.warn('clientAcceptCounterPrice: RPC returned false — counter-offer no longer pending or caller not client', id);
       return false;
     }
+    void (async () => {
+      try {
+        const { data: row } = await supabase.from('option_requests').select('organization_id').eq('id', id).maybeSingle();
+        void logOptionAction((row as { organization_id: string | null } | null)?.organization_id ?? '', 'option_price_accepted', id, { accepted_by: 'client' }, { client_price_status: 'pending' });
+      } catch (_e) {
+        void logOptionAction('', 'option_price_accepted', id, { accepted_by: 'client' }, { client_price_status: 'pending' });
+      }
+    })();
     return true;
   } catch (e) {
     console.error('clientAcceptCounterPrice exception:', e);
@@ -477,13 +515,14 @@ export async function clientRejectCounterOfferOnSupabase(id: string): Promise<bo
       .eq('id', id)
       .neq('status', 'confirmed')    // VULN-H2: kein Reject nach Bestätigung
       .neq('status', 'rejected')     // Idempotenz-Schutz
-      .select('id')
+      .select('id, organization_id')
       .maybeSingle();
     if (error) { console.error('clientRejectCounterOfferOnSupabase error:', error); return false; }
     if (!data?.id) {
       console.warn('clientRejectCounterOfferOnSupabase: no row updated — request already confirmed or rejected', id);
       return false;
     }
+    void logOptionAction((data as { id: string; organization_id: string | null }).organization_id ?? '', 'option_rejected', id, { rejected_by: 'client', reason: 'counter_offer_rejected' });
     return true;
   } catch (e) {
     console.error('clientRejectCounterOfferOnSupabase exception:', e);
@@ -523,6 +562,13 @@ export async function clientConfirmJobOnSupabase(id: string): Promise<boolean> {
     // uidx_booking_events_per_option_request ensures idempotency if both paths
     // somehow race.
     await createBookingEventFromRequest(updated as SupabaseOptionRequest);
+
+    const up = updated as SupabaseOptionRequest;
+    void logBookingAction(up.organization_id ?? '', 'booking_confirmed', id, {
+      final_status: 'job_confirmed',
+      agency_id: up.agency_id,
+      model_id: up.model_id,
+    });
 
     return true;
   } catch (e) {
@@ -720,13 +766,15 @@ export async function updateModelApproval(
       // Race-condition guard: only update if still in pending state.
       // Prevents double-approve / concurrent approve+reject conflicts.
       .eq('model_approval', 'pending')
-      .select('id');
+      .select('id, organization_id');
 
     if (error) { console.error('updateModelApproval error:', error); return false; }
     if (!updatedRows || updatedRows.length === 0) {
       console.warn('updateModelApproval: no row updated — already approved/rejected or concurrent request', { id, approval });
       return false;
     }
+    const row = updatedRows[0] as { id: string; organization_id: string | null };
+    void logOptionAction(row.organization_id ?? '', approval === 'approved' ? 'option_confirmed' : 'option_rejected', id, { model_approval: approval }, { model_approval: 'pending' });
     return true;
   } catch (e) {
     console.error('updateModelApproval exception:', e);
@@ -922,7 +970,14 @@ async function createBookingEventFromRequest(req: SupabaseOptionRequest): Promis
         return;
       }
       console.error('createBookingEventFromRequest insert error:', error);
+      return;
     }
+    void logBookingAction(
+      (agencyOrg as { id: string } | null)?.id ?? req.organization_id ?? '',
+      'booking_created',
+      req.id,
+      { type: eventType, source_option_request_id: req.id },
+    );
   } catch (e) {
     console.error('createBookingEventFromRequest exception:', e);
   }
@@ -984,6 +1039,11 @@ export async function agencyAcceptRequest(
         return null;
       }
 
+      void logOptionAction(r.organization_id ?? '', 'option_confirmed', id, {
+        result: 'confirmed',
+        model_account_linked: false,
+        agency_id: r.agency_id,
+      });
       return 'confirmed';
     }
 
@@ -1014,6 +1074,11 @@ export async function agencyAcceptRequest(
         return null;
       }
 
+      void logOptionAction(r.organization_id ?? '', 'option_confirmed', id, {
+        result: 'confirmed',
+        model_approval: 'pre-approved',
+        agency_id: r.agency_id,
+      });
       return 'confirmed';
     }
 
@@ -1039,6 +1104,12 @@ export async function agencyAcceptRequest(
       console.warn('agencyAcceptRequest: no row updated — already processed or concurrent call', id);
       return null;
     }
+
+    void logOptionAction(r.organization_id ?? '', 'option_confirmed', id, {
+      result: 'awaiting_model_confirmation',
+      model_account_linked: true,
+      agency_id: r.agency_id,
+    });
 
     // Notify model user that their confirmation is needed
     void notifyModelAwaitingConfirmation(r.model_id, id);
@@ -1087,6 +1158,7 @@ export async function agencyRejectRequest(id: string): Promise<boolean> {
 
     // Notify the client about the rejection (fire-and-forget).
     const row = data as { id: string; client_id: string | null; organization_id: string | null };
+    void logOptionAction(row.organization_id ?? '', 'option_rejected', id, { rejected_by: 'agency' });
     if (row.client_id) {
       void createNotification({
         user_id: row.client_id,
@@ -1163,6 +1235,12 @@ export async function modelConfirmOptionRequest(id: string): Promise<boolean> {
     // booking_event is created by the DB trigger tr_auto_booking_event_on_confirm
     // (migration_chaos_hardening_2026_04.sql) — no client-side call needed here.
 
+    void logOptionAction(r.organization_id ?? '', 'option_confirmed', id, {
+      confirmed_by: 'model',
+      agency_id: r.agency_id,
+      model_id: r.model_id,
+    });
+
     // Notify agency org + client user about model confirmation
     void notifyModelConfirmedOption(r);
 
@@ -1200,6 +1278,9 @@ export async function modelRejectOptionRequest(id: string): Promise<boolean> {
       console.warn('modelRejectOptionRequest: no row updated — concurrent state change', { id });
       return false;
     }
+
+    const rejectRow = rejectData as { id: string; agency_id: string | null; client_id: string | null; organization_id: string | null };
+    void logOptionAction(rejectRow.organization_id ?? '', 'option_rejected', id, { rejected_by: 'model' });
 
     // Notify agency and client about the model rejection (fire-and-forget).
     void (async () => {

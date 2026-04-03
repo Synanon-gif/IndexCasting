@@ -55,7 +55,7 @@ export async function uploadApplicationImage(file: Blob | File, slot: string): P
  * signed URL suitable for display. Backward-compatible: handles both the new
  * supabase-storage:// URI format and legacy full public URLs.
  */
-export async function resolveApplicationImageUrl(uriOrUrl: string): Promise<string> {
+export async function resolveApplicationImageUrl(uriOrUrl: string): Promise<string | null> {
   return resolveStorageUrl(uriOrUrl);
 }
 

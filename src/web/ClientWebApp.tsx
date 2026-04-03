@@ -110,6 +110,10 @@ import {
   type SupabaseProject,
 } from '../services/projectsSupabase';
 import { supabase } from '../../lib/supabase';
+import {
+  loadArchivedThreadIds,
+  setThreadArchived,
+} from '../services/threadPreferencesSupabase';
 import { MonthCalendarView, type CalendarDayEvent } from '../components/MonthCalendarView';
 import { ClientOrganizationTeamSection } from '../components/ClientOrganizationTeamSection';
 import { OrgMessengerInline } from '../components/OrgMessengerInline';
@@ -175,6 +179,33 @@ type MediaslideModel = {
 };
 
 // ModelFilters type, defaultModelFilters and FILTER_COUNTRIES are imported from '../utils/modelFilters'.
+
+/** How many cards before the end of the list trigger a paginated load-more call. */
+const LOAD_MORE_THRESHOLD = 10;
+
+/** Maps a raw DiscoveryModel (from the RPC) to the app-local ModelSummary shape. */
+function mapDiscoveryModelToSummary(m: DiscoveryModel): ModelSummary {
+  return {
+    id: m.id,
+    name: m.name,
+    city: m.city ?? '',
+    hairColor: m.hair_color ?? '',
+    height: m.height,
+    bust: m.bust ?? 0,
+    waist: m.waist ?? 0,
+    hips: m.hips ?? 0,
+    chest: m.chest ?? 0,
+    legsInseam: m.legs_inseam ?? 0,
+    coverUrl: m.portfolio_images?.[0] ?? '',
+    agencyId: m.territory_agency_id ?? m.agency_id ?? null,
+    agencyName: m.agency_name ?? null,
+    countryCode: m.country_code ?? m.territory_country_code ?? null,
+    hasRealLocation: !!m.country_code,
+    isSportsWinter: m.is_sports_winter ?? false,
+    isSportsSummer: m.is_sports_summer ?? false,
+    sex: m.sex ?? null,
+  };
+}
 
 /** localStorage-Modelle ohne chest/legsInseam → volles ModelSummary für die App */
 function persistedProjectsToProjects(list: PersistedClientProject[]): Project[] {
@@ -334,6 +365,9 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
    */
   const sessionSeenIds = useRef<Set<string>>(new Set());
 
+  /** Prevents concurrent paginated load-more fetches. */
+  const isLoadingMoreRef = useRef(false);
+
   /** Cursor for keyset pagination — updated after each successful ranked load. */
   const [discoveryCursor, setDiscoveryCursor] = useState<DiscoveryCursor>(null);
 
@@ -459,6 +493,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   // Auto-save ALL filters to localStorage on every change.
   useEffect(() => {
     const persisted: PersistedClientFilters = {
+      sex: filters.sex,
       heightMin: filters.heightMin,
       heightMax: filters.heightMax,
       ethnicities: filters.ethnicities,
@@ -480,7 +515,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     };
     saveClientFilters(persisted);
   }, [
-    filters.heightMin, filters.heightMax, filters.ethnicities,
+    filters.sex, filters.heightMin, filters.heightMax, filters.ethnicities,
     filters.countryCode, filters.city, filters.nearby,
     filters.category, filters.sportsWinter, filters.sportsSummer,
     filters.hairColor, filters.hipsMin, filters.hipsMax,
@@ -659,28 +694,6 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         sex: (filters.sex !== 'all' ? filters.sex : undefined) as 'male' | 'female' | undefined,
       };
 
-      const mapToModelSummary = (raw: DiscoveryModel[]): ModelSummary[] =>
-        raw.map((m: DiscoveryModel) => ({
-          id: m.id,
-          name: m.name,
-          city: m.city ?? '',
-          hairColor: m.hair_color ?? '',
-          height: m.height,
-          bust: m.bust ?? 0,
-          waist: m.waist ?? 0,
-          hips: m.hips ?? 0,
-          chest: m.chest ?? 0,
-          legsInseam: m.legs_inseam ?? 0,
-          coverUrl: m.portfolio_images?.[0] ?? '',
-          agencyId: m.territory_agency_id ?? m.agency_id ?? null,
-          agencyName: m.agency_name ?? null,
-          countryCode: m.country_code ?? m.territory_country_code ?? null,
-          hasRealLocation: !!m.country_code,
-          isSportsWinter: m.is_sports_winter ?? false,
-          isSportsSummer: m.is_sports_summer ?? false,
-          sex: m.sex ?? null,
-        }));
-
       // Ranked discovery: use get_discovery_models RPC when a client org +
       // country code are known. Falls back to the unranked legacy path otherwise.
       if (clientOrgId && countryIso) {
@@ -711,12 +724,12 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             null,
             new Set(),
           );
-          setModels(mapToModelSummary(recovered));
+          setModels(recovered.map(mapDiscoveryModelToSummary));
           setDiscoveryCursor(recoveredCursor);
           return;
         }
 
-        setModels(mapToModelSummary(ranked));
+        setModels(ranked.map(mapDiscoveryModelToSummary));
         setDiscoveryCursor(nextCursor);
         return;
       }
@@ -762,6 +775,79 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     filters.waistMin, filters.waistMax, filters.chestMin, filters.chestMax,
     filters.legsInseamMin, filters.legsInseamMax,
     userCity,
+  ]);
+
+  // Load next page of ranked discovery results when the user approaches the end of the list.
+  // Only active for the ranked discovery path (clientOrgId + countryCode); not for nearby,
+  // package views, or shared project views.
+  useEffect(() => {
+    if (
+      !discoveryCursor ||
+      !clientOrgId ||
+      isLoadingMoreRef.current ||
+      filteredModels.length === 0 ||
+      filters.nearby ||
+      packageViewState != null ||
+      sharedProjectId != null
+    ) return;
+
+    const remaining = filteredModels.length - 1 - currentIndex;
+    if (remaining > LOAD_MORE_THRESHOLD) return;
+
+    const countryIso = filters.countryCode.trim();
+    if (!countryIso) return;
+
+    isLoadingMoreRef.current = true;
+    const cat = filters.category;
+    const effectiveCategory = cat === 'High Fashion' ? 'High Fashion' : undefined;
+    const pInt = (v: string) => { const n = parseInt(v, 10); return isNaN(n) ? undefined : n; };
+
+    void (async () => {
+      try {
+        const { models: more, nextCursor } = await getDiscoveryModels(
+          clientOrgId,
+          {
+            countryCode:   countryIso,
+            clientCity:    userCity ?? null,
+            category:      effectiveCategory ?? null,
+            sportsWinter:  filters.sportsWinter || false,
+            sportsSummer:  filters.sportsSummer || false,
+            heightMin:     pInt(filters.heightMin),
+            heightMax:     pInt(filters.heightMax),
+            ethnicities:   filters.ethnicities.length ? filters.ethnicities : undefined,
+            hairColor:     filters.hairColor.trim() || undefined,
+            hipsMin:       pInt(filters.hipsMin),
+            hipsMax:       pInt(filters.hipsMax),
+            waistMin:      pInt(filters.waistMin),
+            waistMax:      pInt(filters.waistMax),
+            chestMin:      pInt(filters.chestMin),
+            chestMax:      pInt(filters.chestMax),
+            legsInseamMin: pInt(filters.legsInseamMin),
+            legsInseamMax: pInt(filters.legsInseamMax),
+            sex: (filters.sex !== 'all' ? filters.sex : undefined) as 'male' | 'female' | undefined,
+          },
+          discoveryCursor,
+          sessionSeenIds.current,
+        );
+        if (more.length > 0) {
+          setModels((prev) => [...prev, ...more.map(mapDiscoveryModelToSummary)]);
+          setDiscoveryCursor(nextCursor);
+        } else {
+          setDiscoveryCursor(null);
+        }
+      } catch (e) {
+        console.error('[Discovery] loadMore error:', e);
+      } finally {
+        isLoadingMoreRef.current = false;
+      }
+    })();
+  }, [
+    currentIndex, discoveryCursor, clientOrgId, filters.nearby, packageViewState, sharedProjectId,
+    userCity, filters.countryCode, filters.sex, filters.heightMin, filters.heightMax,
+    filters.ethnicities, filters.category, filters.sportsWinter, filters.sportsSummer,
+    filters.hairColor, filters.hipsMin, filters.hipsMax, filters.waistMin, filters.waistMax,
+    filters.chestMin, filters.chestMax, filters.legsInseamMin, filters.legsInseamMax,
+    filteredModels.length,
   ]);
 
   // Radius-based Near me discovery — only when nearby toggle is active AND we have coordinates.
@@ -1005,6 +1091,12 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   const closeProjectOverview = () => setProjectOverviewId(null);
 
   const handleRemoveModelFromProject = async (projectId: string, modelId: string) => {
+    const confirmed =
+      typeof window !== 'undefined'
+        ? window.confirm(uiCopy.projects.deleteFromProjectConfirm)
+        : true;
+    if (!confirmed) return;
+
     setProjects((prev) =>
       prev.map((p) =>
         p.id === projectId
@@ -1048,12 +1140,22 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   const onNext = () => {
     if (!filteredModels.length || isNavigatingRef.current) return;
     isNavigatingRef.current = true;
+    // "Next" = browse to next card (neutral skip, not a rejection).
+    // The "viewed" interaction is already recorded by the currentModelForEffect effect.
+    // An explicit "Pass/Reject" action is required to fire recordInteraction 'rejected'.
+    setCurrentIndex((prev) => (prev + 1) % filteredModels.length);
+    // Release mutex after a brief frame to debounce rapid taps.
+    setTimeout(() => { isNavigatingRef.current = false; }, 300);
+  };
+
+  const onReject = () => {
+    if (!filteredModels.length || isNavigatingRef.current) return;
+    isNavigatingRef.current = true;
     const current = filteredModels[currentIndex % filteredModels.length];
     if (current && clientOrgId) {
       void recordInteraction(current.id, 'rejected');
     }
     setCurrentIndex((prev) => (prev + 1) % filteredModels.length);
-    // Release mutex after a brief frame to debounce rapid taps.
     setTimeout(() => { isNavigatingRef.current = false; }, 300);
   };
 
@@ -1524,6 +1626,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             msgFilter={msgFilter}
             onMsgFilterChange={setMsgFilter}
             clientUserId={realClientId}
+            clientOrgId={clientOrgId}
             pendingClientB2BChat={pendingClientB2BChat}
             onPendingClientB2BChatConsumed={() => setPendingClientB2BChat(null)}
             onBookingCardPress={() => setTab('calendar')}
@@ -3087,6 +3190,7 @@ type MessagesViewProps = {
   msgFilter?: 'current' | 'archived';
   onMsgFilterChange?: (f: 'current' | 'archived') => void;
   clientUserId?: string | null;
+  clientOrgId?: string | null;
   pendingClientB2BChat?: { conversationId: string; title: string } | null;
   onPendingClientB2BChatConsumed?: () => void;
   onBookingCardPress?: (meta: Record<string, unknown>) => void;
@@ -3237,6 +3341,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   msgFilter = 'current',
   onMsgFilterChange,
   clientUserId = null,
+  clientOrgId = null,
   pendingClientB2BChat = null,
   onPendingClientB2BChatConsumed,
   onBookingCardPress,
@@ -3250,12 +3355,29 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
   const [agencyCounterInput, setAgencyCounterInput] = useState('');
   const [archivedIds, setArchivedIds] = useState<Set<string>>(() => {
+    // Seed from localStorage for instant display before the server load completes.
     if (typeof window === 'undefined') return new Set();
     try {
       const raw = window.localStorage.getItem('ci_archived_threads');
       return raw ? new Set(JSON.parse(raw)) : new Set();
     } catch { return new Set(); }
   });
+
+  // Load archived thread IDs from the server (cross-device persistence).
+  useEffect(() => {
+    if (!clientOrgId) return;
+    void loadArchivedThreadIds(clientOrgId).then((serverIds) => {
+      if (serverIds.size === 0) return;
+      setArchivedIds((prev) => {
+        const merged = new Set([...prev, ...serverIds]);
+        // Keep localStorage in sync.
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem('ci_archived_threads', JSON.stringify([...merged]));
+        }
+        return merged;
+      });
+    });
+  }, [clientOrgId]);
 
   useEffect(() => {
     setRequests(getOptionRequests());
@@ -3280,9 +3402,17 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   const toggleArchive = (threadId: string) => {
     setArchivedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(threadId)) next.delete(threadId);
-      else next.add(threadId);
-      if (typeof window !== 'undefined') window.localStorage.setItem('ci_archived_threads', JSON.stringify([...next]));
+      const nowArchived = !next.has(threadId);
+      if (nowArchived) next.add(threadId);
+      else next.delete(threadId);
+      // Persist to localStorage for instant optimistic feedback.
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('ci_archived_threads', JSON.stringify([...next]));
+      }
+      // Persist to server for cross-device sync (fire-and-forget; localStorage is the fallback).
+      if (clientOrgId) {
+        void setThreadArchived(clientOrgId, threadId, nowArchived);
+      }
       return next;
     });
   };
@@ -3902,9 +4032,6 @@ const ProjectDetailView: React.FC<DetailProps> = ({
     if (data && onOptionRequest) {
       onOptionRequest(data.name, data.id, date);
     }
-    setTimeout(() => {
-      setConfirmation(`Request option for ${date} was sent (mock API).`);
-    }, 700);
   };
 
   if (!open) return null;
@@ -4454,6 +4581,29 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
                     </TouchableOpacity>
                   </>
                 )}
+
+                {/* ── GDPR Data Export (Art. 20) ─────────────────────── */}
+                <View style={{ marginTop: spacing.lg, paddingTop: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border }}>
+                  <Text style={{ ...typography.label, fontSize: 12, color: colors.textPrimary, marginBottom: 4 }}>
+                    Privacy & Your Data
+                  </Text>
+                  <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm }}>
+                    Under GDPR Art. 20 you have the right to receive a copy of your personal data in a portable format.
+                  </Text>
+                  <TouchableOpacity
+                    onPress={async () => {
+                      const { data: { user } } = await import('../../lib/supabase').then(m => m.supabase.auth.getUser());
+                      if (!user) return;
+                      const { downloadUserDataExport } = await import('../services/gdprComplianceSupabase');
+                      await downloadUserDataExport(user.id);
+                    }}
+                    style={{ borderRadius: 999, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.sm, alignItems: 'center' }}
+                  >
+                    <Text style={{ ...typography.label, fontSize: 12, color: colors.textSecondary }}>
+                      Download my data
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </>
           ) : (

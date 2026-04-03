@@ -162,6 +162,28 @@ export const AgencyRecruitingView: React.FC<{
     setTerritorySearch('');
   };
 
+  /**
+   * Detail-modal accept: checks and increments the swipe limit (same path as
+   * the card-flow handleYes) before opening the territory modal.
+   */
+  const handleAcceptViaModal = async (app: ModelApplication) => {
+    if (!agencyId || isActing) return;
+    setIsActing(true);
+    try {
+      const result = await incrementMyAgencySwipeCount();
+      setUsageLimits((prev) =>
+        prev ? { ...prev, swipes_used_today: result.swipes_used, daily_swipe_limit: result.limit } : prev,
+      );
+      if (!result.allowed) {
+        showFeedback(uiCopy.recruiting.limitReachedMessage);
+        return;
+      }
+      handleAcceptForApp(app);
+    } finally {
+      setIsActing(false);
+    }
+  };
+
   /** Step 2: agency confirmed territories → accept + assign */
   const handleConfirmAcceptWithTerritories = async () => {
     if (!agencyId || !pendingAcceptApp) return;
@@ -613,14 +635,16 @@ export const AgencyRecruitingView: React.FC<{
                 {detailApplication.status === 'pending' && (
                   <>
                     <TouchableOpacity
-                      style={[styles.buttonYes, { flex: 1, minWidth: 120 }]}
-                      onPress={() => handleAcceptForApp(detailApplication)}
+                      style={[styles.buttonYes, { flex: 1, minWidth: 120 }, (isLimitReached || isActing) && styles.buttonDisabled]}
+                      onPress={() => void handleAcceptViaModal(detailApplication)}
+                      disabled={isLimitReached || isActing}
                     >
-                      <Text style={styles.buttonYesLabel}>Accept application</Text>
+                      <Text style={styles.buttonYesLabel}>{isActing ? 'Working…' : 'Accept application'}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[styles.buttonNo, { flex: 1, minWidth: 100 }]}
+                      style={[styles.buttonNo, { flex: 1, minWidth: 100 }, isActing && styles.buttonDisabled]}
                       onPress={() => void handleDeclineForApp(detailApplication)}
+                      disabled={isActing}
                     >
                       <Text style={styles.buttonNoLabel}>Decline</Text>
                     </TouchableOpacity>

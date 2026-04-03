@@ -111,6 +111,9 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
         }
       }
       if (!signal?.cancelled) setAgencyNames(map);
+    }).catch((e) => {
+      console.error('ModelApplicationsView load error:', e);
+      if (!signal?.cancelled) setLoading(false);
     });
   };
 

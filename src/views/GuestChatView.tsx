@@ -12,7 +12,7 @@
  *   7. Provide the "Get full access" upgrade CTA
  */
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   ActivityIndicator, TextInput, Modal, Platform, Linking,
@@ -110,6 +110,7 @@ export const GuestChatView: React.FC = () => {
   const [chatError, setChatError] = useState<string | null>(null);
   const [pendingRequest, setPendingRequest] = useState<PendingRequest | null>(null);
   const [selectedModelIds, setSelectedModelIds] = useState<string[]>([]);
+  const initializingRef = useRef(false);
 
   // Upgrade modal state
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
@@ -119,6 +120,8 @@ export const GuestChatView: React.FC = () => {
 
   const initChat = useCallback(async () => {
     if (!userId) return;
+    if (initializingRef.current) return;
+    initializingRef.current = true;
 
     setLoading(true);
     setChatError(null);
@@ -191,6 +194,7 @@ export const GuestChatView: React.FC = () => {
       setChatError(copy.chatError);
     } finally {
       setLoading(false);
+      initializingRef.current = false;
     }
   }, [userId]);
 

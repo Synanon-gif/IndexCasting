@@ -18,7 +18,6 @@
  *   Never use city as a spatial predicate; use lat/lng exclusively.
  */
 import { supabase } from '../../lib/supabase';
-import { fetchAllSupabasePages } from './supabaseFetchAll';
 import type { ClientMeasurementFilters } from './modelsSupabase';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -206,12 +205,20 @@ export async function deleteModelLocation(modelId: string): Promise<boolean> {
 }
 
 /**
+ * Maximum number of nearby models returned in a single call.
+ * Replaces the old fetchAllSupabasePages (all-pages) approach, which could
+ * produce thousands of round-trips on large datasets. 200 results are more
+ * than sufficient for a UX-sensible radius-discovery list sorted by distance.
+ */
+const NEAR_LOCATION_LIMIT = 200;
+
+/**
  * Radius-based model discovery.
- * Returns all visible models within p_radiusKm of the given (rounded) coordinates.
- * Models WITHOUT a location or with share_approximate_location = false are excluded.
+ * Returns up to NEAR_LOCATION_LIMIT visible models within p_radiusKm of the
+ * given (rounded) coordinates, sorted by distance ASC.
  *
- * The caller MUST round their own coordinates before passing them here
- * (use roundCoord). The RPC applies an additional ROUND() as a safety net.
+ * Models WITHOUT a location or with share_approximate_location = false are excluded.
+ * The caller MUST round their own coordinates before passing (use roundCoord).
  */
 export async function getModelsNearLocation(
   clientLat: number,
@@ -225,14 +232,14 @@ export async function getModelsNearLocation(
 ): Promise<NearbyModel[]> {
   const f = measurementFilters ?? {};
 
-  return fetchAllSupabasePages(async (from, to) => {
+  try {
     const { data, error } = await supabase.rpc('get_models_near_location', {
       p_lat:             roundCoord(clientLat),
       p_lng:             roundCoord(clientLng),
       p_radius_km:       radiusKm,
       p_client_type:     clientType,
-      p_from:            from,
-      p_to:              to,
+      p_from:            0,
+      p_to:              NEAR_LOCATION_LIMIT - 1,
       p_category:        category ?? null,
       p_sports_winter:   sportsWinter ?? false,
       p_sports_summer:   sportsSummer ?? false,
@@ -250,6 +257,13 @@ export async function getModelsNearLocation(
       p_sex:             f.sex            ?? null,
       p_ethnicities:     f.ethnicities?.length ? f.ethnicities : null,
     });
-    return { data: data as NearbyModel[] | null, error };
-  });
+    if (error) {
+      console.error('getModelsNearLocation RPC error:', error);
+      return [];
+    }
+    return (data ?? []) as NearbyModel[];
+  } catch (e) {
+    console.error('getModelsNearLocation exception:', e);
+    return [];
+  }
 }

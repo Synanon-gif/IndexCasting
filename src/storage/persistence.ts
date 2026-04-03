@@ -14,6 +14,63 @@ const KEYS = {
   agencySelectedProjectId: PREFIX + 'agency_selected_project_id',
 } as const;
 
+/**
+ * All static localStorage keys used across the app (not dynamic/per-org keys).
+ * EXPLOIT-M2 fix: must be exhaustive — add new keys here when introduced.
+ */
+const ALL_STATIC_KEYS = [
+  ...Object.values(KEYS),
+  // AppDataContext
+  'ci_current_user_id',
+  // ClientWebApp
+  'ci_archived_threads',
+  'ci_client_settings',
+  'ic_geo_consent_v1',
+  // AgencyControllerView
+  'ci_agency_archived',
+  // store/recruitingChats
+  'ci_model_booking_thread_ids',
+] as const;
+
+/**
+ * Key prefixes for dynamic per-org or per-agency localStorage entries.
+ * Items matching these prefixes are cleared by clearAllPersistence().
+ */
+const DYNAMIC_KEY_PREFIXES = [
+  'discovery_session_seen_',   // clientDiscoverySupabase
+  'ic_agency_shortlist_',      // agencyRecruitingShortlist
+];
+
+/**
+ * Clears all known localStorage and sessionStorage keys for the current user.
+ * Must be called on every sign-out path.
+ *
+ * EXPLOIT-M2 fix: without this, metadata (archived threads, project IDs, filter
+ * states, model ID caches) persists for the next user on the same shared device.
+ */
+export function clearAllPersistence(): void {
+  if (!isAvailable()) return;
+  try {
+    // Clear all static keys
+    for (const key of ALL_STATIC_KEYS) {
+      window.localStorage.removeItem(key);
+    }
+    // Clear dynamic keys by prefix
+    const allKeys = Object.keys(window.localStorage);
+    for (const key of allKeys) {
+      if (DYNAMIC_KEY_PREFIXES.some((p) => key.startsWith(p))) {
+        window.localStorage.removeItem(key);
+      }
+    }
+    // Clear sessionStorage (invite tokens, guest pending state)
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      window.sessionStorage.clear();
+    }
+  } catch (e) {
+    console.error('clearAllPersistence error:', e);
+  }
+}
+
 function isAvailable(): boolean {
   if (typeof window === 'undefined') return false;
   try {

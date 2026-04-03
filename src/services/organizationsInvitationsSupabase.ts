@@ -7,6 +7,7 @@ import {
   type OrganizationType,
   type OrgMemberRole,
 } from './orgRoleTypes';
+import { logAuditAction } from './gdprComplianceSupabase';
 
 export type { OrganizationType, OrgMemberRole };
 export type InvitationRole = 'booker' | 'employee';
@@ -255,7 +256,15 @@ export async function createOrganizationInvitation(params: {
       console.error('createOrganizationInvitation error:', error);
       return null;
     }
-    return data as InvitationRow;
+    const invitation = data as InvitationRow;
+    void logAuditAction({
+      orgId:      params.organizationId,
+      actionType: 'member_invited',
+      entityType: 'invitation',
+      entityId:   invitation.id,
+      newData:    { email: params.email, role: params.role, invited_by: userData.user.id },
+    });
+    return invitation;
   } catch (e) {
     console.error('createOrganizationInvitation exception:', e);
     return null;
@@ -444,6 +453,41 @@ export async function revokeOrganizationInvitation(
     return { ok: true };
   } catch (e) {
     console.error('revokeOrganizationInvitation exception:', e);
+    return { ok: false, error: e instanceof Error ? e.message : 'unknown' };
+  }
+}
+
+/**
+ * Removes a member from an organization and force-revokes all their active
+ * sessions via the `member-remove` Edge Function.
+ *
+ * EXPLOIT-H1 fix: a plain DELETE on organization_members leaves the removed
+ * member's JWT valid for up to 60 minutes. The Edge Function calls
+ * auth.admin.signOut(userId, 'global') immediately after deleting the row,
+ * cutting off Realtime subscriptions and new API requests instantly.
+ *
+ * Only organization owners are allowed to call this.
+ */
+export async function removeOrganizationMember(
+  targetUserId: string,
+  organizationId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const { data, error } = await supabase.functions.invoke('member-remove', {
+      body: { targetUserId, organizationId },
+    });
+    if (error) {
+      console.error('removeOrganizationMember invoke error:', error);
+      return { ok: false, error: error.message ?? 'unknown' };
+    }
+    const result = data as { ok: boolean; error?: string } | null;
+    if (!result?.ok) {
+      console.error('removeOrganizationMember function error:', result?.error);
+      return { ok: false, error: result?.error ?? 'Failed to remove member' };
+    }
+    return { ok: true };
+  } catch (e) {
+    console.error('removeOrganizationMember exception:', e);
     return { ok: false, error: e instanceof Error ? e.message : 'unknown' };
   }
 }

@@ -513,6 +513,9 @@ export async function uploadChatFile(
     return null;
   }
 
+  // guardImageUpload() is intentionally not called here: chat file attachments are
+  // ephemeral org-to-org communication documents, not model portfolio photos.
+  // The image_rights_confirmations audit applies only to model photo uploads (ModelMediaSettingsPanel).
   const claimedSize = file instanceof File ? file.size : (file as Blob).size;
   const path = `chat/${conversationId}/${Date.now()}_${fileName}`;
   const { error } = await supabase.storage

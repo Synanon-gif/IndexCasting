@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Linking } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Modal } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { useAuth } from '../context/AuthContext';
 import { uiCopy } from '../constants/uiCopy';
+import { TermsScreen } from './TermsScreen';
+import { PrivacyScreen } from './PrivacyScreen';
 
 export const LegalAcceptanceScreen: React.FC = () => {
   const { profile, acceptTerms, signOut } = useAuth();
@@ -11,22 +13,14 @@ export const LegalAcceptanceScreen: React.FC = () => {
   const [agencyRightsChecked, setAgencyRightsChecked] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [termsVisible, setTermsVisible] = useState(false);
+  const [privacyVisible, setPrivacyVisible] = useState(false);
 
   const isAgency = profile?.role === 'agent';
   const canSubmit = tosChecked && privacyChecked && (!isAgency || agencyRightsChecked);
 
-  // EXPLOIT-H3 fix: Alert the user if legal URLs are unreachable (e.g. 404 before launch).
-  // This prevents accepting phantom documents while giving a graceful fallback.
-  const openLegalUrl = async (url: string, label: string) => {
-    const supported = await Linking.canOpenURL(url).catch(() => false);
-    if (!supported) {
-      alert(`${label} is not yet available. Please contact support@indexcasting.com for the current document.`);
-      return;
-    }
-    Linking.openURL(url).catch((e) => console.error(`openLegalUrl (${label}) error:`, e));
-  };
-  const openTos = () => openLegalUrl(uiCopy.legal.tosUrl, uiCopy.legal.tosLabel);
-  const openPrivacy = () => openLegalUrl(uiCopy.legal.privacyUrl, uiCopy.legal.privacyLabel);
+  const openTos = () => setTermsVisible(true);
+  const openPrivacy = () => setPrivacyVisible(true);
 
   const handleAccept = async () => {
     if (!canSubmit) return;
@@ -39,6 +33,26 @@ export const LegalAcceptanceScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
+      {/* In-app Terms of Service modal */}
+      <Modal
+        visible={termsVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setTermsVisible(false)}
+      >
+        <TermsScreen onClose={() => setTermsVisible(false)} />
+      </Modal>
+
+      {/* In-app Privacy Policy modal */}
+      <Modal
+        visible={privacyVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setPrivacyVisible(false)}
+      >
+        <PrivacyScreen onClose={() => setPrivacyVisible(false)} />
+      </Modal>
+
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.brand}>INDEX CASTING</Text>
         <Text style={styles.title}>{uiCopy.legal.title}</Text>

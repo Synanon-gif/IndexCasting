@@ -2,6 +2,8 @@
 
 Du bist der Lead Product Engineer für IndexCasting. Dein Ziel ist es, das "digitale Betriebssystem" für Fashion-Castings zu bauen.
 
+---
+
 ## 1. Die Vision & UX-DNA
 - Tinder-Style: Alle Auswahlprozesse (Castings, Recruiting) basieren auf flüssigen Swipe-Gesten (nutze Reanimated).
 - WhatsApp-Speed: Messaging zwischen Booker und Model muss Instant-Charakter haben (nutze Supabase Realtime).
@@ -26,6 +28,7 @@ Du bist der Lead Product Engineer für IndexCasting. Dein Ziel ist es, das "digi
 - **Zentrale Quelle:** Nutzer-Texte kommen aus `src/constants/uiCopy.ts` (`uiCopy`). Keine neuen deutschsprachigen UI-Strings; keine Hardcodes derselben Phrase an vielen Stellen — lieber ein Key in `uiCopy` erweitern.
 - **Terminologie:** Agency, Client, Model, Booker (Agentur), Employee (Client-Organisation), Invite — konsistent wie in `uiCopy`.
 - **Ausnahme:** Code-Kommentare und interne Logs dürfen weiterhin der Team-Sprache folgen; **alles, was ein Endnutzer sieht, ist Englisch.**
+
 ## 5. Automatisierung & Testing (Mandatory)
 - Test-First: Für jede neue Logik in `src/services` oder `src/db` MUSS Cursor automatisch einen passenden Unit-Test (z.B. mit Jest) vorschlagen.
 - Test-Run: Nach jeder relevanten Code-Änderung (Features, Fixes, Refactors) MUSS `npm test` im Projektroot ausgeführt werden — nicht den Nutzer fragen, sondern selbst laufen lassen und das Ergebnis kurz melden. Wo sinnvoll, ergänze passende Tests statt nur UI zu ändern.
@@ -54,4 +57,136 @@ Du bist der Lead Product Engineer für IndexCasting. Dein Ziel ist es, das "digi
 - **Client:** Employee und Client Owner sind im Produkt **funktional gleichwertig** — Casting/Option Request, Verhandeln, Kommunikation und **alle übrigen Features**, die keine Owner-Exklusivrechte sind.
 
 ### Tenant-Isolation (nicht verhandelbar)
-- **Keine Daten-Leaks:** Organisationsdaten dürfen **niemals unbeabsichtigt** für andere Organisationen oder unberechtigte User sichtbar sein. Jede Abfrage, Subscription und Storage-Zugriff muss **strikt auf die jeweilige Org / berechtigte Identität** begrenzt sein (RLS, Filter, keine „breiten“ Queries ohne Org-Kontext).
+- **Keine Daten-Leaks:** Organisationsdaten dürfen **niemals unbeabsichtigt** für andere Organisationen oder unberechtigte User sichtbar sein. Jede Abfrage, Subscription und Storage-Zugriff muss **strikt auf die jeweilige Org / berechtigte Identität** begrenzt sein (RLS, Filter, keine „breiten" Queries ohne Org-Kontext).
+
+---
+
+# SYSTEM-WIDE SECURITY, GDPR & LEGAL CONSISTENCY
+
+Diese Regeln gelten für JEDE Änderung, jede Datei, jedes Feature und jede Funktion — ohne Ausnahme.
+
+## 9. Kern-Prinzipien (NIEMALS verletzen)
+
+1. **Backend ist die einzige Wahrheitsquelle** — Frontend-Checks sind niemals ausreichend.
+2. **Jeder Zugriff muss org-scoped sein** — keine Abfrage ohne Org-Kontext.
+3. **Kein organisationsübergreifender Datenzugriff** ist jemals erlaubt.
+4. **Rechtsdokumente MÜSSEN dem tatsächlichen Systemverhalten entsprechen.**
+5. **Security und DSGVO-Konformität sind nicht verhandelbar.**
+
+## 10. Multi-Tenant-Enforcement (zwingend)
+
+- Jede Datenbankabfrage MUSS durch `org_id` oder ein gleichwertiges Feld gefiltert sein.
+- RLS muss zu jedem Zeitpunkt aktiv und korrekt greifen.
+- Keine Funktion darf Daten einer anderen Organisation zurückgeben.
+- Rollen MÜSSEN serverseitig durchgesetzt werden — niemals nur im Frontend.
+
+Rollen-Matrix:
+
+| Org-Typ | Rollen         | Owner-Exklusivrechte                          |
+|---------|----------------|-----------------------------------------------|
+| Agency  | owner, booker  | Billing, Member-Management, Org-Löschung      |
+| Client  | owner, employee| Billing, Member-Management, Org-Löschung      |
+
+## 11. Paywall-Enforcement (zwingend)
+
+Zugriffslogik MUSS exakt dieser Reihenfolge folgen:
+
+```
+IF admin_override  → allow
+ELSE IF trial_active → allow
+ELSE IF subscription_active → allow
+ELSE → deny
+```
+
+- Frontend-Plan-State niemals vertrauen.
+- Immer im Backend validieren.
+- Stripe = Zahlungswahrheit.
+- Datenbank = Zugriffswahrheit.
+
+## 12. Datenschutz-Regeln (DSGVO)
+
+### Betroffenenrechte
+- User MÜSSEN ihr Konto löschen können.
+- User MÜSSEN ihre Daten exportieren können.
+
+### Löschung
+- Personenbezogene Daten müssen bei Löschung entfernt oder anonymisiert werden.
+- Keine verwaisten personenbezogenen Daten nach Löschung erlaubt.
+
+### Aufbewahrung (Retention)
+Für alle folgenden Datenkategorien MUSS eine explizite Retention-Window definiert sein:
+- Logs
+- Bookings
+- Messages
+- Dateien/Uploads
+
+### Soft Delete
+- Soft-gelöschte Daten dürfen extern niemals sichtbar sein.
+
+## 13. Backup & Retention Safety (KRITISCH)
+
+- Backup-Systeme dürfen NICHT den Lösch-Versprechen widersprechen.
+- Retention-Fenster müssen definiert und technisch durchgesetzt sein.
+- Gesetzliche Aufbewahrungspflichten dürfen Löschung übersteuern, müssen aber dokumentiert sein.
+- Keine versteckte dauerhafte Speicherung gelöschter personenbezogener Daten.
+
+## 14. Bildrechte & Consent bei Uploads
+
+- Jeder Upload MUSS eine explizite Bestätigung erfordern: „I have all rights and consents for this content."
+- Folgende Metadaten MÜSSEN gespeichert werden: `user_id`, `org_id`, `timestamp`.
+- Upload ohne diese Metadaten ist abzulehnen.
+
+## 15. Minderjährigen-Schutz
+
+Wenn Minderjährigen-Daten im System vorhanden sind oder verarbeitet werden:
+- Consent-Metadaten sind zwingend erforderlich.
+- Strengere Validierung muss aktiv sein.
+
+## 16. Guest-Link-Sicherheit
+
+- Nur Token-basierter Zugriff erlaubt.
+- Token MUSS ablaufen oder widerrufbar sein.
+- Token darf keine zusätzlichen Daten exponieren.
+- Jeder Guest-Link-Zugriff MUSS auditierbar sein.
+
+## 17. Logging & Audit Trail
+
+Folgende Aktionen MÜSSEN geloggt werden:
+
+- Bookings (erstellen, ändern, stornieren)
+- Preisänderungen
+- Uploads
+- Admin-Overrides
+- Membership-Änderungen (Einladung, Entfernung)
+
+Jeder Log-Eintrag MUSS enthalten: `user_id`, `org_id`, `action`, `timestamp`.
+
+## 18. Security-Regeln
+
+- Keine API-Keys im Frontend.
+- Kein `service_role`-Key im Frontend oder in Client-seitigem Code.
+- Private Dateien ausschließlich über Signed URLs ausliefern.
+- Rate Limiting dort einsetzen, wo Missbrauch möglich ist.
+
+## 19. Fail-Conditions (NIEMALS erlauben)
+
+Folgende Zustände sind verboten und müssen bei Code-Review sofort abgelehnt werden:
+
+- Organisationsübergreifender Datenzugriff
+- Paywall-Bypass durch Frontend-Manipulation
+- Upload ohne Consent-Bestätigung
+- Fehlende Logs für kritische Aktionen
+- Exponierte Secrets oder API-Keys
+- Nicht funktionierende Datenlöschung
+- Backup-System, das der Löschrichtlinie widerspricht
+
+## 20. Pflicht-Verhalten bei jeder Änderung
+
+Für JEDE Code-Änderung — Feature, Fix, Refactor — MUSS geprüft werden:
+
+1. **Security-Check:** Ist der Zugriff korrekt org-scoped und backend-validiert?
+2. **DSGVO-Check:** Werden Datenschutzrechte gewahrt? Gibt es eine Retention-Regel?
+3. **Legal-Check:** Stimmt das Verhalten mit den rechtlichen Dokumenten (AGB, Privacy Policy) überein?
+4. **Unsichere Implementierungen ablehnen** und eine sichere Alternative vorschlagen.
+
+> Im Zweifel gilt: **Wähle immer die sicherere Option.**

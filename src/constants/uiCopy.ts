@@ -28,6 +28,7 @@ export const uiCopy = {
     calendarSaveFailed: 'Could not save. Check date format YYYY-MM-DD.',
     calendarNotSaved:
       'Entry was not saved. Check: (1) date format YYYY-MM-DD, (2) your profile email must match the agency email.',
+    deleteEventConfirm: 'Delete this event? This action cannot be undone.',
     invitationCreated: 'Invitation created',
     invitationCreatedBody:
       'Share the invite link securely with the booker (e.g. by email). In-app email delivery will follow later.',
@@ -78,6 +79,7 @@ export const uiCopy = {
     orgNotLoaded: 'Organization could not be loaded. Ensure your profile is a client account.',
     noClientSignIn: 'Sign in with a client account to manage your organization team.',
     loadingTeam: 'Loading team…',
+    loadTeamError: 'Could not load team data. Please try again.',
     permissionAlertTitle: 'Permission',
     permissionAlertOwnerOnly: 'Only the organization owner can send invitations.',
     invitationCreatedWithLink: (link: string) =>
@@ -257,6 +259,7 @@ export const uiCopy = {
     save: 'Save settings',
     saveFailed: 'Could not save settings. Make sure you are signed in as the organization owner and try again.',
     saveSuccess: 'Settings saved.',
+    saveError: 'Could not save settings. Please try again.',
     bookerNoAccess: 'Only the organization owner can edit agency settings.',
   },
   /** Agency — My Models manual editor (portfolio + polaroids). */
@@ -944,6 +947,16 @@ export const uiCopy = {
     // URLs — update these to point to your hosted legal pages
     tosUrl: 'https://indexcasting.com/terms',
     privacyUrl: 'https://indexcasting.com/privacy',
+    // In-app screens
+    termsScreenTitle: 'Terms of Service',
+    privacyScreenTitle: 'Privacy Policy',
+    legalScreenClose: 'Close',
+    legalContactHint: 'For questions about this document, contact us at',
+    legalContactEmail: 'legal@indexcasting.com',
+    legalPendingTitle: 'Document coming soon',
+    legalPendingBody:
+      'The full legal text for this document will be published at launch. '
+      + 'Please contact us if you need the current version before then.',
   },
   storage: {
     title: 'Storage',
@@ -1083,6 +1096,7 @@ export const uiCopy = {
     activeOptionsEmpty:     'No active option requests.',
     activeOptionsGrouped:   'Grouped by status',
     inboxTitle:             'Inbox',
+    profileTab:             'Profile',
     inboxEmpty:             'No messages or requests.',
     inboxActionRequired:    'Action Required',
     inboxUnread:            'Unread',

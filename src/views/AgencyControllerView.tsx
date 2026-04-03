@@ -64,7 +64,7 @@ import { OrgMessengerInline } from '../components/OrgMessengerInline';
 import { AgencySettingsTab } from '../components/AgencySettingsTab';
 // Recruiting chats (BookingChatView) live under Messages → Recruiting chats.
 import { uploadModelPhoto } from '../services/modelPhotosSupabase';
-import { confirmImageRights } from '../services/gdprComplianceSupabase';
+import { confirmImageRights, guardImageUpload } from '../services/gdprComplianceSupabase';
 import { ModelMediaSettingsPanel } from '../components/ModelMediaSettingsPanel';
 import { getTerritoriesForModel, getTerritoriesForAgency, upsertTerritoriesForModel, bulkAddTerritoriesForModels } from '../services/territoriesSupabase';
 import { bulkUpsertModelLocations, upsertModelLocation } from '../services/modelLocationsSupabase';
@@ -85,7 +85,7 @@ import {
   type ClientOrganizationDirectoryRow,
 } from '../services/clientOrganizationsDirectorySupabase';
 import { getAgencies, type Agency } from '../services/agenciesSupabase';
-import { createGuestLink, getGuestLinksForAgency, buildGuestUrl, deactivateGuestLink, deleteGuestLink, type GuestLink } from '../services/guestLinksSupabase';
+import { createGuestLink, getGuestLinksForAgency, buildGuestUrl, revokeGuestAccess, deleteGuestLink, type GuestLink } from '../services/guestLinksSupabase';
 import {
   getCalendarEntriesForAgency,
   getBookingEventsAsCalendarEntries,
@@ -215,6 +215,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
     color: MANUAL_EVENT_COLORS[0],
   });
   const [savingManualEventEdit, setSavingManualEventEdit] = useState(false);
+  const [deletingManualEvent, setDeletingManualEvent] = useState(false);
   const [bookingChatThreads, setBookingChatThreads] = useState<RecruitingThread[]>([]);
   const [openBookingThreadId, setOpenBookingThreadId] = useState<string | null>(null);
   const [swipeLimits, setSwipeLimits] = useState<AgencyUsageLimits | null>(null);
@@ -618,13 +619,19 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                             style: 'destructive',
                             onPress: async () => {
                               setDissolvingOrg(true);
-                              const result = await dissolveOrganization(agencyOrganizationId);
-                              setDissolvingOrg(false);
-                              if (result.ok) {
-                                setOrgDissolved(true);
-                                Alert.alert(uiCopy.accountDeletion.dissolveOrgTitle, uiCopy.accountDeletion.dissolveOrgSuccess);
-                              } else {
+                              try {
+                                const result = await dissolveOrganization(agencyOrganizationId);
+                                if (result.ok) {
+                                  setOrgDissolved(true);
+                                  Alert.alert(uiCopy.accountDeletion.dissolveOrgTitle, uiCopy.accountDeletion.dissolveOrgSuccess);
+                                } else {
+                                  Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.dissolveOrgFailed);
+                                }
+                              } catch (e) {
+                                console.error('dissolveOrganization error:', e);
                                 Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.dissolveOrgFailed);
+                              } finally {
+                                setDissolvingOrg(false);
                               }
                             },
                           },
@@ -660,17 +667,23 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                         style: 'destructive',
                         onPress: async () => {
                           setDeletingAccount(true);
-                          const { requestAccountDeletion } = await import('../services/accountSupabase');
-                          const res = await requestAccountDeletion();
-                          setDeletingAccount(false);
-                          if (res.ok) {
-                            await signOut();
-                            return;
-                          }
-                          if (res.reason === 'not_owner') {
-                            Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.ownerOnly);
-                          } else {
+                          try {
+                            const { requestAccountDeletion } = await import('../services/accountSupabase');
+                            const res = await requestAccountDeletion();
+                            if (res.ok) {
+                              await signOut();
+                              return;
+                            }
+                            if (res.reason === 'not_owner') {
+                              Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.ownerOnly);
+                            } else {
+                              Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.failed);
+                            }
+                          } catch (e) {
+                            console.error('requestAccountDeletion error:', e);
                             Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.failed);
+                          } finally {
+                            setDeletingAccount(false);
                           }
                         },
                       },
@@ -706,14 +719,20 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                       style: 'destructive',
                       onPress: async () => {
                         setDeletingAccount(true);
-                        const { requestPersonalAccountDeletion } = await import('../services/accountSupabase');
-                        const res = await requestPersonalAccountDeletion();
-                        setDeletingAccount(false);
-                        if (res.ok) {
-                          await signOut();
-                          return;
+                        try {
+                          const { requestPersonalAccountDeletion } = await import('../services/accountSupabase');
+                          const res = await requestPersonalAccountDeletion();
+                          if (res.ok) {
+                            await signOut();
+                            return;
+                          }
+                          Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.failed);
+                        } catch (e) {
+                          console.error('requestPersonalAccountDeletion error:', e);
+                          Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.failed);
+                        } finally {
+                          setDeletingAccount(false);
                         }
-                        Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.failed);
                       },
                     },
                   ]
@@ -943,6 +962,8 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                         const items = await getCalendarEntriesForAgency(currentAgencyId);
                         const next = items.find((x) => x.option.id === selectedCalendarItem.option.id);
                         if (next) setSelectedCalendarItem(next);
+                      } else {
+                        showAppAlert(uiCopy.common.error, uiCopy.alerts.calendarNotSaved);
                       }
                     } finally {
                       setSavingAgencySharedNote(false);
@@ -1007,6 +1028,9 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                     await loadAgencyCalendar();
                     setSelectedCalendarItem(null);
                     setAgencyNotesDraft('');
+                  } catch (e) {
+                    console.error('updateBookingDetails error:', e);
+                    showAppAlert(uiCopy.common.error, uiCopy.alerts.calendarNotSaved);
                   } finally {
                     setSavingNotes(false);
                   }
@@ -1072,40 +1096,46 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                 onPress={async () => {
                   if (!currentAgencyId) return;
                   setSavingManualEvent(true);
-                  let calOrg = agencyOrganizationId;
-                  if (!calOrg) {
-                    const pe = profile?.email?.trim().toLowerCase();
-                    const ae = currentAgency?.email?.trim().toLowerCase();
-                    if (pe && ae && pe === ae) {
-                      calOrg = await ensureAgencyOrganization(currentAgencyId);
+                  try {
+                    let calOrg = agencyOrganizationId;
+                    if (!calOrg) {
+                      const pe = profile?.email?.trim().toLowerCase();
+                      const ae = currentAgency?.email?.trim().toLowerCase();
+                      if (pe && ae && pe === ae) {
+                        calOrg = await ensureAgencyOrganization(currentAgencyId);
+                      }
+                      if (!calOrg) calOrg = await getOrganizationIdForAgency(currentAgencyId);
                     }
-                    if (!calOrg) calOrg = await getOrganizationIdForAgency(currentAgencyId);
-                  }
-                  const { data: calUser } = await supabase.auth.getUser();
-                  const result = await insertManualEvent({
-                    owner_id: currentAgencyId,
-                    owner_type: 'agency',
-                    organization_id: calOrg,
-                    created_by: calUser.user?.id ?? null,
-                    ...newEventForm,
-                  });
-                  setSavingManualEvent(false);
-                  if (result.ok) {
-                    await loadAgencyCalendar();
-                    setShowAddManualEvent(false);
-                    setNewEventForm({
-                      date: '',
-                      start_time: '09:00',
-                      end_time: '17:00',
-                      title: '',
-                      note: '',
-                      color: MANUAL_EVENT_COLORS[0],
+                    const { data: calUser } = await supabase.auth.getUser();
+                    const result = await insertManualEvent({
+                      owner_id: currentAgencyId,
+                      owner_type: 'agency',
+                      organization_id: calOrg,
+                      created_by: calUser.user?.id ?? null,
+                      ...newEventForm,
                     });
-                  } else {
-                    Alert.alert(
-                      'Calendar',
-                      result.errorMessage || uiCopy.alerts.calendarNotSaved,
-                    );
+                    if (result.ok) {
+                      await loadAgencyCalendar();
+                      setShowAddManualEvent(false);
+                      setNewEventForm({
+                        date: '',
+                        start_time: '09:00',
+                        end_time: '17:00',
+                        title: '',
+                        note: '',
+                        color: MANUAL_EVENT_COLORS[0],
+                      });
+                    } else {
+                      Alert.alert(
+                        'Calendar',
+                        result.errorMessage || uiCopy.alerts.calendarNotSaved,
+                      );
+                    }
+                  } catch (e) {
+                    console.error('insertManualEvent error:', e);
+                    Alert.alert(uiCopy.common.error, uiCopy.alerts.calendarNotSaved);
+                  } finally {
+                    setSavingManualEvent(false);
                   }
                 }}
               >
@@ -1211,16 +1241,42 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                 <Text style={s.saveBtnLabel}>{savingManualEventEdit ? '…' : 'Save'}</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[s.filterPill, { flex: 1, minWidth: 100 }]}
-                onPress={async () => {
-                  if (!selectedManualEvent) return;
-                  if (await deleteManualEvent(selectedManualEvent.id)) {
-                    await loadAgencyCalendar();
-                    setSelectedManualEvent(null);
-                  }
+                style={[s.filterPill, { flex: 1, minWidth: 100, opacity: deletingManualEvent ? 0.5 : 1 }]}
+                disabled={deletingManualEvent}
+                onPress={() => {
+                  if (!selectedManualEvent || deletingManualEvent) return;
+                  Alert.alert(
+                    uiCopy.common.confirm,
+                    uiCopy.alerts.deleteEventConfirm,
+                    [
+                      { text: uiCopy.common.cancel, style: 'cancel' },
+                      {
+                        text: uiCopy.common.delete,
+                        style: 'destructive',
+                        onPress: async () => {
+                          setDeletingManualEvent(true);
+                          try {
+                            if (await deleteManualEvent(selectedManualEvent.id)) {
+                              await loadAgencyCalendar();
+                              setSelectedManualEvent(null);
+                            } else {
+                              Alert.alert(uiCopy.common.error, uiCopy.alerts.calendarNotSaved);
+                            }
+                          } catch (e) {
+                            console.error('deleteManualEvent error:', e);
+                            Alert.alert(uiCopy.common.error, uiCopy.alerts.calendarNotSaved);
+                          } finally {
+                            setDeletingManualEvent(false);
+                          }
+                        },
+                      },
+                    ],
+                  );
                 }}
               >
-                <Text style={[s.filterPillLabel, { color: colors.buttonSkipRed }]}>Delete</Text>
+                <Text style={[s.filterPillLabel, { color: colors.buttonSkipRed }]}>
+                  {deletingManualEvent ? '…' : 'Delete'}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity style={[s.filterPill, { flex: 1, minWidth: 100 }]} onPress={() => setSelectedManualEvent(null)}>
                 <Text style={s.filterPillLabel}>Close</Text>
@@ -1976,12 +2032,24 @@ const MyModelsTab: React.FC<{
           setAddLoading(false);
           return;
         }
-        // Record the rights confirmation in the audit table.
+        // Record the rights confirmation in the audit table, then guard the upload.
         const { data: { user: currentUser } } = await supabase.auth.getUser();
-        if (currentUser) {
-          await confirmImageRights(currentUser.id, createdModelId).catch((e) =>
-            console.error('confirmImageRights error (non-fatal):', e)
-          );
+        if (!currentUser) {
+          Alert.alert('Image Rights Required', 'Authentication required to upload photos.');
+          setAddLoading(false);
+          return;
+        }
+        const rightsOk = await confirmImageRights({ userId: currentUser.id, modelId: createdModelId });
+        if (!rightsOk) {
+          Alert.alert('Image Rights Required', 'Rights confirmation could not be recorded. Please try again.');
+          setAddLoading(false);
+          return;
+        }
+        const guard = await guardImageUpload(currentUser.id, createdModelId);
+        if (!guard.ok) {
+          Alert.alert('Image Rights Required', 'Rights confirmation could not be verified. Please try again.');
+          setAddLoading(false);
+          return;
         }
         const uploadedUrls: string[] = [];
         for (const file of filesToUpload) {
@@ -2248,6 +2316,7 @@ const MyModelsTab: React.FC<{
     }
 
     // ── STEP 3: Save model fields + photos ──
+    let step3Succeeded = false;
     try {
       const pInt = (v: string) => { const n = parseInt(v, 10); return isNaN(n) ? null : n; };
       const updates: any = {};
@@ -2307,12 +2376,14 @@ const MyModelsTab: React.FC<{
 
       // Photos are managed directly by ModelMediaSettingsPanel (immediate save on change).
       setSaveFeedback('success');
+      step3Succeeded = true;
     } catch (err) {
       console.error('handleSaveModel error:', err);
       setSaveFeedback('error');
     }
 
-    // ── STEP 4: Always refresh + close panel ──
+    // ── STEP 4: Only refresh + close panel on success ──
+    if (!step3Succeeded) return;
     onRefresh();
     // Refresh completeness after save (model fields may have changed).
     if (selectedModel) {
@@ -3419,12 +3490,18 @@ const AgencyClientsTab: React.FC<AgencyClientsTabProps> = ({
     }
     setLoading(true);
     const t = setTimeout(() => {
-      void listClientOrganizationsForAgencyDirectory(agencyId, search).then((list) => {
-        if (!cancelled) {
-          setRows(list);
-          setLoading(false);
-        }
-      });
+      void listClientOrganizationsForAgencyDirectory(agencyId, search)
+        .then((list) => {
+          if (!cancelled) {
+            setRows(list);
+          }
+        })
+        .catch((e) => {
+          console.error('AgencyClientsTab load error:', e);
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
     }, 200);
     return () => {
       cancelled = true;
@@ -3546,6 +3623,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   const [chatInput, setChatInput] = useState('');
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
   const [agencyCounterInput, setAgencyCounterInput] = useState('');
+  const [processingRequestId, setProcessingRequestId] = useState<string | null>(null);
   const [msgFilter, setMsgFilter] = useState<'current' | 'archived' | 'applications'>('current');
   const [archivedIds, setArchivedIds] = useState<Set<string>>(() => {
     if (typeof window === 'undefined') return new Set();
@@ -4105,22 +4183,32 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
           {request.modelApproval === 'approved' && clientPriceStatus === 'pending' && finalStatus !== 'job_confirmed' && request.proposedPrice != null && (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm }}>
               <TouchableOpacity
-                style={[s.filterPill, { backgroundColor: colors.buttonOptionGreen }]}
+                style={[s.filterPill, { backgroundColor: colors.buttonOptionGreen, opacity: processingRequestId === request.threadId ? 0.5 : 1 }]}
+                disabled={processingRequestId === request.threadId}
                 onPress={async () => {
-                  if (request?.threadId) {
+                  if (!request?.threadId || processingRequestId) return;
+                  setProcessingRequestId(request.threadId);
+                  try {
                     await agencyAcceptClientPriceStore(request.threadId);
                     setRequests(getOptionRequests());
+                  } finally {
+                    setProcessingRequestId(null);
                   }
                 }}
               >
                 <Text style={[s.filterPillLabel, { color: '#fff' }]}>Accept client price</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[s.filterPill, { borderWidth: 1, borderColor: colors.buttonSkipRed }]}
+                style={[s.filterPill, { borderWidth: 1, borderColor: colors.buttonSkipRed, opacity: processingRequestId === request.threadId ? 0.5 : 1 }]}
+                disabled={processingRequestId === request.threadId}
                 onPress={async () => {
-                  if (request?.threadId) {
+                  if (!request?.threadId || processingRequestId) return;
+                  setProcessingRequestId(request.threadId);
+                  try {
                     await agencyRejectClientPriceStore(request.threadId);
                     setRequests(getOptionRequests());
+                  } finally {
+                    setProcessingRequestId(null);
                   }
                 }}
               >
@@ -4143,13 +4231,19 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                   style={[s.chatInput, { flex: 1, minWidth: 120 }]}
                 />
                 <TouchableOpacity
-                  style={[s.filterPill, { paddingHorizontal: spacing.sm, backgroundColor: colors.textPrimary }]}
+                  style={[s.filterPill, { paddingHorizontal: spacing.sm, backgroundColor: colors.textPrimary, opacity: processingRequestId === request.threadId ? 0.5 : 1 }]}
+                  disabled={processingRequestId === request.threadId}
                   onPress={async () => {
                     const num = parseFloat(agencyCounterInput.trim());
-                    if (!request?.threadId || isNaN(num)) return;
-                    await agencyCounterOfferStore(request.threadId, num, currency);
-                    setAgencyCounterInput('');
-                    setRequests(getOptionRequests());
+                    if (!request?.threadId || isNaN(num) || processingRequestId) return;
+                    setProcessingRequestId(request.threadId);
+                    try {
+                      await agencyCounterOfferStore(request.threadId, num, currency);
+                      setAgencyCounterInput('');
+                      setRequests(getOptionRequests());
+                    } finally {
+                      setProcessingRequestId(null);
+                    }
                   }}
                 >
                   <Text style={[s.filterPillLabel, { color: '#fff' }]}>Send counter-offer</Text>
@@ -4169,13 +4263,19 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                 style={[s.chatInput, { width: 100 }]}
               />
               <TouchableOpacity
-                style={[s.filterPill, { paddingHorizontal: spacing.sm }]}
+                style={[s.filterPill, { paddingHorizontal: spacing.sm, opacity: processingRequestId === request.threadId ? 0.5 : 1 }]}
+                disabled={processingRequestId === request.threadId}
                 onPress={async () => {
                   const num = parseFloat(agencyCounterInput.trim());
-                  if (!request?.threadId || isNaN(num)) return;
-                  await agencyCounterOfferStore(request.threadId, num, currency);
-                  setAgencyCounterInput('');
-                  setRequests(getOptionRequests());
+                  if (!request?.threadId || isNaN(num) || processingRequestId) return;
+                  setProcessingRequestId(request.threadId);
+                  try {
+                    await agencyCounterOfferStore(request.threadId, num, currency);
+                    setAgencyCounterInput('');
+                    setRequests(getOptionRequests());
+                  } finally {
+                    setProcessingRequestId(null);
+                  }
                 }}
               >
                 <Text style={s.filterPillLabel}>Send offer</Text>
@@ -4329,7 +4429,7 @@ const OrganizationTeamTab: React.FC<{
                 <View style={{ flex: 1 }}>
                   <Text style={s.modelName}>{i.email}</Text>
                   <Text style={s.metaText}>
-                    {roleLabel(i.role)} · bis {new Date(i.expires_at).toLocaleDateString()}
+                    {roleLabel(i.role)} · {uiCopy.team.inviteExpiresLabel} {new Date(i.expires_at).toLocaleDateString()}
                   </Text>
                 </View>
               </View>
@@ -4473,7 +4573,7 @@ const GuestLinksTab: React.FC<{
   };
 
   const handleDeactivate = async (id: string) => {
-    const ok = await deactivateGuestLink(id);
+    const ok = await revokeGuestAccess(id);
     if (ok) setLinks((prev) => prev.map((l) => l.id === id ? { ...l, is_active: false } : l));
   };
 

@@ -55,6 +55,7 @@ export const BookingChatView: React.FC<Props> = ({
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const sendingRef = useRef(false);
   const thread = getRecruitingThread(threadId);
   const application = thread ? getApplicationById(thread.applicationId) : undefined;
 
@@ -109,10 +110,11 @@ export const BookingChatView: React.FC<Props> = ({
 
   const sendMessage = () => {
     const t = chatInput.trim();
-    if (!t) return;
-    // Auto-promote messages containing a URL to include the link
+    if (!t || sendingRef.current) return;
+    sendingRef.current = true;
     addRecruitingMessage(threadId, fromRole, t);
     setChatInput('');
+    sendingRef.current = false;
   };
 
   const openUrl = (url: string) => {

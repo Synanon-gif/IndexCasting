@@ -25,7 +25,12 @@ import {
   View,
 } from 'react-native';
 
+import { supabase } from '../../lib/supabase';
 import { uiCopy } from '../constants/uiCopy';
+import {
+  confirmImageRights,
+  guardImageUpload,
+} from '../services/gdprComplianceSupabase';
 import { resolveStorageUrl } from '../storage/storageUrl';
 import {
   addPhoto,
@@ -45,7 +50,7 @@ import { colors, spacing, typography } from '../theme/theme';
 // Types
 // ---------------------------------------------------------------------------
 
-type ResolvedPhoto = ModelPhoto & { displayUrl: string };
+type ResolvedPhoto = ModelPhoto & { displayUrl: string | null };
 
 type Props = {
   modelId: string;
@@ -80,8 +85,11 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
   const [privatePhotos, setPrivatePhotos] = useState<ResolvedPhoto[]>([]);
 
   const [uploading, setUploading] = useState<'portfolio' | 'polaroid' | 'private' | null>(null);
+  const [imageRightsConfirmed, setImageRightsConfirmed] = useState(false);
   const [newPortfolioUrl, setNewPortfolioUrl] = useState('');
   const [newPolaroidUrl, setNewPolaroidUrl] = useState('');
+  /** Mutex to prevent parallel reorder / setCover / delete / toggle operations. */
+  const operationInProgress = useRef(false);
 
   const portfolioInputRef = useRef<HTMLInputElement | null>(null);
   const polaroidInputRef = useRef<HTMLInputElement | null>(null);
@@ -136,6 +144,29 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
     section: 'portfolio' | 'polaroid' | 'private',
   ) => {
     if (!files.length) return;
+
+    if (!imageRightsConfirmed) {
+      Alert.alert(
+        'Image Rights Required',
+        'Please confirm you hold all necessary rights and consents before uploading photos.',
+      );
+      return;
+    }
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // Confirm rights first (records in audit table), then guard checks the DB.
+    await confirmImageRights({ userId: user.id, modelId }).catch((e) =>
+      console.error('[ModelMediaSettingsPanel] confirmImageRights error:', e),
+    );
+    const guard = await guardImageUpload(user.id, modelId);
+    if (!guard.ok) {
+      Alert.alert('Image Rights Required', 'Rights confirmation could not be verified. Please try again.');
+      setUploading(null);
+      return;
+    }
+
     setUploading(section);
     try {
       for (const file of files) {
@@ -191,6 +222,27 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
   ) => {
     const trimmed = urlValue.trim();
     if (!trimmed) return;
+
+    if (!imageRightsConfirmed) {
+      Alert.alert(
+        'Image Rights Required',
+        'Please confirm you hold all necessary rights and consents before adding this photo.',
+      );
+      return;
+    }
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    await confirmImageRights({ userId: user.id, modelId }).catch((e) =>
+      console.error('[ModelMediaSettingsPanel] confirmImageRights (URL) error:', e),
+    );
+    const guard = await guardImageUpload(user.id, modelId);
+    if (!guard.ok) {
+      Alert.alert('Image Rights Required', 'Rights confirmation could not be verified. Please try again.');
+      return;
+    }
+
     const newRecord = await addPhoto(modelId, trimmed, section);
     if (!newRecord) { Alert.alert(uiCopy.common.error, copy.uploadError); return; }
     const resolved = await resolveDisplayUrl(newRecord);
@@ -225,7 +277,8 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
   };
 
   const handleDelete = async (photo: ResolvedPhoto, section: 'portfolio' | 'polaroid' | 'private') => {
-    if (!photo.id) return;
+    if (!photo.id || operationInProgress.current) return;
+    operationInProgress.current = true;
     try {
       const ok = await deletePhoto(photo.id, photo.url);
       if (!ok) {
@@ -250,6 +303,8 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
       } else {
         Alert.alert(uiCopy.common.error, copy.deleteError);
       }
+    } finally {
+      operationInProgress.current = false;
     }
   };
 
@@ -261,7 +316,8 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
     photo: ResolvedPhoto,
     section: 'portfolio' | 'polaroid',
   ) => {
-    if (!photo.id) return;
+    if (!photo.id || operationInProgress.current) return;
+    operationInProgress.current = true;
     const next = !photo.is_visible_to_clients;
     try {
       const ok = await updatePhoto(photo.id, { is_visible_to_clients: next, visible: next });
@@ -278,6 +334,8 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
     } catch (e) {
       console.error('handleToggleVisibility error:', e);
       Alert.alert(uiCopy.common.error, copy.toggleError);
+    } finally {
+      operationInProgress.current = false;
     }
   };
 
@@ -293,12 +351,17 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
     syncFn?: (photos: ResolvedPhoto[]) => Promise<void>,
   ) => {
     const target = idx + dir;
-    if (target < 0 || target >= list.length) return;
+    if (target < 0 || target >= list.length || operationInProgress.current) return;
+    operationInProgress.current = true;
     const next = [...list];
     [next[idx], next[target]] = [next[target], next[idx]];
     setList(next);
-    void reorderPhotos(modelId, next.map((p) => p.id!));
-    if (syncFn) void syncFn(next);
+    try {
+      await reorderPhotos(modelId, next.map((p) => p.id!));
+      if (syncFn) await syncFn(next);
+    } finally {
+      operationInProgress.current = false;
+    }
   };
 
   // ---------------------------------------------------------------------------
@@ -306,13 +369,18 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
   // ---------------------------------------------------------------------------
 
   const setCover = async (idx: number) => {
-    if (idx === 0) return;
+    if (idx === 0 || operationInProgress.current) return;
+    operationInProgress.current = true;
     const next = [...portfolio];
     const [item] = next.splice(idx, 1);
     next.unshift(item);
     setPortfolio(next);
-    void reorderPhotos(modelId, next.map((p) => p.id!));
-    void syncPortfolio(next);
+    try {
+      await reorderPhotos(modelId, next.map((p) => p.id!));
+      await syncPortfolio(next);
+    } finally {
+      operationInProgress.current = false;
+    }
   };
 
   // ---------------------------------------------------------------------------
@@ -473,6 +541,25 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
 
   return (
     <ScrollView showsVerticalScrollIndicator={false}>
+      {/* ── IMAGE RIGHTS CONFIRMATION (required before any upload) ────── */}
+      <TouchableOpacity
+        style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: spacing.md, paddingTop: spacing.sm }}
+        onPress={() => setImageRightsConfirmed((v) => !v)}
+        activeOpacity={0.8}
+      >
+        <View style={{
+          width: 18, height: 18, borderRadius: 3, borderWidth: 1.5,
+          borderColor: imageRightsConfirmed ? colors.accentGreen : colors.textSecondary,
+          backgroundColor: imageRightsConfirmed ? colors.accentGreen : 'transparent',
+          marginRight: 8, marginTop: 2, alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+        }}>
+          {imageRightsConfirmed && <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>✓</Text>}
+        </View>
+        <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, flex: 1 }}>
+          I confirm I hold all necessary rights and consents to upload these images.
+        </Text>
+      </TouchableOpacity>
+
       {/* ── PORTFOLIO ───────────────────────────────────────────────────── */}
       <View style={s.section}>
         <Text style={s.sectionTitle}>{copy.portfolioTitle}</Text>

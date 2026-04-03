@@ -67,7 +67,7 @@ export const ModelView: React.FC<ModelViewProps> = ({ onBackToRoleSelection, use
             onPress={() => setActiveTab(t)}
           >
             <Text style={[styles.tabLabel, activeTab === t && styles.tabLabelActive]}>
-              {t === 'inbox' ? uiCopy.dashboard.inboxTitle : 'Profile'}
+              {t === 'inbox' ? uiCopy.dashboard.inboxTitle : uiCopy.dashboard.profileTab}
             </Text>
           </TouchableOpacity>
         ))}
@@ -88,13 +88,21 @@ export const ModelView: React.FC<ModelViewProps> = ({ onBackToRoleSelection, use
 const ModelUnifiedInbox: React.FC<{ modelId: string }> = ({ modelId }) => {
   const [requests, setRequests] = useState<SupabaseOptionRequest[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const copy = uiCopy.dashboard;
 
   const load = useCallback(async () => {
     setLoading(true);
-    const data = await getOptionRequestsForModel(modelId);
-    setRequests(data);
-    setLoading(false);
+    setLoadError(false);
+    try {
+      const data = await getOptionRequestsForModel(modelId);
+      setRequests(data);
+    } catch (e) {
+      console.error('ModelUnifiedInbox load error:', e);
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
   }, [modelId]);
 
   useEffect(() => { void load(); }, [load]);
@@ -117,6 +125,17 @@ const ModelUnifiedInbox: React.FC<{ modelId: string }> = ({ modelId }) => {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="small" color={colors.textSecondary} />
+      </View>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.emptyText}>{uiCopy.common.error}</Text>
+        <TouchableOpacity onPress={() => void load()} style={{ marginTop: 12 }}>
+          <Text style={{ color: colors.textPrimary, fontSize: 13 }}>{uiCopy.common.retry}</Text>
+        </TouchableOpacity>
       </View>
     );
   }

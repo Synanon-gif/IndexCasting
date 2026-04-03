@@ -13,15 +13,39 @@ import { colors, spacing, typography } from '../theme/theme';
 import { getModelsPagedFromSupabase, type SwipeFilters } from '../services/modelsSupabase';
 import {
   recordInteraction,
+  getDiscoveryModels,
   loadSessionIds,
   saveSessionId,
   clearSessionIds,
+  type DiscoveryModel,
+  DISCOVERY_PAGE_SIZE,
 } from '../services/clientDiscoverySupabase';
 import { useAuth } from '../context/AuthContext';
 import { uiCopy } from '../constants/uiCopy';
 import { addOptionRequest } from '../store/optionRequests';
 
 const SWIPE_PAGE_SIZE = 25;
+
+/** Derives an ISO-2 country code from the hard-coded city filter options. */
+const CITY_TO_COUNTRY: Record<string, string> = {
+  Paris: 'FR',
+  Milan: 'IT',
+  Berlin: 'DE',
+};
+
+function mapDiscoveryModel(m: DiscoveryModel): ClientModel {
+  return {
+    id: m.id,
+    name: m.name,
+    height: m.height,
+    bust: m.bust ?? 0,
+    waist: m.waist ?? 0,
+    hips: m.hips ?? 0,
+    city: m.city ?? '',
+    hairColor: m.hair_color ?? '',
+    gallery: m.portfolio_images ?? [],
+  };
+}
 
 type ClientModel = {
   id: string;
@@ -78,12 +102,17 @@ export const CustomerSwipeScreen: React.FC = () => {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const pageOffsetRef = useRef(0);
+  /** Cursor for ranked discovery pagination (null when using legacy fallback path). */
+  const [discoveryCursor, setDiscoveryCursor] = useState<import('../services/clientDiscoverySupabase').DiscoveryCursor>(null);
 
   /**
    * Model IDs already shown in this session — excluded from the visible queue
-   * to prevent duplicates. Stored in a ref to avoid re-renders.
+   * to prevent duplicates. Stored in a ref to avoid re-renders on every add.
+   * `sessionSeenCount` is a derived counter that ticks whenever the set grows,
+   * allowing `filteredModels` useMemo to correctly invalidate when new IDs are added.
    */
   const sessionSeenIds = useRef<Set<string>>(new Set());
+  const [sessionSeenCount, setSessionSeenCount] = useState(0);
 
   // Resolve client org ID — available directly from profile.organization_id loaded by AuthContext.
   useEffect(() => {
@@ -99,65 +128,83 @@ export const CustomerSwipeScreen: React.FC = () => {
   const loadNextPage = useCallback(async () => {
     if (loadingMore || !hasMore) return;
     setLoadingMore(true);
+    const countryIso = filters.city !== 'all' ? (CITY_TO_COUNTRY[filters.city] ?? null) : null;
     try {
-      const page = await getModelsPagedFromSupabase(
-        pageOffsetRef.current,
-        SWIPE_PAGE_SIZE,
-        filters,
-      );
-      const mapped = page.map((m) => ({
-        id: m.id,
-        name: m.name,
-        height: m.height,
-        bust: m.bust ?? 0,
-        waist: m.waist ?? 0,
-        hips: m.hips ?? 0,
-        city: m.city ?? '',
-        hairColor: m.hair_color ?? '',
-        gallery: m.portfolio_images ?? [],
-      }));
-      setModels((prev) => [...prev, ...mapped]);
-      pageOffsetRef.current += mapped.length;
-      if (page.length < SWIPE_PAGE_SIZE) setHasMore(false);
+      if (clientOrgId && countryIso && discoveryCursor) {
+        // Ranked path: load next page via cursor.
+        const { models: more, nextCursor } = await getDiscoveryModels(
+          clientOrgId,
+          { countryCode: countryIso },
+          discoveryCursor,
+          sessionSeenIds.current,
+        );
+        setModels((prev) => [...prev, ...more.map(mapDiscoveryModel)]);
+        setDiscoveryCursor(nextCursor);
+        if (!nextCursor) setHasMore(false);
+      } else {
+        // Legacy offset path.
+        const page = await getModelsPagedFromSupabase(
+          pageOffsetRef.current,
+          SWIPE_PAGE_SIZE,
+          filters,
+        );
+        const mapped = page.map((m) => ({
+          id: m.id, name: m.name, height: m.height,
+          bust: m.bust ?? 0, waist: m.waist ?? 0, hips: m.hips ?? 0,
+          city: m.city ?? '', hairColor: m.hair_color ?? '',
+          gallery: m.portfolio_images ?? [],
+        }));
+        setModels((prev) => [...prev, ...mapped]);
+        pageOffsetRef.current += mapped.length;
+        if (page.length < SWIPE_PAGE_SIZE) setHasMore(false);
+      }
     } catch (e) {
       console.error('CustomerSwipeScreen: loadNextPage error', e);
     } finally {
       setLoadingMore(false);
     }
-  }, [loadingMore, hasMore, filters]);
+  }, [loadingMore, hasMore, filters, clientOrgId, discoveryCursor]);
 
-  // Initial load
+  // Initial load — prefer ranked discovery when clientOrgId + countryCode are available.
   useEffect(() => {
     pageOffsetRef.current = 0;
     setModels([]);
     setHasMore(true);
     setIndex(0);
+    setDiscoveryCursor(null);
+    const countryIso = filters.city !== 'all' ? (CITY_TO_COUNTRY[filters.city] ?? null) : null;
     void (async () => {
       setLoadingMore(true);
       try {
-        const page = await getModelsPagedFromSupabase(0, SWIPE_PAGE_SIZE, filters);
-        const mapped = page.map((m) => ({
-          id: m.id,
-          name: m.name,
-          height: m.height,
-          bust: m.bust ?? 0,
-          waist: m.waist ?? 0,
-          hips: m.hips ?? 0,
-          city: m.city ?? '',
-          hairColor: m.hair_color ?? '',
-          gallery: m.portfolio_images ?? [],
-        }));
-        setModels(mapped);
-        pageOffsetRef.current = mapped.length;
-        if (page.length < SWIPE_PAGE_SIZE) setHasMore(false);
+        if (clientOrgId && countryIso) {
+          const { models: ranked, nextCursor } = await getDiscoveryModels(
+            clientOrgId,
+            { countryCode: countryIso },
+            null,
+            sessionSeenIds.current,
+          );
+          setModels(ranked.map(mapDiscoveryModel));
+          setDiscoveryCursor(nextCursor);
+          if (!nextCursor) setHasMore(false);
+        } else {
+          const page = await getModelsPagedFromSupabase(0, SWIPE_PAGE_SIZE, filters);
+          const mapped = page.map((m) => ({
+            id: m.id, name: m.name, height: m.height,
+            bust: m.bust ?? 0, waist: m.waist ?? 0, hips: m.hips ?? 0,
+            city: m.city ?? '', hairColor: m.hair_color ?? '',
+            gallery: m.portfolio_images ?? [],
+          }));
+          setModels(mapped);
+          pageOffsetRef.current = mapped.length;
+          if (page.length < SWIPE_PAGE_SIZE) setHasMore(false);
+        }
       } catch (e) {
         console.error('CustomerSwipeScreen: initial load error', e);
       } finally {
         setLoadingMore(false);
       }
     })();
-   
-  }, [filters]);
+  }, [filters, clientOrgId]);
 
   // Reset session dedup when filters change (new discovery context).
   useEffect(() => {
@@ -165,15 +212,14 @@ export const CustomerSwipeScreen: React.FC = () => {
       clearSessionIds(clientOrgId);
     }
     sessionSeenIds.current = new Set();
+    setSessionSeenCount(0);
   }, [filters, clientOrgId]);
 
   const filteredModels = useMemo(() => {
-    return models.filter((m) => {
-      // Session dedup: skip models already shown in this session.
-      if (sessionSeenIds.current.has(m.id)) return false;
-      return true;
-    });
-  }, [models]);
+    return models.filter((m) => !sessionSeenIds.current.has(m.id));
+    // sessionSeenCount in deps ensures the memo re-evaluates when the seen-set grows.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [models, sessionSeenCount]);
 
   // Pre-fetch next page when approaching end of queue
   useEffect(() => {
@@ -194,16 +240,14 @@ export const CustomerSwipeScreen: React.FC = () => {
   useEffect(() => {
     if (!current || !clientOrgId) return;
     sessionSeenIds.current.add(current.id);
+    setSessionSeenCount(sessionSeenIds.current.size);
     saveSessionId(clientOrgId, current.id);
     void recordInteraction(current.id, 'viewed');
   }, [current?.id, clientOrgId]);
 
   const handleNext = () => {
     if (!filteredModels.length) return;
-    // Record rejection before advancing.
-    if (current && clientOrgId) {
-      void recordInteraction(current.id, 'rejected');
-    }
+    // "Skip" is a neutral browse action; "viewed" is already recorded when the card renders.
     if (index < filteredModels.length - 1) {
       setIndex(index + 1);
     } else {

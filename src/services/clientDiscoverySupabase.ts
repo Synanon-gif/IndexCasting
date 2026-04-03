@@ -184,6 +184,28 @@ function fisherYates<T>(arr: T[]): T[] {
   return result;
 }
 
+// ─── Platform access guard ────────────────────────────────────────────────────
+
+/**
+ * Throws if the current user does not have active platform access
+ * (no valid trial or subscription). Mirrors assertPlatformAccess in
+ * modelsSupabase.ts but kept local to avoid a circular import.
+ */
+async function assertPlatformAccess(): Promise<void> {
+  const { data, error } = await supabase.rpc('can_access_platform');
+  if (error) {
+    console.error('[clientDiscovery] assertPlatformAccess RPC error:', error);
+    throw new Error('platform_access_check_failed');
+  }
+  const result = data as { allowed: boolean; reason?: string } | null;
+  if (!result?.allowed) {
+    throw Object.assign(new Error('platform_access_denied'), {
+      code: 'platform_access_denied',
+      reason: result?.reason ?? 'unknown',
+    });
+  }
+}
+
 // ─── recordInteraction ────────────────────────────────────────────────────────
 
 /**
@@ -251,6 +273,16 @@ export async function getDiscoveryModels(
   if (!filters.countryCode?.trim()) {
     console.warn('getDiscoveryModels: countryCode is required for ranked discovery');
     return { models: [], nextCursor: null };
+  }
+
+  // Frontend paywall check (belt-and-suspenders; the RPC enforces it server-side too).
+  try {
+    await assertPlatformAccess();
+  } catch (e: any) {
+    if (e?.code === 'platform_access_denied') {
+      return { models: [], nextCursor: null };
+    }
+    throw e;
   }
 
   const excludeIds: string[] = Array.from(sessionSeenIds);

@@ -48,7 +48,9 @@ export type AuditActionType =
   | 'user_deleted' | 'user_deletion_requested' | 'user_deletion_cancelled'
   | 'org_deleted' | 'data_exported'
   | 'booking_created' | 'booking_confirmed' | 'booking_cancelled'
+  | 'booking_agency_accepted' | 'booking_model_confirmed' | 'booking_completed'
   | 'option_sent' | 'option_price_proposed' | 'option_price_countered'
+  | 'option_price_accepted' | 'option_price_rejected'
   | 'option_confirmed' | 'option_rejected'
   | 'application_accepted' | 'application_rejected'
   | 'profile_updated' | 'model_created' | 'model_updated' | 'model_removed'
@@ -373,36 +375,64 @@ export async function logAuditAction(params: AuditLogParams): Promise<void> {
 
 /**
  * Convenience: log a booking action.
+ * Pass `oldState` to populate the audit_trail.old_data field with the state
+ * before the transition (e.g. `{ status: 'pending' }`).
  */
 export async function logBookingAction(
   orgId: string,
-  action: 'booking_created' | 'booking_confirmed' | 'booking_cancelled',
+  action: 'booking_created' | 'booking_confirmed' | 'booking_cancelled'
+        | 'booking_agency_accepted' | 'booking_model_confirmed' | 'booking_completed',
   bookingId: string,
   details?: Record<string, unknown>,
+  oldState?: Record<string, unknown>,
 ): Promise<void> {
   await logAuditAction({
     orgId,
     actionType: action,
     entityType: 'booking',
     entityId:   bookingId,
+    oldData:    oldState,
     newData:    details,
   });
 }
 
 /**
  * Convenience: log an option/price negotiation action.
+ * Pass `oldState` to populate the audit_trail.old_data field with the state
+ * before the transition (e.g. `{ status: 'in_negotiation' }`).
  */
 export async function logOptionAction(
   orgId: string,
-  action: 'option_sent' | 'option_price_proposed' | 'option_price_countered' | 'option_confirmed' | 'option_rejected',
+  action: 'option_sent' | 'option_price_proposed' | 'option_price_countered'
+        | 'option_price_accepted' | 'option_price_rejected'
+        | 'option_confirmed' | 'option_rejected',
   optionId: string,
   details?: Record<string, unknown>,
+  oldState?: Record<string, unknown>,
 ): Promise<void> {
   await logAuditAction({
     orgId,
     actionType: action,
     entityType: 'option_request',
     entityId:   optionId,
+    oldData:    oldState,
+    newData:    details,
+  });
+}
+
+/**
+ * Convenience: log a model photo upload to the audit trail.
+ */
+export async function logImageUpload(
+  orgId: string,
+  modelId: string,
+  details?: Record<string, unknown>,
+): Promise<void> {
+  await logAuditAction({
+    orgId,
+    actionType: 'image_uploaded',
+    entityType: 'model',
+    entityId:   modelId,
     newData:    details,
   });
 }

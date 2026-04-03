@@ -38,11 +38,23 @@ Object.defineProperty(globalThis, 'localStorage', { value: localStorageMock, wri
 
 // ─── Supabase mock ────────────────────────────────────────────────────────────
 
+/**
+ * Discovery-specific RPC mock — tracks only `get_discovery_models` and
+ * `record_client_interaction` calls so tests can assert on them without the
+ * `can_access_platform` guard call polluting `calls[0]`.
+ */
 const mockRpc = jest.fn();
 
 jest.mock('../../../lib/supabase', () => ({
   supabase: {
-    rpc: (...args: unknown[]) => mockRpc(...args),
+    rpc: (...args: unknown[]) => {
+      const name = args[0] as string;
+      // Auto-allow platform access so tests don't need to set this up.
+      if (name === 'can_access_platform') {
+        return Promise.resolve({ data: { allowed: true }, error: null });
+      }
+      return mockRpc(...args);
+    },
   },
 }));
 

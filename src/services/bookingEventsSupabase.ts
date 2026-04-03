@@ -1,10 +1,11 @@
 import { supabase } from '../../lib/supabase';
 import { uiCopy } from '../constants/uiCopy';
 import { createNotifications } from './notificationsSupabase';
+import { logBookingAction } from './gdprComplianceSupabase';
 
 /** Alle Felder der booking_events-Tabelle — kein SELECT * mehr. */
 const BOOKING_EVENT_SELECT =
-  'id, model_id, client_org_id, agency_org_id, date, type, status, title, note, source_option_request_id, created_by, created_at, updated_at' as const;
+  'id, model_id, client_org_id, agency_org_id, date, type, status, title, note, source_option_request_id, created_by, created_at, updated_at, fee_total, commission_rate, commission_amount, currency, project_id' as const;
 
 /**
  * Booking Events – single source of truth for the booking lifecycle.
@@ -39,6 +40,12 @@ export type BookingEvent = {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  /** Financial fields (nullable; populated when a booking is financially confirmed). Legacy rows may omit these. */
+  fee_total?: number | null;
+  commission_rate?: number | null;
+  commission_amount?: number | null;
+  currency?: string | null;
+  project_id?: string | null;
 };
 
 export type CreateBookingEventParams = {
@@ -50,6 +57,11 @@ export type CreateBookingEventParams = {
   title?: string | null;
   note?: string | null;
   source_option_request_id?: string | null;
+  /** Optional financial fields — consolidates legacy bookings table. */
+  fee_total?: number | null;
+  commission_rate?: number | null;
+  project_id?: string | null;
+  currency?: string | null;
 };
 
 export async function createBookingEvent(
@@ -57,6 +69,11 @@ export async function createBookingEvent(
 ): Promise<BookingEvent | null> {
   try {
     const { data: user } = await supabase.auth.getUser();
+    const commissionAmount =
+      params.fee_total != null && params.commission_rate != null
+        ? (params.fee_total * params.commission_rate) / 100
+        : null;
+
     const { data, error } = await supabase
       .from('booking_events')
       .insert({
@@ -70,6 +87,11 @@ export async function createBookingEvent(
         note: params.note ?? null,
         source_option_request_id: params.source_option_request_id ?? null,
         created_by: user.user?.id ?? null,
+        fee_total: params.fee_total ?? null,
+        commission_rate: params.commission_rate ?? null,
+        commission_amount: commissionAmount,
+        currency: params.currency ?? 'EUR',
+        project_id: params.project_id ?? null,
       })
       .select()
       .single();
@@ -78,7 +100,14 @@ export async function createBookingEvent(
       console.error('createBookingEvent error:', error);
       return null;
     }
-    return data as BookingEvent;
+    const created = data as BookingEvent;
+    void logBookingAction(
+      created.agency_org_id ?? created.client_org_id ?? '',
+      'booking_created',
+      created.id,
+      { type: created.type, model_id: created.model_id },
+    );
+    return created;
   } catch (e) {
     console.error('createBookingEvent exception:', e);
     return null;
@@ -149,6 +178,16 @@ export async function updateBookingEventStatus(
     if (newStatus === 'agency_accepted' || newStatus === 'model_confirmed') {
       void notifyBookingStatusChange(current as BookingEvent, newStatus);
     }
+
+    const bk = current as BookingEvent;
+    const auditOrgId = bk.agency_org_id ?? bk.client_org_id ?? '';
+    const auditAction =
+      newStatus === 'cancelled'       ? 'booking_cancelled'      :
+      newStatus === 'agency_accepted' ? 'booking_agency_accepted' :
+      newStatus === 'model_confirmed' ? 'booking_model_confirmed' :
+      newStatus === 'completed'       ? 'booking_completed'       :
+      'booking_confirmed';
+    void logBookingAction(auditOrgId, auditAction, id, { status: newStatus }, { status: currentStatus });
 
     return { ok: true };
   } catch (e) {

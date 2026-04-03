@@ -1,11 +1,27 @@
 import { supabase } from '../../lib/supabase';
+import { logBookingAction } from './gdprComplianceSupabase';
 
 /**
+ * @deprecated Legacy bookings table — superseded by booking_events.
+ *
+ * MIGRATION PATH:
+ *   The `bookings` table was the original financial ledger. The modern system
+ *   uses `booking_events` (see bookingEventsSupabase.ts) which covers the full
+ *   booking lifecycle with org-scoping, status transitions, and option-request
+ *   linkage via `source_option_request_id`.
+ *
+ *   New code MUST use bookingEventsSupabase.ts exclusively.
+ *   This file is retained for:
+ *     1. Historical data read-back (agencies viewing old bookings).
+ *     2. The `getAgencyRevenue` RPC which still aggregates `bookings` rows.
+ *
+ *   TODO: Once `booking_events` has financial columns (`fee_total`, `commission`),
+ *   update `get_agency_revenue` RPC to use `booking_events` and drop this file.
+ *
  * Buchungen – in Supabase gespeichert, pro Partei abrufbar:
  * - Agentur: getBookingsForAgency(agencyId)
  * - Model: getBookingsForModel(modelId)
  * - Kunde: getBookingsForClient(clientId)
- * Ehemalige/abgeschlossene Buchungen bleiben in der Tabelle (status: completed, invoiced, cancelled).
  */
 export type Booking = {
   id: string;
@@ -125,7 +141,14 @@ export async function createBooking(booking: {
     .select()
     .single();
   if (error) { console.error('createBooking error:', error); return null; }
-  return data as Booking;
+  const created = data as Booking;
+  void logBookingAction(booking.agency_id, 'booking_created', created.id, {
+    model_id: booking.model_id,
+    client_id: booking.client_id,
+    fee_total: booking.fee_total,
+    booking_date: booking.booking_date,
+  });
+  return created;
 }
 
 export async function updateBookingStatus(
@@ -142,12 +165,16 @@ export async function updateBookingStatus(
       .update({ status })
       .eq('id', bookingId)
       .eq('status', fromStatus)
-      .select('id');
+      .select('id, agency_org_id, client_org_id');
     if (error) { console.error('updateBookingStatus error:', error); return false; }
     if (!data || data.length === 0) {
       console.warn('updateBookingStatus: no row updated — concurrent state change or wrong fromStatus', { bookingId, fromStatus, targetStatus: status });
       return false;
     }
+    const row = data[0] as { id: string; agency_org_id: string | null; client_org_id: string | null };
+    const orgId = row.agency_org_id ?? row.client_org_id ?? '';
+    const auditAction = status === 'cancelled' ? 'booking_cancelled' : 'booking_confirmed';
+    void logBookingAction(orgId, auditAction, bookingId, { from: fromStatus, to: status });
     return true;
   } catch (e) {
     console.error('updateBookingStatus exception:', e);

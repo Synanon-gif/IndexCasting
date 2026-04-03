@@ -312,15 +312,6 @@ function AppContent() {
     );
   }
 
-  if (sharedParams) {
-    return (
-      <>
-        <SharedSelectionView shareName={sharedParams.name} modelIds={sharedParams.ids} />
-        <StatusBar style="dark" />
-      </>
-    );
-  }
-
   // Booking deeplink requires an active session — unauthenticated users fall through to AuthScreen.
   if (bookingThreadId && session) {
     return (
@@ -444,6 +435,19 @@ function AppContent() {
         </>
       );
     }
+  }
+
+  // Shared selection links require an authenticated session to protect model data.
+  // Unauthenticated users reaching ?shared=1 fall through to the auth screen above;
+  // after login they are routed to their role view (shared link is not re-shown,
+  // which is intentional — the sender should distribute via proper guest links).
+  if (sharedParams && session) {
+    return (
+      <>
+        <SharedSelectionView shareName={sharedParams.name} modelIds={sharedParams.ids} />
+        <StatusBar style="dark" />
+      </>
+    );
   }
 
   const handleBackToRoleSelection = () => {

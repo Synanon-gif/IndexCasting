@@ -6,6 +6,7 @@ import {
   ALLOWED_MIME_TYPES,
   logSecurityEvent,
 } from '../../lib/validation';
+import { logImageUpload } from './gdprComplianceSupabase';
 import imageCompression from 'browser-image-compression';
 import { convertHeicToJpegIfNeeded } from './imageUtils';
 import { checkAndIncrementStorage, decrementStorage } from './agencyStorageSupabase';
@@ -439,7 +440,20 @@ export async function uploadModelPhoto(
 
     // M-3 fix: store the canonical supabase-storage:// URI instead of a public URL.
     // The bucket is private; all reads go through resolveStorageUrl → signed URL.
-    return { url: toStorageUri(PUBLIC_IMAGES_BUCKET, path), fileSizeBytes: actualSize };
+    const storageUri = toStorageUri(PUBLIC_IMAGES_BUCKET, path);
+
+    // Fire-and-forget audit log: resolve org from model record.
+    void (async () => {
+      const { data: modelRow } = await supabase
+        .from('models')
+        .select('organization_id')
+        .eq('id', modelId)
+        .maybeSingle();
+      const orgId = (modelRow as { organization_id?: string } | null)?.organization_id ?? '';
+      void logImageUpload(orgId, modelId, { bucket: PUBLIC_IMAGES_BUCKET, path, fileSizeBytes: actualSize });
+    })();
+
+    return { url: storageUri, fileSizeBytes: actualSize };
   } catch (e) {
     console.error('uploadModelPhoto exception:', e);
     await decrementStorage(claimedSize);
@@ -524,7 +538,20 @@ export async function uploadPrivateModelPhoto(
     }
 
     // Store path as the URL — resolved to a signed URL at render time.
-    return { url: `supabase-private://${PRIVATE_BUCKET}/${path}`, fileSizeBytes: actualSize };
+    const privateUri = `supabase-private://${PRIVATE_BUCKET}/${path}`;
+
+    // Fire-and-forget audit log.
+    void (async () => {
+      const { data: modelRow } = await supabase
+        .from('models')
+        .select('organization_id')
+        .eq('id', modelId)
+        .maybeSingle();
+      const orgId = (modelRow as { organization_id?: string } | null)?.organization_id ?? '';
+      void logImageUpload(orgId, modelId, { bucket: PRIVATE_BUCKET, path, fileSizeBytes: actualSize, private: true });
+    })();
+
+    return { url: privateUri, fileSizeBytes: actualSize };
   } catch (e) {
     console.error('uploadPrivateModelPhoto exception:', e);
     await decrementStorage(claimedSize);
