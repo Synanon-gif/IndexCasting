@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, Platform } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, spacing, typography } from '../theme/theme';
 import type { UserRole } from '../navigation/RootNavigator';
 import { uiCopy } from '../constants/uiCopy';
 import { TermsScreen } from './TermsScreen';
 import { PrivacyScreen } from './PrivacyScreen';
+import { navigatePublicLegal } from '../utils/publicLegalRoutes';
 
 type Props = {
   onSelectRole: (role: UserRole) => void;
@@ -114,11 +115,19 @@ export const LoginScreen: React.FC<Props> = ({ onSelectRole }) => {
         <Text style={styles.helperText}>{uiCopy.login.dummyFlow}</Text>
 
         <View style={styles.legalFooter}>
-          <TouchableOpacity onPress={() => setTermsVisible(true)}>
+          <TouchableOpacity
+            onPress={() =>
+              Platform.OS === 'web' ? navigatePublicLegal('/terms') : setTermsVisible(true)
+            }
+          >
             <Text style={styles.legalLink}>{uiCopy.legal.tosLabel}</Text>
           </TouchableOpacity>
           <Text style={styles.legalSep}>·</Text>
-          <TouchableOpacity onPress={() => setPrivacyVisible(true)}>
+          <TouchableOpacity
+            onPress={() =>
+              Platform.OS === 'web' ? navigatePublicLegal('/privacy') : setPrivacyVisible(true)
+            }
+          >
             <Text style={styles.legalLink}>{uiCopy.legal.privacyLabel}</Text>
           </TouchableOpacity>
         </View>

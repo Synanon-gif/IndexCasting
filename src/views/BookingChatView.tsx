@@ -21,6 +21,9 @@ import { getApplicationById } from '../store/applicationsStore';
 import { getThread } from '../services/recruitingChatSupabase';
 import { getAgencyChatDisplayById } from '../services/agenciesSupabase';
 import { BOTTOM_TAB_BAR_HEIGHT } from '../navigation/bottomTabNavigation';
+import { supabase } from '../../lib/supabase';
+import { confirmImageRights } from '../services/gdprComplianceSupabase';
+import { uiCopy } from '../constants/uiCopy';
 
 type BookingChatPresentation = 'modal' | 'insetAboveBottomNav';
 
@@ -54,6 +57,7 @@ export const BookingChatView: React.FC<Props> = ({
   const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [fileRightsConfirmed, setFileRightsConfirmed] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const sendingRef = useRef(false);
   const thread = getRecruitingThread(threadId);
@@ -122,9 +126,21 @@ export const BookingChatView: React.FC<Props> = ({
   };
 
   const handleFileSelected = async (file: File) => {
+    if (!fileRightsConfirmed) {
+      setUploadError(uiCopy.legal.chatFileRightsMissing);
+      return;
+    }
     setUploading(true);
     setUploadError(null);
     try {
+      const { data: auth } = await supabase.auth.getUser();
+      if (auth.user) {
+        await confirmImageRights({
+          userId: auth.user.id,
+          modelId: null,
+          sessionKey: `recruiting-chat:${threadId}`,
+        });
+      }
       await addRecruitingMessageWithFile(threadId, fromRole, file, file.name);
     } catch (e) {
       console.error('handleFileSelected error:', e);
@@ -265,6 +281,19 @@ export const BookingChatView: React.FC<Props> = ({
             })}
           </ScrollView>
           {uploadError ? <Text style={styles.uploadError}>{uploadError}</Text> : null}
+          {Platform.OS === 'web' ? (
+            <TouchableOpacity
+              style={styles.rightsRow}
+              onPress={() => setFileRightsConfirmed(!fileRightsConfirmed)}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: fileRightsConfirmed }}
+            >
+              <View style={[styles.rightsBox, fileRightsConfirmed && styles.rightsBoxOn]}>
+                {fileRightsConfirmed ? <Text style={styles.rightsCheck}>✓</Text> : null}
+              </View>
+              <Text style={styles.rightsLabel}>{uiCopy.legal.chatFileRightsCheckbox}</Text>
+            </TouchableOpacity>
+          ) : null}
           <View style={styles.inputRow}>
             {Platform.OS === 'web' ? (
               <input
@@ -279,9 +308,12 @@ export const BookingChatView: React.FC<Props> = ({
               />
             ) : null}
             <TouchableOpacity
-              style={[styles.attachBtn, (!fromRole || uploading) && { opacity: 0.4 }]}
+              style={[
+                styles.attachBtn,
+                (!fromRole || uploading || (Platform.OS === 'web' && !fileRightsConfirmed)) && { opacity: 0.4 },
+              ]}
               onPress={openFileInput}
-              disabled={uploading}
+              disabled={uploading || (Platform.OS === 'web' && !fileRightsConfirmed)}
             >
               {uploading ? (
                 <ActivityIndicator size="small" color={colors.textSecondary} />
@@ -541,6 +573,35 @@ const styles = StyleSheet.create({
     ...typography.label,
     fontSize: 10,
     color: colors.accentGreen,
+  },
+  rightsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.xs,
+  },
+  rightsBox: {
+    width: 18,
+    height: 18,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  rightsBoxOn: {
+    backgroundColor: colors.textPrimary,
+    borderColor: colors.textPrimary,
+  },
+  rightsCheck: { color: colors.surface, fontSize: 11, fontWeight: '700' },
+  rightsLabel: {
+    ...typography.body,
+    fontSize: 11,
+    color: colors.textSecondary,
+    flex: 1,
+    lineHeight: 16,
   },
   uploadError: {
     ...typography.body,

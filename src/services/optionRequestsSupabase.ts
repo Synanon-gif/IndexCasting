@@ -6,7 +6,7 @@ import { createNotification, createNotifications } from './notificationsSupabase
 import { uiCopy } from '../constants/uiCopy';
 import { normalizeInput, validateText, sanitizeHtml, extractSafeUrls, logSecurityEvent } from '../../lib/validation';
 import { checkAndIncrementStorage, decrementStorage } from './agencyStorageSupabase';
-import { logBookingAction, logOptionAction } from './gdprComplianceSupabase';
+import { guardUploadSession, logBookingAction, logOptionAction } from './gdprComplianceSupabase';
 
 export const OPTION_REQUEST_SELECT =
   'id, client_id, model_id, agency_id, requested_date, status, project_id, client_name, model_name, proposed_price, agency_counter_price, client_price_status, final_status, request_type, currency, start_time, end_time, model_approval, model_approved_at, model_account_linked, booker_id, organization_id, created_by, agency_assignee_user_id, created_at, updated_at';
@@ -578,11 +578,13 @@ export async function clientConfirmJobOnSupabase(id: string): Promise<boolean> {
     await createBookingEventFromRequest(updated as SupabaseOptionRequest);
 
     const up = updated as SupabaseOptionRequest;
-    void logBookingAction(up.organization_id ?? '', 'booking_confirmed', id, {
+    // Job confirmation is an option_request lifecycle step — log as option (not booking_events id).
+    void logOptionAction(up.organization_id ?? '', 'option_confirmed', id, {
+      phase: 'job_confirmed',
       final_status: 'job_confirmed',
       agency_id: up.agency_id,
       model_id: up.model_id,
-    });
+    }, { final_status: 'option_confirmed' });
 
     return true;
   } catch (e) {
@@ -867,6 +869,18 @@ export async function uploadOptionDocument(
   fileName: string
 ): Promise<SupabaseOptionDocument | null> {
   try {
+  const { data: authUser } = await supabase.auth.getUser();
+  if (!authUser.user) {
+    console.error('uploadOptionDocument: not authenticated');
+    return null;
+  }
+  const sessionKey = `option-doc:${requestId}`;
+  const rights = await guardUploadSession(authUser.user.id, sessionKey);
+  if (!rights.ok) {
+    console.warn('uploadOptionDocument: image rights confirmation missing — call confirmImageRights first', sessionKey);
+    return null;
+  }
+
   // MIME type and size validation before any storage interaction.
   const { validateFile } = await import('../../lib/validation');
   const fileValidation = validateFile(file);

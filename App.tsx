@@ -36,6 +36,13 @@ import {
 } from './src/storage/inviteToken';
 import { uiCopy } from './src/constants/uiCopy';
 import { initializePushNotifications, teardownPushNotifications } from './src/services/pushNotifications';
+import { TermsScreen } from './src/screens/TermsScreen';
+import { PrivacyScreen } from './src/screens/PrivacyScreen';
+import {
+  INDEXCASTING_LOCATION_EVENT,
+  normalizePublicLegalPath,
+  replaceWebPathToHome,
+} from './src/utils/publicLegalRoutes';
 
 /** Web: volle Höhe sofort beim Modul-Load (vor erstem React-Paint) – verhindert weißen/leeren Screen. */
 function ensureWebRootHasHeight() {
@@ -172,6 +179,19 @@ function AppContent() {
   const [inviteAuthMode, setInviteAuthMode] = useState<'login' | 'signup'>('signup');
   const [clientType, setClientTypeState] = useState<ClientType>(() => loadClientType() ?? 'fashion');
   const { setCurrentUserId } = useAppData();
+
+  /** Web: re-render when pathname changes to /terms or /privacy (client-side navigation). */
+  const [, setWebPathTick] = useState(0);
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const bump = () => setWebPathTick((n) => n + 1);
+    window.addEventListener('popstate', bump);
+    window.addEventListener(INDEXCASTING_LOCATION_EVENT, bump);
+    return () => {
+      window.removeEventListener('popstate', bump);
+      window.removeEventListener(INDEXCASTING_LOCATION_EVENT, bump);
+    };
+  }, []);
 
   const effectiveRole: Role | null = roleFromProfile(profile?.role);
 
@@ -347,6 +367,27 @@ function AppContent() {
   }
 
   if (!session) {
+    // Public legal routes (web): /terms and /privacy render full-screen without auth.
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const legal = normalizePublicLegalPath(window.location.pathname);
+      if (legal === 'terms') {
+        return (
+          <>
+            <TermsScreen onClose={replaceWebPathToHome} />
+            <StatusBar style="dark" />
+          </>
+        );
+      }
+      if (legal === 'privacy') {
+        return (
+          <>
+            <PrivacyScreen onClose={replaceWebPathToHome} />
+            <StatusBar style="dark" />
+          </>
+        );
+      }
+    }
+
     const inviteLockedRole =
       invitePreview?.org_type === 'agency' ? 'agent' : invitePreview?.org_type === 'client' ? 'client' : undefined;
     const inviteRoleLabel =

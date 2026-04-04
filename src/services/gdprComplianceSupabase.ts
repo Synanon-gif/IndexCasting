@@ -52,6 +52,7 @@ export type AuditActionType =
   | 'option_sent' | 'option_price_proposed' | 'option_price_countered'
   | 'option_price_accepted' | 'option_price_rejected'
   | 'option_confirmed' | 'option_rejected'
+  | 'option_schedule_updated' | 'option_document_uploaded'
   | 'application_accepted' | 'application_rejected'
   | 'profile_updated' | 'model_created' | 'model_updated' | 'model_removed'
   | 'model_visibility_changed'
@@ -194,6 +195,53 @@ export async function hasRecentImageRightsConfirmation(
     console.error('[gdpr] hasRecentImageRightsConfirmation exception:', e);
     return false;
   }
+}
+
+/**
+ * Same as {@link hasRecentImageRightsConfirmation} but keyed by `session_key`
+ * (e.g. recruiting-chat:{threadId} or option-doc:{requestId}) for uploads
+ * without a model context.
+ */
+export async function hasRecentImageRightsForSessionKey(
+  userId: string,
+  sessionKey: string,
+  withinMinutes = 15,
+): Promise<boolean> {
+  try {
+    const since = new Date(Date.now() - withinMinutes * 60 * 1000).toISOString();
+    const { data } = await supabase
+      .from('image_rights_confirmations')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('session_key', sessionKey)
+      .gte('confirmed_at', since)
+      .limit(1)
+      .maybeSingle();
+    return !!data;
+  } catch (e) {
+    console.error('[gdpr] hasRecentImageRightsForSessionKey exception:', e);
+    return false;
+  }
+}
+
+/**
+ * Server-side guard for session-scoped uploads (chat attachments, option docs).
+ * Call after {@link confirmImageRights} with the same `sessionKey`.
+ */
+export async function guardUploadSession(
+  userId: string,
+  sessionKey: string,
+): Promise<ComplianceResult> {
+  const confirmed = await hasRecentImageRightsForSessionKey(userId, sessionKey);
+  if (!confirmed) {
+    void logSecurityEvent('file_rejected', {
+      reason:   'image_rights_not_confirmed',
+      user_id:  userId,
+      session_key: sessionKey,
+    });
+    return { ok: false, reason: 'image_rights_not_confirmed' };
+  }
+  return { ok: true, data: undefined };
 }
 
 
@@ -405,7 +453,8 @@ export async function logOptionAction(
   orgId: string,
   action: 'option_sent' | 'option_price_proposed' | 'option_price_countered'
         | 'option_price_accepted' | 'option_price_rejected'
-        | 'option_confirmed' | 'option_rejected',
+        | 'option_confirmed' | 'option_rejected'
+        | 'option_schedule_updated' | 'option_document_uploaded',
   optionId: string,
   details?: Record<string, unknown>,
   oldState?: Record<string, unknown>,

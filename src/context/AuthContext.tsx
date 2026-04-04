@@ -80,10 +80,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s);
       if (s?.user) void bootstrapThenLoadProfile(s.user.id);
-      else setProfile(null);
+      else {
+        setProfile(null);
+        // Remote sign-out (e.g. member-remove Edge Function) does not run the
+        // client signOut() helper — still clear cached org/client state (EXPLOIT-H1).
+        if (event === 'SIGNED_OUT') {
+          void (async () => {
+            try {
+              const { resetApplicationsStore } = await import('../store/applicationsStore');
+              const { resetRecruitingChatsStore } = await import('../store/recruitingChats');
+              const { resetOptionRequestsStore } = await import('../store/optionRequests');
+              resetApplicationsStore();
+              resetRecruitingChatsStore();
+              resetOptionRequestsStore();
+            } catch (e) {
+              console.error('onAuthStateChange SIGNED_OUT store reset error:', e);
+            }
+            try {
+              const { clearAllPersistence } = await import('../storage/persistence');
+              clearAllPersistence();
+            } catch (e) {
+              console.error('onAuthStateChange SIGNED_OUT persistence clear error:', e);
+            }
+          })();
+        }
+      }
     });
 
     return () => subscription.unsubscribe();

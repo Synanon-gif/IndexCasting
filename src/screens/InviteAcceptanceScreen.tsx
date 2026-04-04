@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Platform, Modal } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import type { InvitationPreview } from '../services/organizationsInvitationsSupabase';
 import { uiCopy } from '../constants/uiCopy';
+import { TermsScreen } from './TermsScreen';
+import { PrivacyScreen } from './PrivacyScreen';
+import { navigatePublicLegal } from '../utils/publicLegalRoutes';
 
 type Props = {
   preview: InvitationPreview | null;
@@ -20,6 +23,8 @@ export function InviteAcceptanceScreen({
   onContinueSignup,
 }: Props) {
   const [copied, setCopied] = useState(false);
+  const [termsVisible, setTermsVisible] = useState(false);
+  const [privacyVisible, setPrivacyVisible] = useState(false);
 
   const roleLabel =
     preview?.invite_role === 'booker'
@@ -41,6 +46,12 @@ export function InviteAcceptanceScreen({
 
   return (
     <View style={styles.container}>
+      <Modal visible={termsVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setTermsVisible(false)}>
+        <TermsScreen onClose={() => setTermsVisible(false)} />
+      </Modal>
+      <Modal visible={privacyVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setPrivacyVisible(false)}>
+        <PrivacyScreen onClose={() => setPrivacyVisible(false)} />
+      </Modal>
       <View style={styles.card}>
         <Text style={styles.brand}>INDEX CASTING</Text>
         <Text style={styles.title}>{uiCopy.invite.pageTitle}</Text>
@@ -83,6 +94,24 @@ export function InviteAcceptanceScreen({
             )}
           </View>
         )}
+      </View>
+
+      <View style={styles.legalFooter}>
+        <TouchableOpacity
+          onPress={() =>
+            Platform.OS === 'web' ? navigatePublicLegal('/terms') : setTermsVisible(true)
+          }
+        >
+          <Text style={styles.legalLink}>{uiCopy.legal.tosLabel}</Text>
+        </TouchableOpacity>
+        <Text style={styles.legalSep}>·</Text>
+        <TouchableOpacity
+          onPress={() =>
+            Platform.OS === 'web' ? navigatePublicLegal('/privacy') : setPrivacyVisible(true)
+          }
+        >
+          <Text style={styles.legalLink}>{uiCopy.legal.privacyLabel}</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -130,4 +159,23 @@ const styles = StyleSheet.create({
   secondaryLabel: { ...typography.label, color: colors.textPrimary },
   linkBtn: { paddingVertical: spacing.sm, alignItems: 'center' },
   linkLabel: { ...typography.label, fontSize: 11, color: colors.textSecondary },
+  legalFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.lg,
+    paddingBottom: spacing.md,
+  },
+  legalLink: {
+    ...typography.body,
+    fontSize: 11,
+    color: colors.textSecondary,
+    textDecorationLine: 'underline',
+  },
+  legalSep: {
+    ...typography.body,
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
 });

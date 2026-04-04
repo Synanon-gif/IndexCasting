@@ -957,6 +957,11 @@ export const uiCopy = {
     legalPendingBody:
       'The full legal text for this document will be published at launch. '
       + 'Please contact us if you need the current version before then.',
+    /** Required checkbox before chat/recruiting file attachments (non-model portfolio). */
+    chatFileRightsCheckbox:
+      'I confirm I have all necessary rights and consents for this upload.',
+    chatFileRightsMissing:
+      'Please confirm you have all necessary rights and consents for this upload.',
   },
   storage: {
     title: 'Storage',

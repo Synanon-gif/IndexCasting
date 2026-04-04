@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Modal } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Modal, Platform } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { useAuth } from '../context/AuthContext';
 import { uiCopy } from '../constants/uiCopy';
 import { TermsScreen } from './TermsScreen';
 import { PrivacyScreen } from './PrivacyScreen';
+import { navigatePublicLegal } from '../utils/publicLegalRoutes';
 
 type AuthScreenProps = {
   initialMode?: 'login' | 'signup';
@@ -201,11 +202,19 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         </TouchableOpacity>
 
         <View style={styles.legalFooter}>
-          <TouchableOpacity onPress={() => setTermsVisible(true)}>
+          <TouchableOpacity
+            onPress={() =>
+              Platform.OS === 'web' ? navigatePublicLegal('/terms') : setTermsVisible(true)
+            }
+          >
             <Text style={styles.legalLink}>{uiCopy.legal.tosLabel}</Text>
           </TouchableOpacity>
           <Text style={styles.legalSep}>·</Text>
-          <TouchableOpacity onPress={() => setPrivacyVisible(true)}>
+          <TouchableOpacity
+            onPress={() =>
+              Platform.OS === 'web' ? navigatePublicLegal('/privacy') : setPrivacyVisible(true)
+            }
+          >
             <Text style={styles.legalLink}>{uiCopy.legal.privacyLabel}</Text>
           </TouchableOpacity>
         </View>

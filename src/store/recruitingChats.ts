@@ -19,6 +19,7 @@ import {
 } from '../services/recruitingChatSupabase';
 import { updateApplicationRecruitingThread, fetchApplicationById } from '../services/applicationsSupabase';
 import { supabase } from '../../lib/supabase';
+import { guardUploadSession } from '../services/gdprComplianceSupabase';
 import {
   getOrganizationIdForAgency,
   ensureAgencyOrganization,
@@ -340,6 +341,18 @@ export async function addRecruitingMessageWithFile(
   fileName: string,
   caption?: string,
 ): Promise<void> {
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) {
+    console.warn('addRecruitingMessageWithFile: not authenticated');
+    return;
+  }
+  const sessionKey = `recruiting-chat:${threadId}`;
+  const guard = await guardUploadSession(auth.user.id, sessionKey);
+  if (!guard.ok) {
+    console.warn('addRecruitingMessageWithFile: image rights confirmation required before upload', sessionKey);
+    return;
+  }
+
   const path = await uploadRecruitingChatFile(threadId, file, fileName);
   if (!path) return;
   const mimeType = (file as File).type || 'application/octet-stream';
