@@ -31,16 +31,30 @@ export type AdminLogEntry = {
   created_at: string;
 };
 
+/**
+ * Returns true if the current user is a platform admin.
+ * Uses get_own_admin_flags() SECURITY DEFINER RPC as primary source —
+ * immune to column-level REVOKE. Falls back to direct column query + role
+ * check so the admin is never locked out by a transient RPC failure.
+ */
 export async function isCurrentUserAdmin(): Promise<boolean> {
   try {
+    // Primary: SECURITY DEFINER RPC (bypasses any column-level REVOKE)
+    const { data: flags, error } = await supabase.rpc('get_own_admin_flags');
+    if (!error && flags) {
+      const row = Array.isArray(flags) ? flags[0] : flags;
+      if (row?.is_admin === true) return true;
+    }
+    // Fallback 1: direct column query (works when table-level SELECT is granted)
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return false;
     const { data } = await supabase
       .from('profiles')
-      .select('is_admin')
+      .select('is_admin, role')
       .eq('id', user.id)
       .maybeSingle();
-    return data?.is_admin === true;
+    // Fallback 2: role='admin' as last resort (RLS-protected column)
+    return data?.is_admin === true || data?.role === 'admin';
   } catch (e) {
     console.error('isCurrentUserAdmin exception:', e);
     return false;
@@ -51,6 +65,13 @@ export async function isCurrentUserAdmin(): Promise<boolean> {
  *  Super-Admin is the sole identity allowed to read admin_logs. */
 export async function isCurrentUserSuperAdmin(): Promise<boolean> {
   try {
+    // Primary: SECURITY DEFINER RPC (bypasses any column-level REVOKE)
+    const { data: flags, error } = await supabase.rpc('get_own_admin_flags');
+    if (!error && flags) {
+      const row = Array.isArray(flags) ? flags[0] : flags;
+      if (row?.is_super_admin === true) return true;
+    }
+    // Fallback: direct column query
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return false;
     const { data } = await supabase
