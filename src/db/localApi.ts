@@ -83,6 +83,9 @@ function seedIfNeeded() {
     polaroids: m.polaroids || [],
     is_visible_commercial: m.isVisibleCommercial ?? m.visibility?.commercial ?? false,
     is_visible_fashion: m.isVisibleFashion ?? m.visibility?.highFashion ?? false,
+    is_sports_winter: m.isSportsWinter ?? false,
+    is_sports_summer: m.isSportsSummer ?? false,
+    sex: (m.sex as 'male' | 'female' | null) ?? null,
     created_at: now,
     updated_at: now,
   }));

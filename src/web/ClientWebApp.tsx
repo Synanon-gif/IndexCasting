@@ -590,7 +590,6 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       setFilters((prev) => ({
         ...prev,
         sex: preset.sex ?? prev.sex,
-        size: preset.size ?? prev.size,
         countryCode: preset.countryCode ?? prev.countryCode,
         city: preset.city ?? prev.city,
         nearby: preset.nearby ?? prev.nearby,
@@ -847,7 +846,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     filters.ethnicities, filters.category, filters.sportsWinter, filters.sportsSummer,
     filters.hairColor, filters.hipsMin, filters.hipsMax, filters.waistMin, filters.waistMax,
     filters.chestMin, filters.chestMax, filters.legsInseamMin, filters.legsInseamMax,
-    filteredModels.length,
+    models.length,
   ]);
 
   // Radius-based Near me discovery — only when nearby toggle is active AND we have coordinates.
@@ -1440,7 +1439,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
               <Text style={{ color: colors.textPrimary }}>OpenStreetMap Nominatim</Text>
               {' '}(a third-party geocoder) to determine your city.
             </Text>
-            <Text style={{ ...typography.caption, color: colors.textSecondary }}>
+            <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary }}>
               Your coordinates are rounded to ~5 km precision and are not stored on our servers.
               You can withdraw consent at any time by disabling the "Near me" filter.
             </Text>
@@ -1454,7 +1453,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
               <TouchableOpacity
                 onPress={handleGeoConsentAccept}
                 style={{
-                  backgroundColor: colors.primary, borderRadius: 8,
+                  backgroundColor: colors.accent, borderRadius: 8,
                   paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
                 }}
               >

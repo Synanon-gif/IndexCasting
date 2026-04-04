@@ -270,7 +270,7 @@ export const CustomerSwipeScreen: React.FC = () => {
     setIsSendingOption(true);
     setOptionSuccess(null);
 
-    const clientName = auth?.profile?.name ?? auth?.profile?.email ?? 'Client';
+    const clientName = auth?.profile?.display_name ?? auth?.profile?.email ?? 'Client';
     addOptionRequest(
       clientName,
       model.name,

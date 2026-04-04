@@ -2232,7 +2232,7 @@ const MyModelsTab: React.FC<{
         netwalk_model_id:   netwalkModelId,
         email:        toStr(data.email),
         name,
-        height:       toNum(data.height) ?? undefined,
+        height:       toNum(data.height) ?? 0,
         bust:         toNum(data.bust),
         waist:        toNum(data.waist),
         hips:         toNum(data.hips),

@@ -43,7 +43,7 @@ Use these as explicit review dimensions. Cite findings with **severity** (critic
 
 ---
 
-**Generated (UTC):** 2026-04-04 16:52:37 UTC  
+**Generated (UTC):** 2026-04-04 17:02:38 UTC  
 **Generator:** `scripts/generate-llm-review-bundle.sh`
 
 

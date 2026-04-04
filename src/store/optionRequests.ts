@@ -67,7 +67,7 @@ export type OptionRequest = {
 export type ChatMessage = {
   id: string;
   threadId: string;
-  from: 'client' | 'agency';
+  from: 'client' | 'agency' | 'model';
   text: string;
   createdAt: number;
 };
@@ -449,7 +449,7 @@ export function getMessages(threadId: string): ChatMessage[] {
   return messagesCache.filter((m) => m.threadId === threadId);
 }
 
-export function addMessage(threadId: string, from: 'client' | 'agency', text: string): void {
+export function addMessage(threadId: string, from: 'client' | 'agency' | 'model', text: string): void {
   const msg: ChatMessage = {
     id: `msg-${Date.now()}`,
     threadId,
@@ -462,7 +462,8 @@ export function addMessage(threadId: string, from: 'client' | 'agency', text: st
 
   const req = requestsCache.find((r) => r.threadId === threadId);
   if (req) {
-    addOptionMessage(req.id, from, text);
+    const supabaseRole: 'client' | 'agency' = from === 'client' ? 'client' : 'agency';
+    addOptionMessage(req.id, supabaseRole, text);
   }
 }
 

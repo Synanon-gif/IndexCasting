@@ -404,7 +404,7 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
       <View key={photo.id ?? `${section}-${idx}`} style={s.photoRow}>
         {/* Thumbnail */}
         <Image
-          source={{ uri: photo.displayUrl }}
+          source={{ uri: photo.displayUrl ?? undefined }}
           style={s.thumbnail}
           resizeMode="cover"
         />
