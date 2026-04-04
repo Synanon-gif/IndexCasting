@@ -118,11 +118,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   /** Returns { profile }, { deactivated: true, reason } (signs out), or null if no profile. */
   async function loadProfile(userId: string): Promise<{ profile: Profile } | { deactivated: true; reason?: 'deactivated' | 'deletion' | 'org_deactivated' } | null> {
-    const { data } = await supabase
+    const { data, error: profileQueryError } = await supabase
       .from('profiles')
       .select(PROFILE_FIELDS)
       .eq('id', userId)
       .maybeSingle();
+    if (profileQueryError) {
+      console.error('loadProfile: profile query failed', {
+        code: profileQueryError.code,
+        message: profileQueryError.message,
+        details: profileQueryError.details,
+        hint: profileQueryError.hint,
+        userId,
+      });
+    }
     if (!data) {
       setProfile(null);
       return null;
