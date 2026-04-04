@@ -30,7 +30,11 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import Stripe from 'npm:stripe@14';
 
-const ALWAYS_ALLOWED_ORIGINS = ['https://indexcasting.com'];
+const ALWAYS_ALLOWED_ORIGINS = [
+  'https://index-casting.com',
+  'https://www.index-casting.com',
+  'https://indexcasting.com',
+];
 
 function getCorsHeaders(req: Request, extraAllowedOrigins: string[] = []): Record<string, string> {
   const origin = req.headers.get('Origin') ?? '';
@@ -54,6 +58,8 @@ type PlanType = 'agency_basic' | 'agency_pro' | 'agency_enterprise' | 'client';
 function buildAllowedOrigins(appUrl: string): string[] {
   const origins = new Set<string>();
   // Always include the canonical production domain.
+  origins.add('https://index-casting.com');
+  origins.add('https://www.index-casting.com');
   origins.add('https://indexcasting.com');
   try {
     origins.add(new URL(appUrl).origin);

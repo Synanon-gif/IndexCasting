@@ -38,6 +38,8 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
  * Add staging / preview URLs here as needed.
  */
 const ALLOWED_ORIGINS = [
+  'https://index-casting.com',
+  'https://www.index-casting.com',
   'https://indexcasting.com',
   'https://www.indexcasting.com',
 ];

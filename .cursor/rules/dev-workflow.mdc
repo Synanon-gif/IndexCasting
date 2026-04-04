@@ -1,0 +1,54 @@
+---
+description: Automatische Qualitätsprüfung vor jedem Commit und Push
+alwaysApply: true
+---
+
+# Dev Workflow: Automatische Checks
+
+## Regel: Vor jedem Commit automatisch prüfen
+
+Nach jeder relevanten Code-Änderung (Features, Fixes, Refactors in `src/`, `App.tsx`, `lib/`) MUSS Cursor diese Sequenz ausführen — **ohne den User zu fragen**:
+
+```bash
+cd /Users/rubenjohanneselge/Desktop/Final_IndexC/IndexCasting && \
+npm run typecheck && \
+npm run lint && \
+npm test -- --passWithNoTests --ci
+```
+
+Erwartetes Ergebnis: alle drei Schritte grün (exit code 0).  
+Bei Fehler: sofort fixen, dann erneut prüfen — **nie mit fehlerhaftem Code committen**.
+
+## Regel: Commit-Workflow
+
+1. `npm run typecheck` → `npm run lint` → `npm test` (automatisch wie oben)
+2. Erst bei **grünem Ergebnis**: `git add .` und `git commit -m "..."`
+3. Push auf `main` → Vercel deployt automatisch
+
+## Regel: main ist immer deploybar
+
+- `main`-Branch ist immer in einem Zustand, der sicher auf Vercel deployt werden kann.
+- Kein WIP-Code direkt auf `main` pushen.
+- Für größere Features: Feature-Branch anlegen, lokal fertig stellen, dann nach `main` mergen.
+
+## Regel: Secrets niemals committen
+
+- `.env.local`, `.env.supabase`, `.env` → **niemals** ins Git.
+- Neue Env-Variablen → in `.env.example` als Platzhalter + in Vercel/GitHub Secrets eintragen.
+- Vor jedem Push: `git diff --cached | grep -i 'key\|secret\|password\|token'` prüfen.
+
+## Regel: npm test nach jeder Änderung
+
+Nach JEDER Änderung in `src/services/`, `src/db/`, `src/utils/`, `src/context/`, `App.tsx`:
+
+```bash
+cd /Users/rubenjohanneselge/Desktop/Final_IndexC/IndexCasting && npm test -- --passWithNoTests --ci
+```
+
+Ergebnis kurz melden. Bei Fehlern sofort fixen bevor weitergemacht wird.
+
+## Kurzfassung Push-Workflow
+
+```
+Code ändern → typecheck + lint + test grün → commit → git push origin main → Vercel deployt
+```

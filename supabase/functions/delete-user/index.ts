@@ -19,7 +19,11 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const ALLOWED_ORIGINS = ['https://indexcasting.com'];
+const ALLOWED_ORIGINS = [
+  'https://index-casting.com',
+  'https://www.index-casting.com',
+  'https://indexcasting.com',
+];
 
 function getCorsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get('Origin') ?? '';

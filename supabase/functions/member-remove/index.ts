@@ -23,7 +23,11 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const ALLOWED_ORIGINS = ['https://indexcasting.com'];
+const ALLOWED_ORIGINS = [
+  'https://index-casting.com',
+  'https://www.index-casting.com',
+  'https://indexcasting.com',
+];
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function getCorsHeaders(req: Request): Record<string, string> {
