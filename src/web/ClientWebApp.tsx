@@ -3037,7 +3037,7 @@ const AgenciesView: React.FC<{
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return agencies;
+    if (q.length < 2) return agencies;
     return agencies.filter(
       (a) =>
         a.name.toLowerCase().includes(q) ||
@@ -3046,7 +3046,7 @@ const AgenciesView: React.FC<{
     );
   }, [search, agencies]);
 
-  const showNotFound = search.trim().length > 2 && filtered.length === 0;
+  const showNotFound = search.trim().length >= 2 && filtered.length === 0;
 
   const handleSendInvitation = async () => {
     if (!invitationEmail.trim() || !clientUserId) return;

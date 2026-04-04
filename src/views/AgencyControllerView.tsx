@@ -3486,17 +3486,18 @@ const AgencyClientsTab: React.FC<AgencyClientsTabProps> = ({
     if (!agencyId) {
       setRows([]);
       setLoading(false);
-      return () => {
-        cancelled = true;
-      };
+      return () => { cancelled = true; };
+    }
+    if (search.trim().length > 0 && search.trim().length < 2) {
+      setRows([]);
+      setLoading(false);
+      return () => { cancelled = true; };
     }
     setLoading(true);
     const t = setTimeout(() => {
       void listClientOrganizationsForAgencyDirectory(agencyId, search)
         .then((list) => {
-          if (!cancelled) {
-            setRows(list);
-          }
+          if (!cancelled) setRows(list);
         })
         .catch((e) => {
           console.error('AgencyClientsTab load error:', e);
@@ -3837,17 +3838,28 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
       <Text style={s.sectionLabel}>Messages</Text>
       <Text style={[s.metaText, { marginBottom: spacing.sm }]}>{uiCopy.b2bChat.messagesIntroAgency}</Text>
 
-      <TextInput
-        value={messagesSearch}
-        onChangeText={setMessagesSearch}
-        placeholder={uiCopy.messages.searchPlaceholder}
-        placeholderTextColor={colors.textSecondary}
-        style={[s.messagesSearchBar, { marginBottom: spacing.sm }]}
-        clearButtonMode="while-editing"
-        multiline={false}
-        numberOfLines={1}
-        returnKeyType="search"
-      />
+      <View style={[s.messagesSearchRow, { marginBottom: spacing.sm }]}>
+        <TextInput
+          value={messagesSearch}
+          onChangeText={setMessagesSearch}
+          placeholder={uiCopy.messages.searchPlaceholder}
+          placeholderTextColor={colors.textSecondary}
+          style={s.messagesSearchBar}
+          clearButtonMode="while-editing"
+          multiline={false}
+          numberOfLines={1}
+          returnKeyType="search"
+        />
+        {messagesSearch.length > 0 && (
+          <TouchableOpacity
+            onPress={() => setMessagesSearch('')}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={s.messagesSearchClear}
+          >
+            <Text style={s.messagesSearchClearText}>✕</Text>
+          </TouchableOpacity>
+        )}
+      </View>
 
       {searchActive ? (
         <View>
@@ -4559,9 +4571,9 @@ const GuestLinksTab: React.FC<{
     let cancelled = false;
     setSearchLoading(true);
     const t = setTimeout(() => {
-      void listClientOrganizationsForAgencyDirectory(agencyId, sendSearch).then((list) => {
-        if (!cancelled) { setSearchRows(list); setSearchLoading(false); }
-      });
+      void listClientOrganizationsForAgencyDirectory(agencyId, sendSearch)
+        .then((list) => { if (!cancelled) setSearchRows(list); })
+        .finally(() => { if (!cancelled) setSearchLoading(false); });
     }, 200);
     return () => { cancelled = true; clearTimeout(t); };
   }, [sendSearch, agencyId, sendInAppTarget]);
@@ -5203,8 +5215,10 @@ const s = StyleSheet.create({
   chatBubbleText: { ...typography.body, fontSize: 12, color: colors.textPrimary },
   chatBubbleTextAgency: { color: colors.surface },
   /** Single-line search on Messages tab — never use flex:1 (RN Web expands to huge height). */
-  messagesSearchBar: {
-    alignSelf: 'stretch',
+  messagesSearchRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    alignSelf: 'stretch' as const,
     width: '100%' as const,
     maxWidth: 400,
     height: 40,
@@ -5213,12 +5227,24 @@ const s = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: 999,
     paddingHorizontal: spacing.md,
+    backgroundColor: colors.surface,
+  },
+  messagesSearchBar: {
+    flex: 1,
+    height: 40,
     paddingVertical: 0,
     ...typography.body,
     fontSize: 13,
     lineHeight: 18,
     color: colors.textPrimary,
-    backgroundColor: colors.surface,
+    backgroundColor: 'transparent',
+  },
+  messagesSearchClear: {
+    paddingLeft: spacing.xs,
+  },
+  messagesSearchClearText: {
+    fontSize: 13,
+    color: colors.textSecondary,
   },
   chatInput: {
     flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 999,

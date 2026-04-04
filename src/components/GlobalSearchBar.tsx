@@ -15,6 +15,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   ScrollView,
+  Pressable,
 } from 'react-native';
 import { colors, spacing } from '../theme/theme';
 import { uiCopy } from '../constants/uiCopy';
@@ -40,7 +41,7 @@ export const GlobalSearchBar: React.FC<Props> = ({
   const [open, setOpen] = useState(false);
   const debouncedQuery = useDebounce(query, 300);
   const copy = uiCopy.dashboard;
-  const pendingRef = useRef(false);
+  const reqRef = useRef(0);
 
   const search = useCallback(async (q: string) => {
     if (q.trim().length < 2) {
@@ -48,15 +49,13 @@ export const GlobalSearchBar: React.FC<Props> = ({
       setLoading(false);
       return;
     }
-    if (pendingRef.current) return;
-    pendingRef.current = true;
+    const id = ++reqRef.current;
     setLoading(true);
     try {
       const data = await searchGlobal(q, orgId);
-      setResult(data);
+      if (reqRef.current === id) setResult(data);
     } finally {
-      setLoading(false);
-      pendingRef.current = false;
+      if (reqRef.current === id) setLoading(false);
     }
   }, [orgId]);
 
@@ -78,6 +77,7 @@ export const GlobalSearchBar: React.FC<Props> = ({
 
   return (
     <View style={styles.container}>
+      {open && <Pressable style={styles.backdrop} onPress={clear} />}
       <View style={styles.inputRow}>
         <TextInput
           value={query}
@@ -97,7 +97,7 @@ export const GlobalSearchBar: React.FC<Props> = ({
       </View>
 
       {open && query.trim().length >= 2 && (
-        <View style={styles.dropdown}>
+        <ScrollView style={styles.dropdown} keyboardShouldPersistTaps="handled">
           {!hasResults && !loading && (
             <Text style={styles.emptyText}>{copy.searchNoResults}</Text>
           )}
@@ -153,7 +153,7 @@ export const GlobalSearchBar: React.FC<Props> = ({
               ))}
             </View>
           )}
-        </View>
+        </ScrollView>
       )}
     </View>
   );
@@ -163,6 +163,13 @@ const styles = StyleSheet.create({
   container: {
     position: 'relative',
     zIndex: 100,
+  },
+  backdrop: {
+    position: 'absolute',
+    top: -9999,
+    bottom: -9999,
+    left: -9999,
+    right: -9999,
   },
   inputRow: {
     flexDirection: 'row',
@@ -204,7 +211,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 5,
     maxHeight: 320,
-    overflow: 'hidden',
   },
   section: {
     borderBottomWidth: 1,

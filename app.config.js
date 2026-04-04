@@ -14,5 +14,10 @@ module.exports = {
     supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? '',
     supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '',
     supabasePublishableKey: process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY ?? '',
+    appUrl: process.env.EXPO_PUBLIC_APP_URL ?? 'https://index-casting.com',
+  },
+  web: {
+    ...appJson.expo.web,
+    bundler: 'metro',
   },
 };
