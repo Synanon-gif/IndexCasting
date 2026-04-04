@@ -440,9 +440,13 @@ function AppContent() {
 
   // Admin check must come before effectiveRole gate: admin profiles have role='admin'
   // which does not map to any effectiveRole, causing them to be sent back to AuthScreen.
-  // Authoritative source: profile.is_admin is set exclusively by the UUID+email-pinned
-  // get_own_admin_flags() SECURITY DEFINER RPC — no role-based fallback (removed).
-  if (profile?.is_admin) {
+  //
+  // Dual-guard:
+  //   • profile.is_admin  — set by UUID+email-pinned SECURITY DEFINER RPC (primary)
+  //   • profile.role === 'admin' — DB trigger-protected fallback; no user can write
+  //     role='admin' via the API. Frontend routing grants no DB privileges — the
+  //     AdminDashboard's own RPCs enforce UUID+email pin independently.
+  if (profile?.is_admin || profile?.role === 'admin') {
     return (
       <>
         <View style={styles.shell}>

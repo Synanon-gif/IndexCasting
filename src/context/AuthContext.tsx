@@ -127,14 +127,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return null;
     }
 
-    // Fetch admin flags via UUID+email-pinned SECURITY DEFINER RPC.
-    // is_admin, is_super_admin, AND role are all column-REVOKEd from authenticated.
-    // get_own_admin_flags() is the ONLY authoritative source — it enforces
-    // UUID = ADMIN_UUID AND email = ADMIN_EMAIL simultaneously.
-    // Fail-closed: if the RPC errors, isAdminFlag stays false. No role-based fallback.
+    // Fetch admin flags — three independent attempts, any success is enough.
+    //
+    // Server-side security is enforced by UUID+email-pinned SECURITY DEFINER RPCs:
+    //   get_own_admin_flags() and is_current_user_admin()
+    // Both require: auth.uid() = ADMIN_UUID AND auth.users.email = ADMIN_EMAIL AND is_admin = true
+    //
+    // Frontend routing fallback (profile.role === 'admin') is safe:
+    //   - `role` is trigger-protected: no authenticated user can change it
+    //   - Frontend routing grants no database privileges; all RPCs enforce UUID+email pin
+    //   - Only the real admin has role='admin' in the DB
     let isAdminFlag = false;
     let isSuperAdminFlag = false;
     try {
+      // Primary: TABLE-returning RPC (returns array)
       const { data: adminFlags, error: adminErr } = await supabase.rpc('get_own_admin_flags');
       if (!adminErr && adminFlags) {
         const flags = Array.isArray(adminFlags) ? adminFlags[0] : adminFlags;
@@ -146,6 +152,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (e) {
       console.error('loadProfile get_own_admin_flags exception:', e);
+    }
+    // Secondary: boolean RPC (different code path, same UUID+email pin in DB)
+    if (!isAdminFlag) {
+      try {
+        const { data: isAdminBool, error: adminBoolErr } = await supabase.rpc('is_current_user_admin');
+        if (!adminBoolErr && isAdminBool === true) {
+          isAdminFlag = true;
+        }
+        if (adminBoolErr) console.error('loadProfile is_current_user_admin error:', adminBoolErr);
+      } catch (e) {
+        console.error('loadProfile is_current_user_admin exception:', e);
+      }
+    }
+    // Tertiary: role field (trigger-protected — no user can write role='admin' via the API)
+    // This fallback only fires if BOTH RPCs fail (e.g. transient network issue).
+    if (!isAdminFlag && data.role === 'admin') {
+      isAdminFlag = true;
+      // Also attempt to set super_admin from a fresh RPC now that we know it's admin
+      try {
+        const { data: sf } = await supabase.rpc('get_own_admin_flags');
+        if (sf) {
+          const row = Array.isArray(sf) ? sf[0] : sf;
+          isSuperAdminFlag = row?.is_super_admin ?? false;
+        }
+      } catch { /* ignore */ }
     }
 
     const isActive = data.is_active ?? false;

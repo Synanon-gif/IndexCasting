@@ -39,18 +39,20 @@ export type AdminLogEntry = {
  */
 export async function isCurrentUserAdmin(): Promise<boolean> {
   try {
-    // Sole check: SECURITY DEFINER RPC with UUID+email-pin.
-    // is_admin, is_super_admin AND role are all column-REVOKEd from authenticated —
-    // direct column reads return null. get_own_admin_flags() is the ONLY authoritative
-    // source and enforces UUID = ADMIN_UUID AND email = ADMIN_EMAIL simultaneously.
-    // No fallback: fail-closed is safer than a weaker bypass path.
+    // Primary: TABLE-returning RPC — UUID+email-pinned SECURITY DEFINER.
     const { data: flags, error } = await supabase.rpc('get_own_admin_flags');
-    if (error) {
-      console.error('isCurrentUserAdmin RPC error:', error);
-      return false;
+    if (!error && flags) {
+      const row = Array.isArray(flags) ? flags[0] : flags;
+      if (row?.is_admin === true) return true;
     }
-    const row = Array.isArray(flags) ? flags[0] : flags;
-    return row?.is_admin === true;
+    if (error) console.error('isCurrentUserAdmin get_own_admin_flags error:', error);
+
+    // Secondary: boolean RPC — same UUID+email pin, different code path.
+    const { data: isAdminBool, error: boolErr } = await supabase.rpc('is_current_user_admin');
+    if (!boolErr && isAdminBool === true) return true;
+    if (boolErr) console.error('isCurrentUserAdmin is_current_user_admin error:', boolErr);
+
+    return false;
   } catch (e) {
     console.error('isCurrentUserAdmin exception:', e);
     return false;
@@ -61,14 +63,20 @@ export async function isCurrentUserAdmin(): Promise<boolean> {
  *  Super-Admin is the sole identity allowed to read admin_logs. */
 export async function isCurrentUserSuperAdmin(): Promise<boolean> {
   try {
-    // Sole check: UUID+email-pinned SECURITY DEFINER RPC. No fallback — fail-closed.
+    // Primary: TABLE-returning RPC — UUID+email-pinned SECURITY DEFINER.
     const { data: flags, error } = await supabase.rpc('get_own_admin_flags');
-    if (error) {
-      console.error('isCurrentUserSuperAdmin RPC error:', error);
-      return false;
+    if (!error && flags) {
+      const row = Array.isArray(flags) ? flags[0] : flags;
+      if (row?.is_super_admin === true) return true;
     }
-    const row = Array.isArray(flags) ? flags[0] : flags;
-    return row?.is_super_admin === true;
+    if (error) console.error('isCurrentUserSuperAdmin get_own_admin_flags error:', error);
+
+    // Secondary: boolean RPC for super-admin.
+    const { data: isSuperBool, error: boolErr } = await supabase.rpc('is_current_user_super_admin');
+    if (!boolErr && isSuperBool === true) return true;
+    if (boolErr) console.error('isCurrentUserSuperAdmin is_current_user_super_admin error:', boolErr);
+
+    return false;
   } catch (e) {
     console.error('isCurrentUserSuperAdmin exception:', e);
     return false;
