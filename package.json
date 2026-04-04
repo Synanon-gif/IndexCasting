@@ -11,6 +11,7 @@
     "ios": "npx expo start --ios",
     "web": "npx expo start --web",
     "web:lan": "WEB_HOST=0.0.0.0 npx expo start --web",
+    "build": "npx expo export --platform web",
     "build:web": "npx expo export --platform web",
     "test": "jest",
     "test:watch": "jest --watch",
