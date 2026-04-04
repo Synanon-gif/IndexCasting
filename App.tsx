@@ -277,6 +277,30 @@ function AppContent() {
     else if (session?.user) setCurrentUserId(session.user.id);
   }, [effectiveRole, session, setCurrentUserId]);
 
+  // If session is set but profile is still null after a reasonable delay, retry loading.
+  // This recovers from transient RPC failures or network hiccups without leaving the user
+  // stuck on a spinner forever. After 15 s (3 retries × 5 s), force sign-out.
+  // Effect re-runs when profile changes: once profile loads, the guard returns early
+  // and the cleanup cancels any pending timer.
+  const profileLoadAttemptsRef = React.useRef(0);
+  useEffect(() => {
+    if (!session || profile) {
+      profileLoadAttemptsRef.current = 0;
+      return;
+    }
+    const timer = setTimeout(() => {
+      profileLoadAttemptsRef.current += 1;
+      if (profileLoadAttemptsRef.current >= 3) {
+        void signOut();
+      } else {
+        void refreshProfile();
+      }
+    }, 5000);
+    return () => clearTimeout(timer);
+  // signOut and refreshProfile are stable across renders; session.user.id + profile are the real drivers
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user?.id, profile]);
+
   // Register Expo push token once a real (non-guest) session is active.
   // Deregister on logout (session cleared) to stop delivering pushes to this device.
   useEffect(() => {
@@ -316,6 +340,19 @@ function AppContent() {
         </View>
         <StatusBar style="dark" />
       </>
+    );
+  }
+
+  // Bridge the async gap: setSession fires immediately when signInWithPassword succeeds,
+  // but setProfile is called asynchronously after loadProfile completes. Without this
+  // guard the user briefly sees AuthScreen again, which looks like a failed login.
+  // orgDeactivated is checked above, so this never masks a deactivation screen.
+  // After signOut, session is null → this block is skipped → AuthScreen shown correctly.
+  if (session && !profile) {
+    return (
+      <View style={[styles.shell, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={colors.textPrimary} />
+      </View>
     );
   }
 
