@@ -2216,6 +2216,14 @@ type DiscoverProps = {
  * Watermark overlay for guest-link / package views.
  * Renders a grid of semi-transparent diagonal "PREVIEW" labels.
  * pointerEvents="none" ensures the overlay never blocks taps on images below.
+ *
+ * Architecture note (M2): The serve-watermarked-image Edge Function (JWT-required)
+ * handles per-image server-side SVG watermarking for authenticated agency/client
+ * users requesting individual images. This React overlay is appropriate for the
+ * shared/package discovery context because the images are already resolved to
+ * signed URLs before rendering. Migrating to serve-watermarked-image here would
+ * require passing storage paths (not signed URLs) through the discovery pipeline,
+ * which is a larger architectural change tracked separately.
  */
 const GuestWatermark: React.FC = () => (
   <View

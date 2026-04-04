@@ -8,7 +8,7 @@
  *   - can upgrade to a full client account via upgradeGuestToClient()
  *
  * DSGVO: only email is collected at this stage.
- * deleteUserContent() must be called on account deletion to clean up chat data.
+ * deleteGuestUserContent() / deleteUserData() must be called on account deletion to clean up chat data.
  */
 
 import { supabase } from '../../lib/supabase';

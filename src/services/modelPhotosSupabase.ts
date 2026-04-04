@@ -6,7 +6,7 @@ import {
   ALLOWED_MIME_TYPES,
   logSecurityEvent,
 } from '../../lib/validation';
-import { logImageUpload } from './gdprComplianceSupabase';
+import { logImageUpload, hasRecentImageRightsConfirmation } from './gdprComplianceSupabase';
 import imageCompression from 'browser-image-compression';
 import { convertHeicToJpegIfNeeded } from './imageUtils';
 import { checkAndIncrementStorage, decrementStorage } from './agencyStorageSupabase';
@@ -377,6 +377,20 @@ export async function uploadModelPhoto(
   modelId: string,
   file: Blob | File,
 ): Promise<UploadPhotoResult | null> {
+  // Enforce image rights confirmation before any upload (GDPR / workspace rule §14).
+  // confirmImageRights() must have been called in the UI before triggering this function.
+  const { data: { user: uploadUser } } = await supabase.auth.getUser();
+  if (!uploadUser) {
+    console.warn('uploadModelPhoto: unauthenticated call rejected');
+    return null;
+  }
+  const hasConsent = await hasRecentImageRightsConfirmation(uploadUser.id, modelId);
+  if (!hasConsent) {
+    console.warn('uploadModelPhoto: image rights not confirmed for model', modelId);
+    void logSecurityEvent({ type: 'file_rejected', metadata: { service: 'modelPhotosSupabase', fn: 'uploadModelPhoto', reason: 'image_rights_not_confirmed', model_id: modelId } });
+    return null;
+  }
+
   // Convert HEIC/HEIF to JPEG before validation (browser-image-compression doesn't support HEIC)
   file = await convertHeicToJpegIfNeeded(file);
   // MIME whitelist + size check (images only for portfolio)
@@ -478,6 +492,19 @@ export async function uploadPrivateModelPhoto(
   modelId: string,
   file: Blob | File,
 ): Promise<UploadPhotoResult | null> {
+  // Enforce image rights confirmation before any upload (GDPR / workspace rule §14).
+  const { data: { user: uploadUser } } = await supabase.auth.getUser();
+  if (!uploadUser) {
+    console.warn('uploadPrivateModelPhoto: unauthenticated call rejected');
+    return null;
+  }
+  const hasConsent = await hasRecentImageRightsConfirmation(uploadUser.id, modelId);
+  if (!hasConsent) {
+    console.warn('uploadPrivateModelPhoto: image rights not confirmed for model', modelId);
+    void logSecurityEvent({ type: 'file_rejected', metadata: { service: 'modelPhotosSupabase', fn: 'uploadPrivateModelPhoto', reason: 'image_rights_not_confirmed', model_id: modelId } });
+    return null;
+  }
+
   // Convert HEIC/HEIF to JPEG before validation
   file = await convertHeicToJpegIfNeeded(file);
   // MIME whitelist + size check (images only)

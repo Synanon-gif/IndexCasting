@@ -7,6 +7,16 @@ import {
 /**
  * Semi-transparent diagonal watermark overlay — mirrors the GuestWatermark in
  * ClientWebApp.tsx. pointerEvents="none" so it never blocks tap targets below it.
+ *
+ * Architecture note (M2): The serve-watermarked-image Edge Function generates
+ * server-side SVG watermarks for authenticated agency/client users. It cannot
+ * be used here because:
+ *   a) Guest users are unauthenticated (no JWT) at the browse stage.
+ *   b) React Native's Image component does not render SVG URLs without a
+ *      dedicated SVG renderer library.
+ * This overlay is therefore the correct, intentional approach for unauthenticated
+ * guests. Any future server-side watermarking for guests would require a separate
+ * public endpoint (no JWT) that generates watermarked image blobs directly.
  */
 const GuestWatermark: React.FC<{ style?: ViewStyle }> = ({ style }) => (
   <View

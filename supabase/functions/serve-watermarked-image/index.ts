@@ -125,22 +125,16 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  // Verify the model exists in the database using the admin client.
-  // This ensures the storagePath references a legitimate model record and not
-  // an arbitrary file path crafted by an attacker (IDOR prevention).
-  // Note: both agency members AND clients with discovery access may view model
-  // photos; the platform access check above already validates subscription state.
-  const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
+  // Verify the caller has access to this specific model via a SECURITY DEFINER
+  // RPC. This prevents IDOR: knowing a model_id is not sufficient — the caller
+  // must be an agency member of the owning organisation OR a client org member.
+  // The RPC (can_view_model_photo) also confirms the model actually exists.
+  const { data: canView, error: canViewError } = await userClient.rpc(
+    'can_view_model_photo',
+    { p_model_id: modelId },
+  );
 
-  const { data: modelRow, error: modelLookupError } = await adminClient
-    .from('models')
-    .select('id')
-    .eq('id', modelId)
-    .maybeSingle();
-
-  if (modelLookupError || !modelRow) {
+  if (canViewError || !canView) {
     return new Response(JSON.stringify({ error: 'Resource not found' }), {
       status: 403,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -148,6 +142,10 @@ Deno.serve(async (req: Request) => {
   }
 
   // ── 5. Generate a short-lived signed URL ────────────────────────────────────
+  const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+
   const { data: signedUrlData, error: signedUrlError } = await adminClient.storage
     .from(bucket)
     .createSignedUrl(path, SIGNED_URL_EXPIRES_IN);

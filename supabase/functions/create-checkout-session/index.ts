@@ -82,6 +82,10 @@ function isAllowedRedirectUrl(url: string, allowedOrigins: string[]): boolean {
 
 interface CheckoutRequest {
   plan: PlanType;
+  /** Optional: caller may pass the org_id they want to pay for.
+   *  The server validates the caller is an owner of that org.
+   *  If omitted, the server resolves the org from the user's oldest membership. */
+  org_id?: string;
   success_url?: string;
   cancel_url?: string;
 }
@@ -152,15 +156,20 @@ Deno.serve(async (req: Request) => {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  // ORDER BY created_at ASC: deterministic org selection when a user somehow has
-  // multiple memberships. Consistent with can_access_platform() (VULN-M6 fix).
-  const { data: memberRow, error: memberError } = await adminClient
+  // If the caller provides an explicit org_id, validate membership against that org.
+  // Otherwise fall back to the user's oldest membership (deterministic for single-org users).
+  let memberQuery = adminClient
     .from('organization_members')
     .select('organization_id, role')
-    .eq('user_id', user.id)
-    .order('created_at', { ascending: true })
-    .limit(1)
-    .maybeSingle();
+    .eq('user_id', user.id);
+
+  if (body.org_id) {
+    memberQuery = memberQuery.eq('organization_id', body.org_id);
+  } else {
+    memberQuery = memberQuery.order('created_at', { ascending: true }).limit(1);
+  }
+
+  const { data: memberRow, error: memberError } = await memberQuery.maybeSingle();
 
   if (memberError || !memberRow) {
     console.error('[create-checkout-session] No org membership for user:', user.id, memberError);

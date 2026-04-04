@@ -157,7 +157,7 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
     if (!user) return;
 
     // Confirm rights first (records in audit table), then guard checks the DB.
-    await confirmImageRights({ userId: user.id, modelId }).catch((e) =>
+    await confirmImageRights({ userId: user.id, modelId, orgId: agencyId }).catch((e) =>
       console.error('[ModelMediaSettingsPanel] confirmImageRights error:', e),
     );
     const guard = await guardImageUpload(user.id, modelId);
@@ -234,7 +234,7 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    await confirmImageRights({ userId: user.id, modelId }).catch((e) =>
+    await confirmImageRights({ userId: user.id, modelId, orgId: agencyId }).catch((e) =>
       console.error('[ModelMediaSettingsPanel] confirmImageRights (URL) error:', e),
     );
     const guard = await guardImageUpload(user.id, modelId);

@@ -228,23 +228,9 @@ export async function getGuestLinkModels(linkId: string): Promise<GuestLinkModel
     }
     const models = (data ?? []) as GuestLinkModel[];
 
-    // MISMATCH #11 fix: Log guest link access for audit trail.
-    // Wrapped in its own async IIFE + try/catch so a log failure (including
-    // synchronous throws from the client) never affects the guest link response.
-    void (async () => {
-      try {
-        const { error: logErr } = await supabase
-          .from('guest_link_access_log')
-          .insert({
-            guest_link_id: linkId,
-            accessed_at: new Date().toISOString(),
-            model_count_served: models.length,
-          });
-        if (logErr) console.warn('[guestLinks] access log insert failed (non-fatal):', logErr);
-      } catch (e) {
-        console.warn('[guestLinks] access log insert exception (non-fatal):', e);
-      }
-    })();
+    // Guest link access is logged server-side inside the get_guest_link_models()
+    // SECURITY DEFINER RPC (migration_m3_m4_fixes.sql). No client-side insert
+    // needed — the RPC is the single authoritative audit source.
 
     // Rewrite image arrays to signed URLs (M-3 fix).
     const signed = await Promise.all(

@@ -29,6 +29,7 @@ export type ComplianceResult<T = void> =
 export interface ImageRightsConfirmation {
   userId: string;
   modelId: string | null;
+  orgId?: string;
   sessionKey?: string;
   ipAddress?: string;
   userAgent?: string;
@@ -143,6 +144,7 @@ export async function confirmImageRights(
       .insert({
         user_id:     params.userId,
         model_id:    params.modelId ?? null,
+        org_id:      params.orgId ?? null,
         session_key: params.sessionKey ?? null,
         ip_address:  params.ipAddress ?? null,
         user_agent:  params.userAgent ?? null,

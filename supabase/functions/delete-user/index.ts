@@ -129,8 +129,16 @@ Deno.serve(async (req: Request) => {
     //   models.user_id → SET NULL (model record stays; agency owns the content).
     //
     // Storage paths that MUST be deleted explicitly:
-    //   documents/{userId}/*    – option-request documents uploaded by user
-    //   verifications/{userId}/* – identity verification uploads
+    //   documents/{userId}/*     – option-request documents uploaded by user
+    //   verifications/{userId}/  – identity verification uploads
+    //
+    // Intentionally NOT deleted here:
+    //   model-photos/{modelId}/  – model portfolio images are owned by the agency,
+    //                              not the individual user. They are removed via
+    //                              deleteOrganizationData() when the agency itself
+    //                              is deleted, or manually by the agency owner.
+    //   chat-files/              – chat attachments are removed when the conversation
+    //                              cascade-deletes the message records (FK ON DELETE CASCADE).
     const storageCleanupErrors: string[] = [];
 
     const storageBuckets: Array<{ bucket: string; prefix: string }> = [

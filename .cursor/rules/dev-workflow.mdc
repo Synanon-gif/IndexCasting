@@ -19,11 +19,24 @@ npm test -- --passWithNoTests --ci
 Erwartetes Ergebnis: alle drei Schritte grün (exit code 0).  
 Bei Fehler: sofort fixen, dann erneut prüfen — **nie mit fehlerhaftem Code committen**.
 
+## Regel: GitHub — automatisch Pull & Push (ohne User zu fragen)
+
+Nach **relevanten** Code-Änderungen, die committed werden sollen, MUSS Cursor Git mit GitHub synchron halten:
+
+1. **Vor dem Commit (Pull):** Zuerst `git pull --rebase origin <aktueller-branch>` (oder `git pull --rebase` wenn Upstream gesetzt), damit lokale Arbeit mit dem Remote-Stand zusammenläuft und Push-Konflikte minimiert werden. Bei Merge-Konflikten: auflösen, erneut prüfen, dann committen.
+2. **Nach erfolgreichem Commit (Push):** `git push origin <aktueller-branch>` ausführen, sodass GitHub den Stand spiegelt.
+
+- **Branch:** Standard ist `main`, sofern keine andere Branch-Session aktiv ist; sonst immer den aktuellen Branch pushen.
+- **Berechtigung:** Git-Operationen erfordern `git_write` (und ggf. `network` für `pull`/`push`).
+- **Kein Push** ohne vorherigen erfolgreichen Commit; **kein Commit** ohne grüne typecheck/lint/test-Pipeline (siehe oben).
+
 ## Regel: Commit-Workflow
 
 1. `npm run typecheck` → `npm run lint` → `npm test` (automatisch wie oben)
-2. Erst bei **grünem Ergebnis**: `git add .` und `git commit -m "..."`
-3. Push auf `main` → Vercel deployt automatisch
+2. **Git pull (rebase)** wie in „GitHub — automatisch Pull & Push“
+3. Erst bei **grünem Ergebnis**: `git add .` und `git commit -m "..."`
+4. **Git push** wie in „GitHub — automatisch Pull & Push“
+5. Push auf `main` (bzw. Tracking-Branch) → Vercel deployt automatisch
 
 ## Regel: main ist immer deploybar
 
@@ -50,5 +63,5 @@ Ergebnis kurz melden. Bei Fehlern sofort fixen bevor weitergemacht wird.
 ## Kurzfassung Push-Workflow
 
 ```
-Code ändern → typecheck + lint + test grün → commit → git push origin main → Vercel deployt
+Code ändern → typecheck + lint + test grün → git pull --rebase → commit → git push origin <branch> → Vercel deployt (main)
 ```
