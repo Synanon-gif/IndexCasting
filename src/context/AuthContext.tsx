@@ -276,12 +276,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // We upsert the profile with is_guest=true here so the DB row reflects reality
     // before we query it below.
     try {
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
-      if (currentUser?.user_metadata?.is_guest === true) {
+      // Use getSession() instead of getUser() to avoid a network round-trip that can hang.
+      // getSession() reads from localStorage synchronously; user_metadata is embedded in the JWT.
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      if (currentSession?.user?.user_metadata?.is_guest === true) {
         const { createGuestProfile } = await import('../services/guestAuthSupabase');
         await createGuestProfile(
           userId,
-          currentUser.email ?? '',
+          currentSession.user.email ?? '',
         );
       }
     } catch (e) {

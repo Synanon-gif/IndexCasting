@@ -282,22 +282,26 @@ function AppContent() {
   // stuck on a spinner forever. After 15 s (3 retries × 5 s), force sign-out.
   // Effect re-runs when profile changes: once profile loads, the guard returns early
   // and the cleanup cancels any pending timer.
-  const profileLoadAttemptsRef = React.useRef(0);
+  // If session is set but profile remains null after login, retry loading every 4 s.
+  // After 3 failed retries (12 s total) force sign-out so the user is never stuck.
+  // Uses setInterval + a counter ref so retries happen even when profile stays null
+  // (setState(null) on an already-null value doesn't trigger a re-render).
+  const profileRetryCountRef = React.useRef(0);
   useEffect(() => {
-    if (!session || profile) {
-      profileLoadAttemptsRef.current = 0;
-      return;
-    }
-    const timer = setTimeout(() => {
-      profileLoadAttemptsRef.current += 1;
-      if (profileLoadAttemptsRef.current >= 3) {
+    if (!session?.user?.id) { profileRetryCountRef.current = 0; return; }
+    if (profile) { profileRetryCountRef.current = 0; return; }
+
+    const interval = setInterval(() => {
+      if (profileRetryCountRef.current >= 3) {
+        clearInterval(interval);
         void signOut();
-      } else {
-        void refreshProfile();
+        return;
       }
-    }, 5000);
-    return () => clearTimeout(timer);
-  // signOut and refreshProfile are stable across renders; session.user.id + profile are the real drivers
+      profileRetryCountRef.current += 1;
+      void refreshProfile();
+    }, 4000);
+    return () => clearInterval(interval);
+  // signOut / refreshProfile are stable; only session.user.id and profile matter
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user?.id, profile]);
 
