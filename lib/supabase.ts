@@ -21,7 +21,14 @@ if (Platform.OS !== 'web') {
   }
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+// Guard: createClient throws synchronously when URL/key is empty, which crashes
+// the entire module before React mounts (no ErrorBoundary can catch it → blank page).
+// Use a safe placeholder URL so the module loads; ConfigGuard in App.tsx will show
+// a human-readable error instead of a blank screen.
+const SAFE_URL = supabaseUrl || 'https://placeholder.supabase.co';
+const SAFE_KEY = supabaseAnonKey || 'placeholder-anon-key';
+
+export const supabase = createClient(SAFE_URL, SAFE_KEY, {
   auth: {
     ...(storageAdapter ? { storage: storageAdapter } : {}),
     autoRefreshToken: true,
