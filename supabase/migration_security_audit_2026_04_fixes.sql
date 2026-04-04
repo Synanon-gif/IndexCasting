@@ -25,6 +25,8 @@ DROP POLICY IF EXISTS "Authenticated users can read territories" ON public.model
 -- New policy: own profile OR members of the same organization
 -- OR participants of a shared conversation (required for cross-org chat UX).
 DROP POLICY IF EXISTS "Profiles limited public read" ON public.profiles;
+-- Idempotent re-run: drop our policy if it already exists (e.g. second paste in SQL Editor).
+DROP POLICY IF EXISTS "profiles_org_scoped_read" ON public.profiles;
 
 CREATE POLICY "profiles_org_scoped_read"
   ON public.profiles
