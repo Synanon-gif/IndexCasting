@@ -60,7 +60,9 @@ type AuthState = {
 
 const AuthContext = createContext<AuthState | null>(null);
 
-const PROFILE_FIELDS = 'id, email, display_name, role, is_active, is_admin, is_super_admin, is_guest, has_completed_signup, tos_accepted, privacy_accepted, agency_model_rights_accepted, activation_documents_sent, company_name, phone, website, country, verification_email, deletion_requested_at';
+// is_admin + is_super_admin are column-level REVOKEd from authenticated.
+// They are fetched separately via get_own_admin_flags() (SECURITY DEFINER).
+const PROFILE_FIELDS = 'id, email, display_name, role, is_active, is_guest, has_completed_signup, tos_accepted, privacy_accepted, agency_model_rights_accepted, activation_documents_sent, company_name, phone, website, country, verification_email, deletion_requested_at';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -124,6 +126,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setProfile(null);
       return null;
     }
+
+    // Fetch admin flags via SECURITY DEFINER function (bypasses column-level REVOKE).
+    let isAdminFlag = false;
+    let isSuperAdminFlag = false;
+    try {
+      const { data: adminFlags, error: adminErr } = await supabase.rpc('get_own_admin_flags');
+      if (!adminErr && adminFlags) {
+        const flags = Array.isArray(adminFlags) ? adminFlags[0] : adminFlags;
+        isAdminFlag = flags?.is_admin ?? false;
+        isSuperAdminFlag = flags?.is_super_admin ?? false;
+      }
+    } catch (e) {
+      console.error('loadProfile get_own_admin_flags error:', e);
+    }
+
     const isActive = data.is_active ?? false;
     const isGuest = data.is_guest ?? false;
     const role = data.role;
@@ -193,8 +210,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const profileData: Profile = {
       ...data,
       is_active: isGuest ? true : isActive,
-      is_admin: data.is_admin ?? false,
-      is_super_admin: data.is_super_admin ?? false,
+      is_admin: isAdminFlag,
+      is_super_admin: isSuperAdminFlag,
       is_guest: isGuest,
       has_completed_signup: data.has_completed_signup ?? false,
       tos_accepted: data.tos_accepted ?? false,
