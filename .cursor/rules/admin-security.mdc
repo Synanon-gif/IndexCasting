@@ -1,93 +1,152 @@
 ---
-description: Admin-Sicherheitsregeln — Admin hat immer Zugriff, niemand sonst kann Admin sein
+description: Admin-Sicherheit & Zuverlässigkeit — vollständige Regeln für alle admin-relevanten Änderungen
 alwaysApply: true
 ---
 
-# Admin Security & Always-Access
+# Admin Security & Always-Access — Verbindliche Regeln
 
-## Die eine Wahrheit: Nur eine Person ist Admin
+## Identität (unveränderbar)
 
-**Admin-UUID:** `fb0ab854-d0c3-4e09-a39c-269d60246927`
-**Admin-E-Mail:** `rubenelge@t-online.de`
+```
+ADMIN_UUID:  fb0ab854-d0c3-4e09-a39c-269d60246927
+ADMIN_EMAIL: rubenelge@t-online.de
+```
 
-Niemand sonst kann je Admin sein. Diese Identität ist auf drei unabhängigen Ebenen verankert.
+Nur diese eine Person ist Admin. Niemand sonst. Immer.
 
 ---
 
-## Regel 1: Admin muss IMMER auf ALLES zugreifen können
+## Regel 1: signIn() — bootstrapThenLoadProfile IMMER zuerst, isoliert
 
-Der Admin darf **niemals** ausgesperrt werden. Beim Implementieren von Admin-Detection **immer** alle drei Ebenen verwenden:
+**Pattern (NIEMALS ändern):**
 
 ```typescript
-// AuthContext — loadProfile(): IMMER alle 3 Checks in Cascade
-// 1. get_own_admin_flags() RPC   (TABLE-returning, UUID+email-gepinnt)
-// 2. is_current_user_admin() RPC (boolean, UUID+email-gepinnt, anderer Code-Pfad)
-// 3. profile.role === 'admin'    (trigger-geschützter DB-Fallback)
+const signIn = async (email, password) => {
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) return { error: error.message };
+
+  // STEP 1: Profil-Bootstrap — IMMER als erstes, eigener try-catch
+  // NIEMALS in demselben try-Block wie Nebeneffekte (linkModelByEmail etc.)
+  if (data?.user) {
+    try {
+      const result = await bootstrapThenLoadProfile(data.user.id);
+      // handle deactivated...
+    } catch (e) {
+      console.error('signIn bootstrapThenLoadProfile error:', e);
+    }
+  }
+
+  // STEP 2: Nebeneffekte — vollständig isoliert, können NICHT Step 1 blockieren
+  try { await linkModelByEmail(); } catch (e) { console.error(e); }
+
+  return { error: null };
+};
 ```
 
+**Warum:** `linkModelByEmail()` im selben try-Block → wenn es wirft, wird `bootstrapThenLoadProfile` nie aufgerufen → Admin sieht Login-Screen trotz korrekter Daten.
+
+---
+
+## Regel 2: loadProfile() — 3-Ebenen Admin-Detection
+
+**Pattern (NIEMALS reduzieren):**
+
 ```typescript
-// App.tsx Routing — IMMER dual-guard:
+// Ebene 1: get_own_admin_flags() TABLE-RPC (UUID+email-gepinnt)
+// Ebene 2: is_current_user_admin() boolean-RPC (UUID+email-gepinnt, anderer Code-Pfad)
+// Ebene 3: data.role === 'admin' (Trigger-geschützt, nur wenn beide RPCs tot)
+// → Alle drei müssen gleichzeitig versagen um Admin auszusperren — praktisch unmöglich
+```
+
+---
+
+## Regel 3: App.tsx Routing — immer dual-guard
+
+```typescript
+// Admin MUSS vor effectiveRole-Check kommen (role='admin' → kein effectiveRole → AuthScreen)
 if (profile?.is_admin || profile?.role === 'admin') {
   return <AdminDashboard />;
 }
 ```
 
-**Niemals** nur einen einzigen Check verwenden. Niemals "fail-closed" ohne Fallback bei Admin.
+`role === 'admin'` ist sicher weil:
+- BEFORE UPDATE Trigger blockiert jede Änderung via API
+- `handle_new_user` Allowlist: nur client/agent/model/guest bei Signup
+- AdminDashboard-RPCs prüfen server-seitig unabhängig
 
 ---
 
-## Regel 2: Server-Side ist die einzige Wahrheit
-
-Alle admin-spezifischen DB-Funktionen (`is_current_user_admin`, `get_own_admin_flags`, `assert_is_admin`) sind UUID+E-Mail-gepinnt:
+## Regel 4: DB-Funktionen — UUID+Email-Pin (NIEMALS entfernen)
 
 ```sql
--- Muster (NIEMALS ändern ohne alle drei Bedingungen):
+-- Alle 3 Bedingungen müssen gleichzeitig erfüllt sein:
 WHERE p.id    = auth.uid()
   AND p.id    = 'fb0ab854-d0c3-4e09-a39c-269d60246927'
   AND u.email = 'rubenelge@t-online.de'
+
+-- Gilt für: get_own_admin_flags(), is_current_user_admin(),
+--           is_current_user_super_admin(), assert_is_admin()
 ```
 
-Alle drei Bedingungen müssen gleichzeitig erfüllt sein. Keine Bedingung weglassen.
-
 ---
 
-## Regel 3: Frontend-Routing-Fallbacks sind sicher (erklären warum)
-
-`profile?.role === 'admin'` als Routing-Fallback ist **sicher** weil:
-- `role` ist durch BEFORE UPDATE Trigger geschützt — kein User kann es via API ändern
-- `handle_new_user` allowlist: nur `'client'|'agent'|'model'|'guest'` bei Signup erlaubt
-- AdminDashboard-RPCs prüfen UUID+email unabhängig → kein Datenzugriff ohne echte Identität
-- Frontend-Routing gewährt **null** Datenbankrechte
-
----
-
-## Regel 4: handle_new_user — Allowlist erzwingen
+## Regel 5: handle_new_user — Allowlist (NIEMALS erweitern ohne Prüfung)
 
 ```sql
--- NUR diese Rollen sind bei Signup erlaubt:
 v_role := CASE
   WHEN v_raw_role IN ('client', 'agent', 'model', 'guest') THEN v_raw_role
-  ELSE 'client'  -- 'admin' und alles andere → immer 'client'
+  ELSE 'client'  -- 'admin' → immer 'client', is_admin immer false
 END;
--- is_admin ist IMMER false für neue User — nur via Migration/service_role setzbar
 ```
 
 ---
 
-## Regel 5: Neue Admin-RPCs immer mit assert_is_admin() schützen
+## Regel 6: Neue Admin-RPCs — immer assert_is_admin()
 
 ```sql
--- Jede neue Admin-RPC muss als erste Zeile:
-PERFORM public.assert_is_admin();
--- assert_is_admin() → is_current_user_admin() → UUID+email-pin → log_failed_admin_attempt()
+CREATE OR REPLACE FUNCTION public.admin_neue_funktion(...)
+...AS $$
+BEGIN
+  PERFORM public.assert_is_admin();  -- ERSTE Zeile, kein anderer Guard
+  -- ... Funktion ...
+END;$$;
 ```
+
+`assert_is_admin()` → `is_current_user_admin()` → UUID+email-pin → loggt Fehlversuche.
 
 ---
 
-## Was NIEMALS geändert werden darf
+## Was NIEMALS passieren darf
 
-- Die UUID `fb0ab854-d0c3-4e09-a39c-269d60246927` in den DB-Funktionen
-- Die E-Mail `rubenelge@t-online.de` in den DB-Funktionen
-- Die 3-Ebenen-Cascade in `AuthContext.loadProfile()`
-- Das dual-guard in `App.tsx` (`profile?.is_admin || profile?.role === 'admin'`)
-- Die Allowlist in `handle_new_user`
+| Verboten | Grund |
+|----------|-------|
+| `bootstrapThenLoadProfile` im selben try wie Nebeneffekte | Admin wird ausgesperrt wenn Nebeneffekt wirft |
+| Nur 1 Admin-Check (RPC ohne Fallback) | Transiente Fehler sperren Admin aus |
+| `effectiveRole` für Admin-Routing nutzen | role='admin' gibt null → AuthScreen |
+| UUID oder Email aus DB-Funktionen entfernen | Impersonation wird möglich |
+| `handle_new_user` Allowlist erweitern ohne Review | Signup-Injection |
+| Neuen Admin-RPC ohne `assert_is_admin()` | Schwächeres Guard |
+| `is_admin` oder `role` direkt per API setzen | Blockiert durch Trigger |
+
+---
+
+## Gesamtarchitektur (Referenz)
+
+```
+Login → signIn() Step 1: bootstrapThenLoadProfile() [isoliert]
+  └─→ loadProfile()
+        ├─ Ebene 1: get_own_admin_flags() [UUID+email] → is_admin=true ✅
+        ├─ Ebene 2: is_current_user_admin() [UUID+email] → true ✅ (wenn Ebene 1 tot)
+        └─ Ebene 3: role==='admin' [Trigger] → true ✅ (wenn beide RPCs tot)
+  └─→ profile.is_admin = true → App.tsx → AdminDashboard ✅
+
+DB-Guard (jede admin RPC):
+  assert_is_admin() → is_current_user_admin()
+    → UUID=ADMIN_UUID ∧ email=ADMIN_EMAIL ∧ is_admin=true
+    → Fehler → log_failed_admin_attempt() → Exception
+
+Schutz gegen Eskalation:
+  3× BEFORE UPDATE Trigger → is_admin/role unveränderbar via API
+  handle_new_user Allowlist → role='admin' nie bei Signup möglich
+  Admin-Profil RLS → für andere User komplett unsichtbar
+```
