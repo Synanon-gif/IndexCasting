@@ -46,6 +46,7 @@ export type BookingDetails = {
   model_notes?: string;
   /** Append-only timeline all parties can read in-app */
   shared_notes?: SharedBookingNote[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [key: string]: any;
 };
 
@@ -351,7 +352,9 @@ export async function updateCalendarEntryToJob(optionRequestId: string): Promise
       .eq('option_request_id', optionRequestId);
     if (selErr) { console.error('updateCalendarEntryToJob select error:', selErr); return false; }
     if (!rows?.length) return true;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const clientName = (rows[0] as any).client_name || 'Client';
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const ids = rows.map((r: any) => r.id);
     const { error: updErr } = await supabase
       .from('calendar_entries')
@@ -594,9 +597,9 @@ export async function getBookingEventsAsCalendarEntriesInRange(params: {
 export async function updateBookingDetails(
   optionRequestId: string,
   partialDetails: Partial<BookingDetails>,
-  role: 'client' | 'agency' | 'model'
+  _role: 'client' | 'agency' | 'model'
 ): Promise<boolean> {
-  // role is currently informational for auditing / future logic
+  // _role is currently informational for auditing / future logic
   //
   // Concurrency guard: reads updated_at and uses it as an optimistic lock so
   // two simultaneous partial-update calls cannot silently overwrite each other.
@@ -612,6 +615,7 @@ export async function updateBookingDetails(
         console.error('updateBookingDetails select error:', error);
         return false;
       }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rows = data as { id: string; booking_details: any; updated_at: string }[];
       if (!rows.length) return true;
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { getAgencyModels } from '../services/apiService';
 import { AgencyRecruitingView } from '../views/AgencyRecruitingView';
@@ -50,9 +50,11 @@ export const AgencyDashboardScreen: React.FC<AgencyDashboardScreenProps> = ({
     if (!currentAgencyId) return;
     let cancelled = false;
     getAgencyModels(currentAgencyId)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .then((data: any) => {
         if (cancelled) return;
         setItems(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           data.map((m: any) => ({
             id: m.id,
             name: m.name,

@@ -14,7 +14,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView,
+  View, Text, StyleSheet, TouchableOpacity,
   ActivityIndicator, TextInput, Modal, Platform, Linking,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -25,7 +25,6 @@ import { supabase } from '../../lib/supabase';
 import {
   createGuestConversation,
   sendGuestBookingRequest,
-  getGuestConversation,
   getAgencyMemberIds,
   type GuestBookingRequestPayload,
 } from '../services/guestChatSupabase';
@@ -105,10 +104,10 @@ export const GuestChatView: React.FC = () => {
   const userId = session?.user?.id ?? null;
 
   const [conversation, setConversation] = useState<Conversation | null>(null);
-  const [agencyOrgId, setAgencyOrgId] = useState<string | null>(null);
+  const [_agencyOrgId, setAgencyOrgId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [chatError, setChatError] = useState<string | null>(null);
-  const [pendingRequest, setPendingRequest] = useState<PendingRequest | null>(null);
+  const [_pendingRequest, setPendingRequest] = useState<PendingRequest | null>(null);
   const [selectedModelIds, setSelectedModelIds] = useState<string[]>([]);
   const initializingRef = useRef(false);
 

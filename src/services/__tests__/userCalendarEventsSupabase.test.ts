@@ -17,13 +17,13 @@ import {
 // Supabase mock
 // ---------------------------------------------------------------------------
 
-const eqMock   = jest.fn();
-const orderMock = jest.fn();
-const selectMock = jest.fn();
-const insertMock = jest.fn();
-const updateMock = jest.fn();
-const deleteMock = jest.fn();
-const singleMock = jest.fn();
+const _eqMock   = jest.fn();
+const _orderMock = jest.fn();
+const _selectMock = jest.fn();
+const _insertMock = jest.fn();
+const _updateMock = jest.fn();
+const _deleteMock = jest.fn();
+const _singleMock = jest.fn();
 
 /** Build a chainable mock that resolves at the terminal call with `result`. */
 function makeChain(result: unknown) {

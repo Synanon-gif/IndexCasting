@@ -67,6 +67,7 @@ export async function importModelAndMerge(params: ImportModelPayload): Promise<{
     const email = params.email?.trim() || null;
     const birthday = params.birthday?.trim() || null;
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let existing: any | null = null;
 
     if (externalId) {
@@ -113,6 +114,7 @@ export async function importModelAndMerge(params: ImportModelPayload): Promise<{
     }
 
     if (existing) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const updates: any = {};
       const forceMs = params.forceUpdateMeasurements === true && (Boolean(externalId) || Boolean(netwalkId));
 
@@ -195,6 +197,7 @@ export async function importModelAndMerge(params: ImportModelPayload): Promise<{
     }
 
     // Create new model
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const payload: any = {
       agency_id: params.agency_id ?? null,
       mediaslide_sync_id: externalId ?? null,

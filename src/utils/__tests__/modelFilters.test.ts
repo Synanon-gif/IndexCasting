@@ -273,8 +273,11 @@ describe('filterModels', () => {
   });
 
   describe('ethnicity filter', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const asian = makeModel({ id: 'asian', ethnicity: 'East Asian' } as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const black = makeModel({ id: 'black', ethnicity: 'Black / African' } as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const noEthnicity = makeModel({ id: 'none', ethnicity: undefined } as any);
     const models = [asian, black, noEthnicity];
 

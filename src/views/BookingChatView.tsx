@@ -110,6 +110,7 @@ export const BookingChatView: React.FC<Props> = ({
       }),
     );
     return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages]);
 
   const sendMessage = () => {

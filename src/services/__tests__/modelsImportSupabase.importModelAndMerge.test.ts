@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { importModelAndMerge } from '../modelsImportSupabase';
 
 const fromMock = jest.fn();

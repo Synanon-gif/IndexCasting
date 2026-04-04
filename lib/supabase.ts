@@ -6,10 +6,13 @@ import { createClient } from '@supabase/supabase-js';
 import { supabaseUrl, supabaseAnonKey } from '../src/config/env';
 import { Platform } from 'react-native';
 
-let storageAdapter: any = undefined;
+import type { SupportedStorage } from '@supabase/supabase-js';
+
+let storageAdapter: SupportedStorage | undefined = undefined;
 
 if (Platform.OS !== 'web') {
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const AsyncStorage = require('@react-native-async-storage/async-storage').default;
     storageAdapter = {
       getItem: (key: string) => AsyncStorage.getItem(key),

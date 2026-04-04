@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, FlatList, Image,
   ActivityIndicator, TextInput, Platform, Modal, type ViewStyle, type ListRenderItemInfo,
@@ -194,7 +194,6 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
     }, POLL_INTERVAL_MS);
 
     return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [linkId]);
 
   const toggleModel = (id: string) => {

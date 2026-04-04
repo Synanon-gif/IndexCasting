@@ -10,6 +10,7 @@ import { navigatePublicLegal } from '../utils/publicLegalRoutes';
 
 type Props = {
   onSelectRole: (role: UserRole) => void;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 } & NativeStackScreenProps<any>;
 
 export const LoginScreen: React.FC<Props> = ({ onSelectRole }) => {

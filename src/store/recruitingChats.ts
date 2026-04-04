@@ -6,7 +6,6 @@
 
 import {
   getThreads as fetchThreads,
-  getThread as fetchThread,
   getThreadsForAgency as fetchThreadsForAgency,
   createThread as createThreadInDb,
   getMessages as fetchMessages,

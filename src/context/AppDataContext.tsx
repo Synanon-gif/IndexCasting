@@ -71,9 +71,11 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // Role is derived from the authenticated profile — never hardcoded to 'client'.
-  const currentUser: User | null = currentUserId
-    ? { id: currentUserId, role: profile?.role ?? 'client' }
-    : null;
+  // Wrapped in useMemo to stabilize object identity across renders (prevents exhaustive-deps churn).
+  const currentUser = useMemo<User | null>(
+    () => currentUserId ? { id: currentUserId, role: profile?.role ?? 'client' } : null,
+    [currentUserId, profile?.role],
+  );
   const userProjects = useMemo(() => currentUser ? projects.filter(p => p.owner_id === currentUser.id) : [], [currentUser, projects]);
 
   const createProjectAction = useCallback((name: string) => {

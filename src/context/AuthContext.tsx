@@ -113,6 +113,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     return () => subscription.unsubscribe();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /** Returns { profile }, { deactivated: true, reason } (signs out), or null if no profile. */

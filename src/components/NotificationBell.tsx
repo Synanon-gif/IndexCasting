@@ -18,7 +18,6 @@ import {
   ensureHydrated,
   type NotificationsState,
 } from '../store/notificationsStore';
-import { colors } from '../theme/theme';
 import { NotificationList } from './NotificationList';
 
 export function NotificationBell() {

@@ -121,6 +121,7 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
     const signal = { cancelled: false };
     load(signal);
     return () => { signal.cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [applicantUserId]);
 
   useEffect(() => {

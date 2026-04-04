@@ -6,10 +6,8 @@
 
 import {
   getApplications as fetchApps,
-  getApplicationsByStatus,
   insertApplication as insertApp,
   updateApplicationStatus,
-  createModelFromApplication,
   confirmApplicationByModel as confirmByModelService,
   rejectApplicationByModel as rejectByModelService,
   type SupabaseApplication,

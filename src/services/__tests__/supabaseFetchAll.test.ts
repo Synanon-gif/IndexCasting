@@ -15,6 +15,7 @@ describe('fetchAllSupabasePages', () => {
 
   it('throws on page error instead of returning silent partial data', async () => {
     const errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const pgErr = { message: 'fail', code: 'x', details: '', hint: '' } as any;
     await expect(
       fetchAllSupabasePages<{ id: number }>(async () => ({ data: null, error: pgErr })),

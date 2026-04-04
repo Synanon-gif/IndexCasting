@@ -86,7 +86,7 @@ export const DashboardSummaryBar: React.FC<Props> = ({
 
   return (
     <View style={styles.container}>
-      {chips.map((chip, idx) => (
+      {chips.map((chip, _idx) => (
         <TouchableOpacity
           key={chip.label}
           style={[styles.chip, chip.highlight && styles.chipHighlight]}

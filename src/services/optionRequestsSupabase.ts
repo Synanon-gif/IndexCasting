@@ -1,6 +1,5 @@
 import { supabase } from '../../lib/supabase';
 import { pooledSubscribe } from './realtimeChannelPool';
-import { createBookingEvent } from './bookingEventsSupabase';
 import type { BookingEventType } from './bookingEventsSupabase';
 import { createNotification, createNotifications } from './notificationsSupabase';
 import { uiCopy } from '../constants/uiCopy';
@@ -439,7 +438,7 @@ export async function agencyAcceptClientPrice(id: string): Promise<boolean> {
       try {
         const { data: row } = await supabase.from('option_requests').select('organization_id').eq('id', id).maybeSingle();
         void logOptionAction((row as { organization_id: string | null } | null)?.organization_id ?? '', 'option_price_accepted', id, { accepted_by: 'agency' }, { client_price_status: 'pending' });
-      } catch (_e) {
+      } catch {
         void logOptionAction('', 'option_price_accepted', id, { accepted_by: 'agency' }, { client_price_status: 'pending' });
       }
     })();
@@ -500,7 +499,7 @@ export async function clientAcceptCounterPrice(id: string): Promise<boolean> {
       try {
         const { data: row } = await supabase.from('option_requests').select('organization_id').eq('id', id).maybeSingle();
         void logOptionAction((row as { organization_id: string | null } | null)?.organization_id ?? '', 'option_price_accepted', id, { accepted_by: 'client' }, { client_price_status: 'pending' });
-      } catch (_e) {
+      } catch {
         void logOptionAction('', 'option_price_accepted', id, { accepted_by: 'client' }, { client_price_status: 'pending' });
       }
     })();
@@ -999,6 +998,7 @@ async function createBookingEventFromRequest(req: SupabaseOptionRequest): Promis
     if (error) {
       // 23505 = unique_violation: the DB trigger already created this booking_event.
       // Silently ignore — idempotency is guaranteed by uidx_booking_events_per_option_request.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if ((error as any).code === '23505') {
         console.info('createBookingEventFromRequest: booking_event already exists (idempotent, skipped)', req.id);
         return;

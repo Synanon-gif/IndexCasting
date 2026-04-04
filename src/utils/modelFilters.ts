@@ -269,6 +269,7 @@ export function filterModels(
     // Priority 1: radius-based using model_location coordinates (when available)
     // Priority 2: city-substring fallback (when coordinates not available)
     if (filters.nearby) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const loc = (m as any).model_location as { lat_approx?: number | null; lng_approx?: number | null } | null | undefined;
       if (userLat != null && userLng != null && loc?.lat_approx != null && loc?.lng_approx != null) {
         const dist = haversineKm(userLat, userLng, loc.lat_approx, loc.lng_approx);

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StorageImage } from '../components/StorageImage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,13 +17,12 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
 import countries from 'i18n-iso-countries';
 import enLocale from 'i18n-iso-countries/langs/en.json';
 import { colors, spacing, typography } from '../theme/theme';
 import { showAppAlert } from '../utils/crossPlatformAlert';
 import { useAuth } from '../context/AuthContext';
-import { getAgencyModels, updateModelVisibility } from '../services/apiService';
+import { getAgencyModels } from '../services/apiService';
 import {
   getOptionRequests,
   subscribe,
@@ -37,7 +37,6 @@ import {
   agencyAcceptClientPriceStore,
   agencyCounterOfferStore,
   agencyRejectClientPriceStore,
-  type OptionRequest,
   type ChatStatus,
 } from '../store/optionRequests';
 import { AgencyRecruitingView } from './AgencyRecruitingView';
@@ -282,6 +281,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
 
   useEffect(() => {
     if (currentAgencyId) void loadAgencyTeam();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentAgencyId, profile?.email]);
 
   /** Re-load roster when opening My Models (e.g. after accepting an application in Recruiting). */
@@ -334,6 +334,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
     if (tab === 'calendar' && currentAgencyId) {
       loadAgencyCalendar();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, currentAgencyId]);
 
   useEffect(() => {
@@ -346,6 +347,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
       start_time: (ce?.start_time ?? o.start_time ?? '09:00').toString().slice(0, 5),
       end_time: (ce?.end_time ?? o.end_time ?? '17:00').toString().slice(0, 5),
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCalendarItem?.option.id]);
 
   useEffect(() => {
@@ -358,6 +360,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
       note: selectedManualEvent.note ?? '',
       color: selectedManualEvent.color,
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedManualEvent?.id]);
 
   /** Recruiting threads for Messages → Recruiting chats (Supabase).
@@ -1769,6 +1772,7 @@ const MyModelsTab: React.FC<{
         });
       });
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedModel?.id]);
 
   // Recalculate completeness whenever the selected model or its territories change.
@@ -1782,6 +1786,7 @@ const MyModelsTab: React.FC<{
       hasVisiblePhoto: hasVisiblePortfolio,
     };
     setCompletenessIssues(checkModelCompleteness(selectedModel, ctx));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedModel?.id, territoryCountryCodes, hasVisiblePortfolio]);
 
   // Bulk selection state
@@ -1918,6 +1923,7 @@ const MyModelsTab: React.FC<{
     void getTerritoriesForModel(selectedModel.id, agencyId).then((rows) => {
       setTerritoryCountryCodes(rows.map((r) => r.country_code.toUpperCase()));
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedModel?.id]);
 
   const handleAddModel = async () => {
@@ -3761,7 +3767,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   const status = request ? getRequestStatus(request.threadId) ?? request.status : null;
   const finalStatus = request?.finalStatus;
   const clientPriceStatus = request?.clientPriceStatus;
-  const agencyCounterPrice = request?.agencyCounterPrice;
+  const _agencyCounterPrice = request?.agencyCounterPrice;
   const currency = request?.currency ?? 'EUR';
 
   const sendMessage = () => {

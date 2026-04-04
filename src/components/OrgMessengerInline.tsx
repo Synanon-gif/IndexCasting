@@ -161,11 +161,13 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   useEffect(() => {
     reload();
     if (viewerUserId) void markAllAsRead(conversationId, viewerUserId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
 
   useEffect(() => {
     const unsub = subscribeToConversation(conversationId, () => reload());
     return unsub;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
 
   // Reconnect: when the app returns to foreground after being backgrounded,
@@ -178,6 +180,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
     };
     const sub = AppState.addEventListener('change', handleAppState);
     return () => sub.remove();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
 
   // Resolve booking model names for booking cards.
@@ -753,7 +756,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
 
 /** Horizontal scrollable quick reply chips shown above the message input. */
 const QuickReplyChips: React.FC<{ onSelect: (text: string) => void }> = ({ onSelect }) => {
-  const { ScrollView: HScroll } = require('react-native');
+  const HScroll = ScrollView;
   return (
     <HScroll
       horizontal

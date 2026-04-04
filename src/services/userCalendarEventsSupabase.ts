@@ -165,6 +165,7 @@ export async function insertManualEvent(event: {
     if (error) {
       // Postgres unique-violation code 23505 means the DB-level constraint caught a
       // concurrent duplicate that slipped past the pre-check above (TOCTOU closed).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if ((error as any).code === '23505') {
         console.warn('insertManualEvent: duplicate caught by DB unique constraint', dateNorm, event.title);
         return {

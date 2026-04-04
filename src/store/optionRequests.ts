@@ -6,7 +6,6 @@
  */
 
 import {
-  getOptionRequests as fetchRequests,
   getOptionRequestById,
   insertOptionRequest,
   updateOptionRequestStatus,
@@ -156,7 +155,7 @@ export function addOptionRequest(
   const threadId = `thread-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const requestType = extra?.requestType ?? 'option';
   const timeStr = extra?.startTime && extra?.endTime ? ` (${extra.startTime}–${extra.endTime})` : '';
-  const label = requestType === 'casting' ? 'Casting' : 'Option';
+  const _label = requestType === 'casting' ? 'Casting' : 'Option';
   const req: OptionRequest = {
     id: `req-${Date.now()}`,
     clientName,

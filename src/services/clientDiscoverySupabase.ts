@@ -278,6 +278,7 @@ export async function getDiscoveryModels(
   // Frontend paywall check (belt-and-suspenders; the RPC enforces it server-side too).
   try {
     await assertPlatformAccess();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (e: any) {
     if (e?.code === 'platform_access_denied') {
       return { models: [], nextCursor: null };

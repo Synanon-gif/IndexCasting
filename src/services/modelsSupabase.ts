@@ -233,6 +233,7 @@ export type ClientMeasurementFilters = {
 };
 
 /** Apply measurement/hair/sex filters to any Supabase query builder — used in all three client functions. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function applyMeasurementFilters(q: any, f: ClientMeasurementFilters): any {
   if (f.heightMin) q = q.gte('height', f.heightMin);
   if (f.heightMax) q = q.lte('height', f.heightMax);

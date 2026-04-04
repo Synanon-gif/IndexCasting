@@ -6,7 +6,7 @@ import { colors, spacing, typography } from '../theme/theme';
 import { getModelsFromSupabase, getModelForUserFromSupabase, type SupabaseModel } from '../services/modelsSupabase';
 import { upsertModelLocation, roundCoord } from '../services/modelLocationsSupabase';
 import { supabase } from '../../lib/supabase';
-import { getModelBookingThreadIds, getRecruitingThread, getRecruitingMessages, addRecruitingMessage, subscribeRecruitingChats } from '../store/recruitingChats';
+import { getModelBookingThreadIds, getRecruitingThread, subscribeRecruitingChats } from '../store/recruitingChats';
 import {
   getOptionRequests,
   subscribe,
@@ -26,7 +26,6 @@ import {
   deleteCalendarEntryById,
   updateCalendarEntryById,
   type CalendarEntry,
-  type CalendarEntryType,
   updateBookingDetails,
   appendSharedBookingNote,
   type SharedBookingNote,
@@ -96,7 +95,6 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   const [newEntryEnd, setNewEntryEnd] = useState('10:00');
   const [bookingThreadIds, setBookingThreadIds] = useState<string[]>(() => getModelBookingThreadIds());
   const [openBookingThreadId, setOpenBookingThreadId] = useState<string | null>(null);
-  const [openChatInput, setOpenChatInput] = useState('');
   const [options, setOptions] = useState<OptionRequest[]>([]);
   const [selectedOptionThread, setSelectedOptionThread] = useState<string | null>(null);
   const [optChatInput, setOptChatInput] = useState('');
@@ -167,6 +165,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
 
       setProfile((prev) => prev ? { ...prev, currentLocation: cityName } : prev);
       Alert.alert('Location Updated', `Your current city has been set to: ${cityName}`);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       Alert.alert('Location Error', err?.message ?? 'Could not retrieve your location.');
     } finally {
@@ -216,6 +215,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
         bust: m.bust ?? 0, waist: m.waist ?? 0, hips: m.hips ?? 0,
         city: m.city ?? '', countryCode: m.country_code ?? null,
         currentLocation: m.current_location ?? '', hairColor: m.hair_color ?? '',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         mediaslideSyncId: (m as any).mediaslide_sync_id ?? null,
       });
       loadCalendar(m.id);
@@ -285,7 +285,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
 
   const outstandingOptions = useMemo(() =>
     profile ? getOutstandingOptionsForModel(profile.id) : [],
-    [profile, options]
+    [profile]
   );
 
   const jobTickets = useMemo(
@@ -318,6 +318,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
       end_time: (openEntry.end_time ?? '10:00').toString().slice(0, 5),
       title: openEntry.title ?? '',
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openEntry?.id]);
 
   const daysInMonth = new Date(calMonth.year, calMonth.month + 1, 0).getDate();
@@ -332,7 +333,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     [calEntries, selectedDate],
   );
 
-  const dateHasEntry = (dateStr: string) => calEntries.some((e) => e.date === dateStr);
+  const _dateHasEntry = (dateStr: string) => calEntries.some((e) => e.date === dateStr);
   const dateEntryType = (dateStr: string): string | null => {
     const entry = calEntries.find((e) => e.date === dateStr);
     return entry?.entry_type ?? null;
@@ -616,6 +617,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                             setOpenEntry(entry);
                             setSharedNoteDraft('');
                             const existing =
+                              // eslint-disable-next-line @typescript-eslint/no-explicit-any
                               (entry.booking_details as any)?.model_notes ??
                               entry.note ??
                               '';

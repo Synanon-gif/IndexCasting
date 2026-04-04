@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Tests für den Booking Confirmation Flow:
  *   - agencyAcceptRequest: direkte Bestätigung (kein Account) vs. wartend auf Model

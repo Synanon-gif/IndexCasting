@@ -22,7 +22,6 @@ jest.mock('../projectsSupabase', () => ({
 import {
   removeModelFromProject,
   addModelToProject,
-  getProjectModels,
   getProjectsForOrg,
 } from '../projectsSupabase';
 

@@ -85,6 +85,7 @@ export const AgencySettingsTab: React.FC<Props> = ({ agency, organizationId, onS
     setCity(agency.city ?? '');
     setCountry(agency.country ?? '');
     setSegments(new Set((agency.agency_types ?? []).filter(Boolean)));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agency?.id]);
 
   const toggleSegment = (s: string) => {

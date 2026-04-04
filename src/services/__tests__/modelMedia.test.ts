@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Tests for the Model Media Management System
  *
@@ -45,7 +46,7 @@ function mockChain(resolved: { data: unknown; error: unknown }) {
   return chain;
 }
 
-function mockInsertChain(resolved: { data: unknown; error: unknown }) {
+function _mockInsertChain(resolved: { data: unknown; error: unknown }) {
   const base = mockChain(resolved);
   const maybeSingle = jest.fn().mockResolvedValue({ data: { sort_order: 0 }, error: null });
   return {

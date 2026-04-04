@@ -115,6 +115,7 @@ export const AgencyStorageWidget: React.FC<Props> = ({ refreshTrigger }) => {
         <View
           style={[
             styles.barFill,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             { width: `${Math.min(100, percent).toFixed(1)}%` as any, backgroundColor: barColor },
           ]}
         />

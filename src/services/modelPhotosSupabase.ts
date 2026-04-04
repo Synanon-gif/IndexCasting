@@ -99,6 +99,7 @@ export async function getPhotosForModel(
     }
 
     // Keep legacy `visible` in sync with `is_visible_to_clients` for older UI code.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (data ?? []).map((row: any) => {
       const isVisibleToClients = Boolean(row.is_visible_to_clients ?? row.visible ?? true);
       return {
@@ -281,6 +282,7 @@ export async function updatePhoto(
     >
   >,
 ): Promise<boolean> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const payload: any = { ...fields };
   if ('visible' in fields && fields.visible !== undefined && payload.is_visible_to_clients === undefined) {
     payload.is_visible_to_clients = fields.visible;

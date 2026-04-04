@@ -18,7 +18,6 @@ import {
   saveSessionId,
   clearSessionIds,
   type DiscoveryModel,
-  DISCOVERY_PAGE_SIZE,
 } from '../services/clientDiscoverySupabase';
 import { useAuth } from '../context/AuthContext';
 import { uiCopy } from '../constants/uiCopy';
@@ -243,6 +242,7 @@ export const CustomerSwipeScreen: React.FC = () => {
     setSessionSeenCount(sessionSeenIds.current.size);
     saveSessionId(clientOrgId, current.id);
     void recordInteraction(current.id, 'viewed');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.id, clientOrgId]);
 
   const handleNext = () => {

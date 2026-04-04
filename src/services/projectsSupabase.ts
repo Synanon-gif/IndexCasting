@@ -107,6 +107,7 @@ export async function getProjectModels(projectId: string): Promise<string[]> {
     .select('model_id')
     .eq('project_id', projectId);
   if (error) { console.error('getProjectModels error:', error); return []; }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (data ?? []).map((d: any) => d.model_id);
 }
 

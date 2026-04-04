@@ -3,7 +3,7 @@
  * Persists to localStorage. RLS: all reads/writes are scoped by authorized user IDs.
  */
 
-import type { User, UserRole, Model, Project, Conversation, Message } from './schema';
+import type { User, Model, Project, Conversation, Message } from './schema';
 import { models as mockModels } from '../mockData';
 
 const STORAGE_KEYS = {
@@ -68,6 +68,7 @@ function seedIfNeeded() {
     { id: 'user-model-3', email: 'model3@demo.com', display_name: 'AMI S.', role: 'model', created_at: now, updated_at: now },
   ];
   const modelUserId: Record<string, string> = { '1': 'user-model-1', '2': 'user-model-2', '3': 'user-model-3' };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   models = (mockModels as any[]).map((m) => ({
     id: m.id,
     mediaslide_sync_id: m.code || null,

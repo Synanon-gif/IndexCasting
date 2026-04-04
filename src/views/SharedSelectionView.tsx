@@ -32,6 +32,7 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
 }) => {
   const [models, setModels] = useState<SharedModel[]>([]);
   const [loading, setLoading] = useState(true);
+  const modelIdsKey = modelIds.join(',');
 
   useEffect(() => {
     if (!modelIds.length) {
@@ -45,6 +46,7 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
         if (cancelled) return;
         const list: SharedModel[] = results
           .filter(Boolean)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           .map((m: any) => ({
             id: m.id,
             name: m.name,
@@ -63,7 +65,8 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [modelIds.join(',')]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelIdsKey]); 
 
   return (
     <View style={styles.container}>

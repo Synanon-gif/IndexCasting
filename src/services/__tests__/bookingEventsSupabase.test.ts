@@ -16,13 +16,13 @@ import {
 // ---------------------------------------------------------------------------
 // Supabase mock
 // ---------------------------------------------------------------------------
-const insertMock = jest.fn();
-const selectMock = jest.fn();
-const eqMock = jest.fn();
-const updateMock = jest.fn();
-const maybeSingleMock = jest.fn();
-const orderMock = jest.fn();
-const singleMock = jest.fn();
+const _insertMock = jest.fn();
+const _selectMock = jest.fn();
+const _eqMock = jest.fn();
+const _updateMock = jest.fn();
+const _maybeSingleMock = jest.fn();
+const _orderMock = jest.fn();
+const _singleMock = jest.fn();
 const getUserMock = jest.fn();
 
 const makeChain = (finalResult: unknown) => {
@@ -40,6 +40,7 @@ const makeChain = (finalResult: unknown) => {
 jest.mock('../../../lib/supabase', () => ({
   supabase: {
     auth: {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       getUser: (...args: any[]) => getUserMock(...args),
     },
     from: jest.fn(),
