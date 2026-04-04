@@ -419,8 +419,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       console.error('signIn invite token policy error:', e);
     }
+
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) return { error: error.message };
+
+    // ── Step 1: profile bootstrap (ALWAYS runs — isolated from all side-effects) ──
+    // This must never be skipped or blocked by any subsequent step.
+    // Admin depends on this to get is_admin=true set in profile state.
+    let deactivatedResult: { reason?: 'deactivated' | 'deletion' | 'org_deactivated' } | null = null;
+    if (data?.user) {
+      try {
+        const result = await bootstrapThenLoadProfile(data.user.id);
+        if (result && 'deactivated' in result && result.deactivated) {
+          deactivatedResult = result;
+        } else {
+          setOrgDeactivated(false);
+        }
+      } catch (e) {
+        console.error('signIn bootstrapThenLoadProfile error:', e);
+      }
+    }
+
+    // Return deactivation errors immediately — no further side-effects needed.
+    if (deactivatedResult) {
+      if (deactivatedResult.reason === 'deletion') {
+        return { error: uiCopy.auth.accountScheduledForDeletion };
+      }
+      if (deactivatedResult.reason === 'org_deactivated') {
+        return { error: uiCopy.adminDashboard.orgDeactivatedBody };
+      }
+      return { error: 'Your account has been deactivated. Please contact the administrator.' };
+    }
+
+    // ── Step 2: side-effects (each fully isolated, none can block Step 1) ────────
     try {
       const { acceptOrganizationInvitation } = await import('../services/organizationsInvitationsSupabase');
       const { readInviteToken, persistInviteToken, isInviteFlowActive } = await import('../storage/inviteToken');
@@ -432,25 +463,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       console.error('signIn invite accept error:', e);
     }
+
     try {
       const { linkModelByEmail } = await import('../services/modelsSupabase');
       await linkModelByEmail();
-      if (data?.user) {
-        const result = await bootstrapThenLoadProfile(data.user.id);
-        if (result && 'deactivated' in result && result.deactivated) {
-          if (result.reason === 'deletion') {
-            return { error: uiCopy.auth.accountScheduledForDeletion };
-          }
-          if (result.reason === 'org_deactivated') {
-            return { error: uiCopy.adminDashboard.orgDeactivatedBody };
-          }
-          return { error: 'Your account has been deactivated. Please contact the administrator.' };
-        }
-        setOrgDeactivated(false);
-      }
     } catch (e) {
-      console.error('signIn profile load error:', e);
+      console.error('signIn linkModelByEmail error:', e);
     }
+
     return { error: null };
   };
 
