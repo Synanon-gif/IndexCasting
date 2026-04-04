@@ -1,0 +1,93 @@
+---
+description: Admin-Sicherheitsregeln — Admin hat immer Zugriff, niemand sonst kann Admin sein
+alwaysApply: true
+---
+
+# Admin Security & Always-Access
+
+## Die eine Wahrheit: Nur eine Person ist Admin
+
+**Admin-UUID:** `fb0ab854-d0c3-4e09-a39c-269d60246927`
+**Admin-E-Mail:** `rubenelge@t-online.de`
+
+Niemand sonst kann je Admin sein. Diese Identität ist auf drei unabhängigen Ebenen verankert.
+
+---
+
+## Regel 1: Admin muss IMMER auf ALLES zugreifen können
+
+Der Admin darf **niemals** ausgesperrt werden. Beim Implementieren von Admin-Detection **immer** alle drei Ebenen verwenden:
+
+```typescript
+// AuthContext — loadProfile(): IMMER alle 3 Checks in Cascade
+// 1. get_own_admin_flags() RPC   (TABLE-returning, UUID+email-gepinnt)
+// 2. is_current_user_admin() RPC (boolean, UUID+email-gepinnt, anderer Code-Pfad)
+// 3. profile.role === 'admin'    (trigger-geschützter DB-Fallback)
+```
+
+```typescript
+// App.tsx Routing — IMMER dual-guard:
+if (profile?.is_admin || profile?.role === 'admin') {
+  return <AdminDashboard />;
+}
+```
+
+**Niemals** nur einen einzigen Check verwenden. Niemals "fail-closed" ohne Fallback bei Admin.
+
+---
+
+## Regel 2: Server-Side ist die einzige Wahrheit
+
+Alle admin-spezifischen DB-Funktionen (`is_current_user_admin`, `get_own_admin_flags`, `assert_is_admin`) sind UUID+E-Mail-gepinnt:
+
+```sql
+-- Muster (NIEMALS ändern ohne alle drei Bedingungen):
+WHERE p.id    = auth.uid()
+  AND p.id    = 'fb0ab854-d0c3-4e09-a39c-269d60246927'
+  AND u.email = 'rubenelge@t-online.de'
+```
+
+Alle drei Bedingungen müssen gleichzeitig erfüllt sein. Keine Bedingung weglassen.
+
+---
+
+## Regel 3: Frontend-Routing-Fallbacks sind sicher (erklären warum)
+
+`profile?.role === 'admin'` als Routing-Fallback ist **sicher** weil:
+- `role` ist durch BEFORE UPDATE Trigger geschützt — kein User kann es via API ändern
+- `handle_new_user` allowlist: nur `'client'|'agent'|'model'|'guest'` bei Signup erlaubt
+- AdminDashboard-RPCs prüfen UUID+email unabhängig → kein Datenzugriff ohne echte Identität
+- Frontend-Routing gewährt **null** Datenbankrechte
+
+---
+
+## Regel 4: handle_new_user — Allowlist erzwingen
+
+```sql
+-- NUR diese Rollen sind bei Signup erlaubt:
+v_role := CASE
+  WHEN v_raw_role IN ('client', 'agent', 'model', 'guest') THEN v_raw_role
+  ELSE 'client'  -- 'admin' und alles andere → immer 'client'
+END;
+-- is_admin ist IMMER false für neue User — nur via Migration/service_role setzbar
+```
+
+---
+
+## Regel 5: Neue Admin-RPCs immer mit assert_is_admin() schützen
+
+```sql
+-- Jede neue Admin-RPC muss als erste Zeile:
+PERFORM public.assert_is_admin();
+-- assert_is_admin() → is_current_user_admin() → UUID+email-pin → log_failed_admin_attempt()
+```
+
+---
+
+## Was NIEMALS geändert werden darf
+
+- Die UUID `fb0ab854-d0c3-4e09-a39c-269d60246927` in den DB-Funktionen
+- Die E-Mail `rubenelge@t-online.de` in den DB-Funktionen
+- Die 3-Ebenen-Cascade in `AuthContext.loadProfile()`
+- Das dual-guard in `App.tsx` (`profile?.is_admin || profile?.role === 'admin'`)
+- Die Allowlist in `handle_new_user`
