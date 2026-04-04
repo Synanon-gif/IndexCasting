@@ -440,9 +440,9 @@ function AppContent() {
 
   // Admin check must come before effectiveRole gate: admin profiles have role='admin'
   // which does not map to any effectiveRole, causing them to be sent back to AuthScreen.
-  // Double-guard: check both is_admin flag (from get_own_admin_flags RPC) and role='admin'
-  // so that a transient RPC failure never locks the admin out.
-  if (profile?.is_admin || profile?.role === 'admin') {
+  // Authoritative source: profile.is_admin is set exclusively by the UUID+email-pinned
+  // get_own_admin_flags() SECURITY DEFINER RPC — no role-based fallback (removed).
+  if (profile?.is_admin) {
     return (
       <>
         <View style={styles.shell}>
