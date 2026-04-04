@@ -315,10 +315,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const refreshProfile = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) await loadProfile(user.id);
+    // getSession() reads from localStorage (no network round-trip) — cannot hang.
+    // Semantically identical to getUser(): both yield the current user's ID.
+    const { data: { session: s } } = await supabase.auth.getSession();
+    if (s?.user) await loadProfile(s.user.id);
   // loadProfile is defined in the same closure and stable across renders
-   
   }, []);
 
   const signUp = async (
