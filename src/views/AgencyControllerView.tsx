@@ -2323,7 +2323,7 @@ const MyModelsTab: React.FC<{
       const pInt = (v: string) => { const n = parseInt(v, 10); return isNaN(n) ? null : n; };
       const updates: any = {};
       updates.name = editState.name;
-      updates.email = editState.email.trim() || null;
+      // email and phone are ownership fields — agencies must not overwrite them (CRIT-1 security rule).
       updates.height = pInt(editState.height) ?? selectedModel.height;
       // Save to both chest and bust for backwards compatibility.
       const chestVal = pInt(editState.chest);

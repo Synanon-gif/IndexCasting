@@ -37,12 +37,15 @@ const makeChain = (finalResult: unknown) => {
   return chain;
 };
 
+const rpcMock = jest.fn();
+
 jest.mock('../../../lib/supabase', () => ({
   supabase: {
     auth: {
       getUser: (...args: any[]) => getUserMock(...args),
     },
     from: jest.fn(),
+    rpc: (...args: any[]) => rpcMock(...args),
   },
 }));
 
@@ -89,7 +92,11 @@ describe('bookingStatusLabel', () => {
 // createBookingEvent
 // ---------------------------------------------------------------------------
 describe('createBookingEvent', () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // Platform access is granted by default in unit tests
+    rpcMock.mockResolvedValue({ data: { allowed: true }, error: null });
+  });
 
   it('inserts a new event and returns it', async () => {
     const event = makeEvent();
@@ -121,6 +128,18 @@ describe('createBookingEvent', () => {
     chain.insert.mockReturnValue(chain);
     chain.select.mockReturnValue(chain);
     chain.single.mockResolvedValue({ data: null, error: { message: 'DB error' } });
+
+    const result = await createBookingEvent({
+      model_id: 'model-1',
+      date: '2026-05-01',
+      type: 'option',
+    });
+
+    expect(result).toBeNull();
+  });
+
+  it('returns null when platform access is denied', async () => {
+    rpcMock.mockResolvedValue({ data: { allowed: false, reason: 'no_subscription' }, error: null });
 
     const result = await createBookingEvent({
       model_id: 'model-1',
