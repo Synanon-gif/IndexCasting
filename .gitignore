@@ -41,6 +41,9 @@ yarn-error.*
 .env*.local
 .env.supabase
 
+# Generated full-code security audit bundle (~1–2 MB); run: npm run security-audit-bundle
+docs/SECURITY_AUDIT_CODE_BUNDLE.md
+
 # typescript
 *.tsbuildinfo
 

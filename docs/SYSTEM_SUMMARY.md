@@ -205,5 +205,6 @@
 ## 12. Related Docs
 
 - `docs/LLM_FULL_REVIEW_CONTEXT.md` — single-file bundle for external LLM security/logic review (regenerate with `npm run review-context`)
+- `docs/SECURITY_AUDIT_COLLECTION.md` — how to generate full SQL + TS audit bundle (`npm run security-audit-bundle` → local `docs/SECURITY_AUDIT_CODE_BUNDLE.md`, gitignored)
 - `docs/PROJECT_OVERVIEW_AGB_DSGVO.md` — legal/compliance-oriented overview  
 - `docs/COMPLIANCE_AUDIT_REPORT_2026_04.md`, `docs/MISMATCH_AUDIT_2026_04.md`, `docs/ABUSE_HACKER_AUDIT_2026_04.md` — audit trails (as of their dates)

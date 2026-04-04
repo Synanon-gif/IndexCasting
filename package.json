@@ -21,6 +21,7 @@
     "format": "prettier --write 'src/**/*.{ts,tsx}' 'lib/**/*.{ts,tsx}'",
     "format:check": "prettier --check 'src/**/*.{ts,tsx}' 'lib/**/*.{ts,tsx}'",
     "review-context": "bash scripts/generate-llm-review-bundle.sh",
+    "security-audit-bundle": "bash scripts/generate-security-audit-bundle.sh",
     "cap:sync": "cap sync",
     "cap:ios": "cap open ios"
   },
