@@ -438,6 +438,19 @@ function AppContent() {
     );
   }
 
+  // Admin check must come before effectiveRole gate: admin profiles have role='admin'
+  // which does not map to any effectiveRole, causing them to be sent back to AuthScreen.
+  if (profile?.is_admin) {
+    return (
+      <>
+        <View style={styles.shell}>
+          <AdminDashboard onLogout={signOut} />
+        </View>
+        <StatusBar style="dark" />
+      </>
+    );
+  }
+
   if (!effectiveRole) {
     return (
       <>
@@ -452,17 +465,6 @@ function AppContent() {
       return (
         <>
           <LegalAcceptanceScreen />
-          <StatusBar style="dark" />
-        </>
-      );
-    }
-
-    if (profile.is_admin) {
-      return (
-        <>
-          <View style={styles.shell}>
-            <AdminDashboard onLogout={signOut} />
-          </View>
           <StatusBar style="dark" />
         </>
       );
