@@ -99,14 +99,21 @@ Deno.serve(async (req: Request) => {
     const isSelf = callerUser.id === targetUserId;
 
     // Admins may delete any account; regular users may only delete their own.
+    // IMPORTANT: is_admin is column-level REVOKEd from authenticated — a direct
+    // .select('is_admin') returns null even for real admins.
+    // Use the SECURITY DEFINER RPC get_own_admin_flags() which bypasses the REVOKE
+    // AND enforces UUID + email pinning (only the platform owner passes).
     if (!isSelf) {
-      const { data: callerProfile } = await anonClient
-        .from('profiles')
-        .select('is_admin')
-        .eq('id', callerUser.id)
-        .maybeSingle();
-
-      if (!callerProfile?.is_admin) {
+      const { data: adminFlags, error: adminFlagsError } = await anonClient.rpc('get_own_admin_flags');
+      if (adminFlagsError) {
+        console.error('delete-user: get_own_admin_flags error:', adminFlagsError.message);
+        return new Response(
+          JSON.stringify({ ok: false, error: 'Forbidden: admin check failed' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
+      const flagRow = Array.isArray(adminFlags) ? adminFlags[0] : adminFlags;
+      if (!flagRow?.is_admin) {
         return new Response(
           JSON.stringify({ ok: false, error: 'Forbidden: only admins may delete other accounts' }),
           { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },

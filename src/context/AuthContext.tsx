@@ -127,9 +127,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return null;
     }
 
-    // Fetch admin flags via SECURITY DEFINER function (bypasses column-level REVOKE).
-    // Fallback: if the RPC fails or returns no rows, treat role='admin' as is_admin=true
-    // so that the platform admin is never locked out by a transient RPC failure.
+    // Fetch admin flags via UUID+email-pinned SECURITY DEFINER RPC.
+    // is_admin, is_super_admin, AND role are all column-REVOKEd from authenticated.
+    // get_own_admin_flags() is the ONLY authoritative source — it enforces
+    // UUID = ADMIN_UUID AND email = ADMIN_EMAIL simultaneously.
+    // Fail-closed: if the RPC errors, isAdminFlag stays false. No role-based fallback.
     let isAdminFlag = false;
     let isSuperAdminFlag = false;
     try {
@@ -139,13 +141,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAdminFlag = flags?.is_admin ?? false;
         isSuperAdminFlag = flags?.is_super_admin ?? false;
       }
+      if (adminErr) {
+        console.error('loadProfile get_own_admin_flags error:', adminErr);
+      }
     } catch (e) {
-      console.error('loadProfile get_own_admin_flags error:', e);
-    }
-    // If the RPC returned false/null but the profile row has role='admin',
-    // trust the DB role as the authoritative fallback (role is RLS-protected).
-    if (!isAdminFlag && data.role === 'admin') {
-      isAdminFlag = true;
+      console.error('loadProfile get_own_admin_flags exception:', e);
     }
 
     const isActive = data.is_active ?? false;
