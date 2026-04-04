@@ -64,30 +64,10 @@ export type CreateBookingEventParams = {
   currency?: string | null;
 };
 
-/** HIGH-3: Service-layer paywall guard — mirrors assertPlatformAccess in modelsSupabase. */
-async function assertPlatformAccess(): Promise<void> {
-  const { data, error } = await supabase.rpc('can_access_platform');
-  if (error) {
-    console.error('[bookingEvents] assertPlatformAccess RPC error:', error);
-    throw new Error('platform_access_check_failed');
-  }
-  const result = data as { allowed: boolean; reason?: string } | null;
-  if (!result?.allowed) {
-    throw Object.assign(new Error('platform_access_denied'), {
-      code: 'platform_access_denied',
-      reason: result?.reason ?? 'unknown',
-    });
-  }
-}
-
 export async function createBookingEvent(
   params: CreateBookingEventParams,
 ): Promise<BookingEvent | null> {
   try {
-    // HIGH-3: Enforce paywall before creating a booking. The DB policy on booking_events
-    // INSERT also enforces this server-side, but we fail fast here for consistent UX.
-    await assertPlatformAccess();
-
     const { data: user } = await supabase.auth.getUser();
     const commissionAmount =
       params.fee_total != null && params.commission_rate != null

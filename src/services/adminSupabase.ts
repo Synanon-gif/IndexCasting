@@ -560,12 +560,6 @@ export async function adminListAllModels(): Promise<{ data: AdminModel[]; migrat
 }
 
 async function _adminListModelsFallback(): Promise<AdminModel[]> {
-  // HIGH-2 fix: hard admin check before any broad model query — never rely on RLS alone.
-  const adminCheck = await isCurrentUserAdmin();
-  if (!adminCheck) {
-    console.error('[Admin] _adminListModelsFallback: non-admin call blocked — returning empty.');
-    return [];
-  }
   try {
     const { data, error } = await supabase
       .from('models')

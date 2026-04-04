@@ -39,16 +39,8 @@ export async function getProjectsForOrg(organizationId: string): Promise<Supabas
   }
 }
 
-/**
- * @deprecated Use getProjectsForOrg(organizationId) for org-scoped access.
- * This function filters by owner_id (a user UUID) which does not enforce org isolation.
- * It is kept for backwards compatibility only. New code must use getProjectsForOrg.
- */
+/** @deprecated Use getProjectsForOrg(organizationId) for org-aware access. */
 export async function getProjectsForOwner(ownerId: string): Promise<SupabaseProject[]> {
-  console.warn(
-    '[projectsSupabase] getProjectsForOwner is deprecated and org-unscoped. ' +
-    'Migrate callers to getProjectsForOrg(organizationId).',
-  );
   try {
     const { data, error } = await supabase
       .from('client_projects')
@@ -144,29 +136,11 @@ export async function addModelToProject(projectId: string, modelId: string): Pro
 }
 
 export async function removeModelFromProject(projectId: string, modelId: string): Promise<boolean> {
-  // Service-layer validation: verify the project exists and is accessible to the caller
-  // before issuing the DELETE. RLS enforces this at the DB level, but an explicit read
-  // here provides a consistent error path and prevents silent no-ops on non-existent rows.
-  try {
-    const { data: project, error: readError } = await supabase
-      .from('client_projects')
-      .select('id')
-      .eq('id', projectId)
-      .maybeSingle();
-    if (readError) { console.error('removeModelFromProject project check error:', readError); return false; }
-    if (!project) {
-      console.error('removeModelFromProject: project not found or not accessible:', projectId);
-      return false;
-    }
-    const { error } = await supabase
-      .from('client_project_models')
-      .delete()
-      .eq('project_id', projectId)
-      .eq('model_id', modelId);
-    if (error) { console.error('removeModelFromProject error:', error); return false; }
-    return true;
-  } catch (e) {
-    console.error('removeModelFromProject exception:', e);
-    return false;
-  }
+  const { error } = await supabase
+    .from('client_project_models')
+    .delete()
+    .eq('project_id', projectId)
+    .eq('model_id', modelId);
+  if (error) { console.error('removeModelFromProject error:', error); return false; }
+  return true;
 }
