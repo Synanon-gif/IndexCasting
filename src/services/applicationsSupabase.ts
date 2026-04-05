@@ -99,14 +99,20 @@ export type ApplicationListOptions = {
 };
 
 export async function getApplications(
+  agencyId?: string,
   opts?: ApplicationListOptions,
 ): Promise<SupabaseApplication[]> {
+  if (agencyId !== undefined && !agencyId) {
+    console.error('[getApplications] agencyId provided but empty — call aborted');
+    return [];
+  }
   try {
     let q = supabase
       .from('model_applications')
       .select('*')
       .order('created_at', { ascending: false })
       .limit(opts?.limit ?? 100);
+    if (agencyId) q = q.eq('agency_id', agencyId);
     if (opts?.afterCreatedAt) q = q.lt('created_at', opts.afterCreatedAt);
     const { data, error } = await q;
     if (error) { console.error('getApplications error:', error); return []; }
@@ -138,8 +144,13 @@ export async function fetchApplicationById(applicationId: string): Promise<Supab
 
 export async function getApplicationsByStatus(
   status: string,
+  agencyId?: string,
   opts?: ApplicationListOptions,
 ): Promise<SupabaseApplication[]> {
+  if (agencyId !== undefined && !agencyId) {
+    console.error('[getApplicationsByStatus] agencyId provided but empty — call aborted');
+    return [];
+  }
   try {
     let q = supabase
       .from('model_applications')
@@ -147,6 +158,7 @@ export async function getApplicationsByStatus(
       .eq('status', status)
       .order('created_at', { ascending: false })
       .limit(opts?.limit ?? 100);
+    if (agencyId) q = q.eq('agency_id', agencyId);
     if (opts?.afterCreatedAt) q = q.lt('created_at', opts.afterCreatedAt);
     const { data, error } = await q;
     if (error) { console.error('getApplicationsByStatus error:', error); return []; }

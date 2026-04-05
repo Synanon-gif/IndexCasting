@@ -20,6 +20,7 @@ export const uiCopy = {
     no: 'No',
     reloadPage: 'Reload page',
     retry: 'Retry',
+    noAgencyContext: 'Your account is not linked to an agency yet. Please contact your administrator.',
   },
   alerts: {
     scheduleUpdated: 'The booking time was updated.',

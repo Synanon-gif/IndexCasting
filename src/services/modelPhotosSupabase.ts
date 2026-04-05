@@ -7,6 +7,7 @@ import {
   logSecurityEvent,
 } from '../../lib/validation';
 import { logImageUpload, hasRecentImageRightsConfirmation } from './gdprComplianceSupabase';
+import { assertOrgContext } from '../utils/orgGuard';
 import imageCompression from 'browser-image-compression';
 import { convertHeicToJpegIfNeeded } from './imageUtils';
 import { checkAndIncrementStorage, decrementStorage } from './agencyStorageSupabase';
@@ -465,8 +466,10 @@ export async function uploadModelPhoto(
         .select('organization_id')
         .eq('id', modelId)
         .maybeSingle();
-      const orgId = (modelRow as { organization_id?: string } | null)?.organization_id ?? '';
-      void logImageUpload(orgId, modelId, { bucket: PUBLIC_IMAGES_BUCKET, path, fileSizeBytes: actualSize });
+      const orgId = (modelRow as { organization_id?: string } | null)?.organization_id;
+      if (assertOrgContext(orgId, 'uploadModelPhoto')) {
+        void logImageUpload(orgId, modelId, { bucket: PUBLIC_IMAGES_BUCKET, path, fileSizeBytes: actualSize });
+      }
     })();
 
     return { url: storageUri, fileSizeBytes: actualSize };
@@ -576,8 +579,10 @@ export async function uploadPrivateModelPhoto(
         .select('organization_id')
         .eq('id', modelId)
         .maybeSingle();
-      const orgId = (modelRow as { organization_id?: string } | null)?.organization_id ?? '';
-      void logImageUpload(orgId, modelId, { bucket: PRIVATE_BUCKET, path, fileSizeBytes: actualSize, private: true });
+      const orgId = (modelRow as { organization_id?: string } | null)?.organization_id;
+      if (assertOrgContext(orgId, 'uploadPrivateModelPhoto')) {
+        void logImageUpload(orgId, modelId, { bucket: PRIVATE_BUCKET, path, fileSizeBytes: actualSize, private: true });
+      }
     })();
 
     return { url: privateUri, fileSizeBytes: actualSize };

@@ -70,14 +70,20 @@ export type ThreadListOptions = {
 };
 
 export async function getThreads(
+  agencyId?: string,
   opts?: ThreadListOptions,
 ): Promise<SupabaseRecruitingThread[]> {
+  if (agencyId !== undefined && !agencyId) {
+    console.error('[getThreads] agencyId provided but empty — call aborted');
+    return [];
+  }
   try {
     let q = supabase
       .from('recruiting_chat_threads')
       .select('*')
       .order('created_at', { ascending: false })
       .limit(opts?.limit ?? 100);
+    if (agencyId) q = q.eq('agency_id', agencyId);
     if (opts?.afterCreatedAt) q = q.lt('created_at', opts.afterCreatedAt);
     const { data, error } = await q;
     if (error) { console.error('getThreads error:', error); return []; }

@@ -6,6 +6,7 @@ import { uiCopy } from '../constants/uiCopy';
 import { normalizeInput, validateText, sanitizeHtml, extractSafeUrls, logSecurityEvent } from '../../lib/validation';
 import { checkAndIncrementStorage, decrementStorage } from './agencyStorageSupabase';
 import { guardUploadSession, logBookingAction, logOptionAction } from './gdprComplianceSupabase';
+import { assertOrgContext } from '../utils/orgGuard';
 
 export const OPTION_REQUEST_SELECT =
   'id, client_id, model_id, agency_id, requested_date, status, project_id, client_name, model_name, proposed_price, agency_counter_price, client_price_status, final_status, request_type, currency, start_time, end_time, model_approval, model_approved_at, model_account_linked, booker_id, organization_id, agency_organization_id, client_organization_id, created_by, agency_assignee_user_id, created_at, updated_at';
@@ -90,14 +91,20 @@ export type OptionRequestListOptions = {
 };
 
 export async function getOptionRequests(
+  orgId?: string,
   opts?: OptionRequestListOptions,
 ): Promise<SupabaseOptionRequest[]> {
+  if (orgId !== undefined && !orgId) {
+    console.error('[getOptionRequests] orgId provided but empty — call aborted');
+    return [];
+  }
   try {
     let q = supabase
       .from('option_requests')
       .select(OPTION_REQUEST_SELECT)
       .order('created_at', { ascending: false })
       .limit(opts?.limit ?? 100);
+    if (orgId) q = q.eq('organization_id', orgId);
     if (opts?.afterCreatedAt) q = q.lt('created_at', opts.afterCreatedAt);
     const { data, error } = await q;
     if (error) { console.error('getOptionRequests error:', error); return []; }
@@ -255,13 +262,15 @@ export async function insertOptionRequest(req: {
 
   const inserted = data as SupabaseOptionRequest;
 
-  void logOptionAction(inserted.organization_id ?? '', 'option_sent', inserted.id, {
-    client_id: inserted.client_id,
-    agency_id: inserted.agency_id,
-    model_id: inserted.model_id,
-    proposed_price: inserted.proposed_price,
-    request_type: inserted.request_type,
-  });
+  if (assertOrgContext(inserted.organization_id, 'insertOptionRequest')) {
+    void logOptionAction(inserted.organization_id, 'option_sent', inserted.id, {
+      client_id: inserted.client_id,
+      agency_id: inserted.agency_id,
+      model_id: inserted.model_id,
+      proposed_price: inserted.proposed_price,
+      request_type: inserted.request_type,
+    });
+  }
 
   // Notify the AGENCY org about the new request.
   // IMPORTANT: inserted.organization_id is the CLIENT org (used for RLS scoping).
@@ -309,11 +318,13 @@ export async function updateOptionRequestStatus(
       console.warn('updateOptionRequestStatus: no row updated — concurrent state change or wrong fromStatus', { id, fromStatus, targetStatus: status });
       return false;
     }
-    const orgId = (data as { id: string; organization_id: string | null }).organization_id ?? '';
+    const orgId = (data as { id: string; organization_id: string | null }).organization_id;
     const auditAction = status === 'confirmed' ? 'option_confirmed'
       : status === 'rejected' ? 'option_rejected'
       : 'option_price_proposed';
-    void logOptionAction(orgId, auditAction, id, { status }, { status: fromStatus });
+    if (assertOrgContext(orgId, 'updateOptionRequestStatus')) {
+      void logOptionAction(orgId, auditAction, id, { status }, { status: fromStatus });
+    }
     return true;
   } catch (e) {
     console.error('updateOptionRequestStatus exception:', e);
@@ -352,12 +363,7 @@ export async function updateOptionRequestSchedule(
       return false;
     }
     if (data === true) {
-      void logOptionAction('', 'option_schedule_updated', id, {
-        updated_by: 'agency',
-        date: dateNorm,
-        start_time: fields.start_time ?? null,
-        end_time: fields.end_time ?? null,
-      });
+      console.warn('[updateOptionRequestSchedule] org context unavailable — audit log skipped');
     }
     return data === true;
   } catch (e) {
@@ -386,12 +392,7 @@ export async function modelUpdateOptionSchedule(
       console.error('modelUpdateOptionSchedule error:', error);
       return false;
     }
-    void logOptionAction('', 'option_schedule_updated', optionId, {
-      updated_by: 'model',
-      date: d,
-      start_time: startTime ?? null,
-      end_time: endTime ?? null,
-    });
+    console.warn('[modelUpdateOptionSchedule] org context unavailable — audit log skipped for', optionId);
     return true;
   } catch (e) {
     console.error('modelUpdateOptionSchedule exception:', e);
@@ -425,7 +426,10 @@ export async function setAgencyCounterOffer(
       console.warn('setAgencyCounterOffer: no row updated — request not in_negotiation', id);
       return false;
     }
-    void logOptionAction((data as { id: string; organization_id: string | null }).organization_id ?? '', 'option_price_countered', id, { counter_price: counterPrice });
+    const orgId = (data as { id: string; organization_id: string | null }).organization_id;
+    if (assertOrgContext(orgId, 'setAgencyCounterOffer')) {
+      void logOptionAction(orgId, 'option_price_countered', id, { counter_price: counterPrice });
+    }
     return true;
   } catch (e) {
     console.error('setAgencyCounterOffer exception:', e);
@@ -455,9 +459,12 @@ export async function agencyAcceptClientPrice(id: string): Promise<boolean> {
     void (async () => {
       try {
         const { data: row } = await supabase.from('option_requests').select('organization_id').eq('id', id).maybeSingle();
-        void logOptionAction((row as { organization_id: string | null } | null)?.organization_id ?? '', 'option_price_accepted', id, { accepted_by: 'agency' }, { client_price_status: 'pending' });
+        const orgId = (row as { organization_id: string | null } | null)?.organization_id;
+        if (assertOrgContext(orgId, 'agencyAcceptClientPrice')) {
+          void logOptionAction(orgId, 'option_price_accepted', id, { accepted_by: 'agency' }, { client_price_status: 'pending' });
+        }
       } catch {
-        void logOptionAction('', 'option_price_accepted', id, { accepted_by: 'agency' }, { client_price_status: 'pending' });
+        console.warn('[agencyAcceptClientPrice] could not resolve org for audit log');
       }
     })();
     return true;
@@ -486,7 +493,10 @@ export async function agencyRejectClientPrice(id: string): Promise<boolean> {
       console.warn('agencyRejectClientPrice: no row updated — offer not pending or request not in_negotiation', id);
       return false;
     }
-    void logOptionAction((data as { id: string; organization_id: string | null }).organization_id ?? '', 'option_price_rejected', id, { rejected_by: 'agency' }, { client_price_status: 'pending' });
+    const orgIdAR = (data as { id: string; organization_id: string | null }).organization_id;
+    if (assertOrgContext(orgIdAR, 'agencyRejectClientPrice')) {
+      void logOptionAction(orgIdAR, 'option_price_rejected', id, { rejected_by: 'agency' }, { client_price_status: 'pending' });
+    }
     return true;
   } catch (e) {
     console.error('agencyRejectClientPrice exception:', e);
@@ -516,9 +526,12 @@ export async function clientAcceptCounterPrice(id: string): Promise<boolean> {
     void (async () => {
       try {
         const { data: row } = await supabase.from('option_requests').select('organization_id').eq('id', id).maybeSingle();
-        void logOptionAction((row as { organization_id: string | null } | null)?.organization_id ?? '', 'option_price_accepted', id, { accepted_by: 'client' }, { client_price_status: 'pending' });
+        const orgId = (row as { organization_id: string | null } | null)?.organization_id;
+        if (assertOrgContext(orgId, 'clientAcceptCounterPrice')) {
+          void logOptionAction(orgId, 'option_price_accepted', id, { accepted_by: 'client' }, { client_price_status: 'pending' });
+        }
       } catch {
-        void logOptionAction('', 'option_price_accepted', id, { accepted_by: 'client' }, { client_price_status: 'pending' });
+        console.warn('[clientAcceptCounterPrice] could not resolve org for audit log');
       }
     })();
     return true;
@@ -553,7 +566,10 @@ export async function clientRejectCounterOfferOnSupabase(id: string): Promise<bo
       console.warn('clientRejectCounterOfferOnSupabase: no row updated — request already confirmed or rejected', id);
       return false;
     }
-    void logOptionAction((data as { id: string; organization_id: string | null }).organization_id ?? '', 'option_rejected', id, { rejected_by: 'client', reason: 'counter_offer_rejected' });
+    const orgIdRC = (data as { id: string; organization_id: string | null }).organization_id;
+    if (assertOrgContext(orgIdRC, 'clientRejectCounterOfferOnSupabase')) {
+      void logOptionAction(orgIdRC, 'option_rejected', id, { rejected_by: 'client', reason: 'counter_offer_rejected' });
+    }
     return true;
   } catch (e) {
     console.error('clientRejectCounterOfferOnSupabase exception:', e);
@@ -595,13 +611,14 @@ export async function clientConfirmJobOnSupabase(id: string): Promise<boolean> {
     await createBookingEventFromRequest(updated as SupabaseOptionRequest);
 
     const up = updated as SupabaseOptionRequest;
-    // Job confirmation is an option_request lifecycle step — log as option (not booking_events id).
-    void logOptionAction(up.organization_id ?? '', 'option_confirmed', id, {
-      phase: 'job_confirmed',
-      final_status: 'job_confirmed',
-      agency_id: up.agency_id,
-      model_id: up.model_id,
-    }, { final_status: 'option_confirmed' });
+    if (assertOrgContext(up.organization_id, 'clientConfirmJobOnSupabase')) {
+      void logOptionAction(up.organization_id, 'option_confirmed', id, {
+        phase: 'job_confirmed',
+        final_status: 'job_confirmed',
+        agency_id: up.agency_id,
+        model_id: up.model_id,
+      }, { final_status: 'option_confirmed' });
+    }
 
     return true;
   } catch (e) {
@@ -807,7 +824,9 @@ export async function updateModelApproval(
       return false;
     }
     const row = updatedRows[0] as { id: string; organization_id: string | null };
-    void logOptionAction(row.organization_id ?? '', approval === 'approved' ? 'option_confirmed' : 'option_rejected', id, { model_approval: approval }, { model_approval: 'pending' });
+    if (assertOrgContext(row.organization_id, 'updateModelApproval')) {
+      void logOptionAction(row.organization_id, approval === 'approved' ? 'option_confirmed' : 'option_rejected', id, { model_approval: approval }, { model_approval: 'pending' });
+    }
     return true;
   } catch (e) {
     console.error('updateModelApproval exception:', e);
@@ -939,11 +958,7 @@ export async function uploadOptionDocument(
     .single();
   if (error) { console.error('uploadOptionDocument error:', error); return null; }
   const doc = data as SupabaseOptionDocument;
-  void logOptionAction('', 'option_document_uploaded', requestId, {
-    document_id: doc.id,
-    file_name: fileName,
-    uploaded_by: uploadedBy,
-  });
+  console.warn('[uploadOptionDocument] org context unavailable — audit log skipped for', requestId);
   return doc;
   } catch (e) {
     console.error('uploadOptionDocument exception:', e);
@@ -1091,11 +1106,13 @@ export async function agencyAcceptRequest(
         return null;
       }
 
-      void logOptionAction(r.organization_id ?? '', 'option_confirmed', id, {
-        result: 'confirmed',
-        model_account_linked: false,
-        agency_id: r.agency_id,
-      });
+      if (assertOrgContext(r.organization_id, 'agencyAcceptRequest:no-account')) {
+        void logOptionAction(r.organization_id, 'option_confirmed', id, {
+          result: 'confirmed',
+          model_account_linked: false,
+          agency_id: r.agency_id,
+        });
+      }
       return 'confirmed';
     }
 
@@ -1126,11 +1143,13 @@ export async function agencyAcceptRequest(
         return null;
       }
 
-      void logOptionAction(r.organization_id ?? '', 'option_confirmed', id, {
-        result: 'confirmed',
-        model_approval: 'pre-approved',
-        agency_id: r.agency_id,
-      });
+      if (assertOrgContext(r.organization_id, 'agencyAcceptRequest:pre-approved')) {
+        void logOptionAction(r.organization_id, 'option_confirmed', id, {
+          result: 'confirmed',
+          model_approval: 'pre-approved',
+          agency_id: r.agency_id,
+        });
+      }
       return 'confirmed';
     }
 
@@ -1157,11 +1176,13 @@ export async function agencyAcceptRequest(
       return null;
     }
 
-    void logOptionAction(r.organization_id ?? '', 'option_confirmed', id, {
-      result: 'awaiting_model_confirmation',
-      model_account_linked: true,
-      agency_id: r.agency_id,
-    });
+    if (assertOrgContext(r.organization_id, 'agencyAcceptRequest:awaiting-model')) {
+      void logOptionAction(r.organization_id, 'option_confirmed', id, {
+        result: 'awaiting_model_confirmation',
+        model_account_linked: true,
+        agency_id: r.agency_id,
+      });
+    }
 
     // Notify model user that their confirmation is needed
     void notifyModelAwaitingConfirmation(r.model_id, id);
@@ -1210,7 +1231,9 @@ export async function agencyRejectRequest(id: string): Promise<boolean> {
 
     // Notify the client about the rejection (fire-and-forget).
     const row = data as { id: string; client_id: string | null; organization_id: string | null };
-    void logOptionAction(row.organization_id ?? '', 'option_rejected', id, { rejected_by: 'agency' });
+    if (assertOrgContext(row.organization_id, 'agencyRejectRequest')) {
+      void logOptionAction(row.organization_id, 'option_rejected', id, { rejected_by: 'agency' });
+    }
     if (row.client_id) {
       void createNotification({
         user_id: row.client_id,
@@ -1287,11 +1310,13 @@ export async function modelConfirmOptionRequest(id: string): Promise<boolean> {
     // booking_event is created by the DB trigger tr_auto_booking_event_on_confirm
     // (migration_chaos_hardening_2026_04.sql) — no client-side call needed here.
 
-    void logOptionAction(r.organization_id ?? '', 'option_confirmed', id, {
-      confirmed_by: 'model',
-      agency_id: r.agency_id,
-      model_id: r.model_id,
-    });
+    if (assertOrgContext(r.organization_id, 'modelConfirmOptionRequest')) {
+      void logOptionAction(r.organization_id, 'option_confirmed', id, {
+        confirmed_by: 'model',
+        agency_id: r.agency_id,
+        model_id: r.model_id,
+      });
+    }
 
     // Notify agency org + client user about model confirmation
     void notifyModelConfirmedOption(r);
@@ -1332,7 +1357,9 @@ export async function modelRejectOptionRequest(id: string): Promise<boolean> {
     }
 
     const rejectRow = rejectData as { id: string; agency_id: string | null; client_id: string | null; organization_id: string | null };
-    void logOptionAction(rejectRow.organization_id ?? '', 'option_rejected', id, { rejected_by: 'model' });
+    if (assertOrgContext(rejectRow.organization_id, 'modelRejectOptionRequest')) {
+      void logOptionAction(rejectRow.organization_id, 'option_rejected', id, { rejected_by: 'model' });
+    }
 
     // Notify agency and client about the model rejection (fire-and-forget).
     void (async () => {

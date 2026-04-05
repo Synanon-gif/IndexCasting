@@ -81,6 +81,148 @@ const agencyId = profile?.agency_id ?? '';
 
 ---
 
+---
+
+## ❌ RISIKO 4 — SECURITY DEFINER Funktion ohne `SET row_security TO off`
+
+**Problem:** Jede `SECURITY DEFINER` Funktion, die aus einer RLS-Policy aufgerufen wird
+oder RLS-geschützte Tabellen liest, MUSS `SET row_security TO off` haben.
+Ohne dies wertet PostgreSQL 15+ die RLS-Policies der gelesenen Tabellen auch innerhalb der
+Funktion aus → latente Rekursionsgefahr / leere Ergebnisse / 42P17.
+
+**Verboten:**
+```sql
+-- NIEMALS so (kein row_security=off):
+CREATE OR REPLACE FUNCTION public.is_org_member(p_org_id uuid)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public
+AS $$ SELECT EXISTS (SELECT 1 FROM organization_members WHERE ...) $$;
+```
+
+**Richtig:**
+```sql
+-- IMMER so (SET row_security TO off):
+CREATE OR REPLACE FUNCTION public.is_org_member(p_org_id uuid)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public
+SET row_security TO off   -- ← PFLICHT wenn aus Policy aufgerufen
+AS $$ SELECT EXISTS (SELECT 1 FROM organization_members WHERE ...) $$;
+```
+
+**Gefixt (2026-04-05):** `is_org_member()`, `can_view_model_photo()`, `agency_can_manage_recruiting_for_agency()`
+
+**Prüfpflicht:** Jede neue `SECURITY DEFINER` Funktion die aus einer RLS-Policy aufgerufen wird oder
+RLS-geschützte Tabellen (profiles, models, organization_members, organizations) liest:
+→ MUSS `SET row_security TO off` haben.
+
+---
+
+## ❌ RISIKO 5 — FOR ALL Policy mit profiles/models Referenz
+
+**Problem:** Eine `FOR ALL` Policy inkludiert SELECT. Wenn die Policy-USING-Klausel über
+`models` oder `profiles` joingt, und eine andere Policy auf diesen Tabellen die neue Tabelle
+zurückreferenziert, entsteht sofort eine 42P17 Rekursion.
+
+**Verboten:**
+```sql
+-- NIEMALS FOR ALL auf Tabellen im profiles→models-Pfad mit Rückverweis:
+CREATE POLICY "..."
+  ON public.model_embeddings
+  FOR ALL TO authenticated   -- ← FOR ALL = SELECT eingeschlossen!
+  USING (
+    EXISTS (SELECT 1 FROM profiles WHERE ...)  -- ← Rückverweis-Risiko
+  );
+```
+
+**Richtig:** Aufteilen in separate SELECT + INSERT + UPDATE + DELETE Policies:
+```sql
+CREATE POLICY "...select" ON public.model_embeddings FOR SELECT ...;
+CREATE POLICY "...insert" ON public.model_embeddings FOR INSERT ...;
+CREATE POLICY "...update" ON public.model_embeddings FOR UPDATE ...;
+CREATE POLICY "...delete" ON public.model_embeddings FOR DELETE ...;
+```
+
+**Gefixt (2026-04-05):** `model_embeddings` — FOR ALL aufgeteilt in 4 separate Policies.
+
+---
+
+## ❌ RISIKO 6 — Fehlender org_id Filter in Service-Funktionen
+
+**Problem:** Service-Funktionen die Daten aus org-spezifischen Tabellen lesen, verlassen sich
+rein auf RLS. Wenn RLS durch einen Bug, eine Policy-Lücke oder einen falschen Kontext umgangen
+wird, fließen Daten aller Orgs heraus.
+
+**Verboten:**
+```typescript
+// NIEMALS ohne org-Filter wenn die Tabelle org-scoped ist:
+export async function getApplications(): Promise<SupabaseApplication[]> {
+  const { data } = await supabase.from('model_applications').select('*');
+  return data;
+}
+```
+
+**Richtig (Defense-in-Depth):**
+```typescript
+export async function getApplications(agencyId?: string): Promise<SupabaseApplication[]> {
+  if (agencyId !== undefined && !agencyId) {
+    console.error('[getApplications] agencyId provided but empty — aborted');
+    return [];
+  }
+  let q = supabase.from('model_applications').select('*');
+  if (agencyId) q = q.eq('agency_id', agencyId);
+  const { data } = await q;
+  return data ?? [];
+}
+```
+
+**Gefixt (2026-04-05):** `getApplications()`, `getApplicationsByStatus()`, `getThreads()`, `getOptionRequests()`
+in `applicationsSupabase.ts`, `recruitingChatSupabase.ts`, `optionRequestsSupabase.ts`.
+
+---
+
+## ❌ RISIKO 7 — Frontend Silent Fail / Audit-Log mit leerem org_id
+
+**Problem:** `logOptionAction(row.organization_id ?? '', ...)` schreibt einen Audit-Log-Eintrag
+mit leerem `org_id`. Audit-Logs ohne Org-Kontext sind nicht auswertbar und verstoßen gegen
+die Logging-Anforderungen (Regel 17 in cursorrules). Außerdem maskieren `if (!orgId) return;`
+Probleme ohne User-Feedback.
+
+**Verboten:**
+```typescript
+// NIEMALS:
+void logOptionAction(row.organization_id ?? '', 'option_confirmed', id, {...});
+// NIEMALS silent exit ohne Fehler-Log:
+if (!orgId) return;
+```
+
+**Richtig — assertOrgContext verwenden:**
+```typescript
+import { assertOrgContext } from '../utils/orgGuard';
+
+// Audit-Log nur wenn org bekannt:
+if (assertOrgContext(row.organization_id, 'confirmOption')) {
+  void logOptionAction(row.organization_id, 'option_confirmed', id, {...});
+}
+
+// Service-Abbruch mit strukturiertem Error-Log:
+if (!assertOrgContext(agencyId, 'getApplications')) return [];
+```
+
+**UI-Empty-State bei fehlendem org-Kontext:**
+```typescript
+if (!currentAgencyId) {
+  return <View><Text>{uiCopy.common.noAgencyContext}</Text></View>;
+}
+```
+
+**Gefixt (2026-04-05):**
+- `src/utils/orgGuard.ts` — `assertOrgContext()` Utility erstellt
+- `optionRequestsSupabase.ts` — alle `?? ''` Audit-Logs durch `assertOrgContext`-Guards ersetzt
+- `modelPhotosSupabase.ts` — `orgId ?? ''` durch `assertOrgContext` ersetzt
+- `AgencyDashboardScreen.tsx` — Empty-State wenn `agency_id` null
+
+---
+
 ## Pflicht-Prüfung bei JEDER neuen RLS-Policy
 
 ```
@@ -95,6 +237,9 @@ const agencyId = profile?.agency_id ?? '';
 
 4. Jede Admin-Policy nutzt is_current_user_admin() (SECURITY DEFINER, UUID+email-Pin)?
    → Ja erlaubt.
+
+5. Ist die Funktion SECURITY DEFINER und liest sie RLS-geschützte Tabellen?
+   → Ja → PFLICHT: SET row_security TO off hinzufügen
 ```
 
 ## Pflicht-Prüfung bei JEDEM neuen Frontend-Feature mit Org-Kontext
@@ -106,18 +251,41 @@ const agencyId = profile?.agency_id ?? '';
 // ❌ 3. agencies.find(email)   — VERBOTEN (email-match)
 // ❌ 4. agencies[0]            — VERBOTEN (falscher Org-Kontext)
 // ❌ 5. fallback-org           — VERBOTEN (Daten-Leak möglich)
+
+// Neue Service-Funktion mit org-Filter (Defense-in-Depth):
+// ✅ agencyId?: string Parameter + eq('agency_id', agencyId) wenn vorhanden
+// ✅ assertOrgContext(orgId, 'callerName') statt orgId ?? '' in Audit-Logs
+// ✅ Empty-State in UI wenn orgId null/undefined
+
+// Store-Init mit Org-Kontext:
+// ✅ initApplicationsForAgency(agencyId) aus der View aufrufen wenn agencyId bekannt
+// ✅ initRecruitingChatsForAgency(agencyId) aus der View aufrufen
 ```
 
-## Verifizierungs-Query (nach jeder Migration ausführen)
+## Verifizierungs-Queries (nach jeder Migration ausführen)
 
 ```sql
--- Keine profiles.is_admin = true mehr in Policies:
+-- 1. Keine profiles.is_admin = true mehr in Policies:
 SELECT tablename, policyname FROM pg_policies
 WHERE qual ILIKE '%is_admin = true%' OR qual ILIKE '%is_admin=true%';
 -- Erwartet: 0 Zeilen
 
--- Kein Email-Matching mehr in Policies:
+-- 2. Kein Email-Matching mehr in Policies:
 SELECT tablename, policyname FROM pg_policies
-WHERE qual ILIKE '%email%' AND tablename NOT IN ('profiles'); -- profiles_org_scoped_read hat keins
+WHERE qual ILIKE '%email%' AND tablename NOT IN ('profiles');
 -- Ergebnis prüfen: nur erlaubte Display-Spalten, kein JOIN ON email
+
+-- 3. Alle SECURITY DEFINER Funktionen haben row_security=off:
+SELECT proname, proconfig FROM pg_proc
+WHERE pronamespace = (SELECT oid FROM pg_namespace WHERE nspname='public')
+  AND prosecdef = true
+  AND proconfig IS NOT NULL
+ORDER BY proname;
+-- Ergebnis prüfen: alle die RLS-geschützte Tabellen lesen haben 'row_security=off' in proconfig
+
+-- 4. Keine FOR ALL Policies mehr auf Tabellen im profiles→models-Pfad:
+SELECT tablename, policyname, cmd FROM pg_policies
+WHERE cmd = 'ALL'
+  AND tablename IN ('model_embeddings', 'model_locations', 'model_agency_territories');
+-- Erwartet: 0 Zeilen (alle aufgeteilt)
 ```

@@ -23,10 +23,11 @@ import {
   rejectApplication,
   refreshApplications,
   subscribeApplications,
+  initApplicationsForAgency,
   getApplicationById,
   type ModelApplication,
 } from '../store/applicationsStore';
-import { tryStartRecruitingChat } from '../store/recruitingChats';
+import { tryStartRecruitingChat, initRecruitingChatsForAgency } from '../store/recruitingChats';
 import { loadAgencyShortlistIds, saveAgencyShortlistIds } from '../storage/agencyRecruitingShortlist';
 import { mergeAgencyRecruitingMyListIds } from '../utils/agencyRecruitingMyList';
 import {
@@ -141,6 +142,8 @@ export const AgencyRecruitingView: React.FC<{
       setShortlistIds([]);
       return;
     }
+    initApplicationsForAgency(agencyId);
+    initRecruitingChatsForAgency(agencyId);
     loadAgencyShortlistIds(agencyId).then(setShortlistIds);
     getMyAgencyUsageLimits().then(setUsageLimits);
   }, [agencyId]);

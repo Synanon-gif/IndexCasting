@@ -46,6 +46,7 @@ export type RecruitingThread = {
 let threadsCache: RecruitingThread[] = [];
 let messagesCache: RecruitingMessage[] = [];
 let hydrated = false;
+let storeAgencyId: string | undefined;
 
 const listeners = new Set<() => void>();
 
@@ -56,7 +57,9 @@ function notify() {
 async function ensureHydrated() {
   if (hydrated) return;
   hydrated = true;
-  const threads = await fetchThreads();
+  const threads = storeAgencyId
+    ? await fetchThreadsForAgency(storeAgencyId)
+    : await fetchThreads();
   threadsCache = threads.map((t) => ({
     id: t.id,
     applicationId: t.application_id,
@@ -67,9 +70,21 @@ async function ensureHydrated() {
   notify();
 }
 
+/**
+ * Scopes the store to a specific agency and triggers a fresh load.
+ * Call this once from the agency view after the profile is available.
+ */
+export function initRecruitingChatsForAgency(agencyId: string): void {
+  if (!agencyId) return;
+  if (storeAgencyId === agencyId && hydrated) return;
+  storeAgencyId = agencyId;
+  hydrated = false;
+  void ensureHydrated();
+}
+
 export function subscribeRecruitingChats(fn: () => void): () => void {
   listeners.add(fn);
-  ensureHydrated();
+  void ensureHydrated();
   return () => listeners.delete(fn);
 }
 

@@ -5,6 +5,7 @@ import { getAgencyModels } from '../services/apiService';
 import { AgencyRecruitingView } from '../views/AgencyRecruitingView';
 import { BookingChatView } from '../views/BookingChatView';
 import { useAuth } from '../context/AuthContext';
+import { uiCopy } from '../constants/uiCopy';
 
 type AgencyModel = {
   id: string;
@@ -74,6 +75,16 @@ export const AgencyDashboardScreen: React.FC<AgencyDashboardScreenProps> = ({
       ),
     );
   };
+
+  if (!currentAgencyId) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyStateText}>{uiCopy.common.noAgencyContext}</Text>
+        </View>
+      </View>
+    );
+  }
 
   if (showRecruiting) {
     return (
@@ -188,6 +199,17 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.xl,
+  },
+  emptyState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  emptyStateText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
   },
   backRow: {
     flexDirection: 'row',
