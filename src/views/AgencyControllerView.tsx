@@ -227,6 +227,9 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   const [latestActivity, setLatestActivity] = useState<ActivityLog | null>(null);
   /** After starting a chat from Clients, open Messages with this thread. */
   const [pendingB2BChat, setPendingB2BChat] = useState<{ conversationId: string; title: string } | null>(null);
+  /** Deep-link targets from GlobalSearch result clicks. */
+  const [searchModelId, setSearchModelId] = useState<string | null>(null);
+  const [searchOptionId, setSearchOptionId] = useState<string | null>(null);
   // Canonical source: org membership → organizations.agency_id (from get_my_org_context).
   // profile.agency_id ist der einzige gültige Lookup — kein Email-Match, kein agencies[0] Fallback.
   const currentAgency = useMemo(() => {
@@ -459,20 +462,19 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         </TouchableOpacity>
       </View>
 
-      {agencyOrganizationId && (
-        <View style={{ paddingHorizontal: spacing.sm, paddingBottom: spacing.xs, zIndex: 200 }}>
-          <GlobalSearchBar
-            orgId={agencyOrganizationId}
-            onSelectModel={() => setTab('myModels')}
-            onSelectConversation={() => setTab('messages')}
-            onSelectOption={() => setTab('messages')}
-          />
-        </View>
-      )}
-
       <View style={{ flex: 1, paddingBottom: bottomTabInset }}>
       {tab === 'dashboard' && (
         <View style={{ flex: 1 }}>
+          {agencyOrganizationId && (
+            <View style={{ paddingHorizontal: spacing.sm, paddingTop: spacing.xs, paddingBottom: spacing.xs, zIndex: 200 }}>
+              <GlobalSearchBar
+                orgId={agencyOrganizationId}
+                onSelectModel={(id) => { setSearchModelId(id); setTab('myModels'); }}
+                onSelectConversation={(id) => { setPendingB2BChat({ conversationId: id, title: '' }); setTab('messages'); }}
+                onSelectOption={(id) => { setSearchOptionId(id); setTab('messages'); }}
+              />
+            </View>
+          )}
           {agencyOrganizationId && session?.user?.id && (
             <DashboardSummaryBar
               orgId={agencyOrganizationId}
@@ -512,6 +514,8 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
           models={fullModels}
           agencyId={currentAgencyId}
           onRefresh={() => getModelsForAgencyFromSupabase(currentAgencyId).then(setFullModels)}
+          focusModelId={searchModelId}
+          onFocusConsumed={() => setSearchModelId(null)}
         />
       )}
 
@@ -544,6 +548,8 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
           pendingOpenB2BChat={pendingB2BChat}
           onPendingB2BChatConsumed={clearPendingB2BChat}
           onBookingCardPress={() => setTab('calendar')}
+          pendingOptionRequestId={searchOptionId}
+          onPendingOptionRequestConsumed={() => setSearchOptionId(null)}
         />
       )}
 
@@ -1705,7 +1711,9 @@ const MyModelsTab: React.FC<{
   models: SupabaseModel[];
   agencyId: string;
   onRefresh: () => void;
-}> = ({ models, agencyId, onRefresh }) => {
+  focusModelId?: string | null;
+  onFocusConsumed?: () => void;
+}> = ({ models, agencyId, onRefresh, focusModelId, onFocusConsumed }) => {
   const [selectedModel, setSelectedModel] = useState<SupabaseModel | null>(null);
   const [filters, setFilters] = useState<ModelFilters>(defaultModelFilters);
   const [editState, setEditState] = useState<ModelEditState>(buildEditState({ name: '' }));
@@ -1751,6 +1759,14 @@ const MyModelsTab: React.FC<{
       getTerritoriesForAgency(agencyId).then(setRosterTerritoriesMap);
     }
   }, [agencyId]);
+
+  // Auto-select model when arriving from GlobalSearch deep-link.
+  useEffect(() => {
+    if (!focusModelId) return;
+    const found = models.find((m) => m.id === focusModelId) ?? null;
+    if (found) setSelectedModel(found);
+    onFocusConsumed?.();
+  }, [focusModelId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load API keys from DB (org-wide) on mount — kept in memory only, never in localStorage.
   useEffect(() => {
@@ -3620,6 +3636,9 @@ type AgencyMessagesTabProps = {
   pendingOpenB2BChat: { conversationId: string; title: string } | null;
   onPendingB2BChatConsumed: () => void;
   onBookingCardPress?: () => void;
+  /** Deep-link from GlobalSearch: auto-select this option request thread. */
+  pendingOptionRequestId?: string | null;
+  onPendingOptionRequestConsumed?: () => void;
 };
 
 const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
@@ -3634,6 +3653,8 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   pendingOpenB2BChat,
   onPendingB2BChatConsumed,
   onBookingCardPress,
+  pendingOptionRequestId,
+  onPendingOptionRequestConsumed,
 }) => {
   const [messagesSection, setMessagesSection] = useState<'optionRequests' | 'recruiting' | 'clientRequests'>('clientRequests');
   const [messagesSearch, setMessagesSearch] = useState('');
@@ -3742,6 +3763,14 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
     onPendingB2BChatConsumed();
     refreshB2bList();
   }, [pendingOpenB2BChat?.conversationId, onPendingB2BChatConsumed, refreshB2bList, pendingOpenB2BChat?.title]);
+
+  // Auto-select option request from GlobalSearch deep-link.
+  useEffect(() => {
+    if (!pendingOptionRequestId) return;
+    setMessagesSection('optionRequests');
+    setSelectedThreadId(pendingOptionRequestId);
+    onPendingOptionRequestConsumed?.();
+  }, [pendingOptionRequestId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (messagesSection !== 'clientRequests') {

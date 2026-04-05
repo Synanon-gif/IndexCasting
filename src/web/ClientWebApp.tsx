@@ -119,13 +119,63 @@ import { MonthCalendarView, type CalendarDayEvent } from '../components/MonthCal
 import { ClientOrganizationTeamSection } from '../components/ClientOrganizationTeamSection';
 import { OrgMessengerInline } from '../components/OrgMessengerInline';
 import { OrgMetricsPanel } from '../components/OrgMetricsPanel';
+import { GlobalSearchBar } from '../components/GlobalSearchBar';
+import { DashboardSummaryBar } from '../components/DashboardSummaryBar';
 
 /** Thin wrapper to pass client org metrics panel with owner role. */
 const ClientOrgMetricsPanelWrapper: React.FC<{ orgId: string }> = ({ orgId }) => (
   <OrgMetricsPanel orgId={orgId} userRole="owner" />
 );
 
-type TopTab = 'discover' | 'projects' | 'agencies' | 'messages' | 'calendar' | 'team';
+/** Client Dashboard Tab — GlobalSearch + summary badges + quick-nav. */
+const ClientDashboardTab: React.FC<{
+  orgId: string | null;
+  userId: string | null;
+  onNavigateMessages: () => void;
+  onNavigateCalendar: () => void;
+  onNavigateRequests: () => void;
+  onSelectConversation: (id: string) => void;
+  onSelectModel: (id: string) => void;
+}> = ({
+  orgId,
+  userId,
+  onNavigateMessages,
+  onNavigateCalendar,
+  onNavigateRequests,
+  onSelectConversation,
+  onSelectModel,
+}) => (
+  <View style={{ flex: 1 }}>
+    {orgId && (
+      <View style={{ paddingHorizontal: spacing.sm, paddingTop: spacing.xs, paddingBottom: spacing.xs, zIndex: 200 }}>
+        <GlobalSearchBar
+          orgId={orgId}
+          onSelectModel={onSelectModel}
+          onSelectConversation={onSelectConversation}
+          onSelectOption={() => onNavigateRequests()}
+        />
+      </View>
+    )}
+    {orgId && userId && (
+      <DashboardSummaryBar
+        orgId={orgId}
+        userId={userId}
+        onPressRequests={onNavigateRequests}
+        onPressMessages={onNavigateMessages}
+        onPressCalendar={onNavigateCalendar}
+      />
+    )}
+    {!orgId && (
+      <View style={{ padding: spacing.md }}>
+        <Text style={{ color: colors.textSecondary, fontSize: 13 }}>
+          No organization assigned. Please contact support.
+        </Text>
+      </View>
+    )}
+  </View>
+);
+
+type TopTab = 'dashboard' | 'discover' | 'projects' | 'agencies' | 'messages' | 'calendar' | 'team';
 
 type ModelSummary = {
   id: string;
@@ -247,7 +297,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   onClientTypeChange: _onClientTypeChange,
   onBackToRoleSelection,
 }) => {
-  const [tab, setTab] = useState<TopTab>('discover');
+  const [tab, setTab] = useState<TopTab>('dashboard');
   const [showActiveOptions, setShowActiveOptions] = useState(false);
   const [models, setModels] = useState<ModelSummary[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -1360,6 +1410,8 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         setTab,
         onReselectRoot: () => {
           switch (tab) {
+            case 'dashboard':
+              break;
             case 'discover':
               resetDiscoverTabRoot();
               break;
@@ -1508,6 +1560,18 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             </View>
           )}
         </View>
+
+        {tab === 'dashboard' && (
+          <ClientDashboardTab
+            orgId={clientOrgId}
+            userId={realClientId}
+            onNavigateMessages={() => setTab('messages')}
+            onNavigateCalendar={() => setTab('calendar')}
+            onNavigateRequests={() => setTab('messages')}
+            onSelectConversation={(id) => { setOpenThreadIdOnMessages(id); setTab('messages'); }}
+            onSelectModel={(id) => { openDetails(id); setTab('discover'); }}
+          />
+        )}
 
         {tab === 'discover' && showActiveOptions && (
           <ActiveOptionsView onClose={() => setShowActiveOptions(false)} />
@@ -2135,14 +2199,16 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       )}
 
       <View style={[styles.bottomTabBar, { paddingBottom: insets.bottom }]}>
-        {(['discover', 'messages', 'calendar', 'team', 'agencies', 'projects'] as TopTab[]).map((key) => (
+        {(['dashboard', 'discover', 'messages', 'calendar', 'agencies', 'projects'] as TopTab[]).map((key) => (
           <TouchableOpacity
             key={key}
             onPress={() => handleBottomTabPress(key)}
             style={styles.bottomTabItem}
           >
             <Text style={[styles.bottomTabLabel, tab === key && styles.bottomTabLabelActive]}>
-              {key === 'discover'
+              {key === 'dashboard'
+                ? uiCopy.clientWeb.bottomTabs.dashboard
+                : key === 'discover'
                 ? uiCopy.clientWeb.bottomTabs.discover
                 : key === 'projects'
                 ? uiCopy.clientWeb.bottomTabs.projects

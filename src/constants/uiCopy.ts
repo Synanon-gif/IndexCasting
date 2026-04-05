@@ -155,6 +155,7 @@ export const uiCopy = {
     editEvent: 'Edit event',
     /** Sticky bottom navigation (Client workspace). */
     bottomTabs: {
+      dashboard: 'Dashboard',
       discover: 'Discover',
       projects: 'My Projects',
       calendar: 'Calendar',
