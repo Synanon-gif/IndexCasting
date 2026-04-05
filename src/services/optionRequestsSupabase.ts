@@ -8,7 +8,7 @@ import { checkAndIncrementStorage, decrementStorage } from './agencyStorageSupab
 import { guardUploadSession, logBookingAction, logOptionAction } from './gdprComplianceSupabase';
 
 export const OPTION_REQUEST_SELECT =
-  'id, client_id, model_id, agency_id, requested_date, status, project_id, client_name, model_name, proposed_price, agency_counter_price, client_price_status, final_status, request_type, currency, start_time, end_time, model_approval, model_approved_at, model_account_linked, booker_id, organization_id, created_by, agency_assignee_user_id, created_at, updated_at';
+  'id, client_id, model_id, agency_id, requested_date, status, project_id, client_name, model_name, proposed_price, agency_counter_price, client_price_status, final_status, request_type, currency, start_time, end_time, model_approval, model_approved_at, model_account_linked, booker_id, organization_id, agency_organization_id, client_organization_id, created_by, agency_assignee_user_id, created_at, updated_at';
 
 /**
  * Option Requests + Chat (Kunde ↔ Agentur).
@@ -41,6 +41,10 @@ export type SupabaseOptionRequest = {
   model_account_linked?: boolean | null;
   booker_id: string | null;
   organization_id: string | null;
+  /** Org-zentrische Agentur-ID (organizations.id, type='agency'). Bevorzugt gegenüber agency_id. */
+  agency_organization_id: string | null;
+  /** Org-zentrische Client-ID (organizations.id, type='client'). Bevorzugt gegenüber organization_id. */
+  client_organization_id: string | null;
   created_by: string | null;
   agency_assignee_user_id: string | null;
   created_at: string;
@@ -163,14 +167,22 @@ export async function getOptionRequestsForClient(_clientId: string): Promise<Sup
 export async function getOptionRequestsForAgency(
   agencyId: string,
   opts?: OptionRequestListOptions,
+  agencyOrganizationId?: string | null,
 ): Promise<SupabaseOptionRequest[]> {
   try {
     let q = supabase
       .from('option_requests')
       .select(OPTION_REQUEST_SELECT)
-      .eq('agency_id', agencyId)
       .order('created_at', { ascending: false })
       .limit(opts?.limit ?? 100);
+
+    if (agencyOrganizationId) {
+      // Neue Rows: agency_organization_id; alte Rows: agency_id — OR-Filter für Übergangszeit
+      q = q.or(`agency_organization_id.eq.${agencyOrganizationId},agency_id.eq.${agencyId}`);
+    } else {
+      q = q.eq('agency_id', agencyId);
+    }
+
     if (opts?.afterCreatedAt) q = q.lt('created_at', opts.afterCreatedAt);
     const { data, error } = await q;
     if (error) { console.error('getOptionRequestsForAgency error:', error); return []; }
@@ -195,6 +207,10 @@ export async function insertOptionRequest(req: {
   start_time?: string;
   end_time?: string;
   organization_id?: string | null;
+  /** Org-zentrische Agentur-Org (organizations.id, type='agency'). Sollte immer gesetzt werden. */
+  agency_organization_id?: string | null;
+  /** Org-zentrische Client-Org (organizations.id, type='client'). Sollte immer gesetzt werden. */
+  client_organization_id?: string | null;
   created_by?: string | null;
 }): Promise<SupabaseOptionRequest | null> {
   const { data: modelRow } = await supabase
@@ -229,6 +245,8 @@ export async function insertOptionRequest(req: {
       model_approved_at: modelApprovedAt,
       model_account_linked: modelAccountLinked,
       organization_id: req.organization_id ?? null,
+      agency_organization_id: req.agency_organization_id ?? null,
+      client_organization_id: req.client_organization_id ?? null,
       created_by: req.created_by ?? null,
     })
     .select(OPTION_REQUEST_SELECT)

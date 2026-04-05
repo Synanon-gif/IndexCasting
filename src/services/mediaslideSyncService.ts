@@ -345,7 +345,7 @@ export async function syncSingleModelFromMediaslide(args: {
     if ((freshModel.portfolio_images ?? []).length === 0)  missingRequired.push('portfolio_images');
     // Territory presence is checked via a separate query for accuracy.
     const { data: terr } = await supabase
-      .from('model_agency_territories')
+      .from('model_assignments')
       .select('id')
       .eq('model_id', localModelId)
       .limit(1);

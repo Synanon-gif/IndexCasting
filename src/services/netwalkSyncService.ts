@@ -294,7 +294,7 @@ export async function syncSingleModelFromNetwalk(args: {
     if (!freshModel.name?.trim())                          missingRequired.push('name');
     if ((freshModel.portfolio_images ?? []).length === 0)  missingRequired.push('portfolio_images');
     const { data: terr } = await supabase
-      .from('model_agency_territories')
+      .from('model_assignments')
       .select('id')
       .eq('model_id', localModelId)
       .limit(1);

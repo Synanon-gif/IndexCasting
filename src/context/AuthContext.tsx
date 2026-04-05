@@ -59,6 +59,12 @@ type AuthState = {
   /** Set when the user was signed out due to org deactivation. Cleared on next successful sign-in. */
   orgDeactivated: boolean;
   clearOrgDeactivated: () => void;
+  /**
+   * true wenn der Org-Bootstrap nach Login fehlgeschlagen ist (kein Hard-Block, aber UI-Warning).
+   * Nur für B2B-Rollen (client/agent). Admin-Login bleibt unberührt.
+   */
+  orgBootstrapFailed: boolean;
+  retryOrgBootstrap: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -72,6 +78,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [orgDeactivated, setOrgDeactivated] = useState(false);
+  const [orgBootstrapFailed, setOrgBootstrapFailed] = useState(false);
 
   const profileLoadInFlightRef = useRef(false);
   const profileRef = useRef<Profile | null>(null);
@@ -300,22 +307,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // Versuche Bootstrap einmalig, dann erneuter Fetch.
             console.error('[AuthContext] loadProfile: kein org context für role=', role, '— versuche Bootstrap-Recovery');
             try {
-              await supabase.rpc('ensure_plain_signup_b2b_owner_bootstrap');
-              const { data: retryCtx } = await supabase.rpc('get_my_org_context');
-              const retryRow = Array.isArray(retryCtx) ? retryCtx?.[0] : retryCtx;
-              if (retryRow?.organization_id) {
-                orgContext = {
-                  organization_id: retryRow.organization_id as string,
-                  org_type: retryRow.org_type as OrganizationType,
-                  org_member_role: retryRow.org_member_role as OrgMemberRole,
-                  agency_id: (retryRow.agency_id as string) ?? null,
-                };
-                console.log('[AuthContext] loadProfile: org context erfolgreich wiederhergestellt');
+              // 500ms Delay vor Retry — verhindert sofortigen Fehlschlag bei transientem DB-Fehler
+              await new Promise((r) => setTimeout(r, 500));
+              const { ensurePlainSignupB2bOwnerBootstrap } = await import('../services/b2bOwnerBootstrapSupabase');
+              const { error: bootstrapError } = await ensurePlainSignupB2bOwnerBootstrap();
+              if (bootstrapError) {
+                console.error('[AuthContext] loadProfile: Bootstrap-Recovery RPC fehlgeschlagen:', bootstrapError);
+                setOrgBootstrapFailed(true);
               } else {
-                console.error('[AuthContext] loadProfile: org context fehlt auch nach Bootstrap — User benötigt manuelle Hilfe (role=', role, ')');
+                const { data: retryCtx } = await supabase.rpc('get_my_org_context');
+                const retryRow = Array.isArray(retryCtx) ? retryCtx?.[0] : retryCtx;
+                if (retryRow?.organization_id) {
+                  orgContext = {
+                    organization_id: retryRow.organization_id as string,
+                    org_type: retryRow.org_type as OrganizationType,
+                    org_member_role: retryRow.org_member_role as OrgMemberRole,
+                    agency_id: (retryRow.agency_id as string) ?? null,
+                  };
+                  setOrgBootstrapFailed(false);
+                  console.log('[AuthContext] loadProfile: org context erfolgreich wiederhergestellt');
+                } else {
+                  console.error('[AuthContext] loadProfile: org context fehlt auch nach Bootstrap-Recovery (role=', role, ')');
+                  setOrgBootstrapFailed(true);
+                }
               }
             } catch (bootstrapErr) {
               console.error('[AuthContext] loadProfile: Bootstrap-Recovery fehlgeschlagen:', bootstrapErr);
+              setOrgBootstrapFailed(true);
             }
           }
         }
@@ -386,18 +404,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const { error } = await ensurePlainSignupB2bOwnerBootstrap();
           if (error) {
             console.error('bootstrapThenLoadProfile RPC error (attempt 1):', error);
-            // Retry once after a short delay — handles transient DB write conflicts.
+            // Retry once after a delay — handles transient DB write conflicts.
             await new Promise((r) => setTimeout(r, 1500));
             const { error: retryErr } = await ensurePlainSignupB2bOwnerBootstrap();
             if (retryErr) {
               console.error('bootstrapThenLoadProfile RPC error (attempt 2, giving up):', retryErr);
+              // orgBootstrapFailed wird nach loadProfile gesetzt, falls kein org context vorhanden
             }
           }
         } catch (e) {
           console.error('bootstrapThenLoadProfile exception:', e);
         }
       }
-      return await loadProfile(userId);
+      const result = await loadProfile(userId);
+      // Admin-Login bleibt unberührt (is_admin Pfad)
+      if (result && 'profile' in result && result.profile && !result.profile.is_admin && result.profile.role !== 'admin') {
+        const role = result.profile.role;
+        if (role === 'client' || role === 'agent') {
+          const hasOrg = !!(result.profile as { organization_id?: string | null }).organization_id;
+          setOrgBootstrapFailed(!hasOrg);
+        }
+      }
+      return result;
     } finally {
       profileLoadInFlightRef.current = false;
       console.log('[Auth] bootstrapThenLoadProfile: completed for', userId);
@@ -672,6 +700,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const clearOrgDeactivated = useCallback(() => setOrgDeactivated(false), []);
 
+  const retryOrgBootstrap = useCallback(async () => {
+    const { data: { session: s } } = await supabase.auth.getSession();
+    if (!s?.user) return;
+    // Admin-Login bleibt unberührt
+    if (profileRef.current?.is_admin || profileRef.current?.role === 'admin') return;
+    setOrgBootstrapFailed(false);
+    await bootstrapThenLoadProfile(s.user.id);
+  // bootstrapThenLoadProfile ist in derselben Closure stabil
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const contextValue = useMemo(() => ({
     session,
     user: session?.user ?? null,
@@ -686,11 +725,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     updateDisplayName,
     orgDeactivated,
     clearOrgDeactivated,
+    orgBootstrapFailed,
+    retryOrgBootstrap,
   // Functions defined inline (signUp, signIn, signOut, acceptTerms, markDocumentsSent,
   // updateDisplayName) are recreated only when their closure deps change.
-  // session, loading, profile, orgDeactivated are the real state drivers.
+  // session, loading, profile, orgDeactivated, orgBootstrapFailed are the real state drivers.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [session, loading, profile, orgDeactivated]);
+  }), [session, loading, profile, orgDeactivated, orgBootstrapFailed]);
 
   return (
     <AuthContext.Provider value={contextValue}>

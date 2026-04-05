@@ -1,10 +1,9 @@
 import { supabase } from '../../lib/supabase';
 
 /**
- * Model-Territorien (Agentur ↔ Model) – in Supabase: model_agency_territories.
- * All writes go through SECURITY DEFINER RPCs (migration_territories_rpc_definitive.sql).
- * The RPCs use RETURNS BOOLEAN / prefixed column names (r_*) to avoid PL/pgSQL
- * OUT-variable ambiguity with same-named table columns.
+ * Model-Territorien (Agentur ↔ Model).
+ * READS: ausschließlich aus model_assignments (org-zentrisch).
+ * WRITES: über SECURITY DEFINER RPCs (dual-write, Backward-Compat).
  */
 export type ModelTerritory = {
   id: string;
@@ -33,14 +32,26 @@ export async function getTerritoriesForAgency(
 
     if (error) {
       console.error('getTerritoriesForAgency rpc error:', error);
-      // Direct-query fallback (works when SELECT RLS is permissive)
-      const { data: fb, error: fbErr } = await supabase
-        .from('model_agency_territories')
-        .select('model_id, country_code')
-        .eq('agency_id', agencyId)
-        .order('country_code');
-      if (fbErr) { console.error('getTerritoriesForAgency fallback error:', fbErr); return {}; }
-      return buildAgencyMap(fb ?? [], 'model_id', 'country_code');
+      // Fallback: org_id via organizations.agency_id, dann model_assignments lesen
+      try {
+        const { data: orgRow, error: orgErr } = await supabase
+          .from('organizations')
+          .select('id')
+          .eq('agency_id', agencyId)
+          .eq('type', 'agency')
+          .maybeSingle();
+        if (orgErr || !orgRow) { console.error('getTerritoriesForAgency fallback org lookup error:', orgErr); return {}; }
+        const { data: fb, error: fbErr } = await supabase
+          .from('model_assignments')
+          .select('model_id, territory')
+          .eq('organization_id', orgRow.id)
+          .order('territory');
+        if (fbErr) { console.error('getTerritoriesForAgency fallback error:', fbErr); return {}; }
+        return buildAgencyMap(fb ?? [], 'model_id', 'territory');
+      } catch (fbEx) {
+        console.error('getTerritoriesForAgency fallback exception:', fbEx);
+        return {};
+      }
     }
 
     // RPC returns rows with r_model_id / r_country_code columns
@@ -86,16 +97,38 @@ export async function getTerritoriesForModel(
 
     if (error) {
       console.error('getTerritoriesForModel rpc error:', error);
-      // Direct-query fallback
-      let q = supabase
-        .from('model_agency_territories')
-        .select('*')
-        .eq('model_id', modelId)
-        .order('country_code');
-      if (agencyId) q = q.eq('agency_id', agencyId);
-      const { data: fb, error: fbErr } = await q;
-      if (fbErr) { console.error('getTerritoriesForModel fallback error:', fbErr); return []; }
-      return (fb ?? []) as ModelTerritory[];
+      // Fallback: liest aus model_assignments (org-zentrisch, kein model_agency_territories)
+      try {
+        let orgId: string | null = null;
+        if (agencyId) {
+          const { data: orgRow } = await supabase
+            .from('organizations')
+            .select('id')
+            .eq('agency_id', agencyId)
+            .eq('type', 'agency')
+            .maybeSingle();
+          orgId = (orgRow as { id: string } | null)?.id ?? null;
+        }
+        let q = supabase
+          .from('model_assignments')
+          .select('id, model_id, organization_id, territory, created_at')
+          .eq('model_id', modelId)
+          .order('territory');
+        if (orgId) q = q.eq('organization_id', orgId);
+        const { data: fb, error: fbErr } = await q;
+        if (fbErr) { console.error('getTerritoriesForModel fallback error:', fbErr); return []; }
+        // Map model_assignments shape → ModelTerritory shape (agency_id bleibt leer, da wir org-zentrisch sind)
+        return ((fb ?? []) as Array<{ id: string; model_id: string; organization_id: string; territory: string; created_at?: string }>).map((r) => ({
+          id: r.id,
+          model_id: r.model_id,
+          agency_id: agencyId ?? '',
+          country_code: r.territory,
+          created_at: r.created_at,
+        }));
+      } catch (fbEx) {
+        console.error('getTerritoriesForModel fallback exception:', fbEx);
+        return [];
+      }
     }
 
     // Map r_* columns back to ModelTerritory shape
@@ -313,6 +346,7 @@ export async function bulkUpsertTerritoriesForModels(
 /**
  * Booking routing helper: returns the agency_id responsible for a model in a country.
  * @deprecated Nutze resolveOrganizationForModelAndCountry für den org-zentrischen Pfad.
+ * Intern: liest jetzt ausschließlich aus model_assignments (via organizations.agency_id).
  */
 export async function resolveAgencyForModelAndCountry(
   modelId: string,
@@ -322,15 +356,17 @@ export async function resolveAgencyForModelAndCountry(
   if (!code) return null;
 
   try {
+    const orgId = await resolveOrganizationForModelAndCountry(modelId, code);
+    if (!orgId) return null;
+
     const { data, error } = await supabase
-      .from('model_agency_territories')
+      .from('organizations')
       .select('agency_id')
-      .eq('model_id', modelId)
-      .eq('country_code', code)
+      .eq('id', orgId)
       .maybeSingle();
 
-    if (error) { console.error('resolveAgencyForModelAndCountry error:', error); return null; }
-    return (data as { agency_id: string } | null)?.agency_id ?? null;
+    if (error) { console.error('resolveAgencyForModelAndCountry org lookup error:', error); return null; }
+    return (data as { agency_id: string | null } | null)?.agency_id ?? null;
   } catch (e) {
     console.error('resolveAgencyForModelAndCountry exception:', e);
     return null;

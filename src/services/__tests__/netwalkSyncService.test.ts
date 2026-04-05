@@ -82,7 +82,7 @@ function setupSupabaseMock({
         update: () => ({ eq: () => Promise.resolve({ error: updateError }) }),
       };
     }
-    if (table === 'model_agency_territories') {
+    if (table === 'model_assignments') {
       return {
         select: () => ({ eq: () => ({ limit: () => Promise.resolve({ data: terrData, error: null }) }) }),
       };
@@ -192,7 +192,7 @@ describe('syncSingleModelFromNetwalk', () => {
     });
     fromMock.mockImplementation((table: string) => {
       if (table === 'models') return { update: updateSpy };
-      if (table === 'model_agency_territories') {
+      if (table === 'model_assignments') {
         return { select: () => ({ eq: () => ({ limit: () => Promise.resolve({ data: [{ id: 't1' }], error: null }) }) }) };
       }
       return { insert: () => Promise.resolve({ error: null }) };
@@ -223,7 +223,7 @@ describe('syncSingleModelFromNetwalk', () => {
     });
     fromMock.mockImplementation((table: string) => {
       if (table === 'models') return { update: updateSpy };
-      if (table === 'model_agency_territories') {
+      if (table === 'model_assignments') {
         return { select: () => ({ eq: () => ({ limit: () => Promise.resolve({ data: [{ id: 't1' }], error: null }) }) }) };
       }
       return { insert: () => Promise.resolve({ error: null }) };

@@ -13,29 +13,41 @@ describe('resolveAgencyForModelAndCountry', () => {
     fromMock.mockReset();
   });
 
-  it('returns null when no territory row exists', async () => {
-    const chain = {
+  it('returns null when no assignment row exists', async () => {
+    // Step 1: model_assignments → null
+    const assignmentChain = {
       select: jest.fn().mockReturnThis(),
       eq: jest.fn().mockReturnThis(),
       maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
     };
-    fromMock.mockReturnValueOnce(chain);
+    fromMock.mockReturnValueOnce(assignmentChain);
 
     const r = await resolveAgencyForModelAndCountry('model-1', 'de');
     expect(r).toBeNull();
   });
 
-  it('normalizes country_code to uppercase', async () => {
-    const maybeSingle = jest.fn().mockResolvedValue({ data: { agency_id: 'agency-1' }, error: null });
-    const eq = jest.fn().mockReturnThis();
-    const chain = { select: jest.fn().mockReturnThis(), eq, maybeSingle };
-    fromMock.mockReturnValueOnce(chain);
+  it('normalizes country_code to uppercase and resolves agency_id via organizations', async () => {
+    // Step 1: model_assignments → organization_id
+    const assignmentEq = jest.fn().mockReturnThis();
+    const assignmentChain = {
+      select: jest.fn().mockReturnThis(),
+      eq: assignmentEq,
+      maybeSingle: jest.fn().mockResolvedValue({ data: { organization_id: 'org-1' }, error: null }),
+    };
+    // Step 2: organizations → agency_id
+    const orgChain = {
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      maybeSingle: jest.fn().mockResolvedValue({ data: { agency_id: 'agency-1' }, error: null }),
+    };
+    fromMock
+      .mockReturnValueOnce(assignmentChain)  // model_assignments query
+      .mockReturnValueOnce(orgChain);         // organizations query
 
     const r = await resolveAgencyForModelAndCountry('model-1', ' de ');
     expect(r).toBe('agency-1');
 
-    // eq('country_code', 'DE') should be used at least once.
-    expect(eq).toHaveBeenCalledWith('country_code', 'DE');
+    // territory='DE' (uppercase) should be used in model_assignments query
+    expect(assignmentEq).toHaveBeenCalledWith('territory', 'DE');
   });
 });
-
