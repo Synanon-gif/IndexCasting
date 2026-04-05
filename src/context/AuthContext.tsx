@@ -3,7 +3,7 @@ import { uiCopy } from '../constants/uiCopy';
 import { supabase } from '../../lib/supabase';
 import type { Session, User } from '@supabase/supabase-js';
 import type { OrganizationType, OrgMemberRole } from '../services/orgRoleTypes';
-import { type AppRole, validateRole, validateSignupRole } from '../types/roles';
+import { type AppRole, validateSignupRole, normalizeRole } from '../types/roles';
 
 export type Profile = {
   id: string;
@@ -178,7 +178,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     // Tertiary: role field (trigger-protected — no user can write role='admin' via the API)
     // This fallback only fires if BOTH RPCs fail (e.g. transient network issue).
-    if (!isAdminFlag && data.role === 'admin') {
+    if (!isAdminFlag && normalizeRole(data.role) === 'admin') {
       isAdminFlag = true;
       // Also attempt to set super_admin from a fresh RPC now that we know it's admin
       try {
@@ -192,7 +192,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const isActive = data.is_active ?? false;
     const isGuest = data.is_guest ?? false;
-    const role: AppRole = validateRole(data.role);
+    const normalizedRoleInput = normalizeRole(data.role);
+    if (normalizedRoleInput === null && data.role != null) {
+      console.error('[AuthContext] loadProfile: unexpected role value in DB', data.role);
+    }
+    const role: AppRole = normalizedRoleInput ?? 'client';
     const deletionRequestedAt = data.deletion_requested_at ?? null;
     if (deletionRequestedAt) {
       await supabase.auth.signOut();

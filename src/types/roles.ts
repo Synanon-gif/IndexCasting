@@ -48,6 +48,31 @@ export function validateRole(input: unknown): AppRole {
   return 'client';
 }
 
+/** AppRole or null — used at API boundaries where null signals "invalid/unknown". */
+export type SafeRole = AppRole | null;
+
+/**
+ * Normalizes raw input at API/DB boundaries: trims whitespace, lowercases,
+ * then validates. Returns null (with console.error) for unrecognized values.
+ *
+ * Catches casing bugs ('Admin' → 'admin') and whitespace (' agent ' → 'agent')
+ * that would otherwise be silently swallowed by validateRole.
+ *
+ * For a guaranteed AppRole with 'client' fallback:
+ *   const role = normalizeRole(raw) ?? 'client';
+ */
+export function normalizeRole(input: unknown): SafeRole {
+  if (input === null || input === undefined) return null;
+  if (typeof input !== 'string') {
+    console.error('[roles] normalizeRole: non-string input', input);
+    return null;
+  }
+  const clean = input.trim().toLowerCase();
+  if (isAppRole(clean)) return clean;
+  console.error('[roles] normalizeRole: invalid role detected:', JSON.stringify(input));
+  return null;
+}
+
 /**
  * Validates a signup role. Prevents 'admin' from being passed during signup.
  * Falls back to 'client' for any invalid or privileged value.
