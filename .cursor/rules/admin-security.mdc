@@ -116,6 +116,65 @@ END;$$;
 
 ---
 
+## Regel 7: RLS-Policies — NIEMALS Rekursionszyklen erzeugen (KRITISCH)
+
+Jede RLS-Policy, die im SELECT-Pfad von `profiles` liegt, kann den Admin-Login zerstören.
+
+**Verbotene Muster (verursachen PostgreSQL 42P17 → 500 auf JEDEN profiles-Query):**
+
+```
+profiles → models → [Tabelle X] → models   (Zyklus)
+profiles → models → [Tabelle X] → profiles (Zyklus)
+```
+
+**Bekannter Fix-Fall (2026-04-05):**
+Zwei ALL-Policies auf `model_agency_territories` enthielten SELECT-Subqueries
+zurück auf `models` und `profiles`. PostgreSQL expandiert ALL-Policies auch für
+SELECT, erkennt den Zirkelschluss und wirft 42P17 — selbst wenn eine separate
+SELECT-Policy mit `true` existiert.
+
+**Lösung:** ALL-Policies auf Tabellen, die von `models`- oder `profiles`-SELECT-Policies
+referenziert werden, MÜSSEN in separate INSERT/UPDATE/DELETE-Policies aufgespalten
+werden. Die SELECT-Komponente darf NICHT auf `models` oder `profiles` zurückverweisen.
+
+**Prüfpflicht bei JEDER neuen RLS-Policy:**
+
+1. Wird die Tabelle (direkt oder indirekt) von einer `profiles`- oder `models`-SELECT-Policy referenziert?
+2. Enthält die neue Policy einen SELECT auf `profiles`, `models`, oder eine Funktion die das tut?
+3. Ist die Policy `FOR ALL`? → ALL inkludiert SELECT → Rekursionsgefahr!
+4. Wenn 1+2 oder 1+3 zutreffen → Policy MUSS als INSERT/UPDATE/DELETE aufgespalten werden.
+
+**SECURITY DEFINER Funktionen in Policies:**
+Alle SECURITY DEFINER Funktionen, die aus RLS-Policies aufgerufen werden und
+RLS-geschützte Tabellen lesen, MÜSSEN `SET row_security TO off` haben:
+
+```sql
+CREATE OR REPLACE FUNCTION public.beispiel_funktion()
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public
+SET row_security TO off   -- PFLICHT wenn aus RLS-Policy aufgerufen
+AS $$ ... $$;
+```
+
+Ohne `SET row_security TO off` wendet PG15+ RLS auch innerhalb der
+SECURITY DEFINER Funktion an → latente Rekursionsgefahr.
+
+---
+
+## Regel 8: Partieller Unique-Index — nur ein Admin (DB-Garantie)
+
+```sql
+CREATE UNIQUE INDEX IF NOT EXISTS one_admin_only
+  ON public.profiles ((role))
+  WHERE role = 'admin';
+```
+
+Dieser Index garantiert auf DB-Ebene, dass maximal EIN Profil `role='admin'`
+haben kann. Ergänzt die Trigger und UUID/Email-Pins als zusätzliche Schicht.
+
+---
+
 ## Was NIEMALS passieren darf
 
 | Verboten | Grund |
@@ -127,6 +186,9 @@ END;$$;
 | `handle_new_user` Allowlist erweitern ohne Review | Signup-Injection |
 | Neuen Admin-RPC ohne `assert_is_admin()` | Schwächeres Guard |
 | `is_admin` oder `role` direkt per API setzen | Blockiert durch Trigger |
+| ALL-Policy auf Tabelle im profiles/models-Pfad | 42P17 Rekursion → Admin ausgesperrt |
+| SECURITY DEFINER ohne `row_security TO off` in RLS-Kontext | Latente Rekursion in PG15+ |
+| Zweites Profil mit `role='admin'` | Blockiert durch `one_admin_only` Index + Trigger |
 
 ---
 
@@ -149,4 +211,11 @@ Schutz gegen Eskalation:
   3× BEFORE UPDATE Trigger → is_admin/role unveränderbar via API
   handle_new_user Allowlist → role='admin' nie bei Signup möglich
   Admin-Profil RLS → für andere User komplett unsichtbar
+  one_admin_only Index → nur 1 Profil mit role='admin' möglich
+
+RLS-Rekursionsschutz (KRITISCH für Login):
+  profiles SELECT → models SELECT → model_agency_territories SELECT
+  Alle Tabellen im Pfad: KEINE ALL-Policies mit Rückverweis
+  Alle SECURITY DEFINER in Policies: SET row_security TO off
+  Prüfpflicht: Jede neue RLS-Policy auf Rekursionszyklus testen
 ```
