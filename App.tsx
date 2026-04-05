@@ -43,6 +43,7 @@ import {
   normalizePublicLegalPath,
   replaceWebPathToHome,
 } from './src/utils/publicLegalRoutes';
+import { roleFromProfile, type NavigationRole } from './src/types/roles';
 
 /** Web: volle Höhe sofort beim Modul-Load (vor erstem React-Paint) – verhindert weißen/leeren Screen. */
 function ensureWebRootHasHeight() {
@@ -61,7 +62,8 @@ function ensureWebRootHasHeight() {
 }
 ensureWebRootHasHeight();
 
-type Role = 'model' | 'agency' | 'client' | 'apply';
+/** Local alias kept for backwards compatibility — NavigationRole from src/types/roles.ts */
+type Role = NavigationRole;
 
 function getSharedParams(): { name: string; ids: string[] } | null {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
@@ -98,13 +100,6 @@ function clearInviteQueryParam() {
   if (!u.searchParams.has('invite')) return;
   u.searchParams.delete('invite');
   window.history.replaceState({}, '', u.pathname + u.search + u.hash);
-}
-
-function roleFromProfile(profileRole: string | undefined): Role | null {
-  if (profileRole === 'client') return 'client';
-  if (profileRole === 'agent') return 'agency';
-  if (profileRole === 'model') return 'model';
-  return null;
 }
 
 /**

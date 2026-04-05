@@ -3,12 +3,13 @@ import { uiCopy } from '../constants/uiCopy';
 import { supabase } from '../../lib/supabase';
 import type { Session, User } from '@supabase/supabase-js';
 import type { OrganizationType, OrgMemberRole } from '../services/orgRoleTypes';
+import { type AppRole, validateRole, validateSignupRole } from '../types/roles';
 
 export type Profile = {
   id: string;
   email: string | null;
   display_name: string | null;
-  role: string;
+  role: AppRole;
   is_active: boolean;
   is_admin: boolean;
   is_super_admin: boolean;
@@ -191,7 +192,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const isActive = data.is_active ?? false;
     const isGuest = data.is_guest ?? false;
-    const role = data.role;
+    const role: AppRole = validateRole(data.role);
     const deletionRequestedAt = data.deletion_requested_at ?? null;
     if (deletionRequestedAt) {
       await supabase.auth.signOut();
@@ -257,6 +258,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const profileData: Profile = {
       ...data,
+      role,                                            // validated AppRole (not raw string)
       is_active: isGuest ? true : isActive,
       is_admin: isAdminFlag,
       is_super_admin: isSuperAdminFlag,
@@ -340,14 +342,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     companyName?: string | null,
     options?: { isInviteSignup?: boolean }
   ) => {
+    const safeRole = validateSignupRole(role);
     const trimmedCompany = companyName?.trim() || null;
-    const orgNameForB2b = role === 'client' || role === 'agent' ? trimmedCompany : null;
+    const orgNameForB2b = safeRole === 'client' || safeRole === 'agent' ? trimmedCompany : null;
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: {
-          role,
+          role: safeRole,
           display_name: displayName || email.split('@')[0],
           ...(orgNameForB2b ? { company_name: orgNameForB2b } : {}),
         },
@@ -359,8 +362,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         id: data.user.id,
         email,
         display_name: displayName || email.split('@')[0],
-        role,
-        is_active: role === 'model',
+        role: safeRole,
+        is_active: safeRole === 'model',
         ...(orgNameForB2b ? { company_name: orgNameForB2b } : {}),
       });
       if (pErr) console.error('profile upsert error', pErr);
@@ -387,11 +390,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       /** New org owners only — invited employees/bookers skip (they join an existing org). */
-      if (role === 'client' && !inviteAcceptedOk) {
+      if (safeRole === 'client' && !inviteAcceptedOk) {
         const { error: rpcErr } = await supabase.rpc('ensure_client_organization');
         if (rpcErr) console.error('ensure_client_organization on signup', rpcErr);
       }
-      if (role === 'agent' && !inviteAcceptedOk) {
+      if (safeRole === 'agent' && !inviteAcceptedOk) {
         try {
           const { ensureAgencyRecordForCurrentAgent } = await import('../services/agenciesSupabase');
           const agId = await ensureAgencyRecordForCurrentAgent();
