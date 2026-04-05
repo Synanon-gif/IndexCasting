@@ -26,10 +26,15 @@ export type Agency = {
 /**
  * Creates public.agencies for the current agent email if missing (SECURITY DEFINER RPC).
  * Do not call for invited bookers — use only when starting a new agency (no invite acceptance).
+ *
+ * @param companyName - The agency/company name entered at signup. Passed directly to the
+ *   RPC so it is available even before profiles.company_name has been persisted.
  */
-export async function ensureAgencyRecordForCurrentAgent(): Promise<string | null> {
+export async function ensureAgencyRecordForCurrentAgent(companyName?: string | null): Promise<string | null> {
   try {
-    const { data, error } = await supabase.rpc('ensure_agency_for_current_agent');
+    const { data, error } = await supabase.rpc('ensure_agency_for_current_agent', {
+      p_company_name: companyName?.trim() || null,
+    });
     if (error) {
       console.error('ensureAgencyRecordForCurrentAgent error:', error);
       return null;

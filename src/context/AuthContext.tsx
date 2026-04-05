@@ -429,13 +429,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       /** New org owners only — invited employees/bookers skip (they join an existing org). */
       if (safeRole === 'client' && !inviteAcceptedOk) {
-        const { error: rpcErr } = await supabase.rpc('ensure_client_organization');
+        // Pass company name directly so the RPC doesn't need to rely on the profile
+        // upsert above having committed — belt-and-suspenders against silent upsert failures.
+        const { error: rpcErr } = await supabase.rpc('ensure_client_organization', {
+          p_company_name: orgNameForB2b ?? null,
+        });
         if (rpcErr) console.error('ensure_client_organization on signup', rpcErr);
       }
       if (safeRole === 'agent' && !inviteAcceptedOk) {
         try {
           const { ensureAgencyRecordForCurrentAgent } = await import('../services/agenciesSupabase');
-          const agId = await ensureAgencyRecordForCurrentAgent();
+          // Pass company name directly for the same reason as above.
+          const agId = await ensureAgencyRecordForCurrentAgent(orgNameForB2b);
           if (agId) {
             const { error: orgErr } = await supabase.rpc('ensure_agency_organization', { p_agency_id: agId });
             if (orgErr) console.error('ensure_agency_organization on signup', orgErr);
