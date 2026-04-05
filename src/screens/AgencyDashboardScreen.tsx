@@ -4,7 +4,6 @@ import { colors, spacing, typography } from '../theme/theme';
 import { getAgencyModels } from '../services/apiService';
 import { AgencyRecruitingView } from '../views/AgencyRecruitingView';
 import { BookingChatView } from '../views/BookingChatView';
-import { getAgencies, type Agency } from '../services/agenciesSupabase';
 import { useAuth } from '../context/AuthContext';
 
 type AgencyModel = {
@@ -28,23 +27,10 @@ export const AgencyDashboardScreen: React.FC<AgencyDashboardScreenProps> = ({
   const [items, setItems] = useState<AgencyModel[]>([]);
   const [showRecruiting, setShowRecruiting] = useState(false);
   const [openRecruitingBookingThreadId, setOpenRecruitingBookingThreadId] = useState<string | null>(null);
-  const [agencies, setAgencies] = useState<Agency[]>([]);
 
-  // Derive the current agency from the authenticated profile's email.
-  // Fall back to the only agency in the list when there's exactly one (avoids
-  // the unsafe first-agency grab that could expose data from a different org).
-  const currentAgencyId = (
-    agencies.find((a) => a.email && profile?.email && a.email === profile.email) ??
-    (agencies.length === 1 ? agencies[0] : undefined)
-  )?.id ?? '';
-
-  useEffect(() => {
-    let cancelled = false;
-    getAgencies()
-      .then((data) => { if (!cancelled) setAgencies(data); })
-      .catch((e) => console.error('[AgencyDashboard] getAgencies error:', e));
-    return () => { cancelled = true; };
-  }, []);
+  // profile.agency_id is the only safe lookup — no email-match, no agencies[0] fallback.
+  // It is loaded via get_my_org_context() (SECURITY DEFINER, org-scoped) on every login.
+  const currentAgencyId = profile?.agency_id ?? '';
 
   useEffect(() => {
     if (!currentAgencyId) return;

@@ -1,0 +1,65 @@
+---
+description: AUTO-REVIEW checklist — runs on every code change, blocks regressions in auth/org/RLS/admin
+alwaysApply: true
+---
+
+# AUTO-REVIEW MODE (Pflicht bei jeder Code-Änderung)
+
+Nach **jeder** Änderung — Feature, Fix, Refactor, Migration — MUSS diese Checkliste
+vollständig durchlaufen werden, **bevor** Code committed oder weitergeschrieben wird.
+
+---
+
+## 1. Impact-Analyse (4 Bereiche)
+
+| Bereich | Was prüfen |
+|---------|-----------|
+| **Auth** | Wird `signIn()`, `bootstrapThenLoadProfile()`, `loadProfile()` oder `supabase.auth.*` berührt? |
+| **Organizations** | Wird `org_id`, `organization_members`, `get_my_org_context()` oder Org-Routing berührt? |
+| **RLS** | Wird eine Policy erstellt/geändert, oder eine Tabelle/Funktion im RLS-SELECT-Pfad verändert? |
+| **Assignments** | Wird `model_assignments`, `model_agency_territories`, Rollen-Mapping oder Sichtbarkeit berührt? |
+
+---
+
+## 2. Risiko-Erkennung
+
+- **Fehlender Org-Kontext:** Query ohne `org_id`-Filter? → Blocker
+- **RLS-Rekursion (42P17):** Policy auf Tabelle im `profiles`→`models`-Pfad mit Rückverweis? → Blocker
+  - `FOR ALL`-Policy mit SELECT-Subquery auf `profiles` oder `models`? → Split in INSERT/UPDATE/DELETE
+  - SECURITY DEFINER ohne `SET row_security TO off`? → Blocker
+- **Broken Role Logic:** `effectiveRole` für Admin-Routing genutzt? → Blocker (Admin hat `role='admin'`, kein effectiveRole)
+- **Admin-Zugang:** `assert_is_admin()` in neuen Admin-RPCs vergessen? → Blocker
+
+---
+
+## 3. Vier Pflicht-Fragen (explizit beantworten)
+
+```
+Q1: Bricht diese Änderung den Login?
+Q2: Bricht diese Änderung die Org-Zuweisung?
+Q3: Bricht diese Änderung die Admin-Sichtbarkeit?
+Q4: Führt diese Änderung RLS-Rekursion ein?
+```
+
+→ Wenn **eine** Antwort unklar oder „möglicherweise ja" ist:
+   **STOP — nicht committen — sichere Alternative vorschlagen.**
+
+---
+
+## 4. Stop-Bedingungen (sofortiger Abbruch)
+
+- RLS-Policy ist `FOR ALL` auf Tabelle im `profiles/models`-SELECT-Pfad
+- Neue DB-Funktion ohne `assert_is_admin()` schreibt Admin-Daten
+- Query ohne `org_id`-Filter auf Multi-Tenant-Tabelle
+- `bootstrapThenLoadProfile` oder Login-Pfad wird verändert ohne expliziten Nachweis, dass Q1–Q4 = Nein
+- Admin-Routing in `App.tsx` wird vor den `is_admin`-Check verschoben
+
+---
+
+## 5. Ziel
+
+**ZERO Regression** in:
+- Login-Flow aller Rollen (Admin, Owner, Booker, Employee, Model)
+- Org-Isolation (keine Daten-Leaks zwischen Tenants)
+- Admin-Always-Access (Admin kann immer einloggen, immer alles sehen)
+- RLS-Konsistenz (keine 42P17-Fehler)

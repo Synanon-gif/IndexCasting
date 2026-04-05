@@ -1,0 +1,123 @@
+---
+description: RLS-Sicherheitsregeln — verboten/erlaubt Patterns für alle neuen Policies und Features
+alwaysApply: true
+---
+
+# RLS Security Patterns — Drei reale Gefahren (NIEMALS wiederholen)
+
+## ❌ GEFAHR 1 — `profiles.is_admin = true` in RLS-Policies
+
+**Problem:** Nach `REVOKE SELECT (is_admin) FROM authenticated` gibt `profiles.is_admin` für alle authenticated-User `NULL` zurück → Policy evaluiert immer `false` → Admin ist ausgesperrt.
+
+**Verboten:**
+```sql
+-- NIEMALS so:
+EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND profiles.is_admin = true)
+```
+
+**Richtig:**
+```sql
+-- IMMER so:
+public.is_current_user_admin()
+```
+
+`is_current_user_admin()` ist SECURITY DEFINER mit `row_security=off` und UUID+Email-Pin. ✅
+
+**Betroffene Tabellen (bereits gefixt 2026-04-05):**
+`activity_logs`, `legal_acceptances`, `model_embeddings` (2×), `organization_daily_usage`,
+`organization_storage_usage`, `organization_subscriptions`, `stippen`, `used_trial_emails`
+
+---
+
+## ❌ GEFAHR 2 — Email-Matching in RLS-Policies
+
+**Problem:** `JOIN profiles ON profiles.email = agencies.email` oder `get_current_user_email() = agency.email` ist unsicher:
+- Email kann sich ändern
+- Umgeht das Org-Membership-Modell
+- Ermöglicht Datenzugriff über Email-Kollision (anderer Account gleiche Email)
+
+**Verboten:**
+```sql
+-- NIEMALS so (direkt):
+JOIN profiles pr ON lower(trim(pr.email)) = lower(trim(a.email))
+-- NIEMALS so (Funktion):
+trim(lower(get_current_user_email())) = trim(lower(a.email))
+```
+
+**Richtig:**
+```sql
+-- IMMER org-scoped über organization_members:
+EXISTS (
+  SELECT 1 FROM (organization_members om JOIN organizations o ON o.id = om.organization_id)
+  WHERE om.user_id = auth.uid() AND o.agency_id = <table>.agency_id
+)
+```
+
+**Gefixt (2026-04-05):** `model_agency_territories` (DELETE/UPDATE email-Policies gedroppt),
+`calendar_entries` ("Agency can edit booking calendar entries" gedroppt),
+`recruiting_chat_threads/messages` (email-Branch aus SELECT/UPDATE entfernt).
+
+---
+
+## ❌ GEFAHR 3 — agencies[0] / Email-Fallback im Frontend
+
+**Problem:** `agencies.find(a => a.email === profile.email) ?? agencies[0]` ist doppelt unsicher:
+1. Email-Matching (siehe Gefahr 2)
+2. `agencies[0]` gibt beliebige Agentur zurück wenn Email nicht matched → falscher Org-Kontext
+
+**Verboten:**
+```typescript
+// NIEMALS so:
+const agencyId = agencies.find(a => a.email === profile?.email)?.id ?? agencies[0]?.id ?? '';
+```
+
+**Richtig:**
+```typescript
+// IMMER profile.agency_id — geladen via get_my_org_context() (SECURITY DEFINER, org-scoped):
+const agencyId = profile?.agency_id ?? '';
+```
+
+**Gefixt (2026-04-05):** `AgencyDashboardScreen.tsx`
+
+---
+
+## Pflicht-Prüfung bei JEDER neuen RLS-Policy
+
+```
+1. Enthält die Policy `profiles.is_admin`?
+   → Nein erlaubt. Ja → STOP: nutze is_current_user_admin()
+
+2. Enthält die Policy email-Matching (JOIN auf email, get_current_user_email())?
+   → Nein erlaubt. Ja → STOP: nutze organization_members + org_id
+
+3. Ist die Policy FOR ALL auf einer Tabelle im profiles→models-SELECT-Pfad?
+   → Ja → STOP: aufteilen in INSERT/UPDATE/DELETE; SELECT-Teil darf nicht zurückverweisen
+
+4. Jede Admin-Policy nutzt is_current_user_admin() (SECURITY DEFINER, UUID+email-Pin)?
+   → Ja erlaubt.
+```
+
+## Pflicht-Prüfung bei JEDEM neuen Frontend-Feature mit Org-Kontext
+
+```typescript
+// Reihenfolge beim Agency-Lookup (from best to worst):
+// ✅ 1. profile.agency_id      — org-scoped, via get_my_org_context() RPC
+// ✅ 2. profile.organization_id — org-scoped, via get_my_org_context() RPC
+// ❌ 3. agencies.find(email)   — VERBOTEN (email-match)
+// ❌ 4. agencies[0]            — VERBOTEN (falscher Org-Kontext)
+// ❌ 5. fallback-org           — VERBOTEN (Daten-Leak möglich)
+```
+
+## Verifizierungs-Query (nach jeder Migration ausführen)
+
+```sql
+-- Keine profiles.is_admin = true mehr in Policies:
+SELECT tablename, policyname FROM pg_policies
+WHERE qual ILIKE '%is_admin = true%' OR qual ILIKE '%is_admin=true%';
+-- Erwartet: 0 Zeilen
+
+-- Kein Email-Matching mehr in Policies:
+SELECT tablename, policyname FROM pg_policies
+WHERE qual ILIKE '%email%' AND tablename NOT IN ('profiles'); -- profiles_org_scoped_read hat keins
+-- Ergebnis prüfen: nur erlaubte Display-Spalten, kein JOIN ON email
+```
