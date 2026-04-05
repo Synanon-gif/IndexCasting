@@ -312,6 +312,7 @@ export async function bulkUpsertTerritoriesForModels(
 
 /**
  * Booking routing helper: returns the agency_id responsible for a model in a country.
+ * @deprecated Nutze resolveOrganizationForModelAndCountry für den org-zentrischen Pfad.
  */
 export async function resolveAgencyForModelAndCountry(
   modelId: string,
@@ -334,4 +335,141 @@ export async function resolveAgencyForModelAndCountry(
     console.error('resolveAgencyForModelAndCountry exception:', e);
     return null;
   }
+}
+
+/**
+ * Org-zentrische Variante: liefert die organization_id der Agentur, die das Model
+ * im angegebenen Land vertritt (via model_assignments).
+ */
+export async function resolveOrganizationForModelAndCountry(
+  modelId: string,
+  countryCode: string,
+): Promise<string | null> {
+  const code = countryCode.trim().toUpperCase();
+  if (!code) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from('model_assignments')
+      .select('organization_id')
+      .eq('model_id', modelId)
+      .eq('territory', code)
+      .maybeSingle();
+
+    if (error) { console.error('resolveOrganizationForModelAndCountry error:', error); return null; }
+    return (data as { organization_id: string } | null)?.organization_id ?? null;
+  } catch (e) {
+    console.error('resolveOrganizationForModelAndCountry exception:', e);
+    return null;
+  }
+}
+
+/**
+ * Fetches all model_assignments for a given organization (org-zentrisch).
+ * Returns a map: model_id → sorted territory codes[].
+ * Uses SECURITY DEFINER RPC get_assignments_for_agency_roster.
+ */
+export async function getAssignmentsForAgency(
+  organizationId: string,
+): Promise<Record<string, string[]>> {
+  try {
+    const { data, error } = await supabase.rpc('get_assignments_for_agency_roster', {
+      p_organization_id: organizationId,
+    });
+
+    if (error) {
+      console.error('getAssignmentsForAgency rpc error:', error);
+      return {};
+    }
+
+    const map: Record<string, string[]> = {};
+    for (const row of (data as Array<{ r_model_id: string; r_territory: string }> ?? [])) {
+      if (!row.r_model_id) continue;
+      if (!map[row.r_model_id]) map[row.r_model_id] = [];
+      map[row.r_model_id].push(row.r_territory.toUpperCase());
+    }
+    return map;
+  } catch (e) {
+    console.error('getAssignmentsForAgency exception:', e);
+    return {};
+  }
+}
+
+export type ModelAssignment = {
+  id: string;
+  model_id: string;
+  organization_id: string;
+  territory: string;
+  role: 'mother' | 'exclusive' | 'non_exclusive';
+  created_at?: string;
+};
+
+/**
+ * Fetches assignments for a single model, optionally scoped to one organization.
+ * Uses SECURITY DEFINER RPC get_assignments_for_model.
+ */
+export async function getAssignmentsForModel(
+  modelId: string,
+  organizationId?: string,
+): Promise<ModelAssignment[]> {
+  try {
+    const { data, error } = await supabase.rpc('get_assignments_for_model', {
+      p_model_id: modelId,
+      p_organization_id: organizationId ?? null,
+    });
+
+    if (error) {
+      console.error('getAssignmentsForModel rpc error:', error);
+      return [];
+    }
+
+    return ((data as Array<{
+      r_id: string; r_model_id: string; r_organization_id: string;
+      r_territory: string; r_role: string; r_created_at?: string;
+    }>) ?? []).map((r) => ({
+      id: r.r_id,
+      model_id: r.r_model_id,
+      organization_id: r.r_organization_id,
+      territory: r.r_territory,
+      role: r.r_role as ModelAssignment['role'],
+      created_at: r.r_created_at,
+    }));
+  } catch (e) {
+    console.error('getAssignmentsForModel exception:', e);
+    return [];
+  }
+}
+
+/**
+ * Replaces all assignments for (model, organization) with the given country codes.
+ * Org-zentrisch: nutzt save_model_assignments RPC.
+ * Dual-Write: schreibt auch in model_agency_territories für Backward-Compat.
+ */
+export async function upsertAssignmentsForModel(
+  modelId: string,
+  organizationId: string,
+  countryCodes: string[],
+  role: 'mother' | 'exclusive' | 'non_exclusive' = 'non_exclusive',
+): Promise<ModelAssignment[]> {
+  const normalized = Array.from(
+    new Set(countryCodes.map((c) => c.trim().toUpperCase()).filter(Boolean)),
+  );
+
+  const { data, error } = await supabase.rpc('save_model_assignments', {
+    p_model_id: modelId,
+    p_organization_id: organizationId,
+    p_country_codes: normalized,
+    p_role: role,
+  });
+
+  if (error) {
+    console.error('upsertAssignmentsForModel rpc error:', error);
+    throw new Error(`Assignment save failed: ${error.message}`);
+  }
+
+  if (!data) {
+    throw new Error('Assignment save failed: RPC returned no result. Apply migration_rpcs_model_assignments_v2.sql.');
+  }
+
+  return getAssignmentsForModel(modelId, organizationId);
 }

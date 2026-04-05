@@ -285,7 +285,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const { data: orgCtx, error: orgCtxErr } = await supabase.rpc('get_my_org_context');
         if (orgCtxErr) {
-          console.error('loadProfile get_my_org_context error:', orgCtxErr);
+          console.error('[AuthContext] loadProfile get_my_org_context error:', orgCtxErr);
         } else if (orgCtx) {
           const row = Array.isArray(orgCtx) ? orgCtx[0] : orgCtx;
           if (row?.organization_id) {
@@ -295,10 +295,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               org_member_role: row.org_member_role as OrgMemberRole,
               agency_id: (row.agency_id as string) ?? null,
             };
+          } else {
+            // Org context fehlt für einen B2B-User — Partial-State nach Signup.
+            // Versuche Bootstrap einmalig, dann erneuter Fetch.
+            console.error('[AuthContext] loadProfile: kein org context für role=', role, '— versuche Bootstrap-Recovery');
+            try {
+              await supabase.rpc('ensure_plain_signup_b2b_owner_bootstrap');
+              const { data: retryCtx } = await supabase.rpc('get_my_org_context');
+              const retryRow = Array.isArray(retryCtx) ? retryCtx?.[0] : retryCtx;
+              if (retryRow?.organization_id) {
+                orgContext = {
+                  organization_id: retryRow.organization_id as string,
+                  org_type: retryRow.org_type as OrganizationType,
+                  org_member_role: retryRow.org_member_role as OrgMemberRole,
+                  agency_id: (retryRow.agency_id as string) ?? null,
+                };
+                console.log('[AuthContext] loadProfile: org context erfolgreich wiederhergestellt');
+              } else {
+                console.error('[AuthContext] loadProfile: org context fehlt auch nach Bootstrap — User benötigt manuelle Hilfe (role=', role, ')');
+              }
+            } catch (bootstrapErr) {
+              console.error('[AuthContext] loadProfile: Bootstrap-Recovery fehlgeschlagen:', bootstrapErr);
+            }
           }
         }
       } catch (e) {
-        console.error('loadProfile get_my_org_context exception:', e);
+        console.error('[AuthContext] loadProfile get_my_org_context exception:', e);
       }
     }
 

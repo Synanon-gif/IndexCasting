@@ -423,6 +423,42 @@ export async function getModelsForAgencyFromSupabase(agencyId: string): Promise<
   });
 }
 
+/**
+ * Org-zentrische Variante: Models via model_assignments statt models.agency_id.
+ * Gibt alle Models zurück, für die die Organization mindestens einen model_assignments-Eintrag hat.
+ * Verwendet RLS — der Caller muss Mitglied der Organisation sein.
+ */
+export async function getModelsForOrganizationFromSupabase(organizationId: string): Promise<SupabaseModel[]> {
+  try {
+    const { data, error } = await supabase
+      .from('model_assignments')
+      .select(`model_id`)
+      .eq('organization_id', organizationId);
+
+    if (error) {
+      console.error('getModelsForOrganizationFromSupabase assignments error:', error);
+      return [];
+    }
+
+    const modelIds = [...new Set((data ?? []).map((row: { model_id: string }) => row.model_id))];
+    if (modelIds.length === 0) return [];
+
+    return fetchAllSupabasePages(async (from, to) => {
+      const { data: models, error: mErr } = await supabase
+        .from('models')
+        .select(MODEL_DETAIL_SELECT)
+        .in('id', modelIds)
+        .or('agency_relationship_status.is.null,agency_relationship_status.eq.active,agency_relationship_status.eq.pending_link')
+        .order('name')
+        .range(from, to);
+      return { data: models as SupabaseModel[] | null, error: mErr };
+    });
+  } catch (e) {
+    console.error('getModelsForOrganizationFromSupabase exception:', e);
+    return [];
+  }
+}
+
 export async function updateModelVisibilityInSupabase(
   id: string,
   payload: { is_visible_commercial?: boolean; is_visible_fashion?: boolean }
