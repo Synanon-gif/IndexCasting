@@ -99,6 +99,8 @@ function setupSupabaseMock({
 describe('syncSingleModelFromNetwalk', () => {
   beforeEach(() => {
     fromMock.mockReset();
+    rpcMock.mockReset();
+    rpcMock.mockResolvedValue({ error: null });
     getModelByIdFromSupabaseMock.mockReset();
     getModelFromNetwalkMock.mockReset();
     setupSupabaseMock();
@@ -144,7 +146,11 @@ describe('syncSingleModelFromNetwalk', () => {
   it('returns ok=false when the DB update fails', async () => {
     getModelByIdFromSupabaseMock.mockResolvedValue(makeLocalModel());
     getModelFromNetwalkMock.mockResolvedValue(makeRemoteModel());
-    setupSupabaseMock({ updateError: { message: 'constraint violation' } });
+    // Konfiguriere rpcMock so dass agency_update_model_full einen Fehler zurückgibt
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'agency_update_model_full') return Promise.resolve({ error: { message: 'constraint violation' } });
+      return Promise.resolve({ error: null });
+    });
 
     const result = await syncSingleModelFromNetwalk({
       localModelId: LOCAL_MODEL_ID,
@@ -171,7 +177,7 @@ describe('syncSingleModelFromNetwalk', () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(fromMock).toHaveBeenCalledWith('models');
+    expect(rpcMock).toHaveBeenCalledWith('agency_update_model_full', expect.any(Object));
   });
 
   it('returns ok=true with no DB write when remote has no differing data', async () => {

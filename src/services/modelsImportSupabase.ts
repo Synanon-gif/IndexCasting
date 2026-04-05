@@ -137,8 +137,8 @@ export async function importModelAndMerge(params: ImportModelPayload): Promise<{
       };
 
       // Only fill missing scalar fields; never overwrite existing values.
-      consider('mediaslide_sync_id', externalId);
-      consider('netwalk_model_id', netwalkId);
+      // Sync-IDs (mediaslide_sync_id, netwalk_model_id) sind REVOKED für direkte Updates
+      // → werden separat über update_model_sync_ids RPC gesetzt (nach dem Profile-Update).
       consider('email', email);
       consider('birthday', birthday);
       consider('name', params.name, false);
@@ -179,13 +179,43 @@ export async function importModelAndMerge(params: ImportModelPayload): Promise<{
       }
 
       if (Object.keys(updates).length > 0) {
-        const { error } = await supabase
-          .from('models')
-          .update(updates)
-          .eq('id', existing.id);
+        const { error } = await supabase.rpc('agency_update_model_full', {
+          p_model_id:          existing.id,
+          p_name:              updates.name              ?? null,
+          p_email:             updates.email             ?? null,
+          p_city:              updates.city              ?? null,
+          p_country_code:      updates.country_code      ?? null,
+          p_hair_color:        updates.hair_color        ?? null,
+          p_eye_color:         updates.eye_color         ?? null,
+          p_ethnicity:         updates.ethnicity         ?? null,
+          p_current_location:  updates.current_location  ?? null,
+          p_sex:               updates.sex               ?? null,
+          p_categories:        updates.categories        ?? null,
+          p_height:            updates.height            ?? null,
+          p_bust:              updates.bust              ?? null,
+          p_waist:             updates.waist             ?? null,
+          p_hips:              updates.hips              ?? null,
+          p_chest:             updates.chest             ?? null,
+          p_legs_inseam:       updates.legs_inseam       ?? null,
+          p_shoe_size:         updates.shoe_size         ?? null,
+          p_portfolio_images:  updates.portfolio_images  ?? null,
+          p_polaroids:         updates.polaroids         ?? null,
+        });
         if (error) {
           console.error('importModelAndMerge: update error:', error);
           return null;
+        }
+      }
+
+      // Sync-IDs separat über SECURITY DEFINER RPC setzen (REVOKED für direkte Updates)
+      if (externalId || netwalkId) {
+        const { error: syncError } = await supabase.rpc('update_model_sync_ids', {
+          p_model_id:         existing.id,
+          p_mediaslide_id:    externalId   ?? undefined,
+          p_netwalk_model_id: netwalkId    ?? undefined,
+        });
+        if (syncError) {
+          console.error('importModelAndMerge: sync_ids update error:', syncError);
         }
       }
 

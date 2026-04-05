@@ -147,8 +147,11 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
         profile.countryCode ??
         'XX';
 
-      // Update legacy current_location text field
-      await supabase.from('models').update({ current_location: cityName }).eq('id', profile.id);
+      // Update legacy current_location text field via SECURITY DEFINER RPC
+      // (blocked if model belongs to an agency — agency controls location in that case)
+      await supabase.rpc('model_update_own_profile_safe', {
+        p_current_location: cityName,
+      });
 
       // Write privacy-safe approximate location to model_locations
       await upsertModelLocation(

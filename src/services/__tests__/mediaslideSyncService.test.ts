@@ -97,6 +97,8 @@ function setupSupabaseMock({
 describe('syncSingleModelFromMediaslide', () => {
   beforeEach(() => {
     fromMock.mockReset();
+    rpcMock.mockReset();
+    rpcMock.mockResolvedValue({ error: null });
     getModelByIdFromSupabaseMock.mockReset();
     getModelFromMediaslideMock.mockReset();
     setupSupabaseMock();
@@ -142,7 +144,11 @@ describe('syncSingleModelFromMediaslide', () => {
   it('returns ok=false when the DB update fails', async () => {
     getModelByIdFromSupabaseMock.mockResolvedValue(makeLocalModel());
     getModelFromMediaslideMock.mockResolvedValue(makeRemoteModel());
-    setupSupabaseMock({ updateError: { message: 'DB error' } });
+    // Konfiguriere rpcMock so dass agency_update_model_full einen Fehler zurückgibt
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'agency_update_model_full') return Promise.resolve({ error: { message: 'DB error' } });
+      return Promise.resolve({ error: null });
+    });
 
     const result = await syncSingleModelFromMediaslide({
       localModelId: LOCAL_MODEL_ID,
@@ -169,7 +175,7 @@ describe('syncSingleModelFromMediaslide', () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(fromMock).toHaveBeenCalledWith('models');
+    expect(rpcMock).toHaveBeenCalledWith('agency_update_model_full', expect.any(Object));
   });
 
   it('returns ok=true with no DB write when there are no updates (remote empty)', async () => {

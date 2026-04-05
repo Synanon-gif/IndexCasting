@@ -2,10 +2,12 @@
 import { importModelAndMerge } from '../modelsImportSupabase';
 
 const fromMock = jest.fn();
+const rpcMock = jest.fn().mockResolvedValue({ error: null });
 
 jest.mock('../../../lib/supabase', () => ({
   supabase: {
     from: (...args: unknown[]) => fromMock(...args),
+    rpc: (...args: unknown[]) => rpcMock(...args),
   },
 }));
 
@@ -45,6 +47,8 @@ function makeInsertChain(row: Record<string, unknown>) {
 describe('importModelAndMerge', () => {
   beforeEach(() => {
     fromMock.mockReset();
+    rpcMock.mockReset();
+    rpcMock.mockResolvedValue({ error: null });
   });
 
   // ── existing tests (unchanged behaviour) ────────────────────────────────────
@@ -143,10 +147,7 @@ describe('importModelAndMerge', () => {
       polaroids: [],
     };
 
-    let updatedPayload: any;
-    fromMock
-      .mockReturnValueOnce(makeLookupChain(existing))
-      .mockReturnValueOnce(makeUpdateChain((p) => { updatedPayload = p; }));
+    fromMock.mockReturnValueOnce(makeLookupChain(existing));
 
     await importModelAndMerge({
       mediaslide_sync_id: 'MS-CC',
@@ -155,7 +156,7 @@ describe('importModelAndMerge', () => {
       country_code: 'FR',
     });
 
-    expect(updatedPayload).toMatchObject({ country_code: 'FR' });
+    expect(rpcMock).toHaveBeenCalledWith('agency_update_model_full', expect.objectContaining({ p_country_code: 'FR' }));
   });
 
   // ── new: forceUpdateMeasurements overwrites existing measurements ───────────
@@ -176,10 +177,7 @@ describe('importModelAndMerge', () => {
       polaroids: [],
     };
 
-    let updatedPayload: any = null;
-    fromMock
-      .mockReturnValueOnce(makeLookupChain(existing))
-      .mockReturnValueOnce(makeUpdateChain((p) => { updatedPayload = p; }));
+    fromMock.mockReturnValueOnce(makeLookupChain(existing));
 
     await importModelAndMerge({
       mediaslide_sync_id: 'MS-MEAS',
@@ -193,10 +191,13 @@ describe('importModelAndMerge', () => {
       shoe_size: 40,
     });
 
-    // All existing measurement fields are non-null → consider() should skip them.
-    expect(updatedPayload?.bust).toBeUndefined();
-    expect(updatedPayload?.waist).toBeUndefined();
-    expect(updatedPayload?.hips).toBeUndefined();
+    // All existing measurement fields are non-null → consider() skips them.
+    // Either agency_update_model_full is not called at all (empty updates = no change),
+    // or if called, p_bust/p_waist/p_hips must be null (COALESCE = no change).
+    const rpcParams = rpcMock.mock.calls.find(([name]) => name === 'agency_update_model_full')?.[1];
+    expect(rpcParams?.p_bust   ?? null).toBeNull();
+    expect(rpcParams?.p_waist  ?? null).toBeNull();
+    expect(rpcParams?.p_hips   ?? null).toBeNull();
   });
 
   it('overwrites existing measurements when forceUpdateMeasurements is true', async () => {
@@ -215,10 +216,7 @@ describe('importModelAndMerge', () => {
       polaroids: [],
     };
 
-    let updatedPayload: any;
-    fromMock
-      .mockReturnValueOnce(makeLookupChain(existing))
-      .mockReturnValueOnce(makeUpdateChain((p) => { updatedPayload = p; }));
+    fromMock.mockReturnValueOnce(makeLookupChain(existing));
 
     await importModelAndMerge({
       mediaslide_sync_id: 'MS-FORCE',
@@ -233,15 +231,15 @@ describe('importModelAndMerge', () => {
       forceUpdateMeasurements: true,
     });
 
-    expect(updatedPayload).toMatchObject({
-      height: 180,
-      bust: 92,
-      waist: 65,
-      hips: 95,
-      chest: 92,
-      legs_inseam: 82,
-      shoe_size: 40,
-    });
+    expect(rpcMock).toHaveBeenCalledWith('agency_update_model_full', expect.objectContaining({
+      p_height: 180,
+      p_bust: 92,
+      p_waist: 65,
+      p_hips: 95,
+      p_chest: 92,
+      p_legs_inseam: 82,
+      p_shoe_size: 40,
+    }));
   });
 
   // ── new: ethnicity and categories are filled for new models ─────────────────

@@ -264,11 +264,30 @@ export async function syncSingleModelFromMediaslide(args: {
     return { ok: true };
   }
 
-  // Update non-restricted columns via direct client UPDATE.
-  const { error } = await supabase
-    .from('models')
-    .update(updates)
-    .eq('id', local.id);
+  // Alle direkten Updates laufen über agency_update_model_full (SECURITY DEFINER).
+  // REVOKED-Spalten (mediaslide_sync_id) werden separat via update_model_sync_ids gesetzt.
+  const u = updates as any;
+  const { error } = await supabase.rpc('agency_update_model_full', {
+    p_model_id:             local.id,
+    p_name:                 u.name                 ?? null,
+    p_city:                 u.city                 ?? null,
+    p_country:              u.country              ?? null,
+    p_country_code:         u.country_code         ?? null,
+    p_hair_color:           u.hair_color           ?? null,
+    p_eye_color:            u.eye_color            ?? null,
+    p_sex:                  u.sex                  ?? null,
+    p_ethnicity:            u.ethnicity            ?? null,
+    p_categories:           u.categories           ?? null,
+    p_height:               u.height               ?? null,
+    p_bust:                 u.bust                 ?? null,
+    p_waist:                u.waist                ?? null,
+    p_hips:                 u.hips                 ?? null,
+    p_chest:                u.chest                ?? null,
+    p_legs_inseam:          u.legs_inseam          ?? null,
+    p_shoe_size:            u.shoe_size            ?? null,
+    p_is_visible_commercial: u.is_visible_commercial ?? null,
+    p_is_visible_fashion:    u.is_visible_fashion    ?? null,
+  });
 
   if (error) {
     await logMediaslideError({

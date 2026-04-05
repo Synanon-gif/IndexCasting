@@ -603,10 +603,10 @@ export async function getSignedPrivatePhotoUrl(url: string): Promise<string | nu
 
 /** Update models.portfolio_images from ordered URLs (first = cover for client swipe). */
 export async function syncPortfolioToModel(modelId: string, urls: string[]): Promise<boolean> {
-  const { error } = await supabase
-    .from('models')
-    .update({ portfolio_images: urls })
-    .eq('id', modelId);
+  const { error } = await supabase.rpc('agency_update_model_full', {
+    p_model_id: modelId,
+    p_portfolio_images: urls,
+  });
   if (error) {
     console.error('syncPortfolioToModel error:', error);
     return false;
@@ -616,10 +616,10 @@ export async function syncPortfolioToModel(modelId: string, urls: string[]): Pro
 
 /** Legacy `models.polaroids` array — keep in sync with visible polaroid rows for clients / swipe. */
 export async function syncPolaroidsToModel(modelId: string, urls: string[]): Promise<boolean> {
-  const { error } = await supabase
-    .from('models')
-    .update({ polaroids: urls })
-    .eq('id', modelId);
+  const { error } = await supabase.rpc('agency_update_model_full', {
+    p_model_id: modelId,
+    p_polaroids: urls,
+  });
   if (error) {
     console.error('syncPolaroidsToModel error:', error);
     return false;

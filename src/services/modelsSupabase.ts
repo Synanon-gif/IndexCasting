@@ -428,10 +428,11 @@ export async function updateModelVisibilityInSupabase(
   payload: { is_visible_commercial?: boolean; is_visible_fashion?: boolean }
 ): Promise<boolean> {
   try {
-    const { error } = await supabase
-      .from('models')
-      .update(payload)
-      .eq('id', id);
+    const { error } = await supabase.rpc('agency_update_model_full', {
+      p_model_id: id,
+      p_is_visible_commercial: payload.is_visible_commercial ?? null,
+      p_is_visible_fashion: payload.is_visible_fashion ?? null,
+    });
 
     if (error) {
       console.error('updateModelVisibilityInSupabase error:', error);

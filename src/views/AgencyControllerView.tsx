@@ -2000,26 +2000,21 @@ const MyModelsTab: React.FC<{
       // If merged (not created): also set agency_id and relationship status via direct update
       // when the existing record belongs to another agency or has no agency yet.
       if (!mergeResult.created) {
-        await supabase
-          .from('models')
-          .update({
-            agency_id: agencyId,
-            agency_relationship_status: emailTrim ? 'pending_link' : 'active',
-            agency_relationship_ended_at: null,
-          })
-          .eq('id', mergeResult.model_id)
-          .is('agency_id', null); // only set if currently unowned
+        // Model existed without agency → claim ownership via SECURITY DEFINER RPC
+        await supabase.rpc('agency_claim_unowned_model', {
+          p_model_id:                   mergeResult.model_id,
+          p_agency_relationship_status: emailTrim ? 'pending_link' : 'active',
+          p_is_visible_fashion:         true,
+          p_is_visible_commercial:      true,
+        });
       } else {
         // Newly created: set relationship fields not covered by importModelAndMerge.
-        await supabase
-          .from('models')
-          .update({
-            agency_relationship_status: emailTrim ? 'pending_link' : 'active',
-            agency_relationship_ended_at: null,
-            is_visible_fashion: true,
-            is_visible_commercial: true,
-          })
-          .eq('id', mergeResult.model_id);
+        await supabase.rpc('agency_update_model_full', {
+          p_model_id:                   mergeResult.model_id,
+          p_agency_relationship_status: emailTrim ? 'pending_link' : 'active',
+          p_is_visible_fashion:         true,
+          p_is_visible_commercial:      true,
+        });
       }
 
       const createdModelId = mergeResult.model_id;
@@ -2356,17 +2351,36 @@ const MyModelsTab: React.FC<{
       updates.is_sports_summer = editState.is_sports_summer;
       updates.sex = editState.sex;
 
-      const { error: modelUpdateError } = await supabase.from('models').update(updates).eq('id', selectedModel.id);
+      const { error: modelUpdateError } = await supabase.rpc('agency_update_model_full', {
+        p_model_id:             selectedModel.id,
+        p_name:                 updates.name              ?? null,
+        p_email:                updates.email             ?? null,
+        p_phone:                updates.phone             ?? null,
+        p_city:                 updates.city              ?? null,
+        p_country_code:         (updates as any).country_code      ?? null,
+        p_current_location:     (updates as any).current_location  ?? null,
+        p_height:               updates.height            ?? null,
+        p_bust:                 updates.bust              ?? null,
+        p_waist:                updates.waist             ?? null,
+        p_hips:                 updates.hips              ?? null,
+        p_chest:                updates.chest             ?? null,
+        p_legs_inseam:          updates.legs_inseam       ?? null,
+        p_shoe_size:            (updates as any).shoe_size         ?? null,
+        p_hair_color:           updates.hair_color        ?? null,
+        p_eye_color:            updates.eye_color         ?? null,
+        p_sex:                  (updates as any).sex               ?? null,
+        p_ethnicity:            (updates as any).ethnicity         ?? null,
+        // Leeres Array = Kategorien löschen; null = keine Änderung
+        p_categories:           updates.categories !== undefined
+                                  ? (updates.categories ?? [])
+                                  : null,
+        p_is_visible_fashion:   updates.is_visible_fashion   ?? null,
+        p_is_visible_commercial: updates.is_visible_commercial ?? null,
+        p_is_sports_winter:     (updates as any).is_sports_winter  ?? null,
+        p_is_sports_summer:     (updates as any).is_sports_summer  ?? null,
+      });
       if (modelUpdateError) {
-        // If sports columns are missing (migration not yet applied), retry without them.
-        const isMissingColumn = modelUpdateError.message?.includes('is_sports_');
-        if (isMissingColumn) {
-          const { is_sports_winter: _w, is_sports_summer: _s, ...updatesWithoutSports } = updates;
-          const { error: retryError } = await supabase.from('models').update(updatesWithoutSports).eq('id', selectedModel.id);
-          if (retryError) throw retryError;
-        } else {
-          throw modelUpdateError;
-        }
+        throw modelUpdateError;
       }
 
       // Persist location to model_locations (agency-managed, no GPS coordinates from panel)

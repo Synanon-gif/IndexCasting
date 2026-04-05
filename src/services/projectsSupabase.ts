@@ -137,11 +137,45 @@ export async function addModelToProject(projectId: string, modelId: string): Pro
 }
 
 export async function removeModelFromProject(projectId: string, modelId: string): Promise<boolean> {
-  const { error } = await supabase
-    .from('client_project_models')
-    .delete()
-    .eq('project_id', projectId)
-    .eq('model_id', modelId);
-  if (error) { console.error('removeModelFromProject error:', error); return false; }
-  return true;
+  try {
+    // Org-Validierung: aktueller User muss zur selben Org gehören wie das Projekt
+    const { data: project, error: projectError } = await supabase
+      .from('client_projects')
+      .select('organization_id')
+      .eq('id', projectId)
+      .single();
+
+    if (projectError || !project) {
+      console.error('removeModelFromProject: project not found', projectError);
+      return false;
+    }
+
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      console.error('removeModelFromProject: not authenticated');
+      return false;
+    }
+
+    const { data: membership, error: memberError } = await supabase
+      .from('organization_members')
+      .select('organization_id')
+      .eq('user_id', user.id)
+      .single();
+
+    if (memberError || !membership || membership.organization_id !== project.organization_id) {
+      console.error('removeModelFromProject: unauthorized — org mismatch');
+      return false;
+    }
+
+    const { error } = await supabase
+      .from('client_project_models')
+      .delete()
+      .eq('project_id', projectId)
+      .eq('model_id', modelId);
+    if (error) { console.error('removeModelFromProject error:', error); return false; }
+    return true;
+  } catch (e) {
+    console.error('removeModelFromProject exception:', e);
+    return false;
+  }
 }

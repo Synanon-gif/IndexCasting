@@ -261,10 +261,10 @@ export async function flagModelAsMinor(
   guardianEmail?: string,
 ): Promise<ComplianceResult> {
   try {
-    const { error: modelError } = await supabase
-      .from('models')
-      .update({ is_minor: true })
-      .eq('id', modelId);
+    const { error: modelError } = await supabase.rpc('admin_update_model_minor_flag', {
+      p_model_id: modelId,
+      p_is_minor: true,
+    });
 
     if (modelError) {
       console.error('[gdpr] flagModelAsMinor model update error:', modelError);
