@@ -32,6 +32,9 @@ export type ImportModelPayload = {
   categories?: string[] | null;
   is_visible_commercial?: boolean;
   is_visible_fashion?: boolean;
+  /** Sports flags — set when adding a model manually. Not overwritten by API imports when undefined. */
+  is_sports_winter?: boolean | null;
+  is_sports_summer?: boolean | null;
   portfolio_images?: string[] | null;
   polaroids?: string[] | null;
   territories?: ModelMergeTerritoryInput[] | null;
@@ -166,6 +169,8 @@ export async function importModelAndMerge(params: ImportModelPayload): Promise<{
       consider('current_location', params.current_location ?? null);
       consider('sex', params.sex ?? null);
       consider('categories', params.categories ?? null);
+      if (params.is_sports_winter != null) consider('is_sports_winter', params.is_sports_winter);
+      if (params.is_sports_summer != null) consider('is_sports_summer', params.is_sports_summer);
 
       // Merge arrays (avoid duplicates) if incoming arrays are provided.
       const incomingPortfolio = params.portfolio_images ?? null;
@@ -251,8 +256,9 @@ export async function importModelAndMerge(params: ImportModelPayload): Promise<{
       categories: params.categories ?? null,
       is_visible_commercial: params.is_visible_commercial ?? true,
       is_visible_fashion: params.is_visible_fashion ?? false,
-      // is_sports_winter / is_sports_summer intentionally omitted → DB default false.
-      // Sports assignments are managed manually by the agency, never overwritten by API imports.
+      // Sports flags: only set when explicitly provided (manual add). API imports leave as DB default (false).
+      ...(params.is_sports_winter != null ? { is_sports_winter: params.is_sports_winter } : {}),
+      ...(params.is_sports_summer != null ? { is_sports_summer: params.is_sports_summer } : {}),
       portfolio_images: params.portfolio_images ?? [],
       polaroids: params.polaroids ?? [],
       birthday: birthday ?? null,

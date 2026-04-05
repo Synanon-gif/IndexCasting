@@ -1719,8 +1719,7 @@ const MyModelsTab: React.FC<{
   const [editState, setEditState] = useState<ModelEditState>(buildEditState({ name: '' }));
 
   const [showAddForm, setShowAddForm] = useState(false);
-  const [addFields, setAddFields] = useState<Record<string, string>>({});
-  const [addSex, setAddSex] = useState<'male' | 'female' | null>(null);
+  const [addModelEditState, setAddModelEditState] = useState<ModelEditState>(buildEditState({ name: '' }));
   const [addTerritories, setAddTerritories] = useState<string[]>([]);
   const [addTerritorySearch, setAddTerritorySearch] = useState('');
   const [addLoading, setAddLoading] = useState(false);
@@ -1950,8 +1949,9 @@ const MyModelsTab: React.FC<{
   }, [selectedModel?.id]);
 
   const handleAddModel = async () => {
-    const name = addFields.name?.trim();
+    const name = addModelEditState.name?.trim();
     if (!name || !agencyId) return;
+
     const toNullableInt = (value?: string) => {
       const trimmed = (value ?? '').trim();
       if (!trimmed) return null;
@@ -1959,35 +1959,17 @@ const MyModelsTab: React.FC<{
       return Number.isFinite(parsed) ? parsed : null;
     };
 
-    // Derive ISO-2 country_code from free-text country name.
-    const COUNTRY_NAME_TO_CODE: Record<string, string> = {
-      germany: 'DE', deutschland: 'DE',
-      france: 'FR', frankreich: 'FR',
-      italy: 'IT', italien: 'IT',
-      'united kingdom': 'GB', uk: 'GB', 'great britain': 'GB', england: 'GB',
-      spain: 'ES', spanien: 'ES',
-      netherlands: 'NL', niederlande: 'NL', holland: 'NL',
-      sweden: 'SE', schweden: 'SE',
-      denmark: 'DK', dänemark: 'DK',
-      belgium: 'BE', belgien: 'BE',
-      switzerland: 'CH', schweiz: 'CH',
-      austria: 'AT', österreich: 'AT',
-      usa: 'US', 'united states': 'US', 'united states of america': 'US',
-      portugal: 'PT', norway: 'NO', norwegen: 'NO',
-      poland: 'PL', polen: 'PL',
-      australia: 'AU', australien: 'AU',
-      canada: 'CA', kanada: 'CA',
-      japan: 'JP', china: 'CN',
-    };
-    const countryText = (addFields.country || '').trim();
-    const derivedCountryCode =
-      COUNTRY_NAME_TO_CODE[countryText.toLowerCase()] ??
-      (countryText.length === 2 ? countryText.toUpperCase() : null);
+    // Derive visibility flags from categories (same logic as the full edit save).
+    const hasFashion = addModelEditState.categories.some((c) => c === 'Fashion' || c === 'High Fashion');
+    const hasCommercial = addModelEditState.categories.includes('Commercial');
+    const noCategory = addModelEditState.categories.length === 0;
+    const isVisibleFashion = noCategory || hasFashion;
+    const isVisibleCommercial = noCategory || hasCommercial;
 
     // Capture files in a local const BEFORE state resets (closure-safe).
     const filesToUpload = [...addModelImageFiles];
 
-    const heightInt = toNullableInt(addFields.height);
+    const heightInt = toNullableInt(addModelEditState.height);
     // Height is marked NOT NULL in the DB schema.
     // If the user left it blank and no existing model is found to merge into,
     // the insert would fail. We default to 0 so the row can be created —
@@ -1997,7 +1979,7 @@ const MyModelsTab: React.FC<{
     setAddLoading(true);
     setAddModelFeedback(null);
     try {
-      const emailTrim = addFields.email?.trim() || null;
+      const emailTrim = addModelEditState.email?.trim() || null;
 
       // Use importModelAndMerge so that a model with the same email or name+birthday
       // is merged instead of creating a duplicate.
@@ -2013,22 +1995,27 @@ const MyModelsTab: React.FC<{
       };
 
       const mergeResult = await importModelAndMerge({
-        agency_id: agencyId,
+        agency_id:        agencyId,
         name,
-        email: emailTrim,
-        height: heightForInsert,
-        bust:         toNullableInt(addFields.bust),
-        waist:        toNullableInt(addFields.waist),
-        hips:         toNullableInt(addFields.hips),
-        chest:        toNullableInt(addFields.chest),
-        shoe_size:    toNullableFloat(addFields.shoe_size),
-        legs_inseam:  toNullableInt(addFields.legs_inseam),
-        city:         addFields.city || null,
-        country_code: derivedCountryCode,
-        hair_color:   addFields.hair_color || null,
-        eye_color:    addFields.eye_color || null,
-        sex:          addSex,
-        territories:  territoriesInput.length > 0 ? territoriesInput : null,
+        email:            emailTrim,
+        height:           heightForInsert,
+        chest:            toNullableInt(addModelEditState.chest),
+        waist:            toNullableInt(addModelEditState.waist),
+        hips:             toNullableInt(addModelEditState.hips),
+        shoe_size:        toNullableFloat(addModelEditState.shoe_size),
+        legs_inseam:      toNullableInt(addModelEditState.legs_inseam),
+        city:             addModelEditState.city || null,
+        country_code:     addModelEditState.country_code || null,
+        hair_color:       addModelEditState.hair_color || null,
+        eye_color:        addModelEditState.eye_color || null,
+        ethnicity:        addModelEditState.ethnicity || null,
+        sex:              addModelEditState.sex,
+        categories:       addModelEditState.categories.length > 0 ? addModelEditState.categories : null,
+        is_sports_winter: addModelEditState.is_sports_winter,
+        is_sports_summer: addModelEditState.is_sports_summer,
+        is_visible_fashion:    isVisibleFashion,
+        is_visible_commercial: isVisibleCommercial,
+        territories:      territoriesInput.length > 0 ? territoriesInput : null,
       });
 
       if (!mergeResult) {
@@ -2042,16 +2029,18 @@ const MyModelsTab: React.FC<{
         await supabase.rpc('agency_claim_unowned_model', {
           p_model_id:                   mergeResult.model_id,
           p_agency_relationship_status: emailTrim ? 'pending_link' : 'active',
-          p_is_visible_fashion:         true,
-          p_is_visible_commercial:      true,
+          p_is_visible_fashion:         isVisibleFashion,
+          p_is_visible_commercial:      isVisibleCommercial,
         });
       } else {
-        // Newly created: set relationship fields not covered by importModelAndMerge.
+        // Newly created: set relationship + sports flags not covered by importModelAndMerge insert.
         await supabase.rpc('agency_update_model_full', {
-          p_model_id:                   mergeResult.model_id,
+          p_model_id:                  mergeResult.model_id,
           p_agency_relationship_status: emailTrim ? 'pending_link' : 'active',
-          p_is_visible_fashion:         true,
-          p_is_visible_commercial:      true,
+          p_is_visible_fashion:         isVisibleFashion,
+          p_is_visible_commercial:      isVisibleCommercial,
+          p_is_sports_winter:           addModelEditState.is_sports_winter,
+          p_is_sports_summer:           addModelEditState.is_sports_summer,
         });
       }
 
@@ -2059,8 +2048,7 @@ const MyModelsTab: React.FC<{
       const modelDisplayName = name;
 
       // Reset form immediately after successful insert.
-      setAddFields({});
-      setAddSex(null);
+      setAddModelEditState(buildEditState({ name: '' }));
       setAddTerritories([]);
       setAddTerritorySearch('');
       setAddModelImageFiles([]);
@@ -2876,52 +2864,10 @@ const MyModelsTab: React.FC<{
       </TouchableOpacity>
       {showAddForm && (
         <View style={s.addFormContainer}>
-          {([
-            { key: 'name', label: 'Name *', placeholder: 'Full name' },
-            { key: 'email', label: 'Model email (they sign up with this)', placeholder: 'model@example.com' },
-            { key: 'height', label: 'Height (cm)', placeholder: '175' },
-            { key: 'bust', label: 'Bust / Chest', placeholder: '86' },
-            { key: 'waist', label: 'Waist', placeholder: '62' },
-            { key: 'hips', label: 'Hips', placeholder: '89' },
-            { key: 'chest', label: 'Chest (cm)', placeholder: '101' },
-            { key: 'shoe_size', label: 'Shoe size (EU)', placeholder: '40' },
-            { key: 'legs_inseam', label: 'Legs / Inseam (cm)', placeholder: '82' },
-            { key: 'city', label: 'City', placeholder: 'Berlin' },
-            { key: 'country', label: 'Country', placeholder: 'Germany' },
-            { key: 'hair_color', label: 'Hair color', placeholder: 'Brown' },
-            { key: 'eye_color', label: 'Eye color', placeholder: 'Blue' },
-          ] as const).map(({ key, label, placeholder }) => (
-            <View key={key} style={{ marginBottom: spacing.sm }}>
-              <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary }}>{label}</Text>
-              <TextInput
-                value={addFields[key] ?? ''}
-                onChangeText={(v) => setAddFields((prev) => ({ ...prev, [key]: v }))}
-                placeholder={placeholder}
-                placeholderTextColor={colors.textSecondary}
-                style={s.editInput}
-                keyboardType={['height', 'bust', 'waist', 'hips', 'chest', 'shoe_size', 'legs_inseam'].includes(key) ? 'numeric' : key === 'email' ? 'email-address' : 'default'}
-              />
-            </View>
-          ))}
-          <View style={{ marginBottom: spacing.sm }}>
-            <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary }}>Sex</Text>
-            <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: 4 }}>
-              {(['female', 'male'] as const).map((option) => {
-                const active = addSex === option;
-                return (
-                  <TouchableOpacity
-                    key={option}
-                    style={[s.visPill, active && s.visPillActive]}
-                    onPress={() => setAddSex(active ? null : option)}
-                  >
-                    <Text style={[s.visPillLabel, active && s.visPillLabelActive]}>
-                      {option === 'female' ? 'Female' : 'Male'}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </View>
+          <ModelEditDetailsPanel
+            state={addModelEditState}
+            onChange={(patch) => setAddModelEditState((prev) => ({ ...prev, ...patch }))}
+          />
 
           {/* Territory selection — required for model to be visible to clients */}
           <View style={{ marginBottom: spacing.sm }}>
@@ -3075,9 +3021,9 @@ const MyModelsTab: React.FC<{
             </TouchableOpacity>
           )}
           <TouchableOpacity
-            style={[s.saveBtn, (!addFields.name?.trim() || addLoading) && { opacity: 0.4 }]}
+            style={[s.saveBtn, (!addModelEditState.name?.trim() || addLoading) && { opacity: 0.4 }]}
             onPress={handleAddModel}
-            disabled={!addFields.name?.trim() || addLoading}
+            disabled={!addModelEditState.name?.trim() || addLoading}
           >
             <Text style={s.saveBtnLabel}>{addLoading ? 'Adding...' : 'Add Model'}</Text>
           </TouchableOpacity>
