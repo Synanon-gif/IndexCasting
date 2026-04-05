@@ -29,6 +29,8 @@ export type Profile = {
   organization_id: string | null;
   org_type: OrganizationType | null;
   org_member_role: OrgMemberRole | null;
+  /** For agency users: the agencies.id linked to their organization. Null for clients/models/guests. */
+  agency_id: string | null;
 };
 
 type AuthState = {
@@ -268,10 +270,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
     // Org-Kontext laden (null für Models und Guests — kein Org-Mitglied)
-    let orgContext: { organization_id: string | null; org_type: OrganizationType | null; org_member_role: OrgMemberRole | null } = {
+    let orgContext: {
+      organization_id: string | null;
+      org_type: OrganizationType | null;
+      org_member_role: OrgMemberRole | null;
+      agency_id: string | null;
+    } = {
       organization_id: null,
       org_type: null,
       org_member_role: null,
+      agency_id: null,
     };
     if (!isGuest && (role === 'client' || role === 'agent')) {
       try {
@@ -285,6 +293,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               organization_id: row.organization_id as string,
               org_type: row.org_type as OrganizationType,
               org_member_role: row.org_member_role as OrgMemberRole,
+              agency_id: (row.agency_id as string) ?? null,
             };
           }
         }
@@ -309,6 +318,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       organization_id: orgContext.organization_id,
       org_type: orgContext.org_type,
       org_member_role: orgContext.org_member_role,
+      agency_id: orgContext.agency_id,
     };
     setOrgDeactivated(false);
     console.log('[Auth] loadProfile: success, role:', profileData.role, 'is_admin:', profileData.is_admin);
@@ -352,9 +362,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
           const { ensurePlainSignupB2bOwnerBootstrap } = await import('../services/b2bOwnerBootstrapSupabase');
           const { error } = await ensurePlainSignupB2bOwnerBootstrap();
-          if (error) console.error('bootstrapThenLoadProfile RPC', error);
+          if (error) {
+            console.error('bootstrapThenLoadProfile RPC error (attempt 1):', error);
+            // Retry once after a short delay — handles transient DB write conflicts.
+            await new Promise((r) => setTimeout(r, 1500));
+            const { error: retryErr } = await ensurePlainSignupB2bOwnerBootstrap();
+            if (retryErr) {
+              console.error('bootstrapThenLoadProfile RPC error (attempt 2, giving up):', retryErr);
+            }
+          }
         } catch (e) {
-          console.error('bootstrapThenLoadProfile', e);
+          console.error('bootstrapThenLoadProfile exception:', e);
         }
       }
       return await loadProfile(userId);
@@ -427,8 +445,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.error('signUp invite accept error:', e);
       }
 
+      // Org bootstrap RPCs require an active session (auth.uid() must be set).
+      // When email confirmation is enabled, signUp() returns session=null and these
+      // RPCs would silently fail. Guard against that — bootstrapThenLoadProfile()
+      // at first login will run ensure_plain_signup_b2b_owner_bootstrap() as the
+      // reliable fallback for the no-session case.
+      const hasSession = !!data.session;
+
       /** New org owners only — invited employees/bookers skip (they join an existing org). */
-      if (safeRole === 'client' && !inviteAcceptedOk) {
+      if (hasSession && safeRole === 'client' && !inviteAcceptedOk) {
         // Pass company name directly so the RPC doesn't need to rely on the profile
         // upsert above having committed — belt-and-suspenders against silent upsert failures.
         const { error: rpcErr } = await supabase.rpc('ensure_client_organization', {
@@ -436,7 +461,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
         if (rpcErr) console.error('ensure_client_organization on signup', rpcErr);
       }
-      if (safeRole === 'agent' && !inviteAcceptedOk) {
+      if (hasSession && safeRole === 'agent' && !inviteAcceptedOk) {
         try {
           const { ensureAgencyRecordForCurrentAgent } = await import('../services/agenciesSupabase');
           // Pass company name directly for the same reason as above.

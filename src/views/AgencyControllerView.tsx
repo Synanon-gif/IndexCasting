@@ -175,7 +175,12 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   const [models, setModels] = useState<AgencyModel[]>([]);
   const [fullModels, setFullModels] = useState<SupabaseModel[]>([]);
   const [agencies, setAgencies] = useState<Agency[]>([]);
-  const [agencyOrganizationId, setAgencyOrganizationId] = useState<string | null>(null);
+  // Initialise from profile.organization_id (canonical org membership from get_my_org_context).
+  // loadAgencyTeam may update this further (e.g. via ensureAgencyOrganization for owners
+  // whose org didn't exist yet), but profile.organization_id is the primary source of truth.
+  const [agencyOrganizationId, setAgencyOrganizationId] = useState<string | null>(
+    profile?.organization_id ?? null
+  );
   const [teamMembers, setTeamMembers] = useState<
     Awaited<ReturnType<typeof listOrganizationMembers>>
   >([]);
@@ -222,15 +227,24 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   const [latestActivity, setLatestActivity] = useState<ActivityLog | null>(null);
   /** After starting a chat from Clients, open Messages with this thread. */
   const [pendingB2BChat, setPendingB2BChat] = useState<{ conversationId: string; title: string } | null>(null);
+  // Primary source of truth: org membership → organizations.agency_id (from get_my_org_context).
+  // Falls back to email-match for bookers whose org context returns the owner's agency_id,
+  // but whose profile email differs. No alphabetical agencies[0] fallback — that was wrong.
   const currentAgency = useMemo(() => {
     if (!agencies.length) return null;
+    // 1. Org-context agency_id (canonical, works for owner + booker after bootstrap)
+    if (profile?.agency_id) {
+      const hit = agencies.find((a) => a.id === profile.agency_id);
+      if (hit) return hit;
+    }
+    // 2. Email-match fallback (legacy path / edge case where agency_id not yet on profile)
     const pe = profile?.email?.trim().toLowerCase();
     if (pe) {
       const hit = agencies.find((a) => a.email?.trim().toLowerCase() === pe);
       if (hit) return hit;
     }
-    return agencies[0];
-  }, [agencies, profile?.email]);
+    return null; // Never fall back to agencies[0] — that would show the wrong agency
+  }, [agencies, profile?.email, profile?.agency_id]);
 
   const currentAgencyId = currentAgency?.id ?? '';
 
@@ -262,13 +276,20 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
 
   const loadAgencyTeam = async () => {
     if (!currentAgencyId) return;
-    const pe = profile?.email?.trim().toLowerCase();
-    const ae = currentAgency?.email?.trim().toLowerCase();
-    let oid: string | null = null;
-    if (pe && ae && pe === ae) {
-      oid = await ensureAgencyOrganization(currentAgencyId);
+    // 1. Use profile.organization_id as canonical source (set by get_my_org_context at login).
+    let oid: string | null = profile?.organization_id ?? null;
+    if (!oid) {
+      // 2. For owners: ensure org exists and get its id (idempotent bootstrap).
+      const pe = profile?.email?.trim().toLowerCase();
+      const ae = currentAgency?.email?.trim().toLowerCase();
+      if (pe && ae && pe === ae) {
+        oid = await ensureAgencyOrganization(currentAgencyId);
+      }
     }
-    if (!oid) oid = await getOrganizationIdForAgency(currentAgencyId);
+    if (!oid) {
+      // 3. Fallback: read organizations row by agency_id (covers bookers who joined via invite).
+      oid = await getOrganizationIdForAgency(currentAgencyId);
+    }
     setAgencyOrganizationId(oid);
     if (oid) {
       setTeamMembers(await listOrganizationMembers(oid));
