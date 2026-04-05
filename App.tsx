@@ -272,13 +272,8 @@ function AppContent() {
     else if (session?.user) setCurrentUserId(session.user.id);
   }, [effectiveRole, session, setCurrentUserId]);
 
-  // If session is set but profile is still null after a reasonable delay, retry loading.
-  // This recovers from transient RPC failures or network hiccups without leaving the user
-  // stuck on a spinner forever. After 15 s (3 retries × 5 s), force sign-out.
-  // Effect re-runs when profile changes: once profile loads, the guard returns early
-  // and the cleanup cancels any pending timer.
-  // If session is set but profile remains null after login, retry loading every 4 s.
-  // After 3 failed retries (12 s total) force sign-out so the user is never stuck.
+  // If session is set but profile remains null, retry loading every 4 s.
+  // After 8 failed retries (32 s total) force sign-out so the user is never stuck.
   // Uses setInterval + a counter ref so retries happen even when profile stays null
   // (setState(null) on an already-null value doesn't trigger a re-render).
   const profileRetryCountRef = React.useRef(0);
@@ -287,12 +282,14 @@ function AppContent() {
     if (profile) { profileRetryCountRef.current = 0; return; }
 
     const interval = setInterval(() => {
-      if (profileRetryCountRef.current >= 3) {
+      if (profileRetryCountRef.current >= 8) {
         clearInterval(interval);
+        console.error('[Auth] Profile load failed after 8 retries — signing out');
         void signOut();
         return;
       }
       profileRetryCountRef.current += 1;
+      console.warn(`[Auth] Profile retry ${profileRetryCountRef.current}/8`);
       void refreshProfile();
     }, 4000);
     return () => clearInterval(interval);

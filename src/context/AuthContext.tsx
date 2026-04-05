@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { uiCopy } from '../constants/uiCopy';
 import { supabase } from '../../lib/supabase';
 import type { Session, User } from '@supabase/supabase-js';
@@ -71,8 +71,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [orgDeactivated, setOrgDeactivated] = useState(false);
 
+  const profileLoadInFlightRef = useRef(false);
+  const profileRef = useRef<Profile | null>(null);
+
+  function updateProfile(p: Profile | null) {
+    profileRef.current = p;
+    setProfile(p);
+  }
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: s } }) => {
+      console.log('[Auth] getSession resolved, user:', s?.user?.id ?? 'none');
       setSession(s);
       if (s?.user) {
         void bootstrapThenLoadProfile(s.user.id).finally(() => setLoading(false));
@@ -84,10 +93,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
+      console.log('[Auth] onAuthStateChange:', event, s?.user?.id ?? 'no-user');
       setSession(s);
-      if (s?.user) void bootstrapThenLoadProfile(s.user.id);
-      else {
-        setProfile(null);
+      if (s?.user) {
+        if (profileRef.current) {
+          console.log('[Auth] onAuthStateChange: profile already loaded, skipping bootstrap');
+        } else if (profileLoadInFlightRef.current) {
+          console.log('[Auth] onAuthStateChange: bootstrap already in flight, skipping');
+        } else {
+          void bootstrapThenLoadProfile(s.user.id);
+        }
+      } else {
+        updateProfile(null);
         // Remote sign-out (e.g. member-remove Edge Function) does not run the
         // client signOut() helper — still clear cached org/client state (EXPLOIT-H1).
         if (event === 'SIGNED_OUT') {
@@ -134,7 +151,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
     }
     if (!data) {
-      setProfile(null);
+      if (profileQueryError) {
+        console.warn('[Auth] loadProfile: query error but keeping existing profile (transient failure)', userId);
+      } else {
+        console.log('[Auth] loadProfile: no profile row found for', userId);
+        updateProfile(null);
+      }
       return null;
     }
 
@@ -179,8 +201,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Tertiary: role field (trigger-protected — no user can write role='admin' via the API)
     // This fallback only fires if BOTH RPCs fail (e.g. transient network issue).
     if (!isAdminFlag && normalizeRole(data.role) === 'admin') {
+      console.log('[Auth] loadProfile: admin detected via tertiary role fallback');
       isAdminFlag = true;
-      // Also attempt to set super_admin from a fresh RPC now that we know it's admin
       try {
         const { data: sf } = await supabase.rpc('get_own_admin_flags');
         if (sf) {
@@ -189,6 +211,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       } catch { /* ignore */ }
     }
+    console.log('[Auth] loadProfile: admin flags resolved — is_admin:', isAdminFlag, 'is_super_admin:', isSuperAdminFlag);
 
     const isActive = data.is_active ?? false;
     const isGuest = data.is_guest ?? false;
@@ -201,36 +224,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (deletionRequestedAt) {
       await supabase.auth.signOut();
       setSession(null);
-      setProfile(null);
+      updateProfile(null);
       return { deactivated: true, reason: 'deletion' };
     }
     // Guest accounts are always considered active — skip the activation gate.
     if (!isGuest && (role === 'client' || role === 'agent') && !isActive) {
       await supabase.auth.signOut();
       setSession(null);
-      setProfile(null);
+      updateProfile(null);
       return { deactivated: true, reason: 'deactivated' };
     }
     // Org deactivation gate: if the user's org is deactivated, block access for all members.
     // Fail-closed: any exception (network, timeout, RPC error) is treated as deactivated to
     // prevent a deactivated org from slipping through during an outage.
+    // Retries once on transient failure before failing closed.
     if (!isGuest && (role === 'client' || role === 'agent') && isActive) {
-      try {
-        const { data: orgActive, error: orgErr } = await supabase.rpc('get_my_org_active_status');
-        if (orgErr) throw orgErr;
-        if (orgActive === false) {
-          setOrgDeactivated(true);
-          await supabase.auth.signOut();
-          setSession(null);
-          setProfile(null);
-          return { deactivated: true, reason: 'org_deactivated' };
+      let orgCheckPassed = false;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const { data: orgActive, error: orgErr } = await supabase.rpc('get_my_org_active_status');
+          if (orgErr) throw orgErr;
+          if (orgActive === false) {
+            setOrgDeactivated(true);
+            await supabase.auth.signOut();
+            setSession(null);
+            updateProfile(null);
+            return { deactivated: true, reason: 'org_deactivated' };
+          }
+          orgCheckPassed = true;
+          break;
+        } catch (e) {
+          console.error(`loadProfile org active check attempt ${attempt + 1} failed:`, e);
+          if (attempt < 1) await new Promise(r => setTimeout(r, 1500));
         }
-      } catch (e) {
-        console.error('loadProfile org active check failed — failing closed:', e);
+      }
+      if (!orgCheckPassed) {
+        console.error('loadProfile org active check failed after retries — failing closed');
         setOrgDeactivated(true);
         await supabase.auth.signOut();
         setSession(null);
-        setProfile(null);
+        updateProfile(null);
         return { deactivated: true, reason: 'org_deactivated' };
       }
     }
@@ -278,56 +311,57 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       org_member_role: orgContext.org_member_role,
     };
     setOrgDeactivated(false);
-    setProfile(profileData);
+    console.log('[Auth] loadProfile: success, role:', profileData.role, 'is_admin:', profileData.is_admin);
+    updateProfile(profileData);
     return { profile: profileData };
   }
 
   /** Runs after a real session exists — fixes owner bootstrap when email confirmation prevented it at signUp. */
   async function bootstrapThenLoadProfile(userId: string) {
-    // Check if this is a guest user before running the B2B bootstrap RPC.
-    // Guests have no organization and must not trigger org-creation side effects.
-
-    // The DB trigger handle_new_user() does NOT write is_guest from raw_user_meta_data.
-    // When a guest signs in via Magic Link (OTP), is_guest is only in user_metadata.
-    // We upsert the profile with is_guest=true here so the DB row reflects reality
-    // before we query it below.
+    profileLoadInFlightRef.current = true;
+    console.log('[Auth] bootstrapThenLoadProfile: starting for', userId);
     try {
-      // Use getSession() instead of getUser() to avoid a network round-trip that can hang.
-      // getSession() reads from localStorage synchronously; user_metadata is embedded in the JWT.
-      const { data: { session: currentSession } } = await supabase.auth.getSession();
-      if (currentSession?.user?.user_metadata?.is_guest === true) {
-        const { createGuestProfile } = await import('../services/guestAuthSupabase');
-        await createGuestProfile(
-          userId,
-          currentSession.user.email ?? '',
-        );
-      }
-    } catch (e) {
-      console.error('bootstrapThenLoadProfile guest upsert error:', e);
-    }
-
-    let isGuestUser = false;
-    try {
-      const { data: guestCheck } = await supabase
-        .from('profiles')
-        .select('is_guest')
-        .eq('id', userId)
-        .maybeSingle();
-      isGuestUser = guestCheck?.is_guest === true;
-    } catch {
-      // Ignore — fall through to full bootstrap
-    }
-
-    if (!isGuestUser) {
+      // Guest detection: handle_new_user() does NOT write is_guest from raw_user_meta_data.
+      // When a guest signs in via Magic Link (OTP), is_guest is only in user_metadata.
       try {
-        const { ensurePlainSignupB2bOwnerBootstrap } = await import('../services/b2bOwnerBootstrapSupabase');
-        const { error } = await ensurePlainSignupB2bOwnerBootstrap();
-        if (error) console.error('bootstrapThenLoadProfile RPC', error);
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        if (currentSession?.user?.user_metadata?.is_guest === true) {
+          const { createGuestProfile } = await import('../services/guestAuthSupabase');
+          await createGuestProfile(
+            userId,
+            currentSession.user.email ?? '',
+          );
+        }
       } catch (e) {
-        console.error('bootstrapThenLoadProfile', e);
+        console.error('bootstrapThenLoadProfile guest upsert error:', e);
       }
+
+      let isGuestUser = false;
+      try {
+        const { data: guestCheck } = await supabase
+          .from('profiles')
+          .select('is_guest')
+          .eq('id', userId)
+          .maybeSingle();
+        isGuestUser = guestCheck?.is_guest === true;
+      } catch {
+        // Ignore — fall through to full bootstrap
+      }
+
+      if (!isGuestUser) {
+        try {
+          const { ensurePlainSignupB2bOwnerBootstrap } = await import('../services/b2bOwnerBootstrapSupabase');
+          const { error } = await ensurePlainSignupB2bOwnerBootstrap();
+          if (error) console.error('bootstrapThenLoadProfile RPC', error);
+        } catch (e) {
+          console.error('bootstrapThenLoadProfile', e);
+        }
+      }
+      return await loadProfile(userId);
+    } finally {
+      profileLoadInFlightRef.current = false;
+      console.log('[Auth] bootstrapThenLoadProfile: completed for', userId);
     }
-    return loadProfile(userId);
   }
 
   const refreshProfile = useCallback(async () => {
@@ -497,7 +531,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     await supabase.auth.signOut();
     setSession(null);
-    setProfile(null);
+    updateProfile(null);
     try {
       const { resetApplicationsStore } = await import('../store/applicationsStore');
       const { resetRecruitingChatsStore } = await import('../store/recruitingChats');
