@@ -156,14 +156,17 @@ export async function removeModelFromProject(projectId: string, modelId: string)
       return false;
     }
 
+    // H-3 Security Audit 2026-04-05: .single() schlug bei Multi-Org-Usern fehl
+    // (PGRST116). Gezielte Filterung auf project.organization_id mit .maybeSingle().
     const { data: membership, error: memberError } = await supabase
       .from('organization_members')
       .select('organization_id')
       .eq('user_id', user.id)
-      .single();
+      .eq('organization_id', project.organization_id)
+      .maybeSingle();
 
-    if (memberError || !membership || membership.organization_id !== project.organization_id) {
-      console.error('removeModelFromProject: unauthorized — org mismatch');
+    if (memberError || !membership) {
+      console.error('removeModelFromProject: unauthorized — not a member of project org', memberError);
       return false;
     }
 
