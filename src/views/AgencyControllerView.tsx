@@ -1782,17 +1782,6 @@ const MyModelsTab: React.FC<{
   useEffect(() => {
     if (selectedModel) {
       setEditState(buildEditState(selectedModel));
-      // Load existing model_location to pre-populate shareApproximateLocation toggle
-      import('../services/modelLocationsSupabase').then(({ getModelLocation }) => {
-        getModelLocation(selectedModel.id).then((loc) => {
-          if (loc) {
-            setEditState((prev) => ({
-              ...prev,
-              shareApproximateLocation: loc.share_approximate_location,
-            }));
-          }
-        });
-      });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedModel?.id]);
@@ -2411,14 +2400,16 @@ const MyModelsTab: React.FC<{
         throw modelUpdateError;
       }
 
-      // Persist location to model_locations (agency-managed, no GPS coordinates from panel)
+      // Persist city/country to model_locations (agency-managed, source='agency', no GPS).
+      // share_approximate_location is always false here — only the model controls this
+      // via their own GPS consent in ModelProfileScreen.
       if (editState.country_code) {
         await upsertModelLocation(
           selectedModel.id,
           {
             country_code: editState.country_code,
             city: editState.city || null,
-            share_approximate_location: editState.shareApproximateLocation,
+            share_approximate_location: false,
           },
           'agency',
         );

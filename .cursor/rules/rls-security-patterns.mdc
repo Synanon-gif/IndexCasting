@@ -289,3 +289,131 @@ WHERE cmd = 'ALL'
   AND tablename IN ('model_embeddings', 'model_locations', 'model_agency_territories');
 -- Erwartet: 0 Zeilen (alle aufgeteilt)
 ```
+
+---
+
+## PFLICHT: Neue Tabellen — Checkliste (Risiko C)
+
+Jede neue Tabelle die erstellt wird MUSS folgende Kriterien erfüllen, **bevor** sie committed wird:
+
+```sql
+-- PFLICHT 1: Mindestens eine Org-Spalte
+ALTER TABLE public.neue_tabelle ADD COLUMN organization_id uuid REFERENCES public.organizations(id);
+-- ODER agency_id / user_id / client_org_id / agency_org_id — je nach Zugriffsmodell
+
+-- PFLICHT 2: RLS aktivieren
+ALTER TABLE public.neue_tabelle ENABLE ROW LEVEL SECURITY;
+
+-- PFLICHT 3: Admin-Policy (immer via is_current_user_admin())
+CREATE POLICY "admin_full_access_neue_tabelle"
+  ON public.neue_tabelle
+  FOR ALL TO authenticated
+  USING (public.is_current_user_admin())
+  WITH CHECK (public.is_current_user_admin());
+-- FOR ALL ist bei Admin-only Policies erlaubt (Admin-Context = kein Rekursionsrisiko)
+
+-- PFLICHT 4: User-Policy (nie FOR ALL auf Tabellen im profiles→models-Pfad)
+-- Nutze check_org_access() oder is_org_member() — nie rohen JOIN auf profiles/models
+CREATE POLICY "neue_tabelle_org_select"
+  ON public.neue_tabelle
+  FOR SELECT TO authenticated
+  USING (public.check_org_access(organization_id, 'agency'::organization_type, ...));
+```
+
+**STOP-Bedingung:** Wenn keine Org-Spalte sinnvoll ist → explizit dokumentieren warum
+(z. B. "global reference table", "admin-only", "append-only log mit user_id").
+
+---
+
+## PFLICHT: Neue Service-Funktionen — Checkliste (Risiko A + B)
+
+Jede neue `export async function` die `.from('org-scoped-table')` aufruft MUSS:
+
+```typescript
+// ✅ RICHTIG: expliziter orgId Parameter + assertOrgContext Guard
+export async function getNewFeatureData(
+  agencyId: string,               // ← Pflicht-Parameter, kein Optional
+  opts?: { limit?: number }
+): Promise<MyType[]> {
+  if (!assertOrgContext(agencyId, 'getNewFeatureData')) return [];
+  try {
+    const { data, error } = await supabase
+      .from('new_feature_table')
+      .select('*')
+      .eq('agency_id', agencyId)  // ← Defense-in-Depth: expliziter Filter + RLS
+      .limit(opts?.limit ?? 100);
+    if (error) { console.error('getNewFeatureData error:', error); return []; }
+    return (data ?? []) as MyType[];
+  } catch (e) {
+    console.error('getNewFeatureData exception:', e);
+    return [];
+  }
+}
+```
+
+**Verbotene Muster:**
+```typescript
+// ❌ VERBOTEN: kein org-Filter, reine RLS-Abhängigkeit
+export async function getNewFeatureData(): Promise<MyType[]> {
+  const { data } = await supabase.from('new_feature_table').select('*');
+  return data ?? [];
+}
+
+// ❌ VERBOTEN: leerer String in Audit-Log
+void logBookingAction(orgId ?? '', 'booking_created', id, {...});
+
+// ❌ VERBOTEN: stille Return ohne Log
+if (!orgId) return [];
+
+// ✅ RICHTIG: Guard mit Log
+if (!assertOrgContext(orgId, 'myFunction')) return [];
+```
+
+**Org-scoped Tabellen (immer Filter erforderlich):**
+`model_applications`, `recruiting_chat_threads`, `option_requests`, `booking_events`,
+`calendar_entries`, `activity_logs`, `organization_members`, `organization_subscriptions`
+
+---
+
+## PFLICHT: Email-Lookup — Verboten in JEDER Datei (auch Admin-Code) (Risiko D)
+
+Email-Matching in Supabase-Queries ist **immer** verboten — auch in admin-only Screens.
+
+```typescript
+// ❌ VERBOTEN (auch im AdminDashboard):
+supabase.from('agencies').select('*').eq('email', profile.email)
+supabase.from('profiles').select('*').eq('email', someEmail)
+
+// ✅ RICHTIG: ID-basierter Lookup via profile.agency_id
+const agencyId = (fullProfile as Record<string, unknown>)?.agency_id as string | null;
+if (agencyId) {
+  supabase.from('agencies').select('*').eq('id', agencyId)
+}
+
+// ✅ RICHTIG: Membership-basierter Lookup via organization_members
+supabase.from('organization_members')
+  .select('organization_id, organizations(*)')
+  .eq('user_id', profile.id)
+```
+
+**Gefixt (2026-04-11):** `AdminDashboard.tsx Z.262` — `eq('email', profile.email)` → `eq('id', agencyId)` via `fullProfile.agency_id`
+
+**Erlaubte Ausnahme:** Territory-Resolution mit `fallbackAgency = model?.agency_id` in
+`src/store/optionRequests.ts` — das ist KEIN Email-Matching sondern ID-basierter Agency-Fallback
+bei fehlgeschlagener Territory-Auflösung. Erlaubt weil: (a) nur model.agency_id, keine Email,
+(b) User wird via Alert informiert, (c) kein Daten-Leak-Risiko.
+
+---
+
+## PFLICHT: Migrations-Reihenfolge sichern (Risiko A Anti-Regression)
+
+Bei mehreren Migrations-Dateien mit gleichem Datum-Präfix läuft PostgreSQL/Supabase sie
+**alphabetisch**. Eine spätere Migration kann eine frühere Policy-Split-Arbeit rückgängig machen.
+
+**Regel:** Wenn eine Migration eine Policy korrigiert, die bereits in einer anderen Datei
+desselben Tages vorliegt, MUSS eine neue Migrations-Datei mit einem späteren Datum-Prefix
+erstellt werden, um die korrekte Reihenfolge zu garantieren.
+
+**Gefixt (2026-04-11):** `20260411_model_embeddings_policies_finalize.sql` — stellt sicher
+dass `model_embeddings` immer korrekte 4-Policy-Split hat, unabhängig von der Ausführungsreihenfolge
+von `20260405_risk_hardening...` und `20260405_security_three_dangers_fix...`

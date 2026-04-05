@@ -2,6 +2,7 @@ import { supabase } from '../../lib/supabase';
 import { uiCopy } from '../constants/uiCopy';
 import { createNotifications } from './notificationsSupabase';
 import { logBookingAction } from './gdprComplianceSupabase';
+import { assertOrgContext } from '../utils/orgGuard';
 
 /** Alle Felder der booking_events-Tabelle — kein SELECT * mehr. */
 const BOOKING_EVENT_SELECT =
@@ -101,12 +102,15 @@ export async function createBookingEvent(
       return null;
     }
     const created = data as BookingEvent;
-    void logBookingAction(
-      created.agency_org_id ?? created.client_org_id ?? '',
-      'booking_created',
-      created.id,
-      { type: created.type, model_id: created.model_id },
-    );
+    const bookingOrgId = created.agency_org_id ?? created.client_org_id;
+    if (assertOrgContext(bookingOrgId, 'createBookingEvent')) {
+      void logBookingAction(
+        bookingOrgId,
+        'booking_created',
+        created.id,
+        { type: created.type, model_id: created.model_id },
+      );
+    }
     return created;
   } catch (e) {
     console.error('createBookingEvent exception:', e);
@@ -180,14 +184,16 @@ export async function updateBookingEventStatus(
     }
 
     const bk = current as BookingEvent;
-    const auditOrgId = bk.agency_org_id ?? bk.client_org_id ?? '';
+    const auditOrgId = bk.agency_org_id ?? bk.client_org_id;
     const auditAction =
       newStatus === 'cancelled'       ? 'booking_cancelled'      :
       newStatus === 'agency_accepted' ? 'booking_agency_accepted' :
       newStatus === 'model_confirmed' ? 'booking_model_confirmed' :
       newStatus === 'completed'       ? 'booking_completed'       :
       'booking_confirmed';
-    void logBookingAction(auditOrgId, auditAction, id, { status: newStatus }, { status: currentStatus });
+    if (assertOrgContext(auditOrgId, 'updateBookingEventStatus')) {
+      void logBookingAction(auditOrgId, auditAction, id, { status: newStatus }, { status: currentStatus });
+    }
 
     return { ok: true };
   } catch (e) {

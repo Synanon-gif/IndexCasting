@@ -259,8 +259,11 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
       const { data } = await supabase.from('models').select('*').eq('user_id', profile.id).maybeSingle();
       setModelData(data as Record<string, unknown> | null);
     } else if (profile.role === 'agent') {
-      const { data } = await supabase.from('agencies').select('*').eq('email', profile.email).maybeSingle();
-      setAgencyData(data as Record<string, unknown> | null);
+      const agencyId = (fullProfile as Record<string, unknown> | null)?.agency_id as string | null;
+      if (agencyId) {
+        const { data } = await supabase.from('agencies').select('*').eq('id', agencyId).maybeSingle();
+        setAgencyData(data as Record<string, unknown> | null);
+      }
     }
     if (profile.role === 'agent' || profile.role === 'client') {
       const m = await adminListOrgMemberships(profile.id);

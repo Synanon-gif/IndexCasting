@@ -103,7 +103,9 @@ export async function upsertModelLocation(
   try {
     const roundedLat = data.lat != null ? roundCoord(data.lat) : null;
     const roundedLng = data.lng != null ? roundCoord(data.lng) : null;
-    const shareLocation = data.share_approximate_location ?? true;
+    // Default false: only the model's own GPS consent (ModelProfileScreen) should
+    // enable approximate location sharing. Agency-writes always pass false explicitly.
+    const shareLocation = data.share_approximate_location ?? false;
 
     const { error } = await supabase.rpc('upsert_model_location', {
       p_model_id:                   modelId,
