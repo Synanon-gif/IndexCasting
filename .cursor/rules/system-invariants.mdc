@@ -1,0 +1,60 @@
+---
+description: System-Invarianten — kritische Verhaltensgarantien die NIEMALS gebrochen werden dürfen
+alwaysApply: true
+---
+
+# System Invariants — NEVER BREAK
+
+Bei JEDER Änderung (Feature, Fix, Refactor, Migration) müssen alle folgenden Garantien erhalten bleiben.
+Wenn eine Änderung eine dieser Regeln gefährdet → STOP und refaktorieren.
+
+## AUTH & ZUGANG
+
+- Jeder User (Admin, Agency, Client, Model) kann sich IMMER erfolgreich einloggen
+- Kein Login-Flow darf 500-Fehler oder RLS-Rekursion (42P17) erzeugen
+- Auth darf NIEMALS davon abhängen, dass optionale Org-Daten vorhanden sind
+
+## ORGANISATIONSKONTEXT
+
+- Jeder Nicht-Admin-User MUSS haben: `organization_id`, `role` (owner/booker/employee)
+- Der erste Signup-User einer Org ist IMMER Owner
+- Org-Kontext muss via `get_my_org_context()` auflösbar sein — ohne Fehler
+- Kein View darf Org als existent voraussetzen ohne Fallback
+
+## ADMIN-ZUGANG
+
+- Admin kann IMMER: einloggen, alle User sehen, Org-Beschränkungen umgehen
+- Admin darf NIEMALS von Organisationsmitgliedschaft abhängen
+- Admin-Routing kommt in App.tsx VOR `effectiveRole`-Check (siehe admin-security.mdc)
+
+## MODEL-ZUGANG
+
+- Models ohne Agency können sich IMMER einloggen und ihr Profil bearbeiten
+- Models MIT Agency: die Agency verwaltet alle Einstellungen des Models
+- Ein zugewiesenes Model wird Clients nur angezeigt wenn das Profil vollständig ist
+- Modelle sind für Clients sichtbar sobald alle erforderlichen Felder ausgefüllt sind
+
+## KEINE RLS-REKURSION (KRITISCH)
+
+Policies dürfen NIEMALS Kreisabhängigkeiten erzeugen zwischen:
+- `models` ↔ `model_assignments` ↔ `organization_members`
+- `profiles` ↔ `models` ↔ beliebige Zwischentabelle ↔ zurück
+
+Prüfpflicht bei jeder neuen Policy:
+1. Liegt die Tabelle im SELECT-Pfad von `profiles` oder `models`?
+2. Verweist die Policy zurück auf `profiles` oder `models`?
+3. Ist die Policy `FOR ALL`? → ALL inkludiert SELECT → Rekursionsgefahr
+
+Lösung: Cross-Table-Checks MÜSSEN via `SECURITY DEFINER` mit `SET row_security TO off` erfolgen.
+
+## FRONTEND-GARANTIEN
+
+- Dashboard lädt auch wenn Teildaten fehlen (kein hard crash bei null org/profile)
+- Globale Suche existiert NUR im Dashboard — nirgendwo sonst
+- Kein Screen darf ohne Fallback rendern wenn `org` oder `profile` null ist
+
+## STOP-BEDINGUNG
+
+Wenn eine geplante Änderung eine der obigen Garantien verletzt:
+→ NICHT implementieren → stattdessen sicheren Alternativweg vorschlagen
+→ Im Zweifel: die sicherere Option wählen
