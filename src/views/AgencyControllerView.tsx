@@ -1721,6 +1721,8 @@ const MyModelsTab: React.FC<{
   const [showAddForm, setShowAddForm] = useState(false);
   const [addFields, setAddFields] = useState<Record<string, string>>({});
   const [addSex, setAddSex] = useState<'male' | 'female' | null>(null);
+  const [addTerritories, setAddTerritories] = useState<string[]>([]);
+  const [addTerritorySearch, setAddTerritorySearch] = useState('');
   const [addLoading, setAddLoading] = useState(false);
   const [addModelImageFiles, setAddModelImageFiles] = useState<File[]>([]);
   const [addModelFeedback, setAddModelFeedback] = useState<string | null>(null);
@@ -1999,19 +2001,34 @@ const MyModelsTab: React.FC<{
 
       // Use importModelAndMerge so that a model with the same email or name+birthday
       // is merged instead of creating a duplicate.
+      const territoriesInput = agencyId
+        ? addTerritories.map((cc) => ({ country_code: cc, agency_id: agencyId }))
+        : [];
+
+      const toNullableFloat = (value?: string) => {
+        const trimmed = (value ?? '').trim();
+        if (!trimmed) return null;
+        const parsed = parseFloat(trimmed);
+        return Number.isFinite(parsed) ? parsed : null;
+      };
+
       const mergeResult = await importModelAndMerge({
         agency_id: agencyId,
         name,
         email: emailTrim,
         height: heightForInsert,
-        bust:        toNullableInt(addFields.bust),
-        waist:       toNullableInt(addFields.waist),
-        hips:        toNullableInt(addFields.hips),
-        city:        addFields.city || null,
+        bust:         toNullableInt(addFields.bust),
+        waist:        toNullableInt(addFields.waist),
+        hips:         toNullableInt(addFields.hips),
+        chest:        toNullableInt(addFields.chest),
+        shoe_size:    toNullableFloat(addFields.shoe_size),
+        legs_inseam:  toNullableInt(addFields.legs_inseam),
+        city:         addFields.city || null,
         country_code: derivedCountryCode,
-        hair_color:  addFields.hair_color || null,
-        eye_color:   addFields.eye_color || null,
-        sex:         addSex,
+        hair_color:   addFields.hair_color || null,
+        eye_color:    addFields.eye_color || null,
+        sex:          addSex,
+        territories:  territoriesInput.length > 0 ? territoriesInput : null,
       });
 
       if (!mergeResult) {
@@ -2044,6 +2061,8 @@ const MyModelsTab: React.FC<{
       // Reset form immediately after successful insert.
       setAddFields({});
       setAddSex(null);
+      setAddTerritories([]);
+      setAddTerritorySearch('');
       setAddModelImageFiles([]);
       setAddModelImageRightsConfirmed(false);
       setShowAddForm(false);
@@ -2864,6 +2883,9 @@ const MyModelsTab: React.FC<{
             { key: 'bust', label: 'Bust / Chest', placeholder: '86' },
             { key: 'waist', label: 'Waist', placeholder: '62' },
             { key: 'hips', label: 'Hips', placeholder: '89' },
+            { key: 'chest', label: 'Chest (cm)', placeholder: '101' },
+            { key: 'shoe_size', label: 'Shoe size (EU)', placeholder: '40' },
+            { key: 'legs_inseam', label: 'Legs / Inseam (cm)', placeholder: '82' },
             { key: 'city', label: 'City', placeholder: 'Berlin' },
             { key: 'country', label: 'Country', placeholder: 'Germany' },
             { key: 'hair_color', label: 'Hair color', placeholder: 'Brown' },
@@ -2877,7 +2899,7 @@ const MyModelsTab: React.FC<{
                 placeholder={placeholder}
                 placeholderTextColor={colors.textSecondary}
                 style={s.editInput}
-                keyboardType={['height', 'bust', 'waist', 'hips'].includes(key) ? 'numeric' : key === 'email' ? 'email-address' : 'default'}
+                keyboardType={['height', 'bust', 'waist', 'hips', 'chest', 'shoe_size', 'legs_inseam'].includes(key) ? 'numeric' : key === 'email' ? 'email-address' : 'default'}
               />
             </View>
           ))}
@@ -2899,6 +2921,76 @@ const MyModelsTab: React.FC<{
                 );
               })}
             </View>
+          </View>
+
+          {/* Territory selection — required for model to be visible to clients */}
+          <View style={{ marginBottom: spacing.sm }}>
+            <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary }}>
+              Representation territories *
+            </Text>
+            <Text style={{ ...typography.body, fontSize: 10, color: colors.textSecondary, marginBottom: spacing.xs }}>
+              Select countries where this model is represented. Required for client visibility.
+            </Text>
+            {addTerritories.length > 0 && (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: spacing.xs }}>
+                {addTerritories.map((code) => (
+                  <TouchableOpacity
+                    key={code}
+                    style={[s.visPill, s.visPillActive, { flexDirection: 'row', alignItems: 'center', gap: 4 }]}
+                    onPress={() => setAddTerritories((prev) => prev.filter((c) => c !== code))}
+                  >
+                    <Text style={[s.visPillLabel, s.visPillLabelActive]}>
+                      {(ISO_COUNTRY_NAMES as Record<string, string>)[code.toLowerCase()] ?? code}
+                    </Text>
+                    <Text style={[s.visPillLabel, s.visPillLabelActive, { fontSize: 11 }]}>×</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+            <TextInput
+              value={addTerritorySearch}
+              onChangeText={setAddTerritorySearch}
+              placeholder="Search country…"
+              placeholderTextColor={colors.textSecondary}
+              style={[s.editInput, { marginBottom: spacing.xs }]}
+            />
+            {addTerritorySearch.trim().length > 0 && (
+              <View style={{ maxHeight: 160, borderWidth: 1, borderColor: colors.border, borderRadius: 6, overflow: 'hidden' }}>
+                {isoCountryList
+                  .filter((c) => {
+                    const q = addTerritorySearch.trim().toLowerCase();
+                    return c.name.toLowerCase().includes(q) || c.code.toLowerCase().includes(q);
+                  })
+                  .slice(0, 20)
+                  .map((c) => {
+                    const selected = addTerritories.includes(c.code);
+                    return (
+                      <TouchableOpacity
+                        key={c.code}
+                        style={{
+                          paddingHorizontal: spacing.sm,
+                          paddingVertical: 8,
+                          backgroundColor: selected ? colors.accentGreen + '22' : colors.surface,
+                          borderBottomWidth: 1,
+                          borderBottomColor: colors.border,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                        }}
+                        onPress={() => {
+                          setAddTerritories((prev) =>
+                            selected ? prev.filter((x) => x !== c.code) : [...prev, c.code],
+                          );
+                          setAddTerritorySearch('');
+                        }}
+                      >
+                        <Text style={{ ...typography.body, fontSize: 13 }}>{c.name}</Text>
+                        <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary }}>{c.code}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+              </View>
+            )}
           </View>
 
           <View style={{ marginBottom: spacing.sm }}>
