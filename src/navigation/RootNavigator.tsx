@@ -5,6 +5,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, Text, ActivityIndicator } from 'react-native';
 import { colors } from '../theme/theme';
 import { AuthProvider, useAuth } from '../context/AuthContext';
+import { NavigationRole, roleFromProfile } from '../types/roles';
 import { AuthScreen } from '../screens/AuthScreen';
 import { CustomerSwipeScreen } from '../screens/CustomerSwipeScreen';
 import { ModelProfileScreen } from '../screens/ModelProfileScreen';
@@ -21,7 +22,8 @@ type AppTabParamList = {
   Agency: undefined;
 };
 
-export type UserRole = 'client' | 'model' | 'agency';
+/** @deprecated Use NavigationRole from src/types/roles instead. */
+export type UserRole = NavigationRole;
 
 const Stack = createNativeStackNavigator<AuthStackParamList>();
 const Tab = createBottomTabNavigator<AppTabParamList>();
@@ -55,7 +57,7 @@ function MinimalTabBarLabel({ title }: { title: string }) {
 }
 
 type AppTabsProps = {
-  role: UserRole;
+  role: NavigationRole;
 };
 
 function AppTabs({ role }: AppTabsProps) {
@@ -113,14 +115,7 @@ function RootNavigatorInner() {
   const { session, profile, loading } = useAuth();
 
   const isAuthenticated = !!session && !!profile;
-  const role: UserRole | null =
-    profile?.role === 'model'
-      ? 'model'
-      : profile?.role === 'agent'
-      ? 'agency'
-      : profile?.role === 'client'
-      ? 'client'
-      : null;
+  const role: NavigationRole | null = roleFromProfile(profile?.role);
 
   if (loading) {
     return (

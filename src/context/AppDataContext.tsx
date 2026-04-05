@@ -14,7 +14,7 @@ import { useAuth } from './AuthContext';
 
 const CURRENT_USER_KEY = 'ci_current_user_id';
 
-type User = { id: string; role: string };
+type User = { id: string; role: string | null };
 
 type Project = {
   id: string;
@@ -70,10 +70,10 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // Role is derived from the authenticated profile — never hardcoded to 'client'.
-  // Wrapped in useMemo to stabilize object identity across renders (prevents exhaustive-deps churn).
+  // Role is derived from the authenticated profile. Null if profile is not yet loaded
+  // rather than silently defaulting to 'client', which would mask permission errors.
   const currentUser = useMemo<User | null>(
-    () => currentUserId ? { id: currentUserId, role: profile?.role ?? 'client' } : null,
+    () => currentUserId ? { id: currentUserId, role: profile?.role ?? null } : null,
     [currentUserId, profile?.role],
   );
   const userProjects = useMemo(() => currentUser ? projects.filter(p => p.owner_id === currentUser.id) : [], [currentUser, projects]);

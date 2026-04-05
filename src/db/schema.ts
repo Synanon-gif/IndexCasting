@@ -4,13 +4,18 @@
  * RLS: Data access is filtered by authorized user IDs.
  */
 
-export type UserRole = 'model' | 'agent' | 'client';
+/**
+ * Re-export AppRole as the canonical role type for this schema.
+ * Use AppRole from src/types/roles directly for new code.
+ * @deprecated Import AppRole from src/types/roles instead.
+ */
+export type { AppRole as UserRole } from '../types/roles';
 
 export type User = {
   id: string;
   email: string;
   display_name: string;
-  role: UserRole;
+  role: import('../types/roles').AppRole;
   created_at: number;
   updated_at: number;
 };

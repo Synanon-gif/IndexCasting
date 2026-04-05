@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Modal } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { useAuth } from '../context/AuthContext';
+import { isAgency as checkIsAgency } from '../types/roles';
 import { uiCopy } from '../constants/uiCopy';
 import { TermsScreen } from './TermsScreen';
 import { PrivacyScreen } from './PrivacyScreen';
@@ -16,7 +17,7 @@ export const LegalAcceptanceScreen: React.FC = () => {
   const [termsVisible, setTermsVisible] = useState(false);
   const [privacyVisible, setPrivacyVisible] = useState(false);
 
-  const isAgency = profile?.role === 'agent';
+  const isAgency = checkIsAgency(profile);
   const canSubmit = tosChecked && privacyChecked && (!isAgency || agencyRightsChecked);
 
   const openTos = () => setTermsVisible(true);

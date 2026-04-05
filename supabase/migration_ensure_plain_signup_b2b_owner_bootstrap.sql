@@ -1,3 +1,7 @@
+-- ⚠️  SUPERSEDED — NICHT ERNEUT AUSFÜHREN
+-- Diese Datei wurde durch supabase/migrations/20260404c_admin_bootstrap_fix.sql ersetzt.
+-- Sie deklariert `prole public.user_role` was für 'admin'/'guest' fehlschlägt.
+-- =============================================================================
 -- After email confirmation, the client often has no session during signUp — ensure_* RPCs did not run.
 -- This idempotent RPC runs with a valid session (e.g. first sign-in): if the user has ZERO
 -- organization_members rows, they are a plain signup (not an invited booker/employee) and we

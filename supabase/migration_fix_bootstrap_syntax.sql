@@ -1,3 +1,6 @@
+-- ⚠️  SUPERSEDED — NICHT ERNEUT AUSFÜHREN
+-- Diese Datei wurde durch supabase/migrations/20260404c_admin_bootstrap_fix.sql ersetzt.
+-- Sie deklariert `prole public.user_role` was für 'admin'/'guest' fehlschlägt.
 -- =============================================================================
 -- SECURITY FIX: ensure_plain_signup_b2b_owner_bootstrap() – Syntax-Bug
 --

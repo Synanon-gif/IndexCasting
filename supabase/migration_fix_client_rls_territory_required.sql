@@ -13,6 +13,16 @@
 -- The country_code field is kept as supplementary data (home country, location
 -- lookup, completeness alert) but is no longer sufficient on its own to make a
 -- model visible.
+--
+-- ⚠️  LIVE-STATUS (Stand 2026-04-07):
+-- Die aktive Policy in der Live-DB lautet NICHT territory-only, sondern
+-- (country_code IS NOT NULL OR EXISTS model_agency_territories) — d.h. eine
+-- spätere Migration (migration_pentest_fullaudit_fixes_2026_04.sql o.ä.)
+-- hat die OR-Bedingung wiederhergestellt.
+--
+-- Kein Discovery-Verstoß: kein client_agency_connections-Filter, globale
+-- Sichtbarkeit ist gewährleistet. Nur Sichtbarkeitsflags + territory/country
+-- + has_platform_access() sind für Client-SELECT erforderlich.
 -- =============================================================================
 
 -- Drop all known variants of the client-models SELECT policy to avoid conflicts.

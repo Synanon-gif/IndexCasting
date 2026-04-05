@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Linking, ActivityIndicator } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { useAuth } from '../context/AuthContext';
+import { isAgency } from '../types/roles';
 
 const ADMIN_EMAIL = 'admin@castingindex.com';
 
@@ -15,7 +16,7 @@ export const PendingActivationScreen: React.FC = () => {
     const subject = encodeURIComponent(`Account Verification – ${profile?.display_name || profile?.email || 'User'}`);
     const body = encodeURIComponent(
       `Hello Casting Index Team,\n\n` +
-      `I would like to activate my ${profile?.role === 'agent' ? 'Agency' : 'Client'} account.\n\n` +
+      `I would like to activate my ${isAgency(profile) ? 'Agency' : 'Client'} account.\n\n` +
       `Account Email: ${profile?.email}\n` +
       `Display Name: ${profile?.display_name}\n` +
       `Company: ${profile?.company_name || 'N/A'}\n\n` +
@@ -49,7 +50,7 @@ export const PendingActivationScreen: React.FC = () => {
               Please send your verification documents to the app operator.
             </Text>
 
-            {profile?.role === 'agent' && (
+            {isAgency(profile) && (
               <Text style={styles.hint}>
                 Agency accounts must register with the email address listed on your company website.
               </Text>

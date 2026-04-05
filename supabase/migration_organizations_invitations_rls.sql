@@ -1,3 +1,9 @@
+-- ⚠️  TEILWEISE SUPERSEDED — NICHT vollständig erneut ausführen
+-- accept_organization_invitation() in dieser Datei (ca. Zeile 260) wurde durch
+-- supabase/migrations/20260407_accept_invitation_role_text_fix.sql ersetzt:
+-- sie deklariert `prole public.user_role` was für 'admin'/'guest' einen
+-- runtime-cast-Fehler verursacht. RLS-Policies und andere Funktionen
+-- in dieser Datei sind weiterhin gültig.
 -- =============================================================================
 -- Organizations, Einladungen, Mitgliedschaften + verschärfte RLS für option_requests
 -- Ausführen im Supabase SQL Editor (nach bestehenden Migrationen).

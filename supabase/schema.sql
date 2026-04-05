@@ -1,14 +1,21 @@
 -- =============================================================================
--- VERALTET / DEPRECATED – NUR HISTORISCHE REFERENZ
+-- ⚠️  VERALTET / DEPRECATED – NUR HISTORISCHE REFERENZ – NIEMALS AUSFÜHREN ⚠️
 -- =============================================================================
 -- Diese Datei ist ein einmaliger Snapshot und entspricht NICHT mehr dem
 -- aktuellen Datenbankzustand. Der tatsächliche Stand ergibt sich
 -- ausschließlich aus der geordneten Anwendung aller Migrations-Dateien
 -- gemäß MIGRATION_ORDER.md.
 --
--- NICHT in einer bestehenden Produktions-DB ausführen!
+-- KRITISCH: NICHT in einer bestehenden oder neuen Produktions-DB ausführen!
+--   - CREATE TYPE user_role AS ENUM ('model', 'agent', 'client') FEHLT 'admin'
+--     und 'guest' → würde Admin-Login und Guest-Flow brechen.
+--   - ::user_role Casts in Funktionen würden für admin/guest-Profile einen
+--     runtime-crash verursachen.
+--   - Die aktuelle DB nutzt TEXT für profiles.role (kein Postgres ENUM).
+--
 -- Für einen DB-Reset: alle Migrationen in der in MIGRATION_ORDER.md
--- angegebenen Reihenfolge auf einer leeren DB ausführen.
+-- angegebenen Reihenfolge auf einer leeren DB ausführen, beginnend mit
+-- den Dateien im Ordner supabase/migrations/.
 -- =============================================================================
 --
 -- Casting Index – Vollständiges Supabase-Schema
@@ -21,7 +28,10 @@
 -- ENUMS
 -- -----------------------------------------------------------------------------
 
-CREATE TYPE user_role AS ENUM ('model', 'agent', 'client');
+-- ⚠️  DEPRECATED: user_role ENUM ist nicht mehr aktiv.
+-- Die aktuelle DB speichert profiles.role als TEXT mit CHECK-Constraint.
+-- 'admin' und 'guest' fehlen hier → NICHT ausführen.
+-- CREATE TYPE user_role AS ENUM ('model', 'agent', 'client');
 
 CREATE TYPE application_status AS ENUM ('pending', 'accepted', 'rejected');
 
@@ -469,20 +479,23 @@ CREATE TRIGGER option_requests_updated_at
 -- Trigger: Profil bei neuem Auth-User anlegen
 -- -----------------------------------------------------------------------------
 
-CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER AS $$
-BEGIN
-  INSERT INTO public.profiles (id, email, display_name, role)
-  VALUES (
-    NEW.id,
-    NEW.email,
-    COALESCE(NEW.raw_user_meta_data->>'display_name', NEW.raw_user_meta_data->>'name', split_part(NEW.email, '@', 1)),
-    COALESCE((NEW.raw_user_meta_data->>'role')::user_role, 'client')
-  )
-  ON CONFLICT (id) DO NOTHING;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+-- ⚠️  DEPRECATED: Diese handle_new_user-Version verwendet ::user_role ENUM-Cast.
+-- Die aktuelle Version steht in supabase/migrations/20260406_handle_new_user_role_sanitize.sql
+-- und nutzt eine Text-Allowlist ohne ENUM-Cast. NICHT ausführen.
+-- CREATE OR REPLACE FUNCTION public.handle_new_user()
+-- RETURNS TRIGGER AS $$
+-- BEGIN
+--   INSERT INTO public.profiles (id, email, display_name, role)
+--   VALUES (
+--     NEW.id,
+--     NEW.email,
+--     COALESCE(NEW.raw_user_meta_data->>'display_name', NEW.raw_user_meta_data->>'name', split_part(NEW.email, '@', 1)),
+--     COALESCE((NEW.raw_user_meta_data->>'role')::user_role, 'client')  -- ENUM-Cast: GEFÄHRLICH für admin/guest
+--   )
+--   ON CONFLICT (id) DO NOTHING;
+--   RETURN NEW;
+-- END;
+-- $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users

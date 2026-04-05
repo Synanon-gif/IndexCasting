@@ -20,6 +20,7 @@ import {
   type DiscoveryModel,
 } from '../services/clientDiscoverySupabase';
 import { useAuth } from '../context/AuthContext';
+import { isClient } from '../types/roles';
 import { uiCopy } from '../constants/uiCopy';
 import { addOptionRequest } from '../store/optionRequests';
 
@@ -116,7 +117,7 @@ export const CustomerSwipeScreen: React.FC = () => {
   // Resolve client org ID — available directly from profile.organization_id loaded by AuthContext.
   useEffect(() => {
     const userId = auth?.profile?.id;
-    if (!userId || auth?.profile?.role !== 'client') return;
+    if (!userId || !isClient(auth?.profile)) return;
     const orgId = auth?.profile?.organization_id;
     if (orgId) {
       setClientOrgId(orgId);

@@ -1,3 +1,7 @@
+-- ⚠️  SUPERSEDED — NICHT ERNEUT AUSFÜHREN
+-- accept_organization_invitation() wurde durch
+-- supabase/migrations/20260407_accept_invitation_role_text_fix.sql ersetzt.
+-- Diese Version deklariert `prole public.user_role` was für 'admin'/'guest' fehlschlägt.
 -- =============================================================================
 -- CRIT-01: Restore email verification in accept_organization_invitation
 --

@@ -43,7 +43,7 @@ import {
   normalizePublicLegalPath,
   replaceWebPathToHome,
 } from './src/utils/publicLegalRoutes';
-import { roleFromProfile, type NavigationRole } from './src/types/roles';
+import { roleFromProfile, isAdmin, type NavigationRole } from './src/types/roles';
 
 /** Web: volle Höhe sofort beim Modul-Load (vor erstem React-Paint) – verhindert weißen/leeren Screen. */
 function ensureWebRootHasHeight() {
@@ -477,12 +477,10 @@ function AppContent() {
   // Admin check must come before effectiveRole gate: admin profiles have role='admin'
   // which does not map to any effectiveRole, causing them to be sent back to AuthScreen.
   //
-  // Dual-guard:
-  //   • profile.is_admin  — set by UUID+email-pinned SECURITY DEFINER RPC (primary)
-  //   • profile.role === 'admin' — DB trigger-protected fallback; no user can write
-  //     role='admin' via the API. Frontend routing grants no DB privileges — the
-  //     AdminDashboard's own RPCs enforce UUID+email pin independently.
-  if (profile?.is_admin || profile?.role === 'admin') {
+  // isAdmin() checks both profile.is_admin (UUID+email-pinned SECURITY DEFINER RPC, primary)
+  // and profile.role === 'admin' (DB trigger-protected fallback). Frontend routing grants
+  // no DB privileges — the AdminDashboard's own RPCs enforce UUID+email pin independently.
+  if (isAdmin(profile)) {
     return (
       <>
         <View style={styles.shell}>
