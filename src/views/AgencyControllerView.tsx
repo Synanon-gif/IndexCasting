@@ -2136,7 +2136,11 @@ const MyModelsTab: React.FC<{
           }
         }
 
-        // Polaroid uploads — stored in the same private bucket as portfolio, synced to models.polaroids[]
+        // Polaroid uploads — stored in the same private bucket as portfolio.
+        // New polaroids start as agency-only (is_visible_to_clients: false).
+        // models.polaroids[] is NOT synced here because only visible polaroids belong there.
+        // The agency toggles visibility per photo in ModelMediaSettingsPanel → that triggers
+        // syncPolaroidsToModel with only the visible subset.
         if (polaroidFilesToUpload.length > 0) {
           const uploadedPolaroidUrls: string[] = [];
           for (const file of polaroidFilesToUpload) {
@@ -2156,7 +2160,8 @@ const MyModelsTab: React.FC<{
                 photo_type: 'polaroid' as const,
               })),
             );
-            await syncPolaroidsToModel(createdModelId, uploadedPolaroidUrls);
+            // intentionally no syncPolaroidsToModel call: polaroids are agency-only by default.
+            // models.polaroids[] only holds is_visible_to_clients=true entries (synced from MediaPanel).
           }
         }
       }
