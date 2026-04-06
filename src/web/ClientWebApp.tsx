@@ -107,6 +107,7 @@ import {
   createProject as createProjectOnSupabase,
   deleteProject as deleteProjectOnSupabase,
   getProjectsForOrg,
+  getProjectModels,
   addModelToProject as addModelToProjectOnSupabase,
   type SupabaseProject,
 } from '../services/projectsSupabase';
@@ -1117,6 +1118,32 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     clearFeedbackLater();
   };
 
+  // Server Reconciliation Refetch — Level 4 consistency guarantee.
+  //
+  // After a successful add/remove mutation, the DB is the source of truth.
+  // This function fetches the canonical model ID list from client_project_models
+  // and silently removes any in-memory models that are NOT in the DB (stale state).
+  //
+  // It does NOT add models we have no ModelSummary for — those would have no display
+  // data. In practice this means: UI ≤ DB (we never show models that aren't in DB).
+  //
+  // Stable: setProjects is a stable setter, getProjectModels is a module import.
+  const reconcileProjectModels = useCallback(async (projectId: string): Promise<void> => {
+    try {
+      const dbModelIds = await getProjectModels(projectId);
+      const dbIdSet = new Set(dbModelIds);
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.id === projectId
+            ? { ...p, models: p.models.filter((m) => dbIdSet.has(m.id)) }
+            : p,
+        ),
+      );
+    } catch (e) {
+      console.error('reconcileProjectModels: failed to sync from DB', e);
+    }
+  }, []);
+
   const handleDeleteProject = (projectId: string) => {
     const project = projects.find((p) => p.id === projectId);
     if (!project) return;
@@ -1212,6 +1239,9 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       .then((ok) => {
         setAddingModelIds((prev) => { const s = new Set(prev); s.delete(model.id); return s; });
         if (ok) {
+          // Server reconciliation refetch: silently align UI with DB after successful add.
+          // Removes any stale in-memory models not confirmed in client_project_models.
+          void reconcileProjectModels(projectId);
           if (projectName) {
             setFeedback(`Added ${model.name} to "${projectName}".`);
             clearFeedbackLater();
@@ -1309,7 +1339,10 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     );
 
     const ok = await removeModelFromProject(projectId, modelId);
-    if (!ok && removedModel) {
+    if (ok) {
+      // Server reconciliation refetch: silently confirm DB state matches UI after remove.
+      void reconcileProjectModels(projectId);
+    } else if (removedModel) {
       // Inverse rollback: add back the removed model to live state.
       // !p.models.some() guard: prevents double-insertion on concurrent rollbacks.
       setProjects((prev) =>

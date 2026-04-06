@@ -274,11 +274,53 @@ const clearFeedbackLater = () => {
 const clearFeedbackLater = () => setTimeout(() => setFeedback(null), 2400); // kein cancel
 ```
 
+### Server Reconciliation Refetch — Level 4 (nach jeder erfolgreichen Mutation)
+
+Nach `ok === true` in einem optimistischen Handler MUSS ein stilles Server-Refetch den DB-Stand bestätigen:
+
+```typescript
+// ✅ PFLICHT: nach ok===true
+if (ok) {
+  void reconcileProjectModels(projectId); // ← stilles DB-Sync, kein await nötig
+  setFeedback('Done.');
+}
+```
+
+**Pattern `reconcileProjectModels`:**
+```typescript
+const reconcileProjectModels = useCallback(async (projectId: string): Promise<void> => {
+  try {
+    const dbModelIds = await getProjectModels(projectId); // service: string[] aus DB
+    const dbIdSet = new Set(dbModelIds);
+    setProjects((prev) =>
+      prev.map((p) =>
+        p.id === projectId
+          ? { ...p, models: p.models.filter((m) => dbIdSet.has(m.id)) }
+          : p,
+      ),
+    );
+  } catch (e) {
+    console.error('reconcileProjectModels: failed to sync from DB', e);
+  }
+}, []); // setProjects ist stabil; getProjectModels ist Module-Import
+```
+
+**Regeln:**
+- Reconciliation ist **fire-and-forget** (`void`) — blockiert nie die UI
+- Reconciliation entfernt nur (UI ≤ DB) — fügt NIE Modelle hinzu für die kein `ModelSummary` vorhanden ist
+- Reconciliation läuft NUR nach `ok === true` — bei Fehlern läuft der Inverse-Operation-Rollback
+- Gilt für alle kritischen Mutationen auf Container-State der in DB gespiegelt ist (`client_project_models`, zukünftige ähnliche Tabellen)
+
+**Migrations-Pflicht:**
+- Jede Supabase RPC/SQL-Änderung MUSS als `.sql`-Datei in `supabase/migrations/` mit Datum-Präfix `YYYYMMDD_` angelegt werden
+- Root-Dateien (`supabase/*.sql` außerhalb `migrations/`) werden NICHT automatisch deployed — NIEMALS nur dort ablegen
+
 ### Stop-Bedingungen für neue optimistische Updates
-1. Ist ein `const snapshot = state` VOR dem `setState(optimistic)` vorhanden? → nein = STOP
-2. Wird `.then(ok)` statt `.catch()` verwendet? → catch = STOP
+1. Ist ein Snapshot-basierter Rollback vorhanden (`const snapshot = state` oder `.slice()`)? → STOP — Inverse Operation verwenden
+2. Wird `.catch()` statt `.then(ok)` für Rollback verwendet? → STOP (Service wirft nie bei Option-A-Contract)
 3. Gibt es einen per-id Inflight-Lock? → fehlt = STOP
 4. Ist `clearFeedbackLater` mit useRef implementiert? → kein Ref = STOP
+5. Fehlt das Reconciliation-Refetch nach `ok === true`? → STOP für DB-gespiegelten State
 
 ## FRONTEND-GARANTIEN
 

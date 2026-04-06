@@ -81,6 +81,18 @@ if (!ok) { setProjects(prev => prev.some(p => p.id === projectId) ? prev : [...p
 **Inflight-Lock:** Jede Action mit optimistischem Update MUSS einen per-id Lock haben (`Set<string>`).
 **Feedback-Timer:** `clearFeedbackLater()` MUSS immer `clearTimeout(ref.current)` vor neuem `setTimeout` aufrufen.
 
+**Server Reconciliation Refetch (Level 4 — nach ok===true):**
+```typescript
+// ✅ PFLICHT nach erfolgreicher Mutation für DB-gespiegelten State
+if (ok) {
+  void reconcileProjectModels(projectId); // fire-and-forget, nie await
+}
+// Pattern: fetch DB model IDs → filter UI models to only those confirmed in DB
+// Entfernt stale State; fügt NIE Modelle hinzu für die kein ModelSummary vorhanden
+```
+
+**Migrations-Pflicht:** Jede SQL-Änderung MUSS in `supabase/migrations/YYYYMMDD_*.sql` — NIEMALS nur in Root-Dateien (`supabase/*.sql` außerhalb `migrations/`), diese werden NICHT automatisch deployed.
+
 ## 4b. UI-Sprache & Copy (verbindlich)
 - **Die gesamte Nutzeroberfläche ist Englisch (English-only):** alle sichtbaren Texte für Agency, Client und Model — Buttons, Labels, Alerts, Placeholder, leere Zustände, Fehlermeldungen aus dem Produkt.
 - **Zentrale Quelle:** Nutzer-Texte kommen aus `src/constants/uiCopy.ts` (`uiCopy`). Keine neuen deutschsprachigen UI-Strings; keine Hardcodes derselben Phrase an vielen Stellen — lieber ein Key in `uiCopy` erweitern.
