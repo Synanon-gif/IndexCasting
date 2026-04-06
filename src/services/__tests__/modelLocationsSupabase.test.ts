@@ -76,7 +76,7 @@ describe('upsertModelLocation', () => {
     expect(call.p_lat_approx).toBe(roundCoord(52.519444));
     expect(call.p_lng_approx).toBe(roundCoord(13.406667));
     expect(call.p_country_code).toBe('DE');
-    expect(call.p_source).toBe('model');
+    expect(call.p_source).toBe('current');
   });
 
   it('sets lat/lng to null when share_approximate_location = false', async () => {
@@ -183,7 +183,7 @@ describe('getModelLocation', () => {
       lat_approx: 53.55,
       lng_approx: 10.0,
       share_approximate_location: true,
-      source: 'model',
+      source: 'current',
       updated_at: '2024-01-01T00:00:00Z',
     };
 
@@ -342,13 +342,13 @@ describe('source priority: latest updated_at wins', () => {
     expect(call.p_model_id).toBe('model-1');
   });
 
-  it('upsertModelLocation with source=model can override an agency-set location', async () => {
+  it('upsertModelLocation with source=current can override an agency-set location', async () => {
     rpcMock.mockResolvedValue({ data: null, error: null });
 
-    await upsertModelLocation('model-1', { country_code: 'FR', city: 'Paris' }, 'model');
+    await upsertModelLocation('model-1', { country_code: 'FR', city: 'Paris' }, 'current');
 
     const call = rpcMock.mock.calls[0][1] as Record<string, unknown>;
-    expect(call.p_source).toBe('model');
+    expect(call.p_source).toBe('current');
     expect(call.p_country_code).toBe('FR');
   });
 });

@@ -5,12 +5,16 @@
  *   - NEVER store exact GPS. All lat/lng values are rounded to ~5 km precision
  *     before being sent to the database (roundCoord utility).
  *   - share_approximate_location = false → lat/lng stored as NULL.
- *   - source: 'model' (self-managed) | 'agency' (bulk-assigned by agency).
  *
- * Source priority:
- *   UNIQUE(model_id) means only ONE active row exists per model.
- *   Whichever source wrote last (highest updated_at) is the active location.
- *   No manual priority comparison is needed — the DB UPSERT handles it.
+ * Source system (3 values, priority-enforced at DB write time):
+ *   'live'    — model's browser GPS capture (highest precision; model controls)
+ *   'current' — model-typed city with Nominatim geocoding (model controls)
+ *   'agency'  — agency-set fallback for models without accounts (lowest priority)
+ *
+ * Priority: live > current > agency
+ *   Enforced at write time: agency writes are a no-op if model owns the row
+ *   (source='live' or 'current'). Model writes always succeed.
+ *   See upsert_model_location RPC (20260406_location_source_v2.sql).
  *
  * City vs lat/lng:
  *   city    → display label only (may differ from GPS reverse-geocode result).
@@ -22,6 +26,24 @@ import type { ClientMeasurementFilters } from './modelsSupabase';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+/**
+ * The 3 location data sources, in priority order (highest first).
+ * Enforced at DB write time — agency writes are no-ops when model owns the row.
+ */
+export type LocationSource = 'live' | 'current' | 'agency';
+
+/** Returns a human-readable label for a location source. */
+export function locationSourceLabel(source: LocationSource): string {
+  if (source === 'live') return 'Live GPS';
+  if (source === 'current') return 'Current location';
+  return 'Set by agency';
+}
+
+/** Numeric priority: live=2 (highest), current=1, agency=0 (lowest). */
+export function locationSourcePriority(source: LocationSource): number {
+  return source === 'live' ? 2 : source === 'current' ? 1 : 0;
+}
+
 export type ModelLocation = {
   id: string;
   model_id: string;
@@ -30,7 +52,7 @@ export type ModelLocation = {
   lat_approx: number | null;
   lng_approx: number | null;
   share_approximate_location: boolean;
-  source: 'model' | 'agency';
+  source: LocationSource;
   updated_at: string;
 };
 
@@ -70,7 +92,7 @@ export type NearbyModel = {
   location_country_code: string;
   lat_approx: number | null;
   lng_approx: number | null;
-  location_source: 'model' | 'agency';
+  location_source: LocationSource;
   location_updated_at: string;
   distance_km: number;
   territory_country_code?: string | null;
@@ -98,7 +120,7 @@ export function roundCoord(coord: number): number {
 export async function upsertModelLocation(
   modelId: string,
   data: ModelLocationInput,
-  source: 'model' | 'agency' = 'model',
+  source: LocationSource = 'current',
 ): Promise<boolean> {
   try {
     const roundedLat = data.lat != null ? roundCoord(data.lat) : null;

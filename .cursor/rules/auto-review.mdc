@@ -43,6 +43,9 @@ vollständig durchlaufen werden, **bevor** Code committed oder weitergeschrieben
 - **`confirmX().select().single()` ohne 23505-Handling:** Jede Confirmation-Funktion die vor einem Upload steht und `INSERT ... .select('id').single()` macht? → Blocker (Risiko 14) — führt zu 409 PostgREST-Fehler wenn RLS SELECT Policy den neuen Row nicht lesbar macht. Pflicht: (1) Idempotenz-Check first (60 min), (2) kein `.select().single()` nach INSERT, (3) 23505 = Erfolg.
 - **Territory-Lookup aus falscher Tabelle:** `model_assignments.territory` statt `model_agency_territories.country_code`? → Blocker (Risiko 15) — `model_assignments` hat keine `territory`-Spalte, führt zu SQL-Fehler → HTTP 400/500.
 - **Agency-Writes überschreiben Model-GPS:** `upsert_model_location` oder neuer Agency-Write auf `model_locations` ohne GPS-Preservation-Case? → Blocker (Risiko 16) — `lat_approx`, `lng_approx`, `share_approximate_location` müssen `WHEN p_source = 'agency' THEN model_locations.lat_approx` bewahren.
+- **Location Source Priority verletzt:** Neuer Write auf `model_locations` ohne source-aware `WHERE model_locations.source = 'agency'` Priority-Guard im `ON CONFLICT DO UPDATE`? → Blocker (Risiko 17) — Agency-Writes MÜSSEN No-Op sein wenn Model die Zeile besitzt (`source IN ('live','current')`). Alle Model-Writes (`source='live'/'current'`) dürfen keinen WHERE-Guard haben.
+- **Veralteter Source-Wert `'model'`:** Neuer Code übergibst `source='model'` an `upsertModelLocation` oder `model_locations` INSERT? → Blocker (Risiko 17) — `'model'` ist deprecated und durch DB CHECK-Constraint (`source IN ('live','current','agency')`) blockiert.
+- **4. Source-Wert hinzugefügt ohne vollständige Aktualisierung:** Neuer Source-Wert ohne CHECK constraint + upsert_model_location RPC + TypeScript `LocationSource` Union + alle Test-Dateien? → Blocker (Risiko 17) — Inkonsistenz zwischen DB und TypeScript führt zu Runtime-Fehlern.
 - **`get_territories_for_agency_roster` Guard ohne Bookers-Fallback:** SECURITY DEFINER Funktion die Agency-Zugehörigkeit prüft, ohne `bookers`-Tabelle zu inkludieren? → Warnung — Legacy Bookers werden mit `not_in_agency` (HTTP 400) ausgesperrt.
 
 ---
@@ -82,6 +85,9 @@ Q8: Verwendet ein neuer optimistischer Update-Handler irgendeinen Snapshot (`con
 - `confirmImageRights` oder andere Confirmation-Funktion nutzt `.insert().select('id').single()` ohne Idempotenz-Check + 23505-Handling (Risiko 14 — 409 PostgREST bei Duplicate)
 - Territory-Query liest von `model_assignments.territory` statt `model_agency_territories.country_code` (Risiko 15 — SQL-Fehler, HTTP 400)
 - Neuer Agency-Write auf `model_locations` ohne GPS-Preservation-Logic für `source='agency'` (Risiko 16 — überschreibt Model-GPS, Near-Me bricht)
+- Neuer Write auf `model_locations` ohne `WHERE model_locations.source = 'agency'` Priority-Guard im Agency-Pfad (Risiko 17 — Agency überschreibt Model-Ownership)
+- `source='model'` in neuem Code (Risiko 17 — deprecated, DB-CHECK blockiert Insert/Update)
+- Neuer Source-Wert ohne vollständige Aktualisierung aller Systeme (Risiko 17 — DB+RPC+TypeScript+Tests müssen gleichzeitig aktualisiert werden)
 
 ---
 

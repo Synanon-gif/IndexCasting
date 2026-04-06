@@ -430,6 +430,66 @@ const reconcileProjectModels = useCallback(async (projectId: string): Promise<vo
 4. Ist `clearFeedbackLater` mit useRef implementiert? → kein Ref = STOP
 5. Fehlt das Reconciliation-Refetch nach `ok === true`? → STOP für DB-gespiegelten State
 
+## LOCATION SOURCE SYSTEM — 3 Sources, Write-Time Priority (Fix 20260406-v2)
+
+### 3 exklusive Quellen (keine anderen Werte erlaubt)
+
+| Source | Eigentümer | Priorität | Schreibrecht |
+|--------|-----------|-----------|-------------|
+| `'live'` | Model (GPS) | Höchste | Nur das Model selbst |
+| `'current'` | Model (manuell) | Mittel | Nur das Model selbst |
+| `'agency'` | Agentur | Niedrigste (Fallback) | Agentur (Agency-Scope) |
+
+### Invarianten (NIEMALS verletzen)
+
+1. **Single Source of Truth:** Ein `model_locations`-Eintrag pro Model (UNIQUE model_id). Genau eine aktive Quelle.
+2. **Write-Time Priority:**
+   - Agency-Writes (`source='agency'`) → `ON CONFLICT WHERE model_locations.source = 'agency'` → **vollständiger No-Op wenn Model die Zeile besitzt** (source='live' oder 'current')
+   - Model-Writes (`source='live'` oder `'current'`) → immer erfolgreich (kein WHERE-Guard)
+3. **GPS-Preservation:** Agency-Writes setzen `lat_approx=NULL`, `lng_approx=NULL` — niemals echte GPS-Daten
+4. **TypeScript-Default:** `upsertModelLocation(..., source='current')` — niemals `'model'` (deprecated)
+5. **Near Me nutzt `model_locations.lat_approx/lng_approx`** — nie direkt GPS-Input des Callers
+
+### Verbotene Patterns
+
+```typescript
+// ❌ VERBOTEN: agency schreibt mit source='current' oder 'live'
+await upsertModelLocation(modelId, data, 'current'); // von Agency-Code aufgerufen
+
+// ❌ VERBOTEN: model schreibt in bulk_upsert (agency-only RPC)
+await bulkUpsertModelLocations([modelId], data); // Models nutzen upsertModelLocation direkt
+
+// ❌ VERBOTEN: alter Wert 'model' als source
+await upsertModelLocation(modelId, data, 'model'); // 'model' ist deprecated, DB wirft CHECK-Fehler
+```
+
+```sql
+-- ❌ VERBOTEN: Agency INSERT ohne Priority-Guard
+INSERT INTO model_locations (...) VALUES (..., 'agency')
+ON CONFLICT (model_id) DO UPDATE SET source = 'agency'; -- überschreibt 'live'/'current'!
+
+-- ✅ KORREKT: WHERE Priority-Guard
+ON CONFLICT (model_id) DO UPDATE SET ...
+WHERE model_locations.source = 'agency';
+-- → No-Op wenn Model die Zeile besitzt
+```
+
+### UI-Pflichten
+
+- `ModelProfileScreen`: Zwei explizite Modes — **'live'** (GPS-Button) und **'current'** (Country+City-Input + Nominatim)
+- `AgencyControllerView`: Zeige Badge wenn `source IN ('live', 'current')` — erklärt dass Agency-Update Near Me nicht beeinflusst
+- Badge immer vor dem Edit-Formular des Models anzeigen (nicht inline)
+- Quelle immer aus `getModelLocation()` laden — nie aus `models.current_location` für Near Me-Zwecke
+
+### NIEMALS
+
+- 4. Source-Wert hinzufügen ohne: CHECK constraint + RPC + TypeScript Union + alle Tests zu aktualisieren
+- `model_locations.source = 'model'` je neu einfügen (deprecated, blockiert durch DB CHECK)
+- Agency-Code mit source='current' oder 'live' aufrufen
+- `model_locations.lat_approx/lng_approx` direkt in agency-owned Writes setzen (nur Modell-Writes)
+
+---
+
 ## FRONTEND-GARANTIEN
 
 - Dashboard lädt auch wenn Teildaten fehlen (kein hard crash bei null org/profile)

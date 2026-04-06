@@ -4,7 +4,15 @@ import { handleTabPress, BOTTOM_TAB_BAR_HEIGHT } from '../navigation/bottomTabNa
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Linking, Alert, ActivityIndicator, Image } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { getModelsFromSupabase, getModelForUserFromSupabase, type SupabaseModel } from '../services/modelsSupabase';
-import { upsertModelLocation, roundCoord } from '../services/modelLocationsSupabase';
+import {
+  upsertModelLocation,
+  getModelLocation,
+  deleteModelLocation,
+  roundCoord,
+  locationSourceLabel,
+  type ModelLocation,
+  type LocationSource,
+} from '../services/modelLocationsSupabase';
 import { supabase } from '../../lib/supabase';
 import { getModelBookingThreadIds, getRecruitingThread, subscribeRecruitingChats } from '../store/recruitingChats';
 import {
@@ -122,6 +130,13 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   const [actingOnOption, setActingOnOption] = useState(false);
   const [addingEntry, setAddingEntry] = useState(false);
 
+  // Location state — active source + manual 'current' city input
+  const [modelLocation, setModelLocation] = useState<ModelLocation | null>(null);
+  const [currentCityInput, setCurrentCityInput] = useState('');
+  const [currentCountryInput, setCurrentCountryInput] = useState('');
+  const [currentCityLoading, setCurrentCityLoading] = useState(false);
+  const [removingLocation, setRemovingLocation] = useState(false);
+
   const handleShareLocation = async () => {
     if (!profile) return;
     setLocationLoading(true);
@@ -163,17 +178,108 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
           lng: lngRounded,
           share_approximate_location: true,
         },
-        'model',
+        'live',
       );
 
       setProfile((prev) => prev ? { ...prev, currentLocation: cityName } : prev);
-      Alert.alert('Location Updated', `Your current city has been set to: ${cityName}`);
+      setModelLocation({ ...(modelLocation ?? {} as ModelLocation), source: 'live' as LocationSource, city: cityName, country_code: countryCode });
+      Alert.alert('Location Updated', `Live GPS location set to: ${cityName}`);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       Alert.alert('Location Error', err?.message ?? 'Could not retrieve your location.');
     } finally {
       setLocationLoading(false);
     }
+  };
+
+  /** Set a manual approximate city (source='current') via Nominatim forward geocoding. */
+  const handleSetCurrentCity = async () => {
+    if (!profile || !currentCityInput.trim() || !currentCountryInput.trim()) {
+      Alert.alert('Missing fields', 'Please enter both a city and country code (e.g. DE, FR, US).');
+      return;
+    }
+    setCurrentCityLoading(true);
+    try {
+      const city = currentCityInput.trim();
+      const countryCode = currentCountryInput.trim().toUpperCase().slice(0, 2);
+      // Forward geocode city → lat/lng (same provider used by Near Me)
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(city)},${countryCode}&format=json&limit=1`,
+        { headers: { 'Accept-Language': 'en', 'User-Agent': 'IndexCasting/1.0' } }
+      );
+      const results = await res.json() as Array<{ lat: string; lon: string }>;
+      const first = results[0];
+      const lat = first ? roundCoord(parseFloat(first.lat)) : null;
+      const lng = first ? roundCoord(parseFloat(first.lon)) : null;
+
+      const ok = await upsertModelLocation(
+        profile.id,
+        {
+          country_code: countryCode,
+          city,
+          lat: lat ?? undefined,
+          lng: lng ?? undefined,
+          share_approximate_location: lat != null,
+        },
+        'current',
+      );
+
+      if (ok) {
+        const updated: ModelLocation = {
+          ...(modelLocation ?? {} as ModelLocation),
+          model_id: profile.id,
+          city,
+          country_code: countryCode,
+          lat_approx: lat,
+          lng_approx: lng,
+          share_approximate_location: lat != null,
+          source: 'current',
+          updated_at: new Date().toISOString(),
+        };
+        setModelLocation(updated);
+        setProfile((prev) => prev ? { ...prev, currentLocation: city } : prev);
+        setCurrentCityInput('');
+        setCurrentCountryInput('');
+        Alert.alert('Location set', lat != null
+          ? `Current city set to ${city}, ${countryCode}. Will appear in Near Me.`
+          : `City set to ${city}. Geocoding not found — city won't appear in Near Me radius filter.`
+        );
+      } else {
+        Alert.alert('Error', 'Could not save your location. Please try again.');
+      }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (err: any) {
+      Alert.alert('Error', err?.message ?? 'Could not save location.');
+    } finally {
+      setCurrentCityLoading(false);
+    }
+  };
+
+  /** Remove the current location entry entirely. */
+  const handleRemoveLocation = async () => {
+    if (!profile) return;
+    Alert.alert(
+      'Remove location',
+      'This will clear your location from Near Me filtering. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            setRemovingLocation(true);
+            const ok = await deleteModelLocation(profile.id);
+            setRemovingLocation(false);
+            if (ok) {
+              setModelLocation(null);
+              setProfile((prev) => prev ? { ...prev, currentLocation: '' } : prev);
+            } else {
+              Alert.alert('Error', 'Could not remove location. Please try again.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   useEffect(() => {
@@ -235,6 +341,16 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     }
     return () => { cancelled = true; };
   }, [userId]);
+
+  // Load active location source on mount (and when profile changes)
+  useEffect(() => {
+    if (!profile?.id) return;
+    let cancelled = false;
+    void getModelLocation(profile.id).then((loc) => {
+      if (!cancelled) setModelLocation(loc);
+    });
+    return () => { cancelled = true; };
+  }, [profile?.id]);
 
   useEffect(() => {
     setOptions(getOptionRequests());
@@ -461,13 +577,96 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
               </Text>
             ) : null}
           </View>
+          {/* ── Location Section ─────────────────────────────── */}
           <View style={st.section}>
-            <Text style={st.sectionLabel}>Share Location</Text>
+            <Text style={st.sectionLabel}>Location</Text>
+
+            {/* Active source badge */}
+            {modelLocation ? (
+              <View style={{
+                flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                backgroundColor: modelLocation.source === 'live' ? '#e8f5e9'
+                  : modelLocation.source === 'current' ? '#e3f2fd' : '#fff3e0',
+                borderRadius: 8, padding: spacing.sm, marginBottom: spacing.sm,
+              }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ ...typography.label, fontSize: 11,
+                    color: modelLocation.source === 'live' ? '#2e7d32'
+                      : modelLocation.source === 'current' ? '#1565c0' : '#e65100' }}>
+                    {locationSourceLabel(modelLocation.source)}
+                  </Text>
+                  <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
+                    {[modelLocation.city, modelLocation.country_code].filter(Boolean).join(', ') || 'Location set'}
+                    {modelLocation.lat_approx != null ? ' · Near Me enabled' : ' · Near Me requires geocoords'}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={handleRemoveLocation}
+                  disabled={removingLocation}
+                  style={{ paddingHorizontal: spacing.xs, paddingVertical: 4 }}
+                >
+                  <Text style={{ fontSize: 11, color: '#e74c3c', fontWeight: '600' }}>
+                    {removingLocation ? '…' : 'Remove'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm }}>
+                No active location. Set one below to appear in Near Me.
+              </Text>
+            )}
+
+            {/* Mode A — Set current city (source='current', no GPS required) */}
+            <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary, marginBottom: 4 }}>
+              Set current city
+            </Text>
+            <TextInput
+              placeholder="Country code (e.g. DE, FR, US)"
+              value={currentCountryInput}
+              onChangeText={setCurrentCountryInput}
+              maxLength={2}
+              autoCapitalize="characters"
+              style={{
+                borderWidth: 1, borderColor: colors.border, borderRadius: 8,
+                paddingHorizontal: spacing.sm, paddingVertical: 8,
+                ...typography.body, fontSize: 13, marginBottom: 6,
+              }}
+            />
+            <TextInput
+              placeholder="City name"
+              value={currentCityInput}
+              onChangeText={setCurrentCityInput}
+              style={{
+                borderWidth: 1, borderColor: colors.border, borderRadius: 8,
+                paddingHorizontal: spacing.sm, paddingVertical: 8,
+                ...typography.body, fontSize: 13, marginBottom: spacing.xs,
+              }}
+            />
+            <TouchableOpacity
+              onPress={() => { void handleSetCurrentCity(); }}
+              disabled={currentCityLoading || !currentCityInput.trim() || !currentCountryInput.trim()}
+              style={{
+                flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs,
+                borderRadius: 999, backgroundColor: '#1565c0', paddingVertical: spacing.sm,
+                opacity: (currentCityLoading || !currentCityInput.trim() || !currentCountryInput.trim()) ? 0.5 : 1,
+                marginBottom: spacing.sm,
+              }}
+            >
+              {currentCityLoading && <ActivityIndicator size="small" color="#fff" />}
+              <Text style={{ ...typography.label, color: '#fff', fontSize: 13 }}>
+                {currentCityLoading ? 'Saving…' : 'Set current city'}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Mode B — Share live GPS (source='live') */}
+            <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary, marginBottom: 4 }}>
+              Or share live GPS
+            </Text>
             <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.xs }}>
-              Only your current city will be shared. No exact location data is stored.
+              Only your approximate city (±5 km) will be shared. No exact GPS is stored.
             </Text>
             <TouchableOpacity
-              onPress={handleShareLocation}
+              onPress={() => { void handleShareLocation(); }}
               disabled={locationLoading}
               style={{
                 flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs,
@@ -477,10 +676,11 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
             >
               {locationLoading && <ActivityIndicator size="small" color="#fff" />}
               <Text style={{ ...typography.label, color: '#fff' }}>
-                {locationLoading ? 'Locating...' : 'Share Location'}
+                {locationLoading ? 'Locating…' : 'Share live GPS'}
               </Text>
             </TouchableOpacity>
           </View>
+          {/* ── End Location Section ──────────────────────── */}
           <View style={st.section}>
             <Text style={st.sectionLabel}>Measurements</Text>
             <View style={st.measureRow}>

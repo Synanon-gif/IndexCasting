@@ -67,7 +67,13 @@ import { uploadModelPhoto, upsertPhotosForModel, syncPortfolioToModel, syncPolar
 import { confirmImageRights, guardImageUpload } from '../services/gdprComplianceSupabase';
 import { ModelMediaSettingsPanel } from '../components/ModelMediaSettingsPanel';
 import { getTerritoriesForModel, getTerritoriesForAgency, upsertTerritoriesForModel, bulkAddTerritoriesForModels } from '../services/territoriesSupabase';
-import { bulkUpsertModelLocations, upsertModelLocation } from '../services/modelLocationsSupabase';
+import {
+  bulkUpsertModelLocations,
+  upsertModelLocation,
+  getModelLocation,
+  locationSourceLabel,
+  type ModelLocation,
+} from '../services/modelLocationsSupabase';
 import { FILTER_COUNTRIES as LOCATION_COUNTRIES } from '../utils/modelFilters';
 import { supabase } from '../../lib/supabase';
 import {
@@ -1719,6 +1725,7 @@ const MyModelsTab: React.FC<{
   onFocusConsumed?: () => void;
 }> = ({ models, agencyId, agencyName, onRefresh, focusModelId, onFocusConsumed }) => {
   const [selectedModel, setSelectedModel] = useState<SupabaseModel | null>(null);
+  const [selectedModelLocation, setSelectedModelLocation] = useState<ModelLocation | null>(null);
   const [filters, setFilters] = useState<ModelFilters>(defaultModelFilters);
   const [editState, setEditState] = useState<ModelEditState>(buildEditState({ name: '' }));
 
@@ -1773,6 +1780,19 @@ const MyModelsTab: React.FC<{
     if (found) setSelectedModel(found);
     onFocusConsumed?.();
   }, [focusModelId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load model's active location source when a model is opened in the edit panel.
+  useEffect(() => {
+    if (!selectedModel?.id) {
+      setSelectedModelLocation(null);
+      return;
+    }
+    let cancelled = false;
+    void getModelLocation(selectedModel.id).then((loc) => {
+      if (!cancelled) setSelectedModelLocation(loc);
+    });
+    return () => { cancelled = true; };
+  }, [selectedModel?.id]);
 
   // Load API keys from DB (org-wide) on mount — kept in memory only, never in localStorage.
   useEffect(() => {
@@ -2557,6 +2577,26 @@ const MyModelsTab: React.FC<{
           <Text style={s.backLabel}>← Back to models</Text>
         </TouchableOpacity>
         <Text style={s.heading}>{selectedModel.name}</Text>
+
+        {/* Location source awareness badge — shown when model owns their location */}
+        {selectedModelLocation && selectedModelLocation.source !== 'agency' && (
+          <View style={{
+            backgroundColor: selectedModelLocation.source === 'live' ? '#e8f5e9' : '#e3f2fd',
+            borderRadius: 8, padding: spacing.sm, marginBottom: spacing.md,
+            borderLeftWidth: 3,
+            borderLeftColor: selectedModelLocation.source === 'live' ? '#2e7d32' : '#1565c0',
+          }}>
+            <Text style={{ fontWeight: '700', fontSize: 12,
+              color: selectedModelLocation.source === 'live' ? '#2e7d32' : '#1565c0', marginBottom: 2 }}>
+              {locationSourceLabel(selectedModelLocation.source)} active
+              {selectedModelLocation.city ? ` · ${selectedModelLocation.city}, ${selectedModelLocation.country_code}` : ''}
+            </Text>
+            <Text style={{ fontSize: 11, color: '#555' }}>
+              This model manages their own location. Your city/country changes will be saved to
+              their profile but will not override their active Near Me location.
+            </Text>
+          </View>
+        )}
 
         <ModelEditDetailsPanel
           state={editState}
