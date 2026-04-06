@@ -572,12 +572,58 @@ CREATE POLICY "my_policy"
 `clients_view_model_territories` (self-referencing) gedroppt; `Authenticated can read territories`
 (USING true) deckt bereits alle authenticated Users ab.
 
+**Regression (2026-04-13) + Re-Fix (2026-04-14):**
+`20260413_fix_a_territory_unique_constraint.sql` hat `clients_view_model_territories` mit
+identischem Self-Reference-Muster neu angelegt (`FROM model_agency_territories self_mat`).
+`20260414_fix_mat_client_policy_self_ref_regression.sql` behebt die Regression:
+Agency-Branch nutzt jetzt `model_agency_territories.agency_id` als direkte Column-Referenz.
+
+**ANTI-REGRESSION-REGEL für `clients_view_model_territories`:**
+- Diese Policy darf NIEMALS `FROM public.model_agency_territories` oder einen Self-Alias
+  (z.B. `self_mat`) in ihrer USING-Klausel enthalten.
+- Agency-Branch MUSS immer `model_agency_territories.agency_id` direkt referenzieren:
+  ```sql
+  EXISTS (
+    SELECT 1
+    FROM public.organizations o
+    JOIN public.organization_members om ON om.organization_id = o.id
+    WHERE o.agency_id = model_agency_territories.agency_id  -- direkte Column-Ref
+      AND om.user_id  = auth.uid()
+      AND o.type      = 'agency'
+  )
+  ```
+- Bei jeder Migration die diese Policy neu anlegt: Verification `SELECT count(*) FROM pg_policies
+  WHERE tablename='model_agency_territories' AND qual ILIKE '%self_mat%'` → MUSS 0 ergeben.
+
 **Rekursionskette die zum Ausfall führte:**
 ```
 profiles SELECT → profiles_org_scoped_read → models SELECT
   → clients_read_visible_models → model_agency_territories SELECT
     → clients_view_model_territories → FROM model_agency_territories self_mat
       → model_agency_territories SELECT → clients_view_model_territories → ENDLOSSCHLEIFE (42P17)
+```
+
+---
+
+## PFLICHT: `clients_view_model_territories` — Spezifische Anti-Regression-Checks
+
+Bei JEDER Migration die `model_agency_territories` Policies berührt:
+
+```sql
+-- Check 1: Kein Self-Reference-Alias in irgendeiner Policy der Tabelle
+SELECT count(*) FROM pg_policies
+WHERE tablename = 'model_agency_territories'
+  AND (qual ILIKE '%self_mat%'
+    OR qual ILIKE '%from public.model_agency_territories%'
+    OR qual ILIKE '%from model_agency_territories %');
+-- Erwartet: 0
+
+-- Check 2: clients_view_model_territories existiert als SELECT-Policy
+SELECT policyname, cmd FROM pg_policies
+WHERE tablename = 'model_agency_territories'
+  AND policyname = 'clients_view_model_territories'
+  AND cmd = 'SELECT';
+-- Erwartet: 1 Zeile
 ```
 
 ---
