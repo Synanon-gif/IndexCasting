@@ -294,7 +294,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (orgCtxErr) {
           console.error('[AuthContext] loadProfile get_my_org_context error:', orgCtxErr);
         } else if (orgCtx) {
-          const row = Array.isArray(orgCtx) ? orgCtx[0] : orgCtx;
+          // Fix B: get_my_org_context() now returns ALL memberships (no LIMIT 1).
+          // We always use orgCtx[0] (oldest membership) and log a warning when the
+          // user belongs to multiple orgs — making the implicit choice explicit.
+          const allRows = Array.isArray(orgCtx) ? orgCtx : [orgCtx];
+          if (allRows.length > 1) {
+            console.warn(
+              '[AuthContext] loadProfile: user belongs to',
+              allRows.length,
+              'orgs — using oldest membership (multi-org switching not yet supported)',
+              allRows.map((r: Record<string, unknown>) => r.organization_id),
+            );
+          }
+          const row = allRows[0] as Record<string, unknown> | undefined;
           if (row?.organization_id) {
             orgContext = {
               organization_id: row.organization_id as string,
@@ -316,7 +328,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 setOrgBootstrapFailed(true);
               } else {
                 const { data: retryCtx } = await supabase.rpc('get_my_org_context');
-                const retryRow = Array.isArray(retryCtx) ? retryCtx?.[0] : retryCtx;
+                const retryRows = Array.isArray(retryCtx) ? retryCtx : (retryCtx ? [retryCtx] : []);
+                const retryRow = retryRows[0] as Record<string, unknown> | undefined;
                 if (retryRow?.organization_id) {
                   orgContext = {
                     organization_id: retryRow.organization_id as string,
