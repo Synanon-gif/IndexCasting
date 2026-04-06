@@ -28,6 +28,8 @@
     "typecheck": "tsc --noEmit",
     "format": "prettier --write 'src/**/*.{ts,tsx}' 'lib/**/*.{ts,tsx}'",
     "format:check": "prettier --check 'src/**/*.{ts,tsx}' 'lib/**/*.{ts,tsx}'",
+    "sync": "bash scripts/sync-dev.sh",
+    "deploy:supabase:functions": "bash scripts/deploy-supabase-functions.sh",
     "review-context": "bash scripts/generate-llm-review-bundle.sh",
     "security-audit-bundle": "bash scripts/generate-security-audit-bundle.sh",
     "cap:sync": "cap sync",

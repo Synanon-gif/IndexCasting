@@ -52,3 +52,8 @@ docs/SECURITY_AUDIT_CODE_BUNDLE.md
 /android
 .env
 .vercel
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/

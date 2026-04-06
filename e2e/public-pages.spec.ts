@@ -1,89 +1,125 @@
 import { test, expect } from '@playwright/test';
 
 /**
- * Public Pages E2E Tests
+ * Public web behavior (intended product contract)
  *
- * Verifies that all public-facing entry points are reachable and contain
- * the expected legal links — a hard requirement for GDPR + legal compliance.
+ * UPDATED ASSUMPTIONS (replacing earlier, incorrect ones):
+ * - `/` is NOT a separate marketing landing page with a static HTML `<footer>`.
+ *   It serves the Expo/React Native Web app shell and the unauthenticated auth entry.
+ * - Do NOT require a marketing `<h1>`, document title "Index Casting", or footer links on `/`.
+ * - `/terms` and `/privacy` remain publicly reachable routes (legal content).
+ * - Legal entry points for signed-out users live in the auth UI (legal footer row:
+ *   "Terms of Service" / "Privacy Policy"), not on a dedicated landing footer.
+ *
+ * These tests assert: shell load, auth gate, public legal routes, and in-app legal controls.
  */
 
-test.describe('Landing page', () => {
-  test('loads and displays the IndexCasting brand', async ({ page }) => {
-    await page.goto('/');
-    await expect(page).toHaveTitle(/index casting/i);
-    // Main headline
-    await expect(page.locator('h1')).toContainText(/index casting/i);
+async function expectAuthEntryUi(page: import('@playwright/test').Page): Promise<void> {
+  const bodyText = (await page.locator('body').textContent()) ?? '';
+  const lower = bodyText.toLowerCase();
+  const hasAuthUi =
+    lower.includes('sign in') ||
+    lower.includes('login') ||
+    lower.includes('log in') ||
+    lower.includes('email') ||
+    lower.includes('create account') ||
+    lower.includes('password') ||
+    lower.includes('continue');
+  expect(hasAuthUi).toBe(true);
+}
+
+test.describe('Root — app shell / auth entry', () => {
+  test('loads successfully (no client error page)', async ({ page }) => {
+    const response = await page.goto('/');
+    expect(response?.status()).toBeLessThan(400);
+    await expect(page.locator('body')).toBeVisible();
   });
 
-  test('footer contains a Terms of Service link pointing to /terms', async ({ page }) => {
+  test('shows authentication UI for unauthenticated users', async ({ page }) => {
     await page.goto('/');
-    const termsLink = page.locator('footer a[href="/terms"]');
-    await expect(termsLink).toBeVisible();
-    await expect(termsLink).toContainText(/terms/i);
-  });
-
-  test('footer contains a Privacy Policy link pointing to /privacy', async ({ page }) => {
-    await page.goto('/');
-    const privacyLink = page.locator('footer a[href="/privacy"]');
-    await expect(privacyLink).toBeVisible();
-    await expect(privacyLink).toContainText(/privacy/i);
+    await page.waitForTimeout(3000);
+    await expectAuthEntryUi(page);
   });
 });
 
-test.describe('/terms page', () => {
-  test('loads without a 404 error', async ({ page }) => {
+test.describe('/terms — public legal route', () => {
+  test('responds without a hard error', async ({ page }) => {
     const response = await page.goto('/terms');
-    // Any 2xx or redirect is acceptable; only hard 4xx/5xx is a failure
     expect(response?.status()).not.toBeGreaterThanOrEqual(400);
   });
 
-  test('contains legal / terms content', async ({ page }) => {
+  test('does not force redirect to a login-only URL', async ({ page }) => {
     await page.goto('/terms');
-    // Page should reference "Terms" somewhere in visible text
-    const body = page.locator('body');
-    await expect(body).toContainText(/terms/i);
+    expect(page.url()).not.toMatch(/login|sign-in|auth/i);
   });
 
-  test('provides a way back to the main app (back-navigation or link)', async ({ page }) => {
+  test('shows terms-related content', async ({ page }) => {
     await page.goto('/terms');
-    // Either a "back" button or navigating to '/' should work
+    await expect(page.locator('body')).toContainText(/terms/i);
+  });
+
+  test('user can return to the app entry at /', async ({ page }) => {
+    await page.goto('/terms');
     await page.goto('/');
-    await expect(page.locator('h1')).toBeVisible();
+    await page.waitForTimeout(2000);
+    await expect(page.locator('body')).toBeVisible();
+    await expectAuthEntryUi(page);
   });
 });
 
-test.describe('/privacy page', () => {
-  test('loads without a 404 error', async ({ page }) => {
+test.describe('/privacy — public legal route', () => {
+  test('responds without a hard error', async ({ page }) => {
     const response = await page.goto('/privacy');
     expect(response?.status()).not.toBeGreaterThanOrEqual(400);
   });
 
-  test('contains privacy / data-protection content', async ({ page }) => {
+  test('does not force redirect to a login-only URL', async ({ page }) => {
     await page.goto('/privacy');
-    const body = page.locator('body');
-    await expect(body).toContainText(/privacy/i);
+    expect(page.url()).not.toMatch(/login|sign-in|auth/i);
+  });
+
+  test('shows privacy-related content', async ({ page }) => {
+    await page.goto('/privacy');
+    await expect(page.locator('body')).toContainText(/privacy/i);
   });
 });
 
-test.describe('Legal link navigation from landing page', () => {
-  test('clicking Terms of Service link navigates to /terms', async ({ page }) => {
+test.describe('Legal links from public auth UI (not a marketing landing footer)', () => {
+  test('Terms of Service is visible on the auth screen and opens /terms on web', async ({
+    page,
+  }) => {
     await page.goto('/');
-    await page.locator('footer a[href="/terms"]').click();
-    // After click: either URL changes or content updates (SPA navigation)
-    await page.waitForTimeout(1000);
-    const currentUrl = page.url();
-    const bodyText   = await page.locator('body').textContent();
-    const navigated  = currentUrl.includes('/terms') || (bodyText ?? '').toLowerCase().includes('terms');
-    expect(navigated).toBe(true);
+    await page.waitForTimeout(3000);
+
+    const termsControl = page.getByText('Terms of Service', { exact: true });
+    await expect(termsControl).toBeVisible();
+
+    await termsControl.click();
+    await page.waitForTimeout(800);
+
+    const url = page.url();
+    const body = (await page.locator('body').textContent()) ?? '';
+    const showsTerms =
+      url.includes('/terms') || body.toLowerCase().includes('terms of service');
+    expect(showsTerms).toBe(true);
   });
 
-  test('clicking Privacy Policy link navigates to /privacy', async ({ page }) => {
+  test('Privacy Policy is visible on the auth screen and opens /privacy on web', async ({
+    page,
+  }) => {
     await page.goto('/');
-    await page.locator('footer a[href="/privacy"]').click();
-    await page.waitForTimeout(1000);
-    const currentUrl = page.url();
-    const bodyText   = await page.locator('body').textContent();
-    const navigated  = currentUrl.includes('/privacy') || (bodyText ?? '').toLowerCase().includes('privacy');
-    expect(navigated).toBe(true);
+    await page.waitForTimeout(3000);
+
+    const privacyControl = page.getByText('Privacy Policy', { exact: true });
+    await expect(privacyControl).toBeVisible();
+
+    await privacyControl.click();
+    await page.waitForTimeout(800);
+
+    const url = page.url();
+    const body = (await page.locator('body').textContent()) ?? '';
+    const showsPrivacy =
+      url.includes('/privacy') || body.toLowerCase().includes('privacy policy');
+    expect(showsPrivacy).toBe(true);
   });
 });
