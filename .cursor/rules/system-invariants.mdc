@@ -168,31 +168,85 @@ void optionAService()
   .catch((e) => { setState(snapshot); showError(); }); // für Netzwerk-Rejections (selten)
 ```
 
-### Snapshot-Pflicht (NIEMALS weglassen)
-- Jedes optimistische UI-Update MUSS **vor** dem Update einen Snapshot des betroffenen Sub-State nehmen
-- Bei `ok === false` oder `.catch()`: Rollback **nur auf den mutierten Bereich** (per-Entität, nicht global)
-- **NIEMALS** Filter-basierter Rollback (`state.filter(...)`) — Filter-Rollback entfernt fälschlich Items die schon vor dem Update vorhanden waren
+### Rollback-Pflicht: Level 3 — Inverse Operation (NIEMALS snapshot-basiert)
 
-#### KRITISCH: Globaler State-Snapshot ist verboten wenn concurrent Actions möglich sind
+Snapshots aller Art (global oder per-Entität) sind für optimistische Updates **verboten**, wenn concurrent Actions auf denselben Container möglich sind. Snapshots werden aus der React-Closure gelesen — im selben Render-Zyklus sind alle Snapshots identisch (stale), egal wie eng gefasst.
 
-```typescript
-// ❌ VERBOTEN: globaler Snapshot — Race Condition bei concurrent Adds zu verschiedenen Entitäten
-const snapshot = projects; // Enthält Stand von P1+M1 wenn M1-Add schon in-flight ist
-// → RPC_M2 fails → setProjects(snapshot) überschreibt M1-Optimistic OBWOHL M1 RPC noch läuft
-
-// ✅ PFLICHT: Per-Entität-Snapshot — nur den betroffenen Bereich sichern
-const projectPreAddModels = (projects.find(p => p.id === projectId)?.models ?? []).slice();
-// → Rollback: setProjects(prev => prev.map(p => p.id === projectId ? {...p, models: projectPreAddModels} : p))
-// → Andere Projekte/Entitäten bleiben unberührt
+```
+Add M1: projectPreAddModels=[]  optimistic→[M1]
+Add M2: projectPreAddModels=[]  optimistic→[M1,M2]  ← React closure: gleicher Render
+RPC_M1 fails → rollback zu [] → M2 VERLOREN   ← Level-2-Snapshot bricht hier
 ```
 
-**Regeln:**
-- Snapshot muss auf den **minimal nötigen Bereich** beschränkt sein (das eine Projekt, die eine Entität)
-- `.slice()` erzeugt eine flache Kopie des Arrays — verhindert dass concurrent Adds denselben Snapshot mutieren
-- Rollback MUSS ein **functional `setState` update** (`prev => prev.map(...)`) verwenden, kein direktes `setState(snapshot)` auf den gesamten State
-- Diese Regel gilt für jeden Container-State (arrays wie `projects`, `models`, `messages`) bei dem mehrere concurrent Actions möglich sind
+**Einziges sicheres Pattern: Inverse Operation Rollback**
 
-Gilt für: `addModelToProject` (per-project model list), `handleDeleteProject` (filter-based, kein concurrent risk), `handleRemoveModelFromProject` (per-project) und jeden neuen optimistischen Update-Handler
+Statt einen alten Stand wiederherzustellen, wird die fehlgeschlagene Mutation präzise rückgängig gemacht — auf dem **aktuellen** Live-State zum Zeitpunkt des Rollbacks.
+
+#### ADD — Inverse: filter out the added item
+
+```typescript
+// Vor dem Update: alreadyPresent prüfen
+const alreadyPresent = container.find(c => c.id === targetId)
+  ?.items.some(i => i.id === item.id) ?? false;
+
+// Rollback (nur wenn wir das Item tatsächlich hinzugefügt haben):
+if (!alreadyPresent) {
+  setState(prev => prev.map(c =>
+    c.id === targetId
+      ? { ...c, items: c.items.filter(i => i.id !== item.id) }
+      : c
+  ));
+}
+```
+
+`alreadyPresent`-Guard: PFLICHT — ohne ihn würde ein RPC-Fehler ein Item entfernen, das vor dem Add schon vorhanden war (stale UI + idempotentes RPC).
+
+#### REMOVE — Inverse: add back the removed item
+
+```typescript
+// Vor dem Update: entferntes Objekt sichern
+const removedItem = container.find(c => c.id === targetId)
+  ?.items.find(i => i.id === itemId);
+
+// Rollback:
+if (!ok && removedItem) {
+  setState(prev => prev.map(c =>
+    c.id === targetId && !c.items.some(i => i.id === itemId)
+      ? { ...c, items: [...c.items, removedItem] }
+      : c
+  ));
+}
+```
+
+`!c.items.some(...)` Guard: verhindert Doppel-Einfügung bei concurrent Rollbacks.
+
+#### DELETE — Inverse: add back the deleted entity
+
+```typescript
+// Vor dem Update: gelöschtes Objekt sichern (meist schon als Variable vorhanden)
+const deletedEntity = container.find(c => c.id === entityId);
+
+// Rollback:
+setState(prev =>
+  prev.some(c => c.id === entityId) ? prev : [...prev, deletedEntity]
+);
+```
+
+`prev.some(...)` Guard: verhindert Duplizierung.
+
+**Was verboten ist:**
+```typescript
+// ❌ VERBOTEN: jede Form von Snapshot
+const snapshot = state;                          // global
+const entityPreModels = entity.items.slice();    // per-entity — bricht bei concurrent Actions im selben Render
+
+// ❌ VERBOTEN: Rollback via direktes setState(snapshot)
+setState(snapshot);
+setState(prev => prev.map(p => p.id === id ? { ...p, items: preItems } : p));
+//                                                              ^ stale snapshot
+```
+
+Gilt für: alle optimistischen Handler in `ClientWebApp.tsx` und jeden neuen Handler der Listen/Arrays in Shared State mutiert.
 
 ### Inflight-Lock-Pflicht (NIEMALS weglassen)
 - Jede Action die Shared State optimistisch mutiert MUSS einen **per-id Lock** haben

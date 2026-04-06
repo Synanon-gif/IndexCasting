@@ -1124,19 +1124,35 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       ? window.confirm(uiCopy.projects.deleteConfirm)
       : true;
     if (!confirmed) return;
-    // Snapshot BEFORE optimistic update — deleteProject returns false, never throws.
-    // .catch() would be dead code; MUST use .then(ok) for rollback.
-    const snapshot = projects;
+
+    // Level 3 — Inverse-Operation Rollback (NOT snapshot-based).
+    //
+    // Global snapshot breaks for (theoretically) concurrent deletes:
+    //   Delete P1: snapshot=[P1,P2]  optimistic→[P2]
+    //   Delete P2: snapshot=[P1,P2]  optimistic→[P1]  (React closure: same render)
+    //   RPC_P1 fails → setProjects([P1,P2]) → P2 comes back even if RPC_P2 succeeds.
+    //
+    // In practice, window.confirm makes this scenario impossible. We apply the same
+    // inverse pattern for consistency and to future-proof the handler.
+    //
+    // deletedProject is already captured as `project` above.
+    // The prev.some() guard prevents double-insertion on concurrent rollbacks.
+    const deletedProject = project;
     const prevActiveId = activeProjectId;
+
     setProjects((prev) => prev.filter((p) => p.id !== projectId));
     if (activeProjectId === projectId) setActiveProjectId(null);
+
     void deleteProjectOnSupabase(projectId)
       .then((ok) => {
         if (ok) {
-          setFeedback(`Deleted project "${project.name}".`);
+          setFeedback(`Deleted project "${deletedProject.name}".`);
           clearFeedbackLater();
         } else {
-          setProjects(snapshot);
+          // Inverse rollback: add back the deleted project only if it's not already there.
+          setProjects((prev) =>
+            prev.some((p) => p.id === projectId) ? prev : [...prev, deletedProject],
+          );
           setActiveProjectId(prevActiveId);
           setFeedback('Could not delete project. Please try again.');
           clearFeedbackLater();
@@ -1144,7 +1160,9 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       })
       .catch((e) => {
         console.error('handleDeleteProject: unexpected rejection', e);
-        setProjects(snapshot);
+        setProjects((prev) =>
+          prev.some((p) => p.id === projectId) ? prev : [...prev, deletedProject],
+        );
         setActiveProjectId(prevActiveId);
         setFeedback('Could not delete project.');
         clearFeedbackLater();
@@ -1156,20 +1174,22 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     if (addingModelIds.has(model.id)) return;
     setAddingModelIds((prev) => new Set(prev).add(model.id));
 
-    // Per-project model snapshot (NOT global state snapshot).
-    // A global snapshot causes cross-project rollback corruption when two concurrent
-    // adds target different models/projects:
-    //   Add M1→P1: globalSnapshot=[P1(∅),P2(∅)], optimistic→[P1(+M1),P2(∅)]
-    //   Add M2→P2: globalSnapshot=[P1(+M1),P2(∅)], optimistic→[P1(+M1),P2(+M2)]
-    //   RPC_M1 fails → setProjects(globalSnapshot_M1)=[P1(∅),P2(∅)] → M2 LOST
-    // Per-project snapshot only restores the model list of the one project being mutated.
-    // .slice() creates a shallow copy so concurrent adds to the same project
-    // cannot mutate this captured array.
-    const projectPreAddModels = (
-      projects.find((p) => p.id === projectId)?.models ?? []
-    ).slice();
+    // Level 3 — Inverse-Operation Rollback (NOT snapshot-based).
+    //
+    // Snapshot-based rollback (Level 2) breaks for concurrent adds to the same project:
+    //   Add M1: projectPreAddModels=[]  optimistic→[M1]
+    //   Add M2: projectPreAddModels=[]  optimistic→[M1,M2]  (React closure: same render)
+    //   RPC_M1 fails → restore []  → M2 LOST even though RPC_M2 may still succeed.
+    //
+    // Inverse operation: on failure, filter OUT the specific model.id from live state.
+    // No snapshot needed — the rollback reads from `prev` at the moment of execution.
+    //
+    // alreadyPresent guard: if the model was already in the project before this Add
+    // (stale UI / idempotent RPC), a failed RPC must NOT remove it.
+    const alreadyPresent =
+      projects.find((p) => p.id === projectId)?.models.some((m) => m.id === model.id) ?? false;
 
-    // Capture project name now (closure-safe; project names rarely change mid-flight).
+    // Capture project name now (closure-safe; names rarely change mid-flight).
     const projectName = projects.find((p) => p.id === projectId)?.name;
 
     setProjects((prev) =>
@@ -1187,7 +1207,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
 
     // Persist to Supabase. The service NEVER throws — it returns false on error
     // (both supabase error and exception paths). .catch() would never fire.
-    // MUST use .then(ok) to detect failure and trigger rollback.
+    // MUST use .then(ok) to detect failure and trigger inverse-operation rollback.
     void addModelToProjectOnSupabase(projectId, model.id)
       .then((ok) => {
         setAddingModelIds((prev) => { const s = new Set(prev); s.delete(model.id); return s; });
@@ -1197,13 +1217,17 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             clearFeedbackLater();
           }
         } else {
-          // RPC returned false — rollback only this project's model list.
-          // Other projects remain untouched, preventing cross-project state corruption.
-          setProjects((prev) =>
-            prev.map((p) =>
-              p.id === projectId ? { ...p, models: projectPreAddModels } : p,
-            ),
-          );
+          // Inverse rollback: remove only this model from live state.
+          // alreadyPresent guard ensures a pre-existing model is never removed.
+          if (!alreadyPresent) {
+            setProjects((prev) =>
+              prev.map((p) =>
+                p.id === projectId
+                  ? { ...p, models: p.models.filter((m) => m.id !== model.id) }
+                  : p,
+              ),
+            );
+          }
           setFeedback('Could not save model to project — no active agency connection.');
           clearFeedbackLater();
         }
@@ -1212,11 +1236,15 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         // Network-level rejection (extremely rare with Supabase JS client).
         console.error('addModelToProject: unexpected rejection', e);
         setAddingModelIds((prev) => { const s = new Set(prev); s.delete(model.id); return s; });
-        setProjects((prev) =>
-          prev.map((p) =>
-            p.id === projectId ? { ...p, models: projectPreAddModels } : p,
-          ),
-        );
+        if (!alreadyPresent) {
+          setProjects((prev) =>
+            prev.map((p) =>
+              p.id === projectId
+                ? { ...p, models: p.models.filter((m) => m.id !== model.id) }
+                : p,
+            ),
+          );
+        }
         setFeedback('Could not save model to project.');
         clearFeedbackLater();
       });
@@ -1257,9 +1285,21 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         : true;
     if (!confirmed) return;
 
-    // Snapshot BEFORE optimistic update — removeModelFromProject returns false, never throws.
-    // try/catch on a non-throwing service is dead code; check return value instead.
-    const snapshot = projects;
+    // Level 3 — Inverse-Operation Rollback (NOT snapshot-based).
+    //
+    // Global snapshot breaks for concurrent removes from the same project:
+    //   Remove A: snapshot=[A,B,C]  optimistic→[B,C]
+    //   Remove B: snapshot=[A,B,C]  optimistic→[A,C]  (React closure: same render)
+    //   RPC_A fails → setProjects([A,B,C]) → B comes back even though remove-B RPC may succeed.
+    //
+    // Inverse operation: on failure, add back only the specific model that was removed.
+    // The removedModel object must be captured before the optimistic remove so it can be
+    // re-inserted. The !p.models.some() guard prevents double-insertion if two concurrent
+    // rollbacks run simultaneously.
+    const removedModel = projects
+      .find((p) => p.id === projectId)
+      ?.models.find((m) => m.id === modelId);
+
     setProjects((prev) =>
       prev.map((p) =>
         p.id === projectId
@@ -1267,9 +1307,18 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
           : p,
       ),
     );
+
     const ok = await removeModelFromProject(projectId, modelId);
-    if (!ok) {
-      setProjects(snapshot);
+    if (!ok && removedModel) {
+      // Inverse rollback: add back the removed model to live state.
+      // !p.models.some() guard: prevents double-insertion on concurrent rollbacks.
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.id === projectId && !p.models.some((m) => m.id === modelId)
+            ? { ...p, models: [...p.models, removedModel] }
+            : p,
+        ),
+      );
       setFeedback('Could not remove model from project. Please try again.');
       clearFeedbackLater();
     }
