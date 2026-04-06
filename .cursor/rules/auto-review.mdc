@@ -58,7 +58,7 @@ Q7: Verwendet diese Änderung LIMIT 1 in einer Org-Kontext-Funktion?
 
 ## 4. Stop-Bedingungen (sofortiger Abbruch)
 
-- RLS-Policy ist `FOR ALL` auf Tabelle im `profiles/models`-SELECT-Pfad
+- RLS-Policy ist `FOR ALL` auf Tabelle im `profiles/models`-SELECT-Pfad (Watchlist: `model_embeddings`, `model_locations`, `model_agency_territories`, `calendar_entries`, `model_minor_consent`)
 - Neue DB-Funktion ohne `assert_is_admin()` schreibt Admin-Daten
 - Query ohne `org_id`-Filter auf Multi-Tenant-Tabelle
 - `bootstrapThenLoadProfile` oder Login-Pfad wird verändert ohne expliziten Nachweis, dass Q1–Q4 = Nein

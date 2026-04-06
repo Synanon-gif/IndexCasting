@@ -143,6 +143,14 @@ CREATE POLICY "...delete" ON public.model_embeddings FOR DELETE ...;
 ```
 
 **Gefixt (2026-04-05):** `model_embeddings` — FOR ALL aufgeteilt in 4 separate Policies.
+**Gefixt (2026-04-06):** `model_locations` — FOR ALL aufgeteilt in 6 separate Policies (3 Agency, 3 Model-Self).
+**Gefixt (2026-04-06):** `calendar_entries` — FOR ALL gedroppt (redundante `_agency_org_all` + `_model_user_all`), Model-Self INSERT/UPDATE/DELETE erstellt.
+**Gefixt (2026-04-06):** `model_minor_consent` — FOR ALL (`mmc_agency_access`) aufgeteilt in 4 separate Policies.
+
+**Tabellen-Watchlist (FOR ALL ist VERBOTEN wenn die Policy `models` oder `profiles` referenziert):**
+`model_embeddings`, `model_locations`, `model_agency_territories`, `calendar_entries`,
+`model_minor_consent` — alle bereits gesplittet. Jede neue Tabelle die `models` per
+JOIN in einer Policy liest MUSS in diese Liste aufgenommen werden.
 
 ---
 
@@ -289,8 +297,23 @@ ORDER BY proname;
 -- 4. Keine FOR ALL Policies mehr auf Tabellen im profiles→models-Pfad:
 SELECT tablename, policyname, cmd FROM pg_policies
 WHERE cmd = 'ALL'
-  AND tablename IN ('model_embeddings', 'model_locations', 'model_agency_territories');
+  AND tablename IN ('model_embeddings', 'model_locations', 'model_agency_territories',
+                     'calendar_entries', 'model_minor_consent');
 -- Erwartet: 0 Zeilen (alle aufgeteilt)
+
+-- 5. Keine Self-Referencing SELECT Policies (Risiko 11):
+-- Prüfe ob eine SELECT-Policy die eigene Tabelle per FROM/JOIN referenziert.
+-- Manuelle Inspektion aller SELECT-Policies auf Tabellen mit >1 SELECT-Policy:
+SELECT tablename, policyname, LEFT(qual, 200) FROM pg_policies
+WHERE cmd = 'SELECT' AND tablename IN (
+  SELECT tablename FROM pg_policies WHERE cmd = 'SELECT'
+  GROUP BY tablename HAVING count(*) > 1
+) ORDER BY tablename, policyname;
+-- Ergebnis prüfen: keine Policy darf die eigene Tabelle im qual referenzieren
+
+-- 6. Login-Test (profiles SELECT ohne 500/42P17):
+SELECT id, role FROM profiles WHERE id = 'fb0ab854-d0c3-4e09-a39c-269d60246927';
+-- Erwartet: 1 Zeile, role='admin'
 ```
 
 ---
