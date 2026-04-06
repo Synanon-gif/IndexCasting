@@ -108,7 +108,40 @@ Lösung: Cross-Table-Checks MÜSSEN via `SECURITY DEFINER` mit `SET row_security
 - **Package-Typ-Anzeige:** Der Grid-Header in `DiscoverView` im Package-Mode MUSS `packageType` anzeigen: `'polaroid' → 'Polaroid Package'`, `'portfolio' → 'Portfolio Package'`. Die `DiscoverProps` enthalten `packageType?: PackageType`, das von `ClientWebApp` als `packageViewState?.packageType` übergeben wird.
 - **Active-Project-Label in Shared-Mode:** `isSharedMode` hat Vorrang — in Shared-Mode IMMER `sharedProjectName` anzeigen, nicht `activeProject.name` (der auf ein anderes Projekt zeigen kann)
 - **Package-Label im Chat:** `metadata.package_label` MUSS den echten Package-Namen (`GuestLink.label`) enthalten, nicht nur die Model-Anzahl. Format: `"Name · N models"` wenn Label vorhanden, sonst `"N"`
-- **`add_model_to_project` Rollback (PFLICHT):** `addModelToProjectOnSupabase` validiert `client_agency_connections.status = 'accepted'`. Wenn der RPC fehlschlägt (keine akzeptierte Connection): MUSS lokaler State zurückgerollt werden (`setProjects` → Model entfernen) UND User erhält Feedback-Text `'Could not save model to project — no active agency connection.'` — kein Silent-Fail erlaubt
+- **`add_model_to_project` Rollback (PFLICHT — Snapshot-Pattern):**
+  - Connection-Check ist serverseitig im RPC (`client_agency_connections.status = 'accepted'`). Frontend-Check ist NICHT ausreichend.
+  - `addModelToProjectOnSupabase` (`src/services/projectsSupabase.ts`) gibt bei Fehler **`false` zurück — wirft NIEMALS**. `.catch()` in `ClientWebApp.tsx` läuft daher NIEMALS.
+  - PFLICHT-Pattern: **`.then(ok)` + Snapshot**, NICHT `.catch()` + `filter`:
+    ```typescript
+    const snapshot = projects; // VOR optimistischem Update
+    setProjects(...optimistic...);
+    void addModelToProjectOnSupabase(projectId, model.id)
+      .then((ok) => {
+        if (ok) { setFeedback(`Added ...`); clearFeedbackLater(); }
+        else { setProjects(snapshot); setFeedback('Could not save...'); clearFeedbackLater(); }
+      })
+      .catch((e) => { setProjects(snapshot); setFeedback('Could not save...'); clearFeedbackLater(); });
+    ```
+  - Warum Snapshot statt Filter: `filter` würde ein bereits im Projekt befindliches Model fälschlich entfernen; Snapshot stellt exakten Vor-Add-Zustand wieder her (UI === DB)
+  - localStorage-Sync ist automatisch: `setProjects` triggert den `[projects]`-useEffect → localStorage gespiegelt
+  - **VERBOTEN:** `void addModelToProjectOnSupabase(...).catch(...)` — catch läuft nie, kein Rollback
+  - **VERBOTEN:** Erfolgs-Feedback VOR dem `.then(ok)` setzen — zeigt Success bei tatsächlichem Fail
+
+- **`isSharedMode` Semantik (KRITISCH — Verwechslung verhindert):**
+  - `isSharedMode === true` bedeutet: **Client hat sein eigenes Projekt im Discover-Modus geöffnet** (`openProjectDiscovery()` → `setSharedProjectId(id)`)
+  - NICHT dasselbe wie externer Share-Link: `?shared=1&name=…&ids=…` → `SharedSelectionView` in `App.tsx` (read-only, keine Actions-Buttons)
+  - In `isSharedMode`: Option Request, Chat, Add-to-Selection sind **gewollt aktiv** — Client kuratiert sein Projekt
+  - Filter-Panel ist in `isSharedMode` ausgeblendet (`baseModels` ist bereits auf Projekt-Models beschränkt)
+  - `sharedProject` kommt aus `projects.find((p) => p.id === sharedProjectId)` — es ist immer ein Projekt des eingeloggten Clients
+
+- **Fallback-Daten Safety (Invariante):**
+  - `ModelSummary.id` (aus Discovery, sharedProject, packageViewState) ist immer die echte `models.id` UUID — sicher für alle Backend-Calls
+  - Actions (Option Request, Add-to-Project) re-fetchen Model-Daten im Backend unabhängig von Summary-Feldern:
+    - `addModelToProject` RPC: nutzt nur `p_model_id`, löst Agency intern via `models.agency_id` auf
+    - `addOptionRequest` Store: ruft `getModelByIdFromSupabase(modelId)` eigenständig auf für Agency-Auflösung
+  - Fallback-gebaute `detailData` (aus `sharedProject.models` / `rawModels`) ist **Display-only** — niemals als Datenquelle für Action-Parameters nutzen
+  - `agencyId` / `countryCode` in `ModelSummary` können nach localStorage-Reload `undefined` sein — kein Problem da Backend-Calls diese Felder selbst auflösen
+  - **VERBOTEN:** Summary-Felder direkt in Backend-Calls weitergeben ohne DB-Re-Fetch
 
 ## FRONTEND-GARANTIEN
 

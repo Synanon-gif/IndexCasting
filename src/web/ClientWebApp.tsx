@@ -1134,6 +1134,10 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   };
 
   const addModelToProject = (projectId: string, model: ModelSummary) => {
+    // Snapshot BEFORE optimistic update — used for full rollback if RPC fails.
+    // Using snapshot (not filter) prevents edge-case: if model was already in project
+    // a filter-based rollback would incorrectly remove it.
+    const snapshot = projects;
     setProjects((prev) =>
       prev.map((p) =>
         p.id === projectId
@@ -1146,26 +1150,33 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
           : p,
       ),
     );
-    const projectName = projects.find((p) => p.id === projectId)?.name;
-    if (projectName) {
-      setFeedback(`Added ${model.name} to "${projectName}".`);
-      clearFeedbackLater();
-    }
-    // Persist to Supabase (uses SECURITY DEFINER RPC that validates agency connection).
-    // If the RPC fails (e.g. no accepted client_agency_connection), rollback local state
-    // and inform the user — prevents silent data inconsistency in package mode.
-    void addModelToProjectOnSupabase(projectId, model.id).catch((e) => {
-      console.error('addModelToProject: Supabase RPC failed', e);
-      setProjects((prev) =>
-        prev.map((p) =>
-          p.id === projectId
-            ? { ...p, models: p.models.filter((m) => m.id !== model.id) }
-            : p,
-        ),
-      );
-      setFeedback('Could not save model to project — no active agency connection.');
-      clearFeedbackLater();
-    });
+
+    // Persist to Supabase. The service NEVER throws — it returns false on error
+    // (both supabase error and exception paths). .catch() would never fire.
+    // MUST use .then(ok) to detect failure and trigger rollback.
+    void addModelToProjectOnSupabase(projectId, model.id)
+      .then((ok) => {
+        if (ok) {
+          const projectName = snapshot.find((p) => p.id === projectId)?.name;
+          if (projectName) {
+            setFeedback(`Added ${model.name} to "${projectName}".`);
+            clearFeedbackLater();
+          }
+        } else {
+          // RPC returned false (no accepted agency connection or other server error).
+          // Restore the exact pre-add state — complete rollback, UI === DB.
+          setProjects(snapshot);
+          setFeedback('Could not save model to project — no active agency connection.');
+          clearFeedbackLater();
+        }
+      })
+      .catch((e) => {
+        // Network-level rejection (extremely rare with Supabase JS client).
+        console.error('addModelToProject: unexpected rejection', e);
+        setProjects(snapshot);
+        setFeedback('Could not save model to project.');
+        clearFeedbackLater();
+      });
   };
 
   // Record "viewed" whenever the current discovery card changes and the user is
