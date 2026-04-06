@@ -169,11 +169,30 @@ void optionAService()
 ```
 
 ### Snapshot-Pflicht (NIEMALS weglassen)
-- Jedes optimistische UI-Update MUSS **vor** dem Update einen Snapshot des State nehmen
-- Bei `ok === false` oder `.catch()`: **vollständiger Rollback auf Snapshot** (`setState(snapshot)`)
+- Jedes optimistische UI-Update MUSS **vor** dem Update einen Snapshot des betroffenen Sub-State nehmen
+- Bei `ok === false` oder `.catch()`: Rollback **nur auf den mutierten Bereich** (per-Entität, nicht global)
 - **NIEMALS** Filter-basierter Rollback (`state.filter(...)`) — Filter-Rollback entfernt fälschlich Items die schon vor dem Update vorhanden waren
 
-Gilt für: `addModelToProject`, `handleDeleteProject`, `handleRemoveModelFromProject` und jeden neuen optimistischen Update-Handler
+#### KRITISCH: Globaler State-Snapshot ist verboten wenn concurrent Actions möglich sind
+
+```typescript
+// ❌ VERBOTEN: globaler Snapshot — Race Condition bei concurrent Adds zu verschiedenen Entitäten
+const snapshot = projects; // Enthält Stand von P1+M1 wenn M1-Add schon in-flight ist
+// → RPC_M2 fails → setProjects(snapshot) überschreibt M1-Optimistic OBWOHL M1 RPC noch läuft
+
+// ✅ PFLICHT: Per-Entität-Snapshot — nur den betroffenen Bereich sichern
+const projectPreAddModels = (projects.find(p => p.id === projectId)?.models ?? []).slice();
+// → Rollback: setProjects(prev => prev.map(p => p.id === projectId ? {...p, models: projectPreAddModels} : p))
+// → Andere Projekte/Entitäten bleiben unberührt
+```
+
+**Regeln:**
+- Snapshot muss auf den **minimal nötigen Bereich** beschränkt sein (das eine Projekt, die eine Entität)
+- `.slice()` erzeugt eine flache Kopie des Arrays — verhindert dass concurrent Adds denselben Snapshot mutieren
+- Rollback MUSS ein **functional `setState` update** (`prev => prev.map(...)`) verwenden, kein direktes `setState(snapshot)` auf den gesamten State
+- Diese Regel gilt für jeden Container-State (arrays wie `projects`, `models`, `messages`) bei dem mehrere concurrent Actions möglich sind
+
+Gilt für: `addModelToProject` (per-project model list), `handleDeleteProject` (filter-based, kein concurrent risk), `handleRemoveModelFromProject` (per-project) und jeden neuen optimistischen Update-Handler
 
 ### Inflight-Lock-Pflicht (NIEMALS weglassen)
 - Jede Action die Shared State optimistisch mutiert MUSS einen **per-id Lock** haben

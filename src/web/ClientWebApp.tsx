@@ -1152,18 +1152,26 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   };
 
   const addModelToProject = (projectId: string, model: ModelSummary) => {
-    // Inflight-lock per model.id — prevents race condition where a fast double-click
-    // on two different models could corrupt each other's snapshot:
-    // Click M1 → snapshot1=[A,B] → optimistic [A,B,M1]
-    // Click M2 before RPC1 → snapshot2=[A,B,M1] → optimistic [A,B,M1,M2]
-    // RPC1 fails → rollback to snapshot1=[A,B] — M2 lost even though RPC2 may succeed.
+    // Inflight-lock per model.id — prevents double-click on the same model.
     if (addingModelIds.has(model.id)) return;
     setAddingModelIds((prev) => new Set(prev).add(model.id));
 
-    // Snapshot BEFORE optimistic update — used for full rollback if RPC fails.
-    // Using snapshot (not filter) prevents edge-case: if model was already in project
-    // a filter-based rollback would incorrectly remove it.
-    const snapshot = projects;
+    // Per-project model snapshot (NOT global state snapshot).
+    // A global snapshot causes cross-project rollback corruption when two concurrent
+    // adds target different models/projects:
+    //   Add M1→P1: globalSnapshot=[P1(∅),P2(∅)], optimistic→[P1(+M1),P2(∅)]
+    //   Add M2→P2: globalSnapshot=[P1(+M1),P2(∅)], optimistic→[P1(+M1),P2(+M2)]
+    //   RPC_M1 fails → setProjects(globalSnapshot_M1)=[P1(∅),P2(∅)] → M2 LOST
+    // Per-project snapshot only restores the model list of the one project being mutated.
+    // .slice() creates a shallow copy so concurrent adds to the same project
+    // cannot mutate this captured array.
+    const projectPreAddModels = (
+      projects.find((p) => p.id === projectId)?.models ?? []
+    ).slice();
+
+    // Capture project name now (closure-safe; project names rarely change mid-flight).
+    const projectName = projects.find((p) => p.id === projectId)?.name;
+
     setProjects((prev) =>
       prev.map((p) =>
         p.id === projectId
@@ -1184,15 +1192,18 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       .then((ok) => {
         setAddingModelIds((prev) => { const s = new Set(prev); s.delete(model.id); return s; });
         if (ok) {
-          const projectName = snapshot.find((p) => p.id === projectId)?.name;
           if (projectName) {
             setFeedback(`Added ${model.name} to "${projectName}".`);
             clearFeedbackLater();
           }
         } else {
-          // RPC returned false (no accepted agency connection or other server error).
-          // Restore the exact pre-add state — complete rollback, UI === DB.
-          setProjects(snapshot);
+          // RPC returned false — rollback only this project's model list.
+          // Other projects remain untouched, preventing cross-project state corruption.
+          setProjects((prev) =>
+            prev.map((p) =>
+              p.id === projectId ? { ...p, models: projectPreAddModels } : p,
+            ),
+          );
           setFeedback('Could not save model to project — no active agency connection.');
           clearFeedbackLater();
         }
@@ -1201,7 +1212,11 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         // Network-level rejection (extremely rare with Supabase JS client).
         console.error('addModelToProject: unexpected rejection', e);
         setAddingModelIds((prev) => { const s = new Set(prev); s.delete(model.id); return s; });
-        setProjects(snapshot);
+        setProjects((prev) =>
+          prev.map((p) =>
+            p.id === projectId ? { ...p, models: projectPreAddModels } : p,
+          ),
+        );
         setFeedback('Could not save model to project.');
         clearFeedbackLater();
       });
