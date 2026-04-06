@@ -72,8 +72,33 @@ import {
   upsertModelLocation,
   getModelLocation,
   locationSourceLabel,
+  roundCoord,
   type ModelLocation,
 } from '../services/modelLocationsSupabase';
+
+/**
+ * Forward-geocodes a city + ISO-2 country code via Nominatim.
+ * Returns rounded lat/lng (±5 km precision, DSGVO-compliant), or null if not found.
+ * Used to enable agency-managed models in Near Me radius queries.
+ */
+async function geocodeCityForAgency(
+  city: string,
+  countryCode: string,
+): Promise<{ lat: number; lng: number } | null> {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(city)},${encodeURIComponent(countryCode)}&format=json&limit=1`,
+      { headers: { 'Accept-Language': 'en', 'User-Agent': 'IndexCasting/1.0' } },
+    );
+    const results = await res.json() as Array<{ lat: string; lon: string }>;
+    const first = results[0];
+    if (!first) return null;
+    return { lat: roundCoord(parseFloat(first.lat)), lng: roundCoord(parseFloat(first.lon)) };
+  } catch (e) {
+    console.warn('[geocodeCityForAgency] failed:', e);
+    return null;
+  }
+}
 import { FILTER_COUNTRIES as LOCATION_COUNTRIES } from '../utils/modelFilters';
 import { supabase } from '../../lib/supabase';
 import {
@@ -1874,16 +1899,32 @@ const MyModelsTab: React.FC<{
     if (!bulkLocationCountry || selectedModelIds.size === 0) return;
     setBulkLocationAssigning(true);
     try {
+      const cityTrim = bulkLocationCity.trim();
+      // Forward-geocode city → coordinates so agency models appear in Near Me.
+      // Geocoding runs only when a city is provided; without a city, coords stay null.
+      const geocoded = cityTrim
+        ? await geocodeCityForAgency(cityTrim, bulkLocationCountry)
+        : null;
+
       const count = await bulkUpsertModelLocations(
         Array.from(selectedModelIds),
-        { country_code: bulkLocationCountry, city: bulkLocationCity.trim() || null },
+        {
+          country_code: bulkLocationCountry,
+          city: cityTrim || null,
+          lat: geocoded?.lat,
+          lng: geocoded?.lng,
+        },
       );
       setShowBulkLocationModal(false);
       setSelectedModelIds(new Set());
       setBulkLocationCountry('');
       setBulkLocationCity('');
       setBulkLocationCountrySearch('');
-      setBulkFeedback(uiCopy.locationModal.successBulk(count));
+      setBulkFeedback(
+        geocoded
+          ? uiCopy.locationModal.successBulk(count) + ' · Near Me enabled'
+          : uiCopy.locationModal.successBulk(count),
+      );
     } catch (err) {
       console.error('handleBulkSetLocation error:', err);
       setBulkFeedback(uiCopy.locationModal.error);
@@ -2506,16 +2547,24 @@ const MyModelsTab: React.FC<{
         throw modelUpdateError;
       }
 
-      // Persist city/country to model_locations (agency-managed, source='agency', no GPS).
-      // share_approximate_location is always false here — only the model controls this
-      // via their own GPS consent in ModelProfileScreen.
+      // Persist city/country to model_locations (agency-managed, source='agency').
+      // Forward-geocode city → coordinates so the model appears in Near Me radius queries.
+      // share_approximate_location is set to true only when geocoding succeeds.
+      // The model-owned location (source='live'/'current') is protected by the DB priority guard.
       if (editState.country_code) {
+        const cityTrim = editState.city?.trim() ?? null;
+        const geocoded = cityTrim
+          ? await geocodeCityForAgency(cityTrim, editState.country_code)
+          : null;
+
         await upsertModelLocation(
           selectedModel.id,
           {
             country_code: editState.country_code,
-            city: editState.city || null,
-            share_approximate_location: false,
+            city: cityTrim,
+            lat: geocoded?.lat,
+            lng: geocoded?.lng,
+            share_approximate_location: geocoded != null,
           },
           'agency',
         );
