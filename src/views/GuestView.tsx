@@ -196,6 +196,35 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
     return () => clearInterval(id);
   }, [linkId]);
 
+  // Auto-refresh signed image URLs every 6 hours for long-lived sessions.
+  // Signed URLs have a 7-day TTL (matching the access window), so this is a
+  // safety net for edge cases — e.g. a user leaving a tab open for days.
+  // Only re-fetches if the link is still active (getGuestLink succeeds).
+  useEffect(() => {
+    const REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1_000; // 6 hours
+
+    const id = setInterval(async () => {
+      try {
+        // Verify the link is still active before re-fetching (may have been deactivated)
+        const g = await getGuestLink(linkId);
+        if (!g) {
+          setPageError(copy.invalidOrExpired);
+          clearInterval(id);
+          return;
+        }
+        // Refresh signed URLs by re-fetching models
+        const results = await getGuestLinkModels(linkId);
+        if (results.length > 0) {
+          setModels(results);
+        }
+      } catch {
+        // Non-fatal: images stay valid for 7 days — next interval will retry.
+      }
+    }, REFRESH_INTERVAL_MS);
+
+    return () => clearInterval(id);
+  }, [linkId]);
+
   const toggleModel = (id: string) => {
     setSelectedModelIds((prev) => {
       const next = new Set(prev);

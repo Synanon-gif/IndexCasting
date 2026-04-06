@@ -24,6 +24,12 @@ export type GuestLink = {
   /** Soft-delete timestamp. Non-null means the link has been deleted.
    *  Kept in DB so existing chat-metadata packageId references remain resolvable. */
   deleted_at: string | null;
+  /**
+   * Timestamp of the first get_guest_link_models() call (first time models were loaded).
+   * NULL = link was never opened. Once set, the 7-day access window applies.
+   * Set server-side only inside the SECURITY DEFINER RPC.
+   */
+  first_accessed_at: string | null;
 };
 
 export async function createGuestLink(params: {
@@ -166,11 +172,23 @@ export type GuestLinkModel = {
 // Signed-URL TTL for guest-visible model images (M-3 fix, Security Audit 2026-04).
 // After a guest link expires or is deactivated, previously seen raw public-bucket
 // URLs would remain permanently accessible. By rewriting image URLs to signed URLs
-// with a short TTL at fetch time, newly-loaded sessions receive URLs that expire,
+// with a TTL at fetch time, newly-loaded sessions receive URLs that expire,
 // limiting exposure without breaking the in-session UX.
-// Full mitigation (making the documentspictures bucket private) is a separate
-// infrastructure migration tracked as a follow-up item.
-const GUEST_IMAGE_SIGNED_TTL_SECONDS = 900; // 15 minutes
+//
+// TTL aligned with the 7-day access window (20260406 update):
+//   - Guest links give 7 days of access from first open.
+//   - Signed URLs therefore use the same 7-day TTL so images stay accessible
+//     for the full duration without requiring in-session re-fetching.
+//   - If a link is deactivated (is_active = false), the RPC stops returning
+//     models; any previously loaded signed URLs become unreachable from the
+//     app (GuestView checks the link every 60 s and shows an error).
+//   - Full mitigation (making documentspictures bucket fully private so expired
+//     signed URLs become truly inaccessible from outside the app) is tracked
+//     as a separate infrastructure migration.
+//
+// GuestView also auto-refreshes signed URLs every 6 hours as a safety net for
+// long-lived sessions (see GuestView.tsx refreshSignedUrls interval).
+const GUEST_IMAGE_SIGNED_TTL_SECONDS = 604_800; // 7 days
 const DOCUMENTSPICTURES_BUCKET = 'documentspictures';
 
 /**
@@ -220,8 +238,10 @@ async function signImageUrls(urls: string[]): Promise<(string | null)[]> {
  * Returns [] if the link is invalid/expired or on error.
  *
  * M-3 fix (Security Audit 2026-04): image URLs are rewritten to signed URLs
- * with a 15-minute TTL so that links acquired in this session expire after the
- * TTL rather than remaining permanently accessible via public-bucket URLs.
+ * so that links acquired in this session expire after the TTL rather than
+ * remaining permanently accessible via public-bucket URLs.
+ * 20260406: TTL increased from 15 min to 7 days to match the guest-link
+ * access window. GuestView auto-refreshes every 6 h for long-lived sessions.
  */
 export async function getGuestLinkModels(linkId: string): Promise<GuestLinkModel[]> {
   try {
