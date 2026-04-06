@@ -11,7 +11,7 @@ import {
   roundCoord,
   locationSourceLabel,
   type ModelLocation,
-  type LocationSource,
+  type LocationSource,  // used in handleShareLocation type cast
 } from '../services/modelLocationsSupabase';
 import { supabase } from '../../lib/supabase';
 import { getModelBookingThreadIds, getRecruitingThread, subscribeRecruitingChats } from '../store/recruitingChats';
@@ -182,7 +182,10 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
       );
 
       setProfile((prev) => prev ? { ...prev, currentLocation: cityName } : prev);
-      setModelLocation({ ...(modelLocation ?? {} as ModelLocation), source: 'live' as LocationSource, city: cityName, country_code: countryCode });
+      // Reload to reflect the new highest-priority source (live now overrides current/agency)
+      const refreshed = await import('../services/modelLocationsSupabase')
+        .then(m => m.getModelLocation(profile.id));
+      setModelLocation(refreshed);
       Alert.alert('Location Updated', `Live GPS location set to: ${cityName}`);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
@@ -192,7 +195,11 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     }
   };
 
-  /** Set a manual approximate city (source='current') via Nominatim forward geocoding. */
+  /** Set a manual approximate city (source='current') via Nominatim forward geocoding.
+   *
+   * GEOCODING SAFETY INVARIANT: if geocoding fails, NO update is made.
+   * Existing location data is always preserved — never overwritten with null coordinates.
+   */
   const handleSetCurrentCity = async () => {
     if (!profile || !currentCityInput.trim() || !currentCountryInput.trim()) {
       Alert.alert('Missing fields', 'Please enter both a city and country code (e.g. DE, FR, US).');
@@ -202,7 +209,8 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     try {
       const city = currentCityInput.trim();
       const countryCode = currentCountryInput.trim().toUpperCase().slice(0, 2);
-      // Forward geocode city → lat/lng (same provider used by Near Me)
+
+      // Forward geocode city → lat/lng (required for Near Me radius filtering)
       const res = await fetch(
         `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(city)},${countryCode}&format=json&limit=1`,
         { headers: { 'Accept-Language': 'en', 'User-Agent': 'IndexCasting/1.0' } }
@@ -212,14 +220,24 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
       const lat = first ? roundCoord(parseFloat(first.lat)) : null;
       const lng = first ? roundCoord(parseFloat(first.lon)) : null;
 
+      // GEOCODING SAFETY: if geocoding failed, abort — never write null coordinates.
+      // Existing location data is preserved. User must try a more specific city name.
+      if (lat == null || lng == null) {
+        Alert.alert(
+          'City not found',
+          `Could not geocode "${city}, ${countryCode}". Please try a more specific city name.\n\nYour existing location has not been changed.`
+        );
+        return;
+      }
+
       const ok = await upsertModelLocation(
         profile.id,
         {
           country_code: countryCode,
           city,
-          lat: lat ?? undefined,
-          lng: lng ?? undefined,
-          share_approximate_location: lat != null,
+          lat,
+          lng,
+          share_approximate_location: true,
         },
         'current',
       );
@@ -232,7 +250,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
           country_code: countryCode,
           lat_approx: lat,
           lng_approx: lng,
-          share_approximate_location: lat != null,
+          share_approximate_location: true,
           source: 'current',
           updated_at: new Date().toISOString(),
         };
@@ -240,10 +258,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
         setProfile((prev) => prev ? { ...prev, currentLocation: city } : prev);
         setCurrentCityInput('');
         setCurrentCountryInput('');
-        Alert.alert('Location set', lat != null
-          ? `Current city set to ${city}, ${countryCode}. Will appear in Near Me.`
-          : `City set to ${city}. Geocoding not found — city won't appear in Near Me radius filter.`
-        );
+        Alert.alert('Location set', `Current city set to ${city}, ${countryCode}. You will appear in Near Me.`);
       } else {
         Alert.alert('Error', 'Could not save your location. Please try again.');
       }
@@ -255,12 +270,27 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     }
   };
 
-  /** Remove the current location entry entirely. */
+  /**
+   * Remove the active model-owned location source (live or current only).
+   * Source-aware: only removes the specific source being displayed — agency source is
+   * never touched. Removing 'live' naturally falls back to 'current' or 'agency'.
+   *
+   * Model cannot remove agency-set location (that's agency's data).
+   */
   const handleRemoveLocation = async () => {
-    if (!profile) return;
+    if (!profile || !modelLocation) return;
+    // Only model-owned sources can be removed by the model
+    if (modelLocation.source === 'agency') {
+      Alert.alert(
+        'Cannot remove',
+        'This location was set by your agency. Contact your agency to update it.'
+      );
+      return;
+    }
+    const sourceLabel = modelLocation.source === 'live' ? 'Live GPS' : 'Current city';
     Alert.alert(
-      'Remove location',
-      'This will clear your location from Near Me filtering. Continue?',
+      `Remove ${sourceLabel}`,
+      `This will remove your ${sourceLabel} location. You may still appear in Near Me if another location source is set.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -268,11 +298,16 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
           style: 'destructive',
           onPress: async () => {
             setRemovingLocation(true);
-            const ok = await deleteModelLocation(profile.id);
+            const removedSource = modelLocation.source;
+            // Delete only the specific source row — other sources are preserved
+            const ok = await deleteModelLocation(profile.id, removedSource);
             setRemovingLocation(false);
             if (ok) {
-              setModelLocation(null);
-              setProfile((prev) => prev ? { ...prev, currentLocation: '' } : prev);
+              // Reload to get the next effective location (fallback to current/agency)
+              const next = await import('../services/modelLocationsSupabase')
+                .then(m => m.getModelLocation(profile.id));
+              setModelLocation(next);
+              if (!next) setProfile((prev) => prev ? { ...prev, currentLocation: '' } : prev);
             } else {
               Alert.alert('Error', 'Could not remove location. Please try again.');
             }
@@ -581,34 +616,47 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
           <View style={st.section}>
             <Text style={st.sectionLabel}>Location</Text>
 
-            {/* Active source badge */}
+            {/* Active source badge — shows highest-priority resolved location */}
             {modelLocation ? (
               <View style={{
-                flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                borderRadius: 8, padding: spacing.sm, marginBottom: spacing.sm,
                 backgroundColor: modelLocation.source === 'live' ? '#e8f5e9'
                   : modelLocation.source === 'current' ? '#e3f2fd' : '#fff3e0',
-                borderRadius: 8, padding: spacing.sm, marginBottom: spacing.sm,
+                borderLeftWidth: 3,
+                borderLeftColor: modelLocation.source === 'live' ? '#2e7d32'
+                  : modelLocation.source === 'current' ? '#1565c0' : '#e65100',
               }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ ...typography.label, fontSize: 11,
-                    color: modelLocation.source === 'live' ? '#2e7d32'
-                      : modelLocation.source === 'current' ? '#1565c0' : '#e65100' }}>
-                    {locationSourceLabel(modelLocation.source)}
-                  </Text>
-                  <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
-                    {[modelLocation.city, modelLocation.country_code].filter(Boolean).join(', ') || 'Location set'}
-                    {modelLocation.lat_approx != null ? ' · Near Me enabled' : ' · Near Me requires geocoords'}
-                  </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ ...typography.label, fontSize: 11,
+                      color: modelLocation.source === 'live' ? '#2e7d32'
+                        : modelLocation.source === 'current' ? '#1565c0' : '#e65100' }}>
+                      {locationSourceLabel(modelLocation.source)}
+                    </Text>
+                    <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
+                      {[modelLocation.city, modelLocation.country_code].filter(Boolean).join(', ') || 'Location set'}
+                      {modelLocation.lat_approx != null ? ' · Near Me active' : ' · Not in Near Me (no geocoords)'}
+                    </Text>
+                    {modelLocation.source === 'agency' && (
+                      <Text style={{ fontSize: 10, color: '#9a6a00', marginTop: 2 }}>
+                        Set by your agency · Add your own city above to override
+                      </Text>
+                    )}
+                  </View>
+                  {/* Remove button only for model-owned sources (live/current).
+                      Agency location is managed by the agency, not the model. */}
+                  {modelLocation.source !== 'agency' && (
+                    <TouchableOpacity
+                      onPress={() => { void handleRemoveLocation(); }}
+                      disabled={removingLocation}
+                      style={{ paddingHorizontal: spacing.xs, paddingVertical: 4 }}
+                    >
+                      <Text style={{ fontSize: 11, color: '#e74c3c', fontWeight: '600' }}>
+                        {removingLocation ? '…' : 'Remove'}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
-                <TouchableOpacity
-                  onPress={handleRemoveLocation}
-                  disabled={removingLocation}
-                  style={{ paddingHorizontal: spacing.xs, paddingVertical: 4 }}
-                >
-                  <Text style={{ fontSize: 11, color: '#e74c3c', fontWeight: '600' }}>
-                    {removingLocation ? '…' : 'Remove'}
-                  </Text>
-                </TouchableOpacity>
               </View>
             ) : (
               <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm }}>

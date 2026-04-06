@@ -185,37 +185,58 @@ export async function bulkUpsertModelLocations(
 }
 
 /**
- * Reads the current location entry for a single model.
- * Returns null if no location has been set yet.
+ * Returns all location rows for a model, sorted by source priority descending
+ * (live first, then current, then agency).
+ * With UNIQUE(model_id, source) there can be up to 3 rows.
  */
-export async function getModelLocation(modelId: string): Promise<ModelLocation | null> {
+export async function getAllModelLocations(modelId: string): Promise<ModelLocation[]> {
   try {
     const { data, error } = await supabase
       .from('model_locations')
       .select('*')
-      .eq('model_id', modelId)
-      .maybeSingle();
+      .eq('model_id', modelId);
 
     if (error) {
-      console.error('getModelLocation error:', error);
-      return null;
+      console.error('getAllModelLocations error:', error);
+      return [];
     }
-    return (data as ModelLocation) ?? null;
+    const rows = (data ?? []) as ModelLocation[];
+    // Sort by priority descending: live=2, current=1, agency=0
+    return rows.sort((a, b) => locationSourcePriority(b.source) - locationSourcePriority(a.source));
   } catch (e) {
-    console.error('getModelLocation exception:', e);
-    return null;
+    console.error('getAllModelLocations exception:', e);
+    return [];
   }
 }
 
 /**
- * Deletes the location entry for a model (e.g. when a model disables location sharing entirely).
+ * Returns the highest-priority active location for a model.
+ * Priority: live > current > agency (same as DB DISTINCT ON ordering).
+ * Returns null if no location exists for any source.
  */
-export async function deleteModelLocation(modelId: string): Promise<boolean> {
+export async function getModelLocation(modelId: string): Promise<ModelLocation | null> {
+  const all = await getAllModelLocations(modelId);
+  return all[0] ?? null;
+}
+
+/**
+ * Source-aware location deletion.
+ * Uses the SECURITY DEFINER RPC to enforce authorization:
+ *   - source='live'/'current' → only the model's own user can delete
+ *   - source='agency' → only agency members can delete
+ *   - source=undefined → deletes all model-owned sources (live + current); agency row preserved
+ *
+ * Removing 'live' naturally falls back to 'current' or 'agency' via priority resolution.
+ */
+export async function deleteModelLocation(
+  modelId: string,
+  source?: LocationSource,
+): Promise<boolean> {
   try {
-    const { error } = await supabase
-      .from('model_locations')
-      .delete()
-      .eq('model_id', modelId);
+    const { error } = await supabase.rpc('delete_model_location_source', {
+      p_model_id: modelId,
+      p_source: source ?? null,
+    });
 
     if (error) {
       console.error('deleteModelLocation error:', error);

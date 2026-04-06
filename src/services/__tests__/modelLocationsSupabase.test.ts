@@ -169,42 +169,54 @@ describe('bulkUpsertModelLocations', () => {
   });
 });
 
-// ── getModelLocation ──────────────────────────────────────────────────────────
+// ── getModelLocation (multi-row, priority-aware) ──────────────────────────────
 
 describe('getModelLocation', () => {
   beforeEach(() => fromMock.mockReset());
 
-  it('returns location when found', async () => {
-    const mockLocation = {
-      id: 'loc-1',
-      model_id: 'model-1',
-      city: 'Hamburg',
-      country_code: 'DE',
-      lat_approx: 53.55,
-      lng_approx: 10.0,
-      share_approximate_location: true,
-      source: 'current',
-      updated_at: '2024-01-01T00:00:00Z',
+  it('returns highest-priority location when multiple sources exist', async () => {
+    const liveRow = {
+      id: 'loc-live', model_id: 'model-1', city: 'Berlin', country_code: 'DE',
+      lat_approx: 52.5, lng_approx: 13.4, share_approximate_location: true,
+      source: 'live', updated_at: '2024-01-02T00:00:00Z',
     };
-
+    const agencyRow = {
+      id: 'loc-agency', model_id: 'model-1', city: 'Munich', country_code: 'DE',
+      lat_approx: 48.1, lng_approx: 11.6, share_approximate_location: true,
+      source: 'agency', updated_at: '2024-01-01T00:00:00Z',
+    };
+    // Returns both rows; live should win (priority 2 > 0)
     fromMock.mockReturnValue({
       select: () => ({
-        eq: () => ({
-          maybeSingle: async () => ({ data: mockLocation, error: null }),
-        }),
+        eq: async () => ({ data: [agencyRow, liveRow], error: null }),
       }),
     });
 
     const result = await getModelLocation('model-1');
-    expect(result).toEqual(mockLocation);
+    expect(result?.source).toBe('live');
+    expect(result?.city).toBe('Berlin');
+  });
+
+  it('returns current when live is absent', async () => {
+    const currentRow = {
+      id: 'loc-current', model_id: 'model-1', city: 'Hamburg', country_code: 'DE',
+      lat_approx: 53.55, lng_approx: 10.0, share_approximate_location: true,
+      source: 'current', updated_at: '2024-01-01T00:00:00Z',
+    };
+    fromMock.mockReturnValue({
+      select: () => ({
+        eq: async () => ({ data: [currentRow], error: null }),
+      }),
+    });
+
+    const result = await getModelLocation('model-1');
+    expect(result?.source).toBe('current');
   });
 
   it('returns null when no location exists', async () => {
     fromMock.mockReturnValue({
       select: () => ({
-        eq: () => ({
-          maybeSingle: async () => ({ data: null, error: null }),
-        }),
+        eq: async () => ({ data: [], error: null }),
       }),
     });
 
@@ -215,9 +227,7 @@ describe('getModelLocation', () => {
   it('returns null and logs on DB error', async () => {
     fromMock.mockReturnValue({
       select: () => ({
-        eq: () => ({
-          maybeSingle: async () => ({ data: null, error: { message: 'DB error' } }),
-        }),
+        eq: async () => ({ data: null, error: { message: 'DB error' } }),
       }),
     });
 
@@ -229,31 +239,35 @@ describe('getModelLocation', () => {
   });
 });
 
-// ── deleteModelLocation ───────────────────────────────────────────────────────
+// ── deleteModelLocation (source-aware via RPC) ────────────────────────────────
 
 describe('deleteModelLocation', () => {
-  beforeEach(() => fromMock.mockReset());
+  beforeEach(() => rpcMock.mockReset());
 
-  it('returns true on successful delete', async () => {
-    fromMock.mockReturnValue({
-      delete: () => ({
-        eq: async () => ({ error: null }),
-      }),
-    });
+  it('calls delete_model_location_source RPC with source when provided', async () => {
+    rpcMock.mockResolvedValue({ error: null });
+
+    const result = await deleteModelLocation('model-1', 'live');
+    expect(result).toBe(true);
+    const call = rpcMock.mock.calls[0];
+    expect(call[0]).toBe('delete_model_location_source');
+    expect(call[1]).toEqual({ p_model_id: 'model-1', p_source: 'live' });
+  });
+
+  it('calls RPC with p_source=null when no source specified (removes live+current only)', async () => {
+    rpcMock.mockResolvedValue({ error: null });
 
     const result = await deleteModelLocation('model-1');
     expect(result).toBe(true);
+    const call = rpcMock.mock.calls[0];
+    expect(call[1]).toEqual({ p_model_id: 'model-1', p_source: null });
   });
 
-  it('returns false and logs on error', async () => {
-    fromMock.mockReturnValue({
-      delete: () => ({
-        eq: async () => ({ error: { message: 'Not found' } }),
-      }),
-    });
+  it('returns false and logs on RPC error', async () => {
+    rpcMock.mockResolvedValue({ error: { message: 'access_denied' } });
 
     const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
-    const result = await deleteModelLocation('model-1');
+    const result = await deleteModelLocation('model-1', 'current');
     expect(result).toBe(false);
     consoleSpy.mockRestore();
   });
@@ -324,25 +338,24 @@ describe('getModelsNearLocation', () => {
   });
 });
 
-// ── Source priority (model vs agency) ────────────────────────────────────────
+// ── Source isolation (multi-row: each source has its own row) ────────────────
 
-describe('source priority: latest updated_at wins', () => {
+describe('source isolation: UNIQUE(model_id, source) — each source is independent', () => {
   beforeEach(() => rpcMock.mockReset());
 
-  it('upsertModelLocation with source=agency overwrites a model-set location', async () => {
+  it('upsertModelLocation with source=agency writes to the agency row only', async () => {
     rpcMock.mockResolvedValue({ data: null, error: null });
 
-    // Agency sets location after model did (simulated by calling agency upsert)
     await upsertModelLocation('model-1', { country_code: 'DE', city: 'Hamburg' }, 'agency');
 
     const call = rpcMock.mock.calls[0][1] as Record<string, unknown>;
-    // source=agency should be forwarded to the RPC which does an UPSERT ON CONFLICT
     expect(call.p_source).toBe('agency');
-    // UNIQUE(model_id) + UPSERT means the DB keeps the single latest row
     expect(call.p_model_id).toBe('model-1');
+    // With UNIQUE(model_id, source), agency write goes to (model-1, 'agency') row only.
+    // Live/current rows of this model are structurally unaffected.
   });
 
-  it('upsertModelLocation with source=current can override an agency-set location', async () => {
+  it('upsertModelLocation with source=current writes to the current row only', async () => {
     rpcMock.mockResolvedValue({ data: null, error: null });
 
     await upsertModelLocation('model-1', { country_code: 'FR', city: 'Paris' }, 'current');
@@ -350,5 +363,6 @@ describe('source priority: latest updated_at wins', () => {
     const call = rpcMock.mock.calls[0][1] as Record<string, unknown>;
     expect(call.p_source).toBe('current');
     expect(call.p_country_code).toBe('FR');
+    // Agency row of this model is structurally unaffected.
   });
 });

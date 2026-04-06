@@ -42,10 +42,13 @@ vollständig durchlaufen werden, **bevor** Code committed oder weitergeschrieben
 - **Storage-Policy mit direktem models/profiles JOIN:** `EXISTS (SELECT FROM public.models ...)` in `storage.objects` Policy? → Blocker (Risiko 13) — SECURITY DEFINER Helper (`can_agency_manage_model_photo`, `can_view_model_photo_storage`) verwenden. Direkte Joins koppeln Storage-Policies an `models`-RLS → 42P17 in models bricht alle Uploads/Downloads.
 - **`confirmX().select().single()` ohne 23505-Handling:** Jede Confirmation-Funktion die vor einem Upload steht und `INSERT ... .select('id').single()` macht? → Blocker (Risiko 14) — führt zu 409 PostgREST-Fehler wenn RLS SELECT Policy den neuen Row nicht lesbar macht. Pflicht: (1) Idempotenz-Check first (60 min), (2) kein `.select().single()` nach INSERT, (3) 23505 = Erfolg.
 - **Territory-Lookup aus falscher Tabelle:** `model_assignments.territory` statt `model_agency_territories.country_code`? → Blocker (Risiko 15) — `model_assignments` hat keine `territory`-Spalte, führt zu SQL-Fehler → HTTP 400/500.
-- **Agency-Writes überschreiben Model-GPS:** `upsert_model_location` oder neuer Agency-Write auf `model_locations` ohne GPS-Preservation-Case? → Blocker (Risiko 16) — `lat_approx`, `lng_approx`, `share_approximate_location` müssen `WHEN p_source = 'agency' THEN model_locations.lat_approx` bewahren.
-- **Location Source Priority verletzt:** Neuer Write auf `model_locations` ohne source-aware `WHERE model_locations.source = 'agency'` Priority-Guard im `ON CONFLICT DO UPDATE`? → Blocker (Risiko 17) — Agency-Writes MÜSSEN No-Op sein wenn Model die Zeile besitzt (`source IN ('live','current')`). Alle Model-Writes (`source='live'/'current'`) dürfen keinen WHERE-Guard haben.
-- **Veralteter Source-Wert `'model'`:** Neuer Code übergibst `source='model'` an `upsertModelLocation` oder `model_locations` INSERT? → Blocker (Risiko 17) — `'model'` ist deprecated und durch DB CHECK-Constraint (`source IN ('live','current','agency')`) blockiert.
-- **4. Source-Wert hinzugefügt ohne vollständige Aktualisierung:** Neuer Source-Wert ohne CHECK constraint + upsert_model_location RPC + TypeScript `LocationSource` Union + alle Test-Dateien? → Blocker (Risiko 17) — Inkonsistenz zwischen DB und TypeScript führt zu Runtime-Fehlern.
+- **Location: ON CONFLICT target falsch:** Neuer Write auf `model_locations` mit `ON CONFLICT (model_id)` statt `ON CONFLICT (model_id, source)`? → Blocker (Risiko 16) — Nach `20260406_location_multirow_priority.sql` existiert `UNIQUE(model_id)` nicht mehr. Nur `(model_id, source)` ist gültig.
+- **Location: DISTINCT ON fehlt in Near-Me:** `get_models_near_location` oder neuer RPC der `model_locations` joined, ohne `DISTINCT ON (model_id) ORDER BY ... CASE source WHEN 'live' THEN 0`? → Blocker (Risiko 16) — Ohne DISTINCT ON erscheint ein Model mit 2 Sources doppelt; falsche Quelle gewinnt.
+- **Location: Agency schreibt live/current:** Agency-Code ruft `upsertModelLocation(modelId, data, 'current')` oder `'live'` auf? → Blocker (Risiko 16) — DB wirft `access_denied` (RPC Auth-Guard), aber der Aufruf muss bereits im Frontend verhindert werden.
+- **Location: Geocoding-Fail führt zu null-Write:** `handleSetCurrentCity` oder ähnliche Funktion schreibt `upsertModelLocation` auch wenn Nominatim kein Ergebnis liefert? → Blocker (Risiko 16) — Pflicht: `if (!lat || !lng) { Alert('City not found'); return; }` — kein Write ohne Geocoding.
+- **Location: deleteModelLocation ohne source-Angabe löscht agency-Zeile:** `delete_model_location_source` ohne `p_source` löscht NUR live+current (agency bleibt). Wenn jemand die agency-Zeile löschen will, MUSS `p_source='agency'` explizit gesetzt werden.
+- **Veralteter Source-Wert `'model'`:** Neuer Code übergibt `source='model'` an `upsertModelLocation` oder `model_locations` INSERT? → Blocker (Risiko 17) — `'model'` ist deprecated und durch DB CHECK-Constraint blockiert.
+- **4. Source-Wert hinzugefügt ohne vollständige Aktualisierung:** Neuer Source-Wert ohne: CHECK constraint + upsert Auth-Split + delete_model_location_source + TypeScript `LocationSource` Union + DISTINCT ON ORDER BY + alle Tests? → Blocker (Risiko 17).
 - **`get_territories_for_agency_roster` Guard ohne Bookers-Fallback:** SECURITY DEFINER Funktion die Agency-Zugehörigkeit prüft, ohne `bookers`-Tabelle zu inkludieren? → Warnung — Legacy Bookers werden mit `not_in_agency` (HTTP 400) ausgesperrt.
 
 ---
@@ -84,10 +87,11 @@ Q8: Verwendet ein neuer optimistischer Update-Handler irgendeinen Snapshot (`con
 - Storage-Policy enthält `EXISTS (SELECT FROM public.models ...)` oder `EXISTS (SELECT FROM public.profiles ...)` ohne SECURITY DEFINER Helper (Risiko 13 — Storage bricht bei models-RLS-Fehler)
 - `confirmImageRights` oder andere Confirmation-Funktion nutzt `.insert().select('id').single()` ohne Idempotenz-Check + 23505-Handling (Risiko 14 — 409 PostgREST bei Duplicate)
 - Territory-Query liest von `model_assignments.territory` statt `model_agency_territories.country_code` (Risiko 15 — SQL-Fehler, HTTP 400)
-- Neuer Agency-Write auf `model_locations` ohne GPS-Preservation-Logic für `source='agency'` (Risiko 16 — überschreibt Model-GPS, Near-Me bricht)
-- Neuer Write auf `model_locations` ohne `WHERE model_locations.source = 'agency'` Priority-Guard im Agency-Pfad (Risiko 17 — Agency überschreibt Model-Ownership)
+- `ON CONFLICT (model_id)` in neuem `model_locations`-Write (Risiko 16 — UNIQUE(model_id) existiert nicht mehr; muss `(model_id, source)` sein)
+- `model_locations` JOIN ohne `DISTINCT ON (model_id) ORDER BY priority` in Near-Me-RPCs (Risiko 16 — Modell erscheint doppelt, falsche Quelle gewinnt)
 - `source='model'` in neuem Code (Risiko 17 — deprecated, DB-CHECK blockiert Insert/Update)
-- Neuer Source-Wert ohne vollständige Aktualisierung aller Systeme (Risiko 17 — DB+RPC+TypeScript+Tests müssen gleichzeitig aktualisiert werden)
+- Geocoding-Fehler ignoriert und `lat=null` geschrieben (Risiko 16 — existierende Location wird mit null-Koordinaten überschrieben → verschwindet aus Near-Me)
+- Neuer Source-Wert ohne vollständige Aktualisierung aller Systeme (Risiko 17 — DB+RPC+TypeScript+Tests+DISTINCT ON-Order müssen gleichzeitig aktualisiert werden)
 
 ---
 

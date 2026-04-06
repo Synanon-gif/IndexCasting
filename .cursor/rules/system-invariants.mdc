@@ -430,63 +430,110 @@ const reconcileProjectModels = useCallback(async (projectId: string): Promise<vo
 4. Ist `clearFeedbackLater` mit useRef implementiert? → kein Ref = STOP
 5. Fehlt das Reconciliation-Refetch nach `ok === true`? → STOP für DB-gespiegelten State
 
-## LOCATION SOURCE SYSTEM — 3 Sources, Write-Time Priority (Fix 20260406-v2)
+## LOCATION SOURCE SYSTEM — Multi-Row, Structural Isolation (Final Hardening 20260406)
+
+### Architektur: UNIQUE(model_id, source) — bis zu 3 unabhängige Zeilen pro Model
+
+```
+model_locations (nach 20260406_location_multirow_priority.sql):
+  UNIQUE(model_id, source)  ← jede Quelle hat ihre eigene isolierte Zeile
+  CHECK(source IN ('live', 'current', 'agency'))
+  
+  (model_id='X', source='live')    ← Model-GPS; nur Model kann schreiben/löschen
+  (model_id='X', source='current') ← Model-Stadt; nur Model kann schreiben/löschen
+  (model_id='X', source='agency')  ← Agency-Fallback; nur Agency kann schreiben/löschen
+```
+
+**Alter Ansatz (DEPRECATED):** `UNIQUE(model_id)` + `ON CONFLICT WHERE source='agency'`
+→ Strukturell unsicher: Löschen von 'live' verlor auch agency-Fallback. Nie wieder verwenden.
 
 ### 3 exklusive Quellen (keine anderen Werte erlaubt)
 
-| Source | Eigentümer | Priorität | Schreibrecht |
-|--------|-----------|-----------|-------------|
-| `'live'` | Model (GPS) | Höchste | Nur das Model selbst |
-| `'current'` | Model (manuell) | Mittel | Nur das Model selbst |
-| `'agency'` | Agentur | Niedrigste (Fallback) | Agentur (Agency-Scope) |
+| Source | Eigentümer | Priorität | Schreibrecht | Löschrecht |
+|--------|-----------|-----------|-------------|-----------|
+| `'live'` | Model (GPS) | 0 = höchste | Nur Model-User (`models.user_id = auth.uid()`) | Nur Model-User |
+| `'current'` | Model (manuell) | 1 = mittel | Nur Model-User | Nur Model-User |
+| `'agency'` | Agentur | 2 = niedrigste (Fallback) | Nur Agency-Member/Booker | Nur Agency-Member |
 
 ### Invarianten (NIEMALS verletzen)
 
-1. **Single Source of Truth:** Ein `model_locations`-Eintrag pro Model (UNIQUE model_id). Genau eine aktive Quelle.
-2. **Write-Time Priority:**
-   - Agency-Writes (`source='agency'`) → `ON CONFLICT WHERE model_locations.source = 'agency'` → **vollständiger No-Op wenn Model die Zeile besitzt** (source='live' oder 'current')
-   - Model-Writes (`source='live'` oder `'current'`) → immer erfolgreich (kein WHERE-Guard)
-3. **GPS-Preservation:** Agency-Writes setzen `lat_approx=NULL`, `lng_approx=NULL` — niemals echte GPS-Daten
-4. **TypeScript-Default:** `upsertModelLocation(..., source='current')` — niemals `'model'` (deprecated)
-5. **Near Me nutzt `model_locations.lat_approx/lng_approx`** — nie direkt GPS-Input des Callers
+1. **Strukturelle Isolation:** `ON CONFLICT (model_id, source)` — agency writes gehen zu (model_id, 'agency');
+   live/current Zeilen sind physisch unmöglich von einer Agency zu überschreiben (strukturell, nicht nur via WHERE-Guard)
+2. **DISTINCT ON Priority-Resolution:** `get_models_near_location` verwendet
+   `DISTINCT ON (model_id) ORDER BY CASE source WHEN 'live' THEN 0 WHEN 'current' THEN 1 WHEN 'agency' THEN 2 END`
+   → Ein Model mit 'live' + 'agency' Zeilen erscheint IMMER via 'live' im Near-Me-Filter
+3. **Fallback-Kette:** Entfernen von 'live' → Model fällt auf 'current' zurück (falls vorhanden) → dann 'agency'
+   (andere Zeilen bleiben erhalten; kein Datenverlust durch Source-Entfernung)
+4. **GPS-Preservation:** Agency-Writes (`source='agency'`) dürfen `lat_approx/lng_approx` setzen NUR wenn geocodiert
+   (Frontend geocodiert via Nominatim; `share_approximate_location = (lat IS NOT NULL)`)
+   Model-Writes (`source='live'/'current'`) setzen lat/lng basierend auf `p_share_approximate_location`
+5. **Geocoding-Safety:** Schlägt Nominatim-Geocoding fehl → **kein Write** — bestehende Daten bleiben erhalten
+   Verboten: `lat=null` mit `upsertModelLocation(...)` speichern wenn geocoding scheiterte
+6. **TypeScript-Default:** `upsertModelLocation(..., source='current')` — niemals `'model'` (DB CHECK blockiert)
+7. **Auth-Split in RPC:** `upsert_model_location` prüft intern: live/current → nur Model-User; agency → nur Agency-Member
+   → Kein Frontend-Guard reicht; DB-Seite ist die einzige Wahrheit
 
 ### Verbotene Patterns
 
 ```typescript
-// ❌ VERBOTEN: agency schreibt mit source='current' oder 'live'
-await upsertModelLocation(modelId, data, 'current'); // von Agency-Code aufgerufen
+// ❌ VERBOTEN: agency-Code ruft upsertModelLocation mit source='current'/'live' auf
+// (DB-RPC wirft access_denied — aber der Aufruf muss trotzdem verhindert werden)
+await upsertModelLocation(modelId, data, 'current'); // von AgencyControllerView aus
 
-// ❌ VERBOTEN: model schreibt in bulk_upsert (agency-only RPC)
-await bulkUpsertModelLocations([modelId], data); // Models nutzen upsertModelLocation direkt
+// ❌ VERBOTEN: bulk_upsert von Model-Code aufrufen (agency-only RPC)
+await bulkUpsertModelLocations([modelId], data); // niemals aus ModelProfileScreen
 
 // ❌ VERBOTEN: alter Wert 'model' als source
-await upsertModelLocation(modelId, data, 'model'); // 'model' ist deprecated, DB wirft CHECK-Fehler
+await upsertModelLocation(modelId, data, 'model'); // DB CHECK wirft Fehler
+
+// ❌ VERBOTEN: deleteModelLocation ohne source in Model-Screen
+// (ohne source löscht die RPC live+current aber NICHT agency — korrekt, aber nur wenn explizit gewollt)
+await deleteModelLocation(modelId); // löscht alle model-owned sources, agency-Zeile bleibt
+
+// ❌ VERBOTEN: Geocoding-Fehler ignorieren und trotzdem schreiben
+const lat = geocodedResult?.lat ?? null;
+await upsertModelLocation(modelId, { lat, ... }); // lat=null → Near Me bricht
+// → KORREKT: if (!lat || !lng) { Alert.alert('City not found'); return; }
 ```
 
 ```sql
--- ❌ VERBOTEN: Agency INSERT ohne Priority-Guard
+-- ❌ VERBOTEN: ON CONFLICT auf (model_id) allein (alter Single-Row-Ansatz)
 INSERT INTO model_locations (...) VALUES (..., 'agency')
-ON CONFLICT (model_id) DO UPDATE SET source = 'agency'; -- überschreibt 'live'/'current'!
+ON CONFLICT (model_id) DO UPDATE SET ... WHERE model_locations.source = 'agency';
+-- → Nicht mehr möglich (UNIQUE(model_id) existiert nicht mehr)
 
--- ✅ KORREKT: WHERE Priority-Guard
-ON CONFLICT (model_id) DO UPDATE SET ...
-WHERE model_locations.source = 'agency';
--- → No-Op wenn Model die Zeile besitzt
+-- ❌ VERBOTEN: get_models_near_location ohne DISTINCT ON
+SELECT ml.* FROM model_locations ml WHERE ...;
+-- → Gibt mehrere Zeilen pro Model zurück; Near Me zeigt dasselbe Model mehrfach
+
+-- ✅ KORREKT: DISTINCT ON mit Priority-Order
+SELECT DISTINCT ON (ml.model_id) ml.* FROM model_locations ml
+WHERE ... ORDER BY ml.model_id, CASE ml.source WHEN 'live' THEN 0 WHEN 'current' THEN 1 ELSE 2 END;
+
+-- ✅ KORREKT: ON CONFLICT target ist (model_id, source)
+ON CONFLICT (model_id, source) DO UPDATE SET city = EXCLUDED.city, ...;
 ```
 
 ### UI-Pflichten
 
-- `ModelProfileScreen`: Zwei explizite Modes — **'live'** (GPS-Button) und **'current'** (Country+City-Input + Nominatim)
-- `AgencyControllerView`: Zeige Badge wenn `source IN ('live', 'current')` — erklärt dass Agency-Update Near Me nicht beeinflusst
-- Badge immer vor dem Edit-Formular des Models anzeigen (nicht inline)
-- Quelle immer aus `getModelLocation()` laden — nie aus `models.current_location` für Near Me-Zwecke
+- `ModelProfileScreen`: Badge zeigt höchste Priorität (live=grün, current=blau, agency=orange).
+  Remove-Button **nur wenn `source !== 'agency'`** — Model kann agency-Zeile nicht löschen.
+  Removing 'live' → Badge-Reload via `getModelLocation()` → zeigt automatisch 'current' oder 'agency' als Fallback.
+- `AgencyControllerView`: Badge sichtbar wenn `selectedModelLocation.source !== 'agency'` —
+  "Agency Location beeinflusst Near-Me nicht, wenn Model Location gesetzt ist"
+- Geocoding schlägt fehl → Alert("City not found") + `return` — kein Write, kein null-Update
+- `getModelLocation(modelId)` gibt höchste Priorität zurück; `getAllModelLocations(modelId)` gibt alle Zeilen
 
 ### NIEMALS
 
-- 4. Source-Wert hinzufügen ohne: CHECK constraint + RPC + TypeScript Union + alle Tests zu aktualisieren
+- 4. Source-Wert ohne vollständiges Update: CHECK constraint + RPC Auth-Split + TypeScript Union + alle Tests + DISTINCT ON-Order
 - `model_locations.source = 'model'` je neu einfügen (deprecated, blockiert durch DB CHECK)
-- Agency-Code mit source='current' oder 'live' aufrufen
-- `model_locations.lat_approx/lng_approx` direkt in agency-owned Writes setzen (nur Modell-Writes)
+- Agency-Code mit `source='current'` oder `'live'` aufrufen (DB wirft `access_denied`)
+- Model-Code mit `bulk_upsert_model_locations` aufrufen (agency-only RPC)
+- `UNIQUE(model_id)` (old single-row) je wieder einführen — Fallback-Kette bricht
+- `ON CONFLICT (model_id)` in neuen RPCs (muss `(model_id, source)` sein)
+- In `get_models_near_location` ohne `DISTINCT ON (model_id)` auf `model_locations` joinen
+- Geocoding-Fehler ignorieren und null-Koordinaten schreiben
 
 ---
 
