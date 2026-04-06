@@ -23,6 +23,41 @@ Du bist der Lead Product Engineer für IndexCasting. Dein Ziel ist es, das "digi
 - TypeScript: Nutze strikte Interfaces für alle Mediaslide-Modelle.
 - Struktur: Trenne UI (src/components), Logik (src/services) und Navigation (src/navigation).
 
+### 4c. Optimistische Updates — Globaler Async Contract (NIEMALS verletzen)
+
+**Services (src/services/):** Option A — immer `boolean` zurückgeben, niemals werfen.
+```typescript
+// ✅ KORREKT: false bei Fehler, nie throw
+export async function myAction(...): Promise<boolean> {
+  try { /* ... */; if (error) return false; return true; }
+  catch { return false; }
+}
+```
+
+**Frontend-Handler:** MUSS `.then(ok)` prüfen — `.catch()` allein reicht NICHT (Service wirft nie).
+```typescript
+// ✅ KORREKT
+void myActionService(...).then((ok) => { if (!ok) rollback(); });
+// ❌ VERBOTEN — dead code wenn Service nie wirft
+void myActionService(...).catch(() => rollback());
+```
+
+**Snapshot-Regel (Risiko 12 — Cross-Entity-Rollback-Corruption):**
+```typescript
+// ❌ VERBOTEN: globaler Container-Snapshot bei concurrent Actions
+const snapshot = projects; // → concurrent Add zu anderem Projekt verliert M2 wenn M1 rollt zurück
+
+// ✅ PFLICHT: per-Entität-Snapshot + functional setState Rollback
+const preModels = (projects.find(p => p.id === projectId)?.models ?? []).slice();
+// Rollback:
+setProjects(prev => prev.map(p => p.id === projectId ? { ...p, models: preModels } : p));
+```
+
+Faustregel: `const snapshot = array` ist verboten sobald der Container mehr als eine Entität enthält und mehrere concurrent Actions möglich sind.
+
+**Inflight-Lock:** Jede Action mit optimistischem Update MUSS einen per-id Lock haben (`Set<string>`).
+**Feedback-Timer:** `clearFeedbackLater()` MUSS immer `clearTimeout(ref.current)` vor neuem `setTimeout` aufrufen.
+
 ## 4b. UI-Sprache & Copy (verbindlich)
 - **Die gesamte Nutzeroberfläche ist Englisch (English-only):** alle sichtbaren Texte für Agency, Client und Model — Buttons, Labels, Alerts, Placeholder, leere Zustände, Fehlermeldungen aus dem Produkt.
 - **Zentrale Quelle:** Nutzer-Texte kommen aus `src/constants/uiCopy.ts` (`uiCopy`). Keine neuen deutschsprachigen UI-Strings; keine Hardcodes derselben Phrase an vielen Stellen — lieber ein Key in `uiCopy` erweitern.

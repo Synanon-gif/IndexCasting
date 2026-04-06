@@ -38,10 +38,11 @@ vollständig durchlaufen werden, **bevor** Code committed oder weitergeschrieben
 - **Model in organization_members:** Models via INSERT in `organization_members` hinzufügen? → Blocker — Models nutzen ausschließlich `model_agency_territories`
 - **JSON.stringify für JSONB:** `JSON.stringify(array)` vor Supabase-Insert in JSONB-Spalte? → Blocker — natives JS-Array übergeben
 - **Self-Referencing RLS Policy:** Policy referenziert die eigene Tabelle per FROM/JOIN? → Blocker (Risiko 11) — sofortige 42P17 Rekursion
+- **Globaler State-Snapshot bei concurrent Actions:** `const snapshot = state` vor optimistischem Update wenn mehrere concurrent Actions auf denselben Container möglich sind? → Blocker (Risiko 12) — per-Entität-Snapshot + functional setState verwenden
 
 ---
 
-## 3. Sieben Pflicht-Fragen (explizit beantworten)
+## 3. Acht Pflicht-Fragen (explizit beantworten)
 
 ```
 Q1: Bricht diese Änderung den Login?
@@ -51,6 +52,7 @@ Q4: Führt diese Änderung RLS-Rekursion ein?
 Q5: Verletzt diese Änderung den Territory-Constraint (UNIQUE model_id, country_code)?
 Q6: Fügt diese Änderung ein Model zu organization_members hinzu?
 Q7: Verwendet diese Änderung LIMIT 1 zur Caller-Identifikation / Org-Kontext-Auflösung (nicht Sub-Resource-Lookup nach Guard)?
+Q8: Verwendet ein neuer optimistischer Update-Handler `const snapshot = state` statt eines per-Entität-Snapshots, obwohl concurrent Actions auf denselben Container möglich sind?
 ```
 
 → Wenn **eine** Antwort unklar oder „möglicherweise ja" ist:
@@ -70,6 +72,7 @@ Q7: Verwendet diese Änderung LIMIT 1 zur Caller-Identifikation / Org-Kontext-Au
 - Org-Kontext-RPC oder Frontend-Query verwendet `LIMIT 1` zur Caller-Identifikation ohne expliziten Kommentar (Risiko 10) — Sub-Resource-Lookups nach verifiziertem Guard ausgenommen (mit Kommentar)
 - `model_agency_territories` ON CONFLICT referenziert `agency_id` als Teil des Conflict-Targets
 - RLS-Policy referenziert die eigene Tabelle per FROM/JOIN (Risiko 11 — Self-Referenz → sofortige 42P17)
+- Optimistischer Update-Handler nutzt globalen State-Snapshot (`const snapshot = containerArray`) statt per-Entität-Snapshot, obwohl concurrent Actions möglich sind (Risiko 12 — Cross-Entity-Rollback-Corruption)
 
 ---
 
