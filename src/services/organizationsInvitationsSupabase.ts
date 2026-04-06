@@ -7,7 +7,7 @@ import {
   type OrganizationType,
   type OrgMemberRole,
 } from './orgRoleTypes';
-import { logAuditAction } from './gdprComplianceSupabase';
+import { logAction } from '../utils/logAction';
 
 export type { OrganizationType, OrgMemberRole };
 export type InvitationRole = 'booker' | 'employee';
@@ -257,12 +257,12 @@ export async function createOrganizationInvitation(params: {
       return null;
     }
     const invitation = data as InvitationRow;
-    void logAuditAction({
-      orgId:      params.organizationId,
-      actionType: 'member_invited',
+    logAction(params.organizationId, 'createOrganizationInvitation', {
+      type: 'audit',
+      action: 'member_invited',
       entityType: 'invitation',
-      entityId:   invitation.id,
-      newData:    { email: params.email, role: params.role, invited_by: userData.user.id },
+      entityId: invitation.id,
+      newData: { email: params.email, role: params.role, invited_by: userData.user.id },
     });
     return invitation;
   } catch (e) {

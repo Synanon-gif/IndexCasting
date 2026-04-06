@@ -1,6 +1,5 @@
 import { supabase } from '../../lib/supabase';
-import { logBookingAction } from './gdprComplianceSupabase';
-import { assertOrgContext } from '../utils/orgGuard';
+import { logAction } from '../utils/logAction';
 
 /**
  * @deprecated Legacy bookings table — superseded by booking_events.
@@ -143,11 +142,16 @@ export async function createBooking(booking: {
     .single();
   if (error) { console.error('createBooking error:', error); return null; }
   const created = data as Booking;
-  void logBookingAction(booking.agency_id, 'booking_created', created.id, {
-    model_id: booking.model_id,
-    client_id: booking.client_id,
-    fee_total: booking.fee_total,
-    booking_date: booking.booking_date,
+  logAction(booking.agency_id, 'createBooking', {
+    type: 'booking',
+    action: 'booking_created',
+    entityId: created.id,
+    newData: {
+      model_id: booking.model_id,
+      client_id: booking.client_id,
+      fee_total: booking.fee_total,
+      booking_date: booking.booking_date,
+    },
   });
   return created;
 }
@@ -175,9 +179,13 @@ export async function updateBookingStatus(
     const row = data[0] as { id: string; agency_org_id: string | null; client_org_id: string | null };
     const orgId = row.agency_org_id ?? row.client_org_id;
     const auditAction = status === 'cancelled' ? 'booking_cancelled' : 'booking_confirmed';
-    if (assertOrgContext(orgId, 'updateBookingStatus')) {
-      void logBookingAction(orgId, auditAction, bookingId, { from: fromStatus, to: status });
-    }
+    logAction(orgId, 'updateBookingStatus', {
+      type: 'booking',
+      action: auditAction,
+      entityId: bookingId,
+      newData: { to: status },
+      oldData: { from: fromStatus },
+    });
     return true;
   } catch (e) {
     console.error('updateBookingStatus exception:', e);

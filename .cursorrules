@@ -191,3 +191,90 @@ Für JEDE Code-Änderung — Feature, Fix, Refactor — MUSS geprüft werden:
 4. **Unsichere Implementierungen ablehnen** und eine sichere Alternative vorschlagen.
 
 > Im Zweifel gilt: **Wähle immer die sicherere Option.**
+
+---
+
+## 21. SECURITY DEFINER + SET row_security TO off — Pflicht-Interne-Guards (NIEMALS weglassen)
+
+`SET row_security TO off` deaktiviert RLS vollständig innerhalb der Funktion. Ohne interne Auth-Checks hat **jeder authentifizierte User vollen DB-Zugriff** via `supabase.rpc()`.
+
+**Drei obligatorische interne Guards für jede RPC-Funktion mit `row_security TO off`:**
+
+```sql
+-- GUARD 1: Authentifizierung (immer erste Zeile)
+IF auth.uid() IS NULL THEN RAISE EXCEPTION 'not_authenticated'; END IF;
+
+-- GUARD 2: Caller-Berechtigung (explizit, nicht via RLS)
+-- z. B. Agency-Zugehörigkeit:
+SELECT org.agency_id INTO v_caller_agency_id
+FROM public.organization_members om
+JOIN public.organizations org ON org.id = om.organization_id
+WHERE om.user_id = auth.uid() AND org.agency_id IS NOT NULL
+ORDER BY om.created_at ASC LIMIT 1;
+IF v_caller_agency_id IS NULL THEN RAISE EXCEPTION 'not_in_agency'; END IF;
+
+-- GUARD 3: Ressourcen-Ownership (darf der Caller diese spezifische Ressource ändern?)
+SELECT agency_id INTO v_resource_agency_id FROM public.models WHERE id = p_model_id;
+IF v_resource_agency_id IS NOT NULL AND v_resource_agency_id != v_caller_agency_id THEN
+  RAISE EXCEPTION 'access_denied';
+END IF;
+```
+
+**Admin-RPCs:** immer `PERFORM public.assert_is_admin();` als erste Zeile.
+**Trigger-Funktionen:** Kein `auth.uid()`-Guard nötig (Trigger-Kontext, kein externer Caller).
+
+**Verbotene Pattern:**
+```sql
+-- NIEMALS: row_security=off ohne interne Guards
+CREATE OR REPLACE FUNCTION public.my_function() RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public SET row_security TO off
+AS $$ BEGIN UPDATE public.sensitive_table SET ... WHERE ...; END; $$;
+-- → Jeder authentifizierte User kann das aufrufen!
+```
+
+**Pflicht bei jeder Migration-Review:**
+1. Hat die Funktion `SET row_security TO off`? → Müssen alle 3 Guard-Ebenen vorhanden sein
+2. Ist es eine Admin-Funktion? → `assert_is_admin()` als erste Zeile Pflicht
+3. Ist es eine Trigger-Funktion? → Kein Caller-Guard nötig, aber Trigger-Row-Validierung
+4. Ist es eine Self-Scope-Funktion (liest nur eigene Daten)? → `auth.uid()` als alleiniger Guard reicht
+
+**Migrations-Reihenfolge-Problem:** Wenn mehrere Migrations-Dateien dieselbe Funktion neu definieren, gewinnt die **zuletzt ausgeführte**. Immer eine neue Datei mit späterem Datum erstellen (`20260412_*` nach `20260410_*`), die ALLE vorherigen Fixes kombiniert (definitive Datei).
+
+---
+
+## 22. Zentrales Audit-Logging — `logAction()` (PFLICHT)
+
+**Niemals mehr direkt `logAuditAction`, `logBookingAction`, `logOptionAction`, `logImageUpload` aufrufen.** Stattdessen immer `logAction()` aus `src/utils/logAction.ts` verwenden.
+
+```typescript
+// ✅ RICHTIG: logAction() — Guard + Log in einem Aufruf
+import { logAction } from '../utils/logAction';
+
+logAction(orgId, 'myFunction', {
+  type: 'booking',       // 'booking' | 'option' | 'image' | 'audit'
+  action: 'booking_created',
+  entityId: created.id,
+  newData: { ... },
+  oldData: { ... },       // optional: Zustand vorher
+});
+
+// ✅ GDPR-Sonderfall (kein org-Kontext, z. B. Minor-Consent, Image-Rights):
+logAction(null, 'confirmImageRights', {
+  type: 'audit', action: 'image_rights_confirmed', entityId: userId,
+}, { allowEmptyOrg: true });
+
+// ❌ VERBOTEN: direktes logBookingAction ohne assertOrgContext
+void logBookingAction(orgId, 'booking_created', id, { ... });
+
+// ❌ VERBOTEN: assertOrgContext + void log* manuell kombinieren
+if (assertOrgContext(orgId, 'myFunc')) {
+  void logOptionAction(orgId, 'option_sent', id, { ... });
+}
+```
+
+**`logAction()` erzwingt intern `assertOrgContext`** — kein separater Guard nötig.
+Rückgabe `false` bedeutet: Log übersprungen, `orgId` fehlte. Im Code ignorierbar (Fire-and-Forget).
+
+**Ausnahmen (explizit dokumentieren):**
+- `logAuditAction` direkt: nur in `gdprComplianceSupabase.ts` intern (Minor/GDPR-Flows)
+- Neue Wrapper in `gdprComplianceSupabase.ts` hinzufügen, wenn neuer Action-Type benötigt wird
