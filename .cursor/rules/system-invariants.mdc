@@ -48,6 +48,23 @@ Wenn eine Änderung eine dieser Regeln gefährdet → STOP und refaktorieren.
 - Dieser Constraint ist NIEMALS zu lockern auf `UNIQUE(model_id, country_code, agency_id)` — das würde die Exklusivität brechen
 - `ON CONFLICT`-Klauseln in RPCs die `model_agency_territories` beschreiben müssen `(model_id, country_code)` referenzieren
 - Bei Konflikten gewinnt die akzeptierende Agentur: `DO UPDATE SET agency_id = EXCLUDED.agency_id`
+- **Constraint-Name (kanonisch):** `model_agency_territories_one_agency_per_territory` — NIEMALS den alten Namen `model_agency_territories_unique_model_country` verwenden
+
+## CONSTRAINT-UMBENENNUNG (PFLICHT bei jeder Umbennung)
+
+Wenn ein DB-Constraint umbenannt wird, MÜSSEN alle referenzierenden Funktionen in derselben oder einer neuen Migration aktualisiert werden:
+
+1. Root-SQL-Dateien in `supabase/` (außerhalb `migrations/`) sind oft bereits deployed — diese müssen via neue Migration in `supabase/migrations/` mit korrektem Namen re-deployed werden
+2. Root-Dateien NICHT direkt editieren — sie sind historische Referenzen; stattdessen neue Migration anlegen
+3. Verifikation: `ASSERT NOT EXISTS (SELECT 1 FROM pg_proc WHERE pg_get_functiondef(oid) ILIKE '%alter_constraint_name%')` in der Migration
+
+## KEIN pgcrypto / digest() — PFLICHT
+
+`digest(text, 'sha256')` aus pgcrypto ist **verboten** in SECURITY DEFINER Funktionen:
+
+- pgcrypto ist auf Supabase-Projekten nicht garantiert installiert → `42883` bei Runtime → PostgREST gibt 404
+- **Korrekte Alternative:** `encode(sha256(lower(text)::bytea), 'hex')` — PostgreSQL 13+ built-in, kein Extension nötig
+- Gilt für alle Hashing-Operationen in DB-Funktionen (Trial-Email-Hash, Token-Hash, etc.)
 
 ## KEINE IMPLIZITE ORG-AUFLÖSUNG (unveränderlich, Fix B 2026-04-13)
 

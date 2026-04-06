@@ -63,7 +63,7 @@ import { getApplicationById } from '../store/applicationsStore';
 import { OrgMessengerInline } from '../components/OrgMessengerInline';
 import { AgencySettingsTab } from '../components/AgencySettingsTab';
 // Recruiting chats (BookingChatView) live under Messages → Recruiting chats.
-import { uploadModelPhoto, upsertPhotosForModel, syncPortfolioToModel } from '../services/modelPhotosSupabase';
+import { uploadModelPhoto, upsertPhotosForModel, syncPortfolioToModel, syncPolaroidsToModel } from '../services/modelPhotosSupabase';
 import { confirmImageRights, guardImageUpload } from '../services/gdprComplianceSupabase';
 import { ModelMediaSettingsPanel } from '../components/ModelMediaSettingsPanel';
 import { getTerritoriesForModel, getTerritoriesForAgency, upsertTerritoriesForModel, bulkAddTerritoriesForModels } from '../services/territoriesSupabase';
@@ -1728,6 +1728,7 @@ const MyModelsTab: React.FC<{
   const [addTerritorySearch, setAddTerritorySearch] = useState('');
   const [addLoading, setAddLoading] = useState(false);
   const [addModelImageFiles, setAddModelImageFiles] = useState<File[]>([]);
+  const [addModelPolaroidFiles, setAddModelPolaroidFiles] = useState<File[]>([]);
   const [addModelFeedback, setAddModelFeedback] = useState<string | null>(null);
   const [addModelImageRightsConfirmed, setAddModelImageRightsConfirmed] = useState(false);
 
@@ -1961,6 +1962,7 @@ const MyModelsTab: React.FC<{
 
     // Capture files in a local const BEFORE state resets (closure-safe).
     const filesToUpload = [...addModelImageFiles];
+    const polaroidFilesToUpload = [...addModelPolaroidFiles];
 
     const heightInt = toNullableInt(addModelEditState.height);
     // Height is marked NOT NULL in the DB schema.
@@ -2077,11 +2079,13 @@ const MyModelsTab: React.FC<{
       setAddTerritories([]);
       setAddTerritorySearch('');
       setAddModelImageFiles([]);
+      setAddModelPolaroidFiles([]);
       setAddModelImageRightsConfirmed(false);
       setShowAddForm(false);
 
       // Uploads should not make creation fail.
-      if (filesToUpload.length > 0) {
+      const hasAnyPhotos = filesToUpload.length > 0 || polaroidFilesToUpload.length > 0;
+      if (hasAnyPhotos) {
         // EXPLOIT-C2 fix: Require image rights confirmation before any upload.
         if (!addModelImageRightsConfirmed) {
           setAddModelFeedback('Please confirm you have all image rights before uploading photos.');
@@ -2107,25 +2111,53 @@ const MyModelsTab: React.FC<{
           setAddLoading(false);
           return;
         }
-        const uploadedUrls: string[] = [];
-        for (const file of filesToUpload) {
-          const result = await uploadModelPhoto(createdModelId, file);
-          if (result) uploadedUrls.push(result.url);
+
+        // Portfolio uploads
+        if (filesToUpload.length > 0) {
+          const uploadedUrls: string[] = [];
+          for (const file of filesToUpload) {
+            const result = await uploadModelPhoto(createdModelId, file);
+            if (result) uploadedUrls.push(result.url);
+          }
+          if (uploadedUrls.length > 0) {
+            await upsertPhotosForModel(
+              createdModelId,
+              uploadedUrls.map((url, index) => ({
+                url,
+                sort_order: index,
+                visible: true,
+                is_visible_to_clients: true,
+                source: null,
+                api_external_id: null,
+                photo_type: 'portfolio' as const,
+              })),
+            );
+            await syncPortfolioToModel(createdModelId, uploadedUrls);
+          }
         }
-        if (uploadedUrls.length > 0) {
-          await upsertPhotosForModel(
-            createdModelId,
-            uploadedUrls.map((url, index) => ({
-              url,
-              sort_order: index,
-              visible: true,
-              is_visible_to_clients: true,
-              source: null,
-              api_external_id: null,
-              photo_type: 'portfolio' as const,
-            })),
-          );
-          await syncPortfolioToModel(createdModelId, uploadedUrls);
+
+        // Polaroid uploads — stored in the same private bucket as portfolio, synced to models.polaroids[]
+        if (polaroidFilesToUpload.length > 0) {
+          const uploadedPolaroidUrls: string[] = [];
+          for (const file of polaroidFilesToUpload) {
+            const result = await uploadModelPhoto(createdModelId, file);
+            if (result) uploadedPolaroidUrls.push(result.url);
+          }
+          if (uploadedPolaroidUrls.length > 0) {
+            await upsertPhotosForModel(
+              createdModelId,
+              uploadedPolaroidUrls.map((url, index) => ({
+                url,
+                sort_order: index,
+                visible: false,
+                is_visible_to_clients: false,
+                source: null,
+                api_external_id: null,
+                photo_type: 'polaroid' as const,
+              })),
+            );
+            await syncPolaroidsToModel(createdModelId, uploadedPolaroidUrls);
+          }
         }
       }
 
@@ -2488,12 +2520,20 @@ const MyModelsTab: React.FC<{
   const [linkAccountEmail, setLinkAccountEmail] = useState('');
   const [linkAccountLoading, setLinkAccountLoading] = useState(false);
   const addModelFileInputRef = useRef<HTMLInputElement | null>(null);
+  const addModelPolaroidInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleAddModelPhotoFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target?.files ?? []).filter((f) => f.type?.startsWith('image/'));
     e.target.value = '';
     if (files.length === 0) return;
     setAddModelImageFiles((prev) => [...prev, ...files]);
+  };
+
+  const handleAddModelPolaroidFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target?.files ?? []).filter((f) => f.type?.startsWith('image/'));
+    e.target.value = '';
+    if (files.length === 0) return;
+    setAddModelPolaroidFiles((prev) => [...prev, ...files]);
   };
 
   if (selectedModel) {
@@ -3034,7 +3074,71 @@ const MyModelsTab: React.FC<{
               />
             )}
           </View>
-          {addModelImageFiles.length > 0 && (
+
+          {/* Polaroid photos */}
+          <View style={{ marginBottom: spacing.sm }}>
+            <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary }}>Polaroid photos</Text>
+            <Text style={{ ...typography.body, fontSize: 10, color: colors.textSecondary, marginBottom: spacing.xs }}>
+              Optional. Agency-only by default; visible to clients only when included in a polaroid package.
+            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs }}>
+              <TouchableOpacity
+                style={s.filterPill}
+                onPress={() => {
+                  if (Platform.OS === 'web') addModelPolaroidInputRef.current?.click();
+                }}
+              >
+                <Text style={s.filterPillLabel}>
+                  {addModelPolaroidFiles.length > 0 ? '+ Add more' : 'Upload polaroids'}
+                </Text>
+              </TouchableOpacity>
+              {addModelPolaroidFiles.length > 0 && (
+                <TouchableOpacity
+                  onPress={() => setAddModelPolaroidFiles([])}
+                  style={[s.filterPill, { borderColor: colors.textSecondary }]}
+                >
+                  <Text style={[s.filterPillLabel, { color: colors.textSecondary }]}>Clear all</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            {addModelPolaroidFiles.length > 0 && (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: spacing.sm }}>
+                {addModelPolaroidFiles.map((f, i) => {
+                  const objUrl = typeof URL !== 'undefined' ? URL.createObjectURL(f) : '';
+                  return (
+                    <View key={`pol-${f.name}-${i}`} style={{ position: 'relative' }}>
+                      <Image
+                        source={{ uri: objUrl }}
+                        style={{ width: 60, height: 80, borderRadius: 4, borderWidth: 1, borderColor: colors.border }}
+                        resizeMode="cover"
+                      />
+                      <View style={{ position: 'absolute', bottom: 2, left: 2, right: 2, backgroundColor: 'rgba(255,152,0,0.75)', borderRadius: 2, paddingVertical: 1 }}>
+                        <Text style={{ color: '#fff', fontSize: 7, textAlign: 'center' }}>POLAROID</Text>
+                      </View>
+                      <TouchableOpacity
+                        style={{ position: 'absolute', top: -4, right: -4, width: 16, height: 16, borderRadius: 8, backgroundColor: colors.textPrimary, justifyContent: 'center', alignItems: 'center' }}
+                        onPress={() => setAddModelPolaroidFiles((prev) => prev.filter((_, idx) => idx !== i))}
+                      >
+                        <Text style={{ color: colors.surface, fontSize: 10, lineHeight: 14, textAlign: 'center' }}>×</Text>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+            {Platform.OS === 'web' && (
+              <input
+                ref={addModelPolaroidInputRef as any}
+                type="file"
+                accept="image/*"
+                multiple
+                style={{ display: 'none' }}
+                onChange={handleAddModelPolaroidFiles}
+              />
+            )}
+          </View>
+
+          {(addModelImageFiles.length > 0 || addModelPolaroidFiles.length > 0) && (
             <TouchableOpacity
               style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 10, marginTop: 4 }}
               onPress={() => setAddModelImageRightsConfirmed(!addModelImageRightsConfirmed)}
