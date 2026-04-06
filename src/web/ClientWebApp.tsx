@@ -975,6 +975,19 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     filters.legsInseamMin, filters.legsInseamMax,
   ]);
 
+  const activeProject = useMemo(
+    () => projects.find((p) => p.id === activeProjectId) || null,
+    [projects, activeProjectId],
+  );
+
+  const sharedProject = useMemo(
+    () => projects.find((p) => p.id === sharedProjectId) || null,
+    [projects, sharedProjectId],
+  );
+
+  const isSharedMode = !!sharedProject;
+  const isPackageMode = !!packageViewState;
+
   useEffect(() => {
     if (detailId) {
       setDetailLoading(true);
@@ -1007,26 +1020,34 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                 calendar: { blocked: [], available: [] },
               });
             }
+          } else if (sharedProject && !data) {
+            // Shared-project mode: model not visible in discovery — build from ModelSummary.
+            // sharedProject.models already contains the measurements from when the model was added.
+            const summary = sharedProject.models.find((m) => m.id === detailId);
+            if (summary) {
+              setDetailData({
+                id: summary.id,
+                name: summary.name,
+                measurements: {
+                  height: summary.height,
+                  bust: summary.bust,
+                  waist: summary.waist,
+                  hips: summary.hips,
+                },
+                portfolio: {
+                  images: summary.coverUrl ? [summary.coverUrl] : [],
+                  polaroids: [],
+                },
+                calendar: { blocked: [], available: [] },
+              });
+            }
           } else {
             setDetailData(data);
           }
         })
         .finally(() => setDetailLoading(false));
     }
-  }, [detailId, packageViewState]);
-
-  const activeProject = useMemo(
-    () => projects.find((p) => p.id === activeProjectId) || null,
-    [projects, activeProjectId],
-  );
-
-  const sharedProject = useMemo(
-    () => projects.find((p) => p.id === sharedProjectId) || null,
-    [projects, sharedProjectId],
-  );
-
-  const isSharedMode = !!sharedProject;
-  const isPackageMode = !!packageViewState;
+  }, [detailId, packageViewState, sharedProject]);
 
   const baseModels = useMemo(
     () => packageViewState?.models ?? (sharedProject ? sharedProject.models : models),
@@ -1131,9 +1152,20 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       clearFeedbackLater();
     }
     // Persist to Supabase (uses SECURITY DEFINER RPC that validates agency connection).
-    void addModelToProjectOnSupabase(projectId, model.id).catch((e) =>
-      console.error('addModelToProject: Supabase RPC failed', e),
-    );
+    // If the RPC fails (e.g. no accepted client_agency_connection), rollback local state
+    // and inform the user — prevents silent data inconsistency in package mode.
+    void addModelToProjectOnSupabase(projectId, model.id).catch((e) => {
+      console.error('addModelToProject: Supabase RPC failed', e);
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.id === projectId
+            ? { ...p, models: p.models.filter((m) => m.id !== model.id) }
+            : p,
+        ),
+      );
+      setFeedback('Could not save model to project — no active agency connection.');
+      clearFeedbackLater();
+    });
   };
 
   // Record "viewed" whenever the current discovery card changes and the user is
@@ -1619,6 +1651,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             isSharedMode={isSharedMode}
             isPackageMode={isPackageMode}
             packageName={packageViewState?.name ?? null}
+            packageType={packageViewState?.packageType ?? undefined}
             onExitPackage={exitPackageMode}
             userCity={userCity}
             onShowActiveOptions={() => setShowActiveOptions(true)}
@@ -2299,6 +2332,7 @@ type DiscoverProps = {
   isSharedMode: boolean;
   isPackageMode: boolean;
   packageName: string | null;
+  packageType?: PackageType;
   onExitPackage?: () => void;
   userCity: string | null;
   onShowActiveOptions?: () => void;
@@ -2378,15 +2412,17 @@ const DiscoverView: React.FC<DiscoverProps> = ({
   isSharedMode,
   isPackageMode,
   packageName,
+  packageType,
   onExitPackage,
   onShowActiveOptions,
 }) => {
   // Package mode: grid layout matching GuestView (all models visible at once, no swipe)
   if (isPackageMode) {
+    const packageTypeLabel = packageType === 'polaroid' ? 'Polaroid Package' : 'Portfolio Package';
     return (
       <View style={[styles.section, { flex: 1 }]}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionLabel}>Package</Text>
+          <Text style={styles.sectionLabel}>{packageTypeLabel}</Text>
           <Text style={styles.metaText}>{models.length} models</Text>
         </View>
         <View style={styles.packageBanner}>
@@ -2487,7 +2523,11 @@ const DiscoverView: React.FC<DiscoverProps> = ({
       <View style={styles.activeProjectRow}>
         <Text style={styles.metaText}>Active project</Text>
         <Text style={styles.activeProjectName}>
-          {activeProject ? activeProject.name : isSharedMode ? (sharedProjectName ?? 'Project') : 'None'}
+          {isSharedMode
+            ? (sharedProjectName ?? 'Project')
+            : activeProject
+              ? activeProject.name
+              : 'None'}
         </Text>
       </View>
 

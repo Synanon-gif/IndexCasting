@@ -103,8 +103,12 @@ Lösung: Cross-Table-Checks MÜSSEN via `SECURITY DEFINER` mit `SET row_security
 - Shared-Project-Models kommen exklusiv aus `sharedProject.models` (Client-Projekt)
 - Prüfpflicht: Jede Änderung an `filteredModels` oder `baseModels` in `ClientWebApp.tsx` MUSS den Guard `if (isPackageMode || isSharedMode) return baseModels;` als erste Zeile behalten
 - **Detail-Overlay in Package-Mode:** wenn `getModelData` null zurückgibt (Model nicht in Discovery sichtbar), MUSS ein Fallback aus `rawModels` (Package-RPC-Daten) gebaut werden — Detail darf niemals leer bleiben
+- **Detail-Overlay in Shared-Project-Mode:** wenn `getModelData` null zurückgibt (Model nicht in Discovery sichtbar), MUSS ein Fallback aus `sharedProject.models` (ModelSummary: id, name, height, bust, waist, hips, coverUrl) gebaut werden — `sharedProject` MUSS im `useEffect`-Dependency-Array sein
 - **Interne Package-Ansicht:** `DiscoverView` zeigt im `isPackageMode` ein **Grid aller Models** (ScrollView, wie GuestView) — NICHT Swipe/Single-Card. Filter-Bar ist im Package-Mode ausgeblendet.
+- **Package-Typ-Anzeige:** Der Grid-Header in `DiscoverView` im Package-Mode MUSS `packageType` anzeigen: `'polaroid' → 'Polaroid Package'`, `'portfolio' → 'Portfolio Package'`. Die `DiscoverProps` enthalten `packageType?: PackageType`, das von `ClientWebApp` als `packageViewState?.packageType` übergeben wird.
+- **Active-Project-Label in Shared-Mode:** `isSharedMode` hat Vorrang — in Shared-Mode IMMER `sharedProjectName` anzeigen, nicht `activeProject.name` (der auf ein anderes Projekt zeigen kann)
 - **Package-Label im Chat:** `metadata.package_label` MUSS den echten Package-Namen (`GuestLink.label`) enthalten, nicht nur die Model-Anzahl. Format: `"Name · N models"` wenn Label vorhanden, sonst `"N"`
+- **`add_model_to_project` Rollback (PFLICHT):** `addModelToProjectOnSupabase` validiert `client_agency_connections.status = 'accepted'`. Wenn der RPC fehlschlägt (keine akzeptierte Connection): MUSS lokaler State zurückgerollt werden (`setProjects` → Model entfernen) UND User erhält Feedback-Text `'Could not save model to project — no active agency connection.'` — kein Silent-Fail erlaubt
 
 ## FRONTEND-GARANTIEN
 
