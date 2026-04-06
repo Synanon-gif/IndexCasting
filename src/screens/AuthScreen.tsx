@@ -146,6 +146,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           onChangeText={setPassword}
           secureTextEntry
         />
+        {mode === 'signup' && (
+          <Text style={styles.passwordHint}>{uiCopy.auth.passwordHintSignup}</Text>
+        )}
 
         {mode === 'signup' && (
           <>
@@ -292,6 +295,14 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     ...typography.body,
     color: colors.textPrimary,
+  },
+  passwordHint: {
+    ...typography.body,
+    fontSize: 11,
+    color: colors.textSecondary,
+    alignSelf: 'flex-start',
+    marginBottom: spacing.sm,
+    lineHeight: 16,
   },
   roleLabel: { ...typography.label, color: colors.textSecondary, alignSelf: 'flex-start', marginBottom: spacing.xs },
   roleRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md, alignSelf: 'flex-start' },

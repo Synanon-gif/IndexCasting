@@ -207,6 +207,12 @@ export const uiCopy = {
     accountScheduledForDeletion:
       'Your account has been scheduled for deletion and is no longer accessible.',
     emailPasswordRequired: 'Email and password are required.',
+    /**
+     * Shown below the password field in Sign Up mode.
+     * Keep in sync with Supabase → Authentication → Email → Password requirements.
+     * Current settings: min. 10 chars, lowercase + uppercase + digit + symbol required.
+     */
+    passwordHintSignup: 'Min. 10 characters · uppercase & lowercase · number · symbol (e.g. !@#$)',
     signUpDisplayNamePlaceholder: 'Display name',
     signUpCompanyNamePlaceholder: 'Company or organization name',
     loginTab: 'Login',
