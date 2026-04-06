@@ -160,8 +160,9 @@ export default function PaywallScreen() {
   // Only owners may initiate a subscription purchase.
   const isOwner = profile?.org_member_role === 'owner';
 
-  const isTrialExpired = accessStatus?.reason === 'no_active_subscription';
-  const isTrialActive  = accessStatus?.reason === 'trial_active';
+  const isTrialExpired    = accessStatus?.reason === 'no_active_subscription';
+  const isTrialAlreadyUsed = accessStatus?.reason === 'trial_already_used';
+  const isTrialActive     = accessStatus?.reason === 'trial_active';
 
   // Determine which plan cards to show based on org type.
   // Client orgs see only the 'client' plan. Agency orgs see only agency plans.
@@ -226,6 +227,14 @@ export default function PaywallScreen() {
               ? 'Your access is locked until you subscribe. No partial access is available.'
               : uiCopy.billing.trialExpiredBody}
           </Text>
+        </View>
+      )}
+
+      {/* Trial already used banner */}
+      {isTrialAlreadyUsed && (
+        <View style={styles.expiredBanner}>
+          <Text style={styles.expiredTitle}>{uiCopy.billing.trialAlreadyUsedTitle}</Text>
+          <Text style={styles.expiredBody}>{uiCopy.billing.trialAlreadyUsedBody}</Text>
         </View>
       )}
 

@@ -157,9 +157,9 @@ export async function confirmImageRights(
       return { ok: false, reason: error?.message ?? 'insert_failed' };
     }
 
-    // Log in audit trail
+    // Log in audit trail — orgId may be null for applicant (no org context)
     void logAuditAction({
-      orgId:      '', // fire-and-forget; org resolved server-side
+      orgId:      params.orgId ?? '',
       actionType: 'image_rights_confirmed',
       entityType: 'model',
       entityId:   params.modelId ?? undefined,
@@ -259,6 +259,7 @@ export async function flagModelAsMinor(
   modelId: string,
   guardianName?: string,
   guardianEmail?: string,
+  orgId?: string,
 ): Promise<ComplianceResult> {
   try {
     const { error: modelError } = await supabase.rpc('admin_update_model_minor_flag', {
@@ -287,7 +288,7 @@ export async function flagModelAsMinor(
     }
 
     void logAuditAction({
-      orgId:      '',
+      orgId:      orgId ?? '',
       actionType: 'minor_flagged',
       entityType: 'model',
       entityId:   modelId,
@@ -307,6 +308,7 @@ export async function flagModelAsMinor(
 export async function recordGuardianConsent(
   modelId: string,
   confirmed: boolean,
+  orgId?: string,
 ): Promise<ComplianceResult> {
   try {
     const { error } = await supabase
@@ -324,7 +326,7 @@ export async function recordGuardianConsent(
     }
 
     void logAuditAction({
-      orgId:      '',
+      orgId:      orgId ?? '',
       actionType: 'minor_guardian_consent',
       entityType: 'model',
       entityId:   modelId,
@@ -345,6 +347,7 @@ export async function recordGuardianConsent(
 export async function confirmMinorConsentByAgency(
   modelId: string,
   confirmedByUserId: string,
+  orgId?: string,
 ): Promise<ComplianceResult> {
   try {
     const { error } = await supabase
@@ -363,7 +366,7 @@ export async function confirmMinorConsentByAgency(
     }
 
     void logAuditAction({
-      orgId:      '',
+      orgId:      orgId ?? '',
       actionType: 'minor_agency_confirmed',
       entityType: 'model',
       entityId:   modelId,

@@ -27,6 +27,7 @@ export type AccessReason =
   | 'trial_active'
   | 'subscription_active'
   | 'no_active_subscription'
+  | 'trial_already_used'
   | 'no_org';
 
 export interface OrgAccessStatus {

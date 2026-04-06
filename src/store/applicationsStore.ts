@@ -87,6 +87,12 @@ function notify() {
 
 async function ensureHydrated() {
   if (hydrated) return;
+  // Guard: never fetch without an agency scope — RLS is the last line of defence,
+  // not the only one. initApplicationsForAgency() must be called first.
+  if (!storeAgencyId) {
+    console.warn('[applicationsStore] ensureHydrated called before agencyId was set — skipping fetch');
+    return;
+  }
   hydrated = true;
   const apps = await fetchApps(storeAgencyId);
   cache = apps.map(toLocal);

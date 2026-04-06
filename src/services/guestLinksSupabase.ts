@@ -186,23 +186,29 @@ function extractStoragePath(url: string, bucket: string): string | null {
 }
 
 /**
- * Rewrites an array of public-bucket image URLs to signed URLs with a short TTL.
- * Falls back to the original URL when signing fails (e.g. guest not yet authenticated).
+ * Rewrites an array of storage image URLs to signed URLs with a short TTL.
+ * Returns null for any URL that cannot be signed (bucket is private — a public
+ * fallback would expose the asset permanently, defeating the TTL).
+ * Callers must handle null entries (e.g. hide the image or show a placeholder).
  */
-async function signImageUrls(urls: string[]): Promise<string[]> {
+async function signImageUrls(urls: string[]): Promise<(string | null)[]> {
   if (urls.length === 0) return urls;
   return Promise.all(
     urls.map(async (url) => {
       const path = extractStoragePath(url, DOCUMENTSPICTURES_BUCKET);
-      if (!path) return url;
+      if (!path) return null;
       try {
         const { data, error } = await supabase.storage
           .from(DOCUMENTSPICTURES_BUCKET)
           .createSignedUrl(path, GUEST_IMAGE_SIGNED_TTL_SECONDS);
-        if (error || !data?.signedUrl) return url;
+        if (error || !data?.signedUrl) {
+          console.warn('signImageUrls: could not sign URL, omitting (bucket is private)', { path, error });
+          return null;
+        }
         return data.signedUrl;
-      } catch {
-        return url;
+      } catch (e) {
+        console.warn('signImageUrls: exception signing URL, omitting', { path, error: e });
+        return null;
       }
     }),
   );
@@ -233,11 +239,13 @@ export async function getGuestLinkModels(linkId: string): Promise<GuestLinkModel
     // needed — the RPC is the single authoritative audit source.
 
     // Rewrite image arrays to signed URLs (M-3 fix).
+    // signImageUrls returns null for any URL that cannot be signed;
+    // filter those out rather than falling back to public URLs.
     const signed = await Promise.all(
       models.map(async (m) => ({
         ...m,
-        portfolio_images: await signImageUrls(m.portfolio_images),
-        polaroids:        await signImageUrls(m.polaroids),
+        portfolio_images: (await signImageUrls(m.portfolio_images)).filter((u): u is string => u !== null),
+        polaroids:        (await signImageUrls(m.polaroids)).filter((u): u is string => u !== null),
       })),
     );
     return signed;

@@ -3,6 +3,7 @@ import { splitProfileDisplayName } from '../utils/applicantNameFromProfile';
 import { validateFile, checkMagicBytes } from '../../lib/validation';
 import { convertHeicToJpegIfNeeded } from './imageUtils';
 import { toStorageUri, resolveStorageUrl } from '../storage/storageUrl';
+import { hasRecentImageRightsForSessionKey } from './gdprComplianceSupabase';
 
 /**
  * Model-Bewerbungen (Apply) – in Supabase gespeichert.
@@ -16,13 +17,34 @@ import { toStorageUri, resolveStorageUrl } from '../storage/storageUrl';
 const APPLICATION_IMAGES_BUCKET = 'documentspictures';
 const APPLICATION_IMAGES_PREFIX = 'model-applications';
 
+/** Session key used to scope application-upload image rights confirmations. */
+export const APPLICATION_UPLOAD_SESSION_KEY = 'application-upload';
+
 /**
  * Upload one application image to Storage.
  * Returns a canonical supabase-storage:// URI for persistent DB storage,
  * or null on failure. Use resolveApplicationImageUrl() to get a signed URL
  * for display.
+ *
+ * @param userId — When provided, validates that the user confirmed image rights
+ *   (via confirmImageRights with sessionKey=APPLICATION_UPLOAD_SESSION_KEY)
+ *   within the last 15 minutes before allowing the upload.
  */
-export async function uploadApplicationImage(file: Blob | File, slot: string): Promise<string | null> {
+export async function uploadApplicationImage(
+  file: Blob | File,
+  slot: string,
+  userId?: string,
+): Promise<string | null> {
+  // Service-side consent guard: if userId is provided, require a recent
+  // image rights confirmation before accepting the upload.
+  if (userId) {
+    const hasConsent = await hasRecentImageRightsForSessionKey(userId, APPLICATION_UPLOAD_SESSION_KEY);
+    if (!hasConsent) {
+      console.error('uploadApplicationImage: image rights not confirmed for user', userId);
+      return null;
+    }
+  }
+
   file = await convertHeicToJpegIfNeeded(file);
 
   const mimeValidation = validateFile(file);

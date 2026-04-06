@@ -23,6 +23,7 @@ const mockAuthGetUser = jest.fn().mockResolvedValue({ data: { user: { id: 'user-
 
 const mockStorageFrom = jest.fn();
 const mockStorageRemove = jest.fn();
+const mockCreateSignedUrl = jest.fn();
 
 jest.mock('../../../lib/supabase', () => ({
   supabase: {
@@ -505,6 +506,15 @@ describe('GuestLinkModel type shape — portfolio vs polaroid packages', () => {
 describe('getGuestLinkModels — RPC returns type-correct image arrays', () => {
   beforeEach(() => {
     mockRpc.mockReset();
+    // Mock storage.from('documentspictures').createSignedUrl to return a signed URL.
+    // Without this mock, signImageUrls returns null for every URL, causing the filter
+    // to produce empty arrays (correct security behaviour, but breaks unit tests that
+    // only care about the array shape, not signing).
+    mockCreateSignedUrl.mockReset();
+    mockCreateSignedUrl.mockImplementation((_path: string, _ttl: number) =>
+      Promise.resolve({ data: { signedUrl: `https://signed.example.com/${_path}` }, error: null }),
+    );
+    mockStorageFrom.mockReturnValue({ createSignedUrl: mockCreateSignedUrl });
   });
 
   it('returns portfolio_images populated and polaroids = [] for a Portfolio Package', async () => {
@@ -512,7 +522,11 @@ describe('getGuestLinkModels — RPC returns type-correct image arrays', () => {
       {
         id: 'model-1', name: 'Anna', height: 178, bust: 84, waist: 62, hips: 90,
         city: 'Berlin', hair_color: 'Brown', eye_color: 'Blue', sex: 'female',
-        portfolio_images: ['https://cdn.example.com/p1.jpg', 'https://cdn.example.com/p2.jpg'],
+        // Use canonical supabase-storage:// URI format so extractStoragePath can resolve the path
+        portfolio_images: [
+          'supabase-storage://documentspictures/guest/p1.jpg',
+          'supabase-storage://documentspictures/guest/p2.jpg',
+        ],
         polaroids: [],
       },
     ];
@@ -532,7 +546,10 @@ describe('getGuestLinkModels — RPC returns type-correct image arrays', () => {
         id: 'model-2', name: 'Lena', height: 175, bust: 82, waist: 60, hips: 88,
         city: 'Paris', hair_color: 'Blonde', eye_color: 'Green', sex: 'female',
         portfolio_images: [],
-        polaroids: ['https://cdn.example.com/pola1.jpg', 'https://cdn.example.com/pola2.jpg'],
+        polaroids: [
+          'supabase-storage://documentspictures/guest/pola1.jpg',
+          'supabase-storage://documentspictures/guest/pola2.jpg',
+        ],
       },
     ];
     mockRpc.mockResolvedValue({ data: rpcRows, error: null });

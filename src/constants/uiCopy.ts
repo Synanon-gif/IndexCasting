@@ -187,6 +187,7 @@ export const uiCopy = {
     signUpOwnerHint:
       'The first signup as Client or Agency (without an invitation link) creates your organization and assigns you as the Organization Owner. People who register using an invite link you send become employees or bookers — they are not owners.',
     companyNameRequired: 'Please enter your agency or company name.',
+    loginFailed: 'Login failed. Please check your connection and try again.',
   },
   /** Soft delete: profile stays 30 days, then purge via admin/cron; email reusable after auth user removed. */
   accountDeletion: {
@@ -1013,6 +1014,8 @@ export const uiCopy = {
     trialDaysLeft: (days: number) => `${days} day${days === 1 ? '' : 's'} remaining`,
     trialExpiredTitle: 'Your trial has ended',
     trialExpiredBody: 'Choose a plan to continue using Index Casting.',
+    trialAlreadyUsedTitle: 'Trial not available',
+    trialAlreadyUsedBody: 'A free trial has already been used with this email address. Please subscribe to continue.',
     accessBlocked: 'Your account is currently inactive.',
     accessBlockedBody: 'Please subscribe to regain access.',
 

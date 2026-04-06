@@ -561,6 +561,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // This must never be skipped or blocked by any subsequent step.
     // Admin depends on this to get is_admin=true set in profile state.
     let deactivatedResult: { reason?: 'deactivated' | 'deletion' | 'org_deactivated' } | null = null;
+    let bootstrapThrew = false;
     if (data?.user) {
       try {
         const result = await bootstrapThenLoadProfile(data.user.id);
@@ -571,7 +572,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       } catch (e) {
         console.error('signIn bootstrapThenLoadProfile error:', e);
+        bootstrapThrew = true;
       }
+    }
+
+    // If bootstrap threw (network/DB crash), the session exists but profile is
+    // missing. Sign out and return an error so the user can retry cleanly.
+    if (bootstrapThrew) {
+      try { await supabase.auth.signOut(); } catch { /* ignore sign-out error */ }
+      return { error: uiCopy.auth.loginFailed };
     }
 
     // Return deactivation errors immediately — no further side-effects needed.

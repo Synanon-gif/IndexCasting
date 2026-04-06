@@ -1,5 +1,6 @@
 import { supabase } from '../../lib/supabase';
 import { logBookingAction } from './gdprComplianceSupabase';
+import { assertOrgContext } from '../utils/orgGuard';
 
 /**
  * @deprecated Legacy bookings table — superseded by booking_events.
@@ -172,9 +173,11 @@ export async function updateBookingStatus(
       return false;
     }
     const row = data[0] as { id: string; agency_org_id: string | null; client_org_id: string | null };
-    const orgId = row.agency_org_id ?? row.client_org_id ?? '';
+    const orgId = row.agency_org_id ?? row.client_org_id;
     const auditAction = status === 'cancelled' ? 'booking_cancelled' : 'booking_confirmed';
-    void logBookingAction(orgId, auditAction, bookingId, { from: fromStatus, to: status });
+    if (assertOrgContext(orgId, 'updateBookingStatus')) {
+      void logBookingAction(orgId, auditAction, bookingId, { from: fromStatus, to: status });
+    }
     return true;
   } catch (e) {
     console.error('updateBookingStatus exception:', e);

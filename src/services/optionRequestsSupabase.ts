@@ -1039,12 +1039,13 @@ async function createBookingEventFromRequest(req: SupabaseOptionRequest): Promis
       console.error('createBookingEventFromRequest insert error:', error);
       return;
     }
-    void logBookingAction(
-      (agencyOrg as { id: string } | null)?.id ?? req.organization_id ?? '',
-      'booking_created',
-      req.id,
-      { type: eventType, source_option_request_id: req.id },
-    );
+    const bookingOrgId = (agencyOrg as { id: string } | null)?.id ?? req.organization_id;
+    if (assertOrgContext(bookingOrgId, 'createBookingEventFromRequest')) {
+      void logBookingAction(bookingOrgId, 'booking_created', req.id, {
+        type: eventType,
+        source_option_request_id: req.id,
+      });
+    }
   } catch (e) {
     console.error('createBookingEventFromRequest exception:', e);
   }
