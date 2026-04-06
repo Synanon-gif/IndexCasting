@@ -1321,9 +1321,11 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         countryCode: null,
         hasRealLocation: false,
       }));
-      const packageName = gl.agency_name
-        ? `${gl.agency_name} (${glModels.length} models)`
-        : `Package (${glModels.length} models)`;
+      // Prefer the explicit label set by the agency; fall back to agency-name + count
+      const packageName = gl.label
+        ?? (gl.agency_name
+          ? `${gl.agency_name} (${glModels.length} models)`
+          : `Package (${glModels.length} models)`);
       setFeedback(null);
       setPackageViewState({
         packageId,
@@ -2469,16 +2471,18 @@ const DiscoverView: React.FC<DiscoverProps> = ({
         </View>
       </View>
 
-      <>
-        <ModelFiltersPanel
-          filters={filters}
-          onChangeFilters={onChangeFilters}
-          onSaveFilters={onSaveFilters}
-          filterSaveStatus={filterSaveStatus === 'idle' ? null : filterSaveStatus}
-          userCity={userCity}
-        />
-        <FilterExplanationBanner filters={filters} />
-      </>
+      {!isSharedMode && (
+        <>
+          <ModelFiltersPanel
+            filters={filters}
+            onChangeFilters={onChangeFilters}
+            onSaveFilters={onSaveFilters}
+            filterSaveStatus={filterSaveStatus === 'idle' ? null : filterSaveStatus}
+            userCity={userCity}
+          />
+          <FilterExplanationBanner filters={filters} />
+        </>
+      )}
 
       <View style={styles.activeProjectRow}>
         <Text style={styles.metaText}>Active project</Text>

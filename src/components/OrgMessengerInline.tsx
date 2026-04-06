@@ -474,6 +474,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
                 const meta = (m as { metadata?: Record<string, unknown> }).metadata ?? {};
                 const previewIds = metaStringArray(m, 'preview_model_ids');
                 const packageLabel = metaString(m, 'package_label');
+                const packageName = metaString(m, 'package_name');
                 const guestLink = metaString(m, 'guest_link');
                 const isInAppAccess = !!onPackagePress;
                 return (
@@ -494,14 +495,19 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
                         </Text>
                       </View>
                     </View>
+                    {packageName ? (
+                      <Text style={styles.packageLabel}>{packageName}</Text>
+                    ) : null}
                     {packageLabel ? (
-                      <Text style={styles.packageLabel}>
+                      <Text style={packageName ? styles.chatSubText : styles.packageLabel}>
                         {packageLabel} {uiCopy.b2bChat.packagePreviewLabel}
                       </Text>
                     ) : (
-                      <Text style={styles.chatBubbleText} numberOfLines={2}>
-                        {m.text ?? ''}
-                      </Text>
+                      !packageName ? (
+                        <Text style={styles.chatBubbleText} numberOfLines={2}>
+                          {m.text ?? ''}
+                        </Text>
+                      ) : null
                     )}
                     {previewIds.length > 0 ? (
                       <View style={styles.avatarRow}>
@@ -715,9 +721,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
                           package_id: g.id,
                           guest_link: buildGuestUrl(g.id),
                           preview_model_ids: g.model_ids.slice(0, 4),
-                          package_label: g.label
-                            ? `${g.label} · ${g.model_ids?.length ?? 0} models`
-                            : String(g.model_ids?.length ?? 0),
+                          package_label: String(g.model_ids?.length ?? 0),
                           package_name: g.label ?? null,
                         })
                       }
@@ -897,7 +901,14 @@ const styles = StyleSheet.create({
   },
   packageLabel: {
     ...typography.body,
-    fontSize: 12,
+    fontSize: 13,
+    color: colors.textPrimary,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  chatSubText: {
+    ...typography.body,
+    fontSize: 11,
     color: colors.textSecondary,
     marginBottom: spacing.xs,
   },
