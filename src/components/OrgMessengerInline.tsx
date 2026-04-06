@@ -715,7 +715,10 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
                           package_id: g.id,
                           guest_link: buildGuestUrl(g.id),
                           preview_model_ids: g.model_ids.slice(0, 4),
-                          package_label: String(g.model_ids.length),
+                          package_label: g.label
+                            ? `${g.label} · ${g.model_ids?.length ?? 0} models`
+                            : String(g.model_ids?.length ?? 0),
+                          package_name: g.label ?? null,
                         })
                       }
                     >

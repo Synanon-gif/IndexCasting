@@ -986,10 +986,27 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             const correctImages = packageViewState.packageType === 'polaroid'
               ? (raw?.polaroids ?? [])
               : (raw?.portfolio_images ?? []);
-            setDetailData({
-              ...data,
-              portfolio: { ...data.portfolio, images: correctImages, polaroids: [] },
-            });
+            if (data) {
+              setDetailData({
+                ...data,
+                portfolio: { ...data.portfolio, images: correctImages, polaroids: [] },
+              });
+            } else if (raw) {
+              // Model not visible in discovery (different territory / incomplete profile) —
+              // build MediaslideModel from package RPC data so the detail overlay still shows fully.
+              setDetailData({
+                id: raw.id,
+                name: raw.name,
+                measurements: {
+                  height: raw.height ?? 0,
+                  bust: raw.bust ?? 0,
+                  waist: raw.waist ?? 0,
+                  hips: raw.hips ?? 0,
+                },
+                portfolio: { images: correctImages, polaroids: [] },
+                calendar: { blocked: [], available: [] },
+              });
+            }
           } else {
             setDetailData(data);
           }
@@ -1017,6 +1034,9 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   );
 
   const filteredModels = useMemo(() => {
+    // Package and shared-project modes require strict isolation — never apply discovery filters.
+    // baseModels is already scoped to packageViewState.models or sharedProject.models.
+    if (isPackageMode || isSharedMode) return baseModels;
     // When "Near me" is active and we have radius-based results → use nearbyModels (sorted by distance).
     // Fallback: if geolocation was denied but city is known → city-substring filter on baseModels.
     // Otherwise → use baseModels as-is (all server-side filters already applied).
@@ -1032,7 +1052,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       }
     }
     return baseModels;
-  }, [baseModels, nearbyModels, filters.nearby, userLat, userLng, userCity]);
+  }, [baseModels, nearbyModels, filters.nearby, userLat, userLng, userCity, isPackageMode, isSharedMode]);
 
   const currentModel = useMemo(
     () =>
@@ -2359,6 +2379,75 @@ const DiscoverView: React.FC<DiscoverProps> = ({
   onExitPackage,
   onShowActiveOptions,
 }) => {
+  // Package mode: grid layout matching GuestView (all models visible at once, no swipe)
+  if (isPackageMode) {
+    return (
+      <View style={[styles.section, { flex: 1 }]}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionLabel}>Package</Text>
+          <Text style={styles.metaText}>{models.length} models</Text>
+        </View>
+        <View style={styles.packageBanner}>
+          <Text style={styles.packageBannerText}>
+            {packageName ?? uiCopy.discover.viewingPackage}
+          </Text>
+          <TouchableOpacity onPress={onExitPackage} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Text style={styles.packageBannerExit}>{uiCopy.discover.exitPackage}</Text>
+          </TouchableOpacity>
+        </View>
+        <ScrollView contentContainerStyle={styles.packageGrid} showsVerticalScrollIndicator={false}>
+          {models.length === 0 ? (
+            <View style={styles.emptyDiscover}>
+              <Text style={styles.emptyTitle}>{uiCopy.discover.noMoreModels}</Text>
+            </View>
+          ) : (
+            models.map((m) => (
+              <View key={m.id} style={styles.packageGridCard}>
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={() => onOpenDetails(m.id)}
+                >
+                  <View style={styles.packageGridImageContainer}>
+                    <Image
+                      source={{ uri: m.coverUrl }}
+                      style={styles.packageGridImage}
+                      resizeMode="cover"
+                    />
+                    <GuestWatermark />
+                    <View style={styles.coverGradientOverlay} />
+                    <View style={styles.coverMeasurementsOverlay}>
+                      <Text style={styles.coverNameOnImage}>{m.name}</Text>
+                      <Text style={styles.coverMeasurementsLabel}>
+                        Height {m.height} · Bust {m.bust} · Waist {m.waist} · Hips {m.hips}
+                        {m.legsInseam ? ` · Inseam ${m.legsInseam}` : ''}
+                      </Text>
+                      <Text style={styles.coverLocationLabel}>{m.city || '—'}</Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+                <View style={styles.cardButtonRow}>
+                  <TouchableOpacity
+                    style={styles.optionButtonOutline}
+                    onPress={() => onOpenOptionDatePicker(m)}
+                  >
+                    <Text style={styles.optionButtonOutlineLabel}>Option</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.addToSelectionButton}
+                    onPress={() => onAddToProject(m)}
+                  >
+                    <Text style={styles.addToSelectionLabel}>Add to selection</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))
+          )}
+        </ScrollView>
+      </View>
+    );
+  }
+
+  // Normal discover mode: single-card swipe
   return (
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
@@ -2380,27 +2469,16 @@ const DiscoverView: React.FC<DiscoverProps> = ({
         </View>
       </View>
 
-      {isPackageMode && packageName ? (
-        <View style={styles.packageBanner}>
-          <Text style={styles.packageBannerText}>
-            {uiCopy.discover.viewingPackage}: {packageName}
-          </Text>
-          <TouchableOpacity onPress={onExitPackage} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Text style={styles.packageBannerExit}>{uiCopy.discover.exitPackage}</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <>
-          <ModelFiltersPanel
-            filters={filters}
-            onChangeFilters={onChangeFilters}
-            onSaveFilters={onSaveFilters}
-            filterSaveStatus={filterSaveStatus === 'idle' ? null : filterSaveStatus}
-            userCity={userCity}
-          />
-          <FilterExplanationBanner filters={filters} />
-        </>
-      )}
+      <>
+        <ModelFiltersPanel
+          filters={filters}
+          onChangeFilters={onChangeFilters}
+          onSaveFilters={onSaveFilters}
+          filterSaveStatus={filterSaveStatus === 'idle' ? null : filterSaveStatus}
+          userCity={userCity}
+        />
+        <FilterExplanationBanner filters={filters} />
+      </>
 
       <View style={styles.activeProjectRow}>
         <Text style={styles.metaText}>Active project</Text>
@@ -2425,7 +2503,6 @@ const DiscoverView: React.FC<DiscoverProps> = ({
                 />
               </TouchableOpacity>
               <View style={styles.coverGradientOverlay} />
-              {isPackageMode && <GuestWatermark />}
               <View style={styles.coverMeasurementsOverlay}>
                 <Text style={styles.coverNameOnImage}>{current.name}</Text>
                 <Text style={styles.coverMeasurementsLabel}>
@@ -2474,7 +2551,7 @@ const DiscoverView: React.FC<DiscoverProps> = ({
                 <Text style={styles.addToSelectionLabel}>Add to selection</Text>
               </TouchableOpacity>
             </View>
-            {!isPackageMode && current.agencyId && (
+            {current.agencyId && (
               <View style={styles.cardButtonRowSecondary}>
                 <TouchableOpacity
                   style={[styles.chatWithAgencyButton, isChatWithAgencyLoading && { opacity: 0.5 }]}
@@ -4952,6 +5029,28 @@ const styles = StyleSheet.create({
     color: colors.accent,
     fontWeight: '600',
     marginLeft: spacing.md,
+  },
+  packageGrid: {
+    paddingBottom: 120,
+    gap: spacing.md,
+  },
+  packageGridCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.md,
+  },
+  packageGridImageContainer: {
+    width: '100%',
+    height: 320,
+    position: 'relative',
+  },
+  packageGridImage: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#D0CEC7',
   },
   activeProjectRow: {
     flexDirection: 'row',

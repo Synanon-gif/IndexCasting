@@ -4961,7 +4961,10 @@ const GuestLinksTab: React.FC<{
             package_id: sendInAppTarget.id,
             guest_link: buildGuestUrl(sendInAppTarget.id),
             preview_model_ids: sendInAppTarget.model_ids.slice(0, 4),
-            package_label: String(sendInAppTarget.model_ids.length),
+            package_label: sendInAppTarget.label
+              ? `${sendInAppTarget.label} · ${sendInAppTarget.model_ids.length} models`
+              : String(sendInAppTarget.model_ids.length),
+            package_name: sendInAppTarget.label ?? null,
           },
         },
       );

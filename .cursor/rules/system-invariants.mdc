@@ -94,6 +94,18 @@ Prüfpflicht bei jeder neuen Policy:
 
 Lösung: Cross-Table-Checks MÜSSEN via `SECURITY DEFINER` mit `SET row_security TO off` erfolgen.
 
+## PACKAGE/PROJECT MODE ISOLATION (KRITISCH — ClientWebApp.tsx)
+
+- `filteredModels` MUSS `baseModels` zurückgeben wenn `isPackageMode || isSharedMode` — **keine** Discovery-Filter anwenden
+- `nearbyModels` (RPC `get_models_near_location`) darf NIEMALS Package/Shared-Models ersetzen
+- Alle Filter (nearby, city, sex, height etc.) sind in Package/Shared-Mode zu deaktivieren — `baseModels` ist bereits isoliert
+- Package-Models kommen exklusiv aus `packageViewState.models` (RPC `get_guest_link_models`)
+- Shared-Project-Models kommen exklusiv aus `sharedProject.models` (Client-Projekt)
+- Prüfpflicht: Jede Änderung an `filteredModels` oder `baseModels` in `ClientWebApp.tsx` MUSS den Guard `if (isPackageMode || isSharedMode) return baseModels;` als erste Zeile behalten
+- **Detail-Overlay in Package-Mode:** wenn `getModelData` null zurückgibt (Model nicht in Discovery sichtbar), MUSS ein Fallback aus `rawModels` (Package-RPC-Daten) gebaut werden — Detail darf niemals leer bleiben
+- **Interne Package-Ansicht:** `DiscoverView` zeigt im `isPackageMode` ein **Grid aller Models** (ScrollView, wie GuestView) — NICHT Swipe/Single-Card. Filter-Bar ist im Package-Mode ausgeblendet.
+- **Package-Label im Chat:** `metadata.package_label` MUSS den echten Package-Namen (`GuestLink.label`) enthalten, nicht nur die Model-Anzahl. Format: `"Name · N models"` wenn Label vorhanden, sonst `"N"`
+
 ## FRONTEND-GARANTIEN
 
 - Dashboard lädt auch wenn Teildaten fehlen (kein hard crash bei null org/profile)
