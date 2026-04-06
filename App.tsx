@@ -9,6 +9,7 @@ import { AuthScreen } from './src/screens/AuthScreen';
 import { InviteAcceptanceScreen } from './src/screens/InviteAcceptanceScreen';
 import { ModelClaimScreen } from './src/screens/ModelClaimScreen';
 import type { ModelClaimPreview } from './src/screens/ModelClaimScreen';
+import { SetPasswordScreen } from './src/screens/SetPasswordScreen';
 import { LegalAcceptanceScreen } from './src/screens/LegalAcceptanceScreen';
 import { PendingActivationScreen } from './src/screens/PendingActivationScreen';
 import { ClientView } from './src/views/ClientView';
@@ -129,6 +130,12 @@ function clearModelInviteQueryParam() {
   window.history.replaceState({}, '', u.pathname + u.search + u.hash);
 }
 
+/** Returns true when the URL contains ?signup=1 — set by GuestView "Create a free account" button. */
+function getSignupFromUrl(): boolean {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return false;
+  return new URLSearchParams(window.location.search).get('signup') === '1';
+}
+
 /**
  * Full-app-lock for client organizations.
  *
@@ -189,7 +196,7 @@ function AgencyPaywallGuard({ children }: { children: React.ReactNode }) {
 }
 
 function AppContent() {
-  const { session, loading, profile, signOut, refreshProfile, orgDeactivated, clearOrgDeactivated } = useAuth();
+  const { session, loading, profile, signOut, refreshProfile, orgDeactivated, clearOrgDeactivated, isPasswordRecovery } = useAuth();
   const [sharedParams] = useState<{ name: string; ids: string[] } | null>(getSharedParams);
   const [bookingThreadId, setBookingThreadId] = useState<string | null>(getBookingThreadId);
   const [guestLinkId] = useState<string | null>(getGuestLinkId);
@@ -606,10 +613,13 @@ function AppContent() {
     // When in model claim auth phase, force 'model' role for signup
     const isModelClaimAuth = modelInviteTokenState && modelClaimAuthPhase === 'auth';
 
+    // ?signup=1 is set by GuestView "Create a free account" button — open AuthScreen in signup mode.
+    const guestSignupMode = !inviteTokenState && !modelInviteTokenState && getSignupFromUrl();
+
     return (
       <>
         <AuthScreen
-          initialMode={isModelClaimAuth ? modelClaimAuthMode : inviteAuthMode}
+          initialMode={isModelClaimAuth ? modelClaimAuthMode : (guestSignupMode ? 'signup' : inviteAuthMode)}
           clearStaleInviteOnSignIn={!inviteTokenState && !modelInviteTokenState}
           inviteAuth={
             inviteTokenState && invitePreview && inviteLockedRole
@@ -628,6 +638,20 @@ function AppContent() {
               : undefined
           }
         />
+        <StatusBar style="dark" />
+      </>
+    );
+  }
+
+  // PASSWORD_RECOVERY gate — highest priority after session exists.
+  // When isPasswordRecovery is true the user arrived via a Supabase reset link.
+  // We gate to SetPasswordScreen BEFORE any other routing (Admin, role, paywall, etc.)
+  // so the user is forced to set a new password before accessing the app.
+  // Security: supabase.auth.updateUser({ password }) only updates the caller's own password.
+  if (isPasswordRecovery && session) {
+    return (
+      <>
+        <SetPasswordScreen />
         <StatusBar style="dark" />
       </>
     );

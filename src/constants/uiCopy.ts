@@ -230,6 +230,36 @@ export const uiCopy = {
       'The first signup as Client or Agency (without an invitation link) creates your organization and assigns you as the Organization Owner. People who register using an invite link you send become employees or bookers — they are not owners.',
     companyNameRequired: 'Please enter your agency or company name.',
     loginFailed: 'Login failed. Please check your connection and try again.',
+    /** Forgot-password link shown below the Login submit button. */
+    forgotPasswordLink: 'Forgot password?',
+    /** Title of the forgot-password form (replaces Login/Signup tabs). */
+    forgotPasswordTitle: 'Reset your password',
+    /** Instruction text below the title in forgot-password mode. */
+    forgotPasswordHint: 'Enter your account email and we will send you a reset link.',
+    /** Submit button in forgot-password mode. */
+    forgotPasswordSend: 'Send Reset Link',
+    /** Success text shown after reset email is sent. */
+    forgotPasswordSent: 'Reset link sent — check your inbox.',
+    /** Link to go back from forgot-password mode to login. */
+    forgotPasswordBack: 'Back to login',
+    /** Title of the set-new-password screen (shown after clicking reset link). */
+    setPasswordTitle: 'Set new password',
+    /** Instruction text on set-new-password screen. */
+    setPasswordHint: 'Choose a new secure password for your account.',
+    /** Placeholder for the new-password field. */
+    setPasswordNew: 'New password',
+    /** Placeholder for the confirm-password field. */
+    setPasswordConfirm: 'Confirm new password',
+    /** Submit button on set-new-password screen. */
+    setPasswordSave: 'Save new password',
+    /** Success message after password is updated (shown before redirect to login). */
+    setPasswordSuccess: 'Password updated successfully. Please log in with your new password.',
+    /** Error when both password fields do not match. */
+    setPasswordMismatch: 'Passwords do not match.',
+    /** Error when reset email could not be sent. */
+    resetEmailFailed: 'Could not send the reset email. Please try again.',
+    /** Error when updateUser password call fails. */
+    updatePasswordFailed: 'Could not update your password. Please try again.',
   },
   /** Soft delete: profile stays 30 days, then purge via admin/cron; email reusable after auth user removed. */
   accountDeletion: {
@@ -794,6 +824,8 @@ export const uiCopy = {
     legalContinue: 'View Models',
     browseTitle: 'Model Package',
     browseSendRequest: 'Send a Request to',
+    /** Second action in the Browse-phase contact bar — navigates to full account signup. */
+    browseCreateAccount: 'Create a free account',
     requestTitle: 'Send a Request',
     banner: 'You are using limited access. Create an account to unlock full features.',
     upgradeButton: 'Get full access',

@@ -29,8 +29,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   inviteAuth,
   modelClaimAuth,
 }) => {
-  const { signIn, signUp } = useAuth();
-  const [mode, setMode] = useState<'login' | 'signup'>(initialMode);
+  const { signIn, signUp, requestPasswordReset } = useAuth();
+  const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -40,6 +40,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [forgotSent, setForgotSent] = useState(false);
   const [termsVisible, setTermsVisible] = useState(false);
   const [privacyVisible, setPrivacyVisible] = useState(false);
 
@@ -49,6 +50,24 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
   const handleSubmit = async () => {
     setError(null);
+
+    // Forgot-password mode: only email required
+    if (mode === 'forgot') {
+      if (!email.trim()) {
+        setError(uiCopy.auth.emailPasswordRequired);
+        return;
+      }
+      setBusy(true);
+      const { error: e } = await requestPasswordReset(email.trim());
+      setBusy(false);
+      if (e) {
+        setError(e);
+      } else {
+        setForgotSent(true);
+      }
+      return;
+    }
+
     if (!email.trim() || !password.trim()) {
       setError(uiCopy.auth.emailPasswordRequired);
       return;
@@ -110,24 +129,31 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           </Text>
         )}
 
-        <View style={styles.modeRow}>
-          <TouchableOpacity
-            style={[styles.modeBtn, mode === 'login' && styles.modeBtnActive]}
-            onPress={() => setMode('login')}
-          >
-            <Text style={[styles.modeBtnLabel, mode === 'login' && styles.modeBtnLabelActive]}>
-              {uiCopy.auth.loginTab}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.modeBtn, mode === 'signup' && styles.modeBtnActive]}
-            onPress={() => setMode('signup')}
-          >
-            <Text style={[styles.modeBtnLabel, mode === 'signup' && styles.modeBtnLabelActive]}>
-              {uiCopy.auth.signUpTab}
-            </Text>
-          </TouchableOpacity>
-        </View>
+        {mode === 'forgot' ? (
+          <View style={styles.forgotHeader}>
+            <Text style={styles.forgotTitle}>{uiCopy.auth.forgotPasswordTitle}</Text>
+            <Text style={styles.forgotHint}>{uiCopy.auth.forgotPasswordHint}</Text>
+          </View>
+        ) : (
+          <View style={styles.modeRow}>
+            <TouchableOpacity
+              style={[styles.modeBtn, mode === 'login' && styles.modeBtnActive]}
+              onPress={() => { setMode('login'); setError(null); }}
+            >
+              <Text style={[styles.modeBtnLabel, mode === 'login' && styles.modeBtnLabelActive]}>
+                {uiCopy.auth.loginTab}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modeBtn, mode === 'signup' && styles.modeBtnActive]}
+              onPress={() => { setMode('signup'); setError(null); }}
+            >
+              <Text style={[styles.modeBtnLabel, mode === 'signup' && styles.modeBtnLabelActive]}>
+                {uiCopy.auth.signUpTab}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         <TextInput
           style={styles.input}
@@ -138,14 +164,16 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           autoCapitalize="none"
           keyboardType="email-address"
         />
-        <TextInput
-          style={styles.input}
-          placeholder="Password"
-          placeholderTextColor={colors.textSecondary}
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-        />
+        {mode !== 'forgot' && (
+          <TextInput
+            style={styles.input}
+            placeholder="Password"
+            placeholderTextColor={colors.textSecondary}
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+          />
+        )}
         {mode === 'signup' && (
           <Text style={styles.passwordHint}>{uiCopy.auth.passwordHintSignup}</Text>
         )}
@@ -212,15 +240,41 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
         {error && <Text style={styles.error}>{error}</Text>}
 
-        <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit} disabled={busy}>
-          {busy ? (
-            <ActivityIndicator color={colors.surface} />
-          ) : (
-            <Text style={styles.submitLabel}>
-              {mode === 'login' ? uiCopy.auth.loginTab : uiCopy.auth.createAccount}
-            </Text>
-          )}
-        </TouchableOpacity>
+        {mode === 'forgot' && forgotSent ? (
+          <Text style={styles.forgotSentMsg}>{uiCopy.auth.forgotPasswordSent}</Text>
+        ) : (
+          <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit} disabled={busy}>
+            {busy ? (
+              <ActivityIndicator color={colors.surface} />
+            ) : (
+              <Text style={styles.submitLabel}>
+                {mode === 'login'
+                  ? uiCopy.auth.loginTab
+                  : mode === 'forgot'
+                    ? uiCopy.auth.forgotPasswordSend
+                    : uiCopy.auth.createAccount}
+              </Text>
+            )}
+          </TouchableOpacity>
+        )}
+
+        {mode === 'login' && !inviteAuth && !modelClaimAuth && (
+          <TouchableOpacity
+            style={styles.forgotLink}
+            onPress={() => { setMode('forgot'); setError(null); setForgotSent(false); }}
+          >
+            <Text style={styles.forgotLinkLabel}>{uiCopy.auth.forgotPasswordLink}</Text>
+          </TouchableOpacity>
+        )}
+
+        {mode === 'forgot' && (
+          <TouchableOpacity
+            style={styles.forgotLink}
+            onPress={() => { setMode('login'); setError(null); setForgotSent(false); }}
+          >
+            <Text style={styles.forgotLinkLabel}>{uiCopy.auth.forgotPasswordBack}</Text>
+          </TouchableOpacity>
+        )}
 
         <View style={styles.legalFooter}>
           <TouchableOpacity
@@ -351,5 +405,40 @@ const styles = StyleSheet.create({
     ...typography.body,
     fontSize: 11,
     color: colors.textSecondary,
+  },
+  forgotHeader: {
+    width: '100%',
+    alignItems: 'flex-start',
+    marginBottom: spacing.lg,
+  },
+  forgotTitle: {
+    ...typography.heading,
+    fontSize: 18,
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
+  },
+  forgotHint: {
+    ...typography.body,
+    fontSize: 13,
+    color: colors.textSecondary,
+    lineHeight: 18,
+  },
+  forgotLink: {
+    marginTop: spacing.sm,
+    alignSelf: 'center',
+  },
+  forgotLinkLabel: {
+    ...typography.body,
+    fontSize: 12,
+    color: colors.textSecondary,
+    textDecorationLine: 'underline',
+  },
+  forgotSentMsg: {
+    ...typography.body,
+    fontSize: 13,
+    color: colors.textPrimary,
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+    lineHeight: 18,
   },
 });

@@ -636,6 +636,20 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
             {copy.browseSendRequest} {link?.agency_name || 'Agency'}
           </Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.createAccountBtn}
+          onPress={() => {
+            if (Platform.OS === 'web' && typeof window !== 'undefined') {
+              // Strip ?guest= and add ?signup=1 so App.tsx opens AuthScreen in signup mode.
+              const u = new URL(window.location.href);
+              u.searchParams.delete('guest');
+              u.searchParams.set('signup', '1');
+              window.location.href = u.toString();
+            }
+          }}
+        >
+          <Text style={styles.createAccountBtnLabel}>{copy.browseCreateAccount}</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -774,7 +788,7 @@ const styles = StyleSheet.create({
   headerSub: { ...typography.body, color: colors.textSecondary, fontSize: 12 },
   backLink: { ...typography.body, color: colors.textSecondary, fontSize: 13, marginTop: 4 },
   scrollArea: { flex: 1 },
-  grid: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: 100 },
+  grid: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: 140 },
   formContent: {
     paddingHorizontal: spacing.lg,
     paddingBottom: 80,
@@ -876,9 +890,11 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     padding: spacing.md,
+    paddingBottom: spacing.lg,
     backgroundColor: colors.background,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+    gap: spacing.xs,
   },
   contactBtn: {
     backgroundColor: colors.textPrimary,
@@ -887,6 +903,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   contactBtnLabel: { ...typography.label, color: colors.surface },
+  createAccountBtn: {
+    paddingVertical: spacing.sm,
+    borderRadius: 8,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  createAccountBtnLabel: {
+    ...typography.label,
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
   // Image count badge on model card
   imageCountBadge: {
     position: 'absolute',

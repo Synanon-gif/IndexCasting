@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { Platform } from 'react-native';
 import { uiCopy } from '../constants/uiCopy';
 import { supabase } from '../../lib/supabase';
 import type { Session, User } from '@supabase/supabase-js';
@@ -65,6 +66,16 @@ type AuthState = {
    */
   orgBootstrapFailed: boolean;
   retryOrgBootstrap: () => Promise<void>;
+  /**
+   * true when the current session was created via a PASSWORD_RECOVERY link.
+   * App.tsx gates to SetPasswordScreen when this is true.
+   * Cleared automatically after updatePassword() succeeds (which also signs the user out).
+   */
+  isPasswordRecovery: boolean;
+  /** Sends a Supabase password-reset email to the given address. Own account only — Supabase binds the token to the user-ID. */
+  requestPasswordReset: (email: string) => Promise<{ error: string | null }>;
+  /** Updates the authenticated user's own password. Clears isPasswordRecovery and signs out on success. */
+  updatePassword: (newPassword: string) => Promise<{ error: string | null }>;
 };
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -79,6 +90,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [orgDeactivated, setOrgDeactivated] = useState(false);
   const [orgBootstrapFailed, setOrgBootstrapFailed] = useState(false);
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
 
   const profileLoadInFlightRef = useRef(false);
   const profileRef = useRef<Profile | null>(null);
@@ -103,6 +115,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
       console.log('[Auth] onAuthStateChange:', event, s?.user?.id ?? 'no-user');
+      // PASSWORD_RECOVERY fires when the user clicks a reset link from Supabase.
+      // Set the gate BEFORE setSession so App.tsx renders SetPasswordScreen immediately.
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsPasswordRecovery(true);
+      }
       setSession(s);
       if (s?.user) {
         if (profileRef.current) {
@@ -780,6 +797,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const requestPasswordReset = async (email: string): Promise<{ error: string | null }> => {
+    const trimmedEmail = email.trim().toLowerCase();
+    // redirectTo: on web the current origin handles ?type=recovery in the URL fragment;
+    // on native we use the deep-link base URL so the app can intercept the recovery session.
+    const redirectTo =
+      Platform.OS === 'web' && typeof window !== 'undefined'
+        ? window.location.origin
+        : 'https://index-casting.com';
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, { redirectTo });
+      if (error) {
+        console.error('[Auth] requestPasswordReset error:', error.message);
+        return { error: uiCopy.auth.resetEmailFailed };
+      }
+      return { error: null };
+    } catch (e) {
+      console.error('[Auth] requestPasswordReset exception:', e);
+      return { error: uiCopy.auth.resetEmailFailed };
+    }
+  };
+
+  const updatePassword = async (newPassword: string): Promise<{ error: string | null }> => {
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) {
+        console.error('[Auth] updatePassword error:', error.message);
+        return { error: uiCopy.auth.updatePasswordFailed };
+      }
+      // Clear the recovery gate, then sign out so the user logs in cleanly with the new password.
+      setIsPasswordRecovery(false);
+      await signOut();
+      return { error: null };
+    } catch (e) {
+      console.error('[Auth] updatePassword exception:', e);
+      return { error: uiCopy.auth.updatePasswordFailed };
+    }
+  };
+
   const clearOrgDeactivated = useCallback(() => setOrgDeactivated(false), []);
 
   const retryOrgBootstrap = useCallback(async () => {
@@ -809,11 +864,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     clearOrgDeactivated,
     orgBootstrapFailed,
     retryOrgBootstrap,
+    isPasswordRecovery,
+    requestPasswordReset,
+    updatePassword,
   // Functions defined inline (signUp, signIn, signOut, acceptTerms, markDocumentsSent,
-  // updateDisplayName) are recreated only when their closure deps change.
-  // session, loading, profile, orgDeactivated, orgBootstrapFailed are the real state drivers.
+  // updateDisplayName, requestPasswordReset, updatePassword) are recreated only when their
+  // closure deps change. session, loading, profile, orgDeactivated, orgBootstrapFailed,
+  // isPasswordRecovery are the real state drivers.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [session, loading, profile, orgDeactivated, orgBootstrapFailed]);
+  }), [session, loading, profile, orgDeactivated, orgBootstrapFailed, isPasswordRecovery]);
 
   return (
     <AuthContext.Provider value={contextValue}>
