@@ -35,6 +35,7 @@ vollständig durchlaufen werden, **bevor** Code committed oder weitergeschrieben
 - **Territory Constraint:** `ON CONFLICT (model_id, agency_id, country_code)` in neuen RPCs? → Blocker — muss `(model_id, country_code)` sein (Fix A)
 - **Model in organization_members:** Models via INSERT in `organization_members` hinzufügen? → Blocker — Models nutzen ausschließlich `model_agency_territories`
 - **JSON.stringify für JSONB:** `JSON.stringify(array)` vor Supabase-Insert in JSONB-Spalte? → Blocker — natives JS-Array übergeben
+- **Self-Referencing RLS Policy:** Policy referenziert die eigene Tabelle per FROM/JOIN? → Blocker (Risiko 11) — sofortige 42P17 Rekursion
 
 ---
 
@@ -66,6 +67,7 @@ Q7: Verwendet diese Änderung LIMIT 1 in einer Org-Kontext-Funktion?
 - Neuer Code ruft `link_model_by_email()` für einen neuen Flow auf (Risiko 9 — deprecated)
 - Org-Kontext-RPC oder Frontend-Query verwendet `LIMIT 1` ohne expliziten Kommentar (Risiko 10)
 - `model_agency_territories` ON CONFLICT referenziert `agency_id` als Teil des Conflict-Targets
+- RLS-Policy referenziert die eigene Tabelle per FROM/JOIN (Risiko 11 — Self-Referenz → sofortige 42P17)
 
 ---
 

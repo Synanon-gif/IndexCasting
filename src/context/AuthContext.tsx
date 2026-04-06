@@ -294,9 +294,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (orgCtxErr) {
           console.error('[AuthContext] loadProfile get_my_org_context error:', orgCtxErr);
         } else if (orgCtx) {
-          // Fix B: get_my_org_context() now returns ALL memberships (no LIMIT 1).
-          // We always use orgCtx[0] (oldest membership) and log a warning when the
-          // user belongs to multiple orgs — making the implicit choice explicit.
           const allRows = Array.isArray(orgCtx) ? orgCtx : [orgCtx];
           if (allRows.length > 1) {
             console.warn(

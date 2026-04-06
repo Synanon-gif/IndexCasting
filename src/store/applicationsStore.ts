@@ -201,7 +201,9 @@ export async function acceptApplication(
   const ok = await updateApplicationStatus(applicationId, 'pending_model_confirmation', {
     recruiting_thread_id: threadId,
     accepted_by_agency_id: agencyId,
-    // Fix G: pass the native JS array — Supabase serialises it to JSONB.
+    // Persist territory codes so they survive until the model confirms.
+    // The DB trigger tr_transfer_pending_territories applies them on status → 'accepted'.
+    // Pass the native JS array — Supabase serialises it to JSONB automatically.
     // Do NOT wrap with JSON.stringify(); the DB column has a CHECK constraint
     // enforcing jsonb_typeof = 'array'. A double-encoded string would fail the check.
     ...(territoryCodes && territoryCodes.length > 0

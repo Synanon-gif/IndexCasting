@@ -240,6 +240,9 @@ if (!currentAgencyId) {
 
 5. Ist die Funktion SECURITY DEFINER und liest sie RLS-geschützte Tabellen?
    → Ja → PFLICHT: SET row_security TO off hinzufügen
+
+6. Referenziert die Policy die eigene Tabelle per FROM/JOIN (Self-Referenz)?
+   → Ja → STOP: sofortige 42P17 Rekursion — umbauen auf direkte Column-Ref oder SECURITY DEFINER
 ```
 
 ## Pflicht-Prüfung bei JEDEM neuen Frontend-Feature mit Org-Kontext
@@ -496,6 +499,63 @@ const row = allRows[0];
 ```
 
 **Gefixt (2026-04-13):** `20260413_fix_b_get_my_org_context_multi_org.sql`
+
+---
+
+## ❌ RISIKO 11 — Self-Referencing RLS Policy (Sofortige 42P17)
+
+**Problem:** Eine RLS-Policy darf NIEMALS die eigene Tabelle per SELECT referenzieren
+(z. B. `FROM model_agency_territories self_mat` innerhalb einer Policy auf `model_agency_territories`).
+PostgreSQL muss dafür die SELECT-Policies der referenzierten Tabelle erneut auswerten — bei
+derselben Tabelle entsteht sofort eine Endlosschleife (42P17), selbst wenn eine andere
+SELECT-Policy mit `USING(true)` existiert (PostgreSQL baut alle Policies in einen OR-Ausdruck
+und expandiert alle Subqueries).
+
+**Verboten:**
+```sql
+-- NIEMALS: Policy die ihre eigene Tabelle per FROM/JOIN referenziert
+CREATE POLICY "my_policy"
+  ON public.model_agency_territories
+  FOR SELECT TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM public.model_agency_territories self_mat  -- ← SELF-REFERENZ = sofortige 42P17
+      JOIN public.organizations o ON o.agency_id = self_mat.agency_id
+      WHERE self_mat.id = model_agency_territories.id
+    )
+  );
+```
+
+**Richtig:**
+```sql
+-- IMMER: Entweder direkte Column-Referenz ohne FROM auf die eigene Tabelle,
+-- oder eine SECURITY DEFINER Funktion mit SET row_security TO off:
+CREATE POLICY "my_policy"
+  ON public.model_agency_territories
+  FOR SELECT TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM public.organizations o
+      JOIN public.organization_members om ON om.organization_id = o.id
+      WHERE o.agency_id = model_agency_territories.agency_id  -- ← direkte Column-Ref, kein self-join
+        AND om.user_id = auth.uid()
+    )
+  );
+```
+
+**Gefixt (2026-04-06):** `20260406_fix_mat_self_ref_recursion.sql` —
+`clients_view_model_territories` (self-referencing) gedroppt; `Authenticated can read territories`
+(USING true) deckt bereits alle authenticated Users ab.
+
+**Rekursionskette die zum Ausfall führte:**
+```
+profiles SELECT → profiles_org_scoped_read → models SELECT
+  → clients_read_visible_models → model_agency_territories SELECT
+    → clients_view_model_territories → FROM model_agency_territories self_mat
+      → model_agency_territories SELECT → clients_view_model_territories → ENDLOSSCHLEIFE (42P17)
+```
 
 ---
 
