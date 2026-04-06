@@ -349,6 +349,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   const [projectOverviewId, setProjectOverviewId] = useState<string | null>(null);
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const [pendingModel, setPendingModel] = useState<ModelSummary | null>(null);
+  const [addingModelIds, setAddingModelIds] = useState<Set<string>>(new Set());
   const [optionDatePickerOpen, setOptionDatePickerOpen] = useState(false);
   const [optionDateModel, setOptionDateModel] = useState<ModelSummary | null>(null);
   const [openThreadIdOnMessages, setOpenThreadIdOnMessages] = useState<string | null>(null);
@@ -1123,17 +1124,42 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       ? window.confirm(uiCopy.projects.deleteConfirm)
       : true;
     if (!confirmed) return;
+    // Snapshot BEFORE optimistic update — deleteProject returns false, never throws.
+    // .catch() would be dead code; MUST use .then(ok) for rollback.
+    const snapshot = projects;
+    const prevActiveId = activeProjectId;
     setProjects((prev) => prev.filter((p) => p.id !== projectId));
     if (activeProjectId === projectId) setActiveProjectId(null);
-    setFeedback(`Deleted project "${project.name}".`);
-    clearFeedbackLater();
-    // Persist deletion to Supabase (no-op if projectId is a legacy timestamp ID).
-    void deleteProjectOnSupabase(projectId).catch((e) =>
-      console.error('handleDeleteProject: Supabase delete failed', e),
-    );
+    void deleteProjectOnSupabase(projectId)
+      .then((ok) => {
+        if (ok) {
+          setFeedback(`Deleted project "${project.name}".`);
+          clearFeedbackLater();
+        } else {
+          setProjects(snapshot);
+          setActiveProjectId(prevActiveId);
+          setFeedback('Could not delete project. Please try again.');
+          clearFeedbackLater();
+        }
+      })
+      .catch((e) => {
+        console.error('handleDeleteProject: unexpected rejection', e);
+        setProjects(snapshot);
+        setActiveProjectId(prevActiveId);
+        setFeedback('Could not delete project.');
+        clearFeedbackLater();
+      });
   };
 
   const addModelToProject = (projectId: string, model: ModelSummary) => {
+    // Inflight-lock per model.id — prevents race condition where a fast double-click
+    // on two different models could corrupt each other's snapshot:
+    // Click M1 → snapshot1=[A,B] → optimistic [A,B,M1]
+    // Click M2 before RPC1 → snapshot2=[A,B,M1] → optimistic [A,B,M1,M2]
+    // RPC1 fails → rollback to snapshot1=[A,B] — M2 lost even though RPC2 may succeed.
+    if (addingModelIds.has(model.id)) return;
+    setAddingModelIds((prev) => new Set(prev).add(model.id));
+
     // Snapshot BEFORE optimistic update — used for full rollback if RPC fails.
     // Using snapshot (not filter) prevents edge-case: if model was already in project
     // a filter-based rollback would incorrectly remove it.
@@ -1156,6 +1182,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     // MUST use .then(ok) to detect failure and trigger rollback.
     void addModelToProjectOnSupabase(projectId, model.id)
       .then((ok) => {
+        setAddingModelIds((prev) => { const s = new Set(prev); s.delete(model.id); return s; });
         if (ok) {
           const projectName = snapshot.find((p) => p.id === projectId)?.name;
           if (projectName) {
@@ -1173,6 +1200,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       .catch((e) => {
         // Network-level rejection (extremely rare with Supabase JS client).
         console.error('addModelToProject: unexpected rejection', e);
+        setAddingModelIds((prev) => { const s = new Set(prev); s.delete(model.id); return s; });
         setProjects(snapshot);
         setFeedback('Could not save model to project.');
         clearFeedbackLater();
@@ -1214,6 +1242,9 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         : true;
     if (!confirmed) return;
 
+    // Snapshot BEFORE optimistic update — removeModelFromProject returns false, never throws.
+    // try/catch on a non-throwing service is dead code; check return value instead.
+    const snapshot = projects;
     setProjects((prev) =>
       prev.map((p) =>
         p.id === projectId
@@ -1221,10 +1252,11 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
           : p,
       ),
     );
-    try {
-      await removeModelFromProject(projectId, modelId);
-    } catch (e) {
-      console.error('handleRemoveModelFromProject error:', e);
+    const ok = await removeModelFromProject(projectId, modelId);
+    if (!ok) {
+      setProjects(snapshot);
+      setFeedback('Could not remove model from project. Please try again.');
+      clearFeedbackLater();
     }
   };
 
@@ -1249,8 +1281,13 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     setPendingModel(null);
   };
 
+  // Single-timer ref: cancels any previous clearFeedbackLater timer before starting a new one.
+  // Without this, concurrent actions (each starting their own setTimeout) race and can clear
+  // a newer feedback message early, or leave a stale message visible too long.
+  const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clearFeedbackLater = () => {
-    setTimeout(() => setFeedback(null), 2400);
+    if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
+    feedbackTimerRef.current = setTimeout(() => setFeedback(null), 2400);
   };
 
   const isNavigatingRef = useRef(false);
@@ -1663,6 +1700,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             isPackageMode={isPackageMode}
             packageName={packageViewState?.name ?? null}
             packageType={packageViewState?.packageType ?? undefined}
+            addingModelIds={addingModelIds}
             onExitPackage={exitPackageMode}
             userCity={userCity}
             onShowActiveOptions={() => setShowActiveOptions(true)}
@@ -2041,6 +2079,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         open={projectPickerOpen}
         projects={projects}
         pendingModel={pendingModel}
+        addingModelIds={addingModelIds}
         onClose={() => {
           setProjectPickerOpen(false);
           setPendingModel(null);
@@ -2344,6 +2383,7 @@ type DiscoverProps = {
   isPackageMode: boolean;
   packageName: string | null;
   packageType?: PackageType;
+  addingModelIds?: Set<string>;
   onExitPackage?: () => void;
   userCity: string | null;
   onShowActiveOptions?: () => void;
@@ -2424,6 +2464,7 @@ const DiscoverView: React.FC<DiscoverProps> = ({
   isPackageMode,
   packageName,
   packageType,
+  addingModelIds,
   onExitPackage,
   onShowActiveOptions,
 }) => {
@@ -2482,10 +2523,13 @@ const DiscoverView: React.FC<DiscoverProps> = ({
                     <Text style={styles.optionButtonOutlineLabel}>Option</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={styles.addToSelectionButton}
+                    style={[styles.addToSelectionButton, addingModelIds?.has(m.id) && { opacity: 0.4 }]}
                     onPress={() => onAddToProject(m)}
+                    disabled={addingModelIds?.has(m.id) ?? false}
                   >
-                    <Text style={styles.addToSelectionLabel}>Add to selection</Text>
+                    <Text style={styles.addToSelectionLabel}>
+                      {addingModelIds?.has(m.id) ? 'Adding…' : 'Add to selection'}
+                    </Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -2600,10 +2644,13 @@ const DiscoverView: React.FC<DiscoverProps> = ({
             </View>
             <View style={styles.cardButtonRowSecondary}>
               <TouchableOpacity
-                style={styles.addToSelectionButton}
+                style={[styles.addToSelectionButton, addingModelIds?.has(current.id) && { opacity: 0.4 }]}
                 onPress={() => onAddToProject(current)}
+                disabled={addingModelIds?.has(current.id) ?? false}
               >
-                <Text style={styles.addToSelectionLabel}>Add to selection</Text>
+                <Text style={styles.addToSelectionLabel}>
+                  {addingModelIds?.has(current.id) ? 'Adding…' : 'Add to selection'}
+                </Text>
               </TouchableOpacity>
             </View>
             {current.agencyId && (
@@ -4421,6 +4468,7 @@ type ProjectPickerProps = {
   open: boolean;
   projects: Project[];
   pendingModel: ModelSummary | null;
+  addingModelIds?: Set<string>;
   onClose: () => void;
   onAddToExisting: (projectId: string) => void;
   onCreateAndAdd: (name: string) => void;
@@ -4430,6 +4478,7 @@ const ProjectPicker: React.FC<ProjectPickerProps> = ({
   open,
   projects,
   pendingModel,
+  addingModelIds,
   onClose,
   onAddToExisting,
   onCreateAndAdd,
@@ -4458,18 +4507,22 @@ const ProjectPicker: React.FC<ProjectPickerProps> = ({
         </Text>
 
         <ScrollView style={styles.pickerList}>
-          {projects.map((p) => (
-            <TouchableOpacity
-              key={p.id}
-              style={styles.pickerRow}
-              onPress={() => onAddToExisting(p.id)}
-            >
-              <Text style={styles.projectName}>{p.name}</Text>
-              <Text style={styles.metaText}>
-                {p.models.length} model{p.models.length === 1 ? '' : 's'}
-              </Text>
-            </TouchableOpacity>
-          ))}
+          {projects.map((p) => {
+            const isAdding = addingModelIds?.has(pendingModel?.id ?? '') ?? false;
+            return (
+              <TouchableOpacity
+                key={p.id}
+                style={[styles.pickerRow, isAdding && { opacity: 0.4 }]}
+                onPress={() => onAddToExisting(p.id)}
+                disabled={isAdding}
+              >
+                <Text style={styles.projectName}>{p.name}</Text>
+                <Text style={styles.metaText}>
+                  {p.models.length} model{p.models.length === 1 ? '' : 's'}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
 
         <View style={styles.newProjectRow}>
@@ -4480,12 +4533,18 @@ const ProjectPicker: React.FC<ProjectPickerProps> = ({
             placeholderTextColor={colors.textSecondary}
             style={styles.input}
           />
-          <TouchableOpacity
-            style={styles.primaryButton}
-            onPress={() => onCreateAndAdd(name)}
-          >
-            <Text style={styles.primaryLabel}>Create & add</Text>
-          </TouchableOpacity>
+          {(() => {
+            const isAdding = addingModelIds?.has(pendingModel?.id ?? '') ?? false;
+            return (
+              <TouchableOpacity
+                style={[styles.primaryButton, isAdding && { opacity: 0.4 }]}
+                onPress={() => onCreateAndAdd(name)}
+                disabled={isAdding}
+              >
+                <Text style={styles.primaryLabel}>{isAdding ? 'Adding…' : 'Create & add'}</Text>
+              </TouchableOpacity>
+            );
+          })()}
         </View>
       </View>
     </View>

@@ -143,6 +143,70 @@ Lösung: Cross-Table-Checks MÜSSEN via `SECURITY DEFINER` mit `SET row_security
   - `agencyId` / `countryCode` in `ModelSummary` können nach localStorage-Reload `undefined` sein — kein Problem da Backend-Calls diese Felder selbst auflösen
   - **VERBOTEN:** Summary-Felder direkt in Backend-Calls weitergeben ohne DB-Re-Fetch
 
+## GLOBALER ASYNC CONTRACT (KRITISCH — für alle src/services/ und Komponenten)
+
+### Option A ist der Standard (src/services/)
+Alle Service-Funktionen in `src/services/` geben `false`/`null`/`[]` bei Fehler zurück und werfen NIE.
+Ausnahmen (explizit throws): `territoriesSupabase.ts`, `supabaseFetchAll.ts`, `assertPlatformAccess` — bleiben wie sie sind.
+
+**NIEMALS mischen:** Eine Funktion gibt entweder immer einen Sentinel-Wert zurück ODER wirft immer.
+
+### Pflicht-Pattern: Optimistisches Update gegen Option-A-Service
+
+```typescript
+// ❌ VERBOTEN: .catch() allein auf einen Option-A-Service — läuft NIEMALS
+void optionAService().catch(handler); // dead code
+
+// ✅ PFLICHT: Snapshot + .then(ok) für Option-A-Services
+const snapshot = someState;
+updateStateOptimistic();
+void optionAService()
+  .then((ok) => {
+    if (ok) { showSuccess(); }
+    else    { setState(snapshot); showError(); } // rollback
+  })
+  .catch((e) => { setState(snapshot); showError(); }); // für Netzwerk-Rejections (selten)
+```
+
+### Snapshot-Pflicht (NIEMALS weglassen)
+- Jedes optimistische UI-Update MUSS **vor** dem Update einen Snapshot des State nehmen
+- Bei `ok === false` oder `.catch()`: **vollständiger Rollback auf Snapshot** (`setState(snapshot)`)
+- **NIEMALS** Filter-basierter Rollback (`state.filter(...)`) — Filter-Rollback entfernt fälschlich Items die schon vor dem Update vorhanden waren
+
+Gilt für: `addModelToProject`, `handleDeleteProject`, `handleRemoveModelFromProject` und jeden neuen optimistischen Update-Handler
+
+### Inflight-Lock-Pflicht (NIEMALS weglassen)
+- Jede Action die Shared State optimistisch mutiert MUSS einen **per-id Lock** haben
+- Ohne Lock: Doppelklick / schnelle Mehrfach-Clicks korrumpieren Snapshots gegenseitig
+- Muster: `const [addingXIds, setAddingXIds] = useState<Set<string>>(new Set())`
+  - Lock setzen: `if (addingXIds.has(id)) return; setAddingXIds(prev => new Set(prev).add(id))`
+  - Lock freigeben: in `.then()` UND `.catch()`: `setAddingXIds(prev => { const s = new Set(prev); s.delete(id); return s; })`
+  - Button disabled: `disabled={addingXIds.has(item.id)}`
+
+Referenz-Implementierungen: `addingModelIds` (addModelToProject), `busyIds` (ProjectOverviewView remove), `isChatWithAgencyLoading` (handleChatWithAgency)
+
+### Feedback-Timer-Pflicht (NIEMALS weglassen)
+- `clearFeedbackLater()` darf IMMER nur **einen** aktiven `setTimeout` haben
+- Muster: `useRef` zum Speichern der Timer-ID + `clearTimeout` vor neuem `setTimeout`
+- Ohne Ref: mehrere parallele Actions starten mehrere Timer; ältere Timer löschen neuere Meldungen zur falschen Zeit
+
+```typescript
+// ✅ PFLICHT
+const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+const clearFeedbackLater = () => {
+  if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
+  feedbackTimerRef.current = setTimeout(() => setFeedback(null), 2400);
+};
+// ❌ VERBOTEN
+const clearFeedbackLater = () => setTimeout(() => setFeedback(null), 2400); // kein cancel
+```
+
+### Stop-Bedingungen für neue optimistische Updates
+1. Ist ein `const snapshot = state` VOR dem `setState(optimistic)` vorhanden? → nein = STOP
+2. Wird `.then(ok)` statt `.catch()` verwendet? → catch = STOP
+3. Gibt es einen per-id Inflight-Lock? → fehlt = STOP
+4. Ist `clearFeedbackLater` mit useRef implementiert? → kein Ref = STOP
+
 ## FRONTEND-GARANTIEN
 
 - Dashboard lädt auch wenn Teildaten fehlen (kein hard crash bei null org/profile)
