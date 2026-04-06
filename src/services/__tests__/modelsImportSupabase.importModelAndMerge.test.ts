@@ -97,9 +97,14 @@ describe('importModelAndMerge', () => {
     const noMatch = makeLookupChain(null);
 
     fromMock
-      .mockReturnValueOnce(noMatch)  // mediaslide_sync_id lookup → null
-      .mockReturnValueOnce(noMatch)  // email lookup → null
-      .mockReturnValueOnce(makeInsertChain({ id: 'model-2' }));
+      .mockReturnValueOnce(noMatch)                        // mediaslide_sync_id lookup → null
+      .mockReturnValueOnce(makeInsertChain({ id: 'model-2' })); // insert → model-2
+
+    // Email lookup now goes through admin_find_model_by_email RPC (not from()).
+    // Must return a chainable object with .maybeSingle() (Gefahr 2 / Risiko D fix).
+    rpcMock.mockReturnValueOnce({
+      maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
+    });
 
     const res = await importModelAndMerge({
       mediaslide_sync_id: 'MS-999',

@@ -112,6 +112,12 @@ export function createRecruitingThread(applicationId: string, modelName: string)
       const t = threadsCache.find((t) => t.id === tempId);
       if (t) t.id = realId;
       notify();
+    } else {
+      // Service returned null (DB error / permissions). Inverse-operation rollback:
+      // remove the optimistically-added temp entry so the UI stays consistent.
+      threadsCache = threadsCache.filter((t) => t.id !== tempId);
+      console.error('createRecruitingThread: createThreadInDb returned null — rolled back temp entry', tempId);
+      notify();
     }
   });
 
@@ -340,6 +346,12 @@ export function addRecruitingMessage(
         };
         notify();
       }
+    } else {
+      // Service returned null (DB error / permissions). Inverse-operation rollback:
+      // remove the optimistically-added temp message so the UI stays consistent.
+      messagesCache = messagesCache.filter((m) => m.id !== tempMsg.id);
+      console.error('addRecruitingMessage: addMessageInDb returned null — rolled back temp message', tempMsg.id);
+      notify();
     }
   });
 }

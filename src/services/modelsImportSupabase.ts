@@ -94,14 +94,14 @@ export async function importModelAndMerge(params: ImportModelPayload): Promise<{
     }
 
     if (!existing && email) {
-      const emailNorm = email.toLowerCase();
+      // Admin-only RPC replaces direct email query (Gefahr 2 / Risiko D compliance:
+      // email-matching forbidden in all frontend code, including admin flows).
+      // admin_find_model_by_email() uses assert_is_admin() + row_security=off.
       const { data, error } = await supabase
-        .from('models')
-        .select('*')
-        .eq('email', emailNorm)
+        .rpc('admin_find_model_by_email', { p_email: email.toLowerCase().trim() })
         .maybeSingle();
       if (error) console.error('importModelAndMerge: email lookup error:', error);
-      else existing = data ?? null;
+      else existing = (data ?? null) as typeof existing;
     }
 
     if (!existing && birthday) {

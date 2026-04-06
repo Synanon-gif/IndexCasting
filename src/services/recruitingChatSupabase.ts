@@ -77,6 +77,9 @@ export async function getThreads(
     console.error('[getThreads] agencyId provided but empty — call aborted');
     return [];
   }
+  if (agencyId === undefined) {
+    console.warn('[getThreads] called without agencyId — relying on RLS only (no defense-in-depth org filter)');
+  }
   try {
     let q = supabase
       .from('recruiting_chat_threads')

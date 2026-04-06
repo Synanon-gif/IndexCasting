@@ -98,6 +98,9 @@ export async function getOptionRequests(
     console.error('[getOptionRequests] orgId provided but empty — call aborted');
     return [];
   }
+  if (orgId === undefined) {
+    console.warn('[getOptionRequests] called without orgId — relying on RLS only (no defense-in-depth org filter)');
+  }
   try {
     let q = supabase
       .from('option_requests')

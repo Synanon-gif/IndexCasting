@@ -255,6 +255,54 @@ Deno.serve(async (req: Request): Promise<Response> => {
     });
   }
 
+  // ── Authorization: Role check (Regel 8/10 — Owner-Exklusivrecht) ───────────
+  // org_invitation: only org Owners may invite new members (agency→booker,
+  //   client→employee). Bookers/Employees must NOT be able to send invites.
+  // model_claim: any agency member (owner or booker) may send model claim
+  //   emails, since model management is a shared agency responsibility.
+  {
+    const { data: orgCtxRaw, error: orgCtxErr } = await supabase.rpc('get_my_org_context');
+    if (orgCtxErr) {
+      console.error('[send-invite] get_my_org_context error:', orgCtxErr);
+      return new Response(JSON.stringify({ error: 'org_context_unavailable' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    const orgCtxRows = Array.isArray(orgCtxRaw) ? orgCtxRaw : (orgCtxRaw ? [orgCtxRaw] : []);
+    // Use oldest-joined org (same deterministic rule as can_access_platform).
+    const orgCtx = orgCtxRows[0] as { org_member_role?: string; org_type?: string } | undefined;
+
+    if (type === 'org_invitation') {
+      // Only owners may invite — Regel 8: "Agency Owner: Als einzige Rolle: Bookers einladen"
+      if (!orgCtx || orgCtx.org_member_role !== 'owner') {
+        console.warn('[send-invite] org_invitation rejected: caller is not owner', {
+          userId: user.id,
+          role: orgCtx?.org_member_role,
+        });
+        return new Response(JSON.stringify({ error: 'owner_only' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
+    if (type === 'model_claim') {
+      // Agency org members (owner or booker) may send model claim emails.
+      // Models and clients must not be able to trigger model claim emails.
+      if (!orgCtx || orgCtx.org_type !== 'agency') {
+        console.warn('[send-invite] model_claim rejected: caller is not in agency org', {
+          userId: user.id,
+          orgType: orgCtx?.org_type,
+        });
+        return new Response(JSON.stringify({ error: 'agency_only' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    }
+  }
+
   // ── Resend API Key ─────────────────────────────────────────────────────────
   const resendKey = Deno.env.get('RESEND_API_KEY');
   if (!resendKey) {

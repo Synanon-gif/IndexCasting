@@ -128,6 +128,11 @@ export async function getApplications(
     console.error('[getApplications] agencyId provided but empty — call aborted');
     return [];
   }
+  if (agencyId === undefined) {
+    // RLS-only path: no explicit org filter. Defense-in-Depth missing.
+    // Callers SHOULD always pass agencyId — see rls-security-patterns.mdc Risiko 6.
+    console.warn('[getApplications] called without agencyId — relying on RLS only (no defense-in-depth org filter)');
+  }
   try {
     let q = supabase
       .from('model_applications')
@@ -172,6 +177,9 @@ export async function getApplicationsByStatus(
   if (agencyId !== undefined && !agencyId) {
     console.error('[getApplicationsByStatus] agencyId provided but empty — call aborted');
     return [];
+  }
+  if (agencyId === undefined) {
+    console.warn('[getApplicationsByStatus] called without agencyId — relying on RLS only (no defense-in-depth org filter)');
   }
   try {
     let q = supabase
