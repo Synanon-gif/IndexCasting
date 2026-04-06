@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { Platform } from 'react-native';
 import { uiCopy } from '../constants/uiCopy';
 import { supabase } from '../../lib/supabase';
+import { appUrl } from '../config/env';
 import type { Session, User } from '@supabase/supabase-js';
 import type { OrganizationType, OrgMemberRole } from '../services/orgRoleTypes';
 import { type AppRole, validateSignupRole, normalizeRole } from '../types/roles';
@@ -799,12 +799,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const requestPasswordReset = async (email: string): Promise<{ error: string | null }> => {
     const trimmedEmail = email.trim().toLowerCase();
-    // redirectTo: on web the current origin handles ?type=recovery in the URL fragment;
-    // on native we use the deep-link base URL so the app can intercept the recovery session.
-    const redirectTo =
-      Platform.OS === 'web' && typeof window !== 'undefined'
-        ? window.location.origin
-        : 'https://index-casting.com';
+    // redirectTo MUST be in Supabase's uri_allow_list (https://index-casting.com/**).
+    // Using window.location.origin would break in dev (http://localhost:8081) and could
+    // fail on Vercel preview URLs. Always use the canonical production URL from appUrl
+    // so the redirect is predictable and pre-registered in Supabase.
+    // Supabase appends the recovery token as a URL hash fragment:
+    //   https://index-casting.com/#access_token=...&type=recovery
+    // detectSessionInUrl: true in lib/supabase.ts picks this up automatically.
+    const redirectTo = `${appUrl}/`;
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, { redirectTo });
       if (error) {

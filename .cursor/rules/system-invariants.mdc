@@ -94,6 +94,114 @@ Prüfpflicht bei jeder neuen Policy:
 
 Lösung: Cross-Table-Checks MÜSSEN via `SECURITY DEFINER` mit `SET row_security TO off` erfolgen.
 
+## STORAGE-POLICIES — SECURITY DEFINER PFLICHT (Fix 20260406)
+
+Storage-Policies auf `storage.objects` dürfen NIEMALS direkt `public.models`, `public.profiles`
+oder andere RLS-geschützte Tabellen per `EXISTS (SELECT ... FROM public.models ...)` jointen.
+
+**Problem:** `WITH CHECK / USING` in Storage-Policies laufen unter dem Caller-Kontext.
+Wenn `models`-RLS eine 42P17 hat, schlägt auch JEDE Storage-Operation fehl — Upload blockiert,
+Download blockiert, Delete blockiert — ohne klare Fehlermeldung.
+
+**VERBOTEN:**
+```sql
+-- NIEMALS direkter JOIN auf public.models in storage.objects Policy:
+CREATE POLICY "documentspictures_insert"
+  ON storage.objects FOR INSERT WITH CHECK (
+    bucket_id = 'documentspictures'
+    AND EXISTS (SELECT 1 FROM public.models m JOIN ... WHERE m.id = ...) -- ← VERBOTEN
+  );
+```
+
+**PFLICHT — SECURITY DEFINER Helper:**
+```sql
+-- IMMER: Helper-Funktion mit SET row_security TO off
+CREATE OR REPLACE FUNCTION public.can_agency_manage_model_photo(model_id_text text)
+RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public SET row_security TO off
+AS $$ ... -- 3-layer guards: auth + membership + resource ownership $$;
+
+-- Policy nutzt nur die Helper-Funktion, kein direkter Tabellen-JOIN:
+CREATE POLICY "documentspictures_insert"
+  ON storage.objects FOR INSERT WITH CHECK (
+    bucket_id = 'documentspictures'
+    AND public.can_agency_manage_model_photo((storage.foldername(name))[2])
+  );
+```
+
+**Implementiert (20260406):** `can_agency_manage_model_photo()` und `can_view_model_photo_storage()`
+als SECURITY DEFINER Helper — alle 4 `documentspictures_*` Policies nutzen diese Helper.
+
+## TERRITORIES — AUTORITATIVE TABELLE (Fix 20260406)
+
+**NIEMALS** `model_assignments.territory` für Territory-Lookups verwenden.
+
+| Falsch | Richtig |
+|--------|---------|
+| `SELECT ma.territory FROM model_assignments ma` | `SELECT mat.country_code FROM model_agency_territories mat` |
+| `model_assignments.territory` | `model_agency_territories.country_code` |
+
+**`get_territories_for_agency_roster` Guard:**
+Muss ALLE drei Zugangsformen prüfen — `organization_members`, `agencies.owner_user_id` UND `bookers`:
+```sql
+-- Legacy Bookers MÜSSEN im Guard der Funktion enthalten sein:
+OR EXISTS (SELECT 1 FROM public.bookers WHERE agency_id = p_agency_id AND user_id = auth.uid())
+```
+
+## GPS-PRESERVATION — AGENCY-WRITES ÜBERSCHREIBEN NIEMALS MODEL-GPS (Fix 20260406)
+
+Wenn eine Agency die Stadt/Country eines Models setzt (`source='agency'`), darf das NIEMALS
+die GPS-Koordinaten des Models überschreiben.
+
+**Invariante für `upsert_model_location` und alle Agency-Writes auf `model_locations`:**
+```sql
+-- ON CONFLICT: source='agency' → GPS-Felder des Models PRESERVIEREN
+lat_approx = CASE
+  WHEN p_source = 'agency' THEN model_locations.lat_approx   -- preserve Model GPS!
+  WHEN p_share_approximate_location THEN ROUND(...)
+  ELSE NULL
+END,
+lng_approx = CASE
+  WHEN p_source = 'agency' THEN model_locations.lng_approx   -- preserve Model GPS!
+  ...
+share_approximate_location = CASE
+  WHEN p_source = 'agency' THEN model_locations.share_approximate_location  -- preserve!
+  ELSE p_share_approximate_location
+END
+```
+
+**Warum:** Models steuern GPS-Sharing selbst. Agency schreibt nur city/country für Display.
+Überschreiben → Model verschwindet aus Near-Me-Suche sofort nach Agency-Profil-Save.
+Implementiert in `upsert_model_location` (SECURITY DEFINER, 20260406).
+
+## CONFIRMATION-FLOWS — IDEMPOTENZ PFLICHT (Fix 20260406)
+
+Jede `confirmX()` Funktion die vor einem Upload aufgerufen wird, MUSS idempotent sein:
+
+```typescript
+// ✅ PFLICHT-Pattern (in gdprComplianceSupabase.ts umgesetzt):
+// 1. Check first (60 min window): hasRecentXConfirmation → return 'reused' wenn gefunden
+// 2. INSERT ohne .select().single() (kein PostgREST RETURNING+RLS Konflikt → keine 409)
+// 3. 23505 (unique constraint) → als idempotenten Erfolg behandeln (not fail)
+// 4. confirmationId = crypto.randomUUID() (client-seitig, unabhängig von DB-Row)
+```
+
+**VERBOTEN:**
+```typescript
+// NIEMALS: .insert().select('id').single() — führt zu 409 wenn RLS SELECT Policy
+// den neu-inserten Row nicht zurückgibt (INSERT erfolgreich, RETURNING geblockt)
+await supabase.from('confirmations').insert({...}).select('id').single();
+```
+
+**VERBOTEN:**
+```typescript
+// NIEMALS: DB-Error direkt als Upload-Block verwenden wenn 23505 möglich:
+if (error) return { ok: false, reason: error.message }; // 23505 = eigentlicher Erfolg!
+```
+
+**Gilt für:** `confirmImageRights`, und alle zukünftigen `confirmX()` Funktionen die
+vor Upload-Aktionen stehen. Konsistent implementiert in `gdprComplianceSupabase.ts` (20260406).
+
 ## PACKAGE/PROJECT MODE ISOLATION (KRITISCH — ClientWebApp.tsx)
 
 - `filteredModels` MUSS `baseModels` zurückgeben wenn `isPackageMode || isSharedMode` — **keine** Discovery-Filter anwenden

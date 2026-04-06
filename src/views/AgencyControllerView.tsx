@@ -2100,7 +2100,7 @@ const MyModelsTab: React.FC<{
           return;
         }
         const rightsOk = await confirmImageRights({ userId: currentUser.id, modelId: createdModelId });
-        if (!rightsOk) {
+        if (!rightsOk.ok) {
           Alert.alert('Image Rights Required', 'Rights confirmation could not be recorded. Please try again.');
           setAddLoading(false);
           return;
@@ -2117,7 +2117,11 @@ const MyModelsTab: React.FC<{
           const uploadedUrls: string[] = [];
           for (const file of filesToUpload) {
             const result = await uploadModelPhoto(createdModelId, file);
-            if (result) uploadedUrls.push(result.url);
+            if (result) {
+              uploadedUrls.push(result.url);
+            } else {
+              Alert.alert('Upload Failed', 'One or more portfolio photos could not be uploaded. Please try again in the model settings.');
+            }
           }
           if (uploadedUrls.length > 0) {
             await upsertPhotosForModel(
@@ -2145,7 +2149,11 @@ const MyModelsTab: React.FC<{
           const uploadedPolaroidUrls: string[] = [];
           for (const file of polaroidFilesToUpload) {
             const result = await uploadModelPhoto(createdModelId, file);
-            if (result) uploadedPolaroidUrls.push(result.url);
+            if (result) {
+              uploadedPolaroidUrls.push(result.url);
+            } else {
+              Alert.alert('Upload Failed', 'One or more polaroid photos could not be uploaded. Please try again in the model settings.');
+            }
           }
           if (uploadedPolaroidUrls.length > 0) {
             await upsertPhotosForModel(

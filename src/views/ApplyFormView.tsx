@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { addApplication } from '../store/applicationsStore';
-import { uploadApplicationImage } from '../services/applicationsSupabase';
+import { uploadApplicationImage, APPLICATION_UPLOAD_SESSION_KEY } from '../services/applicationsSupabase';
 import { convertHeicToJpegIfNeeded } from '../services/imageUtils';
 import { useAuth } from '../context/AuthContext';
 import { splitProfileDisplayName } from '../utils/applicantNameFromProfile';
@@ -197,20 +197,24 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     try {
       const imageUrls: Record<string, string> = {};
       if (hasImages && applicantUserId) {
+        // Pass sessionKey so the service-side guard in uploadApplicationImage
+        // can verify consent via hasRecentImageRightsForSessionKey()
         await confirmImageRights({
-          userId: applicantUserId,
-          modelId: null,
+          userId:     applicantUserId,
+          modelId:    null,
+          sessionKey: APPLICATION_UPLOAD_SESSION_KEY,
         }).catch((e) => console.error('[ApplyFormView] confirmImageRights error:', e));
       }
       for (const slot of (Object.keys(SLOT_LABELS) as ImageSlot[])) {
         const file = fileRefs.current[slot];
         const dataUrl = images[slot];
         if (file) {
-          const url = await uploadApplicationImage(file, slot);
+          // Pass applicantUserId so uploadApplicationImage can verify consent server-side
+          const url = await uploadApplicationImage(file, slot, applicantUserId);
           if (url) imageUrls[slot] = url;
         } else if (dataUrl && dataUrl.startsWith('data:image')) {
           const blob = dataURLtoBlob(dataUrl);
-          const url = await uploadApplicationImage(blob, slot);
+          const url = await uploadApplicationImage(blob, slot, applicantUserId);
           if (url) imageUrls[slot] = url;
         }
       }

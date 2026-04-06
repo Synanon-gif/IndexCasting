@@ -37,12 +37,23 @@ import {
 const from = supabase.from as jest.Mock;
 const rpc  = supabase.rpc  as jest.Mock;
 
-/** Chainable Supabase query mock. Terminal: maybeSingle / single (always async). */
+/**
+ * Chainable Supabase query mock.
+ *
+ * Terminal calls:
+ *   .maybeSingle() / .single() → Promise<result>
+ *   .insert()                  → Promise<result> (direct-await pattern, no .single())
+ *
+ * All other calls (select, eq, gte, limit, …) return the same chain for further chaining.
+ */
 const makeChain = (result: unknown) => {
   const chain: Record<string, jest.Mock> = {};
   ['insert', 'select', 'update', 'upsert', 'eq', 'neq', 'gte', 'lte', 'limit', 'order', 'is', 'maybeSingle', 'single'].forEach((m) => {
     chain[m] = jest.fn(() => {
-      if (m === 'maybeSingle' || m === 'single') return Promise.resolve(result);
+      // Terminal resolution: direct-await insert (no .single()) and explicit terminals
+      if (m === 'maybeSingle' || m === 'single' || m === 'insert') {
+        return Promise.resolve(result);
+      }
       return chain;
     });
   });
@@ -66,10 +77,18 @@ afterEach(() => {
 });
 
 // ─── 1. confirmImageRights ────────────────────────────────────────────────────
+//
+// NOTE (20260406 — idempotency fix):
+// confirmImageRights now performs a 60-min check BEFORE inserting.
+// Mocking pattern: first from() call = check (maybeSingle), second = insert (direct await).
+// Use mockReturnValueOnce to separate the two calls.
 
 describe('confirmImageRights', () => {
-  it('returns ok:true with confirmationId when insert succeeds', async () => {
-    from.mockReturnValue(makeChain({ data: { id: 'conf-123' }, error: null }));
+  it('returns ok:true with a UUID confirmationId when insert succeeds', async () => {
+    // First from() call: 60-min check finds nothing (no recent confirmation)
+    from.mockReturnValueOnce(makeChain({ data: null, error: null }));
+    // Second from() call: insert succeeds (no error)
+    from.mockReturnValueOnce(makeChain({ data: null, error: null }));
 
     const result = await confirmImageRights({
       userId:  'user-1',
@@ -78,26 +97,46 @@ describe('confirmImageRights', () => {
     });
 
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.data.confirmationId).toBe('conf-123');
+    // confirmationId is now a client-generated UUID (no longer from DB row)
+    if (result.ok) expect(typeof result.data.confirmationId).toBe('string');
     expect(from).toHaveBeenCalledWith('image_rights_confirmations');
   });
 
-  it('returns ok:false when DB returns an error', async () => {
-    from.mockReturnValue(makeChain({ data: null, error: { message: 'rls_violation' } }));
+  it('returns reused confirmationId without inserting when recent confirmation exists', async () => {
+    // 60-min check finds a recent confirmation → returns 'reused' immediately, no insert
+    from.mockReturnValueOnce(makeChain({ data: { id: 'conf-existing' }, error: null }));
+
+    const result = await confirmImageRights({ userId: 'user-1', modelId: 'model-1' });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data.confirmationId).toBe('reused');
+    // Only 1 call to from(): the check — no second call for insert
+    expect(from).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns ok:true and treats 23505 unique violation as idempotent success', async () => {
+    // Check: no recent confirmation
+    from.mockReturnValueOnce(makeChain({ data: null, error: null }));
+    // Insert: unique constraint violation (race condition)
+    from.mockReturnValueOnce(makeChain({ data: null, error: { message: 'duplicate key', code: '23505' } }));
+
+    const result = await confirmImageRights({ userId: 'user-1', modelId: 'model-1' });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data.confirmationId).toBe('reused');
+  });
+
+  it('returns ok:false when DB returns a non-duplicate error', async () => {
+    // Check: no recent confirmation
+    from.mockReturnValueOnce(makeChain({ data: null, error: null }));
+    // Insert: generic error (not 23505)
+    from.mockReturnValueOnce(makeChain({ data: null, error: { message: 'rls_violation', code: 'P0001' } }));
 
     const result = await confirmImageRights({ userId: 'user-1', modelId: 'model-1' });
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toBe('rls_violation');
     expect(errSpy).toHaveBeenCalled();
-  });
-
-  it('returns ok:false when insert returns no id (data is null)', async () => {
-    from.mockReturnValue(makeChain({ data: null, error: null }));
-
-    const result = await confirmImageRights({ userId: 'user-1', modelId: 'model-1' });
-
-    expect(result.ok).toBe(false);
   });
 
   it('returns ok:false on exception (fail-closed)', async () => {
@@ -110,15 +149,17 @@ describe('confirmImageRights', () => {
     expect(errSpy).toHaveBeenCalled();
   });
 
-  it('stores null model_id when modelId is null (non-model-scoped upload)', async () => {
-    from.mockReturnValue(makeChain({ data: { id: 'conf-456' }, error: null }));
-    const chain = makeChain({ data: { id: 'conf-456' }, error: null });
-    from.mockReturnValue(chain);
+  it('stores null model_id and session_key when modelId is null (non-model-scoped upload)', async () => {
+    // First call: check hasRecentImageRightsForSessionKey (no recent)
+    from.mockReturnValueOnce(makeChain({ data: null, error: null }));
+    // Second call: insert — use a tracked chain to verify payload
+    const insertChain = makeChain({ data: null, error: null });
+    from.mockReturnValueOnce(insertChain);
 
     const result = await confirmImageRights({ userId: 'u1', modelId: null, sessionKey: 'recruiting-chat:t1' });
 
     expect(result.ok).toBe(true);
-    expect(chain.insert).toHaveBeenCalledWith(
+    expect(insertChain.insert).toHaveBeenCalledWith(
       expect.objectContaining({ model_id: null, session_key: 'recruiting-chat:t1' }),
     );
   });

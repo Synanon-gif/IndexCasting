@@ -173,10 +173,16 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
         const uploadResult = section === 'private'
           ? await uploadPrivateModelPhoto(modelId, file)
           : await uploadModelPhoto(modelId, file);
-        if (!uploadResult) continue;
+        if (!uploadResult) {
+          Alert.alert(uiCopy.common.error, copy.uploadError);
+          continue;
+        }
         const { url, fileSizeBytes } = uploadResult;
         const newRecord = await addPhoto(modelId, url, section, fileSizeBytes);
-        if (!newRecord) continue;
+        if (!newRecord) {
+          Alert.alert(uiCopy.common.error, copy.uploadError);
+          continue;
+        }
         const resolved = await resolveDisplayUrl(newRecord);
         if (section === 'portfolio') {
           setPortfolio((prev) => {

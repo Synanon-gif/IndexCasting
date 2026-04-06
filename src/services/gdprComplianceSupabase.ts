@@ -143,12 +143,37 @@ export async function deleteOrganizationData(
  * Records that the user explicitly confirmed image rights before upload.
  * Must be called (and awaited) BEFORE the actual storage upload.
  * The upload should be rejected at the application layer if this returns { ok: false }.
+ *
+ * IDEMPOTENCY (fixed 20260406):
+ *   1. Checks for a recent confirmation (60 min) first — returns early if found.
+ *   2. INSERT is performed WITHOUT .select().single() to avoid PostgREST 409
+ *      caused by RETURNING+RLS conflicts (policy may disallow SELECT on new row).
+ *   3. Unique-constraint violations (23505) are treated as success — a prior
+ *      confirmation already exists, which is the desired invariant.
+ *   4. Uses crypto.randomUUID() for the local confirmationId reference.
  */
 export async function confirmImageRights(
   params: ImageRightsConfirmation,
 ): Promise<ComplianceResult<{ confirmationId: string }>> {
   try {
-    const { data, error } = await supabase
+    // Step 1 — Check if a recent confirmation already exists (60 min window).
+    // This avoids an unnecessary INSERT on repeated uploads in the same session.
+    const alreadyConfirmed = params.modelId
+      ? await hasRecentImageRightsConfirmation(params.userId, params.modelId, 60)
+      : params.sessionKey
+        ? await hasRecentImageRightsForSessionKey(params.userId, params.sessionKey, 60)
+        : false;
+
+    if (alreadyConfirmed) {
+      return { ok: true, data: { confirmationId: 'reused' } };
+    }
+
+    // Step 2 — Attempt INSERT. Do NOT chain .select().single(): PostgREST
+    // combines RETURNING with RLS SELECT policies; if the policy does not allow
+    // the current user to SELECT the newly-written row, PostgREST returns a 409
+    // even when the INSERT succeeded. We generate the id client-side instead.
+    const localId = crypto.randomUUID();
+    const { error } = await supabase
       .from('image_rights_confirmations')
       .insert({
         user_id:     params.userId,
@@ -157,13 +182,17 @@ export async function confirmImageRights(
         session_key: params.sessionKey ?? null,
         ip_address:  params.ipAddress ?? null,
         user_agent:  params.userAgent ?? null,
-      })
-      .select('id')
-      .single();
+      });
 
-    if (error || !data?.id) {
+    if (error) {
+      // Step 3 — Unique constraint violation (23505): a prior confirmation exists.
+      // Treat as success — the invariant (confirmation on record) is satisfied.
+      if (error.code === '23505') {
+        console.info('[gdpr] confirmImageRights: duplicate confirmation treated as OK');
+        return { ok: true, data: { confirmationId: 'reused' } };
+      }
       console.error('[gdpr] confirmImageRights error:', error);
-      return { ok: false, reason: error?.message ?? 'insert_failed' };
+      return { ok: false, reason: error.message ?? 'insert_failed' };
     }
 
     // Log in audit trail — orgId may be null for applicant (no org context)
@@ -172,10 +201,10 @@ export async function confirmImageRights(
       actionType: 'image_rights_confirmed',
       entityType: 'model',
       entityId:   params.modelId ?? undefined,
-      newData:    { confirmation_id: data.id, model_id: params.modelId },
+      newData:    { confirmation_id: localId, model_id: params.modelId },
     });
 
-    return { ok: true, data: { confirmationId: data.id } };
+    return { ok: true, data: { confirmationId: localId } };
   } catch (e) {
     console.error('[gdpr] confirmImageRights exception:', e);
     return { ok: false, reason: 'exception' };
