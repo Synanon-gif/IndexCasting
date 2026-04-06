@@ -12,6 +12,15 @@
  *
  * GDPR-internal flows (no org context, e.g. confirmImageRights, minor consent):
  *   void logAction(null, 'confirmImageRights', { type: 'audit', ... }, { allowEmptyOrg: true })
+ *
+ * Source field (audit_trail.source — enterprise audit trail):
+ *   Default: 'api'   — direct frontend Supabase call (most service calls)
+ *   'rpc'            — server/admin-initiated call
+ *   'system'         — background job, cron, or automated process
+ *   'trigger'        — DB trigger-originated entry
+ *
+ *   Usage:
+ *   void logAction(orgId, 'caller', { ... }, { source: 'rpc' })
  */
 
 import { assertOrgContext } from './orgGuard';
@@ -19,8 +28,8 @@ import {
   logAuditAction,
   logBookingAction,
   logOptionAction,
-  logImageUpload,
   type AuditActionType,
+  type AuditSource,
 } from '../services/gdprComplianceSupabase';
 
 type BookingAuditAction = Parameters<typeof logBookingAction>[1];
@@ -33,6 +42,11 @@ export type LogActionOpts = {
    * where the action is user-scoped rather than org-scoped.
    */
   allowEmptyOrg?: boolean;
+  /**
+   * How the action was triggered (stored in audit_trail.source).
+   * Default: 'api'. Use 'rpc' for admin/server calls, 'system' for cron jobs.
+   */
+  source?: AuditSource;
 };
 
 type BookingLog = {
@@ -73,8 +87,8 @@ export type LogPayload = BookingLog | OptionLog | ImageLog | AuditLog;
  *
  * @param orgId   Organization ID. Must be non-empty unless `allowEmptyOrg` is true.
  * @param caller  Descriptive name of the calling function (for error logs).
- * @param payload What to log (discriminated union).
- * @param opts    Options (e.g. allowEmptyOrg for GDPR-internal flows).
+ * @param payload What to log (discriminated union: 'booking' | 'option' | 'image' | 'audit').
+ * @param opts    Options: allowEmptyOrg (GDPR flows), source (audit trail origin).
  * @returns true if the log was dispatched, false if it was skipped (missing org context).
  */
 export function logAction(
@@ -83,7 +97,7 @@ export function logAction(
   payload: LogPayload,
   opts: LogActionOpts = {},
 ): boolean {
-  const { allowEmptyOrg = false } = opts;
+  const { allowEmptyOrg = false, source = 'api' } = opts;
 
   if (!allowEmptyOrg && !assertOrgContext(orgId, caller)) {
     return false;
@@ -93,27 +107,38 @@ export function logAction(
 
   switch (payload.type) {
     case 'booking':
-      void logBookingAction(
-        safeOrgId,
-        payload.action,
-        payload.entityId,
-        payload.newData,
-        payload.oldData,
-      );
+      void logAuditAction({
+        orgId:      safeOrgId,
+        actionType: payload.action,
+        entityType: 'booking',
+        entityId:   payload.entityId,
+        newData:    payload.newData,
+        oldData:    payload.oldData,
+        source,
+      });
       break;
 
     case 'option':
-      void logOptionAction(
-        safeOrgId,
-        payload.action,
-        payload.entityId,
-        payload.newData,
-        payload.oldData,
-      );
+      void logAuditAction({
+        orgId:      safeOrgId,
+        actionType: payload.action,
+        entityType: 'option_request',
+        entityId:   payload.entityId,
+        newData:    payload.newData,
+        oldData:    payload.oldData,
+        source,
+      });
       break;
 
     case 'image':
-      void logImageUpload(safeOrgId, payload.entityId, payload.newData);
+      void logAuditAction({
+        orgId:      safeOrgId,
+        actionType: 'image_uploaded',
+        entityType: 'model',
+        entityId:   payload.entityId,
+        newData:    payload.newData,
+        source,
+      });
       break;
 
     case 'audit':
@@ -124,6 +149,7 @@ export function logAction(
         entityId:   payload.entityId,
         newData:    payload.newData,
         oldData:    payload.oldData,
+        source,
       });
       break;
 

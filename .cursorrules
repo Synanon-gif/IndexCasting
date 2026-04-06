@@ -278,3 +278,127 @@ Rückgabe `false` bedeutet: Log übersprungen, `orgId` fehlte. Im Code ignorierb
 **Ausnahmen (explizit dokumentieren):**
 - `logAuditAction` direkt: nur in `gdprComplianceSupabase.ts` intern (Minor/GDPR-Flows)
 - Neue Wrapper in `gdprComplianceSupabase.ts` hinzufügen, wenn neuer Action-Type benötigt wird
+
+---
+
+## 23. SECURITY DEFINER + row_security=off — Pflicht: Caller-Scope für JEDEN SELECT (NIEMALS weglassen)
+
+`row_security=off` bedeutet: **du siehst ALLES** in der Datenbank. Jeder SELECT auf einer Multi-Tenant-Tabelle MUSS an eine Variable gebunden sein, die durch vorherige Guards verifiziert wurde.
+
+**Verbotene Pattern (Broad SELECT ohne Caller-Scope):**
+```sql
+-- NIEMALS: SELECT ohne Bindung an caller-verifizierte Variable
+SELECT ma.model_id, ma.territory FROM model_assignments ma
+WHERE ma.organization_id = p_organization_id;  -- p_org_id nicht verifiziert!
+
+-- NIEMALS: NULL-Parameter gibt alle Rows zurück
+WHERE ma.model_id = p_model_id
+  AND (p_organization_id IS NULL OR ...);  -- NULL → alle Orgs sichtbar
+```
+
+**Pflicht-Pattern (Caller-Scope nach explizitem Guard):**
+```sql
+-- SCHRITT 1: Guard verifiziert den Caller
+IF NOT public.is_org_member(p_organization_id) THEN
+  RAISE EXCEPTION 'access_denied';
+END IF;
+
+-- SCHRITT 2: SELECT ist an die im Guard verifizierte Variable gebunden
+SELECT ... FROM model_assignments WHERE organization_id = p_organization_id;
+--                                                        ^ guard-verified ✅
+```
+
+**Multi-Tenant-Tabellen die IMMER caller-scoped gefiltert werden müssen:**
+`models`, `organization_members`, `organizations`, `option_requests`, `booking_events`,
+`activity_logs`, `recruiting_chat_threads`, `model_assignments`, `model_agency_territories`
+
+**Erlaubte Exceptions (explizit dokumentieren):**
+- Global-Read-Only-Tabellen (keine PII, keine Org-Daten): z. B. `countries`, `currencies`
+- B2B-Discovery-Features mit explizitem COMMENT: z. B. `list_client_organizations_for_agency_directory`
+  (Gate: Agency-Membership; LIMIT; kein PII; dokumentiert als intentional)
+
+**Prüfpflicht bei JEDER neuen SECURITY DEFINER + row_security=off Funktion:**
+1. Gibt es einen `SELECT * FROM table` oder `SELECT ... FROM table` ohne Guard-gebundenes WHERE?
+2. Kann ein NULL-Parameter-Pfad unbeabsichtigt breite Daten zurückgeben?
+3. Wird `p_organization_id` / `p_agency_id` / `p_model_id` direkt in WHERE genutzt ohne vorherigen Membership-Check?
+→ Wenn JA bei einer dieser Fragen: STOP — Guard hinzufügen bevor der SELECT erlaubt ist.
+
+---
+
+## 24. Audit Trail `source` — Pflichtfeld bei jedem Log-Eintrag (default 'api')
+
+Jeder Audit-Trail-Eintrag MUSS das `source`-Feld tragen. Gibt an WIE die Aktion ausgelöst wurde.
+
+| Wert | Bedeutung | Wann setzen |
+|------|-----------|-------------|
+| `'api'` | Frontend-Aufruf (Default) | Alle `logAction()` Calls aus Services |
+| `'rpc'` | Server/Admin-initiierter Aufruf | Admin-RPCs, Server-to-Server |
+| `'system'` | Hintergrundjob, Cron, automatisiert | Scheduled Jobs, Auto-Cleanup |
+| `'trigger'` | DB-Trigger hat den Eintrag erstellt | `fn_*` Trigger-Funktionen |
+
+**In TypeScript (immer über `logAction()`):**
+```typescript
+// Standard (api ist default — kein Angabe nötig):
+logAction(orgId, 'caller', { type: 'booking', ... });
+
+// Admin/Server-Aufruf explizit markieren:
+logAction(orgId, 'adminAction', { type: 'audit', ... }, { source: 'rpc' });
+
+// GDPR-intern ohne Org-Kontext:
+logAction(null, 'confirmImageRights', { type: 'audit', ... }, { allowEmptyOrg: true });
+```
+
+**In SQL (DB-Trigger-Funktionen):**
+```sql
+PERFORM public.log_audit_action(
+  p_org_id      => v_org_id,
+  p_action_type => 'booking_created',
+  p_source      => 'trigger'   -- Pflicht in Trigger-Funktionen
+);
+```
+
+---
+
+## 25. Admin-Bypass-Pattern — Admin nutzt `admin_*` RPCs, KEIN Bypass in `agency_*`/`client_*`
+
+**Architektur-Regel:** Admin-Operationen und Business-Operationen werden durch separate RPC-Sets getrennt.
+
+```
+agency_update_model_full  → NUR für Agency-Members
+admin_update_model_full   → NUR für Admin (via assert_is_admin())
+```
+
+**VERBOTEN: IF is_current_user_admin() Bypass innerhalb von agency_*/client_* RPCs:**
+```sql
+-- NIEMALS:
+CREATE FUNCTION agency_update_model_full(...) AS $$
+BEGIN
+  IF public.is_current_user_admin() THEN
+    -- Admin bypasses agency check
+    UPDATE models SET ... WHERE id = p_model_id;  -- ← Boundary-Verletzung!
+    RETURN;
+  END IF;
+  -- ... agency logic ...
+END;
+$$;
+```
+
+**Warum verboten:**
+- Vermischt Admin-Kontext mit Business-Kontext → unklar welcher Code-Pfad läuft
+- Admin-Actions müssen in `admin_*` RPCs geloggt werden (via `assert_is_admin()`)
+- Bypass in agency-Funktionen umgeht den `assert_is_admin()` Audit-Check
+- Verstößt gegen das Prinzip der klaren Separation of Concerns
+
+**KORREKT:** Admin benutzt `admin_update_model_full`, nicht `agency_update_model_full`.
+Wenn eine Admin-Funktion fehlt → neue `admin_*` Funktion erstellen, nicht einen Bypass hinzufügen.
+
+**Einzige erlaubte Admin-Checks in non-admin RPCs:**
+```sql
+-- NUR für defensive reads (nicht für Writes):
+-- z. B. bulk_add_model_territories erlaubt Admin als Sonderfall
+-- weil Admin legitim für alle Agenturen arbeiten können muss:
+IF NOT public.is_current_user_admin() THEN
+  -- ... membership check ...
+END IF;
+-- Dann: normaler Business-Code (KEIN Admin-only Pfad danach)
+```

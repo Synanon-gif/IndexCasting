@@ -71,6 +71,8 @@ export type SecurityEventType =
   | 'privilege_escalation_attempt' | 'suspicious_export'
   | 'unauthorized_deletion_attempt' | 'admin_anomaly' | 'guest_link_abuse';
 
+export type AuditSource = 'api' | 'rpc' | 'system' | 'trigger';
+
 export interface AuditLogParams {
   orgId: string;
   actionType: AuditActionType;
@@ -79,6 +81,13 @@ export interface AuditLogParams {
   oldData?: Record<string, unknown>;
   newData?: Record<string, unknown>;
   ipAddress?: string;
+  /**
+   * How the action was triggered (stored in audit_trail.source).
+   * Default: 'api' (direct frontend call).
+   * Use 'rpc' for server/admin-initiated calls, 'system' for background jobs,
+   * 'trigger' for DB-trigger-originated entries.
+   */
+  source?: AuditSource;
 }
 
 export interface GdprExportResult {
@@ -417,6 +426,7 @@ export async function logAuditAction(params: AuditLogParams): Promise<void> {
       p_old_data:    params.oldData ? JSON.stringify(params.oldData) : null,
       p_new_data:    params.newData ? JSON.stringify(params.newData) : null,
       p_ip_address:  params.ipAddress ?? null,
+      p_source:      params.source ?? 'api',
     });
     if (error) {
       console.error('[gdpr] logAuditAction error:', error);
