@@ -539,6 +539,46 @@ export async function generateModelClaimToken(modelId: string): Promise<{ token:
 }
 
 /**
+ * Builds the model claim URL for a given token.
+ * Used by the agency to share the link with the model (via email or manually).
+ * Parallel to buildOrganizationInviteUrl in organizationsInvitationsSupabase.ts.
+ */
+export function buildModelClaimUrl(token: string): string {
+  const APP_BASE_URL = 'https://index-casting.com';
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    const u = new URL(window.location.origin + (window.location.pathname || '/'));
+    u.searchParams.set('model_invite', token);
+    return u.toString();
+  }
+  return `${APP_BASE_URL}/?model_invite=${encodeURIComponent(token)}`;
+}
+
+export interface ModelClaimPreview {
+  valid: boolean;
+  model_name?: string;
+  agency_name?: string;
+  error?: string;
+}
+
+/**
+ * Fetches agency_name + model_name for a model claim token without requiring authentication.
+ * Used in App.tsx to show a preview screen before the model creates their account.
+ */
+export async function getModelClaimPreview(token: string): Promise<ModelClaimPreview | null> {
+  try {
+    const { data, error } = await supabase.rpc('get_model_claim_preview', { p_token: token });
+    if (error) {
+      console.error('getModelClaimPreview error:', error);
+      return null;
+    }
+    return data as ModelClaimPreview;
+  } catch (e) {
+    console.error('getModelClaimPreview exception:', e);
+    return null;
+  }
+}
+
+/**
  * Fix H: Returns all agencies + territories for the calling model user.
  * Models use model_agency_territories (not organization_members) as their org anchor.
  * Returns an empty array during the application phase (before any agency link is confirmed).

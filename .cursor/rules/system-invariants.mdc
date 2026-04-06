@@ -55,6 +55,14 @@ Wenn eine Änderung eine dieser Regeln gefährdet → STOP und refaktorieren.
 - `get_my_org_context()` gibt ALLE Memberships zurück — der Caller wählt explizit
 - Multi-Org-Users: Frontend loggt Warnung und verwendet älteste Membership bis Multi-Org-UI implementiert ist
 - Neue Org-Kontext-RPCs dürfen kein `LIMIT 1` ohne expliziten Kommentar warum es sicher ist
+- **Ausnahme:** `LIMIT 1` in SECURITY DEFINER Scope Guards für Sub-Resource-Lookups NACH verifiziertem Guard ist erlaubt (z.B. `SELECT id FROM organizations WHERE agency_id = p_agency_id LIMIT 1` nachdem p_agency_id per Membership-Check verifiziert wurde) — muss kommentiert sein
+
+## MIGRATIONS-DEPLOYMENT (unveränderlich)
+
+- Nur Dateien in `supabase/migrations/` werden vom Supabase CLI **automatisch deployed**
+- SQL-Dateien im `supabase/`-Root (außerhalb `migrations/`) werden **NICHT** automatisch ausgeführt — sie sind Legacy-Referenzen oder Skripte, keine echten Migrations
+- Jede neue DB-Änderung MUSS als `.sql`-Datei in `supabase/migrations/` mit Datum-Präfix `YYYYMMDD_` angelegt werden
+- Root-Dateien wie `supabase/20260409_model_agency_permission_fix.sql` sind durch echte Migrations (`20260412_agency_rpcs_definitive.sql` u.a.) abgedeckt — niemals direkt ausführen statt Migration zu erstellen
 
 ## KEINE RLS-REKURSION (KRITISCH)
 

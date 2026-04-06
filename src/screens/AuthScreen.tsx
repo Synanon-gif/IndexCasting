@@ -17,12 +17,17 @@ type AuthScreenProps = {
     lockedProfileRole: 'agent' | 'client';
     inviteRoleLabel: string;
   };
+  /** Model-Claim: Locks role to 'model', shows agency name banner. */
+  modelClaimAuth?: {
+    agencyName: string;
+  };
 };
 
 export const AuthScreen: React.FC<AuthScreenProps> = ({
   initialMode = 'login',
   clearStaleInviteOnSignIn = false,
   inviteAuth,
+  modelClaimAuth,
 }) => {
   const { signIn, signUp } = useAuth();
   const [mode, setMode] = useState<'login' | 'signup'>(initialMode);
@@ -31,7 +36,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const [displayName, setDisplayName] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [role, setRole] = useState<'model' | 'agent' | 'client'>(
-    inviteAuth?.lockedProfileRole ?? 'client'
+    modelClaimAuth ? 'model' : (inviteAuth?.lockedProfileRole ?? 'client')
   );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -55,21 +60,24 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
       });
       if (e) setError(e);
     } else {
-      const r = inviteAuth?.lockedProfileRole ?? role;
-      if (!inviteAuth && (r === 'client' || r === 'agent') && !companyName.trim()) {
+      const r = modelClaimAuth ? 'model' : (inviteAuth?.lockedProfileRole ?? role);
+      const isOrgInviteFlow = !!inviteAuth && !modelClaimAuth;
+      if (!isOrgInviteFlow && !modelClaimAuth && (r === 'client' || r === 'agent') && !companyName.trim()) {
         setError(uiCopy.auth.companyNameRequired);
         setBusy(false);
         return;
       }
       const company =
-        !inviteAuth && (r === 'client' || r === 'agent') ? companyName.trim() || undefined : undefined;
+        !isOrgInviteFlow && !modelClaimAuth && (r === 'client' || r === 'agent')
+          ? companyName.trim() || undefined
+          : undefined;
       const { error: e } = await signUp(
         email.trim(),
         password,
         r,
         displayName.trim() || undefined,
         company,
-        { isInviteSignup: !!inviteAuth }
+        { isInviteSignup: isOrgInviteFlow }
       );
       if (e) setError(e);
     }
@@ -94,6 +102,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             {uiCopy.auth.inviteLine
               .replace('{org}', inviteAuth.orgName)
               .replace('{role}', inviteAuth.inviteRoleLabel)}
+          </Text>
+        )}
+        {modelClaimAuth && (
+          <Text style={styles.inviteBanner}>
+            {`Model account · ${modelClaimAuth.agencyName}`}
           </Text>
         )}
 
@@ -143,7 +156,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
               value={displayName}
               onChangeText={setDisplayName}
             />
-            {!inviteAuth && (
+            {!inviteAuth && !modelClaimAuth && (
               <>
                 <Text style={styles.roleLabel}>{uiCopy.auth.roleLabel}</Text>
                 <View style={styles.roleRow}>
@@ -165,7 +178,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                 </View>
               </>
             )}
-            {!inviteAuth && (role === 'client' || role === 'agent') ? (
+            {!inviteAuth && !modelClaimAuth && (role === 'client' || role === 'agent') ? (
               <>
                 <Text style={styles.ownerHint}>{uiCopy.auth.signUpOwnerHint}</Text>
                 <TextInput
@@ -178,7 +191,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                 />
               </>
             ) : null}
-            {inviteAuth && (
+            {modelClaimAuth && (
+              <Text style={styles.roleLocked}>
+                {uiCopy.auth.accountTypeFixed.replace('{role}', 'Model')}
+              </Text>
+            )}
+            {inviteAuth && !modelClaimAuth && (
               <Text style={styles.roleLocked}>
                 {uiCopy.auth.accountTypeFixed.replace(
                   '{role}',

@@ -548,6 +548,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch (e) {
         console.error('signUp linkModelByEmail error:', e);
       }
+
+      // Model claim token: link the newly created model account to the agency record.
+      // Runs isolated — cannot block bootstrap or org invite flows.
+      try {
+        const { isModelClaimFlowActive, readModelClaimToken, persistModelClaimToken } =
+          await import('../storage/modelClaimToken');
+        const { claimModelByToken } = await import('../services/modelsSupabase');
+        const claimTok = await readModelClaimToken();
+        if (claimTok) {
+          const claimRes = await claimModelByToken(claimTok);
+          if ('modelId' in claimRes) {
+            await persistModelClaimToken(null);
+            await loadProfile(data.user.id);
+          } else {
+            console.warn('signUp claimModelByToken failed:', claimRes.error);
+          }
+        }
+        // Suppress unused import warning
+        void isModelClaimFlowActive;
+      } catch (e) {
+        console.error('signUp claimModelByToken error:', e);
+      }
     }
     return { error: null };
   };
@@ -622,6 +644,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await linkModelByEmail();
     } catch (e) {
       console.error('signIn linkModelByEmail error:', e);
+    }
+
+    // Model claim token: link an existing account to the agency's model record.
+    // Runs isolated — cannot block bootstrap or org invite flows.
+    try {
+      const { isModelClaimFlowActive, readModelClaimToken, persistModelClaimToken } =
+        await import('../storage/modelClaimToken');
+      const { claimModelByToken } = await import('../services/modelsSupabase');
+      const claimTok = (await isModelClaimFlowActive()) ? await readModelClaimToken() : null;
+      if (claimTok) {
+        const claimRes = await claimModelByToken(claimTok);
+        if ('modelId' in claimRes) {
+          await persistModelClaimToken(null);
+          if (data?.user) await loadProfile(data.user.id);
+        } else {
+          console.warn('signIn claimModelByToken failed:', claimRes.error);
+        }
+      }
+    } catch (e) {
+      console.error('signIn claimModelByToken error:', e);
     }
 
     return { error: null };

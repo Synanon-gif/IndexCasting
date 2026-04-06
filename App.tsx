@@ -7,6 +7,8 @@ import { SubscriptionProvider, useSubscription } from './src/context/Subscriptio
 import PaywallScreen from './src/screens/PaywallScreen';
 import { AuthScreen } from './src/screens/AuthScreen';
 import { InviteAcceptanceScreen } from './src/screens/InviteAcceptanceScreen';
+import { ModelClaimScreen } from './src/screens/ModelClaimScreen';
+import type { ModelClaimPreview } from './src/screens/ModelClaimScreen';
 import { LegalAcceptanceScreen } from './src/screens/LegalAcceptanceScreen';
 import { PendingActivationScreen } from './src/screens/PendingActivationScreen';
 import { ClientView } from './src/views/ClientView';
@@ -34,6 +36,16 @@ import {
   markInviteFlowFromUrl,
   isInviteFlowActive,
 } from './src/storage/inviteToken';
+import {
+  persistModelClaimToken,
+  readModelClaimToken,
+  markModelClaimFlowFromUrl,
+  isModelClaimFlowActive,
+} from './src/storage/modelClaimToken';
+import {
+  getModelClaimPreview,
+  claimModelByToken,
+} from './src/services/modelsSupabase';
 import { uiCopy } from './src/constants/uiCopy';
 import { initializePushNotifications, teardownPushNotifications } from './src/services/pushNotifications';
 import { TermsScreen } from './src/screens/TermsScreen';
@@ -99,6 +111,21 @@ function clearInviteQueryParam() {
   const u = new URL(window.location.href);
   if (!u.searchParams.has('invite')) return;
   u.searchParams.delete('invite');
+  window.history.replaceState({}, '', u.pathname + u.search + u.hash);
+}
+
+function getModelInviteTokenFromUrl(): string | null {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
+  const p = new URLSearchParams(window.location.search);
+  const t = p.get('model_invite');
+  return t && t.trim() ? t.trim() : null;
+}
+
+function clearModelInviteQueryParam() {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+  const u = new URL(window.location.href);
+  if (!u.searchParams.has('model_invite')) return;
+  u.searchParams.delete('model_invite');
   window.history.replaceState({}, '', u.pathname + u.search + u.hash);
 }
 
@@ -172,6 +199,15 @@ function AppContent() {
   const [invitePreviewError, setInvitePreviewError] = useState<string | null>(null);
   const [inviteAuthPhase, setInviteAuthPhase] = useState<'gate' | 'auth'>('gate');
   const [inviteAuthMode, setInviteAuthMode] = useState<'login' | 'signup'>('signup');
+
+  // Model claim token — parallel to org invite token
+  const [modelInviteTokenState] = useState<string | null>(() => getModelInviteTokenFromUrl());
+  const [modelClaimPreview, setModelClaimPreview] = useState<ModelClaimPreview | null>(null);
+  const [modelClaimPreviewLoading, setModelClaimPreviewLoading] = useState(Boolean(modelInviteTokenState));
+  const [modelClaimPreviewError, setModelClaimPreviewError] = useState<string | null>(null);
+  const [modelClaimAuthPhase, setModelClaimAuthPhase] = useState<'gate' | 'auth'>('gate');
+  const [modelClaimAuthMode, setModelClaimAuthMode] = useState<'login' | 'signup'>('signup');
+
   const [clientType, setClientTypeState] = useState<ClientType>(() => loadClientType() ?? 'fashion');
   const { setCurrentUserId } = useAppData();
 
@@ -266,6 +302,69 @@ function AppContent() {
     if (!session?.user) return;
     void tryAcceptInviteAfterSession();
   }, [session?.user?.id, tryAcceptInviteAfterSession]);
+
+  // ── Model Claim Token Flow (parallel to org invite) ──────────────────────
+
+  /** Drop stray model claim tokens on non-model-invite loads. */
+  useEffect(() => {
+    void (async () => {
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        const fromUrl = new URLSearchParams(window.location.search).get('model_invite');
+        if (fromUrl) return;
+      }
+      if (await isModelClaimFlowActive()) return;
+      await persistModelClaimToken(null);
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!modelInviteTokenState) return;
+    void (async () => {
+      await persistModelClaimToken(modelInviteTokenState);
+      await markModelClaimFlowFromUrl();
+    })();
+    let cancelled = false;
+    setModelClaimPreviewLoading(true);
+    getModelClaimPreview(modelInviteTokenState)
+      .then((p) => {
+        if (cancelled) return;
+        if (p && p.valid) {
+          setModelClaimPreview(p);
+          setModelClaimPreviewError(null);
+        } else {
+          setModelClaimPreview(p);
+          setModelClaimPreviewError(uiCopy.modelClaim.invalidOrExpired);
+        }
+        setModelClaimPreviewLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setModelClaimPreviewError(uiCopy.modelClaim.loadFailed);
+        setModelClaimPreviewLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [modelInviteTokenState]);
+
+  const tryClaimModelAfterSession = useCallback(async () => {
+    const tok =
+      modelInviteTokenState ?? ((await isModelClaimFlowActive()) ? await readModelClaimToken() : null);
+    if (!tok) return;
+    const r = await claimModelByToken(tok);
+    if ('modelId' in r) {
+      await persistModelClaimToken(null);
+      clearModelInviteQueryParam();
+      await refreshProfile();
+    } else {
+      console.warn('[ModelClaim] claimModelByToken failed after session:', r.error);
+    }
+  }, [modelInviteTokenState, refreshProfile]);
+
+  useEffect(() => {
+    if (!session?.user) return;
+    void tryClaimModelAfterSession();
+  }, [session?.user?.id, tryClaimModelAfterSession]);
 
   useEffect(() => {
     if (!effectiveRole || effectiveRole === 'apply') setCurrentUserId(null);
@@ -430,6 +529,28 @@ function AppContent() {
           ? uiCopy.invite.roleEmployeeClient
           : uiCopy.invite.roleMember;
 
+    // Model claim gate — shown before login when ?model_invite= is in the URL
+    if (modelInviteTokenState && modelClaimAuthPhase === 'gate' && (modelClaimPreviewLoading || modelClaimPreview)) {
+      return (
+        <>
+          <ModelClaimScreen
+            preview={modelClaimPreview}
+            loading={modelClaimPreviewLoading}
+            error={modelClaimPreviewError}
+            onContinueSignup={() => {
+              setModelClaimAuthMode('signup');
+              setModelClaimAuthPhase('auth');
+            }}
+            onContinueLogin={() => {
+              setModelClaimAuthMode('login');
+              setModelClaimAuthPhase('auth');
+            }}
+          />
+          <StatusBar style="dark" />
+        </>
+      );
+    }
+
     if (inviteTokenState && inviteAuthPhase === 'gate' && (invitePreviewLoading || invitePreview)) {
       return (
         <>
@@ -451,17 +572,27 @@ function AppContent() {
       );
     }
 
+    // When in model claim auth phase, force 'model' role for signup
+    const isModelClaimAuth = modelInviteTokenState && modelClaimAuthPhase === 'auth';
+
     return (
       <>
         <AuthScreen
-          initialMode={inviteAuthMode}
-          clearStaleInviteOnSignIn={!inviteTokenState}
+          initialMode={isModelClaimAuth ? modelClaimAuthMode : inviteAuthMode}
+          clearStaleInviteOnSignIn={!inviteTokenState && !modelInviteTokenState}
           inviteAuth={
             inviteTokenState && invitePreview && inviteLockedRole
               ? {
                   orgName: invitePreview.org_name,
                   lockedProfileRole: inviteLockedRole,
                   inviteRoleLabel,
+                }
+              : undefined
+          }
+          modelClaimAuth={
+            isModelClaimAuth && modelClaimPreview?.valid
+              ? {
+                  agencyName: modelClaimPreview.agency_name ?? '',
                 }
               : undefined
           }

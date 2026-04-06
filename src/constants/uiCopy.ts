@@ -30,13 +30,14 @@ export const uiCopy = {
     calendarNotSaved:
       'Entry was not saved. Check: (1) date format YYYY-MM-DD, (2) your profile email must match the agency email.',
     deleteEventConfirm: 'Delete this event? This action cannot be undone.',
-    invitationCreated: 'Invitation created',
-    invitationCreatedBody:
-      'Share the invite link securely with the booker (e.g. by email). In-app email delivery will follow later.',
+    invitationCreated: 'Invitation sent',
+    invitationCreatedBody: 'An invitation email has been sent.',
+    invitationEmailFailed:
+      'Invitation created, but the email could not be sent. Copy the link below and share it manually.',
     invitationFailed:
       'Could not create invitation. Make sure you are signed in as the organization owner.',
     invitationLink: 'Invitation link',
-    showLastLink: 'Show last link',
+    showLastLink: 'Show link (fallback)',
     deleteFailed: 'Delete failed',
     tryAgain: 'Please try again.',
     signInRequired: 'Sign-in required',
@@ -148,6 +149,20 @@ export const uiCopy = {
     roleMember: 'Member',
     signUpToAccept: 'Create account & accept',
     alreadyHaveAccount: 'I already have an account',
+  },
+  modelClaim: {
+    pageTitle: 'Model account invitation',
+    invalidOrExpired: 'This invitation is invalid or has expired.',
+    loadFailed: 'Could not load the invitation.',
+    profileCreatedBy: 'has created a model profile for you on Index Casting.',
+    createAccountHint:
+      'Create your account to access your portfolio, manage your profile, and connect with clients.',
+    expiresNote: 'This invitation link expires in 30 days.',
+    createAccount: 'Create My Account',
+    alreadyHaveAccount: 'I already have an account',
+    invalidLink: 'Invalid or expired model invitation link.',
+    copyLink: 'Copy invitation link',
+    linkCopied: 'Link copied',
   },
   clientWeb: {
     calendarCalloutTitle: 'Saving to calendar:',

@@ -30,7 +30,9 @@ vollständig durchlaufen werden, **bevor** Code committed oder weitergeschrieben
 - **Broken Role Logic:** `effectiveRole` für Admin-Routing genutzt? → Blocker (Admin hat `role='admin'`, kein effectiveRole)
 - **Admin-Zugang:** `assert_is_admin()` in neuen Admin-RPCs vergessen? → Blocker
 - **profiles.role in RLS:** Direkte `profiles.role = 'client'/'model'`-Subquery in RLS-Policy? → Blocker (Risiko 8) — SECURITY DEFINER Funktion verwenden
-- **LIMIT 1 in Org-Kontext:** `LIMIT 1` ohne Begründung in Org-Auflösung? → Blocker (Risiko 10)
+- **LIMIT 1 in Org-Kontext:** `LIMIT 1` zur Org-Kontext-Auflösung (wer ist der Caller?) → Blocker (Risiko 10)
+  - Verboten: `SELECT … FROM organization_members WHERE user_id = auth.uid() … LIMIT 1` (implicit caller resolution)
+  - Erlaubt: `LIMIT 1` für Sub-Resource-Lookup NACH verifiziertem Scope-Guard, z.B. `SELECT id FROM organizations WHERE agency_id = p_agency_id LIMIT 1` wenn `p_agency_id` bereits durch einen Membership-Guard geprüft wurde — mit Kommentar im Code warum es sicher ist
 - **Email-basiertes Model-Linking:** `link_model_by_email()` für neue Flows? → Blocker — `claim_model_by_token()` verwenden (Risiko 9)
 - **Territory Constraint:** `ON CONFLICT (model_id, agency_id, country_code)` in neuen RPCs? → Blocker — muss `(model_id, country_code)` sein (Fix A)
 - **Model in organization_members:** Models via INSERT in `organization_members` hinzufügen? → Blocker — Models nutzen ausschließlich `model_agency_territories`
@@ -48,7 +50,7 @@ Q3: Bricht diese Änderung die Admin-Sichtbarkeit?
 Q4: Führt diese Änderung RLS-Rekursion ein?
 Q5: Verletzt diese Änderung den Territory-Constraint (UNIQUE model_id, country_code)?
 Q6: Fügt diese Änderung ein Model zu organization_members hinzu?
-Q7: Verwendet diese Änderung LIMIT 1 in einer Org-Kontext-Funktion?
+Q7: Verwendet diese Änderung LIMIT 1 zur Caller-Identifikation / Org-Kontext-Auflösung (nicht Sub-Resource-Lookup nach Guard)?
 ```
 
 → Wenn **eine** Antwort unklar oder „möglicherweise ja" ist:
@@ -65,7 +67,7 @@ Q7: Verwendet diese Änderung LIMIT 1 in einer Org-Kontext-Funktion?
 - Admin-Routing in `App.tsx` wird vor den `is_admin`-Check verschoben
 - RLS-Policy auf `models` referenziert `profiles` direkt (Risiko 8 — Gefahr 1-Erweiterung)
 - Neuer Code ruft `link_model_by_email()` für einen neuen Flow auf (Risiko 9 — deprecated)
-- Org-Kontext-RPC oder Frontend-Query verwendet `LIMIT 1` ohne expliziten Kommentar (Risiko 10)
+- Org-Kontext-RPC oder Frontend-Query verwendet `LIMIT 1` zur Caller-Identifikation ohne expliziten Kommentar (Risiko 10) — Sub-Resource-Lookups nach verifiziertem Guard ausgenommen (mit Kommentar)
 - `model_agency_territories` ON CONFLICT referenziert `agency_id` als Teil des Conflict-Targets
 - RLS-Policy referenziert die eigene Tabelle per FROM/JOIN (Risiko 11 — Self-Referenz → sofortige 42P17)
 

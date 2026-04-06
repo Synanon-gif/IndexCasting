@@ -16,6 +16,7 @@ import {
 } from '../services/organizationsInvitationsSupabase';
 import { uiCopy } from '../constants/uiCopy';
 import { useAuth } from '../context/AuthContext';
+import { supabase } from '../../lib/supabase';
 
 const inputStyle = {
   borderWidth: 1,
@@ -116,9 +117,33 @@ export const ClientOrganizationTeamSection: React.FC<{
         role: inviteRole,
       });
       if (row) {
-        setInviteEmail('');
         const link = buildOrganizationInviteUrl(row.token);
-        Alert.alert(uiCopy.alerts.invitationCreated, uiCopy.team.invitationCreatedWithLink(link));
+
+        // Send invitation email via Edge Function (fire and forget — link is fallback)
+        let emailOk = false;
+        try {
+          const { data: { session: s } } = await supabase.auth.getSession();
+          const res = await supabase.functions.invoke('send-invite', {
+            body: {
+              type: 'org_invitation',
+              to: inviteEmail.trim(),
+              token: row.token,
+              orgName: profile?.company_name || profile?.display_name || undefined,
+              inviterName: profile?.display_name || undefined,
+            },
+            headers: s?.access_token ? { Authorization: `Bearer ${s.access_token}` } : undefined,
+          });
+          emailOk = !res.error;
+          if (res.error) console.error('ClientOrganizationTeamSection send-invite error:', res.error);
+        } catch (e) {
+          console.error('ClientOrganizationTeamSection send-invite exception:', e);
+        }
+
+        setInviteEmail('');
+        Alert.alert(
+          uiCopy.alerts.invitationCreated,
+          emailOk ? uiCopy.alerts.invitationCreatedBody : uiCopy.team.invitationCreatedWithLink(link),
+        );
         void loadTeam();
       } else {
         Alert.alert(uiCopy.common.error, uiCopy.team.invitationErrorBody);

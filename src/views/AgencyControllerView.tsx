@@ -45,6 +45,7 @@ import {
   getModelByIdFromSupabase,
   removeModelFromAgency,
   agencyLinkModelToUser,
+  generateModelClaimToken,
   type SupabaseModel,
 } from '../services/modelsSupabase';
 import { BookingChatView } from './BookingChatView';
@@ -513,6 +514,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         <MyModelsTab
           models={fullModels}
           agencyId={currentAgencyId}
+          agencyName={currentAgency?.name ?? null}
           onRefresh={() => getModelsForAgencyFromSupabase(currentAgencyId).then(setFullModels)}
           focusModelId={searchModelId}
           onFocusConsumed={() => setSearchModelId(null)}
@@ -588,6 +590,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
             invitations={pendingInvites}
             onRefresh={() => void loadAgencyTeam()}
             currentUserId={session?.user?.id ?? null}
+            orgName={currentAgency?.name ?? null}
           />
         )}
 
@@ -1710,10 +1713,11 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
 const MyModelsTab: React.FC<{
   models: SupabaseModel[];
   agencyId: string;
+  agencyName?: string | null;
   onRefresh: () => void;
   focusModelId?: string | null;
   onFocusConsumed?: () => void;
-}> = ({ models, agencyId, onRefresh, focusModelId, onFocusConsumed }) => {
+}> = ({ models, agencyId, agencyName, onRefresh, focusModelId, onFocusConsumed }) => {
   const [selectedModel, setSelectedModel] = useState<SupabaseModel | null>(null);
   const [filters, setFilters] = useState<ModelFilters>(defaultModelFilters);
   const [editState, setEditState] = useState<ModelEditState>(buildEditState({ name: '' }));
@@ -2036,6 +2040,38 @@ const MyModelsTab: React.FC<{
       const createdModelId = mergeResult.model_id;
       const modelDisplayName = name;
 
+      // If the agency entered an email, generate a claim token and send an invite email.
+      // Runs isolated — cannot block model creation or form reset.
+      let emailSentOk = false;
+      if (emailTrim) {
+        try {
+          const claimRes = await generateModelClaimToken(createdModelId);
+          if ('token' in claimRes) {
+            const { data: { session: currentSession } } = await supabase.auth.getSession();
+            const invokeRes = await supabase.functions.invoke('send-invite', {
+              body: {
+                type: 'model_claim',
+                to: emailTrim,
+                token: claimRes.token,
+                modelName: modelDisplayName,
+                orgName: agencyName || undefined,
+              },
+              headers: currentSession?.access_token
+                ? { Authorization: `Bearer ${currentSession.access_token}` }
+                : undefined,
+            });
+            emailSentOk = !invokeRes.error;
+            if (invokeRes.error) {
+              console.error('handleAddModel send-invite error:', invokeRes.error);
+            }
+          } else {
+            console.error('handleAddModel generateModelClaimToken error:', claimRes.error);
+          }
+        } catch (e) {
+          console.error('handleAddModel model invite exception:', e);
+        }
+      }
+
       // Reset form immediately after successful insert.
       setAddModelEditState(buildEditState({ name: '' }));
       setAddTerritories([]);
@@ -2100,18 +2136,23 @@ const MyModelsTab: React.FC<{
       }
 
       const fresh = await getModelByIdFromSupabase(createdModelId);
+      const emailNote = emailTrim
+        ? emailSentOk
+          ? ` Invitation email sent to ${emailTrim}.`
+          : ` Could not send invitation email — share the invite link manually.`
+        : '';
       if (fresh) {
         setSelectedModel(fresh);
         setAddModelFeedback(
           mergeResult.created
-            ? `${modelDisplayName} added successfully.`
-            : `${modelDisplayName} merged with existing profile.`,
+            ? `${modelDisplayName} added successfully.${emailNote}`
+            : `${modelDisplayName} merged with existing profile.${emailNote}`,
         );
       } else {
         setAddModelFeedback(
           mergeResult.created
-            ? `${modelDisplayName} was created. Please refresh the list once.`
-            : `${modelDisplayName} merged. Please refresh the list once.`,
+            ? `${modelDisplayName} was created.${emailNote} Please refresh the list once.`
+            : `${modelDisplayName} merged.${emailNote} Please refresh the list once.`,
         );
       }
     } catch (err) {
@@ -4409,7 +4450,8 @@ const OrganizationTeamTab: React.FC<{
   invitations: InvitationRow[];
   onRefresh: () => void;
   currentUserId?: string | null;
-}> = ({ organizationId, canInvite, members, invitations, onRefresh, currentUserId }) => {
+  orgName?: string | null;
+}> = ({ organizationId, canInvite, members, invitations, onRefresh, currentUserId, orgName }) => {
   const { profile, updateDisplayName } = useAuth();
   const [inviteEmail, setInviteEmail] = useState('');
   const [busy, setBusy] = useState(false);
@@ -4456,15 +4498,40 @@ const OrganizationTeamTab: React.FC<{
       email: inviteEmail.trim(),
       role: 'booker',
     });
-    setBusy(false);
     if (row) {
+      const link = buildOrganizationInviteUrl(row.token);
+      setLastLink(link);
+
+      // Send invitation email via Edge Function (fire and forget — link is fallback)
+      let emailOk = false;
+      try {
+        const { data: { session: s } } = await supabase.auth.getSession();
+        const res = await supabase.functions.invoke('send-invite', {
+          body: {
+            type: 'org_invitation',
+            to: inviteEmail.trim(),
+            token: row.token,
+            orgName: orgName || undefined,
+            inviterName: profile?.display_name || undefined,
+          },
+          headers: s?.access_token ? { Authorization: `Bearer ${s.access_token}` } : undefined,
+        });
+        emailOk = !res.error;
+        if (res.error) console.error('OrganizationTeamTab send-invite error:', res.error);
+      } catch (e) {
+        console.error('OrganizationTeamTab send-invite exception:', e);
+      }
+
       setInviteEmail('');
-      setLastLink(buildOrganizationInviteUrl(row.token));
       onRefresh();
-      Alert.alert(uiCopy.alerts.invitationCreated, uiCopy.alerts.invitationCreatedBody);
+      Alert.alert(
+        uiCopy.alerts.invitationCreated,
+        emailOk ? uiCopy.alerts.invitationCreatedBody : uiCopy.alerts.invitationEmailFailed,
+      );
     } else {
       Alert.alert(uiCopy.common.error, uiCopy.alerts.invitationFailed);
     }
+    setBusy(false);
   };
 
   const handleSaveName = async () => {

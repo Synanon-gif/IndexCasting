@@ -186,6 +186,24 @@ export async function getApplications(agencyId?: string): Promise<SupabaseApplic
 **Gefixt (2026-04-05):** `getApplications()`, `getApplicationsByStatus()`, `getThreads()`, `getOptionRequests()`
 in `applicationsSupabase.ts`, `recruitingChatSupabase.ts`, `optionRequestsSupabase.ts`.
 
+**Erlaubte Ausnahme — Client-Self-Read-Funktionen:**
+Funktionen wie `getOptionRequestsForCurrentClient()` die ausschließlich Daten der eigenen Session
+zurückgeben, dürfen sich auf RLS ohne expliziten `org_id`-Filter verlassen, wenn:
+1. Die Session-Identität (auth.uid()) = Org-Kontext ist (Client sieht nur eigene Requests)
+2. Ein Cross-Org-Zugriff ohne kompromittiertes RLS strukturell nicht möglich ist
+3. Die Funktion mit `@deprecated` markiert ist und langfristig parametrisiert wird
+
+```typescript
+/** @deprecated RLS-only — langfristig client_org_id Parameter hinzufügen */
+export async function getOptionRequestsForCurrentClient(): Promise<...> {
+  // Kein org_id Filter nötig: Client sieht per RLS ausschließlich eigene Requests.
+  // Cross-Org-Leak nur bei RLS-Kompromittierung möglich — kein weiterer Angriffsvektor.
+  const { data } = await supabase.from('option_requests').select(...)...;
+}
+```
+
+Nicht betroffen: Agency-Reads (z.B. `getOptionRequests(orgId)`) brauchen weiterhin expliziten Filter.
+
 ---
 
 ## ❌ RISIKO 7 — Frontend Silent Fail / Audit-Log mit leerem org_id
@@ -485,6 +503,14 @@ WHERE lower(trim(email)) = lower(trim(u_email)) AND user_id IS NULL;
 
 **Backend:** `generate_model_claim_token(p_model_id)` + `claim_model_by_token(p_token)` RPCs (20260413).
 `link_model_by_email()` ist DEPRECATED — nur noch für bereits-verknüpfte Models (user_id IS NOT NULL), entfernen sobald alle Agencies auf Token umgestellt sind.
+
+**Erlaubte Ausnahme (kein Blocker):** `linkModelByEmail()` in den bestehenden `signIn`/`signUp`
+Step-2-Calls in `AuthContext.tsx` — das ist KEIN neuer Flow, sondern existierender Deprecated-Fallback.
+Begründung: (a) DB-Funktion prüft intern `user_id IS NULL` — kein Überschreiben bereits verknüpfter Models,
+(b) Call läuft in isoliertem try-catch nach Step 1 (kann bootstrapThenLoadProfile nicht blockieren),
+(c) Neuer Code darf `link_model_by_email()` NICHT aufrufen — stattdessen `claim_model_by_token()`.
+Migration-Ziel: sobald alle Agencies auf Token-Flow umgestellt sind, `linkModelByEmail()`-Calls
+aus `AuthContext.tsx` entfernen und DB-Funktion droppen.
 
 ---
 
