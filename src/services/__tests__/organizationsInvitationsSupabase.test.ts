@@ -85,6 +85,7 @@ describe('organizationsInvitationsSupabase', () => {
           org_type: 'agency',
           invite_role: 'booker',
           expires_at: '2099-01-01T00:00:00.000Z',
+          invited_email_hint: 'b***@acme.com',
         },
       ],
       error: null,
@@ -95,8 +96,26 @@ describe('organizationsInvitationsSupabase', () => {
       org_type: 'agency',
       invite_role: 'booker',
       expires_at: '2099-01-01T00:00:00.000Z',
+      invited_email_hint: 'b***@acme.com',
     });
     expect(rpc).toHaveBeenCalledWith('get_invitation_preview', { p_token: 'secret-token' });
+  });
+
+  it('getInvitationPreview mappt invited_email_hint=null wenn nicht vorhanden', async () => {
+    rpc.mockResolvedValueOnce({
+      data: [
+        {
+          org_name: 'Acme',
+          org_type: 'agency',
+          invite_role: 'booker',
+          expires_at: '2099-01-01T00:00:00.000Z',
+          invited_email_hint: null,
+        },
+      ],
+      error: null,
+    });
+    const p = await getInvitationPreview('secret-token');
+    expect(p?.invited_email_hint).toBeNull();
   });
 
   it('getInvitationPreview: null wenn leer', async () => {

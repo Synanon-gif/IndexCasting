@@ -149,6 +149,27 @@ export const uiCopy = {
     roleMember: 'Member',
     signUpToAccept: 'Create account & accept',
     alreadyHaveAccount: 'I already have an account',
+    emailHintPrefix: 'Invitation sent to:',
+  },
+  inviteErrors: {
+    title: 'Invitation Error',
+    emailMismatch:
+      'This invitation was sent to a different email address. Please sign out and sign in (or create an account) with the email address the invitation was sent to.',
+    expiredOrUsed:
+      'This invitation link has already been used or has expired. Please ask for a new invitation.',
+    alreadyMember: 'You are already a member of another organization.',
+    wrongRole:
+      'Your account type does not match this invitation. Please contact the person who invited you.',
+    genericFail: 'Could not accept the invitation. Please try again or ask for a new invitation link.',
+    signOutBtn: 'Sign out',
+    dismissBtn: 'OK',
+  },
+  modelClaimErrors: {
+    title: 'Invitation Error',
+    expiredOrUsed:
+      'This model invitation link has already been used or has expired. Please ask your agency for a new link.',
+    genericFail: 'Could not link your model profile. Please try again or contact your agency.',
+    dismissBtn: 'OK',
   },
   modelClaim: {
     pageTitle: 'Model account invitation',

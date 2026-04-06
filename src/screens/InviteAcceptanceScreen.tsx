@@ -71,6 +71,12 @@ export function InviteAcceptanceScreen({
               {'\n'}
               {uiCopy.invite.validUntil}: {new Date(preview.expires_at).toLocaleString()}
             </Text>
+            {preview.invited_email_hint ? (
+              <Text style={styles.emailHint}>
+                {uiCopy.invite.emailHintPrefix}{' '}
+                <Text style={styles.emailHintValue}>{preview.invited_email_hint}</Text>
+              </Text>
+            ) : null}
             <Text style={styles.hint}>{uiCopy.invite.sameEmailInstructions}</Text>
           </>
         )}
@@ -139,6 +145,8 @@ const styles = StyleSheet.create({
   body: { ...typography.body, color: colors.textPrimary, marginBottom: spacing.md, lineHeight: 22 },
   emph: { fontWeight: '700' },
   meta: { ...typography.label, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.md, lineHeight: 18 },
+  emailHint: { ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.sm, lineHeight: 18 },
+  emailHintValue: { fontWeight: '700', color: colors.textPrimary },
   hint: { ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.lg, lineHeight: 18 },
   error: { ...typography.body, fontSize: 12, color: '#C0392B', marginBottom: spacing.md },
   btnCol: { gap: spacing.sm },

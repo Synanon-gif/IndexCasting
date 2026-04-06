@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { Platform, View, StyleSheet, ActivityIndicator, Text, Dimensions, TouchableOpacity } from 'react-native';
+import { Alert, Platform, View, StyleSheet, ActivityIndicator, Text, Dimensions, TouchableOpacity } from 'react-native';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { AppDataProvider, useAppData } from './src/context/AppDataContext';
 import { SubscriptionProvider, useSubscription } from './src/context/SubscriptionContext';
@@ -295,8 +295,31 @@ function AppContent() {
       await persistInviteToken(null);
       clearInviteQueryParam();
       await refreshProfile();
+    } else {
+      const err = r.error as string | undefined;
+      // Definitiv nicht behebbar: Token leeren damit er nicht bei jedem Login erneut versucht wird
+      if (err === 'email_mismatch' || err === 'invalid_or_expired') {
+        await persistInviteToken(null);
+      }
+      // Spezifisches Feedback je nach Fehler
+      if (err === 'email_mismatch') {
+        Alert.alert(
+          uiCopy.inviteErrors.title,
+          uiCopy.inviteErrors.emailMismatch,
+          [
+            { text: uiCopy.inviteErrors.signOutBtn, onPress: () => { void signOut(); }, style: 'destructive' },
+            { text: uiCopy.inviteErrors.dismissBtn, style: 'cancel' },
+          ]
+        );
+      } else if (err === 'invalid_or_expired') {
+        Alert.alert(uiCopy.inviteErrors.title, uiCopy.inviteErrors.expiredOrUsed);
+      } else if (err === 'already_member_of_another_org') {
+        Alert.alert(uiCopy.inviteErrors.title, uiCopy.inviteErrors.alreadyMember);
+      } else if (err) {
+        Alert.alert(uiCopy.inviteErrors.title, uiCopy.inviteErrors.genericFail);
+      }
     }
-  }, [inviteTokenState, refreshProfile]);
+  }, [inviteTokenState, refreshProfile, signOut]);
 
   useEffect(() => {
     if (!session?.user) return;
@@ -357,7 +380,15 @@ function AppContent() {
       clearModelInviteQueryParam();
       await refreshProfile();
     } else {
-      console.warn('[ModelClaim] claimModelByToken failed after session:', r.error);
+      const err = r.error as string | undefined;
+      console.warn('[ModelClaim] claimModelByToken failed after session:', err);
+      // Definitiv nicht behebbar: Token leeren damit er nicht bei jedem Login erneut versucht wird
+      if (err === 'token_expired' || err === 'token_already_used' || err === 'token_not_found') {
+        await persistModelClaimToken(null);
+        Alert.alert(uiCopy.modelClaimErrors.title, uiCopy.modelClaimErrors.expiredOrUsed);
+      } else if (err) {
+        Alert.alert(uiCopy.modelClaimErrors.title, uiCopy.modelClaimErrors.genericFail);
+      }
     }
   }, [modelInviteTokenState, refreshProfile]);
 

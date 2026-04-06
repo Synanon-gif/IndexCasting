@@ -47,6 +47,8 @@ export type InvitationPreview = {
   org_type: OrganizationType;
   invite_role: InvitationRole;
   expires_at: string;
+  /** Maskierte E-Mail-Adresse der Einladung, z.B. "b***@agency.com". Zeigt dem User vor der Registrierung welche E-Mail er verwenden muss. */
+  invited_email_hint?: string | null;
 };
 
 function randomInviteToken(): string {
@@ -112,6 +114,7 @@ export async function getInvitationPreview(token: string): Promise<InvitationPre
       org_type: row.org_type as OrganizationType,
       invite_role: row.invite_role as InvitationRole,
       expires_at: row.expires_at,
+      invited_email_hint: row.invited_email_hint ?? null,
     };
   } catch (e) {
     console.error('getInvitationPreview exception:', e);

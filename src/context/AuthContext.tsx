@@ -492,6 +492,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       let inviteAcceptedOk = false;
+      let inviteError: string | undefined;
       try {
         const { acceptOrganizationInvitation } = await import('../services/organizationsInvitationsSupabase');
         const { readInviteToken, persistInviteToken } = await import('../storage/inviteToken');
@@ -499,10 +500,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (tok) {
           const inv = await acceptOrganizationInvitation(tok);
           inviteAcceptedOk = !!inv.ok;
+          inviteError = inv.ok ? undefined : (inv.error as string | undefined);
           if (inv.ok) await persistInviteToken(null);
+          // Definitiv nicht behebbar → Token leeren damit kein erneuter Versuch
+          if (inviteError === 'email_mismatch' || inviteError === 'invalid_or_expired') {
+            await persistInviteToken(null);
+          }
         }
       } catch (e) {
         console.error('signUp invite accept error:', e);
+      }
+
+      // Wenn isInviteSignup === true aber der Invite nicht angenommen wurde (z.B. email_mismatch):
+      // → KEIN Owner-Bootstrap, stattdessen Fehler zurückgeben.
+      // Verhindert Zombie-Orgs für User die mit der falschen E-Mail registrieren.
+      if (options?.isInviteSignup && !inviteAcceptedOk) {
+        const errMsg =
+          inviteError === 'email_mismatch'
+            ? uiCopy.inviteErrors.emailMismatch
+            : inviteError === 'invalid_or_expired'
+              ? uiCopy.inviteErrors.expiredOrUsed
+              : uiCopy.inviteErrors.genericFail;
+        console.warn('[signUp] isInviteSignup but invite failed:', inviteError);
+        return { error: errMsg };
       }
 
       // Org bootstrap RPCs require an active session (auth.uid() must be set).
@@ -512,8 +532,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // reliable fallback for the no-session case.
       const hasSession = !!data.session;
 
-      /** New org owners only — invited employees/bookers skip (they join an existing org). */
-      if (hasSession && safeRole === 'client' && !inviteAcceptedOk) {
+      // New org owners only — invited employees/bookers skip (they join an existing org).
+      // !options?.isInviteSignup guard: verhindert Zombie-Org wenn Invite scheiterte.
+      if (hasSession && safeRole === 'client' && !inviteAcceptedOk && !options?.isInviteSignup) {
         // Pass company name directly so the RPC doesn't need to rely on the profile
         // upsert above having committed — belt-and-suspenders against silent upsert failures.
         const { error: rpcErr } = await supabase.rpc('ensure_client_organization', {
@@ -521,7 +542,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
         if (rpcErr) console.error('ensure_client_organization on signup', rpcErr);
       }
-      if (hasSession && safeRole === 'agent' && !inviteAcceptedOk) {
+      if (hasSession && safeRole === 'agent' && !inviteAcceptedOk && !options?.isInviteSignup) {
         try {
           const { ensureAgencyRecordForCurrentAgent } = await import('../services/agenciesSupabase');
           // Pass company name directly for the same reason as above.
