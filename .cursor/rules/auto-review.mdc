@@ -29,16 +29,25 @@ vollständig durchlaufen werden, **bevor** Code committed oder weitergeschrieben
   - SECURITY DEFINER ohne `SET row_security TO off`? → Blocker
 - **Broken Role Logic:** `effectiveRole` für Admin-Routing genutzt? → Blocker (Admin hat `role='admin'`, kein effectiveRole)
 - **Admin-Zugang:** `assert_is_admin()` in neuen Admin-RPCs vergessen? → Blocker
+- **profiles.role in RLS:** Direkte `profiles.role = 'client'/'model'`-Subquery in RLS-Policy? → Blocker (Risiko 8) — SECURITY DEFINER Funktion verwenden
+- **LIMIT 1 in Org-Kontext:** `LIMIT 1` ohne Begründung in Org-Auflösung? → Blocker (Risiko 10)
+- **Email-basiertes Model-Linking:** `link_model_by_email()` für neue Flows? → Blocker — `claim_model_by_token()` verwenden (Risiko 9)
+- **Territory Constraint:** `ON CONFLICT (model_id, agency_id, country_code)` in neuen RPCs? → Blocker — muss `(model_id, country_code)` sein (Fix A)
+- **Model in organization_members:** Models via INSERT in `organization_members` hinzufügen? → Blocker — Models nutzen ausschließlich `model_agency_territories`
+- **JSON.stringify für JSONB:** `JSON.stringify(array)` vor Supabase-Insert in JSONB-Spalte? → Blocker — natives JS-Array übergeben
 
 ---
 
-## 3. Vier Pflicht-Fragen (explizit beantworten)
+## 3. Sieben Pflicht-Fragen (explizit beantworten)
 
 ```
 Q1: Bricht diese Änderung den Login?
 Q2: Bricht diese Änderung die Org-Zuweisung?
 Q3: Bricht diese Änderung die Admin-Sichtbarkeit?
 Q4: Führt diese Änderung RLS-Rekursion ein?
+Q5: Verletzt diese Änderung den Territory-Constraint (UNIQUE model_id, country_code)?
+Q6: Fügt diese Änderung ein Model zu organization_members hinzu?
+Q7: Verwendet diese Änderung LIMIT 1 in einer Org-Kontext-Funktion?
 ```
 
 → Wenn **eine** Antwort unklar oder „möglicherweise ja" ist:
@@ -53,6 +62,10 @@ Q4: Führt diese Änderung RLS-Rekursion ein?
 - Query ohne `org_id`-Filter auf Multi-Tenant-Tabelle
 - `bootstrapThenLoadProfile` oder Login-Pfad wird verändert ohne expliziten Nachweis, dass Q1–Q4 = Nein
 - Admin-Routing in `App.tsx` wird vor den `is_admin`-Check verschoben
+- RLS-Policy auf `models` referenziert `profiles` direkt (Risiko 8 — Gefahr 1-Erweiterung)
+- Neuer Code ruft `link_model_by_email()` für einen neuen Flow auf (Risiko 9 — deprecated)
+- Org-Kontext-RPC oder Frontend-Query verwendet `LIMIT 1` ohne expliziten Kommentar (Risiko 10)
+- `model_agency_territories` ON CONFLICT referenziert `agency_id` als Teil des Conflict-Targets
 
 ---
 

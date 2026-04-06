@@ -34,6 +34,28 @@ Wenn eine Änderung eine dieser Regeln gefährdet → STOP und refaktorieren.
 - Ein zugewiesenes Model wird Clients nur angezeigt wenn das Profil vollständig ist
 - Modelle sind für Clients sichtbar sobald alle erforderlichen Felder ausgefüllt sind
 
+## MODEL-ORG-ARCHITEKTUR (unveränderlich, Fix H 2026-04-13)
+
+- `model_agency_territories` ist die **einzige** Wahrheitsquelle für Model-Agency-Beziehungen
+- Models erscheinen NIEMALS in `organization_members` — das ist B2B-User-Tabelle (Booker, Employee)
+- Model-Org-Kontext wird über `get_my_model_agencies()` aufgelöst, NICHT via `get_my_org_context()`
+- `AuthContext` ruft `get_my_org_context()` nur für `role === 'client' || role === 'agent'` auf — NIE für Models
+- Neue RLS-Policies die Model-Sichtbarkeit prüfen: `caller_is_linked_model()` oder `user_id = auth.uid()`, KEIN profiles-JOIN
+
+## TERRITORY-CONSTRAINT (unveränderlich, Fix A 2026-04-13)
+
+- Ein Model kann pro Territory NUR EINER Agentur gehören: `UNIQUE(model_id, country_code)` auf `model_agency_territories`
+- Dieser Constraint ist NIEMALS zu lockern auf `UNIQUE(model_id, country_code, agency_id)` — das würde die Exklusivität brechen
+- `ON CONFLICT`-Klauseln in RPCs die `model_agency_territories` beschreiben müssen `(model_id, country_code)` referenzieren
+- Bei Konflikten gewinnt die akzeptierende Agentur: `DO UPDATE SET agency_id = EXCLUDED.agency_id`
+
+## KEINE IMPLIZITE ORG-AUFLÖSUNG (unveränderlich, Fix B 2026-04-13)
+
+- `LIMIT 1` in Org-Kontext-Funktionen ist **verboten** (kein implicit org resolution)
+- `get_my_org_context()` gibt ALLE Memberships zurück — der Caller wählt explizit
+- Multi-Org-Users: Frontend loggt Warnung und verwendet älteste Membership bis Multi-Org-UI implementiert ist
+- Neue Org-Kontext-RPCs dürfen kein `LIMIT 1` ohne expliziten Kommentar warum es sicher ist
+
 ## KEINE RLS-REKURSION (KRITISCH)
 
 Policies dürfen NIEMALS Kreisabhängigkeiten erzeugen zwischen:

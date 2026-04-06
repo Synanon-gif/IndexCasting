@@ -405,6 +405,100 @@ bei fehlgeschlagener Territory-Auflösung. Erlaubt weil: (a) nur model.agency_id
 
 ---
 
+---
+
+## ❌ RISIKO 8 — `profiles.role = 'X'` in RLS-Policies (Gefahr 1-Erweiterung)
+
+**Problem:** Gefahr 1 deckt `profiles.is_admin = true` ab. Das gleiche Problem gilt für **jeden** direkten Column-Zugriff auf `profiles` in einer RLS-Policy:
+- `profiles.role = 'client'` → fragil bei Column-REVOKE oder Schema-Änderungen
+- `profiles.role = 'model'` → erzeugt `profiles → models → profiles`-Rekursionsrisiko
+- Jede direkte `profiles`-Subquery in einer `models`-Policy → potentielle 42P17
+
+**Verboten:**
+```sql
+-- NIEMALS direkter profiles-Zugriff in models-Policies:
+EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'client')
+EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = auth.uid() AND p.role = 'model')
+```
+
+**Richtig:**
+```sql
+-- IMMER SECURITY DEFINER Funktion ohne profiles-Zugriff:
+public.caller_is_client_org_member()   -- prüft organization_members, nicht profiles
+public.caller_is_linked_model()         -- prüft models.user_id, nicht profiles
+public.is_current_user_admin()          -- UUID+email-pin, kein profiles-Spalten-Zugriff
+```
+
+**Gefixt (2026-04-13):** `migration_fix_client_rls_three_mandatory_fields.sql` → `20260413_fix_d_models_rls_client_secdef.sql`
+
+**Regel:** Jede neue RLS-Policy die auf `models` liegt darf KEINEN direkten JOIN oder EXISTS auf `profiles` haben. Stattdessen: neue SECURITY DEFINER Funktion anlegen (mit `row_security=off`, ohne profiles-Zugriff).
+
+---
+
+## ❌ RISIKO 9 — Email-basiertes Model-Linking (Model-spezifische Gefahr 2)
+
+**Problem:** `link_model_by_email()` verknüpft einen Model-Record mit einem User-Account via Email-Matching. Das verletzt Gefahr 2 für den spezifischen Model-Lifecycle:
+- Email-Kollision → Account-Übernahme eines fremden Model-Records
+- Email-Änderung → dauerhaft falsche Verlinkung
+- Jeder kann sich mit einer beliebigen Email registrieren und einen unverknüpften Model-Record übernehmen
+
+**Verboten:**
+```sql
+-- NIEMALS: Model-Account via Email verknüpfen
+UPDATE public.models SET user_id = auth.uid()
+WHERE lower(trim(email)) = lower(trim(u_email)) AND user_id IS NULL;
+```
+
+**Richtig:**
+```typescript
+// IMMER: Token-basiertes Claim-System
+// 1. Agency generiert Token: await generateModelClaimToken(modelId)
+// 2. Agency sendet Token an Model (out-of-band)
+// 3. Model aktiviert Account: await claimModelByToken(token)
+```
+
+**Backend:** `generate_model_claim_token(p_model_id)` + `claim_model_by_token(p_token)` RPCs (20260413).
+`link_model_by_email()` ist DEPRECATED — nur noch für bereits-verknüpfte Models (user_id IS NOT NULL), entfernen sobald alle Agencies auf Token umgestellt sind.
+
+---
+
+## ❌ RISIKO 10 — LIMIT 1 in Org-Kontext-Funktionen (Implicit Org Resolution)
+
+**Problem:** `LIMIT 1` in `get_my_org_context()` oder ähnlichen Membership-Queries wählt stillschweigend den ersten Eintrag wenn ein User in mehreren Orgs ist. Das ist **verboten** (`NO implicit org resolution`):
+- Falscher Org-Kontext → Daten-Leak zwischen Tenants
+- Kein Error, keine Warnung → schwer zu debuggen
+
+**Verboten:**
+```sql
+-- NIEMALS LIMIT 1 in Org-Kontext-Funktionen:
+SELECT ... FROM organization_members WHERE user_id = auth.uid() ORDER BY created_at ASC LIMIT 1;
+```
+
+```typescript
+// NIEMALS im Frontend:
+.from('organization_members').eq('user_id', userId).limit(1).maybeSingle()
+// (für Org-Kontext — für andere Zwecke mit explizitem Kommentar erlaubt)
+```
+
+**Richtig:**
+```sql
+-- ALLE Memberships zurückgeben; Frontend wählt explizit und loggt Warnung bei mehreren Orgs:
+RETURN QUERY SELECT ... FROM organization_members WHERE user_id = auth.uid() ORDER BY created_at ASC;
+```
+
+```typescript
+// Frontend: explizit wählen + warnen
+const allRows = Array.isArray(orgCtx) ? orgCtx : [orgCtx];
+if (allRows.length > 1) {
+  console.warn('[AuthContext] user in multiple orgs — using oldest; multi-org switching not yet supported');
+}
+const row = allRows[0];
+```
+
+**Gefixt (2026-04-13):** `20260413_fix_b_get_my_org_context_multi_org.sql`
+
+---
+
 ## PFLICHT: Migrations-Reihenfolge sichern (Risiko A Anti-Regression)
 
 Bei mehreren Migrations-Dateien mit gleichem Datum-Präfix läuft PostgreSQL/Supabase sie
