@@ -1,6 +1,7 @@
 import { supabase } from '../../lib/supabase';
 import { checkAndIncrementStorage, decrementStorage } from './agencyStorageSupabase';
 import { validateFile, checkMagicBytes } from '../../lib/validation';
+import { convertHeicToJpegWithStatus } from './imageUtils';
 
 /** Reads the actual stored file size from storage.objects metadata. Best-effort — returns null on failure. */
 async function getActualDocumentSize(bucket: string, path: string): Promise<number | null> {
@@ -47,10 +48,16 @@ export async function uploadDocument(
   file: File | Blob,
   fileName: string
 ): Promise<Document | null> {
-  const claimedSize = file instanceof File ? file.size : (file as Blob).size;
+  const { file: prepared, conversionFailed } = await convertHeicToJpegWithStatus(file);
+  if (conversionFailed) {
+    console.error('uploadDocument: HEIC/HEIF conversion failed');
+    return null;
+  }
+
+  const claimedSize = prepared instanceof File ? prepared.size : (prepared as Blob).size;
 
   // MIME type and size validation before any storage interaction.
-  const fileValidation = validateFile(file);
+  const fileValidation = validateFile(prepared);
   if (!fileValidation.ok) {
     console.error('uploadDocument: file validation failed', fileValidation.error);
     return null;
@@ -58,13 +65,14 @@ export async function uploadDocument(
 
   // Magic-byte check: verifies actual file content matches declared MIME type.
   // Prevents renamed executables from being stored as PDFs or images.
-  const magicCheck = await checkMagicBytes(file);
+  const magicCheck = await checkMagicBytes(prepared);
   if (!magicCheck.ok) {
     console.error('uploadDocument: magic bytes check failed', magicCheck.error);
     return null;
   }
 
-  const safeFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 200);
+  const nameSource = prepared instanceof File ? prepared.name : fileName;
+  const safeFileName = nameSource.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 200);
   const path = `documents/${userId}/${Date.now()}_${safeFileName}`;
 
   // Agency storage limit check — non-agency users pass through automatically.
@@ -76,7 +84,10 @@ export async function uploadDocument(
 
   const { error: uploadError } = await supabase.storage
     .from('documents')
-    .upload(path, file);
+    .upload(path, prepared, {
+      contentType: prepared.type || 'application/octet-stream',
+      upsert: false,
+    });
   if (uploadError) {
     console.error('uploadDocument storage error:', uploadError);
     await decrementStorage(claimedSize);

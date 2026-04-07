@@ -2154,14 +2154,17 @@ const MyModelsTab: React.FC<{
       if (hasAnyPhotos) {
         // EXPLOIT-C2 fix: Require image rights confirmation before any upload.
         if (!addModelImageRightsConfirmed) {
-          setAddModelFeedback('Please confirm you have all image rights before uploading photos.');
+          setAddModelFeedback(uiCopy.modelMedia.addModelConfirmImageRightsFeedback);
           setAddLoading(false);
           return;
         }
         // Record the rights confirmation in the audit table, then guard the upload.
         const { data: { user: currentUser } } = await supabase.auth.getUser();
         if (!currentUser) {
-          Alert.alert('Image Rights Required', 'Authentication required to upload photos.');
+          Alert.alert(
+            uiCopy.modelMedia.imageRightsRequiredTitle,
+            uiCopy.modelMedia.addModelAuthRequiredToUploadPhotos,
+          );
           setAddLoading(false);
           return;
         }
@@ -2171,13 +2174,19 @@ const MyModelsTab: React.FC<{
           orgId: inviteOrganizationId ?? undefined,
         });
         if (!rightsOk.ok) {
-          Alert.alert('Image Rights Required', 'Rights confirmation could not be recorded. Please try again.');
+          Alert.alert(
+            uiCopy.modelMedia.imageRightsRequiredTitle,
+            uiCopy.legal.imageRightsConfirmationFailed,
+          );
           setAddLoading(false);
           return;
         }
         const guard = await guardImageUpload(currentUser.id, createdModelId);
         if (!guard.ok) {
-          Alert.alert('Image Rights Required', 'Rights confirmation could not be verified. Please try again.');
+          Alert.alert(
+            uiCopy.modelMedia.imageRightsRequiredTitle,
+            uiCopy.legal.imageRightsGuardVerificationFailed,
+          );
           setAddLoading(false);
           return;
         }
@@ -2190,7 +2199,10 @@ const MyModelsTab: React.FC<{
             if (result) {
               uploadedUrls.push(result.url);
             } else {
-              Alert.alert('Upload Failed', 'One or more portfolio photos could not be uploaded. Please try again in the model settings.');
+              Alert.alert(
+                uiCopy.modelMedia.addModelPartialUploadTitle,
+                uiCopy.modelMedia.addModelPartialPortfolioUploadFailed,
+              );
             }
           }
           if (uploadedUrls.length > 0) {
@@ -2222,7 +2234,10 @@ const MyModelsTab: React.FC<{
             if (result) {
               uploadedPolaroidUrls.push(result.url);
             } else {
-              Alert.alert('Upload Failed', 'One or more polaroid photos could not be uploaded. Please try again in the model settings.');
+              Alert.alert(
+                uiCopy.modelMedia.addModelPartialUploadTitle,
+                uiCopy.modelMedia.addModelPartialPolaroidUploadFailed,
+              );
             }
           }
           if (uploadedPolaroidUrls.length > 0) {

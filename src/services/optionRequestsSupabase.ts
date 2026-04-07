@@ -3,7 +3,18 @@ import { pooledSubscribe } from './realtimeChannelPool';
 import type { BookingEventType } from './bookingEventsSupabase';
 import { createNotification, createNotifications } from './notificationsSupabase';
 import { uiCopy } from '../constants/uiCopy';
-import { normalizeInput, validateText, sanitizeHtml, extractSafeUrls, logSecurityEvent } from '../../lib/validation';
+import {
+  normalizeInput,
+  validateText,
+  sanitizeHtml,
+  extractSafeUrls,
+  logSecurityEvent,
+  validateFile,
+  checkMagicBytes,
+  checkExtensionConsistency,
+  CHAT_ALLOWED_MIME_TYPES,
+} from '../../lib/validation';
+import { convertHeicToJpegWithStatus } from './imageUtils';
 import { checkAndIncrementStorage, decrementStorage } from './agencyStorageSupabase';
 import { guardUploadSession } from './gdprComplianceSupabase';
 import { logAction } from '../utils/logAction';
@@ -961,28 +972,58 @@ export async function uploadOptionDocument(
     return null;
   }
 
-  // MIME type and size validation before any storage interaction.
-  const { validateFile } = await import('../../lib/validation');
-  const fileValidation = validateFile(file);
+  const { file: prepared, conversionFailed } = await convertHeicToJpegWithStatus(file);
+  if (conversionFailed) {
+    console.warn('uploadOptionDocument: HEIC/HEIF conversion failed');
+    void logSecurityEvent({ type: 'file_rejected', metadata: { service: 'optionRequestsSupabase', fn: 'uploadOptionDocument', reason: 'heic_conversion_failed' } });
+    return null;
+  }
+  file = prepared;
+
+  const fileValidation = validateFile(file, CHAT_ALLOWED_MIME_TYPES);
   if (!fileValidation.ok) {
     console.error('uploadOptionDocument: file validation failed', fileValidation.error);
     return null;
   }
 
+  const magicCheck = await checkMagicBytes(file);
+  if (!magicCheck.ok) {
+    console.error('uploadOptionDocument: magic bytes check failed', magicCheck.error);
+    void logSecurityEvent({ type: 'magic_bytes_fail', metadata: { service: 'optionRequestsSupabase', fn: 'uploadOptionDocument' } });
+    return null;
+  }
+
+  const extCheck = checkExtensionConsistency(file);
+  if (!extCheck.ok) {
+    console.error('uploadOptionDocument: extension consistency check failed', extCheck.error);
+    void logSecurityEvent({ type: 'extension_mismatch', metadata: { service: 'optionRequestsSupabase', fn: 'uploadOptionDocument' } });
+    return null;
+  }
+
+  const safeBaseName =
+    file instanceof File
+      ? file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 200)
+      : fileName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 200);
+
+  const claimedSize = file instanceof File ? file.size : (file as Blob).size;
+
   // Agency storage limit check — non-agency users pass through automatically.
-  const storageCheck = await checkAndIncrementStorage(file.size);
+  const storageCheck = await checkAndIncrementStorage(claimedSize);
   if (!storageCheck.allowed) {
     console.warn('uploadOptionDocument: storage limit reached', storageCheck);
     return null;
   }
 
-  const path = `options/${requestId}/${Date.now()}_${fileName}`;
+  const path = `options/${requestId}/${Date.now()}_${safeBaseName}`;
   const { error: uploadError } = await supabase.storage
     .from('chat-files')
-    .upload(path, file);
+    .upload(path, file, {
+      contentType: file.type || 'application/octet-stream',
+      upsert: false,
+    });
   if (uploadError) {
     console.error('uploadOptionDocument storage error:', uploadError);
-    await decrementStorage(file.size);
+    await decrementStorage(claimedSize);
     return null;
   }
 
@@ -994,9 +1035,9 @@ export async function uploadOptionDocument(
     .insert({
       option_request_id: requestId,
       uploaded_by: uploadedBy,
-      file_name: fileName,
+      file_name: safeBaseName,
       file_url: path,
-      file_type: fileName.split('.').pop() || null,
+      file_type: safeBaseName.split('.').pop() || null,
     })
     .select()
     .single();

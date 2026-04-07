@@ -1,5 +1,6 @@
 import { supabase } from '../../lib/supabase';
 import { validateFile, checkMagicBytes } from '../../lib/validation';
+import { convertHeicToJpegWithStatus } from './imageUtils';
 
 /**
  * Verifizierungen (Model) – in Supabase: verifications (user_id) + Storage (documents).
@@ -39,21 +40,28 @@ export async function submitVerification(
   fileName: string
 ): Promise<Verification | null> {
   try {
+    const { file: prepared, conversionFailed } = await convertHeicToJpegWithStatus(file);
+    if (conversionFailed) {
+      console.error('submitVerification: HEIC/HEIF conversion failed');
+      return null;
+    }
+
     // MIME type and size validation — ID documents must be image or PDF only.
-    const fileValidation = validateFile(file);
+    const fileValidation = validateFile(prepared);
     if (!fileValidation.ok) {
       console.error('submitVerification: file validation failed', fileValidation.error);
       return null;
     }
 
-    const magicCheck = await checkMagicBytes(file);
+    const magicCheck = await checkMagicBytes(prepared);
     if (!magicCheck.ok) {
       console.error('submitVerification: magic bytes check failed', magicCheck.error);
       return null;
     }
 
     // Sanitize fileName to prevent path traversal attacks (../,  slashes, null bytes).
-    const sanitizedFileName = fileName
+    const nameSource = prepared instanceof File ? prepared.name : fileName;
+    const sanitizedFileName = nameSource
       .replace(/[^a-zA-Z0-9._-]/g, '_')
       .replace(/\.{2,}/g, '_')
       .slice(0, 200);
@@ -61,7 +69,10 @@ export async function submitVerification(
 
     const { error: uploadError } = await supabase.storage
       .from('documents')
-      .upload(path, file, { upsert: false });
+      .upload(path, prepared, {
+        contentType: prepared.type || 'application/octet-stream',
+        upsert: false,
+      });
     if (uploadError) { console.error('submitVerification upload error:', uploadError); return null; }
 
     const { data, error } = await supabase

@@ -978,6 +978,21 @@ export const uiCopy = {
     modelApprovedBooking: '✓ Approved by Model',
   },
   modelMedia: {
+    /** Alert title — image rights checkbox / confirm flow (portfolio, polaroids, agency add-model). */
+    imageRightsRequiredTitle: 'Image Rights Required',
+    holdRightsBeforeUpload:
+      'Please confirm you hold all necessary rights and consents before uploading photos.',
+    holdRightsBeforeAddUrl:
+      'Please confirm you hold all necessary rights and consents before adding this photo.',
+    /** Agency add-model form: inline feedback when checkbox not ticked. */
+    addModelConfirmImageRightsFeedback:
+      'Please confirm you have all image rights before uploading photos.',
+    addModelAuthRequiredToUploadPhotos: 'Authentication required to upload photos.',
+    addModelPartialPortfolioUploadFailed:
+      'One or more portfolio photos could not be uploaded. Please try again in the model settings.',
+    addModelPartialPolaroidUploadFailed:
+      'One or more polaroid photos could not be uploaded. Please try again in the model settings.',
+    addModelPartialUploadTitle: 'Upload Failed',
     portfolioTitle: 'Portfolio',
     portfolioHint: 'First image is used as the cover in discovery and packages.',
     polaroidsTitle: 'Polaroids',
@@ -1082,6 +1097,9 @@ export const uiCopy = {
     /** DB / network failure after checkbox tick — same as model media panel. */
     imageRightsConfirmationFailed:
       'Rights confirmation could not be recorded. Please try again.',
+    /** Recent confirmation row missing or not readable — guard before upload. */
+    imageRightsGuardVerificationFailed:
+      'Rights confirmation could not be verified. Please try again.',
   },
   storage: {
     title: 'Storage',

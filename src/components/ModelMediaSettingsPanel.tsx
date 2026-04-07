@@ -62,6 +62,7 @@ type Props = {
 };
 
 const copy = uiCopy.modelMedia;
+const legalCopy = uiCopy.legal;
 
 // ---------------------------------------------------------------------------
 // Helper: resolve storage URLs to signed URLs for all photo types.
@@ -148,10 +149,7 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
     if (!files.length) return;
 
     if (!imageRightsConfirmed) {
-      Alert.alert(
-        'Image Rights Required',
-        'Please confirm you hold all necessary rights and consents before uploading photos.',
-      );
+      Alert.alert(copy.imageRightsRequiredTitle, copy.holdRightsBeforeUpload);
       return;
     }
 
@@ -168,16 +166,13 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
       orgId: organizationId ?? undefined,
     });
     if (!rightsOk.ok) {
-      Alert.alert(
-        'Image Rights Required',
-        'Rights confirmation could not be recorded. Please try again.',
-      );
+      Alert.alert(copy.imageRightsRequiredTitle, legalCopy.imageRightsConfirmationFailed);
       setUploading(null);
       return;
     }
     const guard = await guardImageUpload(user.id, modelId);
     if (!guard.ok) {
-      Alert.alert('Image Rights Required', 'Rights confirmation could not be verified. Please try again.');
+      Alert.alert(copy.imageRightsRequiredTitle, legalCopy.imageRightsGuardVerificationFailed);
       setUploading(null);
       return;
     }
@@ -250,10 +245,7 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
     if (!trimmed) return;
 
     if (!imageRightsConfirmed) {
-      Alert.alert(
-        'Image Rights Required',
-        'Please confirm you hold all necessary rights and consents before adding this photo.',
-      );
+      Alert.alert(copy.imageRightsRequiredTitle, copy.holdRightsBeforeAddUrl);
       return;
     }
 
@@ -269,15 +261,12 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
       orgId: organizationId ?? undefined,
     });
     if (!rightsOk.ok) {
-      Alert.alert(
-        'Image Rights Required',
-        'Rights confirmation could not be recorded. Please try again.',
-      );
+      Alert.alert(copy.imageRightsRequiredTitle, legalCopy.imageRightsConfirmationFailed);
       return;
     }
     const guard = await guardImageUpload(user.id, modelId);
     if (!guard.ok) {
-      Alert.alert('Image Rights Required', 'Rights confirmation could not be verified. Please try again.');
+      Alert.alert(copy.imageRightsRequiredTitle, legalCopy.imageRightsGuardVerificationFailed);
       return;
     }
 
