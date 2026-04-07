@@ -92,6 +92,25 @@ Wenn ein DB-Constraint umbenannt wird, MÜSSEN alle referenzierenden Funktionen 
 - Jede neue DB-Änderung MUSS als `.sql`-Datei in `supabase/migrations/` mit Datum-Präfix `YYYYMMDD_` angelegt werden
 - Root-Dateien wie `supabase/20260409_model_agency_permission_fix.sql` sind durch echte Migrations (`20260412_agency_rpcs_definitive.sql` u.a.) abgedeckt — niemals direkt ausführen statt Migration zu erstellen
 
+## LIVE-DB SOURCE OF TRUTH — ROOT-SQL NIEMALS ALS ALLEINIGER MAßSTAB (unveränderlich)
+
+- **`supabase/*.sql` außerhalb `migrations/` ist niemals Source of Truth** für den deployten Endzustand. Derselbe Funktions-/Policy-Name kann in Root-SQL und in `supabase/migrations/*` vorkommen — **maßgeblich ist nur der tatsächliche Stand auf der Live-Datenbank** (letzte angewendete Migration bzw. verifizierter Remote-Stand).
+- **Drift-Risiko:** Eine Routine existierte nur in Root-SQL oder eine Migration ersetzte eine alte Definition nicht → Production kann **veraltete Guards oder Referenzen auf nicht existierende Spalten** enthalten.
+- **Pflicht nach sicherheitsrelevantem Fix an bestehender SQL-Funktion oder Storage-/SECDEF-Logik:** zusätzlich zur Migration **Live-Verifikation** (Management-API, SQL-Editor o. Ä.):
+  - `pg_get_functiondef` für die betroffene Routine; bei Katalog-Scans **nur `prokind = 'f'`** (normale Funktionen), nicht auf Aggregate anwenden (sonst Fehler 42809).
+  - Gezielte Suche nach Legacy-Spalten, alten Branch-Namen oder verbotenen Mustern im Funktionsrumpf.
+- Ersetzt nicht Migrations-Disziplin oder Code-Review — schließt die Lücke Repo ↔ Production.
+
+## EXTERNE PROFIL-SYNCS (Mediaslide / Netwalk) — KEIN IMPLIZITER STORAGE-MIRROR (unveränderlich)
+
+- **Metadaten-Sync** (Felder in `models`, inkl. Fremd-URLs in `portfolio_images` / `polaroids`) und **Asset-Mirroring in den eigenen Bucket** sind getrennte Verantwortlichkeiten.
+- Standard-Connectors/Cron-Jobs spiegeln **nicht automatisch** Fremdmedien in Supabase Storage — das wäre ein **explizites Produktfeature** (Rechte, Bandbreite, Dedup, Consent).
+- Mirror/Copy in den eigenen Bucket nur nach **Produktentscheid** und **Rechts-/Consent-Prüfung** — siehe [docs/MEDIASLIDE_NETWALK_SYNC.md](../../docs/MEDIASLIDE_NETWALK_SYNC.md).
+
+## BROWSER-UPLOAD TECHNISCHE PARITÄT (Verweis)
+
+- Verbindliche Mindestanforderungen für alle dokument-/bildnahen Browser-Uploads: [.cursor/rules/upload-consent-matrix.mdc](./upload-consent-matrix.mdc) (**Upload technical parity**).
+
 ## KEINE RLS-REKURSION (KRITISCH)
 
 Policies dürfen NIEMALS Kreisabhängigkeiten erzeugen zwischen:

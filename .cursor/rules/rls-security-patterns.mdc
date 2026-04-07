@@ -5,6 +5,8 @@ alwaysApply: true
 
 # RLS Security Patterns — Drei reale Gefahren (NIEMALS wiederholen)
 
+**SQL Source of Truth & Live-Drift:** Root-Dateien `supabase/*.sql` außerhalb `migrations/` sind keine alleinige Wahrheit für Production; nach Funktions-/Policy-Fixes Live-DB verifizieren (`pg_get_functiondef`, siehe `system-invariants.mdc` **LIVE-DB SOURCE OF TRUTH**). Upload-Dateivalidierung unabhängig von RLS: [.cursor/rules/upload-consent-matrix.mdc](./upload-consent-matrix.mdc) **Upload technical parity**.
+
 ## ❌ GEFAHR 1 — `profiles.is_admin = true` in RLS-Policies
 
 **Problem:** Nach `REVOKE SELECT (is_admin) FROM authenticated` gibt `profiles.is_admin` für alle authenticated-User `NULL` zurück → Policy evaluiert immer `false` → Admin ist ausgesperrt.

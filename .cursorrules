@@ -98,8 +98,14 @@ if (ok) {
 ## 4b. UI-Sprache & Copy (verbindlich)
 - **Die gesamte Nutzeroberfläche ist Englisch (English-only):** alle sichtbaren Texte für Agency, Client und Model — Buttons, Labels, Alerts, Placeholder, leere Zustände, Fehlermeldungen aus dem Produkt.
 - **Zentrale Quelle:** Nutzer-Texte kommen aus `src/constants/uiCopy.ts` (`uiCopy`). Keine neuen deutschsprachigen UI-Strings; keine Hardcodes derselben Phrase an vielen Stellen — lieber ein Key in `uiCopy` erweitern.
+- **Security- / Consent- / Media-Copy (Pflicht):** Neue oder geänderte **sichtbare** Texte für Upload-Fehler, Bildrechte, Rechtsbestätigung, Medien-Einstellungen und ähnliche Compliance-Strings **immer zuerst** in `uiCopy` anlegen — **keine** neuen Hardcodes in Panels/Views/Komponenten für diese Kategorien.
 - **Terminologie:** Agency, Client, Model, Booker (Agentur), Employee (Client-Organisation), Invite — konsistent wie in `uiCopy`.
 - **Ausnahme:** Code-Kommentare und interne Logs dürfen weiterhin der Team-Sprache folgen; **alles, was ein Endnutzer sieht, ist Englisch.**
+
+### 4b.1 Browser-Upload technische Parität (Verweis)
+
+- Vollständige Checkliste und Trennung Consent vs. technische Härtung: [.cursor/rules/upload-consent-matrix.mdc](.cursor/rules/upload-consent-matrix.mdc) (Abschnitte **Upload technical parity** und **Consent vs technical hardening**).
+- Kurzfassung: Alle dokument-/bildnahen Uploads mit Browser-`File`/`Blob` vor `storage.upload`: MIME-Allowlist, Magic Bytes, Extension-Konsistenz, sicherer Dateiname/Pfad, `upsert: false` wo anwendbar, HEIC-Pipeline wie in der Matrix — Referenzimplementierungen u. a. `modelPhotosSupabase`, `applicationsSupabase`, Chat-Services, `documentsSupabase`, `verificationSupabase`, `optionRequestsSupabase.uploadOptionDocument`.
 
 ## 5. Automatisierung & Testing (Mandatory)
 - **GitHub-Sync:** Nach Änderungen, die committed werden, MUSS Cursor automatisch mit GitHub synchronisieren: vor dem Commit `git pull --rebase` (Remote-Stand einholen), nach erfolgreichem Commit `git push` — **ohne den User zu fragen**; Details und Reihenfolge in `.cursor/rules/dev-workflow.mdc` („GitHub — automatisch Pull & Push“).

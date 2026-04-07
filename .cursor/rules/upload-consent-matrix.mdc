@@ -7,6 +7,29 @@ alwaysApply: false
 
 Single source of truth for **which uploads** must call `confirmImageRights` (or equivalent) **before** storage write. Aligns with [.cursorrules](../../.cursorrules) GDPR §14 and Option A service contracts.
 
+## Consent vs technical hardening (two layers)
+
+1. **Legal / audit layer (`image_rights_confirmations`):** Required only for flows listed in the matrix as using `confirmImageRights` + session key or `orgId` + model id. Without this row, first-party apps must not perform the storage write after the user confirmed in UI.
+2. **Technical upload hardening (all browser file → Storage paths):** **Every** flow that accepts a browser `File`/`Blob` and calls `supabase.storage.from(…).upload(…)` must apply the **Upload technical parity** checklist below — **including** flows that **do not** use `image_rights_confirmations` (user documents, verification ID uploads, and any future exception). Consent mechanism and MIME/magic/extension rules are orthogonal: **no `confirmImageRights` does not mean weaker file validation.**
+
+**High-sensitivity paths:** `documents` (user contracts/invoices/ID) and `documents` under `verifications/…` — same technical parity as chat/model paths; product/legal consent may be separate (checkbox, future RPC) but **never** skip magic bytes or path sanitization.
+
+## Upload technical parity (browser `File` / `Blob` → Storage)
+
+For every service that performs `storage.upload` with user-selected files, **before** the storage call:
+
+| Step | Requirement |
+|------|----------------|
+| MIME | Allowlist via `validateFile` (or narrowed list such as `CHAT_ALLOWED_MIME_TYPES` where appropriate) |
+| Content | `checkMagicBytes` after MIME is trustworthy for the current blob |
+| Filename | `checkExtensionConsistency` for `File` inputs where implemented in the service |
+| Path / name | Sanitized safe filename / path segments (no traversal, controlled charset) |
+| Upload options | `upsert: false` on new object writes unless a documented idempotent replace flow exists |
+| HEIC/HEIF | If the allowlist permits HEIC/HEIF: convert first (`convertHeicToJpegWithStatus` / `convertHeicToJpegIfNeeded`); on conversion failure **do not** silently proceed — `console` / `logSecurityEvent` / structured rejection; **size, `type`, and name** for subsequent checks and storage must come from the **post-conversion** blob when conversion succeeded |
+| Parity | `documentsSupabase`, `verificationSupabase`, `optionRequestsSupabase.uploadOptionDocument`, recruiting/messenger chat uploads, applications, model photos — **must not diverge** on this checklist when adding new file types or new buckets |
+
+Reference implementations: [`src/services/modelPhotosSupabase.ts`](../../src/services/modelPhotosSupabase.ts), [`src/services/messengerSupabase.ts`](../../src/services/messengerSupabase.ts) (`uploadChatFile`), [`src/services/recruitingChatSupabase.ts`](../../src/services/recruitingChatSupabase.ts), [`src/services/applicationsSupabase.ts`](../../src/services/applicationsSupabase.ts), [`src/services/documentsSupabase.ts`](../../src/services/documentsSupabase.ts), [`src/services/verificationSupabase.ts`](../../src/services/verificationSupabase.ts), [`src/services/optionRequestsSupabase.ts`](../../src/services/optionRequestsSupabase.ts).
+
 ## Matrix
 
 | Flow | Bucket / path | Consent mechanism | Service guard |
@@ -16,15 +39,15 @@ Single source of truth for **which uploads** must call `confirmImageRights` (or 
 | Apply form images | `documentspictures` model-applications | `confirmImageRights` with `sessionKey` = `APPLICATION_UPLOAD_SESSION_KEY` | `hasRecentImageRightsForSessionKey` in `uploadApplicationImage` |
 | Recruiting / booking chat files | `chat-files` recruiting/… | `confirmImageRights` with `sessionKey` = `` `recruiting-chat:${threadId}` `` | `guardUploadSession` in `addRecruitingMessageWithFile` |
 | B2B org messenger attachments | `chat-files` chat/… | `confirmImageRights` with `sessionKey` = `` `messenger:${conversationId}` `` | `guardUploadSession` in `uploadChatFile` |
-| Option request documents | `chat-files` options/… | **No production UI** — `uploadOptionDocument` is `@deprecated` until UI calls `confirmImageRights` with `` `option-doc:${requestId}` `` | `guardUploadSession` + same file pipeline as chat: `convertHeicToJpegWithStatus` → `validateFile` (`CHAT_ALLOWED_MIME_TYPES`) → `checkMagicBytes` → `checkExtensionConsistency` |
-| User documents (contracts, invoices, ID) | `documents` | **Not** `image_rights_confirmations` — separate product consent / legal | `convertHeicToJpegWithStatus` → `validateFile` → `checkMagicBytes` in `documentsSupabase.uploadDocument` (Future: dedicated consent RPC or checkbox + audit) |
-| Model verification ID upload | `documents` verifications/… | **Not** image-rights table today — high-sensitivity; treat as verification consent path | Same as user documents: `convertHeicToJpegWithStatus` → `validateFile` → `checkMagicBytes` in `verificationSupabase.submitVerification` |
+| Option request documents | `chat-files` options/… | **Legal:** `confirmImageRights` + session `` `option-doc:${requestId}` `` required before upload when UI ships; until then RPC remains `@deprecated` / no production UI. **Technical:** full parity row above regardless. | `guardUploadSession` (when legal layer active) + `convertHeicToJpegWithStatus` → `validateFile` (`CHAT_ALLOWED_MIME_TYPES`) → `checkMagicBytes` → `checkExtensionConsistency` → sanitized name → `upsert: false` + explicit `contentType` |
+| User documents (contracts, invoices, ID) | `documents` | **Legal:** **not** `image_rights_confirmations` — separate product consent / audit (future). **Technical:** full parity; high-sensitivity. | `convertHeicToJpegWithStatus` → `validateFile` → `checkMagicBytes` → safe path; storage `upsert: false` + `contentType` in `documentsSupabase.uploadDocument` |
+| Model verification ID upload | `documents` verifications/… | **Legal:** verification flow consent, **not** image-rights table. **Technical:** same parity as user documents; high-sensitivity. | `convertHeicToJpegWithStatus` → `validateFile` → `checkMagicBytes` in `verificationSupabase.submitVerification`; `upsert: false` + `contentType` |
 
 ## Rules
 
 1. **Never** pass `agencies.id` as `orgId` to `confirmImageRights` — only `public.organizations.id`.
 2. **Time window:** use [`IMAGE_RIGHTS_WINDOW_MINUTES`](../../src/services/gdprComplianceSupabase.ts) for all `hasRecent*` / `guardUploadSession` / `guardImageUpload` checks (must match `confirmImageRights` pre-insert window).
-3. **New upload surfaces** must add a row to this matrix and implement UI checkbox + `confirmImageRights` (or document an approved exception).
+3. **New upload surfaces** must add a row to this matrix, implement **Upload technical parity** for any browser file upload, and implement UI + `confirmImageRights` where the matrix requires the legal layer (or document an approved exception for **legal** only — never for technical hardening).
 
 ## Process for new upload surfaces (checklist)
 
