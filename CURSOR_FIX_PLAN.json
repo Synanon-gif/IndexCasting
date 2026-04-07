@@ -1,0 +1,402 @@
+{
+  "version": 1,
+  "generated": "2026-04-07",
+  "based_on_artifacts": [
+    "CURSOR_AUTO_AUDIT_REPORT.md",
+    "CURSOR_AUTO_AUDIT_LOGIN_SAFETY.md",
+    "CURSOR_AUTO_AUDIT_FINDINGS.json",
+    "CURSOR_AUTO_AUDIT_SQL_CHECKS.sql",
+    "CURSOR_AUTO_AUDIT_GREP_CHECKS.txt"
+  ],
+  "context_rules": [
+    ".cursor/rules/admin-security.mdc",
+    ".cursor/rules/account-org-context-canonical.mdc",
+    ".cursor/rules/auto-review.mdc",
+    ".cursor/rules/rls-security-patterns.mdc",
+    ".cursor/rules/system-invariants.mdc"
+  ],
+  "decision_rule": "Bei Konflikt gewinnen Login-Stabilität, Admin-Always-Access und konservative Einstufung über theoretische Härtung.",
+  "classification_legend": {
+    "1": "SAFE_NOW",
+    "2": "SAFE_AFTER_LIVE_DB_CHECK",
+    "3": "SAFE_ONLY_WITH_TARGETED_TESTS",
+    "4": "ARCHITECTURALLY_GOOD_BUT_RISKY_NOW",
+    "5": "DO_NOT_TOUCH_YET"
+  },
+  "measures": [
+    {
+      "id": "M-001",
+      "title": "Live-DB: CURSOR_AUTO_AUDIT_SQL_CHECKS.sql lesend ausführen",
+      "class": 2,
+      "severity": "low",
+      "evidence_type": "needs_live_db",
+      "affects_login": false,
+      "affects_admin": false,
+      "affects_rls": false,
+      "affects_org_isolation": false,
+      "requires_live_db": true,
+      "recommended_now": false,
+      "minimal_safe_action": "Nur SELECT auf Kataloge; Ergebnisse dokumentieren.",
+      "required_tests": [
+        "T-SQL-001",
+        "T-MANUAL-001"
+      ],
+      "rationale": "Drift-Nachweis ohne Codeänderung."
+    },
+    {
+      "id": "M-002",
+      "title": "fetch-live-db-state.mjs mit Token",
+      "class": 2,
+      "severity": "low",
+      "evidence_type": "needs_live_db",
+      "affects_login": false,
+      "affects_admin": false,
+      "affects_rls": false,
+      "affects_org_isolation": false,
+      "requires_live_db": true,
+      "recommended_now": false,
+      "minimal_safe_action": "Skriptlauf; CHATGPT_LIVE_DB_STATE aktualisieren.",
+      "required_tests": [
+        "T-STATIC-001"
+      ],
+      "rationale": "Metadaten-Export für Drift-Vergleich."
+    },
+    {
+      "id": "M-003",
+      "title": "16 SECDEF high (Heuristik) Final-Body-Review",
+      "class": 2,
+      "severity": "high",
+      "evidence_type": "heuristic",
+      "affects_login": false,
+      "affects_admin": false,
+      "affects_rls": true,
+      "affects_org_isolation": true,
+      "requires_live_db": true,
+      "recommended_now": false,
+      "minimal_safe_action": "Pro Funktion menschlich prüfen; nur bei echter Lücke eine Migration.",
+      "required_tests": [
+        "T-SQL-002",
+        "T-SQL-003",
+        "T-INT-ORG-001",
+        "T-INT-CHAT-001"
+      ],
+      "rationale": "row_security=off braucht verifizierte Guards; Parser kann falsch positiv sein."
+    },
+    {
+      "id": "M-004",
+      "title": "Mehrfach redefinierte SECDEF vs Live pg_proc",
+      "class": 2,
+      "severity": "medium",
+      "evidence_type": "repo_only",
+      "affects_login": false,
+      "affects_admin": false,
+      "affects_rls": true,
+      "affects_org_isolation": true,
+      "requires_live_db": true,
+      "recommended_now": false,
+      "minimal_safe_action": "Letzte Migration als Erwartung; bei Drift eine Nachzieh-Migration.",
+      "required_tests": [
+        "T-SQL-004",
+        "T-FEAT-PAYWALL-001"
+      ],
+      "rationale": "Letzte Datei muss deployed sein."
+    },
+    {
+      "id": "M-005",
+      "title": "RLS FOR ALL Watchlist + profiles in policies + MAT self-ref",
+      "class": 2,
+      "severity": "high",
+      "evidence_type": "needs_live_db",
+      "affects_login": true,
+      "affects_admin": true,
+      "affects_rls": true,
+      "affects_org_isolation": true,
+      "requires_live_db": true,
+      "recommended_now": false,
+      "minimal_safe_action": "SQL_CHECKS A–C lesend; Fix nur dedizierte Migration.",
+      "required_tests": [
+        "T-SQL-001",
+        "T-SQL-005",
+        "T-LOGIN-ALL"
+      ],
+      "rationale": "42P17 betrifft Login-Pfad."
+    },
+    {
+      "id": "M-006",
+      "title": "Admin-Helper vereinheitlichen / Fallbacks streichen",
+      "class": 5,
+      "severity": "high",
+      "evidence_type": "repo_only",
+      "affects_login": true,
+      "affects_admin": true,
+      "affects_rls": true,
+      "affects_org_isolation": false,
+      "requires_live_db": true,
+      "recommended_now": false,
+      "minimal_safe_action": "Nicht ohne Live-Beweis und E2E.",
+      "required_tests": [
+        "T-LOGIN-ADMIN",
+        "T-AUTH-ADMIN-RPC",
+        "T-SQL-006"
+      ],
+      "rationale": "Triple-Fallback schützt Admin bei transienten RPC-Fehlern."
+    },
+    {
+      "id": "M-007",
+      "title": "admin_* Legacy-Guard zu PERFORM assert_is_admin()",
+      "class": 4,
+      "severity": "medium",
+      "evidence_type": "heuristic",
+      "affects_login": true,
+      "affects_admin": true,
+      "affects_rls": false,
+      "affects_org_isolation": false,
+      "requires_live_db": true,
+      "recommended_now": false,
+      "minimal_safe_action": "Eine RPC pro Release; erste wirksame Zeile assert.",
+      "required_tests": [
+        "T-LOGIN-ADMIN",
+        "T-FEAT-ADMIN-RPC-001",
+        "T-SQL-006"
+      ],
+      "rationale": "Konsistenz mit UUID+Email-Pin; falsch = Dashboard aus."
+    },
+    {
+      "id": "M-008",
+      "title": "link_model_by_email aus Step 2 entfernen",
+      "class": 4,
+      "severity": "medium",
+      "evidence_type": "confirmed",
+      "affects_login": false,
+      "affects_admin": false,
+      "affects_rls": false,
+      "affects_org_isolation": true,
+      "requires_live_db": false,
+      "recommended_now": false,
+      "minimal_safe_action": "Nur nach Token-Coverage; nie Step 1.",
+      "required_tests": [
+        "T-LOGIN-MODEL",
+        "T-CLAIM-001",
+        "T-INVITE-001"
+      ],
+      "rationale": "Gefahr 9; vorzeitig = Legacy-Modelle brechen."
+    },
+    {
+      "id": "M-009",
+      "title": "Org-RPC LIMIT 1 / implizite Org nicht verschärfen ohne UI",
+      "class": 5,
+      "severity": "high",
+      "evidence_type": "confirmed",
+      "affects_login": false,
+      "affects_admin": false,
+      "affects_rls": false,
+      "affects_org_isolation": true,
+      "requires_live_db": false,
+      "recommended_now": false,
+      "minimal_safe_action": "Kein Rückschritt zu LIMIT 1 in get_my_org_context.",
+      "required_tests": [
+        "T-ORG-001",
+        "T-ORG-002"
+      ],
+      "rationale": "account-org-context-canonical."
+    },
+    {
+      "id": "M-010",
+      "title": "model_agency_territories keine Self-Join-Policies",
+      "class": 2,
+      "severity": "critical",
+      "evidence_type": "confirmed",
+      "affects_login": true,
+      "affects_admin": true,
+      "affects_rls": true,
+      "affects_org_isolation": true,
+      "requires_live_db": true,
+      "recommended_now": false,
+      "minimal_safe_action": "self_mat SQL check; Fix wie 20260414.",
+      "required_tests": [
+        "T-SQL-005",
+        "T-LOGIN-ALL",
+        "T-RLS-MAT-001"
+      ],
+      "rationale": "Bekannte 42P17-Kette."
+    },
+    {
+      "id": "M-011",
+      "title": "Storage policies SECDEF-Helper",
+      "class": 2,
+      "severity": "high",
+      "evidence_type": "needs_live_db",
+      "affects_login": false,
+      "affects_admin": false,
+      "affects_rls": true,
+      "affects_org_isolation": true,
+      "requires_live_db": true,
+      "recommended_now": false,
+      "minimal_safe_action": "Lesend prüfen; kein models-JOIN in Policy.",
+      "required_tests": [
+        "T-SQL-007",
+        "T-FEAT-UPLOAD-001",
+        "T-FEAT-CHATFILE-001"
+      ],
+      "rationale": "Upload bricht bei models-RLS-Kopplung."
+    },
+    {
+      "id": "M-012",
+      "title": "Location CONSTRAINT + DISTINCT ON Near Me",
+      "class": 2,
+      "severity": "high",
+      "evidence_type": "needs_live_db",
+      "affects_login": false,
+      "affects_admin": false,
+      "affects_rls": false,
+      "affects_org_isolation": false,
+      "requires_live_db": true,
+      "recommended_now": false,
+      "minimal_safe_action": "Live mit Risk-16-Liste abgleichen.",
+      "required_tests": [
+        "T-SQL-008",
+        "T-FEAT-NEARME-001"
+      ],
+      "rationale": "Falsches ON CONFLICT / fehlendes DISTINCT ON."
+    },
+    {
+      "id": "M-013",
+      "title": "Frontend .catch auf Option-A audit",
+      "class": 3,
+      "severity": "low",
+      "evidence_type": "heuristic",
+      "affects_login": false,
+      "affects_admin": false,
+      "affects_rls": false,
+      "affects_org_isolation": false,
+      "requires_live_db": false,
+      "recommended_now": false,
+      "minimal_safe_action": "Ein Callsite pro PR.",
+      "required_tests": [
+        "T-UNIT-SVC-001",
+        "T-E2E-CRITICAL-001"
+      ],
+      "rationale": "Massenrefactor ohne Tests riskant."
+    },
+    {
+      "id": "M-014",
+      "title": "ServiceResult vs Option A nur bewusst pro Modul",
+      "class": 3,
+      "severity": "low",
+      "evidence_type": "heuristic",
+      "affects_login": false,
+      "affects_admin": false,
+      "affects_rls": false,
+      "affects_org_isolation": false,
+      "requires_live_db": false,
+      "recommended_now": false,
+      "minimal_safe_action": "Kein stiller globaler Wechsel.",
+      "required_tests": [
+        "T-UNIT-SVC-001"
+      ],
+      "rationale": "Invariante: nicht pro Funktion mischen."
+    },
+    {
+      "id": "M-015",
+      "title": "GDPR-RPC Regression bei nahen SECDEF-Änderungen",
+      "class": 3,
+      "severity": "medium",
+      "evidence_type": "confirmed",
+      "affects_login": true,
+      "affects_admin": false,
+      "affects_rls": true,
+      "affects_org_isolation": true,
+      "requires_live_db": true,
+      "recommended_now": false,
+      "minimal_safe_action": "Isolierte Testreleases.",
+      "required_tests": [
+        "T-GDPR-001",
+        "T-GDPR-002",
+        "T-AUTH-PROFILE-001"
+      ],
+      "rationale": "Löschung/Membership sensibel."
+    },
+    {
+      "id": "M-016",
+      "title": "signIn/bootstrap/loadProfile/App Admin-Branch strukturell unverändert lassen",
+      "class": 5,
+      "severity": "critical",
+      "evidence_type": "confirmed",
+      "affects_login": true,
+      "affects_admin": true,
+      "affects_rls": false,
+      "affects_org_isolation": false,
+      "requires_live_db": false,
+      "recommended_now": false,
+      "minimal_safe_action": "Kein Refactor ohne Security-Review.",
+      "required_tests": [
+        "T-LOGIN-ALL",
+        "T-AUTH-BOOTSTRAP-001"
+      ],
+      "rationale": "admin-security invariant."
+    },
+    {
+      "id": "M-017",
+      "title": "Audit-/Drift-Dokumentation nach Live-Lauf",
+      "class": 1,
+      "severity": "low",
+      "evidence_type": "repo_only",
+      "affects_login": false,
+      "affects_admin": false,
+      "affects_rls": false,
+      "affects_org_isolation": false,
+      "requires_live_db": true,
+      "recommended_now": true,
+      "minimal_safe_action": "Artefakte/Appendix aktualisieren.",
+      "required_tests": [
+        "T-STATIC-001"
+      ],
+      "rationale": "Null Produkt-Risiko."
+    }
+  ],
+  "high_heuristic_secdef_names": [
+    "add_model_assignments",
+    "bulk_add_model_territories",
+    "bulk_save_model_territories",
+    "conversation_accessible_to_me",
+    "create_b2b_org_conversation",
+    "get_assignments_for_agency_roster",
+    "get_assignments_for_model",
+    "get_b2b_counterparty_org_name",
+    "get_model_claim_preview",
+    "get_my_organization_ids",
+    "has_platform_access",
+    "list_client_organizations_for_agency_directory",
+    "model_belongs_to_current_user",
+    "resolve_b2b_org_pair_for_chat",
+    "save_model_assignments",
+    "user_is_member_of_organization"
+  ],
+  "phases": {
+    "phase_1": [
+      "M-017",
+      "M-001",
+      "M-002",
+      "M-005",
+      "M-010",
+      "M-011",
+      "M-012"
+    ],
+    "phase_2": [
+      "M-003",
+      "M-004"
+    ],
+    "phase_3": [
+      "M-007",
+      "M-008",
+      "M-013",
+      "M-014",
+      "M-015"
+    ],
+    "deferred": [
+      "M-006",
+      "M-009",
+      "M-016"
+    ]
+  }
+}

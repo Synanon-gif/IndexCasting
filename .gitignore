@@ -57,3 +57,9 @@ docs/SECURITY_AUDIT_CODE_BUNDLE.md
 test-results/
 playwright-report/
 blob-report/
+
+# LLM-Kontext-Bundle (sehr groß, kann veraltet sein — nicht committen)
+PROJECT_CONTEXT_FOR_CHATGPT.txt
+CHATGPT_FULL_PROJECT_EXPORT_*.txt
+CHATGPT_EXPORT_MANIFEST.txt
+CHATGPT_LIVE_DB_STATE.txt

@@ -1,0 +1,1226 @@
+CURSOR_AUTO_AUDIT_GREP_CHECKS — 2026-04-07T12:59:07Z
+Tool: grep -r --include (ripgrep not available in agent shell)
+
+================================================================================
+PATTERN: SECURITY DEFINER
+COMMAND: grep -r -n "SECURITY DEFINER" supabase/migrations supabase src
+--- first 80 matches ---
+supabase/migrations/20260415_accept_org_invite_row_security_fix.sql:5:--   Die Funktion ist SECURITY DEFINER und liest RLS-geschützte Tabellen:
+supabase/migrations/20260415_accept_org_invite_row_security_fix.sql:22:SECURITY DEFINER
+supabase/migrations/20260406_guest_link_first_access_7day_window.sql:25:--   - first_accessed_at is set ONLY server-side inside the SECURITY DEFINER RPC.
+supabase/migrations/20260406_guest_link_first_access_7day_window.sql:31:--   Both functions are SECURITY DEFINER and read/write guest_links (RLS-protected).
+supabase/migrations/20260406_guest_link_first_access_7day_window.sql:53:      'Set server-side only inside the SECURITY DEFINER get_guest_link_models() RPC.';
+supabase/migrations/20260406_guest_link_first_access_7day_window.sql:71:SECURITY DEFINER
+supabase/migrations/20260406_guest_link_first_access_7day_window.sql:139:SECURITY DEFINER
+supabase/migrations/20260406_guest_link_first_access_7day_window.sql:229:  'VULN-C1: deleted_at IS NULL guard. SECURITY DEFINER — safe for anon. '
+supabase/migrations/20260405_profiles_policy_canonical.sql:87:-- SECURITY DEFINER functions bypass these and expose only what is needed:
+supabase/migrations/20260405_profiles_policy_canonical.sql:100:SECURITY DEFINER
+supabase/migrations/20260416_fix_a_can_access_platform_sha256.sql:21:SECURITY DEFINER
+supabase/migrations/20260418_request_account_deletion_after_dissolve.sql:7:SECURITY DEFINER
+supabase/migrations/20260413_fix_f_org_role_trigger_hardening.sql:15:--   1. Add SECURITY DEFINER + SET row_security TO off to the trigger function
+supabase/migrations/20260413_fix_f_org_role_trigger_hardening.sql:32:SECURITY DEFINER
+supabase/migrations/20260406_fix_upsert_model_location_gps.sql:27:-- version is SECURITY DEFINER with SET row_security TO off and explicit guards,
+supabase/migrations/20260406_fix_upsert_model_location_gps.sql:28:-- consistent with bulk_upsert_model_locations and the SECURITY DEFINER pattern
+supabase/migrations/20260406_fix_upsert_model_location_gps.sql:43:SECURITY DEFINER
+supabase/migrations/20260406_fix_upsert_model_location_gps.sql:144:  'Changed from SECURITY INVOKER to SECURITY DEFINER with explicit guards (Rule 21). '
+supabase/migrations/20260406_fix_upsert_model_location_gps.sql:154:      AND p.prosecdef = true  -- SECURITY DEFINER
+supabase/migrations/20260406_fix_upsert_model_location_gps.sql:155:  ), 'upsert_model_location must be SECURITY DEFINER';
+supabase/migrations/20260413_fix_e_null_guards.sql:2:-- Fix E: auth.uid() IS NULL Guards in SECURITY DEFINER Functions
+supabase/migrations/20260413_fix_e_null_guards.sql:5:--   SECURITY DEFINER functions with SET row_security TO off MUST have three
+supabase/migrations/20260413_fix_e_null_guards.sql:42:SECURITY DEFINER
+supabase/migrations/20260413_fix_e_null_guards.sql:77:SECURITY DEFINER
+supabase/migrations/20260413_fix_e_null_guards.sql:120:SECURITY DEFINER
+supabase/migrations/20260413_fix_e_null_guards.sql:190:  RAISE NOTICE 'PASS: 20260413_fix_e — all SECURITY DEFINER functions have auth.uid() guards';
+supabase/migrations/20260406_location_multirow_priority.sql:62:SECURITY DEFINER
+supabase/migrations/20260406_location_multirow_priority.sql:180:SECURITY DEFINER
+supabase/migrations/20260406_location_multirow_priority.sql:267:SECURITY DEFINER
+supabase/migrations/20260406_location_multirow_priority.sql:363:SECURITY DEFINER
+supabase/migrations/20260413_audit_trail_source_column.sql:21:-- replaces it with `public.is_current_user_admin()` (SECURITY DEFINER, UUID+email).
+supabase/migrations/20260413_audit_trail_source_column.sql:67:SECURITY DEFINER
+supabase/migrations/20260413_fix_d_models_rls_client_secdef.sql:18:--   1. Create caller_is_client_org_member() — SECURITY DEFINER with
+supabase/migrations/20260413_fix_d_models_rls_client_secdef.sql:41:SECURITY DEFINER
+supabase/migrations/20260413_fix_d_models_rls_client_secdef.sql:76:  'SECURITY DEFINER + row_security=off; reads only organization_members + organizations '
+supabase/migrations/20260404c_admin_bootstrap_fix.sql:21:SECURITY DEFINER
+supabase/migrations/20260406_security_audit_fixes.sql:6:--              → replaced with public.is_current_user_admin() (SECURITY DEFINER, UUID+email-pin)
+supabase/migrations/20260406_security_audit_fixes.sql:8:--   HIGH 1a:   record_trial_email_hashes trigger function is SECURITY DEFINER but
+supabase/migrations/20260406_security_audit_fixes.sql:12:--   HIGH 1b:   remove_org_member RPC is SECURITY DEFINER but lacks SET row_security TO off
+supabase/migrations/20260406_security_audit_fixes.sql:27:-- FIX: use public.is_current_user_admin() which is SECURITY DEFINER + UUID+email-pin.
+supabase/migrations/20260406_security_audit_fixes.sql:51:-- Trigger function is SECURITY DEFINER and reads auth.users + organization_members.
+supabase/migrations/20260406_security_audit_fixes.sql:58:SECURITY DEFINER
+supabase/migrations/20260406_security_audit_fixes.sql:90:-- Reads organization_members (RLS-protected) inside a SECURITY DEFINER function.
+supabase/migrations/20260406_security_audit_fixes.sql:99:SECURITY DEFINER
+supabase/migrations/20260406_security_audit_fixes.sql:147:SECURITY DEFINER
+supabase/migrations/20260417_fix_a_get_models_near_location_row_security.sql:6:--   get_models_near_location is SECURITY DEFINER but is missing
+supabase/migrations/20260417_fix_a_get_models_near_location_row_security.sql:8:--   rls-security-patterns.mdc Risiko 4: every SECURITY DEFINER function that
+supabase/migrations/20260417_fix_a_get_models_near_location_row_security.sql:59:SECURITY DEFINER
+supabase/migrations/20260417_fix_a_get_models_near_location_row_security.sql:196:  'Radius-based model discovery. SECURITY DEFINER + row_security=off. '
+supabase/migrations/20260417_fix_a_get_models_near_location_row_security.sql:212:  ), 'FAIL: get_models_near_location must be SECURITY DEFINER';
+supabase/migrations/20260406_get_models_near_location_register.sql:54:SECURITY DEFINER
+supabase/migrations/20260406_get_models_near_location_register.sql:192:  ), 'get_models_near_location must be SECURITY DEFINER';
+supabase/migrations/20260406_add_model_to_project_rpc.sql:8:-- Security: SECURITY DEFINER RPC validates:
+supabase/migrations/20260406_add_model_to_project_rpc.sql:26:SECURITY DEFINER
+supabase/migrations/20260407_admin_final_fix.sql:35:SECURITY DEFINER
+supabase/migrations/20260407_admin_final_fix.sql:93:SECURITY DEFINER
+supabase/migrations/20260407_admin_final_fix.sql:116:SECURITY DEFINER
+supabase/migrations/20260404_fix_admin_column_security.sql:12:SECURITY DEFINER
+supabase/migrations/20260410_security_audit_agency_rpcs_fix.sql:57:SECURITY DEFINER
+supabase/migrations/20260410_security_audit_agency_rpcs_fix.sql:144:  'SECURITY DEFINER: Agency-Member dürfen alle Profildaten eines ihnen gehörenden '
+supabase/migrations/20260410_security_audit_agency_rpcs_fix.sql:158:SECURITY DEFINER
+supabase/migrations/20260410_security_audit_agency_rpcs_fix.sql:226:  'SECURITY DEFINER: Setzt agency_id für ein bisher nicht zugeordnetes Model.';
+supabase/migrations/20260413_fix_h_model_org_strategy.sql:51:SECURITY DEFINER
+supabase/migrations/20260413_fix_h_model_org_strategy.sql:95:  'SECURITY DEFINER + row_security=off + GUARD 1 per Rule 21.';
+supabase/migrations/20260413_fix_h_model_org_strategy.sql:107:SECURITY DEFINER
+supabase/migrations/20260406_fix_territories_rpc.sql:25:SECURITY DEFINER
+supabase/migrations/20260413_fix_b_get_my_org_context_multi_org.sql:37:SECURITY DEFINER
+supabase/migrations/20260413_fix_b_get_my_org_context_multi_org.sql:71:  'SET row_security TO off prevents PG15+ latent recursion in SECURITY DEFINER context.';
+supabase/migrations/20260415_invite_preview_email_hint.sql:39:SECURITY DEFINER
+supabase/migrations/20260406_location_source_agency_nearme.sql:42:SECURITY DEFINER
+supabase/migrations/20260406_location_source_agency_nearme.sql:175:SECURITY DEFINER
+supabase/migrations/20260406_location_source_agency_nearme.sql:267:  -- Both functions must exist and be SECURITY DEFINER
+supabase/migrations/20260406_location_source_agency_nearme.sql:271:  ), 'upsert_model_location must be SECURITY DEFINER';
+supabase/migrations/20260406_location_source_agency_nearme.sql:276:  ), 'bulk_upsert_model_locations must be SECURITY DEFINER';
+supabase/migrations/20260406_handle_new_user_role_sanitize.sql:20:SECURITY DEFINER
+supabase/migrations/20260425_chat_files_storage_insert_hardening.sql:6:-- option-request access via SECURITY DEFINER helper (row_security off).
+supabase/migrations/20260425_chat_files_storage_insert_hardening.sql:19:SECURITY DEFINER
+supabase/migrations/20260409_handle_new_user_company_name.sql:22:SECURITY DEFINER
+supabase/migrations/20260404_security_audit_fixes.sql:55:-- Der eigene Wert wird für App-Routing via SECURITY DEFINER Funktion
+supabase/migrations/20260404_security_audit_fixes.sql:59:-- Erstelle eine SECURITY DEFINER Funktion die nur dem eigenen User
+--- line count (approx) ---
+206
+
+================================================================================
+PATTERN: SET row_security TO off
+COMMAND: grep -r -n "SET row_security TO off" supabase/migrations supabase
+--- first 80 matches ---
+supabase/migrations/20260415_accept_org_invite_row_security_fix.sql:2:-- Fix: accept_organization_invitation — SET row_security TO off (PFLICHT)
+supabase/migrations/20260415_accept_org_invite_row_security_fix.sql:7:--   Ohne SET row_security TO off wertet PG15+ RLS innerhalb der Funktion aus
+supabase/migrations/20260415_accept_org_invite_row_security_fix.sql:11:--   SET row_security TO off hinzugefügt. Alle bisherigen Sicherheits-Checks
+supabase/migrations/20260415_accept_org_invite_row_security_fix.sql:24:SET row_security TO off   -- PFLICHT: Funktion liest mehrere RLS-geschützte Tabellen
+supabase/migrations/20260415_accept_org_invite_row_security_fix.sql:123:  'Fixed: SET row_security TO off added (20260415, rls-security-patterns Risiko 4). '
+supabase/migrations/20260415_accept_org_invite_row_security_fix.sql:131:  RAISE NOTICE 'PASS: 20260415 — accept_organization_invitation now has SET row_security TO off';
+supabase/migrations/20260406_guest_link_first_access_7day_window.sql:32:--   SET row_security TO off added to all three clauses (reading, writing, validating).
+supabase/migrations/20260406_guest_link_first_access_7day_window.sql:73:SET row_security TO off
+supabase/migrations/20260406_guest_link_first_access_7day_window.sql:118:  'SET row_security TO off added (rls-security-patterns Risiko 4).';
+supabase/migrations/20260406_guest_link_first_access_7day_window.sql:141:SET row_security TO off
+supabase/migrations/20260406_guest_link_first_access_7day_window.sql:231:  'SET row_security TO off added (rls-security-patterns Risiko 4).';
+supabase/migrations/20260416_fix_a_can_access_platform_sha256.sql:23:SET row_security TO off
+supabase/migrations/20260413_fix_f_org_role_trigger_hardening.sql:15:--   1. Add SECURITY DEFINER + SET row_security TO off to the trigger function
+supabase/migrations/20260413_fix_f_org_role_trigger_hardening.sql:34:SET row_security TO off  -- reads organizations (RLS-protected) in trigger context
+supabase/migrations/20260413_fix_f_org_role_trigger_hardening.sql:83:  'Fix F (20260413): Added SET row_security TO off (reads organizations in trigger context). '
+supabase/migrations/20260413_fix_f_org_role_trigger_hardening.sql:127:  ), 'FAIL: validate_org_member_role_for_type missing SET row_security TO off';
+supabase/migrations/20260406_fix_upsert_model_location_gps.sql:27:-- version is SECURITY DEFINER with SET row_security TO off and explicit guards,
+supabase/migrations/20260406_fix_upsert_model_location_gps.sql:45:SET row_security TO off
+supabase/migrations/20260413_fix_e_null_guards.sql:5:--   SECURITY DEFINER functions with SET row_security TO off MUST have three
+supabase/migrations/20260413_fix_e_null_guards.sql:44:SET row_security TO off
+supabase/migrations/20260413_fix_e_null_guards.sql:80:SET row_security TO off
+supabase/migrations/20260413_fix_e_null_guards.sql:123:SET row_security TO off
+supabase/migrations/20260406_location_multirow_priority.sql:64:SET row_security TO off
+supabase/migrations/20260406_location_multirow_priority.sql:182:SET row_security TO off
+supabase/migrations/20260406_location_multirow_priority.sql:269:SET row_security TO off
+supabase/migrations/20260413_audit_trail_source_column.sql:69:SET row_security TO off
+supabase/migrations/20260413_fix_d_models_rls_client_secdef.sql:43:SET row_security TO off
+supabase/migrations/20260406_security_audit_fixes.sql:9:--              lacks SET row_security TO off
+supabase/migrations/20260406_security_audit_fixes.sql:10:--              → recreated with SET row_security TO off
+supabase/migrations/20260406_security_audit_fixes.sql:12:--   HIGH 1b:   remove_org_member RPC is SECURITY DEFINER but lacks SET row_security TO off
+supabase/migrations/20260406_security_audit_fixes.sql:13:--              → recreated with SET row_security TO off
+supabase/migrations/20260406_security_audit_fixes.sql:49:-- ─── HIGH 1a: record_trial_email_hashes — add SET row_security TO off ────────
+supabase/migrations/20260406_security_audit_fixes.sql:52:-- Without SET row_security TO off, PostgreSQL 15+ applies RLS inside the function
+supabase/migrations/20260406_security_audit_fixes.sql:60:SET row_security TO off
+supabase/migrations/20260406_security_audit_fixes.sql:88:-- ─── HIGH 1b: remove_org_member — add SET row_security TO off ────────────────
+supabase/migrations/20260406_security_audit_fixes.sql:91:-- Must have SET row_security TO off to avoid latent recursion in PG15+.
+supabase/migrations/20260406_security_audit_fixes.sql:101:SET row_security TO off
+supabase/migrations/20260406_security_audit_fixes.sql:149:SET row_security TO off
+supabase/migrations/20260417_fix_a_get_models_near_location_row_security.sql:2:-- Fix A: get_models_near_location — SET row_security TO off
+supabase/migrations/20260417_fix_a_get_models_near_location_row_security.sql:7:--   SET row_security TO off. Per admin-security.mdc Regel 7 and
+supabase/migrations/20260417_fix_a_get_models_near_location_row_security.sql:9:--   reads RLS-protected tables MUST have SET row_security TO off.
+supabase/migrations/20260417_fix_a_get_models_near_location_row_security.sql:18:--   Add SET row_security TO off. The function already has 3-layer guards:
+supabase/migrations/20260417_fix_a_get_models_near_location_row_security.sql:61:SET row_security TO off  -- REQUIRED: reads RLS-protected models/model_locations/model_agency_territories
+supabase/migrations/20260417_fix_a_get_models_near_location_row_security.sql:202:  'Updated 20260417: added SET row_security TO off (Risiko 4 compliance). '
+supabase/migrations/20260417_fix_a_get_models_near_location_row_security.sql:218:  ), 'FAIL: get_models_near_location is missing SET row_security TO off — Risiko 4 violation';
+supabase/migrations/20260413_fix_h_model_org_strategy.sql:53:SET row_security TO off
+supabase/migrations/20260413_fix_h_model_org_strategy.sql:109:SET row_security TO off
+supabase/migrations/20260406_fix_territories_rpc.sql:27:SET row_security TO off  -- RLS off; internal guards below are the sole auth layer
+supabase/migrations/20260413_fix_b_get_my_org_context_multi_org.sql:39:SET row_security TO off
+supabase/migrations/20260413_fix_b_get_my_org_context_multi_org.sql:71:  'SET row_security TO off prevents PG15+ latent recursion in SECURITY DEFINER context.';
+supabase/migrations/20260415_invite_preview_email_hint.sql:41:SET row_security TO off
+supabase/migrations/20260415_invite_preview_email_hint.sql:71:  'Updated: SET row_security TO off added (Risiko 4 compliance).';
+supabase/migrations/20260406_location_source_agency_nearme.sql:44:SET row_security TO off
+supabase/migrations/20260406_location_source_agency_nearme.sql:177:SET row_security TO off
+supabase/migrations/20260425_chat_files_storage_insert_hardening.sql:21:SET row_security TO off
+supabase/migrations/20260406_model_claim_preview_rpc.sql:12:--   - SECURITY DEFINER mit SET row_security TO off (liest model_claim_tokens, models, agencies)
+supabase/migrations/20260406_model_claim_preview_rpc.sql:28:SET row_security TO off
+supabase/migrations/20260412_agency_rpcs_definitive.sql:9:--   - 20260406_security_definer_row_security_fix.sql → SET row_security TO off (no ORDER BY)
+supabase/migrations/20260412_agency_rpcs_definitive.sql:15:--   1. SET row_security TO off       — mandatory for SECURITY DEFINER that reads
+supabase/migrations/20260412_agency_rpcs_definitive.sql:23:-- SECURITY MODEL (mandatory for SET row_security TO off functions):
+supabase/migrations/20260412_agency_rpcs_definitive.sql:73:SET row_security TO off   -- RLS bypassed; internal guards below are the sole auth layer
+supabase/migrations/20260412_agency_rpcs_definitive.sql:179:SET row_security TO off   -- RLS bypassed; internal guards below are the sole auth layer
+supabase/migrations/20260413_fix_a_territory_unique_constraint.sql:15:--      - SET row_security TO off (was missing — required for SECURITY DEFINER
+supabase/migrations/20260413_fix_a_territory_unique_constraint.sql:71:--   a) SET row_security TO off — required; function writes model_agency_territories
+supabase/migrations/20260413_fix_a_territory_unique_constraint.sql:83:SET row_security TO off  -- required: writes RLS-protected table in trigger context
+supabase/migrations/20260413_fix_a_territory_unique_constraint.sql:138:  'Fix A (20260413): SET row_security TO off added; ON CONFLICT updated to '
+supabase/migrations/20260413_fix_a_territory_unique_constraint.sql:154:SET row_security TO off
+supabase/migrations/20260422_fix_get_territories_for_agency_roster_mat_bookers.sql:23:SET row_security TO off
+supabase/migrations/20260424_generate_model_claim_token_organization_param.sql:20:SET row_security TO off
+supabase/migrations/20260417_fix_b_admin_find_model_by_email_rpc.sql:24:SET row_security TO off
+supabase/migrations/20260419_request_account_deletion_row_security_off.sql:2:-- SET row_security TO off avoids PG15+ RLS re-evaluation / empty reads inside the function body.
+supabase/migrations/20260419_request_account_deletion_row_security_off.sql:10:SET row_security TO off
+supabase/migrations/20260411_model_embeddings_policies_finalize.sql:36:-- check_org_access() is SECURITY DEFINER with SET row_security TO off —
+supabase/migrations/20260406_fix_storage_policies_secdef.sql:15:--   1. Create SECURITY DEFINER helper functions (SET row_security TO off) with
+supabase/migrations/20260406_fix_storage_policies_secdef.sql:25:--   SET row_security TO off  (safe: guards are explicit, not RLS-dependent)
+supabase/migrations/20260406_fix_storage_policies_secdef.sql:44:SET row_security TO off
+supabase/migrations/20260406_fix_storage_policies_secdef.sql:111:SET row_security TO off
+supabase/migrations/20260405_risk_hardening_secdef_orgfilter.sql:5:-- RISIKO 3: SECURITY DEFINER Funktionen ohne SET row_security TO off
+supabase/migrations/20260405_risk_hardening_secdef_orgfilter.sql:7:--   oder RLS-geschützte Tabellen liest, MUSS SET row_security TO off haben.
+supabase/migrations/20260405_risk_hardening_secdef_orgfilter.sql:26:-- ── RISIKO 3a: is_org_member — SET row_security TO off ───────────────────────
+--- line count (approx) ---
+122
+
+================================================================================
+PATTERN: assert_is_admin
+COMMAND: grep -r -n "assert_is_admin" supabase/migrations supabase
+--- first 80 matches ---
+supabase/migrations/20260413_fix_e_null_guards.sql:151:-- ─── 4. assert_is_admin() — verify GUARD 1 already present ──────────────────
+supabase/migrations/20260413_fix_e_null_guards.sql:153:-- assert_is_admin() is plpgsql and calls is_current_user_admin().
+supabase/migrations/20260413_fix_e_null_guards.sql:155:-- RAISE EXCEPTION 'assert_is_admin: unauthorized'. This is equivalent to
+supabase/migrations/20260413_fix_e_null_guards.sql:161:    SELECT 1 FROM pg_proc WHERE proname = 'assert_is_admin'
+supabase/migrations/20260413_fix_e_null_guards.sql:163:  ), 'FAIL: assert_is_admin() missing RAISE EXCEPTION';
+supabase/migrations/20260413_fix_e_null_guards.sql:165:  RAISE NOTICE 'assert_is_admin() already has RAISE guard — no change needed';
+supabase/migrations/20260417_fix_b_admin_find_model_by_email_rpc.sql:13:--   server-side. assert_is_admin() as first guard ensures only the
+supabase/migrations/20260417_fix_b_admin_find_model_by_email_rpc.sql:27:  -- Guard 1: Admin-only — UUID+email-pinned via assert_is_admin()
+supabase/migrations/20260417_fix_b_admin_find_model_by_email_rpc.sql:28:  PERFORM public.assert_is_admin();
+supabase/migrations/20260417_fix_b_admin_find_model_by_email_rpc.sql:33:  -- verified guard is allowed" — here the guard is assert_is_admin()).
+supabase/migrations/20260417_fix_b_admin_find_model_by_email_rpc.sql:48:  'assert_is_admin() as first guard (UUID+email-pinned); row_security=off. '
+supabase/migrations/20260406_admin_uuid_email_hardening.sql:161:-- ── 7. Harden assert_is_admin() to call UUID-pinned is_current_user_admin() ──
+supabase/migrations/20260406_admin_uuid_email_hardening.sql:165:CREATE OR REPLACE FUNCTION public.assert_is_admin()
+supabase/migrations/20260406_admin_uuid_email_hardening.sql:173:    PERFORM public.log_failed_admin_attempt('assert_is_admin');
+supabase/migrations/20260406_admin_uuid_email_hardening.sql:174:    RAISE EXCEPTION 'assert_is_admin: unauthorized – not the platform admin';
+supabase/migrations/20260406_admin_uuid_email_hardening.sql:179:REVOKE ALL    ON FUNCTION public.assert_is_admin() FROM public, anon;
+supabase/migrations/20260406_admin_uuid_email_hardening.sql:180:GRANT EXECUTE ON FUNCTION public.assert_is_admin() TO authenticated;
+supabase/migrations/20260406_admin_uuid_email_hardening.sql:189:--     'get_own_admin_flags', 'assert_is_admin', 'log_failed_admin_attempt'
+supabase/migrations/20260406_security_definer_row_security_fix.sql:13:--   6. admin_update_model_minor_flag  — calls assert_is_admin(), writes models
+supabase/migrations/20260406_security_definer_row_security_fix.sql:489:  PERFORM public.assert_is_admin();
+supabase/migrations/20260405_admin_backfill_org_for_user.sql:18:-- Both functions require assert_is_admin() as first guard.
+supabase/migrations/20260405_admin_backfill_org_for_user.sql:40:  PERFORM public.assert_is_admin();
+supabase/migrations/20260405_admin_backfill_org_for_user.sql:134:  'Requires assert_is_admin(). Safe to call multiple times (idempotent).';
+supabase/migrations/20260405_admin_backfill_org_for_user.sql:152:  PERFORM public.assert_is_admin();
+supabase/migrations/20260408_admin_security_hardening.sql:13:--   instead of the UUID+email-pinned assert_is_admin(). Per admin-security.mdc
+supabase/migrations/20260408_admin_security_hardening.sql:14:--   rule 6, every admin RPC must call assert_is_admin() as its first statement.
+supabase/migrations/20260408_admin_security_hardening.sql:38:--   1. Guard replaced with PERFORM assert_is_admin() (UUID+email pin).
+supabase/migrations/20260408_admin_security_hardening.sql:63:  PERFORM public.assert_is_admin();
+supabase/migrations/20260408_admin_security_hardening.sql:116:  'Admin only (UUID+email-pinned via assert_is_admin). '
+supabase/migrations/20260408_admin_security_hardening.sql:210:--    → ERROR: assert_is_admin: unauthorized
+--- line count (approx) ---
+30
+
+================================================================================
+PATTERN: get_own_admin_flags
+COMMAND: grep -r -n "get_own_admin_flags" supabase/migrations supabase src
+--- first 80 matches ---
+supabase/migrations/20260405_profiles_policy_canonical.sql:28:--   • is_admin, is_super_admin — read via get_own_admin_flags() RPC only
+supabase/migrations/20260405_profiles_policy_canonical.sql:88:--   get_own_admin_flags()      → own is_admin / is_super_admin
+supabase/migrations/20260405_profiles_policy_canonical.sql:95:-- ── 4. Ensure get_own_admin_flags() RPC exists (idempotent) ──────────────────
+supabase/migrations/20260405_profiles_policy_canonical.sql:97:CREATE OR REPLACE FUNCTION public.get_own_admin_flags()
+supabase/migrations/20260405_profiles_policy_canonical.sql:109:REVOKE ALL    ON FUNCTION public.get_own_admin_flags() FROM public, anon;
+supabase/migrations/20260405_profiles_policy_canonical.sql:110:GRANT EXECUTE ON FUNCTION public.get_own_admin_flags() TO authenticated;
+supabase/migrations/20260413_fix_e_null_guards.sql:9:--     - get_own_admin_flags()   — returns empty set silently for NULL uid
+supabase/migrations/20260413_fix_e_null_guards.sql:24:--   check_org_access() and get_own_admin_flags() are currently LANGUAGE sql.
+supabase/migrations/20260413_fix_e_null_guards.sql:72:-- ─── 2. get_own_admin_flags() — add GUARD 1 ──────────────────────────────────
+supabase/migrations/20260413_fix_e_null_guards.sql:74:CREATE OR REPLACE FUNCTION public.get_own_admin_flags()
+supabase/migrations/20260413_fix_e_null_guards.sql:100:REVOKE ALL    ON FUNCTION public.get_own_admin_flags() FROM PUBLIC;
+supabase/migrations/20260413_fix_e_null_guards.sql:101:GRANT EXECUTE ON FUNCTION public.get_own_admin_flags() TO authenticated;
+supabase/migrations/20260413_fix_e_null_guards.sql:103:COMMENT ON FUNCTION public.get_own_admin_flags IS
+supabase/migrations/20260413_fix_e_null_guards.sql:180:  -- get_own_admin_flags must have not_authenticated guard
+supabase/migrations/20260413_fix_e_null_guards.sql:181:  SELECT prosrc INTO v_src FROM pg_proc WHERE proname = 'get_own_admin_flags' LIMIT 1;
+supabase/migrations/20260413_fix_e_null_guards.sql:183:    'FAIL: get_own_admin_flags missing not_authenticated guard';
+supabase/migrations/20260407_admin_final_fix.sql:11:-- Bug 2: get_own_admin_flags() reads p.is_admin from the DB — returns false
+supabase/migrations/20260407_admin_final_fix.sql:85:-- ── 3. Fix get_own_admin_flags() — return true based on UUID+email match ──────
+supabase/migrations/20260407_admin_final_fix.sql:90:CREATE OR REPLACE FUNCTION public.get_own_admin_flags()
+supabase/migrations/20260407_admin_final_fix.sql:107:REVOKE ALL    ON FUNCTION public.get_own_admin_flags() FROM public, anon;
+supabase/migrations/20260407_admin_final_fix.sql:108:GRANT EXECUTE ON FUNCTION public.get_own_admin_flags() TO authenticated;
+supabase/migrations/20260407_admin_final_fix.sql:110:-- ── 4. Fix is_current_user_admin() — same hardening as get_own_admin_flags ───
+supabase/migrations/20260407_admin_final_fix.sql:177:-- get_own_admin_flags() (run as admin user):
+supabase/migrations/20260407_admin_final_fix.sql:178:--   SELECT * FROM get_own_admin_flags();
+supabase/migrations/20260404_security_audit_fixes.sql:62:CREATE OR REPLACE FUNCTION get_own_admin_flags()
+supabase/migrations/20260404_security_audit_fixes.sql:74:REVOKE ALL ON FUNCTION get_own_admin_flags() FROM public, anon;
+supabase/migrations/20260404_security_audit_fixes.sql:75:GRANT EXECUTE ON FUNCTION get_own_admin_flags() TO authenticated;
+supabase/migrations/20260404_security_audit_fixes.sql:98:--   + is_admin/is_super_admin via get_own_admin_flags()
+supabase/migrations/20260405_admin_login_fix.sql:7:-- 1. `get_own_admin_flags` – made more robust with a COALESCE fallback so
+supabase/migrations/20260405_admin_login_fix.sql:17:-- ── 1. Robust get_own_admin_flags — always returns exactly one row ────────────
+supabase/migrations/20260405_admin_login_fix.sql:21:CREATE OR REPLACE FUNCTION public.get_own_admin_flags()
+supabase/migrations/20260405_admin_login_fix.sql:45:REVOKE ALL    ON FUNCTION public.get_own_admin_flags() FROM public, anon;
+supabase/migrations/20260405_admin_login_fix.sql:46:GRANT EXECUTE ON FUNCTION public.get_own_admin_flags() TO authenticated;
+supabase/migrations/20260406_admin_uuid_email_hardening.sql:14:--   3. UUID+Email-pin get_own_admin_flags()
+supabase/migrations/20260406_admin_uuid_email_hardening.sql:77:-- ── 3. UUID+Email-pin get_own_admin_flags() ───────────────────────────────────
+supabase/migrations/20260406_admin_uuid_email_hardening.sql:82:CREATE OR REPLACE FUNCTION public.get_own_admin_flags()
+supabase/migrations/20260406_admin_uuid_email_hardening.sql:97:REVOKE ALL    ON FUNCTION public.get_own_admin_flags() FROM public, anon;
+supabase/migrations/20260406_admin_uuid_email_hardening.sql:98:GRANT EXECUTE ON FUNCTION public.get_own_admin_flags() TO authenticated;
+supabase/migrations/20260406_admin_uuid_email_hardening.sql:189:--     'get_own_admin_flags', 'assert_is_admin', 'log_failed_admin_attempt'
+--- line count (approx) ---
+39
+
+================================================================================
+PATTERN: is_current_user_admin
+COMMAND: grep -r -n "is_current_user_admin" supabase/migrations supabase src
+--- first 80 matches ---
+supabase/migrations/20260406_fix_upsert_model_location_gps.sql:88:    OR public.is_current_user_admin()
+supabase/migrations/20260413_fix_e_null_guards.sql:108:-- ─── 3. is_current_user_admin() — add GUARD 1 ────────────────────────────────
+supabase/migrations/20260413_fix_e_null_guards.sql:110:-- is_current_user_admin() is widely used in RLS policies. For sql-language
+supabase/migrations/20260413_fix_e_null_guards.sql:117:CREATE OR REPLACE FUNCTION public.is_current_user_admin()
+supabase/migrations/20260413_fix_e_null_guards.sql:141:REVOKE ALL    ON FUNCTION public.is_current_user_admin() FROM PUBLIC;
+supabase/migrations/20260413_fix_e_null_guards.sql:142:GRANT EXECUTE ON FUNCTION public.is_current_user_admin() TO authenticated;
+supabase/migrations/20260413_fix_e_null_guards.sql:144:COMMENT ON FUNCTION public.is_current_user_admin IS
+supabase/migrations/20260413_fix_e_null_guards.sql:153:-- assert_is_admin() is plpgsql and calls is_current_user_admin().
+supabase/migrations/20260413_fix_e_null_guards.sql:154:-- If auth.uid() IS NULL, is_current_user_admin() returns false →
+supabase/migrations/20260413_fix_e_null_guards.sql:185:  -- is_current_user_admin must have IS NOT NULL guard
+supabase/migrations/20260413_fix_e_null_guards.sql:186:  SELECT prosrc INTO v_src FROM pg_proc WHERE proname = 'is_current_user_admin' LIMIT 1;
+supabase/migrations/20260413_fix_e_null_guards.sql:188:    'FAIL: is_current_user_admin missing IS NOT NULL guard';
+supabase/migrations/20260406_location_multirow_priority.sql:92:      OR public.is_current_user_admin()
+supabase/migrations/20260406_location_multirow_priority.sql:113:      OR public.is_current_user_admin()
+supabase/migrations/20260406_location_multirow_priority.sql:212:      OR public.is_current_user_admin()
+supabase/migrations/20260406_location_multirow_priority.sql:302:    IF p_source IN ('live', 'current') AND NOT (v_is_model_user OR public.is_current_user_admin()) THEN
+supabase/migrations/20260406_location_multirow_priority.sql:305:    IF p_source = 'agency' AND NOT (v_is_agency_member OR public.is_current_user_admin()) THEN
+supabase/migrations/20260406_location_multirow_priority.sql:315:    IF NOT (v_is_model_user OR public.is_current_user_admin()) THEN
+supabase/migrations/20260413_audit_trail_source_column.sql:21:-- replaces it with `public.is_current_user_admin()` (SECURITY DEFINER, UUID+email).
+supabase/migrations/20260413_audit_trail_source_column.sql:44:-- ─── 2. Recreate log_audit_action with p_source + is_current_user_admin() ────
+supabase/migrations/20260413_audit_trail_source_column.sql:48:--   b) Admin check: `profiles.is_admin = TRUE` → `public.is_current_user_admin()`
+supabase/migrations/20260413_audit_trail_source_column.sql:80:  -- INTERNAL GUARD: Admin check via is_current_user_admin() (not is_admin column).
+supabase/migrations/20260413_audit_trail_source_column.sql:83:  IF public.is_current_user_admin() THEN
+supabase/migrations/20260413_audit_trail_source_column.sql:129:  'SECURE (20260413): p_source added + admin check via is_current_user_admin(). '
+supabase/migrations/20260413_audit_trail_source_column.sql:157:  -- Must use is_current_user_admin() (not direct is_admin column check)
+supabase/migrations/20260413_audit_trail_source_column.sql:161:      AND prosrc ILIKE '%is_current_user_admin%'
+supabase/migrations/20260413_audit_trail_source_column.sql:162:  ), 'FAIL: log_audit_action still uses direct is_admin check (must use is_current_user_admin)';
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:46:    public.is_current_user_admin()
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:92:    public.is_current_user_admin()
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:136:    public.is_current_user_admin()
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:172:    public.is_current_user_admin()
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:216:    public.is_current_user_admin()
+supabase/migrations/20260413_fix_d_models_rls_client_secdef.sql:27:--   Q3: Breaks admin?     No — is_current_user_admin() is first in USING.
+supabase/migrations/20260413_fix_d_models_rls_client_secdef.sql:93:    public.is_current_user_admin()
+supabase/migrations/20260406_security_audit_fixes.sql:6:--              → replaced with public.is_current_user_admin() (SECURITY DEFINER, UUID+email-pin)
+supabase/migrations/20260406_security_audit_fixes.sql:27:-- FIX: use public.is_current_user_admin() which is SECURITY DEFINER + UUID+email-pin.
+supabase/migrations/20260406_security_audit_fixes.sql:35:  USING (public.is_current_user_admin());
+supabase/migrations/20260406_security_audit_fixes.sql:45:  RAISE NOTICE 'PASS: used_trial_emails admin policy uses is_current_user_admin()';
+supabase/migrations/20260407_admin_final_fix.sql:110:-- ── 4. Fix is_current_user_admin() — same hardening as get_own_admin_flags ───
+supabase/migrations/20260407_admin_final_fix.sql:113:CREATE OR REPLACE FUNCTION public.is_current_user_admin()
+supabase/migrations/20260407_admin_final_fix.sql:133:REVOKE ALL    ON FUNCTION public.is_current_user_admin() FROM public, anon;
+supabase/migrations/20260407_admin_final_fix.sql:134:GRANT EXECUTE ON FUNCTION public.is_current_user_admin() TO authenticated;
+supabase/migrations/20260406_fix_territories_rpc.sql:40:  IF NOT public.is_current_user_admin() THEN
+supabase/migrations/20260406_location_source_agency_nearme.sql:83:    OR public.is_current_user_admin()
+supabase/migrations/20260406_location_source_agency_nearme.sql:214:      OR public.is_current_user_admin()
+supabase/migrations/20260413_fix_a_territory_unique_constraint.sql:284:    public.is_current_user_admin()
+supabase/migrations/20260414_fix_mat_client_policy_self_ref_regression.sql:52:    public.is_current_user_admin()
+supabase/migrations/20260422_fix_get_territories_for_agency_roster_mat_bookers.sql:9:--   SECURITY DEFINER, row_security off, auth + is_current_user_admin + org membership + owner.
+supabase/migrations/20260422_fix_get_territories_for_agency_roster_mat_bookers.sql:30:  IF NOT public.is_current_user_admin() THEN
+supabase/migrations/20260411_model_embeddings_policies_finalize.sql:20:--   - Admin always has access via is_current_user_admin()
+supabase/migrations/20260411_model_embeddings_policies_finalize.sql:43:    public.is_current_user_admin()
+supabase/migrations/20260411_model_embeddings_policies_finalize.sql:78:    OR public.is_current_user_admin()
+supabase/migrations/20260411_model_embeddings_policies_finalize.sql:96:    OR public.is_current_user_admin()
+supabase/migrations/20260411_model_embeddings_policies_finalize.sql:109:    OR public.is_current_user_admin()
+supabase/migrations/20260411_model_embeddings_policies_finalize.sql:127:    OR public.is_current_user_admin()
+supabase/migrations/20260405_risk_hardening_secdef_orgfilter.sql:184:    public.is_current_user_admin()
+supabase/migrations/20260405_risk_hardening_secdef_orgfilter.sql:219:    OR public.is_current_user_admin()
+supabase/migrations/20260405_risk_hardening_secdef_orgfilter.sql:237:    OR public.is_current_user_admin()
+supabase/migrations/20260405_risk_hardening_secdef_orgfilter.sql:250:    OR public.is_current_user_admin()
+supabase/migrations/20260405_risk_hardening_secdef_orgfilter.sql:268:    OR public.is_current_user_admin()
+supabase/migrations/20260416_fix_b_territory_constraint_name.sql:52:  IF NOT public.is_current_user_admin() THEN
+supabase/migrations/20260416_fix_b_territory_constraint_name.sql:146:  IF NOT public.is_current_user_admin() THEN
+supabase/migrations/20260416_fix_b_territory_constraint_name.sql:237:  IF NOT public.is_current_user_admin() THEN
+supabase/migrations/20260420_gdpr_rpc_row_security_account_delete_membership.sql:6:-- 2) export_user_data — same; admin gate via is_current_user_admin / super_admin RPCs
+supabase/migrations/20260420_gdpr_rpc_row_security_account_delete_membership.sql:100:     AND NOT public.is_current_user_admin()
+supabase/migrations/20260420_gdpr_rpc_row_security_account_delete_membership.sql:214:  'Caller may export own row; admins via is_current_user_admin / is_current_user_super_admin. '
+supabase/migrations/20260405_admin_always_on.sql:8:-- 1. `is_current_user_admin()` — inline helper (SECURITY DEFINER) used by
+supabase/migrations/20260405_admin_always_on.sql:14:--    `is_current_user_admin()` / `is_current_user_super_admin()` instead
+supabase/migrations/20260405_admin_always_on.sql:23:CREATE OR REPLACE FUNCTION public.is_current_user_admin()
+supabase/migrations/20260405_admin_always_on.sql:36:REVOKE ALL    ON FUNCTION public.is_current_user_admin() FROM public, anon;
+supabase/migrations/20260405_admin_always_on.sql:37:GRANT EXECUTE ON FUNCTION public.is_current_user_admin() TO authenticated;
+supabase/migrations/20260405_admin_always_on.sql:66:  WITH CHECK (public.is_current_user_admin());
+supabase/migrations/20260405_admin_always_on.sql:82:  USING (public.is_current_user_admin());
+supabase/migrations/20260405_admin_always_on.sql:91:  USING (public.is_current_user_admin())
+supabase/migrations/20260405_admin_always_on.sql:92:  WITH CHECK (public.is_current_user_admin());
+supabase/migrations/20260405_admin_always_on.sql:101:  USING (public.is_current_user_admin());
+supabase/migrations/20260405_admin_always_on.sql:111:  USING (public.is_current_user_admin());
+supabase/migrations/20260405_admin_always_on.sql:117:  USING (public.is_current_user_admin())
+supabase/migrations/20260405_admin_always_on.sql:118:  WITH CHECK (public.is_current_user_admin());
+supabase/migrations/20260406_admin_uuid_email_hardening.sql:12:--   1. UUID+Email-pin is_current_user_admin()
+--- line count (approx) ---
+123
+
+================================================================================
+PATTERN: FOR ALL
+COMMAND: grep -r -n "FOR ALL" supabase/migrations supabase
+--- first 80 matches ---
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:6:--   The single FOR ALL policy "user_calendar_events_org_shared" contains a
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:18:--   Additionally, a single FOR ALL policy on a table that could be in the
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:22:--   1. Drop the FOR ALL policy.
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:263:  -- FOR ALL policy is gone
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:268:  ), 'FAIL: user_calendar_events still has FOR ALL policy';
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:282:  RAISE NOTICE 'PASS: user_calendar_events — email-matching removed, FOR ALL split into 4 policies';
+supabase/migrations/20260413_fix_d_models_rls_client_secdef.sql:135:  -- Verify no FOR ALL policy on models references profiles (recursion check)
+supabase/migrations/20260413_fix_d_models_rls_client_secdef.sql:141:  ), 'FAIL: FOR ALL policy on models references profiles (recursion risk)';
+supabase/migrations/20260406_fix_mat_self_ref_recursion.sql:21:-- 3. Split model_locations FOR ALL policies into INSERT/UPDATE/DELETE.
+supabase/migrations/20260406_fix_mat_self_ref_recursion.sql:22:--    FOR ALL includes SELECT scope. Since these policies read from models,
+supabase/migrations/20260406_fix_mat_self_ref_recursion.sql:23:--    and models SELECT policies read model_agency_territories, the FOR ALL
+supabase/migrations/20260406_fix_mat_self_ref_recursion.sql:26:-- Drop FOR ALL policies
+supabase/migrations/20260411_model_embeddings_policies_finalize.sql:10:--   embeddings" as FOR ALL with a raw profiles→organization_members→models JOIN
+supabase/migrations/20260411_model_embeddings_policies_finalize.sql:17:--   - No FOR ALL policy on model_embeddings (eliminates future 42P17 risk)
+supabase/migrations/20260405_risk_hardening_secdef_orgfilter.sql:2:-- Risk Hardening: SECURITY DEFINER + row_security + model_embeddings FOR ALL
+supabase/migrations/20260405_risk_hardening_secdef_orgfilter.sql:16:-- RISIKO 2: model_embeddings FOR ALL mit profiles+models Referenz
+supabase/migrations/20260405_risk_hardening_secdef_orgfilter.sql:17:--   FOR ALL Policies schließen SELECT ein. Eine Policy auf model_embeddings
+supabase/migrations/20260405_risk_hardening_secdef_orgfilter.sql:165:-- ── RISIKO 2: model_embeddings FOR ALL → SELECT + write guard ────────────────
+supabase/migrations/20260405_risk_hardening_secdef_orgfilter.sql:167:-- The FOR ALL policy "Agency can upsert own model embeddings" includes SELECT.
+supabase/migrations/20260405_risk_hardening_secdef_orgfilter.sql:175:-- Drop the unsafe FOR ALL policy and the "Embeddings readable scoped" SELECT policy
+supabase/migrations/20260405_risk_hardening_secdef_orgfilter.sql:279:-- 2. model_embeddings hat kein FOR ALL mit profiles/models Referenz mehr:
+supabase/migrations/20260405_admin_always_on.sql:89:  FOR ALL
+supabase/migrations/20260405_security_three_dangers_fix.sql:54:  FOR ALL TO authenticated
+supabase/migrations/20260405_security_three_dangers_fix.sql:109:  FOR ALL TO authenticated
+supabase/migrations/20260405_security_three_dangers_fix.sql:117:  FOR ALL TO authenticated
+supabase/migrations/20260405_security_three_dangers_fix.sql:125:  FOR ALL TO authenticated
+supabase/migrations/20260406_fix_for_all_calendar_mmc.sql:2:-- Fix: Remove FOR ALL policies on calendar_entries and model_minor_consent
+supabase/migrations/20260406_fix_for_all_calendar_mmc.sql:4:-- Problem: FOR ALL includes SELECT. These policies read from models,
+supabase/migrations/20260406_fix_for_all_calendar_mmc.sql:7:--          USING(true) (safe), FOR ALL on tables that reference models
+supabase/migrations/20260406_fix_for_all_calendar_mmc.sql:12:-- These FOR ALL policies are REDUNDANT: calendar_entries already has separate
+supabase/migrations/20260406_fix_for_all_calendar_mmc.sql:69:-- mmc_agency_access is FOR ALL (the ONLY policy on this table).
+supabase/migrations/20260413_fix_c_model_claim_tokens.sql:51:  ON public.model_claim_tokens FOR ALL TO authenticated
+supabase/migrations/20260408_admin_security_hardening.sql:28:--   The original FOR ALL admin policy should already be gone, but drop it again
+supabase/migrations/20260408_admin_security_hardening.sql:181:-- ── M-3: Ensure admin_overrides has no FOR ALL admin policy ──────────────────
+supabase/migrations/20260408_admin_security_hardening.sql:183:-- migration_paywall_billing.sql created admin_full_access_overrides FOR ALL.
+supabase/migrations/20260408_admin_security_hardening.sql:219:--    → admin_select_overrides (SELECT)   ← no FOR ALL / INSERT / UPDATE / DELETE
+--- line count (approx) ---
+36
+
+================================================================================
+PATTERN: LIMIT 1
+COMMAND: grep -r -n "LIMIT 1" supabase/migrations
+--- first 80 matches ---
+supabase/migrations/20260415_accept_org_invite_row_security_fix.sql:50:  LIMIT 1;
+supabase/migrations/20260413_fix_e_null_guards.sql:176:  SELECT prosrc INTO v_src FROM pg_proc WHERE proname = 'check_org_access' LIMIT 1;
+supabase/migrations/20260413_fix_e_null_guards.sql:181:  SELECT prosrc INTO v_src FROM pg_proc WHERE proname = 'get_own_admin_flags' LIMIT 1;
+supabase/migrations/20260413_fix_e_null_guards.sql:186:  SELECT prosrc INTO v_src FROM pg_proc WHERE proname = 'is_current_user_admin' LIMIT 1;
+supabase/migrations/20260405_backfill_no_org_direct.sql:23:      WHERE owner_id = r.id AND type = 'client' LIMIT 1;
+supabase/migrations/20260405_backfill_no_org_direct.sql:38:      WHERE lower(trim(email)) = lower(trim(r.email)) LIMIT 1;
+supabase/migrations/20260405_backfill_no_org_direct.sql:48:      WHERE agency_id = v_aid LIMIT 1;
+supabase/migrations/20260406_security_audit_fixes.sql:15:--   HIGH 2:    can_access_platform() uses LIMIT 1 without ORDER BY for org resolution
+supabase/migrations/20260406_security_audit_fixes.sql:16:--              → deterministic ORDER BY created_at ASC LIMIT 1 added
+supabase/migrations/20260406_security_audit_fixes.sql:137:-- PROBLEM: SELECT … FROM organization_members … LIMIT 1 without ORDER BY.
+supabase/migrations/20260406_add_model_to_project_rpc.sql:14:-- NOTE: LIMIT 1 is used for caller org resolution. In the rare case a user belongs to
+supabase/migrations/20260406_add_model_to_project_rpc.sql:36:  -- LIMIT 1: intentional — see note above; sub-resource checks follow to prevent misuse
+supabase/migrations/20260406_add_model_to_project_rpc.sql:42:  LIMIT 1;
+supabase/migrations/20260410_security_audit_agency_rpcs_fix.sql:10:--   H-4 (HIGH): LIMIT 1 ohne ORDER BY in agency_update_model_full und
+supabase/migrations/20260410_security_audit_agency_rpcs_fix.sql:75:  LIMIT 1;
+supabase/migrations/20260410_security_audit_agency_rpcs_fix.sql:83:    LIMIT 1;
+supabase/migrations/20260410_security_audit_agency_rpcs_fix.sql:177:  LIMIT 1;
+supabase/migrations/20260410_security_audit_agency_rpcs_fix.sql:184:    LIMIT 1;
+supabase/migrations/20260413_fix_h_model_org_strategy.sql:141:  LIMIT 1;
+supabase/migrations/20260413_fix_b_get_my_org_context_multi_org.sql:2:-- Fix B: get_my_org_context() — Remove LIMIT 1, Add NULL Guard, Multi-Org Safe
+supabase/migrations/20260413_fix_b_get_my_org_context_multi_org.sql:5:--   Current function uses LIMIT 1 + ORDER BY created_at ASC, which silently
+supabase/migrations/20260413_fix_b_get_my_org_context_multi_org.sql:7:--   the explicit requirement: "NO implicit org resolution (no LIMIT 1 logic)."
+supabase/migrations/20260413_fix_b_get_my_org_context_multi_org.sql:12:--   1. Remove LIMIT 1 — return ALL memberships.
+supabase/migrations/20260413_fix_b_get_my_org_context_multi_org.sql:68:  'Fix B (20260413): Returns ALL org memberships for the calling user (no LIMIT 1). '
+supabase/migrations/20260413_fix_b_get_my_org_context_multi_org.sql:79:  SELECT prosrc INTO v_src FROM pg_proc WHERE proname = 'get_my_org_context' LIMIT 1;
+supabase/migrations/20260413_fix_b_get_my_org_context_multi_org.sql:84:  ASSERT v_src NOT ILIKE '%LIMIT 1%',
+supabase/migrations/20260413_fix_b_get_my_org_context_multi_org.sql:85:    'FAIL: get_my_org_context still contains LIMIT 1';
+supabase/migrations/20260413_fix_b_get_my_org_context_multi_org.sql:90:  RAISE NOTICE 'PASS: 20260413_fix_b — get_my_org_context has no LIMIT 1 and has NULL guard';
+supabase/migrations/20260415_invite_preview_email_hint.sql:60:  LIMIT 1;
+supabase/migrations/20260406_model_claim_preview_rpc.sql:47:  LIMIT 1;
+supabase/migrations/20260412_agency_rpcs_definitive.sql:92:  LIMIT 1;
+supabase/migrations/20260412_agency_rpcs_definitive.sql:100:    LIMIT 1;
+supabase/migrations/20260412_agency_rpcs_definitive.sql:199:  LIMIT 1;
+supabase/migrations/20260412_agency_rpcs_definitive.sql:206:    LIMIT 1;
+supabase/migrations/20260412_agency_rpcs_definitive.sql:258:  SELECT proconfig INTO v_conf FROM pg_proc WHERE proname = 'agency_update_model_full' LIMIT 1;
+supabase/migrations/20260412_agency_rpcs_definitive.sql:263:  SELECT proconfig INTO v_conf FROM pg_proc WHERE proname = 'agency_claim_unowned_model' LIMIT 1;
+supabase/migrations/20260413_fix_a_territory_unique_constraint.sql:107:  LIMIT 1;
+supabase/migrations/20260413_fix_a_territory_unique_constraint.sql:201:    LIMIT 1;
+supabase/migrations/20260417_fix_c_can_access_platform_limit1_doc.sql:2:-- Fix C: can_access_platform — Document LIMIT 1 deviation (Risiko 10)
+supabase/migrations/20260417_fix_c_can_access_platform_limit1_doc.sql:6:--   can_access_platform() uses LIMIT 1 to resolve the caller's org:
+supabase/migrations/20260417_fix_c_can_access_platform_limit1_doc.sql:7:--     SELECT om.organization_id, o.type ... ORDER BY om.created_at ASC LIMIT 1
+supabase/migrations/20260417_fix_c_can_access_platform_limit1_doc.sql:9:--   Risiko 10 (system-invariants.mdc) forbids LIMIT 1 for org context
+supabase/migrations/20260417_fix_c_can_access_platform_limit1_doc.sql:29:--   that specific org, removing the LIMIT 1 entirely.
+supabase/migrations/20260417_fix_c_can_access_platform_limit1_doc.sql:38:  'LIMIT 1 deviation (Risiko 10 — documented acceptable exception): '
+supabase/migrations/20260417_fix_c_can_access_platform_limit1_doc.sql:40:  'when it is, add p_organization_id parameter and remove LIMIT 1. '
+supabase/migrations/20260417_fix_c_can_access_platform_limit1_doc.sql:42:  'Updated 20260417: documented LIMIT 1 deviation (paywall scope, not auth context).';
+supabase/migrations/20260417_fix_c_can_access_platform_limit1_doc.sql:46:  RAISE NOTICE '20260417_fix_c: can_access_platform LIMIT 1 deviation documented — OK';
+supabase/migrations/20260424_generate_model_claim_token_organization_param.sql:83:      LIMIT 1;
+supabase/migrations/20260424_generate_model_claim_token_organization_param.sql:90:        LIMIT 1;
+supabase/migrations/20260417_fix_b_admin_find_model_by_email_rpc.sql:31:  -- LIMIT 1 is a Sub-Resource-Lookup after the guard above (see system-invariants.mdc:
+supabase/migrations/20260417_fix_b_admin_find_model_by_email_rpc.sql:32:  -- "LIMIT 1 in SECURITY DEFINER Scope Guards for Sub-Resource-Lookups AFTER
+supabase/migrations/20260405_admin_login_fix.sql:18:-- Uses a subquery UNION ALL + LIMIT 1 pattern so the function never returns
+supabase/migrations/20260405_admin_login_fix.sql:42:  LIMIT 1;
+supabase/migrations/20260411_model_embeddings_policies_finalize.sql:50:          LIMIT 1),
+supabase/migrations/20260411_model_embeddings_policies_finalize.sql:74:          LIMIT 1),
+supabase/migrations/20260411_model_embeddings_policies_finalize.sql:92:          LIMIT 1),
+supabase/migrations/20260411_model_embeddings_policies_finalize.sql:105:          LIMIT 1),
+supabase/migrations/20260411_model_embeddings_policies_finalize.sql:123:          LIMIT 1),
+supabase/migrations/20260405_risk_hardening_secdef_orgfilter.sql:191:          LIMIT 1),
+supabase/migrations/20260405_risk_hardening_secdef_orgfilter.sql:215:          LIMIT 1),
+supabase/migrations/20260405_risk_hardening_secdef_orgfilter.sql:233:          LIMIT 1),
+supabase/migrations/20260405_risk_hardening_secdef_orgfilter.sql:246:          LIMIT 1),
+supabase/migrations/20260405_risk_hardening_secdef_orgfilter.sql:264:          LIMIT 1),
+supabase/migrations/20260416_fix_b_territory_constraint_name.sql:69:  -- LIMIT 1 is safe here: sub-resource lookup after verified agency guard
+supabase/migrations/20260416_fix_b_territory_constraint_name.sql:75:  LIMIT 1;
+supabase/migrations/20260416_fix_b_territory_constraint_name.sql:173:  -- LIMIT 1 safe: sub-resource lookup after verified agency guard
+supabase/migrations/20260416_fix_b_territory_constraint_name.sql:179:  LIMIT 1;
+supabase/migrations/20260416_fix_b_territory_constraint_name.sql:264:  -- LIMIT 1 safe: sub-resource lookup after verified agency guard
+supabase/migrations/20260416_fix_b_territory_constraint_name.sql:270:  LIMIT 1;
+supabase/migrations/20260420_gdpr_rpc_row_security_account_delete_membership.sql:146:        LIMIT 1000
+supabase/migrations/20260405_get_my_org_context_agency_id.sql:44:  LIMIT 1;
+supabase/migrations/20260413_secdef_scope_guards_final.sql:18:--      Existing agency-membership gate is kept; LIMIT 100→50; COMMENT updated.
+supabase/migrations/20260413_secdef_scope_guards_final.sql:88:  LIMIT 1;
+supabase/migrations/20260413_secdef_scope_guards_final.sql:179:  LIMIT 1;
+supabase/migrations/20260413_secdef_scope_guards_final.sql:406:-- Changes: LIMIT 100 → 50 (reduce data exposure); COMMENT updated to make
+supabase/migrations/20260406_location_filter_consistency.sql:168:     LIMIT 1;
+supabase/migrations/20260423_generate_model_claim_token_scope_by_model_agency.sql:2:-- generate_model_claim_token — scope agency to the target model (no LIMIT 1 org)
+supabase/migrations/20260423_generate_model_claim_token_scope_by_model_agency.sql:68:    LIMIT 1;
+supabase/migrations/20260423_generate_model_claim_token_scope_by_model_agency.sql:75:      LIMIT 1;
+supabase/migrations/20260407_accept_invitation_role_text_fix.sql:42:  LIMIT 1;
+--- line count (approx) ---
+92
+
+================================================================================
+PATTERN: profiles.is_admin
+COMMAND: grep -r -n "profiles.is_admin" supabase/migrations supabase
+--- first 80 matches ---
+supabase/migrations/20260413_audit_trail_source_column.sql:19:-- ALSO FIXES: log_audit_action still uses `profiles.is_admin = TRUE` for the
+supabase/migrations/20260413_audit_trail_source_column.sql:48:--   b) Admin check: `profiles.is_admin = TRUE` → `public.is_current_user_admin()`
+supabase/migrations/20260413_audit_trail_source_column.sql:81:  -- Fixed from previous version which used `profiles.is_admin = TRUE` directly —
+supabase/migrations/20260406_security_audit_fixes.sql:5:--   BLOCKER 1: used_trial_emails admin policy still uses profiles.is_admin = true
+supabase/migrations/20260405_admin_always_on.sql:9:--    all admin RLS policies instead of direct `profiles.is_admin` reads.
+supabase/migrations/20260406_admin_uuid_email_hardening.sql:9:--         3. profiles.is_admin = true            (explicit flag, trigger-protected)
+supabase/migrations/20260406_admin_uuid_email_hardening.sql:25:-- Was: only checked profiles.is_admin for auth.uid()
+supabase/migrations/20260405_security_three_dangers_fix.sql:4:-- DANGER 1: profiles.is_admin = TRUE in RLS policies
+supabase/migrations/20260405_security_three_dangers_fix.sql:6:--   profiles.is_admin directly evaluates to NULL → false for all users.
+supabase/migrations/20260405_security_three_dangers_fix.sql:267:-- 3. profiles.is_admin = true gone from all policies:
+supabase/migrations/20260408_admin_security_hardening.sql:147:-- policy that reads profiles.is_admin in an authenticated context evaluates to
+--- line count (approx) ---
+11
+
+================================================================================
+PATTERN: profiles.role
+COMMAND: grep -r -n "profiles.role" supabase/migrations supabase
+--- first 80 matches ---
+supabase/migrations/20260413_fix_d_models_rls_client_secdef.sql:2:-- Fix D: models CLIENT RLS-Policy — Replace Direct profiles.role Check
+supabase/migrations/20260413_fix_d_models_rls_client_secdef.sql:14:--   c) OR-logic: any user with profiles.role = 'client' can see models,
+supabase/migrations/20260413_fix_d_models_rls_client_secdef.sql:19:--      row_security=off. Checks org membership only (no profiles.role access).
+supabase/migrations/20260413_fix_d_models_rls_client_secdef.sql:77:  '(no profiles/models access → no recursion risk). Replaces direct profiles.role check '
+supabase/migrations/20260413_fix_d_models_rls_client_secdef.sql:95:      -- Client org membership (no direct profiles.role access)
+supabase/migrations/20260404c_admin_bootstrap_fix.sql:5:-- but profiles.role is TEXT. When admin (role='admin') logs in, PostgreSQL tries
+supabase/migrations/20260407_admin_final_fix.sql:20:-- Bug 4: profiles.role has no CHECK constraint — any string value can enter.
+supabase/migrations/20260407_admin_final_fix.sql:147:-- ── 6. Add CHECK constraint on profiles.role ──────────────────────────────────
+supabase/migrations/20260413_fix_a_territory_unique_constraint.sql:19:--      profiles.role='client' check with SECURITY DEFINER function
+supabase/migrations/20260413_fix_a_territory_unique_constraint.sql:274:-- Replace direct profiles.role = 'client' check with check_org_access()
+supabase/migrations/20260420_gdpr_rpc_row_security_account_delete_membership.sql:9:--    (no profiles.role branch).
+supabase/migrations/20260420_gdpr_rpc_row_security_account_delete_membership.sql:270:  'Owner gate uses organization_members + organizations.type only (no profiles.role). '
+--- line count (approx) ---
+12
+
+================================================================================
+PATTERN: get_current_user_email
+COMMAND: grep -r -n "get_current_user_email" supabase/migrations supabase
+--- first 80 matches ---
+supabase/migrations/20260405_profiles_policy_canonical.sql:29:--   • email, phone — read via get_current_user_email() / get_org_member_emails() only
+supabase/migrations/20260405_profiles_policy_canonical.sql:89:--   get_current_user_email()   → own email
+supabase/migrations/20260405_security_three_dangers_fix.sql:14:--   Policies using JOIN profiles ON email = agency.email or get_current_user_email()
+--- line count (approx) ---
+3
+
+================================================================================
+PATTERN: organization_members
+COMMAND: grep -r organization_members supabase/migrations
+supabase/migrations/20260415_accept_org_invite_row_security_fix.sql:6:--   invitations, organizations, profiles, organization_members.
+supabase/migrations/20260415_accept_org_invite_row_security_fix.sql:80:  FROM public.organization_members
+supabase/migrations/20260415_accept_org_invite_row_security_fix.sql:100:  INSERT INTO public.organization_members (user_id, organization_id, role)
+supabase/migrations/20260405_profiles_policy_canonical.sql:52:      FROM   public.organization_members om2
+supabase/migrations/20260405_profiles_policy_canonical.sql:55:        FROM   public.organization_members om1
+supabase/migrations/20260405_profiles_policy_canonical.sql:79:          JOIN   public.organization_members om ON om.organization_id = o.id
+supabase/migrations/20260416_fix_a_can_access_platform_sha256.sql:38:  FROM   organization_members om
+supabase/migrations/20260418_request_account_deletion_after_dissolve.sql:1:-- Allow account deletion for agency/client owners who dissolved their org (no organization_members rows).
+supabase/migrations/20260418_request_account_deletion_after_dissolve.sql:25:      FROM public.organization_members m
+supabase/migrations/20260418_request_account_deletion_after_dissolve.sql:31:        FROM public.organization_members m
+supabase/migrations/20260418_request_account_deletion_after_dissolve.sql:41:      FROM public.organization_members m
+supabase/migrations/20260418_request_account_deletion_after_dissolve.sql:47:        FROM public.organization_members m
+supabase/migrations/20260413_fix_f_org_role_trigger_hardening.sql:11:--     Models are NOT stored in organization_members. Their org relationship
+supabase/migrations/20260413_fix_f_org_role_trigger_hardening.sql:41:    RAISE EXCEPTION 'org_member_role_null: role cannot be NULL for organization_members';
+supabase/migrations/20260413_fix_f_org_role_trigger_hardening.sql:53:  -- Models are NOT organization_members — they use model_agency_territories.
+supabase/migrations/20260413_fix_f_org_role_trigger_hardening.sql:57:      '(allowed: owner, booker). Models use model_agency_territories, not organization_members.',
+supabase/migrations/20260413_fix_f_org_role_trigger_hardening.sql:74:DROP TRIGGER IF EXISTS trg_validate_org_member_role ON public.organization_members;
+supabase/migrations/20260413_fix_f_org_role_trigger_hardening.sql:78:  ON public.organization_members
+supabase/migrations/20260413_fix_f_org_role_trigger_hardening.sql:120:      AND event_object_table = 'organization_members'
+supabase/migrations/20260413_fix_f_org_role_trigger_hardening.sql:122:  ), 'FAIL: trg_validate_org_member_role trigger not active on organization_members';
+supabase/migrations/20260406_fix_upsert_model_location_gps.sql:77:      JOIN public.organization_members om ON om.organization_id = o.id
+supabase/migrations/20260413_fix_e_null_guards.sql:54:    FROM public.organization_members m
+supabase/migrations/20260406_location_multirow_priority.sql:104:        JOIN public.organization_members om ON om.organization_id = o.id
+supabase/migrations/20260406_location_multirow_priority.sql:203:        JOIN   public.organization_members om ON om.organization_id = o.id
+supabase/migrations/20260406_location_multirow_priority.sql:291:    JOIN public.organization_members om ON om.organization_id = o.id
+supabase/migrations/20260413_audit_trail_source_column.sql:90:      FROM public.organization_members
+supabase/migrations/20260405_backfill_no_org_direct.sql:16:        SELECT 1 FROM public.organization_members m WHERE m.user_id = p.id
+supabase/migrations/20260405_backfill_no_org_direct.sql:31:      INSERT INTO public.organization_members (user_id, organization_id, role)
+supabase/migrations/20260405_backfill_no_org_direct.sql:56:      INSERT INTO public.organization_members (user_id, organization_id, role)
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:16:--      organization_members role — legacy concept that predates multi-tenant orgs)
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:55:            SELECT 1 FROM public.organization_members om
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:70:          FROM public.organization_members om
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:100:            SELECT 1 FROM public.organization_members om
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:114:          FROM public.organization_members om
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:144:            SELECT 1 FROM public.organization_members om
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:158:          FROM public.organization_members om
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:180:            SELECT 1 FROM public.organization_members om
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:194:          FROM public.organization_members om
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:224:            SELECT 1 FROM public.organization_members om
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:238:          FROM public.organization_members om
+supabase/migrations/20260413_fix_d_models_rls_client_secdef.sql:29:--                         organization_members + organizations (no profiles/models join).
+supabase/migrations/20260413_fix_d_models_rls_client_secdef.sql:56:      FROM public.organization_members om
+supabase/migrations/20260413_fix_d_models_rls_client_secdef.sql:76:  'SECURITY DEFINER + row_security=off; reads only organization_members + organizations '
+supabase/migrations/20260404c_admin_bootstrap_fix.sql:46:  SELECT COUNT(*)::int INTO mcount FROM public.organization_members WHERE user_id = auth.uid();
+supabase/migrations/20260406_security_audit_fixes.sql:51:-- Trigger function is SECURITY DEFINER and reads auth.users + organization_members.
+supabase/migrations/20260406_security_audit_fixes.sql:77:  FROM public.organization_members om
+supabase/migrations/20260406_security_audit_fixes.sql:90:-- Reads organization_members (RLS-protected) inside a SECURITY DEFINER function.
+supabase/migrations/20260406_security_audit_fixes.sql:110:    DELETE FROM public.organization_members
+supabase/migrations/20260406_security_audit_fixes.sql:124:  DELETE FROM public.organization_members
+supabase/migrations/20260406_security_audit_fixes.sql:137:-- PROBLEM: SELECT … FROM organization_members … LIMIT 1 without ORDER BY.
+supabase/migrations/20260406_security_audit_fixes.sql:138:-- When a user has multiple organization_members rows (e.g. owner + invitee),
+supabase/migrations/20260406_security_audit_fixes.sql:164:  FROM   organization_members om
+supabase/migrations/20260406_add_model_to_project_rpc.sql:9:--   1. Caller has a client organization (organization_members + organizations.type='client')
+supabase/migrations/20260406_add_model_to_project_rpc.sql:38:  FROM public.organization_members om
+supabase/migrations/20260406_add_model_to_project_rpc.sql:109:      JOIN public.organization_members om ON om.organization_id = cp.organization_id
+supabase/migrations/20260410_security_audit_agency_rpcs_fix.sql:70:  FROM public.organization_members om
+supabase/migrations/20260410_security_audit_agency_rpcs_fix.sql:77:  -- Agency-Owner ohne organization_members Eintrag
+supabase/migrations/20260410_security_audit_agency_rpcs_fix.sql:172:  FROM public.organization_members om
+supabase/migrations/20260413_fix_h_model_org_strategy.sql:5:--   Models do NOT use organization_members for their org relationship.
+supabase/migrations/20260413_fix_h_model_org_strategy.sql:15:--   - organization_members is designed for B2B users (agency staff, client staff)
+supabase/migrations/20260413_fix_h_model_org_strategy.sql:18:--     members OF them. Adding models to organization_members would:
+supabase/migrations/20260413_fix_h_model_org_strategy.sql:22:--          would need 5 organization_members rows, each with its own RLS scope)
+supabase/migrations/20260413_fix_h_model_org_strategy.sql:92:  'Models use model_agency_territories (not organization_members) as their org anchor. '
+supabase/migrations/20260413_fix_h_model_org_strategy.sql:189:  'Models do NOT appear in organization_members — this table is their org anchor. '
+supabase/migrations/20260406_fix_territories_rpc.sql:8:-- Bug 2: Guard checked organization_members and agencies.owner_user_id, but not
+supabase/migrations/20260406_fix_territories_rpc.sql:36:  --   a) a member of an org that belongs to this agency (organization_members)
+supabase/migrations/20260406_fix_territories_rpc.sql:43:      FROM public.organization_members om
+supabase/migrations/20260413_fix_b_get_my_org_context_multi_org.sql:18:--   That file also uses .from('organization_members').limit(1).maybeSingle().
+supabase/migrations/20260413_fix_b_get_my_org_context_multi_org.sql:57:    FROM public.organization_members m
+supabase/migrations/20260406_location_source_agency_nearme.sql:74:      JOIN public.organization_members om ON om.organization_id = o.id
+supabase/migrations/20260406_location_source_agency_nearme.sql:202:        JOIN   public.organization_members om
+supabase/migrations/20260425_chat_files_storage_insert_hardening.sql:66:              FROM public.organization_members m
+supabase/migrations/20260425_chat_files_storage_insert_hardening.sql:75:              FROM public.organization_members m
+supabase/migrations/20260425_chat_files_storage_insert_hardening.sql:88:      JOIN public.organization_members om ON om.organization_id = o.id
+supabase/migrations/20260412_agency_rpcs_definitive.sql:25:--   - Caller's agency is resolved from organization_members/agencies (not from RLS)
+supabase/migrations/20260412_agency_rpcs_definitive.sql:87:  FROM public.organization_members om
+supabase/migrations/20260412_agency_rpcs_definitive.sql:94:  -- Fallback: agency owners may not have an organization_members row
+supabase/migrations/20260412_agency_rpcs_definitive.sql:194:  FROM public.organization_members om
+supabase/migrations/20260413_fix_a_territory_unique_constraint.sql:179:      SELECT 1 FROM organization_members om
+supabase/migrations/20260413_fix_a_territory_unique_constraint.sql:287:      FROM public.organization_members om
+count: 180
+
+================================================================================
+PATTERN: model_agency_territories
+supabase/migrations/20260413_fix_f_org_role_trigger_hardening.sql:12:--     is expressed exclusively via model_agency_territories (see Fix H).
+supabase/migrations/20260413_fix_f_org_role_trigger_hardening.sql:53:  -- Models are NOT organization_members — they use model_agency_territories.
+supabase/migrations/20260413_fix_f_org_role_trigger_hardening.sql:57:      '(allowed: owner, booker). Models use model_agency_territories, not organization_members.',
+supabase/migrations/20260413_fix_f_org_role_trigger_hardening.sql:84:  'Added null-role guard. Error messages clarify that models use model_agency_territories. '
+supabase/migrations/20260406_location_multirow_priority.sql:449:    LEFT   JOIN public.model_agency_territories mat ON mat.model_id = m.id
+supabase/migrations/20260413_fix_d_models_rls_client_secdef.sql:104:        SELECT 1 FROM public.model_agency_territories mat
+supabase/migrations/20260413_fix_g_pending_territories_jsonb.sql:43:  'Transferred to model_agency_territories when the model confirms (trigger tr_transfer_pending_territories).';
+supabase/migrations/20260417_fix_a_get_models_near_location_row_security.sql:12:--   model_locations, and model_agency_territories INSIDE the function, which:
+supabase/migrations/20260417_fix_a_get_models_near_location_row_security.sql:15:--   2. Creates latent 42P17 risk via models → model_agency_territories chain
+supabase/migrations/20260417_fix_a_get_models_near_location_row_security.sql:61:SET row_security TO off  -- REQUIRED: reads RLS-protected models/model_locations/model_agency_territories
+supabase/migrations/20260417_fix_a_get_models_near_location_row_security.sql:135:    LEFT   JOIN public.model_agency_territories mat ON mat.model_id = m.id
+supabase/migrations/20260406_get_models_near_location_register.sql:121:    LEFT   JOIN public.model_agency_territories mat ON mat.model_id = m.id
+supabase/migrations/20260413_fix_h_model_org_strategy.sql:8:--     model_agency_territories (model_id, agency_id, country_code)
+supabase/migrations/20260413_fix_h_model_org_strategy.sql:78:    JOIN public.model_agency_territories mat ON mat.model_id = m.id
+supabase/migrations/20260413_fix_h_model_org_strategy.sql:92:  'Models use model_agency_territories (not organization_members) as their org anchor. '
+supabase/migrations/20260413_fix_h_model_org_strategy.sql:185:COMMENT ON TABLE public.model_agency_territories IS
+supabase/migrations/20260406_fix_territories_rpc.sql:6:--        Authoritative table is model_agency_territories with column country_code.
+supabase/migrations/20260406_fix_territories_rpc.sql:13:--   2. Change SELECT to read from model_agency_territories.country_code.
+supabase/migrations/20260406_fix_territories_rpc.sql:60:  -- Authorized: return territories from the authoritative model_agency_territories table.
+supabase/migrations/20260406_fix_territories_rpc.sql:66:    FROM public.model_agency_territories mat
+supabase/migrations/20260406_fix_territories_rpc.sql:76:  'FIXED (20260406): reads model_agency_territories.country_code (not model_assignments.territory). '
+supabase/migrations/20260413_fix_a_territory_unique_constraint.sql:28:DELETE FROM public.model_agency_territories
+supabase/migrations/20260413_fix_a_territory_unique_constraint.sql:37:    FROM public.model_agency_territories
+supabase/migrations/20260413_fix_a_territory_unique_constraint.sql:42:-- ─── 2. Drop all existing unique constraints on model_agency_territories ──────
+supabase/migrations/20260413_fix_a_territory_unique_constraint.sql:51:    WHERE con.conrelid = 'public.model_agency_territories'::regclass
+supabase/migrations/20260413_fix_a_territory_unique_constraint.sql:54:    EXECUTE format('ALTER TABLE public.model_agency_territories DROP CONSTRAINT IF EXISTS %I', v_conname);
+supabase/migrations/20260413_fix_a_territory_unique_constraint.sql:60:ALTER TABLE public.model_agency_territories
+supabase/migrations/20260413_fix_a_territory_unique_constraint.sql:61:  ADD CONSTRAINT model_agency_territories_one_agency_per_territory
+supabase/migrations/20260413_fix_a_territory_unique_constraint.sql:65:CREATE INDEX IF NOT EXISTS idx_mat_agency_id ON public.model_agency_territories(agency_id);
+supabase/migrations/20260413_fix_a_territory_unique_constraint.sql:66:CREATE INDEX IF NOT EXISTS idx_mat_model_id  ON public.model_agency_territories(model_id);
+supabase/migrations/20260413_fix_a_territory_unique_constraint.sql:71:--   a) SET row_security TO off — required; function writes model_agency_territories
+supabase/migrations/20260413_fix_a_territory_unique_constraint.sql:120:    INSERT INTO public.model_agency_territories (model_id, agency_id, country_code, created_at)
+supabase/migrations/20260413_fix_a_territory_unique_constraint.sql:250:    INSERT INTO model_agency_territories (model_id, agency_id, country_code)
+supabase/migrations/20260413_fix_a_territory_unique_constraint.sql:277:DROP POLICY IF EXISTS "Clients can view model territories" ON public.model_agency_territories;
+supabase/migrations/20260413_fix_a_territory_unique_constraint.sql:280:  ON public.model_agency_territories
+supabase/migrations/20260413_fix_a_territory_unique_constraint.sql:301:      FROM public.model_agency_territories self_mat
+supabase/migrations/20260413_fix_a_territory_unique_constraint.sql:304:      WHERE self_mat.id = model_agency_territories.id
+supabase/migrations/20260413_fix_a_territory_unique_constraint.sql:316:    WHERE con.conrelid = 'public.model_agency_territories'::regclass
+supabase/migrations/20260413_fix_a_territory_unique_constraint.sql:318:      AND con.conname  = 'model_agency_territories_one_agency_per_territory'
+supabase/migrations/20260413_fix_a_territory_unique_constraint.sql:319:  ), 'FAIL: model_agency_territories_one_agency_per_territory constraint not found';
+supabase/migrations/20260413_fix_a_territory_unique_constraint.sql:324:    FROM public.model_agency_territories
+supabase/migrations/20260414_fix_mat_client_policy_self_ref_regression.sql:7:-- model_agency_territories, but the Agency-member branch contained:
+supabase/migrations/20260414_fix_mat_client_policy_self_ref_regression.sql:9:--   FROM public.model_agency_territories self_mat
+supabase/migrations/20260414_fix_mat_client_policy_self_ref_regression.sql:10:--   WHERE self_mat.id = model_agency_territories.id
+supabase/migrations/20260414_fix_mat_client_policy_self_ref_regression.sql:18:--     → EXISTS (SELECT 1 FROM model_agency_territories)
+supabase/migrations/20260414_fix_mat_client_policy_self_ref_regression.sql:20:--       → FROM model_agency_territories self_mat
+supabase/migrations/20260414_fix_mat_client_policy_self_ref_regression.sql:25:-- reference to model_agency_territories.agency_id joined only to
+supabase/migrations/20260414_fix_mat_client_policy_self_ref_regression.sql:37:DROP POLICY IF EXISTS "clients_view_model_territories" ON public.model_agency_territories;
+supabase/migrations/20260414_fix_mat_client_policy_self_ref_regression.sql:42:-- Agency-member branch now uses model_agency_territories.agency_id as a
+supabase/migrations/20260414_fix_mat_client_policy_self_ref_regression.sql:43:-- direct column reference. No FROM on model_agency_territories itself.
+supabase/migrations/20260414_fix_mat_client_policy_self_ref_regression.sql:47:  ON public.model_agency_territories
+supabase/migrations/20260414_fix_mat_client_policy_self_ref_regression.sql:72:    -- CRITICAL: do NOT use FROM model_agency_territories inside this policy.
+supabase/migrations/20260414_fix_mat_client_policy_self_ref_regression.sql:73:    -- model_agency_territories.agency_id is a direct column on the current row
+supabase/migrations/20260414_fix_mat_client_policy_self_ref_regression.sql:79:      WHERE o.agency_id = model_agency_territories.agency_id
+supabase/migrations/20260414_fix_mat_client_policy_self_ref_regression.sql:93:    WHERE tablename = 'model_agency_territories'
+supabase/migrations/20260414_fix_mat_client_policy_self_ref_regression.sql:94:      AND (qual ILIKE '%self_mat%' OR qual ILIKE '%from public.model_agency_territories%')
+supabase/migrations/20260414_fix_mat_client_policy_self_ref_regression.sql:95:  ), 'FAIL: self-referencing FROM still present in a model_agency_territories policy';
+supabase/migrations/20260414_fix_mat_client_policy_self_ref_regression.sql:100:    WHERE tablename  = 'model_agency_territories'
+supabase/migrations/20260422_fix_get_territories_for_agency_roster_mat_bookers.sql:6:--   1. Authoritative read from model_agency_territories.country_code (not model_assignments).
+supabase/migrations/20260422_fix_get_territories_for_agency_roster_mat_bookers.sql:53:    FROM public.model_agency_territories mat
+supabase/migrations/20260422_fix_get_territories_for_agency_roster_mat_bookers.sql:63:  'FIXED (20260422): reads model_agency_territories.country_code; guard includes bookers. '
+supabase/migrations/20260406_fix_mat_self_ref_recursion.sql:2:-- Fix: 42P17 infinite recursion on model_agency_territories
+supabase/migrations/20260406_fix_mat_self_ref_recursion.sql:5:--          (FROM model_agency_territories self_mat) that causes PostgreSQL to
+supabase/migrations/20260406_fix_mat_self_ref_recursion.sql:7:--          Chain: profiles SELECT → models SELECT → model_agency_territories SELECT
+supabase/migrations/20260406_fix_mat_self_ref_recursion.sql:14:DROP POLICY IF EXISTS "clients_view_model_territories" ON public.model_agency_territories;
+supabase/migrations/20260406_fix_mat_self_ref_recursion.sql:19:DROP POLICY IF EXISTS "agencies_manage_territories_insert" ON public.model_agency_territories;
+supabase/migrations/20260406_fix_mat_self_ref_recursion.sql:23:--    and models SELECT policies read model_agency_territories, the FOR ALL
+supabase/migrations/20260416_fix_b_territory_constraint_name.sql:6:--   model_agency_territories_unique_model_country, which does NOT exist.
+supabase/migrations/20260416_fix_b_territory_constraint_name.sql:8:--   to model_agency_territories_one_agency_per_territory (UNIQUE on model_id,
+supabase/migrations/20260416_fix_b_territory_constraint_name.sql:17:--   model_agency_territories_one_agency_per_territory.
+supabase/migrations/20260416_fix_b_territory_constraint_name.sql:78:  DELETE FROM public.model_agency_territories t
+supabase/migrations/20260416_fix_b_territory_constraint_name.sql:94:      INSERT INTO public.model_agency_territories (model_id, agency_id, country_code, territory)
+supabase/migrations/20260416_fix_b_territory_constraint_name.sql:96:      ON CONFLICT ON CONSTRAINT model_agency_territories_one_agency_per_territory
+supabase/migrations/20260416_fix_b_territory_constraint_name.sql:117:  'FIXED (20260416): correct constraint name model_agency_territories_one_agency_per_territory. '
+supabase/migrations/20260416_fix_b_territory_constraint_name.sql:119:  'Dual-writes to model_agency_territories (legacy) and model_assignments.';
+supabase/migrations/20260416_fix_b_territory_constraint_name.sql:181:  -- Legacy dual-write: model_agency_territories (additive — no DELETE)
+supabase/migrations/20260416_fix_b_territory_constraint_name.sql:182:  INSERT INTO public.model_agency_territories (model_id, agency_id, country_code, territory)
+supabase/migrations/20260416_fix_b_territory_constraint_name.sql:186:  ON CONFLICT ON CONSTRAINT model_agency_territories_one_agency_per_territory
+supabase/migrations/20260416_fix_b_territory_constraint_name.sql:208:  'FIXED (20260416): correct constraint name model_agency_territories_one_agency_per_territory. '
+supabase/migrations/20260416_fix_b_territory_constraint_name.sql:210:  'Dual-writes to model_agency_territories (legacy) and model_assignments.';
+count: 114
+
+================================================================================
+PATTERN: ON CONFLICT (model_id)
+COMMAND: grep -r -n "ON CONFLICT (model_id)" supabase/migrations supabase src
+--- first 80 matches ---
+supabase/migrations/20260406_fix_upsert_model_location_gps.sql:109:  ON CONFLICT (model_id) DO UPDATE SET
+supabase/migrations/20260406_location_source_agency_nearme.sql:112:    ON CONFLICT (model_id) DO UPDATE SET
+supabase/migrations/20260406_location_source_agency_nearme.sql:139:    ON CONFLICT (model_id) DO UPDATE SET
+supabase/migrations/20260406_location_source_agency_nearme.sql:233:    ON CONFLICT (model_id) DO UPDATE SET
+supabase/migrations/20260406_location_filter_consistency.sql:86:    ON CONFLICT (model_id) DO UPDATE SET
+supabase/migrations/20260406_location_source_v2.sql:134:    ON CONFLICT (model_id) DO UPDATE SET
+supabase/migrations/20260406_location_source_v2.sql:162:    ON CONFLICT (model_id) DO UPDATE SET
+supabase/migrations/20260406_location_source_v2.sql:256:    ON CONFLICT (model_id) DO UPDATE SET
+supabase/migrations/20260406_security_definer_row_security_fix.sql:90:    ON CONFLICT (model_id) DO UPDATE SET
+--- line count (approx) ---
+9
+
+================================================================================
+PATTERN: DISTINCT ON
+COMMAND: grep -r -n "DISTINCT ON" supabase/migrations supabase
+--- first 80 matches ---
+supabase/migrations/20260406_location_multirow_priority.sql:16:-- Priority enforced by DISTINCT ON in get_models_near_location — the highest-
+supabase/migrations/20260406_location_multirow_priority.sql:23:--   4:  DISTINCT ON priority ordering in get_models_near_location
+supabase/migrations/20260406_location_multirow_priority.sql:26:--   7:  Near Me uses DISTINCT ON with live>current>agency ordering
+supabase/migrations/20260406_location_multirow_priority.sql:331:-- ─── 5. get_models_near_location — DISTINCT ON priority resolution ────────────
+supabase/migrations/20260406_location_multirow_priority.sql:332:-- Uses DISTINCT ON (model_id) ordered by source priority (live=0, current=1, agency=2).
+supabase/migrations/20260406_location_multirow_priority.sql:386:  -- ── PRIORITY RESOLUTION: DISTINCT ON (model_id) ordered by source priority ──
+supabase/migrations/20260406_location_multirow_priority.sql:392:    SELECT DISTINCT ON (ml.model_id)
+supabase/migrations/20260423_get_models_near_location_restore_distinct_on.sql:2:-- Restore DISTINCT ON (model_id) priority resolution for get_models_near_location
+supabase/migrations/20260423_get_models_near_location_restore_distinct_on.sql:61:    SELECT DISTINCT ON (ml.model_id)
+supabase/migrations/20260423_get_models_near_location_restore_distinct_on.sql:168:  'Restores DISTINCT ON (model_id) location priority (live > current > agency). '
+--- line count (approx) ---
+10
+
+================================================================================
+PATTERN: auth.uid()
+supabase/migrations/20260415_accept_org_invite_row_security_fix.sql:34:  IF auth.uid() IS NULL THEN
+supabase/migrations/20260415_accept_org_invite_row_security_fix.sql:39:  SELECT email INTO uemail FROM auth.users WHERE id = auth.uid();
+supabase/migrations/20260415_accept_org_invite_row_security_fix.sql:68:  SELECT role::text INTO prole FROM public.profiles WHERE id = auth.uid();
+supabase/migrations/20260415_accept_org_invite_row_security_fix.sql:81:  WHERE user_id = auth.uid()
+supabase/migrations/20260415_accept_org_invite_row_security_fix.sql:95:    SET accepted_at = now(), accepted_by = auth.uid()
+supabase/migrations/20260415_accept_org_invite_row_security_fix.sql:102:    auth.uid(),
+supabase/migrations/20260405_profiles_policy_canonical.sql:47:    id = auth.uid()
+supabase/migrations/20260405_profiles_policy_canonical.sql:56:        WHERE  om1.user_id = auth.uid()
+supabase/migrations/20260405_profiles_policy_canonical.sql:66:      WHERE  auth.uid() = ANY(c.participant_ids)
+supabase/migrations/20260405_profiles_policy_canonical.sql:81:            AND  om.user_id   = auth.uid()
+supabase/migrations/20260405_profiles_policy_canonical.sql:106:  WHERE p.id = auth.uid();
+supabase/migrations/20260416_fix_a_can_access_platform_sha256.sql:34:  -- Resolve org_id AND org_type from auth.uid() — cannot be spoofed.
+supabase/migrations/20260416_fix_a_can_access_platform_sha256.sql:40:  WHERE  om.user_id = auth.uid()
+supabase/migrations/20260416_fix_a_can_access_platform_sha256.sql:80:      WHERE  id = auth.uid();
+supabase/migrations/20260418_request_account_deletion_after_dissolve.sql:13:  IF auth.uid() IS NULL THEN
+supabase/migrations/20260418_request_account_deletion_after_dissolve.sql:17:  SELECT p.role::text INTO r FROM public.profiles p WHERE p.id = auth.uid();
+supabase/migrations/20260418_request_account_deletion_after_dissolve.sql:27:      WHERE m.user_id = auth.uid()
+supabase/migrations/20260418_request_account_deletion_after_dissolve.sql:33:        WHERE m.user_id = auth.uid() AND m.role::text = 'owner'
+supabase/migrations/20260418_request_account_deletion_after_dissolve.sql:43:      WHERE m.user_id = auth.uid()
+supabase/migrations/20260418_request_account_deletion_after_dissolve.sql:49:        WHERE m.user_id = auth.uid() AND m.role::text = 'owner'
+supabase/migrations/20260418_request_account_deletion_after_dissolve.sql:58:  WHERE id = auth.uid();
+supabase/migrations/20260413_fix_f_org_role_trigger_hardening.sql:17:--   2. Add GUARD 1: explicit auth.uid() IS NULL check is NOT required for
+supabase/migrations/20260413_fix_f_org_role_trigger_hardening.sql:19:--      — per Rule 21: "Trigger-Funktionen: Kein auth.uid()-Guard nötig."
+supabase/migrations/20260406_fix_upsert_model_location_gps.sql:56:  IF auth.uid() IS NULL THEN
+supabase/migrations/20260406_fix_upsert_model_location_gps.sql:70:      WHERE m.id = p_model_id AND m.user_id = auth.uid()
+supabase/migrations/20260406_fix_upsert_model_location_gps.sql:78:      WHERE m.id = p_model_id AND om.user_id = auth.uid()
+supabase/migrations/20260406_fix_upsert_model_location_gps.sql:85:      WHERE m.id = p_model_id AND b.user_id = auth.uid()
+supabase/migrations/20260413_fix_e_null_guards.sql:2:-- Fix E: auth.uid() IS NULL Guards in SECURITY DEFINER Functions
+supabase/migrations/20260413_fix_e_null_guards.sql:6:--   internal guards. GUARD 1 (auth.uid() IS NULL → RAISE EXCEPTION) was
+supabase/migrations/20260413_fix_e_null_guards.sql:48:  IF auth.uid() IS NULL THEN
+supabase/migrations/20260413_fix_e_null_guards.sql:57:      AND m.user_id         = auth.uid()
+supabase/migrations/20260413_fix_e_null_guards.sql:68:  'Fix E (20260413): GUARD 1 (auth.uid() IS NULL → RAISE) added per Rule 21. '
+supabase/migrations/20260413_fix_e_null_guards.sql:84:  IF auth.uid() IS NULL THEN
+supabase/migrations/20260413_fix_e_null_guards.sql:94:    WHERE  p.id    = auth.uid()
+supabase/migrations/20260413_fix_e_null_guards.sql:104:  'Fix E (20260413): GUARD 1 (auth.uid() IS NULL → RAISE) added per Rule 21. '
+supabase/migrations/20260413_fix_e_null_guards.sql:125:  -- Explicit auth.uid() IS NOT NULL guard in WHERE (sql language, used in RLS policies;
+supabase/migrations/20260413_fix_e_null_guards.sql:132:      WHERE  auth.uid() IS NOT NULL
+supabase/migrations/20260413_fix_e_null_guards.sql:133:        AND  p.id    = auth.uid()
+supabase/migrations/20260413_fix_e_null_guards.sql:145:  'Fix E (20260413): explicit auth.uid() IS NOT NULL guard added to WHERE clause. '
+supabase/migrations/20260413_fix_e_null_guards.sql:154:-- If auth.uid() IS NULL, is_current_user_admin() returns false →
+supabase/migrations/20260413_fix_e_null_guards.sql:190:  RAISE NOTICE 'PASS: 20260413_fix_e — all SECURITY DEFINER functions have auth.uid() guards';
+supabase/migrations/20260406_location_multirow_priority.sql:75:  IF auth.uid() IS NULL THEN
+supabase/migrations/20260406_location_multirow_priority.sql:90:        WHERE m.id = p_model_id AND m.user_id = auth.uid()
+supabase/migrations/20260406_location_multirow_priority.sql:105:        WHERE m.id = p_model_id AND om.user_id = auth.uid()
+supabase/migrations/20260406_location_multirow_priority.sql:111:        WHERE m.id = p_model_id AND b.user_id = auth.uid()
+supabase/migrations/20260406_location_multirow_priority.sql:204:        WHERE  m.id = v_model_id AND om.user_id = auth.uid()
+supabase/migrations/20260406_location_multirow_priority.sql:210:        WHERE  m.id = v_model_id AND b.user_id = auth.uid()
+supabase/migrations/20260406_location_multirow_priority.sql:275:  IF auth.uid() IS NULL THEN
+supabase/migrations/20260406_location_multirow_priority.sql:284:    SELECT 1 FROM public.models WHERE id = p_model_id AND user_id = auth.uid()
+supabase/migrations/20260406_location_multirow_priority.sql:292:    WHERE m.id = p_model_id AND om.user_id = auth.uid()
+supabase/migrations/20260406_location_multirow_priority.sql:297:    WHERE m.id = p_model_id AND b.user_id = auth.uid()
+supabase/migrations/20260406_location_multirow_priority.sql:367:  IF auth.uid() IS NULL THEN
+supabase/migrations/20260413_audit_trail_source_column.sql:16:-- NOTE: user_id (= auth.uid()) IS the actor_id — no separate actor_id column
+supabase/migrations/20260413_audit_trail_source_column.sql:72:  v_caller_id UUID := auth.uid();
+supabase/migrations/20260413_audit_trail_source_column.sql:131:  'Normal users must be members of p_org_id. user_id=actor (auth.uid() auto-set).';
+supabase/migrations/20260405_backfill_no_org_direct.sql:1:-- One-time direct backfill (runs as superuser via API, no auth.uid() required)
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:8:--     JOIN profiles p ON p.id = auth.uid()
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:28:--   a) EXISTS (om JOIN organizations WHERE om.user_id=auth.uid() AND o.agency_id=owner_id)
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:29:--   b) EXISTS (organizations WHERE o.owner_id=auth.uid() AND o.agency_id=owner_id)
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:57:              AND om.user_id = auth.uid()
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:60:        OR owner_id = auth.uid()
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:72:          WHERE om.user_id = auth.uid()
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:77:          WHERE o.owner_id = auth.uid()
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:102:              AND om.user_id = auth.uid()
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:105:        OR owner_id = auth.uid()
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:116:          WHERE om.user_id = auth.uid()
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:121:          WHERE o.owner_id = auth.uid()
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:146:              AND om.user_id = auth.uid()
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:149:        OR owner_id = auth.uid()
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:160:          WHERE om.user_id = auth.uid()
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:165:          WHERE o.owner_id = auth.uid()
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:182:              AND om.user_id = auth.uid()
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:185:        OR owner_id = auth.uid()
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:196:          WHERE om.user_id = auth.uid()
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:201:          WHERE o.owner_id = auth.uid()
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:226:              AND om.user_id = auth.uid()
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:229:        OR owner_id = auth.uid()
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:240:          WHERE om.user_id = auth.uid()
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:245:          WHERE o.owner_id = auth.uid()
+supabase/migrations/20260413_fix_d_models_rls_client_secdef.sql:6:--     EXISTS (SELECT 1 FROM profiles p WHERE p.id = auth.uid() AND p.role = 'client')
+count: 362
+
+================================================================================
+PATTERN: bootstrapThenLoadProfile
+COMMAND: grep -r -n "bootstrapThenLoadProfile" src
+--- first 80 matches ---
+src/context/AuthContext.tsx:108:        void bootstrapThenLoadProfile(s.user.id).finally(() => setLoading(false));
+src/context/AuthContext.tsx:130:          void bootstrapThenLoadProfile(s.user.id);
+src/context/AuthContext.tsx:397:  async function bootstrapThenLoadProfile(userId: string) {
+src/context/AuthContext.tsx:399:    console.log('[Auth] bootstrapThenLoadProfile: starting for', userId);
+src/context/AuthContext.tsx:413:        console.error('bootstrapThenLoadProfile guest upsert error:', e);
+src/context/AuthContext.tsx:433:            console.error('bootstrapThenLoadProfile RPC error (attempt 1):', error);
+src/context/AuthContext.tsx:438:              console.error('bootstrapThenLoadProfile RPC error (attempt 2, giving up):', retryErr);
+src/context/AuthContext.tsx:443:          console.error('bootstrapThenLoadProfile exception:', e);
+src/context/AuthContext.tsx:458:      console.log('[Auth] bootstrapThenLoadProfile: completed for', userId);
+src/context/AuthContext.tsx:547:      // RPCs would silently fail. Guard against that — bootstrapThenLoadProfile()
+src/context/AuthContext.tsx:578:        await bootstrapThenLoadProfile(data.user.id);
+src/context/AuthContext.tsx:637:        const result = await bootstrapThenLoadProfile(data.user.id);
+src/context/AuthContext.tsx:644:        console.error('signIn bootstrapThenLoadProfile error:', e);
+src/context/AuthContext.tsx:851:    await bootstrapThenLoadProfile(s.user.id);
+src/context/AuthContext.tsx:852:  // bootstrapThenLoadProfile ist in derselben Closure stabil
+--- line count (approx) ---
+15
+
+================================================================================
+PATTERN: loadProfile
+COMMAND: grep -r -n "loadProfile" src/context/AuthContext.tsx
+--- first 80 matches ---
+src/context/AuthContext.tsx:164:  async function loadProfile(userId: string): Promise<{ profile: Profile } | { deactivated: true; reason?: 'deactivated' | 'deletion' | 'org_deactivated' } | null> {
+src/context/AuthContext.tsx:171:      console.error('loadProfile: profile query failed', {
+src/context/AuthContext.tsx:181:        console.warn('[Auth] loadProfile: query error but keeping existing profile (transient failure)', userId);
+src/context/AuthContext.tsx:183:        console.log('[Auth] loadProfile: no profile row found for', userId);
+src/context/AuthContext.tsx:210:        console.error('loadProfile get_own_admin_flags error:', adminErr);
+src/context/AuthContext.tsx:213:      console.error('loadProfile get_own_admin_flags exception:', e);
+src/context/AuthContext.tsx:222:        if (adminBoolErr) console.error('loadProfile is_current_user_admin error:', adminBoolErr);
+src/context/AuthContext.tsx:224:        console.error('loadProfile is_current_user_admin exception:', e);
+src/context/AuthContext.tsx:230:      console.log('[Auth] loadProfile: admin detected via tertiary role fallback');
+src/context/AuthContext.tsx:240:    console.log('[Auth] loadProfile: admin flags resolved — is_admin:', isAdminFlag, 'is_super_admin:', isSuperAdminFlag);
+src/context/AuthContext.tsx:246:      console.error('[AuthContext] loadProfile: unexpected role value in DB', data.role);
+src/context/AuthContext.tsx:283:          console.error(`loadProfile org active check attempt ${attempt + 1} failed:`, e);
+src/context/AuthContext.tsx:288:        console.error('loadProfile org active check failed after retries — failing closed');
+src/context/AuthContext.tsx:312:          console.error('[AuthContext] loadProfile get_my_org_context error:', orgCtxErr);
+src/context/AuthContext.tsx:317:              '[AuthContext] loadProfile: user belongs to',
+src/context/AuthContext.tsx:334:            console.error('[AuthContext] loadProfile: kein org context für role=', role, '— versuche Bootstrap-Recovery');
+src/context/AuthContext.tsx:341:                console.error('[AuthContext] loadProfile: Bootstrap-Recovery RPC fehlgeschlagen:', bootstrapError);
+src/context/AuthContext.tsx:355:                  console.log('[AuthContext] loadProfile: org context erfolgreich wiederhergestellt');
+src/context/AuthContext.tsx:357:                  console.error('[AuthContext] loadProfile: org context fehlt auch nach Bootstrap-Recovery (role=', role, ')');
+src/context/AuthContext.tsx:362:              console.error('[AuthContext] loadProfile: Bootstrap-Recovery fehlgeschlagen:', bootstrapErr);
+src/context/AuthContext.tsx:368:        console.error('[AuthContext] loadProfile get_my_org_context exception:', e);
+src/context/AuthContext.tsx:391:    console.log('[Auth] loadProfile: success, role:', profileData.role, 'is_admin:', profileData.is_admin);
+src/context/AuthContext.tsx:439:              // orgBootstrapFailed wird nach loadProfile gesetzt, falls kein org context vorhanden
+src/context/AuthContext.tsx:446:      const result = await loadProfile(userId);
+src/context/AuthContext.tsx:466:    if (s?.user) await loadProfile(s.user.id);
+src/context/AuthContext.tsx:467:  // loadProfile is defined in the same closure and stable across renders
+src/context/AuthContext.tsx:580:        await loadProfile(data.user.id);
+src/context/AuthContext.tsx:585:        await loadProfile(data.user.id);
+src/context/AuthContext.tsx:601:            await loadProfile(data.user.id);
+src/context/AuthContext.tsx:676:          if (data?.user) await loadProfile(data.user.id);
+src/context/AuthContext.tsx:701:          if (data?.user) await loadProfile(data.user.id);
+src/context/AuthContext.tsx:770:    await loadProfile(session.user.id);
+src/context/AuthContext.tsx:781:    await loadProfile(session.user.id);
+src/context/AuthContext.tsx:795:      await loadProfile(session.user.id);
+--- line count (approx) ---
+34
+
+================================================================================
+PATTERN: signInWithPassword
+COMMAND: grep -r -n "signInWithPassword" src App.tsx
+--- first 80 matches ---
+src/context/AuthContext.tsx:627:    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+--- line count (approx) ---
+1
+
+================================================================================
+PATTERN: AdminDashboard
+COMMAND: grep -r -n "AdminDashboard" src App.tsx
+--- first 80 matches ---
+src/views/AdminDashboard.tsx:61:export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
+--- line count (approx) ---
+1
+
+================================================================================
+PATTERN: role === 'admin'
+COMMAND: grep -r -n "role === 'admin'" src App.tsx
+--- first 80 matches ---
+src/types/roles.ts:102:  return profile.is_admin === true || profile.role === 'admin';
+src/context/AuthContext.tsx:195:    // Frontend routing fallback (profile.role === 'admin') is safe:
+src/context/AuthContext.tsx:849:    if (profileRef.current?.is_admin || profileRef.current?.role === 'admin') return;
+--- line count (approx) ---
+3
+
+================================================================================
+PATTERN: effectiveRole
+COMMAND: grep -r -n "effectiveRole" App.tsx src
+--- first 80 matches ---
+App.tsx:234:  const effectiveRole: Role | null = roleFromProfile(profile?.role);
+App.tsx:408:    if (!effectiveRole || effectiveRole === 'apply') setCurrentUserId(null);
+App.tsx:410:  }, [effectiveRole, session, setCurrentUserId]);
+App.tsx:660:  // Admin check must come before effectiveRole gate: admin profiles have role='admin'
+App.tsx:661:  // which does not map to any effectiveRole, causing them to be sent back to AuthScreen.
+App.tsx:677:  if (!effectiveRole) {
+App.tsx:726:        {effectiveRole === 'client' && (
+App.tsx:735:        {effectiveRole === 'model' && (
+App.tsx:741:        {effectiveRole === 'agency' && (
+--- line count (approx) ---
+9
+
+================================================================================
+PATTERN: link_model_by_email
+COMMAND: grep -r -n "link_model_by_email" supabase/migrations supabase src
+--- first 80 matches ---
+supabase/migrations/20260413_fix_h_model_org_strategy.sql:62:  -- (auth.uid() = models.user_id — set by claim_model_by_token or link_model_by_email)
+supabase/migrations/20260413_fix_c_model_claim_tokens.sql:5:--   link_model_by_email() links a model record to a user account via email
+supabase/migrations/20260413_fix_c_model_claim_tokens.sql:16:--   4. link_model_by_email() is DEPRECATED. It remains for backward
+supabase/migrations/20260413_fix_c_model_claim_tokens.sql:73:  'Replaces link_model_by_email() email-based linking (Gefahr 2 in rls-security-patterns.mdc).';
+supabase/migrations/20260413_fix_c_model_claim_tokens.sql:226:  'Token-based linking replaces email-based link_model_by_email() (Gefahr 2 fix). '
+supabase/migrations/20260413_fix_c_model_claim_tokens.sql:230:-- ─── 4. Deprecate link_model_by_email() ──────────────────────────────────────
+supabase/migrations/20260413_fix_c_model_claim_tokens.sql:237:CREATE OR REPLACE FUNCTION public.link_model_by_email()
+supabase/migrations/20260413_fix_c_model_claim_tokens.sql:262:    'link_model_by_email() is deprecated (Gefahr 2 in rls-security-patterns.mdc). '
+supabase/migrations/20260413_fix_c_model_claim_tokens.sql:278:COMMENT ON FUNCTION public.link_model_by_email() IS
+supabase/migrations/20260413_fix_c_model_claim_tokens.sql:297:  RAISE NOTICE 'PASS: 20260413_fix_c — model claim token system created; link_model_by_email deprecated';
+--- line count (approx) ---
+10
+
+================================================================================
+PATTERN: claim_model_by_token
+COMMAND: grep -r -n "claim_model_by_token" supabase/migrations supabase src
+--- first 80 matches ---
+supabase/migrations/20260413_fix_h_model_org_strategy.sql:62:  -- (auth.uid() = models.user_id — set by claim_model_by_token or link_model_by_email)
+supabase/migrations/20260413_fix_c_model_claim_tokens.sql:15:--   3. claim_model_by_token(p_token) RPC — model user only.
+supabase/migrations/20260413_fix_c_model_claim_tokens.sql:150:-- ─── 3. claim_model_by_token(p_token) ────────────────────────────────────────
+supabase/migrations/20260413_fix_c_model_claim_tokens.sql:152:CREATE OR REPLACE FUNCTION public.claim_model_by_token(
+supabase/migrations/20260413_fix_c_model_claim_tokens.sql:221:REVOKE ALL    ON FUNCTION public.claim_model_by_token(text) FROM PUBLIC, anon;
+supabase/migrations/20260413_fix_c_model_claim_tokens.sql:222:GRANT EXECUTE ON FUNCTION public.claim_model_by_token(text) TO authenticated;
+supabase/migrations/20260413_fix_c_model_claim_tokens.sql:224:COMMENT ON FUNCTION public.claim_model_by_token IS
+supabase/migrations/20260413_fix_c_model_claim_tokens.sql:263:    'Use generate_model_claim_token() + claim_model_by_token() instead. '
+supabase/migrations/20260413_fix_c_model_claim_tokens.sql:279:  'DEPRECATED (Fix C, 20260413). Replaced by claim_model_by_token(). '
+supabase/migrations/20260413_fix_c_model_claim_tokens.sql:294:  ASSERT EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'claim_model_by_token'),
+supabase/migrations/20260413_fix_c_model_claim_tokens.sql:295:    'FAIL: claim_model_by_token function not found';
+--- line count (approx) ---
+11
+
+================================================================================
+PATTERN: const snapshot
+COMMAND: grep -r -n "const snapshot" src
+--- first 80 matches ---
+--- line count (approx) ---
+0
+
+================================================================================
+PATTERN: .slice(
+src/web/ClientWebApp.tsx:431:    const d = (ce?.date || o.requested_date || '').toString().slice(0, 10);
+src/web/ClientWebApp.tsx:434:      start_time: (ce?.start_time ?? o.start_time ?? '09:00').toString().slice(0, 5),
+src/web/ClientWebApp.tsx:435:      end_time: (ce?.end_time ?? o.end_time ?? '17:00').toString().slice(0, 5),
+src/web/ClientWebApp.tsx:2443:  if (filters.sex !== 'all') parts.push(filters.sex.charAt(0).toUpperCase() + filters.sex.slice(1));
+src/web/ClientWebApp.tsx:2854:  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
+src/web/ClientWebApp.tsx:4126:  return x.toISOString().slice(0, 10);
+src/web/ClientWebApp.tsx:4151:  const today = new Date().toISOString().slice(0, 10);
+src/utils/applicantNameFromProfile.ts:13:  return { firstName: d.slice(0, i).trim(), lastName: d.slice(i + 1).trim() };
+src/storage/storageUrl.ts:58:    const rest = url.slice('supabase-storage://'.length);
+src/storage/storageUrl.ts:61:    return { bucket: rest.slice(0, idx), path: rest.slice(idx + 1) };
+src/storage/storageUrl.ts:66:    const rest = url.slice('supabase-private://'.length);
+src/storage/storageUrl.ts:69:    return { bucket: rest.slice(0, idx), path: rest.slice(idx + 1) };
+src/screens/ModelProfileScreen.tsx:211:      const countryCode = currentCountryInput.trim().toUpperCase().slice(0, 2);
+src/screens/ModelProfileScreen.tsx:471:      start_time: (openEntry.start_time ?? '09:00').toString().slice(0, 5),
+src/screens/ModelProfileScreen.tsx:472:      end_time: (openEntry.end_time ?? '10:00').toString().slice(0, 5),
+src/screens/ModelProfileScreen.tsx:852:                  const entry = entriesForDate.find((e) => e.start_time?.slice(0, 5) === hour);
+src/screens/ModelProfileScreen.tsx:881:                              ? ` (until ${entry.end_time.slice(0, 5)})`
+src/screens/ModelProfileScreen.tsx:1021:                    {req.start_time ? ` · ${String(req.start_time).slice(0, 5)}` : ''}
+src/screens/ModelProfileScreen.tsx:1022:                    {req.end_time ? `–${String(req.end_time).slice(0, 5)}` : ''}
+src/screens/CustomerSwipeScreen.tsx:83:      dates.push(cursor.toISOString().slice(0, 10));
+src/components/OrgMessengerInline.tsx:544:                        {previewIds.slice(0, 4).map((modelId) => (
+src/components/OrgMessengerInline.tsx:771:                          preview_model_ids: g.model_ids.slice(0, 4),
+src/components/OrgMessengerInline.tsx:778:                        {g.agency_name || g.agency_email || g.id.slice(0, 8)} · {g.model_ids?.length ?? 0}{' '}
+src/components/MonthCalendarView.tsx:85:                  {events.slice(0, 3).map((ev) => (
+src/components/ClientOrganizationTeamSection.tsx:248:          const displayName = m.display_name || m.email || m.user_id.slice(0, 8);
+src/components/ModelMediaSettingsPanel.tsx:455:                ? photo.displayUrl.slice(0, 39) + '…'
+src/db/localApi.ts:154:    id: `proj-${now}-${Math.random().toString(36).slice(2, 8)}`,
+src/db/localApi.ts:207:    id: `conv-${now}-${Math.random().toString(36).slice(2, 8)}`,
+src/db/localApi.ts:225:    id: `msg-${now}-${Math.random().toString(36).slice(2, 8)}`,
+src/views/ModelView.tsx:163:              <Text style={styles.inboxDate}>{r.requested_date ?? r.created_at.slice(0, 10)}</Text>
+src/views/AgencyControllerView.tsx:384:    const d = (ce?.date || o.requested_date || '').toString().slice(0, 10);
+src/views/AgencyControllerView.tsx:387:      start_time: (ce?.start_time ?? o.start_time ?? '09:00').toString().slice(0, 5),
+src/views/AgencyControllerView.tsx:388:      end_time: (ce?.end_time ?? o.end_time ?? '17:00').toString().slice(0, 5),
+src/views/AgencyControllerView.tsx:1517:  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
+src/views/AgencyControllerView.tsx:1990:    if (!q) return isoCountryList.slice(0, 40);
+src/views/AgencyControllerView.tsx:1993:      .slice(0, 40);
+src/views/AgencyControllerView.tsx:2695:                {territoryCountryCodes.slice().sort().join(' · ')}
+src/views/AgencyControllerView.tsx:3097:                  .slice(0, 20)
+src/views/AgencyControllerView.tsx:3390:                    {(rosterTerritoriesMap[m.id] ?? []).slice(0, 6).map((code) => (
+src/views/AgencyControllerView.tsx:3890:        const label = row.name?.trim() || row.id.slice(0, 8);
+src/views/AgencyControllerView.tsx:4822:            const displayName = m.display_name || m.email || m.user_id.slice(0, 8);
+src/views/AgencyControllerView.tsx:5074:            preview_model_ids: sendInAppTarget.model_ids.slice(0, 4),
+src/views/AdminDashboard.tsx:350:          ownerProfile?.display_name || ownerProfile?.email || ownerMember.user_id.slice(0, 8) + '…',
+src/views/AdminDashboard.tsx:609:  const roleLabel = (r: string) => r === 'agent' ? 'Agency' : r.charAt(0).toUpperCase() + r.slice(1);
+src/views/AdminDashboard.tsx:705:                          {f === 'agent' ? 'Agency' : f.charAt(0).toUpperCase() + f.slice(1)} ({count})
+src/views/AdminDashboard.tsx:929:                          const label = m.display_name || m.email || uid.slice(0, 8) + '…';
+src/views/AdminDashboard.tsx:1294:                      <Text style={styles.cardMeta}>Agency ID: {model.agency_id.slice(0, 8)}…</Text>
+src/views/AdminDashboard.tsx:1351:                Target: {log.target_user_id ? log.target_user_id.slice(0, 8) + '...' : 'N/A'}
+src/views/AdminDashboard.tsx:1434:                          {m.org_name || '—'} · {m.org_type === 'agency' ? 'Agency' : 'Client'} · {m.member_role.charAt(0).toUpperCase() + m.member_role.slice(1)}
+src/services/verificationSupabase.ts:53:      .slice(0, 200);
+
+================================================================================
+PATTERN: clearTimeout
+COMMAND: grep -r -n "clearTimeout" src
+--- first 80 matches ---
+src/web/ClientWebApp.tsx:1386:    if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
+src/utils/useDebounce.ts:17:      clearTimeout(timer);
+src/views/AgencyControllerView.tsx:3841:      clearTimeout(t);
+src/views/AgencyControllerView.tsx:4948:    return () => { cancelled = true; clearTimeout(t); };
+src/services/realtimeChannelPool.ts:84:  if (entry.idleTimer !== null) clearTimeout(entry.idleTimer);
+src/services/realtimeChannelPool.ts:132:    clearTimeout(entry.idleTimer);
+src/services/realtimeChannelPool.ts:154:      if (e.idleTimer !== null) clearTimeout(e.idleTimer);
+src/services/realtimeChannelPool.ts:183:      if (entry.idleTimer !== null) clearTimeout(entry.idleTimer);
+--- line count (approx) ---
+8
+
+================================================================================
+PATTERN: .catch(() =>
+src/context/AuthContext.tsx:112:    }).catch(() => {
+src/screens/PrivacyScreen.tsx:28:    Linking.openURL(uiCopy.legal.privacyUrl).catch(() => {});
+src/screens/TermsScreen.tsx:28:    Linking.openURL(uiCopy.legal.tosUrl).catch(() => {});
+src/components/OrgMessengerInline.tsx:424:    void Linking.openURL(url).catch(() => {});
+src/views/BookingChatView.tsx:126:    void Linking.openURL(url).catch(() => {});
+src/views/GuestChatView.tsx:299:            if (url) void Linking.openURL(url).catch(() => {});
+src/views/AgencyControllerView.tsx:2599:      const freshModel = await getModelByIdFromSupabase(selectedModel.id).catch(() => null);
+src/views/AdminDashboard.tsx:388:      const billingStatus = await adminGetBillingStatus(org.id).catch(() => null);
+src/services/adminSupabase.ts:411:    const fallback = await _adminListOrgsFallback().catch(() => [] as AdminOrganization[]);
+src/services/adminSupabase.ts:415:    const fallback = await _adminListOrgsFallback().catch(() => [] as AdminOrganization[]);
+src/services/adminSupabase.ts:571:    const fallback = await _adminListModelsFallback().catch(() => [] as AdminModel[]);
+src/services/adminSupabase.ts:575:    const fallback = await _adminListModelsFallback().catch(() => [] as AdminModel[]);
+
+================================================================================
+PATTERN: ServiceResult
+COMMAND: grep -r -n "ServiceResult" src
+--- first 80 matches ---
+src/types/serviceResult.ts:2: * Option C (hybrid): **new or refactored** service exports may return `ServiceResult`
+src/types/serviceResult.ts:7: * `ServiceResult` without changing legacy call sites.
+src/types/serviceResult.ts:11: * **StructuredServiceResult** — optional parallel shape for **new** APIs that need
+src/types/serviceResult.ts:12: * machine-readable `code` + optional `context`. Do not migrate existing `ServiceResult`
+src/types/serviceResult.ts:15:export type ServiceResult<T = undefined> =
+src/types/serviceResult.ts:19:export function serviceOk(): ServiceResult {
+src/types/serviceResult.ts:23:export function serviceOkData<T>(data: T): ServiceResult<T> {
+src/types/serviceResult.ts:24:  return { ok: true, data } as ServiceResult<T>;
+src/types/serviceResult.ts:27:export function serviceErr(error: string): ServiceResult<never> {
+src/types/serviceResult.ts:31:/** Machine-readable failure detail for new APIs (parallel to string-only `ServiceResult`). */
+src/types/serviceResult.ts:38:export type StructuredServiceResult<T = undefined> =
+src/types/serviceResult.ts:42:export function structuredServiceOk(): StructuredServiceResult {
+src/types/serviceResult.ts:46:export function structuredServiceOkData<T>(data: T): StructuredServiceResult<T> {
+src/types/serviceResult.ts:47:  return { ok: true, data } as StructuredServiceResult<T>;
+src/types/serviceResult.ts:54:): StructuredServiceResult<never> {
+src/types/serviceResult.ts:59: * Adapts a string-based {@link ServiceResult} to {@link StructuredServiceResult} for new code paths
+src/types/serviceResult.ts:63:  r: ServiceResult<T>,
+src/types/serviceResult.ts:65:): StructuredServiceResult<T> {
+src/types/serviceResult.ts:72:  return structuredServiceOk() as StructuredServiceResult<T>;
+src/services/gdprComplianceSupabase.ts:26:export type { ServiceResult } from '../types/serviceResult';
+src/services/consentSupabase.ts:2:import { serviceErr, serviceOk, type ServiceResult } from '../types/serviceResult';
+src/services/consentSupabase.ts:99:): Promise<ServiceResult> {
+src/services/modelsSupabase.ts:6:import { serviceErr, serviceOkData, type ServiceResult } from '../types/serviceResult';
+src/services/modelsSupabase.ts:506:): Promise<ServiceResult<{ modelId: string; agencyId: string }>> {
+src/services/modelsSupabase.ts:533:): Promise<ServiceResult<{ token: string }>> {
+src/services/__tests__/consentSupabase.test.ts:7: *   3. withdrawConsent    — calls withdraw_consent RPC, ServiceResult
+src/services/accountSupabase.ts:2:import { serviceErr, serviceOk, type ServiceResult } from '../types/serviceResult';
+src/services/accountSupabase.ts:51:export async function cancelAccountDeletion(): Promise<ServiceResult> {
+src/services/organizationsInvitationsSupabase.ts:3:import { serviceErr, serviceOk, type ServiceResult } from '../types/serviceResult';
+src/services/organizationsInvitationsSupabase.ts:375:): Promise<ServiceResult> {
+src/services/organizationsInvitationsSupabase.ts:401:): Promise<ServiceResult> {
+--- line count (approx) ---
+31
+
+================================================================================
+PATTERN: ok: true
+src/types/serviceResult.ts:16:  | (T extends undefined ? { ok: true } : { ok: true; data: T })
+src/types/serviceResult.ts:20:  return { ok: true };
+src/types/serviceResult.ts:24:  return { ok: true, data } as ServiceResult<T>;
+src/types/serviceResult.ts:39:  | (T extends undefined ? { ok: true } : { ok: true; data: T })
+src/types/serviceResult.ts:43:  return { ok: true };
+src/types/serviceResult.ts:47:  return { ok: true, data } as StructuredServiceResult<T>;
+src/types/serviceResult.ts:70:    return structuredServiceOkData((r as { ok: true; data: T }).data);
+src/views/AgencyControllerView.tsx:2451:      setImportLinkFeedback({ ok: true, message: baseMsg + warningMsg + syncWarn });
+src/services/messengerSupabase.ts:130:  | { ok: true; conversation: Conversation }
+src/services/messengerSupabase.ts:147:    if (existing) return { ok: true, conversation: existing as Conversation };
+src/services/messengerSupabase.ts:174:      if (again) return { ok: true, conversation: again as Conversation };
+src/services/messengerSupabase.ts:179:  return { ok: true, conversation: data as Conversation };
+src/services/gdprComplianceSupabase.ts:29:  | { ok: true; data: T }
+src/services/gdprComplianceSupabase.ts:141:    return { ok: true, data: undefined };
+src/services/gdprComplianceSupabase.ts:181:      return { ok: true, data: { confirmationId: 'reused' } };
+src/services/gdprComplianceSupabase.ts:205:        return { ok: true, data: { confirmationId: 'reused' } };
+src/services/gdprComplianceSupabase.ts:240:    return { ok: true, data: { confirmationId: localId } };
+src/services/gdprComplianceSupabase.ts:322:  return { ok: true, data: undefined };
+src/services/gdprComplianceSupabase.ts:374:    return { ok: true, data: undefined };
+src/services/gdprComplianceSupabase.ts:412:    return { ok: true, data: undefined };
+src/services/gdprComplianceSupabase.ts:452:    return { ok: true, data: undefined };
+src/services/gdprComplianceSupabase.ts:663:    return { ok: true, data: result };
+src/services/gdprComplianceSupabase.ts:724:  return { ok: true, data: undefined };
+src/services/gdprComplianceSupabase.ts:735:  if (!isMinor) return { ok: true, data: undefined };
+src/services/gdprComplianceSupabase.ts:748:  return { ok: true, data: undefined };
+src/services/mediaslideSyncService.ts:264:    return { ok: true };
+src/services/mediaslideSyncService.ts:365:  return { ok: true };
+src/services/adminSupabase.ts:191:): Promise<{ ok: true } | { ok: false; error: string }> {
+src/services/adminSupabase.ts:198:    return { ok: true };
+src/services/adminSupabase.ts:322:): Promise<{ ok: true } | { ok: false; error: string }> {
+src/services/adminSupabase.ts:333:    return { ok: true };
+src/services/agencySettingsSupabase.ts:33:}): Promise<{ ok: true } | { ok: false; message: string }> {
+src/services/agencySettingsSupabase.ts:69:    return { ok: true };
+src/services/agencySettingsSupabase.ts:124:    return { ok: true };
+src/services/bookingEventsSupabase.ts:199:    return { ok: true };
+src/services/userCalendarEventsSupabase.ts:95:  | { ok: true; event: UserCalendarEvent }
+src/services/userCalendarEventsSupabase.ts:180:    return { ok: true, event: data as UserCalendarEvent };
+src/services/__tests__/accountSupabase.test.ts:19:    await expect(requestAccountDeletion()).resolves.toEqual({ ok: true });
+src/services/__tests__/memberRemoval.test.ts:47:    mockInvoke.mockResolvedValue({ data: { ok: true }, error: null });
+src/services/__tests__/memberRemoval.test.ts:59:      data: { ok: true, revoked_sessions: 2 },
+src/services/__tests__/b2bOrgChatSupabase.resolve.test.ts:17:        ok: true,
+src/services/__tests__/b2bOrgChatSupabase.resolve.test.ts:50:        ok: true,
+src/services/__tests__/bookingChatPackageSource.test.ts:32:    ensureClientAgencyChatMock.mockResolvedValue({ ok: true, conversationId: 'conv-1' });
+src/services/__tests__/consentSupabase.test.ts:142:    expect(result).toEqual({ ok: true });
+src/services/__tests__/guestAuthSupabase.test.ts:116:      data: { ok: true, organization_id: 'org-abc' },
+src/services/__tests__/guestAuthSupabase.test.ts:129:      data: { ok: true, organization_id: 'org-xyz' },
+src/services/__tests__/bookingChatIntegrationSupabase.test.ts:24:      ok: true,
+src/services/__tests__/organizationsInvitationsSupabase.test.ts:128:      data: { ok: true, organization_id: 'org-uuid' },
+src/services/__tests__/organizationsInvitationsSupabase.test.ts:132:      ok: true,
+src/services/__tests__/b2bOrgChatSupabase.createRpc.test.ts:16:      data: { ok: true, conversation_id: 'cccccccc-cccc-cccc-cccc-cccccccccccc', created: true },
+
+================================================================================
+PATTERN: ok: false
+src/types/serviceResult.ts:17:  | { ok: false; error: string };
+src/types/serviceResult.ts:28:  return { ok: false, error };
+src/types/serviceResult.ts:40:  | { ok: false; error: ServiceErrorDetail };
+src/types/serviceResult.ts:55:  return { ok: false, error: context !== undefined ? { code, message, context } : { code, message } };
+src/views/AgencyControllerView.tsx:2356:        setImportLinkFeedback({ ok: false, message: 'Invalid URL format.' });
+src/views/AgencyControllerView.tsx:2360:        setImportLinkFeedback({ ok: false, message: 'Only HTTPS URLs are allowed.' });
+src/views/AgencyControllerView.tsx:2374:        setImportLinkFeedback({ ok: false, message: 'Private network targets are not allowed.' });
+src/views/AgencyControllerView.tsx:2387:        setImportLinkFeedback({ ok: false, message: 'Invalid payload: "name" (string) is required.' });
+src/views/AgencyControllerView.tsx:2433:        setImportLinkFeedback({ ok: false, message: 'Import failed. Check console for details.' });
+src/views/AgencyControllerView.tsx:2456:      setImportLinkFeedback({ ok: false, message: e?.message ?? 'Unknown error' });
+src/services/messengerSupabase.ts:131:  | { ok: false; errorMessage: string };
+src/services/messengerSupabase.ts:177:    return { ok: false, errorMessage: msg || 'Unknown error' };
+src/services/gdprComplianceSupabase.ts:30:  | { ok: false; reason: string };
+src/services/gdprComplianceSupabase.ts:137:        return { ok: false, reason: 'only_owner_can_delete_organization' };
+src/services/gdprComplianceSupabase.ts:139:      return { ok: false, reason: error.message ?? 'unknown_error' };
+src/services/gdprComplianceSupabase.ts:144:    return { ok: false, reason: 'exception' };
+src/services/gdprComplianceSupabase.ts:156: * The upload should be rejected at the application layer if this returns { ok: false }.
+src/services/gdprComplianceSupabase.ts:213:        return { ok: false, reason: 'invalid_org_id' };
+src/services/gdprComplianceSupabase.ts:221:      return { ok: false, reason: error.message ?? 'insert_failed' };
+src/services/gdprComplianceSupabase.ts:243:    return { ok: false, reason: 'exception' };
+src/services/gdprComplianceSupabase.ts:320:    return { ok: false, reason: 'image_rights_not_confirmed' };
+src/services/gdprComplianceSupabase.ts:348:      return { ok: false, reason: modelError.message };
+src/services/gdprComplianceSupabase.ts:363:      return { ok: false, reason: consentError.message };
+src/services/gdprComplianceSupabase.ts:377:    return { ok: false, reason: 'exception' };
+src/services/gdprComplianceSupabase.ts:401:      return { ok: false, reason: error.message };
+src/services/gdprComplianceSupabase.ts:415:    return { ok: false, reason: 'exception' };
+src/services/gdprComplianceSupabase.ts:441:      return { ok: false, reason: error.message };
+src/services/gdprComplianceSupabase.ts:455:    return { ok: false, reason: 'exception' };
+src/services/gdprComplianceSupabase.ts:644:        return { ok: false, reason: 'permission_denied' };
+src/services/gdprComplianceSupabase.ts:646:      return { ok: false, reason: error.message ?? 'export_failed' };
+src/services/gdprComplianceSupabase.ts:666:    return { ok: false, reason: 'exception' };
+src/services/gdprComplianceSupabase.ts:722:    return { ok: false, reason: 'image_rights_not_confirmed' };
+src/services/mediaslideSyncService.ts:189:    return { ok: false };
+src/services/mediaslideSyncService.ts:203:    return { ok: false };
+src/services/mediaslideSyncService.ts:213:    return { ok: false };
+src/services/mediaslideSyncService.ts:300:    return { ok: false };
+src/services/adminSupabase.ts:191:): Promise<{ ok: true } | { ok: false; error: string }> {
+src/services/adminSupabase.ts:196:      return { ok: false, error: error.message };
+src/services/adminSupabase.ts:201:    return { ok: false, error: 'Failed to purge user data' };
+src/services/adminSupabase.ts:322:): Promise<{ ok: true } | { ok: false; error: string }> {
+src/services/adminSupabase.ts:331:      return { ok: false, error: error.message };
+src/services/adminSupabase.ts:337:    return { ok: false, error: msg };
+src/services/b2bOwnerBootstrapSupabase.ts:16:    // RPC kann { ok: false, message: '...' } zurückgeben ohne Supabase-Error
+src/services/agencySettingsSupabase.ts:33:}): Promise<{ ok: true } | { ok: false; message: string }> {
+src/services/agencySettingsSupabase.ts:54:      return { ok: false, message: aErr.message || 'Could not save agency profile.' };
+src/services/agencySettingsSupabase.ts:65:        return { ok: false, message: oErr.message || 'Could not sync organization name.' };
+src/services/agencySettingsSupabase.ts:72:    return { ok: false, message: e instanceof Error ? e.message : 'Unknown error' };
+src/services/agencySettingsSupabase.ts:122:      return { ok: false, message: error.message };
+src/services/agencySettingsSupabase.ts:127:    return { ok: false, message: e instanceof Error ? e.message : 'Unknown error' };
+src/services/bookingEventsSupabase.ts:143:      return { ok: false, message: uiCopy.bookingStatus.updateFailed };
+
+================================================================================
+PATTERN: email (migrations sample)
+supabase/migrations/20260415_accept_org_invite_row_security_fix.sql:12:--   bleiben erhalten (email_mismatch, wrong_profile_role, already_member,
+supabase/migrations/20260415_accept_org_invite_row_security_fix.sql:29:  uemail  text;
+supabase/migrations/20260415_accept_org_invite_row_security_fix.sql:39:  SELECT email INTO uemail FROM auth.users WHERE id = auth.uid();
+supabase/migrations/20260415_accept_org_invite_row_security_fix.sql:57:  IF lower(trim(COALESCE(uemail, ''))) IS DISTINCT FROM lower(trim(COALESCE(inv.email, ''))) THEN
+supabase/migrations/20260415_accept_org_invite_row_security_fix.sql:58:    RETURN jsonb_build_object('ok', false, 'error', 'email_mismatch');
+supabase/migrations/20260415_accept_org_invite_row_security_fix.sql:121:  'Secure invitation acceptance: validates token, email match, profile role, '
+supabase/migrations/20260405_profiles_policy_canonical.sql:12:--   • supabase/migration_rls_fix_profiles_email.sql
+supabase/migrations/20260405_profiles_policy_canonical.sql:13:--     → created "profiles_select_authenticated" (USING true, email/phone REVOKED)
+supabase/migrations/20260405_profiles_policy_canonical.sql:29:--   • email, phone — read via get_current_user_email() / get_org_member_emails() only
+supabase/migrations/20260405_profiles_policy_canonical.sql:89:--   get_current_user_email()   → own email
+supabase/migrations/20260405_profiles_policy_canonical.sql:90:--   get_org_member_emails()    → emails of own-org members (owner-gated)
+supabase/migrations/20260405_profiles_policy_canonical.sql:93:REVOKE SELECT (email, phone)             ON public.profiles FROM authenticated;
+supabase/migrations/20260416_fix_a_can_access_platform_sha256.sql:5:--   can_access_platform() calls encode(digest(lower(email), 'sha256'), 'hex')
+supabase/migrations/20260416_fix_a_can_access_platform_sha256.sql:13:--   identical: encode(sha256(lower(email)::bytea), 'hex').
+supabase/migrations/20260416_fix_a_can_access_platform_sha256.sql:30:  v_caller_email  TEXT;
+supabase/migrations/20260416_fix_a_can_access_platform_sha256.sql:31:  v_email_hash    TEXT;
+supabase/migrations/20260416_fix_a_can_access_platform_sha256.sql:75:      -- Check whether this user's email has been used for a trial in a
+supabase/migrations/20260416_fix_a_can_access_platform_sha256.sql:78:      SELECT email INTO v_caller_email
+supabase/migrations/20260416_fix_a_can_access_platform_sha256.sql:82:      IF v_caller_email IS NOT NULL THEN
+supabase/migrations/20260416_fix_a_can_access_platform_sha256.sql:83:        v_email_hash := encode(sha256(lower(v_caller_email)::bytea), 'hex');
+supabase/migrations/20260416_fix_a_can_access_platform_sha256.sql:87:          FROM   public.used_trial_emails ute
+supabase/migrations/20260416_fix_a_can_access_platform_sha256.sql:88:          WHERE  ute.email_hash = v_email_hash
+supabase/migrations/20260413_fix_e_null_guards.sql:96:      AND  u.email = 'rubenelge@t-online.de';
+supabase/migrations/20260413_fix_e_null_guards.sql:105:  'Converted from LANGUAGE sql to plpgsql. UUID+email pin unchanged.';
+supabase/migrations/20260413_fix_e_null_guards.sql:135:        AND  u.email = 'rubenelge@t-online.de'
+supabase/migrations/20260413_fix_e_null_guards.sql:148:  'UUID+email pin unchanged.';
+supabase/migrations/20260413_audit_trail_source_column.sql:21:-- replaces it with `public.is_current_user_admin()` (SECURITY DEFINER, UUID+email).
+supabase/migrations/20260405_backfill_no_org_direct.sql:12:    SELECT p.id, p.email, p.company_name, p.role::text AS role
+supabase/migrations/20260405_backfill_no_org_direct.sql:36:    ELSIF r.role = 'agent' AND r.email IS NOT NULL AND trim(r.email) <> '' THEN
+supabase/migrations/20260405_backfill_no_org_direct.sql:38:      WHERE lower(trim(email)) = lower(trim(r.email)) LIMIT 1;
+supabase/migrations/20260405_backfill_no_org_direct.sql:42:        INSERT INTO public.agencies (name, email, code)
+supabase/migrations/20260405_backfill_no_org_direct.sql:43:        VALUES (COALESCE(NULLIF(trim(v_cname), ''), 'Agency'), r.email, v_code)
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:10:--       AND TRIM(lower(a.email)) = TRIM(lower(p.email))
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:12:--   This is DANGER 2: email-based access control is unsafe because:
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:13:--   1. Email can change (profile.email vs agencies.email may diverge)
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:24:--   3. Remove the email-matching branch entirely — the org-membership branches
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:64:    -- Agency org member or org owner (no email matching)
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:256:  -- No email matching remaining
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:260:      AND qual ILIKE '%a.email%'
+supabase/migrations/20260406_fix_calendar_email_matching_policy.sql:261:  ), 'FAIL: user_calendar_events still has email-matching policy';
