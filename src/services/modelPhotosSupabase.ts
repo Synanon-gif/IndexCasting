@@ -9,7 +9,7 @@ import {
 import { hasRecentImageRightsConfirmation } from './gdprComplianceSupabase';
 import { logAction } from '../utils/logAction';
 import imageCompression from 'browser-image-compression';
-import { convertHeicToJpegIfNeeded } from './imageUtils';
+import { convertHeicToJpegWithStatus } from './imageUtils';
 import { checkAndIncrementStorage, decrementStorage } from './agencyStorageSupabase';
 import { uiCopy } from '../constants/uiCopy';
 import {
@@ -395,7 +395,15 @@ export async function uploadModelPhoto(
   }
 
   // Convert HEIC/HEIF to JPEG before validation (browser-image-compression doesn't support HEIC)
-  file = await convertHeicToJpegIfNeeded(file);
+  {
+    const { file: prepared, conversionFailed } = await convertHeicToJpegWithStatus(file);
+    if (conversionFailed) {
+      console.warn('uploadModelPhoto: HEIC/HEIF conversion failed');
+      void logSecurityEvent({ type: 'file_rejected', metadata: { service: 'modelPhotosSupabase', fn: 'uploadModelPhoto', reason: 'heic_conversion_failed', model_id: modelId } });
+      return null;
+    }
+    file = prepared;
+  }
   // MIME whitelist + size check (images only for portfolio)
   const mimeCheck = validateFile(file, PHOTO_ALLOWED_TYPES);
   if (!mimeCheck.ok) {
@@ -512,8 +520,15 @@ export async function uploadPrivateModelPhoto(
     return null;
   }
 
-  // Convert HEIC/HEIF to JPEG before validation
-  file = await convertHeicToJpegIfNeeded(file);
+  {
+    const { file: prepared, conversionFailed } = await convertHeicToJpegWithStatus(file);
+    if (conversionFailed) {
+      console.warn('uploadPrivateModelPhoto: HEIC/HEIF conversion failed');
+      void logSecurityEvent({ type: 'file_rejected', metadata: { service: 'modelPhotosSupabase', fn: 'uploadPrivateModelPhoto', reason: 'heic_conversion_failed', model_id: modelId } });
+      return null;
+    }
+    file = prepared;
+  }
   // MIME whitelist + size check (images only)
   const mimeCheck = validateFile(file, PHOTO_ALLOWED_TYPES);
   if (!mimeCheck.ok) {

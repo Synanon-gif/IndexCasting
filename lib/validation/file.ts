@@ -9,7 +9,11 @@ import type { ValidationResult } from './text';
 /** Maximum allowed file size: 200 MB */
 export const MAX_FILE_SIZE_BYTES = 200 * 1024 * 1024;
 
-/** Allowed MIME types for all file uploads across the platform. */
+/**
+ * Allowed MIME types for generic validation (`validateFile`).
+ * Callers narrow further: model portfolio/polaroid paths use images only; chat and option
+ * attachments use this list including PDF; see `uploadModelPhoto` vs `uploadOptionDocument`.
+ */
 export const ALLOWED_MIME_TYPES = [
   'image/jpeg',
   'image/png',

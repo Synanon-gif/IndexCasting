@@ -987,6 +987,8 @@ export const uiCopy = {
     deleteCancel: 'Cancel',
     deleteConfirm: 'Delete',
     uploadError: 'Upload failed. Please try again.',
+    heicConversionFailed:
+      'Could not convert this HEIC/HEIF image in the browser. Please export as JPEG or PNG and try again.',
     deleteError: 'Could not delete the image. Please try again.',
     toggleError: 'Could not update visibility. Please try again.',
     saveSuccess: 'Photos saved.',

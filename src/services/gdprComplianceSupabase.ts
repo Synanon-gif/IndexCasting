@@ -32,6 +32,7 @@ export type ComplianceResult<T = void> =
 export interface ImageRightsConfirmation {
   userId: string;
   modelId: string | null;
+  /** Must be `public.organizations.id` (FK). Never pass `agencies.id`. */
   orgId?: string;
   sessionKey?: string;
   ipAddress?: string;
@@ -153,7 +154,9 @@ export async function deleteOrganizationData(
  *      caused by RETURNING+RLS conflicts (policy may disallow SELECT on new row).
  *   3. Unique-constraint violations (23505) are treated as success — a prior
  *      confirmation already exists, which is the desired invariant.
- *   4. Uses crypto.randomUUID() for the local confirmationId reference.
+ *   4. Foreign-key violations (23503) on org_id usually mean a non-organizations UUID
+ *      was passed — fail closed; caller must pass `public.organizations.id`.
+ *   5. Uses crypto.randomUUID() for the local confirmationId reference.
  */
 export async function confirmImageRights(
   params: ImageRightsConfirmation,
@@ -194,7 +197,20 @@ export async function confirmImageRights(
         console.info('[gdpr] confirmImageRights: duplicate confirmation treated as OK');
         return { ok: true, data: { confirmationId: 'reused' } };
       }
-      console.error('[gdpr] confirmImageRights error:', error);
+      // FK violation (23503): e.g. org_id is not a valid organizations.id
+      if (error.code === '23503') {
+        console.error(
+          '[gdpr] confirmImageRights: FK violation — org_id must reference public.organizations(id), not agencies.id',
+          { code: error.code, message: error.message, details: error.details, hint: error.hint },
+        );
+        return { ok: false, reason: 'invalid_org_id' };
+      }
+      console.error('[gdpr] confirmImageRights error:', {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+      });
       return { ok: false, reason: error.message ?? 'insert_failed' };
     }
 

@@ -32,6 +32,7 @@ import {
   guardImageUpload,
 } from '../services/gdprComplianceSupabase';
 import { resolveStorageUrl } from '../storage/storageUrl';
+import { convertHeicToJpegWithStatus } from '../services/imageUtils';
 import {
   addPhoto,
   deletePhoto,
@@ -54,7 +55,8 @@ type ResolvedPhoto = ModelPhoto & { displayUrl: string | null };
 
 type Props = {
   modelId: string;
-  agencyId: string;
+  /** `public.organizations.id` for GDPR audit (`image_rights_confirmations.org_id`). Never pass `agencies.id`. */
+  organizationId?: string | null;
   /** Called whenever visible portfolio photos change so parent can track cover availability. */
   onHasVisiblePortfolioChange?: (hasVisible: boolean) => void;
 };
@@ -77,7 +79,7 @@ async function resolveDisplayUrl(photo: ModelPhoto): Promise<ResolvedPhoto> {
 
 export const ModelMediaSettingsPanel: React.FC<Props> = ({
   modelId,
-  agencyId,
+  organizationId,
   onHasVisiblePortfolioChange,
 }) => {
   const [portfolio, setPortfolio] = useState<ResolvedPhoto[]>([]);
@@ -156,10 +158,19 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // Confirm rights first (records in audit table), then guard checks the DB.
-    await confirmImageRights({ userId: user.id, modelId, orgId: agencyId }).catch((e) =>
-      console.error('[ModelMediaSettingsPanel] confirmImageRights error:', e),
-    );
+    const rightsOk = await confirmImageRights({
+      userId: user.id,
+      modelId,
+      orgId: organizationId ?? undefined,
+    });
+    if (!rightsOk.ok) {
+      Alert.alert(
+        'Image Rights Required',
+        'Rights confirmation could not be recorded. Please try again.',
+      );
+      setUploading(null);
+      return;
+    }
     const guard = await guardImageUpload(user.id, modelId);
     if (!guard.ok) {
       Alert.alert('Image Rights Required', 'Rights confirmation could not be verified. Please try again.');
@@ -170,9 +181,14 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
     setUploading(section);
     try {
       for (const file of files) {
+        const { file: prepared, conversionFailed } = await convertHeicToJpegWithStatus(file);
+        if (conversionFailed) {
+          Alert.alert(uiCopy.common.error, copy.heicConversionFailed);
+          continue;
+        }
         const uploadResult = section === 'private'
-          ? await uploadPrivateModelPhoto(modelId, file)
-          : await uploadModelPhoto(modelId, file);
+          ? await uploadPrivateModelPhoto(modelId, prepared)
+          : await uploadModelPhoto(modelId, prepared);
         if (!uploadResult) {
           Alert.alert(uiCopy.common.error, copy.uploadError);
           continue;
@@ -240,9 +256,18 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    await confirmImageRights({ userId: user.id, modelId, orgId: agencyId }).catch((e) =>
-      console.error('[ModelMediaSettingsPanel] confirmImageRights (URL) error:', e),
-    );
+    const rightsOk = await confirmImageRights({
+      userId: user.id,
+      modelId,
+      orgId: organizationId ?? undefined,
+    });
+    if (!rightsOk.ok) {
+      Alert.alert(
+        'Image Rights Required',
+        'Rights confirmation could not be recorded. Please try again.',
+      );
+      return;
+    }
     const guard = await guardImageUpload(user.id, modelId);
     if (!guard.ok) {
       Alert.alert('Image Rights Required', 'Rights confirmation could not be verified. Please try again.');

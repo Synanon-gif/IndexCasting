@@ -139,6 +139,28 @@ describe('confirmImageRights', () => {
     expect(errSpy).toHaveBeenCalled();
   });
 
+  it('returns ok:false with invalid_org_id on FK violation (23503)', async () => {
+    from.mockReturnValueOnce(makeChain({ data: null, error: null }));
+    from.mockReturnValueOnce(makeChain({
+      data: null,
+      error: {
+        message: 'insert or update on table violates foreign key constraint',
+        code: '23503',
+        details: 'Key (org_id)=(...) is not present in table "organizations".',
+      },
+    }));
+
+    const result = await confirmImageRights({
+      userId: 'user-1',
+      modelId: 'model-1',
+      orgId: 'not-an-org-uuid',
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('invalid_org_id');
+    expect(errSpy).toHaveBeenCalled();
+  });
+
   it('returns ok:false on exception (fail-closed)', async () => {
     from.mockImplementation(() => { throw new Error('network'); });
 

@@ -2165,7 +2165,11 @@ const MyModelsTab: React.FC<{
           setAddLoading(false);
           return;
         }
-        const rightsOk = await confirmImageRights({ userId: currentUser.id, modelId: createdModelId });
+        const rightsOk = await confirmImageRights({
+          userId: currentUser.id,
+          modelId: createdModelId,
+          orgId: inviteOrganizationId ?? undefined,
+        });
         if (!rightsOk.ok) {
           Alert.alert('Image Rights Required', 'Rights confirmation could not be recorded. Please try again.');
           setAddLoading(false);
@@ -2661,7 +2665,7 @@ const MyModelsTab: React.FC<{
         <View style={{ marginTop: spacing.lg }}>
           <ModelMediaSettingsPanel
             modelId={selectedModel.id}
-            agencyId={agencyId}
+            organizationId={inviteOrganizationId ?? null}
             onHasVisiblePortfolioChange={setHasVisiblePortfolio}
           />
         </View>
