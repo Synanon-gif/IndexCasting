@@ -11,6 +11,7 @@ import {
   logSecurityEvent,
   validateFile,
   checkMagicBytes,
+  sanitizeUploadBaseName,
   checkExtensionConsistency,
   CHAT_ALLOWED_MIME_TYPES,
 } from '../../lib/validation';
@@ -1001,9 +1002,7 @@ export async function uploadOptionDocument(
   }
 
   const safeBaseName =
-    file instanceof File
-      ? file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 200)
-      : fileName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 200);
+    file instanceof File ? sanitizeUploadBaseName(file.name) : sanitizeUploadBaseName(fileName);
 
   const claimedSize = file instanceof File ? file.size : (file as Blob).size;
 

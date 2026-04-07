@@ -22,9 +22,10 @@ import {
   normalizeInput,
   CHAT_ALLOWED_MIME_TYPES,
   logSecurityEvent,
+  sanitizeUploadBaseName,
 } from '../../lib/validation';
 import { checkAndIncrementStorage, decrementStorage } from './agencyStorageSupabase';
-import { convertHeicToJpegIfNeeded } from './imageUtils';
+import { convertHeicToJpegWithStatus } from './imageUtils';
 import { guardUploadSession } from './gdprComplianceSupabase';
 
 /** Session key prefix for B2B messenger file uploads — pair with `confirmImageRights`. */
@@ -504,8 +505,17 @@ export async function uploadChatFile(
     return null;
   }
 
-  // Convert HEIC/HEIF to JPEG before validation
-  file = await convertHeicToJpegIfNeeded(file);
+  const { file: prepared, conversionFailed } = await convertHeicToJpegWithStatus(file);
+  if (conversionFailed) {
+    console.warn('uploadChatFile: HEIC/HEIF conversion failed');
+    void logSecurityEvent({
+      type: 'file_rejected',
+      metadata: { service: 'messengerSupabase', fn: 'uploadChatFile', reason: 'heic_conversion_failed' },
+    });
+    return null;
+  }
+  file = prepared;
+
   // MIME type + size check
   const mimeCheck = validateFile(file, CHAT_ALLOWED_MIME_TYPES);
   if (!mimeCheck.ok) {
@@ -536,10 +546,15 @@ export async function uploadChatFile(
   }
 
   const claimedSize = file instanceof File ? file.size : (file as Blob).size;
-  const path = `chat/${conversationId}/${Date.now()}_${fileName}`;
+  const safeBaseName =
+    file instanceof File ? sanitizeUploadBaseName(file.name) : sanitizeUploadBaseName(fileName);
+  const path = `chat/${conversationId}/${Date.now()}_${safeBaseName}`;
   const { error } = await supabase.storage
     .from('chat-files')
-    .upload(path, file);
+    .upload(path, file, {
+      contentType: file.type || 'application/octet-stream',
+      upsert: false,
+    });
   if (error) {
     console.error('uploadChatFile error:', error);
     await decrementStorage(claimedSize);

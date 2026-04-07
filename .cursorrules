@@ -95,6 +95,8 @@ if (ok) {
 
 **Migrations-Pflicht:** Jede SQL-Änderung MUSS in `supabase/migrations/YYYYMMDD_*.sql` — NIEMALS nur in Root-Dateien (`supabase/*.sql` außerhalb `migrations/`), diese werden NICHT automatisch deployed.
 
+**Live-Drift:** Vollständige Projekt-Guidance: [docs/LIVE_DB_DRIFT_GUARDRAIL.md](docs/LIVE_DB_DRIFT_GUARDRAIL.md) — Root-SQL niemals als alleiniger Production-Maßstab; neue Policies/Funktionen nur via `migrations/` (außer klar markierte Diagnose-Skripte).
+
 ## 4b. UI-Sprache & Copy (verbindlich)
 - **Die gesamte Nutzeroberfläche ist Englisch (English-only):** alle sichtbaren Texte für Agency, Client und Model — Buttons, Labels, Alerts, Placeholder, leere Zustände, Fehlermeldungen aus dem Produkt.
 - **Zentrale Quelle:** Nutzer-Texte kommen aus `src/constants/uiCopy.ts` (`uiCopy`). Keine neuen deutschsprachigen UI-Strings; keine Hardcodes derselben Phrase an vielen Stellen — lieber ein Key in `uiCopy` erweitern.
@@ -104,7 +106,7 @@ if (ok) {
 
 ### 4b.1 Browser-Upload technische Parität (Verweis)
 
-- Vollständige Checkliste und Trennung Consent vs. technische Härtung: [.cursor/rules/upload-consent-matrix.mdc](.cursor/rules/upload-consent-matrix.mdc) (Abschnitte **Upload technical parity** und **Consent vs technical hardening**).
+- Vollständige Checkliste und Trennung Consent vs. technische Härtung: [.cursor/rules/upload-consent-matrix.mdc](.cursor/rules/upload-consent-matrix.mdc) (Abschnitte **Upload technical parity** und **Consent vs technical hardening**). **`chat-files`:** gemeinsame Pipeline (HEIC-Status mit Abbruch, `sanitizeUploadBaseName`, `upsert: false` + `contentType`) — siehe Matrix-Abschnitt *Single pipeline for chat-files*.
 - Kurzfassung: Alle dokument-/bildnahen Uploads mit Browser-`File`/`Blob` vor `storage.upload`: MIME-Allowlist, Magic Bytes, Extension-Konsistenz, sicherer Dateiname/Pfad, `upsert: false` wo anwendbar, HEIC-Pipeline wie in der Matrix — Referenzimplementierungen u. a. `modelPhotosSupabase`, `applicationsSupabase`, Chat-Services, `documentsSupabase`, `verificationSupabase`, `optionRequestsSupabase.uploadOptionDocument`.
 
 ## 5. Automatisierung & Testing (Mandatory)

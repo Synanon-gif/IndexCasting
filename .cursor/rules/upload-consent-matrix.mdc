@@ -28,6 +28,15 @@ For every service that performs `storage.upload` with user-selected files, **bef
 | HEIC/HEIF | If the allowlist permits HEIC/HEIF: convert first (`convertHeicToJpegWithStatus` / `convertHeicToJpegIfNeeded`); on conversion failure **do not** silently proceed — `console` / `logSecurityEvent` / structured rejection; **size, `type`, and name** for subsequent checks and storage must come from the **post-conversion** blob when conversion succeeded |
 | Parity | `documentsSupabase`, `verificationSupabase`, `optionRequestsSupabase.uploadOptionDocument`, recruiting/messenger chat uploads, applications, model photos — **must not diverge** on this checklist when adding new file types or new buckets |
 
+### Single pipeline for `chat-files` browser uploads
+
+All first-party uploads to bucket `chat-files` (messenger `chat/…`, recruiting `recruiting/…`, options `options/…`) must share the same **technical** baseline:
+
+- HEIC/HEIF: `convertHeicToJpegWithStatus` — on `conversionFailed`, **reject** the upload (do not proceed with the raw HEIC blob).
+- After conversion, run `validateFile` (with the correct allowlist), `checkMagicBytes`, and `checkExtensionConsistency` on the blob that will be stored.
+- Path basename: `sanitizeUploadBaseName` from `lib/validation` (no raw user `fileName` in the path).
+- `storage.upload`: `upsert: false` and explicit `contentType: file.type || 'application/octet-stream'`.
+
 Reference implementations: [`src/services/modelPhotosSupabase.ts`](../../src/services/modelPhotosSupabase.ts), [`src/services/messengerSupabase.ts`](../../src/services/messengerSupabase.ts) (`uploadChatFile`), [`src/services/recruitingChatSupabase.ts`](../../src/services/recruitingChatSupabase.ts), [`src/services/applicationsSupabase.ts`](../../src/services/applicationsSupabase.ts), [`src/services/documentsSupabase.ts`](../../src/services/documentsSupabase.ts), [`src/services/verificationSupabase.ts`](../../src/services/verificationSupabase.ts), [`src/services/optionRequestsSupabase.ts`](../../src/services/optionRequestsSupabase.ts).
 
 ## Matrix

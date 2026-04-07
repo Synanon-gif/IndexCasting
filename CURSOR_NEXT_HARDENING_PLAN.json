@@ -1,0 +1,94 @@
+{
+  "fixed_now": [
+    "P1: docs/LIVE_DB_DRIFT_GUARDRAIL.md + rule cross-links (cursorrules, auto-review, dev-workflow, system-invariants)",
+    "P2: sanitizeUploadBaseName in lib/validation; chat-files parity for messenger + recruiting (HEIC fail reject, upsert:false, contentType, safe basename); documents/optionRequests use shared sanitizer",
+    "P3: Migration 20260428_agency_invitations_insert_no_profiles_role.sql — INSERT policy without profiles.role; applied to live (HTTP 201)"
+  ],
+  "safe_next": [
+    "Live pg_policies spot-check: other agency_invitations policies still as expected after INSERT change",
+    "Extend same chat-files pipeline audit to any remaining storage.upload paths under scripts/audit-coverage STORAGE_UPLOAD_ALLOWLIST"
+  ],
+  "manual_review_required": [],
+  "do_not_touch": [
+    "src/context/AuthContext.tsx",
+    "App.tsx",
+    "signIn / bootstrapThenLoadProfile / loadProfile",
+    "get_own_admin_flags / is_current_user_admin / assert_is_admin",
+    "get_my_org_context semantics",
+    "Blanket SECDEF or RLS refactors"
+  ],
+  "secdef_shortlist": [
+    {
+      "name": "storage_can_insert_chat_files_object",
+      "why": "Server-side gate for chat-files INSERT paths",
+      "policy_near": true,
+      "tenant_sensitive": true,
+      "login_admin_sensitive": false,
+      "verdict": "safe_review_candidate"
+    },
+    {
+      "name": "can_agency_manage_model_photo / can_view_model_photo_storage",
+      "why": "Decouples storage policies from models RLS",
+      "policy_near": true,
+      "tenant_sensitive": true,
+      "login_admin_sensitive": false,
+      "verdict": "safe_review_candidate"
+    },
+    {
+      "name": "upsert_model_location",
+      "why": "Multi-source location + GPS preservation invariants",
+      "policy_near": false,
+      "tenant_sensitive": true,
+      "login_admin_sensitive": "indirect_model",
+      "verdict": "manual_review"
+    },
+    {
+      "name": "get_models_near_location",
+      "why": "Discovery + DISTINCT ON source priority",
+      "policy_near": false,
+      "tenant_sensitive": true,
+      "login_admin_sensitive": false,
+      "verdict": "manual_review"
+    },
+    {
+      "name": "generate_model_claim_token",
+      "why": "Model claim / territory scope",
+      "policy_near": false,
+      "tenant_sensitive": true,
+      "login_admin_sensitive": "claim_flow_sensitive",
+      "verdict": "manual_review"
+    },
+    {
+      "name": "export_user_data (GDPR RPCs)",
+      "why": "PII export surface",
+      "policy_near": false,
+      "tenant_sensitive": true,
+      "login_admin_sensitive": false,
+      "verdict": "manual_review"
+    },
+    {
+      "name": "agency_update_model_full (class of large agency RPCs)",
+      "why": "Wide write surface on models",
+      "policy_near": false,
+      "tenant_sensitive": true,
+      "login_admin_sensitive": false,
+      "verdict": "manual_review"
+    },
+    {
+      "name": "list_client_organizations_for_agency_directory",
+      "why": "B2B discovery; intentional broad read with gates",
+      "policy_near": false,
+      "tenant_sensitive": "bounded",
+      "login_admin_sensitive": false,
+      "verdict": "manual_review"
+    },
+    {
+      "name": "add_model_to_project",
+      "why": "Client project membership vs agency connection",
+      "policy_near": "partial",
+      "tenant_sensitive": true,
+      "login_admin_sensitive": false,
+      "verdict": "manual_review"
+    }
+  ]
+}

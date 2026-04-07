@@ -100,6 +100,7 @@ Wenn ein DB-Constraint umbenannt wird, MÜSSEN alle referenzierenden Funktionen 
   - `pg_get_functiondef` für die betroffene Routine; bei Katalog-Scans **nur `prokind = 'f'`** (normale Funktionen), nicht auf Aggregate anwenden (sonst Fehler 42809).
   - Gezielte Suche nach Legacy-Spalten, alten Branch-Namen oder verbotenen Mustern im Funktionsrumpf.
 - Ersetzt nicht Migrations-Disziplin oder Code-Review — schließt die Lücke Repo ↔ Production.
+- **Diagnose-Dateien:** Neue SQL unter `supabase/` außerhalb `migrations/` nur mit klarem Kopfkommentar „nicht deployt / Diagnose“ und **ohne** Ersatz für eine echte Migration — Details [docs/LIVE_DB_DRIFT_GUARDRAIL.md](../../docs/LIVE_DB_DRIFT_GUARDRAIL.md).
 
 ## EXTERNE PROFIL-SYNCS (Mediaslide / Netwalk) — KEIN IMPLIZITER STORAGE-MIRROR (unveränderlich)
 

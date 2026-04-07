@@ -10,7 +10,13 @@
  * 6. safeLinkProps includes nofollow
  */
 
-import { checkMagicBytes, validateFile, checkExtensionConsistency } from '../file';
+import {
+  checkMagicBytes,
+  validateFile,
+  checkExtensionConsistency,
+  sanitizeUploadBaseName,
+  DEFAULT_UPLOAD_BASENAME_MAX_LEN,
+} from '../file';
 import { normalizeInput, stripInvisibleChars } from '../normalize';
 import { RateLimiter } from '../rateLimit';
 import { validateText } from '../text';
@@ -263,7 +269,26 @@ describe('Large payload rejection', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 6. safeLinkProps includes nofollow
+// 6. sanitizeUploadBaseName
+// ---------------------------------------------------------------------------
+
+describe('sanitizeUploadBaseName', () => {
+  test('replaces unsafe characters with underscore', () => {
+    expect(sanitizeUploadBaseName('my file (1).pdf')).toBe('my_file__1_.pdf');
+  });
+
+  test('truncates to max length', () => {
+    const long = 'a'.repeat(DEFAULT_UPLOAD_BASENAME_MAX_LEN + 50);
+    expect(sanitizeUploadBaseName(long).length).toBe(DEFAULT_UPLOAD_BASENAME_MAX_LEN);
+  });
+
+  test('preserves allowed charset', () => {
+    expect(sanitizeUploadBaseName('Photo_01-final.jpg')).toBe('Photo_01-final.jpg');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 7. safeLinkProps includes nofollow
 // ---------------------------------------------------------------------------
 
 describe('Link safety props', () => {

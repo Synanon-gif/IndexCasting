@@ -12,9 +12,10 @@ import {
   normalizeInput,
   CHAT_ALLOWED_MIME_TYPES,
   logSecurityEvent,
+  sanitizeUploadBaseName,
 } from '../../lib/validation';
 import { checkAndIncrementStorage, decrementStorage } from './agencyStorageSupabase';
-import { convertHeicToJpegIfNeeded } from './imageUtils';
+import { convertHeicToJpegWithStatus } from './imageUtils';
 
 /** Reads the actual stored size of a recruiting chat file from storage.objects metadata. Best-effort — returns null on failure. */
 async function getActualChatFileSize(bucket: string, path: string): Promise<number | null> {
@@ -409,8 +410,17 @@ export async function uploadRecruitingChatFile(
   file: File | Blob,
   fileName: string,
 ): Promise<string | null> {
-  // Convert HEIC/HEIF to JPEG before validation
-  file = await convertHeicToJpegIfNeeded(file);
+  const { file: prepared, conversionFailed } = await convertHeicToJpegWithStatus(file);
+  if (conversionFailed) {
+    console.warn('uploadRecruitingChatFile: HEIC/HEIF conversion failed');
+    void logSecurityEvent({
+      type: 'file_rejected',
+      metadata: { service: 'recruitingChatSupabase', fn: 'uploadRecruitingChatFile', reason: 'heic_conversion_failed' },
+    });
+    return null;
+  }
+  file = prepared;
+
   // MIME type + size check
   const mimeCheck = validateFile(file, CHAT_ALLOWED_MIME_TYPES);
   if (!mimeCheck.ok) {
@@ -444,8 +454,13 @@ export async function uploadRecruitingChatFile(
   // ephemeral communication documents shared between org members, not model portfolio photos.
   // The image_rights_confirmations audit applies only to model photo uploads (ModelMediaSettingsPanel).
   const claimedSize = file instanceof File ? file.size : (file as Blob).size;
-  const path = `recruiting/${threadId}/${Date.now()}_${fileName}`;
-  const { error } = await supabase.storage.from('chat-files').upload(path, file);
+  const safeBaseName =
+    file instanceof File ? sanitizeUploadBaseName(file.name) : sanitizeUploadBaseName(fileName);
+  const path = `recruiting/${threadId}/${Date.now()}_${safeBaseName}`;
+  const { error } = await supabase.storage.from('chat-files').upload(path, file, {
+    contentType: file.type || 'application/octet-stream',
+    upsert: false,
+  });
   if (error) {
     console.error('uploadRecruitingChatFile error:', error);
     await decrementStorage(claimedSize);

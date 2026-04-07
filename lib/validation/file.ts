@@ -235,3 +235,17 @@ export function checkExtensionConsistency(file: File | Blob): ValidationResult {
 
   return { ok: true };
 }
+
+/** Max length for storage path basename segments (matches services default). */
+export const DEFAULT_UPLOAD_BASENAME_MAX_LEN = 200;
+
+/**
+ * Sanitizes a filename for safe use in storage paths: allowed charset only, max length.
+ * Use for the basename segment after `Date.now()_` (not for full paths).
+ */
+export function sanitizeUploadBaseName(
+  name: string,
+  maxLen: number = DEFAULT_UPLOAD_BASENAME_MAX_LEN,
+): string {
+  return name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, maxLen);
+}

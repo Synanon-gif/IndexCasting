@@ -73,5 +73,6 @@ Nach Änderungen an **Supabase-Migrationen**, **Storage-Policies**, **SECURITY-D
 1. Wie immer: `npm run typecheck` → `npm run lint` → `npm test -- --passWithNoTests --ci` grün.
 2. Wenn die **Live-Datenbank** betroffen ist: **zusätzlich** gezielte Live-Verifikation (nicht nur Repo-Diff): z. B. `pg_get_functiondef` für geänderte Routinen, Policy-Checks wie in `.cursor/rules/auto-review.mdc` §2b, und Abgleich mit `system-invariants.mdc` **LIVE-DB SOURCE OF TRUTH**.
 3. **Keine** Abkürzung über alleinige Root-SQL-Dateien unter `supabase/` ohne `migrations/`-Deployment.
+4. **Root-SQL-Drift:** Kurzreferenz [docs/LIVE_DB_DRIFT_GUARDRAIL.md](../../docs/LIVE_DB_DRIFT_GUARDRAIL.md) — bei Security-SQL immer Live-Abgleich, nicht nur Repo-Diff.
 
 Diese Regel **berührt nicht** AuthContext, Login, Admin-Routing oder `App.tsx` — nur Release-Disziplin für Backend-/Upload-Änderungen.

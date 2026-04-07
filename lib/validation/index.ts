@@ -27,9 +27,11 @@ export {
   ALLOWED_MIME_TYPES,
   CHAT_ALLOWED_MIME_TYPES,
   MAX_FILE_SIZE_BYTES,
+  DEFAULT_UPLOAD_BASENAME_MAX_LEN,
   validateFile,
   checkMagicBytes,
   checkExtensionConsistency,
+  sanitizeUploadBaseName,
 } from './file';
 
 export type { RateLimiterOptions, RateLimitResult } from './rateLimit';

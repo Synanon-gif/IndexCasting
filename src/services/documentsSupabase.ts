@@ -1,6 +1,6 @@
 import { supabase } from '../../lib/supabase';
 import { checkAndIncrementStorage, decrementStorage } from './agencyStorageSupabase';
-import { validateFile, checkMagicBytes } from '../../lib/validation';
+import { validateFile, checkMagicBytes, sanitizeUploadBaseName } from '../../lib/validation';
 import { convertHeicToJpegWithStatus } from './imageUtils';
 
 /** Reads the actual stored file size from storage.objects metadata. Best-effort — returns null on failure. */
@@ -72,7 +72,7 @@ export async function uploadDocument(
   }
 
   const nameSource = prepared instanceof File ? prepared.name : fileName;
-  const safeFileName = nameSource.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 200);
+  const safeFileName = sanitizeUploadBaseName(nameSource);
   const path = `documents/${userId}/${Date.now()}_${safeFileName}`;
 
   // Agency storage limit check — non-agency users pass through automatically.
