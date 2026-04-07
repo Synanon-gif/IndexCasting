@@ -7,6 +7,10 @@
  * `ServiceResult` without changing legacy call sites.
  *
  * Legacy: `gdprComplianceSupabase` may use `ComplianceResult` where documented.
+ *
+ * **StructuredServiceResult** — optional parallel shape for **new** APIs that need
+ * machine-readable `code` + optional `context`. Do not migrate existing `ServiceResult`
+ * call sites; use one shape per function.
  */
 export type ServiceResult<T = undefined> =
   | (T extends undefined ? { ok: true } : { ok: true; data: T })
@@ -22,4 +26,31 @@ export function serviceOkData<T>(data: T): ServiceResult<T> {
 
 export function serviceErr(error: string): ServiceResult<never> {
   return { ok: false, error };
+}
+
+/** Machine-readable failure detail for new APIs (parallel to string-only `ServiceResult`). */
+export type ServiceErrorDetail = {
+  code: string;
+  message: string;
+  context?: unknown;
+};
+
+export type StructuredServiceResult<T = undefined> =
+  | (T extends undefined ? { ok: true } : { ok: true; data: T })
+  | { ok: false; error: ServiceErrorDetail };
+
+export function structuredServiceOk(): StructuredServiceResult {
+  return { ok: true };
+}
+
+export function structuredServiceOkData<T>(data: T): StructuredServiceResult<T> {
+  return { ok: true, data } as StructuredServiceResult<T>;
+}
+
+export function structuredServiceErr(
+  code: string,
+  message: string,
+  context?: unknown,
+): StructuredServiceResult<never> {
+  return { ok: false, error: context !== undefined ? { code, message, context } : { code, message } };
 }
