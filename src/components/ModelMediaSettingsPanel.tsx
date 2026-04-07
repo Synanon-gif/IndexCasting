@@ -156,7 +156,11 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
     }
 
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) {
+      Alert.alert(uiCopy.common.error, copy.signInToUploadPhotos);
+      setUploading(null);
+      return;
+    }
 
     const rightsOk = await confirmImageRights({
       userId: user.id,
@@ -254,7 +258,10 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
     }
 
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) {
+      Alert.alert(uiCopy.common.error, copy.signInToAddPhotos);
+      return;
+    }
 
     const rightsOk = await confirmImageRights({
       userId: user.id,

@@ -107,6 +107,13 @@ export interface GdprExportResult {
   imageRightsConfirmations: unknown[];
 }
 
+/**
+ * Single source of truth for “recent confirmation” checks.
+ * Must match {@link confirmImageRights} pre-insert window so guards never reject
+ * a session that confirmImageRights would treat as still valid.
+ */
+export const IMAGE_RIGHTS_WINDOW_MINUTES = 60;
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PART 1 — Organization deletion
@@ -165,9 +172,9 @@ export async function confirmImageRights(
     // Step 1 — Check if a recent confirmation already exists (60 min window).
     // This avoids an unnecessary INSERT on repeated uploads in the same session.
     const alreadyConfirmed = params.modelId
-      ? await hasRecentImageRightsConfirmation(params.userId, params.modelId, 60)
+      ? await hasRecentImageRightsConfirmation(params.userId, params.modelId, IMAGE_RIGHTS_WINDOW_MINUTES)
       : params.sessionKey
-        ? await hasRecentImageRightsForSessionKey(params.userId, params.sessionKey, 60)
+        ? await hasRecentImageRightsForSessionKey(params.userId, params.sessionKey, IMAGE_RIGHTS_WINDOW_MINUTES)
         : false;
 
     if (alreadyConfirmed) {
@@ -214,13 +221,20 @@ export async function confirmImageRights(
       return { ok: false, reason: error.message ?? 'insert_failed' };
     }
 
-    // Log in audit trail — orgId may be null for applicant (no org context)
-    void logAuditAction({
-      orgId:      params.orgId ?? '',
-      actionType: 'image_rights_confirmed',
-      entityType: 'model',
-      entityId:   params.modelId ?? undefined,
-      newData:    { confirmation_id: localId, model_id: params.modelId },
+    // Audit: org may be absent (applicant / session-key flows) — use logAction + allowEmptyOrg (no orgId ?? '').
+    void import('../utils/logAction').then(({ logAction }) => {
+      logAction(
+        params.orgId ?? undefined,
+        'confirmImageRights',
+        {
+          type:       'audit',
+          action:     'image_rights_confirmed',
+          entityType: 'model',
+          entityId:   params.modelId ?? undefined,
+          newData:    { confirmation_id: localId, model_id: params.modelId },
+        },
+        { allowEmptyOrg: true },
+      );
     });
 
     return { ok: true, data: { confirmationId: localId } };
@@ -237,7 +251,7 @@ export async function confirmImageRights(
 export async function hasRecentImageRightsConfirmation(
   userId: string,
   modelId: string,
-  withinMinutes = 15,
+  withinMinutes = IMAGE_RIGHTS_WINDOW_MINUTES,
 ): Promise<boolean> {
   try {
     const since = new Date(Date.now() - withinMinutes * 60 * 1000).toISOString();
@@ -264,7 +278,7 @@ export async function hasRecentImageRightsConfirmation(
 export async function hasRecentImageRightsForSessionKey(
   userId: string,
   sessionKey: string,
-  withinMinutes = 15,
+  withinMinutes = IMAGE_RIGHTS_WINDOW_MINUTES,
 ): Promise<boolean> {
   try {
     const since = new Date(Date.now() - withinMinutes * 60 * 1000).toISOString();
@@ -291,7 +305,11 @@ export async function guardUploadSession(
   userId: string,
   sessionKey: string,
 ): Promise<ComplianceResult> {
-  const confirmed = await hasRecentImageRightsForSessionKey(userId, sessionKey);
+  const confirmed = await hasRecentImageRightsForSessionKey(
+    userId,
+    sessionKey,
+    IMAGE_RIGHTS_WINDOW_MINUTES,
+  );
   if (!confirmed) {
     void logSecurityEvent('file_rejected', {
       reason:   'image_rights_not_confirmed',
@@ -689,7 +707,11 @@ export async function guardImageUpload(
   userId: string,
   modelId: string,
 ): Promise<ComplianceResult> {
-  const confirmed = await hasRecentImageRightsConfirmation(userId, modelId);
+  const confirmed = await hasRecentImageRightsConfirmation(
+    userId,
+    modelId,
+    IMAGE_RIGHTS_WINDOW_MINUTES,
+  );
   if (!confirmed) {
     void logSecurityEvent('file_rejected', {
       reason:   'image_rights_not_confirmed',

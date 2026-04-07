@@ -135,17 +135,30 @@ export const BookingChatView: React.FC<Props> = ({
     setUploadError(null);
     try {
       const { data: auth } = await supabase.auth.getUser();
-      if (auth.user) {
-        await confirmImageRights({
-          userId: auth.user.id,
-          modelId: null,
-          sessionKey: `recruiting-chat:${threadId}`,
-        });
+      if (!auth.user) {
+        setUploadError(uiCopy.validation.uploadFailed);
+        return;
       }
-      await addRecruitingMessageWithFile(threadId, fromRole, file, file.name);
+      const rights = await confirmImageRights({
+        userId: auth.user.id,
+        modelId: null,
+        sessionKey: `recruiting-chat:${threadId}`,
+      });
+      if (!rights.ok) {
+        setUploadError(uiCopy.legal.imageRightsConfirmationFailed);
+        return;
+      }
+      const sent = await addRecruitingMessageWithFile(threadId, fromRole, file, file.name);
+      if (!sent.ok) {
+        setUploadError(
+          sent.reason === 'image_rights_not_confirmed'
+            ? uiCopy.legal.chatFileRightsMissing
+            : uiCopy.validation.uploadFailed,
+        );
+      }
     } catch (e) {
       console.error('handleFileSelected error:', e);
-      setUploadError('Upload failed. Please try again.');
+      setUploadError(uiCopy.validation.uploadFailed);
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';

@@ -929,6 +929,13 @@ export async function resolveOptionDocumentUrl(doc: SupabaseOptionDocument): Pro
   }
 }
 
+/** Prefix for `confirmImageRights({ sessionKey })` — future option-doc UI: `` `${OPTION_DOCUMENT_SESSION_KEY_PREFIX}${requestId}` ``. */
+export const OPTION_DOCUMENT_SESSION_KEY_PREFIX = 'option-doc:';
+
+/**
+ * @deprecated No production caller (2026-04). Before use: add UI with checkbox +
+ * `confirmImageRights({ sessionKey: \`${OPTION_DOCUMENT_SESSION_KEY_PREFIX}\${requestId}\` })`, then call.
+ */
 export async function uploadOptionDocument(
   requestId: string,
   uploadedBy: string,
@@ -941,7 +948,7 @@ export async function uploadOptionDocument(
     console.error('uploadOptionDocument: not authenticated');
     return null;
   }
-  const sessionKey = `option-doc:${requestId}`;
+  const sessionKey = `${OPTION_DOCUMENT_SESSION_KEY_PREFIX}${requestId}`;
   const rights = await guardUploadSession(authUser.user.id, sessionKey);
   if (!rights.ok) {
     console.warn('uploadOptionDocument: image rights confirmation missing — call confirmImageRights first', sessionKey);

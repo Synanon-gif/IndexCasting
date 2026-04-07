@@ -356,9 +356,14 @@ export function addRecruitingMessage(
   });
 }
 
+export type RecruitingFileUploadResult =
+  | { ok: true }
+  | { ok: false; reason: 'not_authenticated' | 'image_rights_not_confirmed' | 'upload_failed' };
+
 /**
  * Upload a file for a recruiting chat thread and add a message with the attachment.
- * Returns the sent message or null on upload/send failure.
+ * Call {@link confirmImageRights} with the same `recruiting-chat:${threadId}` session key before this;
+ * this function still enforces {@link guardUploadSession} server-side.
  */
 export async function addRecruitingMessageWithFile(
   threadId: string,
@@ -366,23 +371,24 @@ export async function addRecruitingMessageWithFile(
   file: File | Blob,
   fileName: string,
   caption?: string,
-): Promise<void> {
+): Promise<RecruitingFileUploadResult> {
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) {
     console.warn('addRecruitingMessageWithFile: not authenticated');
-    return;
+    return { ok: false, reason: 'not_authenticated' };
   }
   const sessionKey = `recruiting-chat:${threadId}`;
   const guard = await guardUploadSession(auth.user.id, sessionKey);
   if (!guard.ok) {
     console.warn('addRecruitingMessageWithFile: image rights confirmation required before upload', sessionKey);
-    return;
+    return { ok: false, reason: 'image_rights_not_confirmed' };
   }
 
   const path = await uploadRecruitingChatFile(threadId, file, fileName);
-  if (!path) return;
+  if (!path) return { ok: false, reason: 'upload_failed' };
   const mimeType = (file as File).type || 'application/octet-stream';
   addRecruitingMessage(threadId, from, caption ?? '', path, mimeType);
+  return { ok: true };
 }
 
 const STORAGE_MODEL_THREAD_IDS = 'ci_model_booking_thread_ids';

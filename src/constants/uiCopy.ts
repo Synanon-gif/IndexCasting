@@ -995,6 +995,8 @@ export const uiCopy = {
     saveError: 'Could not save photos. Please try again.',
     orPasteUrl: 'Or paste image URL',
     addUrl: '+ Add URL',
+    signInToUploadPhotos: 'Please sign in to upload photos.',
+    signInToAddPhotos: 'Please sign in to add photos.',
   },
   swipe: {
     headerLabel: 'The Swipe',
@@ -1069,6 +1071,9 @@ export const uiCopy = {
       'I confirm I have all necessary rights and consents for this upload.',
     chatFileRightsMissing:
       'Please confirm you have all necessary rights and consents for this upload.',
+    /** DB / network failure after checkbox tick — same as model media panel. */
+    imageRightsConfirmationFailed:
+      'Rights confirmation could not be recorded. Please try again.',
   },
   storage: {
     title: 'Storage',

@@ -6,7 +6,10 @@ import {
   ALLOWED_MIME_TYPES,
   logSecurityEvent,
 } from '../../lib/validation';
-import { hasRecentImageRightsConfirmation } from './gdprComplianceSupabase';
+import {
+  hasRecentImageRightsConfirmation,
+  IMAGE_RIGHTS_WINDOW_MINUTES,
+} from './gdprComplianceSupabase';
 import { logAction } from '../utils/logAction';
 import imageCompression from 'browser-image-compression';
 import { convertHeicToJpegWithStatus } from './imageUtils';
@@ -387,7 +390,11 @@ export async function uploadModelPhoto(
     console.warn('uploadModelPhoto: unauthenticated call rejected');
     return null;
   }
-  const hasConsent = await hasRecentImageRightsConfirmation(uploadUser.id, modelId);
+  const hasConsent = await hasRecentImageRightsConfirmation(
+    uploadUser.id,
+    modelId,
+    IMAGE_RIGHTS_WINDOW_MINUTES,
+  );
   if (!hasConsent) {
     console.warn('uploadModelPhoto: image rights not confirmed for model', modelId);
     void logSecurityEvent({ type: 'file_rejected', metadata: { service: 'modelPhotosSupabase', fn: 'uploadModelPhoto', reason: 'image_rights_not_confirmed', model_id: modelId } });
@@ -513,7 +520,11 @@ export async function uploadPrivateModelPhoto(
     console.warn('uploadPrivateModelPhoto: unauthenticated call rejected');
     return null;
   }
-  const hasConsent = await hasRecentImageRightsConfirmation(uploadUser.id, modelId);
+  const hasConsent = await hasRecentImageRightsConfirmation(
+    uploadUser.id,
+    modelId,
+    IMAGE_RIGHTS_WINDOW_MINUTES,
+  );
   if (!hasConsent) {
     console.warn('uploadPrivateModelPhoto: image rights not confirmed for model', modelId);
     void logSecurityEvent({ type: 'file_rejected', metadata: { service: 'modelPhotosSupabase', fn: 'uploadPrivateModelPhoto', reason: 'image_rights_not_confirmed', model_id: modelId } });

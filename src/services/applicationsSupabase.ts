@@ -3,7 +3,10 @@ import { splitProfileDisplayName } from '../utils/applicantNameFromProfile';
 import { validateFile, checkMagicBytes } from '../../lib/validation';
 import { convertHeicToJpegIfNeeded } from './imageUtils';
 import { toStorageUri, resolveStorageUrl } from '../storage/storageUrl';
-import { hasRecentImageRightsForSessionKey } from './gdprComplianceSupabase';
+import {
+  hasRecentImageRightsForSessionKey,
+  IMAGE_RIGHTS_WINDOW_MINUTES,
+} from './gdprComplianceSupabase';
 
 /**
  * Model-Bewerbungen (Apply) – in Supabase gespeichert.
@@ -28,7 +31,7 @@ export const APPLICATION_UPLOAD_SESSION_KEY = 'application-upload';
  *
  * @param userId — When provided, validates that the user confirmed image rights
  *   (via confirmImageRights with sessionKey=APPLICATION_UPLOAD_SESSION_KEY)
- *   within the last 15 minutes before allowing the upload.
+ *   within the same window as {@link IMAGE_RIGHTS_WINDOW_MINUTES}.
  */
 export async function uploadApplicationImage(
   file: Blob | File,
@@ -38,7 +41,11 @@ export async function uploadApplicationImage(
   // Service-side consent guard: if userId is provided, require a recent
   // image rights confirmation before accepting the upload.
   if (userId) {
-    const hasConsent = await hasRecentImageRightsForSessionKey(userId, APPLICATION_UPLOAD_SESSION_KEY);
+    const hasConsent = await hasRecentImageRightsForSessionKey(
+      userId,
+      APPLICATION_UPLOAD_SESSION_KEY,
+      IMAGE_RIGHTS_WINDOW_MINUTES,
+    );
     if (!hasConsent) {
       console.error('uploadApplicationImage: image rights not confirmed for user', userId);
       return null;
