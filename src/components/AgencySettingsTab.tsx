@@ -16,9 +16,11 @@ type Props = {
   agency: Agency | null;
   organizationId: string | null;
   onSaved: () => void;
+  /** `embedded`: inner content only — parent supplies `ScreenScrollView` (e.g. owner settings + metrics + delete). */
+  variant?: 'scroll' | 'embedded';
 };
 
-export const AgencySettingsTab: React.FC<Props> = ({ agency, organizationId, onSaved }) => {
+export const AgencySettingsTab: React.FC<Props> = ({ agency, organizationId, onSaved, variant = 'scroll' }) => {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [email, setEmail] = useState('');
@@ -39,8 +41,12 @@ export const AgencySettingsTab: React.FC<Props> = ({ agency, organizationId, onS
     if (!confirmed) return;
     setWithdrawingConsent(true);
     try {
-      await withdrawConsent('marketing', 'user_requested');
-      await withdrawConsent('analytics', 'user_requested');
+      const m = await withdrawConsent('marketing', 'user_requested');
+      const a = await withdrawConsent('analytics', 'user_requested');
+      if (!m || !a) {
+        showAppAlert(uiCopy.common.error, 'Could not withdraw consent. Please try again later.');
+        return;
+      }
       showAppAlert('Consent Withdrawn', 'Your optional consent has been withdrawn. It may take up to 24 hours to take full effect.');
     } catch (e) {
       console.error('AgencySettingsTab onWithdrawConsent error:', e);
@@ -56,8 +62,12 @@ export const AgencySettingsTab: React.FC<Props> = ({ agency, organizationId, onS
     setExportingData(true);
     try {
       if (Platform.OS === 'web') {
-        await downloadUserDataExport(user.id);
-        showAppAlert('Download started', 'Your data export has been downloaded as a JSON file.');
+        const okDl = await downloadUserDataExport(user.id);
+        if (okDl) {
+          showAppAlert('Download started', 'Your data export has been downloaded as a JSON file.');
+        } else {
+          showAppAlert(uiCopy.common.error, 'Could not export your data. Please try again later.');
+        }
       } else {
         const result = await exportUserData(user.id);
         if (result.ok) {
@@ -131,15 +141,13 @@ export const AgencySettingsTab: React.FC<Props> = ({ agency, organizationId, onS
   };
 
   if (!agency) {
-    return (
-      <ScreenScrollView>
-        <Text style={styles.meta}>{uiCopy.common.loading}</Text>
-      </ScreenScrollView>
-    );
+    const loading = <Text style={styles.meta}>{uiCopy.common.loading}</Text>;
+    if (variant === 'embedded') return loading;
+    return <ScreenScrollView>{loading}</ScreenScrollView>;
   }
 
-  return (
-    <ScreenScrollView>
+  const body = (
+    <>
       <Text style={styles.heading}>{uiCopy.agencySettings.screenTitle}</Text>
       <Text style={styles.meta}>{uiCopy.agencySettings.intro}</Text>
 
@@ -264,8 +272,11 @@ export const AgencySettingsTab: React.FC<Props> = ({ agency, organizationId, onS
       >
         <Text style={styles.gdprBtnLabel}>{withdrawingConsent ? 'Withdrawing…' : 'Withdraw optional consent'}</Text>
       </TouchableOpacity>
-    </ScreenScrollView>
+    </>
   );
+
+  if (variant === 'embedded') return body;
+  return <ScreenScrollView>{body}</ScreenScrollView>;
 };
 
 const styles = StyleSheet.create({

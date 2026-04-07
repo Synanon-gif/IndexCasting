@@ -631,13 +631,13 @@ export async function exportUserData(
 
 /**
  * Downloads the GDPR export as a JSON file in the browser.
- * Only works in a web context.
+ * Only works in a web context. Returns false if export failed.
  */
-export async function downloadUserDataExport(userId: string): Promise<void> {
+export async function downloadUserDataExport(userId: string): Promise<boolean> {
   const result = await exportUserData(userId);
   if (!result.ok) {
     console.error('[gdpr] downloadUserDataExport failed:', result.reason);
-    return;
+    return false;
   }
   const blob = new Blob(
     [JSON.stringify(result.data, null, 2)],
@@ -649,6 +649,7 @@ export async function downloadUserDataExport(userId: string): Promise<void> {
   a.download = `indexcasting-data-export-${userId}-${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
   URL.revokeObjectURL(url);
+  return true;
 }
 
 

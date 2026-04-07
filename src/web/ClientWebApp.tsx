@@ -4958,10 +4958,20 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
                   </Text>
                   <TouchableOpacity
                     onPress={async () => {
-                      const { data: { user } } = await import('../../lib/supabase').then(m => m.supabase.auth.getUser());
-                      if (!user) return;
-                      const { downloadUserDataExport } = await import('../services/gdprComplianceSupabase');
-                      await downloadUserDataExport(user.id);
+                      try {
+                        const { data: { user } } = await import('../../lib/supabase').then(m => m.supabase.auth.getUser());
+                        if (!user) return;
+                        const { downloadUserDataExport } = await import('../services/gdprComplianceSupabase');
+                        const okDl = await downloadUserDataExport(user.id);
+                        if (okDl) {
+                          showAppAlert('Download started', 'Your data export has been downloaded as a JSON file.');
+                        } else {
+                          showAppAlert(uiCopy.common.error, 'Could not export your data. Please try again later.');
+                        }
+                      } catch (e) {
+                        console.error('SettingsPanel download export error:', e);
+                        showAppAlert(uiCopy.common.error, 'Could not export your data. Please try again later.');
+                      }
                     }}
                     style={{ borderRadius: 999, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.sm, alignItems: 'center', marginBottom: spacing.sm }}
                   >
@@ -4978,10 +4988,19 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
                     onPress={async () => {
                       const confirmed = window?.confirm?.('Withdraw marketing & analytics consent? This does not delete your account or affect core platform functionality.');
                       if (!confirmed) return;
-                      const { withdrawConsent } = await import('../services/consentSupabase');
-                      await withdrawConsent('marketing', 'user_requested');
-                      await withdrawConsent('analytics', 'user_requested');
-                      alert('Your optional consent has been withdrawn. It may take up to 24 hours to take full effect.');
+                      try {
+                        const { withdrawConsent } = await import('../services/consentSupabase');
+                        const m = await withdrawConsent('marketing', 'user_requested');
+                        const a = await withdrawConsent('analytics', 'user_requested');
+                        if (!m || !a) {
+                          showAppAlert(uiCopy.common.error, 'Could not withdraw consent. Please try again later.');
+                          return;
+                        }
+                        showAppAlert('Consent withdrawn', 'Your optional consent has been withdrawn. It may take up to 24 hours to take full effect.');
+                      } catch (e) {
+                        console.error('SettingsPanel withdraw consent error:', e);
+                        showAppAlert(uiCopy.common.error, 'Could not withdraw consent. Please try again later.');
+                      }
                     }}
                     style={{ borderRadius: 999, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.sm, alignItems: 'center' }}
                   >

@@ -636,7 +636,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         )}
 
       {tab === 'settings' && profile?.org_member_role === 'owner' && (
-        <>
+        <ScreenScrollView>
           {agencyOrganizationId && (
             <OrgMetricsPanel
               orgId={agencyOrganizationId}
@@ -644,13 +644,13 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
             />
           )}
           <AgencySettingsTab
+            variant="embedded"
             agency={currentAgency}
             organizationId={agencyOrganizationId}
             onSaved={() => {
               void getAgencies().then(setAgencies);
             }}
           />
-          <ScreenScrollView>
             <View style={{ marginTop: spacing.md, marginBottom: spacing.lg }}>
               {/* Dissolve organization — owners only */}
               {agencyOrganizationId && !orgDissolved && (
@@ -748,8 +748,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                 </Text>
               </TouchableOpacity>
             </View>
-          </ScreenScrollView>
-        </>
+        </ScreenScrollView>
       )}
 
       {tab === 'settings' && profile?.org_member_role !== 'owner' && (
