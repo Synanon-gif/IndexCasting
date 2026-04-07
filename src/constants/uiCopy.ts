@@ -22,6 +22,32 @@ export const uiCopy = {
     retry: 'Retry',
     noAgencyContext: 'Your account is not linked to an agency yet. Please contact your administrator.',
   },
+  /** GDPR Art. 20 / 7 — agency settings tab + client web settings (English-only). */
+  privacyData: {
+    sectionTitle: 'Privacy & your data (GDPR)',
+    art20Body:
+      'Under GDPR Art. 20 you have the right to receive a copy of your personal data in a portable format.',
+    downloadMyData: 'Download my data',
+    preparingExport: 'Preparing export…',
+    art7Body:
+      'Under GDPR Art. 7, you may withdraw your consent to optional data processing (marketing, analytics) at any time. This does not affect the lawfulness of processing already carried out.',
+    withdrawOptionalConsent: 'Withdraw optional consent',
+    withdrawingConsent: 'Withdrawing…',
+    withdrawConfirmWeb:
+      'Withdraw optional marketing & analytics consent? This does not affect core platform functionality.',
+    withdrawConfirmClientWeb:
+      'Withdraw marketing & analytics consent? This does not delete your account or affect core platform functionality.',
+    consentWithdrawnTitle: 'Consent withdrawn',
+    consentWithdrawnBody:
+      'Your optional consent has been withdrawn. It may take up to 24 hours to take full effect.',
+    downloadStartedTitle: 'Download started',
+    downloadStartedBody: 'Your data export has been downloaded as a JSON file.',
+    exportNativeTitle: 'Data export',
+    exportNativeBody:
+      'Your personal data export was prepared. Please use the web version of IndexCasting to download your data as a file.',
+    couldNotExport: 'Could not export your data. Please try again later.',
+    couldNotWithdrawConsent: 'Could not withdraw consent. Please try again later.',
+  },
   alerts: {
     scheduleUpdated: 'The booking time was updated.',
     scheduleSaveFailed: 'Could not save the booking time.',

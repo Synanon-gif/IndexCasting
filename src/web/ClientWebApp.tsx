@@ -4652,7 +4652,7 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
   realClientId,
   onClose,
 }) => {
-  const { signOut, profile, updateDisplayName } = useAuth();
+  const { signOut, profile, updateDisplayName, refreshProfile } = useAuth();
   const [displayName, setDisplayName] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [phone, setPhone] = useState('');
@@ -4795,6 +4795,7 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
             setDissolvingOrg(false);
             if (result.ok) {
               setOrgDissolved(true);
+              void refreshProfile();
               Alert.alert(uiCopy.accountDeletion.dissolveOrgTitle, uiCopy.accountDeletion.dissolveOrgSuccess);
             } else {
               Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.dissolveOrgFailed);
@@ -4951,10 +4952,10 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
                 {/* ── GDPR Data Export + Consent Withdrawal (Art. 20 + Art. 7) ─── */}
                 <View style={{ marginTop: spacing.lg, paddingTop: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border }}>
                   <Text style={{ ...typography.label, fontSize: 12, color: colors.textPrimary, marginBottom: 4 }}>
-                    Privacy & Your Data
+                    {uiCopy.privacyData.sectionTitle}
                   </Text>
                   <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm }}>
-                    Under GDPR Art. 20 you have the right to receive a copy of your personal data in a portable format.
+                    {uiCopy.privacyData.art20Body}
                   </Text>
                   <TouchableOpacity
                     onPress={async () => {
@@ -4964,48 +4965,47 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
                         const { downloadUserDataExport } = await import('../services/gdprComplianceSupabase');
                         const okDl = await downloadUserDataExport(user.id);
                         if (okDl) {
-                          showAppAlert('Download started', 'Your data export has been downloaded as a JSON file.');
+                          showAppAlert(uiCopy.privacyData.downloadStartedTitle, uiCopy.privacyData.downloadStartedBody);
                         } else {
-                          showAppAlert(uiCopy.common.error, 'Could not export your data. Please try again later.');
+                          showAppAlert(uiCopy.common.error, uiCopy.privacyData.couldNotExport);
                         }
                       } catch (e) {
                         console.error('SettingsPanel download export error:', e);
-                        showAppAlert(uiCopy.common.error, 'Could not export your data. Please try again later.');
+                        showAppAlert(uiCopy.common.error, uiCopy.privacyData.couldNotExport);
                       }
                     }}
                     style={{ borderRadius: 999, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.sm, alignItems: 'center', marginBottom: spacing.sm }}
                   >
                     <Text style={{ ...typography.label, fontSize: 12, color: colors.textSecondary }}>
-                      Download my data
+                      {uiCopy.privacyData.downloadMyData}
                     </Text>
                   </TouchableOpacity>
 
-                  {/* Consent Withdrawal (GDPR Art. 7) */}
                   <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm, marginTop: spacing.sm }}>
-                    Under GDPR Art. 7 you may withdraw your consent to optional data processing at any time. This does not affect the lawfulness of processing already carried out.
+                    {uiCopy.privacyData.art7Body}
                   </Text>
                   <TouchableOpacity
                     onPress={async () => {
-                      const confirmed = window?.confirm?.('Withdraw marketing & analytics consent? This does not delete your account or affect core platform functionality.');
+                      const confirmed = window?.confirm?.(uiCopy.privacyData.withdrawConfirmClientWeb);
                       if (!confirmed) return;
                       try {
                         const { withdrawConsent } = await import('../services/consentSupabase');
                         const m = await withdrawConsent('marketing', 'user_requested');
                         const a = await withdrawConsent('analytics', 'user_requested');
                         if (!m || !a) {
-                          showAppAlert(uiCopy.common.error, 'Could not withdraw consent. Please try again later.');
+                          showAppAlert(uiCopy.common.error, uiCopy.privacyData.couldNotWithdrawConsent);
                           return;
                         }
-                        showAppAlert('Consent withdrawn', 'Your optional consent has been withdrawn. It may take up to 24 hours to take full effect.');
+                        showAppAlert(uiCopy.privacyData.consentWithdrawnTitle, uiCopy.privacyData.consentWithdrawnBody);
                       } catch (e) {
                         console.error('SettingsPanel withdraw consent error:', e);
-                        showAppAlert(uiCopy.common.error, 'Could not withdraw consent. Please try again later.');
+                        showAppAlert(uiCopy.common.error, uiCopy.privacyData.couldNotWithdrawConsent);
                       }
                     }}
                     style={{ borderRadius: 999, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.sm, alignItems: 'center' }}
                   >
                     <Text style={{ ...typography.label, fontSize: 12, color: colors.textSecondary }}>
-                      Withdraw optional consent
+                      {uiCopy.privacyData.withdrawOptionalConsent}
                     </Text>
                   </TouchableOpacity>
                 </View>

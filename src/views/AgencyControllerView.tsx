@@ -199,7 +199,7 @@ type AgencyControllerViewProps = {
 export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   onBackToRoleSelection,
 }) => {
-  const { signOut, profile, session } = useAuth();
+  const { signOut, profile, session, refreshProfile } = useAuth();
   const [tab, setTab] = useState<AgencyTab>('dashboard');
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [dissolvingOrg, setDissolvingOrg] = useState(false);
@@ -673,6 +673,8 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                                 const result = await dissolveOrganization(agencyOrganizationId);
                                 if (result.ok) {
                                   setOrgDissolved(true);
+                                  void refreshProfile();
+                                  void getAgencies().then(setAgencies);
                                   Alert.alert(uiCopy.accountDeletion.dissolveOrgTitle, uiCopy.accountDeletion.dissolveOrgSuccess);
                                 } else {
                                   Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.dissolveOrgFailed);

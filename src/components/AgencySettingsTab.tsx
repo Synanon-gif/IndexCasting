@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Platform, Alert } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { uiCopy } from '../constants/uiCopy';
 import { AGENCY_SEGMENT_TYPES } from '../constants/agencyTypes';
@@ -34,26 +34,36 @@ export const AgencySettingsTab: React.FC<Props> = ({ agency, organizationId, onS
   const [exportingData, setExportingData] = useState(false);
   const [withdrawingConsent, setWithdrawingConsent] = useState(false);
 
-  const onWithdrawConsent = async () => {
-    const confirmed = Platform.OS === 'web'
-      ? (window as Window & typeof globalThis).confirm?.('Withdraw optional marketing & analytics consent? This does not affect core platform functionality.')
-      : true;
-    if (!confirmed) return;
+  const runWithdrawConsent = async () => {
     setWithdrawingConsent(true);
     try {
       const m = await withdrawConsent('marketing', 'user_requested');
       const a = await withdrawConsent('analytics', 'user_requested');
       if (!m || !a) {
-        showAppAlert(uiCopy.common.error, 'Could not withdraw consent. Please try again later.');
+        showAppAlert(uiCopy.common.error, uiCopy.privacyData.couldNotWithdrawConsent);
         return;
       }
-      showAppAlert('Consent Withdrawn', 'Your optional consent has been withdrawn. It may take up to 24 hours to take full effect.');
+      showAppAlert(uiCopy.privacyData.consentWithdrawnTitle, uiCopy.privacyData.consentWithdrawnBody);
     } catch (e) {
       console.error('AgencySettingsTab onWithdrawConsent error:', e);
-      showAppAlert(uiCopy.common.error, 'Could not withdraw consent. Please try again later.');
+      showAppAlert(uiCopy.common.error, uiCopy.privacyData.couldNotWithdrawConsent);
     } finally {
       setWithdrawingConsent(false);
     }
+  };
+
+  const onWithdrawConsent = () => {
+    const pd = uiCopy.privacyData;
+    if (Platform.OS === 'web') {
+      const confirmed = (window as Window & typeof globalThis).confirm?.(pd.withdrawConfirmWeb);
+      if (!confirmed) return;
+      void runWithdrawConsent();
+      return;
+    }
+    Alert.alert(pd.withdrawOptionalConsent, pd.withdrawConfirmWeb, [
+      { text: uiCopy.common.cancel, style: 'cancel' },
+      { text: uiCopy.common.confirm, onPress: () => void runWithdrawConsent() },
+    ]);
   };
 
   const onExportData = async () => {
@@ -64,21 +74,21 @@ export const AgencySettingsTab: React.FC<Props> = ({ agency, organizationId, onS
       if (Platform.OS === 'web') {
         const okDl = await downloadUserDataExport(user.id);
         if (okDl) {
-          showAppAlert('Download started', 'Your data export has been downloaded as a JSON file.');
+          showAppAlert(uiCopy.privacyData.downloadStartedTitle, uiCopy.privacyData.downloadStartedBody);
         } else {
-          showAppAlert(uiCopy.common.error, 'Could not export your data. Please try again later.');
+          showAppAlert(uiCopy.common.error, uiCopy.privacyData.couldNotExport);
         }
       } else {
         const result = await exportUserData(user.id);
         if (result.ok) {
-          showAppAlert('Data Export', 'Your personal data export was prepared. Please use the web version of IndexCasting to download your data as a file.');
+          showAppAlert(uiCopy.privacyData.exportNativeTitle, uiCopy.privacyData.exportNativeBody);
         } else {
-          showAppAlert(uiCopy.common.error, 'Could not export your data. Please try again later.');
+          showAppAlert(uiCopy.common.error, uiCopy.privacyData.couldNotExport);
         }
       }
     } catch (e) {
       console.error('AgencySettingsTab onExportData error:', e);
-      showAppAlert(uiCopy.common.error, 'Could not export your data. Please try again later.');
+      showAppAlert(uiCopy.common.error, uiCopy.privacyData.couldNotExport);
     } finally {
       setExportingData(false);
     }
@@ -250,27 +260,27 @@ export const AgencySettingsTab: React.FC<Props> = ({ agency, organizationId, onS
 
       {/* ── GDPR / Privacy ──────────────────────────────────────── */}
       <View style={styles.gdprDivider} />
-      <Text style={styles.section}>Privacy & Your Data (GDPR)</Text>
-      <Text style={styles.hint}>
-        Under GDPR Art. 20 you have the right to receive a copy of your personal data.
-      </Text>
+      <Text style={styles.section}>{uiCopy.privacyData.sectionTitle}</Text>
+      <Text style={styles.hint}>{uiCopy.privacyData.art20Body}</Text>
       <TouchableOpacity
         style={[styles.gdprBtn, exportingData && { opacity: 0.6 }]}
         disabled={exportingData}
         onPress={() => void onExportData()}
       >
-        <Text style={styles.gdprBtnLabel}>{exportingData ? 'Preparing export…' : 'Download my data'}</Text>
+        <Text style={styles.gdprBtnLabel}>
+          {exportingData ? uiCopy.privacyData.preparingExport : uiCopy.privacyData.downloadMyData}
+        </Text>
       </TouchableOpacity>
 
-      <Text style={styles.hint}>
-        Under GDPR Art. 7, you may withdraw your consent to optional data processing (marketing, analytics) at any time.
-      </Text>
+      <Text style={styles.hint}>{uiCopy.privacyData.art7Body}</Text>
       <TouchableOpacity
         style={[styles.gdprBtn, withdrawingConsent && { opacity: 0.6 }]}
         disabled={withdrawingConsent}
-        onPress={() => void onWithdrawConsent()}
+        onPress={() => onWithdrawConsent()}
       >
-        <Text style={styles.gdprBtnLabel}>{withdrawingConsent ? 'Withdrawing…' : 'Withdraw optional consent'}</Text>
+        <Text style={styles.gdprBtnLabel}>
+          {withdrawingConsent ? uiCopy.privacyData.withdrawingConsent : uiCopy.privacyData.withdrawOptionalConsent}
+        </Text>
       </TouchableOpacity>
     </>
   );
