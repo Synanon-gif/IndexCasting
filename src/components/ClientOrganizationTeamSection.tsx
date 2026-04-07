@@ -128,6 +128,7 @@ export const ClientOrganizationTeamSection: React.FC<{
               type: 'org_invitation',
               to: inviteEmail.trim(),
               token: row.token,
+              organization_id: organizationId,
               orgName: profile?.company_name || profile?.display_name || undefined,
               inviterName: profile?.display_name || undefined,
             },

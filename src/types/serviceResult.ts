@@ -1,9 +1,12 @@
 /**
- * Standard service-layer result for Account / Org / GDPR flows (and extensions).
- * Prefer over bare booleans so callers always branch on `if (!res.ok)`.
+ * Option C (hybrid): **new or refactored** service exports may return `ServiceResult`
+ * so callers branch with `if (!res.ok)`. Existing exports keep **Option A** (`boolean` /
+ * `null` / `[]`) — do not mix return shapes inside one function.
  *
- * Note: `gdprComplianceSupabase` still uses `ComplianceResult` with `reason` on failure
- * for historical call sites; new code in this package should use `ServiceResult`.
+ * Optional wrappers: `myActionSafe()` calls `myAction()` (Option A) and maps to
+ * `ServiceResult` without changing legacy call sites.
+ *
+ * Legacy: `gdprComplianceSupabase` may use `ComplianceResult` where documented.
  */
 export type ServiceResult<T = undefined> =
   | (T extends undefined ? { ok: true } : { ok: true; data: T })

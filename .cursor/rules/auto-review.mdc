@@ -50,6 +50,26 @@ vollständig durchlaufen werden, **bevor** Code committed oder weitergeschrieben
 - **Veralteter Source-Wert `'model'`:** Neuer Code übergibt `source='model'` an `upsertModelLocation` oder `model_locations` INSERT? → Blocker (Risiko 17) — `'model'` ist deprecated und durch DB CHECK-Constraint blockiert.
 - **4. Source-Wert hinzugefügt ohne vollständige Aktualisierung:** Neuer Source-Wert ohne: CHECK constraint + upsert Auth-Split + delete_model_location_source + TypeScript `LocationSource` Union + DISTINCT ON ORDER BY + alle Tests? → Blocker (Risiko 17).
 - **`get_territories_for_agency_roster` Guard ohne Bookers-Fallback:** SECURITY DEFINER Funktion die Agency-Zugehörigkeit prüft, ohne `bookers`-Tabelle zu inkludieren? → Warnung — Legacy Bookers werden mit `not_in_agency` (HTTP 400) ausgesperrt.
+- **Service-Layer Contract-Mix:** Neue Funktion die sowohl `return true` als auch `return { ok: true }` nutzt? → Blocker — Option A **oder** `ServiceResult`, nie gemischt (siehe `system-invariants.mdc` Option C).
+
+---
+
+## 2b. Audit-Verifikation (Live-DB, bei Security-Release)
+
+```sql
+-- FOR ALL auf Watchlist-Tabellen (Erwartung: 0 Zeilen)
+SELECT tablename, policyname FROM pg_policies
+WHERE schemaname = 'public' AND cmd = 'ALL'
+  AND tablename IN ('model_embeddings','model_locations','model_agency_territories','calendar_entries','model_minor_consent');
+
+-- profiles.is_admin in Policy-qual (Erwartung: 0 Zeilen)
+SELECT count(*) FROM pg_policies
+WHERE schemaname='public' AND (qual ILIKE '%is_admin = true%' OR qual ILIKE '%is_admin=true%');
+
+-- MAT Self-Reference (Erwartung: 0)
+SELECT count(*) FROM pg_policies WHERE tablename='model_agency_territories'
+  AND (qual ILIKE '%self_mat%' OR qual ILIKE '%from public.model_agency_territories %');
+```
 
 ---
 

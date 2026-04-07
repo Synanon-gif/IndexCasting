@@ -33,7 +33,15 @@ interface SendInvitePayload {
   inviterName?: string;
   orgName?: string;
   modelName?: string;
+  /** Disambiguates multi-org users: must be one of the caller's organization_ids from get_my_org_context(). */
+  organization_id?: string;
 }
+
+type OrgCtxRow = {
+  organization_id?: string;
+  org_member_role?: string;
+  org_type?: string;
+};
 
 // ─── HTML Email Templates ──────────────────────────────────────────────────
 
@@ -231,7 +239,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     });
   }
 
-  const { type, to, token, inviterName, orgName, modelName } = body;
+  const { type, to, token, inviterName, orgName, modelName, organization_id: bodyOrgId } = body;
 
   if (!type || !to || !token) {
     return new Response(JSON.stringify({ error: 'missing_required_fields' }), {
@@ -270,8 +278,32 @@ Deno.serve(async (req: Request): Promise<Response> => {
       });
     }
     const orgCtxRows = Array.isArray(orgCtxRaw) ? orgCtxRaw : (orgCtxRaw ? [orgCtxRaw] : []);
-    // Use oldest-joined org (same deterministic rule as can_access_platform).
-    const orgCtx = orgCtxRows[0] as { org_member_role?: string; org_type?: string } | undefined;
+    const rows = orgCtxRows as OrgCtxRow[];
+
+    let orgCtx: OrgCtxRow | undefined;
+    const rawOrgId = typeof bodyOrgId === 'string' ? bodyOrgId.trim() : '';
+    const requestedOrg = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawOrgId)
+      ? rawOrgId
+      : undefined;
+
+    if (requestedOrg) {
+      orgCtx = rows.find((r) => r.organization_id === requestedOrg);
+      if (!orgCtx) {
+        console.warn('[send-invite] organization_id not in caller memberships', { userId: user.id, requestedOrg });
+        return new Response(JSON.stringify({ error: 'not_member_of_organization' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    } else {
+      if (rows.length > 1) {
+        console.warn(
+          '[send-invite] caller has multiple org memberships; using oldest row — pass organization_id to disambiguate',
+          { userId: user.id, count: rows.length },
+        );
+      }
+      orgCtx = rows[0];
+    }
 
     if (type === 'org_invitation') {
       // Only owners may invite — Regel 8: "Agency Owner: Als einzige Rolle: Bookers einladen"

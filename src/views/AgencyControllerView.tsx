@@ -546,6 +546,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
           models={fullModels}
           agencyId={currentAgencyId}
           agencyName={currentAgency?.name ?? null}
+          inviteOrganizationId={agencyOrganizationId ?? profile?.organization_id ?? null}
           onRefresh={() => getModelsForAgencyFromSupabase(currentAgencyId).then(setFullModels)}
           focusModelId={searchModelId}
           onFocusConsumed={() => setSearchModelId(null)}
@@ -1746,10 +1747,12 @@ const MyModelsTab: React.FC<{
   models: SupabaseModel[];
   agencyId: string;
   agencyName?: string | null;
+  /** Pass-through for send-invite (model_claim) — disambiguates multi-org bookers. */
+  inviteOrganizationId?: string | null;
   onRefresh: () => void;
   focusModelId?: string | null;
   onFocusConsumed?: () => void;
-}> = ({ models, agencyId, agencyName, onRefresh, focusModelId, onFocusConsumed }) => {
+}> = ({ models, agencyId, agencyName, inviteOrganizationId, onRefresh, focusModelId, onFocusConsumed }) => {
   const [selectedModel, setSelectedModel] = useState<SupabaseModel | null>(null);
   const [selectedModelLocation, setSelectedModelLocation] = useState<ModelLocation | null>(null);
   const [filters, setFilters] = useState<ModelFilters>(defaultModelFilters);
@@ -2117,6 +2120,7 @@ const MyModelsTab: React.FC<{
                 type: 'model_claim',
                 to: emailTrim,
                 token: claimRes.token,
+                organization_id: inviteOrganizationId ?? undefined,
                 modelName: modelDisplayName,
                 orgName: agencyName || undefined,
               },
@@ -4718,6 +4722,7 @@ const OrganizationTeamTab: React.FC<{
             type: 'org_invitation',
             to: inviteEmail.trim(),
             token: row.token,
+            organization_id: organizationId,
             orgName: orgName || undefined,
             inviterName: profile?.display_name || undefined,
           },

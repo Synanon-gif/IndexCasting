@@ -74,6 +74,17 @@ Wenn ein DB-Constraint umbenannt wird, MÜSSEN alle referenzierenden Funktionen 
 - Neue Org-Kontext-RPCs dürfen kein `LIMIT 1` ohne expliziten Kommentar warum es sicher ist
 - **Ausnahme:** `LIMIT 1` in SECURITY DEFINER Scope Guards für Sub-Resource-Lookups NACH verifiziertem Guard ist erlaubt (z.B. `SELECT id FROM organizations WHERE agency_id = p_agency_id LIMIT 1` nachdem p_agency_id per Membership-Check verifiziert wurde) — muss kommentiert sein
 
+## EDGE `send-invite` — Multi-Org (2026-04-07)
+
+- Request-Body darf optional `organization_id` (UUID) enthalten. Wenn gesetzt, muss diese ID in einer Zeile von `get_my_org_context()` des authentifizierten Callers vorkommen; sonst **403** `not_member_of_organization` (kein Cross-Org-Invite).
+- Fehlt `organization_id` und der Caller hat **mehrere** Memberships, wählt die Funktion deterministisch die **älteste** Zeile (wie AuthContext) und loggt **warn** — Clients sollen `organization_id` immer mitsenden, wenn bekannt (`profile.organization_id` / aktives Team).
+
+## SERVICE LAYER — Option A + `ServiceResult` (Option C, Hybrid)
+
+- Bestehende Exporte in `src/services/`: **Option A** beibehalten — `boolean` / `null` / `[]` bei Fehler, **kein** `throw` im Normalflow (Ausnahmen nur wo historisch dokumentiert).
+- Neue oder bewusst refactorierte Exporte: **`ServiceResult<T>`** aus [`src/types/serviceResult.ts`](src/types/serviceResult.ts) — Rückgabe **entweder** durchgängig Option A **oder** durchgängig `ServiceResult`; **nie** beides in derselben Funktion mischen.
+- Optional: Wrapper `functionNameSafe()` ruft die Option-A-Implementierung auf und mappt auf `ServiceResult`, ohne bestehende Call-Sites zu ändern.
+
 ## MIGRATIONS-DEPLOYMENT (unveränderlich)
 
 - Nur Dateien in `supabase/migrations/` werden vom Supabase CLI **automatisch deployed**
