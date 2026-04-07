@@ -485,7 +485,7 @@ export function subscribeToConversation(
  *
  * Validates MIME type, file size, and magic bytes before upload.
  * Call {@link confirmImageRights} with `sessionKey` = {@link buildMessengerUploadSessionKey}
- * before this; this function enforces {@link guardUploadSession}.
+ * before this; this function enforces {@link guardUploadSession} (client-side DB check).
  */
 export async function uploadChatFile(
   conversationId: string,

@@ -26,10 +26,15 @@ Single source of truth for **which uploads** must call `confirmImageRights` (or 
 2. **Time window:** use [`IMAGE_RIGHTS_WINDOW_MINUTES`](../../src/services/gdprComplianceSupabase.ts) for all `hasRecent*` / `guardUploadSession` / `guardImageUpload` checks (must match `confirmImageRights` pre-insert window).
 3. **New upload surfaces** must add a row to this matrix and implement UI checkbox + `confirmImageRights` (or document an approved exception).
 
+## Storage vs. `image_rights_confirmations` (`chat-files`)
+
+- **INSERT** on bucket `chat-files` is gated by `public.storage_can_insert_chat_files_object(bucket_id, name)` ([`20260425_chat_files_storage_insert_hardening.sql`](../../supabase/migrations/20260425_chat_files_storage_insert_hardening.sql)): the object path must be under `chat/{conversation_id}/`, `recruiting/{thread_id}/`, or `options/{option_request_id}/`, and the caller must have the same access that policy logic expects (conversation org/participant, thread member/applicant/booker, or `option_request_visible_to_me`).
+- That Storage policy does **not** query `image_rights_confirmations`. Session-scoped consent remains **client-enforced** in services (`confirmImageRights` + `guardUploadSession` / `hasRecent*` immediately before `storage.upload`).
+
 ## Error / API contract (ServiceResult vs Option A)
 
 - **Existing** exports in `src/services/` stay **Option A** (`null` / `false` / `[]` on failure, no throw) per [.cursorrules](../../.cursorrules).
-- **New** upload-related APIs should prefer **`ServiceResult<T>`** from [`src/types/serviceResult.ts`](../../src/types/serviceResult.ts) with stable `reason` strings; optional `errorCode` in payload if needed.
+- **New** upload-related APIs should prefer **`ServiceResult<T>`** from [`src/types/serviceResult.ts`](../../src/types/serviceResult.ts) with stable `error` strings; optional `errorCode` in payload if needed.
 - Do not mix return shapes within one function.
 
 ## Related

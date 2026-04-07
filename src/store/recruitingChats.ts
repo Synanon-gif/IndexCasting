@@ -363,7 +363,7 @@ export type RecruitingFileUploadResult =
 /**
  * Upload a file for a recruiting chat thread and add a message with the attachment.
  * Call {@link confirmImageRights} with the same `recruiting-chat:${threadId}` session key before this;
- * this function still enforces {@link guardUploadSession} server-side.
+ * this function still enforces {@link guardUploadSession} (client-side DB check before upload).
  */
 export async function addRecruitingMessageWithFile(
   threadId: string,

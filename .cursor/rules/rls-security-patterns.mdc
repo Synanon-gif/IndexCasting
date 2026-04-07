@@ -496,12 +496,13 @@ WHERE lower(trim(email)) = lower(trim(u_email)) AND user_id IS NULL;
 **Richtig:**
 ```typescript
 // IMMER: Token-basiertes Claim-System
-// 1. Agency generiert Token: await generateModelClaimToken(modelId)
+// 1. Agency generiert Token: await generateModelClaimToken(modelId, organizationId?)
+//    (optional organizations.id pins unclaimed models for multi-org bookers — see 20260424)
 // 2. Agency sendet Token an Model (out-of-band)
 // 3. Model aktiviert Account: await claimModelByToken(token)
 ```
 
-**Backend:** `generate_model_claim_token(p_model_id)` + `claim_model_by_token(p_token)` RPCs (20260413).
+**Backend:** `generate_model_claim_token(p_model_id, p_organization_id default null)` + `claim_model_by_token(p_token)` RPCs (20260413; org param 20260424).
 `link_model_by_email()` ist DEPRECATED — nur noch für bereits-verknüpfte Models (user_id IS NOT NULL), entfernen sobald alle Agencies auf Token umgestellt sind.
 
 **Erlaubte Ausnahme (kein Blocker):** `linkModelByEmail()` in den bestehenden `signIn`/`signUp`

@@ -2113,13 +2113,13 @@ const MyModelsTab: React.FC<{
       if (emailTrim) {
         try {
           const claimRes = await generateModelClaimToken(createdModelId, inviteOrganizationId ?? undefined);
-          if ('token' in claimRes) {
+          if (claimRes.ok) {
             const { data: { session: currentSession } } = await supabase.auth.getSession();
             const invokeRes = await supabase.functions.invoke('send-invite', {
               body: {
                 type: 'model_claim',
                 to: emailTrim,
-                token: claimRes.token,
+                token: claimRes.data.token,
                 organization_id: inviteOrganizationId ?? undefined,
                 modelName: modelDisplayName,
                 orgName: agencyName || undefined,

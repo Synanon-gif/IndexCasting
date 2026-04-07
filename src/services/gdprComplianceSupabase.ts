@@ -298,7 +298,8 @@ export async function hasRecentImageRightsForSessionKey(
 }
 
 /**
- * Server-side guard for session-scoped uploads (chat attachments, option docs).
+ * Client-enforced guard for session-scoped uploads (chat attachments, option docs):
+ * reads `image_rights_confirmations` via PostgREST/RLS (not Storage or an Edge Function).
  * Call after {@link confirmImageRights} with the same `sessionKey`.
  */
 export async function guardUploadSession(

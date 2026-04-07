@@ -29,27 +29,28 @@ export const APPLICATION_UPLOAD_SESSION_KEY = 'application-upload';
  * or null on failure. Use resolveApplicationImageUrl() to get a signed URL
  * for display.
  *
- * @param userId — When provided, validates that the user confirmed image rights
- *   (via confirmImageRights with sessionKey=APPLICATION_UPLOAD_SESSION_KEY)
- *   within the same window as {@link IMAGE_RIGHTS_WINDOW_MINUTES}.
+ * Requires a signed-in user. Enforces a recent image-rights confirmation for
+ * {@link APPLICATION_UPLOAD_SESSION_KEY} within {@link IMAGE_RIGHTS_WINDOW_MINUTES}
+ * (call {@link confirmImageRights} with that session key before upload).
  */
 export async function uploadApplicationImage(
   file: Blob | File,
   slot: string,
-  userId?: string,
 ): Promise<string | null> {
-  // Service-side consent guard: if userId is provided, require a recent
-  // image rights confirmation before accepting the upload.
-  if (userId) {
-    const hasConsent = await hasRecentImageRightsForSessionKey(
-      userId,
-      APPLICATION_UPLOAD_SESSION_KEY,
-      IMAGE_RIGHTS_WINDOW_MINUTES,
-    );
-    if (!hasConsent) {
-      console.error('uploadApplicationImage: image rights not confirmed for user', userId);
-      return null;
-    }
+  const { data: userData, error: userErr } = await supabase.auth.getUser();
+  if (userErr || !userData.user) {
+    console.error('uploadApplicationImage: not authenticated', userErr);
+    return null;
+  }
+  const userId = userData.user.id;
+  const hasConsent = await hasRecentImageRightsForSessionKey(
+    userId,
+    APPLICATION_UPLOAD_SESSION_KEY,
+    IMAGE_RIGHTS_WINDOW_MINUTES,
+  );
+  if (!hasConsent) {
+    console.error('uploadApplicationImage: image rights not confirmed for user', userId);
+    return null;
   }
 
   file = await convertHeicToJpegIfNeeded(file);

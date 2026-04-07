@@ -212,12 +212,12 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         const file = fileRefs.current[slot];
         const dataUrl = images[slot];
         if (file) {
-          const url = await uploadApplicationImage(file, slot, applicantUserId);
+          const url = await uploadApplicationImage(file, slot);
           if (url) imageUrls[slot] = url;
           else uploadFailures.push(slot);
         } else if (dataUrl && dataUrl.startsWith('data:image')) {
           const blob = dataURLtoBlob(dataUrl);
-          const url = await uploadApplicationImage(blob, slot, applicantUserId);
+          const url = await uploadApplicationImage(blob, slot);
           if (url) imageUrls[slot] = url;
           else uploadFailures.push(slot);
         }

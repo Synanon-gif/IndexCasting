@@ -530,7 +530,7 @@ export async function claimModelByToken(
 export async function generateModelClaimToken(
   modelId: string,
   organizationId?: string | null,
-): Promise<{ token: string } | { error: string }> {
+): Promise<ServiceResult<{ token: string }>> {
   try {
     const trimmedOrg = organizationId?.trim();
     const { data, error } = await supabase.rpc('generate_model_claim_token', {
@@ -539,13 +539,13 @@ export async function generateModelClaimToken(
     });
     if (error) {
       console.error('generateModelClaimToken error:', error);
-      return { error: error.message };
+      return serviceErr(error.message ?? 'rpc_error');
     }
-    if (!data) return { error: 'no_token_returned' };
-    return { token: data as string };
+    if (!data) return serviceErr('no_token_returned');
+    return serviceOkData({ token: data as string });
   } catch (e) {
     console.error('generateModelClaimToken exception:', e);
-    return { error: String(e) };
+    return serviceErr(e instanceof Error ? e.message : 'exception');
   }
 }
 
