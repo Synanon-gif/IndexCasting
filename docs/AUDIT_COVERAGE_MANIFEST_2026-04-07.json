@@ -1,7 +1,9 @@
 {
-  "generated_at": "2026-04-07T12:29:33.826Z",
+  "generated_at": "2026-04-07T12:39:16.376Z",
   "iso_date": "2026-04-07",
   "total_paths": 592,
+  "manifest_fingerprint": "7625b76a25fabb398ed28ffd87ec75941c6e8b7f130866f408d6219723a30380",
+  "drift_manifest_fingerprint": "42c5750e48addc74f9dc7d2709cd6e1c3abb2f36f733668d78210bb3c6675cf4",
   "gates": {
     "typecheck": {
       "ok": true,
@@ -24,17 +26,251 @@
     "watchlist_for_all": 5,
     "profiles_in_policy_qual": 10
   },
+  "dependency_graph": {
+    "node_count": 207,
+    "edge_count": 587,
+    "detail_file": "AUDIT_DEPENDENCY_GRAPH.json"
+  },
+  "export_inventory": {
+    "exported_symbol_count": 648,
+    "internal_export_usage_entries": 429,
+    "detail_file": "AUDIT_EXPORT_MAP.json"
+  },
+  "rule_engine": {
+    "supabase_from": {
+      "counts": {
+        "allowed": 25,
+        "exception": 2,
+        "forbidden": 2
+      },
+      "hits": [
+        {
+          "path": "lib/security/logger.ts",
+          "line": 45,
+          "classification": "allowed",
+          "rule_id": "supabase_from_service_layer",
+          "note": "Direct table access in service/lib (allowed)."
+        },
+        {
+          "path": "src/context/AuthContext.tsx",
+          "line": 494,
+          "classification": "exception",
+          "rule_id": "supabase_from_auth_context",
+          "note": "Auth bootstrap path (documented exception)."
+        },
+        {
+          "path": "src/context/AuthContext.tsx",
+          "line": 752,
+          "classification": "exception",
+          "rule_id": "supabase_from_auth_context",
+          "note": "Auth bootstrap path (documented exception)."
+        },
+        {
+          "path": "src/services/__tests__/mediaslideSyncService.test.ts",
+          "line": 66,
+          "classification": "allowed",
+          "rule_id": "supabase_from_service_layer",
+          "note": "Direct table access in service/lib (allowed)."
+        },
+        {
+          "path": "src/services/__tests__/optionRequestsCounterOffer.test.ts",
+          "line": 62,
+          "classification": "allowed",
+          "rule_id": "supabase_from_service_layer",
+          "note": "Direct table access in service/lib (allowed)."
+        },
+        {
+          "path": "src/services/__tests__/optionRequestsCounterOffer.test.ts",
+          "line": 148,
+          "classification": "allowed",
+          "rule_id": "supabase_from_service_layer",
+          "note": "Direct table access in service/lib (allowed)."
+        },
+        {
+          "path": "src/services/__tests__/subscriptionSupabase.test.ts",
+          "line": 59,
+          "classification": "allowed",
+          "rule_id": "supabase_from_service_layer",
+          "note": "Direct table access in service/lib (allowed)."
+        },
+        {
+          "path": "src/services/adminSupabase.ts",
+          "line": 127,
+          "classification": "allowed",
+          "rule_id": "supabase_from_service_layer",
+          "note": "Direct table access in service/lib (allowed)."
+        },
+        {
+          "path": "src/services/adminSupabase.ts",
+          "line": 353,
+          "classification": "allowed",
+          "rule_id": "supabase_from_service_layer",
+          "note": "Direct table access in service/lib (allowed)."
+        },
+        {
+          "path": "src/services/agenciesSupabase.ts",
+          "line": 86,
+          "classification": "allowed",
+          "rule_id": "supabase_from_service_layer",
+          "note": "Direct table access in service/lib (allowed)."
+        },
+        {
+          "path": "src/services/b2bOrgChatSupabase.ts",
+          "line": 325,
+          "classification": "allowed",
+          "rule_id": "supabase_from_service_layer",
+          "note": "Direct table access in service/lib (allowed)."
+        },
+        {
+          "path": "src/services/calendarSupabase.ts",
+          "line": 181,
+          "classification": "allowed",
+          "rule_id": "supabase_from_service_layer",
+          "note": "Direct table access in service/lib (allowed)."
+        },
+        {
+          "path": "src/services/calendarSupabase.ts",
+          "line": 203,
+          "classification": "allowed",
+          "rule_id": "supabase_from_service_layer",
+          "note": "Direct table access in service/lib (allowed)."
+        },
+        {
+          "path": "src/services/calendarSupabase.ts",
+          "line": 316,
+          "classification": "allowed",
+          "rule_id": "supabase_from_service_layer",
+          "note": "Direct table access in service/lib (allowed)."
+        },
+        {
+          "path": "src/services/calendarSupabase.ts",
+          "line": 334,
+          "classification": "allowed",
+          "rule_id": "supabase_from_service_layer",
+          "note": "Direct table access in service/lib (allowed)."
+        },
+        {
+          "path": "src/services/guestAuthSupabase.ts",
+          "line": 66,
+          "classification": "allowed",
+          "rule_id": "supabase_from_service_layer",
+          "note": "Direct table access in service/lib (allowed)."
+        },
+        {
+          "path": "src/services/mediaslideSyncService.ts",
+          "line": 110,
+          "classification": "allowed",
+          "rule_id": "supabase_from_service_layer",
+          "note": "Direct table access in service/lib (allowed)."
+        },
+        {
+          "path": "src/services/messengerSupabase.ts",
+          "line": 117,
+          "classification": "allowed",
+          "rule_id": "supabase_from_service_layer",
+          "note": "Direct table access in service/lib (allowed)."
+        },
+        {
+          "path": "src/services/messengerSupabase.ts",
+          "line": 160,
+          "classification": "allowed",
+          "rule_id": "supabase_from_service_layer",
+          "note": "Direct table access in service/lib (allowed)."
+        },
+        {
+          "path": "src/services/messengerSupabase.ts",
+          "line": 292,
+          "classification": "allowed",
+          "rule_id": "supabase_from_service_layer",
+          "note": "Direct table access in service/lib (allowed)."
+        },
+        {
+          "path": "src/services/messengerSupabase.ts",
+          "line": 295,
+          "classification": "allowed",
+          "rule_id": "supabase_from_service_layer",
+          "note": "Direct table access in service/lib (allowed)."
+        },
+        {
+          "path": "src/services/messengerSupabase.ts",
+          "line": 337,
+          "classification": "allowed",
+          "rule_id": "supabase_from_service_layer",
+          "note": "Direct table access in service/lib (allowed)."
+        },
+        {
+          "path": "src/services/notificationsSupabase.ts",
+          "line": 89,
+          "classification": "allowed",
+          "rule_id": "supabase_from_service_layer",
+          "note": "Direct table access in service/lib (allowed)."
+        },
+        {
+          "path": "src/services/optionRequestsSupabase.ts",
+          "line": 474,
+          "classification": "allowed",
+          "rule_id": "supabase_from_service_layer",
+          "note": "Direct table access in service/lib (allowed)."
+        },
+        {
+          "path": "src/services/optionRequestsSupabase.ts",
+          "line": 549,
+          "classification": "allowed",
+          "rule_id": "supabase_from_service_layer",
+          "note": "Direct table access in service/lib (allowed)."
+        },
+        {
+          "path": "src/services/profileBatchSupabase.ts",
+          "line": 13,
+          "classification": "allowed",
+          "rule_id": "supabase_from_service_layer",
+          "note": "Direct table access in service/lib (allowed)."
+        },
+        {
+          "path": "src/services/userCalendarEventsSupabase.ts",
+          "line": 225,
+          "classification": "allowed",
+          "rule_id": "supabase_from_service_layer",
+          "note": "Direct table access in service/lib (allowed)."
+        },
+        {
+          "path": "src/views/AdminDashboard.tsx",
+          "line": 259,
+          "classification": "forbidden",
+          "rule_id": "supabase_from_outside_service_layer",
+          "note": "Prefer service-layer RPC/query helpers for org-scoped access."
+        },
+        {
+          "path": "src/views/AdminDashboard.tsx",
+          "line": 264,
+          "classification": "forbidden",
+          "rule_id": "supabase_from_outside_service_layer",
+          "note": "Prefer service-layer RPC/query helpers for org-scoped access."
+        }
+      ]
+    }
+  },
+  "drift": {
+    "status": "compared",
+    "added_files": [],
+    "removed_files": [],
+    "modified_critical_files": [],
+    "forbidden_supabase_from_introduced": [],
+    "forbidden_supabase_from_resolved": [],
+    "manifest_fingerprint_prev": "505881c95a47595ce26a5cbbbff8b2534d9de963c61c01f95f18a7432c2bdd64",
+    "manifest_fingerprint_curr": "42c5750e48addc74f9dc7d2709cd6e1c3abb2f36f733668d78210bb3c6675cf4"
+  },
   "rule_scans": {
-    "ui_supabase_from": [
+    "ui_supabase_from_forbidden_only": [
       {
         "path": "src/views/AdminDashboard.tsx",
         "pattern": "supabase.from(",
-        "note": "line 259: direct PostgREST from UI/non-service path"
+        "note": "line 259: Prefer service-layer RPC/query helpers for org-scoped access."
       },
       {
         "path": "src/views/AdminDashboard.tsx",
         "pattern": "supabase.from(",
-        "note": "line 264: direct PostgREST from UI/non-service path"
+        "note": "line 264: Prefer service-layer RPC/query helpers for org-scoped access."
       }
     ],
     "void_catch_candidates": [],
@@ -450,7 +686,7 @@
       "category": "docs",
       "file_kind": "config",
       "purpose": "Documentation / audit reference.",
-      "sha256": "ae6bd6b22d46e62f36d0b5c2199d986dbe49ed77207def7ce77757325543a726",
+      "sha256": "68751e2f4282427630b88d4fbba601c5d134d23fd97fa5522d61deaddc2206f8",
       "review_status": "partially_reviewed",
       "reason": "config_ci_script_review_manifest_only",
       "evidence": [
@@ -463,7 +699,7 @@
       "category": "docs",
       "file_kind": "doc",
       "purpose": "Documentation / audit reference.",
-      "sha256": "8d4e3403eb193b6942017df8aadab99945e40dcfb13e6d7546c0277e5115035d",
+      "sha256": "af21c02c0290c354eac2fb5b9266fe89e8596207d60604fc09615aca2bff3f59",
       "review_status": "partially_reviewed",
       "reason": "documentation_governance_text_not_executable_audit",
       "evidence": [
@@ -595,7 +831,7 @@
       "category": "docs",
       "file_kind": "doc",
       "purpose": "Documentation / audit reference.",
-      "sha256": "4aeb6665196e2a81adbc892efb5ae92d2e6ea887e02434189544bd587bac8c49",
+      "sha256": "f48deb736537e09d52218d676d092e36c0bd92777685c9ce5de51b9d502434b8",
       "review_status": "partially_reviewed",
       "reason": "documentation_governance_text_not_executable_audit",
       "evidence": [
@@ -910,7 +1146,7 @@
       "category": "scripts",
       "file_kind": "code",
       "purpose": "Repository file.",
-      "sha256": "3e97dfc3fc45e5a9315cde2428665c2cc3dc22ac3f355c404dce9c4088fc9816",
+      "sha256": "54f33f6e19477c285486a0f90d95b610aad15b4341c107e67eeae8f4dd3eecbf",
       "review_status": "partially_reviewed",
       "reason": "config_ci_script_review_manifest_only",
       "evidence": [

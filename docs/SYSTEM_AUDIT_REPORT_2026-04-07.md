@@ -40,20 +40,51 @@ Executed against project `ispkfdqzjrfrilosoklu` (same query as prior audits): **
 
 > **Note:** The watchlist `FOR ALL` count is a **heuristic** (same file mentions `FOR ALL` and `ON public.<watchlist_table>`) and may include fix migrations or comments — triage before treating as active risk.
 
-## 4. Regelbasierte Scans (TypeScript)
+## 4. Dependency graph, exports, rules, drift
 
-### 4.1 Direct `supabase.from(` outside `src/services` and `lib/`
+### 4.0 Internal import graph (`src/` + `lib/`)
+
+- **Nodes:** 207 (union of files that import or are imported internally)
+- **Edges:** 587 (static `import` / `export from` / dynamic `import()` to repo files)
+- **Full adjacency:** [`docs/AUDIT_DEPENDENCY_GRAPH.json`](./AUDIT_DEPENDENCY_GRAPH.json).
+
+### 4.1 Export inventory & internal usage
+
+- **Exported symbols (functions/classes/consts via AST):** 648
+- **Symbols with ≥1 internal importer (named imports):** 429
+- **Detail:** [`docs/AUDIT_EXPORT_MAP.json`](./AUDIT_EXPORT_MAP.json) (symbols + importers).
+
+### 4.2 Rule engine: `supabase.from(`
+
+| Classification | Count | Rule ID |
+|---:|---:|---|
+| allowed (service/lib) | 25 | `supabase_from_service_layer` |
+| exception (AuthContext) | 2 | `supabase_from_auth_context` |
+| forbidden | 2 | `supabase_from_outside_service_layer` |
+
+**Forbidden hits:**
 
 | File | Note |
 |---|---|
-| `src/views/AdminDashboard.tsx` | line 259: direct PostgREST from UI/non-service path |
-| `src/views/AdminDashboard.tsx` | line 264: direct PostgREST from UI/non-service path |
+| `src/views/AdminDashboard.tsx` | line 259: Prefer service-layer RPC/query helpers for org-scoped access. |
+| `src/views/AdminDashboard.tsx` | line 264: Prefer service-layer RPC/query helpers for org-scoped access. |
 
-### 4.2 `void …catch(` (Option-A dead-code risk; exclude tests)
+### 4.3 Drift vs `docs/AUDIT_DRIFT_BASELINE.json`
+
+- **Added files:** 0
+- **Removed files:** 0
+- **Modified critical files:** 0
+- **New forbidden `supabase.from` sites:** 0
+- **Resolved forbidden sites:** 0
+- **Drift manifest fingerprint (excludes generated `docs/AUDIT_*` / dated reports):** prev `505881c95a47595ce26a5cbbbff8b2534d9de963c61c01f95f18a7432c2bdd64` → curr `42c5750e48addc74f9dc7d2709cd6e1c3abb2f36f733668d78210bb3c6675cf4`
+
+Update baseline after intentional changes: `AUDIT_WRITE_BASELINE=1 npm run audit:coverage`. Optional CI gate: `AUDIT_FAIL_ON_DRIFT=1`.
+
+### 4.4 `void …catch(` (Option-A dead-code risk; exclude tests)
 
 No production-path hits (tests may still contain patterns).
 
-### 4.3 Snapshot-style optimistic rollback (heuristic)
+### 4.5 Snapshot-style optimistic rollback (heuristic)
 
 No heuristic hits.
 
@@ -84,7 +115,7 @@ Deploy flags: several functions use `--no-verify-jwt` at the edge; **in-function
 
 ## 8. Incremental recommendations
 
-1. Wire `npm run audit:coverage` into optional CI job to refresh manifest on release branches.
+1. Wire `npm run audit:coverage` into optional CI; use `AUDIT_FAIL_ON_DRIFT=1` to fail on new forbidden `supabase.from` or critical-path edits vs [`docs/AUDIT_DRIFT_BASELINE.json`](./AUDIT_DRIFT_BASELINE.json).
 2. Resolve snapshot vs inverse-operation governance and update code or rules once product decides.
 3. Update [`docs/LIVE_DB_WATCHLIST_SNAPSHOT.md`](./LIVE_DB_WATCHLIST_SNAPSHOT.md) after material schema/policy migrations, then re-run `npm run audit:coverage`.
 

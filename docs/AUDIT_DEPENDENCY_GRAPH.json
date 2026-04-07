@@ -1,0 +1,966 @@
+{
+  "generated_at": "2026-04-07T12:39:16.375Z",
+  "adjacency": {
+    "lib/security/logger.ts": [
+      "lib/supabase.ts"
+    ],
+    "lib/supabase.ts": [
+      "src/config/env.ts"
+    ],
+    "lib/validation/__tests__/validation.test.ts": [
+      "lib/validation/text.ts",
+      "lib/validation/url.ts",
+      "lib/validation/file.ts",
+      "lib/validation/rateLimit.ts"
+    ],
+    "lib/validation/__tests__/validation_hardening.test.ts": [
+      "lib/validation/file.ts",
+      "lib/validation/normalize.ts",
+      "lib/validation/rateLimit.ts",
+      "lib/validation/text.ts",
+      "lib/validation/url.ts"
+    ],
+    "lib/validation/file.ts": [
+      "lib/validation/text.ts"
+    ],
+    "lib/validation/index.ts": [
+      "lib/validation/text.ts",
+      "lib/validation/normalize.ts",
+      "lib/validation/url.ts",
+      "lib/validation/file.ts",
+      "lib/validation/rateLimit.ts",
+      "lib/security/logger.ts"
+    ],
+    "lib/validation/normalize.ts": [],
+    "lib/validation/rateLimit.ts": [],
+    "lib/validation/text.ts": [],
+    "lib/validation/url.ts": [
+      "lib/validation/text.ts"
+    ],
+    "src/components/AgencySettingsTab.tsx": [
+      "src/theme/theme.ts",
+      "src/constants/uiCopy.ts",
+      "src/constants/agencyTypes.ts",
+      "src/services/agenciesSupabase.ts",
+      "src/services/agencySettingsSupabase.ts",
+      "src/utils/crossPlatformAlert.ts",
+      "src/components/ScreenScrollView.tsx",
+      "src/components/AgencyStorageWidget.tsx",
+      "lib/supabase.ts",
+      "src/context/AuthContext.tsx",
+      "src/services/gdprComplianceSupabase.ts",
+      "src/services/consentSupabase.ts"
+    ],
+    "src/components/AgencyStorageWidget.tsx": [
+      "src/theme/theme.ts",
+      "src/constants/uiCopy.ts",
+      "src/services/agencyStorageSupabase.ts"
+    ],
+    "src/components/AppErrorBoundary.tsx": [
+      "src/constants/uiCopy.ts"
+    ],
+    "src/components/ClientOrganizationTeamSection.tsx": [
+      "src/theme/theme.ts",
+      "src/services/organizationsInvitationsSupabase.ts",
+      "src/constants/uiCopy.ts",
+      "src/context/AuthContext.tsx",
+      "lib/supabase.ts"
+    ],
+    "src/components/DashboardSummaryBar.tsx": [
+      "src/theme/theme.ts",
+      "src/constants/uiCopy.ts",
+      "src/services/dashboardSupabase.ts"
+    ],
+    "src/components/GlobalSearchBar.tsx": [
+      "src/theme/theme.ts",
+      "src/constants/uiCopy.ts",
+      "src/utils/useDebounce.ts",
+      "src/services/searchSupabase.ts"
+    ],
+    "src/components/ModelEditDetailsPanel.tsx": [
+      "src/theme/theme.ts",
+      "src/constants/uiCopy.ts",
+      "src/constants/agencyTypes.ts",
+      "src/utils/modelFilters.ts"
+    ],
+    "src/components/ModelFiltersPanel.tsx": [
+      "src/theme/theme.ts",
+      "src/constants/uiCopy.ts",
+      "src/constants/agencyTypes.ts",
+      "src/utils/modelFilters.ts"
+    ],
+    "src/components/ModelMediaSettingsPanel.tsx": [
+      "lib/supabase.ts",
+      "src/constants/uiCopy.ts",
+      "src/services/gdprComplianceSupabase.ts",
+      "src/storage/storageUrl.ts",
+      "src/services/imageUtils.ts",
+      "src/services/modelPhotosSupabase.ts",
+      "src/theme/theme.ts"
+    ],
+    "src/components/MonthCalendarView.tsx": [
+      "src/theme/theme.ts"
+    ],
+    "src/components/NotificationBell.tsx": [
+      "lib/supabase.ts",
+      "src/store/notificationsStore.ts",
+      "src/components/NotificationList.tsx"
+    ],
+    "src/components/NotificationList.tsx": [
+      "src/store/notificationsStore.ts",
+      "src/services/notificationsSupabase.ts",
+      "src/theme/theme.ts",
+      "src/constants/uiCopy.ts"
+    ],
+    "src/components/OrgMessengerInline.tsx": [
+      "src/components/StorageImage.tsx",
+      "src/theme/theme.ts",
+      "src/constants/uiCopy.ts",
+      "src/services/messengerSupabase.ts",
+      "lib/supabase.ts",
+      "src/services/gdprComplianceSupabase.ts",
+      "src/services/modelsSupabase.ts",
+      "src/constants/quickReplies.ts",
+      "src/services/guestLinksSupabase.ts",
+      "src/services/bookingEventsSupabase.ts",
+      "lib/validation"
+    ],
+    "src/components/OrgMetricsPanel.tsx": [
+      "src/theme/theme.ts",
+      "src/constants/uiCopy.ts",
+      "src/services/orgMetricsSupabase.ts"
+    ],
+    "src/components/ScreenScrollView.tsx": [
+      "src/theme/theme.ts"
+    ],
+    "src/components/StorageImage.tsx": [
+      "src/storage/storageUrl.ts"
+    ],
+    "src/config/env.ts": [],
+    "src/constants/agencyTypes.ts": [],
+    "src/constants/quickReplies.ts": [],
+    "src/constants/uiCopy.ts": [],
+    "src/context/AppDataContext.tsx": [
+      "src/services/modelsSupabase.ts",
+      "src/context/AuthContext.tsx"
+    ],
+    "src/context/AuthContext.tsx": [
+      "src/constants/uiCopy.ts",
+      "lib/supabase.ts",
+      "src/config/env.ts",
+      "src/services/orgRoleTypes.ts",
+      "src/types/roles.ts",
+      "src/store/applicationsStore.ts",
+      "src/store/recruitingChats.ts",
+      "src/store/optionRequests.ts",
+      "src/storage/persistence.ts",
+      "src/services/b2bOwnerBootstrapSupabase.ts",
+      "src/services/guestAuthSupabase.ts",
+      "src/services/authInviteTokenPolicy.ts",
+      "src/services/organizationsInvitationsSupabase.ts",
+      "src/storage/inviteToken.ts",
+      "src/services/agenciesSupabase.ts",
+      "src/services/modelsSupabase.ts",
+      "src/storage/modelClaimToken.ts",
+      "src/services/consentSupabase.ts"
+    ],
+    "src/context/SubscriptionContext.tsx": [
+      "lib/supabase.ts",
+      "src/services/subscriptionSupabase.ts"
+    ],
+    "src/db/localApi.ts": [
+      "src/db/schema.ts",
+      "src/mockData.js"
+    ],
+    "src/db/schema.ts": [
+      "src/types/roles.ts"
+    ],
+    "src/navigation/RootNavigator.tsx": [
+      "src/theme/theme.ts",
+      "src/context/AuthContext.tsx",
+      "src/types/roles.ts",
+      "src/screens/AuthScreen.tsx",
+      "src/screens/CustomerSwipeScreen.tsx",
+      "src/screens/ModelProfileScreen.tsx",
+      "src/screens/AgencyDashboardScreen.tsx",
+      "src/components/NotificationBell.tsx"
+    ],
+    "src/navigation/__tests__/bottomTabNavigation.test.ts": [
+      "src/navigation/bottomTabNavigation.ts"
+    ],
+    "src/navigation/__tests__/discoverNavigation.test.ts": [
+      "src/navigation/discoverNavigation.ts"
+    ],
+    "src/navigation/bottomTabNavigation.ts": [],
+    "src/navigation/discoverNavigation.ts": [],
+    "src/screens/AgencyDashboardScreen.tsx": [
+      "src/theme/theme.ts",
+      "src/services/apiService.js",
+      "src/views/AgencyRecruitingView.tsx",
+      "src/views/BookingChatView.tsx",
+      "src/context/AuthContext.tsx",
+      "src/constants/uiCopy.ts"
+    ],
+    "src/screens/AuthScreen.tsx": [
+      "src/theme/theme.ts",
+      "src/context/AuthContext.tsx",
+      "src/constants/uiCopy.ts",
+      "src/screens/TermsScreen.tsx",
+      "src/screens/PrivacyScreen.tsx",
+      "src/utils/publicLegalRoutes.ts"
+    ],
+    "src/screens/CustomerSwipeScreen.tsx": [
+      "src/components/StorageImage.tsx",
+      "src/theme/theme.ts",
+      "src/services/modelsSupabase.ts",
+      "src/services/clientDiscoverySupabase.ts",
+      "src/context/AuthContext.tsx",
+      "src/types/roles.ts",
+      "src/constants/uiCopy.ts",
+      "src/store/optionRequests.ts"
+    ],
+    "src/screens/InviteAcceptanceScreen.tsx": [
+      "src/theme/theme.ts",
+      "src/services/organizationsInvitationsSupabase.ts",
+      "src/constants/uiCopy.ts",
+      "src/screens/TermsScreen.tsx",
+      "src/screens/PrivacyScreen.tsx",
+      "src/utils/publicLegalRoutes.ts"
+    ],
+    "src/screens/LegalAcceptanceScreen.tsx": [
+      "src/theme/theme.ts",
+      "src/context/AuthContext.tsx",
+      "src/types/roles.ts",
+      "src/constants/uiCopy.ts",
+      "src/screens/TermsScreen.tsx",
+      "src/screens/PrivacyScreen.tsx"
+    ],
+    "src/screens/LoginScreen.tsx": [
+      "src/theme/theme.ts",
+      "src/navigation/RootNavigator.tsx",
+      "src/constants/uiCopy.ts",
+      "src/screens/TermsScreen.tsx",
+      "src/screens/PrivacyScreen.tsx",
+      "src/utils/publicLegalRoutes.ts"
+    ],
+    "src/screens/ModelClaimScreen.tsx": [
+      "src/theme/theme.ts",
+      "src/constants/uiCopy.ts",
+      "src/screens/TermsScreen.tsx",
+      "src/screens/PrivacyScreen.tsx",
+      "src/utils/publicLegalRoutes.ts"
+    ],
+    "src/screens/ModelProfileScreen.tsx": [
+      "src/navigation/bottomTabNavigation.ts",
+      "src/theme/theme.ts",
+      "src/services/modelsSupabase.ts",
+      "src/services/modelLocationsSupabase.ts",
+      "lib/supabase.ts",
+      "src/store/recruitingChats.ts",
+      "src/store/optionRequests.ts",
+      "src/services/calendarSupabase.ts",
+      "src/services/bookingEventsSupabase.ts",
+      "src/services/optionRequestsSupabase.ts",
+      "src/services/agenciesSupabase.ts",
+      "src/services/recruitingChatSupabase.ts",
+      "src/views/BookingChatView.tsx",
+      "src/context/AuthContext.tsx",
+      "src/constants/uiCopy.ts",
+      "src/services/b2bOrgChatSupabase.ts",
+      "src/services/messengerSupabase.ts",
+      "src/components/OrgMessengerInline.tsx",
+      "src/services/accountSupabase.ts"
+    ],
+    "src/screens/PaywallScreen.tsx": [
+      "src/constants/uiCopy.ts",
+      "src/context/SubscriptionContext.tsx",
+      "src/context/AuthContext.tsx",
+      "src/services/subscriptionSupabase.ts",
+      "src/theme/theme.ts"
+    ],
+    "src/screens/PendingActivationScreen.tsx": [
+      "src/theme/theme.ts",
+      "src/context/AuthContext.tsx",
+      "src/types/roles.ts"
+    ],
+    "src/screens/PrivacyScreen.tsx": [
+      "src/theme/theme.ts",
+      "src/constants/uiCopy.ts"
+    ],
+    "src/screens/SetPasswordScreen.tsx": [
+      "src/theme/theme.ts",
+      "src/context/AuthContext.tsx",
+      "src/constants/uiCopy.ts"
+    ],
+    "src/screens/TermsScreen.tsx": [
+      "src/theme/theme.ts",
+      "src/constants/uiCopy.ts"
+    ],
+    "src/services/__tests__/acceptApplicationWithTerritories.test.ts": [
+      "lib/supabase.ts",
+      "src/services/territoriesSupabase.ts"
+    ],
+    "src/services/__tests__/accountSupabase.test.ts": [
+      "src/services/accountSupabase.ts",
+      "lib/supabase.ts"
+    ],
+    "src/services/__tests__/agencyAdminStorage.test.ts": [
+      "src/services/adminSupabase.ts"
+    ],
+    "src/services/__tests__/agencySettingsSupabase.test.ts": [
+      "src/services/agencySettingsSupabase.ts"
+    ],
+    "src/services/__tests__/agencyStorageSupabase.test.ts": [
+      "src/services/agencyStorageSupabase.ts"
+    ],
+    "src/services/__tests__/apiService.test.ts": [
+      "src/services/apiService.js"
+    ],
+    "src/services/__tests__/applicationsSupabase.recruiting.test.ts": [
+      "lib/supabase.ts",
+      "src/services/applicationsSupabase.ts"
+    ],
+    "src/services/__tests__/authInviteTokenPolicy.test.ts": [
+      "src/services/authInviteTokenPolicy.ts"
+    ],
+    "src/services/__tests__/b2bOrgChatSupabase.createRpc.test.ts": [
+      "src/services/b2bOrgChatSupabase.ts"
+    ],
+    "src/services/__tests__/b2bOrgChatSupabase.resolve.test.ts": [
+      "src/services/b2bOrgChatSupabase.ts"
+    ],
+    "src/services/__tests__/b2bOrgChatSupabase.title.test.ts": [
+      "src/services/b2bOrgChatSupabase.ts",
+      "src/services/messengerSupabase.ts",
+      "src/constants/uiCopy.ts"
+    ],
+    "src/services/__tests__/b2bOwnerBootstrapSupabase.test.ts": [
+      "src/services/b2bOwnerBootstrapSupabase.ts"
+    ],
+    "src/services/__tests__/bookingChatIntegrationSupabase.test.ts": [
+      "src/services/bookingChatIntegrationSupabase.ts"
+    ],
+    "src/services/__tests__/bookingChatPackageSource.test.ts": [
+      "src/services/bookingChatIntegrationSupabase.ts"
+    ],
+    "src/services/__tests__/bookingEventsSupabase.test.ts": [
+      "src/services/bookingEventsSupabase.ts",
+      "lib/supabase.ts"
+    ],
+    "src/services/__tests__/bookingsSupabase.test.ts": [
+      "lib/supabase.ts",
+      "src/services/bookingsSupabase.ts"
+    ],
+    "src/services/__tests__/clientDiscovery.test.ts": [
+      "src/services/clientDiscoverySupabase.ts"
+    ],
+    "src/services/__tests__/consentSupabase.test.ts": [
+      "src/services/consentSupabase.ts"
+    ],
+    "src/services/__tests__/gdprComplianceSupabase.test.ts": [
+      "lib/supabase.ts",
+      "src/services/gdprComplianceSupabase.ts"
+    ],
+    "src/services/__tests__/guestAuthSupabase.test.ts": [
+      "src/services/guestAuthSupabase.ts"
+    ],
+    "src/services/__tests__/guestChatSupabase.test.ts": [
+      "src/services/guestChatSupabase.ts"
+    ],
+    "src/services/__tests__/guestLinksValidation.test.ts": [
+      "src/services/guestLinksSupabase.ts"
+    ],
+    "src/services/__tests__/hardening2026_04.test.ts": [
+      "lib/supabase.ts",
+      "src/services/optionRequestsSupabase.ts",
+      "src/services/adminSupabase.ts",
+      "src/services/guestLinksSupabase.ts",
+      "src/services/bookingsSupabase.ts"
+    ],
+    "src/services/__tests__/inviteUrlHelpers.test.ts": [
+      "src/services/inviteUrlHelpers.ts"
+    ],
+    "src/services/__tests__/mediaslideSyncService.test.ts": [
+      "src/services/mediaslideSyncService.ts"
+    ],
+    "src/services/__tests__/memberRemoval.test.ts": [
+      "src/services/organizationsInvitationsSupabase.ts"
+    ],
+    "src/services/__tests__/messengerSupabase.getOrCreate.test.ts": [
+      "src/services/messengerSupabase.ts"
+    ],
+    "src/services/__tests__/modelLocationsSupabase.test.ts": [
+      "src/services/modelLocationsSupabase.ts"
+    ],
+    "src/services/__tests__/modelMedia.test.ts": [
+      "src/services/modelPhotosSupabase.ts",
+      "src/services/guestLinksSupabase.ts"
+    ],
+    "src/services/__tests__/modelPhotosSupabase.upsertPhotosForModel.test.ts": [
+      "src/services/modelPhotosSupabase.ts"
+    ],
+    "src/services/__tests__/modelsImportSupabase.importModelAndMerge.test.ts": [
+      "src/services/modelsImportSupabase.ts"
+    ],
+    "src/services/__tests__/netwalkSyncService.test.ts": [
+      "src/services/netwalkSyncService.ts"
+    ],
+    "src/services/__tests__/notificationsSupabase.test.ts": [
+      "lib/supabase.ts",
+      "src/services/notificationsSupabase.ts"
+    ],
+    "src/services/__tests__/optionRequestsConfirmation.test.ts": [
+      "lib/supabase.ts",
+      "src/services/bookingEventsSupabase.ts",
+      "src/services/optionRequestsSupabase.ts"
+    ],
+    "src/services/__tests__/optionRequestsCounterOffer.test.ts": [
+      "lib/supabase.ts",
+      "src/services/optionRequestsSupabase.ts"
+    ],
+    "src/services/__tests__/organizationsInvitationsSupabase.test.ts": [
+      "lib/supabase.ts",
+      "src/services/organizationsInvitationsSupabase.ts"
+    ],
+    "src/services/__tests__/packageMessage.test.ts": [
+      "src/services/messengerSupabase.ts"
+    ],
+    "src/services/__tests__/projectsFeature.test.ts": [
+      "src/services/projectsSupabase.ts"
+    ],
+    "src/services/__tests__/realtimeChannelPool.test.ts": [
+      "src/services/realtimeChannelPool.ts"
+    ],
+    "src/services/__tests__/recruitingChatSupabase.rpcHelpers.test.ts": [
+      "lib/supabase.ts",
+      "src/services/recruitingChatSupabase.ts"
+    ],
+    "src/services/__tests__/recruitingChatSupabase.threadLookup.test.ts": [
+      "lib/supabase.ts",
+      "src/services/recruitingChatSupabase.ts"
+    ],
+    "src/services/__tests__/subscriptionSupabase.test.ts": [
+      "src/services/subscriptionSupabase.ts",
+      "src/services/adminSupabase.ts"
+    ],
+    "src/services/__tests__/supabaseFetchAll.test.ts": [
+      "src/services/supabaseFetchAll.ts"
+    ],
+    "src/services/__tests__/territoriesSupabase.resolveAgencyForModelAndCountry.test.ts": [
+      "src/services/territoriesSupabase.ts"
+    ],
+    "src/services/__tests__/territoriesSupabase.upsertTerritoriesForModel.test.ts": [
+      "src/services/territoriesSupabase.ts"
+    ],
+    "src/services/__tests__/territoriesSupabase.upsertTerritoriesForModelCountryAgencyPairs.test.ts": [
+      "src/services/territoriesSupabase.ts"
+    ],
+    "src/services/__tests__/userCalendarEventsSupabase.test.ts": [
+      "src/services/userCalendarEventsSupabase.ts"
+    ],
+    "src/services/accountSupabase.ts": [
+      "lib/supabase.ts",
+      "src/types/serviceResult.ts"
+    ],
+    "src/services/activityLogsSupabase.ts": [
+      "lib/supabase.ts"
+    ],
+    "src/services/adminSupabase.ts": [
+      "lib/supabase.ts"
+    ],
+    "src/services/agenciesSupabase.ts": [
+      "lib/supabase.ts",
+      "src/services/supabaseFetchAll.ts"
+    ],
+    "src/services/agencySettingsSupabase.ts": [
+      "lib/supabase.ts"
+    ],
+    "src/services/agencyStorageSupabase.ts": [
+      "lib/supabase.ts"
+    ],
+    "src/services/agencyUsageLimitsSupabase.ts": [
+      "lib/supabase.ts"
+    ],
+    "src/services/applicationsSupabase.ts": [
+      "lib/supabase.ts",
+      "src/utils/applicantNameFromProfile.ts",
+      "lib/validation",
+      "src/services/imageUtils.ts",
+      "src/storage/storageUrl.ts",
+      "src/services/gdprComplianceSupabase.ts"
+    ],
+    "src/services/authInviteTokenPolicy.ts": [
+      "src/storage/inviteToken.ts"
+    ],
+    "src/services/b2bOrgChatSupabase.ts": [
+      "src/constants/uiCopy.ts",
+      "lib/supabase.ts",
+      "src/utils/b2bOrgPairContextId.ts",
+      "src/services/organizationsInvitationsSupabase.ts",
+      "src/services/messengerSupabase.ts",
+      "src/services/supabaseFetchAll.ts"
+    ],
+    "src/services/b2bOwnerBootstrapSupabase.ts": [
+      "lib/supabase.ts"
+    ],
+    "src/services/bookersSupabase.ts": [
+      "lib/supabase.ts"
+    ],
+    "src/services/bookingChatIntegrationSupabase.ts": [
+      "src/services/b2bOrgChatSupabase.ts",
+      "src/services/messengerSupabase.ts",
+      "src/constants/uiCopy.ts"
+    ],
+    "src/services/bookingEventsSupabase.ts": [
+      "lib/supabase.ts",
+      "src/constants/uiCopy.ts",
+      "src/services/notificationsSupabase.ts",
+      "src/utils/logAction.ts"
+    ],
+    "src/services/bookingsSupabase.ts": [
+      "lib/supabase.ts",
+      "src/utils/logAction.ts"
+    ],
+    "src/services/calendarSupabase.ts": [
+      "lib/supabase.ts",
+      "src/services/optionRequestsSupabase.ts",
+      "src/services/bookingEventsSupabase.ts"
+    ],
+    "src/services/chatService.ts": [
+      "src/db/localApi.ts"
+    ],
+    "src/services/clientDiscoverySupabase.ts": [
+      "lib/supabase.ts",
+      "src/services/modelsSupabase.ts"
+    ],
+    "src/services/clientFiltersSupabase.ts": [
+      "lib/supabase.ts",
+      "src/storage/persistence.ts"
+    ],
+    "src/services/clientOrganizationsDirectorySupabase.ts": [
+      "lib/supabase.ts"
+    ],
+    "src/services/consentSupabase.ts": [
+      "lib/supabase.ts",
+      "src/types/serviceResult.ts"
+    ],
+    "src/services/dashboardSupabase.ts": [
+      "lib/supabase.ts"
+    ],
+    "src/services/documentsSupabase.ts": [
+      "lib/supabase.ts",
+      "src/services/agencyStorageSupabase.ts",
+      "lib/validation"
+    ],
+    "src/services/externalCalendarSync.ts": [
+      "src/services/calendarSupabase.ts"
+    ],
+    "src/services/gdprComplianceSupabase.ts": [
+      "lib/supabase.ts",
+      "src/types/serviceResult.ts",
+      "src/utils/logAction.ts"
+    ],
+    "src/services/guestAuthSupabase.ts": [
+      "lib/supabase.ts"
+    ],
+    "src/services/guestChatSupabase.ts": [
+      "lib/supabase.ts",
+      "src/services/messengerSupabase.ts"
+    ],
+    "src/services/guestLinksSupabase.ts": [
+      "lib/supabase.ts",
+      "src/storage/storageUrl.ts"
+    ],
+    "src/services/imageUtils.ts": [],
+    "src/services/inviteUrlHelpers.ts": [],
+    "src/services/matchingSupabase.ts": [
+      "lib/supabase.ts"
+    ],
+    "src/services/mediaslideSyncService.ts": [
+      "lib/supabase.ts",
+      "src/services/modelsSupabase.ts",
+      "src/services/mediaslideConnector.js",
+      "src/services/supabaseFetchAll.ts",
+      "src/services/territoriesSupabase.ts"
+    ],
+    "src/services/messengerSupabase.ts": [
+      "lib/supabase.ts",
+      "src/utils/messengerSenderLabel.ts",
+      "src/services/supabaseFetchAll.ts",
+      "src/services/realtimeChannelPool.ts",
+      "src/services/notificationsSupabase.ts",
+      "src/constants/uiCopy.ts",
+      "lib/validation",
+      "src/services/agencyStorageSupabase.ts",
+      "src/services/imageUtils.ts",
+      "src/services/gdprComplianceSupabase.ts"
+    ],
+    "src/services/modelCreationFacade.ts": [
+      "src/services/modelsImportSupabase.ts",
+      "src/services/applicationsSupabase.ts"
+    ],
+    "src/services/modelLocationsSupabase.ts": [
+      "lib/supabase.ts",
+      "src/services/modelsSupabase.ts"
+    ],
+    "src/services/modelPhotosSupabase.ts": [
+      "lib/supabase.ts",
+      "lib/validation",
+      "src/services/gdprComplianceSupabase.ts",
+      "src/utils/logAction.ts",
+      "src/services/imageUtils.ts",
+      "src/services/agencyStorageSupabase.ts",
+      "src/constants/uiCopy.ts",
+      "src/storage/storageUrl.ts"
+    ],
+    "src/services/modelsImportSupabase.ts": [
+      "lib/supabase.ts",
+      "src/services/territoriesSupabase.ts"
+    ],
+    "src/services/modelsSupabase.ts": [
+      "lib/supabase.ts",
+      "src/types/serviceResult.ts",
+      "src/services/supabaseFetchAll.ts"
+    ],
+    "src/services/netwalkSyncService.ts": [
+      "lib/supabase.ts",
+      "src/services/modelsSupabase.ts",
+      "src/services/netwalkConnector.js",
+      "src/services/supabaseFetchAll.ts",
+      "src/services/mediaslideSyncService.ts",
+      "src/services/territoriesSupabase.ts"
+    ],
+    "src/services/notificationsSupabase.ts": [
+      "lib/supabase.ts",
+      "src/services/realtimeChannelPool.ts"
+    ],
+    "src/services/optionRequestsSupabase.ts": [
+      "lib/supabase.ts",
+      "src/services/realtimeChannelPool.ts",
+      "src/services/bookingEventsSupabase.ts",
+      "src/services/notificationsSupabase.ts",
+      "src/constants/uiCopy.ts",
+      "lib/validation",
+      "src/services/agencyStorageSupabase.ts",
+      "src/services/gdprComplianceSupabase.ts",
+      "src/utils/logAction.ts"
+    ],
+    "src/services/orgMetricsSupabase.ts": [
+      "lib/supabase.ts"
+    ],
+    "src/services/orgRoleTypes.ts": [],
+    "src/services/organizationsInvitationsSupabase.ts": [
+      "lib/supabase.ts",
+      "src/types/serviceResult.ts",
+      "src/services/inviteUrlHelpers.ts",
+      "src/constants/uiCopy.ts",
+      "src/services/orgRoleTypes.ts",
+      "src/utils/logAction.ts"
+    ],
+    "src/services/profileBatchSupabase.ts": [
+      "lib/supabase.ts"
+    ],
+    "src/services/projectsSupabase.ts": [
+      "lib/supabase.ts"
+    ],
+    "src/services/pushNotifications.ts": [
+      "src/services/notificationsSupabase.ts"
+    ],
+    "src/services/realtimeChannelPool.ts": [
+      "lib/supabase.ts"
+    ],
+    "src/services/recruitingChatSupabase.ts": [
+      "lib/supabase.ts",
+      "src/constants/uiCopy.ts",
+      "src/services/realtimeChannelPool.ts",
+      "src/services/notificationsSupabase.ts",
+      "lib/validation",
+      "src/services/agencyStorageSupabase.ts",
+      "src/services/imageUtils.ts"
+    ],
+    "src/services/searchSupabase.ts": [
+      "lib/supabase.ts"
+    ],
+    "src/services/stippenSupabase.ts": [
+      "lib/supabase.ts"
+    ],
+    "src/services/subscriptionSupabase.ts": [
+      "lib/supabase.ts",
+      "src/config/env.ts"
+    ],
+    "src/services/supabaseFetchAll.ts": [],
+    "src/services/territoriesSupabase.ts": [
+      "lib/supabase.ts"
+    ],
+    "src/services/threadPreferencesSupabase.ts": [
+      "lib/supabase.ts"
+    ],
+    "src/services/userCalendarEventsSupabase.ts": [
+      "lib/supabase.ts",
+      "src/constants/uiCopy.ts"
+    ],
+    "src/services/verificationSupabase.ts": [
+      "lib/supabase.ts",
+      "lib/validation"
+    ],
+    "src/storage/agencyRecruitingShortlist.ts": [],
+    "src/storage/inviteToken.ts": [],
+    "src/storage/modelClaimToken.ts": [],
+    "src/storage/persistence.ts": [],
+    "src/storage/storageUrl.ts": [
+      "lib/supabase.ts"
+    ],
+    "src/store/__tests__/applicationsStore.test.ts": [
+      "src/store/applicationsStore.ts",
+      "src/services/applicationsSupabase.ts",
+      "src/store/recruitingChats.ts",
+      "src/services/recruitingChatSupabase.ts"
+    ],
+    "src/store/applicationsStore.ts": [
+      "src/services/applicationsSupabase.ts",
+      "src/store/recruitingChats.ts",
+      "src/services/recruitingChatSupabase.ts"
+    ],
+    "src/store/notificationsStore.ts": [
+      "src/services/notificationsSupabase.ts"
+    ],
+    "src/store/optionRequests.ts": [
+      "src/services/optionRequestsSupabase.ts",
+      "src/services/notificationsSupabase.ts",
+      "lib/supabase.ts",
+      "src/services/modelsSupabase.ts",
+      "src/services/agenciesSupabase.ts",
+      "src/services/territoriesSupabase.ts",
+      "src/services/bookingChatIntegrationSupabase.ts",
+      "src/services/calendarSupabase.ts",
+      "src/services/pushNotifications.ts",
+      "src/utils/crossPlatformAlert.ts",
+      "src/constants/uiCopy.ts",
+      "src/services/organizationsInvitationsSupabase.ts"
+    ],
+    "src/store/recruitingChats.ts": [
+      "src/services/recruitingChatSupabase.ts",
+      "src/services/applicationsSupabase.ts",
+      "lib/supabase.ts",
+      "src/services/gdprComplianceSupabase.ts",
+      "src/services/organizationsInvitationsSupabase.ts"
+    ],
+    "src/theme/theme.ts": [],
+    "src/types/__tests__/serviceResult.test.ts": [
+      "src/types/serviceResult.ts"
+    ],
+    "src/types/roles.ts": [],
+    "src/types/serviceResult.ts": [],
+    "src/utils/__tests__/agencyRecruitingMyList.test.ts": [
+      "src/utils/agencyRecruitingMyList.ts"
+    ],
+    "src/utils/__tests__/applicantNameFromProfile.test.ts": [
+      "src/utils/applicantNameFromProfile.ts"
+    ],
+    "src/utils/__tests__/b2bOrgPairContextId.test.ts": [
+      "src/utils/b2bOrgPairContextId.ts"
+    ],
+    "src/utils/__tests__/messengerSenderLabel.test.ts": [
+      "src/utils/messengerSenderLabel.ts"
+    ],
+    "src/utils/__tests__/modelFilters.test.ts": [
+      "src/utils/modelFilters.ts",
+      "src/services/modelsSupabase.ts"
+    ],
+    "src/utils/agencyRecruitingMyList.ts": [],
+    "src/utils/applicantNameFromProfile.ts": [],
+    "src/utils/b2bOrgPairContextId.ts": [],
+    "src/utils/calendarColors.ts": [],
+    "src/utils/crossPlatformAlert.ts": [],
+    "src/utils/logAction.ts": [
+      "src/utils/orgGuard.ts",
+      "src/services/gdprComplianceSupabase.ts"
+    ],
+    "src/utils/messengerSenderLabel.ts": [],
+    "src/utils/modelCompleteness.ts": [
+      "src/services/modelsSupabase.ts"
+    ],
+    "src/utils/modelFilters.ts": [
+      "src/services/modelsSupabase.ts",
+      "src/store/applicationsStore.ts"
+    ],
+    "src/utils/orgGuard.ts": [],
+    "src/utils/publicLegalRoutes.ts": [],
+    "src/utils/statusHelpers.ts": [],
+    "src/utils/useDebounce.ts": [],
+    "src/views/AdminDashboard.tsx": [
+      "src/theme/theme.ts",
+      "src/constants/uiCopy.ts",
+      "src/services/adminSupabase.ts",
+      "src/services/agencyStorageSupabase.ts",
+      "lib/supabase.ts"
+    ],
+    "src/views/AgencyControllerView.tsx": [
+      "src/components/StorageImage.tsx",
+      "src/navigation/bottomTabNavigation.ts",
+      "src/theme/theme.ts",
+      "src/utils/crossPlatformAlert.ts",
+      "src/context/AuthContext.tsx",
+      "src/services/apiService.js",
+      "src/store/optionRequests.ts",
+      "src/views/AgencyRecruitingView.tsx",
+      "src/services/modelsSupabase.ts",
+      "src/views/BookingChatView.tsx",
+      "src/store/recruitingChats.ts",
+      "src/services/b2bOrgChatSupabase.ts",
+      "src/services/messengerSupabase.ts",
+      "src/store/applicationsStore.ts",
+      "src/components/OrgMessengerInline.tsx",
+      "src/components/AgencySettingsTab.tsx",
+      "src/services/modelPhotosSupabase.ts",
+      "src/services/gdprComplianceSupabase.ts",
+      "src/components/ModelMediaSettingsPanel.tsx",
+      "src/services/territoriesSupabase.ts",
+      "src/services/modelLocationsSupabase.ts",
+      "src/utils/modelFilters.ts",
+      "lib/supabase.ts",
+      "src/services/organizationsInvitationsSupabase.ts",
+      "src/services/clientOrganizationsDirectorySupabase.ts",
+      "src/services/agenciesSupabase.ts",
+      "src/services/guestLinksSupabase.ts",
+      "src/services/calendarSupabase.ts",
+      "src/services/optionRequestsSupabase.ts",
+      "src/services/userCalendarEventsSupabase.ts",
+      "src/components/MonthCalendarView.tsx",
+      "src/components/ScreenScrollView.tsx",
+      "src/constants/uiCopy.ts",
+      "src/components/ModelFiltersPanel.tsx",
+      "src/components/ModelEditDetailsPanel.tsx",
+      "src/services/modelCreationFacade.ts",
+      "src/services/mediaslideSyncService.ts",
+      "src/services/netwalkSyncService.ts",
+      "src/services/agencySettingsSupabase.ts",
+      "src/utils/modelCompleteness.ts",
+      "src/utils/calendarColors.ts",
+      "src/components/DashboardSummaryBar.tsx",
+      "src/components/OrgMetricsPanel.tsx",
+      "src/components/GlobalSearchBar.tsx",
+      "src/services/agencyUsageLimitsSupabase.ts",
+      "src/services/activityLogsSupabase.ts",
+      "src/services/accountSupabase.ts"
+    ],
+    "src/views/AgencyRecruitingView.tsx": [
+      "src/theme/theme.ts",
+      "src/store/applicationsStore.ts",
+      "src/store/recruitingChats.ts",
+      "src/storage/agencyRecruitingShortlist.ts",
+      "src/utils/agencyRecruitingMyList.ts",
+      "src/services/agencyUsageLimitsSupabase.ts",
+      "src/constants/uiCopy.ts",
+      "src/components/ModelFiltersPanel.tsx",
+      "src/utils/modelFilters.ts"
+    ],
+    "src/views/AgencyView.tsx": [
+      "src/views/AgencyControllerView.tsx"
+    ],
+    "src/views/ApplyFormView.tsx": [
+      "src/theme/theme.ts",
+      "src/store/applicationsStore.ts",
+      "src/services/applicationsSupabase.ts",
+      "src/services/imageUtils.ts",
+      "src/context/AuthContext.tsx",
+      "src/utils/applicantNameFromProfile.ts",
+      "src/constants/uiCopy.ts",
+      "src/utils/modelFilters.ts",
+      "src/services/gdprComplianceSupabase.ts"
+    ],
+    "src/views/BookingChatView.tsx": [
+      "src/theme/theme.ts",
+      "src/store/recruitingChats.ts",
+      "src/services/recruitingChatSupabase.ts",
+      "src/store/applicationsStore.ts",
+      "src/services/agenciesSupabase.ts",
+      "src/navigation/bottomTabNavigation.ts",
+      "lib/supabase.ts",
+      "src/services/gdprComplianceSupabase.ts",
+      "src/constants/uiCopy.ts"
+    ],
+    "src/views/ClientView.tsx": [
+      "src/web/ClientWebApp.tsx"
+    ],
+    "src/views/GuestChatView.tsx": [
+      "src/theme/theme.ts",
+      "src/constants/uiCopy.ts",
+      "src/context/AuthContext.tsx",
+      "lib/supabase.ts",
+      "src/services/guestChatSupabase.ts",
+      "src/services/guestAuthSupabase.ts",
+      "src/components/OrgMessengerInline.tsx",
+      "src/services/messengerSupabase.ts"
+    ],
+    "src/views/GuestView.tsx": [
+      "src/theme/theme.ts",
+      "lib/supabase.ts",
+      "src/services/guestLinksSupabase.ts",
+      "src/services/guestAuthSupabase.ts",
+      "src/constants/uiCopy.ts",
+      "src/screens/TermsScreen.tsx",
+      "src/screens/PrivacyScreen.tsx"
+    ],
+    "src/views/ModelApplicationsView.tsx": [
+      "src/theme/theme.ts",
+      "src/services/applicationsSupabase.ts",
+      "src/utils/modelFilters.ts",
+      "src/store/applicationsStore.ts",
+      "src/services/agenciesSupabase.ts",
+      "src/views/ApplyFormView.tsx",
+      "src/views/BookingChatView.tsx",
+      "src/constants/uiCopy.ts"
+    ],
+    "src/views/ModelView.tsx": [
+      "src/screens/ModelProfileScreen.tsx",
+      "src/views/ModelApplicationsView.tsx",
+      "src/services/modelsSupabase.ts",
+      "src/services/optionRequestsSupabase.ts",
+      "src/theme/theme.ts",
+      "src/constants/uiCopy.ts",
+      "src/utils/statusHelpers.ts"
+    ],
+    "src/views/SharedSelectionView.tsx": [
+      "src/components/StorageImage.tsx",
+      "src/theme/theme.ts",
+      "src/services/apiService.js"
+    ],
+    "src/web/ClientWebApp.tsx": [
+      "src/navigation/bottomTabNavigation.ts",
+      "src/theme/theme.ts",
+      "src/utils/crossPlatformAlert.ts",
+      "src/constants/uiCopy.ts",
+      "src/context/AuthContext.tsx",
+      "src/services/apiService.js",
+      "src/services/clientDiscoverySupabase.ts",
+      "src/services/modelLocationsSupabase.ts",
+      "src/services/guestLinksSupabase.ts",
+      "src/services/agenciesSupabase.ts",
+      "src/constants/agencyTypes.ts",
+      "src/utils/modelFilters.ts",
+      "src/components/ModelFiltersPanel.tsx",
+      "src/services/calendarSupabase.ts",
+      "src/services/optionRequestsSupabase.ts",
+      "src/services/userCalendarEventsSupabase.ts",
+      "src/storage/persistence.ts",
+      "src/services/clientFiltersSupabase.ts",
+      "src/store/optionRequests.ts",
+      "src/services/b2bOrgChatSupabase.ts",
+      "src/services/messengerSupabase.ts",
+      "src/services/organizationsInvitationsSupabase.ts",
+      "src/services/projectsSupabase.ts",
+      "lib/supabase.ts",
+      "src/services/threadPreferencesSupabase.ts",
+      "src/components/MonthCalendarView.tsx",
+      "src/components/ClientOrganizationTeamSection.tsx",
+      "src/components/OrgMessengerInline.tsx",
+      "src/components/OrgMetricsPanel.tsx",
+      "src/components/GlobalSearchBar.tsx",
+      "src/components/DashboardSummaryBar.tsx",
+      "src/services/accountSupabase.ts",
+      "src/services/gdprComplianceSupabase.ts",
+      "src/services/consentSupabase.ts"
+    ]
+  }
+}

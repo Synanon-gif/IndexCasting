@@ -1,18 +1,53 @@
 #!/usr/bin/env node
 /**
  * Deterministic repo audit: git ls-files manifest + SHA256 + gate results + rule scans.
+ * Also: TS dependency graph, export map / import usage, rule-engine for supabase.from,
+ * drift vs docs/AUDIT_DRIFT_BASELINE.json (update with AUDIT_WRITE_BASELINE=1).
+ *
+ * Optional env:
+ *   AUDIT_WRITE_BASELINE=1  — write docs/AUDIT_DRIFT_BASELINE.json after run (commit when intentional)
+ *   AUDIT_FAIL_ON_DRIFT=1   — exit 1 if drift or new forbidden supabase.from vs baseline
+ *
  * Writes docs/AUDIT_COVERAGE_MANIFEST_<ISO_DATE>.{md,json} and docs/SYSTEM_AUDIT_REPORT_<ISO_DATE>.md
  */
 import { createHash } from 'node:crypto';
+import { createRequire } from 'node:module';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { join, extname, basename } from 'node:path';
+import { join, extname, dirname, normalize } from 'node:path';
 import { execSync, spawnSync } from 'node:child_process';
 
+const require = createRequire(import.meta.url);
+/** @type {typeof import('typescript')} */
+const ts = require('typescript');
+
 const REPO_ROOT = join(import.meta.dirname, '..');
+const DRIFT_BASELINE_PATH = join(REPO_ROOT, 'docs', 'AUDIT_DRIFT_BASELINE.json');
+
+/** Exclude generated audit outputs from drift fingerprints (otherwise every run looks like churn). */
+function isGeneratedAuditArtifact(relPath) {
+  const p = relPath.replace(/\\/g, '/');
+  if (p === 'docs/AUDIT_DRIFT_BASELINE.json') return true;
+  if (p === 'docs/AUDIT_DEPENDENCY_GRAPH.json') return true;
+  if (p === 'docs/AUDIT_EXPORT_MAP.json') return true;
+  if (/^docs\/AUDIT_COVERAGE_MANIFEST_\d{4}-\d{2}-\d{2}\.(md|json)$/.test(p)) return true;
+  if (/^docs\/SYSTEM_AUDIT_REPORT_\d{4}-\d{2}-\d{2}\.md$/.test(p)) return true;
+  return false;
+}
+
+const CRITICAL_PATH_PREFIXES = [
+  'src/context/',
+  'src/services/',
+  'lib/',
+  'supabase/migrations/',
+  'src/web/',
+  'App.tsx',
+];
 const ISO_DATE = new Date().toISOString().slice(0, 10);
 const OUT_MD = join(REPO_ROOT, 'docs', `AUDIT_COVERAGE_MANIFEST_${ISO_DATE}.md`);
 const OUT_JSON = join(REPO_ROOT, 'docs', `AUDIT_COVERAGE_MANIFEST_${ISO_DATE}.json`);
 const OUT_REPORT = join(REPO_ROOT, 'docs', `SYSTEM_AUDIT_REPORT_${ISO_DATE}.md`);
+const OUT_DEP_GRAPH = join(REPO_ROOT, 'docs', 'AUDIT_DEPENDENCY_GRAPH.json');
+const OUT_EXPORT_MAP = join(REPO_ROOT, 'docs', 'AUDIT_EXPORT_MAP.json');
 
 const BINARY_EXT = new Set([
   '.png',
@@ -117,25 +152,190 @@ function runGate(cmd, args, cwd) {
   };
 }
 
-/** @type {{ path: string, pattern: string, note: string }[]} */
+/** @type {{ path: string, line: number, classification: string, rule_id: string, note: string }[]} */
+const SUPABASE_FROM_RULE_HITS = [];
+
+/** Forbidden-only (backward compat with report tables) */
 const UI_SUPABASE_FROM = [];
 
-function scanUiDirectSupabaseFrom(relPath, content) {
+// ─── A: Dependency graph + B: exports / usage ───────────────────────────────
+
+/** @type {Record<string, string[]>} adjacency: fromRelPath -> [toRelPath, ...] */
+const DEP_GRAPH = {};
+
+/** @type {{ file: string, name: string, line: number, kind: string }[]} */
+const EXPORTED_SYMBOLS = [];
+
+/** @type {{ exportKey: string, file: string, name: string, importers: { file: string, names: string[] }[] }[]} */
+const EXPORT_USAGE_SUMMARY = [];
+
+function isCriticalPath(relPath) {
+  return CRITICAL_PATH_PREFIXES.some((p) => relPath === p || relPath.startsWith(p));
+}
+
+/**
+ * Resolve relative or package-internal spec from fromFile to repo-relative path or null.
+ */
+function resolveInternalModule(fromRel, specifier) {
+  if (!specifier || (!specifier.startsWith('.') && !specifier.startsWith('/'))) {
+    return null;
+  }
+  const base = join(REPO_ROOT, dirname(fromRel));
+  let resolved = normalize(join(base, specifier)).replace(/\\/g, '/');
+  const rootNorm = REPO_ROOT.replace(/\\/g, '/');
+  if (!resolved.startsWith(rootNorm)) return null;
+  let rel = resolved.slice(rootNorm.length + 1);
+  const exts = ['', '.ts', '.tsx', '.js', '.cjs', '.mjs'];
+  for (const ext of exts) {
+    const cand = ext ? `${rel}${ext}` : rel;
+    if (existsSync(join(REPO_ROOT, cand))) return cand;
+  }
+  for (const ext of ['.ts', '.tsx']) {
+    const cand = `${rel}/index${ext}`;
+    if (existsSync(join(REPO_ROOT, cand))) return cand;
+  }
+  return null;
+}
+
+function hasModifier(node, kind) {
+  return !!node.modifiers?.some((m) => m.kind === kind);
+}
+
+function collectFromSourceFile(relPath, sf) {
+  const edges = new Set();
+  const exports = [];
+  const importEdges = [];
+
+  function addEdge(to) {
+    if (to && to !== relPath) edges.add(to);
+  }
+
+  function visit(node) {
+    if (ts.isImportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+      const spec = node.moduleSpecifier.text;
+      const to = resolveInternalModule(relPath, spec);
+      if (to) {
+        addEdge(to);
+        const names = [];
+        const cl = node.importClause;
+        if (cl) {
+          if (cl.name) names.push(cl.name.text);
+          if (cl.namedBindings) {
+            if (ts.isNamespaceImport(cl.namedBindings)) names.push(`*as:${cl.namedBindings.name.text}`);
+            else if (ts.isNamedImports(cl.namedBindings)) {
+              for (const el of cl.namedBindings.elements) names.push(el.name.text);
+            }
+          }
+        }
+        importEdges.push({ from: relPath, to, names, isTypeOnly: !!cl?.isTypeOnly });
+      }
+    }
+
+    if (ts.isExportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+      const to = resolveInternalModule(relPath, node.moduleSpecifier.text);
+      if (to) addEdge(to);
+      // Names are re-exported from `to`, not defined in this file — omit from local export inventory.
+    }
+
+    if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+      const arg0 = node.arguments[0];
+      if (arg0 && ts.isStringLiteral(arg0)) {
+        const to = resolveInternalModule(relPath, arg0.text);
+        if (to) addEdge(to);
+      }
+    }
+
+    if (ts.isFunctionDeclaration(node) && node.name && hasModifier(node, ts.SyntaxKind.ExportKeyword)) {
+      exports.push({ name: node.name.text, line: sf.getLineAndCharacterOfPosition(node.getStart()).line + 1, kind: 'function' });
+    }
+
+    if (ts.isClassDeclaration(node) && node.name && hasModifier(node, ts.SyntaxKind.ExportKeyword)) {
+      exports.push({ name: node.name.text, line: sf.getLineAndCharacterOfPosition(node.getStart()).line + 1, kind: 'class' });
+    }
+
+    if (ts.isVariableStatement(node) && hasModifier(node, ts.SyntaxKind.ExportKeyword)) {
+      for (const d of node.declarationList.declarations) {
+        if (ts.isIdentifier(d.name)) {
+          const isFn =
+            d.initializer &&
+            (ts.isArrowFunction(d.initializer) ||
+              ts.isFunctionExpression(d.initializer) ||
+              (ts.isCallExpression(d.initializer) && ts.isFunctionExpression(d.initializer.expression)));
+          exports.push({
+            name: d.name.text,
+            line: sf.getLineAndCharacterOfPosition(d.getStart()).line + 1,
+            kind: isFn ? 'const_fn' : 'const',
+          });
+        }
+      }
+    }
+
+    if (
+      ts.isExportDeclaration(node) &&
+      node.exportClause &&
+      ts.isNamedExports(node.exportClause) &&
+      !node.moduleSpecifier
+    ) {
+      for (const el of node.exportClause.elements) {
+        const nm = (el.propertyName || el.name).text;
+        exports.push({ name: nm, line: sf.getLineAndCharacterOfPosition(el.getStart()).line + 1, kind: 'export_specifier' });
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sf);
+  return { edges: [...edges], exports, importEdges };
+}
+
+function parseAndAnalyzeTs(relPath, content) {
+  const kind = relPath.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+  const sf = ts.createSourceFile(relPath, content, ts.ScriptTarget.Latest, true, kind);
+  return collectFromSourceFile(relPath, sf);
+}
+
+/**
+ * Rule engine: direct supabase.from( — not string matching alone; tied to rule ids.
+ */
+function classifySupabaseFromRules(relPath, content) {
   if (!/\.(tsx|ts)$/.test(relPath)) return;
-  if (relPath.startsWith('src/services/')) return;
-  if (relPath.startsWith('lib/')) return;
-  if (relPath.startsWith('src/context/AuthContext')) return;
-  const re = /\bsupabase\s*\.\s*from\s*\(/g;
-  let m;
-  let line = 1;
-  let idx = 0;
   const lines = content.split('\n');
   for (let i = 0; i < lines.length; i++) {
-    if (/\bsupabase\s*\.\s*from\s*\(/.test(lines[i])) {
+    const line = lines[i];
+    if (!/\bsupabase\s*\.\s*from\s*\(/.test(line)) continue;
+
+    let classification;
+    let rule_id;
+    if (relPath.startsWith('src/context/AuthContext')) {
+      classification = 'exception';
+      rule_id = 'supabase_from_auth_context';
+    } else if (relPath.startsWith('src/services/') || relPath.startsWith('lib/')) {
+      classification = 'allowed';
+      rule_id = 'supabase_from_service_layer';
+    } else {
+      classification = 'forbidden';
+      rule_id = 'supabase_from_outside_service_layer';
+    }
+
+    const hit = {
+      path: relPath,
+      line: i + 1,
+      classification,
+      rule_id,
+      note:
+        classification === 'allowed'
+          ? 'Direct table access in service/lib (allowed).'
+          : classification === 'exception'
+            ? 'Auth bootstrap path (documented exception).'
+            : 'Prefer service-layer RPC/query helpers for org-scoped access.',
+    };
+    SUPABASE_FROM_RULE_HITS.push(hit);
+    if (classification === 'forbidden') {
       UI_SUPABASE_FROM.push({
         path: relPath,
         pattern: 'supabase.from(',
-        note: `line ${i + 1}: direct PostgREST from UI/non-service path`,
+        note: `line ${i + 1}: ${hit.note}`,
       });
     }
   }
@@ -171,6 +371,54 @@ function scanVoidCatch(relPath, content) {
   });
 }
 
+function buildExportUsageIndex(tsFiles, perFileData) {
+  /** @type {Map<string, Set<string>>} */
+  const fileToExportNames = new Map();
+  for (const rel of tsFiles) {
+    const data = perFileData.get(rel);
+    if (!data) continue;
+    const set = new Set();
+    for (const ex of data.exports) set.add(ex.name);
+    fileToExportNames.set(rel, set);
+  }
+
+  /** @type {Map<string, { file: string, names: string[] }[]>} */
+  const usageByTarget = new Map();
+  for (const rel of tsFiles) {
+    const data = perFileData.get(rel);
+    if (!data) continue;
+    for (const ie of data.importEdges) {
+      if (ie.isTypeOnly) continue;
+      for (const n of ie.names) {
+        if (n.startsWith('*as:')) continue;
+        const key = `${ie.to}::${n}`;
+        if (!usageByTarget.has(key)) usageByTarget.set(key, []);
+        const arr = usageByTarget.get(key);
+        let block = arr.find((x) => x.file === rel);
+        if (!block) {
+          block = { file: rel, names: [] };
+          arr.push(block);
+        }
+        if (!block.names.includes(n)) block.names.push(n);
+      }
+    }
+  }
+
+  for (const [target, expNames] of fileToExportNames) {
+    for (const name of expNames) {
+      const key = `${target}::${name}`;
+      const importers = usageByTarget.get(key) || [];
+      if (importers.length === 0) continue;
+      EXPORT_USAGE_SUMMARY.push({
+        exportKey: key,
+        file: target,
+        name,
+        importers,
+      });
+    }
+  }
+}
+
 function scanAllTsRoots() {
   const all = gitLsFiles();
   const uniq = [
@@ -179,19 +427,117 @@ function scanAllTsRoots() {
         (p) => /\.(ts|tsx)$/.test(p) && (p.startsWith('src/') || p.startsWith('lib/')),
       ),
     ),
-  ];
+  ].sort();
+
+  /** @type {Map<string, ReturnType<typeof parseAndAnalyzeTs>>} */
+  const perFile = new Map();
+
   for (const rel of uniq) {
     const abs = join(REPO_ROOT, rel);
     if (!existsSync(abs)) continue;
     try {
       const c = readFileSync(abs, 'utf8');
-      scanUiDirectSupabaseFrom(rel, c);
+      const parsed = parseAndAnalyzeTs(rel, c);
+      perFile.set(rel, parsed);
+      if (!DEP_GRAPH[rel]) DEP_GRAPH[rel] = [];
+      for (const e of parsed.edges) {
+        if (!DEP_GRAPH[rel].includes(e)) DEP_GRAPH[rel].push(e);
+      }
+      for (const ex of parsed.exports) {
+        EXPORTED_SYMBOLS.push({ file: rel, name: ex.name, line: ex.line, kind: ex.kind });
+      }
+      classifySupabaseFromRules(rel, c);
       scanSnapshotOptimistic(rel, c);
       scanVoidCatch(rel, c);
     } catch {
       /* ignore */
     }
   }
+
+  buildExportUsageIndex(uniq, perFile);
+}
+
+// ─── D: Drift detection ──────────────────────────────────────────────────────
+
+function fingerprintFileSet(entries, { excludeGeneratedAudit = false } = {}) {
+  const rows = entries
+    .filter((e) => e.sha256 && (!excludeGeneratedAudit || !isGeneratedAuditArtifact(e.path)))
+    .map((e) => `${e.path}\t${e.sha256}`)
+    .sort();
+  return createHash('sha256').update(rows.join('\n')).digest('hex');
+}
+
+function forbiddenSupabaseFingerprint() {
+  const rows = SUPABASE_FROM_RULE_HITS.filter((h) => h.classification === 'forbidden')
+    .map((h) => `${h.path}:${h.line}`)
+    .sort();
+  return createHash('sha256').update(rows.join('\n')).digest('hex');
+}
+
+function loadDriftBaseline() {
+  if (!existsSync(DRIFT_BASELINE_PATH)) return null;
+  try {
+    return JSON.parse(readFileSync(DRIFT_BASELINE_PATH, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function computeDrift(baseline, currentPaths, pathToSha, forbiddenHits) {
+  if (!baseline || !baseline.files) {
+    return {
+      status: 'no_baseline',
+      message: 'No docs/AUDIT_DRIFT_BASELINE.json — create with AUDIT_WRITE_BASELINE=1 after a clean audit.',
+    };
+  }
+  const prevFiles = baseline.files;
+  const prevPaths = new Set(Object.keys(prevFiles));
+  const currPaths = new Set(currentPaths.filter((p) => !isGeneratedAuditArtifact(p)));
+
+  const added = [...currPaths].filter((p) => !prevPaths.has(p)).sort();
+  const removed = [...prevPaths].filter((p) => !currPaths.has(p)).sort();
+  const modifiedCritical = [];
+  for (const p of currPaths) {
+    if (!prevFiles[p]) continue;
+    if (pathToSha[p] && prevFiles[p] !== pathToSha[p] && isCriticalPath(p)) {
+      modifiedCritical.push({ path: p, prev: prevFiles[p], curr: pathToSha[p] });
+    }
+  }
+
+  const prevForbidden = new Set(baseline.forbidden_supabase_from || []);
+  const currForbidden = new Set(forbiddenHits.map((h) => `${h.path}:${h.line}`));
+  const violationsIntroduced = [...currForbidden].filter((x) => !prevForbidden.has(x)).sort();
+  const violationsResolved = [...prevForbidden].filter((x) => !currForbidden.has(x)).sort();
+
+  return {
+    status: 'compared',
+    added_files: added,
+    removed_files: removed,
+    modified_critical_files: modifiedCritical,
+    forbidden_supabase_from_introduced: violationsIntroduced,
+    forbidden_supabase_from_resolved: violationsResolved,
+    manifest_fingerprint_prev: baseline.manifest_fingerprint || null,
+    manifest_fingerprint_curr: null,
+  };
+}
+
+function writeDriftBaseline(entries, manifestFp) {
+  const files = {};
+  for (const e of entries) {
+    if (e.sha256 && !isGeneratedAuditArtifact(e.path)) files[e.path] = e.sha256;
+  }
+  const forbidden = SUPABASE_FROM_RULE_HITS.filter((h) => h.classification === 'forbidden')
+    .map((h) => `${h.path}:${h.line}`)
+    .sort();
+  const payload = {
+    version: 1,
+    written_at: new Date().toISOString(),
+    manifest_fingerprint: manifestFp,
+    files,
+    forbidden_supabase_from: forbidden,
+    forbidden_supabase_fingerprint: forbiddenSupabaseFingerprint(),
+  };
+  writeFileSync(DRIFT_BASELINE_PATH, JSON.stringify(payload, null, 2), 'utf8');
 }
 
 function scanMigrationsSql() {
@@ -336,18 +682,77 @@ function main() {
     summary[e.review_status] = (summary[e.review_status] || 0) + 1;
   }
 
+  const manifestFingerprint = fingerprintFileSet(entries);
+  const driftManifestFingerprint = fingerprintFileSet(entries, { excludeGeneratedAudit: true });
+  const pathToSha = Object.fromEntries(entries.filter((e) => e.sha256).map((e) => [e.path, e.sha256]));
+  const baseline = loadDriftBaseline();
+  const drift = computeDrift(baseline, paths, pathToSha, SUPABASE_FROM_RULE_HITS.filter((h) => h.classification === 'forbidden'));
+  if (drift.status === 'compared') drift.manifest_fingerprint_curr = driftManifestFingerprint;
+
+  if (process.env.AUDIT_WRITE_BASELINE === '1') {
+    writeDriftBaseline(entries, driftManifestFingerprint);
+    console.log(`Wrote drift baseline: ${DRIFT_BASELINE_PATH}`);
+  }
+
+  const depNodes = new Set(Object.keys(DEP_GRAPH));
+  for (const outs of Object.values(DEP_GRAPH)) for (const t of outs) depNodes.add(t);
+  const depEdgeCount = Object.values(DEP_GRAPH).reduce((a, arr) => a + arr.length, 0);
+  const supabaseRuleCounts = { allowed: 0, exception: 0, forbidden: 0 };
+  for (const h of SUPABASE_FROM_RULE_HITS) {
+    supabaseRuleCounts[h.classification] = (supabaseRuleCounts[h.classification] || 0) + 1;
+  }
+
+  writeFileSync(
+    OUT_DEP_GRAPH,
+    JSON.stringify({ generated_at: new Date().toISOString(), adjacency: DEP_GRAPH }, null, 2),
+    'utf8',
+  );
+  writeFileSync(
+    OUT_EXPORT_MAP,
+    JSON.stringify(
+      {
+        generated_at: new Date().toISOString(),
+        exported_symbols: EXPORTED_SYMBOLS,
+        export_to_importers: EXPORT_USAGE_SUMMARY,
+      },
+      null,
+      2,
+    ),
+    'utf8',
+  );
+
   const jsonOut = {
     generated_at: new Date().toISOString(),
     iso_date: ISO_DATE,
     total_paths: entries.length,
+    manifest_fingerprint: manifestFingerprint,
+    /** SHA256 over path+hash rows excluding generated audit docs (stable for drift). */
+    drift_manifest_fingerprint: driftManifestFingerprint,
     gates: {
       typecheck: { ok: gates.typecheck.ok, exit: gates.typecheck.status },
       eslint: { ok: gates.eslint.ok, exit: gates.eslint.status },
       jest: { ok: gates.jest.ok, exit: gates.jest.status },
     },
     migration_sql_scan: migrationStats,
+    dependency_graph: {
+      node_count: depNodes.size,
+      edge_count: depEdgeCount,
+      detail_file: 'AUDIT_DEPENDENCY_GRAPH.json',
+    },
+    export_inventory: {
+      exported_symbol_count: EXPORTED_SYMBOLS.length,
+      internal_export_usage_entries: EXPORT_USAGE_SUMMARY.length,
+      detail_file: 'AUDIT_EXPORT_MAP.json',
+    },
+    rule_engine: {
+      supabase_from: {
+        counts: supabaseRuleCounts,
+        hits: SUPABASE_FROM_RULE_HITS,
+      },
+    },
+    drift,
     rule_scans: {
-      ui_supabase_from: UI_SUPABASE_FROM,
+      ui_supabase_from_forbidden_only: UI_SUPABASE_FROM,
       void_catch_candidates: VOID_CATCH,
       snapshot_pattern_hits: SNAPSHOT_PATTERNS,
     },
@@ -358,6 +763,7 @@ function main() {
 
   let md = `# Audit coverage manifest — ${ISO_DATE}\n\n`;
   md += `Generated by \`scripts/audit-coverage.mjs\` (deterministic: \`git ls-files\` + SHA-256 + gates).\n\n`;
+  md += `Sidecars: [\`AUDIT_DEPENDENCY_GRAPH.json\`](./AUDIT_DEPENDENCY_GRAPH.json), [\`AUDIT_EXPORT_MAP.json\`](./AUDIT_EXPORT_MAP.json).\n\n`;
   md += `**Total paths:** ${entries.length}\n\n`;
   md += `## Gates\n\n`;
   md += `| Gate | OK | Exit |\n|---|---:|---:|\n`;
@@ -370,10 +776,13 @@ function main() {
   }
   md += `\n## Migration SQL scan (supabase/migrations)\n\n`;
   md += `\`\`\`json\n${JSON.stringify(migrationStats, null, 2)}\n\`\`\`\n\n`;
-  md += `## Rule scan summary\n\n`;
-  md += `- **ui supabase.from( hits (non-service):** ${UI_SUPABASE_FROM.length}\n`;
+  md += `## Dependency & rule engine summary\n\n`;
+  md += `- **Dependency graph (src+lib):** ${depNodes.size} nodes, ${depEdgeCount} internal import edges\n`;
+  md += `- **Exported symbols (AST):** ${EXPORTED_SYMBOLS.length}; **with internal importers:** ${EXPORT_USAGE_SUMMARY.length}\n`;
+  md += `- **supabase.from rule engine:** allowed=${supabaseRuleCounts.allowed ?? 0}, exception=${supabaseRuleCounts.exception ?? 0}, forbidden=${supabaseRuleCounts.forbidden ?? 0}\n`;
   md += `- **void …catch( candidates:** ${VOID_CATCH.length}\n`;
-  md += `- **snapshot pattern hits (heuristic):** ${SNAPSHOT_PATTERNS.length}\n\n`;
+  md += `- **snapshot pattern hits (heuristic):** ${SNAPSHOT_PATTERNS.length}\n`;
+  md += `- **Drift:** ${drift.status}${drift.status === 'compared' && drift.forbidden_supabase_from_introduced?.length ? ` — new forbidden supabase.from: ${drift.forbidden_supabase_from_introduced.length}` : ''}\n\n`;
   md += `## File listing\n\n`;
   md += `| path | category | file_kind | review_status | evidence |\n|---|---|---|---|---|\n`;
   for (const e of entries) {
@@ -425,18 +834,59 @@ function main() {
   report += `> Further SECDEF inventory: [\`docs/AUDIT_REPORT_2026-04-07.md\`](./AUDIT_REPORT_2026-04-07.md), [\`docs/RLS_AUDIT_BACKLOG.md\`](./RLS_AUDIT_BACKLOG.md).\n\n`;
   report += `> **Note:** The watchlist \`FOR ALL\` count is a **heuristic** (same file mentions \`FOR ALL\` and \`ON public.<watchlist_table>\`) and may include fix migrations or comments — triage before treating as active risk.\n\n`;
 
-  report += `## 4. Regelbasierte Scans (TypeScript)\n\n`;
-  report += `### 4.1 Direct \`supabase.from(\` outside \`src/services\` and \`lib/\`\n\n`;
+  report += `## 4. Dependency graph, exports, rules, drift\n\n`;
+  report += `### 4.0 Internal import graph (\`src/\` + \`lib/\`)\n\n`;
+  report += `- **Nodes:** ${depNodes.size} (union of files that import or are imported internally)\n`;
+  report += `- **Edges:** ${depEdgeCount} (static \`import\` / \`export from\` / dynamic \`import()\` to repo files)\n`;
+  report += `- **Full adjacency:** [\`docs/AUDIT_DEPENDENCY_GRAPH.json\`](./AUDIT_DEPENDENCY_GRAPH.json).\n\n`;
+
+  report += `### 4.1 Export inventory & internal usage\n\n`;
+  report += `- **Exported symbols (functions/classes/consts via AST):** ${EXPORTED_SYMBOLS.length}\n`;
+  report += `- **Symbols with ≥1 internal importer (named imports):** ${EXPORT_USAGE_SUMMARY.length}\n`;
+  report += `- **Detail:** [\`docs/AUDIT_EXPORT_MAP.json\`](./AUDIT_EXPORT_MAP.json) (symbols + importers).\n\n`;
+
+  report += `### 4.2 Rule engine: \`supabase.from(\`\n\n`;
+  report += `| Classification | Count | Rule ID |\n|---:|---:|---|\n`;
+  report += `| allowed (service/lib) | ${supabaseRuleCounts.allowed ?? 0} | \`supabase_from_service_layer\` |\n`;
+  report += `| exception (AuthContext) | ${supabaseRuleCounts.exception ?? 0} | \`supabase_from_auth_context\` |\n`;
+  report += `| forbidden | ${supabaseRuleCounts.forbidden ?? 0} | \`supabase_from_outside_service_layer\` |\n\n`;
   if (UI_SUPABASE_FROM.length === 0) {
-    report += `No hits.\n\n`;
+    report += `No **forbidden** hits.\n\n`;
   } else {
+    report += `**Forbidden hits:**\n\n`;
     report += `| File | Note |\n|---|---|\n`;
     for (const h of UI_SUPABASE_FROM) {
       report += `| \`${h.path}\` | ${h.note} |\n`;
     }
     report += `\n`;
   }
-  report += `### 4.2 \`void …catch(\` (Option-A dead-code risk; exclude tests)\n\n`;
+
+  report += `### 4.3 Drift vs \`docs/AUDIT_DRIFT_BASELINE.json\`\n\n`;
+  if (drift.status === 'no_baseline') {
+    report += `${drift.message}\n\n`;
+  } else {
+    report += `- **Added files:** ${drift.added_files?.length ?? 0}\n`;
+    report += `- **Removed files:** ${drift.removed_files?.length ?? 0}\n`;
+    report += `- **Modified critical files:** ${drift.modified_critical_files?.length ?? 0}\n`;
+    report += `- **New forbidden \`supabase.from\` sites:** ${drift.forbidden_supabase_from_introduced?.length ?? 0}\n`;
+    report += `- **Resolved forbidden sites:** ${drift.forbidden_supabase_from_resolved?.length ?? 0}\n`;
+    report += `- **Drift manifest fingerprint (excludes generated \`docs/AUDIT_*\` / dated reports):** prev \`${drift.manifest_fingerprint_prev ?? 'n/a'}\` → curr \`${drift.manifest_fingerprint_curr ?? driftManifestFingerprint}\`\n\n`;
+    if ((drift.forbidden_supabase_from_introduced?.length ?? 0) > 0) {
+      report += `**Introduced forbidden lines:**\n\n`;
+      for (const x of drift.forbidden_supabase_from_introduced) report += `- \`${x}\`\n`;
+      report += `\n`;
+    }
+    if ((drift.modified_critical_files?.length ?? 0) > 0) {
+      report += `**Critical path hash changes:**\n\n`;
+      for (const m of drift.modified_critical_files) {
+        report += `- \`${m.path}\`\n`;
+      }
+      report += `\n`;
+    }
+  }
+  report += `Update baseline after intentional changes: \`AUDIT_WRITE_BASELINE=1 npm run audit:coverage\`. Optional CI gate: \`AUDIT_FAIL_ON_DRIFT=1\`.\n\n`;
+
+  report += `### 4.4 \`void …catch(\` (Option-A dead-code risk; exclude tests)\n\n`;
   if (voidCatchProd.length === 0) {
     report += `No production-path hits (tests may still contain patterns).\n\n`;
   } else {
@@ -446,7 +896,7 @@ function main() {
     }
     report += `\n`;
   }
-  report += `### 4.3 Snapshot-style optimistic rollback (heuristic)\n\n`;
+  report += `### 4.5 Snapshot-style optimistic rollback (heuristic)\n\n`;
   if (SNAPSHOT_PATTERNS.length === 0) {
     report += `No heuristic hits.\n\n`;
   } else {
@@ -509,14 +959,23 @@ function main() {
   }
 
   report += `## 8. Incremental recommendations\n\n`;
-  report += `1. Wire \`npm run audit:coverage\` into optional CI job to refresh manifest on release branches.\n`;
+  report += `1. Wire \`npm run audit:coverage\` into optional CI; use \`AUDIT_FAIL_ON_DRIFT=1\` to fail on new forbidden \`supabase.from\` or critical-path edits vs [\`docs/AUDIT_DRIFT_BASELINE.json\`](./AUDIT_DRIFT_BASELINE.json).\n`;
   report += `2. Resolve snapshot vs inverse-operation governance and update code or rules once product decides.\n`;
   report += `3. Update [\`docs/LIVE_DB_WATCHLIST_SNAPSHOT.md\`](./LIVE_DB_WATCHLIST_SNAPSHOT.md) after material schema/policy migrations, then re-run \`npm run audit:coverage\`.\n\n`;
 
   writeFileSync(OUT_REPORT, report, 'utf8');
 
-  console.log(`Wrote:\n  ${OUT_JSON}\n  ${OUT_MD}\n  ${OUT_REPORT}`);
-  process.exit(gates.typecheck.ok && gates.eslint.ok && gates.jest.ok ? 0 : 1);
+  let driftFail = false;
+  if (process.env.AUDIT_FAIL_ON_DRIFT === '1' && drift.status === 'compared') {
+    if ((drift.forbidden_supabase_from_introduced?.length ?? 0) > 0) driftFail = true;
+    if ((drift.modified_critical_files?.length ?? 0) > 0) driftFail = true;
+  }
+
+  const gatesOk = gates.typecheck.ok && gates.eslint.ok && gates.jest.ok;
+  console.log(
+    `Wrote:\n  ${OUT_JSON}\n  ${OUT_DEP_GRAPH}\n  ${OUT_EXPORT_MAP}\n  ${OUT_MD}\n  ${OUT_REPORT}`,
+  );
+  process.exit(gatesOk && !driftFail ? 0 : 1);
 }
 
 main();
