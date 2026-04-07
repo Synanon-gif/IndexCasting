@@ -1,5 +1,5 @@
 import { supabase } from '../../lib/supabase';
-import { validateFile } from '../../lib/validation';
+import { validateFile, checkMagicBytes } from '../../lib/validation';
 
 /**
  * Verifizierungen (Model) – in Supabase: verifications (user_id) + Storage (documents).
@@ -43,6 +43,12 @@ export async function submitVerification(
     const fileValidation = validateFile(file);
     if (!fileValidation.ok) {
       console.error('submitVerification: file validation failed', fileValidation.error);
+      return null;
+    }
+
+    const magicCheck = await checkMagicBytes(file);
+    if (!magicCheck.ok) {
+      console.error('submitVerification: magic bytes check failed', magicCheck.error);
       return null;
     }
 

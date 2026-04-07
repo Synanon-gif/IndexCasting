@@ -7,7 +7,7 @@ Tracking document for the “global consistency” plan: full policy review vs `
 | Area | Enforcement | Reference |
 |------|-------------|-----------|
 | **Org invitations (`invitations`)** | INSERT/SELECT owner-only via `organization_members.role = 'owner'` | `supabase/migration_organizations_invitations_rls.sql` — policies `invitations_insert_owner`, `invitations_select_owner` |
-| **Model claim token** | `generate_model_claim_token` — agency org member / legacy `agencies.owner_user_id`; `claim_model_by_token` — authenticated model user | `supabase/migrations/20260413_fix_c_model_claim_tokens.sql` |
+| **Model claim token** | `generate_model_claim_token` — `organization_members` + `organizations.type='agency'` + legacy `bookers` (kein `agencies.owner_user_id`); `claim_model_by_token` — authenticated model user | `supabase/migrations/20260427_fix_agency_guard_no_owner_user_id.sql` (definitive guard) |
 
 If production ever diverges, add a **new** dated migration under `supabase/migrations/` that `DROP POLICY IF EXISTS` + recreates the above (do not edit legacy root SQL as source of truth).
 

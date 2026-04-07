@@ -179,7 +179,9 @@ export async function upsertTerritoriesForModel(
   }
 
   if (!data) {
-    throw new Error('Territory save failed: RPC returned no result. Apply migration_territories_rpc_definitive.sql in Supabase.');
+    throw new Error(
+      'Territory save failed: no result from server. Please try again or contact support.',
+    );
   }
 
   // Re-fetch saved rows for the caller
@@ -247,7 +249,9 @@ export async function addTerritoriesForModel(
   }
 
   if (!data) {
-    throw new Error('Territory add failed: RPC returned no result. Apply migration_territories_add_rpc.sql in Supabase.');
+    throw new Error(
+      'Territory add failed: no result from server. Please try again or contact support.',
+    );
   }
 
   return getTerritoriesForModel(modelId, agencyId);
@@ -504,7 +508,9 @@ export async function upsertAssignmentsForModel(
   }
 
   if (!data) {
-    throw new Error('Assignment save failed: RPC returned no result. Apply migration_rpcs_model_assignments_v2.sql.');
+    throw new Error(
+      'Assignment save failed: no result from server. Please try again or contact support.',
+    );
   }
 
   return getAssignmentsForModel(modelId, organizationId);

@@ -1978,7 +1978,7 @@ const MyModelsTab: React.FC<{
       const msg = err instanceof Error ? err.message : String(err);
       console.error('handleSaveTerritoriesOnly error:', err);
       setTerritorySaveFeedback('error');
-      showAppAlert('Could not save territories', msg);
+      showAppAlert(uiCopy.modelRoster.territoriesSaveFailedTitle, msg);
     } finally {
       setTerritorySaving(false);
       setTimeout(() => setTerritorySaveFeedback(null), 3000);
@@ -2483,8 +2483,8 @@ const MyModelsTab: React.FC<{
       setSaveFeedback('error');
       setTimeout(() => setSaveFeedback(null), 4000);
       showAppAlert(
-        'Could not save territories',
-        `${msg}\n\nApply migration_territories_rpc_definitive.sql in Supabase SQL Editor.`,
+        uiCopy.modelRoster.territoriesSaveFailedTitle,
+        `${msg}\n\n${uiCopy.modelRoster.territoriesSaveSupportFooter}`,
       );
       return;
     }

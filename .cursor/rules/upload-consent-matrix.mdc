@@ -18,7 +18,7 @@ Single source of truth for **which uploads** must call `confirmImageRights` (or 
 | B2B org messenger attachments | `chat-files` chat/… | `confirmImageRights` with `sessionKey` = `` `messenger:${conversationId}` `` | `guardUploadSession` in `uploadChatFile` |
 | Option request documents | `chat-files` options/… | **No production UI** — `uploadOptionDocument` is `@deprecated` until UI calls `confirmImageRights` with `` `option-doc:${requestId}` `` | `guardUploadSession` |
 | User documents (contracts, invoices, ID) | `documents` | **Not** `image_rights_confirmations` — separate product consent / legal; validate MIME + magic bytes only | Future: dedicated consent RPC or checkbox + audit |
-| Model verification ID upload | `documents` verifications/… | **Not** image-rights table today — high-sensitivity; treat as verification consent path | Future: align with minor/ID policy |
+| Model verification ID upload | `documents` verifications/… | **Not** image-rights table today — high-sensitivity; treat as verification consent path | `validateFile` + `checkMagicBytes` in `verificationSupabase.submitVerification` (same hardening as user documents) |
 
 ## Rules
 

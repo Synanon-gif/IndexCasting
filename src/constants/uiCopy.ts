@@ -381,6 +381,11 @@ export const uiCopy = {
       'You must select at least one territory where you represent this model. Use the search below to find and assign a country.',
     territoriesRequiredInline: 'Select at least one territory to save.',
     territoriesMissingBadge: 'No territory',
+    /** Alert title when territory RPC save fails (e.g. network or server error). */
+    territoriesSaveFailedTitle: 'Could not save territories',
+    /** Appended below the technical error message — no legacy SQL filenames. */
+    territoriesSaveSupportFooter:
+      'Please try again. If the problem persists, contact support with the details above.',
     photosMissingBadge: 'No photos',
     incompleteModelsBanner: (count: number) =>
       `${count} model${count === 1 ? '' : 's'} not visible to clients — required fields missing`,
