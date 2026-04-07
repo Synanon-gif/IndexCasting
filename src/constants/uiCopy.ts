@@ -390,6 +390,9 @@ export const uiCopy = {
     portfolioRequiredTitle: 'Portfolio required',
     portfolioRequiredBody:
       'Enable at least one portfolio image with visible client swipe so clients can see this model.',
+    /** Shown after merge/import when Mediaslide/Netwalk sync IDs could not be saved to an existing row. */
+    externalSyncIdsPersistWarning:
+      ' External sync IDs (Mediaslide/Netwalk) could not be saved — try saving again from the integration or contact support.',
   },
   /** B2B org-to-org chats (no social graph). */
   b2bChat: {

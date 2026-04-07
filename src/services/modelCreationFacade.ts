@@ -15,6 +15,7 @@
 
 export {
   importModelAndMerge,
+  type ImportModelAndMergeResult,
   type ImportModelPayload,
   type ModelMergeTerritoryInput,
 } from './modelsImportSupabase';

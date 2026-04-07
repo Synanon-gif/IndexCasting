@@ -271,4 +271,50 @@ describe('importModelAndMerge', () => {
       categories: ['Fashion', 'Commercial'],
     });
   });
+
+  it('sets externalSyncIdsPersistFailed when update_model_sync_ids fails on existing row', async () => {
+    const existing = {
+      id: 'model-nw-sync-fail',
+      mediaslide_sync_id: null,
+      netwalk_model_id: 'NW-SYNC-FAIL',
+      name: 'Netwalk Match',
+      height: 180,
+      bust: null,
+      waist: null,
+      hips: null,
+      chest: null,
+      legs_inseam: null,
+      shoe_size: null,
+      city: null,
+      country_code: null,
+      hair_color: null,
+      eye_color: null,
+      ethnicity: null,
+      current_location: null,
+      sex: null,
+      categories: null,
+      portfolio_images: [] as string[],
+      polaroids: [] as string[],
+    };
+
+    // No mediaslide_sync_id → only the netwalk lookup hits from().
+    fromMock.mockReturnValueOnce(makeLookupChain(existing));
+
+    rpcMock.mockImplementation(async (name: string) => {
+      if (name === 'update_model_sync_ids') {
+        return { data: null, error: { message: 'sync_ids_failed' } };
+      }
+      return { data: null, error: null };
+    });
+
+    const res = await importModelAndMerge({
+      netwalk_model_id: 'NW-SYNC-FAIL',
+      name: 'Netwalk Match',
+      height: 180,
+    });
+
+    expect(res?.created).toBe(false);
+    expect(res?.model_id).toBe('model-nw-sync-fail');
+    expect(res?.externalSyncIdsPersistFailed).toBe(true);
+  });
 });

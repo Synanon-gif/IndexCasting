@@ -143,7 +143,7 @@ import { uiCopy } from '../constants/uiCopy';
 import { type ModelFilters, defaultModelFilters, filterModels } from '../utils/modelFilters';
 import ModelFiltersPanel from '../components/ModelFiltersPanel';
 import ModelEditDetailsPanel, { buildEditState, type ModelEditState } from '../components/ModelEditDetailsPanel';
-import { importModelAndMerge } from '../services/modelsImportSupabase';
+import { importModelAndMerge } from '../services/modelCreationFacade';
 import { runMediaslideCronSync } from '../services/mediaslideSyncService';
 import { runNetwalkCronSync } from '../services/netwalkSyncService';
 import { getAgencyApiKeys, saveAgencyApiConnection } from '../services/agencySettingsSupabase';
@@ -2256,18 +2256,21 @@ const MyModelsTab: React.FC<{
           ? ` Invitation email sent to ${emailTrim}.`
           : ` Could not send invitation email — share the invite link manually.`
         : '';
+      const syncWarn = mergeResult.externalSyncIdsPersistFailed
+        ? uiCopy.modelRoster.externalSyncIdsPersistWarning
+        : '';
       if (fresh) {
         setSelectedModel(fresh);
         setAddModelFeedback(
           mergeResult.created
-            ? `${modelDisplayName} added successfully.${emailNote}`
-            : `${modelDisplayName} merged with existing profile.${emailNote}`,
+            ? `${modelDisplayName} added successfully.${emailNote}${syncWarn}`
+            : `${modelDisplayName} merged with existing profile.${emailNote}${syncWarn}`,
         );
       } else {
         setAddModelFeedback(
           mergeResult.created
-            ? `${modelDisplayName} was created.${emailNote} Please refresh the list once.`
-            : `${modelDisplayName} merged.${emailNote} Please refresh the list once.`,
+            ? `${modelDisplayName} was created.${emailNote} Please refresh the list once.${syncWarn}`
+            : `${modelDisplayName} merged.${emailNote} Please refresh the list once.${syncWarn}`,
         );
       }
     } catch (err) {
@@ -2443,8 +2446,9 @@ const MyModelsTab: React.FC<{
       const warningMsg = missingRequired.length > 0
         ? ` Missing required fields: ${missingRequired.join(', ')} — model will not appear to clients until resolved.`
         : '';
+      const syncWarn = result.externalSyncIdsPersistFailed ? uiCopy.modelRoster.externalSyncIdsPersistWarning : '';
 
-      setImportLinkFeedback({ ok: true, message: baseMsg + warningMsg });
+      setImportLinkFeedback({ ok: true, message: baseMsg + warningMsg + syncWarn });
       setImportLinkUrl('');
       onRefresh();
     } catch (e: any) {

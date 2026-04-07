@@ -38,6 +38,12 @@ Single source of truth for **which uploads** must call `confirmImageRights` (or 
 - **INSERT** on bucket `chat-files` is gated by `public.storage_can_insert_chat_files_object(bucket_id, name)` ([`20260425_chat_files_storage_insert_hardening.sql`](../../supabase/migrations/20260425_chat_files_storage_insert_hardening.sql)): the object path must be under `chat/{conversation_id}/`, `recruiting/{thread_id}/`, or `options/{option_request_id}/`, and the caller must have the same access that policy logic expects (conversation org/participant, thread member/applicant/booker, or `option_request_visible_to_me`).
 - That Storage policy does **not** query `image_rights_confirmations`. Session-scoped consent remains **client-enforced** in services (`confirmImageRights` + `guardUploadSession` / `hasRecent*` immediately before `storage.upload`).
 
+### Threat model: client-enforced consent on `chat-files`
+
+- **Shipped app + official web:** Consent is enforced in `src/services/` immediately before every `storage.upload` to `chat-files` (see Matrix rows for messenger / recruiting / options).
+- **Custom clients** (modified apps, direct Supabase client with user session): A user who is allowed by `storage_can_insert_chat_files_object` could upload **without** inserting into `image_rights_confirmations`, because Storage policies do not read that table. This is an accepted **defense-in-depth trade-off** (path + membership enforced server-side; image-rights audit row enforced in first-party code).
+- **If** product/legal requires server-side binding later, prefer a narrow additive change (e.g. audited Edge upload or documented DB check) rather than loosening existing Storage path rules without review.
+
 ## Error / API contract (ServiceResult vs Option A)
 
 - **Existing** exports in `src/services/` stay **Option A** (`null` / `false` / `[]` on failure, no throw) per [.cursorrules](../../.cursorrules).

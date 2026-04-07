@@ -54,3 +54,20 @@ export function structuredServiceErr(
 ): StructuredServiceResult<never> {
   return { ok: false, error: context !== undefined ? { code, message, context } : { code, message } };
 }
+
+/**
+ * Adapts a string-based {@link ServiceResult} to {@link StructuredServiceResult} for new code paths
+ * that need `error.code` without changing the underlying Option-C function.
+ */
+export function serviceResultToStructured<T>(
+  r: ServiceResult<T>,
+  errorCode = 'service_error',
+): StructuredServiceResult<T> {
+  if (!r.ok) {
+    return structuredServiceErr(errorCode, r.error);
+  }
+  if ('data' in r) {
+    return structuredServiceOkData((r as { ok: true; data: T }).data);
+  }
+  return structuredServiceOk() as StructuredServiceResult<T>;
+}

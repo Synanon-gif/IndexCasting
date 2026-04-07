@@ -933,8 +933,14 @@ export async function resolveOptionDocumentUrl(doc: SupabaseOptionDocument): Pro
 export const OPTION_DOCUMENT_SESSION_KEY_PREFIX = 'option-doc:';
 
 /**
- * @deprecated No production caller (2026-04). Before use: add UI with checkbox +
- * `confirmImageRights({ sessionKey: \`${OPTION_DOCUMENT_SESSION_KEY_PREFIX}\${requestId}\` })`, then call.
+ * @deprecated No production caller (2026-04). Do **not** wire UI to this until all steps exist.
+ *
+ * Required order for a future UI (no shortcuts):
+ * 1. English checkbox: user confirms rights to the file (same legal pattern as other uploads).
+ * 2. `confirmImageRights` with `sessionKey` = `OPTION_DOCUMENT_SESSION_KEY_PREFIX + requestId` (see constant below) — must succeed.
+ * 3. Call this function (internally uses `guardUploadSession` before `storage.upload`).
+ *
+ * Storage INSERT on `chat-files` is still allowed by policy without the consent row — first-party services must enforce steps 1–2.
  */
 export async function uploadOptionDocument(
   requestId: string,

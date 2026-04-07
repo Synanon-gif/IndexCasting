@@ -6,6 +6,17 @@ export type ModelMergeTerritoryInput = {
   agency_id: string;
 };
 
+/** Return shape for {@link importModelAndMerge} — backward compatible (`externalSyncIdsPersistFailed` optional). */
+export type ImportModelAndMergeResult = {
+  model_id: string;
+  created: boolean;
+  /**
+   * When true, Mediaslide/Netwalk IDs were provided for an **existing** row but
+   * `update_model_sync_ids` failed — merge succeeded without persisting external IDs.
+   */
+  externalSyncIdsPersistFailed?: boolean;
+};
+
 export type ImportModelPayload = {
   mediaslide_sync_id?: string | null;
   /** Netwalk model ID — used as a lookup key before falling back to email. */
@@ -63,7 +74,7 @@ function isMissing(v: unknown): boolean {
   return v === null || v === undefined;
 }
 
-export async function importModelAndMerge(params: ImportModelPayload): Promise<{ model_id: string; created: boolean } | null> {
+export async function importModelAndMerge(params: ImportModelPayload): Promise<ImportModelAndMergeResult | null> {
   try {
     const externalId = params.mediaslide_sync_id?.trim() || null;
     const netwalkId = params.netwalk_model_id?.trim() || null;
@@ -213,6 +224,7 @@ export async function importModelAndMerge(params: ImportModelPayload): Promise<{
       }
 
       // Sync-IDs separat über SECURITY DEFINER RPC setzen (REVOKED für direkte Updates)
+      let externalSyncIdsPersistFailed = false;
       if (externalId || netwalkId) {
         const { error: syncError } = await supabase.rpc('update_model_sync_ids', {
           p_model_id:         existing.id,
@@ -221,6 +233,7 @@ export async function importModelAndMerge(params: ImportModelPayload): Promise<{
         });
         if (syncError) {
           console.error('importModelAndMerge: sync_ids update error:', syncError);
+          externalSyncIdsPersistFailed = true;
         }
       }
 
@@ -228,7 +241,11 @@ export async function importModelAndMerge(params: ImportModelPayload): Promise<{
         await upsertTerritoriesForModelCountryAgencyPairs(existing.id, params.territories);
       }
 
-      return { model_id: existing.id, created: false };
+      return {
+        model_id: existing.id,
+        created: false,
+        ...(externalSyncIdsPersistFailed ? { externalSyncIdsPersistFailed: true } : {}),
+      };
     }
 
     // Create new model
