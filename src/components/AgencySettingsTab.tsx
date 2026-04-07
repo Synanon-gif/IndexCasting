@@ -9,6 +9,7 @@ import { showAppAlert } from '../utils/crossPlatformAlert';
 import { ScreenScrollView } from './ScreenScrollView';
 import { AgencyStorageWidget } from './AgencyStorageWidget';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../context/AuthContext';
 import { exportUserData, downloadUserDataExport } from '../services/gdprComplianceSupabase';
 import { withdrawConsent } from '../services/consentSupabase';
 
@@ -21,6 +22,7 @@ type Props = {
 };
 
 export const AgencySettingsTab: React.FC<Props> = ({ agency, organizationId, onSaved, variant = 'scroll' }) => {
+  const { refreshProfile } = useAuth();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [email, setEmail] = useState('');
@@ -39,10 +41,11 @@ export const AgencySettingsTab: React.FC<Props> = ({ agency, organizationId, onS
     try {
       const m = await withdrawConsent('marketing', 'user_requested');
       const a = await withdrawConsent('analytics', 'user_requested');
-      if (!m || !a) {
+      if (!m.ok || !a.ok) {
         showAppAlert(uiCopy.common.error, uiCopy.privacyData.couldNotWithdrawConsent);
         return;
       }
+      void refreshProfile();
       showAppAlert(uiCopy.privacyData.consentWithdrawnTitle, uiCopy.privacyData.consentWithdrawnBody);
     } catch (e) {
       console.error('AgencySettingsTab onWithdrawConsent error:', e);

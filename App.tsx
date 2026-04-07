@@ -382,12 +382,12 @@ function AppContent() {
       modelInviteTokenState ?? ((await isModelClaimFlowActive()) ? await readModelClaimToken() : null);
     if (!tok) return;
     const r = await claimModelByToken(tok);
-    if ('modelId' in r) {
+    if (r.ok) {
       await persistModelClaimToken(null);
       clearModelInviteQueryParam();
       await refreshProfile();
     } else {
-      const err = r.error as string | undefined;
+      const err = r.error;
       console.warn('[ModelClaim] claimModelByToken failed after session:', err);
       // Definitiv nicht behebbar: Token leeren damit er nicht bei jedem Login erneut versucht wird
       if (err === 'token_expired' || err === 'token_already_used' || err === 'token_not_found') {

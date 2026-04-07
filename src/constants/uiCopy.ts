@@ -14,6 +14,8 @@ export const uiCopy = {
     error: 'Error',
     success: 'Success',
     loading: 'Loading…',
+    /** Minimal busy indicator (single glyph) for inline buttons. */
+    busyEllipsis: '…',
     help: 'Help',
     logout: 'Logout',
     yes: 'Yes',

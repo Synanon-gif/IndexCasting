@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import { supabase } from '../../lib/supabase';
+import { serviceErr, serviceOk, type ServiceResult } from '../types/serviceResult';
 import { buildInviteAbsoluteUrl, buildInviteDeepLinkPath } from './inviteUrlHelpers';
 import { uiCopy } from '../constants/uiCopy';
 import {
@@ -371,7 +372,7 @@ export async function updateOrganizationName(
 export async function transferOrgOwnership(
   organizationId: string,
   newOwnerUserId: string,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<ServiceResult> {
   try {
     const { data, error } = await supabase.rpc('transfer_org_ownership', {
       p_organization_id: organizationId,
@@ -379,14 +380,14 @@ export async function transferOrgOwnership(
     });
     if (error) {
       console.error('transferOrgOwnership error:', error);
-      return { ok: false, error: error.message };
+      return serviceErr(error.message ?? 'rpc_error');
     }
     const j = data as { ok?: boolean; error?: string };
-    if (!j?.ok) return { ok: false, error: j?.error ?? 'transfer_failed' };
-    return { ok: true };
+    if (!j?.ok) return serviceErr(j?.error ?? 'transfer_failed');
+    return serviceOk();
   } catch (e) {
     console.error('transferOrgOwnership exception:', e);
-    return { ok: false, error: e instanceof Error ? e.message : 'unknown' };
+    return serviceErr(e instanceof Error ? e.message : 'unknown');
   }
 }
 
@@ -397,21 +398,21 @@ export async function transferOrgOwnership(
  */
 export async function dissolveOrganization(
   organizationId: string,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<ServiceResult> {
   try {
     const { data, error } = await supabase.rpc('dissolve_organization', {
       p_organization_id: organizationId,
     });
     if (error) {
       console.error('dissolveOrganization error:', error);
-      return { ok: false, error: error.message };
+      return serviceErr(error.message ?? 'rpc_error');
     }
     const j = data as { ok?: boolean; error?: string };
-    if (!j?.ok) return { ok: false, error: j?.error ?? 'dissolve_failed' };
-    return { ok: true };
+    if (!j?.ok) return serviceErr(j?.error ?? 'dissolve_failed');
+    return serviceOk();
   } catch (e) {
     console.error('dissolveOrganization exception:', e);
-    return { ok: false, error: e instanceof Error ? e.message : 'unknown' };
+    return serviceErr(e instanceof Error ? e.message : 'unknown');
   }
 }
 

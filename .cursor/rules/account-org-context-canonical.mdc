@@ -1,0 +1,28 @@
+# Account-, Organisations- und GDPR-Kontext (kanonisch)
+
+Diese Regel präzisiert die **zwei Ebenen** Identität/Berechtigung neben den bestehenden Admin-Invarianten ([`admin-security.mdc`](admin-security.mdc)) und dem Model-Org-Modell ([`system-invariants.mdc`](system-invariants.mdc)).
+
+## Ebene 1 — Account-Typ & Admin (Navigation, kein B2B-Feinrecht)
+
+- `profiles.role` (`client` | `agent` | `model` | `guest` | `admin`) und `profiles.is_admin` / RPC `get_own_admin_flags()` dienen **Routing**, Gast-Flows und **Always-Access Admin** — nicht als alleinige Quelle für „darf Booker X in Org Y einladen?“.
+- **VERBOTEN:** B2B-Berechtigungen ausschließlich aus `profile.role === 'agent'` ableiten, ohne `organization_members`.
+
+## Ebene 2 — B2B-Berechtigungen (Owner / Booker / Employee)
+
+- **Wahrheitsquelle:** `organization_members.role` (`owner` | `booker` | `employee`) bezogen auf `organizations.type` (`agency` | `client`).
+- **RPC:** `get_my_org_context()` liefert **alle** Memberships (kein `LIMIT 1` in der Funktion). Das Frontend wählt explizit die aktive Zeile und loggt bei mehreren Orgs eine Warnung, bis Multi-Org-UI existiert.
+- **Defense-in-depth:** Services, die org-scoped Tabellen schreiben, filtern zusätzlich mit `agency_id` / `organization_id` wo vorgesehen.
+
+## Ebene 3 — Model (kein `organization_members`-Mitglied)
+
+- Models sind **nicht** in `organization_members`. Kontext: `get_my_model_agencies()` und `models.user_id = auth.uid()`.
+- **VERBOTEN:** Model-Agency-Zuordnung über `get_my_org_context()` erzwingen.
+
+## GDPR / Account-Löschung
+
+- Mutierende GDPR- und Account-RPCs laufen als `SECURITY DEFINER` mit `SET search_path = public` und **`SET row_security TO off`**, mit expliziten `auth.uid()`-Guards und caller-scoped SELECTs (Rule 21 / 23).
+- Nach erfolgreichen Mutationen (z. B. Consent-Withdraw), solange die Session besteht: **`refreshProfile()`** aufrufen, damit UI und DB übereinstimmen.
+
+## Audit
+
+- Konsistente `action_type`-Werte; `audit_trail.source` (`api` | `rpc` | `system` | `trigger`) setzen — bevorzugt über `log_audit_action()`.

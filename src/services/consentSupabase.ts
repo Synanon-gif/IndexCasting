@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase';
+import { serviceErr, serviceOk, type ServiceResult } from '../types/serviceResult';
 
 export type ConsentType = 'terms' | 'privacy' | 'image_rights' | 'marketing' | 'analytics' | 'minor_guardian';
 
@@ -95,7 +96,7 @@ export async function hasActiveConsent(
 export async function withdrawConsent(
   consentType: ConsentType,
   reason?: string,
-): Promise<boolean> {
+): Promise<ServiceResult> {
   try {
     const { error } = await supabase.rpc('withdraw_consent', {
       p_consent_type: consentType,
@@ -103,12 +104,12 @@ export async function withdrawConsent(
     });
     if (error) {
       console.error('withdrawConsent error:', error);
-      return false;
+      return serviceErr(error.message ?? 'withdraw_failed');
     }
-    return true;
+    return serviceOk();
   } catch (e) {
     console.error('withdrawConsent exception:', e);
-    return false;
+    return serviceErr(e instanceof Error ? e.message : 'exception');
   }
 }
 

@@ -22,6 +22,9 @@ import { supabase } from '../../lib/supabase';
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Unified `{ ok, error }` shape for new Account/Org/GDPR call sites. */
+export type { ServiceResult } from '../types/serviceResult';
+
 export type ComplianceResult<T = void> =
   | { ok: true; data: T }
   | { ok: false; reason: string };

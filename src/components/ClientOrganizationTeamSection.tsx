@@ -331,7 +331,9 @@ export const ClientOrganizationTeamSection: React.FC<{
             onPress={() => void handleInvite()}
             disabled={inviteBusy || !inviteEmail.trim()}
           >
-            <Text style={styles.primaryBtnLabel}>{inviteBusy ? '…' : uiCopy.team.sendInvitation}</Text>
+            <Text style={styles.primaryBtnLabel}>
+              {inviteBusy ? uiCopy.common.busyEllipsis : uiCopy.team.sendInvitation}
+            </Text>
           </TouchableOpacity>
         </View>
       ) : organizationId ? (

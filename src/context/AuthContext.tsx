@@ -596,7 +596,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const claimTok = await readModelClaimToken();
         if (claimTok) {
           const claimRes = await claimModelByToken(claimTok);
-          if ('modelId' in claimRes) {
+          if (claimRes.ok) {
             await persistModelClaimToken(null);
             await loadProfile(data.user.id);
           } else {
@@ -671,7 +671,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const tok = (await isInviteFlowActive()) ? await readInviteToken() : null;
       if (tok) {
         const inv = await acceptOrganizationInvitation(tok);
-        if (inv.ok) await persistInviteToken(null);
+        if (inv.ok) {
+          await persistInviteToken(null);
+          if (data?.user) await loadProfile(data.user.id);
+        }
       }
     } catch (e) {
       console.error('signIn invite accept error:', e);
@@ -693,7 +696,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const claimTok = (await isModelClaimFlowActive()) ? await readModelClaimToken() : null;
       if (claimTok) {
         const claimRes = await claimModelByToken(claimTok);
-        if ('modelId' in claimRes) {
+        if (claimRes.ok) {
           await persistModelClaimToken(null);
           if (data?.user) await loadProfile(data.user.id);
         } else {

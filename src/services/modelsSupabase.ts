@@ -3,6 +3,7 @@
  * Pro Partei: agency_id; Bilder-URLs und Maße persistent; parteiübergreifend sichtbar je nach RLS.
  */
 import { supabase } from '../../lib/supabase';
+import { serviceErr, serviceOkData, type ServiceResult } from '../types/serviceResult';
 import { fetchAllSupabasePages } from './supabaseFetchAll';
 
 /**
@@ -502,19 +503,19 @@ export async function linkModelByEmail(): Promise<void> {
  */
 export async function claimModelByToken(
   token: string,
-): Promise<{ modelId: string; agencyId: string } | { error: string }> {
+): Promise<ServiceResult<{ modelId: string; agencyId: string }>> {
   try {
     const { data, error } = await supabase.rpc('claim_model_by_token', { p_token: token });
     if (error) {
       console.error('claimModelByToken error:', error);
-      return { error: error.message };
+      return serviceErr(error.message ?? 'claim_failed');
     }
     const result = data as { model_id: string; agency_id: string } | null;
-    if (!result?.model_id) return { error: 'no_result' };
-    return { modelId: result.model_id, agencyId: result.agency_id };
+    if (!result?.model_id) return serviceErr('no_result');
+    return serviceOkData({ modelId: result.model_id, agencyId: result.agency_id });
   } catch (e) {
     console.error('claimModelByToken exception:', e);
-    return { error: String(e) };
+    return serviceErr(e instanceof Error ? e.message : 'exception');
   }
 }
 

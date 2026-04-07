@@ -4,7 +4,7 @@
  * Covers GDPR Art. 7 consent management:
  *   1. recordConsent      — inserts consent record, returns false on error
  *   2. hasActiveConsent   — active (non-withdrawn) consent check
- *   3. withdrawConsent    — calls withdraw_consent RPC, returns false on error
+ *   3. withdrawConsent    — calls withdraw_consent RPC, ServiceResult
  *   4. anonymizeUserData  — calls anonymize_user_data RPC, fail-closed
  */
 
@@ -134,12 +134,12 @@ describe('hasActiveConsent', () => {
 // ─── 3. withdrawConsent ───────────────────────────────────────────────────────
 
 describe('withdrawConsent', () => {
-  it('returns true when RPC succeeds (GDPR Art. 7(3))', async () => {
+  it('returns ok when RPC succeeds (GDPR Art. 7(3))', async () => {
     mockRpc.mockResolvedValue({ error: null });
 
     const result = await withdrawConsent('marketing');
 
-    expect(result).toBe(true);
+    expect(result).toEqual({ ok: true });
     expect(mockRpc).toHaveBeenCalledWith('withdraw_consent', {
       p_consent_type: 'marketing',
       p_reason:       null,
@@ -157,21 +157,22 @@ describe('withdrawConsent', () => {
     });
   });
 
-  it('returns false and logs error when RPC fails', async () => {
+  it('returns ok: false and logs error when RPC fails', async () => {
     mockRpc.mockResolvedValue({ error: { message: 'unauthorized' } });
 
     const result = await withdrawConsent('terms');
 
-    expect(result).toBe(false);
+    expect(result).toEqual({ ok: false, error: 'unauthorized' });
     expect(errSpy).toHaveBeenCalled();
   });
 
-  it('returns false on exception (fail-closed)', async () => {
+  it('returns ok: false on exception (fail-closed)', async () => {
     mockRpc.mockRejectedValue(new Error('connection refused'));
 
     const result = await withdrawConsent('privacy');
 
-    expect(result).toBe(false);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe('connection refused');
     expect(errSpy).toHaveBeenCalled();
   });
 });

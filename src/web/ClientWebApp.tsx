@@ -4819,7 +4819,7 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm }}>
           <Text style={{ ...typography.heading, fontSize: 16, color: colors.textPrimary }}>Settings</Text>
           <TouchableOpacity onPress={onClose}>
-            <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary }}>Close</Text>
+            <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary }}>{uiCopy.common.close}</Text>
           </TouchableOpacity>
         </View>
         <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md }}>
@@ -4992,10 +4992,11 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
                         const { withdrawConsent } = await import('../services/consentSupabase');
                         const m = await withdrawConsent('marketing', 'user_requested');
                         const a = await withdrawConsent('analytics', 'user_requested');
-                        if (!m || !a) {
+                        if (!m.ok || !a.ok) {
                           showAppAlert(uiCopy.common.error, uiCopy.privacyData.couldNotWithdrawConsent);
                           return;
                         }
+                        void refreshProfile();
                         showAppAlert(uiCopy.privacyData.consentWithdrawnTitle, uiCopy.privacyData.consentWithdrawnBody);
                       } catch (e) {
                         console.error('SettingsPanel withdraw consent error:', e);

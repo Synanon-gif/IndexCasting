@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase';
+import { serviceErr, serviceOk, type ServiceResult } from '../types/serviceResult';
 
 export type RequestAccountDeletionResult =
   | { ok: true }
@@ -47,16 +48,16 @@ export async function requestPersonalAccountDeletion(): Promise<{ ok: boolean; r
 }
 
 /** Löschwunsch zurückziehen (innerhalb der 30 Tage). */
-export async function cancelAccountDeletion(): Promise<boolean> {
+export async function cancelAccountDeletion(): Promise<ServiceResult> {
   try {
     const { error } = await supabase.rpc('cancel_account_deletion');
     if (error) {
       console.error('cancelAccountDeletion error:', error);
-      return false;
+      return serviceErr(error.message ?? 'cancel_failed');
     }
-    return true;
+    return serviceOk();
   } catch (e) {
     console.error('cancelAccountDeletion exception:', e);
-    return false;
+    return serviceErr(e instanceof Error ? e.message : 'exception');
   }
 }
