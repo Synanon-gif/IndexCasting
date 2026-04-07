@@ -523,10 +523,20 @@ export async function claimModelByToken(
  * Agency generates a one-time claim token for a model record.
  * The agency sends this token to the model (e.g. via email, out-of-band).
  * The model calls claimModelByToken() with this token to link their account.
+ *
+ * @param organizationId When the model has no `agency_id` yet, pass the active
+ *   `organizations.id` so multi-org bookers do not rely on implicit oldest membership.
  */
-export async function generateModelClaimToken(modelId: string): Promise<{ token: string } | { error: string }> {
+export async function generateModelClaimToken(
+  modelId: string,
+  organizationId?: string | null,
+): Promise<{ token: string } | { error: string }> {
   try {
-    const { data, error } = await supabase.rpc('generate_model_claim_token', { p_model_id: modelId });
+    const trimmedOrg = organizationId?.trim();
+    const { data, error } = await supabase.rpc('generate_model_claim_token', {
+      p_model_id: modelId,
+      ...(trimmedOrg ? { p_organization_id: trimmedOrg } : {}),
+    });
     if (error) {
       console.error('generateModelClaimToken error:', error);
       return { error: error.message };

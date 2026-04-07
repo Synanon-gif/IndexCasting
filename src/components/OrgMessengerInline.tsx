@@ -24,11 +24,14 @@ import {
   sendMessage as sendMessengerMessage,
   subscribeToConversation,
   uploadChatFile,
+  buildMessengerUploadSessionKey,
   getSignedChatFileUrl,
   markAllAsRead,
   type MessagePayloadType,
   type MessageWithSender,
 } from '../services/messengerSupabase';
+import { supabase } from '../../lib/supabase';
+import { confirmImageRights } from '../services/gdprComplianceSupabase';
 import { getModelByIdFromSupabase } from '../services/modelsSupabase';
 import { QUICK_REPLIES } from '../constants/quickReplies';
 import { buildGuestUrl, type GuestLink } from '../services/guestLinksSupabase';
@@ -135,6 +138,8 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   const [sending, setSending] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
+  /** Web-only: must be checked before opening file picker (paired with confirmImageRights on upload). */
+  const [fileRightsConfirmed, setFileRightsConfirmed] = useState(false);
   const [bookingActionLoading, setBookingActionLoading] = useState<string | null>(null);
 
   const handleBookingAction = async (bookingEventId: string, newStatus: BookingEventStatus) => {
@@ -162,6 +167,10 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
     reload();
     if (viewerUserId) void markAllAsRead(conversationId, viewerUserId);
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationId]);
+
+  useEffect(() => {
+    setFileRightsConfirmed(false);
   }, [conversationId]);
 
   useEffect(() => {
@@ -314,9 +323,30 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
 
   const handleFileSelected = async (file: File) => {
     if (!viewerUserId) return;
+    if (Platform.OS === 'web' && !fileRightsConfirmed) {
+      setUploadError(uiCopy.legal.chatFileRightsMissing);
+      return;
+    }
     setUploading(true);
     setUploadError(null);
     try {
+      if (Platform.OS === 'web') {
+        const { data: auth } = await supabase.auth.getUser();
+        if (!auth.user) {
+          setUploadError(uiCopy.validation.uploadFailed);
+          return;
+        }
+        const rights = await confirmImageRights({
+          userId: auth.user.id,
+          modelId: null,
+          sessionKey: buildMessengerUploadSessionKey(conversationId),
+        });
+        if (!rights.ok) {
+          setUploadError(uiCopy.legal.imageRightsConfirmationFailed);
+          return;
+        }
+      }
+
       // Rate limit check
       const rateCheck = uploadLimiter.check(viewerUserId);
       if (!rateCheck.ok) {
@@ -652,6 +682,19 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
       {uploadError ? (
         <Text style={styles.uploadError}>{uploadError}</Text>
       ) : null}
+      {Platform.OS === 'web' ? (
+        <TouchableOpacity
+          style={styles.rightsRow}
+          onPress={() => setFileRightsConfirmed(!fileRightsConfirmed)}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: fileRightsConfirmed }}
+        >
+          <View style={[styles.rightsBox, fileRightsConfirmed && styles.rightsBoxOn]}>
+            {fileRightsConfirmed ? <Text style={styles.rightsCheck}>✓</Text> : null}
+          </View>
+          <Text style={styles.rightsLabel}>{uiCopy.legal.chatFileRightsCheckbox}</Text>
+        </TouchableOpacity>
+      ) : null}
       <View style={styles.chatPanelInputRow}>
         {/* Hidden file input for web */}
         {Platform.OS === 'web' ? (
@@ -667,9 +710,14 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
           />
         ) : null}
         <TouchableOpacity
-          style={[styles.attachBtn, (!viewerUserId || uploading) && { opacity: 0.4 }]}
+          style={[
+            styles.attachBtn,
+            (!viewerUserId ||
+              uploading ||
+              (Platform.OS === 'web' && !fileRightsConfirmed)) && { opacity: 0.4 },
+          ]}
           onPress={openFileInput}
-          disabled={!viewerUserId || uploading}
+          disabled={!viewerUserId || uploading || (Platform.OS === 'web' && !fileRightsConfirmed)}
         >
           {uploading ? (
             <ActivityIndicator size="small" color={colors.textSecondary} />
@@ -1053,6 +1101,35 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#e53925',
     marginBottom: spacing.xs,
+  },
+  rightsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.xs,
+  },
+  rightsBox: {
+    width: 18,
+    height: 18,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  rightsBoxOn: {
+    backgroundColor: colors.textPrimary,
+    borderColor: colors.textPrimary,
+  },
+  rightsCheck: { color: colors.surface, fontSize: 11, fontWeight: '700' },
+  rightsLabel: {
+    ...typography.body,
+    fontSize: 11,
+    color: colors.textSecondary,
+    flex: 1,
+    lineHeight: 16,
   },
   attachBtn: {
     width: 34,

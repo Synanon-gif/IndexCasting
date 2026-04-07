@@ -255,6 +255,14 @@ describe('guardUploadSession', () => {
     expect(result.ok).toBe(true);
   });
 
+  it('returns ok:true for B2B messenger session keys when confirmed', async () => {
+    from.mockReturnValue(makeChain({ data: { id: 'conf-m1' }, error: null }));
+
+    const result = await guardUploadSession('user-1', 'messenger:conv-uuid-1');
+
+    expect(result.ok).toBe(true);
+  });
+
   it('returns ok:false and logs security event when rights not confirmed', async () => {
     // First from() call (hasRecent) → null. Second from() call (security_events insert) → ok.
     from

@@ -25,6 +25,14 @@ import {
 } from '../../lib/validation';
 import { checkAndIncrementStorage, decrementStorage } from './agencyStorageSupabase';
 import { convertHeicToJpegIfNeeded } from './imageUtils';
+import { guardUploadSession } from './gdprComplianceSupabase';
+
+/** Session key prefix for B2B messenger file uploads — pair with `confirmImageRights`. */
+export const MESSENGER_UPLOAD_SESSION_PREFIX = 'messenger:';
+
+export function buildMessengerUploadSessionKey(conversationId: string): string {
+  return `${MESSENGER_UPLOAD_SESSION_PREFIX}${conversationId}`;
+}
 
 /** Reads the actual stored size of a chat file from storage.objects metadata. Best-effort — returns null on failure. */
 async function getActualChatFileSize(bucket: string, path: string): Promise<number | null> {
@@ -476,12 +484,26 @@ export function subscribeToConversation(
  * Use getSignedChatFileUrl() to generate time-limited download URLs for display.
  *
  * Validates MIME type, file size, and magic bytes before upload.
+ * Call {@link confirmImageRights} with `sessionKey` = {@link buildMessengerUploadSessionKey}
+ * before this; this function enforces {@link guardUploadSession}.
  */
 export async function uploadChatFile(
   conversationId: string,
   file: File | Blob,
   fileName: string
 ): Promise<string | null> {
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) {
+    console.warn('uploadChatFile: not authenticated');
+    return null;
+  }
+  const sessionKey = buildMessengerUploadSessionKey(conversationId);
+  const rights = await guardUploadSession(auth.user.id, sessionKey);
+  if (!rights.ok) {
+    console.warn('uploadChatFile: image rights confirmation required', sessionKey);
+    return null;
+  }
+
   // Convert HEIC/HEIF to JPEG before validation
   file = await convertHeicToJpegIfNeeded(file);
   // MIME type + size check
@@ -513,9 +535,6 @@ export async function uploadChatFile(
     return null;
   }
 
-  // guardImageUpload() is intentionally not called here: chat file attachments are
-  // ephemeral org-to-org communication documents, not model portfolio photos.
-  // The image_rights_confirmations audit applies only to model photo uploads (ModelMediaSettingsPanel).
   const claimedSize = file instanceof File ? file.size : (file as Blob).size;
   const path = `chat/${conversationId}/${Date.now()}_${fileName}`;
   const { error } = await supabase.storage

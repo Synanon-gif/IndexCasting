@@ -1,0 +1,39 @@
+---
+description: Upload consent matrix — which flows require image_rights_confirmations vs other consent
+alwaysApply: false
+---
+
+# Upload consent matrix (IndexCasting)
+
+Single source of truth for **which uploads** must call `confirmImageRights` (or equivalent) **before** storage write. Aligns with [.cursorrules](../../.cursorrules) GDPR §14 and Option A service contracts.
+
+## Matrix
+
+| Flow | Bucket / path | Consent mechanism | Service guard |
+|------|----------------|-------------------|---------------|
+| Model portfolio / polaroid / private | `documentspictures` model-photos / model-private-photos | `confirmImageRights` + `orgId` = `public.organizations.id`; UI checkbox | `hasRecentImageRightsConfirmation` in `uploadModelPhoto` / `uploadPrivateModelPhoto` |
+| Agency add-model photos | same | same + `guardImageUpload` after confirm | same |
+| Apply form images | `documentspictures` model-applications | `confirmImageRights` with `sessionKey` = `APPLICATION_UPLOAD_SESSION_KEY` | `hasRecentImageRightsForSessionKey` in `uploadApplicationImage` |
+| Recruiting / booking chat files | `chat-files` recruiting/… | `confirmImageRights` with `sessionKey` = `` `recruiting-chat:${threadId}` `` | `guardUploadSession` in `addRecruitingMessageWithFile` |
+| B2B org messenger attachments | `chat-files` chat/… | `confirmImageRights` with `sessionKey` = `` `messenger:${conversationId}` `` | `guardUploadSession` in `uploadChatFile` |
+| Option request documents | `chat-files` options/… | **No production UI** — `uploadOptionDocument` is `@deprecated` until UI calls `confirmImageRights` with `` `option-doc:${requestId}` `` | `guardUploadSession` |
+| User documents (contracts, invoices, ID) | `documents` | **Not** `image_rights_confirmations` — separate product consent / legal; validate MIME + magic bytes only | Future: dedicated consent RPC or checkbox + audit |
+| Model verification ID upload | `documents` verifications/… | **Not** image-rights table today — high-sensitivity; treat as verification consent path | Future: align with minor/ID policy |
+
+## Rules
+
+1. **Never** pass `agencies.id` as `orgId` to `confirmImageRights` — only `public.organizations.id`.
+2. **Time window:** use [`IMAGE_RIGHTS_WINDOW_MINUTES`](../../src/services/gdprComplianceSupabase.ts) for all `hasRecent*` / `guardUploadSession` / `guardImageUpload` checks (must match `confirmImageRights` pre-insert window).
+3. **New upload surfaces** must add a row to this matrix and implement UI checkbox + `confirmImageRights` (or document an approved exception).
+
+## Error / API contract (ServiceResult vs Option A)
+
+- **Existing** exports in `src/services/` stay **Option A** (`null` / `false` / `[]` on failure, no throw) per [.cursorrules](../../.cursorrules).
+- **New** upload-related APIs should prefer **`ServiceResult<T>`** from [`src/types/serviceResult.ts`](../../src/types/serviceResult.ts) with stable `reason` strings; optional `errorCode` in payload if needed.
+- Do not mix return shapes within one function.
+
+## Related
+
+- Storage decoupling for model photos: `can_agency_manage_model_photo` / `can_view_model_photo_storage` ([`20260406_fix_storage_policies_secdef.sql`](../../supabase/migrations/20260406_fix_storage_policies_secdef.sql)).
+- Location priority for Near Me: live > current > agency ([`system-invariants.mdc`](./system-invariants.mdc)).
+- Unclaimed model claim tokens: `generate_model_claim_token(p_model_id, p_organization_id)` — pass `organizations.id` from the active team when the model has no `agency_id` yet ([`20260424_generate_model_claim_token_organization_param.sql`](../../supabase/migrations/20260424_generate_model_claim_token_organization_param.sql)).
