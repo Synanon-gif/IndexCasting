@@ -32,6 +32,7 @@
     "deploy:supabase:functions": "bash scripts/deploy-supabase-functions.sh",
     "review-context": "bash scripts/generate-llm-review-bundle.sh",
     "security-audit-bundle": "bash scripts/generate-security-audit-bundle.sh",
+    "audit:coverage": "node scripts/audit-coverage.mjs",
     "cap:sync": "cap sync",
     "cap:ios": "cap open ios"
   },
