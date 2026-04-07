@@ -38,6 +38,12 @@ import {
   adminGetBillingStatus,
   adminSetBypassPaywall,
   adminSetOrgPlan,
+  adminGetProfileRowById,
+  adminGetModelRowByUserId,
+  adminGetAgencyRowById,
+  adminListAllOrganizationMembersBulk,
+  adminGetOrganizationMemberUserRows,
+  adminGetProfilesIdDisplayEmail,
   type AdminProfile,
   type AdminLogEntry,
   type AdminOrgMembership,
@@ -48,7 +54,6 @@ import {
   type AdminBillingStatus,
 } from '../services/adminSupabase';
 import { formatStorageBytes } from '../services/agencyStorageSupabase';
-import { supabase } from '../../lib/supabase';
 
 type AdminTab = 'accounts' | 'organizations' | 'models' | 'logs' | 'edit';
 type AccountFilter = 'all' | 'inactive' | 'active' | 'client' | 'agent' | 'model';
@@ -133,12 +138,10 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
 
       // Load org memberships separately so a failure never blocks the main data.
       try {
-        const { data: memRows } = await supabase
-          .from('organization_members')
-          .select('user_id, organization_id, role');
-        if (memRows) {
+        const memRows = await adminListAllOrganizationMembersBulk();
+        if (memRows.length > 0) {
           const orgLookup: Record<string, { orgId: string; orgName: string; orgRole: string }> = {};
-          for (const m of memRows as Array<{ user_id: string; organization_id: string; role: string }>) {
+          for (const m of memRows) {
             const org = orgResult.data.find((o) => o.id === m.organization_id);
             if (org) {
               orgLookup[m.user_id] = { orgId: m.organization_id, orgName: org.name, orgRole: m.role };
@@ -236,19 +239,18 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
   };
 
   const handleEditProfile = async (profile: AdminProfile) => {
-    const { data: fullProfile } = await supabase
-      .from('profiles').select('*').eq('id', profile.id).maybeSingle();
+    const fullProfile = await adminGetProfileRowById(profile.id);
 
     setEditingProfile(profile);
     setEditFields({
-      display_name: fullProfile?.display_name || profile.display_name || '',
-      email: fullProfile?.email || profile.email || '',
-      company_name: fullProfile?.company_name || profile.company_name || '',
-      phone: fullProfile?.phone || profile.phone || '',
-      website: fullProfile?.website || '',
-      country: fullProfile?.country || profile.country || '',
-      role: fullProfile?.role || profile.role || '',
-      is_active: (fullProfile?.is_active ?? profile.is_active) ? 'true' : 'false',
+      display_name: (fullProfile?.display_name as string | undefined) || profile.display_name || '',
+      email: (fullProfile?.email as string | undefined) || profile.email || '',
+      company_name: (fullProfile?.company_name as string | undefined) || profile.company_name || '',
+      phone: (fullProfile?.phone as string | undefined) || profile.phone || '',
+      website: (fullProfile?.website as string | undefined) || '',
+      country: (fullProfile?.country as string | undefined) || profile.country || '',
+      role: (fullProfile?.role as string | undefined) || profile.role || '',
+      is_active: ((fullProfile?.is_active as boolean | undefined) ?? profile.is_active) ? 'true' : 'false',
     });
     setModelData(null);
     setAgencyData(null);
@@ -256,13 +258,13 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
     setTab('edit');
 
     if (profile.role === 'model') {
-      const { data } = await supabase.from('models').select('*').eq('user_id', profile.id).maybeSingle();
-      setModelData(data as Record<string, unknown> | null);
+      const row = await adminGetModelRowByUserId(profile.id);
+      setModelData(row);
     } else if (profile.role === 'agent') {
-      const agencyId = (fullProfile as Record<string, unknown> | null)?.agency_id as string | null;
+      const agencyId = fullProfile?.agency_id as string | null;
       if (agencyId) {
-        const { data } = await supabase.from('agencies').select('*').eq('id', agencyId).maybeSingle();
-        setAgencyData(data as Record<string, unknown> | null);
+        const row = await adminGetAgencyRowById(agencyId);
+        setAgencyData(row);
       }
     }
     if (profile.role === 'agent' || profile.role === 'client') {
@@ -322,35 +324,31 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
     setExpandedOrgId(org.id);
     setOrgEditDraft({ name: org.name, admin_notes: org.admin_notes ?? '', new_owner_id: '' });
 
-    const { data: memberRows } = await supabase
-      .from('organization_members').select('user_id, role').eq('organization_id', org.id);
-    if (memberRows && memberRows.length > 0) {
-      const userIds = (memberRows as Array<{ user_id: string }>).map((r) => r.user_id);
-      const { data: profileRows } = await supabase
-        .from('profiles').select('id, display_name, email').in('id', userIds);
+    const memberRows = await adminGetOrganizationMemberUserRows(org.id);
+    if (memberRows.length > 0) {
+      const userIds = memberRows.map((r) => r.user_id);
+      const profileRows = await adminGetProfilesIdDisplayEmail(userIds);
       setOrgMembers(
-        (memberRows as Array<{ user_id: string; role: string }>).map((r) => {
-          const pr = (profileRows ?? []).find((p: Record<string, unknown>) => p.id === r.user_id) as Record<string, unknown> | undefined;
+        memberRows.map((r) => {
+          const pr = profileRows.find((p) => p.id === r.user_id);
           return {
             organization_id: org.id,
             org_name: org.name,
             org_type: org.type,
             member_role: r.role as AdminOrgMembership['member_role'],
             user_id: r.user_id,
-            display_name: pr?.display_name as string | undefined,
-            email: pr?.email as string | undefined,
+            display_name: pr?.display_name ?? undefined,
+            email: pr?.email ?? undefined,
           };
         })
       );
       // Extract the owner's display name for the org card header.
-      const ownerMember = (memberRows as Array<{ user_id: string; role?: string }>).find(
-        (r) => r.user_id === org.owner_id,
-      );
+      const ownerMember = memberRows.find((r) => r.user_id === org.owner_id);
       if (ownerMember) {
-        const ownerProfile = (profileRows ?? []).find(
-          (p: Record<string, unknown>) => p.id === ownerMember.user_id,
-        ) as Record<string, unknown> | undefined;
-        const ownerName = String(ownerProfile?.display_name || ownerProfile?.email || ownerMember.user_id.slice(0, 8) + '…');
+        const ownerProfile = profileRows.find((p) => p.id === ownerMember.user_id);
+        const ownerName = String(
+          ownerProfile?.display_name || ownerProfile?.email || ownerMember.user_id.slice(0, 8) + '…',
+        );
         setOrgOwnerNames((prev) => ({ ...prev, [org.id]: ownerName }));
       }
     } else {

@@ -31,7 +31,8 @@ Single source of truth for **which uploads** must call `confirmImageRights` (or 
 1. Add a **row** to the Matrix table above (Flow, bucket/path, consent mechanism, service guard).
 2. In UI: checkbox + call `confirmImageRights` with the correct `orgId` or `sessionKey` per the matrix.
 3. In `src/services/`: immediately before `storage.upload`, enforce the matching guard — `guardUploadSession`, `hasRecentImageRightsForSessionKey`, `hasRecentImageRightsConfirmation`, or the matrix-documented equivalent.
-4. Run `npm run typecheck`, `npm run lint`, and `npm test` before merging.
+4. If the surface performs **`supabase.storage.from(…).upload(`**, add the service file path to **`STORAGE_UPLOAD_ALLOWLIST`** in [`scripts/audit-coverage.mjs`](../../scripts/audit-coverage.mjs) (CI enforces upload chains only in that list when `AUDIT_CI_ENFORCE=1`; signed URL / list / remove are not gated).
+5. Run `npm run typecheck`, `npm run lint`, and `npm test` before merging.
 
 ## Storage vs. `image_rights_confirmations` (`chat-files`)
 

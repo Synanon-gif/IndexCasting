@@ -5,8 +5,10 @@
  * drift vs docs/AUDIT_DRIFT_BASELINE.json (update with AUDIT_WRITE_BASELINE=1).
  *
  * Optional env:
- *   AUDIT_WRITE_BASELINE=1  — write docs/AUDIT_DRIFT_BASELINE.json after run (commit when intentional)
- *   AUDIT_FAIL_ON_DRIFT=1   — exit 1 if drift or new forbidden supabase.from vs baseline
+ *   AUDIT_WRITE_BASELINE=1     — write docs/AUDIT_DRIFT_BASELINE.json after run (commit when intentional)
+ *   AUDIT_FAIL_ON_DRIFT=1      — exit 1 if drift or new forbidden supabase.from vs baseline
+ *   AUDIT_CI_ENFORCE=1         — exit 1 on: missing drift baseline, prod void…catch, storage upload outside allowlist
+ *   AUDIT_FAIL_ON_ANY_FORBIDDEN=1 — exit 1 if any forbidden supabase.from remains (strict; optional)
  *
  * Writes docs/AUDIT_COVERAGE_MANIFEST_<ISO_DATE>.{md,json} and docs/SYSTEM_AUDIT_REPORT_<ISO_DATE>.md
  */
@@ -358,6 +360,54 @@ function scanSnapshotOptimistic(relPath, content) {
 /** void xxx().catch( — risky with Option-A services */
 const VOID_CATCH = [];
 
+/** supabase.storage usage outside upload-consent matrix service files (see .cursor/rules/upload-consent-matrix.mdc) */
+const STORAGE_UPLOAD_RULE_VIOLATIONS = [];
+
+/** Repo-relative paths allowed to call supabase.storage (aligned with upload-consent matrix). */
+const STORAGE_UPLOAD_ALLOWLIST = new Set(
+  [
+    'src/services/modelPhotosSupabase.ts',
+    'src/services/applicationsSupabase.ts',
+    'src/services/recruitingChatSupabase.ts',
+    'src/services/messengerSupabase.ts',
+    'src/services/optionRequestsSupabase.ts',
+    'src/services/documentsSupabase.ts',
+    'src/services/verificationSupabase.ts',
+  ].map((p) => p.replace(/\\/g, '/')),
+);
+
+/** True if file contains a chained `supabase.storage.from(…).upload(` (upload consent / matrix). */
+function normalizedHasSupabaseStorageUpload(content) {
+  const n = content.replace(/\s+/g, ' ');
+  // `from(...)` arg must not contain `)` — rare edge case: `.from(fn())` would need a richer parser.
+  return /\bsupabase\s*\.\s*storage\s*\.\s*from\s*\([^)]*\)\s*\.\s*upload\s*\(/.test(n);
+}
+
+function scanStorageUploadAllowlist(relPath, content) {
+  const normPath = relPath.replace(/\\/g, '/');
+  if (!normPath.startsWith('src/')) return;
+  if (!/\.(tsx?)$/.test(normPath)) return;
+  if (normPath.includes('__tests__')) return;
+  if (STORAGE_UPLOAD_ALLOWLIST.has(normPath)) return;
+
+  if (!normalizedHasSupabaseStorageUpload(content)) return;
+
+  const lines = content.split('\n');
+  let hitLine = 1;
+  for (let i = 0; i < lines.length; i++) {
+    if (/\bsupabase\s*\.\s*storage\b/.test(lines[i])) {
+      hitLine = i + 1;
+      break;
+    }
+  }
+  STORAGE_UPLOAD_RULE_VIOLATIONS.push({
+    path: normPath,
+    line: hitLine,
+    text: (lines[hitLine - 1] || '').trim().slice(0, 160),
+    rule_id: 'storage_upload_outside_matrix_services',
+  });
+}
+
 function scanVoidCatch(relPath, content) {
   if (!/\.(tsx|ts)$/.test(relPath)) return;
   if (!relPath.startsWith('src/')) return;
@@ -449,6 +499,7 @@ function scanAllTsRoots() {
       classifySupabaseFromRules(rel, c);
       scanSnapshotOptimistic(rel, c);
       scanVoidCatch(rel, c);
+      scanStorageUploadAllowlist(rel, c);
     } catch {
       /* ignore */
     }
@@ -755,6 +806,14 @@ function main() {
       ui_supabase_from_forbidden_only: UI_SUPABASE_FROM,
       void_catch_candidates: VOID_CATCH,
       snapshot_pattern_hits: SNAPSHOT_PATTERNS,
+      storage_upload_matrix_allowlist_violations: STORAGE_UPLOAD_RULE_VIOLATIONS,
+    },
+    ci_enforcement: {
+      AUDIT_CI_ENFORCE: process.env.AUDIT_CI_ENFORCE === '1',
+      AUDIT_FAIL_ON_ANY_FORBIDDEN: process.env.AUDIT_FAIL_ON_ANY_FORBIDDEN === '1',
+      void_catch_production_count: VOID_CATCH.filter((x) => !x.path.includes('__tests__')).length,
+      drift_no_baseline: drift.status === 'no_baseline',
+      storage_upload_violations: STORAGE_UPLOAD_RULE_VIOLATIONS.length,
     },
     review_status_counts: summary,
     files: entries,
@@ -781,6 +840,7 @@ function main() {
   md += `- **Exported symbols (AST):** ${EXPORTED_SYMBOLS.length}; **with internal importers:** ${EXPORT_USAGE_SUMMARY.length}\n`;
   md += `- **supabase.from rule engine:** allowed=${supabaseRuleCounts.allowed ?? 0}, exception=${supabaseRuleCounts.exception ?? 0}, forbidden=${supabaseRuleCounts.forbidden ?? 0}\n`;
   md += `- **void …catch( candidates:** ${VOID_CATCH.length}\n`;
+  md += `- **storage upload outside matrix services:** ${STORAGE_UPLOAD_RULE_VIOLATIONS.length}\n`;
   md += `- **snapshot pattern hits (heuristic):** ${SNAPSHOT_PATTERNS.length}\n`;
   md += `- **Drift:** ${drift.status}${drift.status === 'compared' && drift.forbidden_supabase_from_introduced?.length ? ` — new forbidden supabase.from: ${drift.forbidden_supabase_from_introduced.length}` : ''}\n\n`;
   md += `## File listing\n\n`;
@@ -857,6 +917,18 @@ function main() {
     report += `| File | Note |\n|---|---|\n`;
     for (const h of UI_SUPABASE_FROM) {
       report += `| \`${h.path}\` | ${h.note} |\n`;
+    }
+    report += `\n`;
+  }
+
+  report += `### 4.2b Storage \`supabase.storage.from(…).upload(\` — matrix allowlist\n\n`;
+  report += `Only the service files listed in [\`.cursor/rules/upload-consent-matrix.mdc\`](../.cursor/rules/upload-consent-matrix.mdc) may perform **upload** chains (\`from\` → \`upload\`). Other storage calls (signed URL, list, remove) are ignored by this rule.\n\n`;
+  if (STORAGE_UPLOAD_RULE_VIOLATIONS.length === 0) {
+    report += `No violations.\n\n`;
+  } else {
+    report += `| File | Line | Snippet |\n|---|---:|---|\n`;
+    for (const h of STORAGE_UPLOAD_RULE_VIOLATIONS) {
+      report += `| \`${h.path}\` | ${h.line} | \`${String(h.text).replace(/`/g, "'")}\` |\n`;
     }
     report += `\n`;
   }
@@ -949,6 +1021,13 @@ function main() {
       desc: `void …catch( in ${h.path}:${h.line} — Option-A services may not reject; .then(ok) pattern preferred.`,
     });
   }
+  for (const h of STORAGE_UPLOAD_RULE_VIOLATIONS.slice(0, 20)) {
+    findings.push({
+      sev: 'MEDIUM',
+      cat: 'Security',
+      desc: `Storage upload outside matrix allowlist: ${h.path}:${h.line} (${h.rule_id}).`,
+    });
+  }
   if (findings.length === 0) {
     report += `No automated findings beyond passing gates (see rule-scan tables for informational hits).\n\n`;
   } else {
@@ -959,7 +1038,7 @@ function main() {
   }
 
   report += `## 8. Incremental recommendations\n\n`;
-  report += `1. Wire \`npm run audit:coverage\` into optional CI; use \`AUDIT_FAIL_ON_DRIFT=1\` to fail on new forbidden \`supabase.from\` or critical-path edits vs [\`docs/AUDIT_DRIFT_BASELINE.json\`](./AUDIT_DRIFT_BASELINE.json).\n`;
+  report += `1. CI runs \`npm run audit:coverage\` with \`AUDIT_FAIL_ON_DRIFT=1\` and \`AUDIT_CI_ENFORCE=1\` (see [\`docs/CI_AUDIT_AND_BASELINE.md\`](./CI_AUDIT_AND_BASELINE.md)).\n`;
   report += `2. Resolve snapshot vs inverse-operation governance and update code or rules once product decides.\n`;
   report += `3. Update [\`docs/LIVE_DB_WATCHLIST_SNAPSHOT.md\`](./LIVE_DB_WATCHLIST_SNAPSHOT.md) after material schema/policy migrations, then re-run \`npm run audit:coverage\`.\n\n`;
 
@@ -971,11 +1050,47 @@ function main() {
     if ((drift.modified_critical_files?.length ?? 0) > 0) driftFail = true;
   }
 
+  let ciRuleFail = false;
+  if (process.env.AUDIT_CI_ENFORCE === '1') {
+    if (drift.status === 'no_baseline') {
+      ciRuleFail = true;
+      console.error(
+        '[audit] AUDIT_CI_ENFORCE: docs/AUDIT_DRIFT_BASELINE.json missing — run AUDIT_WRITE_BASELINE=1 npm run audit:coverage and commit.',
+      );
+    }
+    if (voidCatchProd.length > 0) {
+      ciRuleFail = true;
+      console.error('[audit] AUDIT_CI_ENFORCE: void …catch( in production (non-__tests__) — use .then(ok) for Option-A services:');
+      for (const h of voidCatchProd.slice(0, 30)) {
+        console.error(`  ${h.path}:${h.line} ${h.text}`);
+      }
+      if (voidCatchProd.length > 30) console.error(`  … +${voidCatchProd.length - 30} more`);
+    }
+    if (STORAGE_UPLOAD_RULE_VIOLATIONS.length > 0) {
+      ciRuleFail = true;
+      console.error(
+        '[audit] AUDIT_CI_ENFORCE: supabase.storage.from(…).upload( outside matrix allowlist — extend src/services or update .cursor/rules/upload-consent-matrix.mdc + STORAGE_UPLOAD_ALLOWLIST in audit-coverage.mjs:',
+      );
+      for (const h of STORAGE_UPLOAD_RULE_VIOLATIONS) {
+        console.error(`  ${h.path}:${h.line} (${h.rule_id}) ${h.text}`);
+      }
+    }
+    if (process.env.AUDIT_FAIL_ON_ANY_FORBIDDEN === '1' && (supabaseRuleCounts.forbidden ?? 0) > 0) {
+      ciRuleFail = true;
+      console.error(
+        '[audit] AUDIT_FAIL_ON_ANY_FORBIDDEN: forbidden supabase.from sites must be zero — refactor to services or baseline drift only:',
+      );
+      for (const h of UI_SUPABASE_FROM.slice(0, 40)) {
+        console.error(`  ${h.path}: ${h.note}`);
+      }
+    }
+  }
+
   const gatesOk = gates.typecheck.ok && gates.eslint.ok && gates.jest.ok;
   console.log(
     `Wrote:\n  ${OUT_JSON}\n  ${OUT_DEP_GRAPH}\n  ${OUT_EXPORT_MAP}\n  ${OUT_MD}\n  ${OUT_REPORT}`,
   );
-  process.exit(gatesOk && !driftFail ? 0 : 1);
+  process.exit(gatesOk && !driftFail && !ciRuleFail ? 0 : 1);
 }
 
 main();

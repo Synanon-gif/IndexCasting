@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-04-07T12:39:16.376Z",
+  "generated_at": "2026-04-07T12:49:23.296Z",
   "iso_date": "2026-04-07",
-  "total_paths": 592,
-  "manifest_fingerprint": "7625b76a25fabb398ed28ffd87ec75941c6e8b7f130866f408d6219723a30380",
-  "drift_manifest_fingerprint": "42c5750e48addc74f9dc7d2709cd6e1c3abb2f36f733668d78210bb3c6675cf4",
+  "total_paths": 595,
+  "manifest_fingerprint": "1212557ee0bbe779238e131fa593877b5d48593f346bc1951520082dca847726",
+  "drift_manifest_fingerprint": "37052a05c655071e52fe05b388eb4a8d63ee5ac2bffca3ea21352c2b323aa04a",
   "gates": {
     "typecheck": {
       "ok": true,
@@ -28,20 +28,20 @@
   },
   "dependency_graph": {
     "node_count": 207,
-    "edge_count": 587,
+    "edge_count": 586,
     "detail_file": "AUDIT_DEPENDENCY_GRAPH.json"
   },
   "export_inventory": {
-    "exported_symbol_count": 648,
-    "internal_export_usage_entries": 429,
+    "exported_symbol_count": 654,
+    "internal_export_usage_entries": 435,
     "detail_file": "AUDIT_EXPORT_MAP.json"
   },
   "rule_engine": {
     "supabase_from": {
       "counts": {
-        "allowed": 25,
+        "allowed": 28,
         "exception": 2,
-        "forbidden": 2
+        "forbidden": 0
       },
       "hits": [
         {
@@ -103,6 +103,27 @@
         {
           "path": "src/services/adminSupabase.ts",
           "line": 353,
+          "classification": "allowed",
+          "rule_id": "supabase_from_service_layer",
+          "note": "Direct table access in service/lib (allowed)."
+        },
+        {
+          "path": "src/services/adminSupabase.ts",
+          "line": 905,
+          "classification": "allowed",
+          "rule_id": "supabase_from_service_layer",
+          "note": "Direct table access in service/lib (allowed)."
+        },
+        {
+          "path": "src/services/adminSupabase.ts",
+          "line": 919,
+          "classification": "allowed",
+          "rule_id": "supabase_from_service_layer",
+          "note": "Direct table access in service/lib (allowed)."
+        },
+        {
+          "path": "src/services/adminSupabase.ts",
+          "line": 933,
           "classification": "allowed",
           "rule_id": "supabase_from_service_layer",
           "note": "Direct table access in service/lib (allowed)."
@@ -232,20 +253,6 @@
           "classification": "allowed",
           "rule_id": "supabase_from_service_layer",
           "note": "Direct table access in service/lib (allowed)."
-        },
-        {
-          "path": "src/views/AdminDashboard.tsx",
-          "line": 259,
-          "classification": "forbidden",
-          "rule_id": "supabase_from_outside_service_layer",
-          "note": "Prefer service-layer RPC/query helpers for org-scoped access."
-        },
-        {
-          "path": "src/views/AdminDashboard.tsx",
-          "line": 264,
-          "classification": "forbidden",
-          "rule_id": "supabase_from_outside_service_layer",
-          "note": "Prefer service-layer RPC/query helpers for org-scoped access."
         }
       ]
     }
@@ -257,27 +264,24 @@
     "modified_critical_files": [],
     "forbidden_supabase_from_introduced": [],
     "forbidden_supabase_from_resolved": [],
-    "manifest_fingerprint_prev": "505881c95a47595ce26a5cbbbff8b2534d9de963c61c01f95f18a7432c2bdd64",
-    "manifest_fingerprint_curr": "42c5750e48addc74f9dc7d2709cd6e1c3abb2f36f733668d78210bb3c6675cf4"
+    "manifest_fingerprint_prev": "f80e09b1a83cde1f1d4a52e1d9e4dff3d2f787bc5de4800e3504d4ae0835e06a",
+    "manifest_fingerprint_curr": "37052a05c655071e52fe05b388eb4a8d63ee5ac2bffca3ea21352c2b323aa04a"
   },
   "rule_scans": {
-    "ui_supabase_from_forbidden_only": [
-      {
-        "path": "src/views/AdminDashboard.tsx",
-        "pattern": "supabase.from(",
-        "note": "line 259: Prefer service-layer RPC/query helpers for org-scoped access."
-      },
-      {
-        "path": "src/views/AdminDashboard.tsx",
-        "pattern": "supabase.from(",
-        "note": "line 264: Prefer service-layer RPC/query helpers for org-scoped access."
-      }
-    ],
+    "ui_supabase_from_forbidden_only": [],
     "void_catch_candidates": [],
-    "snapshot_pattern_hits": []
+    "snapshot_pattern_hits": [],
+    "storage_upload_matrix_allowlist_violations": []
+  },
+  "ci_enforcement": {
+    "AUDIT_CI_ENFORCE": true,
+    "AUDIT_FAIL_ON_ANY_FORBIDDEN": false,
+    "void_catch_production_count": 0,
+    "drift_no_baseline": false,
+    "storage_upload_violations": 0
   },
   "review_status_counts": {
-    "partially_reviewed": 309,
+    "partially_reviewed": 312,
     "reviewed_automated": 276,
     "reviewed_manual": 7
   },
@@ -371,7 +375,7 @@
       "category": "cursor_rules",
       "file_kind": "governance",
       "purpose": "Cursor governance rules.",
-      "sha256": "208c0f878e7a0d7f5f802fb3e51c178912941a1706bdaa1fe6646a5f5962425b",
+      "sha256": "e5bf37d4dd491c3cc34b8584c5358b7154a479e411939e0dd2a4b4bbd8e550c2",
       "review_status": "partially_reviewed",
       "reason": "documentation_governance_text_not_executable_audit",
       "evidence": [
@@ -435,7 +439,7 @@
       "category": "github",
       "file_kind": "config",
       "purpose": "Repository file.",
-      "sha256": "ab094406a50c490c7240ecca3124f2ad0600c21013a0972f78b5d1307ac65d3f",
+      "sha256": "4ccaaca8ba2517ffcbc37590f51f095569851ece2ad44da3b8e65c40bcfdd9b6",
       "review_status": "partially_reviewed",
       "reason": "config_ci_script_review_manifest_only",
       "evidence": [
@@ -686,7 +690,7 @@
       "category": "docs",
       "file_kind": "config",
       "purpose": "Documentation / audit reference.",
-      "sha256": "68751e2f4282427630b88d4fbba601c5d134d23fd97fa5522d61deaddc2206f8",
+      "sha256": "88c058b91a6f3b5e647969093daaf02003e754232fa459116b183ac4ef98de67",
       "review_status": "partially_reviewed",
       "reason": "config_ci_script_review_manifest_only",
       "evidence": [
@@ -699,11 +703,50 @@
       "category": "docs",
       "file_kind": "doc",
       "purpose": "Documentation / audit reference.",
-      "sha256": "af21c02c0290c354eac2fb5b9266fe89e8596207d60604fc09615aca2bff3f59",
+      "sha256": "9e52a06d7763da2cfd6b2aa35f80a9a8116bbff557db82a9acb1752416876d70",
       "review_status": "partially_reviewed",
       "reason": "documentation_governance_text_not_executable_audit",
       "evidence": [
         "manifest_enumeration"
+      ]
+    },
+    {
+      "path": "docs/AUDIT_DEPENDENCY_GRAPH.json",
+      "category": "docs",
+      "file_kind": "config",
+      "purpose": "Documentation / audit reference.",
+      "sha256": "6c8e94e7158656d1fba20040e1a0037ec4515146ea2db249ad585106cd59d7ee",
+      "review_status": "partially_reviewed",
+      "reason": "config_ci_script_review_manifest_only",
+      "evidence": [
+        "manifest_enumeration",
+        "sha256_file_hash"
+      ]
+    },
+    {
+      "path": "docs/AUDIT_DRIFT_BASELINE.json",
+      "category": "docs",
+      "file_kind": "config",
+      "purpose": "Documentation / audit reference.",
+      "sha256": "81b2806f2b7101d5134f809b47508f5761706187ce3825d85ec449b08de66d35",
+      "review_status": "partially_reviewed",
+      "reason": "config_ci_script_review_manifest_only",
+      "evidence": [
+        "manifest_enumeration",
+        "sha256_file_hash"
+      ]
+    },
+    {
+      "path": "docs/AUDIT_EXPORT_MAP.json",
+      "category": "docs",
+      "file_kind": "config",
+      "purpose": "Documentation / audit reference.",
+      "sha256": "d309b01b44590617296477923a9eff1e4ad11388d92c8564ed7eda4b53ac8613",
+      "review_status": "partially_reviewed",
+      "reason": "config_ci_script_review_manifest_only",
+      "evidence": [
+        "manifest_enumeration",
+        "sha256_file_hash"
       ]
     },
     {
@@ -831,7 +874,7 @@
       "category": "docs",
       "file_kind": "doc",
       "purpose": "Documentation / audit reference.",
-      "sha256": "f48deb736537e09d52218d676d092e36c0bd92777685c9ce5de51b9d502434b8",
+      "sha256": "e4d7440c042e4fd62e24a58cd5c242f6a9f3bef494028344a5aefa83df77f4c1",
       "review_status": "partially_reviewed",
       "reason": "documentation_governance_text_not_executable_audit",
       "evidence": [
@@ -1107,7 +1150,7 @@
       "category": "root",
       "file_kind": "config",
       "purpose": "Repository file.",
-      "sha256": "dace018101e05eb6713ddc0272e9ae04f47d2442700488c55b69cb613c4c5d50",
+      "sha256": "93ed796b5e79ba89b81b4db9a57f6b473013c7a2f7bcb912e04f0099a8baf87c",
       "review_status": "partially_reviewed",
       "reason": "config_ci_script_review_manifest_only",
       "evidence": [
@@ -1120,7 +1163,7 @@
       "category": "root",
       "file_kind": "config",
       "purpose": "Repository file.",
-      "sha256": "56f69b0b9c697efd1e19b80b537160a3d8d5c2e5efb9364cabe1291f41487776",
+      "sha256": "c283604892f9c57cb00b269a54942bd081667838baf73b42e345efd86b3f3e5a",
       "review_status": "partially_reviewed",
       "reason": "config_ci_script_review_manifest_only",
       "evidence": [
@@ -1146,7 +1189,7 @@
       "category": "scripts",
       "file_kind": "code",
       "purpose": "Repository file.",
-      "sha256": "54f33f6e19477c285486a0f90d95b610aad15b4341c107e67eeae8f4dd3eecbf",
+      "sha256": "de03a6e9d0caafb69a46bf053a34d9eb68c2d8bb2b1231bb94a1a1502bd7f4f5",
       "review_status": "partially_reviewed",
       "reason": "config_ci_script_review_manifest_only",
       "evidence": [
@@ -2549,7 +2592,7 @@
       "category": "src_services",
       "file_kind": "code",
       "purpose": "Service layer / Supabase integration.",
-      "sha256": "d79b1812dceb4977de27e65c24e7acb8cac728a92d45074cfd06fe4a10510950",
+      "sha256": "715ce97f5c783e78dcffd37e4e88a3ce9c958f330ac3fa941c0126937bba619a",
       "review_status": "reviewed_automated",
       "reason": null,
       "evidence": [
@@ -3819,7 +3862,7 @@
       "category": "src_views",
       "file_kind": "code",
       "purpose": "Application views module.",
-      "sha256": "2126b78bac8f44fb79c2470584a28f8ccb25f1c8140efbad760fa0a50b395143",
+      "sha256": "eb28fca718d86b018b42ed1f1ce8c79c75784213500c9e225cfd1b09b0550e3a",
       "review_status": "reviewed_automated",
       "reason": null,
       "evidence": [

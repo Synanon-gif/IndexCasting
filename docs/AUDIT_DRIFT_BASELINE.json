@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "written_at": "2026-04-07T12:38:21.739Z",
-  "manifest_fingerprint": "505881c95a47595ce26a5cbbbff8b2534d9de963c61c01f95f18a7432c2bdd64",
+  "written_at": "2026-04-07T12:48:43.658Z",
+  "manifest_fingerprint": "f80e09b1a83cde1f1d4a52e1d9e4dff3d2f787bc5de4800e3504d4ae0835e06a",
   "files": {
     ".cursor/rules/account-org-context-canonical.mdc": "8d758491dd3610a82632043fc38d975c189eca87636cdc3c57c3eaccafcb7c54",
     ".cursor/rules/admin-security.mdc": "ee8be4976604ecf8557a5f27c241a3556ea0428960de6e69c01171ab45b930fa",
@@ -10,12 +10,12 @@
     ".cursor/rules/rls-security-patterns.mdc": "de28fd994ba089225b0ef541d20ef298904a50128cf6f160789b34ce2bb54dbc",
     ".cursor/rules/supabase-auto-deploy.mdc": "a4476d45285784a498963b0e60407231788b295084d31a8de0119bf7e1b198f9",
     ".cursor/rules/system-invariants.mdc": "9a4f00de230cf795e162f8f29259e60f43153b2b708963b7f2bd9ae9aa7a7603",
-    ".cursor/rules/upload-consent-matrix.mdc": "208c0f878e7a0d7f5f802fb3e51c178912941a1706bdaa1fe6646a5f5962425b",
+    ".cursor/rules/upload-consent-matrix.mdc": "97c849a920954f9dad46e7c1ca4de3c5887d7c1d7b6c9264ac434b7334ba3fde",
     ".cursor/settings.json": "e898da0ec3c0224c500b3ad0066ce1bfe4b0cd682a24854df59979ead0b8d5cb",
     ".cursorrules": "09725ff3e3fc7fe24544b5749295c8b68c09b7ec46150b8a2b1dbfa31b0d6582",
     ".env.example": "0cfa371c43811bdc92cd11329c6f9222166fe0e77d9ccaafb27285ca5becac71",
     ".github/dependabot.yml": "a279261085aebcab41a8f9df64817af0fa4dd6c9e806fcb7911b7f0c6add5ae0",
-    ".github/workflows/ci.yml": "ab094406a50c490c7240ecca3124f2ad0600c21013a0972f78b5d1307ac65d3f",
+    ".github/workflows/ci.yml": "4ccaaca8ba2517ffcbc37590f51f095569851ece2ad44da3b8e65c40bcfdd9b6",
     ".github/workflows/deploy.yml": "8f4b7b03f5635bc3f6cc0c135d8d338a40d523d8b842b9d138672db6411e4b73",
     ".github/workflows/supabase-edge-functions.yml": "73f1426db6ecc94200b2175ced5327b8b0c0a3855a69373a947ff29b20a4292f",
     ".gitignore": "776d32085a0f5e0c019fce1d55729d6b0883cb541d12a41e5a983367471e531f",
@@ -65,10 +65,10 @@
     "lib/validation/rateLimit.ts": "8c05489e1434cef1092a0f611c22dc049199d3cc6a083bae99685401b30c5fbe",
     "lib/validation/text.ts": "a524d40bacfacd33a080a336e50ee226fa3cb75f5351b19f553ddbf3c4804348",
     "lib/validation/url.ts": "a7d8e18fca9fdd9de107dda55b7efd410fc07fc62d7456d7ed566f7d9ee2c3fb",
-    "package-lock.json": "dace018101e05eb6713ddc0272e9ae04f47d2442700488c55b69cb613c4c5d50",
-    "package.json": "56f69b0b9c697efd1e19b80b537160a3d8d5c2e5efb9364cabe1291f41487776",
+    "package-lock.json": "93ed796b5e79ba89b81b4db9a57f6b473013c7a2f7bcb912e04f0099a8baf87c",
+    "package.json": "c283604892f9c57cb00b269a54942bd081667838baf73b42e345efd86b3f3e5a",
     "playwright.config.ts": "b6f1c9ad9125067a92fe7f0fa5408fc22c12244ffde8bbfbad28d4b4a6d80f65",
-    "scripts/audit-coverage.mjs": "a28fe254f68e196b319020eae0d513a45f79988a2c067f1c62244b27f8ff0ce9",
+    "scripts/audit-coverage.mjs": "de03a6e9d0caafb69a46bf053a34d9eb68c2d8bb2b1231bb94a1a1502bd7f4f5",
     "scripts/deploy-supabase-functions.sh": "d85a109f1bff44a5a498ae726a5b0b015b8b692e19cdeb3408bfae6b88cc0c10",
     "scripts/generate-llm-review-bundle.sh": "f46ccbc7176b425daccaf278d1fa8b10dd4d0af58c7729808fe08046932e4a4f",
     "scripts/generate-security-audit-bundle.sh": "dd186cdf6980ce77045dfd350028c9edbf412b2a5761fe792dde0b2e4af79e06",
@@ -169,7 +169,7 @@
     "src/services/__tests__/userCalendarEventsSupabase.test.ts": "d9fa6c55f63c25272fad780c5ec645ac14dca10c903123dc070deb0d2d81a49c",
     "src/services/accountSupabase.ts": "b294f7e5f9cededcad0b9369d6048a1817f81b7fb6bf3e9a58f2fa6497415049",
     "src/services/activityLogsSupabase.ts": "f5fe7685e29bc763a94fd9fcb1d0ced96965864104a520e04cfa0e94fd06005f",
-    "src/services/adminSupabase.ts": "d79b1812dceb4977de27e65c24e7acb8cac728a92d45074cfd06fe4a10510950",
+    "src/services/adminSupabase.ts": "715ce97f5c783e78dcffd37e4e88a3ce9c958f330ac3fa941c0126937bba619a",
     "src/services/agenciesSupabase.ts": "efbdb068afc241b08dce80a128fabccfdd0ec82b62ef076ca88a7c7b8e0e3e3c",
     "src/services/agencySettingsSupabase.ts": "879a618dd753eae67f6949fa8a221d5d9ff2d93477a7067238ce0e771476c29a",
     "src/services/agencyStorageSupabase.ts": "e6034bdabdcbbfb5a457f59b9d8f602b6f30241ef59a798765ef020d8905c95c",
@@ -260,7 +260,7 @@
     "src/utils/publicLegalRoutes.ts": "48d05bfab4a793d27e31a939f9252cc0ae1a557d5e320df3675899c7b7f6cc4e",
     "src/utils/statusHelpers.ts": "2e4bf345cb3eee0533b755da204b893f6d996196078e491920f7bfa60e8f7d4d",
     "src/utils/useDebounce.ts": "2f8c68d280bf7f76da679cabac849abace83cddb8aab3de576938975b9b13aa2",
-    "src/views/AdminDashboard.tsx": "2126b78bac8f44fb79c2470584a28f8ccb25f1c8140efbad760fa0a50b395143",
+    "src/views/AdminDashboard.tsx": "eb28fca718d86b018b42ed1f1ce8c79c75784213500c9e225cfd1b09b0550e3a",
     "src/views/AgencyControllerView.tsx": "e9266e2c4f380043d719932c6af201258e21fc5bbb858fe312986a8ae9e45872",
     "src/views/AgencyRecruitingView.tsx": "85b36a9e13f21a9642edecba93833966a70978cc781637d8c76ed9c2d5df7fa8",
     "src/views/AgencyView.tsx": "3bd0dca1642bee4b9c14248a46eb05f0bf063465bbc9bc07b28c273653240e83",
@@ -593,9 +593,6 @@
     "tsconfig.json": "d1dd7ad7c9061c2d9c24f016c6692c1af436a359a63d76fac66e9a9cdf188c30",
     "vercel.json": "900c841494321913dda01739e1efd22bb1c6366a961a87f5e5e74ffe6009652d"
   },
-  "forbidden_supabase_from": [
-    "src/views/AdminDashboard.tsx:259",
-    "src/views/AdminDashboard.tsx:264"
-  ],
-  "forbidden_supabase_fingerprint": "3bd5a03c794b9b6e3d7804480b512aa78076582df315db2465da0a93297e5590"
+  "forbidden_supabase_from": [],
+  "forbidden_supabase_fingerprint": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 }

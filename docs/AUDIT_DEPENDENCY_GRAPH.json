@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-04-07T12:39:16.375Z",
+  "generated_at": "2026-04-07T12:49:23.295Z",
   "adjacency": {
     "lib/security/logger.ts": [
       "lib/supabase.ts"
@@ -792,8 +792,7 @@
       "src/theme/theme.ts",
       "src/constants/uiCopy.ts",
       "src/services/adminSupabase.ts",
-      "src/services/agencyStorageSupabase.ts",
-      "lib/supabase.ts"
+      "src/services/agencyStorageSupabase.ts"
     ],
     "src/views/AgencyControllerView.tsx": [
       "src/components/StorageImage.tsx",

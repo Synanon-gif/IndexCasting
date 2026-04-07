@@ -898,3 +898,106 @@ export async function adminSetOrgPlan(
     return false;
   }
 }
+
+/** Admin dashboard: full profiles row for edit form (service layer — keeps UI off direct PostgREST). */
+export async function adminGetProfileRowById(profileId: string): Promise<Record<string, unknown> | null> {
+  try {
+    const { data, error } = await supabase.from('profiles').select('*').eq('id', profileId).maybeSingle();
+    if (error) {
+      console.error('adminGetProfileRowById error:', error);
+      return null;
+    }
+    return (data ?? null) as Record<string, unknown> | null;
+  } catch (e) {
+    console.error('adminGetProfileRowById exception:', e);
+    return null;
+  }
+}
+
+export async function adminGetModelRowByUserId(userId: string): Promise<Record<string, unknown> | null> {
+  try {
+    const { data, error } = await supabase.from('models').select('*').eq('user_id', userId).maybeSingle();
+    if (error) {
+      console.error('adminGetModelRowByUserId error:', error);
+      return null;
+    }
+    return (data ?? null) as Record<string, unknown> | null;
+  } catch (e) {
+    console.error('adminGetModelRowByUserId exception:', e);
+    return null;
+  }
+}
+
+export async function adminGetAgencyRowById(agencyId: string): Promise<Record<string, unknown> | null> {
+  try {
+    const { data, error } = await supabase.from('agencies').select('*').eq('id', agencyId).maybeSingle();
+    if (error) {
+      console.error('adminGetAgencyRowById error:', error);
+      return null;
+    }
+    return (data ?? null) as Record<string, unknown> | null;
+  } catch (e) {
+    console.error('adminGetAgencyRowById exception:', e);
+    return null;
+  }
+}
+
+export type AdminOrgMemberBulkRow = { user_id: string; organization_id: string; role: string };
+
+/** All organization_members rows (admin RLS) for org→profile lookup in dashboard. */
+export async function adminListAllOrganizationMembersBulk(): Promise<AdminOrgMemberBulkRow[]> {
+  try {
+    const { data, error } = await supabase
+      .from('organization_members')
+      .select('user_id, organization_id, role');
+    if (error) {
+      console.error('adminListAllOrganizationMembersBulk error:', error);
+      return [];
+    }
+    return (data ?? []) as AdminOrgMemberBulkRow[];
+  } catch (e) {
+    console.error('adminListAllOrganizationMembersBulk exception:', e);
+    return [];
+  }
+}
+
+export async function adminGetOrganizationMemberUserRows(
+  organizationId: string,
+): Promise<{ user_id: string; role: string }[]> {
+  try {
+    const { data, error } = await supabase
+      .from('organization_members')
+      .select('user_id, role')
+      .eq('organization_id', organizationId);
+    if (error) {
+      console.error('adminGetOrganizationMemberUserRows error:', error);
+      return [];
+    }
+    return (data ?? []) as { user_id: string; role: string }[];
+  } catch (e) {
+    console.error('adminGetOrganizationMemberUserRows exception:', e);
+    return [];
+  }
+}
+
+export type AdminProfileIdEmailDisplay = { id: string; display_name: string | null; email: string | null };
+
+export async function adminGetProfilesIdDisplayEmail(
+  userIds: string[],
+): Promise<AdminProfileIdEmailDisplay[]> {
+  if (userIds.length === 0) return [];
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, display_name, email')
+      .in('id', userIds);
+    if (error) {
+      console.error('adminGetProfilesIdDisplayEmail error:', error);
+      return [];
+    }
+    return (data ?? []) as AdminProfileIdEmailDisplay[];
+  } catch (e) {
+    console.error('adminGetProfilesIdDisplayEmail exception:', e);
+    return [];
+  }
+}

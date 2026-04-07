@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-04-07T12:39:16.375Z",
+  "generated_at": "2026-04-07T12:49:23.295Z",
   "exported_symbols": [
     {
       "file": "lib/security/logger.ts",
@@ -737,6 +737,42 @@
       "file": "src/services/adminSupabase.ts",
       "name": "adminSetOrgPlan",
       "line": 882,
+      "kind": "function"
+    },
+    {
+      "file": "src/services/adminSupabase.ts",
+      "name": "adminGetProfileRowById",
+      "line": 903,
+      "kind": "function"
+    },
+    {
+      "file": "src/services/adminSupabase.ts",
+      "name": "adminGetModelRowByUserId",
+      "line": 917,
+      "kind": "function"
+    },
+    {
+      "file": "src/services/adminSupabase.ts",
+      "name": "adminGetAgencyRowById",
+      "line": 931,
+      "kind": "function"
+    },
+    {
+      "file": "src/services/adminSupabase.ts",
+      "name": "adminListAllOrganizationMembersBulk",
+      "line": 948,
+      "kind": "function"
+    },
+    {
+      "file": "src/services/adminSupabase.ts",
+      "name": "adminGetOrganizationMemberUserRows",
+      "line": 964,
+      "kind": "function"
+    },
+    {
+      "file": "src/services/adminSupabase.ts",
+      "name": "adminGetProfilesIdDisplayEmail",
+      "line": 985,
       "kind": "function"
     },
     {
@@ -3814,7 +3850,7 @@
     {
       "file": "src/views/AdminDashboard.tsx",
       "name": "AdminDashboard",
-      "line": 56,
+      "line": 61,
       "kind": "const_fn"
     },
     {
@@ -4324,12 +4360,6 @@
         },
         {
           "file": "src/store/recruitingChats.ts",
-          "names": [
-            "supabase"
-          ]
-        },
-        {
-          "file": "src/views/AdminDashboard.tsx",
           "names": [
             "supabase"
           ]
@@ -6026,6 +6056,84 @@
           "file": "src/views/AdminDashboard.tsx",
           "names": [
             "adminSetOrgPlan"
+          ]
+        }
+      ]
+    },
+    {
+      "exportKey": "src/services/adminSupabase.ts::adminGetProfileRowById",
+      "file": "src/services/adminSupabase.ts",
+      "name": "adminGetProfileRowById",
+      "importers": [
+        {
+          "file": "src/views/AdminDashboard.tsx",
+          "names": [
+            "adminGetProfileRowById"
+          ]
+        }
+      ]
+    },
+    {
+      "exportKey": "src/services/adminSupabase.ts::adminGetModelRowByUserId",
+      "file": "src/services/adminSupabase.ts",
+      "name": "adminGetModelRowByUserId",
+      "importers": [
+        {
+          "file": "src/views/AdminDashboard.tsx",
+          "names": [
+            "adminGetModelRowByUserId"
+          ]
+        }
+      ]
+    },
+    {
+      "exportKey": "src/services/adminSupabase.ts::adminGetAgencyRowById",
+      "file": "src/services/adminSupabase.ts",
+      "name": "adminGetAgencyRowById",
+      "importers": [
+        {
+          "file": "src/views/AdminDashboard.tsx",
+          "names": [
+            "adminGetAgencyRowById"
+          ]
+        }
+      ]
+    },
+    {
+      "exportKey": "src/services/adminSupabase.ts::adminListAllOrganizationMembersBulk",
+      "file": "src/services/adminSupabase.ts",
+      "name": "adminListAllOrganizationMembersBulk",
+      "importers": [
+        {
+          "file": "src/views/AdminDashboard.tsx",
+          "names": [
+            "adminListAllOrganizationMembersBulk"
+          ]
+        }
+      ]
+    },
+    {
+      "exportKey": "src/services/adminSupabase.ts::adminGetOrganizationMemberUserRows",
+      "file": "src/services/adminSupabase.ts",
+      "name": "adminGetOrganizationMemberUserRows",
+      "importers": [
+        {
+          "file": "src/views/AdminDashboard.tsx",
+          "names": [
+            "adminGetOrganizationMemberUserRows"
+          ]
+        }
+      ]
+    },
+    {
+      "exportKey": "src/services/adminSupabase.ts::adminGetProfilesIdDisplayEmail",
+      "file": "src/services/adminSupabase.ts",
+      "name": "adminGetProfilesIdDisplayEmail",
+      "importers": [
+        {
+          "file": "src/views/AdminDashboard.tsx",
+          "names": [
+            "adminGetProfilesIdDisplayEmail"
           ]
         }
       ]
