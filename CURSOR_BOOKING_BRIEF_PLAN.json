@@ -1,0 +1,34 @@
+{
+  "data_model_added": [
+    "calendar_entries.booking_details.booking_brief (JSON subtree, five optional scoped fields)"
+  ],
+  "surfaces_updated": [
+    "src/views/AgencyControllerView.tsx",
+    "src/web/ClientWebApp.tsx",
+    "src/screens/ModelProfileScreen.tsx"
+  ],
+  "shared_private_rules": [
+    "scope shared | agency | client | model per field",
+    "UI filter via filterBriefForRole / mergeBookingBriefFromEditor; same JSON trust as *_notes"
+  ],
+  "rules_updated": [
+    ".cursor/rules/auto-review.mdc (one additive bullet)"
+  ],
+  "docs_updated": [
+    "docs/BOOKING_BRIEF_SYSTEM.md",
+    "docs/OPTION_CASTING_FLOW.md"
+  ],
+  "safe_next": [
+    "Manual QA per CURSOR_BOOKING_BRIEF_VERIFY.md",
+    "Optional future: booking_events.brief JSON if orphan-event case matters"
+  ],
+  "do_not_touch": [
+    "AuthContext",
+    "App.tsx",
+    "signIn / bootstrapThenLoadProfile / loadProfile",
+    "get_own_admin_flags / is_current_user_admin / assert_is_admin",
+    "get_my_org_context",
+    "Paywall core",
+    "Broad RLS/RPC migrations for this feature"
+  ]
+}

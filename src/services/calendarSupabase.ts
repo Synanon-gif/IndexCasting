@@ -11,6 +11,7 @@ import {
   type BookingEvent,
   type BookingEventStatus,
 } from './bookingEventsSupabase';
+import type { BookingBrief } from '../utils/bookingBrief';
 
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.trim());
@@ -46,6 +47,8 @@ export type BookingDetails = {
   model_notes?: string;
   /** Append-only timeline all parties can read in-app */
   shared_notes?: SharedBookingNote[];
+  /** Structured production brief; visibility per field via scope (UI-enforced, same JSON trust as notes). */
+  booking_brief?: BookingBrief;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [key: string]: any;
 };

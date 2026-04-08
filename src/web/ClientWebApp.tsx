@@ -39,10 +39,12 @@ import {
   getBookingEventsAsCalendarEntries,
   type CalendarEntry,
   type ClientCalendarItem,
+  type BookingDetails,
   updateBookingDetails,
   appendSharedBookingNote,
   type SharedBookingNote,
 } from '../services/calendarSupabase';
+import BookingBriefEditor from '../components/BookingBriefEditor';
 import { updateOptionRequestSchedule } from '../services/optionRequestsSupabase';
 import {
   getManualEventsForOwner,
@@ -2013,7 +2015,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         <View style={styles.detailOverlay}>
           <View style={[styles.detailCard, { maxWidth: 520 }]}>
             <View style={styles.detailHeaderRow}>
-              <Text style={styles.detailTitle}>Booking details</Text>
+              <Text style={styles.detailTitle}>{uiCopy.calendar.bookingDetailsTitle}</Text>
               <TouchableOpacity
                 onPress={() => {
                   setSelectedCalendarItem(null);
@@ -2115,11 +2117,27 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                 </Text>
               </TouchableOpacity>
             </View>
+            {selectedCalendarItem.calendar_entry?.option_request_id && realClientId ? (
+              <BookingBriefEditor
+                role="client"
+                optionRequestId={selectedCalendarItem.option.id}
+                bookingBriefRaw={
+                  (selectedCalendarItem.calendar_entry.booking_details as BookingDetails | null)?.booking_brief
+                }
+                onAfterSave={async () => {
+                  await loadClientCalendar();
+                  await loadOptionRequestsForClient();
+                  const items = await getCalendarEntriesForClient(realClientId);
+                  const next = items.find((x) => x.option.id === selectedCalendarItem.option.id);
+                  if (next) setSelectedCalendarItem(next);
+                }}
+              />
+            ) : null}
             {selectedCalendarItem.calendar_entry ? (
               <View style={{ marginTop: spacing.md }}>
-                <Text style={styles.sectionLabel}>Shared notes</Text>
+                <Text style={styles.sectionLabel}>{uiCopy.calendar.sharedNotesTitle}</Text>
                 <Text style={[styles.metaText, { marginBottom: spacing.sm }]}>
-                  Visible to agency and model. Minimise personal data (GDPR).
+                  {uiCopy.calendar.sharedNotesHelpClient}
                 </Text>
                 <ScrollView style={{ maxHeight: 120, marginBottom: spacing.sm }}>
                   {(
@@ -2146,7 +2164,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                   value={clientSharedNoteDraft}
                   onChangeText={setClientSharedNoteDraft}
                   multiline
-                  placeholder="Add a note for everyone on this booking…"
+                  placeholder={uiCopy.calendar.sharedNotePlaceholder}
                   placeholderTextColor={colors.textSecondary}
                   style={[styles.input, { minHeight: 72, borderRadius: 12, textAlignVertical: 'top' }]}
                 />
@@ -2178,18 +2196,18 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                   disabled={savingSharedNoteClient}
                 >
                   <Text style={styles.primaryLabel}>
-                    {savingSharedNoteClient ? 'Posting…' : 'Post shared note'}
+                    {savingSharedNoteClient ? uiCopy.calendar.postingSharedNote : uiCopy.calendar.postSharedNote}
                   </Text>
                 </TouchableOpacity>
               </View>
             ) : null}
             <View style={{ marginTop: spacing.md }}>
-              <Text style={styles.sectionLabel}>Client notes (internal)</Text>
+              <Text style={styles.sectionLabel}>{uiCopy.calendar.clientNotesTitle}</Text>
               <TextInput
                 value={clientNotesDraft}
                 onChangeText={setClientNotesDraft}
                 multiline
-                placeholder="Notes shared with agency and model…"
+                placeholder={uiCopy.calendar.clientNotesPlaceholder}
                 placeholderTextColor={colors.textSecondary}
                 style={[
                   styles.input,
@@ -2242,7 +2260,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                 disabled={savingNotes}
               >
                 <Text style={styles.primaryLabel}>
-                  {savingNotes ? 'Saving…' : 'Save notes'}
+                  {savingNotes ? uiCopy.calendar.savingNotes : uiCopy.calendar.saveNotes}
                 </Text>
               </TouchableOpacity>
             </View>

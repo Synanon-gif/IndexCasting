@@ -129,10 +129,12 @@ import {
   getBookingEventsAsCalendarEntries,
   type CalendarEntry,
   type AgencyCalendarItem,
+  type BookingDetails,
   updateBookingDetails,
   appendSharedBookingNote,
   type SharedBookingNote,
 } from '../services/calendarSupabase';
+import BookingBriefEditor from '../components/BookingBriefEditor';
 import { updateOptionRequestSchedule } from '../services/optionRequestsSupabase';
 import {
   getManualEventsForOwner,
@@ -915,7 +917,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                 marginBottom: spacing.sm,
               }}
             >
-              <Text style={s.sectionLabel}>Booking details</Text>
+              <Text style={s.sectionLabel}>{uiCopy.calendar.bookingDetailsTitle}</Text>
               <TouchableOpacity
                 onPress={() => {
                   setSelectedCalendarItem(null);
@@ -1017,11 +1019,26 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                 <Text style={s.saveBtnLabel}>{savingBookingSchedule ? uiCopy.common.saving : uiCopy.calendar.saveSchedule}</Text>
               </TouchableOpacity>
             </View>
+            {selectedCalendarItem.calendar_entry?.option_request_id && currentAgencyId ? (
+              <BookingBriefEditor
+                role="agency"
+                optionRequestId={selectedCalendarItem.option.id}
+                bookingBriefRaw={
+                  (selectedCalendarItem.calendar_entry.booking_details as BookingDetails | null)?.booking_brief
+                }
+                onAfterSave={async () => {
+                  await loadAgencyCalendar();
+                  const items = await getCalendarEntriesForAgency(currentAgencyId);
+                  const next = items.find((x) => x.option.id === selectedCalendarItem.option.id);
+                  if (next) setSelectedCalendarItem(next);
+                }}
+              />
+            ) : null}
             {selectedCalendarItem.calendar_entry ? (
               <View style={{ marginBottom: spacing.md }}>
-                <Text style={s.sectionLabel}>Shared notes</Text>
+                <Text style={s.sectionLabel}>{uiCopy.calendar.sharedNotesTitle}</Text>
                 <Text style={[s.metaText, { marginBottom: spacing.sm }]}>
-                  Visible to client and model. Minimise personal data (GDPR).
+                  {uiCopy.calendar.sharedNotesHelpAgency}
                 </Text>
                 <ScrollView style={{ maxHeight: 120, marginBottom: spacing.sm }}>
                   {(
@@ -1048,7 +1065,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                   value={agencySharedNoteDraft}
                   onChangeText={setAgencySharedNoteDraft}
                   multiline
-                  placeholder="Add a note for everyone on this booking…"
+                  placeholder={uiCopy.calendar.sharedNotePlaceholder}
                   placeholderTextColor={colors.textSecondary}
                   style={[s.editInput, { minHeight: 72, textAlignVertical: 'top', borderRadius: 12 }]}
                 />
@@ -1082,17 +1099,17 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                   disabled={savingAgencySharedNote}
                 >
                   <Text style={s.saveBtnLabel}>
-                    {savingAgencySharedNote ? 'Posting…' : 'Post shared note'}
+                    {savingAgencySharedNote ? uiCopy.calendar.postingSharedNote : uiCopy.calendar.postSharedNote}
                   </Text>
                 </TouchableOpacity>
               </View>
             ) : null}
-            <Text style={s.sectionLabel}>Agency notes (internal)</Text>
+            <Text style={s.sectionLabel}>{uiCopy.calendar.agencyNotesTitle}</Text>
             <TextInput
               value={agencyNotesDraft}
               onChangeText={setAgencyNotesDraft}
               multiline
-              placeholder="Notes visible for client and model…"
+              placeholder={uiCopy.calendar.agencyNotesPlaceholder}
               placeholderTextColor={colors.textSecondary}
               style={[
                 s.editInput,
@@ -1152,7 +1169,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                 disabled={savingNotes}
               >
                 <Text style={s.saveBtnLabel}>
-                  {savingNotes ? 'Saving…' : 'Save notes'}
+                  {savingNotes ? uiCopy.calendar.savingNotes : uiCopy.calendar.saveNotes}
                 </Text>
               </TouchableOpacity>
             </View>

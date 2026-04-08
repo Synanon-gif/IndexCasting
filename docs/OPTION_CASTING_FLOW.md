@@ -82,9 +82,10 @@ Before `insertOptionRequest`, the client store calls `checkCalendarConflict` (se
 
 ---
 
-## 9. Shared vs Private Notes
+## 9. Shared vs Private Notes and Booking Brief
 
-- `calendar_entries.booking_details` JSON: `client_notes`, `agency_notes`, `model_notes` (role-private fields) and `shared_notes` (append-only timeline visible to parties). See `calendarSupabase.ts` `BookingDetails` type and model/agency screens that guard edits when `option_request_id` is present.
+- `calendar_entries.booking_details` JSON: `client_notes`, `agency_notes`, `model_notes` (role-private fields) and `shared_notes` (append-only timeline visible to parties). See `calendarSupabase.ts` `BookingDetails` type and model/agency/client screens that guard edits when `option_request_id` is present.
+- **Booking brief:** optional `booking_brief` on the same JSON object — five structured fields (`shoot_details`, `location`, `contact`, `call_time`, `deliverables`), each with `scope` (`shared` | `agency` | `client` | `model`) and `text`. UI filters by role; same JSON trust model as the note fields (see `docs/BOOKING_BRIEF_SYSTEM.md`). Not a chat; use `shared_notes` and threads for dialogue.
 
 ---
 
@@ -122,6 +123,7 @@ Before `insertOptionRequest`, the client store calls `checkCalendarConflict` (se
 | Client optimistic + territory + conflict + B2B card | `src/store/optionRequests.ts` |
 | Supabase CRUD, uploads, booking events | `src/services/optionRequestsSupabase.ts` |
 | Calendar merge / types | `src/services/calendarSupabase.ts` |
+| Booking brief (structured fields + UI) | `src/utils/bookingBrief.ts`, `src/components/BookingBriefEditor.tsx` |
 | B2B booking card | `src/services/bookingChatIntegrationSupabase.ts` |
 | B2B org pair / conversations | `src/services/b2bOrgChatSupabase.ts` |
 | Client UI | `src/web/ClientWebApp.tsx` |

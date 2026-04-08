@@ -34,10 +34,12 @@ import {
   deleteCalendarEntryById,
   updateCalendarEntryById,
   type CalendarEntry,
+  type BookingDetails,
   updateBookingDetails,
   appendSharedBookingNote,
   type SharedBookingNote,
 } from '../services/calendarSupabase';
+import BookingBriefEditor from '../components/BookingBriefEditor';
 import { getBookingEventsForModel } from '../services/bookingEventsSupabase';
 import {
   modelUpdateOptionSchedule,
@@ -1441,11 +1443,24 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                 </TouchableOpacity>
               ) : null}
             </View>
+            {openEntry.option_request_id && profile ? (
+              <BookingBriefEditor
+                role="model"
+                optionRequestId={openEntry.option_request_id}
+                bookingBriefRaw={(openEntry.booking_details as BookingDetails | null)?.booking_brief}
+                onAfterSave={async () => {
+                  const refreshed = await getCalendarForModel(profile.id);
+                  setCalEntries(refreshed);
+                  const updated = refreshed.find((e) => e.id === openEntry.id);
+                  if (updated) setOpenEntry(updated);
+                }}
+              />
+            ) : null}
             {openEntry.option_request_id ? (
               <View style={{ marginBottom: spacing.md }}>
-                <Text style={st.sectionLabel}>Shared notes</Text>
+                <Text style={st.sectionLabel}>{uiCopy.calendar.sharedNotesTitle}</Text>
                 <Text style={[st.metaText, { marginBottom: spacing.sm }]}>
-                  Visible to client, agency, and model. English only in production workflows. Do not add unnecessary personal data (data minimisation).
+                  {uiCopy.calendar.sharedNotesHelpModel}
                 </Text>
                 <ScrollView style={{ maxHeight: 140, marginBottom: spacing.sm }}>
                   {(
@@ -1471,7 +1486,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                   value={sharedNoteDraft}
                   onChangeText={setSharedNoteDraft}
                   multiline
-                  placeholder="Add a note everyone on this booking can read…"
+                  placeholder={uiCopy.calendar.sharedNotePlaceholder}
                   placeholderTextColor={colors.textSecondary}
                   style={[st.input, { minHeight: 72, textAlignVertical: 'top', borderRadius: 12 }]}
                 />
@@ -1508,17 +1523,17 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                   disabled={savingSharedNote}
                 >
                   <Text style={{ ...typography.label, color: colors.surface }}>
-                    {savingSharedNote ? 'Posting…' : 'Post shared note'}
+                    {savingSharedNote ? uiCopy.calendar.postingSharedNote : uiCopy.calendar.postSharedNote}
                   </Text>
                 </TouchableOpacity>
               </View>
             ) : null}
-            <Text style={st.sectionLabel}>My notes (private)</Text>
+            <Text style={st.sectionLabel}>{uiCopy.calendar.modelNotesTitle}</Text>
             <TextInput
               value={modelNotesDraft}
               onChangeText={setModelNotesDraft}
               multiline
-              placeholder="Notes for this job / casting / option…"
+              placeholder={uiCopy.calendar.modelNotesPlaceholder}
               placeholderTextColor={colors.textSecondary}
               style={[
                 st.input,
@@ -1600,7 +1615,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                     color: '#fff',
                   }}
                 >
-                  {savingNotes ? 'Saving…' : 'Save notes'}
+                  {savingNotes ? uiCopy.calendar.savingNotes : uiCopy.calendar.saveNotes}
                 </Text>
               </TouchableOpacity>
             </View>
