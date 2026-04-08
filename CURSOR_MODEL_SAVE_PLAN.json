@@ -15,7 +15,6 @@
     "docs/MODEL_SAVE_LOCATION_CONSISTENCY.md"
   ],
   "manual_review_required": [
-    "Optional follow-up: align bulk location with models.current_location or document-only until product decision",
     "Multi-org agency UI: explicit org switch remains future work; DB guard no longer depends on oldest membership for this RPC"
   ],
   "do_not_touch": [

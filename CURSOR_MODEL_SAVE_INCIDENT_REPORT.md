@@ -22,7 +22,7 @@ Secondary (not primary for this incident but hardened):
 ## 3. Single vs bulk location
 
 - **Single save:** RPC updates `models.*` including `current_location`; then **`upsertModelLocation`** with `source = 'agency'` when `country_code` is set (with geocode when city present).
-- **Bulk:** **`bulk_upsert_model_locations`** only — **`model_locations`** agency row; does not update **`models.current_location`**.
+- **Agency bulk (roster):** **Territories of representation only** — bulk current location was **removed** from the app (see [CURSOR_BULK_LOCATION_REMOVAL_REPORT.md](CURSOR_BULK_LOCATION_REMOVAL_REPORT.md)). DB RPC **`bulk_upsert_model_locations`** may remain unused by the client.
 
 Canonical Near Me truth remains **`model_locations`**. Details: [docs/MODEL_SAVE_LOCATION_CONSISTENCY.md](docs/MODEL_SAVE_LOCATION_CONSISTENCY.md).
 
@@ -52,7 +52,6 @@ No changes to **`AuthContext`**, **`App.tsx`**, **`signIn`**, **`bootstrapThenLo
 
 ## 9. Next steps
 
-- Optional product pass: align **bulk** location with **`models.current_location`** or formally deprecate that column for display-only.
 - Multi-org agency **UI** switch remains a separate roadmap item; DB no longer relies on “oldest membership” for this RPC’s authorization.
 
 ---

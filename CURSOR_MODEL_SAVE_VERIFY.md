@@ -15,7 +15,7 @@ npm run typecheck && npm run lint && npm test -- --passWithNoTests --ci
 ## Manual (Agency)
 
 1. **Single save:** Open a model in My Models, set territories, change profile fields, **Save settings** — expect success banner; no 400 on `agency_update_model_full` in network tab.
-2. **Bulk location:** Set location for multiple models — still works; compare with single-save `model_locations` behaviour per [docs/MODEL_SAVE_LOCATION_CONSISTENCY.md](docs/MODEL_SAVE_LOCATION_CONSISTENCY.md).
+2. **Bulk (territories only):** Select multiple models → **Assign Territories** — still works; no bulk current location (removed by product rule). See [CURSOR_BULK_LOCATION_REMOVAL_VERIFY.md](CURSOR_BULK_LOCATION_REMOVAL_VERIFY.md) and [docs/MODEL_SAVE_LOCATION_CONSISTENCY.md](docs/MODEL_SAVE_LOCATION_CONSISTENCY.md).
 3. **Completeness banner:** Model without visible portfolio still shows warning; save can still succeed (by design).
 4. **Import / sync:** Run one Mediaslide or import merge on a test model — profile update RPC should succeed when user is member of that model’s agency.
 5. **Admin:** Sign in as admin — login and dashboard unchanged (no Auth edits).

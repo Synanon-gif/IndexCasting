@@ -539,8 +539,10 @@ model_locations (nach 20260406_location_multirow_priority.sql):
 // (DB-RPC wirft access_denied — aber der Aufruf muss trotzdem verhindert werden)
 await upsertModelLocation(modelId, data, 'current'); // von AgencyControllerView aus
 
-// ❌ VERBOTEN: bulk_upsert von Model-Code aufrufen (agency-only RPC)
-await bulkUpsertModelLocations([modelId], data); // niemals aus ModelProfileScreen
+// ❌ VERBOTEN: Model-Code ruft `bulk_upsert_model_locations` auf (agency-only RPC; App nutzt diese RPC nicht mehr)
+
+// ❌ VERBOTEN: Agency-Bulk-UI oder Client-Code, der current location / agency model_locations für mehrere Models gleichzeitig setzt
+// (Product rule: bulk = territories only; single-model agency save + model self-settings für current location)
 
 // ❌ VERBOTEN: alter Wert 'model' als source
 await upsertModelLocation(modelId, data, 'model'); // DB CHECK wirft Fehler
@@ -580,6 +582,7 @@ ON CONFLICT (model_id, source) DO UPDATE SET city = EXCLUDED.city, ...;
   Removing 'live' → Badge-Reload via `getModelLocation()` → zeigt automatisch 'current' oder 'agency' als Fallback.
 - `AgencyControllerView`: Badge sichtbar wenn `selectedModelLocation.source !== 'agency'` —
   "Agency Location beeinflusst Near-Me nicht, wenn Model Location gesetzt ist"
+- **Agency roster bulk selection:** nur **Territories of representation** (`bulkAddTerritoriesForModels` / territory modal) — **kein** Bulk-Current-Location. Current location und agency-`model_locations`-Zeile nur über **Einzel-Model-Save** im gleichen Screen (nicht über Mehrfachauswahl).
 - Geocoding schlägt fehl → Alert("City not found") + `return` — kein Write, kein null-Update
 - `getModelLocation(modelId)` gibt höchste Priorität zurück; `getAllModelLocations(modelId)` gibt alle Zeilen
 
@@ -588,7 +591,8 @@ ON CONFLICT (model_id, source) DO UPDATE SET city = EXCLUDED.city, ...;
 - 4. Source-Wert ohne vollständiges Update: CHECK constraint + RPC Auth-Split + TypeScript Union + alle Tests + DISTINCT ON-Order
 - `model_locations.source = 'model'` je neu einfügen (deprecated, blockiert durch DB CHECK)
 - Agency-Code mit `source='current'` oder `'live'` aufrufen (DB wirft `access_denied`)
-- Model-Code mit `bulk_upsert_model_locations` aufrufen (agency-only RPC)
+- Model-Code mit `bulk_upsert_model_locations` aufrufen (agency-only RPC; weiterhin verboten)
+- Agency-Bulk-UI oder App-Service, der current location für mehrere Models auf einmal setzt (widerspricht kanonischem Single-Edit-Flow)
 - `UNIQUE(model_id)` (old single-row) je wieder einführen — Fallback-Kette bricht
 - `ON CONFLICT (model_id)` in neuen RPCs (muss `(model_id, source)` sein)
 - In `get_models_near_location` ohne `DISTINCT ON (model_id)` auf `model_locations` joinen

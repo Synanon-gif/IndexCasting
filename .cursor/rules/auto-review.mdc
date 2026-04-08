@@ -51,6 +51,7 @@ vollständig durchlaufen werden, **bevor** Code committed oder weitergeschrieben
 - **Location: deleteModelLocation ohne source-Angabe löscht agency-Zeile:** `delete_model_location_source` ohne `p_source` löscht NUR live+current (agency bleibt). Wenn jemand die agency-Zeile löschen will, MUSS `p_source='agency'` explizit gesetzt werden.
 - **Veralteter Source-Wert `'model'`:** Neuer Code übergibt `source='model'` an `upsertModelLocation` oder `model_locations` INSERT? → Blocker (Risiko 17) — `'model'` ist deprecated und durch DB CHECK-Constraint blockiert.
 - **4. Source-Wert hinzugefügt ohne vollständige Aktualisierung:** Neuer Source-Wert ohne: CHECK constraint + upsert Auth-Split + delete_model_location_source + TypeScript `LocationSource` Union + DISTINCT ON ORDER BY + alle Tests? → Blocker (Risiko 17).
+- **Agency bulk current location:** Neues UI oder Client-Code, der für mehrere Models gleichzeitig current location / agency-`model_locations` setzt (außerhalb des kanonischen Einzel-Editors)? → Blocker — Agency-Bulk ist **nur** Territories of representation; Current Location nur Single-Edit (Agency Model-Profil-Save bzw. Model-Settings).
 - **`get_territories_for_agency_roster` Guard ohne Bookers-Fallback:** SECURITY DEFINER Funktion die Agency-Zugehörigkeit prüft, ohne `bookers`-Tabelle zu inkludieren? → Warnung — Legacy Bookers werden mit `not_in_agency` (HTTP 400) ausgesperrt.
 - **Service-Layer Contract-Mix:** Neue Funktion die sowohl `return true` als auch `return { ok: true }` nutzt? → Blocker — Option A **oder** `ServiceResult`, nie gemischt (siehe `system-invariants.mdc` Option C).
 - **Assignment als Security-Layer:** Nutzt neuer Code `client_assignment_flags` zur Zugriffskontrolle oder Sichtbarkeits-Blockade? → Blocker (Assignment ist Workflow-Metadaten).
@@ -155,6 +156,7 @@ Q8: Verwendet ein neuer optimistischer Update-Handler irgendeinen Snapshot (`con
 - `source='model'` in neuem Code (Risiko 17 — deprecated, DB-CHECK blockiert Insert/Update)
 - Geocoding-Fehler ignoriert und `lat=null` geschrieben (Risiko 16 — existierende Location wird mit null-Koordinaten überschrieben → verschwindet aus Near-Me)
 - Neuer Source-Wert ohne vollständige Aktualisierung aller Systeme (Risiko 17 — DB+RPC+TypeScript+Tests+DISTINCT ON-Order müssen gleichzeitig aktualisiert werden)
+- Agency roster **bulk** flow, der **current location** oder agency-`model_locations` für mehrere Models setzt — **verboten**; Agency-Bulk ist **nur** territories of representation; current location nur kanonischer Single-Edit
 - Neuer Browser-Datei-Upload ohne **Upload technical parity** (upload-consent-matrix.mdc): fehlende Magic Bytes, fehlende HEIC-Behandlung wenn erlaubt, fehlendes `upsert: false` / unsicherer Pfad
 
 ---

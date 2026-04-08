@@ -104,6 +104,12 @@ if (ok) {
 - **Terminologie:** Agency, Client, Model, Booker (Agentur), Employee (Client-Organisation), Invite — konsistent wie in `uiCopy`.
 - **Ausnahme:** Code-Kommentare und interne Logs dürfen weiterhin der Team-Sprache folgen; **alles, was ein Endnutzer sieht, ist Englisch.**
 
+### Agency bulk vs model current location (product guardrail)
+
+- **Agency bulk selection** (model roster) must **only** manage **territories of representation** — never bulk-edit **current location** or bulk-write agency `model_locations`.
+- **Current location** for models is set only through the **canonical single-model paths**: agency model profile save (e.g. My Models → one model → Save) and model self-settings — not via multi-select bulk actions.
+- **UI** must not expose bulk current-location controls; **bulk and single edit** must not implement conflicting semantics for current location. See `docs/MODEL_SAVE_LOCATION_CONSISTENCY.md` and `system-invariants.mdc` (LOCATION SOURCE SYSTEM).
+
 ### 4b.1 Browser-Upload technische Parität (Verweis)
 
 - Vollständige Checkliste und Trennung Consent vs. technische Härtung: [.cursor/rules/upload-consent-matrix.mdc](.cursor/rules/upload-consent-matrix.mdc) (Abschnitte **Upload technical parity** und **Consent vs technical hardening**). **`chat-files`:** gemeinsame Pipeline (HEIC-Status mit Abbruch, `sanitizeUploadBaseName`, `upsert: false` + `contentType`) — siehe Matrix-Abschnitt *Single pipeline for chat-files*.

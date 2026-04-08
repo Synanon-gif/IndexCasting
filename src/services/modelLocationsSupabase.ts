@@ -151,40 +151,6 @@ export async function upsertModelLocation(
 }
 
 /**
- * Agency bulk upsert — sets the same location for multiple models at once.
- * Only models the caller's agency actually manages are updated; others are skipped.
- * Returns the number of rows successfully upserted.
- */
-export async function bulkUpsertModelLocations(
-  modelIds: string[],
-  data: ModelLocationInput,
-): Promise<number> {
-  if (!modelIds.length) return 0;
-
-  try {
-    const roundedLat = data.lat != null ? roundCoord(data.lat) : null;
-    const roundedLng = data.lng != null ? roundCoord(data.lng) : null;
-
-    const { data: result, error } = await supabase.rpc('bulk_upsert_model_locations', {
-      p_model_ids:    modelIds,
-      p_country_code: data.country_code,
-      p_city:         data.city ?? null,
-      p_lat_approx:   roundedLat,
-      p_lng_approx:   roundedLng,
-    });
-
-    if (error) {
-      console.error('bulkUpsertModelLocations error:', error);
-      return 0;
-    }
-    return (result as number) ?? 0;
-  } catch (e) {
-    console.error('bulkUpsertModelLocations exception:', e);
-    return 0;
-  }
-}
-
-/**
  * Returns all location rows for a model, sorted by source priority descending
  * (live first, then current, then agency).
  * With UNIQUE(model_id, source) there can be up to 3 rows.

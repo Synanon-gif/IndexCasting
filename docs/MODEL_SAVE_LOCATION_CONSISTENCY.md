@@ -6,12 +6,14 @@
 - **Membership guard (20260429):** Authorization is checked against **`models.agency_id`** using the same pattern as **`save_model_territories`**: `organization_members` + `organizations.type = 'agency'` + `bookers` fallback. Admins bypass via **`is_current_user_admin()`**.
 - **Do not** resolve the caller agency with `LIMIT 1` on memberships and compare to `models.agency_id` — that diverges from territory RPCs and breaks when the active workspace agency is not the oldest membership row.
 
-## Current location: single vs bulk
+## Current location (agency)
 
 | Path | What it writes |
 |------|----------------|
-| **Single save** (Agency My Models) | `models.current_location` + `models.city` / `country_code` via RPC; then **`upsert_model_location`** with `source = 'agency'` (geocode when city present). |
-| **Bulk location** | **`bulk_upsert_model_locations`** only — updates `model_locations` for `source = 'agency'`; does not set `models.current_location` text. |
+| **Single save** (Agency My Models — one model, Save settings) | `models.current_location` + `models.city` / `country_code` via **`agency_update_model_full`**; then **`upsert_model_location`** with `source = 'agency'` (geocode when city present). |
+| **Agency roster bulk selection** | **Territories of representation only** (`bulkAddTerritoriesForModels` / territory modal). **No** bulk current location in the app — product rule avoids bulk vs single semantic drift. |
+
+**DB note:** `public.bulk_upsert_model_locations` may still exist from migrations for historical compatibility; the **client no longer calls** it. Do not reintroduce agency bulk UI for current location without an explicit product + security review.
 
 **Canonical spatial truth** for Near Me is **`model_locations`** (`lat_approx` / `lng_approx`, priority: live > current > agency). The `models.current_location` field is legacy/display-oriented; keep single-save behaviour documented here until a deliberate migration merges semantics.
 

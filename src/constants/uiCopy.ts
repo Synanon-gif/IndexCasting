@@ -615,14 +615,14 @@ export const uiCopy = {
     updateFailed: 'Could not update booking status.',
     updateSuccess: 'Booking status updated.',
   },
-  /** Bulk model selection actions. */
+  /** Bulk model selection — agency roster: territories of representation only (no bulk current location). */
   bulkActions: {
     selectedCount: '{count} model(s) selected',
     assignTerritories: 'Assign Territories',
-    setLocation: 'Set Current Location',
+    selectForTerritoriesHint: 'Select models to assign territories',
     clearSelection: 'Clear selection',
   },
-  /** Bulk / single model location modal. */
+  /** Agency single-model editor: current location / agency model_locations row (not bulk). */
   locationModal: {
     title: 'Set Model Location',
     subtitle: 'This location will be used for proximity-based client discovery.',
@@ -632,7 +632,6 @@ export const uiCopy = {
     cityPlaceholder: 'e.g. Berlin',
     confirm: 'Save Location',
     successSingle: 'Location updated.',
-    successBulk: (n: number) => `Location updated for ${n} model(s).`,
     error: 'Could not save location. Please try again.',
   },
   /** Calendar input validation. */

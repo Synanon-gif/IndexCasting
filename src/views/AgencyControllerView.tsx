@@ -68,7 +68,6 @@ import { confirmImageRights, guardImageUpload } from '../services/gdprCompliance
 import { ModelMediaSettingsPanel } from '../components/ModelMediaSettingsPanel';
 import { getTerritoriesForModel, getTerritoriesForAgency, upsertTerritoriesForModel, bulkAddTerritoriesForModels } from '../services/territoriesSupabase';
 import {
-  bulkUpsertModelLocations,
   upsertModelLocation,
   getModelLocation,
   locationSourceLabel,
@@ -99,7 +98,6 @@ async function geocodeCityForAgency(
     return null;
   }
 }
-import { FILTER_COUNTRIES as LOCATION_COUNTRIES } from '../utils/modelFilters';
 import { supabase } from '../../lib/supabase';
 import {
   ensureAgencyOrganization,
@@ -1943,14 +1941,6 @@ const MyModelsTab: React.FC<{
   const [bulkAssigning, setBulkAssigning] = useState(false);
   const [bulkFeedback, setBulkFeedback] = useState<string | null>(null);
 
-  // Bulk location modal state
-  const [showBulkLocationModal, setShowBulkLocationModal] = useState(false);
-  const [bulkLocationCountry, setBulkLocationCountry] = useState('');
-  const [bulkLocationCity, setBulkLocationCity] = useState('');
-  const [bulkLocationCountrySearch, setBulkLocationCountrySearch] = useState('');
-  const [bulkLocationCountryDropdownOpen, setBulkLocationCountryDropdownOpen] = useState(false);
-  const [bulkLocationAssigning, setBulkLocationAssigning] = useState(false);
-
   const isoCountryList = useMemo(() => {
     const list = Object.entries(ISO_COUNTRY_NAMES)
       .map(([code, name]) => ({ code: code.toUpperCase(), name }))
@@ -1965,59 +1955,6 @@ const MyModelsTab: React.FC<{
       (c) => c.name.toLowerCase().includes(q) || c.code.toLowerCase().includes(q),
     );
   }, [isoCountryList, bulkTerritorySearch]);
-
-  // Filtered country list for location modal (uses FILTER_COUNTRIES for consistent naming)
-  const bulkLocationFilteredCountries = useMemo(() => {
-    const q = bulkLocationCountrySearch.trim().toLowerCase();
-    if (!q) return LOCATION_COUNTRIES;
-    return LOCATION_COUNTRIES.filter(
-      (c) => c.label.toLowerCase().includes(q) || c.code.toLowerCase().includes(q),
-    );
-  }, [bulkLocationCountrySearch]);
-
-  const selectedLocationCountryLabel = useMemo(
-    () => LOCATION_COUNTRIES.find((c) => c.code === bulkLocationCountry)?.label ?? null,
-    [bulkLocationCountry],
-  );
-
-  const handleBulkSetLocation = async () => {
-    if (!bulkLocationCountry || selectedModelIds.size === 0) return;
-    setBulkLocationAssigning(true);
-    try {
-      const cityTrim = bulkLocationCity.trim();
-      // Forward-geocode city → coordinates so agency models appear in Near Me.
-      // Geocoding runs only when a city is provided; without a city, coords stay null.
-      const geocoded = cityTrim
-        ? await geocodeCityForAgency(cityTrim, bulkLocationCountry)
-        : null;
-
-      const count = await bulkUpsertModelLocations(
-        Array.from(selectedModelIds),
-        {
-          country_code: bulkLocationCountry,
-          city: cityTrim || null,
-          lat: geocoded?.lat,
-          lng: geocoded?.lng,
-        },
-      );
-      setShowBulkLocationModal(false);
-      setSelectedModelIds(new Set());
-      setBulkLocationCountry('');
-      setBulkLocationCity('');
-      setBulkLocationCountrySearch('');
-      setBulkFeedback(
-        geocoded
-          ? uiCopy.locationModal.successBulk(count) + ' · Near Me enabled'
-          : uiCopy.locationModal.successBulk(count),
-      );
-    } catch (err) {
-      console.error('handleBulkSetLocation error:', err);
-      setBulkFeedback(uiCopy.locationModal.error);
-    } finally {
-      setBulkLocationAssigning(false);
-      setTimeout(() => setBulkFeedback(null), 4000);
-    }
-  };
 
   const handleBulkAssignTerritories = async () => {
     if (bulkSelectedCountries.length === 0 || selectedModelIds.size === 0) return;
@@ -3045,7 +2982,9 @@ const MyModelsTab: React.FC<{
   }
 
   return (
-    <ScreenScrollView>
+    <ScreenScrollView
+      contentStyle={selectedModelIds.size > 0 ? { paddingBottom: spacing.xl * 5 } : undefined}
+    >
       {/* API Import Section */}
       <View style={s.apiSection}>
         <Text style={s.sectionLabel}>API Import</Text>
@@ -3404,7 +3343,7 @@ const MyModelsTab: React.FC<{
           <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary }}>
             {selectedModelIds.size > 0
               ? uiCopy.bulkActions.selectedCount.replace('{count}', String(selectedModelIds.size))
-              : 'Select models for bulk action'}
+              : uiCopy.bulkActions.selectForTerritoriesHint}
           </Text>
         </TouchableOpacity>
         {selectedModelIds.size > 0 && (
@@ -3584,18 +3523,18 @@ const MyModelsTab: React.FC<{
           position: 'absolute', bottom: 0, left: 0, right: 0,
           backgroundColor: colors.surface,
           borderTopWidth: 1, borderTopColor: colors.border,
-          flexDirection: 'row', alignItems: 'center',
-          padding: spacing.md, gap: spacing.sm,
+          padding: spacing.md,
+          gap: spacing.sm,
         }}>
-          <Text style={{ ...typography.label, fontSize: 12, color: colors.textPrimary, flex: 1 }}>
+          <Text style={{ ...typography.label, fontSize: 12, color: colors.textPrimary }}>
             {uiCopy.bulkActions.selectedCount.replace('{count}', String(selectedModelIds.size))}
           </Text>
           <TouchableOpacity
             style={{
               backgroundColor: colors.textPrimary,
               borderRadius: 999,
-              paddingHorizontal: spacing.md,
               paddingVertical: spacing.sm,
+              alignItems: 'center',
             }}
             onPress={() => {
               setBulkSelectedCountries([]);
@@ -3605,25 +3544,6 @@ const MyModelsTab: React.FC<{
           >
             <Text style={{ ...typography.label, fontSize: 12, color: colors.surface }}>
               {uiCopy.bulkActions.assignTerritories}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={{
-              backgroundColor: colors.accentBrown,
-              borderRadius: 999,
-              paddingHorizontal: spacing.md,
-              paddingVertical: spacing.sm,
-            }}
-            onPress={() => {
-              setBulkLocationCountry('');
-              setBulkLocationCity('');
-              setBulkLocationCountrySearch('');
-              setBulkLocationCountryDropdownOpen(false);
-              setShowBulkLocationModal(true);
-            }}
-          >
-            <Text style={{ ...typography.label, fontSize: 12, color: colors.surface }}>
-              {uiCopy.bulkActions.setLocation}
             </Text>
           </TouchableOpacity>
         </View>
@@ -3750,145 +3670,6 @@ const MyModelsTab: React.FC<{
             >
               <Text style={{ ...typography.label, color: colors.surface }}>
                 {bulkAssigning ? 'Assigning…' : uiCopy.territoryModal.confirmBulkButton}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Bulk location modal */}
-      <Modal
-        visible={showBulkLocationModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowBulkLocationModal(false)}
-      >
-        <View style={{
-          flex: 1, backgroundColor: 'rgba(0,0,0,0.25)',
-          justifyContent: 'center', alignItems: 'center', padding: spacing.lg,
-        }}>
-          <View style={{
-            width: '100%', maxWidth: 480,
-            backgroundColor: colors.surface,
-            borderRadius: 18, borderWidth: 1, borderColor: colors.border,
-            padding: spacing.md, maxHeight: '90%',
-          }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.sm }}>
-              <Text style={{ ...typography.heading, fontSize: 15, color: colors.textPrimary, flex: 1 }}>
-                {uiCopy.locationModal.title}
-              </Text>
-              <TouchableOpacity onPress={() => setShowBulkLocationModal(false)}>
-                <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary }}>
-                  {uiCopy.common.cancel}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.sm }}>
-              {uiCopy.bulkActions.selectedCount.replace('{count}', String(selectedModelIds.size))} — {uiCopy.locationModal.subtitle}
-            </Text>
-
-            {/* Country */}
-            <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary, marginBottom: 4 }}>
-              {uiCopy.locationModal.countryLabel}
-            </Text>
-            {bulkLocationCountry ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.sm }}>
-                <View style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 4,
-                  backgroundColor: colors.textPrimary, borderRadius: 999,
-                  paddingHorizontal: spacing.sm, paddingVertical: 3,
-                }}>
-                  <Text style={{ ...typography.label, fontSize: 11, color: colors.surface }}>
-                    {selectedLocationCountryLabel}
-                  </Text>
-                  <TouchableOpacity onPress={() => setBulkLocationCountry('')}>
-                    <Text style={{ ...typography.label, fontSize: 13, color: colors.surface, lineHeight: 14 }}>×</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ) : (
-              <View style={{ marginBottom: spacing.sm }}>
-                <TextInput
-                  value={bulkLocationCountrySearch}
-                  onChangeText={(v) => {
-                    setBulkLocationCountrySearch(v);
-                    setBulkLocationCountryDropdownOpen(true);
-                  }}
-                  onFocus={() => setBulkLocationCountryDropdownOpen(true)}
-                  placeholder={uiCopy.locationModal.countryPlaceholder}
-                  placeholderTextColor={colors.textSecondary}
-                  style={{
-                    borderWidth: 1, borderColor: colors.border, borderRadius: 999,
-                    paddingHorizontal: spacing.md, paddingVertical: spacing.xs,
-                    ...typography.body, fontSize: 12, color: colors.textPrimary,
-                  }}
-                />
-                {bulkLocationCountryDropdownOpen && bulkLocationFilteredCountries.length > 0 && (
-                  <View style={{
-                    marginTop: 4, borderWidth: 1, borderColor: colors.border,
-                    borderRadius: 8, backgroundColor: colors.surface, maxHeight: 180,
-                    shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 6,
-                    shadowOffset: { width: 0, height: 2 }, elevation: 8, overflow: 'hidden',
-                  }}>
-                    <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled showsVerticalScrollIndicator>
-                      {bulkLocationFilteredCountries.map((c) => (
-                        <TouchableOpacity
-                          key={c.code}
-                          style={{ paddingHorizontal: spacing.md, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.border }}
-                          onPress={() => {
-                            setBulkLocationCountry(c.code);
-                            setBulkLocationCountrySearch('');
-                            setBulkLocationCountryDropdownOpen(false);
-                          }}
-                        >
-                          <Text style={{ ...typography.body, fontSize: 12, color: colors.textPrimary }}>
-                            {c.label}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </View>
-                )}
-              </View>
-            )}
-
-            {/* City */}
-            <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary, marginBottom: 4 }}>
-              {uiCopy.locationModal.cityLabel}
-            </Text>
-            <TextInput
-              value={bulkLocationCity}
-              onChangeText={setBulkLocationCity}
-              placeholder={uiCopy.locationModal.cityPlaceholder}
-              placeholderTextColor={colors.textSecondary}
-              style={{
-                borderWidth: 1, borderColor: colors.border, borderRadius: 8,
-                paddingHorizontal: spacing.md, paddingVertical: spacing.xs,
-                ...typography.body, fontSize: 12, color: colors.textPrimary,
-                marginBottom: spacing.md,
-              }}
-            />
-
-            {!bulkLocationCountry && (
-              <Text style={{ ...typography.label, fontSize: 11, color: colors.buttonSkipRed, marginBottom: spacing.sm }}>
-                Country is required.
-              </Text>
-            )}
-
-            <TouchableOpacity
-              style={{
-                backgroundColor: colors.textPrimary,
-                borderRadius: 999,
-                paddingVertical: spacing.sm,
-                alignItems: 'center',
-                opacity: !bulkLocationCountry || bulkLocationAssigning ? 0.4 : 1,
-              }}
-              onPress={handleBulkSetLocation}
-              disabled={!bulkLocationCountry || bulkLocationAssigning}
-            >
-              <Text style={{ ...typography.label, color: colors.surface }}>
-                {bulkLocationAssigning ? uiCopy.common.saving : uiCopy.locationModal.confirm}
               </Text>
             </TouchableOpacity>
           </View>

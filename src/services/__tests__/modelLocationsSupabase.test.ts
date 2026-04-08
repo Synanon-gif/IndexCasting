@@ -4,10 +4,9 @@
  * Key scenarios:
  *   1. roundCoord — privacy-safe coordinate rounding (~5 km precision)
  *   2. upsertModelLocation — rounds coords before RPC, handles share toggle
- *   3. bulkUpsertModelLocations — empty array guard, rounds coords, calls RPC
- *   4. getModelLocation — delegates to .from().select().eq().maybeSingle()
- *   5. deleteModelLocation — delegates to .from().delete().eq()
- *   6. getModelsNearLocation — passes rounded coords + filters to RPC
+ *   3. getModelLocation — delegates to .from().select().eq().maybeSingle()
+ *   4. deleteModelLocation — delegates to .from().delete().eq()
+ *   5. getModelsNearLocation — passes rounded coords + filters to RPC
  */
 
 const rpcMock = jest.fn();
@@ -32,7 +31,6 @@ jest.mock('../supabaseFetchAll', () => ({
 import {
   roundCoord,
   upsertModelLocation,
-  bulkUpsertModelLocations,
   getModelLocation,
   deleteModelLocation,
   getModelsNearLocation,
@@ -120,52 +118,6 @@ describe('upsertModelLocation', () => {
     rpcMock.mockResolvedValue({ data: null, error: null });
     const result = await upsertModelLocation('model-1', { country_code: 'AT' });
     expect(result).toBe(true);
-  });
-});
-
-// ── bulkUpsertModelLocations ──────────────────────────────────────────────────
-
-describe('bulkUpsertModelLocations', () => {
-  beforeEach(() => rpcMock.mockReset());
-
-  it('returns 0 immediately for empty model list', async () => {
-    const result = await bulkUpsertModelLocations([], { country_code: 'DE' });
-    expect(result).toBe(0);
-    expect(rpcMock).not.toHaveBeenCalled();
-  });
-
-  it('rounds coordinates before calling RPC', async () => {
-    rpcMock.mockResolvedValue({ data: 3, error: null });
-
-    await bulkUpsertModelLocations(['m1', 'm2', 'm3'], {
-      country_code: 'IT',
-      city: 'Milan',
-      lat: 45.464664,
-      lng: 9.188540,
-    });
-
-    const call = rpcMock.mock.calls[0][1] as Record<string, unknown>;
-    expect(call.p_lat_approx).toBe(roundCoord(45.464664));
-    expect(call.p_lng_approx).toBe(roundCoord(9.188540));
-    expect(call.p_model_ids).toEqual(['m1', 'm2', 'm3']);
-    expect(call.p_country_code).toBe('IT');
-  });
-
-  it('returns the RPC count on success', async () => {
-    rpcMock.mockResolvedValue({ data: 5, error: null });
-    const count = await bulkUpsertModelLocations(['a', 'b', 'c', 'd', 'e'], { country_code: 'FR' });
-    expect(count).toBe(5);
-  });
-
-  it('returns 0 and logs on error', async () => {
-    rpcMock.mockResolvedValue({ data: null, error: { message: 'Unauthorized' } });
-    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
-
-    const count = await bulkUpsertModelLocations(['m1'], { country_code: 'DE' });
-
-    expect(count).toBe(0);
-    expect(consoleSpy).toHaveBeenCalledWith('bulkUpsertModelLocations error:', expect.anything());
-    consoleSpy.mockRestore();
   });
 });
 

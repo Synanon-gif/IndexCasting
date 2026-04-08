@@ -1,0 +1,36 @@
+{
+  "bulk_location_paths_removed": [
+    "AgencyControllerView MyModelsTab — bulk location modal, sticky footer Set Current Location, handleBulkSetLocation, bulkUpsertModelLocations import, LOCATION_COUNTRIES bulk picker state",
+    "src/services/modelLocationsSupabase.ts — bulkUpsertModelLocations() export",
+    "src/services/__tests__/modelLocationsSupabase.test.ts — bulkUpsertModelLocations describe block",
+    "uiCopy.bulkActions.setLocation, uiCopy.locationModal.successBulk"
+  ],
+  "single_edit_paths_preserved": [
+    "AgencyControllerView — handleSaveModel / agency_update_model_full + upsertModelLocation(..., 'agency') + geocodeCityForAgency for single model",
+    "ModelProfileScreen — model-owned location flow unchanged"
+  ],
+  "rules_updated": [
+    ".cursor/rules/system-invariants.mdc — agency bulk territories-only; forbidden bulk current location",
+    ".cursor/rules/auto-review.mdc — blocker + stop condition for agency bulk current location",
+    ".cursorrules — Agency bulk vs current location guardrail subsection"
+  ],
+  "docs_updated": [
+    "docs/MODEL_SAVE_LOCATION_CONSISTENCY.md",
+    "CURSOR_MODEL_SAVE_VERIFY.md",
+    "CURSOR_MODEL_SAVE_INCIDENT_REPORT.md",
+    "CURSOR_MODEL_SAVE_PLAN.json"
+  ],
+  "manual_review_required": [
+    "Optional: REVOKE EXECUTE on public.bulk_upsert_model_locations for authenticated if product mandates DB-level removal (RPC currently unused by app; not done in this change)"
+  ],
+  "do_not_touch": [
+    "AuthContext",
+    "App.tsx",
+    "signIn / bootstrapThenLoadProfile / loadProfile",
+    "get_own_admin_flags / is_current_user_admin / assert_is_admin",
+    "get_my_org_context",
+    "Paywall core",
+    "Admin routing",
+    "agency_update_model_full RPC definition (no migration in this task)"
+  ]
+}
