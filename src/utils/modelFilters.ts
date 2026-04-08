@@ -220,7 +220,7 @@ export function haversineKm(
 
 /**
  * Applies all ModelFilters to an already-fetched list of SupabaseModel objects.
- * Mirrors the server-side logic in modelsSupabase.ts / applyMeasurementFilters.
+ * Mirrors discovery RPCs and modelsSupabase (chest uses chest ?? bust; legacy PostgREST uses filterModelsByChestCoalesce after fetch).
  *
  * Used by: Agency My Models (all own models already loaded).
  * Not used by: Client Discover (uses server-side Supabase params instead).
@@ -232,8 +232,17 @@ export function haversineKm(
  * @param userLng  - Rounded client longitude for radius-based Near me (optional).
  * @param nearMeRadiusKm - Radius in km for "Near me" filter (default 50).
  */
+/** Optional pin from get_models_near_location / roster attach — city fallback when models.city is empty. */
+export type ModelLocationPin = {
+  lat_approx?: number | null;
+  lng_approx?: number | null;
+  city?: string | null;
+} | null;
+
+export type ModelWithOptionalLocation = SupabaseModel & { model_location?: ModelLocationPin };
+
 export function filterModels(
-  models: (SupabaseModel & { model_location?: { lat_approx?: number | null; lng_approx?: number | null } | null })[],
+  models: ModelWithOptionalLocation[],
   filters: ModelFilters,
   userCity?: string,
   userLat?: number | null,
@@ -243,6 +252,9 @@ export function filterModels(
   const pInt = (v: string) => { const n = parseInt(v, 10); return isNaN(n) ? undefined : n; };
 
   return models.filter((m) => {
+    const loc = m.model_location;
+    const displayCity = (m.city || loc?.city || '').trim();
+
     // ── Sex ──
     if (filters.sex === 'male'   && m.sex !== 'male')   return false;
     if (filters.sex === 'female' && m.sex !== 'female') return false;
@@ -262,21 +274,18 @@ export function filterModels(
     // ── City (substring) — only when a country is also selected ──
     if (filters.countryCode && filters.city.trim()) {
       const cityQ = filters.city.trim().toLowerCase();
-      if (!(m.city || '').toLowerCase().includes(cityQ)) return false;
+      if (!displayCity.toLowerCase().includes(cityQ)) return false;
     }
 
     // ── Nearby ──
     // Priority 1: radius-based using model_location coordinates (when available)
     // Priority 2: city-substring fallback (when coordinates not available)
     if (filters.nearby) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const loc = (m as any).model_location as { lat_approx?: number | null; lng_approx?: number | null } | null | undefined;
       if (userLat != null && userLng != null && loc?.lat_approx != null && loc?.lng_approx != null) {
         const dist = haversineKm(userLat, userLng, loc.lat_approx, loc.lng_approx);
         if (dist > nearMeRadiusKm) return false;
       } else if (userCity) {
-        // Fallback: city-substring match (no coordinates available)
-        if (!(m.city || '').toLowerCase().includes(userCity.toLowerCase())) return false;
+        if (!displayCity.toLowerCase().includes(userCity.toLowerCase())) return false;
       }
     }
 

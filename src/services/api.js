@@ -3,6 +3,7 @@ import { getModelByIdFromSupabase } from './modelsSupabase';
 /**
  * Simuliert einen Mediaslide-API-Call für ein Model.
  * Liest jetzt aus Supabase statt mockData.
+ * Discovery parity: polaroids never exposed here (same as getModelData) — use package flows for polaroids.
  */
 export async function fetchModelFromMediaslide(id) {
   const base = await getModelByIdFromSupabase(id);
@@ -22,7 +23,7 @@ export async function fetchModelFromMediaslide(id) {
     },
     portfolio: {
       images: base.portfolio_images || [],
-      polaroids: base.polaroids || [],
+      polaroids: [],
     },
     calendar: {
       blocked: ['2026-03-21', '2026-03-22'],

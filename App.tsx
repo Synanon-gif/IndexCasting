@@ -42,7 +42,10 @@ import {
 import { resolveInviteAndClaimTokensForRouting } from './src/utils/inviteClaimRouting';
 import { getModelClaimPreview } from './src/services/modelsSupabase';
 import { finalizePendingInviteOrClaim } from './src/services/finalizePendingInviteOrClaim';
-import { resolveInviteClaimSuccessMessage } from './src/services/inviteClaimSuccessUi';
+import {
+  resolveInviteClaimSuccessMessage,
+  resolveInviteAndClaimSuccessCombined,
+} from './src/services/inviteClaimSuccessUi';
 import { subscribeInviteClaimSuccess } from './src/utils/inviteClaimSuccessBus';
 import { InviteClaimSuccessBanner } from './src/components/InviteClaimSuccessBanner';
 import { uiCopy } from './src/constants/uiCopy';
@@ -245,6 +248,9 @@ function AppContent() {
   const [inviteClaimBannerText, setInviteClaimBannerText] = useState<string | null>(null);
   const inviteClaimBannerUserIdRef = useRef<string | null>(null);
   const inviteClaimBannerDedupRef = useRef<{ key: string; at: number } | null>(null);
+  const pendingInviteOrgIdForBannerRef = useRef<string | null>(null);
+  const inviteClaimBannerDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const INVITE_SUCCESS_BANNER_DEBOUNCE_MS = 700;
 
   const [clientType, setClientTypeState] = useState<ClientType>(() => loadClientType() ?? 'fashion');
   const { setCurrentUserId } = useAppData();
@@ -270,22 +276,71 @@ function AppContent() {
     return subscribeInviteClaimSuccess((payload) => {
       const uid = inviteClaimBannerUserIdRef.current;
       if (!uid) return;
-      const key =
-        payload.kind === 'invite'
-          ? `i:${payload.organizationId}`
-          : `c:${payload.modelId}:${payload.agencyId}`;
+
+      if (payload.kind === 'claim') {
+        const pendingOrg = pendingInviteOrgIdForBannerRef.current;
+        if (pendingOrg) {
+          pendingInviteOrgIdForBannerRef.current = null;
+          if (inviteClaimBannerDelayRef.current) {
+            clearTimeout(inviteClaimBannerDelayRef.current);
+            inviteClaimBannerDelayRef.current = null;
+          }
+          const key = `ic:${pendingOrg}:${payload.modelId}:${payload.agencyId}`;
+          const now = Date.now();
+          const prev = inviteClaimBannerDedupRef.current;
+          if (prev && prev.key === key && now - prev.at < 4000) return;
+          inviteClaimBannerDedupRef.current = { key, at: now };
+          void (async () => {
+            try {
+              const text = await resolveInviteAndClaimSuccessCombined(pendingOrg, payload, uid);
+              setInviteClaimBannerText(text);
+            } catch (e) {
+              console.error('[App] resolveInviteAndClaimSuccessCombined:', e);
+            }
+          })();
+          return;
+        }
+
+        const key = `c:${payload.modelId}:${payload.agencyId}`;
+        const now = Date.now();
+        const prev = inviteClaimBannerDedupRef.current;
+        if (prev && prev.key === key && now - prev.at < 4000) return;
+        inviteClaimBannerDedupRef.current = { key, at: now };
+        void (async () => {
+          try {
+            const text = await resolveInviteClaimSuccessMessage(payload, uid);
+            setInviteClaimBannerText(text);
+          } catch (e) {
+            console.error('[App] resolveInviteClaimSuccessMessage:', e);
+          }
+        })();
+        return;
+      }
+
+      const key = `i:${payload.organizationId}`;
       const now = Date.now();
       const prev = inviteClaimBannerDedupRef.current;
       if (prev && prev.key === key && now - prev.at < 4000) return;
-      inviteClaimBannerDedupRef.current = { key, at: now };
-      void (async () => {
-        try {
-          const text = await resolveInviteClaimSuccessMessage(payload, uid);
-          setInviteClaimBannerText(text);
-        } catch (e) {
-          console.error('[App] resolveInviteClaimSuccessMessage:', e);
-        }
-      })();
+
+      pendingInviteOrgIdForBannerRef.current = payload.organizationId;
+      if (inviteClaimBannerDelayRef.current) clearTimeout(inviteClaimBannerDelayRef.current);
+      inviteClaimBannerDelayRef.current = setTimeout(() => {
+        inviteClaimBannerDelayRef.current = null;
+        if (pendingInviteOrgIdForBannerRef.current !== payload.organizationId) return;
+        pendingInviteOrgIdForBannerRef.current = null;
+        inviteClaimBannerDedupRef.current = { key, at: Date.now() };
+        void (async () => {
+          try {
+            const text = await resolveInviteClaimSuccessMessage(
+              { kind: 'invite', organizationId: payload.organizationId },
+              uid,
+            );
+            setInviteClaimBannerText(text);
+          } catch (e) {
+            console.error('[App] resolveInviteClaimSuccessMessage (invite-only):', e);
+          }
+        })();
+      }, INVITE_SUCCESS_BANNER_DEBOUNCE_MS);
     });
   }, []);
 

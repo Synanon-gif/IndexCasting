@@ -65,3 +65,62 @@ export async function resolveInviteClaimSuccessMessage(
   }
   return uiCopy.inviteClaimSuccess.joinedOrgFallback;
 }
+
+/** Single banner when org invite and model claim both succeed within the same finalize run (UI layer only). */
+export async function resolveInviteAndClaimSuccessCombined(
+  organizationId: string,
+  claim: { modelId: string; agencyId: string },
+  userId: string,
+): Promise<string> {
+  let orgName = '';
+  let roleLabel: string = uiCopy.inviteClaimSuccess.combinedRoleTeamMember;
+  try {
+    const { data: org, error: orgErr } = await supabase
+      .from('organizations')
+      .select('name')
+      .eq('id', organizationId)
+      .maybeSingle();
+    if (orgErr) console.error('[resolveInviteAndClaimSuccessCombined] org name:', orgErr);
+    orgName = (org as { name?: string | null } | null)?.name?.trim() ?? '';
+
+    const { data: mem, error: memErr } = await supabase
+      .from('organization_members')
+      .select('role')
+      .eq('organization_id', organizationId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (memErr) console.error('[resolveInviteAndClaimSuccessCombined] member role:', memErr);
+    const memberRole = (mem as { role?: string | null } | null)?.role;
+    if (memberRole === 'booker') roleLabel = uiCopy.inviteClaimSuccess.combinedRoleBooker;
+    else if (memberRole === 'employee') roleLabel = uiCopy.inviteClaimSuccess.combinedRoleEmployee;
+    else if (memberRole === 'owner') roleLabel = uiCopy.inviteClaimSuccess.combinedRoleOwner;
+  } catch (e) {
+    console.error('[resolveInviteAndClaimSuccessCombined] invite part exception:', e);
+  }
+
+  let agencyName = '';
+  try {
+    const { data: ag, error } = await supabase
+      .from('agencies')
+      .select('name')
+      .eq('id', claim.agencyId)
+      .maybeSingle();
+    if (error) console.error('[resolveInviteAndClaimSuccessCombined] agency name:', error);
+    agencyName = (ag as { name?: string | null } | null)?.name?.trim() ?? '';
+  } catch (e) {
+    console.error('[resolveInviteAndClaimSuccessCombined] claim part exception:', e);
+  }
+
+  if (orgName && agencyName) {
+    return uiCopy.inviteClaimSuccess.joinedOrgAndModelWithAgency
+      .replace('{org}', orgName)
+      .replace('{role}', roleLabel)
+      .replace('{agency}', agencyName);
+  }
+  if (orgName) {
+    return uiCopy.inviteClaimSuccess.joinedOrgAndModel
+      .replace('{org}', orgName)
+      .replace('{role}', roleLabel);
+  }
+  return uiCopy.inviteClaimSuccess.joinedOrgAndModelFallback;
+}

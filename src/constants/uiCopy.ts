@@ -282,6 +282,17 @@ export const uiCopy = {
     /** Placeholders: {agency} optional */
     modelProfileConnected: 'Your model profile is now connected.',
     modelProfileConnectedWithAgency: 'Your model profile is now connected ({agency}).',
+    /** Combined invite + model claim in one session (banner coalesce). Placeholders: {org}, {role} */
+    joinedOrgAndModel: 'You joined {org} as {role}. Your model profile is now connected.',
+    /** Placeholders: {org}, {role}, {agency} */
+    joinedOrgAndModelWithAgency:
+      'You joined {org} as {role}. Your model profile is now connected ({agency}).',
+    joinedOrgAndModelFallback:
+      'Your team invitation is complete and your model profile is now connected.',
+    combinedRoleBooker: 'Booker',
+    combinedRoleEmployee: 'Employee',
+    combinedRoleOwner: 'Owner',
+    combinedRoleTeamMember: 'a team member',
   },
   clientWeb: {
     calendarCalloutTitle: 'Saving to calendar:',

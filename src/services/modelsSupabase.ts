@@ -3,6 +3,7 @@
  * Pro Partei: agency_id; Bilder-URLs und Maße persistent; parteiübergreifend sichtbar je nach RLS.
  */
 import { supabase } from '../../lib/supabase';
+import { filterModelsByChestCoalesce } from '../utils/filterModelsByChestCoalesce';
 import { serviceErr, serviceOkData, type ServiceResult } from '../types/serviceResult';
 import { fetchAllSupabasePages } from './supabaseFetchAll';
 
@@ -233,7 +234,9 @@ export type ClientMeasurementFilters = {
   ethnicities?: string[];
 };
 
-/** Apply measurement/hair/sex filters to any Supabase query builder — used in all three client functions. */
+export { filterModelsByChestCoalesce };
+
+/** Apply measurement/hair/sex filters to a PostgREST query (chest via {@link filterModelsByChestCoalesce}). */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function applyMeasurementFilters(q: any, f: ClientMeasurementFilters): any {
   if (f.heightMin) q = q.gte('height', f.heightMin);
@@ -243,8 +246,6 @@ function applyMeasurementFilters(q: any, f: ClientMeasurementFilters): any {
   if (f.hipsMax) q = q.lte('hips', f.hipsMax);
   if (f.waistMin) q = q.gte('waist', f.waistMin);
   if (f.waistMax) q = q.lte('waist', f.waistMax);
-  if (f.chestMin) q = q.gte('chest', f.chestMin);
-  if (f.chestMax) q = q.lte('chest', f.chestMax);
   if (f.legsInseamMin) q = q.gte('legs_inseam', f.legsInseamMin);
   if (f.legsInseamMax) q = q.lte('legs_inseam', f.legsInseamMax);
   if (f.sex) q = q.eq('sex', f.sex);
@@ -281,7 +282,7 @@ export async function getModelsForClientFromSupabase(
   measurementFilters?: ClientMeasurementFilters,
 ): Promise<SupabaseModel[]> {
   await assertPlatformAccess();
-  return fetchAllSupabasePages(async (from, to) => {
+  const rows = await fetchAllSupabasePages(async (from, to) => {
     let q = supabase
       .from('models')
       .select(MODEL_LIST_SELECT)
@@ -299,6 +300,9 @@ export async function getModelsForClientFromSupabase(
     const { data, error } = await q;
     return { data: data as SupabaseModel[] | null, error };
   });
+  return measurementFilters
+    ? filterModelsByChestCoalesce(rows, measurementFilters)
+    : rows;
 }
 
 export async function getModelsForClientFromSupabaseByTerritory(
@@ -319,7 +323,7 @@ export async function getModelsForClientFromSupabaseByTerritory(
 > {
   await assertPlatformAccess();
   const iso = countryCode.trim().toUpperCase();
-  return fetchAllSupabasePages(async (from, to) => {
+  const rows = await fetchAllSupabasePages(async (from, to) => {
     let q = supabase
       .from('models_with_territories')
       .select(MODEL_LIST_SELECT + ', territory_country_code, agency_name, territory_agency_id')
@@ -349,6 +353,9 @@ export async function getModelsForClientFromSupabaseByTerritory(
       error,
     };
   });
+  return measurementFilters
+    ? filterModelsByChestCoalesce(rows, measurementFilters)
+    : rows;
 }
 
 export type HybridLocationModel = SupabaseModel & {
