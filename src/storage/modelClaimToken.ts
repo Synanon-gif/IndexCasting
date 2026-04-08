@@ -3,23 +3,59 @@
  *
  * Parallel to inviteToken.ts — stores a one-time model claim token
  * when the app is opened via a ?model_invite=<token> link.
- * The token is consumed in AuthContext after login/signup to link the
- * model record to the new user account via claimModelByToken().
+ * Finalization runs via finalizePendingInviteOrClaim() after session exists.
  */
 
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const STORAGE_KEY = 'ic_pending_model_claim_token';
-/** Set when the user opened a valid ?model_invite= link this session. */
+/** Telemetry: user hit ?model_invite= (not used to gate finalization). */
 const FLOW_KEY = 'ic_model_claim_flow_active';
+
+function webLocal(): Storage | null {
+  if (Platform.OS !== 'web' || typeof window === 'undefined' || !window.localStorage) return null;
+  return window.localStorage;
+}
+
+function webSession(): Storage | null {
+  if (Platform.OS !== 'web' || typeof window === 'undefined' || !window.sessionStorage) return null;
+  return window.sessionStorage;
+}
+
+function migrateWebModelClaimTokenIfNeeded(): void {
+  const loc = webLocal();
+  const sess = webSession();
+  if (!loc || !sess) return;
+  try {
+    const legacy = sess.getItem(STORAGE_KEY);
+    if (legacy && !loc.getItem(STORAGE_KEY)) {
+      loc.setItem(STORAGE_KEY, legacy);
+    }
+    sess.removeItem(STORAGE_KEY);
+    const legacyFlow = sess.getItem(FLOW_KEY);
+    if (legacyFlow && !loc.getItem(FLOW_KEY)) {
+      loc.setItem(FLOW_KEY, legacyFlow);
+    }
+  } catch (e) {
+    console.error('migrateWebModelClaimTokenIfNeeded error:', e);
+  }
+}
 
 export async function persistModelClaimToken(token: string | null): Promise<void> {
   try {
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.sessionStorage) {
-      if (token) window.sessionStorage.setItem(STORAGE_KEY, token);
-      else window.sessionStorage.removeItem(STORAGE_KEY);
-      if (!token) window.sessionStorage.removeItem(FLOW_KEY);
+    const loc = webLocal();
+    if (loc) {
+      if (token) loc.setItem(STORAGE_KEY, token);
+      else {
+        loc.removeItem(STORAGE_KEY);
+        loc.removeItem(FLOW_KEY);
+      }
+      const sess = webSession();
+      if (sess) {
+        sess.removeItem(STORAGE_KEY);
+        if (!token) sess.removeItem(FLOW_KEY);
+      }
       return;
     }
     if (token) await AsyncStorage.setItem(STORAGE_KEY, token);
@@ -30,11 +66,12 @@ export async function persistModelClaimToken(token: string | null): Promise<void
   }
 }
 
-/** Call when the app loaded with ?model_invite= so the token can be consumed after login. */
+/** Call when the app loaded with ?model_invite= (telemetry only). */
 export async function markModelClaimFlowFromUrl(): Promise<void> {
   try {
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.sessionStorage) {
-      window.sessionStorage.setItem(FLOW_KEY, '1');
+    const loc = webLocal();
+    if (loc) {
+      loc.setItem(FLOW_KEY, '1');
       return;
     }
     await AsyncStorage.setItem(FLOW_KEY, '1');
@@ -45,8 +82,10 @@ export async function markModelClaimFlowFromUrl(): Promise<void> {
 
 export async function isModelClaimFlowActive(): Promise<boolean> {
   try {
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.sessionStorage) {
-      return window.sessionStorage.getItem(FLOW_KEY) === '1';
+    migrateWebModelClaimTokenIfNeeded();
+    const loc = webLocal();
+    if (loc) {
+      return loc.getItem(FLOW_KEY) === '1';
     }
     return (await AsyncStorage.getItem(FLOW_KEY)) === '1';
   } catch (e) {
@@ -57,8 +96,10 @@ export async function isModelClaimFlowActive(): Promise<boolean> {
 
 export async function readModelClaimToken(): Promise<string | null> {
   try {
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.sessionStorage) {
-      return window.sessionStorage.getItem(STORAGE_KEY);
+    migrateWebModelClaimTokenIfNeeded();
+    const loc = webLocal();
+    if (loc) {
+      return loc.getItem(STORAGE_KEY);
     }
     return await AsyncStorage.getItem(STORAGE_KEY);
   } catch (e) {

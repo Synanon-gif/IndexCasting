@@ -1,0 +1,27 @@
+---
+description: Canonical invite and model-claim finalization — session + token driven, idempotent, no UI coupling
+alwaysApply: false
+---
+
+# Invite / claim finalization invariants
+
+## 1. Invite finalization invariant
+
+All **org invite** (`?invite=`) and **model claim** (`?model_invite=`) flows MUST finalize **deterministically** from **authenticated session + persisted token**, via `finalizePendingInviteOrClaim()` (or the same RPC chain it calls). Finalization MUST NOT depend on a specific screen mount order beyond session availability.
+
+## 2. Idempotency invariant
+
+Invite and claim finalization MUST be **safe to run multiple times** (refresh, retry, duplicate effects). Prefer **DB idempotency** (`accept_organization_invitation`, `claim_model_by_token`) plus client **mutex** in `finalizePendingInviteOrClaim` to avoid races.
+
+## 3. Token persistence invariant
+
+Pending invite/claim tokens MUST **persist across signUp, signIn, and email confirmation** until **successful** finalization or a **fatal** error (e.g. `email_mismatch`, `invalid_or_expired`, expired/used claim token). On **web**, tokens use **localStorage** (not sessionStorage-only) so a **new tab** from the email client still sees the token. **Sign-out** MUST clear these keys (see `clearAllPersistence` static keys).
+
+## 4. No UI dependency invariant
+
+Finalization MUST **not** require the user to tap a dedicated “accept” button or keep a particular screen open. **Alerts** are optional UX for hard failures when `showUiAlerts: true`; they are not the authority for whether finalization runs.
+
+## References
+
+- Implementation: `src/services/finalizePendingInviteOrClaim.ts`, `src/context/AuthContext.tsx` (`bootstrapThenLoadProfile` tail + session `useEffect`), `App.tsx` (after URL token persist).
+- Product table: `docs/INVITE_CLAIM_ASSIGNMENT_CONSISTENCY.md`

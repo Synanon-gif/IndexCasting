@@ -30,6 +30,11 @@ const ALL_STATIC_KEYS = [
   'ci_agency_archived',
   // store/recruitingChats
   'ci_model_booking_thread_ids',
+  // invite / model claim (localStorage on web — sign-out must clear)
+  'ic_pending_invite_token',
+  'ic_invite_flow_active',
+  'ic_pending_model_claim_token',
+  'ic_model_claim_flow_active',
 ] as const;
 
 /**

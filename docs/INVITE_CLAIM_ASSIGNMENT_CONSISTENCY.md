@@ -13,10 +13,11 @@
 - Model linking must **not** rely on email as the primary identity binding (see Risiko 9). The canonical path is **claim token**.
 - Deprecated fallback: `link_model_by_email()` after sign-in/sign-up (still isolated in Step 2).
 
-## Sign-in vs sign-up (claim token)
+## Sign-in vs sign-up (claim + org invite)
 
-- Persisted token lives in `sessionStorage` (web) / AsyncStorage (native), key `ic_pending_model_claim_token`.
-- **`signIn` and `signUp` must both read the token whenever it is present** (parity). Gating sign-in on `isModelClaimFlowActive()` alone caused post–email-confirm logins to skip `claimModelByToken` while the token was still stored.
+- Persisted tokens (web): **`localStorage`** keys `ic_pending_invite_token`, `ic_pending_model_claim_token` (with one-time migration from legacy `sessionStorage`). Native: AsyncStorage.
+- **Canonical finalization:** `finalizePendingInviteOrClaim()` — runs after `bootstrapThenLoadProfile` (non-admin, non-guest), on **session + !loading** in `AuthProvider`, and from **`App.tsx` after URL token is persisted** (with `showUiAlerts` for hard failures). **Org invite is attempted before model claim** if both tokens were ever present.
+- **`isInviteFlowActive` / `isModelClaimFlowActive`** are **telemetry only**; they MUST NOT gate whether a stored token is read for finalization.
 
 ## Email sources
 
@@ -25,7 +26,9 @@
 
 ## Related code
 
-- [`src/context/AuthContext.tsx`](../src/context/AuthContext.tsx) — claim after Step 1 bootstrap (isolated try blocks).
-- [`App.tsx`](../App.tsx) — `tryClaimModelAfterSession`, stray-token cleanup vs `?model_invite=`.
-- [`src/storage/modelClaimToken.ts`](../src/storage/modelClaimToken.ts)
+- [`src/services/finalizePendingInviteOrClaim.ts`](../src/services/finalizePendingInviteOrClaim.ts) — mutex + org-then-claim order + token clear rules.
+- [`src/context/AuthContext.tsx`](../src/context/AuthContext.tsx) — `bootstrapThenLoadProfile` tail; early finalize on `signUp` when `hasSession`; session `useEffect` for late URL tokens.
+- [`App.tsx`](../App.tsx) — persist `?invite=` / `?model_invite=` then finalize when session exists (no mount-time stray-token wipe).
+- [`src/storage/inviteToken.ts`](../src/storage/inviteToken.ts), [`src/storage/modelClaimToken.ts`](../src/storage/modelClaimToken.ts)
+- [`supabase/migrations/20260408_invite_claim_idempotent_finalization.sql`](../supabase/migrations/20260408_invite_claim_idempotent_finalization.sql) — idempotent RPCs.
 - [`supabase/functions/send-invite`](../supabase/functions/send-invite/index.ts)

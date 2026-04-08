@@ -1,6 +1,6 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { Alert, Platform, View, StyleSheet, ActivityIndicator, Text, Dimensions, TouchableOpacity } from 'react-native';
+import { Platform, View, StyleSheet, ActivityIndicator, Text, Dimensions, TouchableOpacity } from 'react-native';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { AppDataProvider, useAppData } from './src/context/AppDataContext';
 import { SubscriptionProvider, useSubscription } from './src/context/SubscriptionContext';
@@ -26,27 +26,11 @@ import { loadClientType, saveClientType } from './src/storage/persistence';
 import { supabaseUrl, supabaseAnonKey } from './src/config/env';
 import { AppErrorBoundary } from './src/components/AppErrorBoundary';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import {
-  getInvitationPreview,
-  acceptOrganizationInvitation,
-  type InvitationPreview,
-} from './src/services/organizationsInvitationsSupabase';
-import {
-  persistInviteToken,
-  readInviteToken,
-  markInviteFlowFromUrl,
-  isInviteFlowActive,
-} from './src/storage/inviteToken';
-import {
-  persistModelClaimToken,
-  readModelClaimToken,
-  markModelClaimFlowFromUrl,
-  isModelClaimFlowActive,
-} from './src/storage/modelClaimToken';
-import {
-  getModelClaimPreview,
-  claimModelByToken,
-} from './src/services/modelsSupabase';
+import { getInvitationPreview, type InvitationPreview } from './src/services/organizationsInvitationsSupabase';
+import { persistInviteToken, markInviteFlowFromUrl } from './src/storage/inviteToken';
+import { persistModelClaimToken, markModelClaimFlowFromUrl } from './src/storage/modelClaimToken';
+import { getModelClaimPreview } from './src/services/modelsSupabase';
+import { finalizePendingInviteOrClaim } from './src/services/finalizePendingInviteOrClaim';
 import { uiCopy } from './src/constants/uiCopy';
 import { initializePushNotifications, teardownPushNotifications } from './src/services/pushNotifications';
 import { TermsScreen } from './src/screens/TermsScreen';
@@ -256,107 +240,52 @@ function AppContent() {
     }
   }, [isAuthenticatedNonGuest, guestLinkId]);
 
-  /** Drop stray invite tokens when this load is not part of an invite flow (e.g. Supabase email-confirm redirect). */
-  useEffect(() => {
-    void (async () => {
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        const fromUrl = new URLSearchParams(window.location.search).get('invite');
-        if (fromUrl) return;
-      }
-      if (await isInviteFlowActive()) return;
-      await persistInviteToken(null);
-    })();
-  }, []);
-
   useEffect(() => {
     if (!inviteTokenState) return;
+    let cancelled = false;
     void (async () => {
       await persistInviteToken(inviteTokenState);
       await markInviteFlowFromUrl();
-    })();
-    let cancelled = false;
-    setInvitePreviewLoading(true);
-    getInvitationPreview(inviteTokenState)
-      .then((p) => {
+      if (cancelled) return;
+      setInvitePreviewLoading(true);
+      try {
+        const p = await getInvitationPreview(inviteTokenState);
         if (cancelled) return;
         setInvitePreview(p);
         setInvitePreviewError(p ? null : uiCopy.invite.invalidOrExpired);
-        setInvitePreviewLoading(false);
-      })
-      .catch(() => {
+      } catch {
         if (cancelled) return;
         setInvitePreviewError(uiCopy.invite.loadFailed);
-        setInvitePreviewLoading(false);
-      });
+      } finally {
+        if (!cancelled) setInvitePreviewLoading(false);
+      }
+      if (session?.user && !cancelled) {
+        const r = await finalizePendingInviteOrClaim({
+          showUiAlerts: true,
+          signOut,
+          onSuccessReloadProfile: refreshProfile,
+        });
+        if (r.invite.ok) clearInviteQueryParam();
+        if (r.claim.ok) clearModelInviteQueryParam();
+      }
+    })();
     return () => {
       cancelled = true;
     };
-  }, [inviteTokenState]);
-
-  const tryAcceptInviteAfterSession = useCallback(async () => {
-    const tok =
-      inviteTokenState ?? ((await isInviteFlowActive()) ? await readInviteToken() : null);
-    if (!tok) return;
-    const r = await acceptOrganizationInvitation(tok);
-    if (r.ok) {
-      await persistInviteToken(null);
-      clearInviteQueryParam();
-      await refreshProfile();
-    } else {
-      const err = r.error as string | undefined;
-      // Definitiv nicht behebbar: Token leeren damit er nicht bei jedem Login erneut versucht wird
-      if (err === 'email_mismatch' || err === 'invalid_or_expired') {
-        await persistInviteToken(null);
-      }
-      // Spezifisches Feedback je nach Fehler
-      if (err === 'email_mismatch') {
-        Alert.alert(
-          uiCopy.inviteErrors.title,
-          uiCopy.inviteErrors.emailMismatch,
-          [
-            { text: uiCopy.inviteErrors.signOutBtn, onPress: () => { void signOut(); }, style: 'destructive' },
-            { text: uiCopy.inviteErrors.dismissBtn, style: 'cancel' },
-          ]
-        );
-      } else if (err === 'invalid_or_expired') {
-        Alert.alert(uiCopy.inviteErrors.title, uiCopy.inviteErrors.expiredOrUsed);
-      } else if (err === 'already_member_of_another_org') {
-        Alert.alert(uiCopy.inviteErrors.title, uiCopy.inviteErrors.alreadyMember);
-      } else if (err) {
-        Alert.alert(uiCopy.inviteErrors.title, uiCopy.inviteErrors.genericFail);
-      }
-    }
-  }, [inviteTokenState, refreshProfile, signOut]);
-
-  useEffect(() => {
-    if (!session?.user) return;
-    void tryAcceptInviteAfterSession();
-  }, [session?.user?.id, tryAcceptInviteAfterSession]);
+  }, [inviteTokenState, session?.user?.id, refreshProfile, signOut]);
 
   // ── Model Claim Token Flow (parallel to org invite) ──────────────────────
 
-  /** Drop stray model claim tokens on non-model-invite loads. */
-  useEffect(() => {
-    void (async () => {
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        const fromUrl = new URLSearchParams(window.location.search).get('model_invite');
-        if (fromUrl) return;
-      }
-      if (await isModelClaimFlowActive()) return;
-      await persistModelClaimToken(null);
-    })();
-  }, []);
-
   useEffect(() => {
     if (!modelInviteTokenState) return;
+    let cancelled = false;
     void (async () => {
       await persistModelClaimToken(modelInviteTokenState);
       await markModelClaimFlowFromUrl();
-    })();
-    let cancelled = false;
-    setModelClaimPreviewLoading(true);
-    getModelClaimPreview(modelInviteTokenState)
-      .then((p) => {
+      if (cancelled) return;
+      setModelClaimPreviewLoading(true);
+      try {
+        const p = await getModelClaimPreview(modelInviteTokenState);
         if (cancelled) return;
         if (p && p.valid) {
           setModelClaimPreview(p);
@@ -365,44 +294,25 @@ function AppContent() {
           setModelClaimPreview(p);
           setModelClaimPreviewError(uiCopy.modelClaim.invalidOrExpired);
         }
-        setModelClaimPreviewLoading(false);
-      })
-      .catch(() => {
+      } catch {
         if (cancelled) return;
         setModelClaimPreviewError(uiCopy.modelClaim.loadFailed);
-        setModelClaimPreviewLoading(false);
-      });
+      } finally {
+        if (!cancelled) setModelClaimPreviewLoading(false);
+      }
+      if (session?.user && !cancelled) {
+        const r = await finalizePendingInviteOrClaim({
+          showUiAlerts: true,
+          onSuccessReloadProfile: refreshProfile,
+        });
+        if (r.invite.ok) clearInviteQueryParam();
+        if (r.claim.ok) clearModelInviteQueryParam();
+      }
+    })();
     return () => {
       cancelled = true;
     };
-  }, [modelInviteTokenState]);
-
-  const tryClaimModelAfterSession = useCallback(async () => {
-    const tok =
-      modelInviteTokenState ?? ((await isModelClaimFlowActive()) ? await readModelClaimToken() : null);
-    if (!tok) return;
-    const r = await claimModelByToken(tok);
-    if (r.ok) {
-      await persistModelClaimToken(null);
-      clearModelInviteQueryParam();
-      await refreshProfile();
-    } else {
-      const err = r.error;
-      console.warn('[ModelClaim] claimModelByToken failed after session:', err);
-      // Definitiv nicht behebbar: Token leeren damit er nicht bei jedem Login erneut versucht wird
-      if (err === 'token_expired' || err === 'token_already_used' || err === 'token_not_found') {
-        await persistModelClaimToken(null);
-        Alert.alert(uiCopy.modelClaimErrors.title, uiCopy.modelClaimErrors.expiredOrUsed);
-      } else if (err) {
-        Alert.alert(uiCopy.modelClaimErrors.title, uiCopy.modelClaimErrors.genericFail);
-      }
-    }
-  }, [modelInviteTokenState, refreshProfile]);
-
-  useEffect(() => {
-    if (!session?.user) return;
-    void tryClaimModelAfterSession();
-  }, [session?.user?.id, tryClaimModelAfterSession]);
+  }, [modelInviteTokenState, session?.user?.id, refreshProfile]);
 
   useEffect(() => {
     if (!effectiveRole || effectiveRole === 'apply') setCurrentUserId(null);

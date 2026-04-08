@@ -5,6 +5,15 @@ import { appUrl } from '../config/env';
 import type { Session, User } from '@supabase/supabase-js';
 import type { OrganizationType, OrgMemberRole } from '../services/orgRoleTypes';
 import { type AppRole, validateSignupRole, normalizeRole } from '../types/roles';
+import {
+  finalizePendingInviteOrClaim,
+  type FinalizeInviteClaimResult,
+} from '../services/finalizePendingInviteOrClaim';
+
+const EMPTY_FINALIZE: FinalizeInviteClaimResult = {
+  invite: { attempted: false, ok: false },
+  claim: { attempted: false, ok: false },
+};
 
 export type Profile = {
   id: string;
@@ -94,6 +103,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const profileLoadInFlightRef = useRef(false);
   const profileRef = useRef<Profile | null>(null);
+  /** Set at end of bootstrapThenLoadProfile — read in signUp for isInviteSignup + owner-bootstrap guards. */
+  const lastBootstrapFinalizeRef = useRef<FinalizeInviteClaimResult>(EMPTY_FINALIZE);
 
   function updateProfile(p: Profile | null) {
     profileRef.current = p;
@@ -159,6 +170,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Nachträglich persistierte Invite/Claim-Tokens (z. B. ?invite= bei bereits geladener Session) — Mutex im Service.
+  useEffect(() => {
+    if (!session?.user || loading) return;
+    const p = profileRef.current;
+    if (!p || p.is_admin || p.role === 'admin' || p.is_guest) return;
+    const uid = session.user.id;
+    void finalizePendingInviteOrClaim({
+      onSuccessReloadProfile: async () => {
+        await loadProfile(uid);
+      },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: session id + loading only (finalize mutex)
+  }, [session?.user?.id, loading]);
 
   /** Returns { profile }, { deactivated: true, reason } (signs out), or null if no profile. */
   async function loadProfile(userId: string): Promise<{ profile: Profile } | { deactivated: true; reason?: 'deactivated' | 'deletion' | 'org_deactivated' } | null> {
@@ -452,6 +477,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setOrgBootstrapFailed(!hasOrg);
         }
       }
+
+      lastBootstrapFinalizeRef.current = EMPTY_FINALIZE;
+      if (result && 'profile' in result && result.profile) {
+        const p = result.profile;
+        if (!p.is_admin && p.role !== 'admin' && !p.is_guest) {
+          lastBootstrapFinalizeRef.current = await finalizePendingInviteOrClaim({
+            onSuccessReloadProfile: async () => {
+              await loadProfile(userId);
+            },
+          });
+          const fin = lastBootstrapFinalizeRef.current;
+          if (fin.invite.ok || fin.claim.ok) {
+            const pr = profileRef.current;
+            if (pr && !pr.is_admin && pr.role !== 'admin') {
+              const r = pr.role;
+              if (r === 'client' || r === 'agent') {
+                setOrgBootstrapFailed(!pr.organization_id);
+              }
+            }
+          }
+        }
+      }
+
       return result;
     } finally {
       profileLoadInFlightRef.current = false;
@@ -491,8 +539,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     if (error) return { error: error.message };
     if (data.user) {
+      const newUserId = data.user.id;
       const { error: pErr } = await supabase.from('profiles').upsert({
-        id: data.user.id,
+        id: newUserId,
         email,
         display_name: displayName || email.split('@')[0],
         role: safeRole,
@@ -508,46 +557,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.error('signUp invite token policy error:', e);
       }
 
-      let inviteAcceptedOk = false;
-      let inviteError: string | undefined;
-      try {
-        const { acceptOrganizationInvitation } = await import('../services/organizationsInvitationsSupabase');
-        const { readInviteToken, persistInviteToken } = await import('../storage/inviteToken');
-        const tok = await readInviteToken();
-        if (tok) {
-          const inv = await acceptOrganizationInvitation(tok);
-          inviteAcceptedOk = !!inv.ok;
-          inviteError = inv.ok ? undefined : (inv.error as string | undefined);
-          if (inv.ok) await persistInviteToken(null);
-          // Definitiv nicht behebbar → Token leeren damit kein erneuter Versuch
-          if (inviteError === 'email_mismatch' || inviteError === 'invalid_or_expired') {
-            await persistInviteToken(null);
-          }
-        }
-      } catch (e) {
-        console.error('signUp invite accept error:', e);
-      }
-
-      // Wenn isInviteSignup === true aber der Invite nicht angenommen wurde (z.B. email_mismatch):
-      // → KEIN Owner-Bootstrap, stattdessen Fehler zurückgeben.
-      // Verhindert Zombie-Orgs für User die mit der falschen E-Mail registrieren.
-      if (options?.isInviteSignup && !inviteAcceptedOk) {
-        const errMsg =
-          inviteError === 'email_mismatch'
-            ? uiCopy.inviteErrors.emailMismatch
-            : inviteError === 'invalid_or_expired'
-              ? uiCopy.inviteErrors.expiredOrUsed
-              : uiCopy.inviteErrors.genericFail;
-        console.warn('[signUp] isInviteSignup but invite failed:', inviteError);
-        return { error: errMsg };
-      }
-
       // Org bootstrap RPCs require an active session (auth.uid() must be set).
       // When email confirmation is enabled, signUp() returns session=null and these
       // RPCs would silently fail. Guard against that — bootstrapThenLoadProfile()
       // at first login will run ensure_plain_signup_b2b_owner_bootstrap() as the
       // reliable fallback for the no-session case.
       const hasSession = !!data.session;
+
+      let inviteAcceptedOk = false;
+      let inviteError: string | undefined;
+      if (hasSession) {
+        await loadProfile(newUserId);
+        const finEarly = await finalizePendingInviteOrClaim({
+          onSuccessReloadProfile: async () => {
+            await loadProfile(newUserId);
+          },
+        });
+        lastBootstrapFinalizeRef.current = finEarly;
+        inviteAcceptedOk = finEarly.invite.ok;
+        inviteError = finEarly.invite.error;
+
+        if (options?.isInviteSignup && finEarly.invite.attempted && !inviteAcceptedOk) {
+          const errMsg =
+            inviteError === 'email_mismatch'
+              ? uiCopy.inviteErrors.emailMismatch
+              : inviteError === 'invalid_or_expired'
+                ? uiCopy.inviteErrors.expiredOrUsed
+                : uiCopy.inviteErrors.genericFail;
+          console.warn('[signUp] isInviteSignup but invite failed:', inviteError);
+          return { error: errMsg };
+        }
+      } else {
+        lastBootstrapFinalizeRef.current = EMPTY_FINALIZE;
+      }
 
       // New org owners only — invited employees/bookers skip (they join an existing org).
       // !options?.isInviteSignup guard: verhindert Zombie-Org wenn Invite scheiterte.
@@ -575,39 +617,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const { data: { session: sess } } = await supabase.auth.getSession();
       if (sess?.user) {
-        await bootstrapThenLoadProfile(data.user.id);
+        await bootstrapThenLoadProfile(newUserId);
       } else {
-        await loadProfile(data.user.id);
+        await loadProfile(newUserId);
       }
       try {
         const { linkModelByEmail } = await import('../services/modelsSupabase');
         await linkModelByEmail();
-        await loadProfile(data.user.id);
+        await loadProfile(newUserId);
       } catch (e) {
         console.error('signUp linkModelByEmail error:', e);
       }
 
-      // Model claim token: link the newly created model account to the agency record.
-      // Runs isolated — cannot block bootstrap or org invite flows.
-      try {
-        const { isModelClaimFlowActive, readModelClaimToken, persistModelClaimToken } =
-          await import('../storage/modelClaimToken');
-        const { claimModelByToken } = await import('../services/modelsSupabase');
-        const claimTok = await readModelClaimToken();
-        if (claimTok) {
-          const claimRes = await claimModelByToken(claimTok);
-          if (claimRes.ok) {
-            await persistModelClaimToken(null);
-            await loadProfile(data.user.id);
-          } else {
-            console.warn('signUp claimModelByToken failed:', claimRes.error);
-          }
-        }
-        // Suppress unused import warning
-        void isModelClaimFlowActive;
-      } catch (e) {
-        console.error('signUp claimModelByToken error:', e);
-      }
+      // Org invite + model claim: finalizePendingInviteOrClaim (early when hasSession + in bootstrapThenLoadProfile).
     }
     return { error: null };
   };
@@ -665,48 +687,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     // ── Step 2: side-effects (each fully isolated, none can block Step 1) ────────
-    try {
-      const { acceptOrganizationInvitation } = await import('../services/organizationsInvitationsSupabase');
-      const { readInviteToken, persistInviteToken, isInviteFlowActive } = await import('../storage/inviteToken');
-      const tok = (await isInviteFlowActive()) ? await readInviteToken() : null;
-      if (tok) {
-        const inv = await acceptOrganizationInvitation(tok);
-        if (inv.ok) {
-          await persistInviteToken(null);
-          if (data?.user) await loadProfile(data.user.id);
-        }
-      }
-    } catch (e) {
-      console.error('signIn invite accept error:', e);
-    }
-
+    // Invite + model claim: finalizePendingInviteOrClaim in bootstrapThenLoadProfile (+ Auth session effect).
     try {
       const { linkModelByEmail } = await import('../services/modelsSupabase');
       await linkModelByEmail();
     } catch (e) {
       console.error('signIn linkModelByEmail error:', e);
-    }
-
-    // Model claim token: link an existing account to the agency's model record.
-    // Runs isolated — cannot block bootstrap or org invite flows.
-    // Parity with signUp: read persisted token whenever present (do not gate on
-    // isModelClaimFlowActive) so post-confirm sign-in still consumes the claim.
-    try {
-      const { readModelClaimToken, persistModelClaimToken } =
-        await import('../storage/modelClaimToken');
-      const { claimModelByToken } = await import('../services/modelsSupabase');
-      const claimTok = await readModelClaimToken();
-      if (claimTok) {
-        const claimRes = await claimModelByToken(claimTok);
-        if (claimRes.ok) {
-          await persistModelClaimToken(null);
-          if (data?.user) await loadProfile(data.user.id);
-        } else {
-          console.warn('signIn claimModelByToken failed:', claimRes.error);
-        }
-      }
-    } catch (e) {
-      console.error('signIn claimModelByToken error:', e);
     }
 
     return { error: null };

@@ -1,0 +1,28 @@
+{
+  "title": "Invite / claim / membership finalization hardening",
+  "goals": [
+    "Session + token canonical finalization",
+    "Idempotent RPC + client mutex",
+    "Web token persistence across email confirm (localStorage)",
+    "No UI-required finalization; optional alerts for fatals"
+  ],
+  "implementation": {
+    "service": "src/services/finalizePendingInviteOrClaim.ts",
+    "auth_hooks": [
+      "bootstrapThenLoadProfile tail",
+      "signUp early finalize when hasSession",
+      "AuthProvider useEffect session+loading"
+    ],
+    "app_hooks": "App.tsx persist ?invite / ?model_invite then finalize",
+    "migration": "supabase/migrations/20260408_invite_claim_idempotent_finalization.sql"
+  },
+  "verification_files": [
+    "CURSOR_INVITE_FINALIZATION_VERIFY.md",
+    "CURSOR_INVITE_FINALIZATION_REPORT.md"
+  ],
+  "constraints_respected": [
+    "signIn Step 1 bootstrap isolation unchanged",
+    "get_my_org_context untouched",
+    "Admin / paywall / RLS policies untouched (except RPC body replacements)"
+  ]
+}

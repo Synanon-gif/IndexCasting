@@ -2,15 +2,53 @@ import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const STORAGE_KEY = 'ic_pending_invite_token';
-/** Set when the user opened a valid ?invite= link this session; prevents post-login accept from stray storage (e.g. after email confirmation). */
+/** Telemetry: user hit a valid ?invite= link (not used to gate finalization). */
 const FLOW_KEY = 'ic_invite_flow_active';
+
+function webLocal(): Storage | null {
+  if (Platform.OS !== 'web' || typeof window === 'undefined' || !window.localStorage) return null;
+  return window.localStorage;
+}
+
+function webSession(): Storage | null {
+  if (Platform.OS !== 'web' || typeof window === 'undefined' || !window.sessionStorage) return null;
+  return window.sessionStorage;
+}
+
+/** Migrate legacy sessionStorage token to localStorage (web). */
+function migrateWebInviteTokenIfNeeded(): void {
+  const loc = webLocal();
+  const sess = webSession();
+  if (!loc || !sess) return;
+  try {
+    const legacy = sess.getItem(STORAGE_KEY);
+    if (legacy && !loc.getItem(STORAGE_KEY)) {
+      loc.setItem(STORAGE_KEY, legacy);
+    }
+    sess.removeItem(STORAGE_KEY);
+    const legacyFlow = sess.getItem(FLOW_KEY);
+    if (legacyFlow && !loc.getItem(FLOW_KEY)) {
+      loc.setItem(FLOW_KEY, legacyFlow);
+    }
+  } catch (e) {
+    console.error('migrateWebInviteTokenIfNeeded error:', e);
+  }
+}
 
 export async function persistInviteToken(token: string | null): Promise<void> {
   try {
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.sessionStorage) {
-      if (token) window.sessionStorage.setItem(STORAGE_KEY, token);
-      else window.sessionStorage.removeItem(STORAGE_KEY);
-      if (!token) window.sessionStorage.removeItem(FLOW_KEY);
+    const loc = webLocal();
+    if (loc) {
+      if (token) loc.setItem(STORAGE_KEY, token);
+      else {
+        loc.removeItem(STORAGE_KEY);
+        loc.removeItem(FLOW_KEY);
+      }
+      const sess = webSession();
+      if (sess) {
+        sess.removeItem(STORAGE_KEY);
+        if (!token) sess.removeItem(FLOW_KEY);
+      }
       return;
     }
     if (token) await AsyncStorage.setItem(STORAGE_KEY, token);
@@ -21,11 +59,12 @@ export async function persistInviteToken(token: string | null): Promise<void> {
   }
 }
 
-/** Call when the app loaded with ?invite= so stored tokens may be consumed after login. */
+/** Call when the app loaded with ?invite= (telemetry only). */
 export async function markInviteFlowFromUrl(): Promise<void> {
   try {
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.sessionStorage) {
-      window.sessionStorage.setItem(FLOW_KEY, '1');
+    const loc = webLocal();
+    if (loc) {
+      loc.setItem(FLOW_KEY, '1');
       return;
     }
     await AsyncStorage.setItem(FLOW_KEY, '1');
@@ -36,8 +75,10 @@ export async function markInviteFlowFromUrl(): Promise<void> {
 
 export async function isInviteFlowActive(): Promise<boolean> {
   try {
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.sessionStorage) {
-      return window.sessionStorage.getItem(FLOW_KEY) === '1';
+    migrateWebInviteTokenIfNeeded();
+    const loc = webLocal();
+    if (loc) {
+      return loc.getItem(FLOW_KEY) === '1';
     }
     return (await AsyncStorage.getItem(FLOW_KEY)) === '1';
   } catch (e) {
@@ -48,8 +89,10 @@ export async function isInviteFlowActive(): Promise<boolean> {
 
 export async function readInviteToken(): Promise<string | null> {
   try {
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.sessionStorage) {
-      return window.sessionStorage.getItem(STORAGE_KEY);
+    migrateWebInviteTokenIfNeeded();
+    const loc = webLocal();
+    if (loc) {
+      return loc.getItem(STORAGE_KEY);
     }
     return await AsyncStorage.getItem(STORAGE_KEY);
   } catch (e) {
