@@ -1,0 +1,40 @@
+{
+  "ready_now": [
+    "Documented live secrets list and webhook steps",
+    "Verified matrix for all roles and access states",
+    "Confirmed owner-only checkout in Edge Function + UI",
+    "Confirmed webhook idempotency and subscription linking guard"
+  ],
+  "fixed_now": [
+    ".env.example Stripe / APP_URL placeholder hints only"
+  ],
+  "verify_required": [
+    "End-to-end live checkout after secrets swap",
+    "Live webhook 2xx and stripe_processed_events insert",
+    "EXPO_PUBLIC_STRIPE_SANDBOX unset in production",
+    "Admin login smoke test"
+  ],
+  "manual_review_required": [
+    "Product decision: past_due orgs denied by can_access_platform (no grace)",
+    "Multi-org billing which org is charged",
+    "invoice.paid without plan field update — acceptable for your Stripe flows"
+  ],
+  "go_live_blockers": [
+    "Live STRIPE_SECRET_KEY + live Price IDs not configured",
+    "Live STRIPE_WEBHOOK_SECRET not from live endpoint",
+    "APP_URL / EXPO_PUBLIC_APP_URL mismatch with production domain"
+  ],
+  "do_not_touch": [
+    "AuthContext.tsx",
+    "App.tsx",
+    "signIn / bootstrapThenLoadProfile / loadProfile",
+    "get_own_admin_flags / is_current_user_admin / assert_is_admin",
+    "get_my_org_context",
+    "Paywall decision order in DB"
+  ],
+  "safe_next": [
+    "Stripe Customer Portal for self-serve payment method updates",
+    "Explicit past_due grace in can_access_platform if product requires it",
+    "Dashboard alert on webhook 4xx/5xx spikes"
+  ]
+}
