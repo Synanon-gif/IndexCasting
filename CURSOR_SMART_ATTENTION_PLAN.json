@@ -1,0 +1,40 @@
+{
+  "attention_states_added": [
+    "no_attention",
+    "waiting_for_client",
+    "waiting_for_agency",
+    "waiting_for_model",
+    "counter_pending",
+    "conflict_risk",
+    "job_confirmation_pending"
+  ],
+  "surfaces_updated": [
+    "src/views/AgencyControllerView.tsx",
+    "src/web/ClientWebApp.tsx",
+    "src/views/ModelView.tsx"
+  ],
+  "filters_added": [
+    "Agency messages: All attention / Action required only",
+    "Client messages: All attention / Action required only"
+  ],
+  "rules_updated": [
+    ".cursorrules",
+    ".cursor/rules/system-invariants.mdc",
+    ".cursor/rules/auto-review.mdc"
+  ],
+  "docs_updated": [
+    "docs/SMART_ATTENTION_SYSTEM.md",
+    "docs/CLIENT_ASSIGNMENT_FLAG_SYSTEM.md"
+  ],
+  "safe_next": [
+    "Contextual Chat Layers based on smart attention",
+    "Booking Brief surfacing when job_confirmation_pending is active"
+  ],
+  "do_not_touch": [
+    "AuthContext signIn/bootstrapThenLoadProfile/loadProfile",
+    "App.tsx admin routing order",
+    "Admin RPCs get_own_admin_flags/is_current_user_admin/assert_is_admin",
+    "get_my_org_context",
+    "Paywall core decision chain"
+  ]
+}

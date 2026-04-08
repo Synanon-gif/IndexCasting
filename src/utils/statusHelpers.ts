@@ -6,7 +6,7 @@
  * only the UI presentation is standardized.
  */
 
-export type DisplayStatus = 'Draft' | 'Sent' | 'Confirmed' | 'Rejected';
+export type DisplayStatus = 'Draft' | 'In negotiation' | 'Confirmed' | 'Rejected';
 
 /**
  * Converts the internal option_request status + final_status to a single
@@ -19,7 +19,7 @@ export function toDisplayStatus(
   if (finalStatus === 'job_confirmed') return 'Confirmed';
   if (status === 'confirmed' || finalStatus === 'option_confirmed') return 'Confirmed';
   if (status === 'rejected') return 'Rejected';
-  if (status === 'in_negotiation') return 'Sent';
+  if (status === 'in_negotiation') return 'In negotiation';
   return 'Draft';
 }
 
@@ -28,7 +28,7 @@ export function statusColor(displayStatus: DisplayStatus): string {
   switch (displayStatus) {
     case 'Confirmed': return '#16a34a'; // green-600
     case 'Rejected':  return '#dc2626'; // red-600
-    case 'Sent':      return '#d97706'; // amber-600
+    case 'In negotiation': return '#d97706'; // amber-600
     case 'Draft':
     default:          return '#6b7280'; // gray-500
   }
@@ -39,7 +39,7 @@ export function statusBgColor(displayStatus: DisplayStatus): string {
   switch (displayStatus) {
     case 'Confirmed': return '#dcfce7'; // green-100
     case 'Rejected':  return '#fee2e2'; // red-100
-    case 'Sent':      return '#fef3c7'; // amber-100
+    case 'In negotiation': return '#fef3c7'; // amber-100
     case 'Draft':
     default:          return '#f3f4f6'; // gray-100
   }

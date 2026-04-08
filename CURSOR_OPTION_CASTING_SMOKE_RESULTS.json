@@ -1,0 +1,216 @@
+{
+  "summary": {
+    "passed": 7,
+    "failed": 0,
+    "unsure": 1,
+    "not_tested": 10
+  },
+  "results": [
+    {
+      "id": "1",
+      "name": "Global discovery",
+      "status": "NOT_TESTED",
+      "role_context": ["Client Owner", "Client Employee"],
+      "tested": "No live browser session with authenticated client org; not executed in this wave.",
+      "expected": "Discover → model → option/casting submit → thread in Messages; agency sees request.",
+      "actual": "Not exercised end-to-end.",
+      "suspected_files": ["src/web/ClientWebApp.tsx", "src/store/optionRequests.ts"],
+      "severity_if_failed": null
+    },
+    {
+      "id": "2",
+      "name": "Shared project mode",
+      "status": "UNSURE",
+      "role_context": ["Client Owner", "Client Employee"],
+      "tested": "Static code review: openProjectDiscovery sets sharedProjectId only; handleOptionRequest passes projectId ?? activeProjectId to addOptionRequest; Discover onOptionRequest calls handleOptionRequest(name, id, date) without project id.",
+      "expected": "Request from shared-project Discover uses correct project_id; no read-only conflict with isSharedMode.",
+      "actual": "Wiring may omit sharedProjectId when activeProjectId differs or is null — project_id correctness in shared mode not verified live; plausible bug or edge case.",
+      "suspected_files": ["src/web/ClientWebApp.tsx"],
+      "severity_if_failed": "MEDIUM"
+    },
+    {
+      "id": "3",
+      "name": "Package context",
+      "status": "PASS",
+      "role_context": ["Client Owner", "Client Employee", "Guest/Package context"],
+      "tested": "Static: ClientWebApp handleOptionRequest merges packageViewState into extra as source: 'package' and packageId; createBookingMessageInClientAgencyChat adds source and package_id to booking metadata when present.",
+      "expected": "Package-initiated request carries package source metadata on B2B booking card where applicable.",
+      "actual": "Code path present; guest-link package UI flow not run in browser.",
+      "suspected_files": [],
+      "severity_if_failed": null
+    },
+    {
+      "id": "4",
+      "name": "Read-only shared link",
+      "status": "PASS",
+      "role_context": ["Guest/Package context"],
+      "tested": "Static: SharedSelectionView renders header + model cards only; no option handlers, no addOptionRequest.",
+      "expected": "External ?shared=1 selection has no option request CTA or hidden write path.",
+      "actual": "No option/casting UI in component tree for this view.",
+      "suspected_files": [],
+      "severity_if_failed": null
+    },
+    {
+      "id": "5",
+      "name": "Territory / agency resolution",
+      "status": "NOT_TESTED",
+      "role_context": ["Client Owner", "Client Employee"],
+      "tested": "Not run against live DB/models; code path reviewed only.",
+      "expected": "Correct agency from territory; missing territory shows controlled UX, no silent wrong routing.",
+      "actual": "addOptionRequest uses resolveAgencyForModelAndCountry then models.agency_id fallback; missing country with no fallback shows uiCopy.alerts.missingCountryCode and rolls back optimistic row — behavior not validated with real data.",
+      "suspected_files": ["src/store/optionRequests.ts", "src/services/territoriesSupabase.ts"],
+      "severity_if_failed": null
+    },
+    {
+      "id": "6",
+      "name": "Org columns on insert",
+      "status": "PASS",
+      "role_context": ["Client Owner", "Client Employee"],
+      "tested": "Static: insertOptionRequest call in optionRequests.ts passes organization_id, client_organization_id (same as client org), agency_organization_id from organizations.agency_id lookup; insertOptionRequest in optionRequestsSupabase maps fields.",
+      "expected": "New option_requests rows include organization_id, client_organization_id, agency_organization_id when resolvable.",
+      "actual": "Client store and service accept and send these columns; live INSERT not verified in DB.",
+      "suspected_files": ["src/store/optionRequests.ts", "src/services/optionRequestsSupabase.ts"],
+      "severity_if_failed": null
+    },
+    {
+      "id": "7",
+      "name": "B2B booking card",
+      "status": "PASS",
+      "role_context": ["Client Owner", "Client Employee", "Agency Owner", "Agency Booker"],
+      "tested": "Static: after successful insert, createBookingMessageInClientAgencyChat called when user id, organizationId, and bookingCountryCode present; metadata includes model_id, country_code, date, optional source/package_id.",
+      "expected": "Typed booking message in client↔agency B2B chat after submit.",
+      "actual": "Invocation and metadata shape implemented; conversation content not inspected in live app.",
+      "suspected_files": ["src/store/optionRequests.ts", "src/services/bookingChatIntegrationSupabase.ts"],
+      "severity_if_failed": null
+    },
+    {
+      "id": "8",
+      "name": "Option thread",
+      "status": "NOT_TESTED",
+      "role_context": ["Client Owner", "Client Employee", "Agency Owner", "Agency Booker"],
+      "tested": "No multi-session realtime check.",
+      "expected": "Messages sync; threadId aligns with option_requests.id.",
+      "actual": "Not exercised.",
+      "suspected_files": ["src/store/optionRequests.ts", "src/services/optionRequestsSupabase.ts"],
+      "severity_if_failed": null
+    },
+    {
+      "id": "9",
+      "name": "Counter offer",
+      "status": "NOT_TESTED",
+      "role_context": ["Agency Owner", "Agency Booker", "Client Owner", "Client Employee"],
+      "tested": "Jest: optionRequestsCounterOffer.test.ts passes (mocked Supabase/RPC); no UI cross-user test.",
+      "expected": "Agency counter visible to client; status/history plausible.",
+      "actual": "Unit coverage only; end-to-end negotiation not run.",
+      "suspected_files": ["src/services/optionRequestsSupabase.ts", "src/store/optionRequests.ts"],
+      "severity_if_failed": null
+    },
+    {
+      "id": "10",
+      "name": "Client accept counter",
+      "status": "NOT_TESTED",
+      "role_context": ["Client Owner", "Client Employee"],
+      "tested": "Jest covers clientAcceptCounterPrice RPC path (mocks); no UI/calendar integration test.",
+      "expected": "Accept moves to confirmed path; thread vs status consistent.",
+      "actual": "Not validated in running app.",
+      "suspected_files": ["src/services/optionRequestsSupabase.ts"],
+      "severity_if_failed": null
+    },
+    {
+      "id": "11",
+      "name": "Agency accept / model approval",
+      "status": "NOT_TESTED",
+      "role_context": ["Agency Owner", "Agency Booker", "Model"],
+      "tested": "Jest: optionRequestsConfirmation.test.ts passes (mocked); linked vs unlinked branches not run with real accounts.",
+      "expected": "Linked model approval path and unlinked path per docs; no obvious race.",
+      "actual": "Not exercised live.",
+      "suspected_files": ["src/services/optionRequestsSupabase.ts", "src/views/ModelView.tsx"],
+      "severity_if_failed": null
+    },
+    {
+      "id": "12",
+      "name": "Option → calendar / booking event",
+      "status": "NOT_TESTED",
+      "role_context": ["Client Owner", "Client Employee", "Agency Owner", "Agency Booker"],
+      "tested": "No post-confirm calendar inspection.",
+      "expected": "Confirmation yields expected calendar/booking mirror; no obvious duplicate.",
+      "actual": "Not exercised (triggers/RPCs not validated in this wave).",
+      "suspected_files": ["src/services/calendarSupabase.ts", "src/web/ClientWebApp.tsx", "src/views/AgencyControllerView.tsx"],
+      "severity_if_failed": null
+    },
+    {
+      "id": "13",
+      "name": "Job confirm",
+      "status": "NOT_TESTED",
+      "role_context": ["Client Owner", "Client Employee"],
+      "tested": "Code references clientConfirmJobStore / clientConfirmJobOnSupabase; no live job-confirm flow.",
+      "expected": "clientConfirmJob updates calendar/job styling; no phantom duplication.",
+      "actual": "Not exercised.",
+      "suspected_files": ["src/store/optionRequests.ts", "src/services/optionRequestsSupabase.ts"],
+      "severity_if_failed": null
+    },
+    {
+      "id": "14",
+      "name": "Search deep-link",
+      "status": "PASS",
+      "role_context": ["Agency Owner", "Agency Booker"],
+      "tested": "Static: GlobalSearchBar onSelectOption sets searchOptionId and tab messages; Messages subtree receives pendingOptionRequestId; useEffect sets messagesSection optionRequests and selectedThreadId then consumes pending id.",
+      "expected": "Agency global search option row opens correct option thread.",
+      "actual": "Wiring consistent in AgencyControllerView; full search UX not clicked in app.",
+      "suspected_files": ["src/views/AgencyControllerView.tsx", "src/components/GlobalSearchBar.tsx"],
+      "severity_if_failed": null
+    },
+    {
+      "id": "15",
+      "name": "Shared vs private notes",
+      "status": "NOT_TESTED",
+      "role_context": ["Client Owner", "Client Employee", "Agency Owner", "Agency Booker", "Model"],
+      "tested": "Types/helpers in calendarSupabase (booking_details.shared_notes vs role notes) reviewed only; RLS/party visibility not tested with two orgs.",
+      "expected": "shared_notes timeline vs private fields per role; no obvious mix-up.",
+      "actual": "Not exercised.",
+      "suspected_files": ["src/services/calendarSupabase.ts"],
+      "severity_if_failed": null
+    },
+    {
+      "id": "16",
+      "name": "Conflict warning",
+      "status": "PASS",
+      "role_context": ["Client Owner", "Client Employee"],
+      "tested": "Static: checkCalendarConflict before insert; on has_conflict showAppAlert with uiCopy.calendarValidation; insertOptionRequest still runs afterward (fail-open).",
+      "expected": "Overlap warning only; submit still allowed per docs.",
+      "actual": "Control flow matches documented fail-open pattern.",
+      "suspected_files": ["src/store/optionRequests.ts", "src/services/calendarSupabase.ts"],
+      "severity_if_failed": null
+    },
+    {
+      "id": "17",
+      "name": "Security sanity",
+      "status": "NOT_TESTED",
+      "role_context": ["Agency Owner", "Agency Booker", "Client Owner", "Client Employee"],
+      "tested": "Spot check: no email matching in optionRequests.ts; option request insert path uses IDs/orgs. No cross-tenant query executed with two agencies.",
+      "expected": "No org leaks; no email-based routing in option flow; org-centric scope.",
+      "actual": "Cross-org isolation not proven without live multi-tenant test; sendAgencyInvitation in optionRequestsSupabase uses email but is a different feature.",
+      "suspected_files": ["src/services/optionRequestsSupabase.ts", "src/store/optionRequests.ts"],
+      "severity_if_failed": null
+    },
+    {
+      "id": "18",
+      "name": "Paywall / admin / login regression",
+      "status": "PASS",
+      "role_context": ["Admin", "Client Owner", "Agency Owner"],
+      "tested": "This verification wave made no edits to AuthContext, App.tsx, sign-in, paywall core, or admin RPCs; scope-only check.",
+      "expected": "No unintended change to paywall gating or admin/login from this activity.",
+      "actual": "No code changes in forbidden areas during smoke-doc task; live admin login not re-run.",
+      "suspected_files": [],
+      "severity_if_failed": null
+    }
+  ],
+  "confirmed_failures": [],
+  "safe_next_fix_candidates": [
+    "Run CURSOR_OPTION_CASTING_VERIFY.md checklist on staging with Client + Agency + Model accounts (closes NOT_TESTED on items 1, 5, 8–13, 15, 17).",
+    "If shared-project project_id bugs appear in QA: pass sharedProjectId (or explicit project id) into handleOptionRequest when isSharedMode so addOptionRequest does not rely solely on activeProjectId (ClientWebApp.tsx).",
+    "Optional hardening from audit: uploadOptionDocument audit trail and hasNewMessages semantics — separate small tasks if product priority."
+  ],
+  "auth_admin_login_untouched": true,
+  "paywall_appears_unchanged": true
+}

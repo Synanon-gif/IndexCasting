@@ -1,0 +1,53 @@
+{
+  "analyzed_flows": [
+    "src/services/optionRequestsSupabase.ts:uploadOptionDocument (option_documents + chat-files/options/*)",
+    "src/services/optionRequestsSupabase.ts:addOptionMessage (text-only, no upload)",
+    "src/utils/logAction.ts central option audit wrapper",
+    "src/services/gdprComplianceSupabase.ts option action types (option_document_uploaded)"
+  ],
+  "confirmed_findings": [
+    {
+      "id": "OUA-1",
+      "severity": "CONFIRMED_MEDIUM",
+      "summary": "uploadOptionDocument had no org-centered audit trail after successful upload"
+    },
+    {
+      "id": "OUA-2",
+      "severity": "NO_ISSUE",
+      "summary": "Option document technical upload hardening already matches upload parity requirements"
+    },
+    {
+      "id": "OUA-3",
+      "severity": "LOW",
+      "summary": "When org context is unavailable in legacy/malformed request rows, upload remains successful and audit is skipped by warning"
+    }
+  ],
+  "fixed_now": [
+    "uploadOptionDocument now resolves option request org context and emits logAction(type=option, action=option_document_uploaded, source=api)",
+    "Added focused unit test for successful upload path with org-context audit dispatch"
+  ],
+  "manual_review_required": [
+    "If future product UI allows model-side option document upload with no resolvable org fields, decide explicit fallback logging strategy"
+  ],
+  "rules_updated": [],
+  "docs_updated": [
+    "docs/OPTION_CASTING_UPLOAD_AUDIT.md",
+    "CURSOR_OPTION_UPLOAD_AUDIT_REPORT.md",
+    "CURSOR_OPTION_UPLOAD_AUDIT_DIFF_SUMMARY.md",
+    "CURSOR_OPTION_UPLOAD_AUDIT_VERIFY.md"
+  ],
+  "do_not_touch": [
+    "src/context/AuthContext.tsx",
+    "App.tsx",
+    "signIn()",
+    "bootstrapThenLoadProfile()",
+    "loadProfile()",
+    "get_own_admin_flags()",
+    "is_current_user_admin()",
+    "assert_is_admin()",
+    "get_my_org_context()",
+    "Admin routing",
+    "Paywall core logic",
+    "Server-side option_requests status/final_status/model_approval logic"
+  ]
+}

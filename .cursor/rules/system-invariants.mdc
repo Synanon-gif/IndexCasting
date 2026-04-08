@@ -600,6 +600,15 @@ ON CONFLICT (model_id, source) DO UPDATE SET city = EXCLUDED.city, ...;
 - Globale Suche existiert NUR im Dashboard — nirgendwo sonst
 - Kein Screen darf ohne Fallback rendern wenn `org` oder `profile` null ist
 
+## SMART ATTENTION / ASSIGNMENT INVARIANTS
+
+- Org-weite Sichtbarkeit bleibt unverändert; weder Assignment noch Attention dürfen Daten verstecken.
+- Client Assignment bleibt Workflow-Metadaten (`client_organization_id`-gebunden), niemals Security-/Access-Control.
+- Owner-only Agency ohne Booker ist ein gültiger und voll unterstützter Startzustand.
+- Smart Attention ist ein Action-Required-Layer, kein Unread-/Read-Receipt-Layer.
+- Smart Attention darf nur aus bestehenden stabilen Workflow-Signalen abgeleitet werden (`status`, `final_status`, `client_price_status`, `model_approval`, Konfliktwarn-Semantik, Assignment-Metadaten).
+- Attention-/Assignment-Filter dürfen Priorisierung/Sortierung ändern, aber nie Berechtigungen oder Sichtbarkeit.
+
 ## STOP-BEDINGUNG
 
 Wenn eine geplante Änderung eine der obigen Garantien verletzt:

@@ -14,6 +14,7 @@ import { getOptionRequestsForModel, type SupabaseOptionRequest } from '../servic
 import { colors, spacing } from '../theme/theme';
 import { uiCopy } from '../constants/uiCopy';
 import { toDisplayStatus, statusColor, statusBgColor } from '../utils/statusHelpers';
+import { deriveSmartAttentionState, smartAttentionVisibleForRole } from '../utils/optionRequestAttention';
 
 type ModelTab = 'inbox' | 'profile';
 
@@ -107,12 +108,18 @@ const ModelUnifiedInbox: React.FC<{ modelId: string }> = ({ modelId }) => {
 
   useEffect(() => { void load(); }, [load]);
 
-  /** Assign priority: 0 = action required, 1 = in_negotiation (unread-ish), 2 = rest. */
+  /** Assign priority: action-required first, then by recency. */
   const sorted = useMemo(() => {
     return [...requests].sort((a, b) => {
       const priority = (r: SupabaseOptionRequest): number => {
-        if (r.model_approval === 'pending') return 0; // action required
-        if (r.status === 'in_negotiation') return 1;  // unread / active
+        const state = deriveSmartAttentionState({
+          status: r.status,
+          finalStatus: r.final_status ?? null,
+          clientPriceStatus: r.client_price_status ?? null,
+          modelApproval: r.model_approval,
+          modelAccountLinked: r.model_account_linked ?? true,
+        });
+        if (smartAttentionVisibleForRole(state, 'model')) return 0;
         return 2;
       };
       const diff = priority(a) - priority(b);
@@ -152,12 +159,19 @@ const ModelUnifiedInbox: React.FC<{ modelId: string }> = ({ modelId }) => {
     <ScrollView style={styles.scroll} contentContainerStyle={{ padding: spacing.md }}>
       {sorted.map((r) => {
         const displayStatus = toDisplayStatus(r.status, r.final_status ?? null);
-        const isActionRequired = r.model_approval === 'pending';
+        const attentionState = deriveSmartAttentionState({
+          status: r.status,
+          finalStatus: r.final_status ?? null,
+          clientPriceStatus: r.client_price_status ?? null,
+          modelApproval: r.model_approval,
+          modelAccountLinked: r.model_account_linked ?? true,
+        });
+        const isActionRequired = smartAttentionVisibleForRole(attentionState, 'model');
         return (
           <View key={r.id} style={[styles.inboxRow, isActionRequired && styles.inboxRowHighlight]}>
             <View style={{ flex: 1 }}>
               {isActionRequired && (
-                <Text style={styles.actionTag}>{copy.inboxActionRequired}</Text>
+                <Text style={styles.actionTag}>{uiCopy.dashboard.smartAttentionWaitingForModel}</Text>
               )}
               <Text style={styles.inboxModelName}>
                 {r.model_name?.trim() ? r.model_name : copy.optionRequestUnnamedModel}

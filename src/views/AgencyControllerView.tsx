@@ -116,6 +116,12 @@ import {
   listClientOrganizationsForAgencyDirectory,
   type ClientOrganizationDirectoryRow,
 } from '../services/clientOrganizationsDirectorySupabase';
+import {
+  getClientAssignmentMapForAgency,
+  upsertClientAssignmentFlag,
+  type AssignmentFlagColor,
+  type ClientAssignmentFlag,
+} from '../services/clientAssignmentsSupabase';
 import { getAgencies, type Agency } from '../services/agenciesSupabase';
 import { createGuestLink, getGuestLinksForAgency, buildGuestUrl, revokeGuestAccess, deleteGuestLink, type GuestLink } from '../services/guestLinksSupabase';
 import {
@@ -156,6 +162,11 @@ import { GlobalSearchBar } from '../components/GlobalSearchBar';
 import { getMyAgencyUsageLimits, type AgencyUsageLimits } from '../services/agencyUsageLimitsSupabase';
 import { getLatestActivityLog, type ActivityLog } from '../services/activityLogsSupabase';
 import { uiCopy as _uiCopy } from '../constants/uiCopy';
+import {
+  deriveSmartAttentionState,
+  smartAttentionVisibleForRole,
+  type SmartAttentionState,
+} from '../utils/optionRequestAttention';
 
 const STATUS_LABELS: Record<ChatStatus, string> = {
   in_negotiation: _uiCopy.dashboard.optionRequestStatusInNegotiation,
@@ -164,6 +175,19 @@ const STATUS_LABELS: Record<ChatStatus, string> = {
 };
 
 const STATUS_COLORS: Record<ChatStatus, string> = OPTION_REQUEST_CHAT_STATUS_COLORS;
+
+function attentionLabelForAgency(state: SmartAttentionState): string {
+  switch (state) {
+    case 'waiting_for_agency': return _uiCopy.dashboard.smartAttentionWaitingForAgency;
+    case 'counter_pending': return _uiCopy.dashboard.smartAttentionCounterPending;
+    case 'waiting_for_model': return _uiCopy.dashboard.smartAttentionWaitingForModel;
+    case 'conflict_risk': return _uiCopy.dashboard.smartAttentionConflictRisk;
+    case 'waiting_for_client': return _uiCopy.dashboard.smartAttentionWaitingForClient;
+    case 'job_confirmation_pending': return _uiCopy.dashboard.smartAttentionJobConfirmationPending;
+    case 'no_attention':
+    default: return _uiCopy.dashboard.smartAttentionNoAttention;
+  }
+}
 
 // ISO country names for the territories multi-select.
 // Keep names in English for UI consistency.
@@ -214,6 +238,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
     Awaited<ReturnType<typeof listOrganizationMembers>>
   >([]);
   const [pendingInvites, setPendingInvites] = useState<InvitationRow[]>([]);
+  const [assignmentByClientOrgId, setAssignmentByClientOrgId] = useState<Record<string, ClientAssignmentFlag>>({});
   const [calendarItems, setCalendarItems] = useState<AgencyCalendarItem[]>([]);
   const [manualCalendarEvents, setManualCalendarEvents] = useState<UserCalendarEvent[]>([]);
   const [bookingEventEntries, setBookingEventEntries] = useState<CalendarEntry[]>([]);
@@ -320,6 +345,30 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
     if (currentAgencyId) void loadAgencyTeam();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentAgencyId, profile?.email]);
+
+  useEffect(() => {
+    if (!agencyOrganizationId) {
+      setAssignmentByClientOrgId({});
+      return;
+    }
+    void getClientAssignmentMapForAgency(agencyOrganizationId).then(setAssignmentByClientOrgId);
+  }, [agencyOrganizationId]);
+
+  const handleUpsertClientAssignment = useCallback(async (
+    clientOrganizationId: string,
+    patch: { label: string; color: AssignmentFlagColor; assignedMemberUserId?: string | null },
+  ): Promise<void> => {
+    if (!agencyOrganizationId) return;
+    const saved = await upsertClientAssignmentFlag({
+      agencyOrganizationId,
+      clientOrganizationId,
+      label: patch.label,
+      color: patch.color,
+      assignedMemberUserId: patch.assignedMemberUserId ?? null,
+    });
+    if (!saved) return;
+    setAssignmentByClientOrgId((prev) => ({ ...prev, [clientOrganizationId]: saved }));
+  }, [agencyOrganizationId]);
 
   /** Re-load roster when opening My Models (e.g. after accepting an application in Recruiting). */
   useEffect(() => {
@@ -553,7 +602,11 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
       {tab === 'clients' && currentAgencyId ? (
         <AgencyClientsTab
           agencyId={currentAgencyId}
+          agencyOrganizationId={agencyOrganizationId}
           currentUserId={session?.user?.id ?? null}
+          teamMembers={teamMembers}
+          assignmentByClientOrgId={assignmentByClientOrgId}
+          onUpsertClientAssignment={handleUpsertClientAssignment}
           onChatStarted={(conversationId, title) => {
             setPendingB2BChat({ conversationId, title });
             setTab('messages');
@@ -581,12 +634,14 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
           onBookingCardPress={() => setTab('calendar')}
           pendingOptionRequestId={searchOptionId}
           onPendingOptionRequestConsumed={() => setSearchOptionId(null)}
+          assignmentByClientOrgId={assignmentByClientOrgId}
         />
       )}
 
       {tab === 'calendar' && (
         <AgencyCalendarTab
           items={calendarItems}
+          assignmentByClientOrgId={assignmentByClientOrgId}
           manualEvents={manualCalendarEvents}
           bookingEventEntries={bookingEventEntries}
           loading={calendarLoading}
@@ -1431,6 +1486,7 @@ const DashboardTab: React.FC<{ models: AgencyModel[] }> = ({ models }) => (
 
 type AgencyCalendarTabProps = {
   items: AgencyCalendarItem[];
+  assignmentByClientOrgId?: Record<string, ClientAssignmentFlag>;
   manualEvents: UserCalendarEvent[];
   bookingEventEntries?: CalendarEntry[];
   loading: boolean;
@@ -1443,6 +1499,7 @@ type AgencyCalendarTabProps = {
 
 const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
   items,
+  assignmentByClientOrgId = {},
   manualEvents,
   bookingEventEntries = [],
   loading,
@@ -1733,6 +1790,14 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
                   {option.client_name ?? 'Client'}
                   {start ? ` · ${start}${end ? `–${end}` : ''}` : ''}
                 </Text>
+                {option.client_organization_id && assignmentByClientOrgId[option.client_organization_id] ? (
+                  <Text style={s.metaText}>
+                    {assignmentByClientOrgId[option.client_organization_id].label}
+                    {assignmentByClientOrgId[option.client_organization_id].assignedMemberName
+                      ? ` · ${assignmentByClientOrgId[option.client_organization_id].assignedMemberName}`
+                      : ''}
+                  </Text>
+                ) : null}
               </View>
               {renderBadge(item)}
             </TouchableOpacity>
@@ -3811,19 +3876,31 @@ const MyModelsTab: React.FC<{
 
 type AgencyClientsTabProps = {
   agencyId: string;
+  agencyOrganizationId: string | null;
   currentUserId: string | null;
+  teamMembers: Awaited<ReturnType<typeof listOrganizationMembers>>;
+  assignmentByClientOrgId: Record<string, ClientAssignmentFlag>;
+  onUpsertClientAssignment: (
+    clientOrganizationId: string,
+    patch: { label: string; color: AssignmentFlagColor; assignedMemberUserId?: string | null },
+  ) => Promise<void>;
   onChatStarted: (conversationId: string, title: string) => void;
 };
 
 const AgencyClientsTab: React.FC<AgencyClientsTabProps> = ({
   agencyId,
+  agencyOrganizationId,
   currentUserId,
+  teamMembers,
+  assignmentByClientOrgId,
+  onUpsertClientAssignment,
   onChatStarted,
 }) => {
   const [search, setSearch] = useState('');
   const [rows, setRows] = useState<ClientOrganizationDirectoryRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [actionId, setActionId] = useState<string | null>(null);
+  const [editingClientOrgId, setEditingClientOrgId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -3903,6 +3980,7 @@ const AgencyClientsTab: React.FC<AgencyClientsTabProps> = ({
       {rows.map((row) => {
         const label = row.name?.trim() || row.id.slice(0, 8);
         const sub = row.organization_type ? row.organization_type.replace(/_/g, ' ') : '';
+        const assignment = assignmentByClientOrgId[row.id];
         return (
           <View
             key={row.id}
@@ -3911,7 +3989,35 @@ const AgencyClientsTab: React.FC<AgencyClientsTabProps> = ({
             <View style={{ flex: 1, minWidth: 160 }}>
               <Text style={s.modelName}>{label}</Text>
               <Text style={s.metaText}>{sub}</Text>
+              <Text style={s.metaText}>
+                {assignment
+                  ? `${assignment.label}${assignment.assignedMemberName ? ` · ${assignment.assignedMemberName}` : ''}`
+                  : 'No assignment yet'}
+              </Text>
             </View>
+            {agencyOrganizationId && (
+              <>
+                <TouchableOpacity
+                  style={s.filterPill}
+                  onPress={() => {
+                    if (!currentUserId) return;
+                    void onUpsertClientAssignment(row.id, {
+                      label: assignment?.label ?? 'BLUE',
+                      color: assignment?.color ?? 'blue',
+                      assignedMemberUserId: currentUserId,
+                    });
+                  }}
+                >
+                  <Text style={s.filterPillLabel}>Assign to me</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={s.filterPill}
+                  onPress={() => setEditingClientOrgId((prev) => (prev === row.id ? null : row.id))}
+                >
+                  <Text style={s.filterPillLabel}>{editingClientOrgId === row.id ? 'Close' : 'Edit assignment'}</Text>
+                </TouchableOpacity>
+              </>
+            )}
             <TouchableOpacity
               style={[s.filterPill, { backgroundColor: colors.buttonOptionGreen, opacity: actionId === row.id ? 0.6 : 1 }]}
               disabled={actionId === row.id}
@@ -3919,6 +4025,67 @@ const AgencyClientsTab: React.FC<AgencyClientsTabProps> = ({
             >
               <Text style={[s.filterPillLabel, { color: '#fff' }]}>{uiCopy.b2bChat.startChat}</Text>
             </TouchableOpacity>
+            {editingClientOrgId === row.id && (
+              <View style={{ width: '100%', marginTop: spacing.xs, flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs }}>
+                {(['gray', 'blue', 'green', 'amber', 'purple', 'red'] as AssignmentFlagColor[]).map((color) => (
+                  <TouchableOpacity
+                    key={`${row.id}-${color}`}
+                    style={[s.filterPill, assignment?.color === color && s.filterPillActive]}
+                    onPress={() => {
+                      void onUpsertClientAssignment(row.id, {
+                        label: assignment?.label ?? color.toUpperCase(),
+                        color,
+                        assignedMemberUserId: assignment?.assignedMemberUserId ?? null,
+                      });
+                    }}
+                  >
+                    <Text style={[s.filterPillLabel, assignment?.color === color && s.filterPillLabelActive]}>{color}</Text>
+                  </TouchableOpacity>
+                ))}
+                <TouchableOpacity
+                  style={s.filterPill}
+                  onPress={() => {
+                    const fallbackMember = teamMembers[0]?.user_id ?? currentUserId ?? null;
+                    void onUpsertClientAssignment(row.id, {
+                      label: assignment?.label ?? 'BLUE',
+                      color: assignment?.color ?? 'blue',
+                      assignedMemberUserId: fallbackMember,
+                    });
+                  }}
+                >
+                  <Text style={s.filterPillLabel}>Owner/default</Text>
+                </TouchableOpacity>
+                {teamMembers.slice(0, 8).map((member) => (
+                  <TouchableOpacity
+                    key={`${row.id}-${member.user_id}`}
+                    style={[s.filterPill, assignment?.assignedMemberUserId === member.user_id && s.filterPillActive]}
+                    onPress={() => {
+                      void onUpsertClientAssignment(row.id, {
+                        label: assignment?.label ?? 'BLUE',
+                        color: assignment?.color ?? 'blue',
+                        assignedMemberUserId: member.user_id,
+                      });
+                    }}
+                  >
+                    <Text style={[s.filterPillLabel, assignment?.assignedMemberUserId === member.user_id && s.filterPillLabelActive]}>
+                      {member.display_name ?? member.email ?? 'Member'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+                <TouchableOpacity
+                  style={s.filterPill}
+                  onPress={() => {
+                    void onUpsertClientAssignment(row.id, {
+                      label: assignment?.label ?? 'BLUE',
+                      color: assignment?.color ?? 'blue',
+                      assignedMemberUserId: null,
+                    });
+                  }}
+                >
+                  <Text style={s.filterPillLabel}>Unassigned</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         );
       })}
@@ -3942,6 +4109,7 @@ type AgencyMessagesTabProps = {
   /** Deep-link from GlobalSearch: auto-select this option request thread. */
   pendingOptionRequestId?: string | null;
   onPendingOptionRequestConsumed?: () => void;
+  assignmentByClientOrgId?: Record<string, ClientAssignmentFlag>;
 };
 
 const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
@@ -3958,6 +4126,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   onBookingCardPress,
   pendingOptionRequestId,
   onPendingOptionRequestConsumed,
+  assignmentByClientOrgId = {},
 }) => {
   const [messagesSection, setMessagesSection] = useState<'optionRequests' | 'recruiting' | 'clientRequests'>('clientRequests');
   const [messagesSearch, setMessagesSearch] = useState('');
@@ -3977,6 +4146,9 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   const [agencyCounterInput, setAgencyCounterInput] = useState('');
   const [processingRequestId, setProcessingRequestId] = useState<string | null>(null);
   const [msgFilter, setMsgFilter] = useState<'current' | 'archived' | 'applications'>('current');
+  const [assignmentScope, setAssignmentScope] = useState<'all' | 'mine' | 'unassigned'>('all');
+  const [assignmentFlagFilter, setAssignmentFlagFilter] = useState<string>('all');
+  const [attentionFilter, setAttentionFilter] = useState<'all' | 'action_required'>('all');
   const [archivedIds, setArchivedIds] = useState<Set<string>>(() => {
     if (typeof window === 'undefined') return new Set();
     try { const raw = window.localStorage.getItem('ci_agency_archived'); return raw ? new Set(JSON.parse(raw)) : new Set(); }
@@ -4109,9 +4281,24 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
     });
   };
 
-  const visible = requests.filter((r) =>
-    msgFilter === 'archived' ? archivedIds.has(r.threadId) : !archivedIds.has(r.threadId)
-  );
+  const visible = requests.filter((r) => {
+    if (msgFilter === 'archived' ? !archivedIds.has(r.threadId) : archivedIds.has(r.threadId)) return false;
+    const assignment = r.clientOrganizationId ? assignmentByClientOrgId[r.clientOrganizationId] : undefined;
+    if (assignmentScope === 'mine' && assignment?.assignedMemberUserId !== currentUserId) return false;
+    if (assignmentScope === 'unassigned' && !!assignment?.assignedMemberUserId) return false;
+    if (assignmentFlagFilter !== 'all' && (assignment?.label ?? '').toLowerCase() !== assignmentFlagFilter.toLowerCase()) return false;
+    if (attentionFilter === 'action_required') {
+      const state = deriveSmartAttentionState({
+        status: r.status,
+        finalStatus: r.finalStatus ?? null,
+        clientPriceStatus: r.clientPriceStatus ?? null,
+        modelApproval: r.modelApproval,
+        modelAccountLinked: r.modelAccountLinked ?? true,
+      });
+      if (!smartAttentionVisibleForRole(state, 'agency')) return false;
+    }
+    return true;
+  });
 
   const request = selectedThreadId ? getRequestByThreadId(selectedThreadId) : null;
   const messages = selectedThreadId ? getMessages(selectedThreadId) : [];
@@ -4448,6 +4635,46 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
           ))}
         </View>
       </View>
+      {Object.keys(assignmentByClientOrgId).length > 0 && (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.sm }}>
+          {(['all', 'mine', 'unassigned'] as const).map((scope) => (
+            <TouchableOpacity
+              key={`scope-${scope}`}
+              style={[s.filterPill, assignmentScope === scope && s.filterPillActive]}
+              onPress={() => setAssignmentScope(scope)}
+            >
+              <Text style={[s.filterPillLabel, assignmentScope === scope && s.filterPillLabelActive]}>
+                {scope === 'all' ? 'All clients' : scope === 'mine' ? 'My clients' : 'Unassigned'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+          {['all', ...Array.from(new Set(Object.values(assignmentByClientOrgId).map((a) => a.label.toLowerCase())))]
+            .slice(0, 8)
+            .map((flag) => (
+              <TouchableOpacity
+                key={`flag-${flag}`}
+                style={[s.filterPill, assignmentFlagFilter === flag && s.filterPillActive]}
+                onPress={() => setAssignmentFlagFilter(flag)}
+              >
+                <Text style={[s.filterPillLabel, assignmentFlagFilter === flag && s.filterPillLabelActive]}>
+                  {flag === 'all' ? 'Any flag' : `Flag ${flag}`}
+                </Text>
+              </TouchableOpacity>
+            ))}
+        </View>
+      )}
+      <View style={{ flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.sm }}>
+        <TouchableOpacity style={[s.filterPill, attentionFilter === 'all' && s.filterPillActive]} onPress={() => setAttentionFilter('all')}>
+          <Text style={[s.filterPillLabel, attentionFilter === 'all' && s.filterPillLabelActive]}>
+            {_uiCopy.dashboard.smartAttentionFilterAll}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[s.filterPill, attentionFilter === 'action_required' && s.filterPillActive]} onPress={() => setAttentionFilter('action_required')}>
+          <Text style={[s.filterPillLabel, attentionFilter === 'action_required' && s.filterPillLabelActive]}>
+            {_uiCopy.dashboard.smartAttentionFilterActionRequired}
+          </Text>
+        </TouchableOpacity>
+      </View>
 
       <ScrollView style={{ flex: 1, maxHeight: 300 }}>
         {visible.length === 0 ? (
@@ -4455,13 +4682,33 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
         ) : (
           visible.map((r) => {
             const reqStatus = getRequestStatus(r.threadId) ?? r.status;
+            const assignment = r.clientOrganizationId ? assignmentByClientOrgId[r.clientOrganizationId] : undefined;
+            const attentionState = deriveSmartAttentionState({
+              status: r.status,
+              finalStatus: r.finalStatus ?? null,
+              clientPriceStatus: r.clientPriceStatus ?? null,
+              modelApproval: r.modelApproval,
+              modelAccountLinked: r.modelAccountLinked ?? true,
+            });
+            const showAttention = smartAttentionVisibleForRole(attentionState, 'agency');
             return (
               <TouchableOpacity key={r.threadId} style={[s.threadRow, selectedThreadId === r.threadId && s.threadRowActive]} onPress={() => setSelectedThreadId(r.threadId)}>
                 <View style={{ flex: 1 }}>
                   <Text style={s.modelName}>{r.modelName} · {r.date}</Text>
                   <Text style={s.metaText}>{r.clientName}{r.startTime ? ` · ${r.startTime}–${r.endTime}` : ''}</Text>
+                  {assignment ? (
+                    <Text style={s.metaText}>
+                      {assignment.label}
+                      {assignment.assignedMemberName ? ` · ${assignment.assignedMemberName}` : ''}
+                    </Text>
+                  ) : null}
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  {showAttention ? (
+                    <View style={[s.statusPill, { backgroundColor: '#dbeafe' }]}>
+                      <Text style={[s.statusPillLabel, { color: '#1d4ed8' }]}>{attentionLabelForAgency(attentionState)}</Text>
+                    </View>
+                  ) : null}
                   {r.proposedPrice != null && (
                     <Text style={{ ...typography.label, fontSize: 9, color: colors.accentBrown }}>€{r.proposedPrice}</Text>
                   )}
@@ -4479,7 +4726,13 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                       r.modelAccountLinked !== false && r.modelApproval === 'rejected' && s.approvalBadgeLabelRejected,
                       r.modelAccountLinked !== false && r.modelApproval === 'pending' && s.approvalBadgeLabelPending,
                     ]}>
-                      {r.modelAccountLinked === false ? 'No model app' : r.modelApproval === 'approved' ? 'Model ✓' : r.modelApproval === 'rejected' ? 'Model ✗' : 'Model ⏳'}
+                      {r.modelAccountLinked === false
+                        ? uiCopy.dashboard.optionRequestModelApprovalNoApp
+                        : r.modelApproval === 'approved'
+                          ? uiCopy.dashboard.optionRequestModelApprovalApproved
+                          : r.modelApproval === 'rejected'
+                            ? uiCopy.dashboard.optionRequestModelApprovalRejected
+                            : uiCopy.dashboard.optionRequestModelApprovalPending}
                     </Text>
                   </View>
                   <View style={[s.statusPill, { backgroundColor: STATUS_COLORS[reqStatus] }]}>
@@ -4506,6 +4759,14 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
               <Text style={s.statusPillLabel}>{status ? STATUS_LABELS[status] : '—'}</Text>
             </TouchableOpacity>
           </View>
+          {request.clientOrganizationId && assignmentByClientOrgId[request.clientOrganizationId] ? (
+            <Text style={[s.metaText, { marginBottom: spacing.xs }]}>
+              Client assignment: {assignmentByClientOrgId[request.clientOrganizationId].label}
+              {assignmentByClientOrgId[request.clientOrganizationId].assignedMemberName
+                ? ` · ${assignmentByClientOrgId[request.clientOrganizationId].assignedMemberName}`
+                : ''}
+            </Text>
+          ) : null}
           {statusDropdownOpen && (
             <View style={{ flexDirection: 'row', gap: 4, marginBottom: spacing.sm }}>
               {(['in_negotiation', 'confirmed', 'rejected'] as ChatStatus[]).map((st) => (
@@ -4519,7 +4780,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
           {request.modelAccountLinked === false ? (
             <View style={{ paddingVertical: spacing.xs, paddingHorizontal: spacing.sm, marginBottom: spacing.sm, backgroundColor: 'rgba(100,100,100,0.12)', borderRadius: 8 }}>
               <Text style={{ ...typography.label, fontSize: 11, color: colors.textPrimary }}>
-                No model app account — negotiate with the client only. When you confirm the option or casting, it is booked and syncs to client & agency calendars (no in-app model step).
+                {uiCopy.dashboard.optionRequestFinalStatusNoModelAppHint}
               </Text>
             </View>
           ) : (
@@ -4535,7 +4796,11 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                 request.modelApproval === 'rejected' && s.approvalBannerTextRejected,
                 request.modelApproval === 'pending' && s.approvalBannerTextPending,
               ]}>
-                {request.modelApproval === 'approved' ? 'Approved by Model ✓' : request.modelApproval === 'rejected' ? 'Rejected by Model ✗' : 'Pending Model Approval ⏳'}
+                {request.modelApproval === 'approved'
+                  ? uiCopy.dashboard.optionRequestModelApprovalApproved
+                  : request.modelApproval === 'rejected'
+                    ? uiCopy.dashboard.optionRequestModelApprovalRejected
+                    : uiCopy.dashboard.optionRequestModelApprovalPending}
               </Text>
             </View>
           )}
@@ -4547,7 +4812,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
           {finalStatus && (
             <View style={{ paddingVertical: spacing.xs, paddingHorizontal: spacing.sm, marginBottom: spacing.sm, backgroundColor: finalStatus === 'job_confirmed' ? 'rgba(0,120,0,0.15)' : finalStatus === 'option_confirmed' ? 'rgba(0,80,200,0.12)' : 'rgba(120,120,0,0.12)', borderRadius: 8 }}>
               <Text style={{ ...typography.label, fontSize: 11, color: colors.textPrimary }}>
-                {request.requestType === 'casting' ? 'Casting' : 'Option'} – {finalStatus === 'job_confirmed' ? 'Job confirmed' : finalStatus === 'option_confirmed' ? 'Confirmed' : 'Pending'}
+                {request.requestType === 'casting' ? uiCopy.dashboard.threadContextCasting : uiCopy.dashboard.threadContextOption} - {finalStatus === 'job_confirmed' ? uiCopy.dashboard.optionRequestStatusJobConfirmed : finalStatus === 'option_confirmed' ? uiCopy.dashboard.optionRequestStatusConfirmed : uiCopy.dashboard.optionRequestStatusPending}
               </Text>
             </View>
           )}

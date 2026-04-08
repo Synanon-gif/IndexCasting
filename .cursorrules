@@ -502,3 +502,12 @@ IF NOT public.is_current_user_admin() THEN
 END IF;
 -- Dann: normaler Business-Code (KEIN Admin-only Pfad danach)
 ```
+
+## 26. Smart Attention & Assignment Guardrails (Workflow-only)
+
+- Client Assignment (`client_assignment_flags`) ist **immer** Workflow-/Ownership-Metadaten, **nie** Security- oder Visibility-Layer.
+- Assignment ist an `client_organization_id` gekoppelt, **nicht** an Chat-Existenz.
+- Owner-only Agency ohne Booker ist ein voll unterstützter Erstzustand.
+- Smart Attention ist **Action Required**, **nicht** Unread-/Read-Receipt-Logik und **nicht** Security.
+- Smart Attention darf nur aus stabilen bestehenden Workflowfeldern abgeleitet werden (`status`, `final_status`, `client_price_status`, `model_approval`, Konfliktsemantik, Assignment-Metadaten).
+- Attention oder Assignment dürfen **niemals** Sichtbarkeit, RLS oder Berechtigungen verändern.

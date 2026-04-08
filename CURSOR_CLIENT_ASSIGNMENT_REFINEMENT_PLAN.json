@@ -1,0 +1,30 @@
+{
+  "foundation_reviewed": true,
+  "canonical_assignment_surface": "AgencyClientsTab header per client organization row in AgencyControllerView",
+  "owner_only_supported": true,
+  "pre_chat_assignment_supported": true,
+  "fixed_now": [
+    "Agency clients tab now acts as canonical assignment editor",
+    "Assign to me and unassigned flows implemented for owner-only/no-booker safety",
+    "Agency option request threads include assignment badges and consistent filters",
+    "Agency calendar rows mirror assignment metadata for client context consistency"
+  ],
+  "manual_review_required": [],
+  "rules_updated": [],
+  "docs_updated": [
+    "docs/CLIENT_ASSIGNMENT_FLAG_SYSTEM.md",
+    "CURSOR_CLIENT_ASSIGNMENT_REFINEMENT_REPORT.md",
+    "CURSOR_CLIENT_ASSIGNMENT_REFINEMENT_DIFF_SUMMARY.md",
+    "CURSOR_CLIENT_ASSIGNMENT_REFINEMENT_VERIFY.md"
+  ],
+  "safe_next": [
+    "Build Smart Attention using assignment metadata as routing signals",
+    "Optional dedicated Agency Client Directory v2 only if broader CRM needs emerge"
+  ],
+  "do_not_touch": [
+    "AuthContext / App.tsx / signIn / bootstrapThenLoadProfile / loadProfile",
+    "get_own_admin_flags / is_current_user_admin / assert_is_admin",
+    "get_my_org_context",
+    "paywall core logic"
+  ]
+}

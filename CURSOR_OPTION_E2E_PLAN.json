@@ -1,0 +1,57 @@
+{
+  "roles_tested": [
+    "Client Owner (scope/static)",
+    "Client Employee (scope/static)",
+    "Agency Owner (scope/static)",
+    "Agency Booker (scope/static)",
+    "Model (scope/static)",
+    "Package/Guest context (scope/static)",
+    "Shared project mode (scope/static)",
+    "Read-only shared link (scope/static)",
+    "Agency search deep-link (scope/static)",
+    "Calendar/Notes/Job confirm contexts (scope/static)"
+  ],
+  "flows_confirmed": [
+    "Package context metadata path present",
+    "Read-only shared link has no option request write path",
+    "Org columns payload path for new option requests present",
+    "B2B booking card message creation path present",
+    "Agency search deep-link to option thread path present",
+    "Conflict warning is warn-only (fail-open) by control flow",
+    "Regression sanity: auth/admin/login/paywall untouched in this wave"
+  ],
+  "confirmed_failures": [],
+  "fixed_now": [],
+  "manual_review_required": [
+    "Shared project project_id correctness in live multi-role flow",
+    "Full multi-tenant security sanity (no org leaks) with real sessions",
+    "Global discovery end-to-end submit -> agency visibility",
+    "Option thread sync across client/agency sessions",
+    "Counter offer + accept/reject live lifecycle",
+    "Agency accept/model approval linked vs unlinked",
+    "Option confirmed -> calendar/booking mirror (dedupe check)",
+    "Job confirm calendar update",
+    "Shared vs private notes role visibility"
+  ],
+  "rules_updated": [],
+  "docs_updated": [
+    "CURSOR_OPTION_E2E_REPORT.md",
+    "CURSOR_OPTION_E2E_DIFF_SUMMARY.md",
+    "CURSOR_OPTION_E2E_VERIFY_RESULTS.md",
+    "CURSOR_OPTION_E2E_PLAN.json"
+  ],
+  "do_not_touch": [
+    "src/context/AuthContext.tsx",
+    "App.tsx",
+    "signIn()",
+    "bootstrapThenLoadProfile()",
+    "loadProfile()",
+    "get_own_admin_flags()",
+    "is_current_user_admin()",
+    "assert_is_admin()",
+    "get_my_org_context()",
+    "Admin-Routing",
+    "Paywall-Kernlogik",
+    "serverseitige option_requests status/final_status/model_approval Logik"
+  ]
+}

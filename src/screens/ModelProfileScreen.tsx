@@ -984,7 +984,11 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                 <Text style={st.metaText}>{o.modelName}{o.startTime ? ` · ${o.startTime}–${o.endTime}` : ''}</Text>
               </View>
               <Text style={{ ...typography.label, fontSize: 9, color: o.modelApproval === 'approved' ? colors.buttonOptionGreen : '#B8860B' }}>
-                {o.modelApproval === 'approved' ? 'Approved' : o.modelApproval === 'rejected' ? 'Rejected' : 'Pending'}
+                {o.modelApproval === 'approved'
+                  ? uiCopy.dashboard.optionRequestModelApprovalApproved
+                  : o.modelApproval === 'rejected'
+                    ? uiCopy.dashboard.optionRequestModelApprovalRejected
+                    : uiCopy.dashboard.optionRequestModelApprovalPending}
               </Text>
             </TouchableOpacity>
           ))}
@@ -1013,7 +1017,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                   }}
                 >
                   <Text style={{ ...typography.label, color: '#BF360C', marginBottom: 2 }}>
-                    {req.request_type === 'casting' ? 'Casting' : 'Option'}
+                    {req.request_type === 'casting' ? uiCopy.dashboard.threadContextCasting : uiCopy.dashboard.threadContextOption}
                     {req.client_name ? ` · ${req.client_name}` : ''}
                   </Text>
                   <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.sm }}>
@@ -1076,7 +1080,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                 }}
               >
                 <Text style={{ ...typography.label, color: colors.textPrimary }}>
-                  {o.requestType === 'casting' ? 'Casting' : 'Option'} · {o.finalStatus === 'job_confirmed' ? 'Job confirmed' : 'Confirmed'}
+                  {o.requestType === 'casting' ? uiCopy.dashboard.threadContextCasting : uiCopy.dashboard.threadContextOption} · {o.finalStatus === 'job_confirmed' ? uiCopy.dashboard.optionRequestStatusJobConfirmed : uiCopy.dashboard.optionRequestStatusConfirmed}
                 </Text>
                 <Text style={st.metaText}>
                   {o.clientName} · {o.date}
@@ -1123,7 +1127,11 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                 <Text style={st.metaText}>{o.modelName}</Text>
               </View>
               <Text style={{ ...typography.label, fontSize: 10, color: o.modelApproval === 'approved' ? colors.buttonOptionGreen : o.modelApproval === 'rejected' ? colors.buttonSkipRed : '#B8860B' }}>
-                {o.modelApproval === 'approved' ? 'Approved' : o.modelApproval === 'rejected' ? 'Declined' : 'Pending'}
+                {o.modelApproval === 'approved'
+                  ? uiCopy.dashboard.optionRequestModelApprovalApproved
+                  : o.modelApproval === 'rejected'
+                    ? uiCopy.dashboard.optionRequestModelApprovalRejected
+                    : uiCopy.dashboard.optionRequestModelApprovalPending}
               </Text>
             </View>
           ))}

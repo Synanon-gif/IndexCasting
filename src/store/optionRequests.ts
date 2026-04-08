@@ -35,12 +35,14 @@ import { updateCalendarEntryToJob, checkCalendarConflict } from '../services/cal
 import { notifyClientAgencyCounterOffer } from '../services/pushNotifications';
 import { showAppAlert } from '../utils/crossPlatformAlert';
 import { uiCopy } from '../constants/uiCopy';
+import { optionRequestNeedsMessagesTabAttention } from '../utils/optionRequestAttention';
 
 export type ChatStatus = 'in_negotiation' | 'confirmed' | 'rejected';
 
 export type OptionRequest = {
   id: string;
   clientName: string;
+  clientOrganizationId?: string;
   modelName: string;
   modelId: string;
   date: string;
@@ -61,6 +63,7 @@ export type OptionRequest = {
   /** false when model has no app user — client & agency do not wait for in-app model approval */
   modelAccountLinked?: boolean;
   agencyId?: string;
+  agencyOrganizationId?: string;
 };
 
 export type ChatMessage = {
@@ -75,6 +78,7 @@ function toLocalRequest(r: SupabaseOptionRequest): OptionRequest {
   return {
     id: r.id,
     clientName: r.client_name ?? 'Client',
+    clientOrganizationId: r.client_organization_id ?? r.organization_id ?? undefined,
     modelName: r.model_name ?? 'Model',
     modelId: r.model_id,
     date: r.requested_date,
@@ -93,6 +97,7 @@ function toLocalRequest(r: SupabaseOptionRequest): OptionRequest {
     modelApproval: r.model_approval ?? 'pending',
     modelApprovedAt: r.model_approved_at ?? undefined,
     agencyId: r.agency_id,
+    agencyOrganizationId: r.agency_organization_id ?? undefined,
   };
 }
 
@@ -456,8 +461,13 @@ export function getRequestStatus(threadId: string): ChatStatus | undefined {
   return requestsCache.find((r) => r.threadId === threadId)?.status;
 }
 
-export function hasNewMessages(): boolean {
-  return requestsCache.length > 0;
+/**
+ * Client web: Messages tab attention dot (option/casting threads only).
+ * True when any cached request is non-terminal per `toDisplayStatus` (statusHelpers)
+ * (In negotiation / Draft). Not unread-based; B2B chats are separate.
+ */
+export function hasOpenOptionRequestAttention(): boolean {
+  return requestsCache.some(optionRequestNeedsMessagesTabAttention);
 }
 
 export function getMessages(threadId: string): ChatMessage[] {

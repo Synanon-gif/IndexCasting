@@ -3363,8 +3363,8 @@
     },
     {
       "file": "src/store/optionRequests.ts",
-      "name": "hasNewMessages",
-      "line": 443,
+      "name": "hasOpenOptionRequestAttention",
+      "line": 465,
       "kind": "function"
     },
     {
@@ -11054,14 +11054,14 @@
       ]
     },
     {
-      "exportKey": "src/store/optionRequests.ts::hasNewMessages",
+      "exportKey": "src/store/optionRequests.ts::hasOpenOptionRequestAttention",
       "file": "src/store/optionRequests.ts",
-      "name": "hasNewMessages",
+      "name": "hasOpenOptionRequestAttention",
       "importers": [
         {
           "file": "src/web/ClientWebApp.tsx",
           "names": [
-            "hasNewMessages"
+            "hasOpenOptionRequestAttention"
           ]
         }
       ]

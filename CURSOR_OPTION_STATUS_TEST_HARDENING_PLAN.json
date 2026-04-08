@@ -1,0 +1,31 @@
+{
+  "tests_added": [
+    "src/utils/__tests__/statusHelpers.test.ts",
+    "src/constants/__tests__/optionStatusCopy.test.ts"
+  ],
+  "hardcodes_replaced": [
+    {
+      "file": "src/screens/ModelProfileScreen.tsx",
+      "change": "req.request_type context label uses uiCopy.dashboard.threadContextOption/threadContextCasting instead of local hardcoded strings"
+    }
+  ],
+  "safe_next": [
+    "Optional narrow sweep for remaining non-critical Option/Casting context literals in the same three surfaces, only if clearly display-only",
+    "Optional helper introduction for final-status display text if future changes increase duplication"
+  ],
+  "manual_review_required": [],
+  "do_not_touch": [
+    "src/context/AuthContext.tsx",
+    "App.tsx",
+    "signIn()",
+    "bootstrapThenLoadProfile()",
+    "loadProfile()",
+    "get_own_admin_flags()",
+    "is_current_user_admin()",
+    "assert_is_admin()",
+    "get_my_org_context()",
+    "Admin-Routing",
+    "Paywall-Kernlogik",
+    "serverseitige option_requests status/final_status/model_approval Logik"
+  ]
+}

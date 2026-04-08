@@ -51,6 +51,8 @@ vollständig durchlaufen werden, **bevor** Code committed oder weitergeschrieben
 - **4. Source-Wert hinzugefügt ohne vollständige Aktualisierung:** Neuer Source-Wert ohne: CHECK constraint + upsert Auth-Split + delete_model_location_source + TypeScript `LocationSource` Union + DISTINCT ON ORDER BY + alle Tests? → Blocker (Risiko 17).
 - **`get_territories_for_agency_roster` Guard ohne Bookers-Fallback:** SECURITY DEFINER Funktion die Agency-Zugehörigkeit prüft, ohne `bookers`-Tabelle zu inkludieren? → Warnung — Legacy Bookers werden mit `not_in_agency` (HTTP 400) ausgesperrt.
 - **Service-Layer Contract-Mix:** Neue Funktion die sowohl `return true` als auch `return { ok: true }` nutzt? → Blocker — Option A **oder** `ServiceResult`, nie gemischt (siehe `system-invariants.mdc` Option C).
+- **Assignment als Security-Layer:** Nutzt neuer Code `client_assignment_flags` zur Zugriffskontrolle oder Sichtbarkeits-Blockade? → Blocker (Assignment ist Workflow-Metadaten).
+- **Attention als Unread/Security-Mix:** Nutzt neuer Code Smart-Attention als Read-Receipt-Proxy oder Berechtigungsmerkmal? → Blocker (Attention ist Action-Required-Layer).
 - **Upload technical parity drift:** Neuer oder geänderter `storage.upload`-Pfad ohne dieselbe Kette wie in [.cursor/rules/upload-consent-matrix.mdc](./upload-consent-matrix.mdc) (**Upload technical parity**)? → Blocker — MIME-Allowlist, Magic Bytes, Extension-Konsistenz (für `File`), sicherer Pfad/Name, `upsert: false` wo vorgesehen, HEIC-Pipeline bei erlaubtem HEIC.
 - **Root-SQL vs Live-DB:** Annahme „Root-`supabase/*.sql` spiegelt Production“ ohne Verifikation nach SECDEF-/Funktions-Fix? → Blocker für Security-Release — siehe `system-invariants.mdc` **LIVE-DB SOURCE OF TRUTH**.
 

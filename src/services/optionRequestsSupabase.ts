@@ -1042,7 +1042,41 @@ export async function uploadOptionDocument(
     .single();
   if (error) { console.error('uploadOptionDocument error:', error); return null; }
   const doc = data as SupabaseOptionDocument;
-  console.warn('[uploadOptionDocument] org context unavailable — audit log skipped for', requestId);
+  const { data: reqRow, error: reqError } = await supabase
+    .from('option_requests')
+    .select('client_organization_id, organization_id, agency_organization_id')
+    .eq('id', requestId)
+    .maybeSingle();
+  if (reqError) {
+    console.error('uploadOptionDocument: failed to load option_request org context', reqError);
+  }
+
+  const reqOrg = (reqRow as {
+    client_organization_id?: string | null;
+    organization_id?: string | null;
+    agency_organization_id?: string | null;
+  } | null);
+  const auditOrgId =
+    reqOrg?.client_organization_id
+    ?? reqOrg?.organization_id
+    ?? reqOrg?.agency_organization_id
+    ?? null;
+
+  if (auditOrgId) {
+    logAction(auditOrgId, 'uploadOptionDocument', {
+      type: 'option',
+      action: 'option_document_uploaded',
+      entityId: requestId,
+      newData: {
+        document_id: doc.id,
+        file_name: safeBaseName,
+        file_url: path,
+        uploaded_by: uploadedBy,
+      },
+    }, { source: 'api' });
+  } else {
+    console.warn('[uploadOptionDocument] org context unavailable — audit log skipped for', requestId);
+  }
   return doc;
   } catch (e) {
     console.error('uploadOptionDocument exception:', e);

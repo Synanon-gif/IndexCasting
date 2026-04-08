@@ -1,0 +1,28 @@
+{
+  "status": "CONFIRMED_BADGE_BEHAVIOR_BUG",
+  "confirmed": true,
+  "fixed_now": [
+    "Replaced coarse hasNewMessages (requestsCache.length > 0) with hasOpenOptionRequestAttention + optionRequestNeedsMessagesTabAttention aligned to toDisplayStatus",
+    "ClientWebApp Messages tab dot uses hasOpenOptionRequestAttention",
+    "Unit tests for optionRequestNeedsMessagesTabAttention",
+    "docs/AUDIT_EXPORT_MAP.json updated for renamed export"
+  ],
+  "manual_review_required": [
+    "Unified badge semantics across Dashboard unread_threads vs ClientWebApp Messages dot (different data sources)",
+    "Whether Messages tab dot should ever reflect B2B recruiting/client-agency chat unread without new backend fields"
+  ],
+  "safe_next": [
+    "Upload-Audit mit Org-Kontext (separater Audit-Strang)",
+    "Product spec for true option-thread unread or per-thread read state before larger E2E multi-role messaging wave"
+  ],
+  "do_not_touch": [
+    "src/context/AuthContext.tsx",
+    "App.tsx",
+    "signIn / bootstrapThenLoadProfile / loadProfile",
+    "get_own_admin_flags / is_current_user_admin / assert_is_admin",
+    "get_my_org_context",
+    "Admin routing",
+    "Paywall core",
+    "Server-side option_requests status / final_status / model_approval logic"
+  ]
+}

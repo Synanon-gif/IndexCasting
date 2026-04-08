@@ -56,6 +56,9 @@ export type ThreadContext = {
   type: 'Option' | 'Casting' | 'Booking' | string;
   modelName?: string;
   date?: string;
+  clientFlagLabel?: string;
+  clientFlagColor?: string;
+  assignedMemberName?: string;
 };
 
 /** Organization-scoped B2B thread (client org ↔ agency org). Not a user-to-user or "connection" chat. */
@@ -429,12 +432,25 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   const threadContextLabel = threadContext
     ? [threadContext.type, threadContext.modelName, threadContext.date].filter(Boolean).join(' • ')
     : null;
+  const threadContextAssignment = threadContext?.clientFlagLabel
+    ? `${threadContext.clientFlagLabel}${threadContext.assignedMemberName ? ` · ${threadContext.assignedMemberName}` : ''}`
+    : null;
 
   return (
     <View style={[styles.chatPanel, containerStyle]}>
       <Text style={styles.chatPanelTitle}>{headerTitle}</Text>
       {threadContextLabel ? (
         <Text style={styles.threadContextSubheader}>{threadContextLabel}</Text>
+      ) : null}
+      {threadContextAssignment ? (
+        <View
+          style={[
+            styles.assignmentPill,
+            { borderColor: threadContext?.clientFlagColor || colors.border },
+          ]}
+        >
+          <Text style={styles.assignmentPillLabel}>{threadContextAssignment}</Text>
+        </View>
       ) : null}
 
       {showShare ? (
@@ -859,6 +875,20 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: spacing.sm,
     letterSpacing: 0.3,
+  },
+  assignmentPill: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    marginBottom: spacing.sm,
+    backgroundColor: colors.surface,
+  },
+  assignmentPillLabel: {
+    ...typography.label,
+    fontSize: 10,
+    color: colors.textPrimary,
   },
   shareRow: {
     flexDirection: 'row',

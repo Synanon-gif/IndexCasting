@@ -1,0 +1,36 @@
+{
+  "data_model_added": [
+    "supabase/migrations/20260408_client_assignment_flags_foundation.sql",
+    "public.client_assignment_flags",
+    "public.caller_is_member_of_agency_org(p_org_id uuid)",
+    "trigger: trg_touch_client_assignment_flags_updated_at"
+  ],
+  "surfaces_updated": [
+    "src/web/ClientWebApp.tsx (ActiveOptionsView, MessagesView, ClientCalendarView)",
+    "src/components/OrgMessengerInline.tsx (ThreadContext assignment metadata support)"
+  ],
+  "filters_added": [
+    "My clients",
+    "Unassigned",
+    "By flag",
+    "By assigned member"
+  ],
+  "rules_updated": [],
+  "docs_added": [
+    "docs/CLIENT_ASSIGNMENT_FLAG_SYSTEM.md",
+    "CURSOR_CLIENT_ASSIGNMENT_REPORT.md",
+    "CURSOR_CLIENT_ASSIGNMENT_DIFF_SUMMARY.md",
+    "CURSOR_CLIENT_ASSIGNMENT_VERIFY.md"
+  ],
+  "safe_next": [
+    "Smart Attention auf Assignment-Metadaten",
+    "Contextual Chat Layers nach Stabilisierung der Filternutzung"
+  ],
+  "do_not_touch": [
+    "AuthContext / signIn / bootstrapThenLoadProfile / loadProfile",
+    "App.tsx Auth/Admin Routing",
+    "get_own_admin_flags / is_current_user_admin / assert_is_admin",
+    "get_my_org_context",
+    "Paywall core logic"
+  ]
+}
