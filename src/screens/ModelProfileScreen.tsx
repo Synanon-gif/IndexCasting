@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { handleTabPress, BOTTOM_TAB_BAR_HEIGHT } from '../navigation/bottomTabNavigation';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Linking, Alert, ActivityIndicator, Image, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Linking, Alert, ActivityIndicator, Image, useWindowDimensions, Platform } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { getChatOverlayMaxWidth, getMessagesScrollMaxHeight } from '../theme/chatLayout';
 import { getModelsFromSupabase, getModelForUserFromSupabase, type SupabaseModel } from '../services/modelsSupabase';
@@ -55,6 +55,8 @@ import { getAgencyNamesByThreadIds } from '../services/recruitingChatSupabase';
 import { BookingChatView } from '../views/BookingChatView';
 import { useAuth } from '../context/AuthContext';
 import { uiCopy } from '../constants/uiCopy';
+import { showAppAlert } from '../utils/crossPlatformAlert';
+import { exportUserData, downloadUserDataExport } from '../services/gdprComplianceSupabase';
 import { listModelAgencyDirectConversations } from '../services/b2bOrgChatSupabase';
 import type { Conversation } from '../services/messengerSupabase';
 import { OrgMessengerInline } from '../components/OrgMessengerInline';
@@ -103,6 +105,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   const [profile, setProfile] = useState<ModelProfile | null>(null);
   const [tab, setTab] = useState<ModelTab>('calendar');
   const [deletingAccount, setDeletingAccount] = useState(false);
+  const [exportingData, setExportingData] = useState(false);
   const [calMonth, setCalMonth] = useState(() => { const n = new Date(); return { year: n.getFullYear(), month: n.getMonth() }; });
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [calEntries, setCalEntries] = useState<CalendarEntry[]>([]);
@@ -201,6 +204,34 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
       Alert.alert('Location Error', err?.message ?? 'Could not retrieve your location.');
     } finally {
       setLocationLoading(false);
+    }
+  };
+
+  const onExportData = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    setExportingData(true);
+    try {
+      if (Platform.OS === 'web') {
+        const okDl = await downloadUserDataExport(user.id);
+        if (okDl) {
+          showAppAlert(uiCopy.privacyData.downloadStartedTitle, uiCopy.privacyData.downloadStartedBody);
+        } else {
+          showAppAlert(uiCopy.common.error, uiCopy.privacyData.couldNotExport);
+        }
+      } else {
+        const result = await exportUserData(user.id);
+        if (result.ok) {
+          showAppAlert(uiCopy.privacyData.exportNativeTitle, uiCopy.privacyData.exportNativeBody);
+        } else {
+          showAppAlert(uiCopy.common.error, uiCopy.privacyData.couldNotExport);
+        }
+      }
+    } catch (e) {
+      console.error('[ModelProfileScreen] onExportData error:', e);
+      showAppAlert(uiCopy.common.error, uiCopy.privacyData.couldNotExport);
+    } finally {
+      setExportingData(false);
     }
   };
 
@@ -746,6 +777,30 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
               <Measure label={uiCopy.modelEdit.waistLabel} value={profile.waist} />
               <Measure label={uiCopy.modelEdit.hipsLabel} value={profile.hips} />
             </View>
+          </View>
+
+          <View style={[st.section, { marginTop: spacing.lg, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border }]}>
+            <Text style={st.sectionLabel}>{uiCopy.privacyData.sectionTitle}</Text>
+            <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm }}>
+              {uiCopy.privacyData.art20Body}
+            </Text>
+            <TouchableOpacity
+              onPress={() => void onExportData()}
+              disabled={exportingData}
+              style={{
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 12,
+                paddingVertical: spacing.md,
+                alignItems: 'center',
+                marginBottom: spacing.md,
+                opacity: exportingData ? 0.6 : 1,
+              }}
+            >
+              <Text style={{ ...typography.label, color: colors.textSecondary }}>
+                {exportingData ? uiCopy.privacyData.preparingExport : uiCopy.privacyData.downloadMyData}
+              </Text>
+            </TouchableOpacity>
           </View>
 
           <View style={[st.section, { marginTop: spacing.xl, paddingTop: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border }]}>

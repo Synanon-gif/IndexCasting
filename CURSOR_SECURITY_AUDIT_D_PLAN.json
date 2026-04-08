@@ -1,0 +1,171 @@
+{
+  "auditId": "D",
+  "title": "Security Audit D — Access / Authorization / Data Exposure",
+  "completedAt": "2026-04-08",
+  "scope": [
+    "rls",
+    "storage",
+    "rpc",
+    "services",
+    "invite_claim",
+    "messaging",
+    "admin",
+    "realtime"
+  ],
+  "sources": {
+    "repository": "supabase/migrations/*.sql, src/services/*.ts, docs/*.md",
+    "liveDatabase": "Supabase Management API database/query (project ispkfdqzjrfrilosoklu)"
+  },
+  "checklistCompleted": {
+    "P1_rls_database": "completed",
+    "P2_cross_org": "completed",
+    "P3_storage": "completed",
+    "P4_invite_claim": "completed",
+    "P5_service_layer": "completed",
+    "P6_messaging": "completed",
+    "P7_booking_calendar_option": "completed",
+    "P8_admin": "partial_repo_rules_plus_live_policy_scan",
+    "P9_json_exposure": "completed"
+  },
+  "simulationModesReviewed": [
+    "authenticated_client_wrong_org",
+    "authenticated_agency_wrong_agency",
+    "model_user_other_models",
+    "invited_not_finalized",
+    "guest_external_link",
+    "manipulated_query_params",
+    "token_replay"
+  ],
+  "findings": [
+    {
+      "id": "D-P1-001",
+      "severity": "SAFE",
+      "category": "RLS",
+      "title": "models: service_role ALL policy is role-scoped",
+      "files": ["Live: pg_policies on public.models"],
+      "liveVerificationRequired": false,
+      "summary": "Policy 'Service role full access models' uses qual true only for roles {service_role}; not applicable to authenticated JWT."
+    },
+    {
+      "id": "D-P1-002",
+      "severity": "SAFE",
+      "category": "RLS",
+      "title": "Watchlist tables: no FOR ALL policies on model_embeddings, model_locations, model_agency_territories, calendar_entries, model_minor_consent",
+      "files": ["Live: pg_policies"],
+      "liveVerificationRequired": false,
+      "summary": "Query returned empty set for cmd=ALL on listed tables."
+    },
+    {
+      "id": "D-P1-003",
+      "severity": "SAFE",
+      "category": "RLS",
+      "title": "No direct profiles.is_admin = true in policy USING clauses",
+      "files": ["Live: pg_policies qual scan"],
+      "liveVerificationRequired": false,
+      "summary": "Count 0 for is_admin=true / is_admin = true in qual (aligns with rls-security-patterns Gefahr 1)."
+    },
+    {
+      "id": "D-P2-001",
+      "severity": "SAFE",
+      "category": "cross_org",
+      "title": "option_request_visible_to_me enforces participant/org/model scope",
+      "files": ["Live: pg_get_functiondef(option_request_visible_to_me)"],
+      "liveVerificationRequired": false,
+      "summary": "SECURITY DEFINER with row_security off; branches for model user, client org (and legacy org/client_id), agency org with assignee rules."
+    },
+    {
+      "id": "D-P3-001",
+      "severity": "SAFE",
+      "category": "storage",
+      "title": "can_view_model_photo_storage has row_security=off; client path requires model_photos row + visibility",
+      "files": ["Live: pg_proc.proconfig", "supabase/migrations/20260501_can_view_model_photo_storage_client_row_alignment.sql"],
+      "liveVerificationRequired": false,
+      "summary": "Live proconfig includes row_security=off; migration documents IDOR-safe binding to model_photos URL for clients."
+    },
+    {
+      "id": "D-P3-002",
+      "severity": "SAFE",
+      "category": "storage",
+      "title": "storage.objects documentspictures policies present (select/insert/update/delete)",
+      "files": ["Live: pg_policies on storage.objects"],
+      "liveVerificationRequired": false,
+      "summary": "documentspictures_* policies listed for authenticated."
+    },
+    {
+      "id": "D-P4-001",
+      "severity": "SAFE",
+      "category": "invite_claim",
+      "title": "claim_model_by_token: single-use atomic claim",
+      "files": ["supabase/migrations/20260413_fix_c_model_claim_tokens.sql"],
+      "liveVerificationRequired": false,
+      "summary": "Raises token_already_used; UPDATE ... WHERE used_at IS NULL with ROW_COUNT check; links models.user_id only when NULL."
+    },
+    {
+      "id": "D-P5-001",
+      "severity": "LOW",
+      "category": "service_layer",
+      "title": "getOptionRequests optional orgId — RLS-only path when omitted",
+      "files": ["src/services/optionRequestsSupabase.ts"],
+      "liveVerificationRequired": false,
+      "summary": "Code warns when orgId omitted; cross-org isolation depends on option_requests RLS + option_request_visible_to_me (verified on Live)."
+    },
+    {
+      "id": "D-P6-001",
+      "severity": "SAFE",
+      "category": "messaging",
+      "title": "conversation_accessible_to_me has row_security=off on Live",
+      "files": ["Live: pg_proc.proconfig", "supabase/migration_fix_conversation_rls_perf.sql"],
+      "liveVerificationRequired": false,
+      "summary": "Matches MED-3 intent; messages/conversations policies use this helper or equivalent org-member SELECTs."
+    },
+    {
+      "id": "D-P6-002",
+      "severity": "INFO",
+      "category": "messaging",
+      "title": "Duplicate SELECT policies on conversations (OR semantics)",
+      "files": ["Live: pg_policies"],
+      "liveVerificationRequired": false,
+      "summary": "conversations_select_access and Org members can read org conversations both apply; redundant but not contradictory in sampled quals."
+    },
+    {
+      "id": "D-P9-001",
+      "severity": "INFO",
+      "category": "data_exposure",
+      "title": "booking_details JSONB — UI scope filter only",
+      "files": ["docs/BOOKING_BRIEF_SYSTEM.md"],
+      "liveVerificationRequired": false,
+      "summary": "Documented: anyone who may SELECT calendar_entries row receives full booking_details; field-level visibility is client-side."
+    },
+    {
+      "id": "D-DRIFT-001",
+      "severity": "LOW",
+      "category": "process",
+      "title": "Repo vs Live: option_requests/conversation evolution split across root SQL and migrations",
+      "files": ["supabase/migration_*.sql", "supabase/migrations/"],
+      "liveVerificationRequired": true,
+      "summary": "Authoritative behavior confirmed via Live queries this run; future changes should add dated migrations and re-verify pg_policies."
+    }
+  ],
+  "liveVerificationRequired": [
+    {
+      "topic": "Edge Functions",
+      "reason": "Not in scope of SQL/service pass; JWT verification and body validation need separate review."
+    },
+    {
+      "topic": "Full admin RPC inventory",
+      "reason": "assert_is_admin() coverage on every admin_* routine not exhaustively grep-verified in this audit."
+    },
+    {
+      "topic": "Realtime abuse tests",
+      "reason": "postgres_changes RLS behavior assumed per Supabase platform; no E2E replay test executed."
+    }
+  ],
+  "countsBySeverity": {
+    "CRITICAL": 0,
+    "HIGH": 0,
+    "MEDIUM": 0,
+    "LOW": 2,
+    "INFO": 2,
+    "SAFE": 8
+  }
+}

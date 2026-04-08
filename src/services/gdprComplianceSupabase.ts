@@ -17,6 +17,10 @@
  */
 
 import { supabase } from '../../lib/supabase';
+import { formatExportPayload, downloadUserData as downloadUserDataFromService } from './dataExportService';
+import type { GdprExportResult } from './dataExportService';
+
+export type { GdprExportResult } from './dataExportService';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -92,19 +96,6 @@ export interface AuditLogParams {
    * 'trigger' for DB-trigger-originated entries.
    */
   source?: AuditSource;
-}
-
-export interface GdprExportResult {
-  exportedAt: string;
-  userId: string;
-  profile: Record<string, unknown> | null;
-  consentLog: unknown[];
-  organizations: unknown[];
-  messagesSent: unknown[];
-  optionRequests: unknown[];
-  calendarEvents: unknown[];
-  auditTrail: unknown[];
-  imageRightsConfirmations: unknown[];
 }
 
 /**
@@ -646,20 +637,7 @@ export async function exportUserData(
       return { ok: false, reason: error.message ?? 'export_failed' };
     }
 
-    const raw = data as Record<string, unknown>;
-    const result: GdprExportResult = {
-      exportedAt:                 String(raw.exported_at ?? ''),
-      userId:                     String(raw.user_id ?? userId),
-      profile:                    (raw.profile as Record<string, unknown>) ?? null,
-      consentLog:                 (raw.consent_log as unknown[]) ?? [],
-      organizations:              (raw.organizations as unknown[]) ?? [],
-      messagesSent:               (raw.messages_sent as unknown[]) ?? [],
-      optionRequests:             (raw.option_requests as unknown[]) ?? [],
-      calendarEvents:             (raw.calendar_events as unknown[]) ?? [],
-      auditTrail:                 (raw.audit_trail as unknown[]) ?? [],
-      imageRightsConfirmations:   (raw.image_rights_confirmations as unknown[]) ?? [],
-    };
-
+    const result = formatExportPayload(data);
     return { ok: true, data: result };
   } catch (e) {
     console.error('[gdpr] exportUserData exception:', e);
@@ -672,21 +650,11 @@ export async function exportUserData(
  * Only works in a web context. Returns false if export failed.
  */
 export async function downloadUserDataExport(userId: string): Promise<boolean> {
-  const result = await exportUserData(userId);
+  const result = await downloadUserDataFromService(userId);
   if (!result.ok) {
     console.error('[gdpr] downloadUserDataExport failed:', result.reason);
     return false;
   }
-  const blob = new Blob(
-    [JSON.stringify(result.data, null, 2)],
-    { type: 'application/json' },
-  );
-  const url = URL.createObjectURL(blob);
-  const a   = document.createElement('a');
-  a.href     = url;
-  a.download = `indexcasting-data-export-${userId}-${new Date().toISOString().slice(0, 10)}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
   return true;
 }
 

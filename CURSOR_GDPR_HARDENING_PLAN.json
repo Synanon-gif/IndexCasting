@@ -1,0 +1,46 @@
+{
+  "title": "GDPR Hardening Phase 2 — Data Lifecycle",
+  "status": "implemented",
+  "constraints": [
+    "No RLS logic changes",
+    "No authentication flow changes",
+    "No paywall/billing changes",
+    "Additive SQL: replace export_user_data only in new migration"
+  ],
+  "artifacts": {
+    "migration": "supabase/migrations/20260511_gdpr_export_user_data_phase2.sql",
+    "services": [
+      "src/services/dataExportService.ts",
+      "src/services/gdprComplianceSupabase.ts"
+    ],
+    "tests": "src/services/__tests__/dataExportService.test.ts",
+    "ui": "src/screens/ModelProfileScreen.tsx",
+    "docs": [
+      "docs/GDPR_DELETE_FLOW.md",
+      "docs/DATA_OWNERSHIP_MODEL.md",
+      "docs/GDPR_REVOCATION.md",
+      "docs/DATA_RETENTION_POLICY.md"
+    ],
+    "edgeComments": "supabase/functions/delete-user/index.ts"
+  },
+  "export_rpc_keys_v2": [
+    "export_version",
+    "profile",
+    "consent_log",
+    "legal_acceptances",
+    "organizations",
+    "messages_sent",
+    "messages_received",
+    "conversations",
+    "recruiting_chat_threads",
+    "recruiting_chat_messages",
+    "option_requests",
+    "calendar_events",
+    "calendar_entries",
+    "notifications",
+    "activity_logs",
+    "audit_trail",
+    "image_rights_confirmations",
+    "push_tokens"
+  ]
+}

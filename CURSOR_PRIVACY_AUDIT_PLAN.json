@@ -1,0 +1,55 @@
+{
+  "data_deletion": [
+    "Evidence: supabase/functions/delete-user/index.ts — auth.admin.deleteUser + storage prefixes documents/{userId}/, documentspictures/verifications/{userId}/; models.user_id SET NULL documented in comments",
+    "Evidence: supabase/functions/delete-user/index.ts — comment lists CASCADE from profiles including activity_logs, consent_log, legal_acceptances",
+    "Evidence: supabase/migration_gdpr_compliance_2026_04.sql — delete_organization_data deletes org-scoped rows including model_photos, models, calendar_entries, guest_links, messages/conversations, recruiting_chat_messages, recruiting_chat_threads",
+    "Evidence: supabase/migration_gdpr_compliance_2026_04.sql — gdpr_purge_expired_deletions anonymizes profile; comment requires auth.admin.deleteUser for full removal — no purge Edge Function file in supabase/functions/",
+    "Evidence: src/services/guestAuthSupabase.ts — deleteGuestUserContent calls delete-user edge function"
+  ],
+  "storage_cleanup": [
+    "Evidence: delete-user/index.ts explicit list/remove for documents and documentspictures/verifications paths; intentionally NOT model-photos per comments",
+    "Evidence: migration_compliance_hardening_2026_04.sql — gdpr_purge_old_guest_link_access_log and retention comments",
+    "Gap (medium): delete_organization_data SQL deletes model_photos rows — storage deletion for documentspictures not shown in that function body"
+  ],
+  "data_access": [
+    "Evidence: supabase/migrations/20260420_gdpr_rpc_row_security_account_delete_membership.sql — export_user_data returns profile, consent_log, organizations, messages_sent (limit 1000), option_requests (created_by, limit 500), user_calendar_events, audit_trail, image_rights_confirmations",
+    "Gap: export_user_data does not SELECT legal_acceptances",
+    "Gap: calendar_entries not exported (user_calendar_events used instead)",
+    "Gap: activity_logs not in export_user_data (no activity_logs in 20260420 migration file)",
+    "Gap: recruiting_chat_threads / recruiting_chat_messages not in export_user_data"
+  ],
+  "consent": [
+    "Evidence: src/context/AuthContext.tsx — legal_acceptances insert + recordConsent for terms/privacy/image_rights",
+    "Evidence: 20260420_gdpr_rpc_row_security_account_delete_membership.sql — withdraw_consent updates consent_log",
+    "Evidence: src/components/AgencySettingsTab.tsx, src/web/ClientWebApp.tsx — withdrawConsent marketing/analytics",
+    "Evidence: migration_compliance_hardening_2026_04.sql — data_inventory-style comments with GDPR Art references"
+  ],
+  "revocation": [
+    "Evidence: migration_compliance_hardening_2026_04.sql — revoke_guest_access sets is_active=false and deleted_at",
+    "Evidence: delete_organization_data deletes invitations for org",
+    "Not verified in this audit: dedicated model claim token revocation RPC (only generate/claim referenced in src/services/modelsSupabase.ts)"
+  ],
+  "tracking": [
+    "Evidence: src/utils/logAction.ts — audit_trail source field documentation",
+    "Evidence: security_events types extended in migration_gdpr_compliance_2026_04.sql",
+    "Evidence: guest link rate limit uses hashed IP in migration_guest_link_ratelimit / 20260406 guest link migration comments",
+    "No third-party analytics SDK found in quick grep of src for posthog/segment"
+  ],
+  "guest_access": [
+    "Evidence: 20260406_guest_link_first_access_7day_window.sql — get_guest_link_info validity (expires_at, first_accessed_at + 7 days, is_active, deleted_at)",
+    "Evidence: revoke_guest_access in migration_compliance_hardening_2026_04.sql",
+    "Evidence: src/views/SharedSelectionView.tsx — URL ?shared=1&name=...&ids=...",
+    "Evidence: index.html — no robots noindex meta tag"
+  ],
+  "messaging_booking": [
+    "Evidence: export_user_data messages_sent from messages where sender_id = user",
+    "Evidence: delete_organization_data deletes messages and conversations for org",
+    "Evidence: retention functions gdpr_purge_old_audit_trail (7 years), gdpr_purge_old_security_events (2 years) in migration_gdpr_compliance_2026_04.sql",
+    "Gap: calendar_entries not in export_user_data payload",
+    "Evidence: delete_organization_data deletes recruiting_chat for agency org; not represented in export_user_data"
+  ],
+  "data_minimization": [
+    "Evidence: workspace rules document chest vs bust legacy — duplicate semantic fields in model data",
+    "Evidence: export limits (1000 messages, 500 option_requests) — minimization by truncation for portability"
+  ]
+}

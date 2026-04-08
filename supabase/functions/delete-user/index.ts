@@ -134,6 +134,8 @@ Deno.serve(async (req: Request) => {
     //   activity_logs, bookers, badges, consent_log, legal_acceptances,
     //   verifications, post_likes (all CASCADE).
     //   models.user_id → SET NULL (model record stays; agency owns the content).
+    //   conversations: no FK to users — participant_ids UUID[] may still list this
+    //   user id until a dedicated cleanup job/migration removes stale IDs.
     //
     // Storage paths that MUST be deleted explicitly:
     //   documents/{userId}/*     – option-request documents uploaded by user
@@ -190,6 +192,16 @@ Deno.serve(async (req: Request) => {
         JSON.stringify({ ok: false, error: 'Failed to delete account. Please try again later.' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
+    }
+
+    // Best-effort: strip deleted auth IDs from conversations.participant_ids (non-blocking).
+    try {
+      const { error: cleanupErr } = await adminClient.rpc('cleanup_conversation_participants');
+      if (cleanupErr) {
+        console.error('delete-user: cleanup_conversation_participants:', cleanupErr.message);
+      }
+    } catch (cleanupEx) {
+      console.error('delete-user: cleanup_conversation_participants exception:', cleanupEx);
     }
 
     return new Response(
