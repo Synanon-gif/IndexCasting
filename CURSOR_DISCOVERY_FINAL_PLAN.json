@@ -1,0 +1,58 @@
+{
+  "sql_fixes_applied": [
+    "get_discovery_models: p_chest_min/max use COALESCE(m.chest, m.bust)",
+    "get_models_near_location: same chest predicates",
+    "get_models_by_location: same chest predicates",
+    "get_discovery_models canonical CREATE OR REPLACE in supabase/migrations/20260508_discovery_chest_coalesce_and_canonical_rpc.sql",
+    "Root reference supabase/migration_client_model_interactions_v2.sql chest lines aligned"
+  ],
+  "ranking_analysis": [
+    "+50 if no client_model_interactions row for (org, model)",
+    "+30 same city: models.city vs p_client_city",
+    "+20 created/updated within 30 days",
+    "-10 if last_viewed_at set",
+    "-40 if last_rejected_at set (score); hard exclude if rejected within p_reject_hours",
+    "Hard exclude if booked within p_book_days (not a score penalty)",
+    "applyDiversityShuffle: Fisher-Yates within score tiers after RPC — non-deterministic within tier",
+    "Classification: MEDIUM (acceptable; document for QA/product)"
+  ],
+  "scaling_assessment": [
+    "Ranked path: server ORDER BY score + optional keyset (p_cursor_*) + p_limit 50 — good",
+    "get_models_by_location: OFFSET/LIMIT — optimizable at very deep pages",
+    "Near Me: bbox + Haversine + DISTINCT ON model_id — good",
+    "Overall: scales for typical B2B; index tuning optional at 50k+"
+  ],
+  "filter_consistency": [
+    "After migration: discovery + near-me + hybrid RPCs aligned on COALESCE(chest,bust) with UI mapDiscoveryModelToSummary and Agency filterModels chestVal",
+    "Residual: applyMeasurementFilters (modelsSupabase) still filters column chest only for direct .from('models') paths — manual_review_required for parity"
+  ],
+  "photo_visibility_status": [
+    "getModelData forces polaroids [] for discovery/detail path",
+    "Package/guest use get_guest_link_models / packageType branching for portfolio vs polaroid sets",
+    "Classification: SAFE for standard Discover; rely on docs/CLIENT_MODEL_PHOTO_VISIBILITY.md for storage alignment"
+  ],
+  "seen_booked_behavior": [
+    "Seen: score penalty -10, not hard removed unless p_exclude_ids",
+    "Booked in cooldown window: hard excluded in SQL WHERE",
+    "Rejected in cooldown: hard excluded",
+    "Behavior matches clientDiscoverySupabase comments"
+  ],
+  "fixed_now": [
+    "SQL chest/bust parity on three discovery RPCs",
+    "Canonical migration file for get_discovery_models",
+    "Live deploy + pg_get_functiondef COALESCE verification"
+  ],
+  "manual_review_required": [
+    "Optional: applyMeasurementFilters PostgREST parity for legacy client list without RPC",
+    "Optional: city boost/filter using model_locations vs models.city (product)"
+  ],
+  "do_not_touch": [
+    "AuthContext",
+    "bootstrapThenLoadProfile",
+    "get_my_org_context",
+    "Admin-RPCs",
+    "Paywall / Invite-Claim core",
+    "calendar_entries RLS",
+    "booking_brief trust model"
+  ]
+}
