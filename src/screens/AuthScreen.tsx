@@ -127,7 +127,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
       <View style={styles.content}>
         <Text style={styles.brand}>INDEX CASTING</Text>
-        <Text style={styles.subtitle}>{uiCopy.auth.subtitleTagline}</Text>
+        <Text style={styles.subtitle}>
+          {inviteAuth || modelClaimAuth ? uiCopy.auth.inviteOrClaimContextSubtitle : uiCopy.auth.subtitleTagline}
+        </Text>
 
         {inviteAuth && (
           <Text style={styles.inviteBanner}>
@@ -242,10 +244,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             )}
             {inviteAuth && !modelClaimAuth && (
               <Text style={styles.roleLocked}>
-                {uiCopy.auth.accountTypeFixed.replace(
-                  '{role}',
-                  inviteAuth.lockedProfileRole === 'agent' ? 'Agency' : 'Client',
-                )}
+                {uiCopy.auth.inviteRoleLockedLine
+                  .replace('{role}', inviteAuth.inviteRoleLabel)
+                  .replace(
+                    '{accountType}',
+                    inviteAuth.lockedProfileRole === 'agent' ? 'Agency' : 'Client',
+                  )}
               </Text>
             )}
           </>

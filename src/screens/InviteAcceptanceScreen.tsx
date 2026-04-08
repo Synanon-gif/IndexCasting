@@ -63,12 +63,12 @@ export function InviteAcceptanceScreen({
         {!loading && preview && (
           <>
             <Text style={styles.body}>
-              {uiCopy.invite.invitedToWorkAt}{' '}
-              <Text style={styles.emph}>{preview.org_name}</Text>.
+              {uiCopy.invite.invitedJoinAs
+                .replace('{org}', preview.org_name)
+                .replace('{role}', roleLabel)}
             </Text>
+            <Text style={styles.notSelfService}>{uiCopy.invite.inviteNotSelfServiceHint}</Text>
             <Text style={styles.meta}>
-              Role: {roleLabel}
-              {'\n'}
               {uiCopy.invite.validUntil}: {new Date(preview.expires_at).toLocaleString()}
             </Text>
             {preview.invited_email_hint ? (
@@ -143,7 +143,14 @@ const styles = StyleSheet.create({
   },
   brand: { ...typography.heading, fontSize: 14, color: colors.textSecondary, marginBottom: spacing.sm },
   title: { ...typography.heading, color: colors.textPrimary, marginBottom: spacing.md },
-  body: { ...typography.body, color: colors.textPrimary, marginBottom: spacing.md, lineHeight: 22 },
+  body: { ...typography.body, color: colors.textPrimary, marginBottom: spacing.sm, lineHeight: 22 },
+  notSelfService: {
+    ...typography.body,
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: spacing.md,
+    lineHeight: 18,
+  },
   emph: { fontWeight: '700' },
   meta: { ...typography.label, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.md, lineHeight: 18 },
   emailHint: { ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.sm, lineHeight: 18 },

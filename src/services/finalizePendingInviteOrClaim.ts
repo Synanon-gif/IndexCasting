@@ -9,17 +9,22 @@ import { claimModelByToken } from './modelsSupabase';
 import { readInviteToken, persistInviteToken } from '../storage/inviteToken';
 import { readModelClaimToken, persistModelClaimToken } from '../storage/modelClaimToken';
 import { uiCopy } from '../constants/uiCopy';
+import { emitInviteClaimSuccess } from '../utils/inviteClaimSuccessBus';
 
 export type FinalizeInviteBranch = {
   attempted: boolean;
   ok: boolean;
   error?: string;
+  /** Present when accept_organization_invitation succeeded. */
+  organizationId?: string;
 };
 
 export type FinalizeClaimBranch = {
   attempted: boolean;
   ok: boolean;
   error?: string;
+  modelId?: string;
+  agencyId?: string;
 };
 
 export type FinalizeInviteClaimResult = {
@@ -116,12 +121,15 @@ export function finalizePendingInviteOrClaim(
       out.invite.error = inv.ok ? undefined : (inv.error as string | undefined);
 
       if (inv.ok) {
+        const orgId = inv.organization_id;
+        if (orgId) out.invite.organizationId = orgId;
         await persistInviteToken(null);
         try {
           await opts.onSuccessReloadProfile?.();
         } catch (e) {
           console.error('[finalizePendingInviteOrClaim] onSuccessReloadProfile after invite error:', e);
         }
+        if (orgId) emitInviteClaimSuccess({ kind: 'invite', organizationId: orgId });
       } else if (isFatalInviteError(out.invite.error)) {
         await persistInviteToken(null);
         if (opts.showUiAlerts) showInviteAlerts(out.invite.error, opts.signOut);
@@ -147,11 +155,20 @@ export function finalizePendingInviteOrClaim(
       out.claim.error = claimRes.ok ? undefined : claimRes.error;
 
       if (claimRes.ok) {
+        if (claimRes.data) {
+          const { modelId, agencyId } = claimRes.data;
+          out.claim.modelId = modelId;
+          out.claim.agencyId = agencyId;
+        }
         await persistModelClaimToken(null);
         try {
           await opts.onSuccessReloadProfile?.();
         } catch (e) {
           console.error('[finalizePendingInviteOrClaim] onSuccessReloadProfile after claim error:', e);
+        }
+        if (claimRes.data) {
+          const { modelId, agencyId } = claimRes.data;
+          emitInviteClaimSuccess({ kind: 'claim', modelId, agencyId });
         }
       } else if (isFatalClaimError(out.claim.error)) {
         await persistModelClaimToken(null);

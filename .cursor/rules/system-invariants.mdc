@@ -605,6 +605,7 @@ ON CONFLICT (model_id, source) DO UPDATE SET city = EXCLUDED.city, ...;
 - Dashboard lädt auch wenn Teildaten fehlen (kein hard crash bei null org/profile)
 - Globale Suche existiert NUR im Dashboard — nirgendwo sonst
 - Kein Screen darf ohne Fallback rendern wenn `org` oder `profile` null ist
+- Invite- und Model-Claim-UI: klar von Self-Service-Sign-up unterscheidbar; Erfolgs-Copy nur nach tatsächlicher Finalisierung (`finalizePendingInviteOrClaim` / RPC `ok`), nicht vorher
 
 ## SMART ATTENTION / ASSIGNMENT INVARIANTS
 

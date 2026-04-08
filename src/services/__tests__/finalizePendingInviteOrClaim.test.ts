@@ -23,7 +23,12 @@ jest.mock('../../storage/modelClaimToken', () => ({
   isModelClaimFlowActive: jest.fn(),
 }));
 
+jest.mock('../../utils/inviteClaimSuccessBus', () => ({
+  emitInviteClaimSuccess: jest.fn(),
+}));
+
 import { finalizePendingInviteOrClaim } from '../finalizePendingInviteOrClaim';
+import { emitInviteClaimSuccess } from '../../utils/inviteClaimSuccessBus';
 import * as orgInv from '../organizationsInvitationsSupabase';
 import * as modelsSup from '../modelsSupabase';
 import * as inviteStorage from '../../storage/inviteToken';
@@ -48,9 +53,14 @@ const claimModelByToken = modelsSup.claimModelByToken as jest.MockedFunction<
   typeof modelsSup.claimModelByToken
 >;
 
+const emitInviteClaimSuccessMock = emitInviteClaimSuccess as jest.MockedFunction<
+  typeof emitInviteClaimSuccess
+>;
+
 describe('finalizePendingInviteOrClaim', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    emitInviteClaimSuccessMock.mockClear();
     readInviteToken.mockResolvedValue(null);
     readModelClaimToken.mockResolvedValue(null);
   });
@@ -65,8 +75,13 @@ describe('finalizePendingInviteOrClaim', () => {
     expect(acceptOrganizationInvitation).toHaveBeenCalledWith('inv_tok');
     expect(claimModelByToken).not.toHaveBeenCalled();
     expect(r.invite.ok).toBe(true);
+    expect(r.invite.organizationId).toBe('org-1');
     expect(persistInviteToken).toHaveBeenCalledWith(null);
     expect(onOk).toHaveBeenCalled();
+    expect(emitInviteClaimSuccessMock).toHaveBeenCalledWith({
+      kind: 'invite',
+      organizationId: 'org-1',
+    });
   });
 
   it('runs claim when no invite token', async () => {
@@ -77,7 +92,14 @@ describe('finalizePendingInviteOrClaim', () => {
 
     expect(claimModelByToken).toHaveBeenCalledWith('claim_tok');
     expect(r.claim.ok).toBe(true);
+    expect(r.claim.modelId).toBe('m1');
+    expect(r.claim.agencyId).toBe('a1');
     expect(persistModelClaimToken).toHaveBeenCalledWith(null);
+    expect(emitInviteClaimSuccessMock).toHaveBeenCalledWith({
+      kind: 'claim',
+      modelId: 'm1',
+      agencyId: 'a1',
+    });
   });
 
   it('clears invite token on fatal invite error', async () => {

@@ -29,7 +29,9 @@
 ## In-app UX (invite / signup / claim)
 
 - **After sign-up with no session** (email confirmation enabled): [`AuthScreen`](../src/screens/AuthScreen.tsx) shows `uiCopy.auth.signUpEmailConfirmation*` so users know to verify email and sign in; invite/model-claim variants add org- or model-specific notes.
-- **Invite and model-claim gates:** [`InviteAcceptanceScreen`](../src/screens/InviteAcceptanceScreen.tsx) and [`ModelClaimScreen`](../src/screens/ModelClaimScreen.tsx) include short `uiCopy` guidance on confirm → sign-in → finalization and reuse of the same link where supported.
+- **Invite and model-claim gates:** [`InviteAcceptanceScreen`](../src/screens/InviteAcceptanceScreen.tsx) and [`ModelClaimScreen`](../src/screens/ModelClaimScreen.tsx) use `uiCopy` to state the **fixed** role (Booker / Employee) or **model profile claim**, and to distinguish these flows from normal self-service organization creation (Owner path).
+- **Auth during invite/claim:** [`AuthScreen`](../src/screens/AuthScreen.tsx) hides free role pills when `inviteAuth` / `modelClaimAuth` is set; subtitle and locked-role copy reinforce invitation context.
+- **Success banner (post-finalization only):** After `finalizePendingInviteOrClaim` succeeds, `emitInviteClaimSuccess` + [`App.tsx`](../App.tsx) show a dismissible banner with copy from `uiCopy.inviteClaimSuccess` (resolved via [`inviteClaimSuccessUi.ts`](../src/services/inviteClaimSuccessUi.ts)). This MUST NOT replace or mimic “signup complete” before RPC finalization.
 
 ## Related code
 

@@ -1,0 +1,37 @@
+{
+  "invite_context_gaps_found": [
+    "Invite gate used generic 'work with' framing vs explicit join-as-role",
+    "Model claim gate did not state difference from team/org invite",
+    "Auth subtitle and role lock line emphasized Agency/Client over Booker/Employee"
+  ],
+  "role_selection_gaps_found": [
+    "Invite lock line showed only profile account type (Agency/Client), not invite role label"
+  ],
+  "success_state_gaps_found": [
+    "No post-finalize success UX after finalizePendingInviteOrClaim RPC success"
+  ],
+  "fixed_now": [
+    "uiCopy + InviteAcceptanceScreen + ModelClaimScreen + AuthScreen",
+    "finalizePendingInviteOrClaim metadata + emitInviteClaimSuccess after onSuccessReloadProfile",
+    "inviteClaimSuccessBus + inviteClaimSuccessUi + InviteClaimSuccessBanner + App.tsx subscription",
+    "finalizePendingInviteOrClaim.test.ts emit and branch fields"
+  ],
+  "rules_updated": [
+    ".cursorrules (Invite / claim UI guardrail)",
+    ".cursor/rules/auto-review.mdc",
+    ".cursor/rules/system-invariants.mdc (FRONTEND-GARANTIEN)",
+    ".cursor/rules/invite-finalization.mdc (optional success UX)"
+  ],
+  "docs_updated": [
+    "docs/INVITE_CLAIM_ASSIGNMENT_CONSISTENCY.md"
+  ],
+  "manual_review_required": [
+    "Persisted invite token without ?invite= in current URL: App may still render Auth without inviteAuth (pre-existing); consider loading preview from stored token in a follow-up"
+  ],
+  "do_not_touch": [
+    "bootstrapThenLoadProfile",
+    "get_my_org_context",
+    "Admin-RPCs",
+    "Paywall core"
+  ]
+}

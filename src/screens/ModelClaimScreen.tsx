@@ -80,6 +80,7 @@ export function ModelClaimScreen({
 
         {!loading && isValid && preview && (
           <>
+            <Text style={styles.distinct}>{uiCopy.modelClaim.notOrgTeamInvite}</Text>
             <Text style={styles.body}>
               <Text style={styles.emph}>{preview.agency_name}</Text>
               {' '}
@@ -157,6 +158,13 @@ const styles = StyleSheet.create({
   },
   brand: { ...typography.heading, fontSize: 14, color: colors.textSecondary, marginBottom: spacing.sm },
   title: { ...typography.heading, color: colors.textPrimary, marginBottom: spacing.md },
+  distinct: {
+    ...typography.body,
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: spacing.md,
+    lineHeight: 18,
+  },
   body: { ...typography.body, color: colors.textPrimary, marginBottom: spacing.sm, lineHeight: 22 },
   emph: { fontWeight: '700' },
   modelName: {

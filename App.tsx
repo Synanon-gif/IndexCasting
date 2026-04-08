@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Platform, View, StyleSheet, ActivityIndicator, Text, Dimensions, TouchableOpacity } from 'react-native';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
@@ -31,6 +31,9 @@ import { persistInviteToken, markInviteFlowFromUrl } from './src/storage/inviteT
 import { persistModelClaimToken, markModelClaimFlowFromUrl } from './src/storage/modelClaimToken';
 import { getModelClaimPreview } from './src/services/modelsSupabase';
 import { finalizePendingInviteOrClaim } from './src/services/finalizePendingInviteOrClaim';
+import { resolveInviteClaimSuccessMessage } from './src/services/inviteClaimSuccessUi';
+import { subscribeInviteClaimSuccess } from './src/utils/inviteClaimSuccessBus';
+import { InviteClaimSuccessBanner } from './src/components/InviteClaimSuccessBanner';
 import { uiCopy } from './src/constants/uiCopy';
 import { initializePushNotifications, teardownPushNotifications } from './src/services/pushNotifications';
 import { TermsScreen } from './src/screens/TermsScreen';
@@ -199,6 +202,10 @@ function AppContent() {
   const [modelClaimAuthPhase, setModelClaimAuthPhase] = useState<'gate' | 'auth'>('gate');
   const [modelClaimAuthMode, setModelClaimAuthMode] = useState<'login' | 'signup'>('signup');
 
+  const [inviteClaimBannerText, setInviteClaimBannerText] = useState<string | null>(null);
+  const inviteClaimBannerUserIdRef = useRef<string | null>(null);
+  const inviteClaimBannerDedupRef = useRef<{ key: string; at: number } | null>(null);
+
   const [clientType, setClientTypeState] = useState<ClientType>(() => loadClientType() ?? 'fashion');
   const { setCurrentUserId } = useAppData();
 
@@ -216,6 +223,31 @@ function AppContent() {
   }, []);
 
   const effectiveRole: Role | null = roleFromProfile(profile?.role);
+
+  inviteClaimBannerUserIdRef.current = session?.user?.id ?? null;
+
+  useEffect(() => {
+    return subscribeInviteClaimSuccess((payload) => {
+      const uid = inviteClaimBannerUserIdRef.current;
+      if (!uid) return;
+      const key =
+        payload.kind === 'invite'
+          ? `i:${payload.organizationId}`
+          : `c:${payload.modelId}:${payload.agencyId}`;
+      const now = Date.now();
+      const prev = inviteClaimBannerDedupRef.current;
+      if (prev && prev.key === key && now - prev.at < 4000) return;
+      inviteClaimBannerDedupRef.current = { key, at: now };
+      void (async () => {
+        try {
+          const text = await resolveInviteClaimSuccessMessage(payload, uid);
+          setInviteClaimBannerText(text);
+        } catch (e) {
+          console.error('[App] resolveInviteClaimSuccessMessage:', e);
+        }
+      })();
+    });
+  }, []);
 
   // Computed early (before hooks) so it can be used in useEffect and render guards.
   // True when the user is fully authenticated and NOT a Magic-Link guest.
@@ -353,6 +385,14 @@ function AppContent() {
       void teardownPushNotifications();
     }
   }, [isAuthenticatedNonGuest, session]);
+
+  const inviteSuccessBanner =
+    session && inviteClaimBannerText ? (
+      <InviteClaimSuccessBanner
+        message={inviteClaimBannerText}
+        onDismiss={() => setInviteClaimBannerText(null)}
+      />
+    ) : null;
 
   if (loading) {
     return (
@@ -597,6 +637,7 @@ function AppContent() {
     if (!profile.tos_accepted || !profile.privacy_accepted) {
       return (
         <>
+          {inviteSuccessBanner}
           <LegalAcceptanceScreen />
           <StatusBar style="dark" />
         </>
@@ -606,6 +647,7 @@ function AppContent() {
     if (!profile.is_active && (profile.role === 'client' || profile.role === 'agent')) {
       return (
         <>
+          {inviteSuccessBanner}
           <PendingActivationScreen />
           <StatusBar style="dark" />
         </>
@@ -633,6 +675,7 @@ function AppContent() {
   return (
     <>
       <View style={styles.shell}>
+        {inviteSuccessBanner}
         {effectiveRole === 'client' && (
           <ClientPaywallGuard>
             <ClientView

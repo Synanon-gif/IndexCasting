@@ -21,6 +21,10 @@ Pending invite/claim tokens MUST **persist across signUp, signIn, and email conf
 
 Finalization MUST **not** require the user to tap a dedicated “accept” button or keep a particular screen open. **Alerts** are optional UX for hard failures when `showUiAlerts: true`; they are not the authority for whether finalization runs.
 
+## 5. Optional success UX (after RPC success)
+
+A **one-time success banner** or similar, triggered only after `accept_organization_invitation` / `claim_model_by_token` succeeds inside `finalizePendingInviteOrClaim`, is allowed. It MUST NOT imply completion before finalization and MUST NOT be required for finalization to run.
+
 ## References
 
 - Implementation: `src/services/finalizePendingInviteOrClaim.ts`, `src/context/AuthContext.tsx` (`bootstrapThenLoadProfile` tail + session `useEffect`), `App.tsx` (after URL token persist).

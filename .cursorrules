@@ -104,6 +104,13 @@ if (ok) {
 - **Terminologie:** Agency, Client, Model, Booker (Agentur), Employee (Client-Organisation), Invite — konsistent wie in `uiCopy`.
 - **Ausnahme:** Code-Kommentare und interne Logs dürfen weiterhin der Team-Sprache folgen; **alles, was ein Endnutzer sieht, ist Englisch.**
 
+### Invite / claim UI (product guardrail)
+
+- **Invite- und Model-Claim-Flows** müssen sich klar von normalem Self-Service-Sign-up unterscheiden (Copy, Gate-Screens, Auth-Hinweise).
+- **Keine freie Rollenwahl** in Kontexten, in denen die Rolle durch die Einladung festliegt (Booker / Employee / Model-Claim); normaler Sign-up ohne Invite bleibt unverändert.
+- **Success-Copy** („joined …“, „profile connected“) nur **nach** erfolgreicher Backend-Finalisierung (`finalizePendingInviteOrClaim` mit RPC-Erfolg), nicht bloß nach Sign-up oder E-Mail-Hinweis.
+- **Keine Owner-Semantik** in Invite-Copy suggerieren; Owner ist nur der Self-Service-Erstpfad, nicht der Invite-Pfad.
+
 ### Agency bulk vs model current location (product guardrail)
 
 - **Agency bulk selection** (model roster) must **only** manage **territories of representation** — never bulk-edit **current location** or bulk-write agency `model_locations`.

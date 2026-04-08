@@ -202,9 +202,15 @@ export const uiCopy = {
     placeholder: 'Enter details…',
   },
   invite: {
-    pageTitle: 'Organization invitation',
+    /** Gate screen — not a generic self-service signup. */
+    pageTitle: 'Team invitation',
     invalidOrExpired: 'This invitation is invalid or has expired.',
     loadFailed: 'Could not load invitation.',
+    /** Primary line on gate. Placeholders: {org}, {role} */
+    invitedJoinAs: 'You were invited to join {org} as {role}.',
+    /** Secondary line: this is an invite, not creating your own org as owner. */
+    inviteNotSelfServiceHint:
+      'This is an invitation to an existing team — not a normal sign-up where you create your own organization.',
     invitedToWorkAt: 'You were invited to work with',
     validUntil: 'Valid until',
     sameEmailInstructions:
@@ -243,9 +249,12 @@ export const uiCopy = {
     dismissBtn: 'OK',
   },
   modelClaim: {
-    pageTitle: 'Model account invitation',
+    pageTitle: 'Claim your model profile',
     invalidOrExpired: 'This invitation is invalid or has expired.',
     loadFailed: 'Could not load the invitation.',
+    /** Clarifies this is model profile linking, not a Booker/Employee team invite. */
+    notOrgTeamInvite:
+      'This link is for claiming your model profile — not for joining an agency or client workspace as Booker or Employee.',
     profileCreatedBy: 'has created a model profile for you on Index Casting.',
     createAccountHint:
       'Create your account to access your portfolio, manage your profile, and connect with clients.',
@@ -258,6 +267,21 @@ export const uiCopy = {
     invalidLink: 'Invalid or expired model invitation link.',
     copyLink: 'Copy invitation link',
     linkCopied: 'Link copied',
+  },
+  /** One-time banner after accept_organization_invitation / claim_model_by_token succeeds (finalizePendingInviteOrClaim). */
+  inviteClaimSuccess: {
+    dismiss: 'Dismiss',
+    /** Placeholders: {org} */
+    joinedOrgBooker: 'You joined {org} as Booker.',
+    /** Placeholders: {org} */
+    joinedOrgEmployee: 'You joined {org} as Employee.',
+    /** Placeholders: {org} — when member role could not be resolved */
+    joinedOrgGeneric: 'You joined {org}.',
+    /** No org display name */
+    joinedOrgFallback: 'Your team invitation is complete.',
+    /** Placeholders: {agency} optional */
+    modelProfileConnected: 'Your model profile is now connected.',
+    modelProfileConnectedWithAgency: 'Your model profile is now connected ({agency}).',
   },
   clientWeb: {
     calendarCalloutTitle: 'Saving to calendar:',
@@ -277,12 +301,18 @@ export const uiCopy = {
   },
   auth: {
     inviteLine: 'Invitation: {org} · {role}',
+    /** Subtitle when user is in org invite or model claim auth (not self-service). */
+    inviteOrClaimContextSubtitle: 'You are completing an invitation — not a standard sign-up.',
     /** Banner when opening model claim link before auth. {agency} = agency display name. */
-    modelClaimBannerLine: 'Model account · {agency}',
+    modelClaimBannerLine: 'Claim your model profile · {agency}',
     subtitleTagline: 'B2B platform for fashion casting',
     emailPlaceholder: 'Email',
     passwordPlaceholder: 'Password',
     accountTypeFixed: 'Account type: {role} (set by invitation)',
+    /**
+     * Sign-up/login during org invite. Placeholders: {role} = Booker/Employee label, {accountType} = Agency or Client account type.
+     */
+    inviteRoleLockedLine: 'Your role is set by this invitation: {role} (account type: {accountType}).',
     accountScheduledForDeletion:
       'Your account has been scheduled for deletion and is no longer accessible.',
     emailPasswordRequired: 'Email and password are required.',
