@@ -22,7 +22,14 @@
 ## Email sources
 
 - **Resend / `send-invite`**: agency-authored copy for org invites and model claim (`buildModelClaimEmail`). CTA uses the claim URL with `?model_invite=`.
+- **Org invitation payload:** Callers should send `invite_role`: `booker` (agency team tab) or `employee` (client team). The Edge Function uses this for the correct role label in the HTML email (Employee vs Booker). If omitted, the template defaults to Booker for backward compatibility.
+- **Org invitation email copy** states that email confirmation (when enabled) must be completed before sign-in, that membership finalizes on first successful sign-in, and that the same invitation link may be reopened before expiry if needed — aligned with `finalizePendingInviteOrClaim` + stored tokens.
 - **Supabase Auth**: “Confirm your signup” (or similar) is **not** edited in this repo; it is configured in the Supabase dashboard. Users should complete confirm, then sign in; if linking does not complete, reopen the agency invitation link.
+
+## In-app UX (invite / signup / claim)
+
+- **After sign-up with no session** (email confirmation enabled): [`AuthScreen`](../src/screens/AuthScreen.tsx) shows `uiCopy.auth.signUpEmailConfirmation*` so users know to verify email and sign in; invite/model-claim variants add org- or model-specific notes.
+- **Invite and model-claim gates:** [`InviteAcceptanceScreen`](../src/screens/InviteAcceptanceScreen.tsx) and [`ModelClaimScreen`](../src/screens/ModelClaimScreen.tsx) include short `uiCopy` guidance on confirm → sign-in → finalization and reuse of the same link where supported.
 
 ## Related code
 

@@ -33,6 +33,8 @@ interface SendInvitePayload {
   inviterName?: string;
   orgName?: string;
   modelName?: string;
+  /** Org invitation only: Booker (agency) vs Employee (client). Defaults to booker if omitted. */
+  invite_role?: 'booker' | 'employee';
   /** Disambiguates multi-org users: must be one of the caller's organization_ids from get_my_org_context(). */
   organization_id?: string;
 }
@@ -79,9 +81,14 @@ function buildOrgInvitationEmail(params: {
                 <strong>${params.inviterName}</strong> has invited you to join
                 <strong>${params.orgName}</strong> as a <strong>${roleLabel}</strong> on Index Casting.
               </p>
-              <p style="margin:0 0 32px;font-size:15px;line-height:1.6;color:#444444;">
-                Click the button below to accept the invitation and set up your account.
+              <p style="margin:0 0 24px;font-size:15px;line-height:1.6;color:#444444;">
+                Click the button below to open the invitation and create or sign in to your account.
                 This link expires in 48 hours.
+              </p>
+              <p style="margin:0 0 32px;font-size:15px;line-height:1.6;color:#444444;">
+                If you are asked to confirm your email, complete that step, then sign in.
+                Your membership is finalized on your first successful sign-in.
+                If something does not look right, open this same invitation link again before it expires.
               </p>
               <table cellpadding="0" cellspacing="0">
                 <tr>
@@ -243,7 +250,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
     });
   }
 
-  const { type, to, token, inviterName, orgName, modelName, organization_id: bodyOrgId } = body;
+  const {
+    type,
+    to,
+    token,
+    inviterName,
+    orgName,
+    modelName,
+    invite_role: bodyInviteRole,
+    organization_id: bodyOrgId,
+  } = body;
 
   if (!type || !to || !token) {
     return new Response(JSON.stringify({ error: 'missing_required_fields' }), {
@@ -355,11 +371,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   if (type === 'org_invitation') {
     const inviteUrl = `${APP_BASE_URL}/?invite=${encodeURIComponent(token)}`;
+    const roleForEmail =
+      bodyInviteRole === 'employee' ? 'employee' : 'booker';
     const result    = buildOrgInvitationEmail({
       to,
       orgName:     orgName    || 'your organisation',
       inviterName: inviterName || 'A team member',
-      role:        'booker',   // generic; both booker and employee use the same template
+      role:        roleForEmail,
       inviteUrl,
     });
     subject = result.subject;

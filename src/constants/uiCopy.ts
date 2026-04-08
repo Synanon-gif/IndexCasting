@@ -209,6 +209,9 @@ export const uiCopy = {
     validUntil: 'Valid until',
     sameEmailInstructions:
       'Sign up or sign in with the same email address the invitation was sent to.',
+    /** Shown on invite gate: confirm email → sign in → membership finalizes; same link may be reused until expiry. */
+    inviteNextStepsAfterSignup:
+      'If email confirmation is enabled on your account: confirm your email, then sign in. Your membership is finalized on your first successful sign-in. You may open this same invitation link again if needed before it expires.',
     invalidLink: 'Invalid or expired invitation link.',
     copyLink: 'Copy invitation link',
     linkCopied: 'Link copied',
@@ -247,6 +250,9 @@ export const uiCopy = {
     createAccountHint:
       'Create your account to access your portfolio, manage your profile, and connect with clients.',
     expiresNote: 'This invitation link expires in 30 days.',
+    /** Shown on model claim gate: email confirm → sign in → claim finalizes; reuse link if needed. */
+    modelClaimNextStepsAfterSignup:
+      'If email confirmation is enabled: confirm your email, then sign in. Your profile links to this invitation on your first successful sign-in. If it does not, open this same link again before it expires.',
     createAccount: 'Create My Account',
     alreadyHaveAccount: 'I already have an account',
     invalidLink: 'Invalid or expired model invitation link.',
@@ -271,6 +277,11 @@ export const uiCopy = {
   },
   auth: {
     inviteLine: 'Invitation: {org} · {role}',
+    /** Banner when opening model claim link before auth. {agency} = agency display name. */
+    modelClaimBannerLine: 'Model account · {agency}',
+    subtitleTagline: 'B2B platform for fashion casting',
+    emailPlaceholder: 'Email',
+    passwordPlaceholder: 'Password',
     accountTypeFixed: 'Account type: {role} (set by invitation)',
     accountScheduledForDeletion:
       'Your account has been scheduled for deletion and is no longer accessible.',
@@ -308,6 +319,18 @@ export const uiCopy = {
     forgotPasswordSend: 'Send Reset Link',
     /** Success text shown after reset email is sent. */
     forgotPasswordSent: 'Reset link sent — check your inbox.',
+    /**
+     * After sign-up when Supabase returns no session (email confirmation required).
+     * Plain signup / owner path — no invite token context.
+     */
+    signUpEmailConfirmationRequired:
+      'Check your email — we sent a confirmation link. Open it to verify your address, then sign in with the password you chose.',
+    /** Extra guidance when signing up from an organization invitation link (append or second line). */
+    signUpEmailConfirmationInviteNote:
+      'After you confirm and sign in, your invitation will complete automatically. If anything is missing, open the same invitation link again before it expires.',
+    /** Extra guidance when signing up from a model claim link. */
+    signUpEmailConfirmationModelClaimNote:
+      'After you confirm and sign in, your model profile should link automatically. If it does not, open the same invitation link again before it expires.',
     /** Link to go back from forgot-password mode to login. */
     forgotPasswordBack: 'Back to login',
     /** Title of the set-new-password screen (shown after clicking reset link). */

@@ -6,6 +6,7 @@ import { uiCopy } from '../constants/uiCopy';
 import { TermsScreen } from './TermsScreen';
 import { PrivacyScreen } from './PrivacyScreen';
 import { navigatePublicLegal } from '../utils/publicLegalRoutes';
+import { supabase } from '../../lib/supabase';
 
 type AuthScreenProps = {
   initialMode?: 'login' | 'signup';
@@ -41,6 +42,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [forgotSent, setForgotSent] = useState(false);
+  /** Set when signUp succeeds but there is no session (email confirmation required). */
+  const [signUpAwaitingEmail, setSignUpAwaitingEmail] = useState(false);
   const [termsVisible, setTermsVisible] = useState(false);
   const [privacyVisible, setPrivacyVisible] = useState(false);
 
@@ -98,7 +101,17 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         company,
         { isInviteSignup: isOrgInviteFlow }
       );
-      if (e) setError(e);
+      if (e) {
+        setError(e);
+        setSignUpAwaitingEmail(false);
+      } else {
+        const { data: sessWrap } = await supabase.auth.getSession();
+        if (!sessWrap.session) {
+          setSignUpAwaitingEmail(true);
+        } else {
+          setSignUpAwaitingEmail(false);
+        }
+      }
     }
     setBusy(false);
   };
@@ -114,7 +127,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
       <View style={styles.content}>
         <Text style={styles.brand}>INDEX CASTING</Text>
-        <Text style={styles.subtitle}>B2B platform for fashion casting</Text>
+        <Text style={styles.subtitle}>{uiCopy.auth.subtitleTagline}</Text>
 
         {inviteAuth && (
           <Text style={styles.inviteBanner}>
@@ -125,7 +138,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         )}
         {modelClaimAuth && (
           <Text style={styles.inviteBanner}>
-            {`Model account · ${modelClaimAuth.agencyName}`}
+            {uiCopy.auth.modelClaimBannerLine.replace('{agency}', modelClaimAuth.agencyName)}
           </Text>
         )}
 
@@ -138,7 +151,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           <View style={styles.modeRow}>
             <TouchableOpacity
               style={[styles.modeBtn, mode === 'login' && styles.modeBtnActive]}
-              onPress={() => { setMode('login'); setError(null); }}
+              onPress={() => { setMode('login'); setError(null); setSignUpAwaitingEmail(false); }}
             >
               <Text style={[styles.modeBtnLabel, mode === 'login' && styles.modeBtnLabelActive]}>
                 {uiCopy.auth.loginTab}
@@ -146,7 +159,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.modeBtn, mode === 'signup' && styles.modeBtnActive]}
-              onPress={() => { setMode('signup'); setError(null); }}
+              onPress={() => { setMode('signup'); setError(null); setSignUpAwaitingEmail(false); }}
             >
               <Text style={[styles.modeBtnLabel, mode === 'signup' && styles.modeBtnLabelActive]}>
                 {uiCopy.auth.signUpTab}
@@ -157,7 +170,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
         <TextInput
           style={styles.input}
-          placeholder="Email"
+          placeholder={uiCopy.auth.emailPlaceholder}
           placeholderTextColor={colors.textSecondary}
           value={email}
           onChangeText={setEmail}
@@ -167,7 +180,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         {mode !== 'forgot' && (
           <TextInput
             style={styles.input}
-            placeholder="Password"
+            placeholder={uiCopy.auth.passwordPlaceholder}
             placeholderTextColor={colors.textSecondary}
             value={password}
             onChangeText={setPassword}
@@ -240,8 +253,31 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
         {error && <Text style={styles.error}>{error}</Text>}
 
+        {mode === 'signup' && signUpAwaitingEmail && (
+          <View style={styles.signUpEmailInfo}>
+            <Text style={styles.signUpEmailInfoText}>{uiCopy.auth.signUpEmailConfirmationRequired}</Text>
+            {inviteAuth && !modelClaimAuth ? (
+              <Text style={styles.signUpEmailInfoSub}>{uiCopy.auth.signUpEmailConfirmationInviteNote}</Text>
+            ) : null}
+            {modelClaimAuth ? (
+              <Text style={styles.signUpEmailInfoSub}>{uiCopy.auth.signUpEmailConfirmationModelClaimNote}</Text>
+            ) : null}
+          </View>
+        )}
+
         {mode === 'forgot' && forgotSent ? (
           <Text style={styles.forgotSentMsg}>{uiCopy.auth.forgotPasswordSent}</Text>
+        ) : mode === 'signup' && signUpAwaitingEmail ? (
+          <TouchableOpacity
+            style={styles.submitBtn}
+            onPress={() => {
+              setMode('login');
+              setSignUpAwaitingEmail(false);
+              setPassword('');
+            }}
+          >
+            <Text style={styles.submitLabel}>{uiCopy.auth.forgotPasswordBack}</Text>
+          </TouchableOpacity>
         ) : (
           <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit} disabled={busy}>
             {busy ? (
@@ -439,6 +475,28 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     textAlign: 'center',
     marginBottom: spacing.sm,
+    lineHeight: 18,
+  },
+  signUpEmailInfo: {
+    width: '100%',
+    marginBottom: spacing.md,
+    padding: spacing.md,
+    borderRadius: 8,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  signUpEmailInfoText: {
+    ...typography.body,
+    fontSize: 13,
+    color: colors.textPrimary,
+    lineHeight: 20,
+    marginBottom: spacing.sm,
+  },
+  signUpEmailInfoSub: {
+    ...typography.body,
+    fontSize: 12,
+    color: colors.textSecondary,
     lineHeight: 18,
   },
 });

@@ -78,6 +78,7 @@ export function InviteAcceptanceScreen({
               </Text>
             ) : null}
             <Text style={styles.hint}>{uiCopy.invite.sameEmailInstructions}</Text>
+            <Text style={styles.nextSteps}>{uiCopy.invite.inviteNextStepsAfterSignup}</Text>
           </>
         )}
 
@@ -147,7 +148,8 @@ const styles = StyleSheet.create({
   meta: { ...typography.label, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.md, lineHeight: 18 },
   emailHint: { ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.sm, lineHeight: 18 },
   emailHintValue: { fontWeight: '700', color: colors.textPrimary },
-  hint: { ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.lg, lineHeight: 18 },
+  hint: { ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.sm, lineHeight: 18 },
+  nextSteps: { ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.lg, lineHeight: 18 },
   error: { ...typography.body, fontSize: 12, color: '#C0392B', marginBottom: spacing.md },
   btnCol: { gap: spacing.sm },
   primaryBtn: {

@@ -90,6 +90,7 @@ export function ModelClaimScreen({
             )}
             <Text style={styles.hint}>{uiCopy.modelClaim.createAccountHint}</Text>
             <Text style={styles.expires}>{uiCopy.modelClaim.expiresNote}</Text>
+            <Text style={styles.nextSteps}>{uiCopy.modelClaim.modelClaimNextStepsAfterSignup}</Text>
           </>
         )}
 
@@ -165,7 +166,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   hint: { ...typography.body, color: colors.textSecondary, marginBottom: spacing.sm, lineHeight: 20 },
-  expires: { ...typography.label, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.lg },
+  expires: { ...typography.label, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm },
+  nextSteps: { ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.lg, lineHeight: 18 },
   error: { ...typography.body, fontSize: 12, color: '#C0392B', marginBottom: spacing.md },
   btnCol: { gap: spacing.sm },
   primaryBtn: {

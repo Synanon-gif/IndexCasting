@@ -131,6 +131,7 @@ export const ClientOrganizationTeamSection: React.FC<{
               organization_id: organizationId,
               orgName: profile?.company_name || profile?.display_name || undefined,
               inviterName: profile?.display_name || undefined,
+              invite_role: inviteRole,
             },
             headers: s?.access_token ? { Authorization: `Bearer ${s.access_token}` } : undefined,
           });

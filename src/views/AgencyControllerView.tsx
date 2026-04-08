@@ -4858,6 +4858,7 @@ const OrganizationTeamTab: React.FC<{
             organization_id: organizationId,
             orgName: orgName || undefined,
             inviterName: profile?.display_name || undefined,
+            invite_role: 'booker',
           },
           headers: s?.access_token ? { Authorization: `Bearer ${s.access_token}` } : undefined,
         });

@@ -60,6 +60,7 @@ vollständig durchlaufen werden, **bevor** Code committed oder weitergeschrieben
 - **Assignment als Security-Layer:** Nutzt neuer Code `client_assignment_flags` zur Zugriffskontrolle oder Sichtbarkeits-Blockade? → Blocker (Assignment ist Workflow-Metadaten).
 - **Attention als Unread/Security-Mix:** Nutzt neuer Code Smart-Attention als Read-Receipt-Proxy oder Berechtigungsmerkmal? → Blocker (Attention ist Action-Required-Layer).
 - **Upload technical parity drift:** Neuer oder geänderter `storage.upload`-Pfad ohne dieselbe Kette wie in [.cursor/rules/upload-consent-matrix.mdc](./upload-consent-matrix.mdc) (**Upload technical parity**)? → Blocker — MIME-Allowlist, Magic Bytes, Extension-Konsistenz (für `File`), sicherer Pfad/Name, `upsert: false` wo vorgesehen, HEIC-Pipeline bei erlaubtem HEIC.
+- **Invite / signup / claim UX copy:** Nach Sign-up ohne Session (E-Mail-Bestätigung ausstehend) darf die UI das nicht verschweigen; keine „alles erledigt“-Copy bevor Invite/Claim per `finalizePendingInviteOrClaim` finalisiert ist. `send-invite`-Org-Mails: korrektes `invite_role` (booker vs employee) und Semantik wie in [`docs/INVITE_CLAIM_ASSIGNMENT_CONSISTENCY.md`](../../docs/INVITE_CLAIM_ASSIGNMENT_CONSISTENCY.md).
 - **Root-SQL vs Live-DB:** Annahme „Root-`supabase/*.sql` spiegelt Production“ ohne Verifikation nach SECDEF-/Funktions-Fix? → Blocker für Security-Release — siehe `system-invariants.mdc` **LIVE-DB SOURCE OF TRUTH**.
 
 ---

@@ -1,0 +1,37 @@
+{
+  "feedback_gaps_found": [
+    "AuthScreen: no post-signup message when Supabase returns no session (email confirmation required)",
+    "InviteAcceptanceScreen / ModelClaimScreen: no explicit confirm-email → sign-in → finalize sequence",
+    "send-invite org template: Client employee invites showed Booker in email body (hardcoded role)"
+  ],
+  "copy_gaps_found": [
+    "Org Resend email did not mention email confirmation + reopen link (model_claim template already had this)",
+    "AuthScreen hardcoded subtitle and Email/Password placeholders outside uiCopy",
+    "Model claim banner hardcoded instead of uiCopy"
+  ],
+  "fixed_now": [
+    "uiCopy: auth subtitle, placeholders, model claim banner, signUp email confirmation strings, invite/model gate next-step hints",
+    "AuthScreen: getSession after signUp; signUpAwaitingEmail UI + Back to login; centralize copy",
+    "InviteAcceptanceScreen + ModelClaimScreen: next-step guidance from uiCopy",
+    "send-invite: invite_role payload; correct Employee/Booker label; org email paragraph on confirm + finalize + retry link",
+    "ClientOrganizationTeamSection + AgencyControllerView: pass invite_role in invoke body",
+    "docs/INVITE_CLAIM_ASSIGNMENT_CONSISTENCY.md + auto-review.mdc UX/copy guardrail"
+  ],
+  "rules_updated": [
+    ".cursor/rules/auto-review.mdc — Invite/signup/claim UX copy + send-invite invite_role bullet"
+  ],
+  "docs_updated": [
+    "docs/INVITE_CLAIM_ASSIGNMENT_CONSISTENCY.md — Email sources, invite_role, in-app UX section"
+  ],
+  "manual_review_required": [
+    "Spot-check Resend HTML in inbox for agency booker vs client employee",
+    "Confirm Supabase project still has confirm-email enabled as expected for staging/production"
+  ],
+  "do_not_touch": [
+    "bootstrapThenLoadProfile",
+    "get_my_org_context",
+    "Admin-RPCs",
+    "Paywall core",
+    "Large App.tsx / Auth routing refactors"
+  ]
+}
