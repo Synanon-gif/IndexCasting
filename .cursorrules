@@ -7,7 +7,7 @@ Du bist der Lead Product Engineer für IndexCasting. Dein Ziel ist es, das "digi
 ## 1. Die Vision & UX-DNA
 - Tinder-Style: Alle Auswahlprozesse (Castings, Recruiting) basieren auf flüssigen Swipe-Gesten (nutze Reanimated).
 - WhatsApp-Speed: Messaging zwischen Booker und Model muss Instant-Charakter haben (nutze Supabase Realtime).
-- B2B-Precision: Datenfelder (Height, Bust, etc.) müssen 1:1 Mediaslide-konform sein.
+- B2B-Precision: Datenfelder (Height, Chest — Legacy-Spalte/API `bust`, siehe §27.2 — etc.) müssen 1:1 Mediaslide-konform sein.
 
 ## 2. Tech-Stack & Skalierung (100k User Ready)
 - Backend: Supabase (Auth, DB, Storage). Nutze RLS-Regeln strikt!
@@ -531,3 +531,67 @@ END IF;
 - Smart Attention ist **Action Required**, **nicht** Unread-/Read-Receipt-Logik und **nicht** Security.
 - Smart Attention darf nur aus stabilen bestehenden Workflowfeldern abgeleitet werden (`status`, `final_status`, `client_price_status`, `model_approval`, Konfliktsemantik, Assignment-Metadaten).
 - Attention oder Assignment dürfen **niemals** Sichtbarkeit, RLS oder Berechtigungen verändern.
+
+---
+
+## 27. Final System Consistency — Discovery, Invite, Filters, Location (Audit-Invarianten)
+
+Ergänzt und schärft die obigen Regeln **ohne** sie zu ersetzen. Bei Widerspruch gilt die **restriktivere** Anforderung. Verweis auf Detail-Docs bleibt maßgeblich (`docs/BOOKING_BRIEF_SYSTEM.md`, `docs/INVITE_CLAIM_ASSIGNMENT_CONSISTENCY.md`, `docs/CLIENT_MODEL_PHOTO_VISIBILITY.md`, `.cursor/rules/invite-finalization.mdc`).
+
+### 27.1 Discovery / Image (CRITICAL — portfolio vs polaroids)
+
+- **Standard Discovery** (Client, Agency-internes Browsen): nur **`portfolio_images`** anzeigen; **`polaroids` immer `[]`** (oder gleichwertig: nie für Discovery-Grids/Cards nutzen).
+- **Polaroids** nur sichtbar in: **Agency Packages** und **Guest Links** (externe Packages), gesteuert über **`packageType`** (`portfolio` | `polaroid`).
+- **Verboten:** jeder Pfad, in dem Polaroids in **normaler** Discovery erscheinen (nicht Package-/Guest-Kontext).
+
+### 27.2 Measurement (Chest-only UI + COALESCE-Datenlogik)
+
+- **Produkt-UI:** ausschließlich **„Chest (cm)“** — das Wort **„Bust“** darf in **sichtbarer** Nutzer-UI nicht vorkommen (`uiCopy` als Quelle; siehe auch `.cursor/rules/auto-review.mdc` Legacy-Felder).
+- **App-Datenlogik einheitlich:** `chest_value = m.chest ?? m.bust` für Anzeige, Sortierung und Filter, wo der Brustumfang gemeint ist — gilt für Discovery, Filter, Model Cards, Agency-Ansichten, Guest/Package-Ansichten.
+- **SQL / RPCs:** wo derselbe Wert serverseitig genutzt wird, **`COALESCE(m.chest, m.bust)`** (oder äquivalent), damit `chest` NULL + `bust` gesetzt nicht zu falscher Abwesenheit im Ergebnis führt.
+
+### 27.3 Discovery-Filter-Konsistenz
+
+- **Kein Model** darf **nur** deshalb durch Filter aus dem sichtbaren Set fallen, weil **`chest` NULL** ist, **`bust`** aber gesetzt.
+- **Filter müssen übereinstimmen** zwischen: Discovery-RPCs (z. B. `get_discovery_models`), Near-Location-/Geo-Pfaden, Client-`filterModels` / `modelFilters` und **Legacy-Fetch-Pfaden**, soweit dieselbe Semantik gilt.
+
+### 27.4 Location — strikte Trennung (Territory vs physisch vs Stadt)
+
+- **Territory** (Länder-/Repräsentationsgebiet): autoritativ **`model_agency_territories`** — nicht mit Stadt/GPS verwechseln.
+- **Physische Lage / Near Me:** **`model_locations`** mit unveränderlicher **Source-Priorität** `live` → `current` → `agency` (siehe §4b Location guardrail + `system-invariants.mdc` LOCATION SOURCE SYSTEM).
+- **Stadt:** primär **`models.city`**; optionaler Fallback **`model_locations.city`** nur wo explizit als Fallback dokumentiert/semantisch korrekt.
+- **Diese Ebenen nicht mischen** (z. B. Territory-Logik nicht für „Stadtfilter“ oder Near-Me-Koordinaten substituieren).
+
+### 27.5 Invite / Claim — Finalisierung (session + Token, UI-unabhängig)
+
+- Finalisierung basiert **immer** auf **Session + persistiertem Token** (`finalizePendingInviteOrClaim` o. Ä.) — **nicht** davon, ob ein bestimmter Screen gerade gemountet ist.
+- **Reihenfolge:** **Invite zuerst**; **Claim danach**, wenn der Invite-Pfad erfolgreich abgeschlossen ist (siehe `docs/INVITE_CLAIM_ASSIGNMENT_CONSISTENCY.md`).
+- **Tokens** bleiben erhalten bis **Erfolg** oder **fataler Fehler** (kein verfrühes Löschen, das Recovery bricht).
+- Ergänzt §4b / §6 Model-Claim-Token: technische Finalisierung ist **kanonisch**, nicht UI-gekoppelt.
+
+### 27.6 Invite-Kontext — UI-Invariante
+
+- **Invite-Kontext ≠ normaler Self-Service-Sign-up** (siehe §4b): feste Rolle **Booker** / **Employee** / Model-Claim **anzeigen**, **keine freie Rollenwahl** in diesen Kontexten.
+- Copy muss klar machen: **„You are joining an existing organization“** (oder gleichwertig in `uiCopy`).
+- **Kein Owner-Missverständnis:** Invite-Copy suggeriert nicht, der Nutzer werde „Owner“ einer neuen Org (Owner bleibt Self-Service-Erstpfad; §4b).
+
+### 27.7 Booking Brief — wichtige Grenze
+
+- **`booking_details` (inkl. `booking_brief`):** **keine** feldweise RLS-/Server-Isolation — Sichtbarkeit **nur UI-gefiltert** bei Row-Zugriff.
+- **Verboten:** zu behaupten oder zu dokumentieren, einzelne Brief-Felder seien **serverseitig** gegen andere Teilnehmer isoliert. Siehe §4c + `docs/BOOKING_BRIEF_SYSTEM.md`.
+
+### 27.8 Storage / Foto-Zugriff
+
+- Sichtbarkeit und Download **Model-Fotos:** über **`model_photos`‑Zeilen** **und** **Alignment** mit **`can_view_model_photo_storage`** (§6, `docs/CLIENT_MODEL_PHOTO_VISIBILITY.md`).
+- **Storage-Policies** dürfen **keinen** eigenständig **breiteren** Zugriff eröffnen, als die **Row-Sichtbarkeit** + definierte Helper erlauben.
+
+### 27.9 Finalisierung — UX (non-blocking, kein False Success)
+
+- **Success-Messages** („joined …“, „profile connected“ …) **nur** nach **nachgewiesener** serverseitiger Finalisierung (RPC/Backend OK), **nicht** allein nach Sign-up oder E-Mail-Hinweis ohne Session — siehe §4b Invite / claim UI.
+- Nach Sign-up **ohne** Session (z. B. E-Mail-Bestätigung ausstehend): UI verschweigt das nicht; **kein** „alles erledigt“-Eindruck.
+
+### 27.10 Änderungs-Guardrail (Pflicht-Check bei Touch)
+
+Bei Änderungen an **Discovery**, **Invite-/Claim-Flows**, **Storage/Fotos**, **Filtern**, **RLS/Policies** immer prüfen: **Verletzt das §27.1–27.9?**
+
+- Wenn **ja** → Änderung **stoppen** oder **explizit** als bewusste Ausnahme mit Begründung und Risiko dokumentieren (kein stiller Verstoß).
