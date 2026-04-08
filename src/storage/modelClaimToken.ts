@@ -107,3 +107,18 @@ export async function readModelClaimToken(): Promise<string | null> {
     return null;
   }
 }
+
+/** Web-only synchronous read for first-paint routing (native: always null). Runs session→localStorage migration first. */
+export function peekPendingModelClaimTokenSync(): string | null {
+  try {
+    migrateWebModelClaimTokenIfNeeded();
+    const loc = webLocal();
+    if (!loc) return null;
+    const t = loc.getItem(STORAGE_KEY);
+    const trimmed = t?.trim() ?? '';
+    return trimmed.length > 0 ? trimmed : null;
+  } catch (e) {
+    console.error('peekPendingModelClaimTokenSync error:', e);
+    return null;
+  }
+}

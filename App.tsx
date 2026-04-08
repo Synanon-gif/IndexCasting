@@ -27,8 +27,19 @@ import { supabaseUrl, supabaseAnonKey } from './src/config/env';
 import { AppErrorBoundary } from './src/components/AppErrorBoundary';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { getInvitationPreview, type InvitationPreview } from './src/services/organizationsInvitationsSupabase';
-import { persistInviteToken, markInviteFlowFromUrl } from './src/storage/inviteToken';
-import { persistModelClaimToken, markModelClaimFlowFromUrl } from './src/storage/modelClaimToken';
+import {
+  persistInviteToken,
+  markInviteFlowFromUrl,
+  readInviteToken,
+  peekPendingInviteTokenSync,
+} from './src/storage/inviteToken';
+import {
+  persistModelClaimToken,
+  markModelClaimFlowFromUrl,
+  readModelClaimToken,
+  peekPendingModelClaimTokenSync,
+} from './src/storage/modelClaimToken';
+import { resolveInviteAndClaimTokensForRouting } from './src/utils/inviteClaimRouting';
 import { getModelClaimPreview } from './src/services/modelsSupabase';
 import { finalizePendingInviteOrClaim } from './src/services/finalizePendingInviteOrClaim';
 import { resolveInviteClaimSuccessMessage } from './src/services/inviteClaimSuccessUi';
@@ -123,6 +134,26 @@ function getSignupFromUrl(): boolean {
   return new URLSearchParams(window.location.search).get('signup') === '1';
 }
 
+/** Web: URL + localStorage peek (no flash). Native: callers hydrate async. */
+function computeInitialInviteClaimFromUrlAndPeek(): {
+  invite: string | null;
+  claim: string | null;
+  inviteFromUrl: boolean;
+  modelInviteFromUrl: boolean;
+} {
+  const urlInv = getInviteTokenFromUrl();
+  const urlCl = getModelInviteTokenFromUrl();
+  const { invite, claim } = resolveInviteAndClaimTokensForRouting(
+    urlInv,
+    urlCl,
+    peekPendingInviteTokenSync(),
+    peekPendingModelClaimTokenSync(),
+  );
+  const inviteFromUrl = Boolean(urlInv);
+  const modelInviteFromUrl = Boolean(urlCl) && claim === urlCl;
+  return { invite, claim, inviteFromUrl, modelInviteFromUrl };
+}
+
 /**
  * Full-app-lock for client organizations.
  *
@@ -187,17 +218,26 @@ function AppContent() {
   const [sharedParams] = useState<{ name: string; ids: string[] } | null>(getSharedParams);
   const [bookingThreadId, setBookingThreadId] = useState<string | null>(getBookingThreadId);
   const [guestLinkId] = useState<string | null>(getGuestLinkId);
-  const [inviteTokenState] = useState<string | null>(() => getInviteTokenFromUrl());
+  const initialRouting =
+    Platform.OS === 'web'
+      ? computeInitialInviteClaimFromUrlAndPeek()
+      : { invite: null, claim: null, inviteFromUrl: false, modelInviteFromUrl: false };
+
+  const [inviteTokenState, setInviteTokenState] = useState<string | null>(initialRouting.invite);
+  const [modelInviteTokenState, setModelInviteTokenState] = useState<string | null>(initialRouting.claim);
+  const [inviteTokenFromUrl] = useState(initialRouting.inviteFromUrl);
+  const [modelInviteTokenFromUrl] = useState(initialRouting.modelInviteFromUrl);
+  const [nativeInviteClaimHydrated, setNativeInviteClaimHydrated] = useState(Platform.OS === 'web');
+
   const [invitePreview, setInvitePreview] = useState<InvitationPreview | null>(null);
-  const [invitePreviewLoading, setInvitePreviewLoading] = useState(Boolean(inviteTokenState));
+  const [invitePreviewLoading, setInvitePreviewLoading] = useState(Boolean(initialRouting.invite));
   const [invitePreviewError, setInvitePreviewError] = useState<string | null>(null);
   const [inviteAuthPhase, setInviteAuthPhase] = useState<'gate' | 'auth'>('gate');
   const [inviteAuthMode, setInviteAuthMode] = useState<'login' | 'signup'>('signup');
 
   // Model claim token — parallel to org invite token
-  const [modelInviteTokenState] = useState<string | null>(() => getModelInviteTokenFromUrl());
   const [modelClaimPreview, setModelClaimPreview] = useState<ModelClaimPreview | null>(null);
-  const [modelClaimPreviewLoading, setModelClaimPreviewLoading] = useState(Boolean(modelInviteTokenState));
+  const [modelClaimPreviewLoading, setModelClaimPreviewLoading] = useState(Boolean(initialRouting.claim));
   const [modelClaimPreviewError, setModelClaimPreviewError] = useState<string | null>(null);
   const [modelClaimAuthPhase, setModelClaimAuthPhase] = useState<'gate' | 'auth'>('gate');
   const [modelClaimAuthMode, setModelClaimAuthMode] = useState<'login' | 'signup'>('signup');
@@ -249,6 +289,31 @@ function AppContent() {
     });
   }, []);
 
+  // Native: async read storage so routing matches finalizePendingInviteOrClaim (no URL on native).
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const urlInv = getInviteTokenFromUrl();
+        const urlCl = getModelInviteTokenFromUrl();
+        const storeInv = await readInviteToken();
+        const storeCl = await readModelClaimToken();
+        const { invite, claim } = resolveInviteAndClaimTokensForRouting(urlInv, urlCl, storeInv, storeCl);
+        if (!cancelled) {
+          setInviteTokenState(invite);
+          setModelInviteTokenState(claim);
+        }
+      } finally {
+        // Always unblock (Strict Mode double-invoke: first run cancelled must not leave spinner stuck).
+        setNativeInviteClaimHydrated(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Computed early (before hooks) so it can be used in useEffect and render guards.
   // True when the user is fully authenticated and NOT a Magic-Link guest.
   const isAuthenticatedNonGuest = !!session && !!profile && profile.is_guest !== true;
@@ -277,7 +342,7 @@ function AppContent() {
     let cancelled = false;
     void (async () => {
       await persistInviteToken(inviteTokenState);
-      await markInviteFlowFromUrl();
+      if (inviteTokenFromUrl) await markInviteFlowFromUrl();
       if (cancelled) return;
       setInvitePreviewLoading(true);
       try {
@@ -304,7 +369,7 @@ function AppContent() {
     return () => {
       cancelled = true;
     };
-  }, [inviteTokenState, session?.user?.id, refreshProfile, signOut]);
+  }, [inviteTokenState, inviteTokenFromUrl, session?.user?.id, refreshProfile, signOut]);
 
   // ── Model Claim Token Flow (parallel to org invite) ──────────────────────
 
@@ -313,7 +378,7 @@ function AppContent() {
     let cancelled = false;
     void (async () => {
       await persistModelClaimToken(modelInviteTokenState);
-      await markModelClaimFlowFromUrl();
+      if (modelInviteTokenFromUrl) await markModelClaimFlowFromUrl();
       if (cancelled) return;
       setModelClaimPreviewLoading(true);
       try {
@@ -344,7 +409,7 @@ function AppContent() {
     return () => {
       cancelled = true;
     };
-  }, [modelInviteTokenState, session?.user?.id, refreshProfile]);
+  }, [modelInviteTokenState, modelInviteTokenFromUrl, session?.user?.id, refreshProfile]);
 
   useEffect(() => {
     if (!effectiveRole || effectiveRole === 'apply') setCurrentUserId(null);
@@ -508,6 +573,18 @@ function AppContent() {
       }
     }
 
+    // Native: wait for AsyncStorage invite/claim read so AuthScreen does not clear stale tokens early.
+    if (!nativeInviteClaimHydrated) {
+      return (
+        <>
+          <View style={[styles.shell, { justifyContent: 'center', alignItems: 'center' }]}>
+            <ActivityIndicator size="large" color={colors.textPrimary} />
+          </View>
+          <StatusBar style="dark" />
+        </>
+      );
+    }
+
     const inviteLockedRole =
       invitePreview?.org_type === 'agency' ? 'agent' : invitePreview?.org_type === 'client' ? 'client' : undefined;
     const inviteRoleLabel =
@@ -517,7 +594,7 @@ function AppContent() {
           ? uiCopy.invite.roleEmployeeClient
           : uiCopy.invite.roleMember;
 
-    // Model claim gate — shown before login when ?model_invite= is in the URL
+    // Model claim gate — before login when model claim token is in URL or persisted storage
     if (modelInviteTokenState && modelClaimAuthPhase === 'gate' && (modelClaimPreviewLoading || modelClaimPreview)) {
       return (
         <>
@@ -627,7 +704,7 @@ function AppContent() {
   if (!effectiveRole) {
     return (
       <>
-        <AuthScreen clearStaleInviteOnSignIn={!inviteTokenState} />
+        <AuthScreen clearStaleInviteOnSignIn={!(inviteTokenState || modelInviteTokenState)} />
         <StatusBar style="dark" />
       </>
     );

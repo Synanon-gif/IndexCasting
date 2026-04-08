@@ -25,7 +25,11 @@ Finalization MUST **not** require the user to tap a dedicated “accept” butto
 
 A **one-time success banner** or similar, triggered only after `accept_organization_invitation` / `claim_model_by_token` succeeds inside `finalizePendingInviteOrClaim`, is allowed. It MUST NOT imply completion before finalization and MUST NOT be required for finalization to run.
 
+## 6. Unauthenticated routing / invite-context UI
+
+When URL query params are absent but a **persisted** org-invite or model-claim token exists, unauthenticated **routing** (gate screens, `AuthScreen` invite/claim props, `clearStaleInviteOnSignIn`) MUST still reflect the same flow as with `?invite=` / `?model_invite=`. **Precedence** MUST match finalization: org invite token wins; model claim only when no pending org invite. **Telemetry** `markInviteFlowFromUrl` / `markModelClaimFlowFromUrl` MUST run only when the token came from the URL, not from storage restore.
+
 ## References
 
-- Implementation: `src/services/finalizePendingInviteOrClaim.ts`, `src/context/AuthContext.tsx` (`bootstrapThenLoadProfile` tail + session `useEffect`), `App.tsx` (after URL token persist).
+- Implementation: `src/services/finalizePendingInviteOrClaim.ts`, `src/context/AuthContext.tsx` (`bootstrapThenLoadProfile` tail + session `useEffect`), `App.tsx` (URL + `peekPending*TokenSync` / native `read*Token` + `resolveInviteAndClaimTokensForRouting`).
 - Product table: `docs/INVITE_CLAIM_ASSIGNMENT_CONSISTENCY.md`

@@ -1,0 +1,16 @@
+{
+  "title": "Persisted Invite/Claim UI Context Restore",
+  "goal": "Restore invite/claim gate and AuthScreen context from persisted tokens when URL params are missing, without auth-core changes.",
+  "constraints": [
+    "No bootstrapThenLoadProfile / get_my_org_context / admin-RPC / paywall-core changes"
+  ],
+  "phases": {
+    "P1": "Analyse: App.tsx token state was URL-only and immutable; clearStaleInviteOnSignIn could wipe storage on login without URL.",
+    "P2": "Strategy: resolveInviteAndClaimTokensForRouting (invite before claim); web sync peek; native async hydrate + spinner gate.",
+    "P3": "Implementation: inviteToken.ts + modelClaimToken.ts peek*Sync; App.tsx setters, conditional mark*FlowFromUrl, effectiveRole AuthScreen fix.",
+    "P4": "Compatibility: finalizePendingInviteOrClaim unchanged; success banner unchanged.",
+    "P5": "Rule: invite-finalization.mdc §6",
+    "P6": "Tests: inviteClaimRouting.test.ts; CI typecheck/lint/test"
+  },
+  "outcome_label": "INVITE CONTEXT RESTORE APPLIED"
+}
