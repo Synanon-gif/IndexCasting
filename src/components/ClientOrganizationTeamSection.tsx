@@ -111,12 +111,13 @@ export const ClientOrganizationTeamSection: React.FC<{
     }
     setInviteBusy(true);
     try {
-      const row = await createOrganizationInvitation({
+      const result = await createOrganizationInvitation({
         organizationId,
         email: inviteEmail.trim(),
         role: inviteRole,
       });
-      if (row) {
+      if (result.ok) {
+        const row = result.invitation;
         const link = buildOrganizationInviteUrl(row.token);
 
         // Send invitation email via Edge Function (fire and forget — link is fallback)
@@ -147,6 +148,8 @@ export const ClientOrganizationTeamSection: React.FC<{
           emailOk ? uiCopy.alerts.invitationCreatedBody : uiCopy.team.invitationCreatedWithLink(link),
         );
         void loadTeam();
+      } else if (!result.ok && result.error === 'agency_member_limit_reached') {
+        Alert.alert(uiCopy.common.error, uiCopy.team.agencyPlanMemberLimitReached);
       } else {
         Alert.alert(uiCopy.common.error, uiCopy.team.invitationErrorBody);
       }

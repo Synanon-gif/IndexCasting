@@ -1,11 +1,11 @@
 jest.mock('../../services/subscriptionSupabase', () => ({
   PLAN_LIMITS: {
-    trial:             { swipesPerDay: 10, storageGB: 5 },
-    agency_basic:      { swipesPerDay: 10, storageGB: 5 },
-    agency_pro:        { swipesPerDay: 50, storageGB: 50 },
-    agency_enterprise: { swipesPerDay: 150, storageGB: 500 },
-    client:            { swipesPerDay: null, storageGB: null },
-    admin:             { swipesPerDay: null, storageGB: null },
+    trial:             { swipesPerDay: 10, storageGB: 5, maxAgencyMembers: 2 },
+    agency_basic:      { swipesPerDay: 10, storageGB: 5, maxAgencyMembers: 2 },
+    agency_pro:        { swipesPerDay: 50, storageGB: 50, maxAgencyMembers: 4 },
+    agency_enterprise: { swipesPerDay: 150, storageGB: 500, maxAgencyMembers: null },
+    client:            { swipesPerDay: null, storageGB: null, maxAgencyMembers: null },
+    admin:             { swipesPerDay: null, storageGB: null, maxAgencyMembers: null },
   },
 }));
 

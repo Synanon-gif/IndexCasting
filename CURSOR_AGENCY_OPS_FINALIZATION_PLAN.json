@@ -1,0 +1,36 @@
+{
+  "dashboard_findings": [
+    "My Models onRefresh updated both fullModels and dashboard models via refreshAgencyModelLists()",
+    "Tab switch to myModels also refreshes both lists consistently"
+  ],
+  "calendar_filters_added": [
+    "Unified merge: option_requests + booking_events + manual events (agencyCalendarUnified.ts)",
+    "Filters: entry type (option/casting/booking), assignee (all/unassigned/mine/per member), client assignment scope, action-needed",
+    "eventsByDate and list both driven by filtered unified rows"
+  ],
+  "user_limit_enforcement": [
+    "Migration 20260510_agency_org_seat_limits.sql: get_agency_organization_seat_limit + triggers on organization_members and invitations",
+    "PLAN_LIMITS.maxAgencyMembers + getAgencyOrganizationSeatLimit RPC wrapper + createOrganizationInvitation error handling"
+  ],
+  "paywall_updates": [
+    "planFeatures + PaywallScreen agency cards: team seat bullets",
+    "OwnerBillingStatusCard agency note; uiCopy billing.team copy",
+    "Team tab: seat usage line + limit-reached alert"
+  ],
+  "rules_updated": [
+    ".cursorrules — Agency team size & assignment clarification",
+    ".cursor/rules/system-invariants.mdc — AGENCY TEAM SIZE",
+    ".cursor/rules/auto-review.mdc — seat cap review bullet"
+  ],
+  "docs_updated": [
+    "docs/AGENCY_USER_LIMITS_AND_CALENDAR_FILTERS.md"
+  ],
+  "manual_review_required": [],
+  "do_not_touch": [
+    "AuthContext.tsx",
+    "bootstrapThenLoadProfile / signIn / loadProfile core",
+    "get_my_org_context() semantics",
+    "can_access_platform() decision order",
+    "Admin-RPC core"
+  ]
+}

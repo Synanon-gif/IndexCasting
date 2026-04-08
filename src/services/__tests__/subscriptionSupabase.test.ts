@@ -325,12 +325,14 @@ describe('getEffectivePlanLimits', () => {
     const limits = getEffectivePlanLimits('agency_basic', true);
     expect(limits.swipesPerDay).toBeNull();
     expect(limits.storageGB).toBeNull();
+    expect(limits.maxAgencyMembers).toBeNull();
   });
 
   it('returns correct limits for agency_basic', () => {
     const limits = getEffectivePlanLimits('agency_basic', false);
     expect(limits.swipesPerDay).toBe(PLAN_LIMITS['agency_basic'].swipesPerDay);
     expect(limits.storageGB).toBe(PLAN_LIMITS['agency_basic'].storageGB);
+    expect(limits.maxAgencyMembers).toBe(2);
   });
 
   it('returns correct limits for agency_pro', () => {

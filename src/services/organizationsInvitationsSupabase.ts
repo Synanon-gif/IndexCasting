@@ -43,6 +43,10 @@ export type InvitationRow = {
   expires_at: string;
 };
 
+export type CreateOrganizationInvitationResult =
+  | { ok: true; invitation: InvitationRow }
+  | { ok: false; error: 'agency_member_limit_reached' | 'unknown' };
+
 export type InvitationPreview = {
   org_name: string;
   org_type: OrganizationType;
@@ -218,12 +222,12 @@ export async function createOrganizationInvitation(params: {
   email: string;
   role: InvitationRole;
   ttlHours?: number;
-}): Promise<InvitationRow | null> {
+}): Promise<CreateOrganizationInvitationResult> {
   try {
     const { data: userData, error: userErr } = await supabase.auth.getUser();
     if (userErr || !userData.user) {
       console.error('createOrganizationInvitation: no user', userErr);
-      return null;
+      return { ok: false, error: 'unknown' };
     }
 
     // Org-Typ laden und Rollen-Gültigkeit vor dem DB-Insert prüfen.
@@ -231,13 +235,13 @@ export async function createOrganizationInvitation(params: {
     const org = await getOrganizationById(params.organizationId);
     if (!org) {
       console.error('createOrganizationInvitation: organization not found', params.organizationId);
-      return null;
+      return { ok: false, error: 'unknown' };
     }
     if (!isValidRoleForOrgType(params.role, org.type)) {
       console.error(
         `createOrganizationInvitation: role "${params.role}" is not valid for ${org.type} organizations`,
       );
-      return null;
+      return { ok: false, error: 'unknown' };
     }
 
     const ttl = params.ttlHours ?? 48;
@@ -258,7 +262,11 @@ export async function createOrganizationInvitation(params: {
       .single();
     if (error) {
       console.error('createOrganizationInvitation error:', error);
-      return null;
+      const msg = `${error.message ?? ''} ${error.details ?? ''}`;
+      if (msg.includes('agency_member_limit_reached')) {
+        return { ok: false, error: 'agency_member_limit_reached' };
+      }
+      return { ok: false, error: 'unknown' };
     }
     const invitation = data as InvitationRow;
     logAction(params.organizationId, 'createOrganizationInvitation', {
@@ -268,10 +276,14 @@ export async function createOrganizationInvitation(params: {
       entityId: invitation.id,
       newData: { email: params.email, role: params.role, invited_by: userData.user.id },
     });
-    return invitation;
+    return { ok: true, invitation };
   } catch (e) {
     console.error('createOrganizationInvitation exception:', e);
-    return null;
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes('agency_member_limit_reached')) {
+      return { ok: false, error: 'agency_member_limit_reached' };
+    }
+    return { ok: false, error: 'unknown' };
   }
 }
 

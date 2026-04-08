@@ -158,6 +158,11 @@ if (ok) {
 ### Tenant-Isolation (nicht verhandelbar)
 - **Keine Daten-Leaks:** Organisationsdaten dürfen **niemals unbeabsichtigt** für andere Organisationen oder unberechtigte User sichtbar sein. Jede Abfrage, Subscription und Storage-Zugriff muss **strikt auf die jeweilige Org / berechtigte Identität** begrenzt sein (RLS, Filter, keine „breiten" Queries ohne Org-Kontext).
 
+### Agency team size (plan caps, 2026-05)
+- **Agency orgs:** Maximum team size = `organization_members` count (owner + bookers). Enforcement: DB triggers on `organization_members` and `invitations` (booker, pending, non-expired) plus `public.get_agency_organization_seat_limit(org_id)` — not UI-only.
+- **Billing vs. product access:** Seat limits are billing/plan constraints; Booker/Employee product access while the org is active stays org-wide per paywall rules. Owner-only remains billing and invite management.
+- **Client assignment** (`client_assignment_flags`): workflow/labeling only — never changes org-wide data visibility; calendar filters that use assignment are display-only filtering on already-visible rows.
+
 ---
 
 # SYSTEM-WIDE SECURITY, GDPR & LEGAL CONSISTENCY

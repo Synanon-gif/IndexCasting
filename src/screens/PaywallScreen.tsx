@@ -25,7 +25,7 @@ import {
 import { uiCopy } from '../constants/uiCopy';
 import { useSubscription } from '../context/SubscriptionContext';
 import { useAuth } from '../context/AuthContext';
-import { createCheckoutSession, type PlanType } from '../services/subscriptionSupabase';
+import { createCheckoutSession, PLAN_LIMITS, type PlanType } from '../services/subscriptionSupabase';
 import { colors, spacing, typography } from '../theme/theme';
 import { validateUrl } from '../../lib/validation';
 
@@ -47,6 +47,7 @@ const ALL_PLAN_CARDS: PlanCard[] = [
     features: [
       uiCopy.billing.swipesPerDay(10),
       uiCopy.billing.storageLimit(5),
+      uiCopy.billing.agencyTeamSeats(PLAN_LIMITS.agency_basic.maxAgencyMembers ?? 2),
       uiCopy.billing.realtimeMessaging,
       uiCopy.billing.castingManagement,
     ],
@@ -59,6 +60,7 @@ const ALL_PLAN_CARDS: PlanCard[] = [
     features: [
       uiCopy.billing.swipesPerDay(50),
       uiCopy.billing.storageLimit(50),
+      uiCopy.billing.agencyTeamSeats(PLAN_LIMITS.agency_pro.maxAgencyMembers ?? 4),
       uiCopy.billing.realtimeMessaging,
       uiCopy.billing.castingManagement,
       uiCopy.billing.fullPlatformAccess,
@@ -72,6 +74,7 @@ const ALL_PLAN_CARDS: PlanCard[] = [
     features: [
       uiCopy.billing.swipesPerDay(150),
       uiCopy.billing.storageLimit(500),
+      uiCopy.billing.agencyTeamSeatsUnlimited,
       uiCopy.billing.realtimeMessaging,
       uiCopy.billing.castingManagement,
       uiCopy.billing.fullPlatformAccess,

@@ -117,6 +117,11 @@ export const uiCopy = {
     invitationErrorBody: 'Could not create invitation. Ensure you are signed in as the organization owner.',
     inviteBooker: 'Invite booker',
     inviteSendLink: 'Send invitation (create link)',
+    teamSeatsUsage: (used: number, max: number) =>
+      `Team seats: ${used} of ${max} on your current plan (owner + bookers).`,
+    teamSeatsUnlimited: 'Team seats: unlimited on your current plan.',
+    agencyPlanMemberLimitReached:
+      'Plan limit reached. Open Billing to upgrade and add another booker.',
     /** First user who completes agency signup (after admin activation) — profile email must match agency email — is the sole Organization Owner. */
     ownerRoleExplainerAgency:
       'There is exactly one Organization Owner per agency. It is always the first user who signs in with the agency email (after the account is activated). That person invites bookers; only the Owner can create invitations.',
@@ -1282,6 +1287,8 @@ export const uiCopy = {
     fullPlatformAccess: 'Full platform access',
     realtimeMessaging: 'Real-time messaging',
     castingManagement: 'Casting management',
+    agencyTeamSeats: (n: number) => `Up to ${n} team members (owner + bookers)`,
+    agencyTeamSeatsUnlimited: 'Team members: unlimited or custom (Enterprise)',
 
     // ── CTAs ────────────────────────────────────────────────────────────────
     upgradeCTA:          'Get Started',
@@ -1344,6 +1351,8 @@ export const uiCopy = {
     ownerBillingSubscriptionStatusLabel: 'Subscription status',
     ownerBillingBillingPeriodEndLabel: 'Current period ends',
     ownerBillingFeaturesTitle: 'What this plan includes',
+    ownerBillingAgencyTeamNote:
+      'Team size limits count everyone in your organization (owner + bookers). Upgrade here to invite more bookers. Only the owner manages billing; bookers use the product when the organization is active.',
     ownerBillingIncludedIntroTrial:
       'During the trial you have access with trial limits until the trial end date.',
     ownerBillingReasonLineAdminOverride:

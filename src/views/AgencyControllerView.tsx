@@ -162,11 +162,22 @@ import { runNetwalkCronSync } from '../services/netwalkSyncService';
 import { getAgencyApiKeys, saveAgencyApiConnection } from '../services/agencySettingsSupabase';
 import { checkModelCompleteness, type CompletenessContext } from '../utils/modelCompleteness';
 import { calendarEntryColor, OPTION_REQUEST_CHAT_STATUS_COLORS } from '../utils/calendarColors';
+import {
+  buildUnifiedAgencyCalendarRows,
+  filterUnifiedAgencyCalendarRows,
+  buildEventsByDateFromUnifiedRows,
+  type AgencyCalendarTypeFilter,
+  type AgencyCalendarAssigneeFilter,
+  type AgencyCalendarClientScopeFilter,
+  type AgencyCalendarUrgencyFilter,
+  type UnifiedAgencyCalendarRow,
+} from '../utils/agencyCalendarUnified';
 import { DashboardSummaryBar } from '../components/DashboardSummaryBar';
 import { OrgMetricsPanel } from '../components/OrgMetricsPanel';
 import { OwnerBillingStatusCard } from '../components/OwnerBillingStatusCard';
 import { GlobalSearchBar } from '../components/GlobalSearchBar';
 import { getMyAgencyUsageLimits, type AgencyUsageLimits } from '../services/agencyUsageLimitsSupabase';
+import { getAgencyOrganizationSeatLimit } from '../services/subscriptionSupabase';
 import { getLatestActivityLog, type ActivityLog } from '../services/activityLogsSupabase';
 import { uiCopy as _uiCopy } from '../constants/uiCopy';
 import {
@@ -305,6 +316,30 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
 
   const currentAgencyId = currentAgency?.id ?? '';
 
+  const mapAgencyModelsToState = (data: any[]) =>
+    data.map((m: any) => ({
+      id: m.id,
+      name: m.name,
+      traction: m.traction ?? 0,
+      isVisibleCommercial: m.isVisibleCommercial ?? false,
+      isVisibleFashion: m.isVisibleFashion ?? false,
+    }));
+
+  /** Keeps Dashboard (`models`) and My Models (`fullModels`) in sync after import/save/remove. */
+  const refreshAgencyModelLists = useCallback(async () => {
+    if (!currentAgencyId) return;
+    try {
+      const [full, light] = await Promise.all([
+        getModelsForAgencyFromSupabase(currentAgencyId),
+        getAgencyModels(currentAgencyId),
+      ]);
+      setFullModels(full);
+      setModels(mapAgencyModelsToState(light));
+    } catch (e) {
+      console.error('[AgencyControllerView] refreshAgencyModelLists', e);
+    }
+  }, [currentAgencyId]);
+
   useEffect(() => {
     getAgencies().then(setAgencies);
   }, []);
@@ -320,16 +355,9 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
 
   useEffect(() => {
     if (!currentAgencyId) return;
-    getAgencyModels(currentAgencyId).then((data: any[]) => {
-      setModels(data.map((m: any) => ({
-        id: m.id, name: m.name, traction: m.traction ?? 0,
-        isVisibleCommercial: m.isVisibleCommercial ?? false,
-        isVisibleFashion: m.isVisibleFashion ?? false,
-      })));
-    });
-    getModelsForAgencyFromSupabase(currentAgencyId).then(setFullModels);
+    void refreshAgencyModelLists();
     loadOptionRequestsForAgency(currentAgencyId);
-  }, [currentAgencyId]);
+  }, [currentAgencyId, refreshAgencyModelLists]);
 
   const loadAgencyTeam = async () => {
     if (!currentAgencyId) return;
@@ -380,17 +408,8 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
 
   /** Re-load roster when opening My Models (e.g. after accepting an application in Recruiting). */
   useEffect(() => {
-    if (tab === 'myModels' && currentAgencyId) {
-      getModelsForAgencyFromSupabase(currentAgencyId).then(setFullModels);
-      getAgencyModels(currentAgencyId).then((data: any[]) => {
-        setModels(data.map((m: any) => ({
-          id: m.id, name: m.name, traction: m.traction ?? 0,
-          isVisibleCommercial: m.isVisibleCommercial ?? false,
-          isVisibleFashion: m.isVisibleFashion ?? false,
-        })));
-      });
-    }
-  }, [tab, currentAgencyId]);
+    if (tab === 'myModels' && currentAgencyId) void refreshAgencyModelLists();
+  }, [tab, currentAgencyId, refreshAgencyModelLists]);
 
   const loadAgencyCalendar = async () => {
     if (!currentAgencyId) return;
@@ -601,7 +620,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
           agencyId={currentAgencyId}
           agencyName={currentAgency?.name ?? null}
           inviteOrganizationId={agencyOrganizationId ?? profile?.organization_id ?? null}
-          onRefresh={() => getModelsForAgencyFromSupabase(currentAgencyId).then(setFullModels)}
+          onRefresh={refreshAgencyModelLists}
           focusModelId={searchModelId}
           onFocusConsumed={() => setSearchModelId(null)}
         />
@@ -652,6 +671,8 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
           assignmentByClientOrgId={assignmentByClientOrgId}
           manualEvents={manualCalendarEvents}
           bookingEventEntries={bookingEventEntries}
+          teamMembers={teamMembers}
+          currentUserId={session?.user?.id ?? null}
           loading={calendarLoading}
           onRefresh={loadAgencyCalendar}
           onOpenDetails={(item) => {
@@ -1515,6 +1536,8 @@ type AgencyCalendarTabProps = {
   assignmentByClientOrgId?: Record<string, ClientAssignmentFlag>;
   manualEvents: UserCalendarEvent[];
   bookingEventEntries?: CalendarEntry[];
+  teamMembers: Array<{ user_id: string; display_name: string | null; email?: string | null }>;
+  currentUserId: string | null;
   loading: boolean;
   onRefresh: () => void;
   onOpenDetails: (item: AgencyCalendarItem) => void;
@@ -1523,11 +1546,64 @@ type AgencyCalendarTabProps = {
   onAddEvent: () => void;
 };
 
+function renderAgencyCalendarOptionBadge(item: AgencyCalendarItem) {
+  const { option, calendar_entry } = item;
+  const entryType = calendar_entry?.entry_type;
+  let kind: 'Option' | 'Job' | 'Casting' = 'Option';
+  if (entryType === 'booking') kind = 'Job';
+  if (entryType === 'casting' || entryType === 'gosee') kind = 'Casting';
+  const isJobConfirmed = calendar_entry?.status === 'booked';
+
+  let color = '#1565C0';
+  if (kind === 'Job' && isJobConfirmed) {
+    color = colors.buttonSkipRed;
+  } else if (kind === 'Casting' && option.status === 'confirmed') {
+    color = colors.textSecondary;
+  }
+
+  const label =
+    kind === 'Job'
+      ? 'Job'
+      : kind === 'Casting'
+        ? 'Casting'
+        : option.status === 'confirmed'
+          ? 'Option (confirmed)'
+          : 'Option (pending)';
+
+  return (
+    <View
+      style={{
+        borderRadius: 999,
+        paddingHorizontal: spacing.sm,
+        paddingVertical: spacing.xs,
+        backgroundColor: color,
+      }}
+    >
+      <Text style={{ ...typography.label, fontSize: 10, color: '#fff' }}>{label}</Text>
+    </View>
+  );
+}
+
+function renderBookingEntryBadge(entry: CalendarEntry) {
+  const t = entry.entry_type;
+  const label = t === 'booking' ? 'Booking' : t === 'casting' || t === 'gosee' ? 'Casting' : 'Option';
+  let bg = '#1565C0';
+  if (t === 'booking') bg = colors.buttonSkipRed;
+  else if (t === 'casting' || t === 'gosee') bg = colors.textSecondary;
+  return (
+    <View style={{ borderRadius: 999, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, backgroundColor: bg }}>
+      <Text style={{ ...typography.label, fontSize: 10, color: '#fff' }}>{label}</Text>
+    </View>
+  );
+}
+
 const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
   items,
   assignmentByClientOrgId = {},
   manualEvents,
   bookingEventEntries = [],
+  teamMembers,
+  currentUserId,
   loading,
   onRefresh,
   onOpenDetails,
@@ -1538,137 +1614,100 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
   const [modelQuery, setModelQuery] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+  const [typeFilter, setTypeFilter] = useState<AgencyCalendarTypeFilter>('all');
+  const [assigneeFilter, setAssigneeFilter] = useState<AgencyCalendarAssigneeFilter>('all');
+  const [clientScope, setClientScope] = useState<AgencyCalendarClientScopeFilter>('all');
+  const [urgency, setUrgency] = useState<AgencyCalendarUrgencyFilter>('all');
   const now = new Date();
   const [calendarMonth, setCalendarMonth] = useState({ year: now.getFullYear(), month: now.getMonth() });
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
-  const eventsByDate = useMemo(() => {
-    const map: Record<string, CalendarDayEvent[]> = {};
-    manualEvents.forEach((ev) => {
-      if (!map[ev.date]) map[ev.date] = [];
-      map[ev.date].push({ id: ev.id, color: ev.color, title: ev.title, kind: 'manual' });
-    });
-    items.forEach((item) => {
-      const date = item.calendar_entry?.date ?? item.option.requested_date ?? '';
-      if (!date) return;
-      if (!map[date]) map[date] = [];
-      const entryType = item.calendar_entry?.entry_type;
-      const color = calendarEntryColor(entryType);
-      map[date].push({
-        id: item.option.id,
-        color,
-        title: item.option.model_name ?? 'Model',
-        kind: entryType ?? 'option',
-      });
-    });
-    // Merge booking_events as the single source of truth; skip entries already covered
-    // by a calendar_entry sharing the same option_request_id to avoid duplicates.
-    const coveredOptionIds = new Set(
-      items.map((i) => i.calendar_entry?.option_request_id).filter(Boolean),
-    );
-    bookingEventEntries.forEach((be) => {
-      if (be.option_request_id && coveredOptionIds.has(be.option_request_id)) return;
-      const date = be.date;
-      if (!date) return;
-      if (!map[date]) map[date] = [];
-      let color = '#1565C0';
-      if (be.entry_type === 'booking') color = colors.buttonSkipRed;
-      else if (be.entry_type === 'casting' || be.entry_type === 'gosee') color = colors.textSecondary;
-      map[date].push({
-        id: be.id,
-        color,
-        title: be.title ?? 'Booking',
-        kind: be.entry_type ?? 'booking',
-      });
-    });
-    return map;
-  }, [items, manualEvents, bookingEventEntries]);
+  const itemByOptionId = useMemo(() => {
+    const m = new Map<string, AgencyCalendarItem>();
+    for (const i of items) m.set(i.option.id, i);
+    return m;
+  }, [items]);
 
-  const filtered = useMemo(() => {
-    const q = modelQuery.trim().toLowerCase();
-    return items.filter((item) => {
-      const name = (item.option.model_name || '').toLowerCase();
-      if (q && !name.includes(q)) return false;
-      const date = item.calendar_entry?.date ?? item.option.requested_date;
-      if (fromDate && date < fromDate) return false;
-      if (toDate && date > toDate) return false;
-      return true;
-    });
-  }, [items, modelQuery, fromDate, toDate]);
+  const unifiedAll = useMemo(
+    () =>
+      buildUnifiedAgencyCalendarRows(
+        items,
+        bookingEventEntries,
+        manualEvents,
+        assignmentByClientOrgId,
+        itemByOptionId,
+      ),
+    [items, bookingEventEntries, manualEvents, assignmentByClientOrgId, itemByOptionId],
+  );
+
+  const filteredUnified = useMemo(
+    () =>
+      filterUnifiedAgencyCalendarRows(unifiedAll, {
+        modelQuery,
+        fromDate,
+        toDate,
+        typeFilter,
+        assigneeFilter,
+        clientScope,
+        urgency,
+        currentUserId,
+        assignmentByClientOrgId,
+      }),
+    [
+      unifiedAll,
+      modelQuery,
+      fromDate,
+      toDate,
+      typeFilter,
+      assigneeFilter,
+      clientScope,
+      urgency,
+      currentUserId,
+      assignmentByClientOrgId,
+    ],
+  );
+
+  const eventsByDate = useMemo(
+    () => buildEventsByDateFromUnifiedRows(filteredUnified),
+    [filteredUnified],
+  );
 
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
-  const sorted = useMemo(
+  const sortedUnified = useMemo(
     () =>
-      [...filtered]
-        .filter((a) => {
-          const date = a.calendar_entry?.date ?? a.option.requested_date;
-          return date != null && date >= today;
-        })
-        .sort((a, b) =>
-          (a.option.requested_date || '').localeCompare(
-            b.option.requested_date || '',
-          ),
-        ),
-    [filtered, today],
+      [...filteredUnified]
+        .filter((r) => r.date >= today)
+        .sort((a, b) => a.sortKey.localeCompare(b.sortKey)),
+    [filteredUnified, today],
   );
 
-  const sortedManual = useMemo(
-    () =>
-      [...manualEvents]
-        .filter((ev) => (ev.date || '') >= today)
-        .sort((a, b) => {
-          const d = (a.date || '').localeCompare(b.date || '');
-          if (d !== 0) return d;
-          return (a.start_time || '').localeCompare(b.start_time || '');
-        }),
-    [manualEvents, today],
+  const filterPill = (label: string, active: boolean, onPress: () => void) => (
+    <TouchableOpacity
+      onPress={onPress}
+      style={{
+        paddingHorizontal: spacing.sm,
+        paddingVertical: spacing.xs,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: active ? colors.textPrimary : colors.border,
+        backgroundColor: active ? colors.surface : 'transparent',
+      }}
+    >
+      <Text style={{ ...typography.label, fontSize: 11, color: colors.textPrimary }}>{label}</Text>
+    </TouchableOpacity>
   );
 
-  const renderBadge = (item: AgencyCalendarItem) => {
-    const { option, calendar_entry } = item;
-    const entryType = calendar_entry?.entry_type;
-    let kind: 'Option' | 'Job' | 'Casting' = 'Option';
-    if (entryType === 'booking') kind = 'Job';
-    if (entryType === 'casting' || entryType === 'gosee') kind = 'Casting';
-    const isJobConfirmed = calendar_entry?.status === 'booked';
-
-    let color = '#1565C0'; // options in blue
-    if (kind === 'Job' && isJobConfirmed) {
-      color = colors.buttonSkipRed;
-    } else if (kind === 'Casting' && option.status === 'confirmed') {
-      color = colors.textSecondary;
+  const openUnifiedRow = (row: UnifiedAgencyCalendarRow) => {
+    if (row.kind === 'manual') {
+      onOpenManualEvent(row.ev);
+      return;
     }
-
-    const label =
-      kind === 'Job'
-        ? 'Job'
-        : kind === 'Casting'
-        ? 'Casting'
-        : option.status === 'confirmed'
-        ? 'Option (confirmed)'
-        : 'Option (pending)';
-
-    return (
-      <View
-        style={{
-          borderRadius: 999,
-          paddingHorizontal: spacing.sm,
-          paddingVertical: spacing.xs,
-          backgroundColor: color,
-        }}
-      >
-        <Text
-          style={{
-            ...typography.label,
-            fontSize: 10,
-            color: '#fff',
-          }}
-        >
-          {label}
-        </Text>
-      </View>
-    );
+    if (row.kind === 'option') {
+      onOpenDetails(row.item);
+      return;
+    }
+    if (onOpenBookingEntry) onOpenBookingEntry(row.entry);
   };
 
   return (
@@ -1734,6 +1773,44 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
         </View>
       </View>
 
+      <Text style={[s.metaText, { marginBottom: spacing.xs }]}>Entry type</Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.sm }}>
+        {filterPill('All', typeFilter === 'all', () => setTypeFilter('all'))}
+        {filterPill('Option', typeFilter === 'option', () => setTypeFilter('option'))}
+        {filterPill('Casting', typeFilter === 'casting', () => setTypeFilter('casting'))}
+        {filterPill('Booking', typeFilter === 'booking', () => setTypeFilter('booking'))}
+      </View>
+
+      <Text style={[s.metaText, { marginBottom: spacing.xs }]}>Assignee</Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.sm }}>
+        {filterPill('All', assigneeFilter === 'all', () => setAssigneeFilter('all'))}
+        {filterPill('Unassigned', assigneeFilter === 'unassigned', () => setAssigneeFilter('unassigned'))}
+        {filterPill('Mine', assigneeFilter === 'mine', () => setAssigneeFilter('mine'))}
+        {teamMembers.map((m) => (
+          <View key={m.user_id}>
+            {filterPill(
+              m.display_name || m.email || m.user_id.slice(0, 8),
+              assigneeFilter === m.user_id,
+              () => setAssigneeFilter(m.user_id),
+            )}
+          </View>
+        ))}
+      </View>
+
+      <Text style={[s.metaText, { marginBottom: spacing.xs }]}>Client assignment (label)</Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.sm }}>
+        {filterPill('All clients', clientScope === 'all', () => setClientScope('all'))}
+        {filterPill('My assigned clients', clientScope === 'mine', () => setClientScope('mine'))}
+        {filterPill('Unassigned clients', clientScope === 'unassigned', () => setClientScope('unassigned'))}
+      </View>
+
+      <Text style={[s.metaText, { marginBottom: spacing.xs }]}>Attention</Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.md }}>
+        {filterPill('All', urgency === 'all', () => setUrgency('all'))}
+        {filterPill('Action needed', urgency === 'action', () => setUrgency('action'))}
+        {filterPill('No action', urgency === 'clear', () => setUrgency('clear'))}
+      </View>
+
       <MonthCalendarView
         year={calendarMonth.year}
         month={calendarMonth.month}
@@ -1745,24 +1822,20 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
 
       {selectedDate && (
         <View style={[s.modelRow, { marginBottom: spacing.sm }]}>
-          <Text style={s.sectionLabel}>Tag: {selectedDate}</Text>
+          <Text style={s.sectionLabel}>Day: {selectedDate}</Text>
           <TouchableOpacity style={[s.filterPill, { alignSelf: 'flex-start', marginTop: spacing.xs }]} onPress={onAddEvent}>
             <Text style={s.filterPillLabel}>+ Event on this day</Text>
           </TouchableOpacity>
           {(eventsByDate[selectedDate] ?? []).length === 0 ? (
             <Text style={s.metaText}>No entries on this day.</Text>
           ) : (
-            (eventsByDate[selectedDate] ?? []).map((ev) => (
+            (eventsByDate[selectedDate] ?? []).map((ev: CalendarDayEvent) => (
               <TouchableOpacity
                 key={ev.id}
                 style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, paddingVertical: 4 }}
                 onPress={() => {
-                  const manual = manualEvents.find((e) => e.id === ev.id);
-                  if (manual) { onOpenManualEvent(manual); return; }
-                  const item = items.find((i) => (i.calendar_entry?.date ?? i.option.requested_date) === selectedDate && i.option.id === ev.id);
-                  if (item) { onOpenDetails(item); return; }
-                  const beEntry = bookingEventEntries.find((be) => be.id === ev.id);
-                  if (beEntry && onOpenBookingEntry) onOpenBookingEntry(beEntry);
+                  const row = filteredUnified.find((r) => r.id === ev.id);
+                  if (row) openUnifiedRow(row);
                 }}
               >
                 <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: ev.color, marginRight: spacing.sm }} />
@@ -1773,62 +1846,68 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
         </View>
       )}
 
-      {sorted.length === 0 && sortedManual.length === 0 && !loading && (
+      {sortedUnified.length === 0 && !loading && (
         <Text style={s.metaText}>No calendar entries yet.</Text>
       )}
 
-        {sortedManual.map((ev) => (
-          <TouchableOpacity
-            key={ev.id}
-            style={s.modelRow}
-            onPress={() => onOpenManualEvent(ev)}
-          >
-            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-              <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: ev.color || '#888' }} />
-              <View style={{ flex: 1 }}>
-                <Text style={s.modelName}>{ev.title} · {ev.date}</Text>
-                <Text style={s.metaText}>
-                  {ev.start_time || '—'}{ev.end_time ? ` – ${ev.end_time}` : ''}
-                  {ev.note ? ` · ${ev.note}` : ''}
-                </Text>
-              </View>
-            </View>
-          </TouchableOpacity>
-        ))}
-        {sorted.map((item) => {
-          const { option, calendar_entry } = item;
-          const date = calendar_entry?.date ?? option.requested_date;
-          const start =
-            calendar_entry?.start_time ?? option.start_time ?? undefined;
-          const end =
-            calendar_entry?.end_time ?? option.end_time ?? undefined;
+      {sortedUnified.map((row) => {
+        if (row.kind === 'manual') {
+          const ev = row.ev;
           return (
-            <TouchableOpacity
-              key={option.id}
-              style={s.modelRow}
-              onPress={() => onOpenDetails(item)}
-            >
-              <View style={{ flex: 1 }}>
-                <Text style={s.modelName}>
-                  {option.model_name ?? 'Model'} · {date}
-                </Text>
-                <Text style={s.metaText}>
-                  {option.client_name ?? 'Client'}
-                  {start ? ` · ${start}${end ? `–${end}` : ''}` : ''}
-                </Text>
-                {option.client_organization_id && assignmentByClientOrgId[option.client_organization_id] ? (
+            <TouchableOpacity key={row.id} style={s.modelRow} onPress={() => onOpenManualEvent(ev)}>
+              <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+                <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: ev.color || '#888' }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={s.modelName}>{ev.title} · {ev.date}</Text>
                   <Text style={s.metaText}>
-                    {assignmentByClientOrgId[option.client_organization_id].label}
-                    {assignmentByClientOrgId[option.client_organization_id].assignedMemberName
-                      ? ` · ${assignmentByClientOrgId[option.client_organization_id].assignedMemberName}`
-                      : ''}
+                    {ev.start_time || '—'}{ev.end_time ? ` – ${ev.end_time}` : ''}
+                    {ev.note ? ` · ${ev.note}` : ''}
                   </Text>
-                ) : null}
+                </View>
               </View>
-              {renderBadge(item)}
             </TouchableOpacity>
           );
-        })}
+        }
+        if (row.kind === 'booking') {
+          const be = row.entry;
+          return (
+            <TouchableOpacity key={row.id} style={s.modelRow} onPress={() => onOpenBookingEntry?.(be)}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.modelName}>{row.title} · {be.date}</Text>
+                <Text style={s.metaText}>{be.note ?? ''}</Text>
+              </View>
+              {renderBookingEntryBadge(be)}
+            </TouchableOpacity>
+          );
+        }
+        const item = row.item;
+        const { option, calendar_entry } = item;
+        const date = calendar_entry?.date ?? option.requested_date;
+        const start = calendar_entry?.start_time ?? option.start_time ?? undefined;
+        const end = calendar_entry?.end_time ?? option.end_time ?? undefined;
+        return (
+          <TouchableOpacity key={option.id} style={s.modelRow} onPress={() => onOpenDetails(item)}>
+            <View style={{ flex: 1 }}>
+              <Text style={s.modelName}>
+                {option.model_name ?? 'Model'} · {date}
+              </Text>
+              <Text style={s.metaText}>
+                {option.client_name ?? 'Client'}
+                {start ? ` · ${start}${end ? `–${end}` : ''}` : ''}
+              </Text>
+              {option.client_organization_id && assignmentByClientOrgId[option.client_organization_id] ? (
+                <Text style={s.metaText}>
+                  {assignmentByClientOrgId[option.client_organization_id].label}
+                  {assignmentByClientOrgId[option.client_organization_id].assignedMemberName
+                    ? ` · ${assignmentByClientOrgId[option.client_organization_id].assignedMemberName}`
+                    : ''}
+                </Text>
+              ) : null}
+            </View>
+            {renderAgencyCalendarOptionBadge(item)}
+          </TouchableOpacity>
+        );
+      })}
     </ScreenScrollView>
   );
 };
@@ -4816,6 +4895,8 @@ const OrganizationTeamTab: React.FC<{
   const [inviteEmail, setInviteEmail] = useState('');
   const [busy, setBusy] = useState(false);
   const [lastLink, setLastLink] = useState<string | null>(null);
+  /** undefined = not loaded; null = unlimited; number = plan cap */
+  const [seatLimit, setSeatLimit] = useState<number | null | undefined>(undefined);
   const [nameInput, setNameInput] = useState(profile?.display_name ?? '');
   const [nameBusy, setNameBusy] = useState(false);
   const [removingUserId, setRemovingUserId] = useState<string | null>(null);
@@ -4850,15 +4931,24 @@ const OrganizationTeamTab: React.FC<{
     setNameInput(profile?.display_name ?? '');
   }, [profile?.display_name]);
 
+  useEffect(() => {
+    if (!organizationId) {
+      setSeatLimit(undefined);
+      return;
+    }
+    void getAgencyOrganizationSeatLimit(organizationId).then(setSeatLimit);
+  }, [organizationId, members.length, invitations.length]);
+
   const handleInvite = async () => {
     if (!organizationId || !inviteEmail.trim()) return;
     setBusy(true);
-    const row = await createOrganizationInvitation({
+    const result = await createOrganizationInvitation({
       organizationId,
       email: inviteEmail.trim(),
       role: 'booker',
     });
-    if (row) {
+    if (result.ok) {
+      const row = result.invitation;
       const link = buildOrganizationInviteUrl(row.token);
       setLastLink(link);
 
@@ -4890,6 +4980,8 @@ const OrganizationTeamTab: React.FC<{
         uiCopy.alerts.invitationCreated,
         emailOk ? uiCopy.alerts.invitationCreatedBody : uiCopy.alerts.invitationEmailFailed,
       );
+    } else if (result.error === 'agency_member_limit_reached') {
+      Alert.alert(uiCopy.common.error, uiCopy.team.agencyPlanMemberLimitReached);
     } else {
       Alert.alert(uiCopy.common.error, uiCopy.alerts.invitationFailed);
     }
@@ -4956,6 +5048,13 @@ const OrganizationTeamTab: React.FC<{
 
       <View style={{ gap: spacing.sm, marginTop: spacing.md }}>
         <Text style={s.sectionLabel}>{uiCopy.team.members}</Text>
+        {organizationId && seatLimit !== undefined && (
+          <Text style={s.metaText}>
+            {seatLimit === null
+              ? uiCopy.team.teamSeatsUnlimited
+              : uiCopy.team.teamSeatsUsage(members.length, seatLimit)}
+          </Text>
+        )}
         {members.length === 0 ? (
           <Text style={s.metaText}>No members loaded.</Text>
         ) : (

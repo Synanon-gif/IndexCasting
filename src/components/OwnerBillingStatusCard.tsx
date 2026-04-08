@@ -115,8 +115,8 @@ export const OwnerBillingStatusCard: React.FC<Props> = ({ variant }) => {
       return planFeatureLines('admin', false);
     }
     const p = currentPlan ?? subRow?.plan ?? null;
-    return planFeatureLines(p, Boolean(isTrialContext));
-  }, [isAdminOverride, reason, currentPlan, subRow?.plan, isTrialContext]);
+    return planFeatureLines(p, Boolean(isTrialContext), variant);
+  }, [isAdminOverride, reason, currentPlan, subRow?.plan, isTrialContext, variant]);
 
   const displayPlanName = useMemo(() => {
     if (isAdminOverride || reason === 'admin_override') return uiCopy.billing.statusAdminAccess;
@@ -256,6 +256,10 @@ export const OwnerBillingStatusCard: React.FC<Props> = ({ variant }) => {
           <Text style={styles.body}>{line}</Text>
         </View>
       ))}
+
+      {variant === 'agency' && (
+        <Text style={[styles.bodySmallMuted, styles.gapTop]}>{b.ownerBillingAgencyTeamNote}</Text>
+      )}
 
       <Text style={styles.bodySmallMuted}>{b.billingPaymentsProcessedBy}</Text>
       {showSandboxLine && (

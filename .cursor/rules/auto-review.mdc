@@ -24,6 +24,7 @@ vollständig durchlaufen werden, **bevor** Code committed oder weitergeschrieben
 ## 2. Risiko-Erkennung
 
 - **Fehlender Org-Kontext:** Query ohne `org_id`-Filter? → Blocker
+- **Agency team / booker seat caps:** Neue Logik die Einladungen oder `organization_members` ändert, ohne die DB-Enforcement-Stelle (`get_agency_organization_seat_limit`, Trigger auf `organization_members` / `invitations`) zu berücksichtigen? → Blocker — UI spiegelt nur; Caps sind org-weit und planbasiert (Assignment-Flags sind **kein** Seat-Limit).
 - **RLS-Rekursion (42P17):** Policy auf Tabelle im `profiles`→`models`-Pfad mit Rückverweis? → Blocker
   - `FOR ALL`-Policy mit SELECT-Subquery auf `profiles` oder `models`? → Split in INSERT/UPDATE/DELETE
   - SECURITY DEFINER ohne `SET row_security TO off`? → Blocker

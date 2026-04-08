@@ -72,17 +72,19 @@ export interface AdminOverride {
 export interface PlanLimits {
   swipesPerDay: number | null;   // null = unlimited
   storageGB:    number | null;   // null = unlimited
+  /** Max organization_members for an agency org; null = unlimited (enforced server-side). */
+  maxAgencyMembers: number | null;
 }
 
 // ─── Plan metadata ────────────────────────────────────────────────────────────
 
 export const PLAN_LIMITS: Record<string, PlanLimits> = {
-  agency_basic:      { swipesPerDay: 10,  storageGB: 5   },
-  agency_pro:        { swipesPerDay: 50,  storageGB: 50  },
-  agency_enterprise: { swipesPerDay: 150, storageGB: 500 },
-  client:            { swipesPerDay: null, storageGB: null },
-  trial:             { swipesPerDay: 10,  storageGB: 5   },
-  admin:             { swipesPerDay: null, storageGB: null },
+  agency_basic:      { swipesPerDay: 10,  storageGB: 5,   maxAgencyMembers: 2 },
+  agency_pro:        { swipesPerDay: 50,  storageGB: 50,  maxAgencyMembers: 4 },
+  agency_enterprise: { swipesPerDay: 150, storageGB: 500, maxAgencyMembers: null },
+  client:            { swipesPerDay: null, storageGB: null, maxAgencyMembers: null },
+  trial:             { swipesPerDay: 10,  storageGB: 5,   maxAgencyMembers: 2 },
+  admin:             { swipesPerDay: null, storageGB: null, maxAgencyMembers: null },
 };
 
 // ─── Core: getMyOrgAccessStatus ──────────────────────────────────────────────
@@ -205,6 +207,25 @@ export async function getMyAdminOverride(): Promise<AdminOverride | null> {
  * The Edge Function resolves the org_id from the caller's JWT server-side.
  * Returns the Stripe checkout URL or null on error.
  */
+/**
+ * Server-side seat cap for an agency organization (null = unlimited).
+ * Mirrors get_agency_organization_seat_limit() — use for UI hints only; enforcement is in DB triggers.
+ */
+export async function getAgencyOrganizationSeatLimit(organizationId: string): Promise<number | null> {
+  if (!organizationId) return null;
+  try {
+    const { data, error } = await supabase.rpc('get_agency_organization_seat_limit', {
+      p_organization_id: organizationId,
+    });
+    if (error) throw error;
+    if (data === null || data === undefined) return null;
+    return typeof data === 'number' ? data : Number(data);
+  } catch (err) {
+    console.error('[subscription] getAgencyOrganizationSeatLimit error:', err);
+    return null;
+  }
+}
+
 export async function createCheckoutSession(
   plan: PlanType,
   options?: { success_url?: string; cancel_url?: string },
@@ -257,7 +278,9 @@ export function getEffectivePlanLimits(
   plan: PlanType | null,
   isAdminOverride: boolean,
 ): PlanLimits {
-  if (isAdminOverride) return { swipesPerDay: null, storageGB: null };
+  if (isAdminOverride) {
+    return { swipesPerDay: null, storageGB: null, maxAgencyMembers: null };
+  }
   if (!plan) return PLAN_LIMITS['trial'];
   return PLAN_LIMITS[plan] ?? PLAN_LIMITS['trial'];
 }

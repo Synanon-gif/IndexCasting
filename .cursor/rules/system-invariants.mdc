@@ -29,6 +29,11 @@ Wenn eine Änderung eine dieser Regeln gefährdet → STOP und refaktorieren.
 - **Frontend:** Spiegelt nur; **kein** Enforce nur aus `SubscriptionContext` ohne serverseitige Prüfung bei neuen Features.
 - **Models:** Nutzen `organization_members` nicht für Agency-Beziehung (Fix H); Paywall-RPC ist für B2B-Org-User konzipiert — Model-Routing bleibt davon getrennt.
 
+### AGENCY TEAM SIZE (plan caps)
+
+- Agency organizations: maximum **B2B seats** = rows in `organization_members` (owner + bookers). Enforced by DB triggers (`20260510_agency_org_seat_limits.sql`) and `get_agency_organization_seat_limit()`; trial/basic/pro/enterprise mapping matches product (Basic 2, Pro 4, Enterprise unlimited `NULL`, admin override unlimited).
+- **Do not** use client assignment flags or calendar filters as security boundaries — they filter presentation only; RLS and org membership remain authoritative.
+
 ### PAYWALL INVARIANTS (STRICT)
 
 - Paywall ist **immer** org-weit, niemals user-lokal.
