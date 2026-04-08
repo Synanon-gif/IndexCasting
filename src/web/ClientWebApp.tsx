@@ -156,6 +156,7 @@ const ClientDashboardTab: React.FC<{
   onNavigateCalendar: () => void;
   onNavigateRequests: () => void;
   onSelectConversation: (id: string) => void;
+  onSelectOption: (id: string) => void;
   onSelectModel: (id: string) => void;
 }> = ({
   orgId,
@@ -164,6 +165,7 @@ const ClientDashboardTab: React.FC<{
   onNavigateCalendar,
   onNavigateRequests,
   onSelectConversation,
+  onSelectOption,
   onSelectModel,
 }) => (
   <View style={{ flex: 1 }}>
@@ -173,7 +175,7 @@ const ClientDashboardTab: React.FC<{
           orgId={orgId}
           onSelectModel={onSelectModel}
           onSelectConversation={onSelectConversation}
-          onSelectOption={() => onNavigateRequests()}
+          onSelectOption={onSelectOption}
         />
       </View>
     )}
@@ -1827,7 +1829,14 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             onNavigateMessages={() => setTab('messages')}
             onNavigateCalendar={() => setTab('calendar')}
             onNavigateRequests={() => setTab('messages')}
-            onSelectConversation={(id) => { setOpenThreadIdOnMessages(id); setTab('messages'); }}
+            onSelectConversation={(id) => {
+              setPendingClientB2BChat({ conversationId: id, title: '' });
+              setTab('messages');
+            }}
+            onSelectOption={(id) => {
+              setOpenThreadIdOnMessages(id);
+              setTab('messages');
+            }}
             onSelectModel={(id) => { openDetails(id); setTab('discover'); }}
           />
         )}
@@ -3674,8 +3683,17 @@ const ClientB2BChatsPanel: React.FC<{
   onPendingConsumed?: () => void;
   onBookingCardPress?: (meta: Record<string, unknown>) => void;
   onPackagePress?: (meta: Record<string, unknown>) => void;
+  onOpenRelatedRequest?: (optionRequestId: string) => void;
   searchQuery?: string;
-}> = ({ clientUserId, pendingOpen, onPendingConsumed, onBookingCardPress, onPackagePress, searchQuery = '' }) => {
+}> = ({
+  clientUserId,
+  pendingOpen,
+  onPendingConsumed,
+  onBookingCardPress,
+  onPackagePress,
+  onOpenRelatedRequest,
+  searchQuery = '',
+}) => {
   const auth = useAuth();
   const [rows, setRows] = useState<Conversation[]>([]);
   const [titles, setTitles] = useState<Record<string, string>>({});
@@ -3796,9 +3814,11 @@ const ClientB2BChatsPanel: React.FC<{
           conversationId={activeConversationId}
           headerTitle={messengerTitle}
           viewerUserId={auth.profile?.id ?? null}
+          threadContext={{ type: uiCopy.b2bChat.contextOrgChat }}
           containerStyle={{ marginTop: spacing.md }}
           onBookingCardPress={onBookingCardPress}
           onPackagePress={onPackagePress}
+          onOpenRelatedRequest={onOpenRelatedRequest}
         />
       ) : null}
     </View>
@@ -3829,6 +3849,8 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   const [chatInput, setChatInput] = useState('');
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
   const [agencyCounterInput, setAgencyCounterInput] = useState('');
+  const [openOrgChatBusy, setOpenOrgChatBusy] = useState(false);
+  const [localPendingB2BChat, setLocalPendingB2BChat] = useState<{ conversationId: string; title: string } | null>(null);
   const [assignmentFilters, setAssignmentFilters] = useState<AssignmentFilters>({
     scope: 'all',
     flagLabel: 'all',
@@ -3938,6 +3960,29 @@ const MessagesView: React.FC<MessagesViewProps> = ({
     setChatInput('');
   };
 
+  const openOrgChatFromRequest = async () => {
+    if (!request?.agencyId || !clientOrgId || !currentUserId || openOrgChatBusy) return;
+    setOpenOrgChatBusy(true);
+    try {
+      const result = await ensureClientAgencyChat({
+        agencyId: request.agencyId,
+        actingUserId: currentUserId,
+        clientOrganizationId: clientOrgId,
+      });
+      if (!result.ok) {
+        showAppAlert(uiCopy.b2bChat.chatFailedTitle, result.reason || uiCopy.b2bChat.chatFailedGeneric);
+        return;
+      }
+      setClientMsgTab('b2bChats');
+      setLocalPendingB2BChat({
+        conversationId: result.conversationId,
+        title: request.clientName || uiCopy.b2bChat.chatPartnerFallback,
+      });
+    } finally {
+      setOpenOrgChatBusy(false);
+    }
+  };
+
   const showClientMessagesTabs = !isAgency && !!clientUserId;
 
   return (
@@ -3977,8 +4022,15 @@ const MessagesView: React.FC<MessagesViewProps> = ({
       {showClientMessagesTabs && clientMsgTab === 'b2bChats' ? (
         <ClientB2BChatsPanel
           clientUserId={clientUserId!}
-          pendingOpen={pendingClientB2BChat}
-          onPendingConsumed={onPendingClientB2BChatConsumed}
+          pendingOpen={localPendingB2BChat ?? pendingClientB2BChat}
+          onPendingConsumed={() => {
+            if (localPendingB2BChat) setLocalPendingB2BChat(null);
+            else onPendingClientB2BChatConsumed?.();
+          }}
+          onOpenRelatedRequest={(optionRequestId) => {
+            setSelectedThreadId(optionRequestId);
+            setClientMsgTab('optionRequests');
+          }}
           onBookingCardPress={onBookingCardPress}
           onPackagePress={onPackagePress}
           searchQuery={clientMsgSearch}
@@ -4205,6 +4257,20 @@ const MessagesView: React.FC<MessagesViewProps> = ({
               ))}
             </View>
           )}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.sm }}>
+            <View style={[styles.statusPill, { backgroundColor: '#e0e7ff' }]}>
+              <Text style={[styles.statusPillLabel, { color: '#3730a3' }]}>{uiCopy.b2bChat.contextNegotiationThread}</Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.filterPill, openOrgChatBusy && { opacity: 0.6 }]}
+              disabled={openOrgChatBusy || !request.agencyId || !request.clientOrganizationId}
+              onPress={() => { void openOrgChatFromRequest(); }}
+            >
+              <Text style={styles.filterPillLabel}>
+                {openOrgChatBusy ? uiCopy.common.loading : uiCopy.b2bChat.openOrgChat}
+              </Text>
+            </TouchableOpacity>
+          </View>
           {request.proposedPrice != null && isAgency && (
             <Text style={{ ...typography.label, fontSize: 10, color: colors.accentBrown, marginBottom: spacing.xs }}>
               Proposed price: {request.currency === 'USD' ? '$' : request.currency === 'GBP' ? '£' : request.currency === 'CHF' ? 'CHF ' : '€'}{request.proposedPrice}

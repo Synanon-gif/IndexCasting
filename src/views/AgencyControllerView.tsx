@@ -4144,6 +4144,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   const [chatInput, setChatInput] = useState('');
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
   const [agencyCounterInput, setAgencyCounterInput] = useState('');
+  const [openOrgChatBusy, setOpenOrgChatBusy] = useState(false);
   const [processingRequestId, setProcessingRequestId] = useState<string | null>(null);
   const [msgFilter, setMsgFilter] = useState<'current' | 'archived' | 'applications'>('current');
   const [assignmentScope, setAssignmentScope] = useState<'all' | 'mine' | 'unassigned'>('all');
@@ -4313,6 +4314,27 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
     if (!text || !selectedThreadId) return;
     addMessage(selectedThreadId, 'agency', text);
     setChatInput('');
+  };
+
+  const openOrgChatFromRequest = async () => {
+    if (!request?.clientOrganizationId || !agencyId || !currentUserId || openOrgChatBusy) return;
+    setOpenOrgChatBusy(true);
+    try {
+      const result = await ensureClientAgencyChat({
+        clientOrganizationId: request.clientOrganizationId,
+        agencyId,
+        actingUserId: currentUserId,
+      });
+      if (!result.ok) {
+        showAppAlert(uiCopy.b2bChat.chatFailedTitle, result.reason || uiCopy.b2bChat.chatFailedGeneric);
+        return;
+      }
+      setMessagesSection('clientRequests');
+      setActiveConnectionChatId(result.conversationId);
+      setActiveConnectionChatTitle(request.clientName || uiCopy.b2bChat.chatPartnerFallback);
+    } finally {
+      setOpenOrgChatBusy(false);
+    }
   };
 
   const searchActive = messagesSearch.trim().length > 0;
@@ -4579,9 +4601,14 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                   conversationId={activeConnectionChatId}
                   headerTitle={activeConnectionChatTitle}
                   viewerUserId={currentUserId}
+                  threadContext={{ type: uiCopy.b2bChat.contextOrgChat }}
                   agencyId={agencyId}
                   guestLinks={guestLinksForChat}
                   modelsForShare={modelsForShare}
+                  onOpenRelatedRequest={(optionRequestId) => {
+                    setMessagesSection('optionRequests');
+                    setSelectedThreadId(optionRequestId);
+                  }}
                   onBookingCardPress={onBookingCardPress}
                   viewerRole="agency"
                   onBookingStatusUpdated={() => onBookingCardPress?.()}
@@ -4767,6 +4794,20 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                 : ''}
             </Text>
           ) : null}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.sm }}>
+            <View style={[s.statusPill, { backgroundColor: '#e0e7ff' }]}>
+              <Text style={[s.statusPillLabel, { color: '#3730a3' }]}>{uiCopy.b2bChat.contextNegotiationThread}</Text>
+            </View>
+            <TouchableOpacity
+              style={[s.filterPill, openOrgChatBusy && { opacity: 0.6 }]}
+              disabled={openOrgChatBusy || !request.clientOrganizationId}
+              onPress={() => { void openOrgChatFromRequest(); }}
+            >
+              <Text style={s.filterPillLabel}>
+                {openOrgChatBusy ? uiCopy.common.loading : uiCopy.b2bChat.openOrgChat}
+              </Text>
+            </TouchableOpacity>
+          </View>
           {statusDropdownOpen && (
             <View style={{ flexDirection: 'row', gap: 4, marginBottom: spacing.sm }}>
               {(['in_negotiation', 'confirmed', 'rejected'] as ChatStatus[]).map((st) => (

@@ -1,0 +1,34 @@
+{
+  "contexts_clarified": [
+    "Negotiation thread (option/casting specific) is explicitly labeled in request detail panels.",
+    "Org chat (agency-client relationship context) is explicitly labeled via OrgMessengerInline thread context."
+  ],
+  "quick_jumps_added": [
+    "Open org chat from agency option request detail panel.",
+    "Open org chat from client option request detail panel.",
+    "Open related request from org-chat booking card when option_request_id exists."
+  ],
+  "surfaces_updated": [
+    "src/views/AgencyControllerView.tsx",
+    "src/web/ClientWebApp.tsx",
+    "src/components/OrgMessengerInline.tsx",
+    "src/services/bookingChatIntegrationSupabase.ts",
+    "src/store/optionRequests.ts",
+    "src/constants/uiCopy.ts"
+  ],
+  "rules_updated": [],
+  "docs_updated": [
+    "docs/CONTEXTUAL_CHAT_LAYERS.md",
+    "docs/OPTION_CASTING_FLOW.md"
+  ],
+  "safe_next": [
+    "Add optional booking-brief jump from org-chat booking cards when a stable booking_event_id -> brief mapping is finalized.",
+    "Add tiny visual divider chips in message lists for faster context scanning (without changing routing/security)."
+  ],
+  "do_not_touch": [
+    "AuthContext / App.tsx auth routing / signIn / bootstrapThenLoadProfile / loadProfile",
+    "Admin RPC guards and admin detection functions",
+    "Paywall core decision logic",
+    "RLS visibility semantics"
+  ]
+}

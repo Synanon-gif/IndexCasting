@@ -31,7 +31,7 @@ Both are rows in `public.option_requests`. They share the same lifecycle, thread
 Three parallel surfaces are intentional:
 
 1. **Option thread** — `option_request_messages` keyed by `option_request_id`. Roles `client` | `agency` in DB; model-facing copy may appear as system/agency messages when relevant.
-2. **B2B org chat** — `conversations` with stable `context_id` from org pair (`b2bOrgPairContextId`). A **typed** messenger message with `messageType: 'booking'` and metadata (`model_id`, `country_code`, `date`, optional `source`/`package_id`) is created when a request is submitted (`createBookingMessageInClientAgencyChat`). This is **not** a duplicate of the option thread; it gives the org-to-org inbox a booking-shaped card.
+2. **B2B org chat** — `conversations` with stable `context_id` from org pair (`b2bOrgPairContextId`). A **typed** messenger message with `messageType: 'booking'` and metadata (`model_id`, `country_code`, `date`, optional `option_request_id`, optional `source`/`package_id`) is created when a request is submitted (`createBookingMessageInClientAgencyChat`). This is **not** a duplicate of the option thread; it gives the org-to-org inbox a booking-shaped card and can power a safe `Open related request` jump when `option_request_id` is present.
 3. **Calendar + booking_events** — After confirmation paths, `calendar_entries` and `booking_events` link via `option_request_id` / `source_option_request_id` (see migrations and `calendarSupabase` / `optionRequestsSupabase`).
 
 Do not assume a single chat replaces the others without a product decision.

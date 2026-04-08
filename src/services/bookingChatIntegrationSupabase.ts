@@ -7,6 +7,8 @@ export type BookingChatMetadata = {
   country_code: string;
   date: string;
   status: 'pending';
+  /** Related option request thread id for contextual jump back. */
+  option_request_id?: string;
   /** Set when the booking was initiated from a shared package. */
   source?: 'package';
   /** ID of the guest_links row the booking originated from. */
@@ -20,10 +22,21 @@ export async function createBookingMessageInClientAgencyChat(params: {
   modelId: string;
   countryCode: string;
   date: string;
+  optionRequestId?: string;
   source?: 'package';
   packageId?: string;
 }): Promise<boolean> {
-  const { agencyId, actingUserId, clientOrganizationId, modelId, countryCode, date, source, packageId } = params;
+  const {
+    agencyId,
+    actingUserId,
+    clientOrganizationId,
+    modelId,
+    countryCode,
+    date,
+    optionRequestId,
+    source,
+    packageId,
+  } = params;
 
   try {
     if (!clientOrganizationId) return false;
@@ -44,6 +57,7 @@ export async function createBookingMessageInClientAgencyChat(params: {
       country_code: countryCode.trim().toUpperCase(),
       date,
       status: 'pending',
+      ...(optionRequestId ? { option_request_id: optionRequestId } : {}),
       ...(source ? { source } : {}),
       ...(packageId ? { package_id: packageId } : {}),
     };

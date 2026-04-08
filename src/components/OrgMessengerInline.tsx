@@ -75,6 +75,8 @@ export type OrgMessengerInlineProps = {
   containerStyle?: ViewStyle;
   /** Called when the user taps a booking card. Receives the booking metadata from the message. */
   onBookingCardPress?: (metadata: Record<string, unknown>) => void;
+  /** Optional quick jump from booking card to the related option request thread. */
+  onOpenRelatedRequest?: (optionRequestId: string) => void;
   /**
    * Called when the user taps "Request from this package" on a package card.
    * Receives the full package metadata (package_id, guest_link, preview_model_ids, etc.).
@@ -122,6 +124,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   modelsForShare = [],
   containerStyle,
   onBookingCardPress,
+  onOpenRelatedRequest,
   onPackagePress,
   viewerRole,
   onBookingStatusUpdated,
@@ -625,6 +628,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
                     {(() => {
                       const rawStatus = metaString(m, 'status') ?? 'pending';
                       const bookingId = metaString(m, 'booking_event_id') ?? metaString(m, 'booking_id');
+                      const relatedOptionRequestId = metaString(m, 'option_request_id');
                       const label = bookingStatusLabel(rawStatus as BookingEventStatus);
                       const isCancelled = rawStatus === 'cancelled';
                       const isConfirmed = rawStatus === 'model_confirmed' || rawStatus === 'completed';
@@ -679,6 +683,19 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
                                     : <Text style={[styles.actionBtnLabel, { color: colors.textPrimary }]}>Cancel</Text>}
                                 </TouchableOpacity>
                               )}
+                            </View>
+                          )}
+                          {onOpenRelatedRequest && relatedOptionRequestId && (
+                            <View style={{ marginTop: 8 }}>
+                              <TouchableOpacity
+                                onPress={(e) => {
+                                  e.stopPropagation?.();
+                                  onOpenRelatedRequest(relatedOptionRequestId);
+                                }}
+                                style={styles.cardBtn}
+                              >
+                                <Text style={styles.cardBtnLabel}>{uiCopy.b2bChat.openRelatedRequest}</Text>
+                              </TouchableOpacity>
                             </View>
                           )}
                         </>

@@ -338,6 +338,7 @@ export function addOptionRequest(
           modelId,
           countryCode: bookingCountryCode,
           date,
+          optionRequestId: result.id,
           source: extra?.source,
           packageId: extra?.packageId,
         });

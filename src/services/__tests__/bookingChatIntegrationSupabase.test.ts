@@ -35,6 +35,7 @@ describe('createBookingMessageInClientAgencyChat', () => {
       modelId: 'model-1',
       countryCode: 'de',
       date: '2026-03-23',
+      optionRequestId: 'option-123',
     });
 
     expect(ok).toBe(true);
@@ -56,6 +57,7 @@ describe('createBookingMessageInClientAgencyChat', () => {
           country_code: 'DE',
           date: '2026-03-23',
           status: 'pending',
+          option_request_id: 'option-123',
         },
       }),
     );

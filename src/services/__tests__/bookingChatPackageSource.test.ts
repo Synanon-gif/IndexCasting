@@ -41,6 +41,7 @@ describe('createBookingMessageInClientAgencyChat — package source', () => {
 
     expect(passedMeta).not.toHaveProperty('source');
     expect(passedMeta).not.toHaveProperty('package_id');
+    expect(passedMeta).not.toHaveProperty('option_request_id');
     expect(passedMeta.model_id).toBe('model-1');
     expect(passedMeta.status).toBe('pending');
   });
