@@ -4,6 +4,7 @@
 
 - **`agency_update_model_full`** is the SECURITY DEFINER path for agency-side writes to `models` (revoked direct column updates for authenticated).
 - **Membership guard (20260429):** Authorization is checked against **`models.agency_id`** using the same pattern as **`save_model_territories`**: `organization_members` + `organizations.type = 'agency'` + `bookers` fallback. Admins bypass via **`is_current_user_admin()`**.
+- **Schema alignment (20260430):** The RPC must not assign **`models.phone`** — that column does not exist on `public.models` (see `20260410_security_audit_model_column_revoke.sql`). Parameter **`p_phone`** is kept for API compatibility only; it is not written.
 - **Do not** resolve the caller agency with `LIMIT 1` on memberships and compare to `models.agency_id` — that diverges from territory RPCs and breaks when the active workspace agency is not the oldest membership row.
 
 ## Current location (agency)

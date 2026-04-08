@@ -1,0 +1,31 @@
+{
+  "root_causes": [
+    "CONFIRMED_RPC_SCHEMA_DRIFT: agency_update_model_full UPDATE listed models.phone; column public.models.phone does not exist (documented in 20260410_security_audit_model_column_revoke.sql K-1 comment)."
+  ],
+  "fixed_now": [
+    "Migration 20260430_agency_update_model_full_remove_models_phone.sql — removed phone from UPDATE; kept p_phone parameter for signature/API compatibility; updated COMMENT ON FUNCTION.",
+    "AgencyControllerView.tsx — removed dead p_phone argument from handleSaveModel RPC call (updates.phone was never set).",
+    ".cursor/rules/auto-review.mdc — additive stop-condition bullet for agency_update_model_full vs live models schema.",
+    "docs/MODEL_SAVE_LOCATION_CONSISTENCY.md — schema alignment note for p_phone / no models.phone."
+  ],
+  "rules_updated": [
+    ".cursor/rules/auto-review.mdc"
+  ],
+  "docs_updated": [
+    "docs/MODEL_SAVE_LOCATION_CONSISTENCY.md",
+    "CURSOR_MODEL_SAVE_PHONE_INCIDENT_REPORT.md",
+    "CURSOR_MODEL_SAVE_PHONE_DIFF_SUMMARY.md",
+    "CURSOR_MODEL_SAVE_PHONE_VERIFY.md",
+    "CURSOR_MODEL_SAVE_PHONE_PLAN.json"
+  ],
+  "manual_review_required": [],
+  "do_not_touch": [
+    "AuthContext.tsx",
+    "App.tsx",
+    "signIn / bootstrapThenLoadProfile / loadProfile",
+    "get_own_admin_flags / is_current_user_admin / assert_is_admin",
+    "get_my_org_context",
+    "Paywall core",
+    "Admin routing"
+  ]
+}

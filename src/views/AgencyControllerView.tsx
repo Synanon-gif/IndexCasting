@@ -2567,7 +2567,6 @@ const MyModelsTab: React.FC<{
         p_model_id:             selectedModel.id,
         p_name:                 updates.name              ?? null,
         p_email:                updates.email             ?? null,
-        p_phone:                updates.phone             ?? null,
         p_city:                 updates.city              ?? null,
         p_country_code:         (updates as any).country_code      ?? null,
         p_current_location:     (updates as any).current_location  ?? null,
