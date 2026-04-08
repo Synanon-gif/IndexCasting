@@ -26,6 +26,12 @@ The product rule is now enforced in the **client**: **Agency multi-select on the
 
 Guardrails added in `system-invariants.mdc`, `auto-review.mdc`, and `.cursorrules`: agency bulk must not set current location; bulk is territories-only; UI must not expose bulk current-location controls.
 
+## 5a. Location source priority (unchanged)
+
+**Invariant:** `live` (highest) → `current` (model) → `agency` (lowest). This removal does **not** alter Near Me / discovery SQL (`DISTINCT ON` + `CASE source …`) or client-side resolution in `modelLocationsSupabase` / `getModelLocation`. Agency-set rows remain **strictly below** model-owned `live` / `current` for ranking.
+
+**Delta pass (this release):** Explicit guardrail lines added to `.cursorrules`, `docs/MODEL_SAVE_LOCATION_CONSISTENCY.md`, `system-invariants.mdc` (NIEMALS), and `auto-review.mdc` (risk + stop) so future changes cannot silently reorder sources.
+
 ## 6. Why Auth / Admin / Login were untouched
 
 No changes to `AuthContext`, `App.tsx`, sign-in/bootstrap/loadProfile, admin RPCs, `get_my_org_context`, or paywall core — scope was limited to agency roster bulk location and related service/copy/docs.

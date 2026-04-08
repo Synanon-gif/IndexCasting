@@ -46,6 +46,7 @@ vollständig durchlaufen werden, **bevor** Code committed oder weitergeschrieben
 - **Territory-Lookup aus falscher Tabelle:** `model_assignments.territory` statt `model_agency_territories.country_code`? → Blocker (Risiko 15) — `model_assignments` hat keine `territory`-Spalte, führt zu SQL-Fehler → HTTP 400/500.
 - **Location: ON CONFLICT target falsch:** Neuer Write auf `model_locations` mit `ON CONFLICT (model_id)` statt `ON CONFLICT (model_id, source)`? → Blocker (Risiko 16) — Nach `20260406_location_multirow_priority.sql` existiert `UNIQUE(model_id)` nicht mehr. Nur `(model_id, source)` ist gültig.
 - **Location: DISTINCT ON fehlt in Near-Me:** `get_models_near_location` oder neuer RPC der `model_locations` joined, ohne `DISTINCT ON (model_id) ORDER BY ... CASE source WHEN 'live' THEN 0`? → Blocker (Risiko 16) — Ohne DISTINCT ON erscheint ein Model mit 2 Sources doppelt; falsche Quelle gewinnt.
+- **Location: Source-Priorität geändert:** Neuer Near-Me-, Discovery-, Filter- oder Client-Sort-Code, der die feste Reihenfolge **live → current → agency** bricht oder **agency** über model-owned **live/current** stellt? → Blocker — muss mit `get_models_near_location` / `getModelLocation`-Semantik übereinstimmen.
 - **Location: Agency schreibt live/current:** Agency-Code ruft `upsertModelLocation(modelId, data, 'current')` oder `'live'` auf? → Blocker (Risiko 16) — DB wirft `access_denied` (RPC Auth-Guard), aber der Aufruf muss bereits im Frontend verhindert werden.
 - **Location: Geocoding-Fail führt zu null-Write:** `handleSetCurrentCity` oder ähnliche Funktion schreibt `upsertModelLocation` auch wenn Nominatim kein Ergebnis liefert? → Blocker (Risiko 16) — Pflicht: `if (!lat || !lng) { Alert('City not found'); return; }` — kein Write ohne Geocoding.
 - **Location: deleteModelLocation ohne source-Angabe löscht agency-Zeile:** `delete_model_location_source` ohne `p_source` löscht NUR live+current (agency bleibt). Wenn jemand die agency-Zeile löschen will, MUSS `p_source='agency'` explizit gesetzt werden.
@@ -157,6 +158,7 @@ Q8: Verwendet ein neuer optimistischer Update-Handler irgendeinen Snapshot (`con
 - Geocoding-Fehler ignoriert und `lat=null` geschrieben (Risiko 16 — existierende Location wird mit null-Koordinaten überschrieben → verschwindet aus Near-Me)
 - Neuer Source-Wert ohne vollständige Aktualisierung aller Systeme (Risiko 17 — DB+RPC+TypeScript+Tests+DISTINCT ON-Order müssen gleichzeitig aktualisiert werden)
 - Agency roster **bulk** flow, der **current location** oder agency-`model_locations` für mehrere Models setzt — **verboten**; Agency-Bulk ist **nur** territories of representation; current location nur kanonischer Single-Edit
+- Änderung der festen Location-Source-Priorität **live → current → agency** in Near-Me/Discovery/Filter-Logik (ohne explizites Security/Product Review)
 - Neuer Browser-Datei-Upload ohne **Upload technical parity** (upload-consent-matrix.mdc): fehlende Magic Bytes, fehlende HEIC-Behandlung wenn erlaubt, fehlendes `upsert: false` / unsicherer Pfad
 
 ---

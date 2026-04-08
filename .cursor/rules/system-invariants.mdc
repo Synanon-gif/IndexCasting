@@ -597,6 +597,7 @@ ON CONFLICT (model_id, source) DO UPDATE SET city = EXCLUDED.city, ...;
 - `ON CONFLICT (model_id)` in neuen RPCs (muss `(model_id, source)` sein)
 - In `get_models_near_location` ohne `DISTINCT ON (model_id)` auf `model_locations` joinen
 - Geocoding-Fehler ignorieren und null-Koordinaten schreiben
+- **Priorität umbauen:** Code oder SQL, der die feste Reihenfolge **live → current → agency** für Near Me / Discovery aufbricht oder **agency** über model-owned **live/current** stellt (nur mit explizitem Security/Product Review)
 
 ---
 

@@ -109,6 +109,7 @@ if (ok) {
 - **Agency bulk selection** (model roster) must **only** manage **territories of representation** — never bulk-edit **current location** or bulk-write agency `model_locations`.
 - **Current location** for models is set only through the **canonical single-model paths**: agency model profile save (e.g. My Models → one model → Save) and model self-settings — not via multi-select bulk actions.
 - **UI** must not expose bulk current-location controls; **bulk and single edit** must not implement conflicting semantics for current location. See `docs/MODEL_SAVE_LOCATION_CONSISTENCY.md` and `system-invariants.mdc` (LOCATION SOURCE SYSTEM).
+- **Location source priority (immutable):** `live` (highest) → `current` (model) → `agency` (lowest). Discovery, Near Me, and filter logic must preserve this order; **no feature may reorder** sources or treat agency-set location as higher priority than model-owned `live` / `current` rows.
 
 ### 4b.1 Browser-Upload technische Parität (Verweis)
 

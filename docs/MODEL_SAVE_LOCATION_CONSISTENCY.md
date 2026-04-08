@@ -17,6 +17,11 @@
 
 **Canonical spatial truth** for Near Me is **`model_locations`** (`lat_approx` / `lng_approx`, priority: live > current > agency). The `models.current_location` field is legacy/display-oriented; keep single-save behaviour documented here until a deliberate migration merges semantics.
 
+### Location source priority (unchanged by agency bulk policy)
+
+- Order remains **live** (highest) → **current** (model-set) → **agency** (agency-set fallback).
+- Removing **agency bulk** current location does **not** change SQL `DISTINCT ON` / client sort order in `get_models_near_location`, `getModelLocation`, or `modelLocationsSupabase` — agency rows stay **strictly below** model-owned sources.
+
 ## Completeness / visibility
 
 - **UI:** `checkModelCompleteness` in `src/utils/modelCompleteness.ts` — critical: name, visible portfolio photo, territory (via context flags from `model_agency_territories` / UI).

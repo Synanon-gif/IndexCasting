@@ -13,4 +13,6 @@
 | `CURSOR_MODEL_SAVE_*` | Align verify/incident/plan with removal | Doc | — |
 | `CURSOR_BULK_LOCATION_REMOVAL_*` | This release artefacts | None | — |
 
-**Not changed:** Auth, admin login path, `get_my_org_context`, paywall, SQL migrations (no new migration).
+**Delta pass (priority guardrails, no app logic change):** `.cursorrules`, `docs/MODEL_SAVE_LOCATION_CONSISTENCY.md`, `.cursor/rules/system-invariants.mdc`, `.cursor/rules/auto-review.mdc`, refreshed `CURSOR_BULK_LOCATION_REMOVAL_*` verify/report text.
+
+**Not changed:** Auth, admin login path, `get_my_org_context`, paywall, SQL migrations (no new migration), discovery RPC implementation (verified only).

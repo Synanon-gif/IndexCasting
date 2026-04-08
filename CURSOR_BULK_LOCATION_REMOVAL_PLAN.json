@@ -10,12 +10,12 @@
     "ModelProfileScreen — model-owned location flow unchanged"
   ],
   "rules_updated": [
-    ".cursor/rules/system-invariants.mdc — agency bulk territories-only; forbidden bulk current location",
-    ".cursor/rules/auto-review.mdc — blocker + stop condition for agency bulk current location",
-    ".cursorrules — Agency bulk vs current location guardrail subsection"
+    ".cursor/rules/system-invariants.mdc — agency bulk territories-only; forbidden bulk current location; NIEMALS: Priorität live→current→agency umbrechen",
+    ".cursor/rules/auto-review.mdc — agency bulk current location blocker; Location source priority risk + stop condition",
+    ".cursorrules — Agency bulk vs current location; immutable live > current > agency priority"
   ],
   "docs_updated": [
-    "docs/MODEL_SAVE_LOCATION_CONSISTENCY.md",
+    "docs/MODEL_SAVE_LOCATION_CONSISTENCY.md — subsection Location source priority (unchanged by agency bulk policy)",
     "CURSOR_MODEL_SAVE_VERIFY.md",
     "CURSOR_MODEL_SAVE_INCIDENT_REPORT.md",
     "CURSOR_MODEL_SAVE_PLAN.json"
