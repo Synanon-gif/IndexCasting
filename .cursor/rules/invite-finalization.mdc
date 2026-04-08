@@ -13,6 +13,10 @@ All **org invite** (`?invite=`) and **model claim** (`?model_invite=`) flows MUS
 
 Invite and claim finalization MUST be **safe to run multiple times** (refresh, retry, duplicate effects). Prefer **DB idempotency** (`accept_organization_invitation`, `claim_model_by_token`) plus client **mutex** in `finalizePendingInviteOrClaim` to avoid races.
 
+## 2a. Same-run claim after successful org invite (finalize vs routing)
+
+After a **successful** org-invite RPC in `finalizePendingInviteOrClaim`, a **persisted** model-claim token MUST be processed in the **same** finalize invocation (invite RPC first, then claim RPC, then **one** `onSuccessReloadProfile`, then ordered success emits). A valid claim token MUST NOT be left solely for a **later** finalize tick just because an invite token existed. **Unauthenticated routing** still uses org-invite precedence for gate UI (`resolveInviteAndClaimTokensForRouting`); that is separate from finalize storage reads.
+
 ## 3. Token persistence invariant
 
 Pending invite/claim tokens MUST **persist across signUp, signIn, and email confirmation** until **successful** finalization or a **fatal** error (e.g. `email_mismatch`, `invalid_or_expired`, expired/used claim token). On **web**, tokens use **localStorage** (not sessionStorage-only) so a **new tab** from the email client still sees the token. **Sign-out** MUST clear these keys (see `clearAllPersistence` static keys).
@@ -27,7 +31,7 @@ A **one-time success banner** or similar, triggered only after `accept_organizat
 
 ## 6. Unauthenticated routing / invite-context UI
 
-When URL query params are absent but a **persisted** org-invite or model-claim token exists, unauthenticated **routing** (gate screens, `AuthScreen` invite/claim props, `clearStaleInviteOnSignIn`) MUST still reflect the same flow as with `?invite=` / `?model_invite=`. **Precedence** MUST match finalization: org invite token wins; model claim only when no pending org invite. **Telemetry** `markInviteFlowFromUrl` / `markModelClaimFlowFromUrl` MUST run only when the token came from the URL, not from storage restore.
+When URL query params are absent but a **persisted** org-invite or model-claim token exists, unauthenticated **routing** (gate screens, `AuthScreen` invite/claim props, `clearStaleInviteOnSignIn`) MUST still reflect the same flow as with `?invite=` / `?model_invite=`. **Precedence** for **which gate to show** MUST stay: org invite token wins; model claim hidden from routing state only when a pending org invite exists. **Finalize** still reads both tokens from storage and may run claim in the same invocation after a successful invite (see §2a). **Telemetry** `markInviteFlowFromUrl` / `markModelClaimFlowFromUrl` MUST run only when the token came from the URL, not from storage restore.
 
 ## 7. URL vs storage — bootstrap only (no ongoing overwrite)
 

@@ -65,8 +65,9 @@ describe('finalizePendingInviteOrClaim', () => {
     readModelClaimToken.mockResolvedValue(null);
   });
 
-  it('runs org invite first and skips claim when invite token present', async () => {
+  it('runs org invite only when no claim token (invite-first, claim skipped)', async () => {
     readInviteToken.mockResolvedValue('inv_tok');
+    readModelClaimToken.mockResolvedValue(null);
     acceptOrganizationInvitation.mockResolvedValue({ ok: true, organization_id: 'org-1' });
     const onOk = jest.fn().mockResolvedValue(undefined);
 
@@ -77,11 +78,51 @@ describe('finalizePendingInviteOrClaim', () => {
     expect(r.invite.ok).toBe(true);
     expect(r.invite.organizationId).toBe('org-1');
     expect(persistInviteToken).toHaveBeenCalledWith(null);
-    expect(onOk).toHaveBeenCalled();
+    expect(onOk).toHaveBeenCalledTimes(1);
     expect(emitInviteClaimSuccessMock).toHaveBeenCalledWith({
       kind: 'invite',
       organizationId: 'org-1',
     });
+  });
+
+  it('runs claim in same finalize run after successful invite when both tokens present', async () => {
+    readInviteToken.mockResolvedValue('inv_tok');
+    readModelClaimToken.mockResolvedValue('claim_tok');
+    acceptOrganizationInvitation.mockResolvedValue({ ok: true, organization_id: 'org-1' });
+    claimModelByToken.mockResolvedValue({ ok: true, data: { modelId: 'm1', agencyId: 'a1' } });
+    const onOk = jest.fn().mockResolvedValue(undefined);
+
+    const r = await finalizePendingInviteOrClaim({ onSuccessReloadProfile: onOk });
+
+    expect(acceptOrganizationInvitation).toHaveBeenCalledWith('inv_tok');
+    expect(claimModelByToken).toHaveBeenCalledWith('claim_tok');
+    expect(r.invite.ok).toBe(true);
+    expect(r.claim.ok).toBe(true);
+    expect(r.claim.modelId).toBe('m1');
+    expect(persistInviteToken).toHaveBeenCalledWith(null);
+    expect(persistModelClaimToken).toHaveBeenCalledWith(null);
+    expect(onOk).toHaveBeenCalledTimes(1);
+    expect(emitInviteClaimSuccessMock).toHaveBeenNthCalledWith(1, {
+      kind: 'invite',
+      organizationId: 'org-1',
+    });
+    expect(emitInviteClaimSuccessMock).toHaveBeenNthCalledWith(2, {
+      kind: 'claim',
+      modelId: 'm1',
+      agencyId: 'a1',
+    });
+  });
+
+  it('does not run claim when invite fails fatally even if claim token present', async () => {
+    readInviteToken.mockResolvedValue('inv_tok');
+    readModelClaimToken.mockResolvedValue('claim_tok');
+    acceptOrganizationInvitation.mockResolvedValue({ ok: false, error: 'email_mismatch' });
+
+    const r = await finalizePendingInviteOrClaim({});
+
+    expect(claimModelByToken).not.toHaveBeenCalled();
+    expect(r.invite.ok).toBe(false);
+    expect(r.claim.attempted).toBe(false);
   });
 
   it('runs claim when no invite token', async () => {

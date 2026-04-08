@@ -1,0 +1,34 @@
+{
+  "title": "M1 Invite + Claim same finalize run",
+  "status": "done",
+  "outcome": "INVITE FINALIZE EDGECASE FIXED",
+  "scope": {
+    "changed": [
+      "src/services/finalizePendingInviteOrClaim.ts",
+      "src/services/__tests__/finalizePendingInviteOrClaim.test.ts",
+      ".cursor/rules/invite-finalization.mdc",
+      "docs/INVITE_CLAIM_ASSIGNMENT_CONSISTENCY.md",
+      "src/utils/inviteClaimRouting.ts"
+    ],
+    "explicitly_not_changed": [
+      "AuthContext.tsx",
+      "bootstrapThenLoadProfile",
+      "get_my_org_context",
+      "Admin RPCs",
+      "Paywall core",
+      "Supabase migrations / Edge functions"
+    ]
+  },
+  "semantics": {
+    "invite_priority": "Org invite RPC before claim RPC when both tokens exist",
+    "same_run_claim": "After successful invite, claim runs in same finalize invocation",
+    "reload": "One onSuccessReloadProfile after invite-success chain (including deferred claim)",
+    "routing": "resolveInviteAndClaimTokensForRouting unchanged for gate UI precedence"
+  },
+  "artifacts": [
+    "CURSOR_INVITE_FINALIZE_EDGECASE_REPORT.md",
+    "CURSOR_INVITE_FINALIZE_EDGECASE_DIFF_SUMMARY.md",
+    "CURSOR_INVITE_FINALIZE_EDGECASE_VERIFY.md",
+    "CURSOR_INVITE_FINALIZE_EDGECASE_PLAN.json"
+  ]
+}

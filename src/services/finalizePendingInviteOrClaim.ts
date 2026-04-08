@@ -93,8 +93,43 @@ export type FinalizePendingOptions = {
   signOut?: () => void | Promise<void>;
 };
 
+/** RPC + token persistence only; no reload / success emit (caller decides). */
+async function runClaimMutationOnly(
+  claimTok: string,
+  out: FinalizeInviteClaimResult,
+  opts: FinalizePendingOptions,
+): Promise<void> {
+  out.claim.attempted = true;
+  const claimRes = await claimModelByToken(claimTok);
+  out.claim.ok = claimRes.ok;
+  out.claim.error = claimRes.ok ? undefined : claimRes.error;
+
+  if (claimRes.ok) {
+    if (claimRes.data) {
+      const { modelId, agencyId } = claimRes.data;
+      out.claim.modelId = modelId;
+      out.claim.agencyId = agencyId;
+    }
+    await persistModelClaimToken(null);
+  } else if (isFatalClaimError(out.claim.error)) {
+    await persistModelClaimToken(null);
+    if (opts.showUiAlerts) showClaimAlerts(out.claim.error);
+    console.warn('[finalizePendingInviteOrClaim] claim fatal', {
+      flow: 'model_claim',
+      error: out.claim.error,
+    });
+  } else {
+    console.warn('[finalizePendingInviteOrClaim] claim non-fatal (token kept)', {
+      flow: 'model_claim',
+      error: out.claim.error,
+    });
+    if (opts.showUiAlerts && out.claim.error) showClaimAlerts(out.claim.error);
+  }
+}
+
 /**
- * Runs org-invite acceptance first if a pending invite token exists; otherwise model claim.
+ * Runs org-invite acceptance first if a pending invite token exists; then model claim when invite
+ * succeeded in the same run and a claim token was present (both tokens are read from storage).
  * Serialized globally so bootstrap + effects do not double-RPC.
  */
 export function finalizePendingInviteOrClaim(
@@ -112,7 +147,7 @@ export function finalizePendingInviteOrClaim(
   const runInner = async (): Promise<FinalizeInviteClaimResult> => {
     const out = emptyResult();
     const inviteTok = await readInviteToken();
-    const claimTok = inviteTok ? null : await readModelClaimToken();
+    const claimTok = await readModelClaimToken();
 
     if (inviteTok) {
       out.invite.attempted = true;
@@ -120,69 +155,64 @@ export function finalizePendingInviteOrClaim(
       out.invite.ok = !!inv.ok;
       out.invite.error = inv.ok ? undefined : (inv.error as string | undefined);
 
-      if (inv.ok) {
-        const orgId = inv.organization_id;
-        if (orgId) out.invite.organizationId = orgId;
-        await persistInviteToken(null);
-        try {
-          await opts.onSuccessReloadProfile?.();
-        } catch (e) {
-          console.error('[finalizePendingInviteOrClaim] onSuccessReloadProfile after invite error:', e);
-        }
-        if (orgId) emitInviteClaimSuccess({ kind: 'invite', organizationId: orgId });
-      } else if (isFatalInviteError(out.invite.error)) {
-        await persistInviteToken(null);
-        if (opts.showUiAlerts) showInviteAlerts(out.invite.error, opts.signOut);
-        else
-          console.error('[finalizePendingInviteOrClaim] invite fatal', {
+      if (!inv.ok) {
+        if (isFatalInviteError(out.invite.error)) {
+          await persistInviteToken(null);
+          if (opts.showUiAlerts) showInviteAlerts(out.invite.error, opts.signOut);
+          else
+            console.error('[finalizePendingInviteOrClaim] invite fatal', {
+              flow: 'agency_client_invite',
+              error: out.invite.error,
+            });
+        } else {
+          console.warn('[finalizePendingInviteOrClaim] invite non-fatal (token kept)', {
             flow: 'agency_client_invite',
             error: out.invite.error,
           });
-      } else {
-        console.warn('[finalizePendingInviteOrClaim] invite non-fatal (token kept)', {
-          flow: 'agency_client_invite',
-          error: out.invite.error,
+          if (opts.showUiAlerts && out.invite.error) showInviteAlerts(out.invite.error, opts.signOut);
+        }
+        return out;
+      }
+
+      const orgId = inv.organization_id;
+      if (orgId) out.invite.organizationId = orgId;
+      await persistInviteToken(null);
+
+      if (claimTok) {
+        await runClaimMutationOnly(claimTok, out, opts);
+      }
+
+      try {
+        await opts.onSuccessReloadProfile?.();
+      } catch (e) {
+        console.error('[finalizePendingInviteOrClaim] onSuccessReloadProfile after invite chain error:', e);
+      }
+      if (orgId) emitInviteClaimSuccess({ kind: 'invite', organizationId: orgId });
+      if (out.claim.ok && out.claim.modelId && out.claim.agencyId) {
+        emitInviteClaimSuccess({
+          kind: 'claim',
+          modelId: out.claim.modelId,
+          agencyId: out.claim.agencyId,
         });
-        if (opts.showUiAlerts && out.invite.error) showInviteAlerts(out.invite.error, opts.signOut);
       }
       return out;
     }
 
     if (claimTok) {
-      out.claim.attempted = true;
-      const claimRes = await claimModelByToken(claimTok);
-      out.claim.ok = claimRes.ok;
-      out.claim.error = claimRes.ok ? undefined : claimRes.error;
-
-      if (claimRes.ok) {
-        if (claimRes.data) {
-          const { modelId, agencyId } = claimRes.data;
-          out.claim.modelId = modelId;
-          out.claim.agencyId = agencyId;
-        }
-        await persistModelClaimToken(null);
+      await runClaimMutationOnly(claimTok, out, opts);
+      if (out.claim.ok) {
         try {
           await opts.onSuccessReloadProfile?.();
         } catch (e) {
           console.error('[finalizePendingInviteOrClaim] onSuccessReloadProfile after claim error:', e);
         }
-        if (claimRes.data) {
-          const { modelId, agencyId } = claimRes.data;
-          emitInviteClaimSuccess({ kind: 'claim', modelId, agencyId });
+        if (out.claim.modelId && out.claim.agencyId) {
+          emitInviteClaimSuccess({
+            kind: 'claim',
+            modelId: out.claim.modelId,
+            agencyId: out.claim.agencyId,
+          });
         }
-      } else if (isFatalClaimError(out.claim.error)) {
-        await persistModelClaimToken(null);
-        if (opts.showUiAlerts) showClaimAlerts(out.claim.error);
-        console.warn('[finalizePendingInviteOrClaim] claim fatal', {
-          flow: 'model_claim',
-          error: out.claim.error,
-        });
-      } else {
-        console.warn('[finalizePendingInviteOrClaim] claim non-fatal (token kept)', {
-          flow: 'model_claim',
-          error: out.claim.error,
-        });
-        if (opts.showUiAlerts && out.claim.error) showClaimAlerts(out.claim.error);
       }
     }
 
