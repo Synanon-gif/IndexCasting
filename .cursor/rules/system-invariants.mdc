@@ -183,8 +183,7 @@ CREATE POLICY "documentspictures_insert"
   );
 ```
 
-**Implementiert (20260406):** `can_agency_manage_model_photo()` und `can_view_model_photo_storage()`
-als SECURITY DEFINER Helper — alle 4 `documentspictures_*` Policies nutzen diese Helper.
+**Implementiert (20260406; Client-Pfad an `model_photos` ausgerichtet 20260501):** `can_agency_manage_model_photo()` und `can_view_model_photo_storage()` (Argument: vollständiger bucket-relativer Objektpfad; siehe `docs/CLIENT_MODEL_PHOTO_VISIBILITY.md`) als SECURITY DEFINER Helper — `documentspictures_*` Policies nutzen diese Helper.
 
 ## TERRITORIES — AUTORITATIVE TABELLE (Fix 20260406)
 

@@ -1,0 +1,29 @@
+{
+  "root_causes": [
+    "CONFIRMED_SIGNIN_VS_SIGNUP_CLAIM_TOKEN_READ_ASYMMETRY: signIn gated model claim on isModelClaimFlowActive(); signUp read readModelClaimToken() unconditionally — post-confirm sign-in could skip claim while token remained in sessionStorage.",
+    "CONFIRMED_STORAGE_VISIBILITY_MISMATCH: can_view_model_photo_storage(model_id) required models.is_visible_commercial/fashion for clients; model_photos RLS used is_visible_to_clients + has_platform_access + caller_is_client_org_member — clients saw rows but signed URLs failed."
+  ],
+  "fixed_now": [
+    "AuthContext signIn: read claim token whenever persisted (parity with signUp); no other auth changes.",
+    "Migration 20260501_can_view_model_photo_storage_client_row_alignment.sql: can_view_model_photo_storage(full object path); client branch binds to model_photos row + paywall + org; policy passes name not foldername[2].",
+    "send-invite model_claim email: note on email confirm + reopening invite link if profile does not connect."
+  ],
+  "rules_updated": [
+    ".cursorrules (§6 bullets: claim parity + client photo alignment)",
+    ".cursor/rules/auto-review.mdc (client model_photos vs storage)",
+    ".cursor/rules/system-invariants.mdc (can_view_model_photo_storage doc line)"
+  ],
+  "docs_updated": [
+    "docs/INVITE_CLAIM_ASSIGNMENT_CONSISTENCY.md",
+    "docs/CLIENT_MODEL_PHOTO_VISIBILITY.md"
+  ],
+  "manual_review_required": [],
+  "do_not_touch": [
+    "bootstrapThenLoadProfile / Step-1 vs Step-2 structure (except single claim-read line in signIn)",
+    "get_my_org_context",
+    "get_own_admin_flags / is_current_user_admin / assert_is_admin",
+    "App.tsx admin routing order",
+    "Paywall core ordering",
+    "can_view_model_photo(uuid) behavior (edge/watermark) — unchanged this release"
+  ]
+}

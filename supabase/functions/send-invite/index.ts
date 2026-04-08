@@ -153,6 +153,10 @@ function buildModelClaimEmail(params: {
                 Create your account to access your profile, manage your portfolio, and connect with clients.
                 This invitation link expires in 30 days.
               </p>
+              <p style="margin:0 0 32px;font-size:15px;line-height:1.6;color:#444444;">
+                If you are prompted to confirm your email, complete that step, then sign in.
+                Use the same &quot;Create My Account&quot; invitation link if your profile does not connect automatically after your first login.
+              </p>
               <table cellpadding="0" cellspacing="0">
                 <tr>
                   <td style="background:#111111;border-radius:8px;">

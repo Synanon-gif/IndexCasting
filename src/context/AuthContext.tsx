@@ -689,11 +689,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Model claim token: link an existing account to the agency's model record.
     // Runs isolated — cannot block bootstrap or org invite flows.
+    // Parity with signUp: read persisted token whenever present (do not gate on
+    // isModelClaimFlowActive) so post-confirm sign-in still consumes the claim.
     try {
-      const { isModelClaimFlowActive, readModelClaimToken, persistModelClaimToken } =
+      const { readModelClaimToken, persistModelClaimToken } =
         await import('../storage/modelClaimToken');
       const { claimModelByToken } = await import('../services/modelsSupabase');
-      const claimTok = (await isModelClaimFlowActive()) ? await readModelClaimToken() : null;
+      const claimTok = await readModelClaimToken();
       if (claimTok) {
         const claimRes = await claimModelByToken(claimTok);
         if (claimRes.ok) {

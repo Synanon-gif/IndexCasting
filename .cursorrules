@@ -127,6 +127,8 @@ if (ok) {
 - RLS-Check: Bei jeder neuen Tabelle MUSS Cursor die passenden Row Level Security (RLS) Policies vorschlagen.
 - Schema-Integrität: Nutze `npx supabase db lint` (falls verfügbar), um das Schema auf Konsistenz zu prüfen.
 - Service-Key-Verbot: Nutze niemals den `service_role` Key im Frontend.
+- **Model claim token:** `signIn` und `signUp` müssen denselben persistierten Claim-Token konsumieren, sobald er vorliegt (Parität); Details in `docs/INVITE_CLAIM_ASSIGNMENT_CONSISTENCY.md`.
+- **Client-sichtbare Model-Fotos:** `model_photos`-RLS und `can_view_model_photo_storage` müssen für dieselbe Datei übereinstimmen (`docs/CLIENT_MODEL_PHOTO_VISIBILITY.md`).
 
 ## 7. DSGVO & Privacy by Design
 - Minimierung: Speichere nur Daten, die für den Zweck (Casting/Chat) absolut notwendig sind.
