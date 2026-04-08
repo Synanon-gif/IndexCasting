@@ -27,6 +27,7 @@ import { useSubscription } from '../context/SubscriptionContext';
 import { useAuth } from '../context/AuthContext';
 import { createCheckoutSession, type PlanType } from '../services/subscriptionSupabase';
 import { colors, spacing, typography } from '../theme/theme';
+import { validateUrl } from '../../lib/validation';
 
 // ─── Plan card data ───────────────────────────────────────────────────────────
 
@@ -181,6 +182,10 @@ export default function PaywallScreen() {
     try {
       const result = await createCheckoutSession(plan);
       if (!result?.checkout_url) {
+        Alert.alert(uiCopy.common.error, uiCopy.billing.checkoutFailed);
+        return;
+      }
+      if (!validateUrl(result.checkout_url).ok) {
         Alert.alert(uiCopy.common.error, uiCopy.billing.checkoutFailed);
         return;
       }

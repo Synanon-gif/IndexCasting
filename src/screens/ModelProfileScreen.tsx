@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { handleTabPress, BOTTOM_TAB_BAR_HEIGHT } from '../navigation/bottomTabNavigation';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Linking, Alert, ActivityIndicator, Image } from 'react-native';
@@ -14,6 +14,7 @@ import {
   type LocationSource,  // used in handleShareLocation type cast
 } from '../services/modelLocationsSupabase';
 import { supabase } from '../../lib/supabase';
+import { UI_DOUBLE_SUBMIT_DEBOUNCE_MS } from '../../lib/validation';
 import { getModelBookingThreadIds, getRecruitingThread, subscribeRecruitingChats } from '../store/recruitingChats';
 import {
   getOptionRequests,
@@ -115,6 +116,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   const [savingNotes, setSavingNotes] = useState(false);
   const [sharedNoteDraft, setSharedNoteDraft] = useState('');
   const [savingSharedNote, setSavingSharedNote] = useState(false);
+  const lastAppendSharedNoteAtRef = useRef(0);
   const [entryScheduleDraft, setEntryScheduleDraft] = useState({
     date: '',
     start_time: '09:00',
@@ -1494,6 +1496,9 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                 <TouchableOpacity
                   onPress={async () => {
                     if (!profile || !openEntry?.option_request_id || !sharedNoteDraft.trim()) return;
+                    const now = Date.now();
+                    if (now - lastAppendSharedNoteAtRef.current < UI_DOUBLE_SUBMIT_DEBOUNCE_MS) return;
+                    lastAppendSharedNoteAtRef.current = now;
                     setSavingSharedNote(true);
                     try {
                       const ok = await appendSharedBookingNote(

@@ -10,6 +10,7 @@ import {
   checkMagicBytes,
   checkExtensionConsistency,
   normalizeInput,
+  MESSAGE_MAX_LENGTH,
   CHAT_ALLOWED_MIME_TYPES,
   logSecurityEvent,
   sanitizeUploadBaseName,
@@ -330,7 +331,7 @@ export async function addMessage(
     const normalized = normalizeInput(text);
 
     // Validate text length
-    const textCheck = validateText(normalized, { maxLength: 2000, allowEmpty: false });
+    const textCheck = validateText(normalized, { maxLength: MESSAGE_MAX_LENGTH, allowEmpty: false });
     if (!textCheck.ok) {
       console.warn('addMessage: text validation failed', textCheck.error);
       void logSecurityEvent({ type: 'large_payload', metadata: { service: 'recruitingChatSupabase', field: 'text' } });

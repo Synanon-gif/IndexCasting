@@ -26,6 +26,7 @@ import {
 } from '../services/subscriptionSupabase';
 import { planDisplayName, planFeatureLines } from '../constants/planFeatures';
 import { isStripeSandboxUiEnabled } from '../utils/stripeSandboxUi';
+import { validateUrl } from '../../lib/validation';
 
 export type OwnerBillingVariant = 'agency' | 'client';
 
@@ -164,6 +165,10 @@ export const OwnerBillingStatusCard: React.FC<Props> = ({ variant }) => {
     try {
       const result = await createCheckoutSession(defaultCheckoutPlan);
       if (!result?.checkout_url) {
+        Alert.alert(uiCopy.common.error, uiCopy.billing.checkoutFailed);
+        return;
+      }
+      if (!validateUrl(result.checkout_url).ok) {
         Alert.alert(uiCopy.common.error, uiCopy.billing.checkoutFailed);
         return;
       }

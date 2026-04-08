@@ -3,6 +3,8 @@
  * Prevents localStorage / memory abuse from megabyte query strings; does not replace server validation.
  */
 
+import { stripInvisibleChars } from '../../lib/validation/normalize';
+
 /** Invite / model_invite tokens (JWT-like); generous headroom for provider formats. */
 export const INVITE_OR_CLAIM_TOKEN_MAX_LEN = 16384;
 
@@ -34,8 +36,11 @@ export function clampQueryId(id: string | null | undefined): string | null {
 export function parseSharedSelectionParams(p: URLSearchParams): { name: string; ids: string[] } | null {
   if (p.get('shared') !== '1') return null;
   const rawName = p.get('name') || 'Selection';
-  const name =
-    rawName.length > SHARED_SELECTION_NAME_MAX_LEN ? rawName.slice(0, SHARED_SELECTION_NAME_MAX_LEN) : rawName;
+  // Strip zero-width / invisible chars (do not use full normalizeInput — repetition collapse would break length caps).
+  let name = stripInvisibleChars(rawName).trim() || 'Selection';
+  if (name.length > SHARED_SELECTION_NAME_MAX_LEN) {
+    name = name.slice(0, SHARED_SELECTION_NAME_MAX_LEN);
+  }
   const rawIds = (p.get('ids') || '').split(',').filter(Boolean);
   const ids = rawIds
     .slice(0, SHARED_SELECTION_IDS_MAX_COUNT)

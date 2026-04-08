@@ -18,6 +18,15 @@
 export type { ValidationResult, TextValidationOptions } from './text';
 export { validateText, sanitizeHtml, escapeHtml } from './text';
 
+export {
+  MESSAGE_MAX_LENGTH,
+  SHARED_BOOKING_NOTE_MAX_LENGTH,
+  MODEL_NAME_MAX_LENGTH,
+  MODEL_CITY_MAX_LENGTH,
+  MODEL_SHORT_TEXT_MAX_LENGTH,
+  UI_DOUBLE_SUBMIT_DEBOUNCE_MS,
+} from './limits';
+
 export { normalizeInput, stripInvisibleChars } from './normalize';
 
 export { validateUrl, extractSafeUrls, safeLinkProps } from './url';

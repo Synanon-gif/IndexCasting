@@ -20,6 +20,7 @@ import {
   checkMagicBytes,
   checkExtensionConsistency,
   normalizeInput,
+  MESSAGE_MAX_LENGTH,
   CHAT_ALLOWED_MIME_TYPES,
   logSecurityEvent,
   sanitizeUploadBaseName,
@@ -251,7 +252,7 @@ export async function sendMessage(
     // Normalize first: strip invisible chars, collapse repetition, NFC
     const normalized = normalizeInput(text);
 
-    const textCheck = validateText(normalized, { maxLength: 2000, allowEmpty: false });
+    const textCheck = validateText(normalized, { maxLength: MESSAGE_MAX_LENGTH, allowEmpty: false });
     if (!textCheck.ok) {
       console.warn('sendMessage: text validation failed', textCheck.error);
       void logSecurityEvent({ type: 'large_payload', userId: senderId, metadata: { service: 'messengerSupabase', field: 'text' } });

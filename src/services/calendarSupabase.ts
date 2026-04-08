@@ -12,7 +12,20 @@ import {
   type BookingEventStatus,
 } from './bookingEventsSupabase';
 import type { BookingBrief } from '../utils/bookingBrief';
-import { sanitizeHtml } from '../../lib/validation';
+import {
+  normalizeInput,
+  sanitizeHtml,
+  validateText,
+  SHARED_BOOKING_NOTE_MAX_LENGTH,
+} from '../../lib/validation';
+
+/** Safe merge base for booking_details JSONB — avoids spread on non-objects from the wire. */
+function asBookingDetails(raw: unknown): BookingDetails {
+  if (raw != null && typeof raw === 'object' && !Array.isArray(raw)) {
+    return raw as BookingDetails;
+  }
+  return {};
+}
 
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.trim());
@@ -475,13 +488,21 @@ export async function appendSharedBookingNote(
   role: 'client' | 'agency' | 'model',
   text: string
 ): Promise<boolean> {
-  const trimmed = text.trim();
-  if (!trimmed) return false;
+  const normalized = normalizeInput(text);
+  if (!normalized) return false;
+
+  const textCheck = validateText(normalized, {
+    maxLength: SHARED_BOOKING_NOTE_MAX_LENGTH,
+    allowEmpty: false,
+  });
+  if (!textCheck.ok) return false;
+
+  const safeNoteText = sanitizeHtml(normalized).slice(0, SHARED_BOOKING_NOTE_MAX_LENGTH);
 
   const newNote: SharedBookingNote = {
     role,
     at: new Date().toISOString(),
-    text: sanitizeHtml(trimmed).slice(0, 4000),
+    text: safeNoteText,
   };
 
   const attemptAppend = async (): Promise<boolean> => {
@@ -498,11 +519,10 @@ export async function appendSharedBookingNote(
 
     let allUpdated = true;
     for (const row of rows) {
-      const prev = Array.isArray(row.booking_details?.shared_notes)
-        ? row.booking_details!.shared_notes!
-        : [];
+      const base = asBookingDetails(row.booking_details);
+      const prev = Array.isArray(base.shared_notes) ? base.shared_notes : [];
       const newDetails: BookingDetails = {
-        ...(row.booking_details || {}),
+        ...base,
         shared_notes: [...prev, newNote],
       };
       // Optimistic lock: only update if updated_at has not changed since we read it.
@@ -628,7 +648,7 @@ export async function updateBookingDetails(
       let allUpdated = true;
       for (const row of rows) {
         const merged: BookingDetails = {
-          ...(row.booking_details || {}),
+          ...asBookingDetails(row.booking_details),
           ...partialDetails,
         };
         const { data: updated, error: updError } = await supabase

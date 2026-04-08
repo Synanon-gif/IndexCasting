@@ -5,6 +5,7 @@ import { createNotification, createNotifications } from './notificationsSupabase
 import { uiCopy } from '../constants/uiCopy';
 import {
   normalizeInput,
+  MESSAGE_MAX_LENGTH,
   validateText,
   sanitizeHtml,
   extractSafeUrls,
@@ -724,7 +725,7 @@ export async function addOptionMessage(
 
     // Normalize, validate, and sanitize text — same pipeline as messengerSupabase.sendMessage
     const normalized = normalizeInput(text);
-    const textCheck = validateText(normalized, { maxLength: 2000, allowEmpty: false });
+    const textCheck = validateText(normalized, { maxLength: MESSAGE_MAX_LENGTH, allowEmpty: false });
     if (!textCheck.ok) {
       console.warn('addOptionMessage: text validation failed', textCheck.error);
       void logSecurityEvent({ type: 'large_payload', userId: user?.id ?? null, metadata: { service: 'optionRequestsSupabase', field: 'text' } });

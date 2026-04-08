@@ -24,6 +24,7 @@ import { BOTTOM_TAB_BAR_HEIGHT } from '../navigation/bottomTabNavigation';
 import { supabase } from '../../lib/supabase';
 import { confirmImageRights } from '../services/gdprComplianceSupabase';
 import { uiCopy } from '../constants/uiCopy';
+import { validateUrl, UI_DOUBLE_SUBMIT_DEBOUNCE_MS } from '../../lib/validation';
 
 type BookingChatPresentation = 'modal' | 'insetAboveBottomNav';
 
@@ -59,7 +60,8 @@ export const BookingChatView: React.FC<Props> = ({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [fileRightsConfirmed, setFileRightsConfirmed] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const sendingRef = useRef(false);
+  /** Blocks rapid double-send (client-side only; not server rate limiting). */
+  const lastSendAtRef = useRef(0);
   const thread = getRecruitingThread(threadId);
   const application = thread ? getApplicationById(thread.applicationId) : undefined;
 
@@ -115,14 +117,16 @@ export const BookingChatView: React.FC<Props> = ({
 
   const sendMessage = () => {
     const t = chatInput.trim();
-    if (!t || sendingRef.current) return;
-    sendingRef.current = true;
+    if (!t) return;
+    const now = Date.now();
+    if (now - lastSendAtRef.current < UI_DOUBLE_SUBMIT_DEBOUNCE_MS) return;
+    lastSendAtRef.current = now;
     addRecruitingMessage(threadId, fromRole, t);
     setChatInput('');
-    sendingRef.current = false;
   };
 
   const openUrl = (url: string) => {
+    if (!validateUrl(url).ok) return;
     void Linking.openURL(url).catch(() => {});
   };
 

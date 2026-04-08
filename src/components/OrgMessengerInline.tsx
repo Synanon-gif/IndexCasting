@@ -49,6 +49,8 @@ import {
   messageLimiter,
   uploadLimiter,
   CHAT_ALLOWED_MIME_TYPES,
+  normalizeInput,
+  MESSAGE_MAX_LENGTH,
 } from '../../lib/validation';
 
 /** Structured context displayed in the thread sub-header. */
@@ -274,7 +276,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   }, [msgs]);
 
   const sendChat = async () => {
-    const text = input.trim();
+    const text = normalizeInput(input);
     if (!text || !viewerUserId || sending || uploading) return;
     setSendError(null);
 
@@ -286,7 +288,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
     }
 
     // Text length + content validation
-    const textCheck = validateText(text, { maxLength: 2000, allowEmpty: false });
+    const textCheck = validateText(text, { maxLength: MESSAGE_MAX_LENGTH, allowEmpty: false });
     if (!textCheck.ok) {
       setSendError(uiCopy.validation.messageTooLong);
       return;

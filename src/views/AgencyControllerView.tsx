@@ -100,6 +100,13 @@ async function geocodeCityForAgency(
 }
 import { supabase } from '../../lib/supabase';
 import {
+  normalizeInput,
+  MODEL_NAME_MAX_LENGTH,
+  MODEL_CITY_MAX_LENGTH,
+  MODEL_SHORT_TEXT_MAX_LENGTH,
+  UI_DOUBLE_SUBMIT_DEBOUNCE_MS,
+} from '../../lib/validation';
+import {
   ensureAgencyOrganization,
   getOrganizationIdForAgency,
   listOrganizationMembers,
@@ -257,6 +264,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   const [agencyNotesDraft, setAgencyNotesDraft] = useState('');
   const [agencySharedNoteDraft, setAgencySharedNoteDraft] = useState('');
   const [savingAgencySharedNote, setSavingAgencySharedNote] = useState(false);
+  const lastAppendSharedNoteAtRef = useRef(0);
   const [savingManualEvent, setSavingManualEvent] = useState(false);
   const [savingNotes, setSavingNotes] = useState(false);
   const [bookingScheduleDraft, setBookingScheduleDraft] = useState({
@@ -1070,6 +1078,9 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                 <TouchableOpacity
                   onPress={async () => {
                     if (!selectedCalendarItem || !agencySharedNoteDraft.trim() || !currentAgencyId) return;
+                    const now = Date.now();
+                    if (now - lastAppendSharedNoteAtRef.current < UI_DOUBLE_SUBMIT_DEBOUNCE_MS) return;
+                    lastAppendSharedNoteAtRef.current = now;
                     setSavingAgencySharedNote(true);
                     try {
                       const ok = await appendSharedBookingNote(
@@ -2533,7 +2544,7 @@ const MyModelsTab: React.FC<{
     try {
       const pInt = (v: string) => { const n = parseInt(v, 10); return isNaN(n) ? null : n; };
       const updates: any = {};
-      updates.name = editState.name;
+      updates.name = normalizeInput(String(editState.name ?? '')).slice(0, MODEL_NAME_MAX_LENGTH);
       updates.email = editState.email.trim() || null;
       updates.height = pInt(editState.height) ?? selectedModel.height;
       // Save to both chest and bust for backwards compatibility.
@@ -2543,12 +2554,17 @@ const MyModelsTab: React.FC<{
       updates.hips = pInt(editState.hips);
       updates.legs_inseam = pInt(editState.legs_inseam);
       updates.shoe_size = pInt(editState.shoe_size);
-      updates.hair_color = editState.hair_color || null;
-      updates.eye_color = editState.eye_color || null;
-      updates.ethnicity = editState.ethnicity ?? null;
-      updates.city = editState.city || null;
+      updates.hair_color =
+        normalizeInput(String(editState.hair_color ?? '')).slice(0, MODEL_SHORT_TEXT_MAX_LENGTH) || null;
+      updates.eye_color =
+        normalizeInput(String(editState.eye_color ?? '')).slice(0, MODEL_SHORT_TEXT_MAX_LENGTH) || null;
+      updates.ethnicity =
+        normalizeInput(String(editState.ethnicity ?? '')).slice(0, MODEL_SHORT_TEXT_MAX_LENGTH) || null;
+      updates.city =
+        normalizeInput(String(editState.city ?? '')).slice(0, MODEL_CITY_MAX_LENGTH) || null;
       updates.country_code = editState.country_code || null;
-      updates.current_location = editState.current_location || null;
+      updates.current_location =
+        normalizeInput(String(editState.current_location ?? '')).slice(0, MODEL_SHORT_TEXT_MAX_LENGTH) || null;
       // Derive visibility flags from categories — no separate Visibility toggle.
       const hasFashion = editState.categories.some((c) => c === 'Fashion' || c === 'High Fashion');
       const hasCommercial = editState.categories.includes('Commercial');
@@ -2605,7 +2621,7 @@ const MyModelsTab: React.FC<{
       // share_approximate_location is set to true only when geocoding succeeds.
       // The model-owned location (source='live'/'current') is protected by the DB priority guard.
       if (editState.country_code) {
-        const cityTrim = editState.city?.trim() ?? null;
+        const cityTrim = updates.city ?? null;
         const geocoded = cityTrim
           ? await geocodeCityForAgency(cityTrim, editState.country_code)
           : null;

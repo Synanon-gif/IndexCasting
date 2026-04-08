@@ -15,6 +15,7 @@ import {
   Alert,
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
+import { UI_DOUBLE_SUBMIT_DEBOUNCE_MS } from '../../lib/validation';
 import { showAppAlert } from '../utils/crossPlatformAlert';
 import { uiCopy } from '../constants/uiCopy';
 import { useAuth } from '../context/AuthContext';
@@ -418,6 +419,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   const [savingNotes, setSavingNotes] = useState(false);
   const [clientSharedNoteDraft, setClientSharedNoteDraft] = useState('');
   const [savingSharedNoteClient, setSavingSharedNoteClient] = useState(false);
+  const lastAppendSharedNoteAtRef = useRef(0);
   const [bookingScheduleDraft, setBookingScheduleDraft] = useState({
     date: '',
     start_time: '09:00',
@@ -2171,6 +2173,9 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                 <TouchableOpacity
                   onPress={async () => {
                     if (!selectedCalendarItem || !clientSharedNoteDraft.trim()) return;
+                    const now = Date.now();
+                    if (now - lastAppendSharedNoteAtRef.current < UI_DOUBLE_SUBMIT_DEBOUNCE_MS) return;
+                    lastAppendSharedNoteAtRef.current = now;
                     setSavingSharedNoteClient(true);
                     try {
                       const ok = await appendSharedBookingNote(

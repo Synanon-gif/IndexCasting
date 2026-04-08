@@ -21,6 +21,12 @@ import { normalizeInput, stripInvisibleChars } from '../normalize';
 import { RateLimiter } from '../rateLimit';
 import { validateText } from '../text';
 import { safeLinkProps } from '../url';
+import {
+  MESSAGE_MAX_LENGTH,
+  SHARED_BOOKING_NOTE_MAX_LENGTH,
+  MODEL_NAME_MAX_LENGTH,
+  UI_DOUBLE_SUBMIT_DEBOUNCE_MS,
+} from '../limits';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -306,5 +312,18 @@ describe('Link safety props', () => {
 
   test('safeLinkProps target is _blank', () => {
     expect(safeLinkProps.target).toBe('_blank');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 8. Central limits (defense-in-depth constants)
+// ---------------------------------------------------------------------------
+
+describe('validation limits constants', () => {
+  test('message and shared-note caps are stable', () => {
+    expect(MESSAGE_MAX_LENGTH).toBe(2000);
+    expect(SHARED_BOOKING_NOTE_MAX_LENGTH).toBe(4000);
+    expect(MODEL_NAME_MAX_LENGTH).toBe(120);
+    expect(UI_DOUBLE_SUBMIT_DEBOUNCE_MS).toBe(400);
   });
 });

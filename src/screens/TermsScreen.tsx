@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { uiCopy } from '../constants/uiCopy';
+import { validateUrl } from '../../lib/validation';
 
 type Props = {
   /** Called when the user taps the close/back button. */
@@ -25,6 +26,7 @@ type Props = {
  */
 export const TermsScreen: React.FC<Props> = ({ onClose }) => {
   const openExternal = () => {
+    if (!validateUrl(uiCopy.legal.tosUrl).ok) return;
     Linking.openURL(uiCopy.legal.tosUrl).catch(() => {});
   };
 

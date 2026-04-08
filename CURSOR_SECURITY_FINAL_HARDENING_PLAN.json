@@ -1,0 +1,29 @@
+{
+  "audit": "SECURITY_FINAL_HARDENING",
+  "follows": "SECURITY_AUDIT_E",
+  "date": "2026-04-08",
+  "status": "complete",
+  "final_line": "FINAL HARDENING COMPLETE — SYSTEM CONSISTENT",
+  "constraints": {
+    "no_business_logic_change": true,
+    "no_rls_auth_paywall_invite_claim_backend": true,
+    "no_architecture_refactor": true
+  },
+  "deliverables": [
+    "CURSOR_SECURITY_FINAL_HARDENING_REPORT.md",
+    "CURSOR_SECURITY_FINAL_HARDENING_DIFF_SUMMARY.md",
+    "CURSOR_SECURITY_FINAL_HARDENING_VERIFY.md",
+    "CURSOR_SECURITY_FINAL_HARDENING_PLAN.json"
+  ],
+  "areas": [
+    "lib/validation/limits.ts — central caps",
+    "OrgMessengerInline — normalizeInput + MESSAGE_MAX_LENGTH",
+    "BookingChatView — validateUrl + UI_DOUBLE_SUBMIT_DEBOUNCE_MS",
+    "calendarSupabase — appendSharedBookingNote + asBookingDetails",
+    "AgencyControllerView — model text clamp + shared note debounce",
+    "ClientWebApp / ModelProfileScreen — shared note debounce",
+    "queryParamGuards — stripInvisibleChars on shared name",
+    "OwnerBillingStatusCard / PaywallScreen / Terms / Privacy — validateUrl before HTTPS open",
+    "messenger/recruiting/optionRequests — MESSAGE_MAX_LENGTH constant"
+  ]
+}
