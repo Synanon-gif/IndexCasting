@@ -2,9 +2,9 @@
 
 ## Automated
 
-- [ ] `npm run typecheck` — exit 0
-- [ ] `npm run lint` — exit 0
-- [ ] `npm test -- --passWithNoTests --ci` — exit 0
+- [x] `npm run typecheck` — exit 0
+- [x] `npm run lint` — exit 0
+- [x] `npm test -- --passWithNoTests --ci` — exit 0
 - [ ] (Optional) `npx playwright test e2e/guest-link.spec.ts` — if E2E is configured
 
 ## Manual — product UI (English)
