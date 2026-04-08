@@ -1,0 +1,36 @@
+{
+  "improved_now": [
+    "OwnerBillingStatusCard for agency settings and client team tab",
+    "planFeatures.ts + planDisplayName / planFeatureLines",
+    "PaywallScreen strings moved to uiCopy",
+    "Optional EXPO_PUBLIC_STRIPE_SANDBOX billing notice",
+    "Web billing success/cancel URL banner + refresh without App.tsx changes"
+  ],
+  "verified_flows": [
+    "can_access_platform mirrored in UI for owners",
+    "createCheckoutSession from owner trial CTA and PaywallScreen",
+    "Non-owner read-only billing copy"
+  ],
+  "safe_next": [
+    "Stripe Customer Portal link when backend endpoint exists",
+    "Remove or repurpose unreachable Paywall trial banner block",
+    "Explicit multi-org org_id selection for billing"
+  ],
+  "live_stripe_preparation": [
+    "Set EXPO_PUBLIC_STRIPE_SANDBOX=0 or unset in production",
+    "Verify APP_URL and Stripe webhook URLs",
+    "Re-verify Edge Function price env vars for live price IDs"
+  ],
+  "manual_review_required": [
+    "Copy review for owner billing strings",
+    "End-to-end checkout in Stripe live mode"
+  ],
+  "do_not_touch": [
+    "AuthContext.tsx",
+    "App.tsx",
+    "signIn / bootstrapThenLoadProfile / loadProfile",
+    "get_own_admin_flags / is_current_user_admin / assert_is_admin",
+    "get_my_org_context SQL",
+    "Paywall RPC decision order (admin_override → trial → subscription → deny)"
+  ]
+}

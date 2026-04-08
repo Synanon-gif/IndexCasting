@@ -120,6 +120,7 @@ import { MonthCalendarView, type CalendarDayEvent } from '../components/MonthCal
 import { ClientOrganizationTeamSection } from '../components/ClientOrganizationTeamSection';
 import { OrgMessengerInline } from '../components/OrgMessengerInline';
 import { OrgMetricsPanel } from '../components/OrgMetricsPanel';
+import { OwnerBillingStatusCard } from '../components/OwnerBillingStatusCard';
 import { GlobalSearchBar } from '../components/GlobalSearchBar';
 import { DashboardSummaryBar } from '../components/DashboardSummaryBar';
 
@@ -1908,6 +1909,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             <Text style={{ ...typography.heading, fontSize: 18, color: colors.textPrimary, marginBottom: spacing.sm }}>
               Team
             </Text>
+            {clientOrgId && <OwnerBillingStatusCard variant="client" />}
             {clientOrgId && auth.profile?.org_member_role === 'owner' && (
               <ClientOrgMetricsPanelWrapper orgId={clientOrgId} />
             )}

@@ -105,7 +105,7 @@ function PlanCardView({ plan, loadingPlan, onSelect }: PlanCardProps) {
     <View style={[styles.card, plan.highlight && styles.cardHighlighted]}>
       {plan.highlight && (
         <View style={styles.popularBadge}>
-          <Text style={styles.popularBadgeText}>RECOMMENDED</Text>
+          <Text style={styles.popularBadgeText}>{uiCopy.billing.planCardRecommendedBadge}</Text>
         </View>
       )}
 
@@ -201,11 +201,11 @@ export default function PaywallScreen() {
       {/* Header — different copy for client vs agency */}
       <View style={styles.header}>
         <Text style={styles.title}>
-          {isClientPaywall ? 'Activate Your Account' : uiCopy.billing.paywallTitle}
+          {isClientPaywall ? uiCopy.billing.paywallClientTitle : uiCopy.billing.paywallTitle}
         </Text>
         <Text style={styles.subtitle}>
           {isClientPaywall
-            ? 'Your free trial has ended. Subscribe to regain full platform access.'
+            ? uiCopy.billing.paywallClientSubtitle
             : uiCopy.billing.paywallSubtitle}
         </Text>
       </View>
@@ -224,7 +224,7 @@ export default function PaywallScreen() {
           <Text style={styles.expiredTitle}>{uiCopy.billing.trialExpiredTitle}</Text>
           <Text style={styles.expiredBody}>
             {isClientPaywall
-              ? 'Your access is locked until you subscribe. No partial access is available.'
+              ? uiCopy.billing.paywallClientLockedBody
               : uiCopy.billing.trialExpiredBody}
           </Text>
         </View>
@@ -258,7 +258,7 @@ export default function PaywallScreen() {
       {/* Footer — only agency orgs see the enterprise contact note */}
       {!isClientPaywall && (
         <Text style={styles.footerNote}>
-          Need a custom enterprise plan?{' '}
+          {uiCopy.billing.paywallEnterpriseFooterLead}{' '}
           <Text
             style={styles.footerLink}
             onPress={() => Linking.openURL('mailto:hello@indexcasting.com')}
@@ -271,12 +271,12 @@ export default function PaywallScreen() {
       {/* Client footer — support link */}
       {isClientPaywall && (
         <Text style={styles.footerNote}>
-          Questions?{' '}
+          {uiCopy.billing.paywallClientSupportLead}{' '}
           <Text
             style={styles.footerLink}
             onPress={() => Linking.openURL('mailto:hello@indexcasting.com')}
           >
-            Contact support
+            {uiCopy.billing.paywallContactSupport}
           </Text>
         </Text>
       )}

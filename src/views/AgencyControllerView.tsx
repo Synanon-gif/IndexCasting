@@ -151,6 +151,7 @@ import { checkModelCompleteness, type CompletenessContext } from '../utils/model
 import { calendarEntryColor } from '../utils/calendarColors';
 import { DashboardSummaryBar } from '../components/DashboardSummaryBar';
 import { OrgMetricsPanel } from '../components/OrgMetricsPanel';
+import { OwnerBillingStatusCard } from '../components/OwnerBillingStatusCard';
 import { GlobalSearchBar } from '../components/GlobalSearchBar';
 import { getMyAgencyUsageLimits, type AgencyUsageLimits } from '../services/agencyUsageLimitsSupabase';
 import { getLatestActivityLog, type ActivityLog } from '../services/activityLogsSupabase';
@@ -638,6 +639,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
 
       {tab === 'settings' && profile?.org_member_role === 'owner' && (
         <ScreenScrollView>
+          <OwnerBillingStatusCard variant="agency" />
           {agencyOrganizationId && (
             <OrgMetricsPanel
               orgId={agencyOrganizationId}
@@ -756,6 +758,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
 
       {tab === 'settings' && profile?.org_member_role !== 'owner' && (
         <ScreenScrollView>
+          <OwnerBillingStatusCard variant="agency" />
           <View style={{ marginTop: spacing.md, marginBottom: spacing.lg }}>
             <Text style={s.sectionLabel}>{uiCopy.accountDeletion.sectionTitle}</Text>
             <Text style={[s.metaText, { marginBottom: spacing.sm }]}>{uiCopy.accountDeletion.personalDeleteDescription}</Text>

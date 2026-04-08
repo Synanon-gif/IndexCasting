@@ -1208,6 +1208,54 @@ export const uiCopy = {
     nonOwnerPaywallTitle: 'Subscription Required',
     nonOwnerPaywallBody:  'Only your organization owner can manage and activate the subscription. Please contact them to upgrade.',
 
+    // ── Paywall screen (no hardcoded English in component) ─────────────────
+    paywallClientTitle: 'Activate Your Account',
+    paywallClientSubtitle:
+      'Your free trial has ended. Subscribe to regain full platform access.',
+    paywallClientLockedBody:
+      'Your access is locked until you subscribe. No partial access is available.',
+    planCardRecommendedBadge: 'RECOMMENDED',
+    paywallEnterpriseFooterLead: 'Need a custom enterprise plan?',
+    paywallClientSupportLead: 'Questions?',
+    paywallContactSupport: 'Contact support',
+
+    // ── Owner billing status (in-app; server truth from can_access_platform) ─
+    ownerBillingCardTitle: 'Billing & plan',
+    ownerBillingReadOnlyTitle: 'Billing',
+    ownerBillingReadOnlyBody:
+      'Only your organization owner can start checkout or change the subscription. Contact them for upgrades.',
+    ownerBillingAccessLabel: 'Access',
+    ownerBillingCurrentPlanLabel: 'Current plan',
+    ownerBillingTrialEndsLabel: 'Trial ends',
+    ownerBillingTrialDaysLeft: (days: number) =>
+      `${days} day${days === 1 ? '' : 's'} left in your trial`,
+    ownerBillingSubscriptionStatusLabel: 'Subscription status',
+    ownerBillingBillingPeriodEndLabel: 'Current period ends',
+    ownerBillingFeaturesTitle: 'What this plan includes',
+    ownerBillingIncludedIntroTrial:
+      'During the trial you have access with trial limits until the trial end date.',
+    ownerBillingReasonLineAdminOverride:
+      'Full access is enabled for your organization (administrative access).',
+    ownerBillingReasonLineTrialActive: 'Your free trial is active.',
+    ownerBillingReasonLineSubscriptionActive: 'Your subscription is active.',
+    ownerBillingReasonLineNoSubscription:
+      'There is no active subscription. Subscribe to restore access when the trial is over.',
+    ownerBillingReasonLineTrialAlreadyUsed:
+      'A trial was already used for this email. A paid subscription is required.',
+    ownerBillingReasonLineNoOrg:
+      'We could not verify billing access. Try again shortly or contact support.',
+    ownerBillingNextStepTrial:
+      'Next step: subscribe before the trial ends to keep uninterrupted access.',
+    ownerBillingNextStepSubscribe: 'Next step: choose a plan and complete checkout.',
+    ownerBillingUpgradeFromTrialCTA: 'Subscribe now',
+    ownerBillingCheckoutReturnedSuccess:
+      'Checkout completed. Your access will update in a moment.',
+    ownerBillingCheckoutReturnedCancel:
+      'Checkout was closed before completing. You can try again when ready.',
+    billingTestModeNotice:
+      'Payments may run in Stripe test mode in this environment — no real charges.',
+    billingPaymentsProcessedBy: 'Payments are processed securely by Stripe.',
+
     // ── Errors ──────────────────────────────────────────────────────────────
     checkoutFailed:      'Could not open checkout. Please try again.',
     checkoutLoading:     'Preparing checkout…',
