@@ -74,5 +74,6 @@ Nach Änderungen an **Supabase-Migrationen**, **Storage-Policies**, **SECURITY-D
 2. Wenn die **Live-Datenbank** betroffen ist: **zusätzlich** gezielte Live-Verifikation (nicht nur Repo-Diff): z. B. `pg_get_functiondef` für geänderte Routinen, Policy-Checks wie in `.cursor/rules/auto-review.mdc` §2b, und Abgleich mit `system-invariants.mdc` **LIVE-DB SOURCE OF TRUTH**.
 3. **Keine** Abkürzung über alleinige Root-SQL-Dateien unter `supabase/` ohne `migrations/`-Deployment.
 4. **Root-SQL-Drift:** Kurzreferenz [docs/LIVE_DB_DRIFT_GUARDRAIL.md](../../docs/LIVE_DB_DRIFT_GUARDRAIL.md) — bei Security-SQL immer Live-Abgleich, nicht nur Repo-Diff.
+5. **Release-Checkliste:** Für dokumentierte Scope-/Verify-Schritte [docs/SECURITY_RELEASE_TEMPLATE.md](../../docs/SECURITY_RELEASE_TEMPLATE.md) und kompaktes Ritual [CURSOR_SECURITY_RELEASE_RITUAL.md](../../CURSOR_SECURITY_RELEASE_RITUAL.md) (Root des Repos).
 
 Diese Regel **berührt nicht** AuthContext, Login, Admin-Routing oder `App.tsx` — nur Release-Disziplin für Backend-/Upload-Änderungen.

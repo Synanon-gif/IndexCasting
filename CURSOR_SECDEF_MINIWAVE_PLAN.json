@@ -1,0 +1,54 @@
+{
+  "wave": "2026-04-08_secdef_storage_path_helpers",
+  "outcome_label": "SAFE SECDEF MINI-WAVE APPLIED",
+  "reviewed_candidates": [
+    {
+      "name": "get_chat_thread_file_paths",
+      "category": "storage_path_rpc",
+      "notes": "Agency-scoped; reads org_members, conversations, messages, storage.objects; guards unchanged"
+    },
+    {
+      "name": "get_model_portfolio_file_paths",
+      "category": "storage_path_rpc",
+      "notes": "Agency-scoped; reads org, models, model_photos, storage.objects; guards unchanged"
+    },
+    {
+      "name": "assert_is_admin",
+      "category": "excluded_admin_core",
+      "notes": "Do not touch per wave rules"
+    },
+    {
+      "name": "get_my_org_context",
+      "category": "excluded_org_core",
+      "notes": "Do not touch per wave rules"
+    },
+    {
+      "name": "check_calendar_conflict",
+      "category": "manual_review_required",
+      "notes": "Live SECDEF without row_security in proconfig; needs per-function guard audit before change"
+    }
+  ],
+  "fixed_now": [
+    "get_chat_thread_file_paths",
+    "get_model_portfolio_file_paths"
+  ],
+  "safe_next": [
+    "Per-function SECDEF review using live pg_get_functiondef + internal guard checklist (Rule 21)",
+    "Optional: calendar/option SECDEF helpers after isolated review"
+  ],
+  "manual_review_required": [
+    "Long tail of public SECDEF functions with only search_path in proconfig (admin_*, triggers, handle_new_user, match_models, …) — no blanket row_security campaign"
+  ],
+  "do_not_touch": [
+    "src/context/AuthContext.tsx",
+    "App.tsx",
+    "signIn / bootstrapThenLoadProfile / loadProfile",
+    "get_own_admin_flags",
+    "is_current_user_admin",
+    "assert_is_admin",
+    "get_my_org_context",
+    "Admin routing",
+    "Invite/claim/guest core navigation"
+  ],
+  "migration_file": "supabase/migrations/20260408_secdef_row_security_storage_path_helpers.sql"
+}

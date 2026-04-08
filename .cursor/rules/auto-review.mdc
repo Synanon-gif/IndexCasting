@@ -60,6 +60,7 @@ vollständig durchlaufen werden, **bevor** Code committed oder weitergeschrieben
 
 - **`supabase/*.sql` außerhalb `migrations/`** niemals als alleiniger Maßstab für den deployten DB-Stand verwenden — siehe [docs/LIVE_DB_DRIFT_GUARDRAIL.md](../../docs/LIVE_DB_DRIFT_GUARDRAIL.md).
 - Neue **Policies / Funktionen / DDL** ausschließlich in **`supabase/migrations/YYYYMMDD_*.sql`**; nach sicherheitsrelevanten Änderungen an bestehenden Routinen: **Live-Verifikation** (`pg_get_functiondef`, Suche nach Legacy-Spalten) wie in `system-invariants.mdc` **LIVE-DB SOURCE OF TRUTH**.
+- Security-/Hardening-Releases: strukturierte Vorlage [docs/SECURITY_RELEASE_TEMPLATE.md](../../docs/SECURITY_RELEASE_TEMPLATE.md) (Scope, Do-Not-Touch, Checks vor/nach Deploy).
 
 ## 2b. Audit-Verifikation (Live-DB, bei Security-Release)
 
