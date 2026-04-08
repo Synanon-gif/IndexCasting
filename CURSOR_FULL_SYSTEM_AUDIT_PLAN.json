@@ -1,0 +1,45 @@
+{
+  "areas_reviewed": [
+    "Trust boundaries / source of truth (auth, org, models, locations, territories, options, calendar, paywall, discovery, uploads, audit)",
+    "App routing order (read-only): admin before effectiveRole, paywall guards, guest/package/deeplinks",
+    "agency_update_model_full call sites: AgencyControllerView, modelsImportSupabase, mediaslideSyncService, netwalkSyncService, modelsSupabase, modelPhotosSupabase",
+    "Paywall documentation alignment: PAYWALL_SECURITY_SUMMARY, subscriptionSupabase, SubscriptionContext",
+    "Option/casting documentation: OPTION_CASTING_FLOW",
+    "Location/consistency documentation: MODEL_SAVE_LOCATION_CONSISTENCY",
+    "Booking brief: BOOKING_BRIEF_SYSTEM, bookingBrief.ts, BookingBriefEditor",
+    "Workflow layers: SMART_ATTENTION_SYSTEM, CLIENT_ASSIGNMENT_FLAG_SYSTEM, CONTEXTUAL_CHAT_LAYERS",
+    "Stichprobe migrations: FOR ALL / security hardening file names; profiles.is_admin in migrations (comments/fixes only)",
+    "Stichprobe src: forbidden .eq('email') — zero matches under src/"
+  ],
+  "critical_findings": [],
+  "high_findings": [
+    "Booking Brief and calendar notes remain UI-filtered JSONB; any party that can SELECT the row can read full JSON — matches documented trust model; future hardening needs explicit product/security review."
+  ],
+  "accepted_architectural_limits": [
+    "Dual channel option thread + B2B booking card + calendar (by design)",
+    "Mediaslide/Netwalk sync writes subset of model fields via agency_update_model_full",
+    "Calendar conflict on option submit is warning-only fail-open",
+    "Legacy null agency_organization_id / client_organization_id handled with OR filters in agency option reads",
+    "Paywall resolves org via oldest membership inside can_access_platform (documented exception to implicit org resolution)"
+  ],
+  "fixed_now": [],
+  "rules_updated": [],
+  "docs_updated": [],
+  "manual_review_required": [
+    "Run live-db pg_policies verification queries from auto-review.mdc when Supabase token available",
+    "pg_get_functiondef spot-check after any future RPC migration touching guards"
+  ],
+  "do_not_touch": [
+    "src/context/AuthContext.tsx",
+    "App.tsx",
+    "signIn()",
+    "bootstrapThenLoadProfile()",
+    "loadProfile()",
+    "get_own_admin_flags()",
+    "is_current_user_admin()",
+    "assert_is_admin()",
+    "get_my_org_context()",
+    "Paywall core decision chain (can_access_platform and related migration definitions)",
+    "Admin routing order relative to effectiveRole"
+  ]
+}
