@@ -429,7 +429,7 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
                 <View style={styles.modelInfo}>
                   <Text style={styles.modelName}>{m.name}</Text>
                   <Text style={styles.modelMeta}>
-                    {m.height}cm{m.bust ? ` · Bust ${m.bust}` : ''}
+                    {m.height}cm{m.bust ? ` · Chest ${m.bust} cm` : ''}
                   </Text>
                 </View>
               </TouchableOpacity>
@@ -573,9 +573,9 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
               <Text style={styles.galleryModelName}>{galleryModel.name}</Text>
               <Text style={styles.galleryModelMeta}>
                 {galleryModel.height}cm
-                {galleryModel.bust ? ` · Bust ${galleryModel.bust}` : ''}
-                {galleryModel.waist ? ` · Waist ${galleryModel.waist}` : ''}
-                {galleryModel.hips ? ` · Hips ${galleryModel.hips}` : ''}
+                {galleryModel.bust ? ` · Chest ${galleryModel.bust} cm` : ''}
+                {galleryModel.waist ? ` · Waist ${galleryModel.waist} cm` : ''}
+                {galleryModel.hips ? ` · Hips ${galleryModel.hips} cm` : ''}
               </Text>
             </View>
           )}
@@ -639,9 +639,9 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
               <View style={styles.modelInfo}>
                 <Text style={styles.modelName}>{m.name}</Text>
                 <Text style={styles.modelMeta}>
-                  {m.height}cm{m.bust ? ` · Bust ${m.bust}` : ''}
-                  {m.waist ? ` · Waist ${m.waist}` : ''}
-                  {m.hips ? ` · Hips ${m.hips}` : ''}
+                  {m.height}cm{m.bust ? ` · Chest ${m.bust} cm` : ''}
+                  {m.waist ? ` · Waist ${m.waist} cm` : ''}
+                  {m.hips ? ` · Hips ${m.hips} cm` : ''}
                 </Text>
                 <Text style={styles.modelMeta}>
                   {m.sex ? `${m.sex === 'female' ? 'Female' : 'Male'}` : ''}

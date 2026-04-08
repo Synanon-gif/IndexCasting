@@ -1,0 +1,81 @@
+{
+  "surfaces_reviewed": [
+    "App.tsx routing (auth, invite, claim, paywall guards, guest, shared, booking deep link)",
+    "AuthScreen / InviteAcceptanceScreen / ModelClaimScreen / PendingActivationScreen",
+    "AgencyView + AgencyControllerView (My Models, messages, clients, calendar, booking brief)",
+    "ClientView + ClientWebApp (Discover, package/shared modes, projects, messages, calendar)",
+    "ModelView + ModelProfileScreen / calendar / media",
+    "GuestView / GuestChatView (package guest)",
+    "SharedSelectionView (URL shared selection)",
+    "BookingChatView (booking thread deep link)",
+    "AdminDashboard",
+    "Components: BookingBriefEditor, ModelFiltersPanel, ModelEditDetailsPanel, OrgMessengerInline",
+    "Services: finalizePendingInviteOrClaim, modelPhotosSupabase, imageUtils (HEIC), calendarSupabase"
+  ],
+  "confirmed_ui_findings": [
+    {
+      "id": "B-001",
+      "severity": "CONFIRMED_UI_MEDIUM",
+      "title": "Chest vs Bust naming and cm hints were inconsistent across Discover, package grid, Guest, and swipe labels",
+      "notes": "Agency save path already mirrors chest=bust in agency_update_model_full payload (AgencyControllerView). Client discovery filters use DB column chest. Some surfaces said Bust, others Chest, and several overlays omitted explicit cm units."
+    },
+    {
+      "id": "B-002",
+      "severity": "LOW",
+      "title": "Dual columns bust and chest in models table",
+      "notes": "Product treats them as the same measurement in cm for agency saves; completeness uses chest ?? bust. Filters and modelFilters prefer chest. Acceptable technical debt; document for engineers."
+    },
+    {
+      "id": "B-003",
+      "severity": "ACCEPTED_PRODUCT_COMPLEXITY",
+      "title": "Messages: option threads vs B2B org chat vs contextual layers",
+      "notes": "ClientWebApp MessagesView uses tabs (b2bChats vs optionRequests) plus assignment/attention filters. Users must learn two chat families; copy and entry points are separate by design."
+    },
+    {
+      "id": "B-004",
+      "severity": "LOW",
+      "title": "Smart Attention vs unread",
+      "notes": "Attention is action-required workflow signal, not read receipts — aligns with system-invariants; filter pills are duplicated pattern on agency and client messages."
+    },
+    {
+      "id": "B-005",
+      "severity": "ACCEPTED_PRODUCT_COMPLEXITY",
+      "title": "Invite + model claim tokens both present: sequential finalize (invite first)",
+      "notes": "finalizePendingInviteOrClaim runs invite then claim only after invite success. If invite fails fatally, claim is not attempted in that run; tokens handled per branch. Not a security issue; rare edge."
+    },
+    {
+      "id": "B-006",
+      "severity": "MANUAL_REVIEW_REQUIRED",
+      "title": "Upload parity across all device pickers",
+      "notes": "HEIC conversion and shared uiCopy exist; accept= attributes differ slightly by surface (e.g. chat vs model photos). Recommend periodic manual QA on iOS Safari, Android Chrome, desktop."
+    }
+  ],
+  "accepted_product_complexity": [
+    "Two chat families (option-scoped vs org B2B) with separate threads",
+    "Package vs normal Discover vs shared-project modes with different data sources (invariants documented)",
+    "Booking Brief scope UX vs full-row JSONB trust model (docs/BOOKING_BRIEF_SYSTEM.md)",
+    "Guest link RPC returns bust only; synonymous with chest for display"
+  ],
+  "fixed_now": [
+    "uiCopy.modelEdit: explicit (cm) on chest/waist/hips/legs inseam labels",
+    "uiCopy.swipe: measurement labels aligned with cm + Chest/Bust wording",
+    "ClientWebApp: package grid + discover card measurement overlay uses Chest with chest||bust fallback and cm suffix",
+    "GuestView + SharedSelectionView: Chest wording and cm suffix for measurements"
+  ],
+  "rules_updated": [],
+  "docs_updated": [],
+  "manual_review_required": [
+    "Cross-device upload smoke (HEIC from iPhone, large PNG, PDF in chat)",
+    "Multi-tab invite+claim rare sequencing",
+    "Owner-only invite affordances when booker tries to invite (already copy-guarded in uiCopy)"
+  ],
+  "do_not_touch": [
+    "AuthContext core",
+    "bootstrapThenLoadProfile",
+    "get_my_org_context",
+    "Admin-RPCs",
+    "Paywall core",
+    "calendar_entries RLS semantics (Audit A)",
+    "Introducing field-level RLS for booking_brief"
+  ]
+}

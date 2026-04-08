@@ -2701,8 +2701,8 @@ const DiscoverView: React.FC<DiscoverProps> = ({
                     <View style={styles.coverMeasurementsOverlay}>
                       <Text style={styles.coverNameOnImage}>{m.name}</Text>
                       <Text style={styles.coverMeasurementsLabel}>
-                        Height {m.height} · Bust {m.bust} · Waist {m.waist} · Hips {m.hips}
-                        {m.legsInseam ? ` · Inseam ${m.legsInseam}` : ''}
+                        Height {m.height} cm · Chest {m.chest || m.bust || '—'} cm · Waist {m.waist || '—'} cm · Hips {m.hips || '—'} cm
+                        {m.legsInseam ? ` · Inseam ${m.legsInseam} cm` : ''}
                       </Text>
                       <Text style={styles.coverLocationLabel}>{m.city || '—'}</Text>
                     </View>
@@ -2798,8 +2798,8 @@ const DiscoverView: React.FC<DiscoverProps> = ({
               <View style={styles.coverMeasurementsOverlay}>
                 <Text style={styles.coverNameOnImage}>{current.name}</Text>
                 <Text style={styles.coverMeasurementsLabel}>
-                  Height {current.height} · Chest {current.chest || current.bust} · Waist {current.waist} · Hips {current.hips}
-                  {current.legsInseam ? ` · Inseam ${current.legsInseam}` : ''}
+                  Height {current.height} cm · Chest {current.chest || current.bust || '—'} cm · Waist {current.waist || '—'} cm · Hips {current.hips || '—'} cm
+                  {current.legsInseam ? ` · Inseam ${current.legsInseam} cm` : ''}
                 </Text>
                 <Text style={styles.coverLocationLabel}>
                   {current.hasRealLocation

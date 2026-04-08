@@ -101,7 +101,7 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
                 <View style={styles.cardOverlay}>
                   <Text style={styles.cardName}>{m.name}</Text>
                   <Text style={styles.cardMeasurements}>
-                    Height {m.measurements.height} · Bust {m.measurements.bust} · Waist {m.measurements.waist} · Hips {m.measurements.hips}
+                    Height {m.measurements.height} cm · Chest {m.measurements.bust} cm · Waist {m.measurements.waist} cm · Hips {m.measurements.hips} cm
                   </Text>
                 </View>
               </View>
