@@ -22,6 +22,10 @@ Persisted org-invite and model-claim tokens drove `finalizePendingInviteOrClaim`
 
 - `bootstrapThenLoadProfile`, `get_my_org_context`, admin RPCs, paywall core, `finalizePendingInviteOrClaim` semantics.
 
+## Design note (URL vs storage)
+
+Routing merges URL + storage **once** at bootstrap; ongoing finalization uses **storage**. Do not add URL-only sync after mount — see `invite-finalization.mdc` §7.
+
 ## Follow-up
 
 UI Audit B remains useful for copy and transitions; functionally the documented persisted-token UI gap is closed.
