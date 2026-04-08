@@ -21,6 +21,14 @@ Wenn eine Änderung eine dieser Regeln gefährdet → STOP und refaktorieren.
 - Org-Kontext muss via `get_my_org_context()` auflösbar sein — ohne Fehler
 - Kein View darf Org als existent voraussetzen ohne Fallback
 
+## PAYWALL & ORG-WIDE ACCESS (B2B)
+
+- **Org-weit, nicht user-lokal:** Platform-Zugang für Client/Agency richtet sich nach `can_access_platform()` / `organization_subscriptions` + `admin_overrides` für die **aufgelöste Organisation** (älteste `organization_members`-Zeile im Paywall-RPC — siehe Migrationen und `docs/PAYWALL_SECURITY_SUMMARY.md`).
+- **Owner-only vs org-weiter Zugang:** „Owner-only“ betrifft **Billing-Verantwortung** (Checkout, Owner-Settings) und Owner-exklusive Org-Verwaltung — nicht die Frage, ob ein Booker/Employee **Zugriff hat**, wenn die Org freigeschaltet ist.
+- **Entscheidungsreihenfolge (fix):** `admin_override` → `trial_active` (inkl. `used_trial_emails`-Schutz) → `subscription_active` → deny.
+- **Frontend:** Spiegelt nur; **kein** Enforce nur aus `SubscriptionContext` ohne serverseitige Prüfung bei neuen Features.
+- **Models:** Nutzen `organization_members` nicht für Agency-Beziehung (Fix H); Paywall-RPC ist für B2B-Org-User konzipiert — Model-Routing bleibt davon getrennt.
+
 ## ADMIN-ZUGANG
 
 - Admin kann IMMER: einloggen, alle User sehen, Org-Beschränkungen umgehen

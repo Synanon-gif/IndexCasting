@@ -7,6 +7,17 @@
  * NEVER trust the results of these calls to gate server-side actions —
  * the DB RPCs (can_access_platform, increment_my_agency_swipe_count, etc.)
  * are the real enforcement layer.  This module only powers the UI.
+ *
+ * Backend decision chain (must match `public.can_access_platform()` in migrations):
+ *   1. admin_override — `admin_overrides.bypass_paywall` for the resolved org
+ *   2. trial_active — `organization_subscriptions.trial_ends_at > now()`, subject to
+ *      `used_trial_emails` (blocks re-trial across orgs for same email hash)
+ *   3. subscription_active — `status IN ('active','trialing')`
+ *   4. else deny
+ *
+ * Org resolution for that RPC: oldest `organization_members` row (`ORDER BY created_at ASC LIMIT 1`).
+ * It applies to B2B org users (client/agency). Models do not use `organization_members` for agency
+ * linkage — see Fix H — so they are outside this paywall RPC’s org scope (Model UI is not paywall-gated in App.tsx).
  */
 
 import { supabase } from '../../lib/supabase';
@@ -82,6 +93,10 @@ export const PLAN_LIMITS: Record<string, PlanLimits> = {
  *
  * Use this to render the correct UI state (trial/active/blocked).
  * Do NOT use this as the only gate for server-side actions.
+ *
+ * On RPC/network failure, returns `allowed: false` with `reason: 'no_org'` (fail-closed). That reason
+ * is a UI sentinel for “blocked / unknown” — it does not distinguish transport errors from a user
+ * with no membership; see logs for the real error.
  */
 export async function getMyOrgAccessStatus(): Promise<OrgAccessStatus> {
   try {

@@ -170,7 +170,7 @@ Rollen-Matrix:
 
 ## 11. Paywall-Enforcement (zwingend)
 
-Zugriffslogik MUSS exakt dieser Reihenfolge folgen:
+Zugriffslogik MUSS exakt dieser Reihenfolge folgen (siehe `public.can_access_platform()` und `docs/PAYWALL_SECURITY_SUMMARY.md`):
 
 ```
 IF admin_override  → allow
@@ -179,10 +179,14 @@ ELSE IF subscription_active → allow
 ELSE → deny
 ```
 
+- **Org-weit:** Gilt für die Organisation, die `can_access_platform()` über `organization_members` auflöst — nicht „pro User-Plan“ im Sinne eines isolierten Frontend-States.
+- **Owner-only:** Billing-Checkout und zahlungsbezogene Verantwortung nur für **owner** (Agency/Client); Booker/Employee sind im Tagesgeschäft gleichwertig, aber nicht für Owner-only-Bereiche.
 - Frontend-Plan-State niemals vertrauen.
+- Jede neue **gated** Produktfunktion, die org-sensible Daten schreibt oder breit liest: Backend-Enforcement (RPC/RLS/Policy) mitdenken — nicht nur UI.
 - Immer im Backend validieren.
 - Stripe = Zahlungswahrheit.
 - Datenbank = Zugriffswahrheit.
+- Neue Stripe- oder `organization_subscriptions`-Änderungen: Konsistenz mit Webhook-Mapping und `can_access_platform()`-Status (`active`/`trialing`/`past_due` etc.) prüfen.
 
 ## 12. Datenschutz-Regeln (DSGVO)
 

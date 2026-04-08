@@ -80,6 +80,15 @@ SELECT count(*) FROM pg_policies WHERE tablename='model_agency_territories'
 
 **Funktions-Drift (nach Änderung an bestehender `public.*` Routine):** gezielt `pg_get_functiondef` auf der **Live-DB** für die geänderte Funktion ausführen und auf verbotene / nicht existierende Spalten oder Legacy-Branches prüfen (Katalog-Scans: nur `prokind = 'f'`). Siehe `system-invariants.mdc` **LIVE-DB SOURCE OF TRUTH**.
 
+## 2c. Paywall / Subscription (bei relevanten Änderungen)
+
+- **Neue gated Funktion / RPC / Policy:** Greift `can_access_platform()` / `has_platform_access()` oder gleichwertiger Guard, wo org-weite Sichtbarkeit geschützt werden muss? Reine UI-Änderung reicht nicht.
+- **Reihenfolge:** `admin_override` → `trial_active` → `subscription_active` → deny — nicht umkehren oder in Frontend duplizieren als „Wahrheit“.
+- **Kein Vertrauen:** Frontend-Plan-State, `SubscriptionContext`, lokale Caches — **niemals** alleinige Autorisierung.
+- **Stripe/DB:** Webhook-Mapping und `organization_subscriptions.status` müssen zu `can_access_platform()` passen (`past_due` etc. bewusst behandeln).
+- **Owner-only Billing:** Checkout und zahlungskritische Pfade nur mit serverseitiger Owner-Prüfung (Edge Function Pattern), nicht nur UI-Disable.
+- **Multi-Org:** Paywall verwendet deterministisch eine Membership-Zeile — Feature-Design für Multi-Org explizit mitdenken oder `MANUAL_REVIEW_REQUIRED`.
+
 ---
 
 ## 3. Acht Pflicht-Fragen (explizit beantworten)

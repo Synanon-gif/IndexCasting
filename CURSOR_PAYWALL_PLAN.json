@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "label": "PARTIAL PAYWALL HARDENING APPLIED",
+  "analyzed_components": [
+    "public.can_access_platform (supabase/migrations/20260416_fix_a_can_access_platform_sha256.sql)",
+    "public.has_platform_access (wrapper; live pg_get_functiondef)",
+    "organization_subscriptions, admin_overrides, used_trial_emails",
+    "supabase/functions/create-checkout-session/index.ts",
+    "supabase/functions/stripe-webhook/index.ts",
+    "src/services/subscriptionSupabase.ts",
+    "src/context/SubscriptionContext.tsx",
+    "src/screens/PaywallScreen.tsx",
+    "App.tsx ClientPaywallGuard / AgencyPaywallGuard (read-only analysis)",
+    "src/services/modelsSupabase.ts assertPlatformAccess",
+    "src/services/clientDiscoverySupabase.ts assertPlatformAccess",
+    "src/views/AdminDashboard.tsx + src/services/adminSupabase.ts admin billing RPCs",
+    "RLS/policy references: supabase/migrations/20260426_remediation_three_policies_no_profiles_rls.sql, get_models_near_location chain"
+  ],
+  "confirmed_findings": [
+    {
+      "id": "F1",
+      "classification": "NO_ISSUE",
+      "summary": "Decision order in can_access_platform matches admin_override → trial → subscription → deny"
+    },
+    {
+      "id": "F2",
+      "classification": "NO_ISSUE",
+      "summary": "create-checkout-session enforces owner role for billing"
+    },
+    {
+      "id": "F3",
+      "classification": "LOW",
+      "summary": "Multi-org users: deterministic oldest membership for paywall scope"
+    },
+    {
+      "id": "F4",
+      "classification": "MANUAL_REVIEW_REQUIRED",
+      "summary": "getMyOrgAccessStatus maps all errors to reason no_org (fail-closed; observability/UX optional)"
+    },
+    {
+      "id": "F5",
+      "classification": "MANUAL_REVIEW_REQUIRED",
+      "summary": "past_due/canceled vs can_access_platform only active/trialing — confirm product intent"
+    },
+    {
+      "id": "F7",
+      "classification": "NO_ISSUE",
+      "summary": "Model role outside B2B org_members paywall scope per Fix H; App paywall guards client/agency only"
+    }
+  ],
+  "fixed_now": [
+    "docs/PAYWALL_SECURITY_SUMMARY.md created",
+    ".cursorrules §11 expanded",
+    ".cursor/rules/system-invariants.mdc PAYWALL section",
+    ".cursor/rules/auto-review.mdc section 2c",
+    "src/services/subscriptionSupabase.ts documentation comments only"
+  ],
+  "safe_next": [
+    "Live pg_get_functiondef for can_access_platform and has_platform_access",
+    "Optional distinct AccessReason for RPC errors after product decision",
+    "Full inventory of RPCs without has_platform_access for intentional coverage review"
+  ],
+  "manual_review_required": [
+    "F4 error-reason UX",
+    "F5 Stripe recovery vs paywall denial",
+    "Complete RPC coverage audit for paywall-sensitive operations"
+  ],
+  "do_not_touch": [
+    "src/context/AuthContext.tsx",
+    "App.tsx",
+    "signIn / bootstrapThenLoadProfile / loadProfile",
+    "get_own_admin_flags / is_current_user_admin / assert_is_admin implementations",
+    "get_my_org_context() semantics",
+    "Admin routing",
+    "Invite/claim/guest core navigation"
+  ]
+}
