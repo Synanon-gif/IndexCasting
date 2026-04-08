@@ -29,6 +29,21 @@ Wenn eine Änderung eine dieser Regeln gefährdet → STOP und refaktorieren.
 - **Frontend:** Spiegelt nur; **kein** Enforce nur aus `SubscriptionContext` ohne serverseitige Prüfung bei neuen Features.
 - **Models:** Nutzen `organization_members` nicht für Agency-Beziehung (Fix H); Paywall-RPC ist für B2B-Org-User konzipiert — Model-Routing bleibt davon getrennt.
 
+### PAYWALL INVARIANTS (STRICT)
+
+- Paywall ist **immer** org-weit, niemals user-lokal.
+- Billing ist **immer** Owner-only (Agency Owner / Client Owner).
+- Booker/Employee dürfen **niemals** Checkout auslösen.
+- Paywall-Entscheidung **niemals** final im Frontend; Frontend-Plan-State ist **niemals** Autorität.
+- Reihenfolge ist **fix:** `admin_override` → `trial_active` → `subscription_active` → deny — Änderungen nur nach expliziter Security Review.
+- `can_access_platform()` ist die **einzige** Wahrheitsquelle für Zugriff; `has_platform_access()` ist nur ein Wrapper, **keine** eigene Logikquelle.
+
+### ORG-KONTEXT (Paywall / Billing — deterministische Membership)
+
+- Paywall/Billing darf Org-Kontext **deterministisch** aus Membership ableiten (z. B. älteste `organization_members`-Zeile im Paywall-RPC) — das ist die **einzige** bewusste Ausnahme zum generellen „keine implizite Org-Auflösung“-Muster.
+- Diese Ausnahme gilt **nur** für Paywall / Billing — **nicht** als Blaupause für übrige Org-Resolution; `get_my_org_context()` bleibt multi-row, Caller wählt (siehe „KEINE IMPLIZITE ORG-AUFLÖSUNG“).
+- **Keine** client-supplied `org_id` als **alleinige** Zugriffskontrolle: Server leitet Berechtigung aus Session/Membership (+ ggf. expliziter, verifizierter Org-Pin wie bei Invites) ab.
+
 ## ADMIN-ZUGANG
 
 - Admin kann IMMER: einloggen, alle User sehen, Org-Beschränkungen umgehen

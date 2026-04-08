@@ -89,6 +89,26 @@ SELECT count(*) FROM pg_policies WHERE tablename='model_agency_territories'
 - **Stripe/DB:** Webhook-Mapping und `organization_subscriptions.status` müssen zu `can_access_platform()` passen (`past_due` etc. bewusst behandeln).
 - **Owner-only Billing:** Checkout und zahlungskritische Pfade nur mit serverseitiger Owner-Prüfung (Edge Function Pattern), nicht nur UI-Disable.
 - **Multi-Org:** Paywall verwendet deterministisch eine Membership-Zeile — Feature-Design für Multi-Org explizit mitdenken oder `MANUAL_REVIEW_REQUIRED`.
+- **Ausnahme Risiko 10 / Q7:** Deterministische „eine Membership-Zeile“ nur im dokumentierten **Paywall-/Billing-Backend-Pfad** (`can_access_platform()` u. ä.) — nicht auf andere Features übertragen.
+
+### STRIPE & BILLING SAFETY
+
+- Checkout darf nur durch **Owner** ausgelöst werden (serverseitig enforced, nicht nur UI-Disable).
+- Jede neue Billing-/Checkout-Funktion: **Owner-only** serverseitig erzwingen.
+- **Stripe-Webhooks** sind die einzige Quelle für Subscription-Status-Updates in der DB; Frontend setzt Subscription-Status **niemals** selbst.
+- Änderungen an **`create-checkout-session`**, **`stripe-webhook`** und **`organization_subscriptions`** (Schema/Logik): **Live-Verify-Checkliste** ausführen und dokumentieren (siehe `docs/PAYWALL_SECURITY_SUMMARY.md`, `CURSOR_PAYWALL_VERIFY.md` wo relevant).
+- **Sandbox vs. Live:** darf keine Produktlogik verändern — nur Konfiguration (Keys, Price-IDs, Webhook-Endpunkte).
+
+### STRIPE GO-LIVE REQUIREMENT
+
+Jede Änderung unmittelbar vor oder für **Stripe Live** muss umfassen:
+
+- eine **Verify-Matrix** (wer was prüft, welche Pfade),
+- Rollen: **Owner / Booker / Employee / Admin** manuell oder automatisiert testen,
+- Zustände: **Trial / Subscription / Override / Deny**,
+- Kette **Webhook → DB → UI** auf Konsistenz prüfen.
+
+Fehlen diese Punkte → Änderung gilt als **UNSAFE** bis nachgeholt.
 
 ---
 

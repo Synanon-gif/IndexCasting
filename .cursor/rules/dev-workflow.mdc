@@ -66,6 +66,20 @@ Ergebnis kurz melden. Bei Fehlern sofort fixen bevor weitergemacht wird.
 Code ändern → typecheck + lint + test grün → git pull --rebase → commit → git push origin <branch> → Vercel deployt (main)
 ```
 
+### STRIPE & BILLING SAFETY
+
+- Checkout nur durch **Owner**; neue Billing-/Checkout-Pfade **serverseitig** Owner-only enforced (Edge/RPC), nicht nur Button ausblenden.
+- Subscription-Status: **Webhooks → DB**; Frontend **setzt** Status **nicht** als Wahrheit.
+- Touchpoints **`create-checkout-session`**, **`stripe-webhook`**, **`organization_subscriptions`**: nach Änderung **Live-Verify-Checkliste** (Abgleich mit `can_access_platform()`, Webhook-Mapping).
+- **Sandbox vs. Live:** nur Konfiguration ändern, keine abweichende Business-Logik pro Umgebung.
+
+### OWNER BILLING UX RULE
+
+- **Owner** muss jederzeit klar sehen: Trial-Status, Trial-Ende, aktueller Plan, nächster Schritt (z. B. Checkout).
+- **Booker / Employee:** Billing nur **read-only** oder gar nicht sichtbar — kein Checkout.
+- UI darf **keine** Freischaltung suggerieren, die dem tatsächlichen Plan / RPC-Ergebnis widerspricht.
+- Feature-Zugriff in der UI muss mit **tatsächlichem** Zugriff (Backend / `can_access_platform`) übereinstimmen.
+
 ## Regel: Security-/Hardening-Release (SQL, Storage, SECDEF, Upload-Services)
 
 Nach Änderungen an **Supabase-Migrationen**, **Storage-Policies**, **SECURITY-DEFINER-RPCs** oder an **Upload-Services** (`src/services/*` mit `storage.upload` / neue Validierungsketten):

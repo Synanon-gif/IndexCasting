@@ -188,6 +188,22 @@ ELSE → deny
 - Datenbank = Zugriffswahrheit.
 - Neue Stripe- oder `organization_subscriptions`-Änderungen: Konsistenz mit Webhook-Mapping und `can_access_platform()`-Status (`active`/`trialing`/`past_due` etc.) prüfen.
 
+### PAYWALL INVARIANTS (STRICT)
+
+- Paywall ist **immer** org-weit, niemals user-lokal.
+- Billing ist **immer** Owner-only (Agency Owner / Client Owner).
+- Booker/Employee dürfen **niemals** Checkout auslösen.
+- Die Paywall-Entscheidung darf **niemals** im Frontend final getroffen werden; Frontend-Plan-State ist **niemals** Autorität.
+- Reihenfolge ist **fix:** `admin_override` → `trial_active` → `subscription_active` → deny — Änderungen daran sind **verboten** ohne explizite Security Review.
+- `can_access_platform()` ist die **einzige** Wahrheitsquelle für Zugriff; `has_platform_access()` ist nur ein Wrapper, **keine** eigene Logikquelle.
+
+### FAIL-CLOSED PAYWALL
+
+- Fehler beim Abruf des Paywall-Status müssen zu **deny** führen.
+- Die UI darf **niemals** „optimistisch freischalten“.
+- Jeder neue Paywall-Helfer muss **fail-closed** sein.
+- Netzwerk-/RPC-Fehler dürfen **keinen** Zugriff ermöglichen.
+
 ## 12. Datenschutz-Regeln (DSGVO)
 
 ### Betroffenenrechte
