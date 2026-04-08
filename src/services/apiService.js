@@ -122,7 +122,7 @@ export async function getModelsForClient(
     hairColor: m.hair_color,
     height: m.height,
     bust: m.bust ?? 0,
-    chest: m.chest ?? 0,
+    chest: m.chest ?? m.bust ?? 0,
     waist: m.waist ?? 0,
     hips: m.hips ?? 0,
     legsInseam: m.legs_inseam ?? 0,

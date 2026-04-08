@@ -144,6 +144,15 @@ describe('filterModels', () => {
       expect(filterModels(models, { ...noFilter, chestMax: '85' }).map((m) => m.id)).toEqual(['A']);
     });
 
+    it('uses bust as fallback when chest is null (Agency roster / package builder parity)', () => {
+      const legacy = [
+        makeModel({ id: 'legacy', chest: null, bust: 88, hips: 90, waist: 60, legs_inseam: 80 }),
+      ];
+      expect(filterModels(legacy, { ...noFilter, chestMin: '85', chestMax: '90' }).map((m) => m.id)).toEqual([
+        'legacy',
+      ]);
+    });
+
     it('filters by legsInseamMin', () => {
       expect(filterModels(models, { ...noFilter, legsInseamMin: '80' }).map((m) => m.id)).toEqual(['B']);
     });

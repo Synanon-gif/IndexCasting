@@ -270,7 +270,7 @@ function mapDiscoveryModelToSummary(m: DiscoveryModel): ModelSummary {
     bust: m.bust ?? 0,
     waist: m.waist ?? 0,
     hips: m.hips ?? 0,
-    chest: m.chest ?? 0,
+    chest: m.chest ?? m.bust ?? 0,
     legsInseam: m.legs_inseam ?? 0,
     coverUrl: m.portfolio_images?.[0] ?? '',
     agencyId: m.territory_agency_id ?? m.agency_id ?? null,
@@ -852,7 +852,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         bust: m.bust ?? 0,
         waist: m.waist ?? 0,
         hips: m.hips ?? 0,
-        chest: m.chest ?? 0,
+        chest: m.chest ?? m.bust ?? 0,
         legsInseam: m.legsInseam ?? m.legs_inseam ?? 0,
         coverUrl: m.gallery?.[0] ?? '',
         agencyId: m.agencyId ?? m.agency_id ?? null,
@@ -1533,7 +1533,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         bust: m.bust ?? 0,
         waist: m.waist ?? 0,
         hips: m.hips ?? 0,
-        chest: 0,
+        chest: m.bust ?? 0,
         legsInseam: 0,
         coverUrl: gl.type === 'polaroid'
           ? (m.polaroids?.[0] ?? '')

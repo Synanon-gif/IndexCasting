@@ -1,0 +1,80 @@
+{
+  "sources_reviewed": [
+    "src/web/ClientWebApp.tsx (discover load, filteredModels, near-me, package/shared, mapDiscoveryModelToSummary)",
+    "src/services/clientDiscoverySupabase.ts (getDiscoveryModels, DISCOVERY_WEIGHTS, applyDiversityShuffle)",
+    "src/services/modelLocationsSupabase.ts (getModelsNearLocation)",
+    "src/services/modelsSupabase.ts (getModelsForClientFromSupabase*, applyMeasurementFilters)",
+    "src/services/apiService.js (getModelsForClient mapping)",
+    "src/services/guestLinksSupabase.ts (getGuestLinkModels)",
+    "src/screens/CustomerSwipeScreen.tsx",
+    "src/views/GuestView.tsx",
+    "src/views/SharedSelectionView.tsx",
+    "src/navigation/discoverNavigation.ts",
+    "src/utils/modelFilters.ts (filterModels)",
+    "src/store/optionRequests.ts (resolveAgencyForModelAndCountry usage)",
+    "supabase/migration_client_model_interactions_v2.sql (get_discovery_models reference)",
+    "supabase/migrations/20260423_get_models_near_location_restore_distinct_on.sql",
+    "supabase/migrations/20260408_get_models_near_location_dedupe_territory_join.sql",
+    "supabase/migrations/20260406_guest_link_first_access_7day_window.sql (get_guest_link_models)",
+    "Live DB: Management API routine listing + pg_get_functiondef checks (get_discovery_models, get_models_near_location)"
+  ],
+  "confirmed_algo_findings": [
+    {
+      "id": "C_NEAR_ME_TERRITORY_DUPE",
+      "severity": "CONFIRMED_ALGO_HIGH",
+      "summary": "get_models_near_location joined model_agency_territories without narrowing; models with multiple territories produced duplicate JSON rows (broken Near Me cards/pagination).",
+      "status": "fixed_now_migration_20260408"
+    },
+    {
+      "id": "C_DISCOVERY_CITY_BOOST",
+      "severity": "ACCEPTED_PRODUCT_COMPLEXITY",
+      "summary": "get_discovery_models +30 same-city boost uses models.city vs p_client_city, not model_locations. Intentional lightweight signal; canonical geo remains model_locations for Near Me RPC."
+    },
+    {
+      "id": "C_RANKED_VS_LEGACY_ORDER",
+      "severity": "ACCEPTED_PRODUCT_COMPLEXITY",
+      "summary": "Ranked path: score DESC + applyDiversityShuffle. Legacy path (no clientOrgId or no country): name order via Supabase/RPC. Users without country see different ordering semantics."
+    },
+    {
+      "id": "C_CHEST_RPC_VS_DISPLAY",
+      "severity": "CONFIRMED_ALGO_MEDIUM",
+      "summary": "get_discovery_models / get_models_near_location / applyMeasurementFilters filter on column chest only; legacy bust-only rows can pass zero chest filters but fail min/max when chest NULL. Display now coalesces chest ?? bust in mapped client summaries; server filter COALESCE optional follow-up."
+    },
+    {
+      "id": "C_HAS_REAL_LOCATION_FLAG",
+      "severity": "LOW",
+      "summary": "mapDiscoveryModelToSummary sets hasRealLocation from country_code on RPC row; not identical to share_approximate_location / model_locations presence."
+    },
+    {
+      "id": "C_GET_DISCOVERY_MODELS_REPO_DRIFT",
+      "severity": "MANUAL_REVIEW_REQUIRED",
+      "summary": "Canonical SQL for get_discovery_models lives in supabase/migration_client_model_interactions_v2.sql (root), not duplicated under supabase/migrations/. Live DB verified function exists with v2 signature; long-term: copy definitive body into dated migration for drift guardrail."
+    }
+  ],
+  "accepted_product_complexity": [
+    "Diversity shuffle after RPC reorders within score tiers (documented in clientDiscoverySupabase).",
+    "Near Me city fallback (no lat/lng) filters baseModels by substring on ModelSummary.city, not model_locations.city.",
+    "External SharedSelectionView uses getModelData (read-only, no org-scoped discover RPC) — different from in-app discover.",
+    "Guest package RPC returns bust (not chest column); client maps to display chest semantics via bust."
+  ],
+  "fixed_now": [
+    "Migration 20260408_get_models_near_location_dedupe_territory_join.sql + live deploy (dedupe DISTINCT ON model id after territory join).",
+    "ClientWebApp: mapDiscoveryModelToSummary chest ?? bust; legacy list map chest ?? bust; package ModelSummary chest from m.bust.",
+    "apiService.js: getModelsForClient chest ?? bust.",
+    "modelFilters.filterModels: chest range uses m.chest ?? m.bust (Agency roster / guest package builder parity).",
+    "Tests: apiService chest fallback; modelFilters bust fallback for chest filter."
+  ],
+  "rules_updated": [],
+  "docs_updated": [],
+  "manual_review_required": [
+    "Consider new migration adding COALESCE(m.chest, m.bust) to get_discovery_models and get_models_near_location measurement predicates for full parity with UI.",
+    "Promote get_discovery_models from root-only SQL into supabase/migrations/ as canonical repeatable migration snippet.",
+    "Evaluate whether Near Me should attach territory_agency_id matching location_country_code (product: which agency row to show when multiple territories exist)."
+  ],
+  "do_not_touch": [
+    "AuthContext core, bootstrapThenLoadProfile, get_my_org_context",
+    "Admin-RPCs, Paywall core, invite/claim finalization",
+    "calendar_entries RLS semantics, booking_brief trust model",
+    "Re-introducing visible Bust product copy (Chest-only UI rule)"
+  ]
+}

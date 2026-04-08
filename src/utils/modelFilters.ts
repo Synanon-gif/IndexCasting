@@ -294,13 +294,14 @@ export function filterModels(
     const chestMax = pInt(filters.chestMax);
     const legsMin = pInt(filters.legsInseamMin);
     const legsMax = pInt(filters.legsInseamMax);
+    const chestVal = m.chest ?? m.bust;
 
     if (hipsMin !== undefined  && (m.hips  == null || m.hips  < hipsMin))  return false;
     if (hipsMax !== undefined  && (m.hips  == null || m.hips  > hipsMax))  return false;
     if (waistMin !== undefined && (m.waist == null || m.waist < waistMin)) return false;
     if (waistMax !== undefined && (m.waist == null || m.waist > waistMax)) return false;
-    if (chestMin !== undefined && (m.chest == null || m.chest < chestMin)) return false;
-    if (chestMax !== undefined && (m.chest == null || m.chest > chestMax)) return false;
+    if (chestMin !== undefined && (chestVal == null || chestVal < chestMin)) return false;
+    if (chestMax !== undefined && (chestVal == null || chestVal > chestMax)) return false;
     if (legsMin !== undefined  && (m.legs_inseam == null || m.legs_inseam < legsMin)) return false;
     if (legsMax !== undefined  && (m.legs_inseam == null || m.legs_inseam > legsMax)) return false;
 

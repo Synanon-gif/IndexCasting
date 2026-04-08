@@ -192,6 +192,12 @@ describe('getModelsForClient', () => {
     expect(result[0].gallery).toEqual(['https://cdn.example.com/lena.jpg']);
   });
 
+  it('maps chest from bust when chest column is null (legacy rows)', async () => {
+    mockGetModelsForClient.mockResolvedValue([dbRow]);
+    const result = (await getModelsForClient('fashion')) as any[];
+    expect(result[0].chest).toBe(82);
+  });
+
   it('uses hybrid-location endpoint when countryCode provided', async () => {
     mockGetModelsForClientHybrid.mockResolvedValue([dbRow]);
     await getModelsForClient('fashion', 'DE', 'Berlin');
