@@ -15,7 +15,7 @@
  *   - country_code (supplements territory for direct location lookup)
  *   - visibility flags (both false = hidden from all client views)
  *   - email (needed to link model app account)
- *   - chest / bust, waist, hips measurements
+ *   - chest measurement (DB may use `chest` and/or legacy `bust`; completeness uses chest ?? bust), waist, hips
  *   - legs_inseam, shoe_size
  *   - hair_color, eye_color
  *   - sex, ethnicity
@@ -119,7 +119,7 @@ export function checkModelCompleteness(
   if (!chestVal) {
     issues.push({
       field: 'chest',
-      label: 'Chest / bust measurement missing.',
+      label: 'Chest measurement missing.',
       severity: 'recommended',
     });
   }

@@ -61,7 +61,8 @@ type ModelProfile = {
   id: string;
   name: string;
   height: number;
-  bust: number;
+  /** Display: `chest` column or legacy `bust` from API. */
+  chest: number;
   waist: number;
   hips: number;
   city: string;
@@ -358,7 +359,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
       if (cancelled) return;
       setProfile({
         id: m.id, name: m.name, height: m.height,
-        bust: m.bust ?? 0, waist: m.waist ?? 0, hips: m.hips ?? 0,
+        chest: m.chest ?? m.bust ?? 0, waist: m.waist ?? 0, hips: m.hips ?? 0,
         city: m.city ?? '', countryCode: m.country_code ?? null,
         currentLocation: m.current_location ?? '', hairColor: m.hair_color ?? '',
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -734,10 +735,10 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
           <View style={st.section}>
             <Text style={st.sectionLabel}>Measurements</Text>
             <View style={st.measureRow}>
-              <Measure label="Height" value={profile.height} />
-              <Measure label="Bust" value={profile.bust} />
-              <Measure label="Waist" value={profile.waist} />
-              <Measure label="Hips" value={profile.hips} />
+              <Measure label={uiCopy.modelEdit.heightLabel} value={profile.height} />
+              <Measure label={uiCopy.modelEdit.chestLabel} value={profile.chest} />
+              <Measure label={uiCopy.modelEdit.waistLabel} value={profile.waist} />
+              <Measure label={uiCopy.modelEdit.hipsLabel} value={profile.hips} />
             </View>
           </View>
 

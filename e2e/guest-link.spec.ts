@@ -49,7 +49,8 @@ test.describe('Guest link — invalid token', () => {
     // Must not show any private model data
     const bodyText = (await page.locator('body').textContent()) ?? '';
     // A nonsense token should never show a portfolio grid
-    const showsPortfolioGrid = bodyText.includes('cm') && bodyText.includes('bust');
+    const showsPortfolioGrid =
+      bodyText.toLowerCase().includes('cm') && bodyText.toLowerCase().includes('chest');
     expect(showsPortfolioGrid).toBe(false);
   });
 });
@@ -66,10 +67,9 @@ test.describe('Guest link — HTTP responses', () => {
     await page.waitForTimeout(1500);
     // Should not show model portfolio content
     const bodyText = (await page.locator('body').textContent()) ?? '';
+    const lower = bodyText.toLowerCase();
     const showsSensitiveModelData =
-      bodyText.includes('bust') &&
-      bodyText.includes('waist') &&
-      bodyText.includes('hips');
+      lower.includes('chest') && lower.includes('waist') && lower.includes('hips');
     expect(showsSensitiveModelData).toBe(false);
   });
 });

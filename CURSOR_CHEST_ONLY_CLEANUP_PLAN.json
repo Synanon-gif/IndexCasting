@@ -1,0 +1,47 @@
+{
+  "visible_bust_findings": [
+    "src/constants/uiCopy.ts — modelEdit.chestLabel, modelCompleteness.issueChest, swipe.measurementBust used mixed Chest/Bust wording",
+    "src/screens/ModelProfileScreen.tsx — hardcoded Measure label \"Bust\" and bust-only mapping without chest fallback",
+    "src/utils/modelCompleteness.ts — agency banner issue label contained \"Chest / bust\"",
+    "src/screens/CustomerSwipeScreen.tsx — swipe labels via measurementBust key",
+    "e2e/guest-link.spec.ts — assertions keyed on substring \"bust\" (fragile once UI is Chest-only)"
+  ],
+  "fixed_now": [
+    "uiCopy: chestLabel, issueChest, filters.sectionChest, swipe.measurementChest (renamed from measurementBust)",
+    "CustomerSwipeScreen: ClientModel.chest with chest ?? bust from API; measurementChest label",
+    "ModelProfileScreen: profile.chest from m.chest ?? m.bust; labels from uiCopy.modelEdit (cm)",
+    "modelCompleteness.ts: issue label + file header comment aligned with Chest-only semantics",
+    "ClientWebApp.tsx: project overview meta line adds cm for Chest/Waist/Hips",
+    "e2e/guest-link.spec.ts: heuristics use chest + lowercase bodyText where applicable",
+    ".cursor/rules/auto-review.mdc: three guardrail bullets (Chest copy, legacy names, cm consistency)"
+  ],
+  "legacy_internal_ok": [
+    "models table columns bust and chest; RPC params p_bust / p_chest; AgencyControllerView mirrors both on save",
+    "Guest RPC field bust — GuestView/SharedSelectionView still read m.bust but display \"Chest\"",
+    "services (modelsSupabase, clientDiscovery, imports, mediaslide/netwalk sync) — field names unchanged",
+    "TypeScript types and tests using bust on row objects"
+  ],
+  "rules_updated": [
+    ".cursor/rules/auto-review.mdc — Sichtbare Produkt-Maße (Chest); Legacy-Feldnamen vs. Copy; Maßeinheiten (cm)"
+  ],
+  "docs_updated": [
+    "CURSOR_CHEST_ONLY_CLEANUP_REPORT.md",
+    "CURSOR_CHEST_ONLY_CLEANUP_DIFF_SUMMARY.md",
+    "CURSOR_CHEST_ONLY_CLEANUP_VERIFY.md",
+    "CURSOR_CHEST_ONLY_CLEANUP_PLAN.json"
+  ],
+  "manual_review_required": [
+    ".cursorrules vision line still mentions Bust (non-product-English)",
+    "docs/PROJECT_OVERVIEW_AGB_DSGVO.md / .html German legal copy lists \"Bust\" — align with legal if product terminology must match",
+    "Historical CURSOR_UI_AUDIT_B_* markdown references — informational only"
+  ],
+  "do_not_touch": [
+    "AuthContext / bootstrapThenLoadProfile",
+    "get_my_org_context",
+    "Admin-RPCs",
+    "Paywall core",
+    "calendar_entries RLS",
+    "booking_brief trust model",
+    "No DB migration for bust→chest rename"
+  ]
+}

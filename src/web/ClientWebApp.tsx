@@ -3460,9 +3460,9 @@ const ProjectOverviewView: React.FC<ProjectOverviewProps> = ({
               <Text style={styles.overviewModelMeta}>
                 {[
                   m.height ? `${m.height} cm` : null,
-                  m.bust || m.chest ? `Chest ${m.bust || m.chest}` : null,
-                  m.waist ? `Waist ${m.waist}` : null,
-                  m.hips ? `Hips ${m.hips}` : null,
+                  m.bust || m.chest ? `Chest ${m.bust || m.chest} cm` : null,
+                  m.waist ? `Waist ${m.waist} cm` : null,
+                  m.hips ? `Hips ${m.hips} cm` : null,
                 ]
                   .filter(Boolean)
                   .join(' · ')}

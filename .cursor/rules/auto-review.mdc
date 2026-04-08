@@ -65,6 +65,9 @@ vollständig durchlaufen werden, **bevor** Code committed oder weitergeschrieben
 - **Invite vs self-service sign-up:** Gate- und Auth-Copy müssen klar machen, dass Team-Invite / Model-Claim **kein** normaler freier Sign-up ist; freie Rollenwahl darf in diesen Kontexten nicht verwirrend sichtbar sein.
 - **Success messaging:** „Joined“ / „profile connected“-Hinweise nur nach echtem RPC-Erfolg in `finalizePendingInviteOrClaim`, nicht als Ersatz für E-Mail-Bestätigungs- oder Sign-up-Erfolg.
 - **Root-SQL vs Live-DB:** Annahme „Root-`supabase/*.sql` spiegelt Production“ ohne Verifikation nach SECDEF-/Funktions-Fix? → Blocker für Security-Release — siehe `system-invariants.mdc` **LIVE-DB SOURCE OF TRUTH**.
+- **Sichtbare Produkt-Maße (Chest):** Englische UI-Copy für dieses Maß MUSS **Chest** bzw. **Chest (cm)** verwenden — nicht „Bust“ oder „Chest / Bust“. Legacy-Spalte `bust` in DB/API ist erlaubt; Anzeige nutzt `chest ?? bust` ohne das Wort „Bust“ sichtbar zu machen.
+- **Legacy-Feldnamen vs. Copy:** Neue oder geänderte `uiCopy`-Strings, Labels, Platzhalter und Vollständigkeitsmeldungen dürfen Legacy-DB-Namen (`bust`) nicht in nutzerlesbare Texte übernehmen.
+- **Maßeinheiten in Client-UI:** Wo Zentimeter gemeint sind, konsistent **`(cm)`** in Labels oder in der Messzeile (z. B. `Chest N cm`) — keine uneinheitliche Einheit auf derselben Oberfläche ohne Grund.
 
 ---
 

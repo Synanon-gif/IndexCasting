@@ -38,7 +38,7 @@ function mapDiscoveryModel(m: DiscoveryModel): ClientModel {
     id: m.id,
     name: m.name,
     height: m.height,
-    bust: m.bust ?? 0,
+    chest: m.chest ?? m.bust ?? 0,
     waist: m.waist ?? 0,
     hips: m.hips ?? 0,
     city: m.city ?? '',
@@ -51,7 +51,8 @@ type ClientModel = {
   id: string;
   name: string;
   height: number;
-  bust: number;
+  /** Display measurement; API may supply `chest` and/or legacy `bust`. */
+  chest: number;
   waist: number;
   hips: number;
   city: string;
@@ -150,7 +151,7 @@ export const CustomerSwipeScreen: React.FC = () => {
         );
         const mapped = page.map((m) => ({
           id: m.id, name: m.name, height: m.height,
-          bust: m.bust ?? 0, waist: m.waist ?? 0, hips: m.hips ?? 0,
+          chest: m.chest ?? m.bust ?? 0, waist: m.waist ?? 0, hips: m.hips ?? 0,
           city: m.city ?? '', hairColor: m.hair_color ?? '',
           gallery: m.portfolio_images ?? [],
         }));
@@ -190,7 +191,7 @@ export const CustomerSwipeScreen: React.FC = () => {
           const page = await getModelsPagedFromSupabase(0, SWIPE_PAGE_SIZE, filters);
           const mapped = page.map((m) => ({
             id: m.id, name: m.name, height: m.height,
-            bust: m.bust ?? 0, waist: m.waist ?? 0, hips: m.hips ?? 0,
+            chest: m.chest ?? m.bust ?? 0, waist: m.waist ?? 0, hips: m.hips ?? 0,
             city: m.city ?? '', hairColor: m.hair_color ?? '',
             gallery: m.portfolio_images ?? [],
           }));
@@ -333,8 +334,8 @@ export const CustomerSwipeScreen: React.FC = () => {
               <Text style={styles.measurementsValue}>{current.height}</Text>
             </View>
             <View style={styles.measurementsCol}>
-              <Text style={styles.measurementsLabel}>{uiCopy.swipe.measurementBust}</Text>
-              <Text style={styles.measurementsValue}>{current.bust}</Text>
+              <Text style={styles.measurementsLabel}>{uiCopy.swipe.measurementChest}</Text>
+              <Text style={styles.measurementsValue}>{current.chest}</Text>
             </View>
             <View style={styles.measurementsCol}>
               <Text style={styles.measurementsLabel}>{uiCopy.swipe.measurementWaist}</Text>
@@ -535,7 +536,7 @@ const DetailModal: React.FC<DetailModalProps> = ({ model, onClose }) => {
 
             <View style={styles.detailMeasurementsRow}>
               <DetailMeasurement label={uiCopy.swipe.measurementHeight} value={model.height} />
-              <DetailMeasurement label={uiCopy.swipe.measurementBust} value={model.bust} />
+              <DetailMeasurement label={uiCopy.swipe.measurementChest} value={model.chest} />
               <DetailMeasurement label={uiCopy.swipe.measurementWaist} value={model.waist} />
               <DetailMeasurement label={uiCopy.swipe.measurementHips} value={model.hips} />
             </View>
