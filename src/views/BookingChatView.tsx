@@ -5,8 +5,9 @@
  * Before acceptance, the chat is a Recruiting Chat (handled in AgencyRecruitingView).
  */
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, Modal, ScrollView, Image, Platform, ActivityIndicator, Linking, Pressable } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, Modal, ScrollView, Image, Platform, ActivityIndicator, Linking, Pressable, useWindowDimensions } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
+import { getChatOverlayMaxWidth, getMessagesScrollMaxHeight } from '../theme/chatLayout';
 import {
   getRecruitingMessages,
   addRecruitingMessage,
@@ -51,6 +52,9 @@ export const BookingChatView: React.FC<Props> = ({
   presentation = 'modal',
   bottomInset = BOTTOM_TAB_BAR_HEIGHT,
 }) => {
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const chatOverlayMaxWidth = getChatOverlayMaxWidth(windowWidth);
+  const bookingMessagesMaxHeight = getMessagesScrollMaxHeight(windowHeight);
   const [chatInput, setChatInput] = useState('');
   const [messages, setMessages] = useState(() => getRecruitingMessages(threadId));
   const [agencyName, setAgencyName] = useState<string | null>(initialAgencyName ?? null);
@@ -187,7 +191,7 @@ export const BookingChatView: React.FC<Props> = ({
 
   const chatBody = (
     <View style={styles.overlay}>
-      <View style={styles.card}>
+      <View style={[styles.card, { maxWidth: chatOverlayMaxWidth }]}>
           <View style={styles.header}>
             <View style={{ flex: 1 }}>
               {fromRole === 'model' ? (
@@ -250,7 +254,7 @@ export const BookingChatView: React.FC<Props> = ({
               </ScrollView>
             </View>
           )}
-          <ScrollView style={styles.messages} contentContainerStyle={styles.messagesContent}>
+          <ScrollView style={[styles.messages, { maxHeight: bookingMessagesMaxHeight }]} contentContainerStyle={styles.messagesContent}>
             {messages.map((msg) => {
               const isSelf = msg.from === fromRole;
               const resolvedFileUrl = msg.fileUrl ? (signedUrls[msg.fileUrl] ?? null) : null;
@@ -388,7 +392,6 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    maxWidth: 420,
     maxHeight: '80%',
     backgroundColor: colors.surface,
     borderRadius: 18,
@@ -509,7 +512,6 @@ const styles = StyleSheet.create({
     marginRight: spacing.sm,
   },
   messages: {
-    maxHeight: 240,
     marginBottom: spacing.sm,
   },
   bubble: {

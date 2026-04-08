@@ -16,10 +16,19 @@ import {
   Alert,
   Platform,
   ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
 import countries from 'i18n-iso-countries';
 import enLocale from 'i18n-iso-countries/langs/en.json';
 import { colors, spacing, typography } from '../theme/theme';
+import {
+  CHAT_MESSENGER_FLEX,
+  CHAT_THREAD_LIST_FLEX,
+  getLegacyChatPanelMessagesMaxHeight,
+  getThreadListMaxHeight,
+  getThreadListMaxHeightSplit,
+  shouldUseB2BWebSplit,
+} from '../theme/chatLayout';
 import { showAppAlert } from '../utils/crossPlatformAlert';
 import { useAuth } from '../context/AuthContext';
 import { getAgencyModels } from '../services/apiService';
@@ -4028,6 +4037,12 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   onPendingOptionRequestConsumed,
   assignmentByClientOrgId = {},
 }) => {
+  const { width: agencyMsgWinW, height: agencyMsgWinH } = useWindowDimensions();
+  const agencyB2bWebSplit = Platform.OS === 'web' && shouldUseB2BWebSplit(agencyMsgWinW);
+  const agencyThreadListScrollMax = agencyB2bWebSplit
+    ? getThreadListMaxHeightSplit(agencyMsgWinH)
+    : getThreadListMaxHeight(agencyMsgWinH);
+  const agencyLegacyChatMessagesMaxH = getLegacyChatPanelMessagesMaxHeight(agencyMsgWinH);
   const [messagesSection, setMessagesSection] = useState<'optionRequests' | 'recruiting' | 'clientRequests'>('clientRequests');
   const [messagesSearch, setMessagesSearch] = useState('');
   const [modelDirectConvs, setModelDirectConvs] = useState<Conversation[]>([]);
@@ -4474,46 +4489,96 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
               </Text>
               {b2bConversations.length === 0 ? (
                 <Text style={s.metaText}>{uiCopy.b2bChat.noClientChatsYetAgency}</Text>
-              ) : (
-                b2bConversations.map((c) => (
-                  <View
-                    key={c.id}
-                    style={[s.modelRow, { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm }]}
-                  >
-                    <View style={{ flex: 1, minWidth: 160 }}>
-                      <Text style={s.modelName}>{b2bTitles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback}</Text>
-                      <Text style={s.metaText}>{new Date(c.updated_at).toLocaleString()}</Text>
-                    </View>
-                    <TouchableOpacity
-                      style={[s.filterPill, s.filterPillActive]}
-                      onPress={() => {
-                        setActiveConnectionChatId(c.id);
-                        setActiveConnectionChatTitle(b2bTitles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback);
-                      }}
-                    >
-                      <Text style={[s.filterPillLabel, s.filterPillLabelActive]}>{uiCopy.b2bChat.openConversation}</Text>
-                    </TouchableOpacity>
+              ) : agencyB2bWebSplit ? (
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md }}>
+                  <View style={{ flex: CHAT_THREAD_LIST_FLEX, minWidth: 0 }}>
+                    <ScrollView style={{ maxHeight: agencyThreadListScrollMax }}>
+                      {b2bConversations.map((c) => (
+                        <View
+                          key={c.id}
+                          style={[s.modelRow, { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm }]}
+                        >
+                          <View style={{ flex: 1, minWidth: 160 }}>
+                            <Text style={s.modelName}>{b2bTitles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback}</Text>
+                            <Text style={s.metaText}>{new Date(c.updated_at).toLocaleString()}</Text>
+                          </View>
+                          <TouchableOpacity
+                            style={[s.filterPill, s.filterPillActive]}
+                            onPress={() => {
+                              setActiveConnectionChatId(c.id);
+                              setActiveConnectionChatTitle(b2bTitles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback);
+                            }}
+                          >
+                            <Text style={[s.filterPillLabel, s.filterPillLabelActive]}>{uiCopy.b2bChat.openConversation}</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </ScrollView>
                   </View>
-                ))
+                  <View style={{ flex: CHAT_MESSENGER_FLEX, minWidth: 0 }}>
+                    {activeConnectionChatId ? (
+                      <OrgMessengerInline
+                        conversationId={activeConnectionChatId}
+                        headerTitle={activeConnectionChatTitle}
+                        viewerUserId={currentUserId}
+                        threadContext={{ type: uiCopy.b2bChat.contextOrgChat }}
+                        agencyId={agencyId}
+                        guestLinks={guestLinksForChat}
+                        modelsForShare={modelsForShare}
+                        onOpenRelatedRequest={(optionRequestId) => {
+                          setMessagesSection('optionRequests');
+                          setSelectedThreadId(optionRequestId);
+                        }}
+                        onBookingCardPress={onBookingCardPress}
+                        viewerRole="agency"
+                        onBookingStatusUpdated={() => onBookingCardPress?.()}
+                        containerStyle={{ marginTop: 0, flex: 1 }}
+                      />
+                    ) : null}
+                  </View>
+                </View>
+              ) : (
+                <>
+                  {b2bConversations.map((c) => (
+                    <View
+                      key={c.id}
+                      style={[s.modelRow, { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm }]}
+                    >
+                      <View style={{ flex: 1, minWidth: 160 }}>
+                        <Text style={s.modelName}>{b2bTitles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback}</Text>
+                        <Text style={s.metaText}>{new Date(c.updated_at).toLocaleString()}</Text>
+                      </View>
+                      <TouchableOpacity
+                        style={[s.filterPill, s.filterPillActive]}
+                        onPress={() => {
+                          setActiveConnectionChatId(c.id);
+                          setActiveConnectionChatTitle(b2bTitles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback);
+                        }}
+                      >
+                        <Text style={[s.filterPillLabel, s.filterPillLabelActive]}>{uiCopy.b2bChat.openConversation}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                  {activeConnectionChatId ? (
+                    <OrgMessengerInline
+                      conversationId={activeConnectionChatId}
+                      headerTitle={activeConnectionChatTitle}
+                      viewerUserId={currentUserId}
+                      threadContext={{ type: uiCopy.b2bChat.contextOrgChat }}
+                      agencyId={agencyId}
+                      guestLinks={guestLinksForChat}
+                      modelsForShare={modelsForShare}
+                      onOpenRelatedRequest={(optionRequestId) => {
+                        setMessagesSection('optionRequests');
+                        setSelectedThreadId(optionRequestId);
+                      }}
+                      onBookingCardPress={onBookingCardPress}
+                      viewerRole="agency"
+                      onBookingStatusUpdated={() => onBookingCardPress?.()}
+                    />
+                  ) : null}
+                </>
               )}
-              {activeConnectionChatId ? (
-                <OrgMessengerInline
-                  conversationId={activeConnectionChatId}
-                  headerTitle={activeConnectionChatTitle}
-                  viewerUserId={currentUserId}
-                  threadContext={{ type: uiCopy.b2bChat.contextOrgChat }}
-                  agencyId={agencyId}
-                  guestLinks={guestLinksForChat}
-                  modelsForShare={modelsForShare}
-                  onOpenRelatedRequest={(optionRequestId) => {
-                    setMessagesSection('optionRequests');
-                    setSelectedThreadId(optionRequestId);
-                  }}
-                  onBookingCardPress={onBookingCardPress}
-                  viewerRole="agency"
-                  onBookingStatusUpdated={() => onBookingCardPress?.()}
-                />
-              ) : null}
             </>
           )}
         </View>
@@ -4859,7 +4924,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
               </TouchableOpacity>
             </View>
           )}
-          <ScrollView style={{ maxHeight: 180, marginBottom: spacing.sm }}>
+          <ScrollView style={{ maxHeight: agencyLegacyChatMessagesMaxH, marginBottom: spacing.sm }}>
             {messages.map((msg) => (
               <View key={msg.id} style={[s.chatBubble, msg.from === 'agency' ? s.chatBubbleAgency : s.chatBubbleClient]}>
                 <Text style={[s.chatBubbleText, msg.from === 'agency' && s.chatBubbleTextAgency]}>{msg.text}</Text>

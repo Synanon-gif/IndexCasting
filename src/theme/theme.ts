@@ -27,18 +27,19 @@ export const typography = {
   fontFamily,
   heading: {
     fontFamily,
-    fontSize: 24,
+    fontSize: 25,
     letterSpacing: 1.4,
     textTransform: 'uppercase' as const,
   },
   body: {
     fontFamily,
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 15,
+    lineHeight: 22,
+    fontWeight: '500' as const,
   },
   label: {
     fontFamily,
-    fontSize: 11,
+    fontSize: 12,
     letterSpacing: 1.6,
     textTransform: 'uppercase' as const,
   },

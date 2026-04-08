@@ -13,8 +13,18 @@ import {
   Modal,
   Linking,
   Alert,
+  Platform,
+  useWindowDimensions,
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
+import {
+  CHAT_MESSENGER_FLEX,
+  CHAT_THREAD_LIST_FLEX,
+  getLegacyChatPanelMessagesMaxHeight,
+  getThreadListMaxHeight,
+  getThreadListMaxHeightSplit,
+  shouldUseB2BWebSplit,
+} from '../theme/chatLayout';
 import { UI_DOUBLE_SUBMIT_DEBOUNCE_MS } from '../../lib/validation';
 import { showAppAlert } from '../utils/crossPlatformAlert';
 import { uiCopy } from '../constants/uiCopy';
@@ -3717,6 +3727,11 @@ const ClientB2BChatsPanel: React.FC<{
   onOpenRelatedRequest,
   searchQuery = '',
 }) => {
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const b2bWebSplit = Platform.OS === 'web' && shouldUseB2BWebSplit(windowWidth);
+  const threadListScrollMax = b2bWebSplit
+    ? getThreadListMaxHeightSplit(windowHeight)
+    : getThreadListMaxHeight(windowHeight);
   const auth = useAuth();
   const [rows, setRows] = useState<Conversation[]>([]);
   const [titles, setTitles] = useState<Record<string, string>>({});
@@ -3812,38 +3827,52 @@ const ClientB2BChatsPanel: React.FC<{
     return <Text style={styles.metaText}>{uiCopy.b2bChat.noAgencyChatsYetClient}</Text>;
   }
 
+  const threadListEl =
+    filteredRows.length > 0 ? (
+      <ScrollView style={{ maxHeight: threadListScrollMax }}>
+        {filteredRows.map((c) => (
+          <TouchableOpacity
+            key={c.id}
+            style={[styles.threadRow, selectedId === c.id && styles.threadRowActive]}
+            onPress={() => setSelectedId(c.id)}
+          >
+            <View style={styles.threadRowLeft}>
+              <Text style={styles.threadTitle}>{titles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback}</Text>
+              <Text style={styles.metaText}>{new Date(c.updated_at).toLocaleString()}</Text>
+            </View>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    ) : searchQuery.trim() ? (
+      <Text style={styles.metaText}>{uiCopy.messages.searchNoResults}</Text>
+    ) : null;
+
+  const messengerEl = activeConversationId ? (
+    <OrgMessengerInline
+      conversationId={activeConversationId}
+      headerTitle={messengerTitle}
+      viewerUserId={auth.profile?.id ?? null}
+      threadContext={{ type: uiCopy.b2bChat.contextOrgChat }}
+      containerStyle={b2bWebSplit ? { marginTop: 0, flex: 1 } : { marginTop: spacing.md }}
+      onBookingCardPress={onBookingCardPress}
+      onPackagePress={onPackagePress}
+      onOpenRelatedRequest={onOpenRelatedRequest}
+    />
+  ) : null;
+
   return (
     <View style={{ marginTop: spacing.sm }}>
-      {filteredRows.length > 0 ? (
-        <ScrollView style={{ maxHeight: 220 }}>
-          {filteredRows.map((c) => (
-            <TouchableOpacity
-              key={c.id}
-              style={[styles.threadRow, selectedId === c.id && styles.threadRowActive]}
-              onPress={() => setSelectedId(c.id)}
-            >
-              <View style={styles.threadRowLeft}>
-                <Text style={styles.threadTitle}>{titles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback}</Text>
-                <Text style={styles.metaText}>{new Date(c.updated_at).toLocaleString()}</Text>
-              </View>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      ) : searchQuery.trim() ? (
-        <Text style={styles.metaText}>{uiCopy.messages.searchNoResults}</Text>
-      ) : null}
-      {activeConversationId ? (
-        <OrgMessengerInline
-          conversationId={activeConversationId}
-          headerTitle={messengerTitle}
-          viewerUserId={auth.profile?.id ?? null}
-          threadContext={{ type: uiCopy.b2bChat.contextOrgChat }}
-          containerStyle={{ marginTop: spacing.md }}
-          onBookingCardPress={onBookingCardPress}
-          onPackagePress={onPackagePress}
-          onOpenRelatedRequest={onOpenRelatedRequest}
-        />
-      ) : null}
+      {b2bWebSplit ? (
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md }}>
+          <View style={{ flex: CHAT_THREAD_LIST_FLEX, minWidth: 0 }}>{threadListEl}</View>
+          <View style={{ flex: CHAT_MESSENGER_FLEX, minWidth: 0 }}>{messengerEl}</View>
+        </View>
+      ) : (
+        <>
+          {threadListEl}
+          {messengerEl}
+        </>
+      )}
     </View>
   );
 };
@@ -3865,6 +3894,8 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   onBookingCardPress,
   onPackagePress,
 }) => {
+  const { height: messagesViewWindowHeight } = useWindowDimensions();
+  const legacyChatPanelMessagesMaxHeight = getLegacyChatPanelMessagesMaxHeight(messagesViewWindowHeight);
   const [clientMsgTab, setClientMsgTab] = useState<'b2bChats' | 'optionRequests'>('b2bChats');
   const [clientMsgSearch, setClientMsgSearch] = useState('');
   const [requests, setRequests] = useState(getOptionRequests());
@@ -4419,7 +4450,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
               <Text style={[styles.filterPillLabel, { color: '#fff' }]}>Confirm job</Text>
             </TouchableOpacity>
           )}
-          <ScrollView style={styles.chatPanelMessages}>
+          <ScrollView style={[styles.chatPanelMessages, { maxHeight: legacyChatPanelMessagesMaxHeight }]}>
             {messages.map((msg) => (
               <View
                 key={msg.id}
@@ -6613,7 +6644,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   chatPanelMessages: {
-    maxHeight: 200,
     marginBottom: spacing.sm,
   },
   chatBubble: {

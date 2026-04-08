@@ -16,9 +16,11 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   ActivityIndicator, TextInput, Modal, Platform, Linking,
+  useWindowDimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, typography } from '../theme/theme';
+import { getChatOverlayMaxWidth } from '../theme/chatLayout';
 import { uiCopy } from '../constants/uiCopy';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -101,6 +103,8 @@ async function getAgencyOrgIdForLink(linkId: string): Promise<string | null> {
 }
 
 export const GuestChatView: React.FC = () => {
+  const { width: guestWinW } = useWindowDimensions();
+  const upgradeModalMaxW = getChatOverlayMaxWidth(guestWinW);
   const { session, profile, refreshProfile } = useAuth();
   const userId = session?.user?.id ?? null;
 
@@ -310,7 +314,7 @@ export const GuestChatView: React.FC = () => {
         onRequestClose={() => setShowUpgradeModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+          <View style={[styles.modalCard, { maxWidth: upgradeModalMaxW }]}>
             <Text style={styles.modalTitle}>{copy.upgradeTitle}</Text>
             <Text style={styles.modalBody}>
               Create a free client account to unlock model discovery, projects, and team management.
@@ -478,7 +482,6 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     padding: spacing.xl,
     width: '100%',
-    maxWidth: 420,
   },
   modalTitle: {
     ...typography.heading,

@@ -1,0 +1,30 @@
+{
+  "chat_surfaces_updated": [
+    "src/components/OrgMessengerInline.tsx",
+    "src/views/BookingChatView.tsx",
+    "src/web/ClientWebApp.tsx (ClientB2BChatsPanel, MessagesView legacy chat)",
+    "src/views/AgencyControllerView.tsx (AgencyMessagesTab B2B + option-request legacy scroll)",
+    "src/screens/ModelProfileScreen.tsx (option chat modal)",
+    "src/views/GuestChatView.tsx (upgrade modal width)"
+  ],
+  "typography_tokens_updated": [
+    "src/theme/theme.ts (heading, body, label + body fontWeight)"
+  ],
+  "screen_level_adjustments": [
+    "OrgMessengerInline quick-reply chip fontSize 11→12",
+    "ClientWebApp chatPanelMessages maxHeight moved from StyleSheet to dynamic legacy height"
+  ],
+  "manual_review_required": [
+    "Wide-web B2B split row on short viewports",
+    "Native OrgMessengerInline message area height vs small screens",
+    "Visual pass: explicit fontSize overrides elsewhere still acceptable with new base tokens"
+  ],
+  "do_not_touch": [
+    "AuthContext",
+    "App business routing",
+    "Paywall / subscription logic",
+    "Invite / claim flows",
+    "RLS / RPC / Supabase services",
+    "Territory country pickers and non-chat ScrollViews (e.g. bulk territory modal maxHeight 220)"
+  ]
+}

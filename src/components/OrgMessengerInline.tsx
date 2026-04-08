@@ -15,9 +15,11 @@ import {
   ActivityIndicator,
   AppState,
   type AppStateStatus,
+  useWindowDimensions,
 } from 'react-native';
 import { StorageImage } from './StorageImage';
 import { colors, spacing, typography } from '../theme/theme';
+import { getMessagesScrollMaxHeight } from '../theme/chatLayout';
 import { uiCopy } from '../constants/uiCopy';
 import {
   getMessagesWithSenderInfo,
@@ -131,6 +133,8 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   viewerRole,
   onBookingStatusUpdated,
 }) => {
+  const { height: windowHeight } = useWindowDimensions();
+  const messagesScrollMaxHeight = getMessagesScrollMaxHeight(windowHeight);
   const [msgs, setMsgs] = useState<MessageWithSender[]>([]);
   const [input, setInput] = useState('');
   const [shareOpen, setShareOpen] = useState<'package' | 'model' | null>(null);
@@ -473,7 +477,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
         </View>
       ) : null}
 
-      <ScrollView style={{ maxHeight: 220 }}>
+      <ScrollView style={{ maxHeight: messagesScrollMaxHeight }}>
         {msgs.map((m) => {
           const pt = payloadType(m);
           const rawFileUrl = (m as { file_url?: string | null }).file_url ?? null;
@@ -867,7 +871,7 @@ const QuickReplyChips: React.FC<{ onSelect: (text: string) => void }> = ({ onSel
             backgroundColor: colors.background,
           }}
         >
-          <Text style={{ fontSize: 11, color: colors.textPrimary }}>{reply}</Text>
+          <Text style={{ fontSize: 12, color: colors.textPrimary }}>{reply}</Text>
         </TouchableOpacity>
       ))}
     </HScroll>

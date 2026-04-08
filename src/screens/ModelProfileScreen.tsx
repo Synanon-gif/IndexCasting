@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { handleTabPress, BOTTOM_TAB_BAR_HEIGHT } from '../navigation/bottomTabNavigation';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Linking, Alert, ActivityIndicator, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Linking, Alert, ActivityIndicator, Image, useWindowDimensions } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
+import { getChatOverlayMaxWidth, getMessagesScrollMaxHeight } from '../theme/chatLayout';
 import { getModelsFromSupabase, getModelForUserFromSupabase, type SupabaseModel } from '../services/modelsSupabase';
 import {
   upsertModelLocation,
@@ -95,6 +96,9 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   onBackToRoleSelection,
   userId,
 }) => {
+  const { width: modelProfileWindowWidth, height: modelProfileWindowHeight } = useWindowDimensions();
+  const optionChatOverlayMaxW = getChatOverlayMaxWidth(modelProfileWindowWidth);
+  const optionChatMessagesMaxH = getMessagesScrollMaxHeight(modelProfileWindowHeight);
   const { signOut } = useAuth();
   const [profile, setProfile] = useState<ModelProfile | null>(null);
   const [tab, setTab] = useState<ModelTab>('calendar');
@@ -1201,7 +1205,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
 
       {selectedOptionThread && (
         <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: bottomTabInset, backgroundColor: 'rgba(0,0,0,0.1)', justifyContent: 'center', alignItems: 'center', padding: spacing.lg, zIndex: 995 }}>
-          <View style={{ width: '100%', maxWidth: 420, maxHeight: '80%', backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.border, padding: spacing.md }}>
+          <View style={{ width: '100%', maxWidth: optionChatOverlayMaxW, maxHeight: '80%', backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.border, padding: spacing.md }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
                 {optionChatAgency?.logo_url ? (
@@ -1216,7 +1220,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                 <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary }}>Close</Text>
               </TouchableOpacity>
             </View>
-            <ScrollView style={{ maxHeight: 200, marginBottom: spacing.sm }}>
+            <ScrollView style={{ maxHeight: optionChatMessagesMaxH, marginBottom: spacing.sm }}>
               {getMessages(selectedOptionThread).map((msg) => (
                 <View key={msg.id} style={{ alignSelf: msg.from === 'agency' ? 'flex-end' : 'flex-start', maxWidth: '85%', paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: 12, marginBottom: spacing.xs, backgroundColor: msg.from === 'agency' ? colors.buttonOptionGreen : '#E2E0DB' }}>
                   <Text style={{ ...typography.body, fontSize: 12, color: msg.from === 'agency' ? '#fff' : colors.textPrimary }}>{msg.text}</Text>
