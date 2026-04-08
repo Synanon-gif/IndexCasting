@@ -33,6 +33,7 @@ vollständig durchlaufen werden, **bevor** Code committed oder weitergeschrieben
 - **LIMIT 1 in Org-Kontext:** `LIMIT 1` zur Org-Kontext-Auflösung (wer ist der Caller?) → Blocker (Risiko 10)
   - Verboten: `SELECT … FROM organization_members WHERE user_id = auth.uid() … LIMIT 1` (implicit caller resolution)
   - Erlaubt: `LIMIT 1` für Sub-Resource-Lookup NACH verifiziertem Scope-Guard, z.B. `SELECT id FROM organizations WHERE agency_id = p_agency_id LIMIT 1` wenn `p_agency_id` bereits durch einen Membership-Guard geprüft wurde — mit Kommentar im Code warum es sicher ist
+- **`agency_update_model_full` vs. Territory-RPCs:** Membership für das **konkrete** `models.agency_id` prüfen (gleiches Muster wie `save_model_territories`), nicht „älteste Agency-Zeile“ vs. Model-Agency vergleichen → sonst HTTP 400 / `model_not_in_agency` bei funktionierendem Territory-Save (Multi-Org-Reihenfolge). Fix-Referenz: Migration `20260429_agency_update_model_full_model_scoped_guard.sql`, Doku `docs/MODEL_SAVE_LOCATION_CONSISTENCY.md`.
 - **Email-basiertes Model-Linking:** `link_model_by_email()` für neue Flows? → Blocker — `claim_model_by_token()` verwenden (Risiko 9)
 - **Territory Constraint:** `ON CONFLICT (model_id, agency_id, country_code)` in neuen RPCs? → Blocker — muss `(model_id, country_code)` sein (Fix A)
 - **Model in organization_members:** Models via INSERT in `organization_members` hinzufügen? → Blocker — Models nutzen ausschließlich `model_agency_territories`

@@ -438,6 +438,10 @@ export const uiCopy = {
     /** Shown after merge/import when Mediaslide/Netwalk sync IDs could not be saved to an existing row. */
     externalSyncIdsPersistWarning:
       ' External sync IDs (Mediaslide/Netwalk) could not be saved — try saving again from the integration or contact support.',
+    /** Single-model profile save (Agency My Models editor). */
+    modelSaveSuccess: 'Settings saved successfully',
+    modelSaveFailed: 'Save failed — please try again',
+    modelSaveButton: 'Save settings',
   },
   /** B2B org-to-org chats (no social graph). */
   b2bChat: {

@@ -202,7 +202,9 @@ Muss **ohne** `agencies.owner_user_id` auskommen (Spalte existiert nicht). Zulä
 -- Legacy Bookers MÜSSEN im Guard der Funktion enthalten sein:
 OR EXISTS (SELECT 1 FROM public.bookers WHERE agency_id = p_agency_id AND user_id = auth.uid())
 ```
-Derselbe Guard-Typ gilt für `save_model_territories` / Bulk-Territory-RPCs / `generate_model_claim_token` / `agency_update_model_full` (Caller-Agency-Auflösung: zuerst org_members+type=agency, dann bookers).
+Derselbe Guard-Typ gilt für `save_model_territories` / Bulk-Territory-RPCs / `generate_model_claim_token`.
+
+**`agency_update_model_full` (20260429):** Membership **nicht** über `LIMIT 1` auf `organization_members` als „Caller-Agency“ ableiten und mit `models.agency_id` vergleichen — das bricht mit `save_model_territories` (explizites `p_agency_id`). Stattdessen: Zugehörigkeit wie bei Territory-RPCs prüfen — `EXISTS` auf `models.agency_id` mit org_members+`type='agency'`+`bookers`; unowned (`agency_id` NULL): jede Agency-Mitgliedschaft oder Booker; Admin: `is_current_user_admin()`-Bypass. Siehe `docs/MODEL_SAVE_LOCATION_CONSISTENCY.md`.
 
 ## GPS-PRESERVATION — AGENCY-WRITES ÜBERSCHREIBEN NIEMALS MODEL-GPS (Fix 20260406)
 

@@ -2622,7 +2622,9 @@ const MyModelsTab: React.FC<{
       // Sports columns: only include if migration has been applied (graceful skip on unknown column error).
       updates.is_sports_winter = editState.is_sports_winter;
       updates.is_sports_summer = editState.is_sports_summer;
-      updates.sex = editState.sex;
+      // DB CHECK (sex IN ('male','female')) — only send valid values or null (no change).
+      updates.sex =
+        editState.sex === 'male' || editState.sex === 'female' ? editState.sex : null;
 
       const { error: modelUpdateError } = await supabase.rpc('agency_update_model_full', {
         p_model_id:             selectedModel.id,
@@ -2653,6 +2655,12 @@ const MyModelsTab: React.FC<{
         p_is_sports_summer:     (updates as any).is_sports_summer  ?? null,
       });
       if (modelUpdateError) {
+        console.error('handleSaveModel agency_update_model_full:', {
+          message: modelUpdateError.message,
+          code: (modelUpdateError as { code?: string }).code,
+          details: (modelUpdateError as { details?: string }).details,
+          hint: (modelUpdateError as { hint?: string }).hint,
+        });
         throw modelUpdateError;
       }
 
@@ -2990,12 +2998,12 @@ const MyModelsTab: React.FC<{
 
         {saveFeedback === 'success' && (
           <View style={{ backgroundColor: '#1a7a4a', borderRadius: 8, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, marginBottom: spacing.sm, alignItems: 'center' }}>
-            <Text style={{ ...typography.label, fontSize: 13, color: '#fff' }}>Settings saved successfully</Text>
+            <Text style={{ ...typography.label, fontSize: 13, color: '#fff' }}>{uiCopy.modelRoster.modelSaveSuccess}</Text>
           </View>
         )}
         {saveFeedback === 'error' && (
           <View style={{ backgroundColor: '#b91c1c', borderRadius: 8, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, marginBottom: spacing.sm, alignItems: 'center' }}>
-            <Text style={{ ...typography.label, fontSize: 13, color: '#fff' }}>Save failed — please try again</Text>
+            <Text style={{ ...typography.label, fontSize: 13, color: '#fff' }}>{uiCopy.modelRoster.modelSaveFailed}</Text>
           </View>
         )}
         <TouchableOpacity
@@ -3003,7 +3011,7 @@ const MyModelsTab: React.FC<{
           style={[s.saveBtn, saveFeedback === 'saving' && { opacity: 0.6 }]}
           disabled={saveFeedback === 'saving'}
         >
-          <Text style={s.saveBtnLabel}>{saveFeedback === 'saving' ? 'Saving…' : 'Save settings'}</Text>
+          <Text style={s.saveBtnLabel}>{saveFeedback === 'saving' ? uiCopy.common.saving : uiCopy.modelRoster.modelSaveButton}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity

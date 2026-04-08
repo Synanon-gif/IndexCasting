@@ -1,0 +1,29 @@
+{
+  "root_causes": [
+    "CONFIRMED_RPC_MEMBERSHIP_MISMATCH: agency_update_model_full used ORDER BY organization_members.created_at LIMIT 1 to infer caller agency, while save_model_territories authorizes the explicit agency_id; multi-org / ordering mismatch yielded model_not_in_agency (HTTP 400) after successful territory save."
+  ],
+  "fixed_now": [
+    "Migration 20260429_agency_update_model_full_model_scoped_guard.sql — model-scoped membership guard + admin bypass",
+    "AgencyControllerView — structured console logging on agency_update_model_full error; sex only male/female/null; uiCopy for save banner/button"
+  ],
+  "rules_updated": [
+    ".cursor/rules/system-invariants.mdc — agency_update_model_full guardrail note",
+    ".cursor/rules/auto-review.mdc — stop condition for LIMIT-1 caller agency vs model.agency_id",
+    ".cursorrules — one-line cross-reference"
+  ],
+  "docs_updated": [
+    "docs/MODEL_SAVE_LOCATION_CONSISTENCY.md"
+  ],
+  "manual_review_required": [
+    "Optional follow-up: align bulk location with models.current_location or document-only until product decision",
+    "Multi-org agency UI: explicit org switch remains future work; DB guard no longer depends on oldest membership for this RPC"
+  ],
+  "do_not_touch": [
+    "AuthContext",
+    "App.tsx",
+    "signIn / bootstrapThenLoadProfile / loadProfile",
+    "get_own_admin_flags / is_current_user_admin / assert_is_admin definitions",
+    "get_my_org_context",
+    "Paywall core / can_access_platform ordering"
+  ]
+}

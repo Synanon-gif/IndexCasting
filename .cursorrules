@@ -503,6 +503,8 @@ END IF;
 -- Dann: normaler Business-Code (KEIN Admin-only Pfad danach)
 ```
 
+**Writes mit demselben Muster (Membership-Gate nur für Nicht-Admin):** u. a. `save_model_territories`, **`agency_update_model_full`** (20260429 — Guard an `models.agency_id` wie Territory-RPCs; kein `LIMIT 1`-Caller-Agency-Vergleich). Siehe `docs/MODEL_SAVE_LOCATION_CONSISTENCY.md`.
+
 ## 26. Smart Attention & Assignment Guardrails (Workflow-only)
 
 - Client Assignment (`client_assignment_flags`) ist **immer** Workflow-/Ownership-Metadaten, **nie** Security- oder Visibility-Layer.
