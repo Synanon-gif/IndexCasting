@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "status_line": "SAFE PAYWALL FINALIZATION APPLIED",
+  "verified_now": [
+    "subscriptionSupabase.test.ts covers trial_active, no_active_subscription, admin_override, subscription_active, trial_already_used, fail-closed, org_type mapping",
+    "CURSOR_PAYWALL_VERIFY.md remains the manual smoke matrix",
+    "PAYWALL_TROUBLESHOOTING_GUIDE.md operationalizes FAQ, decision tree, owner-only vs org-wide, Stripe vs DB vs UI",
+    "PAYWALL_DEBUG_READ_ONLY.md documents can_access_platform JSON and getMyOrgAccessStatus fail-closed behavior"
+  ],
+  "docs_added": [
+    "docs/PAYWALL_TROUBLESHOOTING_GUIDE.md",
+    "docs/PAYWALL_DEBUG_READ_ONLY.md",
+    "CURSOR_PAYWALL_FINAL_VERIFY_REPORT.md",
+    "CURSOR_PAYWALL_FINAL_DIFF_SUMMARY.md",
+    "CURSOR_PAYWALL_FINAL_PLAN.json"
+  ],
+  "docs_updated": [
+    "docs/PAYWALL_SECURITY_SUMMARY.md"
+  ],
+  "debug_helpers_added": [
+    "docs/PAYWALL_DEBUG_READ_ONLY.md (read-only documentation)",
+    "docs/PAYWALL_TROUBLESHOOTING_GUIDE.md section 8 (read-only SQL checklist)"
+  ],
+  "manual_review_required": [
+    "Multi-org product expectations vs oldest-membership paywall scope",
+    "past_due / canceled Stripe vs subscription_active branch product intent",
+    "Optional distinct AccessReason for RPC transport errors (UX)",
+    "E2E paywall coverage not part of this wave"
+  ],
+  "do_not_touch": [
+    "src/context/AuthContext.tsx",
+    "App.tsx",
+    "signIn / bootstrapThenLoadProfile / loadProfile",
+    "get_own_admin_flags / is_current_user_admin / assert_is_admin",
+    "get_my_org_context()",
+    "Admin routing",
+    "Invite/claim/guest core navigation"
+  ],
+  "safe_next": [
+    "Optional Playwright scenario for paywall + checkout owner vs non-owner (staging)",
+    "Live pg_get_functiondef after any can_access_platform migration",
+    "Optional error-reason telemetry for fail-closed getMyOrgAccessStatus (product decision)"
+  ]
+}

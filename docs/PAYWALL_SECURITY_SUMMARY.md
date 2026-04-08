@@ -93,3 +93,9 @@ Exact order implemented in `can_access_platform()` (latest definition in `supaba
 ## Model role vs B2B paywall
 
 Users with `role === model` typically have **no** `organization_members` row for agency linkage. `can_access_platform()` then returns `reason: 'no_org'`. **Model workspace is not wrapped in the same Client/Agency paywall guards** in `App.tsx`; model-specific RPCs do not uniformly use `has_platform_access()` — intentional scope: B2B subscription product for client/agency orgs.
+
+---
+
+## Operational troubleshooting
+
+For support scenarios, decision trees, and read-only SQL checklists, see [PAYWALL_TROUBLESHOOTING_GUIDE.md](./PAYWALL_TROUBLESHOOTING_GUIDE.md). For JSON field interpretation and fail-closed client behavior, see [PAYWALL_DEBUG_READ_ONLY.md](./PAYWALL_DEBUG_READ_ONLY.md).

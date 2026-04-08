@@ -5,6 +5,7 @@
  *
  * 1.  Trial active       → getMyOrgAccessStatus returns allowed:true, reason:'trial_active'
  * 2.  Trial expired      → getMyOrgAccessStatus returns allowed:false
+ * 2b. Trial already used (email hash on another org) → reason:'trial_already_used'
  * 3.  Admin override     → getMyOrgAccessStatus returns allowed:true, reason:'admin_override'
  *                          regardless of trial/subscription state
  * 4.  Subscription active → allowed:true, reason:'subscription_active'
@@ -116,6 +117,29 @@ describe('getMyOrgAccessStatus — trial expired, no subscription', () => {
     expect(result.allowed).toBe(false);
     expect(result.reason).toBe('no_active_subscription');
     expect(result.plan).toBeNull();
+  });
+});
+
+// ─── 2b. Trial already used (used_trial_emails blocks re-trial across orgs) ──
+
+describe('getMyOrgAccessStatus — trial_already_used', () => {
+  it('returns allowed:false with reason trial_already_used when RPC denies re-trial', async () => {
+    rpcMock.mockResolvedValue({
+      data: {
+        allowed:         false,
+        reason:          'trial_already_used',
+        plan:            null,
+        trial_ends_at:   null,
+        organization_id: ORG_ID,
+      },
+      error: null,
+    });
+
+    const result = await getMyOrgAccessStatus();
+
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toBe('trial_already_used');
+    expect(result.organization_id).toBe(ORG_ID);
   });
 });
 
