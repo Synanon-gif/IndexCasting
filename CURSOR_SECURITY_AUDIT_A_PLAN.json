@@ -1,0 +1,89 @@
+{
+  "critical": [],
+  "high": [],
+  "resolved_high": [
+    {
+      "id": "H1",
+      "fix": "calendar_entries_update_client_scoped + updateBookingDetails doc comment",
+      "migration": "20260502_calendar_entries_rls_canonical_client_update.sql"
+    },
+    {
+      "id": "H2",
+      "fix": "canonical migration recreates full calendar_entries RLS in supabase/migrations/",
+      "migration": "20260502_calendar_entries_rls_canonical_client_update.sql"
+    }
+  ],
+  "medium": [
+    {
+      "id": "M1",
+      "area": "P1_Invite_Claim",
+      "title": "Invite-Token blockiert Claim im selben finalize-Lauf",
+      "summary": "finalizePendingInviteOrClaim: bei gesetztem Invite-Token wird kein Claim-Token gelesen; nach Invite-Zweig return. Nutzer mit beiden Tokens: Claim erst nach erfolgreichem Invite oder Token-Clear — beabsichtigt (Mutex), UX-Edge Case."
+    },
+    {
+      "id": "M2",
+      "area": "P6_Booking_Brief",
+      "title": "booking_details JSON: Vertraulichkeit nur UI-gefiltert",
+      "summary": "filterBriefForRole in src/utils/bookingBrief.ts filtert Anzeige; wer calendar_entries per SELECT lesen darf (z. B. Client mit nicht-rejected option_requests), erhält volles JSON in API-Antworten — konsistent mit dokumentierter UI-Grenze (Invariant 7), aber kein serverseitiges Field-Stripping."
+    }
+  ],
+  "low": [
+    {
+      "id": "L1",
+      "area": "P1_Model_Link",
+      "title": "link_model_by_email weiterhin Step-2 nach Bootstrap",
+      "summary": "AuthContext isoliert linkModelByEmail nach loadProfile — regelkonform; für neue Flows nur claim_model_by_token."
+    },
+    {
+      "id": "L2",
+      "area": "P2_Org",
+      "title": "Multi-Org weiterhin älteste Membership / explizite Wahl",
+      "summary": "Keine neuen LIMIT-1-Org-Auflösungs-Bugs in Stichprobe; weiterhin Monitoring bei neuem Org-UI."
+    }
+  ],
+  "invariants_broken": [],
+  "safe": [
+    {
+      "id": "S1",
+      "area": "P6_Live_RLS",
+      "title": "calendar_entries SELECT ist scoped, nicht USING(true)",
+      "summary": "Live: Policy calendar_entries_select_scoped mit Model-Self, Agency-Membership, Client via option_requests (nicht rejected). Kein offener Competitor-Wide-Read."
+    },
+    {
+      "id": "S2",
+      "area": "P5_Storage",
+      "title": "can_view_model_photo_storage Pfad + model_photos",
+      "summary": "Migration 20260501_can_view_model_photo_storage_client_row_alignment.sql im Repo; Abgleich Client-Zeile / Paywall dokumentiert."
+    },
+    {
+      "id": "S3",
+      "area": "P8_Assignment_Attention",
+      "title": "option_request_visible_to_me ohne Assignment-Gate",
+      "summary": "Root-Definition (migration_org_calendar_booking_full_access.sql): Sichtbarkeit über Model-User, Client-Org-Member, Agency-Org-Member — kein client_assignment_flags in der Funktion. Smart Attention nur UI-Filter (optionRequestAttention.ts)."
+    },
+    {
+      "id": "S4",
+      "area": "P3_RPC",
+      "title": "agency_update_model_full in migrations vorhanden",
+      "summary": "Mehrfache Migrationen (u. a. 20260430_agency_update_model_full_remove_models_phone.sql) adressieren Schema-Drift; Live pg_get_functiondef bei Änderungen weiter prüfen."
+    },
+    {
+      "id": "S5",
+      "area": "P7_Chat",
+      "title": "ensureClientAgencyChat Session- und Org-Paar-Guards",
+      "summary": "b2bOrgChatSupabase.ts: actingUserId muss auth.uid() sein; resolve vor Conversation-Create."
+    },
+    {
+      "id": "S6",
+      "area": "P1_Finalization",
+      "title": "finalizePendingInviteOrClaim idempotent chain + Token-Clear",
+      "summary": "Tests für Invite-first; fatal errors clearen Token; align mit inviteClaimRouting.ts."
+    },
+    {
+      "id": "S7",
+      "area": "P5_Recruiting",
+      "title": "Recruiting policies auf Live vorhanden",
+      "summary": "recruiting_threads_select/update, recruiting_messages_select/insert — Email-Branches in 20260405 entfernt (Repo)."
+    }
+  ]
+}

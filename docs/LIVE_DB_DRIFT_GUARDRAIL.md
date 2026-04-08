@@ -42,3 +42,7 @@ Example header for a diagnostic-only file:
 - `.cursor/rules/system-invariants.mdc` — MIGRATIONS-DEPLOYMENT, LIVE-DB SOURCE OF TRUTH
 - `.cursor/rules/rls-security-patterns.mdc` — SQL source of truth note
 - `.cursor/rules/supabase-auto-deploy.mdc` — project deploy workflow (when enabled)
+
+## Example: `calendar_entries` RLS (canonical migration)
+
+All `public.calendar_entries` policies (SELECT scoped, agency write/update/delete, model self, **client scoped UPDATE** for `booking_details` / Booking Brief) are defined in **`supabase/migrations/20260502_calendar_entries_rls_canonical_client_update.sql`**. Do not reintroduce deploy-only root-SQL as the sole source for this table; extend behavior only via new dated migrations after live verification.

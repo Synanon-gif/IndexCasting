@@ -49,6 +49,12 @@ Visibility is **enforced in the client UI** by `filterBriefForRole` / editor rul
 - Service: `updateBookingDetails(optionRequestId, { booking_brief: … }, role)` in `src/services/calendarSupabase.ts` (optimistic lock on `updated_at`, same as other `booking_details` patches).
 - Merge: `mergeBookingBriefFromEditor` preserves fields editable by other parties but not shown to the current editor (e.g. agency’s private field while client saves).
 
+### Backend permission parity (RLS)
+
+- `public.calendar_entries` UPDATE is allowed for: agency members (model’s agency), linked model (`model_self`), and **client parties** on rows with `option_request_id` set, via policy `calendar_entries_update_client_scoped` (canonical migration `supabase/migrations/20260502_calendar_entries_rls_canonical_client_update.sql`).
+- Scope: same option row the app addresses (`option_request_id` + `model_id` match `option_requests`, `status <> rejected`, caller is legacy `client_id` or member of the option’s client org).
+- This does **not** change the trust model: there is still **no** server-side stripping of per-field scopes inside JSONB; anyone who may `SELECT` the row still receives full `booking_details` from the API.
+
 ## UI
 
 - Component: `src/components/BookingBriefEditor.tsx`

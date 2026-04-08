@@ -114,6 +114,7 @@ Wenn ein DB-Constraint umbenannt wird, MÜSSEN alle referenzierenden Funktionen 
 - SQL-Dateien im `supabase/`-Root (außerhalb `migrations/`) werden **NICHT** automatisch ausgeführt — sie sind Legacy-Referenzen oder Skripte, keine echten Migrations
 - Jede neue DB-Änderung MUSS als `.sql`-Datei in `supabase/migrations/` mit Datum-Präfix `YYYYMMDD_` angelegt werden
 - Root-Dateien wie `supabase/20260409_model_agency_permission_fix.sql` sind durch echte Migrations (`20260412_agency_rpcs_definitive.sql` u.a.) abgedeckt — niemals direkt ausführen statt Migration zu erstellen
+- **`public.calendar_entries` RLS:** Kanonisch in `supabase/migrations/20260502_calendar_entries_rls_canonical_client_update.sql` (SELECT scoped, Agency/Model-Self, **Client UPDATE** `calendar_entries_update_client_scoped`). Weitere Änderungen nur via neue datierte Migration + Live-Verify. `booking_brief` / `booking_details` bleiben **ohne** feldweise RLS im JSONB (UI-Trust-Modell — `docs/BOOKING_BRIEF_SYSTEM.md`).
 
 ## LIVE-DB SOURCE OF TRUTH — ROOT-SQL NIEMALS ALS ALLEINIGER MAßSTAB (unveränderlich)
 

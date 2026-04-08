@@ -97,6 +97,8 @@ if (ok) {
 
 **Live-Drift:** Vollständige Projekt-Guidance: [docs/LIVE_DB_DRIFT_GUARDRAIL.md](docs/LIVE_DB_DRIFT_GUARDRAIL.md) — Root-SQL niemals als alleiniger Production-Maßstab; neue Policies/Funktionen nur via `migrations/` (außer klar markierte Diagnose-Skripte).
 
+**`calendar_entries` + Booking Brief:** Client-/Employee-Schreibpfade (`updateBookingDetails`) müssen mit RLS übereinstimmen (Policy `calendar_entries_update_client_scoped` in `supabase/migrations/20260502_calendar_entries_rls_canonical_client_update.sql`). `booking_brief` bleibt UI-gefiltert im JSONB — kein feldweises RLS; siehe [docs/BOOKING_BRIEF_SYSTEM.md](docs/BOOKING_BRIEF_SYSTEM.md).
+
 ## 4b. UI-Sprache & Copy (verbindlich)
 - **Die gesamte Nutzeroberfläche ist Englisch (English-only):** alle sichtbaren Texte für Agency, Client und Model — Buttons, Labels, Alerts, Placeholder, leere Zustände, Fehlermeldungen aus dem Produkt.
 - **Zentrale Quelle:** Nutzer-Texte kommen aus `src/constants/uiCopy.ts` (`uiCopy`). Keine neuen deutschsprachigen UI-Strings; keine Hardcodes derselben Phrase an vielen Stellen — lieber ein Key in `uiCopy` erweitern.

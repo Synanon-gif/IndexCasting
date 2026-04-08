@@ -1,0 +1,23 @@
+{
+  "status": "applied",
+  "h1_client_calendar_update": {
+    "resolution": "RLS policy calendar_entries_update_client_scoped",
+    "migration": "supabase/migrations/20260502_calendar_entries_rls_canonical_client_update.sql"
+  },
+  "h2_canonical_migration": {
+    "resolution": "Single migration recreates all calendar_entries policies idempotently",
+    "migration": "supabase/migrations/20260502_calendar_entries_rls_canonical_client_update.sql"
+  },
+  "booking_brief_trust_model": "unchanged_ui_filtered_jsonb_no_field_rls",
+  "docs_updated": [
+    "docs/BOOKING_BRIEF_SYSTEM.md",
+    "docs/LIVE_DB_DRIFT_GUARDRAIL.md"
+  ],
+  "rules_updated": [
+    ".cursor/rules/system-invariants.mdc",
+    ".cursor/rules/auto-review.mdc",
+    ".cursorrules"
+  ],
+  "live_deployed": true,
+  "audit_b_recommended": true
+}

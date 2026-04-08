@@ -602,7 +602,9 @@ export async function updateBookingDetails(
   partialDetails: Partial<BookingDetails>,
   _role: 'client' | 'agency' | 'model'
 ): Promise<boolean> {
-  // _role is currently informational for auditing / future logic
+  // _role is informational; DB enforces UPDATE via RLS (agency, model-self, client scoped
+  // on option_request_id — migration 20260502_calendar_entries_rls_canonical_client_update).
+  // booking_details / booking_brief: UI-filtered trust model, not field-level RLS.
   //
   // Concurrency guard: reads updated_at and uses it as an optimistic lock so
   // two simultaneous partial-update calls cannot silently overwrite each other.
