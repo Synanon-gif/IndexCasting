@@ -58,6 +58,11 @@ import {
   replaceWebPathToHome,
 } from './src/utils/publicLegalRoutes';
 import { roleFromProfile, isAdmin, type NavigationRole } from './src/types/roles';
+import {
+  clampInviteOrClaimToken,
+  clampQueryId,
+  parseSharedSelectionParams,
+} from './src/utils/queryParamGuards';
 
 /** Web: volle Höhe sofort beim Modul-Load (vor erstem React-Paint) – verhindert weißen/leeren Screen. */
 function ensureWebRootHasHeight() {
@@ -81,31 +86,25 @@ type Role = NavigationRole;
 
 function getSharedParams(): { name: string; ids: string[] } | null {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
-  const p = new URLSearchParams(window.location.search);
-  if (p.get('shared') !== '1') return null;
-  const name = p.get('name') || 'Selection';
-  const ids = (p.get('ids') || '').split(',').filter(Boolean);
-  return { name, ids };
+  return parseSharedSelectionParams(new URLSearchParams(window.location.search));
 }
 
 function getBookingThreadId(): string | null {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
   const p = new URLSearchParams(window.location.search);
-  const id = p.get('booking');
-  return id && id.trim() ? id.trim() : null;
+  return clampQueryId(p.get('booking'));
 }
 
 function getGuestLinkId(): string | null {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
   const p = new URLSearchParams(window.location.search);
-  return p.get('guest') || null;
+  return clampQueryId(p.get('guest'));
 }
 
 function getInviteTokenFromUrl(): string | null {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
   const p = new URLSearchParams(window.location.search);
-  const t = p.get('invite');
-  return t && t.trim() ? t.trim() : null;
+  return clampInviteOrClaimToken(p.get('invite'));
 }
 
 function clearInviteQueryParam() {
@@ -119,8 +118,7 @@ function clearInviteQueryParam() {
 function getModelInviteTokenFromUrl(): string | null {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
   const p = new URLSearchParams(window.location.search);
-  const t = p.get('model_invite');
-  return t && t.trim() ? t.trim() : null;
+  return clampInviteOrClaimToken(p.get('model_invite'));
 }
 
 function clearModelInviteQueryParam() {

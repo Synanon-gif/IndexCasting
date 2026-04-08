@@ -8,6 +8,7 @@
 
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { INVITE_OR_CLAIM_TOKEN_MAX_LEN } from '../utils/queryParamGuards';
 
 const STORAGE_KEY = 'ic_pending_model_claim_token';
 /** Telemetry: user hit ?model_invite= (not used to gate finalization). */
@@ -44,6 +45,10 @@ function migrateWebModelClaimTokenIfNeeded(): void {
 
 export async function persistModelClaimToken(token: string | null): Promise<void> {
   try {
+    if (token && token.length > INVITE_OR_CLAIM_TOKEN_MAX_LEN) {
+      console.warn('persistModelClaimToken: token exceeds max length — ignored');
+      return;
+    }
     const loc = webLocal();
     if (loc) {
       if (token) loc.setItem(STORAGE_KEY, token);
@@ -98,10 +103,17 @@ export async function readModelClaimToken(): Promise<string | null> {
   try {
     migrateWebModelClaimTokenIfNeeded();
     const loc = webLocal();
-    if (loc) {
-      return loc.getItem(STORAGE_KEY);
+    const raw = loc ? loc.getItem(STORAGE_KEY) : await AsyncStorage.getItem(STORAGE_KEY);
+    const trimmed = raw?.trim() ?? '';
+    if (trimmed.length > INVITE_OR_CLAIM_TOKEN_MAX_LEN) {
+      if (loc) {
+        loc.removeItem(STORAGE_KEY);
+      } else {
+        await AsyncStorage.removeItem(STORAGE_KEY);
+      }
+      return null;
     }
-    return await AsyncStorage.getItem(STORAGE_KEY);
+    return trimmed.length > 0 ? trimmed : null;
   } catch (e) {
     console.error('readModelClaimToken error:', e);
     return null;
@@ -116,6 +128,10 @@ export function peekPendingModelClaimTokenSync(): string | null {
     if (!loc) return null;
     const t = loc.getItem(STORAGE_KEY);
     const trimmed = t?.trim() ?? '';
+    if (trimmed.length > INVITE_OR_CLAIM_TOKEN_MAX_LEN) {
+      loc.removeItem(STORAGE_KEY);
+      return null;
+    }
     return trimmed.length > 0 ? trimmed : null;
   } catch (e) {
     console.error('peekPendingModelClaimTokenSync error:', e);

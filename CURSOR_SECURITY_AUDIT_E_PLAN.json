@@ -1,0 +1,68 @@
+{
+  "audit": "SECURITY_AUDIT_E",
+  "date": "2026-04-08",
+  "status": "complete",
+  "final_line": "SECURITY AUDIT E COMPLETE — ISSUES FOUND (minimal hardening applied)",
+  "constraints": {
+    "no_business_logic_change": true,
+    "no_rls_auth_paywall_invite_core_change": true
+  },
+  "findings": [
+    {
+      "id": "E-SAFE-001",
+      "severity": "SAFE",
+      "title": "Messenger/recruiting text pipeline",
+      "files": ["lib/validation/text.ts", "src/services/messengerSupabase.ts", "src/services/recruitingChatSupabase.ts"],
+      "status": "confirmed"
+    },
+    {
+      "id": "E-SAFE-002",
+      "severity": "SAFE",
+      "title": "No dangerouslySetInnerHTML in codebase",
+      "files": [],
+      "status": "confirmed"
+    },
+    {
+      "id": "E-FIX-001",
+      "severity": "LOW",
+      "title": "Invite/claim token and query id length bounds",
+      "files": ["src/utils/queryParamGuards.ts", "App.tsx", "src/storage/inviteToken.ts", "src/storage/modelClaimToken.ts"],
+      "status": "fixed"
+    },
+    {
+      "id": "E-FIX-002",
+      "severity": "LOW",
+      "title": "Shared selection name/ids caps",
+      "files": ["src/utils/queryParamGuards.ts", "App.tsx"],
+      "status": "fixed"
+    },
+    {
+      "id": "E-FIX-004",
+      "severity": "LOW",
+      "title": "messages.metadata JSON size cap in sendMessage",
+      "files": ["src/services/messengerSupabase.ts"],
+      "status": "fixed"
+    },
+    {
+      "id": "E-FIX-005",
+      "severity": "LOW",
+      "title": "appendSharedBookingNote text sanitization",
+      "files": ["src/services/calendarSupabase.ts"],
+      "status": "fixed"
+    },
+    {
+      "id": "E-FIX-006",
+      "severity": "MEDIUM",
+      "title": "GuestChatView guest_link opened without validateUrl",
+      "files": ["src/views/GuestChatView.tsx"],
+      "status": "fixed"
+    },
+    {
+      "id": "E-INFO-001",
+      "severity": "INFO",
+      "title": "booking_details JSONB trust model (UI-filtered)",
+      "files": ["docs/BOOKING_BRIEF_SYSTEM.md"],
+      "status": "documented"
+    }
+  ]
+}

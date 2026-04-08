@@ -22,6 +22,7 @@ import { colors, spacing, typography } from '../theme/theme';
 import { uiCopy } from '../constants/uiCopy';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { validateUrl } from '../../lib/validation';
 import {
   createGuestConversation,
   sendGuestBookingRequest,
@@ -296,7 +297,7 @@ export const GuestChatView: React.FC = () => {
           containerStyle={styles.messengerContainer}
           onPackagePress={(meta) => {
             const url = typeof meta.guest_link === 'string' ? meta.guest_link : null;
-            if (url) void Linking.openURL(url).catch(() => {});
+            if (url && validateUrl(url).ok) void Linking.openURL(url).catch(() => {});
           }}
         />
       </View>

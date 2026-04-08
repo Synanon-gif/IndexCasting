@@ -280,6 +280,25 @@ export async function sendMessage(
     }
   }
 
+  /** Prevent oversized JSONB payloads (abuse / accidental huge objects). */
+  const MESSAGE_METADATA_MAX_JSON_CHARS = 65536;
+  if (opts?.metadata != null) {
+    try {
+      const metaJson = JSON.stringify(opts.metadata);
+      if (metaJson.length > MESSAGE_METADATA_MAX_JSON_CHARS) {
+        console.warn('sendMessage: metadata JSON exceeds maximum size');
+        void logSecurityEvent({
+          type: 'large_payload',
+          userId: senderId,
+          metadata: { service: 'messengerSupabase', field: 'metadata' },
+        });
+        return null;
+      }
+    } catch {
+      return null;
+    }
+  }
+
   const insertRow: Record<string, unknown> = {
     conversation_id: conversationId,
     sender_id: senderId,

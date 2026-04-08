@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { INVITE_OR_CLAIM_TOKEN_MAX_LEN } from '../utils/queryParamGuards';
 
 const STORAGE_KEY = 'ic_pending_invite_token';
 /** Telemetry: user hit a valid ?invite= link (not used to gate finalization). */
@@ -37,6 +38,10 @@ function migrateWebInviteTokenIfNeeded(): void {
 
 export async function persistInviteToken(token: string | null): Promise<void> {
   try {
+    if (token && token.length > INVITE_OR_CLAIM_TOKEN_MAX_LEN) {
+      console.warn('persistInviteToken: token exceeds max length — ignored');
+      return;
+    }
     const loc = webLocal();
     if (loc) {
       if (token) loc.setItem(STORAGE_KEY, token);
@@ -91,10 +96,17 @@ export async function readInviteToken(): Promise<string | null> {
   try {
     migrateWebInviteTokenIfNeeded();
     const loc = webLocal();
-    if (loc) {
-      return loc.getItem(STORAGE_KEY);
+    const raw = loc ? loc.getItem(STORAGE_KEY) : await AsyncStorage.getItem(STORAGE_KEY);
+    const trimmed = raw?.trim() ?? '';
+    if (trimmed.length > INVITE_OR_CLAIM_TOKEN_MAX_LEN) {
+      if (loc) {
+        loc.removeItem(STORAGE_KEY);
+      } else {
+        await AsyncStorage.removeItem(STORAGE_KEY);
+      }
+      return null;
     }
-    return await AsyncStorage.getItem(STORAGE_KEY);
+    return trimmed.length > 0 ? trimmed : null;
   } catch (e) {
     console.error('readInviteToken error:', e);
     return null;
@@ -109,6 +121,10 @@ export function peekPendingInviteTokenSync(): string | null {
     if (!loc) return null;
     const t = loc.getItem(STORAGE_KEY);
     const trimmed = t?.trim() ?? '';
+    if (trimmed.length > INVITE_OR_CLAIM_TOKEN_MAX_LEN) {
+      loc.removeItem(STORAGE_KEY);
+      return null;
+    }
     return trimmed.length > 0 ? trimmed : null;
   } catch (e) {
     console.error('peekPendingInviteTokenSync error:', e);

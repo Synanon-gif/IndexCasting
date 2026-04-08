@@ -12,6 +12,7 @@ import {
   type BookingEventStatus,
 } from './bookingEventsSupabase';
 import type { BookingBrief } from '../utils/bookingBrief';
+import { sanitizeHtml } from '../../lib/validation';
 
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.trim());
@@ -480,7 +481,7 @@ export async function appendSharedBookingNote(
   const newNote: SharedBookingNote = {
     role,
     at: new Date().toISOString(),
-    text: trimmed.slice(0, 4000),
+    text: sanitizeHtml(trimmed).slice(0, 4000),
   };
 
   const attemptAppend = async (): Promise<boolean> => {
