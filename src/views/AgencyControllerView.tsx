@@ -148,7 +148,7 @@ import { runMediaslideCronSync } from '../services/mediaslideSyncService';
 import { runNetwalkCronSync } from '../services/netwalkSyncService';
 import { getAgencyApiKeys, saveAgencyApiConnection } from '../services/agencySettingsSupabase';
 import { checkModelCompleteness, type CompletenessContext } from '../utils/modelCompleteness';
-import { calendarEntryColor } from '../utils/calendarColors';
+import { calendarEntryColor, OPTION_REQUEST_CHAT_STATUS_COLORS } from '../utils/calendarColors';
 import { DashboardSummaryBar } from '../components/DashboardSummaryBar';
 import { OrgMetricsPanel } from '../components/OrgMetricsPanel';
 import { OwnerBillingStatusCard } from '../components/OwnerBillingStatusCard';
@@ -158,16 +158,12 @@ import { getLatestActivityLog, type ActivityLog } from '../services/activityLogs
 import { uiCopy as _uiCopy } from '../constants/uiCopy';
 
 const STATUS_LABELS: Record<ChatStatus, string> = {
-  in_negotiation: 'In negotiation',
-  confirmed: 'Confirmed',
-  rejected: 'Rejected',
+  in_negotiation: _uiCopy.dashboard.optionRequestStatusInNegotiation,
+  confirmed: _uiCopy.dashboard.optionRequestStatusConfirmed,
+  rejected: _uiCopy.dashboard.optionRequestStatusRejected,
 };
 
-const STATUS_COLORS: Record<ChatStatus, string> = {
-  in_negotiation: '#B8860B',
-  confirmed: colors.buttonOptionGreen,
-  rejected: colors.textSecondary,
-};
+const STATUS_COLORS: Record<ChatStatus, string> = OPTION_REQUEST_CHAT_STATUS_COLORS;
 
 // ISO country names for the territories multi-select.
 // Keep names in English for UI consistency.

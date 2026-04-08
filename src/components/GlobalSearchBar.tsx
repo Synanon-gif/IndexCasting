@@ -129,7 +129,9 @@ export const GlobalSearchBar: React.FC<Props> = ({
                   style={styles.resultRow}
                   onPress={() => { onSelectOption?.(o.id); clear(); }}
                 >
-                  <Text style={styles.resultName}>{o.model_name ?? '—'}</Text>
+                  <Text style={styles.resultName}>
+                    {o.model_name?.trim() ? o.model_name : copy.optionRequestUnnamedModel}
+                  </Text>
                   <Text style={styles.resultMeta}>{o.requested_date ?? ''}</Text>
                 </TouchableOpacity>
               ))}

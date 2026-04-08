@@ -117,6 +117,7 @@ import {
   setThreadArchived,
 } from '../services/threadPreferencesSupabase';
 import { MonthCalendarView, type CalendarDayEvent } from '../components/MonthCalendarView';
+import { OPTION_REQUEST_CHAT_STATUS_COLORS } from '../utils/calendarColors';
 import { ClientOrganizationTeamSection } from '../components/ClientOrganizationTeamSection';
 import { OrgMessengerInline } from '../components/OrgMessengerInline';
 import { OrgMetricsPanel } from '../components/OrgMetricsPanel';
@@ -3528,16 +3529,12 @@ const AgenciesView: React.FC<{
 };
 
 const STATUS_LABELS: Record<ChatStatus, string> = {
-  in_negotiation: 'In negotiation',
-  confirmed: 'Confirmed',
-  rejected: 'Rejected',
+  in_negotiation: uiCopy.dashboard.optionRequestStatusInNegotiation,
+  confirmed: uiCopy.dashboard.optionRequestStatusConfirmed,
+  rejected: uiCopy.dashboard.optionRequestStatusRejected,
 };
 
-const STATUS_COLORS: Record<ChatStatus, string> = {
-  in_negotiation: '#B8860B',
-  confirmed: colors.buttonOptionGreen,
-  rejected: colors.textSecondary,
-};
+const STATUS_COLORS: Record<ChatStatus, string> = OPTION_REQUEST_CHAT_STATUS_COLORS;
 
 type MessagesViewProps = {
   openThreadId: string | null;

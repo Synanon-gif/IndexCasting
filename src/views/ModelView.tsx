@@ -159,10 +159,14 @@ const ModelUnifiedInbox: React.FC<{ modelId: string }> = ({ modelId }) => {
               {isActionRequired && (
                 <Text style={styles.actionTag}>{copy.inboxActionRequired}</Text>
               )}
-              <Text style={styles.inboxModelName}>{r.model_name ?? '—'}</Text>
+              <Text style={styles.inboxModelName}>
+                {r.model_name?.trim() ? r.model_name : copy.optionRequestUnnamedModel}
+              </Text>
               <Text style={styles.inboxDate}>{r.requested_date ?? r.created_at.slice(0, 10)}</Text>
               {r.request_type ? (
-                <Text style={styles.inboxRole}>{r.request_type}</Text>
+                <Text style={styles.inboxRole}>
+                  {r.request_type === 'casting' ? copy.threadContextCasting : copy.threadContextOption}
+                </Text>
               ) : null}
             </View>
             <View style={[styles.statusBadge, { backgroundColor: statusBgColor(displayStatus) }]}>

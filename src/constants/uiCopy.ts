@@ -1307,6 +1307,12 @@ export const uiCopy = {
     threadContextOption:    'Option',
     threadContextCasting:   'Casting',
     threadContextBooking:   'Booking',
+    /** Option request row when model_name is null (search / lists). */
+    optionRequestUnnamedModel: 'Unnamed model',
+    /** Option / casting request thread — negotiation lifecycle (Messages list pills). */
+    optionRequestStatusInNegotiation: 'In negotiation',
+    optionRequestStatusConfirmed: 'Confirmed',
+    optionRequestStatusRejected: 'Rejected',
     reminderSet:            'Reminder set',
     reminderNone:           'No reminder',
     weekViewLabel:          'Week',

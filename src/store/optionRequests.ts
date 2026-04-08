@@ -249,6 +249,20 @@ export function addOptionRequest(
       }
     } catch {}
 
+    let agencyOrganizationId: string | null = null;
+    try {
+      if (agencyId) {
+        const { data: agencyOrgRow } = await supabase
+          .from('organizations')
+          .select('id')
+          .eq('agency_id', agencyId)
+          .maybeSingle();
+        agencyOrganizationId = (agencyOrgRow as { id?: string } | null)?.id ?? null;
+      }
+    } catch {
+      agencyOrganizationId = null;
+    }
+
     // Calendar conflict check — informational only (fail-open).
     // Warns the user when the model already has a confirmed booking on the
     // requested date so they can decide whether to proceed.
@@ -282,6 +296,8 @@ export function addOptionRequest(
       end_time: extra?.endTime,
       request_type: requestType,
       organization_id: organizationId,
+      client_organization_id: organizationId ?? null,
+      agency_organization_id: agencyOrganizationId,
       created_by: user?.id ?? null,
     });
     if (!result) {

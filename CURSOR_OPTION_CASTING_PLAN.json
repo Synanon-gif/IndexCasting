@@ -1,0 +1,107 @@
+{
+  "analyzed_components": [
+    "src/store/optionRequests.ts",
+    "src/services/optionRequestsSupabase.ts",
+    "src/services/calendarSupabase.ts",
+    "src/services/bookingChatIntegrationSupabase.ts",
+    "src/services/b2bOrgChatSupabase.ts",
+    "src/services/searchSupabase.ts",
+    "src/services/userCalendarEventsSupabase.ts",
+    "src/services/bookingEventsSupabase.ts",
+    "src/web/ClientWebApp.tsx",
+    "src/views/AgencyControllerView.tsx",
+    "src/views/ModelView.tsx",
+    "src/views/SharedSelectionView.tsx",
+    "src/components/GlobalSearchBar.tsx",
+    "src/utils/calendarColors.ts",
+    "src/utils/statusHelpers.ts",
+    "src/screens/ModelProfileScreen.tsx",
+    "src/screens/CustomerSwipeScreen.tsx"
+  ],
+  "confirmed_ux_findings": [
+    {
+      "id": "UX-1",
+      "summary": "Model inbox uses statusHelpers Draft/Sent/Confirmed; Messages tab uses different labels for negotiation status",
+      "severity": "CONFIRMED_UX_MEDIUM"
+    },
+    {
+      "id": "UX-2",
+      "summary": "Three surfaces (option thread, B2B booking card, calendar) may feel redundant without product onboarding",
+      "severity": "LOW"
+    },
+    {
+      "id": "UX-3",
+      "summary": "Search showed em dash for missing model name",
+      "severity": "LOW",
+      "fixed": true
+    },
+    {
+      "id": "UX-4",
+      "summary": "Model inbox showed raw request_type string",
+      "severity": "LOW",
+      "fixed": true
+    },
+    {
+      "id": "UX-5",
+      "summary": "Package source in B2B metadata not always mirrored in option thread UI",
+      "severity": "MANUAL_REVIEW_REQUIRED"
+    }
+  ],
+  "confirmed_technical_findings": [
+    {
+      "id": "T-1",
+      "summary": "insertOptionRequest call omitted client_organization_id and agency_organization_id",
+      "severity": "high_data_consistency",
+      "fixed": true
+    },
+    {
+      "id": "T-2",
+      "summary": "Duplicated STATUS_COLORS hex in ClientWebApp and AgencyControllerView",
+      "severity": "LOW",
+      "fixed": true
+    },
+    {
+      "id": "T-3",
+      "summary": "uploadOptionDocument audit org context skipped (pre-existing)",
+      "severity": "MANUAL_REVIEW_REQUIRED"
+    },
+    {
+      "id": "T-4",
+      "summary": "Calendar/booking dedupe duplicated across ClientWebApp and AgencyControllerView",
+      "severity": "LOW"
+    },
+    {
+      "id": "T-5",
+      "summary": "hasNewMessages uses coarse requestsCache.length check",
+      "severity": "MANUAL_REVIEW_REQUIRED"
+    }
+  ],
+  "fixed_now": [
+    "Org-centric option insert: client_organization_id + agency_organization_id from store",
+    "OPTION_REQUEST_CHAT_STATUS_COLORS + uiCopy for negotiation status labels",
+    "GlobalSearchBar + ModelView copy via uiCopy",
+    "docs/OPTION_CASTING_FLOW.md",
+    "calendarColors unit tests"
+  ],
+  "safe_next": [
+    "Surface package source badge in option thread when metadata exists",
+    "Extract shared dedupe helper for calendar/booking merge",
+    "Unread-aware hasNewMessages with product spec",
+    "logAction for option document upload when org id known"
+  ],
+  "manual_review_required": [
+    "UX-5 package badge in thread",
+    "T-3 upload audit org context",
+    "T-5 notification badge semantics"
+  ],
+  "do_not_touch": [
+    "src/context/AuthContext.tsx",
+    "App.tsx",
+    "signIn / bootstrapThenLoadProfile / loadProfile",
+    "get_own_admin_flags / is_current_user_admin / assert_is_admin",
+    "get_my_org_context structural changes",
+    "Paywall core / admin routing",
+    "Blanket SQL RLS RPC refactors"
+  ],
+  "closure_label": "PARTIAL OPTION CASTING HARDENING APPLIED"
+}
