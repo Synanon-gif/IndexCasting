@@ -293,25 +293,13 @@ vor Upload-Aktionen stehen. Konsistent implementiert in `gdprComplianceSupabase.
 - **Package-Typ-Anzeige:** Der Grid-Header in `DiscoverView` im Package-Mode MUSS `packageType` anzeigen: `'polaroid' → 'Polaroid Package'`, `'portfolio' → 'Portfolio Package'`. Die `DiscoverProps` enthalten `packageType?: PackageType`, das von `ClientWebApp` als `packageViewState?.packageType` übergeben wird.
 - **Active-Project-Label in Shared-Mode:** `isSharedMode` hat Vorrang — in Shared-Mode IMMER `sharedProjectName` anzeigen, nicht `activeProject.name` (der auf ein anderes Projekt zeigen kann)
 - **Package-Label im Chat:** `metadata.package_label` MUSS den echten Package-Namen (`GuestLink.label`) enthalten, nicht nur die Model-Anzahl. Format: `"Name · N models"` wenn Label vorhanden, sonst `"N"`
-- **`add_model_to_project` Rollback (PFLICHT — Snapshot-Pattern, dokumentierte Ausnahme zur Level-3-Regel):**
-  - **Ausnahme-Begründung:** Generell sind Snapshots bei optimistischen Updates verboten (stale Closure / Concurrent Actions). Hier ist **Snapshot + `.then(ok)`** ausdrücklich erlaubt, weil ein reiner Inverse-„filter das hinzugefügte Model“-Rollback ein **bereits im Projekt befindliches** Model fälschlich entfernen kann. **Concurrent** Adds im selben Render-Zyklus bleiben ein bekanntes Restrisiko — mittelfristig auf **Inverse-Operation + per-id Lock** migrieren.
-  - Connection-Check ist serverseitig im RPC (`client_agency_connections.status = 'accepted'`). Frontend-Check ist NICHT ausreichend.
-  - `addModelToProjectOnSupabase` (`src/services/projectsSupabase.ts`) gibt bei Fehler **`false` zurück — wirft NIEMALS**. `.catch()` in `ClientWebApp.tsx` läuft daher NIEMALS.
-  - PFLICHT-Pattern: **`.then(ok)` + Snapshot**, NICHT `.catch()` + `filter`:
-    ```typescript
-    const snapshot = projects; // VOR optimistischem Update
-    setProjects(...optimistic...);
-    void addModelToProjectOnSupabase(projectId, model.id)
-      .then((ok) => {
-        if (ok) { setFeedback(`Added ...`); clearFeedbackLater(); }
-        else { setProjects(snapshot); setFeedback('Could not save...'); clearFeedbackLater(); }
-      })
-      .catch((e) => { setProjects(snapshot); setFeedback('Could not save...'); clearFeedbackLater(); });
-    ```
-  - Warum Snapshot statt Filter: `filter` würde ein bereits im Projekt befindliches Model fälschlich entfernen; Snapshot stellt exakten Vor-Add-Zustand wieder her (UI === DB)
-  - localStorage-Sync ist automatisch: `setProjects` triggert den `[projects]`-useEffect → localStorage gespiegelt
-  - **VERBOTEN:** `void addModelToProjectOnSupabase(...).catch(...)` — catch läuft nie, kein Rollback
-  - **VERBOTEN:** Erfolgs-Feedback VOR dem `.then(ok)` setzen — zeigt Success bei tatsächlichem Fail
+- **`add_model_to_project` / Client-Projekt (PFLICHT — Connectionless + Level-3 Rollback):**
+  - **Produkt (Connectionless Initial Workflow):** Sobald ein Model im Client-Discover sichtbar ist, müssen Add-to-Project und verwandte Erstkontakt-Flows **ohne** bestehende `client_agency_connections`-Zeile funktionieren. **Backend:** `add_model_to_project` (SECURITY DEFINER, Migration `20260526`) prüft **keinen** Connection-Status; Guards u.a. `auth.uid()`, Client-Org-Mitgliedschaft (optional explizites `p_organization_id`), Projekt gehört dieser Org, Modell existiert mit auflösbarer Agency (`p_country_iso` + `model_agency_territories` für Territory-Alignment mit Discovery). INSERT-RLS `client_project_models_agency_scoped`: Org-Mitgliedschaft über `client_projects` + `models`-Zeile existiert — **kein** Connection-Join.
+  - `addModelToProject` (`src/services/projectsSupabase.ts`) liefert `{ ok: false, userMessage }` bei Fehler — **kein Throw** im Normalflow; **`.then` mit `result.ok`-Prüfung** ist Pflicht (nicht allein `.catch()` auf den Service).
+  - **ClientWebApp:** optimistisches Add mit **Inverse-Operation-Rollback** (`alreadyPresent`-Guard) + **per-id Inflight-Lock** (`addingModelIds`); nach erfolgreichem `ok` **Server Reconciliation** (`reconcileProjectModels`). Siehe globale Level-3-Regeln in `.cursorrules` — **kein** Snapshot-Rollback für diesen Container.
+  - localStorage-Sync: `setProjects` triggert den `[projects]`-useEffect → localStorage gespiegelt
+  - **VERBOTEN:** Rollback nur via `.catch()` auf den Option-A-Service — toter Pfad bei nicht-werfendem Service
+  - **VERBOTEN:** Erfolgs-Feedback vor bestätigtem `result.ok`
 
 - **`isSharedMode` Semantik (KRITISCH — Verwechslung verhindert):**
   - `isSharedMode === true` bedeutet: **Client hat sein eigenes Projekt im Discover-Modus geöffnet** (`openProjectDiscovery()` → `setSharedProjectId(id)`)

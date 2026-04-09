@@ -44,7 +44,7 @@ Follow-up audit after **`f642f36`** / migration **`20260525_add_model_to_project
 
 - **Deployed:** `scripts/supabase-push-verify-migration.sh` → HTTP 201.
 - **Verified:** `add_model_to_project` **`pronargs = 4`** (unchanged signature).
-- **Optional:** `pg_get_functiondef` for `add_model_to_project` — must not reference `client_agency_connections` (see [`CURSOR_CLIENT_MODEL_CALENDAR_ATTENTION_VERIFY.md`](CURSOR_CLIENT_MODEL_CALENDAR_ATTENTION_VERIFY.md)).
+- **`pg_get_functiondef`:** `strpos(..., 'client_agency_connections') = 0` on live (substring not present).
 
 ---
 
@@ -75,6 +75,48 @@ Follow-up audit after **`f642f36`** / migration **`20260525_add_model_to_project
 
 ---
 
-## 8. Closure Line
+## 8. Connectionless Initial Workflow Invariant
 
-Audit closed with a **minimal SQL + copy fix** for the only confirmed **accepted-connection** gate on the Discover-approved add-to-project path; live migration verified (`pronargs = 4`); CI green.
+**Product rule:** A client organization does **not** need a pre-existing, accepted, or manually created `client_agency_connections` row to use first-contact workflows (chat with agency, add to project/selection, option/casting/booking/job requests, general B2B messages). **Discover visibility / legitimate workflow context** is the approval trigger; backend enforcement remains org-scoped and model-scoped.
+
+### Confirmed false gates (historical)
+
+| Gate | Where |
+|------|--------|
+| `EXISTS client_agency_connections … status = 'accepted'` before insert | `add_model_to_project` RPC (pre-`20260526`) |
+| INSERT RLS on `client_project_models` requiring connection join | Policy `client_project_models_agency_scoped` (pre-`20260526`) |
+| UI / mapping implying “connect first” for add-to-project | Legacy `uiCopy.projects.addToProjectNoConnection` copy and error branches (aligned in repo) |
+
+### Fixed locations
+
+| Location | Change |
+|----------|--------|
+| [`supabase/migrations/20260526_add_model_to_project_remove_connection_gate.sql`](supabase/migrations/20260526_add_model_to_project_remove_connection_gate.sql) | RPC: auth + org + project + territory-aligned agency resolution; **no** `client_agency_connections`. RLS INSERT: org member of project org + `models` row exists. |
+| [`src/services/projectsSupabase.ts`](src/services/projectsSupabase.ts) | Service docs + `mapAddModelToProjectErrorMessage` — no connection-specific user strings. |
+| [`src/constants/uiCopy.ts`](src/constants/uiCopy.ts) | `addToProjectNoConnection` neutralized (legacy key retained). |
+| [`.cursor/rules/system-invariants.mdc`](.cursor/rules/system-invariants.mdc) | Replaced obsolete “connection check in RPC” with Connectionless + real guards + ClientWebApp inverse rollback. |
+
+### Deliberately unchanged security boundaries
+
+- **Org isolation:** Client project and membership checks unchanged; RPC still requires project `organization_id` to match caller’s client org (or explicit `p_organization_id` with membership proof).
+- **Auth / Admin / Paywall:** Not modified as part of this invariant.
+- **`client_agency_connections` table:** May still exist for explicit connection-request UX; it is **not** a prerequisite for Discover-gated workflows.
+- **Option requests, B2B chat, calendar RLS:** Already did not use connection as a gate for insert/bootstrap; no behavioral change required beyond add-to-project.
+
+### Manual post-release checklist (9 points)
+
+1. Client sees model in Discover.  
+2. Chat with agency works without an existing connection.  
+3. Add to selection / add to project works without an existing connection.  
+4. Project reload keeps the model (DB + hydration).  
+5. Option request works without an existing connection.  
+6. Casting / booking / job entry points work without an existing connection.  
+7. Agency receives the request correctly.  
+8. Model receives follow-up objects when an account exists.  
+9. No UI shows “connect first” / “accepted connection required” for these flows.
+
+---
+
+## 9. Closure Line
+
+Audit closed with a **minimal SQL + copy fix** for the only confirmed **accepted-connection** gate on the Discover-approved add-to-project path; live migration verified (`pronargs = 4`); `add_model_to_project` function body verified free of `client_agency_connections`; CI green.

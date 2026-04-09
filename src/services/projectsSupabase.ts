@@ -7,6 +7,7 @@ import {
   mapSupabaseModelToClientProjectSummary,
   type ClientProjectModelSummary,
 } from '../utils/clientProjectHydration';
+import { mapAddModelToProjectErrorMessage } from '../utils/mapAddModelToProjectErrorMessage';
 
 /**
  * Kunden-Projekte und zugeordnete Models – in Supabase, pro Kunde (owner_id).
@@ -187,18 +188,7 @@ export type AddModelToProjectResult =
   | { ok: true }
   | { ok: false; userMessage: string };
 
-function mapAddModelToProjectErrorMessage(raw: string | undefined): string {
-  const m = (raw ?? '').toLowerCase();
-  if (m.includes('project does not belong')) return uiCopy.projects.addToProjectWrongOrg;
-  if (m.includes('not a member of the specified client organization')) {
-    return uiCopy.projects.addToProjectNotOrgMember;
-  }
-  if (m.includes('caller has no client organization')) return uiCopy.projects.addToProjectNoClientOrg;
-  if (m.includes('model has no agency') || m.includes('does not exist')) {
-    return uiCopy.projects.addToProjectModelNoAgency;
-  }
-  return uiCopy.projects.addToProjectGeneric;
-}
+export { mapAddModelToProjectErrorMessage } from '../utils/mapAddModelToProjectErrorMessage';
 
 /**
  * Adds a model to a client project.
