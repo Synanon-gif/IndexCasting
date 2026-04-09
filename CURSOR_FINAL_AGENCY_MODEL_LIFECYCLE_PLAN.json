@@ -1,0 +1,74 @@
+{
+  "title": "Final Agency Model Lifecycle Hardening",
+  "date": "2026-04-09",
+  "status": "COMPLETE",
+  "root_causes": [
+    {
+      "id": "RC-1",
+      "severity": "CRITICAL",
+      "status": "FIXED",
+      "description": "Form reset/close executed before photo/location/refresh — early returns skipped all persistence",
+      "fix": "Move form reset to end of handleAddModel, eliminate early returns from photo block"
+    },
+    {
+      "id": "RC-2",
+      "severity": "CRITICAL",
+      "status": "FIXED",
+      "description": "uploadModelPhoto double-checked consent with DB round-trip that could race with just-inserted audit row",
+      "fix": "Added skipConsentCheck option, used in handleAddModel batch uploads"
+    },
+    {
+      "id": "RC-3",
+      "severity": "MODERATE",
+      "status": "FIXED",
+      "description": "Location write came after photo block — any photo failure skipped location",
+      "fix": "Move upsertModelLocation before photo block"
+    },
+    {
+      "id": "RC-4",
+      "severity": "MODERATE",
+      "status": "FIXED",
+      "description": "Mirror sync used only uploaded URLs, not full model_photos rebuild (broke merge case)",
+      "fix": "Replace syncPortfolioToModel with rebuildPortfolioImagesFromModelPhotos"
+    },
+    {
+      "id": "RC-5",
+      "severity": "N/A",
+      "status": "FALSE_ALARM",
+      "description": "models prop in MyModelsTab IS already fullModels — no light-model degradation"
+    },
+    {
+      "id": "RC-6",
+      "severity": "MODERATE",
+      "status": "FIXED",
+      "description": "Invite resend showed dead-end error when all tokens expired",
+      "fix": "Auto-regenerate token via generateModelClaimToken before resending"
+    },
+    {
+      "id": "RC-7",
+      "severity": "MODERATE",
+      "status": "FIXED",
+      "description": "Silent failure when all uploads returned null — no user feedback",
+      "fix": "Explicit alert when zero uploads succeed despite files present"
+    },
+    {
+      "id": "RC-8",
+      "severity": "MINOR",
+      "status": "FIXED",
+      "description": "handleSaveModel called onRefresh() without await — completeness checks ran on stale data",
+      "fix": "await Promise.resolve(onRefresh()) with try-catch"
+    }
+  ],
+  "files_changed": [
+    "src/views/AgencyControllerView.tsx",
+    "src/services/modelPhotosSupabase.ts"
+  ],
+  "quality_gates": {
+    "typecheck": "PASS",
+    "lint": "PASS (0 errors)",
+    "tests": "PASS (894/894)"
+  },
+  "cursor_rules_changed": false,
+  "db_migrations_needed": false,
+  "edge_functions_changed": false
+}
