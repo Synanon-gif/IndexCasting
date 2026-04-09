@@ -57,8 +57,10 @@ import {
   normalizePublicLegalPath,
   replaceWebPathToHome,
   getPublicAgencySlugFromPath,
+  getPublicClientSlugFromPath,
 } from './src/utils/publicLegalRoutes';
 import { PublicAgencyProfileScreen } from './src/screens/PublicAgencyProfileScreen';
+import { PublicClientProfileScreen } from './src/screens/PublicClientProfileScreen';
 import { roleFromProfile, isAdmin, type NavigationRole } from './src/types/roles';
 import {
   clampInviteOrClaimToken,
@@ -616,6 +618,24 @@ function AppContent() {
         <>
           <PublicAgencyProfileScreen
             slug={agencySlug}
+            onClose={replaceWebPathToHome}
+          />
+          <StatusBar style="dark" />
+        </>
+      );
+    }
+  }
+
+  // Public client profile route: /client/:slug — no auth required.
+  // Checked immediately after the agency route so both authenticated and
+  // unauthenticated users can visit a public client profile directly.
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    const clientSlug = getPublicClientSlugFromPath(window.location.pathname);
+    if (clientSlug) {
+      return (
+        <>
+          <PublicClientProfileScreen
+            slug={clientSlug}
             onClose={replaceWebPathToHome}
           />
           <StatusBar style="dark" />

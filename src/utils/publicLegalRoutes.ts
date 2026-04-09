@@ -46,3 +46,17 @@ export function getPublicAgencySlugFromPath(pathname: string): string | null {
   const m = p.match(/^\/agency\/([a-zA-Z0-9_-]+)$/);
   return m ? m[1] : null;
 }
+
+/**
+ * Extracts the client slug from a public client profile path.
+ *
+ * Matches: /client/<slug>  (alphanumeric, hyphens, underscores)
+ * Returns null for: /client/, /client, /, /terms, /privacy, or any other path.
+ *
+ * Used by App.tsx to detect and render PublicClientProfileScreen without auth.
+ */
+export function getPublicClientSlugFromPath(pathname: string): string | null {
+  const p = pathname.replace(/\/+$/, '');
+  const m = p.match(/^\/client\/([a-zA-Z0-9_-]+)$/);
+  return m ? m[1] : null;
+}
