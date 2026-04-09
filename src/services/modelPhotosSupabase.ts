@@ -144,6 +144,64 @@ export async function getPhotosForModel(
   }
 }
 
+/**
+ * Client-visible portfolio URLs from `model_photos` (sort_order), aligned with
+ * `rebuildPortfolioImagesFromModelPhotos` and `get_discovery_models` mirror fallback (§27.1).
+ * Use when `models.portfolio_images` is empty but visible portfolio rows exist.
+ */
+export async function getClientVisiblePortfolioUrlsFromModelPhotos(modelId: string): Promise<string[]> {
+  const photos = await getPhotosForModel(modelId, 'portfolio');
+  return photos
+    .filter((p) => Boolean(p.is_visible_to_clients ?? p.visible))
+    .sort((a, b) => a.sort_order - b.sort_order)
+    .map((p) => p.url);
+}
+
+/**
+ * First client-visible portfolio URL per model (batch). For list/hydration covers when mirror is empty.
+ */
+export async function getFirstClientVisiblePortfolioUrlForModels(
+  modelIds: string[],
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const unique = [...new Set(modelIds.filter((id) => id?.trim()))];
+  if (unique.length === 0) return out;
+  try {
+    const { data, error } = await supabase
+      .from('model_photos')
+      .select('model_id, url, sort_order, is_visible_to_clients, visible')
+      .eq('photo_type', 'portfolio')
+      .in('model_id', unique);
+    if (error) {
+      console.error('getFirstClientVisiblePortfolioUrlForModels error:', error);
+      return out;
+    }
+    const byModel = new Map<string, Array<{ url: string; sort_order: number; vis: boolean }>>();
+    for (const row of data ?? []) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const r = row as any;
+      const mid = r.model_id as string;
+      const vis = Boolean(r.is_visible_to_clients ?? r.visible ?? true);
+      if (!mid || !r.url) continue;
+      if (!byModel.has(mid)) byModel.set(mid, []);
+      byModel.get(mid)!.push({
+        url: r.url as string,
+        sort_order: Number(r.sort_order ?? 0),
+        vis,
+      });
+    }
+    for (const [mid, rows] of byModel) {
+      rows.sort((a, b) => a.sort_order - b.sort_order);
+      const first = rows.find((x) => x.vis);
+      if (first?.url) out.set(mid, first.url);
+    }
+    return out;
+  } catch (e) {
+    console.error('getFirstClientVisiblePortfolioUrlForModels exception:', e);
+    return out;
+  }
+}
+
 export async function upsertPhotosForModel(
   modelId: string,
   photos: Array<Omit<ModelPhoto, 'id' | 'model_id'> & { id?: string }>,

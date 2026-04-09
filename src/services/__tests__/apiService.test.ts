@@ -27,6 +27,16 @@ jest.mock('../modelsSupabase', () => ({
   updateModelVisibilityInSupabase: (...args: unknown[]) => mockUpdateModelVisibility(...args),
 }));
 
+const mockGetClientVisiblePortfolioUrlsFromModelPhotos = jest.fn();
+const mockGetFirstClientVisiblePortfolioUrlForModels = jest.fn();
+
+jest.mock('../modelPhotosSupabase', () => ({
+  getClientVisiblePortfolioUrlsFromModelPhotos: (...args: unknown[]) =>
+    mockGetClientVisiblePortfolioUrlsFromModelPhotos(...args),
+  getFirstClientVisiblePortfolioUrlForModels: (...args: unknown[]) =>
+    mockGetFirstClientVisiblePortfolioUrlForModels(...args),
+}));
+
 import {
   getModelData,
   updateAvailability,
@@ -57,6 +67,8 @@ function makeBaseModel(overrides = {}) {
 describe('getModelData', () => {
   beforeEach(() => {
     mockGetModelById.mockReset();
+    mockGetClientVisiblePortfolioUrlsFromModelPhotos.mockReset();
+    mockGetClientVisiblePortfolioUrlsFromModelPhotos.mockResolvedValue([]);
     // Reset the module-level availabilityOverrides map between tests by calling
     // updateAvailability with an empty record for the tested id.
   });
@@ -114,6 +126,17 @@ describe('getModelData', () => {
     mockGetModelById.mockResolvedValue(makeBaseModel({ portfolio_images: null }));
     const result = (await getModelData('model-1')) as any;
     expect(result.portfolio.images).toEqual([]);
+    expect(mockGetClientVisiblePortfolioUrlsFromModelPhotos).toHaveBeenCalledWith('model-1');
+  });
+
+  it('fills portfolio.images from model_photos when mirror portfolio_images is empty', async () => {
+    mockGetModelById.mockResolvedValue(makeBaseModel({ portfolio_images: [] }));
+    mockGetClientVisiblePortfolioUrlsFromModelPhotos.mockResolvedValue([
+      'https://cdn.example.com/from-model-photos.jpg',
+    ]);
+    const result = (await getModelData('model-1')) as any;
+    expect(mockGetClientVisiblePortfolioUrlsFromModelPhotos).toHaveBeenCalledWith('model-1');
+    expect(result.portfolio.images).toEqual(['https://cdn.example.com/from-model-photos.jpg']);
   });
 
   it('SECURITY: default calendar has no hardcoded dates — blocked and available are []', async () => {
@@ -187,6 +210,8 @@ describe('getModelsForClient', () => {
   beforeEach(() => {
     mockGetModelsForClient.mockReset();
     mockGetModelsForClientHybrid.mockReset();
+    mockGetFirstClientVisiblePortfolioUrlForModels.mockReset();
+    mockGetFirstClientVisiblePortfolioUrlForModels.mockResolvedValue(new Map());
   });
 
   const dbRow = {
@@ -210,6 +235,17 @@ describe('getModelsForClient', () => {
     mockGetModelsForClient.mockResolvedValue([dbRow]);
     const result = (await getModelsForClient('fashion')) as any[];
     expect(result[0].gallery).toEqual(['https://cdn.example.com/lena.jpg']);
+  });
+
+  it('fills gallery from model_photos batch when mirror portfolio_images is empty', async () => {
+    const rowNoMirror = { ...dbRow, portfolio_images: [], id: 'm-no-mirror' };
+    mockGetModelsForClient.mockResolvedValue([rowNoMirror]);
+    mockGetFirstClientVisiblePortfolioUrlForModels.mockResolvedValue(
+      new Map([['m-no-mirror', 'https://cdn.example.com/fallback.jpg']]),
+    );
+    const result = (await getModelsForClient('fashion')) as any[];
+    expect(mockGetFirstClientVisiblePortfolioUrlForModels).toHaveBeenCalledWith(['m-no-mirror']);
+    expect(result[0].gallery).toEqual(['https://cdn.example.com/fallback.jpg']);
   });
 
   it('maps chest from bust when chest column is null (legacy rows)', async () => {

@@ -12,6 +12,10 @@ import {
   getModelsForAgencyFromSupabase,
   updateModelVisibilityInSupabase,
 } from './modelsSupabase';
+import {
+  getClientVisiblePortfolioUrlsFromModelPhotos,
+  getFirstClientVisiblePortfolioUrlForModels,
+} from './modelPhotosSupabase';
 import { normalizeDocumentspicturesModelImageRef } from '../utils/normalizeModelPortfolioUrl';
 
 const availabilityOverrides = new Map();
@@ -30,6 +34,17 @@ export async function getModelData(id) {
     ? availabilityOverrides.get(id).available
     : [];
 
+  let portfolioSources = base.portfolio_images || [];
+  // Align with get_discovery_models / §27.1: when mirror is empty but model_photos has visible rows.
+  if (!portfolioSources.length) {
+    try {
+      portfolioSources = await getClientVisiblePortfolioUrlsFromModelPhotos(id);
+    } catch (e) {
+      console.error('getModelData: model_photos portfolio fallback failed', e);
+      portfolioSources = [];
+    }
+  }
+
   return {
     id: base.id,
     name: base.name,
@@ -40,7 +55,7 @@ export async function getModelData(id) {
       hips: base.hips,
     },
     portfolio: {
-      images: (base.portfolio_images || []).map((u) =>
+      images: portfolioSources.map((u) =>
         normalizeDocumentspicturesModelImageRef(u, base.id),
       ),
       // Discovery NEVER shows polaroids — enforced here and at RLS level.
@@ -114,7 +129,7 @@ export async function getModelsForClient(
   const list = countryCode
     ? await getModelsForClientFromSupabaseHybridLocation(ct, countryCode, city ?? undefined, cat, sw, ss, hasMF ? mf : undefined)
     : await getModelsForClientFromSupabase(ct, cat, sw, ss, hasMF ? mf : undefined);
-  return list.map((m) => ({
+  const mapped = list.map((m) => ({
     id: m.id,
     name: m.name,
     city: m.effective_city ?? m.city ?? '',
@@ -140,6 +155,20 @@ export async function getModelsForClient(
     agencyId: m.territory_agency_id ?? m.agency_id ?? null,
     agencyName: m.agency_name || null,
   }));
+  const emptyGalleryIds = mapped.filter((row) => !(row.gallery && row.gallery.length)).map((row) => row.id);
+  if (!emptyGalleryIds.length) return mapped;
+  let fallbackMap;
+  try {
+    fallbackMap = await getFirstClientVisiblePortfolioUrlForModels(emptyGalleryIds);
+  } catch (e) {
+    console.error('getModelsForClient: portfolio fallback batch failed', e);
+    return mapped;
+  }
+  return mapped.map((row) => {
+    if (row.gallery && row.gallery.length) return row;
+    const u = fallbackMap.get(row.id);
+    return u ? { ...row, gallery: [u] } : row;
+  });
 }
 
 /**

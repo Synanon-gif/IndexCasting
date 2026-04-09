@@ -1,7 +1,7 @@
 import { supabase } from '../../lib/supabase';
 import { fetchEffectiveDisplayCitiesForModels } from './modelLocationsSupabase';
+import { getFirstClientVisiblePortfolioUrlForModels } from './modelPhotosSupabase';
 import { getModelsByIdsForClientFromSupabase } from './modelsSupabase';
-import type { SupabaseModel } from './modelsSupabase';
 import {
   mapSupabaseModelToClientProjectSummary,
   type ClientProjectModelSummary,
@@ -128,6 +128,8 @@ export type HydratedClientProject = {
 /**
  * Org-scoped project list with models loaded from `client_project_models` + client-safe model rows.
  * Source of truth for authenticated client web after sync (not localStorage).
+ * When `models.portfolio_images` is empty but `model_photos` has client-visible portfolio rows,
+ * cover URLs are filled via the same batch fallback as discovery/detail (§27.1 parity).
  */
 export async function fetchHydratedClientProjectsForOrg(
   organizationId: string,
@@ -139,16 +141,34 @@ export async function fetchHydratedClientProjectsForOrg(
     const allIds = [...new Set(projectModelIds.flat())];
     const cityByModel = await fetchEffectiveDisplayCitiesForModels(allIds);
     const modelById = await getModelsByIdsForClientFromSupabase(allIds);
+    const mirrorEmptyIds = allIds.filter((id) => {
+      const row = modelById.get(id);
+      return row != null && !(row.portfolio_images?.length);
+    });
+    let coverByModelId = new Map<string, string>();
+    if (mirrorEmptyIds.length) {
+      try {
+        coverByModelId = await getFirstClientVisiblePortfolioUrlForModels(mirrorEmptyIds);
+      } catch (e) {
+        console.error('fetchHydratedClientProjectsForOrg: portfolio cover fallback failed', e);
+      }
+    }
     return remote.map((rp, i) => {
       const ids = projectModelIds[i];
       const models = ids
-        .map((id) => modelById.get(id))
-        .filter((row): row is SupabaseModel => row != null)
-        .map((row) =>
-          mapSupabaseModelToClientProjectSummary(row, {
+        .map((id) => {
+          const row = modelById.get(id);
+          if (!row) return null;
+          const url = coverByModelId.get(id);
+          const withCover =
+            url && !(row.portfolio_images?.length)
+              ? { ...row, portfolio_images: [url] }
+              : row;
+          return mapSupabaseModelToClientProjectSummary(withCover, {
             effectiveDisplayCity: cityByModel.get(row.id) ?? null,
-          }),
-        );
+          });
+        })
+        .filter((m): m is ReturnType<typeof mapSupabaseModelToClientProjectSummary> => m != null);
       return {
         id: rp.id,
         name: rp.name,

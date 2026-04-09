@@ -159,7 +159,11 @@ export async function getOrCreateConversation(
   if (meta?.clientOrganizationId) insertRow.client_organization_id = meta.clientOrganizationId;
   if (meta?.agencyOrganizationId) insertRow.agency_organization_id = meta.agencyOrganizationId;
 
-  const { data, error } = await supabase.from('conversations').insert(insertRow).select().single();
+  const { data, error } = await supabase
+    .from('conversations')
+    .insert(insertRow)
+    .select(CONVERSATION_SELECT)
+    .single();
   if (error) {
     const code = (error as { code?: string }).code;
     const msg = error.message || '';
