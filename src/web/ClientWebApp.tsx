@@ -9,7 +9,6 @@ import {
   TouchableOpacity,
   ScrollView,
   TextInput,
-  Image,
   Modal,
   Linking,
   Alert,
@@ -28,6 +27,7 @@ import {
 import { UI_DOUBLE_SUBMIT_DEBOUNCE_MS } from '../../lib/validation';
 import { showAppAlert } from '../utils/crossPlatformAlert';
 import { uiCopy } from '../constants/uiCopy';
+import { normalizeDocumentspicturesModelImageRef } from '../utils/normalizeModelPortfolioUrl';
 import { useAuth } from '../context/AuthContext';
 import { getModelsForClient, getModelData } from '../services/apiService';
 import {
@@ -149,6 +149,10 @@ import { OrgMetricsPanel } from '../components/OrgMetricsPanel';
 import { OwnerBillingStatusCard } from '../components/OwnerBillingStatusCard';
 import { GlobalSearchBar } from '../components/GlobalSearchBar';
 import { DashboardSummaryBar } from '../components/DashboardSummaryBar';
+import { StorageImage } from '../components/StorageImage';
+
+/** Signed-URL lifetime for authenticated client views of model photos (private bucket). */
+const CLIENT_MODEL_IMAGE_TTL_SEC = 3600;
 
 /** Thin wrapper to pass client org metrics panel with owner role. */
 const ClientOrgMetricsPanelWrapper: React.FC<{ orgId: string }> = ({ orgId }) => (
@@ -251,7 +255,7 @@ type MediaslideModel = {
   name: string;
   measurements: {
     height: number;
-    bust: number;
+    chest: number;
     waist: number;
     hips: number;
   };
@@ -272,6 +276,7 @@ const LOAD_MORE_THRESHOLD = 10;
 
 /** Maps a raw DiscoveryModel (from the RPC) to the app-local ModelSummary shape. */
 function mapDiscoveryModelToSummary(m: DiscoveryModel): ModelSummary {
+  const firstImg = m.portfolio_images?.[0] ?? '';
   return {
     id: m.id,
     name: m.name,
@@ -283,7 +288,7 @@ function mapDiscoveryModelToSummary(m: DiscoveryModel): ModelSummary {
     hips: m.hips ?? 0,
     chest: m.chest ?? m.bust ?? 0,
     legsInseam: m.legs_inseam ?? 0,
-    coverUrl: m.portfolio_images?.[0] ?? '',
+    coverUrl: firstImg ? normalizeDocumentspicturesModelImageRef(firstImg, m.id) : '',
     agencyId: m.territory_agency_id ?? m.agency_id ?? null,
     agencyName: m.agency_name ?? null,
     countryCode: m.country_code ?? m.territory_country_code ?? null,
@@ -866,7 +871,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         hips: m.hips ?? 0,
         chest: m.chest ?? m.bust ?? 0,
         legsInseam: m.legsInseam ?? m.legs_inseam ?? 0,
-        coverUrl: m.gallery?.[0] ?? '',
+        coverUrl: normalizeDocumentspicturesModelImageRef(m.gallery?.[0] ?? '', m.id),
         agencyId: m.agencyId ?? m.agency_id ?? null,
         agencyName: m.agencyName ?? m.agency_name ?? null,
         countryCode: m.countryCode ?? null,
@@ -1008,9 +1013,12 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
           bust: m.bust ?? 0,
           waist: m.waist ?? 0,
           hips: m.hips ?? 0,
-          chest: m.chest ?? 0,
+          chest: m.chest ?? m.bust ?? 0,
           legsInseam: m.legs_inseam ?? 0,
-          coverUrl: m.portfolio_images?.[0] ?? '',
+          coverUrl: normalizeDocumentspicturesModelImageRef(
+            m.portfolio_images?.[0] ?? '',
+            m.id,
+          ),
           agencyId: m.territory_agency_id ?? m.agency_id ?? null,
           agencyName: m.agency_name ?? null,
           countryCode: m.location_country_code ?? null,
@@ -1071,7 +1079,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                 name: raw.name,
                 measurements: {
                   height: raw.height ?? 0,
-                  bust: raw.bust ?? 0,
+                  chest: (raw as { chest?: number | null }).chest ?? raw.bust ?? 0,
                   waist: raw.waist ?? 0,
                   hips: raw.hips ?? 0,
                 },
@@ -1089,12 +1097,14 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                 name: summary.name,
                 measurements: {
                   height: summary.height,
-                  bust: summary.bust,
+                  chest: summary.chest ?? summary.bust ?? 0,
                   waist: summary.waist,
                   hips: summary.hips,
                 },
                 portfolio: {
-                  images: summary.coverUrl ? [summary.coverUrl] : [],
+                  images: summary.coverUrl
+                    ? [normalizeDocumentspicturesModelImageRef(summary.coverUrl, summary.id)]
+                    : [],
                   polaroids: [],
                 },
                 calendar: { blocked: [], available: [] },
@@ -1545,11 +1555,12 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         bust: m.bust ?? 0,
         waist: m.waist ?? 0,
         hips: m.hips ?? 0,
-        chest: m.bust ?? 0,
+        chest: (m as { chest?: number | null }).chest ?? m.bust ?? 0,
         legsInseam: 0,
-        coverUrl: gl.type === 'polaroid'
-          ? (m.polaroids?.[0] ?? '')
-          : (m.portfolio_images?.[0] ?? ''),
+        coverUrl: normalizeDocumentspicturesModelImageRef(
+          gl.type === 'polaroid' ? (m.polaroids?.[0] ?? '') : (m.portfolio_images?.[0] ?? ''),
+          m.id,
+        ),
         agencyId: null,
         agencyName: null,
         countryCode: null,
@@ -2706,10 +2717,14 @@ const DiscoverView: React.FC<DiscoverProps> = ({
                   onPress={() => onOpenDetails(m.id)}
                 >
                   <View style={styles.packageGridImageContainer}>
-                    <Image
-                      source={{ uri: m.coverUrl }}
+                    <StorageImage
+                      uri={m.coverUrl || undefined}
                       style={styles.packageGridImage}
                       resizeMode="cover"
+                      ttlSeconds={CLIENT_MODEL_IMAGE_TTL_SEC}
+                      fallback={
+                        <View style={[styles.packageGridImage, { backgroundColor: colors.border }]} />
+                      }
                     />
                     <GuestWatermark />
                     <View style={styles.coverGradientOverlay} />
@@ -2803,10 +2818,14 @@ const DiscoverView: React.FC<DiscoverProps> = ({
                 onPress={() => onOpenDetails(current.id)}
                 style={styles.coverImageTouchable}
               >
-                <Image
-                  source={{ uri: current.coverUrl }}
+                <StorageImage
+                  uri={current.coverUrl || undefined}
                   style={styles.coverImage}
                   resizeMode="cover"
+                  ttlSeconds={CLIENT_MODEL_IMAGE_TTL_SEC}
+                  fallback={
+                    <View style={[styles.coverImage, { backgroundColor: colors.border }]} />
+                  }
                 />
               </TouchableOpacity>
               <View style={styles.coverGradientOverlay} />
@@ -3465,17 +3484,21 @@ const ProjectOverviewView: React.FC<ProjectOverviewProps> = ({
         )}
         {project.models.map((m) => (
           <View key={m.id} style={styles.overviewModelRow}>
-            <Image
-              source={{ uri: m.coverUrl }}
+            <StorageImage
+              uri={m.coverUrl || undefined}
               style={styles.overviewModelImage}
               resizeMode="cover"
+              ttlSeconds={CLIENT_MODEL_IMAGE_TTL_SEC}
+              fallback={
+                <View style={[styles.overviewModelImage, { backgroundColor: colors.border }]} />
+              }
             />
             <View style={styles.overviewModelInfo}>
               <Text style={styles.overviewModelName}>{m.name}</Text>
               <Text style={styles.overviewModelMeta}>
                 {[
                   m.height ? `${m.height} cm` : null,
-                  m.bust || m.chest ? `Chest ${m.bust || m.chest} cm` : null,
+                  m.chest || m.bust ? `Chest ${m.chest || m.bust} cm` : null,
                   m.waist ? `Waist ${m.waist} cm` : null,
                   m.hips ? `Hips ${m.hips} cm` : null,
                 ]
@@ -4818,12 +4841,22 @@ const ProjectDetailView: React.FC<DetailProps> = ({
         {!loading && data && (
           <ScrollView style={styles.detailScroll}>
             <View style={styles.detailMeasurementsRow}>
-              {Object.entries(data.measurements).map(([key, value]) => (
-                <View key={key} style={styles.detailMeasureItem}>
-                  <Text style={styles.detailMeasureLabel}>{key}</Text>
-                  <Text style={styles.detailMeasureValue}>{value}</Text>
-                </View>
-              ))}
+              <View style={styles.detailMeasureItem}>
+                <Text style={styles.detailMeasureLabel}>{uiCopy.discover.detailMeasurementHeight}</Text>
+                <Text style={styles.detailMeasureValue}>{data.measurements.height}</Text>
+              </View>
+              <View style={styles.detailMeasureItem}>
+                <Text style={styles.detailMeasureLabel}>{uiCopy.discover.detailMeasurementChest}</Text>
+                <Text style={styles.detailMeasureValue}>{data.measurements.chest}</Text>
+              </View>
+              <View style={styles.detailMeasureItem}>
+                <Text style={styles.detailMeasureLabel}>{uiCopy.discover.detailMeasurementWaist}</Text>
+                <Text style={styles.detailMeasureValue}>{data.measurements.waist}</Text>
+              </View>
+              <View style={styles.detailMeasureItem}>
+                <Text style={styles.detailMeasureLabel}>{uiCopy.discover.detailMeasurementHips}</Text>
+                <Text style={styles.detailMeasureValue}>{data.measurements.hips}</Text>
+              </View>
             </View>
 
             <Text style={styles.detailSectionLabel}>Portfolio</Text>
@@ -4833,12 +4866,16 @@ const ProjectDetailView: React.FC<DetailProps> = ({
               style={styles.detailPortfolioRow}
             >
               {(data.portfolio?.images || []).map((url, idx) => (
-                <TouchableOpacity key={url} onPress={() => setLightboxIndex(idx)} activeOpacity={0.85}>
+                <TouchableOpacity key={`${idx}-${url}`} onPress={() => setLightboxIndex(idx)} activeOpacity={0.85}>
                   <View style={{ position: 'relative', overflow: 'hidden', borderRadius: 12 }}>
-                    <Image
-                      source={{ uri: url }}
+                    <StorageImage
+                      uri={url || undefined}
                       style={styles.detailPortfolioImage}
                       resizeMode="cover"
+                      ttlSeconds={CLIENT_MODEL_IMAGE_TTL_SEC}
+                      fallback={
+                        <View style={[styles.detailPortfolioImage, { backgroundColor: colors.border }]} />
+                      }
                     />
                     {isPackageMode && <GuestWatermark />}
                   </View>
@@ -4918,10 +4955,14 @@ const ProjectDetailView: React.FC<DetailProps> = ({
               />
 
               <View style={{ position: 'relative' }}>
-                <Image
-                  source={{ uri: currentUrl ?? '' }}
+                <StorageImage
+                  uri={currentUrl || undefined}
                   style={styles.lightboxImage}
                   resizeMode="contain"
+                  ttlSeconds={CLIENT_MODEL_IMAGE_TTL_SEC}
+                  fallback={
+                    <View style={[styles.lightboxImage, { backgroundColor: colors.border }]} />
+                  }
                 />
                 {isPackageMode && <GuestWatermark />}
               </View>

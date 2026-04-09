@@ -17,7 +17,7 @@ import { getModelData } from '../services/apiService';
 type SharedModel = {
   id: string;
   name: string;
-  measurements: { height: number; bust: number; waist: number; hips: number };
+  measurements: { height: number; chest: number; waist: number; hips: number };
   coverUrl: string;
 };
 
@@ -50,7 +50,7 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
           .map((m: any) => ({
             id: m.id,
             name: m.name,
-            measurements: m.measurements || { height: 0, bust: 0, waist: 0, hips: 0 },
+            measurements: m.measurements || { height: 0, chest: 0, waist: 0, hips: 0 },
             coverUrl: m.portfolio?.images?.[0] || m.portfolio?.polaroids?.[0] || '',
           }));
         setModels(list);
@@ -101,7 +101,7 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
                 <View style={styles.cardOverlay}>
                   <Text style={styles.cardName}>{m.name}</Text>
                   <Text style={styles.cardMeasurements}>
-                    Height {m.measurements.height} cm · Chest {m.measurements.bust} cm · Waist {m.measurements.waist} cm · Hips {m.measurements.hips} cm
+                    Height {m.measurements.height} cm · Chest {m.measurements.chest} cm · Waist {m.measurements.waist} cm · Hips {m.measurements.hips} cm
                   </Text>
                 </View>
               </View>

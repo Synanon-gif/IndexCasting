@@ -890,6 +890,11 @@ export const uiCopy = {
     chatWithAgencyLoading: 'Opening chat…',
     noMoreModels: 'No more models right now.',
     noMoreModelsSub: 'Check back soon for new talent, or adjust your filters.',
+    /** Model detail modal — labels use typography.label (uppercase on web). Never use legacy DB field name "bust". */
+    detailMeasurementHeight: 'Height',
+    detailMeasurementChest: 'Chest',
+    detailMeasurementWaist: 'Waist',
+    detailMeasurementHips: 'Hips',
   },
   /** Client Projects tab — project management actions. */
   projects: {

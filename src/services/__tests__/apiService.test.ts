@@ -67,12 +67,18 @@ describe('getModelData', () => {
     expect(result).toBeNull();
   });
 
-  it('maps measurements correctly', async () => {
+  it('maps measurements correctly (chest coalesces legacy bust)', async () => {
     mockGetModelById.mockResolvedValue(makeBaseModel());
     const result = (await getModelData('model-1')) as any;
-    expect(result.measurements).toEqual({ height: 178, bust: 84, waist: 62, hips: 90 });
+    expect(result.measurements).toEqual({ height: 178, chest: 84, waist: 62, hips: 90 });
     expect(result.id).toBe('model-1');
     expect(result.name).toBe('Anna Müller');
+  });
+
+  it('prefers chest over bust when both are set', async () => {
+    mockGetModelById.mockResolvedValue(makeBaseModel({ chest: 90, bust: 84 }));
+    const result = (await getModelData('model-1')) as any;
+    expect(result.measurements.chest).toBe(90);
   });
 
   it('SECURITY: portfolio.polaroids is always [] — discovery never leaks polaroids', async () => {
@@ -88,6 +94,20 @@ describe('getModelData', () => {
     );
     const result = (await getModelData('model-1')) as any;
     expect(result.portfolio.images).toEqual(['https://cdn.example.com/img1.jpg']);
+  });
+
+  it('normalizes bare portfolio filenames to canonical storage URIs', async () => {
+    mockGetModelById.mockResolvedValue(
+      makeBaseModel({
+        id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+        portfolio_images: ['1775722024203-qb@yh9zy.jpg'],
+      }),
+    );
+    const result = (await getModelData('aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee')) as any;
+    expect(result.portfolio.images[0]).toContain('supabase-storage://documentspictures/');
+    expect(result.portfolio.images[0]).toContain(
+      'model-photos/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/1775722024203-qb@yh9zy.jpg',
+    );
   });
 
   it('falls back to empty array when portfolio_images is null', async () => {

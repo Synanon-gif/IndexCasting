@@ -1,5 +1,6 @@
 import { supabase } from '../../lib/supabase';
 import { extractBucketAndPath } from '../storage/storageUrl';
+import { normalizeDocumentspicturesModelImageRef } from '../utils/normalizeModelPortfolioUrl';
 
 /**
  * Gast-Links (Agentur) – in Supabase, pro agency_id; guest_links inkl. model_ids.
@@ -209,11 +210,15 @@ function extractStoragePath(url: string, bucket: string): string | null {
  * fallback would expose the asset permanently, defeating the TTL).
  * Callers must handle null entries (e.g. hide the image or show a placeholder).
  */
-async function signImageUrls(urls: string[]): Promise<(string | null)[]> {
+async function signImageUrls(
+  urls: string[],
+  modelId: string,
+): Promise<(string | null)[]> {
   if (urls.length === 0) return urls;
   return Promise.all(
     urls.map(async (url) => {
-      const path = extractStoragePath(url, DOCUMENTSPICTURES_BUCKET);
+      const normalized = normalizeDocumentspicturesModelImageRef(url, modelId);
+      const path = extractStoragePath(normalized, DOCUMENTSPICTURES_BUCKET);
       if (!path) return null;
       try {
         const { data, error } = await supabase.storage
@@ -264,8 +269,8 @@ export async function getGuestLinkModels(linkId: string): Promise<GuestLinkModel
     const signed = await Promise.all(
       models.map(async (m) => ({
         ...m,
-        portfolio_images: (await signImageUrls(m.portfolio_images)).filter((u): u is string => u !== null),
-        polaroids:        (await signImageUrls(m.polaroids)).filter((u): u is string => u !== null),
+        portfolio_images: (await signImageUrls(m.portfolio_images, m.id)).filter((u): u is string => u !== null),
+        polaroids:        (await signImageUrls(m.polaroids, m.id)).filter((u): u is string => u !== null),
       })),
     );
     return signed;

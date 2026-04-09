@@ -548,10 +548,12 @@ Ergänzt und schärft die obigen Regeln **ohne** sie zu ersetzen. Bei Widerspruc
 - **Standard Discovery** (Client, Agency-internes Browsen): nur **`portfolio_images`** anzeigen; **`polaroids` immer `[]`** (oder gleichwertig: nie für Discovery-Grids/Cards nutzen).
 - **Polaroids** nur sichtbar in: **Agency Packages** und **Guest Links** (externe Packages), gesteuert über **`packageType`** (`portfolio` | `polaroid`).
 - **Verboten:** jeder Pfad, in dem Polaroids in **normaler** Discovery erscheinen (nicht Package-/Guest-Kontext).
+- **Client-sichtbare Bild-URLs:** Werte aus `models.portfolio_images` können **`supabase-storage://`**, **Legacy-Voll-URL** oder **nackter Dateiname** sein — vor dem Rendern **normalisieren** (`normalizeDocumentspicturesModelImageRef`) und über **`StorageImage`** / **Signing** ausliefern; **nie** rohe Dateinamen oder Custom-Schemes als `Image`-`uri` auf Web/React-Native ohne Auflösung (sonst `ERR_UNKNOWN_URL_SCHEME` / leere Kacheln). Guest-Links: Signing in `getGuestLinkModels` mit derselben Normalisierung.
 
 ### 27.2 Measurement (Chest-only UI + COALESCE-Datenlogik)
 
 - **Produkt-UI:** ausschließlich **„Chest (cm)“** — das Wort **„Bust“** darf in **sichtbarer** Nutzer-UI nicht vorkommen (`uiCopy` als Quelle; siehe auch `.cursor/rules/auto-review.mdc` Legacy-Felder).
+- **Kein Leaken über generische UI:** Messungen nicht als `Object.entries`-**Keys** aus API-Objekten rendern, wenn globale Typo **`textTransform: uppercase`** o. Ä. aktiv ist — sonst wird der Legacy-Key **`bust`** zu **„BUST“**. Stattdessen feste Reihenfolge + **`uiCopy`**-Labels (**„Chest“**).
 - **App-Datenlogik einheitlich:** `chest_value = m.chest ?? m.bust` für Anzeige, Sortierung und Filter, wo der Brustumfang gemeint ist — gilt für Discovery, Filter, Model Cards, Agency-Ansichten, Guest/Package-Ansichten.
 - **SQL / RPCs:** wo derselbe Wert serverseitig genutzt wird, **`COALESCE(m.chest, m.bust)`** (oder äquivalent), damit `chest` NULL + `bust` gesetzt nicht zu falscher Abwesenheit im Ergebnis führt.
 

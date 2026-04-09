@@ -33,3 +33,7 @@ This removes the old mismatch where clients were gated on `models.is_visible_com
 ## Migration
 
 - `supabase/migrations/20260501_can_view_model_photo_storage_client_row_alignment.sql`
+
+## Client discovery / `portfolio_images` string shapes
+
+Row visibility (above) is necessary but not sufficient for UX: `models.portfolio_images` may store **canonical storage URIs**, **HTTPS URLs**, or **legacy bare filenames**. Client web surfaces must **normalize** (`normalizeDocumentspicturesModelImageRef` in `src/utils/normalizeModelPortfolioUrl.ts`) and render through **`StorageImage`** so private-bucket assets resolve to signed HTTPS. See **`docs/DISCOVERY_IMAGE_AND_MEASUREMENT_CONSISTENCY.md`**.

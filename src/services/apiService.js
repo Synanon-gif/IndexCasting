@@ -12,6 +12,7 @@ import {
   getModelsForAgencyFromSupabase,
   updateModelVisibilityInSupabase,
 } from './modelsSupabase';
+import { normalizeDocumentspicturesModelImageRef } from '../utils/normalizeModelPortfolioUrl';
 
 const availabilityOverrides = new Map();
 
@@ -34,12 +35,14 @@ export async function getModelData(id) {
     name: base.name,
     measurements: {
       height: base.height,
-      bust: base.bust,
+      chest: base.chest ?? base.bust,
       waist: base.waist,
       hips: base.hips,
     },
     portfolio: {
-      images: base.portfolio_images || [],
+      images: (base.portfolio_images || []).map((u) =>
+        normalizeDocumentspicturesModelImageRef(u, base.id),
+      ),
       // Discovery NEVER shows polaroids — enforced here and at RLS level.
       // Polaroids are only accessible via Polaroid Packages (get_guest_link_models RPC, type='polaroid').
       polaroids: [],

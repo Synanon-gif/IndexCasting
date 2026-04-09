@@ -1,0 +1,42 @@
+{
+  "bust_label_root_causes": [
+    "getModelData used measurements key 'bust'",
+    "ProjectDetailView rendered Object.keys as labels",
+    "typography.label applies textTransform uppercase → BUST"
+  ],
+  "image_loading_root_causes": [
+    "portfolio_images may be supabase-storage:// or bare filename — invalid as raw Image uri on web",
+    "ClientWebApp used Image instead of StorageImage + resolveStorageUrl",
+    "Guest signing did not normalize bare filenames before extractStoragePath"
+  ],
+  "fixed_now": [
+    "apiService measurements.chest + portfolio normalize",
+    "ClientWebApp StorageImage + coverUrl normalize + explicit uiCopy measurement labels",
+    "guestLinksSupabase signImageUrls(urls, modelId) with normalize",
+    "normalizeModelPortfolioUrl.ts (Jest-safe, no supabase in apiService chain)",
+    "SharedSelectionView chest field",
+    "docs + cursor rules"
+  ],
+  "rules_updated": [
+    ".cursorrules",
+    ".cursor/rules/auto-review.mdc",
+    ".cursor/rules/system-invariants.mdc"
+  ],
+  "docs_updated": [
+    "docs/DISCOVERY_IMAGE_AND_MEASUREMENT_CONSISTENCY.md",
+    "docs/CLIENT_MODEL_PHOTO_VISIBILITY.md"
+  ],
+  "manual_review_required": [
+    "Legacy portfolio_images entries where files are not under model-photos/{modelId}/ may still fail until DB/path backfill"
+  ],
+  "do_not_touch": [
+    "AuthContext",
+    "bootstrapThenLoadProfile",
+    "Admin core / admin RPC definitions",
+    "Paywall core ordering",
+    "Invite / Claim core logic",
+    "calendar_entries RLS semantics",
+    "booking_brief trust model",
+    "unrelated pricing / seat-limit logic"
+  ]
+}

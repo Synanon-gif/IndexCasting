@@ -612,6 +612,7 @@ ON CONFLICT (model_id, source) DO UPDATE SET city = EXCLUDED.city, ...;
 - Globale Suche existiert NUR im Dashboard — nirgendwo sonst
 - Kein Screen darf ohne Fallback rendern wenn `org` oder `profile` null ist
 - Invite- und Model-Claim-UI: klar von Self-Service-Sign-up unterscheidbar; Erfolgs-Copy nur nach tatsächlicher Finalisierung (`finalizePendingInviteOrClaim` / RPC `ok`), nicht vorher
+- **Client Discover / Web:** Portfolio-Bilder aus `portfolio_images` **normalisieren** (`normalizeDocumentspicturesModelImageRef` mit `model_id`) und mit **`StorageImage`** rendern — verhindert `ERR_UNKNOWN_URL_SCHEME` und private-Bucket-Drift; siehe `docs/DISCOVERY_IMAGE_AND_MEASUREMENT_CONSISTENCY.md`
 
 ## SMART ATTENTION / ASSIGNMENT INVARIANTS
 
