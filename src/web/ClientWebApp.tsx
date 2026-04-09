@@ -1570,7 +1570,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     try {
       const gl = await getGuestLink(packageId);
       if (!gl) {
-        setFeedback('Package not found or has expired.');
+        setFeedback(uiCopy.b2bChat.packageNotFoundOrExpired);
         clearFeedbackLater();
         return;
       }
@@ -1614,7 +1614,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       setTab('discover');
     } catch (e) {
       console.error('handlePackagePress error:', e);
-      setFeedback('Could not load package. Please try again.');
+      setFeedback(uiCopy.b2bChat.packageLoadFailed);
       clearFeedbackLater();
     }
   };
@@ -1644,17 +1644,22 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     const pkgExtra = packageViewState
       ? { source: 'package' as const, packageId: packageViewState.packageId }
       : {};
-    const threadId = addOptionRequest(
+    addOptionRequest(
       'Client',
       modelName,
       modelId,
       date,
       projectId ?? sharedProjectId ?? activeProjectId ?? undefined,
-      { ...extra, ...pkgExtra },
+      {
+        ...extra,
+        ...pkgExtra,
+        onThreadReady: (dbThreadId) => {
+          setOpenThreadIdOnMessages(dbThreadId);
+        },
+      },
     );
     setOptionDatePickerOpen(false);
     setOptionDateModel(null);
-    setOpenThreadIdOnMessages(threadId);
     setTab('messages');
   };
 
@@ -2362,7 +2367,8 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             proposedPrice: price,
             requestType: requestType ?? 'option',
             currency: currency ?? 'EUR',
-            countryCode: filters.countryCode.trim() || undefined,
+            countryCode:
+              filters.countryCode.trim() || optionDateModel.countryCode?.trim() || undefined,
           })
         }
       />

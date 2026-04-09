@@ -597,6 +597,10 @@ export const uiCopy = {
     packagePreviewLabel: 'models in this package',
     requestFromPackage: 'Request from this package',
     packageNoPreview: 'No preview available',
+    /** Client opens shared package from chat — metadata RPC returned no row (invalid, expired, or inactive). */
+    packageNotFoundOrExpired: 'Package not found or has expired.',
+    /** Client opens shared package — RPC/network failure (distinct from invalid link). */
+    packageLoadFailed: 'Could not load package. Please try again.',
     exitPackageMode: 'Back to Discover',
     /** Package access-level badges shown on the chat card. */
     packageBadgeFullAccess: 'Full Client Access',

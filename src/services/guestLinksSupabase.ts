@@ -86,7 +86,19 @@ export async function getGuestLink(linkId: string): Promise<GuestLinkInfo | null
     const { data, error } = await supabase.rpc('get_guest_link_info', {
       p_link_id: linkId,
     });
-    if (error) { console.error('getGuestLink RPC error:', error); return null; }
+    if (error) {
+      const code = (error as { code?: string }).code;
+      const msg = (error as { message?: string }).message ?? '';
+      if (code === 'PGRST202' || /not find.*function/i.test(msg) || /404/.test(msg)) {
+        console.error(
+          'getGuestLink: get_guest_link_info RPC missing or not exposed — deploy supabase/migrations (20260522_get_guest_link_info_ensure.sql)',
+          error,
+        );
+      } else {
+        console.error('getGuestLink RPC error:', error);
+      }
+      return null;
+    }
     if (!data || (data as GuestLinkInfo[]).length === 0) return null;
     return (data as GuestLinkInfo[])[0] ?? null;
   } catch (e) {

@@ -155,6 +155,8 @@ export function addOptionRequest(
     source?: 'package';
     /** ID of the guest_links row if source is 'package'. */
     packageId?: string;
+    /** Called after the option_request row exists (real UUID thread id for Messages UI). */
+    onThreadReady?: (dbThreadId: string) => void;
   }
 ): string {
   const threadId = `thread-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -225,7 +227,7 @@ export function addOptionRequest(
 
       const countryCodeUsed = extra?.countryCode?.trim()
         ? extra?.countryCode
-        : model?.country ?? null;
+        : model?.country_code ?? model?.country ?? null;
 
       if (countryCodeUsed) {
         countryCodeUsedForBooking = countryCodeUsed;
@@ -348,6 +350,7 @@ export function addOptionRequest(
         addOptionMessage(result.id, 'agency', uiCopy.systemMessages.noModelAccount);
       }
       notify();
+      extra?.onThreadReady?.(result.id);
     }
   })();
 
