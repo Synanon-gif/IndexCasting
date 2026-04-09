@@ -86,3 +86,16 @@ export function publicClientUrl(slug: string | null | undefined): string | null 
   if (!t) return null;
   return `${PUBLIC_CLIENT_BASE_URL}/${t}`;
 }
+
+/**
+ * Returns the full https:// URL for clipboard writes and Linking.openURL.
+ * Returns null when slug is empty or null.
+ *
+ * Separate from publicClientUrl so display text and href are always consistent
+ * and the https:// prefix is never duplicated across call sites.
+ */
+export function publicClientHref(slug: string | null | undefined): string | null {
+  const t = slug?.trim();
+  if (!t) return null;
+  return `https://${PUBLIC_CLIENT_BASE_URL}/${t}`;
+}

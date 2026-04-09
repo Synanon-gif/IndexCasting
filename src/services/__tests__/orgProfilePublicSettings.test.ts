@@ -25,6 +25,7 @@ import {
   publicAgencyUrl,
   publicAgencyHref,
   publicClientUrl,
+  publicClientHref,
 } from '../../utils/orgProfilePublicSettings';
 import { upsertPublicSettings } from '../organizationProfilesSupabase';
 
@@ -448,5 +449,83 @@ describe('upsertPublicSettings (client org)', () => {
     expect(publicClientUrl('acme-couture')).toBe('index-casting.com/client/acme-couture');
     expect(publicClientUrl('')).toBeNull();
     expect(publicClientUrl(null)).toBeNull();
+  });
+});
+
+// ─── publicClientHref (Phase 3B.3) ───────────────────────────────────────────
+
+describe('publicClientHref', () => {
+  it('returns https:// prefixed URL for a valid slug', () => {
+    expect(publicClientHref('my-client')).toBe(
+      'https://index-casting.com/client/my-client',
+    );
+  });
+
+  it('returns null for null slug', () => {
+    expect(publicClientHref(null)).toBeNull();
+  });
+
+  it('returns null for empty string', () => {
+    expect(publicClientHref('')).toBeNull();
+  });
+
+  it('returns null for whitespace-only slug', () => {
+    expect(publicClientHref('   ')).toBeNull();
+  });
+
+  it('trims whitespace before building URL', () => {
+    expect(publicClientHref('  brand-co  ')).toBe(
+      'https://index-casting.com/client/brand-co',
+    );
+  });
+
+  it('includes https:// prefix — distinct from publicClientUrl', () => {
+    const href = publicClientHref('brand-co');
+    const url = publicClientUrl('brand-co');
+    expect(href).toContain('https://');
+    expect(url).not.toContain('https://');
+    expect(href).not.toBe(url);
+  });
+});
+
+// ─── shareUrl visibility logic (Phase 3B.3) ──────────────────────────────────
+
+describe('shareUrl visibility (client)', () => {
+  // Mirrors the derived value logic in ClientOrgProfileScreen:
+  // const shareUrl = isOwner && orgProfile?.is_public && orgProfile?.slug
+  //   ? publicClientHref(orgProfile.slug)
+  //   : null;
+  function deriveShareUrl(
+    isOwner: boolean,
+    is_public: boolean | undefined,
+    slug: string | null | undefined,
+  ): string | null {
+    return isOwner && is_public && slug ? publicClientHref(slug) : null;
+  }
+
+  it('returns URL when owner, is_public=true, slug present', () => {
+    expect(deriveShareUrl(true, true, 'brand-co')).toBe(
+      'https://index-casting.com/client/brand-co',
+    );
+  });
+
+  it('returns null when not owner', () => {
+    expect(deriveShareUrl(false, true, 'brand-co')).toBeNull();
+  });
+
+  it('returns null when is_public=false', () => {
+    expect(deriveShareUrl(true, false, 'brand-co')).toBeNull();
+  });
+
+  it('returns null when slug is null', () => {
+    expect(deriveShareUrl(true, true, null)).toBeNull();
+  });
+
+  it('returns null when slug is empty string', () => {
+    expect(deriveShareUrl(true, true, '')).toBeNull();
+  });
+
+  it('returns null when is_public is undefined', () => {
+    expect(deriveShareUrl(true, undefined, 'brand-co')).toBeNull();
   });
 });

@@ -23,6 +23,7 @@ import {
   StyleSheet,
   Switch,
   TextInput,
+  Linking,
   useWindowDimensions,
   ScrollView,
 } from 'react-native';
@@ -47,6 +48,7 @@ import {
 import {
   validateSlug,
   publicClientUrl,
+  publicClientHref,
 } from '../utils/orgProfilePublicSettings';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -79,6 +81,9 @@ export function ClientOrgProfileScreen({
   const [publicSaving, setPublicSaving] = useState(false);
   const [publicFeedback, setPublicFeedback] = useState<string | null>(null);
   const [publicFeedbackIsError, setPublicFeedbackIsError] = useState(false);
+
+  // ── Phase 3B.3: share link state (owner-only) ──
+  const [shareCopied, setShareCopied] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
@@ -260,6 +265,27 @@ export function ClientOrgProfileScreen({
       setPublicFeedbackIsError(true);
     }
   }, [organizationId, isOwner, publicSaving, slugDraft, orgProfile]);
+
+  // ── Phase 3B.3: share link handlers (owner-only) ──
+
+  // Derived: truthy only for owners with a live public profile
+  const shareUrl = isOwner && orgProfile?.is_public && orgProfile?.slug
+    ? publicClientHref(orgProfile.slug)
+    : null;
+
+  const handleCopyShareLink = useCallback(() => {
+    if (!shareUrl) return;
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      void navigator.clipboard.writeText(shareUrl);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2000);
+    }
+  }, [shareUrl]);
+
+  const handleOpenShareLink = useCallback(() => {
+    if (!shareUrl) return;
+    void Linking.openURL(shareUrl);
+  }, [shareUrl]);
 
   const renderGallery = useCallback(() => {
     const isDeleting = (id: string) => deletingMediaIds.has(id);
@@ -540,6 +566,36 @@ export function ClientOrgProfileScreen({
                 <Text style={s.publicSaveBtnText}>Save</Text>
               )}
             </TouchableOpacity>
+          </View>
+        )}
+
+        {/* ── Phase 3B.3: Share live public profile (owner-only, visible when live) ── */}
+        {shareUrl && isOwner && (
+          <View style={s.shareSection}>
+            <Text style={s.shareSectionTitle}>Share your profile</Text>
+            <Text style={s.shareUrl} numberOfLines={1}>
+              {publicClientUrl(orgProfile?.slug)}
+            </Text>
+            <View style={s.shareRow}>
+              <TouchableOpacity
+                style={s.shareBtn}
+                onPress={handleCopyShareLink}
+                accessibilityLabel="Copy link"
+                accessibilityRole="button"
+              >
+                <Text style={s.shareBtnText}>
+                  {shareCopied ? 'Copied!' : 'Copy link'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.shareBtn, s.shareBtnSecondary]}
+                onPress={handleOpenShareLink}
+                accessibilityLabel="Open profile in browser"
+                accessibilityRole="link"
+              >
+                <Text style={[s.shareBtnText, s.shareBtnTextSecondary]}>Open ↗</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
       </View>
@@ -842,6 +898,54 @@ const s = StyleSheet.create({
   publicSaveBtnText: {
     ...typography.label,
     fontSize: 13,
+    color: colors.textPrimary,
+  },
+  // ── Phase 3B.3: share section ─────────────────────────────────────────────
+  shareSection: {
+    marginTop: spacing.md,
+    width: '100%',
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: spacing.md,
+  },
+  shareSectionTitle: {
+    ...typography.label,
+    fontSize: 11,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: spacing.xs,
+  },
+  shareUrl: {
+    ...typography.body,
+    fontSize: 13,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
+    marginBottom: spacing.sm,
+  },
+  shareRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  shareBtn: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    borderRadius: 8,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+    backgroundColor: colors.accent,
+  },
+  shareBtnSecondary: {
+    backgroundColor: 'transparent',
+    borderColor: colors.border,
+  },
+  shareBtnText: {
+    ...typography.label,
+    fontSize: 13,
+    color: colors.surface,
+  },
+  shareBtnTextSecondary: {
     color: colors.textPrimary,
   },
 });
