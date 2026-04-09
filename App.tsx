@@ -56,7 +56,9 @@ import {
   INDEXCASTING_LOCATION_EVENT,
   normalizePublicLegalPath,
   replaceWebPathToHome,
+  getPublicAgencySlugFromPath,
 } from './src/utils/publicLegalRoutes';
+import { PublicAgencyProfileScreen } from './src/screens/PublicAgencyProfileScreen';
 import { roleFromProfile, isAdmin, type NavigationRole } from './src/types/roles';
 import {
   clampInviteOrClaimToken,
@@ -602,6 +604,24 @@ function AppContent() {
         <StatusBar style="dark" />
       </>
     );
+  }
+
+  // Public agency profile route: /agency/:slug — no auth required.
+  // Checked here (after guest/booking checks) so both authenticated and
+  // unauthenticated users can visit a public agency profile directly.
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    const agencySlug = getPublicAgencySlugFromPath(window.location.pathname);
+    if (agencySlug) {
+      return (
+        <>
+          <PublicAgencyProfileScreen
+            slug={agencySlug}
+            onClose={replaceWebPathToHome}
+          />
+          <StatusBar style="dark" />
+        </>
+      );
+    }
   }
 
   if (!session) {

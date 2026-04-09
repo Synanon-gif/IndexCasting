@@ -32,3 +32,17 @@ export function replaceWebPathToHome(): void {
   window.history.replaceState({}, '', '/');
   bumpWebLocation();
 }
+
+/**
+ * Extracts the agency slug from a public agency profile path.
+ *
+ * Matches: /agency/<slug>  (alphanumeric, hyphens, underscores)
+ * Returns null for: /agency/, /agency, /, /terms, /privacy, or any other path.
+ *
+ * Used by App.tsx to detect and render PublicAgencyProfileScreen without auth.
+ */
+export function getPublicAgencySlugFromPath(pathname: string): string | null {
+  const p = pathname.replace(/\/+$/, '');
+  const m = p.match(/^\/agency\/([a-zA-Z0-9_-]+)$/);
+  return m ? m[1] : null;
+}
