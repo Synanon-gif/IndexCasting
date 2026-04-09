@@ -12,9 +12,10 @@
  *   'agency'  — agency-set fallback for models without accounts (lowest priority)
  *
  * Priority: live > current > agency
- *   Enforced at write time: agency writes are a no-op if model owns the row
- *   (source='live' or 'current'). Model writes always succeed.
- *   See upsert_model_location RPC (20260406_location_source_v2.sql).
+ *   Write: each source has its own isolated row (UNIQUE model_id, source).
+ *   Agency writes go to (model_id, 'agency') and never touch live/current rows.
+ *   Read: getModelLocation returns highest-priority source; DB uses DISTINCT ON.
+ *   See upsert_model_location RPC (20260406_location_multirow_priority.sql).
  *
  * City vs lat/lng:
  *   city    → display label only (may differ from GPS reverse-geocode result).
