@@ -23,6 +23,7 @@ import { useAuth } from '../context/AuthContext';
 import { isClient } from '../types/roles';
 import { uiCopy } from '../constants/uiCopy';
 import { addOptionRequest } from '../store/optionRequests';
+import { normalizeDocumentspicturesModelImageRef } from '../utils/normalizeModelPortfolioUrl';
 
 const SWIPE_PAGE_SIZE = 25;
 
@@ -43,7 +44,9 @@ function mapDiscoveryModel(m: DiscoveryModel): ClientModel {
     hips: m.hips ?? 0,
     city: m.city ?? '',
     hairColor: m.hair_color ?? '',
-    gallery: m.portfolio_images ?? [],
+    gallery: (m.portfolio_images ?? []).map((u) =>
+      normalizeDocumentspicturesModelImageRef(u, m.id),
+    ),
   };
 }
 

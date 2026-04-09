@@ -2019,6 +2019,10 @@ const MyModelsTab: React.FC<{
   // Profile completeness state for the selected model
   const [completenessIssues, setCompletenessIssues] = useState<ReturnType<typeof checkModelCompleteness>>([]);
   const [saveFeedback, setSaveFeedback] = useState<'saving' | 'success' | 'error' | null>(null);
+  const saveFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const syncFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bulkFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const territorySaveFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /** Client-visible portfolio rows from model_photos — source of truth for completeness (not models.portfolio_images alone). */
   const [hasVisibleClientPortfolio, setHasVisibleClientPortfolio] = useState(false);
@@ -2055,12 +2059,15 @@ const MyModelsTab: React.FC<{
   }, [agencyId]);
 
   // Auto-select model when arriving from GlobalSearch deep-link.
+  // Depends on `models` so it retries when the roster loads after the ID is set.
   useEffect(() => {
     if (!focusModelId) return;
     const found = models.find((m) => m.id === focusModelId) ?? null;
-    if (found) setSelectedModel(found);
-    onFocusConsumed?.();
-  }, [focusModelId]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (found) {
+      setSelectedModel(found);
+      onFocusConsumed?.();
+    }
+  }, [focusModelId, models]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load model's active location source when a model is opened in the edit panel.
   useEffect(() => {
@@ -2159,7 +2166,8 @@ const MyModelsTab: React.FC<{
         `${succeededIds.length} succeeded, ${failedIds.length} failed. ${uiCopy.territoryModal.bulkAssignFailed}`,
       );
     }
-    setTimeout(() => setBulkFeedback(null), 3000);
+    if (bulkFeedbackTimerRef.current) clearTimeout(bulkFeedbackTimerRef.current);
+    bulkFeedbackTimerRef.current = setTimeout(() => setBulkFeedback(null), 3000);
   };
 
   const handleResendModelClaimInvite = async (model: SupabaseModel) => {
@@ -2231,7 +2239,8 @@ const MyModelsTab: React.FC<{
       showAppAlert(uiCopy.modelRoster.territoriesSaveFailedTitle, msg);
     } finally {
       setTerritorySaving(false);
-      setTimeout(() => setTerritorySaveFeedback(null), 3000);
+      if (territorySaveFeedbackTimerRef.current) clearTimeout(territorySaveFeedbackTimerRef.current);
+      territorySaveFeedbackTimerRef.current = setTimeout(() => setTerritorySaveFeedback(null), 3000);
     }
   };
 
@@ -2542,6 +2551,28 @@ const MyModelsTab: React.FC<{
         }
       }
 
+      // Write agency model_locations row so Near-Me / Location-Badge is populated immediately.
+      if (addModelEditState.country_code) {
+        const cityForGeocode = addModelEditState.city?.trim() || null;
+        const geocoded = cityForGeocode
+          ? await geocodeCityForAgency(cityForGeocode, addModelEditState.country_code)
+          : null;
+        const locOk = await upsertModelLocation(
+          createdModelId,
+          {
+            country_code: addModelEditState.country_code,
+            city: cityForGeocode,
+            lat: geocoded?.lat,
+            lng: geocoded?.lng,
+            share_approximate_location: geocoded != null,
+          },
+          'agency',
+        );
+        if (!locOk) {
+          console.warn('handleAddModel: upsertModelLocation(agency) failed — location may not appear in Near-Me until next save');
+        }
+      }
+
       try {
         await Promise.resolve(onRefresh());
       } catch (refreshErr: any) {
@@ -2617,28 +2648,27 @@ const MyModelsTab: React.FC<{
         mediaslideKey ? runMediaslideCronSync(mediaslideKey) : Promise.resolve(),
         netwalkKey    ? runNetwalkCronSync(netwalkKey)        : Promise.resolve(),
       ]);
-      // Refresh models list so the incomplete-count banner reflects the new state.
-      onRefresh();
-      // Compute incomplete count from the freshly loaded models after refresh.
-      // We use a short delay to let onRefresh propagate new data into `models`.
-      setTimeout(() => {
-        const incompleteAfterSync = models.filter(
-          (m) =>
-            (m.portfolio_images ?? []).length === 0 ||
-            !(rosterTerritoriesMap[m.id] ?? []).length,
-        ).length;
-        setSyncFeedback(
-          incompleteAfterSync > 0
-            ? `Sync complete. ${uiCopy.modelRoster.incompleteModelsBanner(incompleteAfterSync)}.`
-            : 'Sync complete — all models have required fields.',
-        );
-      }, 800);
+      await Promise.resolve(onRefresh());
+      // Re-fetch the light model list to compute incomplete count from fresh data
+      // instead of relying on stale closure `models`.
+      const freshList = agencyId ? await getAgencyModels(agencyId) : [];
+      const incompleteAfterSync = freshList.filter(
+        (m: any) =>
+          (m.portfolio_images ?? []).length === 0 ||
+          !(rosterTerritoriesMap[m.id] ?? []).length,
+      ).length;
+      setSyncFeedback(
+        incompleteAfterSync > 0
+          ? `Sync complete. ${uiCopy.modelRoster.incompleteModelsBanner(incompleteAfterSync)}.`
+          : 'Sync complete — all models have required fields.',
+      );
     } catch (e: any) {
       console.error('handleSync error:', e);
       setSyncFeedback('Sync failed — see console for details.');
     } finally {
       setSyncLoading(false);
-      setTimeout(() => setSyncFeedback(null), 8000);
+      if (syncFeedbackTimerRef.current) clearTimeout(syncFeedbackTimerRef.current);
+      syncFeedbackTimerRef.current = setTimeout(() => setSyncFeedback(null), 8000);
     }
   };
 
@@ -2787,7 +2817,8 @@ const MyModelsTab: React.FC<{
       const msg = err instanceof Error ? err.message : String(err);
       console.error('handleSaveModel territory error:', err);
       setSaveFeedback('error');
-      setTimeout(() => setSaveFeedback(null), 4000);
+      if (saveFeedbackTimerRef.current) clearTimeout(saveFeedbackTimerRef.current);
+      saveFeedbackTimerRef.current = setTimeout(() => setSaveFeedback(null), 4000);
       showAppAlert(
         uiCopy.modelRoster.territoriesSaveFailedTitle,
         `${msg}\n\n${uiCopy.modelRoster.territoriesSaveSupportFooter}`,
@@ -2888,7 +2919,7 @@ const MyModelsTab: React.FC<{
           ? await geocodeCityForAgency(cityTrim, editState.country_code)
           : null;
 
-        await upsertModelLocation(
+        const locOk = await upsertModelLocation(
           selectedModel.id,
           {
             country_code: editState.country_code,
@@ -2899,6 +2930,9 @@ const MyModelsTab: React.FC<{
           },
           'agency',
         );
+        if (!locOk) {
+          console.warn('handleSaveModel: upsertModelLocation(agency) failed — location may be stale');
+        }
       }
 
       // Photos are managed directly by ModelMediaSettingsPanel (immediate save on change).
@@ -2926,7 +2960,8 @@ const MyModelsTab: React.FC<{
         setCompletenessIssues(checkModelCompleteness(freshModel, ctx));
       }
     }
-    setTimeout(() => {
+    if (saveFeedbackTimerRef.current) clearTimeout(saveFeedbackTimerRef.current);
+    saveFeedbackTimerRef.current = setTimeout(() => {
       setSaveFeedback(null);
       setSelectedModel(null);
       setEditState(buildEditState({ name: '' }));

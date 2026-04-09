@@ -43,6 +43,7 @@ import {
   filterAndSortModelsBySegment,
   type ModelSegment,
 } from '../utils/orgProfileHelpers';
+import { normalizeDocumentspicturesModelImageRef } from '../utils/normalizeModelPortfolioUrl';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -164,7 +165,8 @@ export function AgencyOrgProfileScreen({
 
   const renderModel = useCallback(
     ({ item }: ListRenderItemInfo<SupabaseModel>) => {
-      const coverUri = item.portfolio_images?.[0] ?? null;
+      const rawCover = item.portfolio_images?.[0] ?? null;
+      const coverUri = rawCover ? normalizeDocumentspicturesModelImageRef(rawCover, item.id) : null;
       const imgH = Math.floor(cellWidth * 1.35);
       return (
         <View style={[s.cell, { width: cellWidth }]}>

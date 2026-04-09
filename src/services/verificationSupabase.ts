@@ -1,5 +1,5 @@
 import { supabase } from '../../lib/supabase';
-import { validateFile, checkMagicBytes } from '../../lib/validation';
+import { validateFile, checkMagicBytes, checkExtensionConsistency, sanitizeUploadBaseName } from '../../lib/validation';
 import { convertHeicToJpegWithStatus } from './imageUtils';
 
 /**
@@ -59,13 +59,17 @@ export async function submitVerification(
       return null;
     }
 
-    // Sanitize fileName to prevent path traversal attacks (../,  slashes, null bytes).
+    if (prepared instanceof File) {
+      const extCheck = checkExtensionConsistency(prepared);
+      if (!extCheck.ok) {
+        console.error('submitVerification: extension/MIME mismatch', extCheck.error);
+        return null;
+      }
+    }
+
     const nameSource = prepared instanceof File ? prepared.name : fileName;
-    const sanitizedFileName = nameSource
-      .replace(/[^a-zA-Z0-9._-]/g, '_')
-      .replace(/\.{2,}/g, '_')
-      .slice(0, 200);
-    const path = `verifications/${userId}/${Date.now()}_${sanitizedFileName}`;
+    const safeFileName = sanitizeUploadBaseName(nameSource);
+    const path = `verifications/${userId}/${Date.now()}_${safeFileName}`;
 
     const { error: uploadError } = await supabase.storage
       .from('documents')

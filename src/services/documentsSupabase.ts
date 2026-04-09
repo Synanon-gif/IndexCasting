@@ -1,6 +1,6 @@
 import { supabase } from '../../lib/supabase';
 import { checkAndIncrementStorage, decrementStorage } from './agencyStorageSupabase';
-import { validateFile, checkMagicBytes, sanitizeUploadBaseName } from '../../lib/validation';
+import { validateFile, checkMagicBytes, checkExtensionConsistency, sanitizeUploadBaseName } from '../../lib/validation';
 import { convertHeicToJpegWithStatus } from './imageUtils';
 
 /** Reads the actual stored file size from storage.objects metadata. Best-effort — returns null on failure. */
@@ -69,6 +69,14 @@ export async function uploadDocument(
   if (!magicCheck.ok) {
     console.error('uploadDocument: magic bytes check failed', magicCheck.error);
     return null;
+  }
+
+  if (prepared instanceof File) {
+    const extCheck = checkExtensionConsistency(prepared);
+    if (!extCheck.ok) {
+      console.error('uploadDocument: extension/MIME mismatch', extCheck.error);
+      return null;
+    }
   }
 
   const nameSource = prepared instanceof File ? prepared.name : fileName;

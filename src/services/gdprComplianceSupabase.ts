@@ -321,6 +321,11 @@ export async function guardUploadSession(
 /**
  * Flags a model as a minor. Sets models.is_minor = true and creates
  * a model_minor_consent record if one doesn't exist yet.
+ *
+ * @deprecated Uses admin-only RPC `admin_update_model_minor_flag` — will fail
+ * for non-admin callers with HTTP 400/403. Currently unused in the app.
+ * If agency-level minor-flagging is needed, create a dedicated
+ * `agency_update_model_minor_flag` RPC with org-membership guard.
  */
 export async function flagModelAsMinor(
   modelId: string,

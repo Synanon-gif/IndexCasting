@@ -1,7 +1,7 @@
 import { supabase } from '../../lib/supabase';
 import { splitProfileDisplayName } from '../utils/applicantNameFromProfile';
-import { validateFile, checkMagicBytes } from '../../lib/validation';
-import { convertHeicToJpegIfNeeded } from './imageUtils';
+import { validateFile, checkMagicBytes, checkExtensionConsistency } from '../../lib/validation';
+import { convertHeicToJpegWithStatus } from './imageUtils';
 import { toStorageUri, resolveStorageUrl } from '../storage/storageUrl';
 import {
   hasRecentImageRightsForSessionKey,
@@ -53,7 +53,14 @@ export async function uploadApplicationImage(
     return null;
   }
 
-  file = await convertHeicToJpegIfNeeded(file);
+  {
+    const { file: prepared, conversionFailed } = await convertHeicToJpegWithStatus(file);
+    if (conversionFailed) {
+      console.error('uploadApplicationImage: HEIC/HEIF conversion failed');
+      return null;
+    }
+    file = prepared;
+  }
 
   const mimeValidation = validateFile(file);
   if (!mimeValidation.ok) {
@@ -65,6 +72,14 @@ export async function uploadApplicationImage(
   if (!magicCheck.ok) {
     console.error('uploadApplicationImage: magic bytes check failed', magicCheck.error);
     return null;
+  }
+
+  if (file instanceof File) {
+    const extCheck = checkExtensionConsistency(file);
+    if (!extCheck.ok) {
+      console.error('uploadApplicationImage: extension/MIME mismatch', extCheck.error);
+      return null;
+    }
   }
 
   const ext = file instanceof File ? (file.name.split('.').pop() || 'jpg') : 'jpg';

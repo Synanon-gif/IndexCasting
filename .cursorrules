@@ -612,3 +612,23 @@ Ergänzt und schärft die obigen Regeln **ohne** sie zu ersetzen. Bei Widerspruc
 Bei Änderungen an **Discovery**, **Invite-/Claim-Flows**, **Storage/Fotos**, **Filtern**, **RLS/Policies** immer prüfen: **Verletzt das §27.1–27.9?**
 
 - Wenn **ja** → Änderung **stoppen** oder **explizit** als bewusste Ausnahme mit Begründung und Risiko dokumentieren (kein stiller Verstoß).
+
+### 27.11 Role-scoped Lookup Invariant (2026-05-18)
+
+- Non-admin product flows (agency, client, model) **MUST NEVER** call `admin_*` RPCs. Admin RPCs enforce `assert_is_admin()` — calling them from agency/client context always fails (HTTP 400/403).
+- **Kanonisches Pattern:** `agency_find_model_by_email` (agency-scoped, org-membership guard, row_security=off) statt `admin_find_model_by_email`. Jeder neue scoped-lookup MUSS demselben Guard-Pattern folgen.
+- **Verboten:** `supabase.rpc('admin_*', ...)` in `src/services/` oder `src/views/` außerhalb von `adminSupabase.ts` und `AdminDashboard`.
+
+### 27.12 Deterministic Create-vs-Merge Invariant (2026-05-18)
+
+- Same-email model flows **MUST** use scoped lookup (`agency_find_model_by_email`) **before** INSERT.
+- INSERT auf `models` **MUSS** 23505 (unique constraint violation) als Defense-in-Depth behandeln: bei 23505 → erneuter scoped lookup → rekursiver Merge-Versuch (einmal).
+- **Verboten:** INSERT-then-fail ohne Recovery, INSERT nach admin-only Lookup, INSERT ohne Scoped-Dedup.
+
+### 27.13 Agency Model Persistence Invariant (2026-05-18)
+
+- After agency save (profile fields, media, location), the **same agency** MUST see the saved state on reopen/reload:
+  - Uploaded portfolio/polaroid/private files persist in `model_photos` + mirror columns.
+  - Location values (`city`, `country_code`, `model_locations` agency row) survive reload.
+  - Invite state (`pending_link`, claim token) remains visible in roster UI.
+- If any of these fail on reload → treat as **persistence incident**, not cosmetic UI bug.

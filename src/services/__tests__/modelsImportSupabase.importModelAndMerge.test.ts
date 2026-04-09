@@ -100,7 +100,7 @@ describe('importModelAndMerge', () => {
       .mockReturnValueOnce(noMatch)                        // mediaslide_sync_id lookup → null
       .mockReturnValueOnce(makeInsertChain({ id: 'model-2' })); // insert → model-2
 
-    // Email lookup now goes through admin_find_model_by_email RPC (not from()).
+    // Email lookup goes through agency_find_model_by_email RPC (agency-scoped, not admin).
     // Must return a chainable object with .maybeSingle() (Gefahr 2 / Risiko D fix).
     rpcMock.mockReturnValueOnce({
       maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),

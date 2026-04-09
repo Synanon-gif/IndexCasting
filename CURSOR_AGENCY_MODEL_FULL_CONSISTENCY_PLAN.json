@@ -1,0 +1,83 @@
+{
+  "title": "Full Agency Model Consistency Pass",
+  "date": "2026-05-18",
+  "status": "FULL AGENCY MODEL CONSISTENCY FIXED",
+  "categories": [
+    {
+      "id": "P1",
+      "name": "Global Similarity Scan",
+      "items": [
+        { "id": "F1.1", "description": "flagModelAsMinor calls admin-only RPC", "severity": "medium", "action": "marked @deprecated", "status": "fixed" },
+        { "id": "F1.2", "description": "Test comment references old admin RPC", "severity": "low", "action": "comment updated", "status": "fixed" },
+        { "id": "F1.3", "description": "Insert without 23505 in recruiting/consent/projects", "severity": "low", "action": "documented as low-risk", "status": "documented" }
+      ]
+    },
+    {
+      "id": "P3",
+      "name": "Media / URL Normalization",
+      "items": [
+        { "id": "F3.1", "description": "Import path without model_photos rows", "severity": "info", "action": "documented (MediaPanel reconciles)", "status": "documented" },
+        { "id": "F3.2", "description": "Missing URL normalization at 3 render sites", "severity": "high", "action": "normalizeDocumentspicturesModelImageRef added", "status": "fixed" }
+      ]
+    },
+    {
+      "id": "P4",
+      "name": "Location Persistence",
+      "items": [
+        { "id": "F4.1", "description": "Add-Model without model_locations row", "severity": "high", "action": "upsertModelLocation('agency') added after creation", "status": "fixed" },
+        { "id": "F4.2", "description": "upsertModelLocation return value ignored", "severity": "medium", "action": "warn-log on failure", "status": "fixed" },
+        { "id": "F4.3", "description": "p_country text not sent from UI", "severity": "low", "action": "documented (country_code authoritative)", "status": "documented" }
+      ]
+    },
+    {
+      "id": "P6",
+      "name": "Upload Parity",
+      "items": [
+        { "id": "F6.1", "description": "applicationsSupabase: legacy HEIC + no extension check", "severity": "medium", "action": "upgraded to convertHeicToJpegWithStatus + checkExtensionConsistency", "status": "fixed" },
+        { "id": "F6.2", "description": "documentsSupabase: no extension check", "severity": "medium", "action": "checkExtensionConsistency added", "status": "fixed" },
+        { "id": "F6.3", "description": "verificationSupabase: no extension check, custom sanitizer", "severity": "medium", "action": "checkExtensionConsistency + sanitizeUploadBaseName", "status": "fixed" },
+        { "id": "F6.4", "description": "Audit allowlist missing org gallery/logo", "severity": "low", "action": "added to STORAGE_UPLOAD_ALLOWLIST", "status": "fixed" }
+      ]
+    },
+    {
+      "id": "P7",
+      "name": "Soft Delete / Reactivation",
+      "items": [
+        { "id": "F7.1", "description": "agency_relationship_ended_at not cleared on reactivation", "severity": "medium", "action": "SQL migration: auto-clear when status→active/pending_link", "status": "fixed" },
+        { "id": "F7.2", "description": "Two competing agency_remove_model definitions", "severity": "high", "action": "live-verified: soft-delete version is deployed", "status": "verified" }
+      ]
+    },
+    {
+      "id": "P8",
+      "name": "Reload Truth",
+      "items": [
+        { "id": "F8.1", "description": "Stale models in sync feedback setTimeout", "severity": "medium", "action": "replaced with await+fresh fetch", "status": "fixed" },
+        { "id": "F8.2", "description": "focusModelId effect missing models dep", "severity": "medium", "action": "added models to dependency array", "status": "fixed" },
+        { "id": "F8.3", "description": "Feedback timers without ref cleanup", "severity": "medium", "action": "useRef pattern with clearTimeout", "status": "fixed" },
+        { "id": "F8.4", "description": "Double roster fetch on mount + tab", "severity": "low", "action": "documented (idempotent, perf-only)", "status": "documented" }
+      ]
+    },
+    {
+      "id": "P9",
+      "name": "Rules / Docs Hardening",
+      "items": [
+        { "id": "R9.1", "description": "Role-scoped lookup invariant in .cursorrules §27.11", "severity": "high", "action": "added", "status": "fixed" },
+        { "id": "R9.2", "description": "Stop-condition in auto-review (Risiko 18/19)", "severity": "high", "action": "added", "status": "fixed" },
+        { "id": "R9.3", "description": "System invariants: create-vs-merge + persistence", "severity": "high", "action": "added", "status": "fixed" }
+      ]
+    }
+  ],
+  "residual_risks": [
+    { "id": "RR1", "description": "agency_remove_model uses legacy email-based auth guard", "severity": "medium", "recommendation": "Migrate to org-membership pattern in future pass" },
+    { "id": "RR2", "description": "Import writes portfolio_images mirror without model_photos rows", "severity": "low", "recommendation": "By design; MediaPanel reconciles on open" },
+    { "id": "RR3", "description": "AuthContext finalize without UI alerts", "severity": "low", "recommendation": "By design; URL-token path has alerts" }
+  ],
+  "do_not_touch": [
+    "AuthContext core / bootstrapThenLoadProfile",
+    "Paywall core / can_access_platform ordering",
+    "Admin core / assert_is_admin",
+    "Discovery ranking",
+    "booking_brief trust model",
+    "calendar_entries RLS"
+  ]
+}

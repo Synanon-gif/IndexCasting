@@ -606,6 +606,29 @@ ON CONFLICT (model_id, source) DO UPDATE SET city = EXCLUDED.city, ...;
 
 ---
 
+## ROLE-SCOPED LOOKUP INVARIANT (unveränderlich, 2026-05-18)
+
+- Non-admin product flows (agency, client, model) **MUST NEVER** call `admin_*` RPCs
+- Admin RPCs enforce `assert_is_admin()` — non-admin callers always get HTTP 400/403
+- **Kanonisches Pattern:** `agency_find_model_by_email` (agency-scoped, org-membership guard) statt `admin_find_model_by_email`
+- `admin_*` RPCs nur in `src/services/adminSupabase.ts` → `AdminDashboard`
+
+## DETERMINISTIC CREATE-VS-MERGE INVARIANT (unveränderlich, 2026-05-18)
+
+- Same-email model flows MUSS scoped lookup (`agency_find_model_by_email`) VOR INSERT verwenden
+- INSERT auf `models` mit Email MUSS 23505 als Defense-in-Depth behandeln: erneuter scoped lookup → rekursiver Merge (einmal)
+- Soft-removed Models (`agency_relationship_status='ended'`) MÜSSEN vom Lookup inkludiert werden
+- `agency_relationship_ended_at` wird bei Re-Aktivierung (status→`active`/`pending_link`) automatisch auf NULL gesetzt
+
+## AGENCY MODEL PERSISTENCE INVARIANT (unveränderlich, 2026-05-18)
+
+- Nach Agency-Save MUSS die Agency bei Reopen/Reload den gespeicherten Stand sehen:
+  - Uploaded portfolio/polaroid/private Files in `model_photos` + Mirror-Spalten
+  - Location-Werte (`city`, `country_code`, `model_locations` agency-Zeile)
+  - Invite-Status (`pending_link`, Claim-Token) im Roster-UI
+- Wenn ein Save-Pfad (z.B. `upsertModelLocation`) fehlschlägt, MUSS ein Warn-Log geschrieben werden
+- Verletzung = **Persistence Incident**, nicht kosmetischer UI-Bug
+
 ## FRONTEND-GARANTIEN
 
 - Dashboard lädt auch wenn Teildaten fehlen (kein hard crash bei null org/profile)

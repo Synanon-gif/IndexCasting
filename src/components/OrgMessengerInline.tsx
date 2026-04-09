@@ -35,6 +35,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import { confirmImageRights } from '../services/gdprComplianceSupabase';
 import { getModelByIdFromSupabase } from '../services/modelsSupabase';
+import { normalizeDocumentspicturesModelImageRef } from '../utils/normalizeModelPortfolioUrl';
 import { QUICK_REPLIES } from '../constants/quickReplies';
 import { buildGuestUrl, type GuestLink } from '../services/guestLinksSupabase';
 import {
@@ -255,8 +256,9 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
       missing.map(async (modelId) => {
         try {
           const row = await getModelByIdFromSupabase(modelId);
-          const photo = row?.portfolio_images?.[0];
-          if (!photo) return;
+          const rawPhoto = row?.portfolio_images?.[0];
+          if (!rawPhoto) return;
+          const photo = normalizeDocumentspicturesModelImageRef(rawPhoto, modelId);
           setPackageModelPhotos((prev) => ({ ...prev, [modelId]: photo }));
         } catch (e) {
           console.error('packageModelPhotos lookup error:', e);

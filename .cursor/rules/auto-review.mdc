@@ -174,6 +174,8 @@ Q8: Verwendet ein neuer optimistischer Update-Handler irgendeinen Snapshot (`con
 - Agency roster **bulk** flow, der **current location** oder agency-`model_locations` für mehrere Models setzt — **verboten**; Agency-Bulk ist **nur** territories of representation; current location nur kanonischer Single-Edit
 - Änderung der festen Location-Source-Priorität **live → current → agency** in Near-Me/Discovery/Filter-Logik (ohne explizites Security/Product Review)
 - Neuer Browser-Datei-Upload ohne **Upload technical parity** (upload-consent-matrix.mdc): fehlende Magic Bytes, fehlende HEIC-Behandlung wenn erlaubt, fehlendes `upsert: false` / unsicherer Pfad
+- `supabase.rpc('admin_*', ...)` in non-admin Service/View (außerhalb `adminSupabase.ts` / `AdminDashboard`) — Risiko 18: Admin-RPCs erzwingen `assert_is_admin()`, non-admin Caller bekommen immer HTTP 400/403
+- `models`-INSERT ohne 23505-Recovery wenn E-Mail gesetzt — Risiko 19: Unique-Constraint auf `models.email` führt zu Dead-End; muss scoped lookup + 23505 retry haben
 
 ---
 

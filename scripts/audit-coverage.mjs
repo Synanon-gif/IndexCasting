@@ -373,6 +373,8 @@ const STORAGE_UPLOAD_ALLOWLIST = new Set(
     'src/services/optionRequestsSupabase.ts',
     'src/services/documentsSupabase.ts',
     'src/services/verificationSupabase.ts',
+    'src/services/organizationGallerySupabase.ts',
+    'src/services/organizationLogoSupabase.ts',
   ].map((p) => p.replace(/\\/g, '/')),
 );
 
