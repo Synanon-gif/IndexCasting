@@ -1,7 +1,7 @@
 {
   "name": "Location Truth Unification",
   "date": "2026-04-09",
-  "status": "in_progress",
+  "status": "complete",
   "goal": "Establish model_locations (priority: live > current > agency) as canonical product truth for all user-facing city display and filtering. models.city becomes legacy fallback only.",
   "steps": [
     {
@@ -46,8 +46,14 @@
     {
       "id": "P10",
       "name": "Quality Gates",
-      "status": "pending",
-      "checks": ["typecheck", "lint", "test", "git_sync"]
+      "status": "complete",
+      "checks": ["typecheck", "lint", "test", "git_sync"],
+      "results": {
+        "typecheck": "0 errors",
+        "lint": "0 errors, 4 pre-existing warnings",
+        "test": "894 passed, 80 suites, 0 failures",
+        "git": "pushed to main (a35a68c)"
+      }
     }
   ],
   "do_not_touch": [

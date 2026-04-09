@@ -52,8 +52,9 @@ get_guest_link_models: effective_city ✓, model_locations reference ✓
 
 ## Quality Gates
 
-- [ ] npm run typecheck
-- [ ] npm run lint
-- [ ] npm test -- --passWithNoTests --ci
-- [ ] Migration deployed (HTTP 201)
-- [ ] pg_get_functiondef verified for 3 RPCs
+- [x] npm run typecheck — 0 errors
+- [x] npm run lint — 0 errors, 4 pre-existing warnings
+- [x] npm test — 894 passed, 80 suites, 0 failures
+- [x] Migration deployed (HTTP 201)
+- [x] pg_get_functiondef verified for 3 RPCs
+- [x] git push to main (a35a68c)
