@@ -1,0 +1,102 @@
+{
+  "title": "Global System Audit & Invariant Enforcement",
+  "version": "1",
+  "completed_at_iso": "2026-04-09",
+  "status": "completed_with_fixes",
+  "phases": [
+    { "id": "A", "name": "Pattern scan (P1/P8)", "outcome": "Triaged; see findings[]" },
+    { "id": "B", "name": "Agency model lifecycle trace (P2)", "outcome": "Documented in REPORT §Lifecycle" },
+    { "id": "C", "name": "Media audit (P3)", "outcome": "See REPORT §Media" },
+    { "id": "D", "name": "Location audit (P4)", "outcome": "See REPORT §Location" },
+    { "id": "E", "name": "Invite/token audit (P5)", "outcome": "See REPORT §Invite" },
+    { "id": "F", "name": "Auth/bootstrap (P6)", "outcome": "See REPORT §Auth" },
+    { "id": "G", "name": "Reload/state (P7)", "outcome": "See REPORT §State" },
+    { "id": "H", "name": "P0/P1 fixes", "outcome": "See fixes[]" },
+    { "id": "I", "name": "Cursor rules hardening (P9)", "outcome": "skipped_no_new_rule_needed" },
+    { "id": "J", "name": "Deliverables", "outcome": "REPORT, DIFF, VERIFY, this file" },
+    { "id": "K", "name": "Quality gates (P11)", "outcome": "typecheck_lint_test_green" }
+  ],
+  "findings": [
+    {
+      "id": "F-001",
+      "severity": "critical",
+      "area": "media",
+      "pattern": "partial_mirror_rebuild",
+      "summary": "After Add Model photo uploads, only portfolio mirror was rebuilt from model_photos; polaroid mirror could stay stale vs edit flow (ModelMediaSettingsPanel rebuilds both).",
+      "files": ["src/views/AgencyControllerView.tsx"],
+      "action": "fixed"
+    },
+    {
+      "id": "F-002",
+      "severity": "moderate",
+      "area": "lifecycle",
+      "pattern": "unchecked_rpc",
+      "summary": "Merge path: when agency_claim_unowned_model fails, fallback agency_update_model_full had no error check — user could see success while relationship update failed.",
+      "files": ["src/views/AgencyControllerView.tsx"],
+      "action": "fixed"
+    },
+    {
+      "id": "F-003",
+      "severity": "low",
+      "area": "media",
+      "pattern": "roster_heal_portfolio_only",
+      "summary": "refreshAgencyModelLists healed empty portfolio_images via rebuildPortfolioImagesFromModelPhotos only; polaroid mirror not aligned in same pass.",
+      "files": ["src/views/AgencyControllerView.tsx"],
+      "action": "fixed"
+    },
+    {
+      "id": "F-004",
+      "severity": "moderate",
+      "area": "persistence",
+      "pattern": "silent_warn_only",
+      "summary": "handleAddModel: upsertModelLocation(agency) failure logs console.warn only; user may miss Near-Me drift until next save (documented; no UX change this pass).",
+      "files": ["src/views/AgencyControllerView.tsx"],
+      "action": "documented"
+    },
+    {
+      "id": "F-005",
+      "severity": "low",
+      "area": "async",
+      "pattern": "void_fire_and_forget",
+      "summary": "Many void getX().then(setState) in AgencyControllerView / ClientWebApp for secondary data — acceptable for non-authoritative UI if primary saves await RPCs.",
+      "files": ["src/views/AgencyControllerView.tsx", "src/web/ClientWebApp.tsx"],
+      "action": "accepted"
+    },
+    {
+      "id": "F-006",
+      "severity": "low",
+      "area": "ux",
+      "pattern": "empty_catch",
+      "summary": "GuestChatView Linking.openURL(...).catch(() => {}) swallows errors (non-persistence).",
+      "files": ["src/views/GuestChatView.tsx"],
+      "action": "accepted"
+    },
+    {
+      "id": "F-007",
+      "severity": "moderate",
+      "area": "product",
+      "pattern": "email_delivery_semantics",
+      "summary": "Invite success = send-invite HTTP/body ok (Resend acceptance), not guaranteed inbox delivery — inherent provider limit.",
+      "files": ["supabase/functions/send-invite/index.ts", "src/views/AgencyControllerView.tsx"],
+      "action": "documented"
+    }
+  ],
+  "fixes": [
+    {
+      "id": "X-001",
+      "file": "src/views/AgencyControllerView.tsx",
+      "description": "After anyPhotosUploaded in handleAddModel, rebuild both portfolio and polaroid mirrors from model_photos; alert on polaroid sync failure."
+    },
+    {
+      "id": "X-002",
+      "file": "src/views/AgencyControllerView.tsx",
+      "description": "On merge path, check agency_update_model_full error after failed claim; throw to surface in existing catch/Alert."
+    },
+    {
+      "id": "X-003",
+      "file": "src/views/AgencyControllerView.tsx",
+      "description": "refreshAgencyModelLists: for mirror-heal candidates, run rebuildPortfolioImagesFromModelPhotos and rebuildPolaroidsFromModelPhotos per model."
+    }
+  ],
+  "counts": { "critical": 1, "moderate": 3, "low": 3, "fixed_in_code": 3, "documented_or_accepted": 4 }
+}

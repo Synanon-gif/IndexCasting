@@ -78,6 +78,7 @@ import {
   upsertPhotosForModel,
   getPhotosForModel,
   rebuildPortfolioImagesFromModelPhotos,
+  rebuildPolaroidsFromModelPhotos,
 } from '../services/modelPhotosSupabase';
 import { normalizeDocumentspicturesModelImageRef } from '../utils/normalizeModelPortfolioUrl';
 import { confirmImageRights, guardImageUpload } from '../services/gdprComplianceSupabase';
@@ -384,7 +385,10 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
       if (candidates.length > 0) {
         candidates.forEach((id) => portfolioMirrorRebuildAttemptedRef.current.add(id));
         const rebuilt = await Promise.all(
-          candidates.map((id) => rebuildPortfolioImagesFromModelPhotos(id)),
+          candidates.flatMap((id) => [
+            rebuildPortfolioImagesFromModelPhotos(id),
+            rebuildPolaroidsFromModelPhotos(id),
+          ]),
         );
         if (rebuilt.some(Boolean)) {
           const healedFull = await getModelsForAgencyFromSupabase(currentAgencyId);
@@ -2370,12 +2374,18 @@ const MyModelsTab: React.FC<{
           // agency_update_model_full which validates same-agency ownership.
           // Note: agency_relationship_ended_at cannot be cleared through the COALESCE
           // pattern — acceptable because status='active' controls roster visibility.
-          await supabase.rpc('agency_update_model_full', {
+          const { error: reactivateErr } = await supabase.rpc('agency_update_model_full', {
             p_model_id:                   mergeResult.model_id,
             p_agency_relationship_status: relationshipStatus,
             p_is_visible_fashion:         isVisibleFashion,
             p_is_visible_commercial:      isVisibleCommercial,
           });
+          if (reactivateErr) {
+            console.error('handleAddModel: agency_update_model_full after merge failed:', reactivateErr);
+            throw new Error(
+              reactivateErr.message || 'Could not update merged model (relationship / visibility).',
+            );
+          }
         }
       } else {
         // Newly created: set relationship + sports flags not covered by importModelAndMerge insert.
@@ -2578,11 +2588,17 @@ const MyModelsTab: React.FC<{
       }
 
       // RC-4 fix: Full mirror rebuild from model_photos (handles merge + new uploads).
-      // Uses the same rebuild as the Edit-flow ModelMediaSettingsPanel.
+      // Match edit-flow ModelMediaSettingsPanel: both portfolio and polaroid mirrors.
       if (anyPhotosUploaded) {
-        const rebuildOk = await rebuildPortfolioImagesFromModelPhotos(createdModelId);
-        if (!rebuildOk) {
+        const [rebuildPortOk, rebuildPolOk] = await Promise.all([
+          rebuildPortfolioImagesFromModelPhotos(createdModelId),
+          rebuildPolaroidsFromModelPhotos(createdModelId),
+        ]);
+        if (!rebuildPortOk) {
           Alert.alert(uiCopy.common.error, uiCopy.modelMedia.portfolioColumnSyncFailed);
+        }
+        if (!rebuildPolOk) {
+          Alert.alert(uiCopy.common.error, uiCopy.modelMedia.polaroidColumnSyncFailed);
         }
       }
 
