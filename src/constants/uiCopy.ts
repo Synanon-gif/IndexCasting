@@ -1140,6 +1140,20 @@ export const uiCopy = {
     addModelPartialPolaroidUploadFailed:
       'One or more polaroid photos could not be uploaded. Please try again in the model settings.',
     addModelPartialUploadTitle: 'Upload Failed',
+    /** DB row count after upsert did not match uploads — storage may have files but model_photos incomplete. */
+    photoPersistFailedTitle: 'Could not save all photos',
+    photoPersistPortfolioFailedBody:
+      'Not all portfolio images were stored in the database. Open the model and upload again if photos are missing.',
+    photoPersistPolaroidFailedBody:
+      'Not all polaroid images were stored in the database. Open the model and upload again if photos are missing.',
+    /** agency model_locations row (source=agency) failed; models.city/country may still be saved. */
+    agencyLocationPersistFailedTitle: 'Map location not saved',
+    agencyLocationPersistFailedBody:
+      'Your profile fields were saved, but the map location row could not be stored. Near Me and radius discovery may be incomplete until you save location again.',
+    agencyLocationPersistFailedShort: 'Map location may be incomplete.',
+    /** Appended to add-model success feedback when any sub-step failed (photos or map location). */
+    addModelPersistenceWarningSuffix: ' Some items may not have saved fully — see alerts.',
+    addModelNoPortfolioUploadedBody: 'No portfolio photos could be uploaded. Please try again via Edit.',
     portfolioTitle: 'Portfolio',
     portfolioHint: 'First image is used as the cover in discovery and packages.',
     polaroidsTitle: 'Polaroids',

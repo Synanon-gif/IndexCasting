@@ -2450,6 +2450,7 @@ const MyModelsTab: React.FC<{
       }
 
       // ── RC-3 fix: Write location BEFORE photos (location has no photo dependency) ──
+      let locationPersistFailed = false;
       if (addModelEditState.country_code) {
         const cityForGeocode = addModelEditState.city?.trim() || null;
         const geocoded = cityForGeocode
@@ -2467,14 +2468,23 @@ const MyModelsTab: React.FC<{
           'agency',
         );
         if (!locOk) {
+          locationPersistFailed = true;
           console.warn('handleAddModel: upsertModelLocation(agency) failed — location may not appear in Near-Me until next save');
+          Alert.alert(
+            uiCopy.modelMedia.agencyLocationPersistFailedTitle,
+            uiCopy.modelMedia.agencyLocationPersistFailedBody,
+          );
         }
       }
 
       // ── Photo uploads (must not block creation / location / refresh) ──
       // RC-1 fix: NO early returns from the photo block — rights failures skip
       // uploads but Location/Refresh/selectedModel always execute afterwards.
-      let anyPhotosUploaded = false;
+      // First-save truth: only treat photos as persisted after upsert + DB verify match expected counts.
+      let portfolioPersisted = false;
+      let polaroidPersisted = false;
+      let portfolioRowsExpected = 0;
+      let polaroidRowsExpected = 0;
       const hasAnyPhotos = filesToUpload.length > 0 || polaroidFilesToUpload.length > 0;
       if (hasAnyPhotos) {
         let photoRightsOk = false;
@@ -2530,8 +2540,9 @@ const MyModelsTab: React.FC<{
                 );
               }
             }
+            portfolioRowsExpected = uploadedItems.length;
             if (uploadedItems.length > 0) {
-              await upsertPhotosForModel(
+              const inserted = await upsertPhotosForModel(
                 createdModelId,
                 uploadedItems.map((item, index) => ({
                   url: item.url,
@@ -2544,12 +2555,22 @@ const MyModelsTab: React.FC<{
                   file_size_bytes: item.fileSizeBytes,
                 })),
               );
-              anyPhotosUploaded = true;
+              const verifyPort = await getPhotosForModel(createdModelId, 'portfolio');
+              const persistOk =
+                inserted.length === uploadedItems.length && verifyPort.length >= uploadedItems.length;
+              if (!persistOk) {
+                Alert.alert(
+                  uiCopy.modelMedia.photoPersistFailedTitle,
+                  uiCopy.modelMedia.photoPersistPortfolioFailedBody,
+                );
+              } else {
+                portfolioPersisted = true;
+              }
             }
             if (uploadedItems.length === 0) {
               Alert.alert(
                 uiCopy.common.error,
-                'No portfolio photos could be uploaded. Please try again via Edit.',
+                uiCopy.modelMedia.addModelNoPortfolioUploadedBody,
               );
             }
           }
@@ -2568,8 +2589,9 @@ const MyModelsTab: React.FC<{
                 );
               }
             }
+            polaroidRowsExpected = uploadedPolaroidItems.length;
             if (uploadedPolaroidItems.length > 0) {
-              await upsertPhotosForModel(
+              const insertedPol = await upsertPhotosForModel(
                 createdModelId,
                 uploadedPolaroidItems.map((item, index) => ({
                   url: item.url,
@@ -2582,22 +2604,32 @@ const MyModelsTab: React.FC<{
                   file_size_bytes: item.fileSizeBytes,
                 })),
               );
-              anyPhotosUploaded = true;
+              const verifyPol = await getPhotosForModel(createdModelId, 'polaroid');
+              const persistPolOk =
+                insertedPol.length === uploadedPolaroidItems.length
+                && verifyPol.length >= uploadedPolaroidItems.length;
+              if (!persistPolOk) {
+                Alert.alert(
+                  uiCopy.modelMedia.photoPersistFailedTitle,
+                  uiCopy.modelMedia.photoPersistPolaroidFailedBody,
+                );
+              } else {
+                polaroidPersisted = true;
+              }
             }
           }
         }
       }
 
-      // RC-4 fix: Full mirror rebuild from model_photos (handles merge + new uploads).
-      // Match edit-flow ModelMediaSettingsPanel: both portfolio and polaroid mirrors.
-      if (anyPhotosUploaded) {
-        const [rebuildPortOk, rebuildPolOk] = await Promise.all([
-          rebuildPortfolioImagesFromModelPhotos(createdModelId),
-          rebuildPolaroidsFromModelPhotos(createdModelId),
-        ]);
+      // Mirror rebuild only for types that were verified in model_photos (first-save truth).
+      if (portfolioPersisted) {
+        const rebuildPortOk = await rebuildPortfolioImagesFromModelPhotos(createdModelId);
         if (!rebuildPortOk) {
           Alert.alert(uiCopy.common.error, uiCopy.modelMedia.portfolioColumnSyncFailed);
         }
+      }
+      if (polaroidPersisted) {
+        const rebuildPolOk = await rebuildPolaroidsFromModelPhotos(createdModelId);
         if (!rebuildPolOk) {
           Alert.alert(uiCopy.common.error, uiCopy.modelMedia.polaroidColumnSyncFailed);
         }
@@ -2626,18 +2658,24 @@ const MyModelsTab: React.FC<{
       const syncWarn = mergeResult.externalSyncIdsPersistFailed
         ? uiCopy.modelRoster.externalSyncIdsPersistWarning
         : '';
+      const persistenceSuffix =
+        locationPersistFailed
+        || (portfolioRowsExpected > 0 && !portfolioPersisted)
+        || (polaroidRowsExpected > 0 && !polaroidPersisted)
+          ? uiCopy.modelMedia.addModelPersistenceWarningSuffix
+          : '';
       if (fresh) {
         setSelectedModel(fresh);
         setAddModelFeedback(
           mergeResult.created
-            ? `${modelDisplayName} added successfully.${emailNote}${syncWarn}`
-            : `${modelDisplayName} merged with existing profile.${emailNote}${syncWarn}`,
+            ? `${modelDisplayName} added successfully.${emailNote}${syncWarn}${persistenceSuffix}`
+            : `${modelDisplayName} merged with existing profile.${emailNote}${syncWarn}${persistenceSuffix}`,
         );
       } else {
         setAddModelFeedback(
           mergeResult.created
-            ? `${modelDisplayName} was created.${emailNote} Please refresh the list once.${syncWarn}`
-            : `${modelDisplayName} merged.${emailNote} Please refresh the list once.${syncWarn}`,
+            ? `${modelDisplayName} was created.${emailNote} Please refresh the list once.${syncWarn}${persistenceSuffix}`
+            : `${modelDisplayName} merged.${emailNote} Please refresh the list once.${syncWarn}${persistenceSuffix}`,
         );
       }
 
@@ -2971,6 +3009,10 @@ const MyModelsTab: React.FC<{
         );
         if (!locOk) {
           console.warn('handleSaveModel: upsertModelLocation(agency) failed — location may be stale');
+          Alert.alert(
+            uiCopy.modelMedia.agencyLocationPersistFailedTitle,
+            uiCopy.modelMedia.agencyLocationPersistFailedBody,
+          );
         }
       }
 

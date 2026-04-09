@@ -1,0 +1,30 @@
+{
+  "name": "agency_model_first_save_truth",
+  "version": "2026-04-09",
+  "hypothesis_checked": {
+    "H1": "Confirmed: handleAddModel previously set anyPhotosUploaded from upload count without validating upsertPhotosForModel return or DB rows.",
+    "H2": "Partially: onRefresh + getModelByIdFromSupabase already ran; gap was success messaging and rebuild when upsert returned empty.",
+    "H3": "Addressed: persistenceSuffix + stricter portfolio/polaroid flags prevent silent 'full success' when DB verify fails."
+  },
+  "confirmed_root_causes": [
+    "upsertPhotosForModel return value and DB read-back were not validated before rebuild and success copy",
+    "rebuildPortfolio/rebuildPolaroid ran for any anyPhotosUploaded even when upsert failed",
+    "upsertModelLocation failure on add was console-only; save flow was console-only for location"
+  ],
+  "safe_hardening_applied": [
+    "After upsertPhotosForModel: verify inserted.length vs expected AND getPhotosForModel count >= expected before setting portfolioPersisted/polaroidPersisted",
+    "Rebuild mirrors only for types with verified persistence",
+    "Alert on upsertModelLocation failure in add and save flows (uiCopy)",
+    "addModelPersistenceWarningSuffix appended to add-model feedback when location or photo DB persistence incomplete",
+    "New uiCopy keys under modelMedia for photo/location persist failures and suffix"
+  ],
+  "deferred_product_decisions": [
+    "Consolidating to a single 'current location' field vs models.city + model_locations.agency — not in this incident",
+    "Whether step3Succeeded should flip false when only location row fails (profile RPC already succeeded) — kept success with explicit Alert"
+  ],
+  "regressions_checked": {
+    "typecheck": "pass",
+    "lint": "pass (0 errors, 4 pre-existing warnings in other files)",
+    "tests": "pass (82 suites, 904 tests)"
+  }
+}
