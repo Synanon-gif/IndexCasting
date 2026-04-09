@@ -21,6 +21,8 @@ import { getSignedRecruitingChatFileUrl } from '../services/recruitingChatSupaba
 import { getApplicationById } from '../store/applicationsStore';
 import { getThread } from '../services/recruitingChatSupabase';
 import { getAgencyChatDisplayById } from '../services/agenciesSupabase';
+import { getOrganizationIdForAgency } from '../services/organizationsInvitationsSupabase';
+import { OrgProfileModal } from '../components/OrgProfileModal';
 import { BOTTOM_TAB_BAR_HEIGHT } from '../navigation/bottomTabNavigation';
 import { supabase } from '../../lib/supabase';
 import { confirmImageRights } from '../services/gdprComplianceSupabase';
@@ -59,6 +61,8 @@ export const BookingChatView: React.FC<Props> = ({
   const [messages, setMessages] = useState(() => getRecruitingMessages(threadId));
   const [agencyName, setAgencyName] = useState<string | null>(initialAgencyName ?? null);
   const [agencyLogoUrl, setAgencyLogoUrl] = useState<string | null>(null);
+  const [agencyOrgIdForProfile, setAgencyOrgIdForProfile] = useState<string | null>(null);
+  const [showAgencyProfile, setShowAgencyProfile] = useState(false);
   const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -91,6 +95,9 @@ export const BookingChatView: React.FC<Props> = ({
       getAgencyChatDisplayById(agencyId).then((row) => {
         if (row?.name) setAgencyName(row.name);
         setAgencyLogoUrl(row?.logo_url ?? null);
+      });
+      getOrganizationIdForAgency(agencyId).then((orgId) => {
+        setAgencyOrgIdForProfile(orgId);
       });
     };
     if (fromApp) {
@@ -197,7 +204,12 @@ export const BookingChatView: React.FC<Props> = ({
               {fromRole === 'model' ? (
                 <View style={styles.modelAgencyBanner}>
                   <Text style={styles.modelAgencyKicker}>You are chatting with</Text>
-                  <View style={styles.brandRow}>
+                  <TouchableOpacity
+                    style={styles.brandRow}
+                    disabled={!agencyOrgIdForProfile}
+                    onPress={() => agencyOrgIdForProfile && setShowAgencyProfile(true)}
+                    activeOpacity={agencyOrgIdForProfile ? 0.7 : 1}
+                  >
                     {agencyLogoUrl ? (
                       <Image source={{ uri: agencyLogoUrl }} style={styles.agencyLogo} resizeMode="contain" />
                     ) : (
@@ -206,10 +218,10 @@ export const BookingChatView: React.FC<Props> = ({
                       </View>
                     )}
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.agencyName}>{displayAgencyName}</Text>
+                      <Text style={[styles.agencyName, agencyOrgIdForProfile ? styles.agencyNameClickable : null]}>{displayAgencyName}</Text>
                       {thread ? <Text style={styles.modelLine}>As: {thread.modelName}</Text> : null}
                     </View>
-                  </View>
+                  </TouchableOpacity>
                 </View>
               ) : (
                 <View>
@@ -364,6 +376,16 @@ export const BookingChatView: React.FC<Props> = ({
     return (
       <View style={[styles.insetShell, { bottom: bottomInset }]} pointerEvents="box-none">
         {chatBody}
+        {showAgencyProfile && agencyOrgIdForProfile && (
+          <OrgProfileModal
+            visible
+            onClose={() => setShowAgencyProfile(false)}
+            orgType="agency"
+            organizationId={agencyOrgIdForProfile}
+            agencyId={applicationAgencyId ?? application?.agencyId ?? null}
+            orgName={displayAgencyName}
+          />
+        )}
       </View>
     );
   }
@@ -371,6 +393,16 @@ export const BookingChatView: React.FC<Props> = ({
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
       {chatBody}
+      {showAgencyProfile && agencyOrgIdForProfile && (
+        <OrgProfileModal
+          visible
+          onClose={() => setShowAgencyProfile(false)}
+          orgType="agency"
+          organizationId={agencyOrgIdForProfile}
+          agencyId={applicationAgencyId ?? application?.agencyId ?? null}
+          orgName={displayAgencyName}
+        />
+      )}
     </Modal>
   );
 };
@@ -458,6 +490,9 @@ const styles = StyleSheet.create({
     ...typography.heading,
     fontSize: 15,
     color: colors.textPrimary,
+  },
+  agencyNameClickable: {
+    textDecorationLine: 'underline',
   },
   modelLine: {
     ...typography.body,

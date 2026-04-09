@@ -364,6 +364,25 @@ export async function getOrganizationIdForAgency(agencyId: string): Promise<stri
   }
 }
 
+/** Reverse of getOrganizationIdForAgency — resolves agencies.id from organizations.id. */
+export async function getAgencyIdForOrganization(organizationId: string): Promise<string | null> {
+  try {
+    const { data, error } = await supabase
+      .from('organizations')
+      .select('agency_id')
+      .eq('id', organizationId)
+      .maybeSingle();
+    if (error) {
+      console.error('getAgencyIdForOrganization error:', error);
+      return null;
+    }
+    return (data as { agency_id: string | null } | null)?.agency_id ?? null;
+  } catch (e) {
+    console.error('getAgencyIdForOrganization exception:', e);
+    return null;
+  }
+}
+
 /**
  * Update the display name of an organization.
  * Only the owner / members with org-level write access can do this (enforced by RLS).

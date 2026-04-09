@@ -188,6 +188,7 @@ import { MonthCalendarView, type CalendarDayEvent } from '../components/MonthCal
 import { ScreenScrollView } from '../components/ScreenScrollView';
 import { uiCopy } from '../constants/uiCopy';
 import { AgencyOrgProfileScreen } from '../screens/AgencyOrgProfileScreen';
+import { OrgProfileModal } from '../components/OrgProfileModal';
 import { type ModelFilters, defaultModelFilters, filterModels } from '../utils/modelFilters';
 import ModelFiltersPanel from '../components/ModelFiltersPanel';
 import ModelEditDetailsPanel, { buildEditState, type ModelEditState } from '../components/ModelEditDetailsPanel';
@@ -4175,6 +4176,8 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   const [modelsForShare, setModelsForShare] = useState<{ id: string; name: string }[]>([]);
   const [activeConnectionChatId, setActiveConnectionChatId] = useState<string | null>(null);
   const [activeConnectionChatTitle, setActiveConnectionChatTitle] = useState('');
+  const [viewingClientProfileOrgId, setViewingClientProfileOrgId] = useState<string | null>(null);
+  const [viewingClientProfileOrgName, setViewingClientProfileOrgName] = useState<string | null>(null);
   const [requests, setRequests] = useState(getOptionRequests());
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [chatInput, setChatInput] = useState('');
@@ -4654,6 +4657,13 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                         viewerRole="agency"
                         onBookingStatusUpdated={() => onBookingCardPress?.()}
                         containerStyle={{ marginTop: 0, flex: 1 }}
+                        onOrgPress={() => {
+                          const conv = b2bConversations.find((c) => c.id === activeConnectionChatId);
+                          const orgId = conv?.client_organization_id ?? null;
+                          if (!orgId) return;
+                          setViewingClientProfileOrgId(orgId);
+                          setViewingClientProfileOrgName(activeConnectionChatTitle);
+                        }}
                       />
                     ) : null}
                   </View>
@@ -4696,11 +4706,28 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                       onBookingCardPress={onBookingCardPress}
                       viewerRole="agency"
                       onBookingStatusUpdated={() => onBookingCardPress?.()}
+                      onOrgPress={() => {
+                        const conv = b2bConversations.find((c) => c.id === activeConnectionChatId);
+                        const orgId = conv?.client_organization_id ?? null;
+                        if (!orgId) return;
+                        setViewingClientProfileOrgId(orgId);
+                        setViewingClientProfileOrgName(activeConnectionChatTitle);
+                      }}
                     />
                   ) : null}
                 </>
               )}
             </>
+          )}
+          {viewingClientProfileOrgId && (
+            <OrgProfileModal
+              visible
+              onClose={() => setViewingClientProfileOrgId(null)}
+              orgType="client"
+              organizationId={viewingClientProfileOrgId}
+              agencyId={null}
+              orgName={viewingClientProfileOrgName}
+            />
           )}
         </View>
       ) : messagesSection === 'recruiting' ? (

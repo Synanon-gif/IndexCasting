@@ -99,6 +99,11 @@ export type OrgMessengerInlineProps = {
    * can refresh calendar / request lists.
    */
   onBookingStatusUpdated?: (bookingEventId: string, newStatus: BookingEventStatus) => void;
+  /**
+   * When provided, the headerTitle becomes a tappable link that opens the
+   * counterparty's organization profile (Phase 2B).
+   */
+  onOrgPress?: () => void;
 };
 
 function payloadType(m: MessageWithSender): MessagePayloadType {
@@ -132,6 +137,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   onPackagePress,
   viewerRole,
   onBookingStatusUpdated,
+  onOrgPress,
 }) => {
   const { height: windowHeight } = useWindowDimensions();
   const messagesScrollMaxHeight = getMessagesScrollMaxHeight(windowHeight);
@@ -447,7 +453,13 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
 
   return (
     <View style={[styles.chatPanel, containerStyle]}>
-      <Text style={styles.chatPanelTitle}>{headerTitle}</Text>
+      {onOrgPress ? (
+        <TouchableOpacity onPress={onOrgPress} style={styles.chatPanelTitleBtn}>
+          <Text style={[styles.chatPanelTitle, styles.chatPanelTitleClickable]}>{headerTitle}</Text>
+        </TouchableOpacity>
+      ) : (
+        <Text style={styles.chatPanelTitle}>{headerTitle}</Text>
+      )}
       {threadContextLabel ? (
         <Text style={styles.threadContextSubheader}>{threadContextLabel}</Text>
       ) : null}
@@ -887,11 +899,17 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     backgroundColor: colors.surface,
   },
+  chatPanelTitleBtn: {
+    alignSelf: 'flex-start',
+  },
   chatPanelTitle: {
     ...typography.label,
     color: colors.textPrimary,
     fontFamily: 'serif',
     marginBottom: spacing.xs,
+  },
+  chatPanelTitleClickable: {
+    textDecorationLine: 'underline',
   },
   threadContextSubheader: {
     fontSize: 11,

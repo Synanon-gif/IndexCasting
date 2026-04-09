@@ -115,7 +115,9 @@ import {
   updateOrganizationName,
   getOrganizationById,
   dissolveOrganization,
+  getAgencyIdForOrganization,
 } from '../services/organizationsInvitationsSupabase';
+import { OrgProfileModal } from '../components/OrgProfileModal';
 import {
   getClientAssignmentMapForAgency,
   upsertClientAssignmentFlag,
@@ -3774,6 +3776,11 @@ const ClientB2BChatsPanel: React.FC<{
   const [selectedId, setSelectedId] = useState<string | null>(null);
   /** Until `rows` + `titles` include a freshly started chat, keep the agency name from Start chat. */
   const [optimisticThreadTitle, setOptimisticThreadTitle] = useState<string | null>(null);
+  const [viewingAgencyProfileState, setViewingAgencyProfileState] = useState<{
+    orgId: string;
+    agencyId: string | null;
+    orgName: string;
+  } | null>(null);
 
   const reload = useCallback(() => {
     if (!clientOrgId) return;
@@ -3881,6 +3888,8 @@ const ClientB2BChatsPanel: React.FC<{
       <Text style={styles.metaText}>{uiCopy.messages.searchNoResults}</Text>
     ) : null;
 
+  const targetAgencyOrgId = selectedRow?.agency_organization_id ?? null;
+
   const messengerEl = activeConversationId ? (
     <OrgMessengerInline
       conversationId={activeConversationId}
@@ -3891,6 +3900,16 @@ const ClientB2BChatsPanel: React.FC<{
       onBookingCardPress={onBookingCardPress}
       onPackagePress={onPackagePress}
       onOpenRelatedRequest={onOpenRelatedRequest}
+      onOrgPress={targetAgencyOrgId ? () => {
+        void (async () => {
+          const agencyId = await getAgencyIdForOrganization(targetAgencyOrgId);
+          setViewingAgencyProfileState({
+            orgId: targetAgencyOrgId,
+            agencyId,
+            orgName: messengerTitle,
+          });
+        })();
+      } : undefined}
     />
   ) : null;
 
@@ -3906,6 +3925,16 @@ const ClientB2BChatsPanel: React.FC<{
           {threadListEl}
           {messengerEl}
         </>
+      )}
+      {viewingAgencyProfileState && (
+        <OrgProfileModal
+          visible
+          onClose={() => setViewingAgencyProfileState(null)}
+          orgType="agency"
+          organizationId={viewingAgencyProfileState.orgId}
+          agencyId={viewingAgencyProfileState.agencyId}
+          orgName={viewingAgencyProfileState.orgName}
+        />
       )}
     </View>
   );
