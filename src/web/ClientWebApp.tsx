@@ -128,10 +128,9 @@ import {
   removeModelFromProject,
   createProject as createProjectOnSupabase,
   deleteProject as deleteProjectOnSupabase,
-  getProjectsForOrg,
+  fetchHydratedClientProjectsForOrg,
   getProjectModels,
   addModelToProject as addModelToProjectOnSupabase,
-  type SupabaseProject,
 } from '../services/projectsSupabase';
 import { supabase } from '../../lib/supabase';
 import {
@@ -251,6 +250,8 @@ type Project = {
   id: string;
   name: string;
   models: ModelSummary[];
+  /** `client_projects.owner_id` — RLS allows DELETE only when this equals auth uid. */
+  ownerId?: string;
 };
 
 type MediaslideModel = {
@@ -307,6 +308,7 @@ function persistedProjectsToProjects(list: PersistedClientProject[]): Project[] 
   return list.map((p) => ({
     id: p.id,
     name: p.name,
+    ownerId: undefined,
     models: p.models.map((m) => ({
       ...m,
       chest: 0,
@@ -460,6 +462,10 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   const agencyOrgId =
     auth?.profile?.org_type === 'agency' ? (auth.profile.organization_id ?? null) : null;
 
+  const realClientId =
+    auth?.profile?.role === 'client' && auth.profile.id ? auth.profile.id : null;
+  const isRealClient = !!realClientId;
+
   /**
    * Model IDs already shown in the current discovery session.
    * Persisted to localStorage so sessions survive page refreshes.
@@ -562,45 +568,29 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     );
   }, [filters.nearby, geoConsentGiven, userLat, userLng]);
 
-  // Sync projects FROM Supabase when the client org is resolved.
-  // Supabase is the source of truth; localStorage is only a fallback for guests.
+  // Sync projects FROM Supabase when the client org is resolved (authenticated clients only).
+  // DB (`client_projects` + `client_project_models`) is source of truth; localStorage is fallback until org id exists (e.g. guests).
   useEffect(() => {
-    if (!clientOrgId) return;
+    if (!clientOrgId || !realClientId) return;
     void (async () => {
       try {
-        const remote = await getProjectsForOrg(clientOrgId);
-        if (remote.length > 0) {
-          // Merge: keep model lists from localStorage (not stored in Supabase here),
-          // but use Supabase UUIDs as the canonical IDs.
-          const local = loadClientProjects();
-          const merged = remote.map((rp: SupabaseProject) => {
-            const match = local.find((lp) => lp.id === rp.id || lp.name === rp.name);
-            return {
-              id: rp.id,
-              name: rp.name,
-              models: match
-                ? match.models.map((m) => ({
-                    ...m,
-                    chest: 0,
-                    legsInseam: 0,
-                    countryCode: undefined,
-                    hasRealLocation: undefined,
-                    agencyId: undefined,
-                    agencyName: undefined,
-                    isSportsWinter: undefined,
-                    isSportsSummer: undefined,
-                    sex: undefined,
-                  }))
-                : [],
-            };
-          });
-          setProjects(merged as Project[]);
-        }
+        const hydrated = await fetchHydratedClientProjectsForOrg(clientOrgId);
+        const merged: Project[] = hydrated.map((h) => ({
+          id: h.id,
+          name: h.name,
+          ownerId: h.owner_id,
+          models: h.models as ModelSummary[],
+        }));
+        setProjects(merged);
+        setActiveProjectId((prev) => {
+          if (!prev) return null;
+          return merged.some((p) => p.id === prev) ? prev : null;
+        });
       } catch (e) {
         console.error('ClientWebApp: failed to sync projects from Supabase', e);
       }
     })();
-  }, [clientOrgId]);
+  }, [clientOrgId, realClientId]);
 
   // Persist client projects and selection to localStorage (survives refresh / offline)
   useEffect(() => {
@@ -643,10 +633,6 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     filters.waistMin, filters.waistMax, filters.chestMin, filters.chestMax,
     filters.legsInseamMin, filters.legsInseamMax,
   ]);
-
-  const realClientId =
-    auth?.profile?.role === 'client' && auth.profile.id ? auth.profile.id : null;
-  const isRealClient = !!realClientId;
 
   // Resolve the client organisation for this user (owner or employee).
   // profile.organization_id is loaded by AuthContext via get_my_org_context() —
@@ -1161,19 +1147,45 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     }
   }, [filteredModels.length, currentIndex]);
 
+  const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearFeedbackLater = () => {
+    if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
+    feedbackTimerRef.current = setTimeout(() => setFeedback(null), 2400);
+  };
+
   const createProjectInternal = async (name: string): Promise<Project | null> => {
     const trimmed = name.trim();
     if (!trimmed) return null;
-    // Persist to Supabase to get a real UUID; fall back to timestamp ID for guests.
-    let id: string = String(Date.now());
     if (realClientId) {
+      if (!clientOrgId) {
+        setFeedback('Organization not ready. Please wait a moment and try again.');
+        clearFeedbackLater();
+        return null;
+      }
       try {
-        const remote = await createProjectOnSupabase(realClientId, trimmed, clientOrgId ?? undefined);
-        if (remote?.id) id = remote.id;
+        const remote = await createProjectOnSupabase(realClientId, trimmed, clientOrgId);
+        if (!remote?.id) {
+          setFeedback('Could not create project. Please try again.');
+          clearFeedbackLater();
+          return null;
+        }
+        const project: Project = {
+          id: remote.id,
+          name: trimmed,
+          models: [],
+          ownerId: remote.owner_id,
+        };
+        setProjects((prev) => [...prev, project]);
+        setActiveProjectId(project.id);
+        return project;
       } catch (e) {
-        console.error('createProjectInternal: Supabase createProject failed, using local ID', e);
+        console.error('createProjectInternal: Supabase createProject failed', e);
+        setFeedback('Could not create project. Please try again.');
+        clearFeedbackLater();
+        return null;
       }
     }
+    const id = String(Date.now());
     const project: Project = { id, name: trimmed, models: [] };
     setProjects((prev) => [...prev, project]);
     setActiveProjectId(project.id);
@@ -1217,6 +1229,11 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   const handleDeleteProject = (projectId: string) => {
     const project = projects.find((p) => p.id === projectId);
     if (!project) return;
+    if (realClientId && project.ownerId != null && project.ownerId !== realClientId) {
+      setFeedback('Only the teammate who created this project can delete it.');
+      clearFeedbackLater();
+      return;
+    }
     const confirmed = typeof window !== 'undefined'
       ? window.confirm(uiCopy.projects.deleteConfirm)
       : true;
@@ -1446,15 +1463,6 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     addModelToProject(created.id, pendingModel);
     setProjectPickerOpen(false);
     setPendingModel(null);
-  };
-
-  // Single-timer ref: cancels any previous clearFeedbackLater timer before starting a new one.
-  // Without this, concurrent actions (each starting their own setTimeout) race and can clear
-  // a newer feedback message early, or leave a stale message visible too long.
-  const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const clearFeedbackLater = () => {
-    if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
-    feedbackTimerRef.current = setTimeout(() => setFeedback(null), 2400);
   };
 
   const isNavigatingRef = useRef(false);
@@ -1919,6 +1927,8 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             setNewProjectName={setNewProjectName}
             onCreateProject={createProject}
             onDeleteProject={handleDeleteProject}
+            canDeleteProject={(p) =>
+              !realClientId || p.ownerId == null || p.ownerId === realClientId}
             onOpenDetails={openDetails}
             onOpenProject={openProjectDiscovery}
             onOpenOverview={openProjectOverview}
@@ -3322,6 +3332,7 @@ type ProjectsProps = {
   setNewProjectName: (v: string) => void;
   onCreateProject: () => void;
   onDeleteProject: (id: string) => void;
+  canDeleteProject: (p: Project) => boolean;
   onOpenDetails: (id: string) => void;
   onOpenProject: (id: string) => void;
   onOpenOverview: (id: string) => void;
@@ -3337,6 +3348,7 @@ const ProjectsView: React.FC<ProjectsProps> = ({
   setNewProjectName,
   onCreateProject,
   onDeleteProject,
+  canDeleteProject,
   onOpenProject,
   onOpenOverview,
   onShareFolder,
@@ -3404,11 +3416,13 @@ const ProjectsView: React.FC<ProjectsProps> = ({
                   <Text style={styles.shareFolderLabel}>Share folder</Text>
                 </TouchableOpacity>
               )}
-              <TouchableOpacity
-                onPress={(e) => { e.stopPropagation(); onDeleteProject(p.id); }}
-              >
-                <Text style={styles.deleteProjectLabel}>Delete</Text>
-              </TouchableOpacity>
+              {canDeleteProject(p) ? (
+                <TouchableOpacity
+                  onPress={(e) => { e.stopPropagation(); onDeleteProject(p.id); }}
+                >
+                  <Text style={styles.deleteProjectLabel}>Delete</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
 
             {getOptionRequestsByProjectId(p.id).length > 0 && (
@@ -3458,11 +3472,6 @@ const ProjectOverviewView: React.FC<ProjectOverviewProps> = ({
 
   const handleDelete = async (modelId: string) => {
     if (!project) return;
-    const confirmed =
-      typeof window !== 'undefined'
-        ? window.confirm(uiCopy.projects.deleteFromProjectConfirm)
-        : true;
-    if (!confirmed) return;
     setBusyIds((prev) => new Set(prev).add(modelId));
     setErrorId(null);
     try {

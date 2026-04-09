@@ -265,6 +265,14 @@ if (error) return { ok: false, reason: error.message }; // 23505 = eigentlicher 
 **Gilt für:** `confirmImageRights`, und alle zukünftigen `confirmX()` Funktionen die
 vor Upload-Aktionen stehen. Konsistent implementiert in `gdprComplianceSupabase.ts` (20260406).
 
+## CLIENT B2B PROJECTS (org-weit, DB truth — ClientWebApp)
+
+- **Source of truth (authenticated client mit `organization_id`):** Projektliste und Zugehörigkeit der Models kommen aus **`client_projects`** + **`client_project_models`**, geladen z. B. via `fetchHydratedClientProjectsForOrg` / Hydration mit `getModelByIdForClientFromSupabase`. **localStorage** ist nur Mirror/Offline-Fallback bis die Org aufgelöst ist — **nicht** die alleinige Wahrheit für „welche Models hängen an welchem Projekt“ nach Login/Reload.
+- **Leere Org-Projektliste:** Wenn die DB für die Org **0** Projekte liefert, muss der UI-State **keine** verwaisten localStorage-Projekte mehr zeigen (`setProjects([])` + ggf. `activeProjectId` bereinigen).
+- **Kein Merge per Projektname:** Projekt-Modelle dürfen nicht per `name`-Match aus localStorage „angeklebt“ werden — ID-basiert + DB.
+- **Projekt löschen (RLS):** DELETE auf `client_projects` nur wenn **`owner_id = auth.uid()`** (Ersteller des Projekt-Rows). UI: Delete nur anbieten wenn `project.ownerId === profile.id` (oder Gast-Pfad ohne DB-Projekte).
+- **Projekt anlegen (authenticated):** Ohne erfolgreiche Supabase-`createProject`-Antwort (UUID) **kein** Ghost-Projekt mit numerischer ID — sonst schlägt `add_model_to_project` fehl.
+
 ## PACKAGE/PROJECT MODE ISOLATION (KRITISCH — ClientWebApp.tsx)
 
 - `filteredModels` MUSS `baseModels` zurückgeben wenn `isPackageMode || isSharedMode` — **keine** Discovery-Filter anwenden

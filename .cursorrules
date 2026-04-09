@@ -632,3 +632,10 @@ Bei Änderungen an **Discovery**, **Invite-/Claim-Flows**, **Storage/Fotos**, **
   - Location values (`city`, `country_code`, `model_locations` agency row) survive reload.
   - Invite state (`pending_link`, claim token) remains visible in roster UI.
 - If any of these fail on reload → treat as **persistence incident**, not cosmetic UI bug.
+
+### 27.14 Client B2B Projects — DB truth (2026-04-09 hardening)
+
+- For authenticated client org users, **project membership** is authoritative in **`client_projects` + `client_project_models`** (hydration via `fetchHydratedClientProjectsForOrg` / `getModelByIdForClientFromSupabase`), not localStorage alone after org sync.
+- **Empty remote project list** must clear stale UI projects; **no** name-based merge from localStorage onto server project rows.
+- **Delete project** in UI must match RLS: only the **`client_projects.owner_id`** user (mirror as `project.ownerId` in state).
+- **Create project** for real clients: no numeric ghost ID if Supabase insert fails — user-facing error only.

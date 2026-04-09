@@ -1,0 +1,16 @@
+{
+  "title": "Client Organization Project Flow — Audit & Härtung",
+  "completed": [
+    "fetchHydratedClientProjectsForOrg + clientProjectHydration mapper",
+    "ClientWebApp sync: DB truth, empty list clears state, activeProjectId cleanup",
+    "createProjectInternal: no ghost project for authenticated client on failure",
+    "Delete project UI aligned with client_projects.owner_id (RLS)",
+    "Remove single confirm (overview)",
+    "Unit tests mapSupabaseModelToClientProjectSummary",
+    "Rules: system-invariants CLIENT B2B PROJECTS, auto-review bullets, .cursorrules 27.14",
+    "Deliverables: REPORT, DIFF_SUMMARY, VERIFY, PLAN.json"
+  ],
+  "skipped": [],
+  "migration_required": false,
+  "quality_gates": ["npm run typecheck", "npm run lint", "npm test -- --passWithNoTests --ci"]
+}
