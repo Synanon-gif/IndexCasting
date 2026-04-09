@@ -24,6 +24,7 @@ import { isClient } from '../types/roles';
 import { uiCopy } from '../constants/uiCopy';
 import { addOptionRequest } from '../store/optionRequests';
 import { normalizeDocumentspicturesModelImageRef } from '../utils/normalizeModelPortfolioUrl';
+import { canonicalDisplayCityForModel } from '../utils/canonicalModelCity';
 
 const SWIPE_PAGE_SIZE = 25;
 
@@ -42,7 +43,7 @@ function mapDiscoveryModel(m: DiscoveryModel): ClientModel {
     chest: m.chest ?? m.bust ?? 0,
     waist: m.waist ?? 0,
     hips: m.hips ?? 0,
-    city: m.effective_city ?? m.city ?? '',
+    city: canonicalDisplayCityForModel({ effective_city: m.effective_city, city: m.city }),
     hairColor: m.hair_color ?? '',
     gallery: (m.portfolio_images ?? []).map((u) =>
       normalizeDocumentspicturesModelImageRef(u, m.id),
@@ -155,7 +156,7 @@ export const CustomerSwipeScreen: React.FC = () => {
         const mapped = page.map((m) => ({
           id: m.id, name: m.name, height: m.height,
           chest: m.chest ?? m.bust ?? 0, waist: m.waist ?? 0, hips: m.hips ?? 0,
-          city: m.effective_city ?? m.city ?? '', hairColor: m.hair_color ?? '',
+          city: canonicalDisplayCityForModel({ effective_city: m.effective_city, city: m.city }), hairColor: m.hair_color ?? '',
           gallery: m.portfolio_images ?? [],
         }));
         setModels((prev) => [...prev, ...mapped]);
@@ -195,7 +196,7 @@ export const CustomerSwipeScreen: React.FC = () => {
           const mapped = page.map((m) => ({
             id: m.id, name: m.name, height: m.height,
             chest: m.chest ?? m.bust ?? 0, waist: m.waist ?? 0, hips: m.hips ?? 0,
-            city: m.effective_city ?? m.city ?? '', hairColor: m.hair_color ?? '',
+            city: canonicalDisplayCityForModel({ effective_city: m.effective_city, city: m.city }), hairColor: m.hair_color ?? '',
             gallery: m.portfolio_images ?? [],
           }));
           setModels(mapped);

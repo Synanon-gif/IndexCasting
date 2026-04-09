@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { canonicalDisplayCityForModel } from '../utils/canonicalModelCity';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, FlatList, Image,
   ActivityIndicator, TextInput, Platform, Modal, type ViewStyle, type ListRenderItemInfo,
@@ -613,6 +614,7 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
           const allImages = getGalleryImages(m);
           const imageCount = allImages.length;
           const coverImage = getCoverImage(m);
+          const displayCity = canonicalDisplayCityForModel(m);
           return (
             <View style={styles.modelCard}>
               <TouchableOpacity
@@ -651,7 +653,7 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
                   {m.sex ? `${m.sex === 'female' ? 'Female' : 'Male'}` : ''}
                   {m.hair_color ? `${m.sex ? ' · ' : ''}${m.hair_color}` : ''}
                   {m.eye_color ? ` · ${m.eye_color}` : ''}
-                  {(m.effective_city ?? m.city) ? ` · ${m.effective_city ?? m.city}` : ''}
+                  {displayCity ? ` · ${displayCity}` : ''}
                 </Text>
               </View>
             </View>

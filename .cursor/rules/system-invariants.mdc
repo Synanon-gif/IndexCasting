@@ -273,6 +273,12 @@ vor Upload-Aktionen stehen. Konsistent implementiert in `gdprComplianceSupabase.
 - **Projekt löschen (RLS):** DELETE auf `client_projects` nur wenn **`owner_id = auth.uid()`** (Ersteller des Projekt-Rows). UI: Delete nur anbieten wenn `project.ownerId === profile.id` (oder Gast-Pfad ohne DB-Projekte).
 - **Projekt anlegen (authenticated):** Ohne erfolgreiche Supabase-`createProject`-Antwort (UUID) **kein** Ghost-Projekt mit numerischer ID — sonst schlägt `add_model_to_project` fehl.
 
+### CLIENT PROJECT ORG CONTEXT (B2B)
+
+- **RPC-Aufrufe:** Alles, was `client_projects` oder `client_project_models` liest/schreibt oder daran gebunden ist, soll — **wenn die Signatur es erlaubt** — mit **explizitem `organization_id`** aufgerufen werden (Frontend: z. B. `profile.organization_id` / aktives Team; RPC: z. B. `p_organization_id`).
+- **Implizite Org-Auflösung** (z. B. `LIMIT 1` auf Membership nur im RPC) ist nur als **Fallback** erlaubt, wenn der Caller keinen Org-Kontext liefern kann — **nicht** als bevorzugter Standardpfad.
+- **Ziel:** **deterministische Org-Zuordnung** bei Multi-Org-Usern; kein stiller Wechsel der „aktiven“ Org durch implizite Auswahl.
+
 ## PACKAGE/PROJECT MODE ISOLATION (KRITISCH — ClientWebApp.tsx)
 
 - `filteredModels` MUSS `baseModels` zurückgeben wenn `isPackageMode || isSharedMode` — **keine** Discovery-Filter anwenden
@@ -598,7 +604,7 @@ ON CONFLICT (model_id, source) DO UPDATE SET city = EXCLUDED.city, ...;
 - **Agency roster bulk selection:** nur **Territories of representation** (`bulkAddTerritoriesForModels` / territory modal) — **kein** Bulk-Current-Location. Current location und agency-`model_locations`-Zeile nur über **Einzel-Model-Save** im gleichen Screen (nicht über Mehrfachauswahl).
 - Geocoding schlägt fehl → Alert("City not found") + `return` — kein Write, kein null-Update
 - `getModelLocation(modelId)` gibt höchste Priorität zurück; `getAllModelLocations(modelId)` gibt alle Zeilen
-- **Display-City-Priorität — kanonische Produktwahrheit (20260409):** `effective_city` ist die systemweite kanonische Stadt für alle user-facing Surfaces. Definition: `COALESCE(model_locations.city [höchste Priorität: live>current>agency], models.city)`. Alle Discovery-RPCs (`get_discovery_models`, `get_models_by_location`, `get_guest_link_models`) liefern `effective_city` als eigenes Feld. Frontend-Mapper MÜSSEN `m.effective_city ?? m.city ?? ''` verwenden. In direkten `models`-Selects (ohne RPC, z. B. Agency-Roster) und in `filterModels` bleibt `loc?.city || m.city` korrekt. `models.city` allein ist nur akzeptabel, wenn weder `effective_city` noch `loc` verfügbar ist (pure Legacy-Pfade).
+- **Display-City-Priorität — CANONICAL CITY DISPLAY (Location Truth Unification):** Für **user-facing** Oberflächen (Client Discover, Projects, Packages, Guest Views, Swipe Screens) ist die Stadtanzeige kanonisch: **`effective_city` = `COALESCE(model_locations.city` [Priorität live > current > agency], `models.city`)**. Discovery-RPCs (`get_discovery_models`, `get_models_by_location`, `get_guest_link_models`) und Near-Me (`get_models_near_location` via aufgelöstem Standort) liefern bzw. implizieren dieses Bild; Frontend-Mapper MÜSSEN **`m.effective_city ?? m.city ?? ''`** (RPC) **oder** **`loc?.city || m.city`** (direkte `model_locations`-Zeile) **oder** **`canonicalDisplayCityForModel()`** aus `src/utils/canonicalModelCity.ts` nutzen. **`models.city` allein** für Anzeige/Filter **nicht**, wenn `effective_city` oder `model_locations`/RPC-Äquivalent verfügbar sind. **Ausnahmen:** Agency-Roster; GDPR/Export/Admin-Rohdaten; Legacy/Mock/Debug (bewusst dokumentiert). **STOP:** neuer Code rendert `models.city` direkt trotz verfügbarer Kanonisierung → Fix auf kanonische Wahrheit.
 
 ### NIEMALS
 

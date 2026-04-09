@@ -28,6 +28,7 @@ import { UI_DOUBLE_SUBMIT_DEBOUNCE_MS } from '../../lib/validation';
 import { showAppAlert } from '../utils/crossPlatformAlert';
 import { uiCopy } from '../constants/uiCopy';
 import { normalizeDocumentspicturesModelImageRef } from '../utils/normalizeModelPortfolioUrl';
+import { canonicalDisplayCityForModel } from '../utils/canonicalModelCity';
 import { useAuth } from '../context/AuthContext';
 import { getModelsForClient, getModelData } from '../services/apiService';
 import {
@@ -222,7 +223,10 @@ type TopTab = 'dashboard' | 'discover' | 'projects' | 'agencies' | 'messages' | 
 type ModelSummary = {
   id: string;
   name: string;
+  /** models.city fallback; prefer summaryDisplayCity() for UI */
   city: string;
+  /** RPC / near-me resolved canonical city (model_locations priority) when known */
+  effective_city?: string | null;
   countryCode?: string | null;
   hasRealLocation?: boolean;
   hairColor: string;
@@ -239,6 +243,10 @@ type ModelSummary = {
   isSportsSummer?: boolean;
   sex?: 'male' | 'female' | null;
 };
+
+function summaryDisplayCity(m: ModelSummary): string {
+  return canonicalDisplayCityForModel({ effective_city: m.effective_city, city: m.city });
+}
 
 type ClientWebAppProps = {
   clientType: 'fashion' | 'commercial';
@@ -284,7 +292,8 @@ function mapDiscoveryModelToSummary(m: DiscoveryModel): ModelSummary {
   return {
     id: m.id,
     name: m.name,
-    city: m.effective_city ?? m.city ?? '',
+    effective_city: m.effective_city ?? null,
+    city: m.city ?? '',
     hairColor: m.hair_color ?? '',
     height: m.height,
     bust: m.bust ?? 0,
@@ -323,10 +332,13 @@ function projectsToPersisted(list: Project[]): PersistedClientProject[] {
     id: p.id,
     name: p.name,
     models: p.models.map(
-      ({ id, name, city, hairColor, height, bust, waist, hips, coverUrl }) => ({
+      ({ id, name, city, effective_city, hairColor, height, bust, waist, hips, coverUrl }) => ({
         id,
         name,
         city,
+        ...(effective_city != null && String(effective_city).trim() !== ''
+          ? { effective_city }
+          : {}),
         hairColor,
         height,
         bust,
@@ -852,7 +864,8 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       const mapped: ModelSummary[] = data.map((m: any) => ({
         id: m.id,
         name: m.name,
-        city: m.effective_city ?? m.city ?? '',
+        effective_city: m.effective_city ?? null,
+        city: m.city ?? '',
         hairColor: m.hairColor ?? m.hair_color ?? '',
         height: m.height,
         bust: m.bust ?? 0,
@@ -996,7 +1009,8 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         const mapped: ModelSummary[] = nearby.map((m) => ({
           id: m.id,
           name: m.name,
-          city: m.location_city ?? m.city ?? '',
+          effective_city: m.location_city ?? null,
+          city: m.city ?? '',
           hairColor: m.hair_color ?? '',
           height: m.height,
           bust: m.bust ?? 0,
@@ -1126,7 +1140,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       if (userCity) {
         // Geolocation permission denied but city resolved via Nominatim
         return baseModels.filter((m) =>
-          (m.city || '').toLowerCase().includes(userCity.toLowerCase()),
+          summaryDisplayCity(m).toLowerCase().includes(userCity.toLowerCase()),
         );
       }
     }
@@ -1564,7 +1578,8 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       const packageModels: ModelSummary[] = glModels.map((m) => ({
         id: m.id,
         name: m.name,
-        city: m.effective_city ?? m.city ?? '',
+        effective_city: m.effective_city ?? null,
+        city: m.city ?? '',
         hairColor: m.hair_color ?? '',
         height: m.height ?? 0,
         bust: m.bust ?? 0,
@@ -2761,7 +2776,7 @@ const DiscoverView: React.FC<DiscoverProps> = ({
                         Height {m.height} cm · Chest {m.chest || m.bust || '—'} cm · Waist {m.waist || '—'} cm · Hips {m.hips || '—'} cm
                         {m.legsInseam ? ` · Inseam ${m.legsInseam} cm` : ''}
                       </Text>
-                      <Text style={styles.coverLocationLabel}>{m.city || '—'}</Text>
+                      <Text style={styles.coverLocationLabel}>{summaryDisplayCity(m) || '—'}</Text>
                     </View>
                   </View>
                 </TouchableOpacity>
@@ -2864,7 +2879,7 @@ const DiscoverView: React.FC<DiscoverProps> = ({
                 </Text>
                 <Text style={styles.coverLocationLabel}>
                   {current.hasRealLocation
-                    ? `${current.city || '—'} · ${current.countryCode || '—'}`
+                    ? `${summaryDisplayCity(current) || '—'} · ${current.countryCode || '—'}`
                     : `Represented in ${current.countryCode || '—'}${
                         current.agencyName ? ` · ${current.agencyName}` : ''
                       }`}
@@ -3508,48 +3523,51 @@ const ProjectOverviewView: React.FC<ProjectOverviewProps> = ({
             <Text style={styles.emptyCopy}>{uiCopy.projects.emptyOverview}</Text>
           </View>
         )}
-        {project.models.map((m) => (
-          <View key={m.id} style={styles.overviewModelRow}>
-            <StorageImage
-              uri={m.coverUrl || undefined}
-              style={styles.overviewModelImage}
-              resizeMode="cover"
-              ttlSeconds={CLIENT_MODEL_IMAGE_TTL_SEC}
-              fallback={
-                <View style={[styles.overviewModelImage, { backgroundColor: colors.border }]} />
-              }
-            />
-            <View style={styles.overviewModelInfo}>
-              <Text style={styles.overviewModelName}>{m.name}</Text>
-              <Text style={styles.overviewModelMeta}>
-                {[
-                  m.height ? `${m.height} cm` : null,
-                  m.chest || m.bust ? `Chest ${m.chest || m.bust} cm` : null,
-                  m.waist ? `Waist ${m.waist} cm` : null,
-                  m.hips ? `Hips ${m.hips} cm` : null,
-                ]
-                  .filter(Boolean)
-                  .join(' · ')}
-              </Text>
-              {m.city ? <Text style={styles.overviewModelCity}>{m.city}</Text> : null}
-              {errorId === m.id && (
-                <Text style={styles.overviewModelError}>{uiCopy.projects.removeError}</Text>
-              )}
+        {project.models.map((m) => {
+          const lineCity = summaryDisplayCity(m);
+          return (
+            <View key={m.id} style={styles.overviewModelRow}>
+              <StorageImage
+                uri={m.coverUrl || undefined}
+                style={styles.overviewModelImage}
+                resizeMode="cover"
+                ttlSeconds={CLIENT_MODEL_IMAGE_TTL_SEC}
+                fallback={
+                  <View style={[styles.overviewModelImage, { backgroundColor: colors.border }]} />
+                }
+              />
+              <View style={styles.overviewModelInfo}>
+                <Text style={styles.overviewModelName}>{m.name}</Text>
+                <Text style={styles.overviewModelMeta}>
+                  {[
+                    m.height ? `${m.height} cm` : null,
+                    m.chest || m.bust ? `Chest ${m.chest || m.bust} cm` : null,
+                    m.waist ? `Waist ${m.waist} cm` : null,
+                    m.hips ? `Hips ${m.hips} cm` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </Text>
+                {lineCity ? <Text style={styles.overviewModelCity}>{lineCity}</Text> : null}
+                {errorId === m.id && (
+                  <Text style={styles.overviewModelError}>{uiCopy.projects.removeError}</Text>
+                )}
+              </View>
+              <TouchableOpacity
+                style={[
+                  styles.overviewDeleteBtn,
+                  busyIds.has(m.id) && styles.overviewDeleteBtnBusy,
+                ]}
+                onPress={() => handleDelete(m.id)}
+                disabled={busyIds.has(m.id)}
+              >
+                <Text style={styles.overviewDeleteBtnLabel}>
+                  {busyIds.has(m.id) ? uiCopy.common.loading : uiCopy.projects.deleteFromProject}
+                </Text>
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity
-              style={[
-                styles.overviewDeleteBtn,
-                busyIds.has(m.id) && styles.overviewDeleteBtnBusy,
-              ]}
-              onPress={() => handleDelete(m.id)}
-              disabled={busyIds.has(m.id)}
-            >
-              <Text style={styles.overviewDeleteBtnLabel}>
-                {busyIds.has(m.id) ? uiCopy.common.loading : uiCopy.projects.deleteFromProject}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        ))}
+          );
+        })}
       </ScrollView>
     </View>
   );

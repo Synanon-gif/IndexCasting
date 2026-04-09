@@ -115,6 +115,8 @@ export type PersistedClientProject = {
     id: string;
     name: string;
     city: string;
+    /** Optional; when set, display prefers this over `city` (model_locations priority) */
+    effective_city?: string | null;
     hairColor: string;
     height: number;
     bust: number;

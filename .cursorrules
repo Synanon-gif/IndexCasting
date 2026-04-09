@@ -575,7 +575,12 @@ Ergänzt und schärft die obigen Regeln **ohne** sie zu ersetzen. Bei Widerspruc
 
 - **Territory** (Länder-/Repräsentationsgebiet): autoritativ **`model_agency_territories`** — nicht mit Stadt/GPS verwechseln.
 - **Physische Lage / Near Me:** **`model_locations`** mit unveränderlicher **Source-Priorität** `live` → `current` → `agency` (siehe §4b Location guardrail + `system-invariants.mdc` LOCATION SOURCE SYSTEM).
-- **Stadt (Display/Filter) — kanonische Produktwahrheit (20260409):** Alle user-facing City-Anzeigen und City-Filter MÜSSEN `effective_city` nutzen: `COALESCE(model_locations.city [höchste Priorität], models.city)`. Discovery-RPCs (`get_discovery_models`, `get_models_by_location`, `get_guest_link_models`) liefern `effective_city` als eigenes Feld. Frontend-Mapper: **`m.effective_city ?? m.city ?? ''`**. `models.city` ist Legacy-Fallback und darf nicht als primäre Produktwahrheit verwendet werden, wenn `effective_city` verfügbar ist.
+- **CANONICAL CITY DISPLAY (Location Truth Unification):** Für alle **user-facing** Oberflächen (**Client Discover, Projects, Packages, Guest Views, Swipe Screens**) ist die Stadtanzeige kanonisch: **`effective_city` = `COALESCE(model_locations.city` [Priorität: live > current > agency], `models.city`)** (in SQL/RPC bereits gebündelt als Feld `effective_city` wo dokumentiert).
+  - **Frontend-Mapping MUSS** verwenden: **`m.effective_city ?? m.city ?? ''`** bei RPC-basierten Flows; **oder** **`loc?.city || m.city`** bei direkter `model_locations`-Nutzung; **oder** die zentrale Hilfe **`canonicalDisplayCityForModel()`** in `src/utils/canonicalModelCity.ts` (Reihenfolge: `effective_city` → `location_city` z. B. Near-Me-Join → `city`).
+  - **`models.city` allein darf NICHT** für Anzeige/Filter genutzt werden, wenn **`effective_city`** oder **`model_locations`** (bzw. RPC-Äquivalent) verfügbar sind.
+  - **Erlaubte Ausnahmen (explizit):** Agency-interne Views (z. B. Roster); GDPR-/Export-/Admin-Rohdaten; Legacy-/Mock-/Debug-Daten — dort `models.city` ohne Kanonisierung nur mit klarer Absicht.
+  - **Ziel:** keine Divergenz zwischen Discover, Near Me, Projects und Packages; **`model_locations`** bleibt die produktive Wahrheit für Lage/Stadt (über RPC-Felder abgebildet).
+  - **STOP:** Neuer Code rendert **`models.city` direkt**, obwohl **`effective_city`** oder **`model_locations`** verfügbar wären → **sofort auf kanonische Location-Wahrheit umbauen** (Mapper + Anzeige).
 - **Diese Ebenen nicht mischen** (z. B. Territory-Logik nicht für „Stadtfilter“ oder Near-Me-Koordinaten substituieren).
 
 ### 27.5 Invite / Claim — Finalisierung (session + Token, UI-unabhängig)
@@ -639,3 +644,9 @@ Bei Änderungen an **Discovery**, **Invite-/Claim-Flows**, **Storage/Fotos**, **
 - **Empty remote project list** must clear stale UI projects; **no** name-based merge from localStorage onto server project rows.
 - **Delete project** in UI must match RLS: only the **`client_projects.owner_id`** user (mirror as `project.ownerId` in state).
 - **Create project** for real clients: no numeric ghost ID if Supabase insert fails — user-facing error only.
+
+#### Client project org context (B2B)
+
+- **RPC calls:** Any RPC or service path that touches **`client_projects`** or **`client_project_models`** SHOULD pass an **explicit `organization_id`** when the API supports it (e.g. `p_organization_id` / `clientOrgId` from `profile.organization_id` or the active team).
+- **Implicit org resolution** inside the RPC (e.g. `LIMIT 1` on membership) is allowed only as a **fallback** when the caller truly cannot supply org context — not as the preferred default.
+- **Goal:** **deterministic org binding** for users who belong to multiple organizations.
