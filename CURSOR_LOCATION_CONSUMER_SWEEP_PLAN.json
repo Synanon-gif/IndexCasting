@@ -1,0 +1,24 @@
+{
+  "name": "Location Consumer Sweep",
+  "status": "complete",
+  "summary": "Audit all city/location consumers; fix apiService hybrid mapping and client project hydration via batched model_locations; document export/admin/legacy paths.",
+  "fixes": [
+    "apiService.js — effective_city ?? city for getModelsForClient",
+    "fetchEffectiveDisplayCitiesForModels + mergeEffectiveDisplayCitiesFromRows in modelLocationsSupabase",
+    "fetchHydratedClientProjectsForOrg uses batch cities + mapSupabaseModelToClientProjectSummary opts"
+  ],
+  "document_only": [
+    "GDPR/raw export",
+    "Agency roster models.city",
+    "localApi legacy",
+    "mockData"
+  ],
+  "rules_touched": [".cursor/rules/auto-review.mdc"],
+  "migrations": [],
+  "edge_deploy": false,
+  "quality_gates": {
+    "typecheck": "pass",
+    "lint": "0 errors",
+    "test": "901 passed, 81 suites"
+  }
+}

@@ -1,4 +1,10 @@
 import { supabase } from '../../lib/supabase';
+import { fetchEffectiveDisplayCitiesForModels } from './modelLocationsSupabase';
+import { getModelByIdForClientFromSupabase } from './modelsSupabase';
+import {
+  mapSupabaseModelToClientProjectSummary,
+  type ClientProjectModelSummary,
+} from '../utils/clientProjectHydration';
 
 /**
  * Kunden-Projekte und zugeordnete Models – in Supabase, pro Kunde (owner_id).
@@ -109,6 +115,51 @@ export async function getProjectModels(projectId: string): Promise<string[]> {
   if (error) { console.error('getProjectModels error:', error); return []; }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (data ?? []).map((d: any) => d.model_id);
+}
+
+export type HydratedClientProject = {
+  id: string;
+  name: string;
+  owner_id: string;
+  models: ClientProjectModelSummary[];
+};
+
+/**
+ * Org-scoped project list with models loaded from `client_project_models` + client-safe model rows.
+ * Source of truth for authenticated client web after sync (not localStorage).
+ */
+export async function fetchHydratedClientProjectsForOrg(
+  organizationId: string,
+): Promise<HydratedClientProject[]> {
+  if (!organizationId?.trim()) return [];
+  try {
+    const remote = await getProjectsForOrg(organizationId);
+    const projectModelIds = await Promise.all(remote.map((rp) => getProjectModels(rp.id)));
+    const allIds = [...new Set(projectModelIds.flat())];
+    const cityByModel = await fetchEffectiveDisplayCitiesForModels(allIds);
+    return await Promise.all(
+      remote.map(async (rp, i) => {
+        const ids = projectModelIds[i];
+        const rows = await Promise.all(ids.map((id) => getModelByIdForClientFromSupabase(id)));
+        const models = rows
+          .filter((row): row is NonNullable<typeof row> => row != null)
+          .map((row) =>
+            mapSupabaseModelToClientProjectSummary(row, {
+              effectiveDisplayCity: cityByModel.get(row.id) ?? null,
+            }),
+          );
+        return {
+          id: rp.id,
+          name: rp.name,
+          owner_id: rp.owner_id,
+          models,
+        };
+      }),
+    );
+  } catch (e) {
+    console.error('fetchHydratedClientProjectsForOrg exception:', e);
+    return [];
+  }
 }
 
 /**

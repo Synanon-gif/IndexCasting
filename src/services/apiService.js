@@ -117,7 +117,7 @@ export async function getModelsForClient(
   return list.map((m) => ({
     id: m.id,
     name: m.name,
-    city: m.city,
+    city: m.effective_city ?? m.city ?? '',
     hasRealLocation: Boolean(m.has_real_location ?? m.country_code),
     countryCode: Boolean(m.has_real_location ?? m.country_code)
       ? (m.country_code ?? null)

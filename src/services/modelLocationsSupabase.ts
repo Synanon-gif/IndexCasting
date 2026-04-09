@@ -187,6 +187,65 @@ export async function getModelLocation(modelId: string): Promise<ModelLocation |
 }
 
 /**
+ * Picks the highest-priority non-empty city per model_id from raw rows
+ * (live > current > agency). Exported for unit tests.
+ */
+export function mergeEffectiveDisplayCitiesFromRows(
+  rows: ReadonlyArray<{ model_id: string; city: string | null; source: string }>,
+): Map<string, string> {
+  const best = new Map<string, { city: string; pri: number }>();
+  for (const row of rows) {
+    const c = row.city?.trim();
+    if (!c) continue;
+    const src: LocationSource =
+      row.source === 'live' || row.source === 'current' || row.source === 'agency'
+        ? row.source
+        : 'agency';
+    const pri = locationSourcePriority(src);
+    const cur = best.get(row.model_id);
+    if (!cur || pri > cur.pri) best.set(row.model_id, { city: c, pri });
+  }
+  const out = new Map<string, string>();
+  for (const [id, v] of best) out.set(id, v.city);
+  return out;
+}
+
+/** Max UUIDs per .in() chunk to stay within URL/query limits. */
+const EFFECTIVE_CITY_BATCH = 100;
+
+/**
+ * Batch-resolves display city for many models in few round-trips (RLS applies).
+ * Same priority as discovery RPCs (live > current > agency).
+ */
+export async function fetchEffectiveDisplayCitiesForModels(
+  modelIds: string[],
+): Promise<Map<string, string>> {
+  const unique = [...new Set(modelIds.filter((id) => id?.trim()))];
+  if (unique.length === 0) return new Map();
+  try {
+    const allRows: Array<{ model_id: string; city: string | null; source: string }> = [];
+    for (let i = 0; i < unique.length; i += EFFECTIVE_CITY_BATCH) {
+      const chunk = unique.slice(i, i + EFFECTIVE_CITY_BATCH);
+      const { data, error } = await supabase
+        .from('model_locations')
+        .select('model_id, city, source')
+        .in('model_id', chunk);
+      if (error) {
+        console.error('fetchEffectiveDisplayCitiesForModels error:', error);
+        continue;
+      }
+      allRows.push(
+        ...((data ?? []) as Array<{ model_id: string; city: string | null; source: string }>),
+      );
+    }
+    return mergeEffectiveDisplayCitiesFromRows(allRows);
+  } catch (e) {
+    console.error('fetchEffectiveDisplayCitiesForModels exception:', e);
+    return new Map();
+  }
+}
+
+/**
  * Source-aware location deletion.
  * Uses the SECURITY DEFINER RPC to enforce authorization:
  *   - source='live'/'current' → only the model's own user can delete

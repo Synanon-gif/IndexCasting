@@ -34,7 +34,29 @@ import {
   getModelLocation,
   deleteModelLocation,
   getModelsNearLocation,
+  mergeEffectiveDisplayCitiesFromRows,
 } from '../modelLocationsSupabase';
+
+// ── mergeEffectiveDisplayCitiesFromRows ───────────────────────────────────────
+
+describe('mergeEffectiveDisplayCitiesFromRows', () => {
+  it('prefers live over current over agency for same model', () => {
+    const m = mergeEffectiveDisplayCitiesFromRows([
+      { model_id: 'a', city: 'AgencyTown', source: 'agency' },
+      { model_id: 'a', city: 'CurrentTown', source: 'current' },
+      { model_id: 'a', city: 'LiveTown', source: 'live' },
+    ]);
+    expect(m.get('a')).toBe('LiveTown');
+  });
+
+  it('skips empty cities and handles unknown source as agency priority', () => {
+    const m = mergeEffectiveDisplayCitiesFromRows([
+      { model_id: 'b', city: '   ', source: 'live' },
+      { model_id: 'b', city: 'Fallback', source: 'other' },
+    ]);
+    expect(m.get('b')).toBe('Fallback');
+  });
+});
 
 // ── roundCoord ────────────────────────────────────────────────────────────────
 
