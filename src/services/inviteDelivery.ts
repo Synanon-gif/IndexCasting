@@ -18,6 +18,20 @@ export function describeSendInviteFailure(payload: unknown, invokeError: unknown
       return 'Only agency team members can send model claim emails.';
     case 'owner_only':
       return 'Only the organization owner can send this invitation.';
+    case 'invitation_not_found':
+      return 'The invitation token could not be found.';
+    case 'invitation_not_pending':
+      return 'This invitation is no longer pending.';
+    case 'invitation_role_invalid':
+      return 'The invitation role is invalid.';
+    case 'invitation_email_mismatch':
+      return 'The invite email does not match the stored invitation.';
+    case 'invitation_role_mismatch':
+      return 'The invite role does not match the stored invitation.';
+    case 'invitation_org_mismatch':
+      return 'The selected organization does not match the stored invitation.';
+    case 'invitation_context_unavailable':
+      return 'Invitation context could not be verified right now.';
     case 'email_send_failed':
       return detail ? `Email provider error: ${detail.slice(0, 200)}` : 'Email provider rejected the message.';
     case 'email_send_exception':

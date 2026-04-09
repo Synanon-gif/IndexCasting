@@ -129,6 +129,19 @@ describe('finalizePendingInviteOrClaim', () => {
     expect(r.claim.attempted).toBe(false);
   });
 
+  it('keeps invite token for retryable invite errors (no silent token loss)', async () => {
+    readInviteToken.mockResolvedValue('inv_tok');
+    readModelClaimToken.mockResolvedValue('claim_tok');
+    acceptOrganizationInvitation.mockResolvedValue({ ok: false, error: 'temporary_network_error' });
+
+    const r = await finalizePendingInviteOrClaim({});
+
+    expect(r.invite.state).toBe('retryable');
+    expect(persistInviteToken).not.toHaveBeenCalledWith(null);
+    expect(claimModelByToken).not.toHaveBeenCalled();
+    expect(r.claim.attempted).toBe(false);
+  });
+
   it('runs claim when no invite token', async () => {
     readModelClaimToken.mockResolvedValue('claim_tok');
     claimModelByToken.mockResolvedValue({ ok: true, data: { modelId: 'm1', agencyId: 'a1' } });
@@ -145,6 +158,27 @@ describe('finalizePendingInviteOrClaim', () => {
       kind: 'claim',
       modelId: 'm1',
       agencyId: 'a1',
+    });
+  });
+
+  it('keeps claim token when claim is retryable after successful invite', async () => {
+    readInviteToken.mockResolvedValue('inv_tok');
+    readModelClaimToken.mockResolvedValue('claim_tok');
+    acceptOrganizationInvitation.mockResolvedValue({ ok: true, organization_id: 'org-1' });
+    claimModelByToken.mockResolvedValue({ ok: false, error: 'temporary_claim_failure' });
+    const onOk = jest.fn().mockResolvedValue(undefined);
+
+    const r = await finalizePendingInviteOrClaim({ onSuccessReloadProfile: onOk });
+
+    expect(r.invite.state).toBe('success');
+    expect(r.claim.state).toBe('retryable');
+    expect(persistInviteToken).toHaveBeenCalledWith(null);
+    expect(persistModelClaimToken).not.toHaveBeenCalledWith(null);
+    expect(onOk).toHaveBeenCalledTimes(1);
+    expect(emitInviteClaimSuccessMock).toHaveBeenCalledTimes(1);
+    expect(emitInviteClaimSuccessMock).toHaveBeenCalledWith({
+      kind: 'invite',
+      organizationId: 'org-1',
     });
   });
 

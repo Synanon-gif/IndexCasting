@@ -23,7 +23,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const RESEND_API_URL = 'https://api.resend.com/emails';
-const APP_BASE_URL   = 'https://index-casting.com';
+const DEFAULT_APP_BASE_URL = 'https://index-casting.com';
 const FROM_EMAIL     = 'Index Casting <noreply@index-casting.com>';
 
 interface SendInvitePayload {
@@ -33,7 +33,7 @@ interface SendInvitePayload {
   inviterName?: string;
   orgName?: string;
   modelName?: string;
-  /** Org invitation only: Booker (agency) vs Employee (client). Defaults to booker if omitted. */
+  /** Org invitation only: Booker (agency) vs Employee (client). */
   invite_role?: 'booker' | 'employee';
   /** Disambiguates multi-org users: must be one of the caller's organization_ids from get_my_org_context(). */
   organization_id?: string;
@@ -44,6 +44,32 @@ type OrgCtxRow = {
   org_member_role?: string;
   org_type?: string;
 };
+
+type InvitationRowForDispatch = {
+  organization_id: string;
+  email: string;
+  role: 'booker' | 'employee';
+};
+
+function normalizeEmail(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function resolveAppBaseUrl(): string {
+  const raw = Deno.env.get('APP_BASE_URL')?.trim();
+  if (!raw) return DEFAULT_APP_BASE_URL;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      console.warn('[send-invite] APP_BASE_URL has unsupported protocol, using default');
+      return DEFAULT_APP_BASE_URL;
+    }
+    return url.toString().replace(/\/+$/, '');
+  } catch {
+    console.warn('[send-invite] APP_BASE_URL is invalid, using default');
+    return DEFAULT_APP_BASE_URL;
+  }
+}
 
 // ─── HTML Email Templates ──────────────────────────────────────────────────
 
@@ -285,6 +311,66 @@ Deno.serve(async (req: Request): Promise<Response> => {
     });
   }
 
+  let invitationContext: InvitationRowForDispatch | null = null;
+  if (type === 'org_invitation') {
+    const { data: inviteRow, error: inviteErr } = await supabase
+      .from('invitations')
+      .select('organization_id, email, role, status, expires_at')
+      .eq('token', token)
+      .maybeSingle();
+
+    if (inviteErr) {
+      console.error('[send-invite] failed to load invitation context', inviteErr);
+      return new Response(JSON.stringify({ error: 'invitation_context_unavailable' }), {
+        status: 409,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (!inviteRow) {
+      return new Response(JSON.stringify({ error: 'invitation_not_found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if ((inviteRow as { status?: string }).status !== 'pending') {
+      return new Response(JSON.stringify({ error: 'invitation_not_pending' }), {
+        status: 409,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (!((inviteRow as { role?: string }).role === 'booker' || (inviteRow as { role?: string }).role === 'employee')) {
+      return new Response(JSON.stringify({ error: 'invitation_role_invalid' }), {
+        status: 409,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    invitationContext = {
+      organization_id: (inviteRow as { organization_id: string }).organization_id,
+      email: (inviteRow as { email: string }).email,
+      role: (inviteRow as { role: 'booker' | 'employee' }).role,
+    };
+
+    if (normalizeEmail(invitationContext.email) !== normalizeEmail(to)) {
+      return new Response(JSON.stringify({ error: 'invitation_email_mismatch' }), {
+        status: 409,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (bodyInviteRole && bodyInviteRole !== invitationContext.role) {
+      return new Response(JSON.stringify({ error: 'invitation_role_mismatch' }), {
+        status: 409,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (bodyOrgId && bodyOrgId !== invitationContext.organization_id) {
+      return new Response(JSON.stringify({ error: 'invitation_org_mismatch' }), {
+        status: 409,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+  }
+
   // ── Authorization: Role check (Regel 8/10 — Owner-Exklusivrecht) ───────────
   // org_invitation: only org Owners may invite new members (agency→booker,
   //   client→employee). Bookers/Employees must NOT be able to send invites.
@@ -303,7 +389,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const rows = orgCtxRows as OrgCtxRow[];
 
     let orgCtx: OrgCtxRow | undefined;
-    const rawOrgId = typeof bodyOrgId === 'string' ? bodyOrgId.trim() : '';
+    const rawOrgId = invitationContext?.organization_id
+      ?? (typeof bodyOrgId === 'string' ? bodyOrgId.trim() : '');
     const requestedOrg = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawOrgId)
       ? rawOrgId
       : undefined;
@@ -370,11 +457,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // ── Build Email ────────────────────────────────────────────────────────────
   let subject: string;
   let html: string;
+  const appBaseUrl = resolveAppBaseUrl();
 
   if (type === 'org_invitation') {
-    const inviteUrl = `${APP_BASE_URL}/?invite=${encodeURIComponent(token)}`;
-    const roleForEmail =
-      bodyInviteRole === 'employee' ? 'employee' : 'booker';
+    const inviteUrl = `${appBaseUrl}/?invite=${encodeURIComponent(token)}`;
+    const roleForEmail = invitationContext?.role ?? (bodyInviteRole === 'employee' ? 'employee' : 'booker');
     const result    = buildOrgInvitationEmail({
       to,
       orgName:     orgName    || 'your organization',
@@ -386,7 +473,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     html    = result.html;
   } else {
     // model_claim
-    const claimUrl = `${APP_BASE_URL}/?model_invite=${encodeURIComponent(token)}`;
+    const claimUrl = `${appBaseUrl}/?model_invite=${encodeURIComponent(token)}`;
     const result   = buildModelClaimEmail({
       to,
       agencyName: orgName   || 'Your agency',

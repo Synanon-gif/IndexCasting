@@ -20,6 +20,7 @@ Required behavior for every family:
 3. No silent failure states.
 4. Correct fixed role/account context in UI.
 5. Explicit user feedback for each branch.
+6. Never show a success state unless email dispatch returns explicit `ok===true`.
 
 ## Outcome Contract
 
@@ -55,10 +56,11 @@ When touching invite generation, dispatch, finalization, copy, or invite UI:
 1. Verify Booker + Employee + Model claim all still satisfy the canonical chain.
 2. Verify mail copy and UI copy stay aligned for each family.
 3. Verify mail-delivery failure still keeps a usable fallback link where safe.
-4. Verify persisted token survives signup, email confirmation, signin, reload/reopen.
-5. Verify invite-first finalization ordering remains stable when invite + claim coexist.
-6. Verify `already_*` and fatal states are explicit and not shown as generic unknown error.
-7. Verify legacy `agency_invitations` callers are reviewed and documented as legacy.
+4. Verify no invite path silently degrades into normal self-service framing.
+5. Verify persisted token survives signup, email confirmation, signin, reload/reopen.
+6. Verify invite-first finalization ordering remains stable when invite + claim coexist.
+7. Verify `already_*` and fatal states are explicit and not shown as generic unknown error.
+8. Verify legacy `agency_invitations` callers are reviewed and documented as legacy.
 
 ## Implementation Anchors
 

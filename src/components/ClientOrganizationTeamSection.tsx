@@ -138,8 +138,9 @@ export const ClientOrganizationTeamSection: React.FC<{
             },
             headers: s?.access_token ? { Authorization: `Bearer ${s.access_token}` } : undefined,
           });
-          emailOk = !res.error;
-          if (res.error || (res.data as { ok?: boolean } | null)?.ok === false) {
+          const body = res.data as { ok?: boolean; error?: string; detail?: string } | null;
+          emailOk = !res.error && body?.ok === true;
+          if (!emailOk) {
             emailFailureReason = describeSendInviteFailure(res.data, res.error);
             console.error('ClientOrganizationTeamSection send-invite error:', emailFailureReason, res);
           }
