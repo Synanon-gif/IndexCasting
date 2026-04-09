@@ -236,6 +236,19 @@ export async function insertOptionRequest(req: {
   client_organization_id?: string | null;
   created_by?: string | null;
 }): Promise<SupabaseOptionRequest | null> {
+  const orgId =
+    req.organization_id && String(req.organization_id).trim() !== ''
+      ? String(req.organization_id).trim()
+      : null;
+  const agencyOrgId =
+    req.agency_organization_id && String(req.agency_organization_id).trim() !== ''
+      ? String(req.agency_organization_id).trim()
+      : null;
+  const clientOrgId =
+    req.client_organization_id && String(req.client_organization_id).trim() !== ''
+      ? String(req.client_organization_id).trim()
+      : null;
+
   const { data: modelRow } = await supabase
     .from('models')
     .select('user_id')
@@ -267,9 +280,9 @@ export async function insertOptionRequest(req: {
       model_approval: modelApproval,
       model_approved_at: modelApprovedAt,
       model_account_linked: modelAccountLinked,
-      organization_id: req.organization_id ?? null,
-      agency_organization_id: req.agency_organization_id ?? null,
-      client_organization_id: req.client_organization_id ?? null,
+      organization_id: orgId,
+      agency_organization_id: agencyOrgId,
+      client_organization_id: clientOrgId,
       created_by: req.created_by ?? null,
     })
     .select(OPTION_REQUEST_SELECT)

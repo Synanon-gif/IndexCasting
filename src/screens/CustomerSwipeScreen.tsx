@@ -277,19 +277,21 @@ export const CustomerSwipeScreen: React.FC = () => {
     setOptionSuccess(null);
 
     const clientName = auth?.profile?.display_name ?? auth?.profile?.email ?? 'Client';
+    const countryFromCityFilter =
+      filters.city !== 'all' ? (CITY_TO_COUNTRY[filters.city] ?? undefined) : undefined;
     addOptionRequest(
       clientName,
       model.name,
       model.id,
       date,
       undefined,
-      { requestType: 'option' },
+      { requestType: 'option', countryCode: countryFromCityFilter },
     );
 
     setIsSendingOption(false);
     setOptionSuccess(uiCopy.swipe.optionSuccessMessage(date));
     setTimeout(() => setOptionSuccess(null), 2600);
-  }, [detailModel, current, auth?.profile]);
+  }, [detailModel, current, auth?.profile, filters.city]);
 
   return (
     <View style={styles.container}>
