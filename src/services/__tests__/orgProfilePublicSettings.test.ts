@@ -1,11 +1,13 @@
 /**
- * Tests for Phase 3A.2 — Public Agency Settings UI (Owner Only)
+ * Tests for Phase 3A.2 + 3A.3 — Public Agency Settings & Share Link
  *
  * Covers:
  * - validateSlug: valid slugs return null
  * - validateSlug: various invalid inputs return error strings
  * - slugify: raw strings are sanitized into slug candidates
- * - publicAgencyUrl: correct URL construction
+ * - publicAgencyUrl: correct display URL construction
+ * - publicAgencyHref: correct https:// URL for clipboard / Linking
+ * - shareUrl visibility logic: truthy only when owner + is_public + slug
  * - upsertPublicSettings: assertOrgContext empty → { ok: false } without DB call
  * - upsertPublicSettings: success path → { ok: true }
  * - upsertPublicSettings: 23505 unique violation → { ok: false, slugTaken: true }
@@ -15,7 +17,12 @@
  * RLS enforcement (op_owner_update via is_org_owner()) is server-side only.
  */
 
-import { validateSlug, slugify, publicAgencyUrl } from '../../utils/orgProfilePublicSettings';
+import {
+  validateSlug,
+  slugify,
+  publicAgencyUrl,
+  publicAgencyHref,
+} from '../../utils/orgProfilePublicSettings';
 import { upsertPublicSettings } from '../organizationProfilesSupabase';
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
@@ -166,6 +173,82 @@ describe('publicAgencyUrl', () => {
 
   it('trims whitespace before building URL', () => {
     expect(publicAgencyUrl('  my-agency  ')).toBe('index-casting.com/agency/my-agency');
+  });
+});
+
+// ─── publicAgencyHref ─────────────────────────────────────────────────────────
+
+describe('publicAgencyHref', () => {
+  it('returns the correct https:// URL for a valid slug', () => {
+    expect(publicAgencyHref('my-agency')).toBe('https://index-casting.com/agency/my-agency');
+  });
+
+  it('returns null for an empty slug', () => {
+    expect(publicAgencyHref('')).toBeNull();
+  });
+
+  it('returns null for null slug', () => {
+    expect(publicAgencyHref(null)).toBeNull();
+  });
+
+  it('returns null for undefined slug', () => {
+    expect(publicAgencyHref(undefined)).toBeNull();
+  });
+
+  it('trims whitespace before building URL', () => {
+    expect(publicAgencyHref('  vienna-agency  ')).toBe(
+      'https://index-casting.com/agency/vienna-agency',
+    );
+  });
+
+  it('includes https:// prefix (distinct from publicAgencyUrl)', () => {
+    const display = publicAgencyUrl('my-agency');
+    const href = publicAgencyHref('my-agency');
+    expect(href).toBe(`https://${display}`);
+  });
+});
+
+// ─── shareUrl visibility logic ────────────────────────────────────────────────
+//
+// The derived shareUrl value in AgencyOrgProfileScreen is:
+//   isOwner && orgProfile?.is_public && orgProfile?.slug
+//     ? publicAgencyHref(orgProfile.slug) : null
+//
+// These tests verify that logic in pure form (no rendering needed).
+
+describe('shareUrl visibility logic (derived from publicAgencyHref)', () => {
+  function computeShareUrl(
+    isOwner: boolean,
+    isPublic: boolean | undefined,
+    slug: string | null | undefined,
+  ): string | null {
+    return isOwner && isPublic && slug ? publicAgencyHref(slug) : null;
+  }
+
+  it('returns href when owner, is_public=true, slug present', () => {
+    expect(computeShareUrl(true, true, 'my-agency')).toBe(
+      'https://index-casting.com/agency/my-agency',
+    );
+  });
+
+  it('returns null when is_public=false (profile not live)', () => {
+    expect(computeShareUrl(true, false, 'my-agency')).toBeNull();
+  });
+
+  it('returns null when slug is null (not configured)', () => {
+    expect(computeShareUrl(true, true, null)).toBeNull();
+  });
+
+  it('returns null when slug is empty string', () => {
+    expect(computeShareUrl(true, true, '')).toBeNull();
+  });
+
+  it('returns null when isOwner=false (booker / model view)', () => {
+    expect(computeShareUrl(false, true, 'my-agency')).toBeNull();
+  });
+
+  it('returns null when all conditions are false', () => {
+    expect(computeShareUrl(false, false, null)).toBeNull();
   });
 });
 

@@ -1,5 +1,5 @@
 /**
- * AgencyOrgProfileScreen — Phase 2A/2C.1/2C.2/3A.2 (internal)
+ * AgencyOrgProfileScreen — Phase 2A/2C.1/2C.2/3A.2/3A.3 (internal)
  *
  * Shows the agency organization's profile:
  *  - Logo, name, description, contact info
@@ -10,6 +10,7 @@
  * Phase 2C.1: owner can edit text/contact fields via OrgProfileEditModal.
  * Phase 2C.2: owner can upload/replace/delete the organization logo.
  * Phase 3A.2: owner can configure public profile toggle (is_public) and slug.
+ * Phase 3A.3: owner can copy / open the live public agency profile URL.
  */
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
@@ -22,6 +23,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Linking,
   StyleSheet,
   useWindowDimensions,
   type ListRenderItemInfo,
@@ -50,6 +52,7 @@ import { normalizeDocumentspicturesModelImageRef } from '../utils/normalizeModel
 import {
   validateSlug,
   publicAgencyUrl,
+  publicAgencyHref,
 } from '../utils/orgProfilePublicSettings';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -86,6 +89,9 @@ export function AgencyOrgProfileScreen({
   const [publicSaving, setPublicSaving] = useState(false);
   const [publicFeedback, setPublicFeedback] = useState<string | null>(null);
   const [publicFeedbackIsError, setPublicFeedbackIsError] = useState(false);
+
+  // ── Phase 3A.3: share link state (owner-only) ──
+  const [shareCopied, setShareCopied] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -176,6 +182,27 @@ export function AgencyOrgProfileScreen({
       },
     ]);
   }, [organizationId, orgProfile?.logo_url]);
+
+  // ── Phase 3A.3: share link handlers (owner-only) ──
+
+  // Derived: truthy only for owners with a live public profile
+  const shareUrl = isOwner && orgProfile?.is_public && orgProfile?.slug
+    ? publicAgencyHref(orgProfile.slug)
+    : null;
+
+  const handleCopyShareLink = useCallback(() => {
+    if (!shareUrl) return;
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      void navigator.clipboard.writeText(shareUrl);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2000);
+    }
+  }, [shareUrl]);
+
+  const handleOpenShareLink = useCallback(() => {
+    if (!shareUrl) return;
+    void Linking.openURL(shareUrl);
+  }, [shareUrl]);
 
   // ── Phase 3A.2: public settings handlers (owner-only) ──
 
@@ -347,6 +374,36 @@ export function AgencyOrgProfileScreen({
             </Text>
           )}
 
+          {/* ── Phase 3A.3: Share live public profile (owner-only, visible when live) ── */}
+          {shareUrl && isOwner && (
+            <View style={s.shareSection}>
+              <Text style={s.shareSectionTitle}>Share your profile</Text>
+              <Text style={s.shareUrl} numberOfLines={1}>
+                {publicAgencyUrl(orgProfile?.slug)}
+              </Text>
+              <View style={s.shareRow}>
+                <TouchableOpacity
+                  style={s.shareBtn}
+                  onPress={handleCopyShareLink}
+                  accessibilityLabel="Copy link"
+                  accessibilityRole="button"
+                >
+                  <Text style={s.shareBtnText}>
+                    {shareCopied ? 'Copied!' : 'Copy link'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.shareBtn, s.shareBtnSecondary]}
+                  onPress={handleOpenShareLink}
+                  accessibilityLabel="Open profile in browser"
+                  accessibilityRole="link"
+                >
+                  <Text style={[s.shareBtnText, s.shareBtnTextSecondary]}>Open ↗</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
           {/* ── Phase 3A.2: Public Profile settings (owner-only) ── */}
           {isOwner && (
             <View style={s.publicSection}>
@@ -465,6 +522,11 @@ export function AgencyOrgProfileScreen({
     handleLogoPress,
     handleLogoDelete,
     handleLogoFileChange,
+    // Phase 3A.3
+    shareUrl,
+    shareCopied,
+    handleCopyShareLink,
+    handleOpenShareLink,
   ]);
 
   if (loading) {
@@ -773,6 +835,54 @@ const s = StyleSheet.create({
   publicSaveBtnText: {
     ...typography.label,
     fontSize: 13,
+    color: colors.textPrimary,
+  },
+  // ── Phase 3A.3: share section ─────────────────────────────────────────────
+  shareSection: {
+    marginTop: spacing.md,
+    width: '100%',
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: spacing.md,
+  },
+  shareSectionTitle: {
+    ...typography.label,
+    fontSize: 11,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: spacing.xs,
+  },
+  shareUrl: {
+    ...typography.body,
+    fontSize: 13,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
+    marginBottom: spacing.sm,
+  },
+  shareRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  shareBtn: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    borderRadius: 8,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+    backgroundColor: colors.accent,
+  },
+  shareBtnSecondary: {
+    backgroundColor: 'transparent',
+    borderColor: colors.border,
+  },
+  shareBtnText: {
+    ...typography.label,
+    fontSize: 13,
+    color: colors.surface,
+  },
+  shareBtnTextSecondary: {
     color: colors.textPrimary,
   },
 });
