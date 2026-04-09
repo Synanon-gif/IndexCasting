@@ -1,5 +1,5 @@
 /**
- * AgencyOrgProfileScreen — Phase 2A/2C.1 (internal)
+ * AgencyOrgProfileScreen — Phase 2A/2C.1/2C.2 (internal)
  *
  * Shows the agency organization's profile:
  *  - Logo, name, description, contact info
@@ -8,16 +8,18 @@
  *
  * Access: agency owner + booker (RLS enforced server-side).
  * Phase 2C.1: owner can edit text/contact fields via OrgProfileEditModal.
- * No public access, no media upload in this phase.
+ * Phase 2C.2: owner can upload/replace/delete the organization logo.
+ * No public access in this phase.
  */
 
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
+  Alert,
   StyleSheet,
   useWindowDimensions,
   type ListRenderItemInfo,
@@ -29,6 +31,10 @@ import {
   type OrganizationProfile,
 } from '../services/organizationProfilesSupabase';
 import { OrgProfileEditModal } from '../components/OrgProfileEditModal';
+import {
+  uploadOrganizationLogo,
+  deleteOrganizationLogo,
+} from '../services/organizationLogoSupabase';
 import {
   getModelsForAgencyFromSupabase,
   type SupabaseModel,
@@ -65,6 +71,9 @@ export function AgencyOrgProfileScreen({
   const [loadingModels, setLoadingModels] = useState(true);
   const [segment, setSegment] = useState<Segment>('women');
   const [editOpen, setEditOpen] = useState(false);
+  const [logoUploading, setLogoUploading] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const { width } = useWindowDimensions();
   const CELL_GAP = spacing.xs;
@@ -104,6 +113,54 @@ export function AgencyOrgProfileScreen({
     () => filterAndSortModelsBySegment(models, segment),
     [models, segment],
   );
+
+  // ── Logo upload handlers (owner-only, web file input pattern) ──
+
+  const handleLogoPress = useCallback(() => {
+    if (!isOwner || logoUploading) return;
+    fileInputRef.current?.click();
+  }, [isOwner, logoUploading]);
+
+  const handleLogoFileChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file || !organizationId) return;
+      // Reset so the same file can be re-selected after an error
+      e.target.value = '';
+
+      setLogoUploading(true);
+      const result = await uploadOrganizationLogo(organizationId, file);
+      setLogoUploading(false);
+
+      if (result.ok && result.url) {
+        setOrgProfile((prev) => (prev ? { ...prev, logo_url: result.url! } : prev));
+      } else {
+        Alert.alert('Upload failed', result.error ?? 'Could not upload logo. Please try again.');
+      }
+    },
+    [organizationId],
+  );
+
+  const handleLogoDelete = useCallback(async () => {
+    if (!organizationId || !orgProfile?.logo_url) return;
+    Alert.alert('Remove logo', 'Remove the current logo?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: async () => {
+          setLogoUploading(true);
+          const ok = await deleteOrganizationLogo(organizationId, orgProfile.logo_url);
+          setLogoUploading(false);
+          if (ok) {
+            setOrgProfile((prev) => (prev ? { ...prev, logo_url: null } : prev));
+          } else {
+            Alert.alert('Error', 'Could not remove logo. Please try again.');
+          }
+        },
+      },
+    ]);
+  }, [organizationId, orgProfile?.logo_url]);
 
   const renderModel = useCallback(
     ({ item }: ListRenderItemInfo<SupabaseModel>) => {
@@ -145,18 +202,52 @@ export function AgencyOrgProfileScreen({
       <View>
         {/* ── Profile header ── */}
         <View style={s.headerSection}>
-          {/* Logo */}
-          <View style={s.logoWrap}>
+          {/* Logo — tappable for owner to upload/replace */}
+          <TouchableOpacity
+            style={s.logoWrap}
+            onPress={handleLogoPress}
+            onLongPress={isOwner && orgProfile?.logo_url ? handleLogoDelete : undefined}
+            disabled={!isOwner || logoUploading}
+            accessibilityLabel={isOwner ? 'Change logo' : undefined}
+            accessibilityRole={isOwner ? 'button' : 'image'}
+            activeOpacity={isOwner ? 0.7 : 1}
+          >
             {orgProfile?.logo_url ? (
               <StorageImage uri={orgProfile.logo_url} style={s.logo} resizeMode="cover" />
             ) : (
               <View style={[s.logo, s.logoPlaceholder]}>
-                <Text style={s.logoInitial}>
-                  {(orgName ?? '?').charAt(0).toUpperCase()}
-                </Text>
+                {logoUploading ? (
+                  <ActivityIndicator color={colors.textSecondary} />
+                ) : (
+                  <Text style={s.logoInitial}>
+                    {(orgName ?? '?').charAt(0).toUpperCase()}
+                  </Text>
+                )}
               </View>
             )}
-          </View>
+            {/* Edit overlay badge — visible to owner only */}
+            {isOwner && !logoUploading && (
+              <View style={s.logoEditBadge}>
+                <Text style={s.logoEditBadgeText}>✎</Text>
+              </View>
+            )}
+            {logoUploading && orgProfile?.logo_url ? (
+              <View style={s.logoUploadingOverlay}>
+                <ActivityIndicator color="#fff" />
+              </View>
+            ) : null}
+          </TouchableOpacity>
+          {/* Hidden file input for web */}
+          {isOwner && (
+            // @ts-ignore — input element only exists on web; ignored on native
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              style={{ display: 'none' }}
+              onChange={handleLogoFileChange}
+            />
+          )}
 
           <Text style={s.orgName}>{orgName ?? '—'}</Text>
 
@@ -223,7 +314,18 @@ export function AgencyOrgProfileScreen({
         )}
       </View>
     );
-  }, [orgProfile, orgName, isOwner, segment, filteredModels.length, loading]);
+  }, [
+    orgProfile,
+    orgName,
+    isOwner,
+    segment,
+    filteredModels.length,
+    loading,
+    logoUploading,
+    handleLogoPress,
+    handleLogoDelete,
+    handleLogoFileChange,
+  ]);
 
   if (loading) {
     return (
@@ -302,6 +404,7 @@ const s = StyleSheet.create({
   },
   logoWrap: {
     marginBottom: spacing.sm,
+    position: 'relative',
   },
   logo: {
     width: LOGO_SIZE,
@@ -318,6 +421,33 @@ const s = StyleSheet.create({
     ...typography.heading,
     fontSize: 28,
     color: colors.textSecondary,
+  },
+  logoEditBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: colors.textPrimary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoEditBadgeText: {
+    color: colors.background,
+    fontSize: 12,
+    lineHeight: 14,
+  },
+  logoUploadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: LOGO_SIZE,
+    height: LOGO_SIZE,
+    borderRadius: LOGO_SIZE / 2,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   orgName: {
     ...typography.heading,
