@@ -575,7 +575,7 @@ Ergänzt und schärft die obigen Regeln **ohne** sie zu ersetzen. Bei Widerspruc
 
 - **Territory** (Länder-/Repräsentationsgebiet): autoritativ **`model_agency_territories`** — nicht mit Stadt/GPS verwechseln.
 - **Physische Lage / Near Me:** **`model_locations`** mit unveränderlicher **Source-Priorität** `live` → `current` → `agency` (siehe §4b Location guardrail + `system-invariants.mdc` LOCATION SOURCE SYSTEM).
-- **Stadt:** primär **`models.city`**; optionaler Fallback **`model_locations.city`** nur wo explizit als Fallback dokumentiert/semantisch korrekt.
+- **Stadt (Display/Filter):** Wenn `model_locations`-Daten verfügbar sind (z. B. in `filterModels`, Near-Me-Mapping), ist `model_locations.city` (höchste Source-Priorität) autoritativ: **`loc?.city || m.city`** — nicht umgekehrt. In Discovery-Kontexten ohne `model_locations`-Join (z. B. `get_discovery_models`) ist `models.city` die einzige verfügbare Quelle und akzeptabel.
 - **Diese Ebenen nicht mischen** (z. B. Territory-Logik nicht für „Stadtfilter“ oder Near-Me-Koordinaten substituieren).
 
 ### 27.5 Invite / Claim — Finalisierung (session + Token, UI-unabhängig)

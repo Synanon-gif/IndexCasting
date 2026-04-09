@@ -1,102 +1,93 @@
 {
-  "task": "Location Source Priority — End-to-End Verify + Guardrail",
-  "date": "2026-04-09",
-  "result": "LOCATION SOURCE PRIORITY VERIFIED",
-  "invariant": "live > current > agency (immutable)",
-  "phases": [
+  "name": "Location Source Priority Verify + Guardrail",
+  "date": "2026-05-18",
+  "status": "LOCATION SOURCE PRIORITY DRIFT FIXED",
+  "scope": {
+    "canonical_priority": "live > current > agency",
+    "verified_rpcs": [
+      "upsert_model_location",
+      "get_models_near_location",
+      "delete_model_location_source"
+    ],
+    "verified_services": [
+      "src/services/modelLocationsSupabase.ts"
+    ],
+    "verified_ui": [
+      "src/web/ClientWebApp.tsx",
+      "src/screens/ModelProfileScreen.tsx",
+      "src/views/AgencyControllerView.tsx"
+    ],
+    "verified_filters": [
+      "src/utils/modelFilters.ts"
+    ]
+  },
+  "findings": [
     {
-      "id": "P1",
-      "name": "Verify Source Priority End-to-End",
-      "status": "completed",
-      "findings": {
-        "sql_layer": {
-          "get_models_near_location": "PASS — DISTINCT ON with CASE source WHEN 'live' THEN 0",
-          "upsert_model_location": "PASS — ON CONFLICT (model_id, source), auth-split",
-          "delete_model_location_source": "PASS — p_source=NULL preserves agency row",
-          "get_models_by_location": "PASS — city filter is inclusion-only (any source), no priority violation",
-          "table_structure": "PASS — UNIQUE(model_id, source), CHECK(source IN ('live','current','agency'))"
-        },
-        "typescript_layer": {
-          "locationSourcePriority": "PASS — live=2, current=1, agency=0",
-          "getAllModelLocations": "PASS — sorts descending by priority",
-          "getModelLocation": "PASS — returns all[0] (highest priority)",
-          "upsertModelLocation": "PASS — explicit source parameter",
-          "deleteModelLocation": "PASS — delegates to RPC",
-          "getModelsNearLocation": "PASS — delegates to priority-aware RPC"
-        },
-        "ui_layer": {
-          "ModelProfileScreen": "PASS — badge via getModelLocation, reload after upsert",
-          "AgencyControllerView": "PASS — getModelLocation, writes only source='agency'",
-          "ClientWebApp": "PASS — Near Me via RPC, mapping uses resolved values",
-          "modelFilters": "PASS — uses model_location from priority-aware source"
-        },
-        "tests": {
-          "priority_resolution": "PASS — live wins over agency",
-          "fallback_chain": "PASS — current when live absent",
-          "source_isolation": "PASS — agency/current writes isolated"
-        }
-      }
+      "id": "D1",
+      "description": "Conflicting upsert_model_location definitions in repo (multirow vs single-row)",
+      "severity": "medium",
+      "action": "live-verify",
+      "result": "Live-DB has correct multirow version — no fix needed"
     },
     {
-      "id": "P2",
-      "name": "Required Scenarios",
-      "status": "completed",
-      "scenarios": [
-        { "id": "S1", "description": "live + current + agency → effective = live", "status": "PASS" },
-        { "id": "S2", "description": "current + agency, no live → effective = current", "status": "PASS" },
-        { "id": "S3", "description": "only agency → effective = agency", "status": "PASS" },
-        { "id": "S4", "description": "agency updates while live/current exist → effective unchanged", "status": "PASS" },
-        { "id": "S5", "description": "removing live → fallback to current then agency", "status": "PASS" },
-        { "id": "S6", "description": "removing current → fallback to agency if no live", "status": "PASS" },
-        { "id": "S7", "description": "nearby/city filtering respects priority", "status": "PASS" }
-      ]
+      "id": "D2",
+      "description": "ClientWebApp city text fallback uses only models.city",
+      "severity": "low",
+      "action": "document",
+      "result": "Acceptable — discovery models don't carry model_locations data"
     },
     {
-      "id": "P3",
-      "name": "Drift Check",
-      "status": "completed",
-      "drift_found": false,
-      "notes": [
-        "get_models_by_location city filter matches any source (correct: inclusion filter)",
-        "Comment in modelLocationsSupabase.ts updated to reflect multi-row semantics",
-        "filterModels in modelFilters.ts: agency roster does not attach model_location per row (UX gap, not priority violation)"
-      ]
+      "id": "D3",
+      "description": "modelFilters.ts displayCity prioritizes m.city over loc?.city",
+      "severity": "medium",
+      "action": "fix",
+      "result": "Reversed to loc?.city || m.city || '' — model_locations.city now takes precedence"
     },
     {
-      "id": "P4",
-      "name": "Guardrails Assessment",
-      "status": "completed",
-      "additional_guardrails_needed": false,
-      "existing_guardrails": [
-        ".cursorrules §4b — immutable priority",
-        ".cursorrules §27.4 — Territory vs physical vs city separation",
-        "system-invariants.mdc LOCATION SOURCE SYSTEM — 7 invariants",
-        "auto-review.mdc Risiko 16/17 — stop conditions",
-        "docs/MODEL_SAVE_LOCATION_CONSISTENCY.md — priority section",
-        "modelLocationsSupabase.test.ts — priority and isolation tests"
-      ]
-    },
-    {
-      "id": "P5",
-      "name": "Deliverables",
-      "status": "completed",
-      "files": [
-        "CURSOR_LOCATION_SOURCE_PRIORITY_VERIFY_REPORT.md",
-        "CURSOR_LOCATION_SOURCE_PRIORITY_VERIFY_DIFF_SUMMARY.md",
-        "CURSOR_LOCATION_SOURCE_PRIORITY_VERIFY_CHECKLIST.md",
-        "CURSOR_LOCATION_SOURCE_PRIORITY_VERIFY_PLAN.json"
-      ]
+      "id": "D4",
+      "description": "get_discovery_models uses m.city for score boost",
+      "severity": "low",
+      "action": "document",
+      "result": "Intentional lightweight heuristic — not a priority violation"
     }
   ],
-  "code_changes": [
+  "fixes": [
     {
-      "file": "src/services/modelLocationsSupabase.ts",
-      "lines": "14-17",
-      "type": "comment_precision",
-      "description": "Updated file header comment to reflect multi-row structural isolation instead of deprecated single-row no-op semantics"
+      "file": "src/utils/modelFilters.ts",
+      "line": 256,
+      "change": "displayCity fallback order reversed from (m.city || loc?.city) to (loc?.city || m.city)"
     }
   ],
-  "total_checks": 35,
-  "passed": 35,
-  "failed": 0
+  "guardrails_added": [
+    {
+      "file": ".cursorrules",
+      "section": "§27.4",
+      "change": "Display-City priority: loc?.city || m.city when model_locations available"
+    },
+    {
+      "file": ".cursor/rules/auto-review.mdc",
+      "section": "Stop-Conditions",
+      "change": "New stop-condition: Display-City-Priority drift"
+    },
+    {
+      "file": ".cursor/rules/system-invariants.mdc",
+      "section": "LOCATION SOURCE SYSTEM > UI-Pflichten",
+      "change": "Display-City-Priority rule"
+    }
+  ],
+  "scenarios_verified": 7,
+  "live_db_verified": true,
+  "sql_migrations_needed": false,
+  "not_changed": [
+    "AuthContext",
+    "Login/Signup flows",
+    "Admin routing",
+    "Paywall logic",
+    "Booking/Calendar flows",
+    "Storage policies",
+    "RLS policies",
+    "get_models_near_location RPC",
+    "upsert_model_location RPC",
+    "delete_model_location_source RPC"
+  ]
 }

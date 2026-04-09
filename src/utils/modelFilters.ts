@@ -253,7 +253,7 @@ export function filterModels(
 
   return models.filter((m) => {
     const loc = m.model_location;
-    const displayCity = (m.city || loc?.city || '').trim();
+    const displayCity = (loc?.city || m.city || '').trim();
 
     // ── Sex ──
     if (filters.sex === 'male'   && m.sex !== 'male')   return false;
