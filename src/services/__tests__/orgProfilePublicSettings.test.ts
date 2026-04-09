@@ -1,5 +1,5 @@
 /**
- * Tests for Phase 3A.2 + 3A.3 — Public Agency Settings & Share Link
+ * Tests for Phase 3A.2 + 3A.3 + 3B.2 — Public Agency/Client Settings & Share Link
  *
  * Covers:
  * - validateSlug: valid slugs return null
@@ -13,6 +13,8 @@
  * - upsertPublicSettings: 23505 unique violation → { ok: false, slugTaken: true }
  * - upsertPublicSettings: other DB error → { ok: false }
  * - upsertPublicSettings: is_public=true saved correctly
+ * - publicClientUrl: correct display URL construction for client profiles (Phase 3B.2)
+ * - upsertPublicSettings (client org): same service reused — owner saves slug → ok
  *
  * RLS enforcement (op_owner_update via is_org_owner()) is server-side only.
  */
@@ -22,6 +24,7 @@ import {
   slugify,
   publicAgencyUrl,
   publicAgencyHref,
+  publicClientUrl,
 } from '../../utils/orgProfilePublicSettings';
 import { upsertPublicSettings } from '../organizationProfilesSupabase';
 
@@ -338,5 +341,112 @@ describe('upsertPublicSettings', () => {
       slug: 'my-agency',
     });
     expect(result).toEqual({ ok: false });
+  });
+});
+
+// ─── publicClientUrl (Phase 3B.2) ─────────────────────────────────────────────
+
+describe('publicClientUrl', () => {
+  it('returns index-casting.com/client/<slug> for a valid slug', () => {
+    expect(publicClientUrl('my-client')).toBe('index-casting.com/client/my-client');
+  });
+
+  it('returns index-casting.com/client/<slug> for slug with hyphens and numbers', () => {
+    expect(publicClientUrl('acme-couture-2026')).toBe('index-casting.com/client/acme-couture-2026');
+  });
+
+  it('returns null for null slug', () => {
+    expect(publicClientUrl(null)).toBeNull();
+  });
+
+  it('returns null for undefined slug', () => {
+    expect(publicClientUrl(undefined)).toBeNull();
+  });
+
+  it('returns null for empty string slug', () => {
+    expect(publicClientUrl('')).toBeNull();
+  });
+
+  it('trims whitespace before building URL', () => {
+    expect(publicClientUrl('  my-client  ')).toBe('index-casting.com/client/my-client');
+  });
+
+  it('is distinct from publicAgencyUrl (different base URL)', () => {
+    const slug = 'same-slug';
+    expect(publicClientUrl(slug)).toBe('index-casting.com/client/same-slug');
+    expect(publicAgencyUrl(slug)).toBe('index-casting.com/agency/same-slug');
+    expect(publicClientUrl(slug)).not.toBe(publicAgencyUrl(slug));
+  });
+});
+
+// ─── upsertPublicSettings — client org reuse (Phase 3B.2) ────────────────────
+
+describe('upsertPublicSettings (client org)', () => {
+  const CLIENT_ORG_ID = 'client-org-uuid-456';
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockAssertOrgContext.mockReturnValue(true);
+  });
+
+  it('returns { ok: true } when client owner saves is_public=true + slug', async () => {
+    buildUpsertChain({ error: null });
+    const result = await upsertPublicSettings(CLIENT_ORG_ID, {
+      is_public: true,
+      slug: 'acme-couture',
+    });
+    expect(result).toEqual({ ok: true });
+    const upsertArg = (supabase.from as jest.Mock).mock.results[0].value.upsert.mock.calls[0][0];
+    expect(upsertArg.is_public).toBe(true);
+    expect(upsertArg.slug).toBe('acme-couture');
+    expect(upsertArg.organization_id).toBe(CLIENT_ORG_ID);
+  });
+
+  it('returns { ok: false } when assertOrgContext fails (empty org id — employee guard)', async () => {
+    mockAssertOrgContext.mockReturnValue(false);
+    const result = await upsertPublicSettings('', {
+      is_public: true,
+      slug: 'acme-couture',
+    });
+    expect(result).toEqual({ ok: false });
+    expect(supabase.from).not.toHaveBeenCalled();
+  });
+
+  it('returns { ok: false, slugTaken: true } on 23505 — slug already taken by another org', async () => {
+    buildUpsertChain({ error: { code: '23505', message: 'unique violation' } });
+    const result = await upsertPublicSettings(CLIENT_ORG_ID, {
+      is_public: true,
+      slug: 'taken-by-agency',
+    });
+    expect(result).toEqual({ ok: false, slugTaken: true });
+  });
+
+  it('returns { ok: false } on other DB error (not 23505)', async () => {
+    buildUpsertChain({ error: { code: '42501', message: 'permission denied' } });
+    const result = await upsertPublicSettings(CLIENT_ORG_ID, {
+      is_public: false,
+      slug: 'acme-couture',
+    });
+    expect(result).toEqual({ ok: false });
+    expect(result.slugTaken).toBeUndefined();
+  });
+
+  it('saves null slug (clears slug) when toggling profile to private', async () => {
+    const { mockUpsert } = buildUpsertChain({ error: null });
+    const result = await upsertPublicSettings(CLIENT_ORG_ID, {
+      is_public: false,
+      slug: null,
+    });
+    expect(result).toEqual({ ok: true });
+    const upsertArg = mockUpsert.mock.calls[0][0];
+    expect(upsertArg.slug).toBeNull();
+    expect(upsertArg.is_public).toBe(false);
+  });
+
+  it('public preview text: publicClientUrl returns correct preview for draft slug', () => {
+    // Simulates what the UI renders in the publicPreviewUrl text
+    expect(publicClientUrl('acme-couture')).toBe('index-casting.com/client/acme-couture');
+    expect(publicClientUrl('')).toBeNull();
+    expect(publicClientUrl(null)).toBeNull();
   });
 });

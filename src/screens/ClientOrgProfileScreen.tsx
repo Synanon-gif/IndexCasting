@@ -1,5 +1,5 @@
 /**
- * ClientOrgProfileScreen — Phase 2A/2C.1/2C.2/2D (internal)
+ * ClientOrgProfileScreen — Phase 2A/2C.1/2C.2/2D/3B.2 (internal)
  *
  * Shows the client organization's profile:
  *  - Logo, name, description, contact info
@@ -10,7 +10,7 @@
  * Phase 2C.1: owner can edit text/contact fields via OrgProfileEditModal.
  * Phase 2C.2: owner can upload/replace/delete the organization logo.
  * Phase 2D: owner can upload and delete gallery images.
- * No public access in this phase.
+ * Phase 3B.2: owner can set is_public + slug for the public client profile.
  */
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
@@ -21,6 +21,8 @@ import {
   ActivityIndicator,
   Alert,
   StyleSheet,
+  Switch,
+  TextInput,
   useWindowDimensions,
   ScrollView,
 } from 'react-native';
@@ -29,6 +31,7 @@ import { StorageImage } from '../components/StorageImage';
 import {
   getOrganizationProfile,
   listOrganizationProfileMedia,
+  upsertPublicSettings,
   type OrganizationProfile,
   type OrganizationProfileMedia,
 } from '../services/organizationProfilesSupabase';
@@ -41,6 +44,10 @@ import {
   uploadClientGalleryImage,
   deleteClientGalleryImage,
 } from '../services/organizationGallerySupabase';
+import {
+  validateSlug,
+  publicClientUrl,
+} from '../utils/orgProfilePublicSettings';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -67,6 +74,12 @@ export function ClientOrgProfileScreen({
   const [galleryUploading, setGalleryUploading] = useState(false);
   const [deletingMediaIds, setDeletingMediaIds] = useState<Set<string>>(new Set());
 
+  // ── Phase 3B.2: public settings state (owner-only) ──
+  const [slugDraft, setSlugDraft] = useState('');
+  const [publicSaving, setPublicSaving] = useState(false);
+  const [publicFeedback, setPublicFeedback] = useState<string | null>(null);
+  const [publicFeedbackIsError, setPublicFeedbackIsError] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -90,6 +103,7 @@ export function ClientOrgProfileScreen({
       listOrganizationProfileMedia(organizationId),
     ]).then(([p, m]) => {
       setOrgProfile(p);
+      setSlugDraft(p?.slug ?? '');
       setMedia(m);
       setLoading(false);
     });
@@ -201,6 +215,51 @@ export function ClientOrgProfileScreen({
     },
     [organizationId, deletingMediaIds],
   );
+
+  // ── Phase 3B.2: public settings handlers (owner-only) ──
+
+  const handleToggleIsPublic = useCallback((value: boolean) => {
+    setOrgProfile((prev) => (prev ? { ...prev, is_public: value } : prev));
+    setPublicFeedback(null);
+  }, []);
+
+  const handleSavePublicSettings = useCallback(async () => {
+    if (!organizationId || !isOwner || publicSaving) return;
+
+    const trimmedSlug = slugDraft.trim();
+    const currentIsPublic = orgProfile?.is_public ?? false;
+
+    if (currentIsPublic || trimmedSlug) {
+      const err = validateSlug(trimmedSlug);
+      if (err) {
+        setPublicFeedback(err);
+        setPublicFeedbackIsError(true);
+        return;
+      }
+    }
+
+    setPublicSaving(true);
+    setPublicFeedback(null);
+
+    const result = await upsertPublicSettings(organizationId, {
+      is_public: currentIsPublic,
+      slug: trimmedSlug || null,
+    });
+
+    setPublicSaving(false);
+
+    if (result.ok) {
+      setOrgProfile((prev) => (prev ? { ...prev, slug: trimmedSlug || null } : prev));
+      setPublicFeedback('Saved.');
+      setPublicFeedbackIsError(false);
+    } else if (result.slugTaken) {
+      setPublicFeedback('This slug is already taken. Please choose another.');
+      setPublicFeedbackIsError(true);
+    } else {
+      setPublicFeedback('Could not save. Please try again.');
+      setPublicFeedbackIsError(true);
+    }
+  }, [organizationId, isOwner, publicSaving, slugDraft, orgProfile]);
 
   const renderGallery = useCallback(() => {
     const isDeleting = (id: string) => deletingMediaIds.has(id);
@@ -404,6 +463,84 @@ export function ClientOrgProfileScreen({
           <Text style={s.emptyHint}>
             Add a description, address and contact info to complete your profile.
           </Text>
+        )}
+
+        {/* ── Phase 3B.2: Public Profile settings (owner-only) ── */}
+        {isOwner && (
+          <View style={s.publicSection}>
+            <Text style={s.publicSectionTitle}>Public Profile</Text>
+
+            {/* is_public toggle */}
+            <View style={s.publicRow}>
+              <Text style={s.publicLabel}>
+                {orgProfile?.is_public ? 'Public' : 'Private'}
+              </Text>
+              <Switch
+                value={orgProfile?.is_public ?? false}
+                onValueChange={handleToggleIsPublic}
+                trackColor={{ false: colors.border, true: colors.accent }}
+                thumbColor="#fff"
+                accessibilityLabel="Make profile public"
+              />
+            </View>
+
+            {/* Slug input — shown when public or when there's a slug draft */}
+            {(orgProfile?.is_public || slugDraft.length > 0) && (
+              <>
+                <Text style={s.publicInputLabel}>Public URL slug</Text>
+                <TextInput
+                  style={s.publicInput}
+                  value={slugDraft}
+                  onChangeText={(v) => {
+                    setSlugDraft(v);
+                    setPublicFeedback(null);
+                  }}
+                  placeholder="e.g. my-client"
+                  placeholderTextColor={colors.textSecondary}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  accessibilityLabel="Public URL slug"
+                />
+                {/* Live URL preview */}
+                {slugDraft.trim().length > 0 && (
+                  <Text style={s.publicPreviewUrl} numberOfLines={1}>
+                    {publicClientUrl(slugDraft) ?? ''}
+                  </Text>
+                )}
+              </>
+            )}
+
+            {/* Feedback text */}
+            {publicFeedback ? (
+              <Text
+                style={[
+                  s.publicFeedbackText,
+                  publicFeedbackIsError ? s.publicFeedbackError : s.publicFeedbackSuccess,
+                ]}
+              >
+                {publicFeedback}
+              </Text>
+            ) : null}
+
+            {/* Save button */}
+            <TouchableOpacity
+              style={[
+                s.publicSaveBtn,
+                (publicSaving || (orgProfile?.is_public && !slugDraft.trim())) &&
+                  s.publicSaveBtnDisabled,
+              ]}
+              onPress={() => void handleSavePublicSettings()}
+              disabled={publicSaving || (orgProfile?.is_public && !slugDraft.trim())}
+              accessibilityLabel="Save public settings"
+              accessibilityRole="button"
+            >
+              {publicSaving ? (
+                <ActivityIndicator color={colors.textSecondary} />
+              ) : (
+                <Text style={s.publicSaveBtnText}>Save</Text>
+              )}
+            </TouchableOpacity>
+          </View>
         )}
       </View>
 
@@ -627,5 +764,84 @@ const s = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: spacing.xs,
     textAlign: 'center',
+  },
+  // ── Phase 3B.2: public settings ─────────────────────────────────────────────
+  publicSection: {
+    marginTop: spacing.md,
+    width: '100%',
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: spacing.md,
+  },
+  publicSectionTitle: {
+    ...typography.label,
+    fontSize: 11,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: spacing.sm,
+  },
+  publicRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
+  publicLabel: {
+    ...typography.body,
+    fontSize: 14,
+    color: colors.textPrimary,
+  },
+  publicInputLabel: {
+    ...typography.label,
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: 4,
+  },
+  publicInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 8,
+    fontSize: 14,
+    color: colors.textPrimary,
+    backgroundColor: colors.surface,
+    marginBottom: spacing.xs,
+  },
+  publicPreviewUrl: {
+    ...typography.body,
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
+    marginBottom: spacing.xs,
+  },
+  publicFeedbackText: {
+    ...typography.body,
+    fontSize: 13,
+    marginBottom: spacing.xs,
+  },
+  publicFeedbackError: {
+    color: '#D32F2F',
+  },
+  publicFeedbackSuccess: {
+    color: '#388E3C',
+  },
+  publicSaveBtn: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+    marginTop: spacing.xs,
+  },
+  publicSaveBtnDisabled: {
+    opacity: 0.4,
+  },
+  publicSaveBtnText: {
+    ...typography.label,
+    fontSize: 13,
+    color: colors.textPrimary,
   },
 });

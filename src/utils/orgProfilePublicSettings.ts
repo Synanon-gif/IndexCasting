@@ -73,3 +73,16 @@ export function publicAgencyHref(slug: string | null | undefined): string | null
   if (!t) return null;
   return `https://${PUBLIC_AGENCY_BASE_URL}/${t}`;
 }
+
+/** The base public URL used for the URL preview in the UI for client profiles. */
+export const PUBLIC_CLIENT_BASE_URL = 'index-casting.com/client';
+
+/**
+ * Returns the display-only public URL for a client slug.
+ * Returns null when slug is empty or null.
+ */
+export function publicClientUrl(slug: string | null | undefined): string | null {
+  const t = slug?.trim();
+  if (!t) return null;
+  return `${PUBLIC_CLIENT_BASE_URL}/${t}`;
+}
