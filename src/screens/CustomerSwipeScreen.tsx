@@ -157,7 +157,7 @@ export const CustomerSwipeScreen: React.FC = () => {
           id: m.id, name: m.name, height: m.height,
           chest: m.chest ?? m.bust ?? 0, waist: m.waist ?? 0, hips: m.hips ?? 0,
           city: canonicalDisplayCityForModel({ effective_city: m.effective_city, city: m.city }), hairColor: m.hair_color ?? '',
-          gallery: m.portfolio_images ?? [],
+          gallery: (m.portfolio_images ?? []).map((u) => normalizeDocumentspicturesModelImageRef(u, m.id)),
         }));
         setModels((prev) => [...prev, ...mapped]);
         pageOffsetRef.current += mapped.length;
@@ -197,7 +197,7 @@ export const CustomerSwipeScreen: React.FC = () => {
             id: m.id, name: m.name, height: m.height,
             chest: m.chest ?? m.bust ?? 0, waist: m.waist ?? 0, hips: m.hips ?? 0,
             city: canonicalDisplayCityForModel({ effective_city: m.effective_city, city: m.city }), hairColor: m.hair_color ?? '',
-            gallery: m.portfolio_images ?? [],
+            gallery: (m.portfolio_images ?? []).map((u) => normalizeDocumentspicturesModelImageRef(u, m.id)),
           }));
           setModels(mapped);
           pageOffsetRef.current = mapped.length;

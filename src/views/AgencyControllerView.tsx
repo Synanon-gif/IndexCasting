@@ -2389,7 +2389,7 @@ const MyModelsTab: React.FC<{
         }
       } else {
         // Newly created: set relationship + sports flags not covered by importModelAndMerge insert.
-        await supabase.rpc('agency_update_model_full', {
+        const { error: updateErr } = await supabase.rpc('agency_update_model_full', {
           p_model_id:                  mergeResult.model_id,
           p_agency_relationship_status: emailTrim ? 'pending_link' : 'active',
           p_is_visible_fashion:         isVisibleFashion,
@@ -2397,6 +2397,13 @@ const MyModelsTab: React.FC<{
           p_is_sports_winter:           addModelEditState.is_sports_winter,
           p_is_sports_summer:           addModelEditState.is_sports_summer,
         });
+        if (updateErr) {
+          console.error('handleAddModel: agency_update_model_full (create) failed:', updateErr);
+          Alert.alert(
+            uiCopy.common.error,
+            `Model created but visibility/status flags could not be set. Please reopen and save again. (${updateErr.message})`,
+          );
+        }
       }
 
       const createdModelId = mergeResult.model_id;

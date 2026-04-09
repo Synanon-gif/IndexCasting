@@ -1,0 +1,121 @@
+{
+  "audit_date": "2026-04-09",
+  "scope": "Agency → Model → Client E2E Flow: Create, Save, Location, Photos, Invite/Claim, Client Visibility",
+  "verdict": "FULL FLOW VERIFIED",
+  "bugs_found": 4,
+  "bugs_fixed": 4,
+  "quality_gates": {
+    "typecheck": "PASS (0 errors)",
+    "lint": "PASS (0 errors, 4 pre-existing warnings)",
+    "tests": "PASS (904/904)"
+  },
+  "bugs": [
+    {
+      "id": "BUG_1",
+      "severity": "medium",
+      "area": "P1_first_save",
+      "title": "agency_update_model_full Create-Call without error check",
+      "file": "src/views/AgencyControllerView.tsx",
+      "lines": "2392-2399",
+      "root_cause": "await supabase.rpc('agency_update_model_full', ...) return value was completely ignored in the Create branch. RPC failure caused silent missing agency_relationship_status and sports/visibility flags.",
+      "fix": "Added const { error: updateErr } = ... with console.error + Alert.alert on failure.",
+      "status": "FIXED"
+    },
+    {
+      "id": "BUG_3",
+      "severity": "medium",
+      "area": "P3_invite_claim",
+      "title": "claim_model_by_token did not set agency_relationship_status = active",
+      "migration_affected": "supabase/migrations/20260413_fix_c_model_claim_tokens.sql",
+      "root_cause": "claim_model_by_token set user_id but left agency_relationship_status = 'pending_link'. Roster badge condition checks agency_relationship_status === 'pending_link' OR (!user_id && email) — after claim, first condition stayed true, badge persisted.",
+      "fix": "New migration 20260520_claim_model_by_token_set_active.sql: added UPDATE models SET agency_relationship_status = 'active' WHERE agency_relationship_status = 'pending_link' after user_id update.",
+      "live_verified": true,
+      "status": "FIXED"
+    },
+    {
+      "id": "BUG_4",
+      "severity": "critical",
+      "area": "P4_location_consistency",
+      "title": "get_discovery_models lost effective_city CTE in migration 20260508",
+      "migration_affected": "supabase/migrations/20260508_discovery_chest_coalesce_and_canonical_rpc.sql",
+      "root_cause": "Migration 20260508 replaced get_discovery_models commenting 'logic unchanged' but dropped the effective_locations CTE from 20260409. effective_city was NULL in all responses. City-Boost used m.city (models table) instead of canonical model_locations priority (live>current>agency). canonicalDisplayCityForModel fell back to models.city.",
+      "fix": "New migration 20260519_get_discovery_models_restore_effective_city.sql: restored effective_locations CTE (DISTINCT ON model_id, live=0/current=1/agency=2), added LEFT JOIN, COALESCE(el.effective_city, m.city) AS effective_city, City-Boost on COALESCE.",
+      "already_fixed_by_20260509": "get_models_by_location city filter (model_locations subquery) was fixed by 20260509",
+      "live_verified": true,
+      "status": "FIXED"
+    },
+    {
+      "id": "BUG_5",
+      "severity": "low_medium",
+      "area": "P2_client_visibility",
+      "title": "CustomerSwipeScreen legacy inline mapping without URL normalization",
+      "file": "src/screens/CustomerSwipeScreen.tsx",
+      "lines": "156-161 and 196-201",
+      "root_cause": "Two inline model mappings in the getModelsPagedFromSupabase legacy path used gallery: m.portfolio_images ?? [] without normalizeDocumentspicturesModelImageRef. The mapDiscoveryModel function had normalization, but the inline maps bypassed it. Bare filenames or supabase-storage:// schemes could reach StorageImage.",
+      "fix": "Both inline maps now use (m.portfolio_images ?? []).map((u) => normalizeDocumentspicturesModelImageRef(u, m.id)). Import already existed (line 26).",
+      "status": "FIXED"
+    }
+  ],
+  "flows_verified_correct_no_changes": [
+    "First-save await chain (Create: importModelAndMerge → RPC → Location → Photos → Mirror → Refresh)",
+    "model_photos AND portfolio_images/polaroids mirror persistence",
+    "selectedModel rehydration after Add (getModelByIdFromSupabase)",
+    "GuestView: signImageUrls, HTTPS signed URLs, portfolio/polaroid separation by packageType",
+    "ClientWebApp.tsx Discovery: portfolio_images only, normalizeDocumentspicturesModelImageRef + StorageImage",
+    "get_models_near_location: DISTINCT ON live>current>agency (correct)",
+    "get_models_by_location: model_locations city subquery (fixed by 20260509)",
+    "Invite dispatch: ok===true guard, no fake success",
+    "Token generation: no pgcrypto, sha256() builtin, old tokens deleted on regeneration",
+    "finalizePendingInviteOrClaim: invite-first then claim, session+token driven",
+    "Success banner: only after out.claim.ok===true",
+    "CORS: production domains covered",
+    "Completeness logic: model_photos (is_visible_to_clients) as truth",
+    "Photo visibility: can_view_model_photo_storage + model_photos row alignment"
+  ],
+  "not_changed": [
+    "AuthContext.tsx / bootstrapThenLoadProfile / loadProfile",
+    "Paywall order / Admin routing",
+    "get_models_near_location",
+    "GuestView.tsx / guestLinksSupabase.ts",
+    "ClientWebApp.tsx Discovery normalization",
+    "Calendar / Booking / Option flows",
+    "Client Project / Package / Shared guards",
+    "AgencyControllerView.tsx handleSaveModel location path (Alert shown, acceptable UX)",
+    "Portfolio vs Polaroid vs Private separation",
+    "Location source priority live > current > agency (restored by BUG 4 fix)"
+  ],
+  "migrations_deployed": [
+    {
+      "file": "supabase/migrations/20260519_get_discovery_models_restore_effective_city.sql",
+      "http_status": 201,
+      "live_verified": "pg_get_functiondef confirms effective_locations, effective_city, COALESCE(el.effective_city"
+    },
+    {
+      "file": "supabase/migrations/20260520_claim_model_by_token_set_active.sql",
+      "http_status": 201,
+      "live_verified": "pg_get_functiondef confirms agency_relationship_status = 'active' and pending_link guard"
+    }
+  ],
+  "known_remaining_risks": [
+    {
+      "risk": "Edit-Save: location fail leads to step3Succeeded = true",
+      "severity": "low",
+      "rationale": "Alert IS shown to user. Model fields DID save. Consistent with acceptable UX pattern."
+    },
+    {
+      "risk": "Legacy link_model_by_email still in AuthContext",
+      "severity": "low",
+      "rationale": "Deprecated, isolated in Step 2 try/catch, guard user_id IS NULL in DB. No new code uses it."
+    },
+    {
+      "risk": "get_discovery_models without SET row_security TO off",
+      "severity": "low",
+      "rationale": "Unchanged from 20260508 baseline. SECURITY DEFINER runs as function owner (superuser). No new risk introduced."
+    },
+    {
+      "risk": "CORS for local dev on send-invite",
+      "severity": "info",
+      "rationale": "Only affects non-production origins. Production domains correctly in ALLOWED_ORIGINS."
+    }
+  ]
+}
