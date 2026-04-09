@@ -193,10 +193,7 @@ const ModelEditDetailsPanel: React.FC<Props> = ({ state, onChange }) => {
 
       <View style={{ flexDirection: 'row', gap: spacing.sm }}>
         <View style={[styles.group, { flex: 1 }]}>
-          <Text style={styles.label}>
-            {uiCopy.modelEdit.chestLabel}{' '}
-            <Text style={{ fontWeight: '400' }}>{uiCopy.modelEdit.chestHint}</Text>
-          </Text>
+          <Text style={styles.label}>{uiCopy.modelEdit.chestLabel}</Text>
           <TextInput
             value={state.chest}
             onChangeText={(v) => set({ chest: v })}
@@ -205,6 +202,7 @@ const ModelEditDetailsPanel: React.FC<Props> = ({ state, onChange }) => {
             keyboardType="numeric"
             style={styles.input}
           />
+          <Text style={styles.optionalHelper}>{uiCopy.modelEdit.measurementOptionalHelper}</Text>
         </View>
         <View style={[styles.group, { flex: 1 }]}>
           <Text style={styles.label}>{uiCopy.modelEdit.waistLabel}</Text>
@@ -216,6 +214,7 @@ const ModelEditDetailsPanel: React.FC<Props> = ({ state, onChange }) => {
             keyboardType="numeric"
             style={styles.input}
           />
+          <Text style={styles.optionalHelper}>{uiCopy.modelEdit.measurementOptionalHelper}</Text>
         </View>
       </View>
 
@@ -230,6 +229,7 @@ const ModelEditDetailsPanel: React.FC<Props> = ({ state, onChange }) => {
             keyboardType="numeric"
             style={styles.input}
           />
+          <Text style={styles.optionalHelper}>{uiCopy.modelEdit.measurementOptionalHelper}</Text>
         </View>
         <View style={[styles.group, { flex: 1 }]}>
           <Text style={styles.label}>{uiCopy.modelEdit.legsInseamLabel}</Text>
@@ -241,6 +241,7 @@ const ModelEditDetailsPanel: React.FC<Props> = ({ state, onChange }) => {
             keyboardType="numeric"
             style={styles.input}
           />
+          <Text style={styles.optionalHelper}>{uiCopy.modelEdit.measurementOptionalHelper}</Text>
         </View>
       </View>
 
@@ -254,6 +255,7 @@ const ModelEditDetailsPanel: React.FC<Props> = ({ state, onChange }) => {
           keyboardType="numeric"
           style={styles.input}
         />
+        <Text style={styles.optionalHelper}>{uiCopy.modelEdit.measurementOptionalHelper}</Text>
       </View>
 
       {/* ── Appearance ── */}
@@ -593,6 +595,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     ...typography.body,
     fontSize: 12,
+  },
+  optionalHelper: {
+    ...typography.body,
+    fontSize: 11,
+    color: colors.textSecondary,
   },
   dropdown: {
     marginTop: spacing.xs,
