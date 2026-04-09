@@ -715,7 +715,19 @@ export async function checkCalendarConflict(
     if (error) throw error;
     return data as ConflictResult;
   } catch (err) {
-    console.error('[calendarSupabase] checkCalendarConflict error:', err);
+    const e = err as { message?: string; code?: string; details?: string; hint?: string };
+    console.error('[calendarSupabase] checkCalendarConflict', {
+      modelId,
+      date,
+      startTime,
+      endTime,
+      error: {
+        message: e?.message,
+        code: e?.code,
+        details: e?.details,
+        hint: e?.hint,
+      },
+    });
     return { has_conflict: false, conflicting_entries: [] };
   }
 }

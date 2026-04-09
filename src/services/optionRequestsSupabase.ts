@@ -298,6 +298,7 @@ export async function insertOptionRequest(req: {
         hasOrganizationId: !!orgId,
         hasClientOrgId: !!clientOrgId,
         hasAgencyOrgId: !!agencyOrgId,
+        hasAgencyId: !!(req.agency_id && String(req.agency_id).trim()),
         hasProjectId: !!(req.project_id && String(req.project_id).trim()),
         requestType: req.request_type ?? 'option',
       },
