@@ -188,7 +188,7 @@ export type AddModelToProjectResult =
   | { ok: true }
   | { ok: false; userMessage: string };
 
-export { mapAddModelToProjectErrorMessage } from '../utils/mapAddModelToProjectErrorMessage';
+export { mapAddModelToProjectErrorMessage };
 
 /**
  * Adds a model to a client project.
@@ -226,13 +226,33 @@ export async function addModelToProject(
 
     const { data, error } = await supabase.rpc('add_model_to_project', args);
     if (error) {
+      let serialized = '';
+      try {
+        serialized = JSON.stringify(error, Object.getOwnPropertyNames(error));
+      } catch {
+        serialized = '[serialize failed]';
+      }
       console.error('addModelToProject RPC error:', {
         message: error.message,
         code: error.code,
         details: error.details,
         hint: error.hint,
+        serialized,
+        rpcArgs: {
+          p_project_id: args.p_project_id,
+          p_model_id: args.p_model_id,
+          has_p_organization_id: Boolean(args.p_organization_id),
+          has_p_country_iso: Boolean(args.p_country_iso),
+        },
       });
-      return { ok: false, userMessage: mapAddModelToProjectErrorMessage(error.message) };
+      return {
+        ok: false,
+        userMessage: mapAddModelToProjectErrorMessage(error.message, {
+          details: error.details,
+          hint: error.hint,
+          code: typeof error.code === 'string' ? error.code : undefined,
+        }),
+      };
     }
     return data === true ? { ok: true } : { ok: false, userMessage: uiCopy.projects.addToProjectGeneric };
   } catch (e) {
