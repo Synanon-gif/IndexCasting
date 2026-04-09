@@ -383,23 +383,29 @@ async function getActualStorageSize(bucket: string, path: string): Promise<numbe
 export async function uploadModelPhoto(
   modelId: string,
   file: Blob | File,
+  opts?: { skipConsentCheck?: boolean },
 ): Promise<UploadPhotoResult | null> {
   // Enforce image rights confirmation before any upload (GDPR / workspace rule §14).
   // confirmImageRights() must have been called in the UI before triggering this function.
+  // When the caller already ran confirmImageRights + guardImageUpload immediately before
+  // (e.g. handleAddModel batch-upload), skipConsentCheck avoids a redundant DB round-trip
+  // that can race with the just-inserted audit row and silently reject the upload.
   const { data: { user: uploadUser } } = await supabase.auth.getUser();
   if (!uploadUser) {
     console.warn('uploadModelPhoto: unauthenticated call rejected');
     return null;
   }
-  const hasConsent = await hasRecentImageRightsConfirmation(
-    uploadUser.id,
-    modelId,
-    IMAGE_RIGHTS_WINDOW_MINUTES,
-  );
-  if (!hasConsent) {
-    console.warn('uploadModelPhoto: image rights not confirmed for model', modelId);
-    void logSecurityEvent({ type: 'file_rejected', metadata: { service: 'modelPhotosSupabase', fn: 'uploadModelPhoto', reason: 'image_rights_not_confirmed', model_id: modelId } });
-    return null;
+  if (!opts?.skipConsentCheck) {
+    const hasConsent = await hasRecentImageRightsConfirmation(
+      uploadUser.id,
+      modelId,
+      IMAGE_RIGHTS_WINDOW_MINUTES,
+    );
+    if (!hasConsent) {
+      console.warn('uploadModelPhoto: image rights not confirmed for model', modelId);
+      void logSecurityEvent({ type: 'file_rejected', metadata: { service: 'modelPhotosSupabase', fn: 'uploadModelPhoto', reason: 'image_rights_not_confirmed', model_id: modelId } });
+      return null;
+    }
   }
 
   // Convert HEIC/HEIF to JPEG before validation (browser-image-compression doesn't support HEIC)

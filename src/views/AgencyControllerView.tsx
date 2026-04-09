@@ -76,7 +76,6 @@ import { AgencySettingsTab } from '../components/AgencySettingsTab';
 import {
   uploadModelPhoto,
   upsertPhotosForModel,
-  syncPortfolioToModel,
   getPhotosForModel,
   rebuildPortfolioImagesFromModelPhotos,
 } from '../services/modelPhotosSupabase';
@@ -2099,6 +2098,8 @@ const MyModelsTab: React.FC<{
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedModel?.id]);
 
+  // RC-5: models prop is already fullModels (full SupabaseModel from MODEL_DETAIL_SELECT,
+  // passed as fullModels from the parent). No risk of light-model degradation here.
   useEffect(() => {
     if (!selectedModel) return;
     const fresh = models.find((m) => m.id === selectedModel.id);
@@ -2192,10 +2193,19 @@ const MyModelsTab: React.FC<{
         Alert.alert(uiCopy.common.error, `${uiCopy.inviteResend.error}: ${tokenErr.message}\n\n${uiCopy.inviteResend.checkSpamHint}`);
         return;
       }
-      const token = (tokenRow as { token?: string } | null)?.token;
+      let token = (tokenRow as { token?: string } | null)?.token ?? null;
+      // RC-6 fix: auto-regenerate token when all existing tokens have expired.
       if (!token) {
-        Alert.alert(uiCopy.common.error, `${uiCopy.inviteResend.error}: No active claim token found for this model.\n\n${uiCopy.inviteResend.checkSpamHint}`);
-        return;
+        const regen = await generateModelClaimToken(model.id, inviteOrganizationId ?? undefined);
+        if (regen.ok) {
+          token = regen.data.token;
+        } else {
+          Alert.alert(
+            uiCopy.common.error,
+            `${uiCopy.inviteResend.error}: Could not regenerate claim token. ${regen.error ?? ''}\n\n${uiCopy.inviteResend.checkSpamHint}`,
+          );
+          return;
+        }
       }
       const resend = await resendInviteEmail({
         email,
@@ -2429,129 +2439,7 @@ const MyModelsTab: React.FC<{
         }
       }
 
-      // Reset form immediately after successful insert.
-      setAddModelEditState(buildEditState({ name: '' }));
-      setAddTerritories([]);
-      setAddTerritorySearch('');
-      setAddModelImageFiles([]);
-      setAddModelPolaroidFiles([]);
-      setAddModelImageRightsConfirmed(false);
-      setShowAddForm(false);
-
-      // Uploads should not make creation fail.
-      const hasAnyPhotos = filesToUpload.length > 0 || polaroidFilesToUpload.length > 0;
-      if (hasAnyPhotos) {
-        // EXPLOIT-C2 fix: Require image rights confirmation before any upload.
-        if (!addModelImageRightsConfirmed) {
-          setAddModelFeedback(uiCopy.modelMedia.addModelConfirmImageRightsFeedback);
-          setAddLoading(false);
-          return;
-        }
-        // Record the rights confirmation in the audit table, then guard the upload.
-        const { data: { user: currentUser } } = await supabase.auth.getUser();
-        if (!currentUser) {
-          Alert.alert(
-            uiCopy.modelMedia.imageRightsRequiredTitle,
-            uiCopy.modelMedia.addModelAuthRequiredToUploadPhotos,
-          );
-          setAddLoading(false);
-          return;
-        }
-        const rightsOk = await confirmImageRights({
-          userId: currentUser.id,
-          modelId: createdModelId,
-          orgId: inviteOrganizationId ?? undefined,
-        });
-        if (!rightsOk.ok) {
-          Alert.alert(
-            uiCopy.modelMedia.imageRightsRequiredTitle,
-            uiCopy.legal.imageRightsConfirmationFailed,
-          );
-          setAddLoading(false);
-          return;
-        }
-        const guard = await guardImageUpload(currentUser.id, createdModelId);
-        if (!guard.ok) {
-          Alert.alert(
-            uiCopy.modelMedia.imageRightsRequiredTitle,
-            uiCopy.legal.imageRightsGuardVerificationFailed,
-          );
-          setAddLoading(false);
-          return;
-        }
-
-        // Portfolio uploads
-        if (filesToUpload.length > 0) {
-          const uploadedUrls: string[] = [];
-          for (const file of filesToUpload) {
-            const result = await uploadModelPhoto(createdModelId, file);
-            if (result) {
-              uploadedUrls.push(result.url);
-            } else {
-              Alert.alert(
-                uiCopy.modelMedia.addModelPartialUploadTitle,
-                uiCopy.modelMedia.addModelPartialPortfolioUploadFailed,
-              );
-            }
-          }
-          if (uploadedUrls.length > 0) {
-            await upsertPhotosForModel(
-              createdModelId,
-              uploadedUrls.map((url, index) => ({
-                url,
-                sort_order: index,
-                visible: true,
-                is_visible_to_clients: true,
-                source: null,
-                api_external_id: null,
-                photo_type: 'portfolio' as const,
-              })),
-            );
-            const portfolioSyncOk = await syncPortfolioToModel(createdModelId, uploadedUrls);
-            if (!portfolioSyncOk) {
-              Alert.alert(uiCopy.common.error, uiCopy.modelMedia.portfolioColumnSyncFailed);
-            }
-          }
-        }
-
-        // Polaroid uploads — stored in the same private bucket as portfolio.
-        // New polaroids start as agency-only (is_visible_to_clients: false).
-        // models.polaroids[] is NOT synced here because only visible polaroids belong there.
-        // The agency toggles visibility per photo in ModelMediaSettingsPanel → that triggers
-        // syncPolaroidsToModel with only the visible subset.
-        if (polaroidFilesToUpload.length > 0) {
-          const uploadedPolaroidUrls: string[] = [];
-          for (const file of polaroidFilesToUpload) {
-            const result = await uploadModelPhoto(createdModelId, file);
-            if (result) {
-              uploadedPolaroidUrls.push(result.url);
-            } else {
-              Alert.alert(
-                uiCopy.modelMedia.addModelPartialUploadTitle,
-                uiCopy.modelMedia.addModelPartialPolaroidUploadFailed,
-              );
-            }
-          }
-          if (uploadedPolaroidUrls.length > 0) {
-            await upsertPhotosForModel(
-              createdModelId,
-              uploadedPolaroidUrls.map((url, index) => ({
-                url,
-                sort_order: index,
-                visible: false,
-                is_visible_to_clients: false,
-                source: null,
-                api_external_id: null,
-                photo_type: 'polaroid' as const,
-              })),
-            );
-            // intentionally no syncPolaroidsToModel call: polaroids are agency-only by default.
-            // models.polaroids[] only holds is_visible_to_clients=true entries (synced from MediaPanel).
-          }
-        }
-      }
-
-      // Write agency model_locations row so Near-Me / Location-Badge is populated immediately.
+      // ── RC-3 fix: Write location BEFORE photos (location has no photo dependency) ──
       if (addModelEditState.country_code) {
         const cityForGeocode = addModelEditState.city?.trim() || null;
         const geocoded = cityForGeocode
@@ -2570,6 +2458,131 @@ const MyModelsTab: React.FC<{
         );
         if (!locOk) {
           console.warn('handleAddModel: upsertModelLocation(agency) failed — location may not appear in Near-Me until next save');
+        }
+      }
+
+      // ── Photo uploads (must not block creation / location / refresh) ──
+      // RC-1 fix: NO early returns from the photo block — rights failures skip
+      // uploads but Location/Refresh/selectedModel always execute afterwards.
+      let anyPhotosUploaded = false;
+      const hasAnyPhotos = filesToUpload.length > 0 || polaroidFilesToUpload.length > 0;
+      if (hasAnyPhotos) {
+        let photoRightsOk = false;
+        if (!addModelImageRightsConfirmed) {
+          Alert.alert(
+            uiCopy.modelMedia.imageRightsRequiredTitle,
+            uiCopy.modelMedia.addModelConfirmImageRightsFeedback,
+          );
+        } else {
+          const { data: { user: currentUser } } = await supabase.auth.getUser();
+          if (!currentUser) {
+            Alert.alert(
+              uiCopy.modelMedia.imageRightsRequiredTitle,
+              uiCopy.modelMedia.addModelAuthRequiredToUploadPhotos,
+            );
+          } else {
+            const rightsOk = await confirmImageRights({
+              userId: currentUser.id,
+              modelId: createdModelId,
+              orgId: inviteOrganizationId ?? undefined,
+            });
+            if (!rightsOk.ok) {
+              Alert.alert(
+                uiCopy.modelMedia.imageRightsRequiredTitle,
+                uiCopy.legal.imageRightsConfirmationFailed,
+              );
+            } else {
+              const guard = await guardImageUpload(currentUser.id, createdModelId);
+              if (!guard.ok) {
+                Alert.alert(
+                  uiCopy.modelMedia.imageRightsRequiredTitle,
+                  uiCopy.legal.imageRightsGuardVerificationFailed,
+                );
+              } else {
+                photoRightsOk = true;
+              }
+            }
+          }
+        }
+
+        if (photoRightsOk) {
+          // Portfolio uploads — skipConsentCheck: caller already passed confirmImageRights + guardImageUpload (RC-2)
+          if (filesToUpload.length > 0) {
+            const uploadedUrls: string[] = [];
+            for (const file of filesToUpload) {
+              const result = await uploadModelPhoto(createdModelId, file, { skipConsentCheck: true });
+              if (result) {
+                uploadedUrls.push(result.url);
+              } else {
+                Alert.alert(
+                  uiCopy.modelMedia.addModelPartialUploadTitle,
+                  uiCopy.modelMedia.addModelPartialPortfolioUploadFailed,
+                );
+              }
+            }
+            if (uploadedUrls.length > 0) {
+              await upsertPhotosForModel(
+                createdModelId,
+                uploadedUrls.map((url, index) => ({
+                  url,
+                  sort_order: index,
+                  visible: true,
+                  is_visible_to_clients: true,
+                  source: null,
+                  api_external_id: null,
+                  photo_type: 'portfolio' as const,
+                })),
+              );
+              anyPhotosUploaded = true;
+            }
+            // RC-7: warn if ALL portfolio uploads failed despite files being present
+            if (uploadedUrls.length === 0) {
+              Alert.alert(
+                uiCopy.common.error,
+                'No portfolio photos could be uploaded. Please try again via Edit.',
+              );
+            }
+          }
+
+          // Polaroid uploads — skipConsentCheck: same as portfolio above (RC-2)
+          if (polaroidFilesToUpload.length > 0) {
+            const uploadedPolaroidUrls: string[] = [];
+            for (const file of polaroidFilesToUpload) {
+              const result = await uploadModelPhoto(createdModelId, file, { skipConsentCheck: true });
+              if (result) {
+                uploadedPolaroidUrls.push(result.url);
+              } else {
+                Alert.alert(
+                  uiCopy.modelMedia.addModelPartialUploadTitle,
+                  uiCopy.modelMedia.addModelPartialPolaroidUploadFailed,
+                );
+              }
+            }
+            if (uploadedPolaroidUrls.length > 0) {
+              await upsertPhotosForModel(
+                createdModelId,
+                uploadedPolaroidUrls.map((url, index) => ({
+                  url,
+                  sort_order: index,
+                  visible: false,
+                  is_visible_to_clients: false,
+                  source: null,
+                  api_external_id: null,
+                  photo_type: 'polaroid' as const,
+                })),
+              );
+              anyPhotosUploaded = true;
+            }
+          }
+        }
+      }
+
+      // RC-4 fix: Full mirror rebuild from model_photos (handles merge + new uploads).
+      // Uses the same rebuild as the Edit-flow ModelMediaSettingsPanel.
+      if (anyPhotosUploaded) {
+        const rebuildOk = await rebuildPortfolioImagesFromModelPhotos(createdModelId);
+        if (!rebuildOk) {
+          Alert.alert(uiCopy.common.error, uiCopy.modelMedia.portfolioColumnSyncFailed);
         }
       }
 
@@ -2610,6 +2623,15 @@ const MyModelsTab: React.FC<{
             : `${modelDisplayName} merged.${emailNote} Please refresh the list once.${syncWarn}`,
         );
       }
+
+      // RC-1 fix: Form reset AFTER all persistence (photos, location, refresh, selectedModel).
+      setAddModelEditState(buildEditState({ name: '' }));
+      setAddTerritories([]);
+      setAddTerritorySearch('');
+      setAddModelImageFiles([]);
+      setAddModelPolaroidFiles([]);
+      setAddModelImageRightsConfirmed(false);
+      setShowAddForm(false);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error('handleAddModel error:', err);
@@ -2945,7 +2967,8 @@ const MyModelsTab: React.FC<{
 
     // ── STEP 4: Only refresh + close panel on success ──
     if (!step3Succeeded) return;
-    onRefresh();
+    // RC-8 fix: await so subsequent completeness checks read fresh data.
+    try { await Promise.resolve(onRefresh()); } catch (e) { console.error('handleSaveModel refresh error:', e); }
     // Refresh completeness after save (model fields may have changed).
     if (selectedModel) {
       const freshModel = await getModelByIdFromSupabase(selectedModel.id).catch(() => null);
