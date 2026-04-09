@@ -56,6 +56,8 @@ export type ImportModelPayload = {
    * Use this when Mediaslide is the authoritative source of truth for measurements.
    */
   forceUpdateMeasurements?: boolean;
+  /** @internal Set by 23505 defense-in-depth to prevent infinite recursion. */
+  _mergeRetry?: boolean;
 };
 
 function mergeUniquePreserveOrder(existing: string[], incoming: string[]): string[] {
@@ -105,11 +107,11 @@ export async function importModelAndMerge(params: ImportModelPayload): Promise<I
     }
 
     if (!existing && email) {
-      // Admin-only RPC replaces direct email query (Gefahr 2 / Risiko D compliance:
-      // email-matching forbidden in all frontend code, including admin flows).
-      // admin_find_model_by_email() uses assert_is_admin() + row_security=off.
+      // Agency-scoped RPC: server-side email lookup (Gefahr 2 / Risiko D compliant).
+      // agency_find_model_by_email() uses org_members/bookers guard + admin bypass +
+      // row_security=off. Returns model only if same agency or unowned.
       const { data, error } = await supabase
-        .rpc('admin_find_model_by_email', { p_email: email.toLowerCase().trim() })
+        .rpc('agency_find_model_by_email', { p_email: email.toLowerCase().trim() })
         .maybeSingle();
       if (error) console.error('importModelAndMerge: email lookup error:', error);
       else existing = (data ?? null) as typeof existing;
@@ -288,6 +290,18 @@ export async function importModelAndMerge(params: ImportModelPayload): Promise<I
       .single();
 
     if (error) {
+      // 23505 = unique constraint violation (e.g. email already exists).
+      // Defense-in-depth: if the normal email lookup missed the row (RPC error,
+      // race condition, cross-agency model), retry as merge instead of dead-ending.
+      if (error.code === '23505' && email && !params._mergeRetry) {
+        console.warn('importModelAndMerge: 23505 on INSERT — retrying as merge');
+        const { data: conflictModel } = await supabase
+          .rpc('agency_find_model_by_email', { p_email: email.toLowerCase().trim() })
+          .maybeSingle();
+        if (conflictModel) {
+          return importModelAndMerge({ ...params, _mergeRetry: true } as ImportModelPayload);
+        }
+      }
       console.error('importModelAndMerge: insert error:', error);
       return null;
     }

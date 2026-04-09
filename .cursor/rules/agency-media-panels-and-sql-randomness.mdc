@@ -1,0 +1,29 @@
+---
+description: Stable callbacks for media/editor panels; SQL randomness without pgcrypto; agency model edit persistence
+alwaysApply: true
+---
+
+# Agency media panels, SQL randomness, and model edit persistence
+
+## Stable callback invariant for media/editor panels
+
+- Components that load or reconcile data in `useEffect` / `useCallback` must not depend on unstable inline callback props from parent renders if those callbacks can trigger parent refreshes.
+- If a child effect calls a parent refresh, callback refs must be stabilized (`useRef` or stable `useCallback`) to prevent refresh loops / request storms.
+- Media panels that fetch or sync model photos must never re-trigger purely because parent rerendered with new inline function references.
+- A request storm (`repeated GET model_photos / repeated POST agency_update_model_full`) is a **release blocker**.
+
+**Reference implementation:** `ModelMediaSettingsPanel` + `AgencyControllerView` (My Models) — `loadPhotos` must not list parent refresh callbacks in its dependency array; use refs for `onReconcileComplete` / `onHasVisiblePortfolioChange` when the parent passes `onRefresh` / roster updates.
+
+## No extension-only randomness in SQL functions
+
+- SQL routines must not depend on `gen_random_bytes()` / pgcrypto unless extension presence is explicitly guaranteed on the live project.
+- Preferred compatible pattern: built-in PG13+ primitives such as `gen_random_uuid()` plus `sha256(...)` (see project invariant: no pgcrypto in SECURITY DEFINER flows without guarantee).
+- After changing an existing production routine, verify live with `pg_get_functiondef`.
+
+## Agency model edit persistence invariant
+
+- After agency upload/save, the same agency must be able to reopen the model and see:
+  - uploaded portfolio/polaroid/private files
+  - latest saved location values
+  - correct completeness state
+- If agency cannot see its own just-saved media/location after reload, treat as a **persistence incident**, not a cosmetic UI bug.

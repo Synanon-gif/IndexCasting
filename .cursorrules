@@ -99,6 +99,14 @@ if (ok) {
 
 **`calendar_entries` + Booking Brief:** Client-/Employee-Schreibpfade (`updateBookingDetails`) müssen mit RLS übereinstimmen (Policy `calendar_entries_update_client_scoped` in `supabase/migrations/20260502_calendar_entries_rls_canonical_client_update.sql`). `booking_brief` bleibt UI-gefiltert im JSONB — kein feldweises RLS; siehe [docs/BOOKING_BRIEF_SYSTEM.md](docs/BOOKING_BRIEF_SYSTEM.md).
 
+### 4c.1 Medien-Panels, SQL-Zufall, Agency-Persistenz (Verweis)
+
+- **Stable callbacks:** Keine `useEffect`/`useCallback`-Abhängigkeiten von instabilen Parent-Inline-Callbacks, die einen Refresh auslösen — sonst Request-Storms (`model_photos` GET / `agency_update_model_full` POST in Schleifen) = Release-Blocker.
+- **SQL:** Kein `gen_random_bytes`/pgcrypto ohne garantierte Extension; bevorzugt PG13+ `gen_random_uuid()` + `sha256()`; nach Änderung Live-Verify mit `pg_get_functiondef`.
+- **Persistenz:** Wenn die Agency nach Save/Reload eigene Medien/Location nicht sieht → **Persistence Incident**, nicht nur UI.
+
+Vollständige englische Invarianten: [.cursor/rules/agency-media-panels-and-sql-randomness.mdc](.cursor/rules/agency-media-panels-and-sql-randomness.mdc).
+
 ## 4b. UI-Sprache & Copy (verbindlich)
 - **Die gesamte Nutzeroberfläche ist Englisch (English-only):** alle sichtbaren Texte für Agency, Client und Model — Buttons, Labels, Alerts, Placeholder, leere Zustände, Fehlermeldungen aus dem Produkt.
 - **Zentrale Quelle:** Nutzer-Texte kommen aus `src/constants/uiCopy.ts` (`uiCopy`). Keine neuen deutschsprachigen UI-Strings; keine Hardcodes derselben Phrase an vielen Stellen — lieber ein Key in `uiCopy` erweitern.

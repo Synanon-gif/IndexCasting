@@ -2335,13 +2335,29 @@ const MyModelsTab: React.FC<{
       // If merged (not created): also set agency_id and relationship status via direct update
       // when the existing record belongs to another agency or has no agency yet.
       if (!mergeResult.created) {
-        // Model existed without agency → claim ownership via SECURITY DEFINER RPC
-        await supabase.rpc('agency_claim_unowned_model', {
+        const relationshipStatus = emailTrim ? 'pending_link' : 'active';
+
+        // Try claiming unowned model first (agency_id IS NULL).
+        const { error: claimError } = await supabase.rpc('agency_claim_unowned_model', {
           p_model_id:                   mergeResult.model_id,
-          p_agency_relationship_status: emailTrim ? 'pending_link' : 'active',
+          p_agency_relationship_status: relationshipStatus,
           p_is_visible_fashion:         isVisibleFashion,
           p_is_visible_commercial:      isVisibleCommercial,
         });
+
+        if (claimError) {
+          // Model already has an agency_id (e.g. soft-removed with status='ended',
+          // or same-agency model being re-imported). Re-activate via
+          // agency_update_model_full which validates same-agency ownership.
+          // Note: agency_relationship_ended_at cannot be cleared through the COALESCE
+          // pattern — acceptable because status='active' controls roster visibility.
+          await supabase.rpc('agency_update_model_full', {
+            p_model_id:                   mergeResult.model_id,
+            p_agency_relationship_status: relationshipStatus,
+            p_is_visible_fashion:         isVisibleFashion,
+            p_is_visible_commercial:      isVisibleCommercial,
+          });
+        }
       } else {
         // Newly created: set relationship + sports flags not covered by importModelAndMerge insert.
         await supabase.rpc('agency_update_model_full', {
