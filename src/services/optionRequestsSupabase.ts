@@ -287,7 +287,23 @@ export async function insertOptionRequest(req: {
     })
     .select(OPTION_REQUEST_SELECT)
     .single();
-  if (error) { console.error('insertOptionRequest error:', error); return null; }
+  if (error) {
+    const e = error as { code?: string; message?: string; details?: string; hint?: string };
+    console.error('[insertOptionRequest]', {
+      code: e.code,
+      message: e.message,
+      details: e.details,
+      hint: e.hint,
+      payloadSummary: {
+        hasOrganizationId: !!orgId,
+        hasClientOrgId: !!clientOrgId,
+        hasAgencyOrgId: !!agencyOrgId,
+        hasProjectId: !!(req.project_id && String(req.project_id).trim()),
+        requestType: req.request_type ?? 'option',
+      },
+    });
+    return null;
+  }
 
   const inserted = data as SupabaseOptionRequest;
 

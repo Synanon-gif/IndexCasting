@@ -100,26 +100,32 @@ function firstGuestLinkInfoRow(data: unknown): GuestLinkInfo | null {
 export async function getGuestLink(linkId: string): Promise<GuestLinkInfo | null> {
   const trimmed = linkId?.trim();
   if (!trimmed) return null;
+  const idPrefix = trimmed.length >= 8 ? `${trimmed.slice(0, 8)}…` : trimmed;
   try {
     const { data, error } = await supabase.rpc('get_guest_link_info', {
       p_link_id: trimmed,
     });
     if (error) {
-      const code = (error as { code?: string }).code;
-      const msg = (error as { message?: string }).message ?? '';
+      const e = error as { code?: string; message?: string; details?: string; hint?: string };
+      const code = e.code;
+      const msg = e.message ?? '';
+      console.error('[getGuestLink] rpc=get_guest_link_info', {
+        p_link_id_prefix: idPrefix,
+        code,
+        message: e.message,
+        details: e.details,
+        hint: e.hint,
+      });
       if (code === 'PGRST202' || /not find.*function/i.test(msg) || /404/.test(msg)) {
         console.error(
           'getGuestLink: get_guest_link_info RPC missing or not exposed — deploy supabase/migrations (20260522_get_guest_link_info_ensure.sql)',
-          error,
         );
-      } else {
-        console.error('getGuestLink RPC error:', error);
       }
       return null;
     }
     return firstGuestLinkInfoRow(data);
   } catch (e) {
-    console.error('getGuestLink exception:', e);
+    console.error('[getGuestLink] exception', { p_link_id_prefix: idPrefix, err: e });
     return null;
   }
 }
