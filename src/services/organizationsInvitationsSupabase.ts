@@ -45,7 +45,16 @@ export type InvitationRow = {
 
 export type CreateOrganizationInvitationResult =
   | { ok: true; invitation: InvitationRow }
-  | { ok: false; error: 'agency_member_limit_reached' | 'unknown' };
+  | {
+      ok: false;
+      error:
+        | 'agency_member_limit_reached'
+        | 'already_invited'
+        | 'already_member'
+        | 'owner_only'
+        | 'unknown';
+    };
+type CreateOrganizationInvitationError = Exclude<CreateOrganizationInvitationResult, { ok: true }>['error'];
 
 export type InvitationPreview = {
   org_name: string;
@@ -223,6 +232,17 @@ export async function createOrganizationInvitation(params: {
   role: InvitationRole;
   ttlHours?: number;
 }): Promise<CreateOrganizationInvitationResult> {
+  const classifyCreateInviteError = (raw: string): CreateOrganizationInvitationError => {
+    const msg = raw.toLowerCase();
+    if (msg.includes('agency_member_limit_reached')) return 'agency_member_limit_reached';
+    if (msg.includes('owner_only') || msg.includes('not_owner')) return 'owner_only';
+    if (msg.includes('already_invited') || msg.includes('invitation_already_exists')) return 'already_invited';
+    if (msg.includes('already_member') || msg.includes('member_exists')) return 'already_member';
+    // Defensive fallback for common DB uniqueness signatures.
+    if (msg.includes('duplicate key') && msg.includes('invitation')) return 'already_invited';
+    return 'unknown';
+  };
+
   try {
     const { data: userData, error: userErr } = await supabase.auth.getUser();
     if (userErr || !userData.user) {
@@ -262,11 +282,8 @@ export async function createOrganizationInvitation(params: {
       .single();
     if (error) {
       console.error('createOrganizationInvitation error:', error);
-      const msg = `${error.message ?? ''} ${error.details ?? ''}`;
-      if (msg.includes('agency_member_limit_reached')) {
-        return { ok: false, error: 'agency_member_limit_reached' };
-      }
-      return { ok: false, error: 'unknown' };
+      const msg = `${error.message ?? ''} ${error.details ?? ''} ${error.hint ?? ''}`;
+      return { ok: false, error: classifyCreateInviteError(msg) };
     }
     const invitation = data as InvitationRow;
     logAction(params.organizationId, 'createOrganizationInvitation', {
@@ -280,10 +297,7 @@ export async function createOrganizationInvitation(params: {
   } catch (e) {
     console.error('createOrganizationInvitation exception:', e);
     const msg = e instanceof Error ? e.message : String(e);
-    if (msg.includes('agency_member_limit_reached')) {
-      return { ok: false, error: 'agency_member_limit_reached' };
-    }
-    return { ok: false, error: 'unknown' };
+    return { ok: false, error: classifyCreateInviteError(msg) };
   }
 }
 

@@ -1558,6 +1558,10 @@ export async function getPendingModelConfirmations(
 }
 
 export async function sendAgencyInvitation(agencyName: string, email: string, invitedBy?: string): Promise<string | null> {
+  // Legacy flow (agency_invitations): kept for backward compatibility.
+  // Canonical invite invariant for team/member onboarding is implemented via:
+  // invitations + send-invite edge + finalizePendingInviteOrClaim.
+  // Any changes here must be cross-checked against Booker/Employee/Model-claim flows.
   try {
     const { data, error } = await supabase
       .from('agency_invitations')

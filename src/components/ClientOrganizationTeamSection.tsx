@@ -17,6 +17,7 @@ import {
 import { uiCopy } from '../constants/uiCopy';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { describeSendInviteFailure } from '../services/inviteDelivery';
 
 const inputStyle = {
   borderWidth: 1,
@@ -120,8 +121,9 @@ export const ClientOrganizationTeamSection: React.FC<{
         const row = result.invitation;
         const link = buildOrganizationInviteUrl(row.token);
 
-        // Send invitation email via Edge Function (fire and forget — link is fallback)
+        // Email dispatch is best-effort. The invite link remains a deterministic fallback.
         let emailOk = false;
+        let emailFailureReason = '';
         try {
           const { data: { session: s } } = await supabase.auth.getSession();
           const res = await supabase.functions.invoke('send-invite', {
@@ -137,19 +139,31 @@ export const ClientOrganizationTeamSection: React.FC<{
             headers: s?.access_token ? { Authorization: `Bearer ${s.access_token}` } : undefined,
           });
           emailOk = !res.error;
-          if (res.error) console.error('ClientOrganizationTeamSection send-invite error:', res.error);
+          if (res.error || (res.data as { ok?: boolean } | null)?.ok === false) {
+            emailFailureReason = describeSendInviteFailure(res.data, res.error);
+            console.error('ClientOrganizationTeamSection send-invite error:', emailFailureReason, res);
+          }
         } catch (e) {
+          emailFailureReason = e instanceof Error ? e.message : String(e);
           console.error('ClientOrganizationTeamSection send-invite exception:', e);
         }
 
         setInviteEmail('');
         Alert.alert(
           uiCopy.alerts.invitationCreated,
-          emailOk ? uiCopy.alerts.invitationCreatedBody : uiCopy.team.invitationCreatedWithLink(link),
+          emailOk
+            ? uiCopy.alerts.invitationCreatedBody
+            : uiCopy.inviteDelivery.invitationCreatedEmailFailedWithLink(emailFailureReason || 'unknown_error', link),
         );
         void loadTeam();
       } else if (!result.ok && result.error === 'agency_member_limit_reached') {
         Alert.alert(uiCopy.common.error, uiCopy.team.agencyPlanMemberLimitReached);
+      } else if (!result.ok && result.error === 'already_invited') {
+        Alert.alert(uiCopy.common.error, uiCopy.alerts.invitationAlreadyInvited);
+      } else if (!result.ok && result.error === 'already_member') {
+        Alert.alert(uiCopy.common.error, uiCopy.alerts.invitationAlreadyMember);
+      } else if (!result.ok && result.error === 'owner_only') {
+        Alert.alert(uiCopy.common.error, uiCopy.alerts.invitationOwnerOnly);
       } else {
         Alert.alert(uiCopy.common.error, uiCopy.team.invitationErrorBody);
       }

@@ -76,6 +76,7 @@ describe('finalizePendingInviteOrClaim', () => {
     expect(acceptOrganizationInvitation).toHaveBeenCalledWith('inv_tok');
     expect(claimModelByToken).not.toHaveBeenCalled();
     expect(r.invite.ok).toBe(true);
+    expect(r.invite.state).toBe('success');
     expect(r.invite.organizationId).toBe('org-1');
     expect(persistInviteToken).toHaveBeenCalledWith(null);
     expect(onOk).toHaveBeenCalledTimes(1);
@@ -98,6 +99,8 @@ describe('finalizePendingInviteOrClaim', () => {
     expect(claimModelByToken).toHaveBeenCalledWith('claim_tok');
     expect(r.invite.ok).toBe(true);
     expect(r.claim.ok).toBe(true);
+    expect(r.invite.state).toBe('success');
+    expect(r.claim.state).toBe('success');
     expect(r.claim.modelId).toBe('m1');
     expect(persistInviteToken).toHaveBeenCalledWith(null);
     expect(persistModelClaimToken).toHaveBeenCalledWith(null);
@@ -122,6 +125,7 @@ describe('finalizePendingInviteOrClaim', () => {
 
     expect(claimModelByToken).not.toHaveBeenCalled();
     expect(r.invite.ok).toBe(false);
+    expect(r.invite.state).toBe('fatal');
     expect(r.claim.attempted).toBe(false);
   });
 
@@ -133,6 +137,7 @@ describe('finalizePendingInviteOrClaim', () => {
 
     expect(claimModelByToken).toHaveBeenCalledWith('claim_tok');
     expect(r.claim.ok).toBe(true);
+    expect(r.claim.state).toBe('success');
     expect(r.claim.modelId).toBe('m1');
     expect(r.claim.agencyId).toBe('a1');
     expect(persistModelClaimToken).toHaveBeenCalledWith(null);

@@ -55,7 +55,7 @@ function buildOrgInvitationEmail(params: {
   inviteUrl: string;
 }): { subject: string; html: string } {
   const roleLabel = params.role === 'booker' ? 'Booker' : params.role === 'employee' ? 'Employee' : 'Member';
-  const subject   = `You've been invited to join ${params.orgName} on Index Casting`;
+  const subject   = `Invitation: join ${params.orgName} on Index Casting`;
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -76,12 +76,13 @@ function buildOrgInvitationEmail(params: {
           </tr>
           <tr>
             <td style="padding:40px;">
-              <h1 style="margin:0 0 16px;font-size:22px;font-weight:700;color:#111111;">You've been invited</h1>
+              <h1 style="margin:0 0 16px;font-size:22px;font-weight:700;color:#111111;">Join an existing team</h1>
               <p style="margin:0 0 24px;font-size:15px;line-height:1.6;color:#444444;">
                 <strong>${params.inviterName}</strong> has invited you to join
                 <strong>${params.orgName}</strong> as a <strong>${roleLabel}</strong> on Index Casting.
               </p>
               <p style="margin:0 0 24px;font-size:15px;line-height:1.6;color:#444444;">
+                This is a team invitation (not a normal self-service sign-up).
                 Click the button below to open the invitation and create or sign in to your account.
                 This link expires in 48 hours.
               </p>
@@ -95,7 +96,7 @@ function buildOrgInvitationEmail(params: {
                   <td style="background:#111111;border-radius:8px;">
                     <a href="${params.inviteUrl}"
                        style="display:inline-block;padding:14px 32px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;">
-                      Accept Invitation
+                      Open Team Invitation
                     </a>
                   </td>
                 </tr>
@@ -109,7 +110,7 @@ function buildOrgInvitationEmail(params: {
           <tr>
             <td style="padding:24px 40px;border-top:1px solid #eeeeee;">
               <p style="margin:0;font-size:12px;color:#999999;line-height:1.5;">
-                You received this email because someone invited you to Index Casting.<br />
+                You received this email because someone invited you to join an existing organization on Index Casting.<br />
                 If you did not expect this invitation, you can safely ignore this email.
               </p>
             </td>
@@ -130,7 +131,7 @@ function buildModelClaimEmail(params: {
   modelName: string;
   claimUrl: string;
 }): { subject: string; html: string } {
-  const subject = `${params.agencyName} has added you to Index Casting`;
+  const subject = `Model profile claim: ${params.agencyName} · Index Casting`;
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -151,12 +152,13 @@ function buildModelClaimEmail(params: {
           </tr>
           <tr>
             <td style="padding:40px;">
-              <h1 style="margin:0 0 16px;font-size:22px;font-weight:700;color:#111111;">Your model profile is ready</h1>
+              <h1 style="margin:0 0 16px;font-size:22px;font-weight:700;color:#111111;">Claim your model profile</h1>
               <p style="margin:0 0 24px;font-size:15px;line-height:1.6;color:#444444;">
                 <strong>${params.agencyName}</strong> has created a model profile for
                 <strong>${params.modelName}</strong> on Index Casting.
               </p>
               <p style="margin:0 0 32px;font-size:15px;line-height:1.6;color:#444444;">
+                This link is for model profile claiming only (not a team invite as Booker/Employee).
                 Create your account to access your profile, manage your portfolio, and connect with clients.
                 This invitation link expires in 30 days.
               </p>
@@ -183,7 +185,7 @@ function buildModelClaimEmail(params: {
           <tr>
             <td style="padding:24px 40px;border-top:1px solid #eeeeee;">
               <p style="margin:0;font-size:12px;color:#999999;line-height:1.5;">
-                You received this email because a modelling agency added you to Index Casting.<br />
+                You received this email because a modelling agency created a model profile claim on Index Casting.<br />
                 If you do not know ${params.agencyName}, you can safely ignore this email.
               </p>
             </td>
@@ -375,7 +377,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       bodyInviteRole === 'employee' ? 'employee' : 'booker';
     const result    = buildOrgInvitationEmail({
       to,
-      orgName:     orgName    || 'your organisation',
+      orgName:     orgName    || 'your organization',
       inviterName: inviterName || 'A team member',
       role:        roleForEmail,
       inviteUrl,

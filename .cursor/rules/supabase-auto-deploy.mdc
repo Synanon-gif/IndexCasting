@@ -10,21 +10,24 @@ alwaysApply: true
 - **Token-Quelle:** Wird immer aus `.env.supabase` gelesen — NIEMALS hardcoden oder in Git committen.
 - **API Base:** `https://api.supabase.com/v1/projects/ispkfdqzjrfrilosoklu`
 
-## Regel: SQL-Migration = immer sofort pushen
+## Regel: SQL-Migration = immer sofort pushen (idempotent + verify)
 
-Nach JEDER neuen `.sql`-Datei in `supabase/` direkt ausführen — kein manuelles Copy-Paste:
+Nach JEDER neuen `.sql`-Datei in `supabase/migrations/` automatisiert ausführen:
 
 ```bash
-source /Users/rubenjohanneselge/Desktop/Final_IndexC/IndexCasting/.env.supabase && \
-SQL=$(cat supabase/MIGRATION_NAME.sql) && \
-curl -s -w "\nHTTP:%{http_code}" \
- -X POST "https://api.supabase.com/v1/projects/ispkfdqzjrfrilosoklu/database/query" \
- -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
- -H "Content-Type: application/json" \
- -d "{\"query\": $(echo "$SQL" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')}"
+cd /Users/rubenjohanneselge/Desktop/Final_IndexC/IndexCasting && \
+bash scripts/supabase-push-verify-migration.sh \
+  "supabase/migrations/MIGRATION_NAME.sql" \
+  "SELECT now() AS deployed_at"
 ```
 
-Erwartetes Ergebnis: `HTTP:201` → Erfolg. Bei Fehler: vollständige Fehlermeldung ausgeben und fixen.
+Erwartetes Ergebnis:
+- `HTTP:201` → erfolgreich deployed
+- oder idempotent erkannt (`already exists` / `42710`) → bereits live, dann trotzdem verify ausführen
+
+Wenn weder `201` noch idempotenter Duplicate-Fall: vollständige Fehlermeldung ausgeben und fixen.
+
+**Wichtig:** Platzhalter `MIGRATION_NAME.sql` immer durch echte Datei ersetzen (z. B. `20260513_organization_profiles_foundation.sql`).
 
 ## Regel: Edge Function = immer sofort deployen
 
@@ -48,6 +51,12 @@ curl -s \
  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
  -H "Content-Type: application/json" \
  -d '{"query": "SELECT routine_name FROM information_schema.routines WHERE routine_schema='\''public'\'' AND routine_name='\''FUNCTION_NAME'\''"}'
+```
+
+Zusätzlich empfohlen: bei Tabellen-Migrationen `to_regclass(...)` prüfen, z. B.
+
+```sql
+SELECT to_regclass('public.organization_profiles') AS table_exists;
 ```
 
 ## Regel: npm test nach TypeScript-Änderungen

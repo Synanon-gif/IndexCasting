@@ -11,8 +11,8 @@ import {
 } from '../services/finalizePendingInviteOrClaim';
 
 const EMPTY_FINALIZE: FinalizeInviteClaimResult = {
-  invite: { attempted: false, ok: false },
-  claim: { attempted: false, ok: false },
+  invite: { attempted: false, ok: false, state: 'idle' },
+  claim: { attempted: false, ok: false, state: 'idle' },
 };
 
 export type Profile = {

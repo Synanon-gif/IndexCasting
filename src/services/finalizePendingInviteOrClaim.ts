@@ -14,6 +14,7 @@ import { emitInviteClaimSuccess } from '../utils/inviteClaimSuccessBus';
 export type FinalizeInviteBranch = {
   attempted: boolean;
   ok: boolean;
+  state: 'idle' | 'success' | 'retryable' | 'fatal' | 'already_done';
   error?: string;
   /** Present when accept_organization_invitation succeeded. */
   organizationId?: string;
@@ -22,6 +23,7 @@ export type FinalizeInviteBranch = {
 export type FinalizeClaimBranch = {
   attempted: boolean;
   ok: boolean;
+  state: 'idle' | 'success' | 'retryable' | 'fatal' | 'already_done';
   error?: string;
   modelId?: string;
   agencyId?: string;
@@ -33,14 +35,19 @@ export type FinalizeInviteClaimResult = {
 };
 
 const emptyResult = (): FinalizeInviteClaimResult => ({
-  invite: { attempted: false, ok: false },
-  claim: { attempted: false, ok: false },
+  invite: { attempted: false, ok: false, state: 'idle' },
+  claim: { attempted: false, ok: false, state: 'idle' },
 });
 
 let finalizeChain: Promise<FinalizeInviteClaimResult> = Promise.resolve(emptyResult());
 
 function isFatalInviteError(err: string | undefined): boolean {
   return err === 'email_mismatch' || err === 'invalid_or_expired';
+}
+
+function isAlreadyDoneInviteError(err: string | undefined): boolean {
+  if (!err) return false;
+  return err === 'already_accepted' || /already_accepted|already_member/i.test(err);
 }
 
 function isFatalClaimError(err: string | undefined): boolean {
@@ -51,6 +58,11 @@ function isFatalClaimError(err: string | undefined): boolean {
     err === 'no_result' ||
     (typeof err === 'string' && /token_not_found|token_expired|token_already_used/i.test(err))
   );
+}
+
+function isAlreadyDoneClaimError(err: string | undefined): boolean {
+  if (!err) return false;
+  return /already_linked|already_claimed/i.test(err);
 }
 
 function showInviteAlerts(
@@ -105,13 +117,19 @@ async function runClaimMutationOnly(
   out.claim.error = claimRes.ok ? undefined : claimRes.error;
 
   if (claimRes.ok) {
+    out.claim.state = 'success';
     if (claimRes.data) {
       const { modelId, agencyId } = claimRes.data;
       out.claim.modelId = modelId;
       out.claim.agencyId = agencyId;
     }
     await persistModelClaimToken(null);
+  } else if (isAlreadyDoneClaimError(out.claim.error)) {
+    out.claim.state = 'already_done';
+    await persistModelClaimToken(null);
+    if (opts.showUiAlerts && out.claim.error) showClaimAlerts(out.claim.error);
   } else if (isFatalClaimError(out.claim.error)) {
+    out.claim.state = 'fatal';
     await persistModelClaimToken(null);
     if (opts.showUiAlerts) showClaimAlerts(out.claim.error);
     console.warn('[finalizePendingInviteOrClaim] claim fatal', {
@@ -119,6 +137,7 @@ async function runClaimMutationOnly(
       error: out.claim.error,
     });
   } else {
+    out.claim.state = 'retryable';
     console.warn('[finalizePendingInviteOrClaim] claim non-fatal (token kept)', {
       flow: 'model_claim',
       error: out.claim.error,
@@ -156,7 +175,12 @@ export function finalizePendingInviteOrClaim(
       out.invite.error = inv.ok ? undefined : (inv.error as string | undefined);
 
       if (!inv.ok) {
-        if (isFatalInviteError(out.invite.error)) {
+        if (isAlreadyDoneInviteError(out.invite.error)) {
+          out.invite.state = 'already_done';
+          await persistInviteToken(null);
+          if (opts.showUiAlerts && out.invite.error) showInviteAlerts(out.invite.error, opts.signOut);
+        } else if (isFatalInviteError(out.invite.error)) {
+          out.invite.state = 'fatal';
           await persistInviteToken(null);
           if (opts.showUiAlerts) showInviteAlerts(out.invite.error, opts.signOut);
           else
@@ -165,6 +189,7 @@ export function finalizePendingInviteOrClaim(
               error: out.invite.error,
             });
         } else {
+          out.invite.state = 'retryable';
           console.warn('[finalizePendingInviteOrClaim] invite non-fatal (token kept)', {
             flow: 'agency_client_invite',
             error: out.invite.error,
@@ -175,6 +200,7 @@ export function finalizePendingInviteOrClaim(
       }
 
       const orgId = inv.organization_id;
+      out.invite.state = 'success';
       if (orgId) out.invite.organizationId = orgId;
       await persistInviteToken(null);
 
