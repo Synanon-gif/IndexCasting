@@ -40,7 +40,7 @@ function makeInsertChain(row: Record<string, unknown>) {
   const chain: any = {};
   chain.insert = jest.fn(() => chain);
   chain.select = jest.fn(() => chain);
-  chain.single = jest.fn().mockResolvedValue({ data: row, error: null });
+  chain.maybeSingle = jest.fn().mockResolvedValue({ data: row, error: null });
   return chain;
 }
 
@@ -127,7 +127,7 @@ describe('importModelAndMerge', () => {
     const insertChain: any = {};
     insertChain.insert = jest.fn((p: unknown) => { insertedPayload = p; return insertChain; });
     insertChain.select = jest.fn(() => insertChain);
-    insertChain.single = jest.fn().mockResolvedValue({ data: { id: 'model-cc' }, error: null });
+    insertChain.maybeSingle = jest.fn().mockResolvedValue({ data: { id: 'model-cc' }, error: null });
 
     fromMock.mockReturnValueOnce(insertChain);
 
@@ -255,7 +255,7 @@ describe('importModelAndMerge', () => {
     const insertChain: any = {};
     insertChain.insert = jest.fn((p: unknown) => { insertedPayload = p; return insertChain; });
     insertChain.select = jest.fn(() => insertChain);
-    insertChain.single = jest.fn().mockResolvedValue({ data: { id: 'model-eth' }, error: null });
+    insertChain.maybeSingle = jest.fn().mockResolvedValue({ data: { id: 'model-eth' }, error: null });
 
     fromMock.mockReturnValueOnce(insertChain);
 

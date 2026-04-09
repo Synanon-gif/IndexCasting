@@ -286,8 +286,8 @@ export async function importModelAndMerge(params: ImportModelPayload): Promise<I
     const { data, error } = await supabase
       .from('models')
       .insert(payload)
-      .select('*')
-      .single();
+      .select('id')
+      .maybeSingle();
 
     if (error) {
       // 23505 = unique constraint violation (e.g. email already exists).
@@ -303,6 +303,11 @@ export async function importModelAndMerge(params: ImportModelPayload): Promise<I
         }
       }
       console.error('importModelAndMerge: insert error:', error);
+      return null;
+    }
+
+    if (!data?.id) {
+      console.error('importModelAndMerge: INSERT succeeded but row not returned by RLS — cannot proceed');
       return null;
     }
 

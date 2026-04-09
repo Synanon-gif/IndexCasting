@@ -1,0 +1,89 @@
+{
+  "name": "agency_model_persistence_incident",
+  "version": "2026-04-09",
+  "confirmed_root_causes": [
+    {
+      "id": "RC-1",
+      "title": "models.organization_id does not exist on live DB",
+      "impact": "uploadModelPhoto/uploadPrivateModelPhoto audit queries return 400; assertOrgContext fails; audit logs skipped",
+      "fix": "Replaced with resolveOrgIdForModel() helper: models.agency_id -> organizations JOIN"
+    },
+    {
+      "id": "RC-2",
+      "title": "send-invite CORS headers missing on POST responses",
+      "impact": "Browser blocks all non-OPTIONS responses; invite/resend completely broken from web",
+      "fix": "Added getCorsHeaders(req) + jsonResponse() helper; CORS on every response; allowlist: index-casting.com, www, indexcasting.com"
+    },
+    {
+      "id": "RC-3",
+      "title": "buildEditState useEffect dependency only watches selectedModel?.id",
+      "impact": "After save of same model, form shows stale city/country/location values",
+      "fix": "Added selectedModel?.updated_at to dependency array"
+    },
+    {
+      "id": "RC-4",
+      "title": "importModelAndMerge INSERT uses .single() — risk of 406/PGRST116",
+      "impact": "If RLS blocks SELECT after INSERT, importModelAndMerge returns null -> photos never uploaded",
+      "fix": "Changed to .select('id').maybeSingle() + null guard with explicit error message"
+    },
+    {
+      "id": "RC-5",
+      "title": "upsertPhotosForModel missing file_size_bytes in payload",
+      "impact": "Add-model photos stored with file_size_bytes=0; deletePhoto storage decrement incorrect",
+      "fix": "Added file_size_bytes to upsert payload; handleAddModel now passes fileSizeBytes from upload result"
+    }
+  ],
+  "false_alarms": [
+    {
+      "symptom": "can_access_platform 401 before login",
+      "reason": "Expected startup noise — Supabase client attempts platform check before session exists"
+    },
+    {
+      "symptom": "agency_find_model_by_email 406",
+      "reason": "RPC uses .maybeSingle() correctly; likely misattributed — real 406 source is INSERT .single() (RC-4)"
+    },
+    {
+      "symptom": "Checkbox not persistent after reopen",
+      "reason": "Intentionally transient — 60-min audit window (rightsAuditWindowActive) handles re-upload permission. Checkbox state does NOT affect display of saved images"
+    }
+  ],
+  "live_schema_findings": {
+    "models_organization_id": "DOES NOT EXIST",
+    "models_phone": "DOES NOT EXIST",
+    "models_visible": "DOES NOT EXIST",
+    "models_birthday": "EXISTS",
+    "model_photos_columns": ["id", "model_id", "url", "sort_order", "visible", "source", "api_external_id", "created_at", "updated_at", "photo_type", "is_visible_to_clients", "agency_id", "file_size_bytes"],
+    "model_locations_constraint": "unique_model_source UNIQUE(model_id, source)",
+    "upsert_model_location": "Correct: ON CONFLICT(model_id, source), auth-split, GPS preservation",
+    "agency_find_model_by_email": "Correct: SETOF models, LIMIT 1, maybeSingle-compatible",
+    "model_photos_rls": "Agency INSERT/SELECT/UPDATE/DELETE via models.agency_id -> organizations -> organization_members"
+  },
+  "safe_fixes": [
+    "src/services/modelPhotosSupabase.ts — resolveOrgIdForModel helper + 2x audit query replacement",
+    "supabase/functions/send-invite/index.ts — CORS headers on all responses (deployed + verified)",
+    "src/views/AgencyControllerView.tsx — buildEditState dependency + file_size_bytes passthrough",
+    "src/services/modelsImportSupabase.ts — .single() -> .maybeSingle() on INSERT"
+  ],
+  "deferred_items": [
+    "Checkbox UX text could mention '60-min upload window' more clearly — cosmetic, not a bug",
+    "model_photos.agency_id not set during upsertPhotosForModel — agency_id is nullable, RLS uses models.agency_id JOIN",
+    "handleAddModel does not check upsertPhotosForModel return value — fails silently if upsert returns []"
+  ],
+  "do_not_touch": [
+    "AuthContext / bootstrapThenLoadProfile",
+    "Paywall / can_access_platform ordering",
+    "Admin routing / admin-security.mdc",
+    "Discovery / Near-Me / Location priority live > current > agency",
+    "Package / Shared / Client-Project flows",
+    "Booking / Calendar",
+    "RLS architecture (no broad rebuild)",
+    "Invite-claim finalization contract"
+  ],
+  "regressions_checked": {
+    "typecheck": "0 errors",
+    "lint": "0 errors (4 pre-existing warnings)",
+    "tests": "82 suites, 904 tests passed",
+    "send_invite_cors_preflight": "200 with correct Access-Control-Allow-Origin echo",
+    "send_invite_cors_post_error": "401 with correct CORS headers"
+  }
+}

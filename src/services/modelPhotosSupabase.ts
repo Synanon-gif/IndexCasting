@@ -25,6 +25,31 @@ import {
 const PHOTO_ALLOWED_TYPES = ALLOWED_MIME_TYPES.filter((t) => t.startsWith('image/'));
 
 /**
+ * Resolves the organization_id for a model via its agency relationship.
+ * `models.organization_id` does not exist — org is derived from
+ * `models.agency_id` → `organizations` (type='agency').
+ */
+async function resolveOrgIdForModel(modelId: string): Promise<string | null> {
+  try {
+    const { data: modelRow } = await supabase
+      .from('models')
+      .select('agency_id')
+      .eq('id', modelId)
+      .maybeSingle();
+    if (!modelRow?.agency_id) return null;
+    const { data: orgRow } = await supabase
+      .from('organizations')
+      .select('id')
+      .eq('agency_id', modelRow.agency_id)
+      .eq('type', 'agency')
+      .maybeSingle();
+    return orgRow?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Strips EXIF metadata (including GPS coordinates) from an image by
  * re-encoding it through the Canvas API via browser-image-compression.
  * Works in browsers and Capacitor WKWebView (iOS/Android).
@@ -134,6 +159,7 @@ export async function upsertPhotosForModel(
       source: p.source ?? null,
       api_external_id: p.api_external_id ?? null,
       photo_type: p.photo_type,
+      file_size_bytes: p.file_size_bytes ?? 0,
     }));
 
     const { data, error } = await supabase
@@ -481,14 +507,9 @@ export async function uploadModelPhoto(
     // The bucket is private; all reads go through resolveStorageUrl → signed URL.
     const storageUri = toStorageUri(PUBLIC_IMAGES_BUCKET, path);
 
-    // Fire-and-forget audit log: resolve org from model record.
+    // Fire-and-forget audit log: resolve org via agency relationship.
     void (async () => {
-      const { data: modelRow } = await supabase
-        .from('models')
-        .select('organization_id')
-        .eq('id', modelId)
-        .maybeSingle();
-      const orgId = (modelRow as { organization_id?: string } | null)?.organization_id;
+      const orgId = await resolveOrgIdForModel(modelId);
       logAction(orgId, 'uploadModelPhoto', {
         type: 'image',
         entityId: modelId,
@@ -607,14 +628,9 @@ export async function uploadPrivateModelPhoto(
     // Store path as the URL — resolved to a signed URL at render time.
     const privateUri = `supabase-private://${PRIVATE_BUCKET}/${path}`;
 
-    // Fire-and-forget audit log.
+    // Fire-and-forget audit log: resolve org via agency relationship.
     void (async () => {
-      const { data: modelRow } = await supabase
-        .from('models')
-        .select('organization_id')
-        .eq('id', modelId)
-        .maybeSingle();
-      const orgId = (modelRow as { organization_id?: string } | null)?.organization_id;
+      const orgId = await resolveOrgIdForModel(modelId);
       logAction(orgId, 'uploadPrivateModelPhoto', {
         type: 'image',
         entityId: modelId,

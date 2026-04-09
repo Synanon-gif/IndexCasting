@@ -2100,7 +2100,7 @@ const MyModelsTab: React.FC<{
       setEditState(buildEditState(selectedModel));
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedModel?.id]);
+  }, [selectedModel?.id, selectedModel?.updated_at]);
 
   // RC-5: models prop is already fullModels (full SupabaseModel from MODEL_DETAIL_SELECT,
   // passed as fullModels from the parent). No risk of light-model degradation here.
@@ -2518,11 +2518,11 @@ const MyModelsTab: React.FC<{
         if (photoRightsOk) {
           // Portfolio uploads — skipConsentCheck: caller already passed confirmImageRights + guardImageUpload (RC-2)
           if (filesToUpload.length > 0) {
-            const uploadedUrls: string[] = [];
+            const uploadedItems: { url: string; fileSizeBytes: number }[] = [];
             for (const file of filesToUpload) {
               const result = await uploadModelPhoto(createdModelId, file, { skipConsentCheck: true });
               if (result) {
-                uploadedUrls.push(result.url);
+                uploadedItems.push(result);
               } else {
                 Alert.alert(
                   uiCopy.modelMedia.addModelPartialUploadTitle,
@@ -2530,23 +2530,23 @@ const MyModelsTab: React.FC<{
                 );
               }
             }
-            if (uploadedUrls.length > 0) {
+            if (uploadedItems.length > 0) {
               await upsertPhotosForModel(
                 createdModelId,
-                uploadedUrls.map((url, index) => ({
-                  url,
+                uploadedItems.map((item, index) => ({
+                  url: item.url,
                   sort_order: index,
                   visible: true,
                   is_visible_to_clients: true,
                   source: null,
                   api_external_id: null,
                   photo_type: 'portfolio' as const,
+                  file_size_bytes: item.fileSizeBytes,
                 })),
               );
               anyPhotosUploaded = true;
             }
-            // RC-7: warn if ALL portfolio uploads failed despite files being present
-            if (uploadedUrls.length === 0) {
+            if (uploadedItems.length === 0) {
               Alert.alert(
                 uiCopy.common.error,
                 'No portfolio photos could be uploaded. Please try again via Edit.',
@@ -2556,11 +2556,11 @@ const MyModelsTab: React.FC<{
 
           // Polaroid uploads — skipConsentCheck: same as portfolio above (RC-2)
           if (polaroidFilesToUpload.length > 0) {
-            const uploadedPolaroidUrls: string[] = [];
+            const uploadedPolaroidItems: { url: string; fileSizeBytes: number }[] = [];
             for (const file of polaroidFilesToUpload) {
               const result = await uploadModelPhoto(createdModelId, file, { skipConsentCheck: true });
               if (result) {
-                uploadedPolaroidUrls.push(result.url);
+                uploadedPolaroidItems.push(result);
               } else {
                 Alert.alert(
                   uiCopy.modelMedia.addModelPartialUploadTitle,
@@ -2568,17 +2568,18 @@ const MyModelsTab: React.FC<{
                 );
               }
             }
-            if (uploadedPolaroidUrls.length > 0) {
+            if (uploadedPolaroidItems.length > 0) {
               await upsertPhotosForModel(
                 createdModelId,
-                uploadedPolaroidUrls.map((url, index) => ({
-                  url,
+                uploadedPolaroidItems.map((item, index) => ({
+                  url: item.url,
                   sort_order: index,
                   visible: false,
                   is_visible_to_clients: false,
                   source: null,
                   api_external_id: null,
                   photo_type: 'polaroid' as const,
+                  file_size_bytes: item.fileSizeBytes,
                 })),
               );
               anyPhotosUploaded = true;

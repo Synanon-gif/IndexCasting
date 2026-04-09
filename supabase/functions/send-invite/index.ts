@@ -26,6 +26,30 @@ const RESEND_API_URL = 'https://api.resend.com/emails';
 const DEFAULT_APP_BASE_URL = 'https://index-casting.com';
 const FROM_EMAIL     = 'Index Casting <noreply@index-casting.com>';
 
+const ALLOWED_ORIGINS = [
+  'https://index-casting.com',
+  'https://www.index-casting.com',
+  'https://indexcasting.com',
+];
+
+function getCorsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get('Origin') ?? '';
+  const allowOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    'Access-Control-Allow-Origin': allowOrigin,
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Vary': 'Origin',
+  };
+}
+
+function jsonResponse(body: Record<string, unknown>, status: number, corsHeaders: Record<string, string>): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
 interface SendInvitePayload {
   type: 'org_invitation' | 'model_claim';
   to: string;
@@ -229,19 +253,15 @@ function buildModelClaimEmail(params: {
 // ─── Main Handler ──────────────────────────────────────────────────────────
 
 Deno.serve(async (req: Request): Promise<Response> => {
+  const corsHeaders = getCorsHeaders(req);
+
   // CORS preflight
   if (req.method === 'OPTIONS') {
-    return new Response('ok', {
-      headers: {
-        'Access-Control-Allow-Origin':  '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-      },
-    });
+    return new Response('ok', { headers: corsHeaders });
   }
 
   if (req.method !== 'POST') {
-    return new Response('Method Not Allowed', { status: 405 });
+    return new Response('Method Not Allowed', { status: 405, headers: corsHeaders });
   }
 
   // ── Auth: Caller MUSS authentifiziert sein ─────────────────────────────────
@@ -249,10 +269,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const supabaseAnon = Deno.env.get('SUPABASE_ANON_KEY');
   if (!supabaseUrl || !supabaseAnon) {
     console.error('[send-invite] Missing SUPABASE_URL or SUPABASE_ANON_KEY');
-    return new Response(JSON.stringify({ error: 'service_misconfigured' }), {
-      status: 503,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonResponse({ error: 'service_misconfigured' }, 503, corsHeaders);
   }
 
   const authHeader = req.headers.get('Authorization') ?? '';
@@ -261,10 +278,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   });
   const { data: { user }, error: authErr } = await supabase.auth.getUser();
   if (authErr || !user) {
-    return new Response(JSON.stringify({ error: 'unauthorized' }), {
-      status: 401,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonResponse({ error: 'unauthorized' }, 401, corsHeaders);
   }
 
   // ── Parse Body ─────────────────────────────────────────────────────────────
@@ -272,10 +286,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   try {
     body = await req.json() as SendInvitePayload;
   } catch {
-    return new Response(JSON.stringify({ error: 'invalid_json' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonResponse({ error: 'invalid_json' }, 400, corsHeaders);
   }
 
   const {
@@ -290,25 +301,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
   } = body;
 
   if (!type || !to || !token) {
-    return new Response(JSON.stringify({ error: 'missing_required_fields' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonResponse({ error: 'missing_required_fields' }, 400, corsHeaders);
   }
 
   if (!['org_invitation', 'model_claim'].includes(type)) {
-    return new Response(JSON.stringify({ error: 'invalid_type' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonResponse({ error: 'invalid_type' }, 400, corsHeaders);
   }
 
   // Einfache Email-Validierung
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
-    return new Response(JSON.stringify({ error: 'invalid_email' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonResponse({ error: 'invalid_email' }, 400, corsHeaders);
   }
 
   let invitationContext: InvitationRowForDispatch | null = null;
@@ -321,28 +323,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     if (inviteErr) {
       console.error('[send-invite] failed to load invitation context', inviteErr);
-      return new Response(JSON.stringify({ error: 'invitation_context_unavailable' }), {
-        status: 409,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonResponse({ error: 'invitation_context_unavailable' }, 409, corsHeaders);
     }
     if (!inviteRow) {
-      return new Response(JSON.stringify({ error: 'invitation_not_found' }), {
-        status: 404,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonResponse({ error: 'invitation_not_found' }, 404, corsHeaders);
     }
     if ((inviteRow as { status?: string }).status !== 'pending') {
-      return new Response(JSON.stringify({ error: 'invitation_not_pending' }), {
-        status: 409,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonResponse({ error: 'invitation_not_pending' }, 409, corsHeaders);
     }
     if (!((inviteRow as { role?: string }).role === 'booker' || (inviteRow as { role?: string }).role === 'employee')) {
-      return new Response(JSON.stringify({ error: 'invitation_role_invalid' }), {
-        status: 409,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonResponse({ error: 'invitation_role_invalid' }, 409, corsHeaders);
     }
 
     invitationContext = {
@@ -352,22 +342,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
     };
 
     if (normalizeEmail(invitationContext.email) !== normalizeEmail(to)) {
-      return new Response(JSON.stringify({ error: 'invitation_email_mismatch' }), {
-        status: 409,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonResponse({ error: 'invitation_email_mismatch' }, 409, corsHeaders);
     }
     if (bodyInviteRole && bodyInviteRole !== invitationContext.role) {
-      return new Response(JSON.stringify({ error: 'invitation_role_mismatch' }), {
-        status: 409,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonResponse({ error: 'invitation_role_mismatch' }, 409, corsHeaders);
     }
     if (bodyOrgId && bodyOrgId !== invitationContext.organization_id) {
-      return new Response(JSON.stringify({ error: 'invitation_org_mismatch' }), {
-        status: 409,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonResponse({ error: 'invitation_org_mismatch' }, 409, corsHeaders);
     }
   }
 
@@ -380,10 +361,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const { data: orgCtxRaw, error: orgCtxErr } = await supabase.rpc('get_my_org_context');
     if (orgCtxErr) {
       console.error('[send-invite] get_my_org_context error:', orgCtxErr);
-      return new Response(JSON.stringify({ error: 'org_context_unavailable' }), {
-        status: 403,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonResponse({ error: 'org_context_unavailable' }, 403, corsHeaders);
     }
     const orgCtxRows = Array.isArray(orgCtxRaw) ? orgCtxRaw : (orgCtxRaw ? [orgCtxRaw] : []);
     const rows = orgCtxRows as OrgCtxRow[];
@@ -399,10 +377,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       orgCtx = rows.find((r) => r.organization_id === requestedOrg);
       if (!orgCtx) {
         console.warn('[send-invite] organization_id not in caller memberships', { userId: user.id, requestedOrg });
-        return new Response(JSON.stringify({ error: 'not_member_of_organization' }), {
-          status: 403,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return jsonResponse({ error: 'not_member_of_organization' }, 403, corsHeaders);
       }
     } else {
       if (rows.length > 1) {
@@ -421,10 +396,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
           userId: user.id,
           role: orgCtx?.org_member_role,
         });
-        return new Response(JSON.stringify({ error: 'owner_only' }), {
-          status: 403,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return jsonResponse({ error: 'owner_only' }, 403, corsHeaders);
       }
     }
 
@@ -436,10 +408,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
           userId: user.id,
           orgType: orgCtx?.org_type,
         });
-        return new Response(JSON.stringify({ error: 'agency_only' }), {
-          status: 403,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return jsonResponse({ error: 'agency_only' }, 403, corsHeaders);
       }
     }
   }
@@ -448,10 +417,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const resendKey = Deno.env.get('RESEND_API_KEY');
   if (!resendKey) {
     console.error('[send-invite] RESEND_API_KEY is not set');
-    return new Response(JSON.stringify({ error: 'email_service_not_configured' }), {
-      status: 503,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonResponse({ error: 'email_service_not_configured' }, 503, corsHeaders);
   }
 
   // ── Build Email ────────────────────────────────────────────────────────────
@@ -498,24 +464,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
     if (!resendRes.ok) {
       const errorText = await resendRes.text();
       console.error('[send-invite] Resend API error:', resendRes.status, errorText);
-      return new Response(
-        JSON.stringify({ error: 'email_send_failed', detail: errorText }),
-        { status: 502, headers: { 'Content-Type': 'application/json' } },
-      );
+      return jsonResponse({ error: 'email_send_failed', detail: errorText }, 502, corsHeaders);
     }
 
     const resendData = await resendRes.json();
     console.log('[send-invite] Email sent:', type, 'to:', to.replace(/@.*/, '@…'), 'id:', (resendData as { id?: string }).id);
 
-    return new Response(
-      JSON.stringify({ ok: true, email_id: (resendData as { id?: string }).id }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } },
-    );
+    return jsonResponse({ ok: true, email_id: (resendData as { id?: string }).id }, 200, corsHeaders);
   } catch (e) {
     console.error('[send-invite] Fetch exception:', e);
-    return new Response(
-      JSON.stringify({ error: 'email_send_exception' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } },
-    );
+    return jsonResponse({ error: 'email_send_exception' }, 500, corsHeaders);
   }
 });
