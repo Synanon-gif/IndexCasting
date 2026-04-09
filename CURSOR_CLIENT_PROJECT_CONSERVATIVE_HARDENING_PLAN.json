@@ -1,0 +1,33 @@
+{
+  "name": "client_project_conservative_hardening",
+  "version": "2026-04-09",
+  "scopes": [
+    "client_projects_hydration",
+    "add_model_to_project_rpc",
+    "client_web_add_to_project"
+  ],
+  "files_touched": [
+    "src/services/modelsSupabase.ts",
+    "src/services/projectsSupabase.ts",
+    "src/web/ClientWebApp.tsx",
+    "supabase/migrations/20260410_add_model_to_project_explicit_org.sql",
+    ".cursor/rules/auto-review.mdc"
+  ],
+  "deliverables": [
+    "CURSOR_CLIENT_PROJECT_CONSERVATIVE_HARDENING_REPORT.md",
+    "CURSOR_CLIENT_PROJECT_CONSERVATIVE_HARDENING_DIFF_SUMMARY.md",
+    "CURSOR_CLIENT_PROJECT_CONSERVATIVE_HARDENING_VERIFY.md",
+    "CURSOR_CLIENT_PROJECT_CONSERVATIVE_HARDENING_PLAN.json"
+  ],
+  "risk_flags": {
+    "auth_context": false,
+    "paywall_ordering": false,
+    "rls_calendar": false,
+    "package_shared_isolation": false,
+    "ghost_state_new": false
+  },
+  "notes": [
+    "RPC 2-arg dropped; PostgREST uses 3-arg with default third param",
+    "Hydration: partial success possible if a chunk errors (logged)"
+  ]
+}

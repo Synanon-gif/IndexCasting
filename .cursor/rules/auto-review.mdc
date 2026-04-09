@@ -76,6 +76,7 @@ vollständig durchlaufen werden, **bevor** Code committed oder weitergeschrieben
 - **Legacy-Feldnamen vs. Copy:** Neue oder geänderte `uiCopy`-Strings, Labels, Platzhalter und Vollständigkeitsmeldungen dürfen Legacy-DB-Namen (`bust`) nicht in nutzerlesbare Texte übernehmen.
 - **Maßeinheiten in Client-UI:** Wo Zentimeter gemeint sind, konsistent **`(cm)`** in Labels oder in der Messzeile (z. B. `Chest N cm`) — keine uneinheitliche Einheit auf derselben Oberfläche ohne Grund.
 - **Client B2B Projects — Hydration:** Neuer oder geänderter Code lädt für eingeloggte Client-Orgs Projekt-Modelle **nur** aus localStorage ohne Abgleich mit **`client_project_models`**? → Blocker — siehe `system-invariants.mdc` **CLIENT B2B PROJECTS** und `fetchHydratedClientProjectsForOrg`.
+- **Client B2B Projects — `add_model_to_project`:** Wenn `clientOrgId` / `profile.organization_id` bekannt ist, MUSS `addModelToProject(projectId, modelId, organizationId)` die Org mitsenden (`p_organization_id`) — vermeidet Multi-Org-`LIMIT 1`-Drift in der RPC.
 - **Client B2B Projects — Ghost state:** Sync bei leerer Remote-Projektliste überschreibt den UI-State nicht und lässt alte localStorage-Projekte stehen? → Blocker.
 
 ---

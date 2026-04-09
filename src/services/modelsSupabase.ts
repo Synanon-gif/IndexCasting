@@ -207,6 +207,44 @@ export async function getModelByIdForClientFromSupabase(id: string): Promise<Sup
   return getModelByIdFromSupabase(id);
 }
 
+const CLIENT_MODEL_IDS_CHUNK = 80;
+
+/**
+ * Batch load models for client contexts (e.g. project hydration) with a single
+ * paywall check and chunked `.in('id', …)` queries — same RLS as per-id fetches.
+ */
+export async function getModelsByIdsForClientFromSupabase(
+  ids: string[],
+): Promise<Map<string, SupabaseModel>> {
+  const out = new Map<string, SupabaseModel>();
+  const unique = [...new Set(ids.filter((id) => id?.trim()))];
+  if (unique.length === 0) return out;
+
+  await assertPlatformAccess();
+
+  for (let i = 0; i < unique.length; i += CLIENT_MODEL_IDS_CHUNK) {
+    const chunk = unique.slice(i, i + CLIENT_MODEL_IDS_CHUNK);
+    try {
+      const { data, error } = await supabase
+        .from('models')
+        .select(MODEL_DETAIL_SELECT)
+        .in('id', chunk);
+      if (error) {
+        console.error('getModelsByIdsForClientFromSupabase chunk error:', error);
+        continue;
+      }
+      for (const row of data ?? []) {
+        const m = row as SupabaseModel;
+        out.set(m.id, m);
+      }
+    } catch (e) {
+      console.error('getModelsByIdsForClientFromSupabase chunk exception:', e);
+    }
+  }
+
+  return out;
+}
+
 /**
  * Build a PostgREST `.or()` filter string for category-based filtering.
  * NULL or empty categories = visible in ALL category filters.

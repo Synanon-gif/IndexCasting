@@ -1,6 +1,7 @@
 import { supabase } from '../../lib/supabase';
 import { fetchEffectiveDisplayCitiesForModels } from './modelLocationsSupabase';
-import { getModelByIdForClientFromSupabase } from './modelsSupabase';
+import { getModelsByIdsForClientFromSupabase } from './modelsSupabase';
+import type { SupabaseModel } from './modelsSupabase';
 import {
   mapSupabaseModelToClientProjectSummary,
   type ClientProjectModelSummary,
@@ -137,25 +138,24 @@ export async function fetchHydratedClientProjectsForOrg(
     const projectModelIds = await Promise.all(remote.map((rp) => getProjectModels(rp.id)));
     const allIds = [...new Set(projectModelIds.flat())];
     const cityByModel = await fetchEffectiveDisplayCitiesForModels(allIds);
-    return await Promise.all(
-      remote.map(async (rp, i) => {
-        const ids = projectModelIds[i];
-        const rows = await Promise.all(ids.map((id) => getModelByIdForClientFromSupabase(id)));
-        const models = rows
-          .filter((row): row is NonNullable<typeof row> => row != null)
-          .map((row) =>
-            mapSupabaseModelToClientProjectSummary(row, {
-              effectiveDisplayCity: cityByModel.get(row.id) ?? null,
-            }),
-          );
-        return {
-          id: rp.id,
-          name: rp.name,
-          owner_id: rp.owner_id,
-          models,
-        };
-      }),
-    );
+    const modelById = await getModelsByIdsForClientFromSupabase(allIds);
+    return remote.map((rp, i) => {
+      const ids = projectModelIds[i];
+      const models = ids
+        .map((id) => modelById.get(id))
+        .filter((row): row is SupabaseModel => row != null)
+        .map((row) =>
+          mapSupabaseModelToClientProjectSummary(row, {
+            effectiveDisplayCity: cityByModel.get(row.id) ?? null,
+          }),
+        );
+      return {
+        id: rp.id,
+        name: rp.name,
+        owner_id: rp.owner_id,
+        models,
+      };
+    });
   } catch (e) {
     console.error('fetchHydratedClientProjectsForOrg exception:', e);
     return [];
@@ -169,13 +169,27 @@ export async function fetchHydratedClientProjectsForOrg(
  *   1. The project belongs to the caller's client organization.
  *   2. The model's agency has an active connection with the client organization.
  * Prevents clients from adding models from agencies they have no relationship with.
+ *
+ * Pass organizationId (client org UUID) when known — multi-org-safe explicit org pin.
  */
-export async function addModelToProject(projectId: string, modelId: string): Promise<boolean> {
+export async function addModelToProject(
+  projectId: string,
+  modelId: string,
+  organizationId?: string | null,
+): Promise<boolean> {
   try {
-    const { data, error } = await supabase.rpc('add_model_to_project', {
+    const args: {
+      p_project_id: string;
+      p_model_id: string;
+      p_organization_id?: string;
+    } = {
       p_project_id: projectId,
-      p_model_id:   modelId,
-    });
+      p_model_id: modelId,
+    };
+    const org = organizationId?.trim();
+    if (org) args.p_organization_id = org;
+
+    const { data, error } = await supabase.rpc('add_model_to_project', args);
     if (error) {
       console.error('addModelToProject RPC error:', error);
       return false;

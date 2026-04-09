@@ -1322,7 +1322,11 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     // Persist to Supabase. The service NEVER throws — it returns false on error
     // (both supabase error and exception paths). .catch() would never fire.
     // MUST use .then(ok) to detect failure and trigger inverse-operation rollback.
-    void addModelToProjectOnSupabase(projectId, model.id)
+    void addModelToProjectOnSupabase(
+      projectId,
+      model.id,
+      clientOrgId?.trim() ? clientOrgId : undefined,
+    )
       .then((ok) => {
         setAddingModelIds((prev) => { const s = new Set(prev); s.delete(model.id); return s; });
         if (ok) {
