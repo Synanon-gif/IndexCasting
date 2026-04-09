@@ -1,0 +1,37 @@
+{
+  "final_improvements": [
+    "Agency roster refresh now performs a one-time background rebuild of empty portfolio mirrors from model_photos and rehydrates the list.",
+    "My Models editor now rehydrates selectedModel from refreshed list data to avoid stale post-save/reload state.",
+    "Agency model invite dispatch now distinguishes linked-account skip from actual failures and keeps manual claim-link fallback.",
+    "Guest/package chest display now uses chest ?? bust parity without exposing Bust wording."
+  ],
+  "rules_updated": [
+    ".cursorrules",
+    ".cursor/rules/auto-review.mdc",
+    ".cursor/rules/system-invariants.mdc"
+  ],
+  "docs_updated": [
+    "docs/MODEL_PROFILE_PERSISTENCE_AND_VISIBILITY.md",
+    "docs/CLIENT_MODEL_PHOTO_VISIBILITY.md",
+    "docs/DISCOVERY_IMAGE_AND_MEASUREMENT_CONSISTENCY.md"
+  ],
+  "manual_review_required": [
+    "Agency media upload -> visible -> save/reload -> roster thumbnail + completeness + media panel parity",
+    "Client visibility image rendering and no unknown URL scheme errors",
+    "Location save/reload consistency across roster, edit panel, and near-me expectation",
+    "Invite dispatch outcomes (sent, skip reason, fallback link, failure mapping)",
+    "Package semantics (standard discovery portfolio-only, package/guest polaroid-only when selected)"
+  ],
+  "do_not_touch": [
+    "AuthContext core",
+    "bootstrapThenLoadProfile",
+    "admin core / admin RPC definitions",
+    "paywall core ordering",
+    "invite/claim base architecture",
+    "calendar_entries RLS semantics",
+    "booking_brief trust model",
+    "pricing / seat-limit logic",
+    "discovery ranking logic",
+    "AI/roadmap/business feature scope"
+  ]
+}

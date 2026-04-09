@@ -12,6 +12,7 @@ Upload flows write `model_photos` first, then call `syncPortfolioToModel` (RPC `
 ## Reconcile
 
 `rebuildPortfolioImagesFromModelPhotos` and `rebuildPolaroidsFromModelPhotos` rebuild the denormalized arrays from visible rows in `model_photos`. The agency **Model media** panel runs these after load so roster and discovery realign after any drift.
+Additionally, the agency roster refresh pass attempts a one-time background rebuild for models with empty `portfolio_images` so upload/save/reload is less likely to show stale “no thumbnail” states.
 
 ## Completeness (agency)
 

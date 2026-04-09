@@ -78,6 +78,7 @@ import {
   upsertPhotosForModel,
   syncPortfolioToModel,
   getPhotosForModel,
+  rebuildPortfolioImagesFromModelPhotos,
 } from '../services/modelPhotosSupabase';
 import { normalizeDocumentspicturesModelImageRef } from '../utils/normalizeModelPortfolioUrl';
 import { confirmImageRights, guardImageUpload } from '../services/gdprComplianceSupabase';
@@ -90,6 +91,7 @@ import {
   roundCoord,
   type ModelLocation,
 } from '../services/modelLocationsSupabase';
+import { describeSendInviteFailure } from '../services/inviteDelivery';
 
 /**
  * Forward-geocodes a city + ISO-2 country code via Nominatim.
@@ -115,32 +117,19 @@ async function geocodeCityForAgency(
   }
 }
 
-/** Maps send-invite Edge JSON `error` codes (and invoke errors) to English UI text. */
-function describeSendInviteFailure(payload: unknown, invokeError: unknown): string {
-  const o = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {};
-  const code = typeof o.error === 'string' ? o.error : '';
-  const detail = typeof o.detail === 'string' ? o.detail : '';
-  switch (code) {
-    case 'email_service_not_configured':
-      return 'Email service is not configured for this project (missing provider key).';
-    case 'not_member_of_organization':
-      return 'You are not a member of the selected organization — cannot send from this team context.';
-    case 'agency_only':
-      return 'Only agency team members can send model claim emails.';
-    case 'owner_only':
-      return 'Only the organization owner can send this type of invitation.';
-    case 'email_send_failed':
-      return detail ? `Email provider error: ${detail.slice(0, 200)}` : 'Email provider rejected the message.';
-    case 'email_send_exception':
-      return 'Email could not be sent (network or server error).';
-    default:
-      break;
+/** Maps generate_model_claim_token errors to user-facing invite notes. */
+function describeClaimTokenFailure(rawError: string): string {
+  const msg = rawError.toLowerCase();
+  if (msg.includes('already_linked')) {
+    return 'This model is already linked to an app account — invite skipped.';
   }
-  if (invokeError && typeof invokeError === 'object' && invokeError !== null && 'message' in invokeError) {
-    return String((invokeError as { message?: string }).message ?? 'Invoke failed');
+  if (msg.includes('already_claimed')) {
+    return 'This model has already been claimed — invite skipped.';
   }
-  if (code) return code;
-  return 'Unknown error';
+  if (msg.includes('not_in_agency') || msg.includes('access_denied')) {
+    return 'You cannot create a claim token for this model from the current agency context.';
+  }
+  return rawError || 'Could not generate claim token';
 }
 
 import { supabase } from '../../lib/supabase';
@@ -350,6 +339,8 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   /** Deep-link targets from GlobalSearch result clicks. */
   const [searchModelId, setSearchModelId] = useState<string | null>(null);
   const [searchOptionId, setSearchOptionId] = useState<string | null>(null);
+  /** Prevent repeated mirror-rebuild attempts for the same model id in one session. */
+  const portfolioMirrorRebuildAttemptedRef = useRef<Set<string>>(new Set());
   // Canonical source: org membership → organizations.agency_id (from get_my_org_context).
   // profile.agency_id ist der einzige gültige Lookup — kein Email-Match, kein agencies[0] Fallback.
   const currentAgency = useMemo(() => {
@@ -382,6 +373,24 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
       ]);
       setFullModels(full);
       setModels(mapAgencyModelsToState(light));
+
+      const candidates = full
+        .filter((m) =>
+          (m.portfolio_images ?? []).length === 0 &&
+          !portfolioMirrorRebuildAttemptedRef.current.has(m.id),
+        )
+        .map((m) => m.id);
+
+      if (candidates.length > 0) {
+        candidates.forEach((id) => portfolioMirrorRebuildAttemptedRef.current.add(id));
+        const rebuilt = await Promise.all(
+          candidates.map((id) => rebuildPortfolioImagesFromModelPhotos(id)),
+        );
+        if (rebuilt.some(Boolean)) {
+          const healedFull = await getModelsForAgencyFromSupabase(currentAgencyId);
+          setFullModels(healedFull);
+        }
+      }
     } catch (e) {
       console.error('[AgencyControllerView] refreshAgencyModelLists', e);
     }
@@ -2082,6 +2091,14 @@ const MyModelsTab: React.FC<{
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedModel?.id]);
 
+  useEffect(() => {
+    if (!selectedModel) return;
+    const fresh = models.find((m) => m.id === selectedModel.id);
+    if (fresh && fresh !== selectedModel) {
+      setSelectedModel(fresh);
+    }
+  }, [models, selectedModel]);
+
   // Recalculate completeness whenever the selected model or its territories change.
   useEffect(() => {
     if (!selectedModel) {
@@ -2293,35 +2310,41 @@ const MyModelsTab: React.FC<{
       let emailSentOk = false;
       let inviteFailureReason = '';
       let claimTokenForManualLink: string | null = null;
+      let inviteSkippedReason = '';
       if (emailTrim) {
         try {
-          const claimRes = await generateModelClaimToken(createdModelId, inviteOrganizationId ?? undefined);
-          if (claimRes.ok) {
-            claimTokenForManualLink = claimRes.data.token;
-            const { data: { session: currentSession } } = await supabase.auth.getSession();
-            const invokeRes = await supabase.functions.invoke('send-invite', {
-              body: {
-                type: 'model_claim',
-                to: emailTrim,
-                token: claimRes.data.token,
-                organization_id: inviteOrganizationId ?? undefined,
-                modelName: modelDisplayName,
-                orgName: agencyName || undefined,
-              },
-              headers: currentSession?.access_token
-                ? { Authorization: `Bearer ${currentSession.access_token}` }
-                : undefined,
-            });
-            const body = invokeRes.data as { ok?: boolean; error?: string; detail?: string } | null;
-            if (!invokeRes.error && body?.ok === true) {
-              emailSentOk = true;
-            } else {
-              inviteFailureReason = describeSendInviteFailure(invokeRes.data, invokeRes.error);
-              console.error('handleAddModel send-invite failed:', inviteFailureReason, invokeRes);
-            }
+          const latestModel = await getModelByIdFromSupabase(createdModelId);
+          if (latestModel?.user_id) {
+            inviteSkippedReason = uiCopy.modelRoster.modelInviteSkippedAlreadyLinkedNote;
           } else {
-            inviteFailureReason = claimRes.error ?? 'Could not generate claim token';
-            console.error('handleAddModel generateModelClaimToken error:', claimRes.error);
+            const claimRes = await generateModelClaimToken(createdModelId, inviteOrganizationId ?? undefined);
+            if (claimRes.ok) {
+              claimTokenForManualLink = claimRes.data.token;
+              const { data: { session: currentSession } } = await supabase.auth.getSession();
+              const invokeRes = await supabase.functions.invoke('send-invite', {
+                body: {
+                  type: 'model_claim',
+                  to: emailTrim,
+                  token: claimRes.data.token,
+                  organization_id: inviteOrganizationId ?? undefined,
+                  modelName: modelDisplayName,
+                  orgName: agencyName || undefined,
+                },
+                headers: currentSession?.access_token
+                  ? { Authorization: `Bearer ${currentSession.access_token}` }
+                  : undefined,
+              });
+              const body = invokeRes.data as { ok?: boolean; error?: string; detail?: string } | null;
+              if (!invokeRes.error && body?.ok === true) {
+                emailSentOk = true;
+              } else {
+                inviteFailureReason = describeSendInviteFailure(invokeRes.data, invokeRes.error);
+                console.error('handleAddModel send-invite failed:', inviteFailureReason, invokeRes);
+              }
+            } else {
+              inviteFailureReason = describeClaimTokenFailure(claimRes.error ?? '');
+              console.error('handleAddModel generateModelClaimToken error:', claimRes.error);
+            }
           }
         } catch (e) {
           inviteFailureReason = e instanceof Error ? e.message : String(e);
@@ -2462,6 +2485,8 @@ const MyModelsTab: React.FC<{
       if (emailTrim) {
         if (emailSentOk) {
           emailNote = ` ${uiCopy.modelRoster.modelInviteEmailSentNote(emailTrim)}`;
+        } else if (inviteSkippedReason) {
+          emailNote = ` ${inviteSkippedReason}`;
         } else {
           emailNote = ` ${uiCopy.modelRoster.modelInviteEmailFailedNote(inviteFailureReason || 'Unknown error')}`;
           if (claimTokenForManualLink) {
@@ -5113,8 +5138,9 @@ const OrganizationTeamTab: React.FC<{
       const link = buildOrganizationInviteUrl(row.token);
       setLastLink(link);
 
-      // Send invitation email via Edge Function (fire and forget — link is fallback)
+      // Email dispatch is best-effort. The invite link remains a deterministic fallback.
       let emailOk = false;
+      let emailFailureReason = '';
       try {
         const { data: { session: s } } = await supabase.auth.getSession();
         const res = await supabase.functions.invoke('send-invite', {
@@ -5130,8 +5156,12 @@ const OrganizationTeamTab: React.FC<{
           headers: s?.access_token ? { Authorization: `Bearer ${s.access_token}` } : undefined,
         });
         emailOk = !res.error;
-        if (res.error) console.error('OrganizationTeamTab send-invite error:', res.error);
+        if (res.error || (res.data as { ok?: boolean } | null)?.ok === false) {
+          emailFailureReason = describeSendInviteFailure(res.data, res.error);
+          console.error('OrganizationTeamTab send-invite error:', emailFailureReason, res);
+        }
       } catch (e) {
+        emailFailureReason = e instanceof Error ? e.message : String(e);
         console.error('OrganizationTeamTab send-invite exception:', e);
       }
 
@@ -5139,10 +5169,18 @@ const OrganizationTeamTab: React.FC<{
       onRefresh();
       Alert.alert(
         uiCopy.alerts.invitationCreated,
-        emailOk ? uiCopy.alerts.invitationCreatedBody : uiCopy.alerts.invitationEmailFailed,
+        emailOk
+          ? uiCopy.alerts.invitationCreatedBody
+          : uiCopy.inviteDelivery.invitationCreatedEmailFailedWithLink(emailFailureReason || 'unknown_error', link),
       );
     } else if (result.error === 'agency_member_limit_reached') {
       Alert.alert(uiCopy.common.error, uiCopy.team.agencyPlanMemberLimitReached);
+    } else if (result.error === 'already_invited') {
+      Alert.alert(uiCopy.common.error, uiCopy.alerts.invitationAlreadyInvited);
+    } else if (result.error === 'already_member') {
+      Alert.alert(uiCopy.common.error, uiCopy.alerts.invitationAlreadyMember);
+    } else if (result.error === 'owner_only') {
+      Alert.alert(uiCopy.common.error, uiCopy.alerts.invitationOwnerOnly);
     } else {
       Alert.alert(uiCopy.common.error, uiCopy.alerts.invitationFailed);
     }

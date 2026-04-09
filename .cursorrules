@@ -545,6 +545,7 @@ Ergänzt und schärft die obigen Regeln **ohne** sie zu ersetzen. Bei Widerspruc
 
 ### 27.1 Discovery / Image (CRITICAL — portfolio vs polaroids)
 
+- **Media-Source-of-Truth:** Für Agency-Media-Persistenz, Client-Sichtbarkeit und completeness-kritische „visible portfolio“-Prüfungen ist **`model_photos`** (`photo_type='portfolio'`, `is_visible_to_clients`) autoritativ; `models.portfolio_images` / `models.polaroids` sind nur Mirrors für Rendering/Discovery.
 - **Standard Discovery** (Client, Agency-internes Browsen): nur **`portfolio_images`** anzeigen; **`polaroids` immer `[]`** (oder gleichwertig: nie für Discovery-Grids/Cards nutzen).
 - **Polaroids** nur sichtbar in: **Agency Packages** und **Guest Links** (externe Packages), gesteuert über **`packageType`** (`portfolio` | `polaroid`).
 - **Verboten:** jeder Pfad, in dem Polaroids in **normaler** Discovery erscheinen (nicht Package-/Guest-Kontext).
@@ -596,6 +597,7 @@ Ergänzt und schärft die obigen Regeln **ohne** sie zu ersetzen. Bei Widerspruc
 
 - **Success-Messages** („joined …“, „profile connected“ …) **nur** nach **nachgewiesener** serverseitiger Finalisierung (RPC/Backend OK), **nicht** allein nach Sign-up oder E-Mail-Hinweis ohne Session — siehe §4b Invite / claim UI.
 - Nach Sign-up **ohne** Session (z. B. E-Mail-Bestätigung ausstehend): UI verschweigt das nicht; **kein** „alles erledigt“-Eindruck.
+- Agency-initiierte Model-Invite-Flows dürfen **nie** still scheitern: UI zeigt immer genau einen Zustand (**success**, **explicit skip reason**, oder **actionable manual claim link fallback**).
 
 ### 27.10 Änderungs-Guardrail (Pflicht-Check bei Touch)
 

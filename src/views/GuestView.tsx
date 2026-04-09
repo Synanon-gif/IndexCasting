@@ -88,6 +88,10 @@ type ViewPhase =
   | 'error';
 
 const GUEST_PENDING_KEY = 'guest_pending_request';
+const getChestValue = (m: GuestLinkModel): number | null => {
+  const withChest = m as GuestLinkModel & { chest?: number | null };
+  return withChest.chest ?? m.bust ?? null;
+};
 
 export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
   const [link, setLink] = useState<GuestLinkInfo | null>(null);
@@ -429,7 +433,7 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
                 <View style={styles.modelInfo}>
                   <Text style={styles.modelName}>{m.name}</Text>
                   <Text style={styles.modelMeta}>
-                    {m.height}cm{m.bust ? ` · Chest ${m.bust} cm` : ''}
+                    {m.height}cm{getChestValue(m) != null ? ` · Chest ${getChestValue(m)} cm` : ''}
                   </Text>
                 </View>
               </TouchableOpacity>
@@ -573,7 +577,7 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
               <Text style={styles.galleryModelName}>{galleryModel.name}</Text>
               <Text style={styles.galleryModelMeta}>
                 {galleryModel.height}cm
-                {galleryModel.bust ? ` · Chest ${galleryModel.bust} cm` : ''}
+                {getChestValue(galleryModel) != null ? ` · Chest ${getChestValue(galleryModel)} cm` : ''}
                 {galleryModel.waist ? ` · Waist ${galleryModel.waist} cm` : ''}
                 {galleryModel.hips ? ` · Hips ${galleryModel.hips} cm` : ''}
               </Text>
@@ -639,7 +643,7 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
               <View style={styles.modelInfo}>
                 <Text style={styles.modelName}>{m.name}</Text>
                 <Text style={styles.modelMeta}>
-                  {m.height}cm{m.bust ? ` · Chest ${m.bust} cm` : ''}
+                  {m.height}cm{getChestValue(m) != null ? ` · Chest ${getChestValue(m)} cm` : ''}
                   {m.waist ? ` · Waist ${m.waist} cm` : ''}
                   {m.hips ? ` · Hips ${m.hips} cm` : ''}
                 </Text>

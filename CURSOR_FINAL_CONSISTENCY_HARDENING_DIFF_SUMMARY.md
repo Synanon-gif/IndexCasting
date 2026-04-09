@@ -1,0 +1,22 @@
+# CURSOR Final Consistency Hardening Diff Summary
+
+- `src/views/AgencyControllerView.tsx`
+  - Added one-time roster mirror rebuild pass for empty `portfolio_images`.
+  - Rehydrated selected model from refreshed model list to prevent stale edit state.
+  - Hardened model invite dispatch feedback with explicit skip reason and clearer claim-token failure mapping.
+- `src/constants/uiCopy.ts`
+  - Added explicit copy key for invite skip when model account is already linked.
+- `src/views/GuestView.tsx`
+  - Added `getChestValue` (`chest ?? bust`) helper and applied it to guest-facing chest lines.
+- `.cursorrules`
+  - Sharpened media source-of-truth and invite no-silent-fail guardrails.
+- `.cursor/rules/auto-review.mdc`
+  - Added explicit blockers for agency model invite determinism and completeness parity.
+- `.cursor/rules/system-invariants.mdc`
+  - Added frontend invariants for model_photos source-of-truth and deterministic invite outcome messaging.
+- `docs/MODEL_PROFILE_PERSISTENCE_AND_VISIBILITY.md`
+  - Documented one-time background roster mirror rebuild behavior.
+- `docs/CLIENT_MODEL_PHOTO_VISIBILITY.md`
+  - Added completeness parity note (`model_photos` visibility as authoritative check).
+- `docs/DISCOVERY_IMAGE_AND_MEASUREMENT_CONSISTENCY.md`
+  - Added guest/package chest coalesce parity note.

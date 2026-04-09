@@ -64,6 +64,9 @@ export const uiCopy = {
       'Invitation created, but the email could not be sent. Copy the link below and share it manually.',
     invitationFailed:
       'Could not create invitation. Make sure you are signed in as the organization owner.',
+    invitationAlreadyInvited: 'An active invitation for this email already exists.',
+    invitationAlreadyMember: 'This person is already a member of this organization.',
+    invitationOwnerOnly: 'Only the organization owner can send invitations.',
     invitationLink: 'Invitation link',
     showLastLink: 'Show link (fallback)',
     deleteFailed: 'Delete failed',
@@ -144,6 +147,12 @@ export const uiCopy = {
     ownerDisplayNameSaved: 'Name saved.',
     ownerDisplayNameHint: 'Your name is visible to all members of your organization.',
     ownerDisplayNameError: 'Could not save name. Please try again.',
+  },
+  inviteDelivery: {
+    invitationCreatedWithManualLink: (link: string) =>
+      `Invitation created. If email delivery fails, share this secure link manually:\n\n${link}`,
+    invitationCreatedEmailFailedWithLink: (reason: string, link: string) =>
+      `Invitation created, but email delivery failed (${reason}). Share this secure link manually:\n\n${link}`,
   },
   calendar: {
     editEntry: 'Edit entry',
@@ -277,9 +286,9 @@ export const uiCopy = {
   inviteClaimSuccess: {
     dismiss: 'Dismiss',
     /** Placeholders: {org} */
-    joinedOrgBooker: 'You joined {org} as Booker.',
+    joinedOrgBooker: 'You joined the existing organization {org} as Booker.',
     /** Placeholders: {org} */
-    joinedOrgEmployee: 'You joined {org} as Employee.',
+    joinedOrgEmployee: 'You joined the existing organization {org} as Employee.',
     /** Placeholders: {org} — when member role could not be resolved */
     joinedOrgGeneric: 'You joined {org}.',
     /** No org display name */
@@ -516,6 +525,7 @@ export const uiCopy = {
     modelInviteEmailFailedNote: (reason: string) =>
       `Invitation email was not sent: ${reason}.`,
     modelInviteManualLinkNote: 'Share this claim link with the model manually:',
+    modelInviteSkippedAlreadyLinkedNote: 'Model account is already linked — invite skipped.',
   },
   /** B2B org-to-org chats (no social graph). */
   b2bChat: {

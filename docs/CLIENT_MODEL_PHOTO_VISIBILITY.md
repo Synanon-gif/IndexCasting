@@ -43,3 +43,4 @@ Row visibility (above) is necessary but not sufficient for UX: `models.portfolio
 - **Canonical media rows** live in `model_photos` (per-type, `is_visible_to_clients`).
 - **`models.portfolio_images`** is a denormalized ordered list for discovery, swipe cover, and agency roster thumbnails; it is kept in sync via `agency_update_model_full` (`syncPortfolioToModel` / `rebuildPortfolioImagesFromModelPhotos` in `src/services/modelPhotosSupabase.ts`).
 - **Agency roster thumbnails** must normalize each `portfolio_images[]` entry with `normalizeDocumentspicturesModelImageRef` before `StorageImage`, same as client web. See **`docs/MODEL_PROFILE_PERSISTENCE_AND_VISIBILITY.md`**.
+- **Completeness parity:** agency “visible portfolio” completeness checks must use `model_photos` visibility (`photo_type='portfolio'`, `is_visible_to_clients`) as the source of truth, not `models.portfolio_images` alone.

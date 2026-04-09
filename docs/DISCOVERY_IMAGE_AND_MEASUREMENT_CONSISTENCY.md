@@ -4,6 +4,7 @@
 
 - **User-facing copy** must use **Chest** only — never the legacy DB field name **bust** as visible text or as a rendered object key (uppercase typography turns `bust` into **BUST**).
 - **Data:** use `chest ?? bust` for numeric display and filters; `getModelData` exposes `measurements.chest` (not `bust`) for client detail views.
+- **Guest/package parity:** guest-visible chest values must also resolve as `chest ?? bust` when both fields can exist during migration windows.
 
 ## Portfolio images (client / web)
 
