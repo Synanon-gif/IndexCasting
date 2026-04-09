@@ -1,0 +1,55 @@
+{
+  "title": "Follow-up E2E Audit P1–P5 (post f642f36 / 20260525)",
+  "referenceCommit": "f642f36",
+  "migrationAddModelToProjectPrior": "20260525_add_model_to_project_connection_org_peers.sql",
+  "migrationConnectionGateRemoval": "20260526_add_model_to_project_remove_connection_gate.sql",
+  "phases": [
+    {
+      "id": "P1",
+      "name": "Client project flow / connection gates",
+      "status": "done",
+      "findings": [
+        "Root cause: add_model_to_project + client_project_models INSERT RLS required client_agency_connections accepted — contradicted Discover-as-gate invariant.",
+        "Frontend had no extra connection gate; uiCopy + projectsSupabase doc referenced old assumption.",
+        "ensureClientAgencyChat / option_requests insert do not use client_agency_connections (already aligned)."
+      ]
+    },
+    {
+      "id": "P2",
+      "name": "Model claim / post-claim visibility",
+      "status": "reviewed_no_code_change",
+      "notes": [
+        "finalizePendingInviteOrClaim + claim_model_by_token paths unchanged (AuthContext not touched).",
+        "Option/calendar visibility uses option_request_visible_to_me and model RLS — no connection prerequisite found in scope."
+      ]
+    },
+    {
+      "id": "P3",
+      "name": "Calendar entry consistency",
+      "status": "reviewed_no_code_change",
+      "notes": [
+        "Canonical RLS: 20260502_calendar_entries_rls_canonical_client_update.sql.",
+        "Services: calendarSupabase.ts, optionRequestsSupabase (booking_event, updateCalendarEntryToJob) — no change required for this audit."
+      ]
+    },
+    {
+      "id": "P4",
+      "name": "Smart attention",
+      "status": "reviewed_no_code_change",
+      "notes": [
+        "optionRequestAttention.ts + ClientWebApp / AgencyControllerView / ModelView — workflow-only layer; no access-control coupling found."
+      ]
+    },
+    {
+      "id": "P5",
+      "name": "Consumer sweep",
+      "status": "done",
+      "notes": [
+        "No client_agency_connections usage in ClientWebApp, optionRequests store, messenger first-contact flows beyond product copy.",
+        "Hydration: fetchHydratedClientProjectsForOrg unchanged; cover parity already documented in projectsSupabase."
+      ]
+    }
+  ],
+  "qualityGates": ["npm run typecheck", "npm run lint", "npm test -- --passWithNoTests --ci"],
+  "liveVerifyDone": true
+}

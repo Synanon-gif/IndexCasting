@@ -936,9 +936,9 @@ export const uiCopy = {
     emptyOverview: 'No models in this project yet.',
     removeError: 'Could not remove model. Please try again.',
     back: '← Back',
-    /** add_model_to_project — mapped from RPC / PostgREST error message (English-only). */
+    /** Legacy key; RPC no longer requires client_agency_connections — kept for stable imports. */
     addToProjectNoConnection:
-      'Could not add this model — your organization does not have an accepted connection with the agency for this territory. Open Messages and connect with the agency first.',
+      'Could not save the model to this project. Please try again.',
     addToProjectWrongOrg: 'Could not add this model — this project belongs to a different organization.',
     addToProjectNotOrgMember: 'Could not add this model — you are not a member of the selected client organization.',
     addToProjectNoClientOrg: 'Could not add this model — no client organization is associated with your account.',

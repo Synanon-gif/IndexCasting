@@ -189,7 +189,6 @@ export type AddModelToProjectResult =
 
 function mapAddModelToProjectErrorMessage(raw: string | undefined): string {
   const m = (raw ?? '').toLowerCase();
-  if (m.includes('no active connection')) return uiCopy.projects.addToProjectNoConnection;
   if (m.includes('project does not belong')) return uiCopy.projects.addToProjectWrongOrg;
   if (m.includes('not a member of the specified client organization')) {
     return uiCopy.projects.addToProjectNotOrgMember;
@@ -204,10 +203,10 @@ function mapAddModelToProjectErrorMessage(raw: string | undefined): string {
 /**
  * Adds a model to a client project.
  *
- * Delegates to the add_model_to_project SECURITY DEFINER RPC which validates:
- *   1. The project belongs to the caller's client organization.
- *   2. The model's agency has an active connection with the client organization.
- * Prevents clients from adding models from agencies they have no relationship with.
+ * Delegates to the add_model_to_project SECURITY DEFINER RPC which validates
+ * project org membership and that the model exists with a resolvable agency
+ * (territory-aligned when p_country_iso is set). Discover visibility is the
+ * product gate — no client_agency_connections row is required.
  *
  * Pass organizationId (client org UUID) when known — multi-org-safe explicit org pin.
  * Pass countryIso so the RPC checks the territory agency (model_agency_territories),
