@@ -91,7 +91,7 @@ import {
   roundCoord,
   type ModelLocation,
 } from '../services/modelLocationsSupabase';
-import { describeSendInviteFailure } from '../services/inviteDelivery';
+import { describeSendInviteFailure, resendInviteEmail } from '../services/inviteDelivery';
 
 /**
  * Forward-geocodes a city + ISO-2 country code via Nominatim.
@@ -2121,6 +2121,8 @@ const MyModelsTab: React.FC<{
   const [bulkSelectedCountries, setBulkSelectedCountries] = useState<string[]>([]);
   const [bulkAssigning, setBulkAssigning] = useState(false);
   const [bulkFeedback, setBulkFeedback] = useState<string | null>(null);
+  const [resendingModelId, setResendingModelId] = useState<string | null>(null);
+  const [resendModelCooldownUntil, setResendModelCooldownUntil] = useState<Record<string, number>>({});
 
   const isoCountryList = useMemo(() => {
     const list = Object.entries(ISO_COUNTRY_NAMES)
@@ -2158,6 +2160,55 @@ const MyModelsTab: React.FC<{
       );
     }
     setTimeout(() => setBulkFeedback(null), 3000);
+  };
+
+  const handleResendModelClaimInvite = async (model: SupabaseModel) => {
+    const email = model.email?.trim();
+    if (!email || model.user_id) return;
+    const cooldownUntil = resendModelCooldownUntil[model.id] ?? 0;
+    if (Date.now() < cooldownUntil) return;
+    setResendingModelId(model.id);
+    try {
+      const nowIso = new Date().toISOString();
+      const { data: tokenRow, error: tokenErr } = await supabase
+        .from('model_claim_tokens')
+        .select('token')
+        .eq('model_id', model.id)
+        .is('used_at', null)
+        .gt('expires_at', nowIso)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (tokenErr) {
+        console.error('handleResendModelClaimInvite token lookup error:', tokenErr);
+        Alert.alert(uiCopy.common.error, `${uiCopy.inviteResend.error}: ${tokenErr.message}\n\n${uiCopy.inviteResend.checkSpamHint}`);
+        return;
+      }
+      const token = (tokenRow as { token?: string } | null)?.token;
+      if (!token) {
+        Alert.alert(uiCopy.common.error, `${uiCopy.inviteResend.error}: No active claim token found for this model.\n\n${uiCopy.inviteResend.checkSpamHint}`);
+        return;
+      }
+      const resend = await resendInviteEmail({
+        email,
+        token,
+        type: 'model_claim',
+        organization_id: inviteOrganizationId ?? undefined,
+        modelName: model.name || undefined,
+        orgName: agencyName || undefined,
+      });
+      if (resend.ok) {
+        Alert.alert(uiCopy.common.success, uiCopy.inviteResend.success);
+      } else {
+        Alert.alert(
+          uiCopy.common.error,
+          `${uiCopy.inviteResend.error}: ${resend.error}\n\n${uiCopy.modelRoster.modelInviteManualLinkNote} ${buildModelClaimUrl(token)}\n\n${uiCopy.inviteResend.checkSpamHint}`,
+        );
+      }
+    } finally {
+      setResendingModelId(null);
+      setResendModelCooldownUntil((prev) => ({ ...prev, [model.id]: Date.now() + 4000 }));
+    }
   };
 
   /** Save territories independently — dedicated button in the territory section. */
@@ -3709,7 +3760,22 @@ const MyModelsTab: React.FC<{
                   </View>
                 )}
                 {(m.agency_relationship_status === 'pending_link' || (!m.user_id && m.email)) && (
-                  <Text style={{ ...typography.label, fontSize: 9, color: '#B8860B', marginTop: 2 }}>Pending app account link</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: 2 }}>
+                    <Text style={{ ...typography.label, fontSize: 9, color: '#B8860B' }}>Pending app account link</Text>
+                    {m.email && !m.user_id && (
+                      <TouchableOpacity
+                        style={[s.saveBtn, { marginTop: 0, paddingHorizontal: spacing.sm, paddingVertical: 4 }]}
+                        onPress={() => {
+                          void handleResendModelClaimInvite(m);
+                        }}
+                        disabled={resendingModelId === m.id || Date.now() < (resendModelCooldownUntil[m.id] ?? 0)}
+                      >
+                        <Text style={[s.saveBtnLabel, { fontSize: 10 }]}>
+                      {resendingModelId === m.id ? uiCopy.inviteResend.loading : uiCopy.inviteResend.cta}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 )}
               </View>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, maxWidth: 80 }}>
@@ -5113,6 +5179,8 @@ const OrganizationTeamTab: React.FC<{
   const [nameInput, setNameInput] = useState(profile?.display_name ?? '');
   const [nameBusy, setNameBusy] = useState(false);
   const [removingUserId, setRemovingUserId] = useState<string | null>(null);
+  const [resendingInvitationId, setResendingInvitationId] = useState<string | null>(null);
+  const [resendInvitationCooldownUntil, setResendInvitationCooldownUntil] = useState<Record<string, number>>({});
 
   const handleRemoveMember = (targetUserId: string, displayName: string) => {
     if (!organizationId) return;
@@ -5237,6 +5305,33 @@ const OrganizationTeamTab: React.FC<{
           ? uiCopy.team.roleEmployee
           : r;
 
+  const handleResendInvitation = async (invitation: InvitationRow) => {
+    if (!organizationId || !invitation.email || !invitation.token || invitation.status !== 'pending') return;
+    const cooldownUntil = resendInvitationCooldownUntil[invitation.id] ?? 0;
+    if (Date.now() < cooldownUntil) return;
+    setResendingInvitationId(invitation.id);
+    const result = await resendInviteEmail({
+      email: invitation.email,
+      token: invitation.token,
+      type: 'org_invitation',
+      organization_id: organizationId,
+      invite_role: 'booker',
+      orgName: orgName ?? undefined,
+      inviterName: profile?.display_name ?? undefined,
+    });
+    setResendingInvitationId(null);
+    setResendInvitationCooldownUntil((prev) => ({ ...prev, [invitation.id]: Date.now() + 4000 }));
+    if (result.ok) {
+      Alert.alert(uiCopy.common.success, uiCopy.inviteResend.success);
+      return;
+    }
+    const fallbackLink = buildOrganizationInviteUrl(invitation.token);
+    Alert.alert(
+      uiCopy.common.error,
+      `${uiCopy.inviteResend.error}: ${result.error}\n\n${uiCopy.alerts.invitationLink}: ${fallbackLink}\n\n${uiCopy.inviteResend.checkSpamHint}`,
+    );
+  };
+
   return (
     <ScreenScrollView>
       <Text style={s.sectionLabel}>{uiCopy.team.section}</Text>
@@ -5327,6 +5422,19 @@ const OrganizationTeamTab: React.FC<{
                     {roleLabel(i.role)} · {uiCopy.team.inviteExpiresLabel} {new Date(i.expires_at).toLocaleDateString()}
                   </Text>
                 </View>
+                {canInvite && i.email && i.token && (
+                  <TouchableOpacity
+                    style={[s.saveBtn, { marginTop: 0, paddingHorizontal: spacing.md }]}
+                    onPress={() => {
+                      void handleResendInvitation(i);
+                    }}
+                    disabled={resendingInvitationId === i.id || Date.now() < (resendInvitationCooldownUntil[i.id] ?? 0)}
+                  >
+                    <Text style={s.saveBtnLabel}>
+                      {resendingInvitationId === i.id ? uiCopy.inviteResend.loading : uiCopy.inviteResend.cta}
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
             ))
         )}

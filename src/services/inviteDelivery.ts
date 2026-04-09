@@ -1,9 +1,52 @@
+import { supabase } from '../../lib/supabase';
+
 export type InviteDeliveryState =
   | 'sent'
   | 'already_invited'
   | 'already_member'
   | 'token_created_mail_failed'
   | 'fatal';
+
+export type ResendInviteEmailInput = {
+  email: string;
+  token: string;
+  type: 'org_invitation' | 'model_claim';
+  organization_id?: string;
+  invite_role?: 'booker' | 'employee';
+  orgName?: string;
+  inviterName?: string;
+  modelName?: string;
+};
+
+export async function resendInviteEmail(
+  input: ResendInviteEmailInput,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const invokeRes = await supabase.functions.invoke('send-invite', {
+      body: {
+        type: input.type,
+        to: input.email.trim(),
+        token: input.token,
+        organization_id: input.organization_id,
+        invite_role: input.invite_role,
+        orgName: input.orgName,
+        inviterName: input.inviterName,
+        modelName: input.modelName,
+      },
+      headers: session?.access_token
+        ? { Authorization: `Bearer ${session.access_token}` }
+        : undefined,
+    });
+    const body = invokeRes.data as { ok?: boolean; error?: string; detail?: string } | null;
+    if (!invokeRes.error && body?.ok === true) {
+      return { ok: true };
+    }
+    return { ok: false, error: describeSendInviteFailure(invokeRes.data, invokeRes.error) };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Unknown error' };
+  }
+}
 
 export function describeSendInviteFailure(payload: unknown, invokeError: unknown): string {
   const o = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {};

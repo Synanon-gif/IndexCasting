@@ -17,7 +17,7 @@ import {
 import { uiCopy } from '../constants/uiCopy';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../../lib/supabase';
-import { describeSendInviteFailure } from '../services/inviteDelivery';
+import { describeSendInviteFailure, resendInviteEmail } from '../services/inviteDelivery';
 
 const inputStyle = {
   borderWidth: 1,
@@ -50,6 +50,8 @@ export const ClientOrganizationTeamSection: React.FC<{
   const [loading, setLoading] = useState(true);
   const [nameInput, setNameInput] = useState(profile?.display_name ?? '');
   const [removingUserId, setRemovingUserId] = useState<string | null>(null);
+  const [resendingInvitationId, setResendingInvitationId] = useState<string | null>(null);
+  const [resendInvitationCooldownUntil, setResendInvitationCooldownUntil] = useState<Record<string, number>>({});
 
   useEffect(() => {
     setNameInput(profile?.display_name ?? '');
@@ -208,6 +210,33 @@ export const ClientOrganizationTeamSection: React.FC<{
     );
   };
 
+  const handleResendInvitation = async (invitation: InvitationRow) => {
+    if (!organizationId || !invitation.email || !invitation.token || invitation.status !== 'pending') return;
+    const cooldownUntil = resendInvitationCooldownUntil[invitation.id] ?? 0;
+    if (Date.now() < cooldownUntil) return;
+    setResendingInvitationId(invitation.id);
+    const result = await resendInviteEmail({
+      email: invitation.email,
+      token: invitation.token,
+      type: 'org_invitation',
+      organization_id: organizationId,
+      invite_role: 'employee',
+      orgName: profile?.company_name || profile?.display_name || undefined,
+      inviterName: profile?.display_name || undefined,
+    });
+    setResendingInvitationId(null);
+    setResendInvitationCooldownUntil((prev) => ({ ...prev, [invitation.id]: Date.now() + 4000 }));
+    if (result.ok) {
+      Alert.alert(uiCopy.common.success, uiCopy.inviteResend.success);
+      return;
+    }
+    const fallbackLink = buildOrganizationInviteUrl(invitation.token);
+    Alert.alert(
+      uiCopy.common.error,
+      `${uiCopy.inviteResend.error}: ${result.error}\n\n${uiCopy.alerts.invitationLink}: ${fallbackLink}\n\n${uiCopy.inviteResend.checkSpamHint}`,
+    );
+  };
+
   if (!realClientId) {
     return (
       <Text style={styles.muted}>
@@ -297,10 +326,25 @@ export const ClientOrganizationTeamSection: React.FC<{
       ) : (
         pendingInv.map((i) => (
           <View key={i.id} style={styles.row}>
-            <Text style={styles.rowTitle}>
-              {i.email} · {roleLabel(i.role)}
-            </Text>
-            <Text style={styles.mutedSmall}>{uiCopy.team.inviteExpiresLabel} {new Date(i.expires_at).toLocaleDateString()}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.rowTitle}>
+                {i.email} · {roleLabel(i.role)}
+              </Text>
+              <Text style={styles.mutedSmall}>{uiCopy.team.inviteExpiresLabel} {new Date(i.expires_at).toLocaleDateString()}</Text>
+            </View>
+            {canInvite && i.email && i.token && (
+              <TouchableOpacity
+                style={[styles.primaryBtn, { marginTop: 0, marginLeft: spacing.sm, paddingHorizontal: spacing.md }]}
+                onPress={() => {
+                  void handleResendInvitation(i);
+                }}
+                disabled={resendingInvitationId === i.id || Date.now() < (resendInvitationCooldownUntil[i.id] ?? 0)}
+              >
+                <Text style={styles.primaryBtnLabel}>
+                  {resendingInvitationId === i.id ? uiCopy.inviteResend.loading : uiCopy.inviteResend.cta}
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
         ))
       )}

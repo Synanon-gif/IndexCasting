@@ -154,6 +154,13 @@ export const uiCopy = {
     invitationCreatedEmailFailedWithLink: (reason: string, link: string) =>
       `Invitation created, but email delivery failed (${reason}). Share this secure link manually:\n\n${link}`,
   },
+  inviteResend: {
+    cta: 'Resend invite',
+    success: 'Invite sent again',
+    loading: 'Sending invite...',
+    error: 'Could not resend invite',
+    checkSpamHint: 'Please ask the recipient to check spam or junk folders.',
+  },
   calendar: {
     editEntry: 'Edit entry',
     reschedule: 'Reschedule',
