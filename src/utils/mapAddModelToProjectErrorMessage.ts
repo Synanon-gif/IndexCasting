@@ -31,6 +31,9 @@ export function mapAddModelToProjectErrorMessage(
   }
   if (m.includes('caller has no client organization')) return uiCopy.projects.addToProjectNoClientOrg;
   if (m.includes('not_authenticated')) return uiCopy.alerts.signInRequired;
+  if (m.includes('model does not exist')) {
+    return uiCopy.projects.addToProjectGeneric;
+  }
   if (m.includes('model has no agency') || (m.includes('does not exist') && m.includes('model'))) {
     return uiCopy.projects.addToProjectModelNoAgency;
   }

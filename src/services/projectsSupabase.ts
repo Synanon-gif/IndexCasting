@@ -194,14 +194,13 @@ export { mapAddModelToProjectErrorMessage };
  * Adds a model to a client project.
  *
  * Delegates to the add_model_to_project SECURITY DEFINER RPC which validates
- * project org membership and that the model exists with a resolvable agency
- * (territory-aligned when p_country_iso is set). Discover visibility is the
- * product gate — no client_agency_connections row is required.
+ * project org membership and that a models row exists for p_model_id. Discover
+ * visibility is the product gate — no client_agency_connections row is required.
  *
  * Pass organizationId (client org UUID) when known — multi-org-safe explicit org pin.
- * Pass countryIso so the RPC checks the territory agency (model_agency_territories),
- * aligned with get_discovery_models. Prefer the model card's country (Discover row),
- * fallback to filter bar — callers should pass model.countryCode ?? filters.countryCode.
+ * countryIso is forwarded for API compatibility; the RPC may ignore it (model row is the gate).
+ * Prefer the model card's country (Discover row), fallback to filter bar —
+ * callers should pass model.countryCode ?? filters.countryCode.
  */
 export async function addModelToProject(
   projectId: string,
@@ -232,7 +231,19 @@ export async function addModelToProject(
       } catch {
         serialized = '[serialize failed]';
       }
-      console.error('addModelToProject RPC error:', {
+      const errorKeys: Record<string, unknown> = {};
+      if (error && typeof error === 'object') {
+        const errObj = error as unknown as Record<string, unknown>;
+        for (const k of Object.getOwnPropertyNames(error)) {
+          try {
+            errorKeys[k] = errObj[k];
+          } catch {
+            errorKeys[k] = '[unreadable]';
+          }
+        }
+      }
+      console.error('[add_model_to_project] RPC error:', {
+        ...errorKeys,
         message: error.message,
         code: error.code,
         details: error.details,

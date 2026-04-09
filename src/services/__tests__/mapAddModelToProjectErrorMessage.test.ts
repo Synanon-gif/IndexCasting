@@ -25,6 +25,12 @@ describe('mapAddModelToProjectErrorMessage', () => {
     ).toBe(uiCopy.projects.addToProjectGeneric);
   });
 
+  it('maps model does not exist (unknown id) to generic', () => {
+    expect(mapAddModelToProjectErrorMessage('add_model_to_project: model does not exist')).toBe(
+      uiCopy.projects.addToProjectGeneric,
+    );
+  });
+
   it('maps unknown errors to generic', () => {
     expect(mapAddModelToProjectErrorMessage('something else')).toBe(uiCopy.projects.addToProjectGeneric);
     expect(mapAddModelToProjectErrorMessage(undefined)).toBe(uiCopy.projects.addToProjectGeneric);
