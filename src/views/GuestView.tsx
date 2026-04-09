@@ -651,7 +651,7 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
                   {m.sex ? `${m.sex === 'female' ? 'Female' : 'Male'}` : ''}
                   {m.hair_color ? `${m.sex ? ' · ' : ''}${m.hair_color}` : ''}
                   {m.eye_color ? ` · ${m.eye_color}` : ''}
-                  {m.city ? ` · ${m.city}` : ''}
+                  {(m.effective_city ?? m.city) ? ` · ${m.effective_city ?? m.city}` : ''}
                 </Text>
               </View>
             </View>

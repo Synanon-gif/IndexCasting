@@ -168,6 +168,8 @@ export type GuestLinkModel = {
   sex: string | null;
   portfolio_images: string[];
   polaroids: string[];
+  /** Canonical city from model_locations (live>current>agency). NULL when no model_locations row exists. */
+  effective_city?: string | null;
 };
 
 // Signed-URL TTL for guest-visible model images (M-3 fix, Security Audit 2026-04).

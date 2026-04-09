@@ -283,7 +283,7 @@ function mapDiscoveryModelToSummary(m: DiscoveryModel): ModelSummary {
   return {
     id: m.id,
     name: m.name,
-    city: m.city ?? '',
+    city: m.effective_city ?? m.city ?? '',
     hairColor: m.hair_color ?? '',
     height: m.height,
     bust: m.bust ?? 0,
@@ -866,7 +866,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       const mapped: ModelSummary[] = data.map((m: any) => ({
         id: m.id,
         name: m.name,
-        city: m.city,
+        city: m.effective_city ?? m.city ?? '',
         hairColor: m.hairColor ?? m.hair_color ?? '',
         height: m.height,
         bust: m.bust ?? 0,
@@ -1552,7 +1552,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       const packageModels: ModelSummary[] = glModels.map((m) => ({
         id: m.id,
         name: m.name,
-        city: m.city ?? '',
+        city: m.effective_city ?? m.city ?? '',
         hairColor: m.hair_color ?? '',
         height: m.height ?? 0,
         bust: m.bust ?? 0,

@@ -590,7 +590,7 @@ ON CONFLICT (model_id, source) DO UPDATE SET city = EXCLUDED.city, ...;
 - **Agency roster bulk selection:** nur **Territories of representation** (`bulkAddTerritoriesForModels` / territory modal) — **kein** Bulk-Current-Location. Current location und agency-`model_locations`-Zeile nur über **Einzel-Model-Save** im gleichen Screen (nicht über Mehrfachauswahl).
 - Geocoding schlägt fehl → Alert("City not found") + `return` — kein Write, kein null-Update
 - `getModelLocation(modelId)` gibt höchste Priorität zurück; `getAllModelLocations(modelId)` gibt alle Zeilen
-- **Display-City-Priorität:** Wo `model_locations`-Daten verfügbar sind (z. B. `filterModels`, Mapping), MUSS `loc?.city || m.city` gelten — `model_locations.city` (höchste Source) hat Vorrang vor `models.city`. In Discovery-Kontexten ohne `model_locations`-Join (z. B. `get_discovery_models`) ist `models.city` allein akzeptabel.
+- **Display-City-Priorität — kanonische Produktwahrheit (20260409):** `effective_city` ist die systemweite kanonische Stadt für alle user-facing Surfaces. Definition: `COALESCE(model_locations.city [höchste Priorität: live>current>agency], models.city)`. Alle Discovery-RPCs (`get_discovery_models`, `get_models_by_location`, `get_guest_link_models`) liefern `effective_city` als eigenes Feld. Frontend-Mapper MÜSSEN `m.effective_city ?? m.city ?? ''` verwenden. In direkten `models`-Selects (ohne RPC, z. B. Agency-Roster) und in `filterModels` bleibt `loc?.city || m.city` korrekt. `models.city` allein ist nur akzeptabel, wenn weder `effective_city` noch `loc` verfügbar ist (pure Legacy-Pfade).
 
 ### NIEMALS
 

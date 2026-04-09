@@ -42,7 +42,7 @@ function mapDiscoveryModel(m: DiscoveryModel): ClientModel {
     chest: m.chest ?? m.bust ?? 0,
     waist: m.waist ?? 0,
     hips: m.hips ?? 0,
-    city: m.city ?? '',
+    city: m.effective_city ?? m.city ?? '',
     hairColor: m.hair_color ?? '',
     gallery: (m.portfolio_images ?? []).map((u) =>
       normalizeDocumentspicturesModelImageRef(u, m.id),
@@ -155,7 +155,7 @@ export const CustomerSwipeScreen: React.FC = () => {
         const mapped = page.map((m) => ({
           id: m.id, name: m.name, height: m.height,
           chest: m.chest ?? m.bust ?? 0, waist: m.waist ?? 0, hips: m.hips ?? 0,
-          city: m.city ?? '', hairColor: m.hair_color ?? '',
+          city: m.effective_city ?? m.city ?? '', hairColor: m.hair_color ?? '',
           gallery: m.portfolio_images ?? [],
         }));
         setModels((prev) => [...prev, ...mapped]);
@@ -195,7 +195,7 @@ export const CustomerSwipeScreen: React.FC = () => {
           const mapped = page.map((m) => ({
             id: m.id, name: m.name, height: m.height,
             chest: m.chest ?? m.bust ?? 0, waist: m.waist ?? 0, hips: m.hips ?? 0,
-            city: m.city ?? '', hairColor: m.hair_color ?? '',
+            city: m.effective_city ?? m.city ?? '', hairColor: m.hair_color ?? '',
             gallery: m.portfolio_images ?? [],
           }));
           setModels(mapped);

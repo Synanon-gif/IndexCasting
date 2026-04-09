@@ -64,6 +64,8 @@ export type SupabaseModel = {
   sex?: 'male' | 'female' | null;
   /** Ethnic background — free text matching ETHNICITY_OPTIONS. Null = not specified. */
   ethnicity?: string | null;
+  /** Canonical city from model_locations (live>current>agency). Present when loaded via RPCs that join model_locations. */
+  effective_city?: string | null;
 };
 
 export async function getModelsFromSupabase(): Promise<SupabaseModel[]> {

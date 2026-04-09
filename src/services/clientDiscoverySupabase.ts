@@ -62,6 +62,8 @@ export type DiscoveryModel = {
   agency_name: string | null;
   territory_agency_id: string | null;
   discovery_score: number;
+  /** Canonical city from model_locations (live>current>agency), falls back to models.city when NULL. */
+  effective_city?: string | null;
 };
 
 export type DiscoveryFilters = ClientMeasurementFilters & {

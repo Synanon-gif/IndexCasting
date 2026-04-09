@@ -1,0 +1,69 @@
+{
+  "name": "Location Truth Unification",
+  "date": "2026-04-09",
+  "status": "in_progress",
+  "goal": "Establish model_locations (priority: live > current > agency) as canonical product truth for all user-facing city display and filtering. models.city becomes legacy fallback only.",
+  "steps": [
+    {
+      "id": "P1",
+      "name": "Source-of-Truth Map",
+      "status": "complete",
+      "description": "Audit of all location-using surfaces documented in CURSOR_LOCATION_TRUTH_UNIFICATION_REPORT.md"
+    },
+    {
+      "id": "P3",
+      "name": "SQL Migration",
+      "status": "complete",
+      "migration": "supabase/migrations/20260409_location_truth_unification.sql",
+      "rpcs_changed": ["get_discovery_models", "get_models_by_location", "get_guest_link_models"],
+      "deployed": true,
+      "verified": true
+    },
+    {
+      "id": "P4",
+      "name": "Frontend Types + Mappers",
+      "status": "complete",
+      "files_changed": [
+        "src/services/clientDiscoverySupabase.ts",
+        "src/services/guestLinksSupabase.ts",
+        "src/web/ClientWebApp.tsx",
+        "src/screens/CustomerSwipeScreen.tsx",
+        "src/views/GuestView.tsx"
+      ]
+    },
+    {
+      "id": "P5",
+      "name": "Filter Logic Verification",
+      "status": "complete",
+      "notes": "modelFilters.ts already correct (loc?.city || m.city). Discovery score now uses COALESCE."
+    },
+    {
+      "id": "P7",
+      "name": "Rules Updates",
+      "status": "complete",
+      "files_changed": [".cursorrules", ".cursor/rules/system-invariants.mdc", ".cursor/rules/auto-review.mdc"]
+    },
+    {
+      "id": "P10",
+      "name": "Quality Gates",
+      "status": "pending",
+      "checks": ["typecheck", "lint", "test", "git_sync"]
+    }
+  ],
+  "do_not_touch": [
+    "AuthContext",
+    "bootstrapThenLoadProfile",
+    "can_access_platform / paywall ordering",
+    "assert_is_admin / admin core",
+    "booking_brief trust model",
+    "calendar_entries RLS",
+    "invite/claim architecture",
+    "get_models_near_location (already canonical)",
+    "discovery ranking weights (only city-score source changed)"
+  ],
+  "remaining_risks": [
+    "Agency roster cards still show models.city (acceptable — agency-written value)",
+    "models.city can become stale when model self-sets city via model_locations only",
+    "Performance: effective_locations CTE adds LEFT JOIN to model_locations (lightweight)"
+  ]
+}
