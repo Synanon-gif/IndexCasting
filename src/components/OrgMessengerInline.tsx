@@ -89,6 +89,11 @@ export type OrgMessengerInlineProps = {
    */
   onPackagePress?: (metadata: Record<string, unknown>) => void;
   /**
+   * Web B2B split: use flex-constrained message scroll so the composer stays in view
+   * instead of a window-fraction maxHeight that can push the input below the fold.
+   */
+  useFlexMessengerScroll?: boolean;
+  /**
    * Role of the viewer. Used to determine which booking status-change actions to show.
    * 'agency' can accept (pending→agency_accepted) and cancel.
    * 'model' can confirm (agency_accepted→model_confirmed).
@@ -136,12 +141,15 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   onBookingCardPress,
   onOpenRelatedRequest,
   onPackagePress,
+  useFlexMessengerScroll = false,
   viewerRole,
   onBookingStatusUpdated,
   onOrgPress,
 }) => {
   const { height: windowHeight } = useWindowDimensions();
   const messagesScrollMaxHeight = getMessagesScrollMaxHeight(windowHeight);
+  const useFlexScroll =
+    Platform.OS === 'web' && useFlexMessengerScroll;
   const [msgs, setMsgs] = useState<MessageWithSender[]>([]);
   const [input, setInput] = useState('');
   const [shareOpen, setShareOpen] = useState<'package' | 'model' | null>(null);
@@ -454,7 +462,13 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
     : null;
 
   return (
-    <View style={[styles.chatPanel, containerStyle]}>
+    <View
+      style={[
+        styles.chatPanel,
+        useFlexScroll && { flex: 1, minHeight: 0, flexDirection: 'column' as const },
+        containerStyle,
+      ]}
+    >
       {onOrgPress ? (
         <TouchableOpacity onPress={onOrgPress} style={styles.chatPanelTitleBtn}>
           <Text style={[styles.chatPanelTitle, styles.chatPanelTitleClickable]}>{headerTitle}</Text>
@@ -491,7 +505,13 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
         </View>
       ) : null}
 
-      <ScrollView style={{ maxHeight: messagesScrollMaxHeight }}>
+      <ScrollView
+        style={
+          useFlexScroll
+            ? { flex: 1, minHeight: 0 }
+            : { maxHeight: messagesScrollMaxHeight }
+        }
+      >
         {msgs.map((m) => {
           const pt = payloadType(m);
           const rawFileUrl = (m as { file_url?: string | null }).file_url ?? null;

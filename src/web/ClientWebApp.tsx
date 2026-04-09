@@ -1968,6 +1968,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             onExitPackage={exitPackageMode}
             userCity={userCity}
             onShowActiveOptions={() => setShowActiveOptions(true)}
+            tabBarBottomInset={bottomTabInset}
           />
         )}
 
@@ -2697,6 +2698,8 @@ type DiscoverProps = {
   onExitPackage?: () => void;
   userCity: string | null;
   onShowActiveOptions?: () => void;
+  /** Bottom inset for package grid (clears absolute tab bar + safe area). */
+  tabBarBottomInset?: number;
 };
 
 /**
@@ -2777,10 +2780,12 @@ const DiscoverView: React.FC<DiscoverProps> = ({
   addingModelIds,
   onExitPackage,
   onShowActiveOptions,
+  tabBarBottomInset = 0,
 }) => {
   // Package mode: grid layout matching GuestView (all models visible at once, no swipe)
   if (isPackageMode) {
     const packageTypeLabel = packageType === 'polaroid' ? 'Polaroid Package' : 'Portfolio Package';
+    const packageGridPaddingBottom = Math.max(120, tabBarBottomInset + spacing.lg);
     return (
       <View style={[styles.section, { flex: 1 }]}>
         <View style={styles.sectionHeader}>
@@ -2795,7 +2800,11 @@ const DiscoverView: React.FC<DiscoverProps> = ({
             <Text style={styles.packageBannerExit}>{uiCopy.discover.exitPackage}</Text>
           </TouchableOpacity>
         </View>
-        <ScrollView contentContainerStyle={styles.packageGrid} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          style={Platform.OS === 'web' ? { flex: 1, minHeight: 0 } : undefined}
+          contentContainerStyle={[styles.packageGrid, { paddingBottom: packageGridPaddingBottom }]}
+          showsVerticalScrollIndicator={false}
+        >
           {models.length === 0 ? (
             <View style={styles.emptyDiscover}>
               <Text style={styles.emptyTitle}>{uiCopy.discover.noMoreModels}</Text>
@@ -3977,6 +3986,7 @@ const ClientB2BChatsPanel: React.FC<{
       viewerUserId={auth.profile?.id ?? null}
       threadContext={{ type: uiCopy.b2bChat.contextOrgChat }}
       containerStyle={b2bWebSplit ? { marginTop: 0, flex: 1 } : { marginTop: spacing.md }}
+      useFlexMessengerScroll={b2bWebSplit}
       onBookingCardPress={onBookingCardPress}
       onPackagePress={onPackagePress}
       onOpenRelatedRequest={onOpenRelatedRequest}
@@ -3994,11 +4004,25 @@ const ClientB2BChatsPanel: React.FC<{
   ) : null;
 
   return (
-    <View style={{ marginTop: spacing.sm }}>
+    <View
+      style={
+        b2bWebSplit
+          ? { marginTop: spacing.sm, flex: 1, minHeight: 0 }
+          : { marginTop: spacing.sm }
+      }
+    >
       {b2bWebSplit ? (
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md }}>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'stretch',
+            gap: spacing.md,
+            flex: 1,
+            minHeight: 0,
+          }}
+        >
           <View style={{ flex: CHAT_THREAD_LIST_FLEX, minWidth: 0 }}>{threadListEl}</View>
-          <View style={{ flex: CHAT_MESSENGER_FLEX, minWidth: 0 }}>{messengerEl}</View>
+          <View style={{ flex: CHAT_MESSENGER_FLEX, minWidth: 0, minHeight: 0 }}>{messengerEl}</View>
         </View>
       ) : (
         <>
@@ -5839,7 +5863,6 @@ const styles = StyleSheet.create({
     marginLeft: spacing.md,
   },
   packageGrid: {
-    paddingBottom: 120,
     gap: spacing.md,
   },
   packageGridCard: {
