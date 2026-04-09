@@ -175,16 +175,16 @@ describe('handleRemoveModelFromProject (optimistic logic)', () => {
 describe('addModelToProject (service)', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it('returns true when insert succeeds', async () => {
-    mockAddModel.mockResolvedValue(true);
+  it('returns ok when insert succeeds', async () => {
+    mockAddModel.mockResolvedValue({ ok: true });
     const result = await addModelToProject('proj-1', 'model-a');
-    expect(result).toBe(true);
+    expect(result).toEqual({ ok: true });
   });
 
-  it('returns true (idempotent) on 23505 duplicate key violation', async () => {
-    mockAddModel.mockResolvedValue(true);
+  it('returns ok (idempotent) when duplicate insert is a no-op', async () => {
+    mockAddModel.mockResolvedValue({ ok: true });
     const result = await addModelToProject('proj-1', 'model-a');
-    expect(result).toBe(true);
+    expect(result).toEqual({ ok: true });
   });
 });
 

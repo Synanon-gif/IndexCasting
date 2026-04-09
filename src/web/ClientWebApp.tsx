@@ -1365,10 +1365,11 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       projectId,
       model.id,
       clientOrgId?.trim() ? clientOrgId : undefined,
+      filters.countryCode?.trim() ? filters.countryCode.trim() : undefined,
     )
-      .then((ok) => {
+      .then((result) => {
         setAddingModelIds((prev) => { const s = new Set(prev); s.delete(model.id); return s; });
-        if (ok) {
+        if (result.ok) {
           // Server reconciliation refetch: silently align UI with DB after successful add.
           // Removes any stale in-memory models not confirmed in client_project_models.
           void reconcileProjectModels(projectId);
@@ -1388,7 +1389,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
               ),
             );
           }
-          setFeedback('Could not save model to project — no active agency connection.');
+          setFeedback(result.userMessage);
           clearFeedbackLater();
         }
       })

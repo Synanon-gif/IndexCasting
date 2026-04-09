@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase';
+import { uiCopy } from '../constants/uiCopy';
 import { fetchEffectiveDisplayCitiesForModels } from './modelLocationsSupabase';
 import { getFirstClientVisiblePortfolioUrlForModels } from './modelPhotosSupabase';
 import { getModelsByIdsForClientFromSupabase } from './modelsSupabase';
@@ -182,6 +183,24 @@ export async function fetchHydratedClientProjectsForOrg(
   }
 }
 
+export type AddModelToProjectResult =
+  | { ok: true }
+  | { ok: false; userMessage: string };
+
+function mapAddModelToProjectErrorMessage(raw: string | undefined): string {
+  const m = (raw ?? '').toLowerCase();
+  if (m.includes('no active connection')) return uiCopy.projects.addToProjectNoConnection;
+  if (m.includes('project does not belong')) return uiCopy.projects.addToProjectWrongOrg;
+  if (m.includes('not a member of the specified client organization')) {
+    return uiCopy.projects.addToProjectNotOrgMember;
+  }
+  if (m.includes('caller has no client organization')) return uiCopy.projects.addToProjectNoClientOrg;
+  if (m.includes('model has no agency') || m.includes('does not exist')) {
+    return uiCopy.projects.addToProjectModelNoAgency;
+  }
+  return uiCopy.projects.addToProjectGeneric;
+}
+
 /**
  * Adds a model to a client project.
  *
@@ -191,33 +210,39 @@ export async function fetchHydratedClientProjectsForOrg(
  * Prevents clients from adding models from agencies they have no relationship with.
  *
  * Pass organizationId (client org UUID) when known — multi-org-safe explicit org pin.
+ * Pass countryIso (same ISO as discovery filters) so the RPC checks the territory agency
+ * (model_agency_territories), aligned with get_discovery_models.
  */
 export async function addModelToProject(
   projectId: string,
   modelId: string,
   organizationId?: string | null,
-): Promise<boolean> {
+  countryIso?: string | null,
+): Promise<AddModelToProjectResult> {
   try {
     const args: {
       p_project_id: string;
       p_model_id: string;
       p_organization_id?: string;
+      p_country_iso?: string;
     } = {
       p_project_id: projectId,
       p_model_id: modelId,
     };
     const org = organizationId?.trim();
     if (org) args.p_organization_id = org;
+    const iso = countryIso?.trim();
+    if (iso) args.p_country_iso = iso.toUpperCase();
 
     const { data, error } = await supabase.rpc('add_model_to_project', args);
     if (error) {
       console.error('addModelToProject RPC error:', error);
-      return false;
+      return { ok: false, userMessage: mapAddModelToProjectErrorMessage(error.message) };
     }
-    return data === true;
+    return data === true ? { ok: true } : { ok: false, userMessage: uiCopy.projects.addToProjectGeneric };
   } catch (e) {
     console.error('addModelToProject exception:', e);
-    return false;
+    return { ok: false, userMessage: uiCopy.projects.addToProjectGeneric };
   }
 }
 
