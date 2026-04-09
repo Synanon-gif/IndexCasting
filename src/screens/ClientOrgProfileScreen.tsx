@@ -1,14 +1,15 @@
 /**
- * ClientOrgProfileScreen — Phase 2A/2C.1/2C.2 (internal)
+ * ClientOrgProfileScreen — Phase 2A/2C.1/2C.2/2D (internal)
  *
  * Shows the client organization's profile:
  *  - Logo, name, description, contact info
- *  - Gallery section from organization_profile_media
+ *  - Gallery section from organization_profile_media (client_gallery)
  *  - Clean empty state when no media has been added yet
  *
  * Access: client owner + employee (RLS enforced server-side).
  * Phase 2C.1: owner can edit text/contact fields via OrgProfileEditModal.
  * Phase 2C.2: owner can upload/replace/delete the organization logo.
+ * Phase 2D: owner can upload and delete gallery images.
  * No public access in this phase.
  */
 
@@ -36,6 +37,10 @@ import {
   uploadOrganizationLogo,
   deleteOrganizationLogo,
 } from '../services/organizationLogoSupabase';
+import {
+  uploadClientGalleryImage,
+  deleteClientGalleryImage,
+} from '../services/organizationGallerySupabase';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -59,8 +64,11 @@ export function ClientOrgProfileScreen({
   const [loading, setLoading] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
   const [logoUploading, setLogoUploading] = useState(false);
+  const [galleryUploading, setGalleryUploading] = useState(false);
+  const [deletingMediaIds, setDeletingMediaIds] = useState<Set<string>>(new Set());
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const galleryInputRef = useRef<HTMLInputElement | null>(null);
 
   const { width } = useWindowDimensions();
   const CELL_GAP = spacing.xs;
@@ -134,45 +142,166 @@ export function ClientOrgProfileScreen({
     ]);
   }, [organizationId, orgProfile?.logo_url]);
 
-  const renderGallery = useCallback(() => {
-    if (media.length === 0) {
-      return (
-        <View style={s.emptyState}>
-          <Text style={s.emptyTitle}>No gallery content yet</Text>
-          {isOwner && (
-            <Text style={s.emptyHint}>
-              Gallery upload will be available in the next update.
-            </Text>
-          )}
-        </View>
-      );
-    }
+  // ── Gallery upload/delete handlers (owner-only) ──
 
-    // 3-column grid — group into rows of 3
-    const rows: OrganizationProfileMedia[][] = [];
-    for (let i = 0; i < media.length; i += 3) {
-      rows.push(media.slice(i, i + 3));
-    }
+  const handleGalleryUploadPress = useCallback(() => {
+    if (!isOwner || galleryUploading) return;
+    galleryInputRef.current?.click();
+  }, [isOwner, galleryUploading]);
+
+  const handleGalleryFileChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file || !organizationId) return;
+      e.target.value = '';
+
+      setGalleryUploading(true);
+      const result = await uploadClientGalleryImage(organizationId, file);
+      setGalleryUploading(false);
+
+      if (result.ok && result.media) {
+        // Inverse-operation add: append new item to the end
+        setMedia((prev) => [...prev, result.media!]);
+      } else {
+        Alert.alert(
+          'Upload failed',
+          result.error ?? 'Could not upload image. Please try again.',
+        );
+      }
+    },
+    [organizationId],
+  );
+
+  const handleDeleteGalleryImage = useCallback(
+    (item: OrganizationProfileMedia) => {
+      if (!organizationId || deletingMediaIds.has(item.id)) return;
+      Alert.alert('Remove image', 'Remove this image from your gallery?', [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            // Per-id inflight lock
+            setDeletingMediaIds((prev) => new Set(prev).add(item.id));
+            const ok = await deleteClientGalleryImage(organizationId, item.id, item.image_url);
+            setDeletingMediaIds((prev) => {
+              const next = new Set(prev);
+              next.delete(item.id);
+              return next;
+            });
+            if (ok) {
+              // Inverse-operation remove: filter out the deleted item
+              setMedia((prev) => prev.filter((m) => m.id !== item.id));
+            } else {
+              Alert.alert('Error', 'Could not remove image. Please try again.');
+            }
+          },
+        },
+      ]);
+    },
+    [organizationId, deletingMediaIds],
+  );
+
+  const renderGallery = useCallback(() => {
+    const isDeleting = (id: string) => deletingMediaIds.has(id);
 
     return (
       <View style={s.gallerySection}>
-        <Text style={s.sectionTitle}>Gallery</Text>
-        {rows.map((row, rIdx) => (
-          <View key={rIdx} style={s.galleryRow}>
-            {row.map((item) => (
-              <View key={item.id} style={[s.galleryCell, { width: cellWidth, height: cellHeight }]}>
-                <StorageImage
-                  uri={item.image_url}
-                  style={{ width: cellWidth, height: cellHeight, borderRadius: 4 }}
-                  resizeMode="cover"
-                />
-              </View>
-            ))}
+        {/* ── Section header with upload button ── */}
+        <View style={s.gallerySectionHeader}>
+          <Text style={s.sectionTitle}>Gallery</Text>
+          {isOwner && (
+            <TouchableOpacity
+              style={[s.galleryAddBtn, galleryUploading && s.galleryAddBtnDisabled]}
+              onPress={handleGalleryUploadPress}
+              disabled={galleryUploading}
+              accessibilityLabel="Add gallery image"
+              accessibilityRole="button"
+            >
+              {galleryUploading ? (
+                <ActivityIndicator color={colors.textSecondary} size="small" />
+              ) : (
+                <Text style={s.galleryAddBtnText}>+</Text>
+              )}
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Hidden file input for web */}
+        {isOwner && (
+          // @ts-ignore — input element only exists on web; ignored on native
+          <input
+            ref={galleryInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={handleGalleryFileChange}
+          />
+        )}
+
+        {/* ── Empty state ── */}
+        {media.length === 0 && (
+          <View style={s.emptyState}>
+            <Text style={s.emptyTitle}>No gallery content yet</Text>
+            {isOwner && (
+              <Text style={s.emptyHint}>Tap '+' to add your first gallery image.</Text>
+            )}
           </View>
-        ))}
+        )}
+
+        {/* ── 3-column grid ── */}
+        {media.length > 0 && (() => {
+          const rows: OrganizationProfileMedia[][] = [];
+          for (let i = 0; i < media.length; i += 3) {
+            rows.push(media.slice(i, i + 3));
+          }
+          return rows.map((row, rIdx) => (
+            <View key={rIdx} style={s.galleryRow}>
+              {row.map((item) => (
+                <View
+                  key={item.id}
+                  style={[s.galleryCell, { width: cellWidth, height: cellHeight }]}
+                >
+                  <StorageImage
+                    uri={item.image_url}
+                    style={{ width: cellWidth, height: cellHeight, borderRadius: 4 }}
+                    resizeMode="cover"
+                  />
+                  {/* Delete overlay for owner */}
+                  {isOwner && !isDeleting(item.id) && (
+                    <TouchableOpacity
+                      style={s.galleryDeleteBtn}
+                      onPress={() => handleDeleteGalleryImage(item)}
+                      accessibilityLabel="Remove image"
+                      accessibilityRole="button"
+                    >
+                      <Text style={s.galleryDeleteBtnText}>×</Text>
+                    </TouchableOpacity>
+                  )}
+                  {/* Deleting spinner overlay */}
+                  {isDeleting(item.id) && (
+                    <View style={s.galleryCellOverlay}>
+                      <ActivityIndicator color="#fff" />
+                    </View>
+                  )}
+                </View>
+              ))}
+            </View>
+          ));
+        })()}
       </View>
     );
-  }, [media, isOwner, cellWidth, cellHeight]);
+  }, [
+    media,
+    isOwner,
+    cellWidth,
+    cellHeight,
+    galleryUploading,
+    deletingMediaIds,
+    handleGalleryUploadPress,
+    handleGalleryFileChange,
+    handleDeleteGalleryImage,
+  ]);
 
   if (loading) {
     return (
@@ -420,6 +549,53 @@ const s = StyleSheet.create({
   // Gallery
   gallerySection: {
     paddingHorizontal: spacing.md,
+  },
+  gallerySectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  galleryAddBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  galleryAddBtnDisabled: {
+    opacity: 0.5,
+  },
+  galleryAddBtnText: {
+    color: '#fff',
+    fontSize: 22,
+    lineHeight: 26,
+    fontWeight: '300',
+  },
+  galleryDeleteBtn: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  galleryDeleteBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    lineHeight: 18,
+    fontWeight: '600',
+  },
+  galleryCellOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderRadius: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   sectionTitle: {
     ...typography.label,
