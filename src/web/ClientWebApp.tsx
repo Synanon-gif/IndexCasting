@@ -150,6 +150,7 @@ import { OwnerBillingStatusCard } from '../components/OwnerBillingStatusCard';
 import { GlobalSearchBar } from '../components/GlobalSearchBar';
 import { DashboardSummaryBar } from '../components/DashboardSummaryBar';
 import { StorageImage } from '../components/StorageImage';
+import { ClientOrgProfileScreen } from '../screens/ClientOrgProfileScreen';
 
 /** Signed-URL lifetime for authenticated client views of model photos (private bucket). */
 const CLIENT_MODEL_IMAGE_TTL_SEC = 3600;
@@ -215,7 +216,7 @@ const ClientDashboardTab: React.FC<{
   </View>
 );
 
-type TopTab = 'dashboard' | 'discover' | 'projects' | 'agencies' | 'messages' | 'calendar' | 'team';
+type TopTab = 'dashboard' | 'discover' | 'projects' | 'agencies' | 'messages' | 'calendar' | 'team' | 'profile';
 
 type ModelSummary = {
   id: string;
@@ -2018,6 +2019,14 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
           </View>
         )}
 
+        {tab === 'profile' && (
+          <ClientOrgProfileScreen
+            organizationId={clientOrgId}
+            orgName={auth.profile?.company_name ?? null}
+            orgMemberRole={auth.profile?.org_member_role ?? null}
+          />
+        )}
+
         {feedback && (
           <View style={styles.feedbackBanner}>
             <Text style={styles.feedbackText}>{feedback}</Text>
@@ -2523,7 +2532,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       )}
 
       <View style={[styles.bottomTabBar, { paddingBottom: insets.bottom }]}>
-        {(['dashboard', 'discover', 'messages', 'calendar', 'agencies', 'projects'] as TopTab[]).map((key) => (
+        {(['dashboard', 'discover', 'messages', 'calendar', 'agencies', 'projects', 'profile'] as TopTab[]).map((key) => (
           <TouchableOpacity
             key={key}
             onPress={() => handleBottomTabPress(key)}
@@ -2542,6 +2551,8 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                 ? uiCopy.clientWeb.bottomTabs.agencies
                 : key === 'team'
                 ? uiCopy.clientWeb.bottomTabs.team
+                : key === 'profile'
+                ? uiCopy.clientWeb.bottomTabs.profile
                 : uiCopy.clientWeb.bottomTabs.messages}
             </Text>
             {key === 'messages' && hasNew && (

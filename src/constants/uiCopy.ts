@@ -313,6 +313,7 @@ export const uiCopy = {
       agencies: 'Agencies',
       team: 'Team',
       messages: 'Messages',
+      profile: 'Profile',
     },
   },
   auth: {

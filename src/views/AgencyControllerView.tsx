@@ -162,6 +162,7 @@ import {
 import { MonthCalendarView, type CalendarDayEvent } from '../components/MonthCalendarView';
 import { ScreenScrollView } from '../components/ScreenScrollView';
 import { uiCopy } from '../constants/uiCopy';
+import { AgencyOrgProfileScreen } from '../screens/AgencyOrgProfileScreen';
 import { type ModelFilters, defaultModelFilters, filterModels } from '../utils/modelFilters';
 import ModelFiltersPanel from '../components/ModelFiltersPanel';
 import ModelEditDetailsPanel, { buildEditState, type ModelEditState } from '../components/ModelEditDetailsPanel';
@@ -230,7 +231,8 @@ type AgencyTab =
   | 'recruiting'
   | 'bookers'
   | 'guestLinks'
-  | 'settings';
+  | 'settings'
+  | 'profile';
 
 type AgencyModel = {
   id: string;
@@ -510,6 +512,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         { key: 'bookers', label: 'Team' },
         { key: 'guestLinks', label: uiCopy.guestLinks.tabTitle },
         { key: 'settings', label: uiCopy.agencySettings.tabLabel },
+        { key: 'profile', label: 'Profile' },
       ];
       return all;
     },
@@ -891,6 +894,15 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
             </TouchableOpacity>
           </View>
         </ScreenScrollView>
+      )}
+
+      {tab === 'profile' && (
+        <AgencyOrgProfileScreen
+          organizationId={agencyOrganizationId ?? null}
+          agencyId={currentAgencyId ?? null}
+          orgName={profile?.company_name ?? null}
+          orgMemberRole={profile?.org_member_role ?? null}
+        />
       )}
       </View>
 

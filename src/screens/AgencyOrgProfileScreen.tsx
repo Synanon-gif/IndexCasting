@@ -1,0 +1,404 @@
+/**
+ * AgencyOrgProfileScreen — Phase 2A (internal, read-only)
+ *
+ * Shows the agency organization's profile:
+ *  - Logo, name, description, contact info
+ *  - Women / Men segmented model roster
+ *  - 3-column alphabetical grid with model cover + name
+ *
+ * Access: agency owner + booker (RLS enforced server-side).
+ * Owner sees a passive "Edit Profile" placeholder (non-functional in Phase 2A).
+ * No public access, no edit flow, no media upload in this phase.
+ */
+
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import {
+  View,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  ActivityIndicator,
+  StyleSheet,
+  useWindowDimensions,
+  type ListRenderItemInfo,
+} from 'react-native';
+import { colors, spacing, typography } from '../theme/theme';
+import { StorageImage } from '../components/StorageImage';
+import {
+  getOrganizationProfile,
+  type OrganizationProfile,
+} from '../services/organizationProfilesSupabase';
+import {
+  getModelsForAgencyFromSupabase,
+  type SupabaseModel,
+} from '../services/modelsSupabase';
+import {
+  filterAndSortModelsBySegment,
+  type ModelSegment,
+} from '../utils/orgProfileHelpers';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type Segment = ModelSegment;
+
+export interface AgencyOrgProfileScreenProps {
+  organizationId: string | null;
+  agencyId: string | null;
+  /** Display name of the organisation (from profile.company_name). */
+  orgName: string | null;
+  /** 'owner' | 'booker' | null */
+  orgMemberRole: string | null;
+}
+
+// ─── Screen ───────────────────────────────────────────────────────────────────
+
+export function AgencyOrgProfileScreen({
+  organizationId,
+  agencyId,
+  orgName,
+  orgMemberRole,
+}: AgencyOrgProfileScreenProps): React.ReactElement {
+  const [orgProfile, setOrgProfile] = useState<OrganizationProfile | null>(null);
+  const [models, setModels] = useState<SupabaseModel[]>([]);
+  const [loadingProfile, setLoadingProfile] = useState(true);
+  const [loadingModels, setLoadingModels] = useState(true);
+  const [segment, setSegment] = useState<Segment>('women');
+
+  const { width } = useWindowDimensions();
+  const CELL_GAP = spacing.xs;
+  const H_PAD = spacing.md * 2;
+  const cellWidth = Math.floor((width - H_PAD - CELL_GAP * 2) / 3);
+
+  const isOwner = orgMemberRole === 'owner';
+  const loading = loadingProfile || loadingModels;
+
+  // Load org profile
+  useEffect(() => {
+    if (!organizationId) {
+      setLoadingProfile(false);
+      return;
+    }
+    setLoadingProfile(true);
+    void getOrganizationProfile(organizationId).then((p) => {
+      setOrgProfile(p);
+      setLoadingProfile(false);
+    });
+  }, [organizationId]);
+
+  // Load agency models
+  useEffect(() => {
+    if (!agencyId) {
+      setLoadingModels(false);
+      return;
+    }
+    setLoadingModels(true);
+    void getModelsForAgencyFromSupabase(agencyId).then((m) => {
+      setModels(m);
+      setLoadingModels(false);
+    });
+  }, [agencyId]);
+
+  const filteredModels = useMemo(
+    () => filterAndSortModelsBySegment(models, segment),
+    [models, segment],
+  );
+
+  const renderModel = useCallback(
+    ({ item }: ListRenderItemInfo<SupabaseModel>) => {
+      const coverUri = item.portfolio_images?.[0] ?? null;
+      const imgH = Math.floor(cellWidth * 1.35);
+      return (
+        <View style={[s.cell, { width: cellWidth }]}>
+          {coverUri ? (
+            <StorageImage
+              uri={coverUri}
+              style={{ width: cellWidth, height: imgH, borderRadius: 4 }}
+              resizeMode="cover"
+            />
+          ) : (
+            <View
+              style={[
+                s.cellPlaceholder,
+                { width: cellWidth, height: imgH, borderRadius: 4 },
+              ]}
+            >
+              <Text style={s.cellInitial}>{item.name.charAt(0).toUpperCase()}</Text>
+            </View>
+          )}
+          <Text style={s.cellName} numberOfLines={1}>
+            {item.name}
+          </Text>
+        </View>
+      );
+    },
+    [cellWidth],
+  );
+
+  const renderHeader = useCallback(() => {
+    const addr = [orgProfile?.address_line_1, orgProfile?.city, orgProfile?.country]
+      .filter(Boolean)
+      .join(', ');
+
+    return (
+      <View>
+        {/* ── Profile header ── */}
+        <View style={s.headerSection}>
+          {/* Logo */}
+          <View style={s.logoWrap}>
+            {orgProfile?.logo_url ? (
+              <StorageImage uri={orgProfile.logo_url} style={s.logo} resizeMode="cover" />
+            ) : (
+              <View style={[s.logo, s.logoPlaceholder]}>
+                <Text style={s.logoInitial}>
+                  {(orgName ?? '?').charAt(0).toUpperCase()}
+                </Text>
+              </View>
+            )}
+          </View>
+
+          <Text style={s.orgName}>{orgName ?? '—'}</Text>
+
+          {/* Owner-only Edit CTA placeholder (non-functional in Phase 2A) */}
+          {isOwner && (
+            <TouchableOpacity
+              disabled
+              style={s.editCta}
+              accessibilityLabel="Edit profile (coming soon)"
+            >
+              <Text style={s.editCtaText}>Edit Profile</Text>
+            </TouchableOpacity>
+          )}
+
+          {orgProfile?.description ? (
+            <Text style={s.description}>{orgProfile.description}</Text>
+          ) : null}
+
+          {addr ? <Text style={s.meta}>{addr}</Text> : null}
+          {orgProfile?.website_url ? (
+            <Text style={s.meta}>{orgProfile.website_url}</Text>
+          ) : null}
+          {orgProfile?.contact_email ? (
+            <Text style={s.meta}>{orgProfile.contact_email}</Text>
+          ) : null}
+          {orgProfile?.contact_phone ? (
+            <Text style={s.meta}>{orgProfile.contact_phone}</Text>
+          ) : null}
+
+          {/* Empty profile hint for owner */}
+          {isOwner && !orgProfile?.description && !addr && !orgProfile?.website_url && (
+            <Text style={s.emptyHint}>
+              Add a description, address and contact info to complete your profile.
+            </Text>
+          )}
+        </View>
+
+        {/* ── Segment bar ── */}
+        <View style={s.segmentBar}>
+          {(['women', 'men'] as Segment[]).map((seg) => (
+            <TouchableOpacity
+              key={seg}
+              onPress={() => setSegment(seg)}
+              style={s.segmentItem}
+            >
+              <Text
+                style={[s.segmentLabel, segment === seg && s.segmentLabelActive]}
+              >
+                {seg === 'women' ? 'Women' : 'Men'}
+              </Text>
+              {segment === seg && <View style={s.segmentUnderline} />}
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Empty state — no models in this segment */}
+        {!loading && filteredModels.length === 0 && (
+          <View style={s.emptyState}>
+            <Text style={s.emptyText}>
+              No {segment === 'women' ? 'women' : 'men'} models in this roster yet.
+            </Text>
+          </View>
+        )}
+      </View>
+    );
+  }, [orgProfile, orgName, isOwner, segment, filteredModels.length, loading]);
+
+  if (loading) {
+    return (
+      <View style={s.loaderWrap}>
+        <ActivityIndicator color={colors.textPrimary} />
+      </View>
+    );
+  }
+
+  return (
+    <FlatList<SupabaseModel>
+      // key forces re-mount when segment changes to reset scroll position
+      key={segment}
+      data={filteredModels}
+      numColumns={3}
+      keyExtractor={(item) => item.id}
+      renderItem={renderModel}
+      ListHeaderComponent={renderHeader}
+      columnWrapperStyle={s.row}
+      contentContainerStyle={s.listContent}
+      style={{ flex: 1, backgroundColor: colors.background }}
+      showsVerticalScrollIndicator={false}
+      removeClippedSubviews
+      initialNumToRender={9}
+      maxToRenderPerBatch={9}
+    />
+  );
+}
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
+const LOGO_SIZE = 72;
+
+const s = StyleSheet.create({
+  loaderWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background,
+  },
+  listContent: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: 120,
+  },
+  headerSection: {
+    alignItems: 'center',
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    marginBottom: spacing.md,
+  },
+  logoWrap: {
+    marginBottom: spacing.sm,
+  },
+  logo: {
+    width: LOGO_SIZE,
+    height: LOGO_SIZE,
+    borderRadius: LOGO_SIZE / 2,
+    overflow: 'hidden',
+  },
+  logoPlaceholder: {
+    backgroundColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoInitial: {
+    ...typography.heading,
+    fontSize: 28,
+    color: colors.textSecondary,
+  },
+  orgName: {
+    ...typography.heading,
+    fontSize: 20,
+    color: colors.textPrimary,
+    textAlign: 'center',
+    marginBottom: spacing.xs,
+  },
+  editCta: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 999,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+    opacity: 0.5,
+  },
+  editCtaText: {
+    ...typography.label,
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  description: {
+    ...typography.body,
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: spacing.xs,
+  },
+  meta: {
+    ...typography.body,
+    fontSize: 13,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  emptyHint: {
+    ...typography.body,
+    fontSize: 12,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: spacing.xs,
+    fontStyle: 'italic',
+  },
+  // Segment bar
+  segmentBar: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    marginBottom: spacing.sm,
+  },
+  segmentItem: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    position: 'relative',
+  },
+  segmentLabel: {
+    ...typography.label,
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  segmentLabelActive: {
+    color: colors.textPrimary,
+  },
+  segmentUnderline: {
+    position: 'absolute',
+    bottom: 0,
+    left: '20%',
+    right: '20%',
+    height: 2,
+    backgroundColor: colors.textPrimary,
+    borderRadius: 1,
+  },
+  // Grid
+  row: {
+    gap: spacing.xs,
+    marginBottom: spacing.xs,
+  },
+  cell: {
+    alignItems: 'center',
+  },
+  cellPlaceholder: {
+    backgroundColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cellInitial: {
+    fontSize: 22,
+    color: colors.textSecondary,
+  },
+  cellName: {
+    ...typography.body,
+    fontSize: 11,
+    color: colors.textPrimary,
+    textAlign: 'center',
+    marginTop: 4,
+    paddingHorizontal: 2,
+  },
+  // Empty state
+  emptyState: {
+    paddingVertical: spacing.xl,
+    alignItems: 'center',
+  },
+  emptyText: {
+    ...typography.body,
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+});
