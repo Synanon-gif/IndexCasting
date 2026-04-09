@@ -2973,10 +2973,11 @@ const MyModelsTab: React.FC<{
         {/* Model Media Management – Portfolio, Polaroids, Private Folder */}
         <View style={{ marginTop: spacing.lg }}>
           <ModelMediaSettingsPanel
+            key={selectedModel.id}
             modelId={selectedModel.id}
             organizationId={inviteOrganizationId ?? null}
-            onHasVisiblePortfolioChange={() => { refreshClientVisiblePortfolio(); }}
-            onReconcileComplete={() => { void Promise.resolve(onRefresh()); }}
+            onHasVisiblePortfolioChange={refreshClientVisiblePortfolio}
+            onReconcileComplete={onRefresh}
           />
         </View>
 

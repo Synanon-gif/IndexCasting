@@ -1,0 +1,45 @@
+{
+  "incident": "Agency Model Request Storm",
+  "date": "2026-05-15",
+  "status": "FIXED",
+  "root_causes": [
+    {
+      "id": "RC-1",
+      "title": "gen_random_bytes (pgcrypto) nicht verfügbar",
+      "severity": "high",
+      "blocker": "generateModelClaimToken / Invite-Mail",
+      "fix": "Migration 20260515_fix_generate_model_claim_token_no_pgcrypto.sql — sha256(gen_random_uuid()) statt gen_random_bytes"
+    },
+    {
+      "id": "RC-2",
+      "title": "Endlosschleife durch instabile Callback-Props in ModelMediaSettingsPanel",
+      "severity": "critical",
+      "blocker": "Alle Agency-Model-Saves (Fotos, Location, Territories)",
+      "fix": "useRef-Stabilisierung in ModelMediaSettingsPanel.tsx + direkte stabile Refs in AgencyControllerView.tsx"
+    },
+    {
+      "id": "RC-3",
+      "title": "assertOrgContext-Warnung bei models.organization_id=NULL",
+      "severity": "low",
+      "blocker": "nur Audit-Log übersprungen, kein Save-Blocker",
+      "fix": "kein Fix nötig — Folge von RC-2 behoben"
+    },
+    {
+      "id": "RC-4",
+      "title": "Consent-Checkbox ohne Reset bei Model-Wechsel",
+      "severity": "low",
+      "blocker": "UX-Inkonsistenz",
+      "fix": "key={selectedModel.id} auf ModelMediaSettingsPanel"
+    }
+  ],
+  "files_changed": [
+    "supabase/migrations/20260515_fix_generate_model_claim_token_no_pgcrypto.sql",
+    "src/components/ModelMediaSettingsPanel.tsx",
+    "src/views/AgencyControllerView.tsx"
+  ],
+  "quality": {
+    "typecheck": "pass",
+    "lint": "pass (0 errors)",
+    "tests": "847/847 pass"
+  }
+}

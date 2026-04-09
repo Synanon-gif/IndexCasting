@@ -108,6 +108,18 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
   const privateInputRef = useRef<HTMLInputElement | null>(null);
 
   // ---------------------------------------------------------------------------
+  // Stable callback refs — prevent re-creating loadPhotos when parent re-renders
+  // with new inline function references (which would cause an infinite fetch loop:
+  // parent re-render → new prop ref → new loadPhotos → useEffect → fetch →
+  // onReconcileComplete → refreshAgencyModelLists → parent re-render → …).
+  // ---------------------------------------------------------------------------
+  const onHasVisiblePortfolioChangeRef = useRef(onHasVisiblePortfolioChange);
+  const onReconcileCompleteRef = useRef(onReconcileComplete);
+
+  useEffect(() => { onHasVisiblePortfolioChangeRef.current = onHasVisiblePortfolioChange; }, [onHasVisiblePortfolioChange]);
+  useEffect(() => { onReconcileCompleteRef.current = onReconcileComplete; }, [onReconcileComplete]);
+
+  // ---------------------------------------------------------------------------
   // Load
   // ---------------------------------------------------------------------------
 
@@ -125,7 +137,7 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
     setPortfolio(resolvedPort);
     setPolaroids(resolvedPola);
     setPrivatePhotos(resolvedPriv);
-    onHasVisiblePortfolioChange?.(resolvedPort.some((p) => p.is_visible_to_clients));
+    onHasVisiblePortfolioChangeRef.current?.(resolvedPort.some((p) => p.is_visible_to_clients));
     // Align models.portfolio_images / models.polaroids with model_photos (fixes roster & client drift).
     const okPort = await rebuildPortfolioImagesFromModelPhotos(modelId);
     const okPol = await rebuildPolaroidsFromModelPhotos(modelId);
@@ -143,8 +155,10 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
         Alert.alert(uiCopy.common.error, copy.polaroidColumnSyncFailed);
       }
     }
-    onReconcileComplete?.();
-  }, [modelId, onHasVisiblePortfolioChange, onReconcileComplete]);
+    onReconcileCompleteRef.current?.();
+    // Only modelId in deps — callbacks are accessed via stable refs to avoid
+    // re-creating this function (and re-triggering the useEffect) on every parent render.
+  }, [modelId]);
 
   useEffect(() => {
     void loadPhotos();
@@ -184,8 +198,8 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
         Alert.alert(uiCopy.common.error, copy.portfolioColumnSyncFailed);
       }
     }
-    onHasVisiblePortfolioChange?.(visibleUrls.length > 0);
-  }, [modelId, onHasVisiblePortfolioChange]);
+    onHasVisiblePortfolioChangeRef.current?.(visibleUrls.length > 0);
+  }, [modelId]);
 
   const syncPolaroids = useCallback(async (photos: ResolvedPhoto[]) => {
     const visibleUrls = photos.filter((p) => p.is_visible_to_clients).map((p) => p.url);
