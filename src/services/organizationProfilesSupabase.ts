@@ -117,6 +117,61 @@ export async function upsertOrganizationProfile(
   }
 }
 
+// ─── Public Settings ─────────────────────────────────────────────────────────
+
+/**
+ * Result type for upsertPublicSettings — distinguishes slug uniqueness
+ * violations (23505) from other errors.
+ */
+export interface PublicSettingsResult {
+  ok: boolean;
+  /** true when the save failed because the slug is already taken by another org. */
+  slugTaken?: boolean;
+}
+
+/**
+ * Saves is_public and slug for an org profile.
+ *
+ * Separate from upsertOrganizationProfile so that slug-uniqueness errors
+ * (Postgres 23505) can be surfaced cleanly as slugTaken=true without
+ * changing the existing service contract.
+ *
+ * Owner-only: enforced by RLS policy op_owner_update (is_org_owner()).
+ * assertOrgContext guard ensures organizationId is non-empty.
+ */
+export async function upsertPublicSettings(
+  organizationId: string,
+  payload: { is_public: boolean; slug: string | null },
+): Promise<PublicSettingsResult> {
+  if (!assertOrgContext(organizationId, 'upsertPublicSettings')) {
+    return { ok: false };
+  }
+  try {
+    const { error } = await supabase
+      .from('organization_profiles')
+      .upsert(
+        {
+          ...payload,
+          organization_id: organizationId,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'organization_id' },
+      );
+    if (error) {
+      // 23505 = unique_violation — most likely the slug is already taken
+      if (error.code === '23505') return { ok: false, slugTaken: true };
+      console.error('[upsertPublicSettings] error:', error);
+      return { ok: false };
+    }
+    return { ok: true };
+  } catch (e) {
+    console.error('[upsertPublicSettings] exception:', e);
+    return { ok: false };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
  * List all media rows for a given org profile.
  * Returns [] on error or when no rows exist.
