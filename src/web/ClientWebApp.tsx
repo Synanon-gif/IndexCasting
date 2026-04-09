@@ -774,6 +774,13 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     }
   }, [realClientId]);
 
+  // Refresh option threads when opening Messages (reliable after navigation / background tab).
+  useEffect(() => {
+    if (realClientId && tab === 'messages') {
+      void loadOptionRequestsForClient();
+    }
+  }, [tab, realClientId]);
+
   useEffect(() => {
     // Reset session dedup on every new filter-driven query (new discovery context).
     if (clientOrgId) {
@@ -1058,10 +1065,40 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   const isSharedMode = !!sharedProject;
   const isPackageMode = !!packageViewState;
 
+  const baseModels = useMemo(
+    () => packageViewState?.models ?? (sharedProject ? sharedProject.models : models),
+    [packageViewState, sharedProject, models],
+  );
+
+  const filteredModels = useMemo(() => {
+    // Package and shared-project modes require strict isolation — never apply discovery filters.
+    // baseModels is already scoped to packageViewState.models or sharedProject.models.
+    if (isPackageMode || isSharedMode) return baseModels;
+    // When "Near me" is active and we have radius-based results → use nearbyModels (sorted by distance).
+    // Fallback: if geolocation was denied but city is known → city-substring filter on baseModels.
+    // Otherwise → use baseModels as-is (all server-side filters already applied).
+    if (filters.nearby) {
+      if (userLat != null && userLng != null) {
+        return nearbyModels;  // radius RPC results, already sorted by distance
+      }
+      if (userCity) {
+        // Geolocation permission denied but city resolved via Nominatim
+        return baseModels.filter((m) =>
+          summaryDisplayCity(m).toLowerCase().includes(userCity.toLowerCase()),
+        );
+      }
+    }
+    return baseModels;
+  }, [baseModels, nearbyModels, filters.nearby, userLat, userLng, userCity, isPackageMode, isSharedMode]);
+
   useEffect(() => {
     if (detailId) {
       setDetailLoading(true);
       setDetailData(null);
+      // Snapshot discover card cover at open — used only if getModelData still has no images.
+      const card = filteredModels.find((m) => m.id === detailId);
+      const coverFromDiscover =
+        !packageViewState && !sharedProject ? card?.coverUrl?.trim() : undefined;
       getModelData(detailId)
         .then((data: any) => {
           if (packageViewState) {
@@ -1113,39 +1150,27 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                 calendar: { blocked: [], available: [] },
               });
             }
+          } else if (
+            data &&
+            coverFromDiscover &&
+            !(data.portfolio?.images?.length)
+          ) {
+            setDetailData({
+              ...data,
+              portfolio: {
+                ...data.portfolio,
+                images: [normalizeDocumentspicturesModelImageRef(coverFromDiscover, detailId)],
+              },
+            });
           } else {
             setDetailData(data);
           }
         })
         .finally(() => setDetailLoading(false));
     }
+    // filteredModels: snapshot at detail open only (do not re-fetch detail on swipe).
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: detailId-driven open
   }, [detailId, packageViewState, sharedProject]);
-
-  const baseModels = useMemo(
-    () => packageViewState?.models ?? (sharedProject ? sharedProject.models : models),
-    [packageViewState, sharedProject, models],
-  );
-
-  const filteredModels = useMemo(() => {
-    // Package and shared-project modes require strict isolation — never apply discovery filters.
-    // baseModels is already scoped to packageViewState.models or sharedProject.models.
-    if (isPackageMode || isSharedMode) return baseModels;
-    // When "Near me" is active and we have radius-based results → use nearbyModels (sorted by distance).
-    // Fallback: if geolocation was denied but city is known → city-substring filter on baseModels.
-    // Otherwise → use baseModels as-is (all server-side filters already applied).
-    if (filters.nearby) {
-      if (userLat != null && userLng != null) {
-        return nearbyModels;  // radius RPC results, already sorted by distance
-      }
-      if (userCity) {
-        // Geolocation permission denied but city resolved via Nominatim
-        return baseModels.filter((m) =>
-          summaryDisplayCity(m).toLowerCase().includes(userCity.toLowerCase()),
-        );
-      }
-    }
-    return baseModels;
-  }, [baseModels, nearbyModels, filters.nearby, userLat, userLng, userCity, isPackageMode, isSharedMode]);
 
   const currentModel = useMemo(
     () =>
@@ -1564,7 +1589,8 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   };
 
   const handlePackagePress = async (meta: Record<string, unknown>) => {
-    const packageId = typeof meta.package_id === 'string' ? meta.package_id : null;
+    const rawId = meta.package_id ?? meta.packageId;
+    const packageId = typeof rawId === 'string' ? rawId.trim() : null;
     if (!packageId) return;
     setFeedback('Loading package…');
     try {

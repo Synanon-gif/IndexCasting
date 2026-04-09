@@ -77,14 +77,32 @@ export type GuestLinkInfo = Pick<
 >;
 
 /**
+ * PostgREST may return TABLE RPC rows as a JSON array or a single object when one row.
+ * Normalise so we always read the first logical row.
+ */
+function firstGuestLinkInfoRow(data: unknown): GuestLinkInfo | null {
+  if (data == null) return null;
+  if (Array.isArray(data)) {
+    const row = data[0] as GuestLinkInfo | undefined;
+    return row ?? null;
+  }
+  if (typeof data === 'object' && data !== null && 'id' in data) {
+    return data as GuestLinkInfo;
+  }
+  return null;
+}
+
+/**
  * Fetches display-safe metadata for a single active guest link via a
  * SECURITY DEFINER RPC (C-3 security fix). Safe for anon callers.
  * Returns null if the link is invalid, expired, or inactive.
  */
 export async function getGuestLink(linkId: string): Promise<GuestLinkInfo | null> {
+  const trimmed = linkId?.trim();
+  if (!trimmed) return null;
   try {
     const { data, error } = await supabase.rpc('get_guest_link_info', {
-      p_link_id: linkId,
+      p_link_id: trimmed,
     });
     if (error) {
       const code = (error as { code?: string }).code;
@@ -99,8 +117,7 @@ export async function getGuestLink(linkId: string): Promise<GuestLinkInfo | null
       }
       return null;
     }
-    if (!data || (data as GuestLinkInfo[]).length === 0) return null;
-    return (data as GuestLinkInfo[])[0] ?? null;
+    return firstGuestLinkInfoRow(data);
   } catch (e) {
     console.error('getGuestLink exception:', e);
     return null;

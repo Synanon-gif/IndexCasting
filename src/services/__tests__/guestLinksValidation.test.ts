@@ -72,6 +72,41 @@ describe('getGuestLink — valid active link', () => {
     expect(mockRpc).toHaveBeenCalledWith('get_guest_link_info', { p_link_id: 'link-1' });
   });
 
+  it('returns link info when RPC returns a single object (not array)', async () => {
+    const linkInfo = {
+      id: 'link-obj',
+      label: 'Campaign',
+      agency_name: 'Agency',
+      type: 'portfolio',
+      is_active: true,
+      expires_at: null,
+      tos_accepted_by_guest: false,
+    };
+    mockRpc.mockResolvedValue({ data: linkInfo, error: null });
+
+    const result = await getGuestLink('link-obj');
+
+    expect(result).not.toBeNull();
+    expect(result?.id).toBe('link-obj');
+  });
+
+  it('trims link id before calling RPC', async () => {
+    const linkInfo = {
+      id: 'link-trim',
+      label: 'L',
+      agency_name: 'A',
+      type: 'portfolio',
+      is_active: true,
+      expires_at: null,
+      tos_accepted_by_guest: false,
+    };
+    mockRpc.mockResolvedValue({ data: [linkInfo], error: null });
+
+    await getGuestLink('  link-trim  ');
+
+    expect(mockRpc).toHaveBeenCalledWith('get_guest_link_info', { p_link_id: 'link-trim' });
+  });
+
   it('uses the security-definer RPC (not direct table access) to prevent enumeration', () => {
     // getGuestLink must route through 'get_guest_link_info' RPC — never from('guest_links')
     expect(mockFrom).not.toHaveBeenCalled();
