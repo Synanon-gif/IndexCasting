@@ -416,6 +416,8 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   const [isChatWithAgencyLoading, setIsChatWithAgencyLoading] = useState(false);
   const [hasNew, setHasNew] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  /** Measured height of the absolute bottom tab bar (may wrap on narrow web). */
+  const [clientBottomTabBarHeight, setClientBottomTabBarHeight] = useState(BOTTOM_TAB_BAR_HEIGHT);
   const [msgFilter, setMsgFilter] = useState<'current' | 'archived'>('current');
   const [userCity, setUserCity] = useState<string | null>(null);
   /** Rounded approximate lat/lng for Near me radius queries (~5 km precision). Never exact GPS. */
@@ -1721,7 +1723,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   };
 
   const insets = useSafeAreaInsets();
-  const bottomTabInset = BOTTOM_TAB_BAR_HEIGHT + insets.bottom;
+  const bottomTabInset = Math.max(BOTTOM_TAB_BAR_HEIGHT, clientBottomTabBarHeight) + insets.bottom;
 
   const resetDiscoverTabRoot = useCallback(() => {
     setDetailId(null);
@@ -2595,7 +2597,15 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         <SettingsPanel realClientId={realClientId} onClose={() => setSettingsOpen(false)} />
       )}
 
-      <View style={[styles.bottomTabBar, { paddingBottom: insets.bottom }]}>
+      <View
+        style={[styles.bottomTabBar, { paddingBottom: insets.bottom }]}
+        onLayout={(e) => {
+          const h = e.nativeEvent.layout.height;
+          if (h > 0) {
+            setClientBottomTabBarHeight((prev) => (Math.abs(prev - h) > 0.5 ? h : prev));
+          }
+        }}
+      >
         {(['dashboard', 'discover', 'messages', 'calendar', 'agencies', 'projects', 'profile'] as TopTab[]).map((key) => (
           <TouchableOpacity
             key={key}

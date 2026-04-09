@@ -416,8 +416,13 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   useEffect(() => {
     if (!currentAgencyId) return;
     void refreshAgencyModelLists();
-    loadOptionRequestsForAgency(currentAgencyId);
-  }, [currentAgencyId, refreshAgencyModelLists]);
+    void loadOptionRequestsForAgency(currentAgencyId, agencyOrganizationId);
+  }, [currentAgencyId, agencyOrganizationId, refreshAgencyModelLists]);
+
+  useEffect(() => {
+    if (tab !== 'messages' || !currentAgencyId) return;
+    void loadOptionRequestsForAgency(currentAgencyId, agencyOrganizationId);
+  }, [tab, currentAgencyId, agencyOrganizationId]);
 
   const loadAgencyTeam = async () => {
     if (!currentAgencyId) return;
@@ -1095,7 +1100,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                     });
                     if (ok) {
                       await loadAgencyCalendar();
-                      loadOptionRequestsForAgency(currentAgencyId);
+                      void loadOptionRequestsForAgency(currentAgencyId, agencyOrganizationId);
                       const items = await getCalendarEntriesForAgency(currentAgencyId);
                       const next = items.find((x) => x.option.id === selectedCalendarItem.option.id);
                       if (next) setSelectedCalendarItem(next);

@@ -124,7 +124,7 @@ async function ensureHydrated() {
   if (hydrated) return;
   hydrated = true;
   /* Kein globales fetchRequests() – jede Partei lädt ihre Daten selbst:
-   * loadOptionRequestsForClient / loadOptionRequestsForAgency / loadOptionsForModel
+   * loadOptionRequestsForClient / loadOptionRequestsForAgency(agencyId, agencyOrgId?) / loadOptionsForModel
    * (alle in Supabase pro client_id / agency_id / model_id gespeichert). */
 }
 
@@ -432,9 +432,12 @@ export async function loadOptionRequestsForClient(): Promise<void> {
   }
 }
 
-export async function loadOptionRequestsForAgency(agencyId: string): Promise<void> {
+export async function loadOptionRequestsForAgency(
+  agencyId: string,
+  agencyOrganizationId?: string | null,
+): Promise<void> {
   try {
-    const remote = await fetchRequestsForAgency(agencyId);
+    const remote = await fetchRequestsForAgency(agencyId, undefined, agencyOrganizationId);
     requestsCache = remote.map(toLocalRequest);
     notify();
   } catch { /* keep cache */ }

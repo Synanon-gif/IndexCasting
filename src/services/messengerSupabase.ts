@@ -52,7 +52,7 @@ async function getActualChatFileSize(bucket: string, path: string): Promise<numb
 
 /** Spezifische Felder für conversations — kein SELECT * mehr. */
 const CONVERSATION_SELECT =
-  'id, type, context_id, context_type, participant_ids, title, created_at, updated_at, created_by, client_organization_id, agency_organization_id, guest_user_id' as const;
+  'id, type, context_id, participant_ids, title, created_at, updated_at, created_by, client_organization_id, agency_organization_id, guest_user_id' as const;
 
 /** Spezifische Felder für messages — kein SELECT * mehr. */
 const MESSAGE_SELECT =
