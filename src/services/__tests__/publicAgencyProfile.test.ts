@@ -15,8 +15,9 @@
  * - getPublicAgencySlugFromPath: /terms, /, /agency/ → null
  * - getPublicAgencySlugFromPath: trailing slashes stripped
  *
- * RLS guards (is_public=true AND type='agency') are enforced server-side by the
- * SECURITY DEFINER RPC. These tests verify the TypeScript service contracts.
+ * Post-migration: get_public_agency_models RPC requires public agency profile
+ * server-side; service maps empty RPC results to []. Whitespace-only slug guard
+ * matches deployed SQL trim behavior.
  */
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
@@ -104,6 +105,13 @@ describe('getPublicAgencyProfile', () => {
     expect(mockRpc).not.toHaveBeenCalled();
   });
 
+  test('returns null and does not call RPC when slug is whitespace only', async () => {
+    const result = await getPublicAgencyProfile('   \t  ');
+
+    expect(result).toBeNull();
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+
   test('returns null when RPC returns an error', async () => {
     mockRpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc error' } });
 
@@ -154,6 +162,22 @@ describe('getPublicAgencyModels', () => {
     mockRpc.mockResolvedValueOnce({ data: [], error: null });
 
     const result = await getPublicAgencyModels('agency-uuid-222');
+
+    expect(result).toEqual([]);
+  });
+
+  test('returns [] when hardened RPC yields no rows (non-public or missing public profile)', async () => {
+    mockRpc.mockResolvedValueOnce({ data: [], error: null });
+
+    const result = await getPublicAgencyModels('agency-private-no-public-profile');
+
+    expect(result).toEqual([]);
+  });
+
+  test('returns [] when hardened RPC yields no rows for unknown agency id', async () => {
+    mockRpc.mockResolvedValueOnce({ data: [], error: null });
+
+    const result = await getPublicAgencyModels('00000000-0000-0000-0000-000000000099');
 
     expect(result).toEqual([]);
   });

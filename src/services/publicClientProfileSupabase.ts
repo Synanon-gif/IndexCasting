@@ -1,5 +1,5 @@
 /**
- * Public Client Profile Service — Phase 3B.1
+ * Public Client Profile Service — Phase 3B.1 (+ post-deploy RPC hardening)
  *
  * Provides public-safe data access for client organization profiles.
  * No authentication required; both functions call SECURITY DEFINER RPCs
@@ -49,6 +49,7 @@ export interface PublicClientGalleryItem {
  * Fetches a public client profile by slug.
  *
  * Returns null when:
+ *   - slug is empty or whitespace-only (no RPC call)
  *   - slug not found
  *   - profile exists but is_public = false
  *   - organization type ≠ 'client'
@@ -59,6 +60,7 @@ export async function getPublicClientProfile(
   slug: string,
 ): Promise<PublicClientProfile | null> {
   if (!slug) return null;
+  if (!slug.trim()) return null;
 
   try {
     const { data, error } = await supabase.rpc('get_public_client_profile', {
@@ -98,8 +100,15 @@ export async function getPublicClientProfile(
  * Returns only: id, image_url, title, sort_order.
  * Filters to media_type='client_gallery' only.
  *
- * The organizationId should be obtained from getPublicClientProfile, which
- * already enforces the is_public guard and type='client' guard.
+ * The `get_public_client_gallery` RPC enforces server-side that the
+ * organization exists with type = 'client' and organization_profiles
+ * is_public = true for this organization_id; otherwise it returns no rows.
+ *
+ * Per-row `is_visible_public` on organization_profile_media is not evaluated
+ * by the public gallery RPC: visibility is org-scoped (is_public on the
+ * profile) for the current product; per-image toggles remain a future option.
+ *
+ * The organizationId should normally be obtained from getPublicClientProfile.
  *
  * Safe for unauthenticated callers (anon Supabase key).
  */

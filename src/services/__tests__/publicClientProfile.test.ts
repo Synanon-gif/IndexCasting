@@ -18,8 +18,9 @@
  * - getPublicClientSlugFromPath: trailing slashes stripped
  * - getPublicClientSlugFromPath: slug with numbers and hyphens
  *
- * RLS guards (is_public=true AND type='client') are enforced server-side by the
- * SECURITY DEFINER RPC. These tests verify the TypeScript service contracts.
+ * Post-migration: get_public_client_gallery RPC requires public client profile
+ * server-side; service maps empty RPC results to []. Whitespace-only slug guard
+ * matches deployed SQL trim behavior.
  */
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
@@ -106,6 +107,13 @@ describe('getPublicClientProfile', () => {
     expect(mockRpc).not.toHaveBeenCalled();
   });
 
+  test('returns null and does not call RPC when slug is whitespace only', async () => {
+    const result = await getPublicClientProfile('   \t  ');
+
+    expect(result).toBeNull();
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+
   test('returns null when RPC returns an error', async () => {
     mockRpc.mockResolvedValueOnce({ data: null, error: { message: 'rpc error' } });
 
@@ -179,6 +187,22 @@ describe('getPublicClientGallery', () => {
     mockRpc.mockResolvedValueOnce({ data: [], error: null });
 
     const result = await getPublicClientGallery('org-uuid-client-111');
+
+    expect(result).toEqual([]);
+  });
+
+  test('returns [] when hardened RPC yields no rows (non-public or missing public profile)', async () => {
+    mockRpc.mockResolvedValueOnce({ data: [], error: null });
+
+    const result = await getPublicClientGallery('org-private-client');
+
+    expect(result).toEqual([]);
+  });
+
+  test('returns [] when hardened RPC yields no rows for unknown organization id', async () => {
+    mockRpc.mockResolvedValueOnce({ data: [], error: null });
+
+    const result = await getPublicClientGallery('00000000-0000-0000-0000-000000000099');
 
     expect(result).toEqual([]);
   });

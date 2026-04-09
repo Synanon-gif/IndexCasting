@@ -1,5 +1,5 @@
 /**
- * Public Agency Profile Service — Phase 3A.1
+ * Public Agency Profile Service — Phase 3A.1 (+ post-deploy RPC hardening)
  *
  * Provides public-safe data access for agency profiles.
  * No authentication required; both functions call SECURITY DEFINER RPCs
@@ -48,6 +48,7 @@ export interface PublicAgencyModel {
  * Fetches a public agency profile by slug.
  *
  * Returns null when:
+ *   - slug is empty or whitespace-only (no RPC call)
  *   - slug not found
  *   - profile exists but is_public = false
  *   - organization type ≠ 'agency'
@@ -58,6 +59,7 @@ export async function getPublicAgencyProfile(
   slug: string,
 ): Promise<PublicAgencyProfile | null> {
   if (!slug) return null;
+  if (!slug.trim()) return null;
 
   try {
     const { data, error } = await supabase.rpc('get_public_agency_profile', {
@@ -98,8 +100,11 @@ export async function getPublicAgencyProfile(
  * Returns only: id, name, sex, cover_url (first portfolio image).
  * Filters to active agency relationships only.
  *
- * The agencyId should be obtained from getPublicAgencyProfile, which
- * already enforces the is_public guard.
+ * The `get_public_agency_models` RPC enforces server-side that a matching
+ * agency organization exists with type = 'agency' and organization_profiles
+ * is_public = true for this agency_id; otherwise it returns no rows.
+ *
+ * The agencyId should normally be obtained from getPublicAgencyProfile.
  *
  * Safe for unauthenticated callers (anon Supabase key).
  */
