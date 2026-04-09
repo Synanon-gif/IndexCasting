@@ -1,0 +1,30 @@
+{
+  "title": "Final E2E Smoke Test Pass",
+  "date": "2026-04-09",
+  "status": "COMPLETE",
+  "scope": "static_code_trace_plus_ci",
+  "live_ui_e2e": "NOT_RUN",
+  "root_causes": [],
+  "notes": [
+    "Flows A–G and matrix 1–7 traced against AgencyControllerView, modelPhotosSupabase, ModelMediaSettingsPanel, ClientWebApp, clientDiscoverySupabase, inviteDelivery, finalizePendingInviteOrClaim, modelsImportSupabase, apiService.js.",
+    "No new defects warranted a minimal app-code fix without RPC/discovery scope change.",
+    "Ranked get_discovery_models returns models.city only; Near Me uses location_city — documented as display nuance, not a frontend bug.",
+    "Prior lifecycle fixes RC-1–RC-8 remain the authoritative baseline (CURSOR_FINAL_AGENCY_MODEL_LIFECYCLE_PLAN.json)."
+  ],
+  "files_changed": [],
+  "deliverables_added": [
+    "CURSOR_FINAL_E2E_SMOKE_REPORT.md",
+    "CURSOR_FINAL_E2E_SMOKE_DIFF_SUMMARY.md",
+    "CURSOR_FINAL_E2E_SMOKE_VERIFY.md",
+    "CURSOR_FINAL_E2E_SMOKE_PLAN.json"
+  ],
+  "quality_gates": {
+    "typecheck": "PASS",
+    "lint": "PASS",
+    "tests": "PASS (894/894, 80 suites)"
+  },
+  "cursor_rules_changed": false,
+  "db_migrations_needed": false,
+  "edge_functions_changed": false,
+  "closing_line": "FINAL E2E SMOKE PASS COMPLETE — MINOR RISKS REMAIN"
+}
