@@ -110,11 +110,12 @@ export async function importModelAndMerge(params: ImportModelPayload): Promise<I
       // Agency-scoped RPC: server-side email lookup (Gefahr 2 / Risiko D compliant).
       // agency_find_model_by_email() uses org_members/bookers guard + admin bypass +
       // row_security=off. Returns model only if same agency or unowned.
-      const { data, error } = await supabase
-        .rpc('agency_find_model_by_email', { p_email: email.toLowerCase().trim() })
-        .maybeSingle();
+      // Uses array handling instead of .maybeSingle() because the RPC is RETURNS SETOF —
+      // .maybeSingle() sends Accept: vnd.pgrst.object+json which causes 406 on 0 rows.
+      const { data: emailRows, error } = await supabase
+        .rpc('agency_find_model_by_email', { p_email: email.toLowerCase().trim() });
       if (error) console.error('importModelAndMerge: email lookup error:', error);
-      else existing = (data ?? null) as typeof existing;
+      else existing = (Array.isArray(emailRows) ? (emailRows[0] ?? null) : (emailRows ?? null)) as typeof existing;
     }
 
     if (!existing && birthday) {
@@ -295,9 +296,9 @@ export async function importModelAndMerge(params: ImportModelPayload): Promise<I
       // race condition, cross-agency model), retry as merge instead of dead-ending.
       if (error.code === '23505' && email && !params._mergeRetry) {
         console.warn('importModelAndMerge: 23505 on INSERT — retrying as merge');
-        const { data: conflictModel } = await supabase
-          .rpc('agency_find_model_by_email', { p_email: email.toLowerCase().trim() })
-          .maybeSingle();
+        const { data: conflictRows } = await supabase
+          .rpc('agency_find_model_by_email', { p_email: email.toLowerCase().trim() });
+        const conflictModel = Array.isArray(conflictRows) ? (conflictRows[0] ?? null) : (conflictRows ?? null);
         if (conflictModel) {
           return importModelAndMerge({ ...params, _mergeRetry: true } as ImportModelPayload);
         }

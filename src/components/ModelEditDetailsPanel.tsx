@@ -440,17 +440,6 @@ const ModelEditDetailsPanel: React.FC<Props> = ({ state, onChange }) => {
         />
       </View>
 
-      <View style={styles.group}>
-        <Text style={styles.label}>{uiCopy.modelEdit.currentLocationLabel}</Text>
-        <TextInput
-          value={state.current_location}
-          onChangeText={(v) => set({ current_location: v })}
-          placeholder={uiCopy.modelEdit.currentLocationPlaceholder}
-          placeholderTextColor={colors.textSecondary}
-          style={styles.input}
-        />
-      </View>
-
       {/* ── Segment & Sport ── */}
       <Text style={styles.sectionHeader}>{uiCopy.modelEdit.sectionSegment}</Text>
 

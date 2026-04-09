@@ -1,0 +1,54 @@
+{
+  "title": "Agency Model Remaining Blockers Fix",
+  "status": "REMAINING BLOCKERS FIXED",
+  "date": "2026-04-09",
+  "root_causes": [
+    {
+      "id": "P1",
+      "summary": "model_photos HTTP 400 on first add",
+      "root_cause": "upsertPhotosForModel payload included {id: undefined} — postgrest-js puts 'id' in ?columns= URL param via Object.keys(), but JSON.stringify strips the undefined value from body, causing PostgREST column/body mismatch → 400",
+      "fix": "Conditionally include id key only when defined; improved error logging",
+      "file": "src/services/modelPhotosSupabase.ts",
+      "status": "fixed"
+    },
+    {
+      "id": "P2",
+      "summary": "Current Location field misleading in agency UI",
+      "root_cause": "ModelEditDetailsPanel showed a 'Current Location' TextInput bound to models.current_location (legacy text column), which is separate from model_locations (Near Me). Field was never populated in add-flow, appeared empty after reopen, creating false impression of persistence failure",
+      "fix": "Removed the Current Location TextInput from agency edit panel (SAFE-A)",
+      "file": "src/components/ModelEditDetailsPanel.tsx",
+      "status": "fixed"
+    },
+    {
+      "id": "P3",
+      "summary": "agency_find_model_by_email HTTP 406",
+      "root_cause": "RPC is RETURNS SETOF. .maybeSingle() sends Accept: vnd.pgrst.object+json header. PostgREST returns 406 when 0 rows match (cannot represent empty set as single object). Normal for new model creation with no email match.",
+      "fix": "Replaced .maybeSingle() with array handling ([0] ?? null) at both callsites",
+      "file": "src/services/modelsImportSupabase.ts",
+      "status": "fixed"
+    }
+  ],
+  "files_changed": [
+    "src/services/modelPhotosSupabase.ts",
+    "src/components/ModelEditDetailsPanel.tsx",
+    "src/services/modelsImportSupabase.ts"
+  ],
+  "db_migration_required": false,
+  "test_results": {
+    "typecheck": "0 errors",
+    "lint": "0 errors, 4 pre-existing warnings",
+    "tests": "82 suites, 904 passed, 0 failed"
+  },
+  "not_touched": [
+    "AuthContext",
+    "bootstrapThenLoadProfile",
+    "paywall ordering",
+    "admin routing",
+    "discovery/package/shared/client-project/calendar flows",
+    "invite finalization",
+    "location priority (live > current > agency)",
+    "RLS policies",
+    "DB migrations",
+    "storage policies"
+  ]
+}

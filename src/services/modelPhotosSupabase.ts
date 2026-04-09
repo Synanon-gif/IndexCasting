@@ -149,18 +149,24 @@ export async function upsertPhotosForModel(
   photos: Array<Omit<ModelPhoto, 'id' | 'model_id'> & { id?: string }>,
 ): Promise<ModelPhoto[]> {
   try {
-    const payload = photos.map((p, index) => ({
-      id: p.id ?? undefined,
-      model_id: modelId,
-      url: p.url,
-      sort_order: p.sort_order ?? index,
-      visible: p.visible,
-      is_visible_to_clients: p.is_visible_to_clients ?? p.visible,
-      source: p.source ?? null,
-      api_external_id: p.api_external_id ?? null,
-      photo_type: p.photo_type,
-      file_size_bytes: p.file_size_bytes ?? 0,
-    }));
+    const payload = photos.map((p, index) => {
+      // Build row WITHOUT `id` key when absent — postgrest-js uses Object.keys()
+      // for the `?columns=` parameter; an `{id: undefined}` key causes a 400
+      // because `columns` lists `id` but JSON.stringify omits the undefined value.
+      const row: Record<string, unknown> = {
+        model_id: modelId,
+        url: p.url,
+        sort_order: p.sort_order ?? index,
+        visible: p.visible,
+        is_visible_to_clients: p.is_visible_to_clients ?? p.visible,
+        source: p.source ?? null,
+        api_external_id: p.api_external_id ?? null,
+        photo_type: p.photo_type,
+        file_size_bytes: p.file_size_bytes ?? 0,
+      };
+      if (p.id) row.id = p.id;
+      return row;
+    });
 
     const { data, error } = await supabase
       .from('model_photos')
@@ -169,7 +175,12 @@ export async function upsertPhotosForModel(
       .order('sort_order', { ascending: true });
 
     if (error) {
-      console.error('upsertPhotosForModel error:', error);
+      console.error('upsertPhotosForModel error:', {
+        message: error.message,
+        code: (error as { code?: string }).code,
+        details: (error as { details?: string }).details,
+        hint: (error as { hint?: string }).hint,
+      });
       return [];
     }
     return (data ?? []) as ModelPhoto[];
