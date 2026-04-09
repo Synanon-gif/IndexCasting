@@ -210,8 +210,9 @@ function mapAddModelToProjectErrorMessage(raw: string | undefined): string {
  * Prevents clients from adding models from agencies they have no relationship with.
  *
  * Pass organizationId (client org UUID) when known — multi-org-safe explicit org pin.
- * Pass countryIso (same ISO as discovery filters) so the RPC checks the territory agency
- * (model_agency_territories), aligned with get_discovery_models.
+ * Pass countryIso so the RPC checks the territory agency (model_agency_territories),
+ * aligned with get_discovery_models. Prefer the model card's country (Discover row),
+ * fallback to filter bar — callers should pass model.countryCode ?? filters.countryCode.
  */
 export async function addModelToProject(
   projectId: string,
@@ -236,7 +237,12 @@ export async function addModelToProject(
 
     const { data, error } = await supabase.rpc('add_model_to_project', args);
     if (error) {
-      console.error('addModelToProject RPC error:', error);
+      console.error('addModelToProject RPC error:', {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+      });
       return { ok: false, userMessage: mapAddModelToProjectErrorMessage(error.message) };
     }
     return data === true ? { ok: true } : { ok: false, userMessage: uiCopy.projects.addToProjectGeneric };

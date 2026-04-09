@@ -1363,11 +1363,17 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     // Persist to Supabase. The service NEVER throws — it returns false on error
     // (both supabase error and exception paths). .catch() would never fire.
     // MUST use .then(ok) to detect failure and trigger inverse-operation rollback.
+    // Territory alignment: prefer per-model country (Discover card) over filter bar so
+    // p_country_iso matches get_discovery_models / MAT — not only filters.countryCode.
+    const countryIsoForRpcRaw = model.countryCode ?? filters.countryCode;
+    const countryIsoForRpc = countryIsoForRpcRaw?.trim()
+      ? countryIsoForRpcRaw.trim()
+      : undefined;
     void addModelToProjectOnSupabase(
       projectId,
       model.id,
       clientOrgId?.trim() ? clientOrgId : undefined,
-      filters.countryCode?.trim() ? filters.countryCode.trim() : undefined,
+      countryIsoForRpc,
     )
       .then((result) => {
         setAddingModelIds((prev) => { const s = new Set(prev); s.delete(model.id); return s; });
