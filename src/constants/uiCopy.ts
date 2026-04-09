@@ -512,6 +512,10 @@ export const uiCopy = {
     modelSaveSuccess: 'Settings saved successfully',
     modelSaveFailed: 'Save failed — please try again',
     modelSaveButton: 'Save settings',
+    modelInviteEmailSentNote: (email: string) => `Invitation email sent to ${email}.`,
+    modelInviteEmailFailedNote: (reason: string) =>
+      `Invitation email was not sent: ${reason}.`,
+    modelInviteManualLinkNote: 'Share this claim link with the model manually:',
   },
   /** B2B org-to-org chats (no social graph). */
   b2bChat: {
@@ -819,6 +823,9 @@ export const uiCopy = {
     hairColorLabel: 'Hair Color',
     eyeColorLabel: 'Eye Color',
     countryLabel: 'Country',
+    /** Saving city with country also updates map / Near Me (agency location row). Without country, city and current location still save on the model profile. */
+    countryNearMeHint:
+      'Select a country to pin city on the map for Near Me. City and Current Location are always saved on the profile.',
     cityLabel: 'City',
     currentLocationLabel: 'Current Location',
     categoryLabel: 'Categories',
@@ -1143,6 +1150,15 @@ export const uiCopy = {
     addUrl: '+ Add URL',
     signInToUploadPhotos: 'Please sign in to upload photos.',
     signInToAddPhotos: 'Please sign in to add photos.',
+    /** models.portfolio_images could not be updated — roster / clients may show no cover until fixed. */
+    portfolioColumnSyncFailed:
+      'Could not sync portfolio to the model profile (cover list). Photos are saved; try again or refresh the roster.',
+    polaroidColumnSyncFailed:
+      'Could not sync polaroids to the model profile. Polaroid rows are saved; try again or refresh.',
+    /** Checkbox is per visit; server also requires a recent rights confirmation in the audit window. */
+    imageRightsCheckboxSessionHint:
+      'Check this each time you add uploads in this session. A confirmation is recorded when you upload.',
+    imageRightsSessionActiveHint: 'Image rights confirmed recently — you can upload without re-checking until the session window expires.',
   },
   swipe: {
     headerLabel: 'The Swipe',

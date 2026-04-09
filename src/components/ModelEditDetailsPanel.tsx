@@ -359,6 +359,9 @@ const ModelEditDetailsPanel: React.FC<Props> = ({ state, onChange }) => {
 
       {/* ── Location ── */}
       <Text style={styles.sectionHeader}>{uiCopy.modelEdit.sectionLocation}</Text>
+      <Text style={{ fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm, lineHeight: 15 }}>
+        {uiCopy.modelEdit.countryNearMeHint}
+      </Text>
 
       {/* Country dropdown */}
       <View style={styles.group}>

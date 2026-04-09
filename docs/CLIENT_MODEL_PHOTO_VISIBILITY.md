@@ -37,3 +37,9 @@ This removes the old mismatch where clients were gated on `models.is_visible_com
 ## Client discovery / `portfolio_images` string shapes
 
 Row visibility (above) is necessary but not sufficient for UX: `models.portfolio_images` may store **canonical storage URIs**, **HTTPS URLs**, or **legacy bare filenames**. Client web surfaces must **normalize** (`normalizeDocumentspicturesModelImageRef` in `src/utils/normalizeModelPortfolioUrl.ts`) and render through **`StorageImage`** so private-bucket assets resolve to signed HTTPS. See **`docs/DISCOVERY_IMAGE_AND_MEASUREMENT_CONSISTENCY.md`**.
+
+## Agency UI parity
+
+- **Canonical media rows** live in `model_photos` (per-type, `is_visible_to_clients`).
+- **`models.portfolio_images`** is a denormalized ordered list for discovery, swipe cover, and agency roster thumbnails; it is kept in sync via `agency_update_model_full` (`syncPortfolioToModel` / `rebuildPortfolioImagesFromModelPhotos` in `src/services/modelPhotosSupabase.ts`).
+- **Agency roster thumbnails** must normalize each `portfolio_images[]` entry with `normalizeDocumentspicturesModelImageRef` before `StorageImage`, same as client web. See **`docs/MODEL_PROFILE_PERSISTENCE_AND_VISIBILITY.md`**.

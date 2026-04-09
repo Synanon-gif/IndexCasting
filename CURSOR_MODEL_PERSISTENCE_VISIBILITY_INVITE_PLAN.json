@@ -1,0 +1,44 @@
+{
+  "root_causes": [
+    "Drift between model_photos and models.portfolio_images with silent sync failure",
+    "getPhotosForModel applied .order() before .eq(photo_type), breaking PostgREST chain for typed fetches",
+    "Completeness used stale React state instead of model_photos",
+    "Agency roster passed raw portfolio_images URLs to StorageImage without normalize",
+    "send-invite success assumed from invoke error only; body error ignored",
+    "Image rights checkbox appeared to reset without explaining audit window"
+  ],
+  "persistence_fixes": [
+    "rebuildPortfolioImagesFromModelPhotos / rebuildPolaroidsFromModelPhotos + run on media panel load",
+    "getPhotosForModel: filter by photo_type before order",
+    "Alert on syncPortfolioToModel failure in panel and add-model flow",
+    "onReconcileComplete → parent onRefresh for roster"
+  ],
+  "invite_dispatch_fixes": [
+    "Parse invoke response body ok/error",
+    "describeSendInviteFailure mapping",
+    "Append buildModelClaimUrl when email fails but token exists",
+    "uiCopy.modelRoster modelInvite* strings"
+  ],
+  "client_visibility_fixes": [
+    "ProjectDetailView: normalize portfolio URLs with model id",
+    "Agency roster: normalize cover URL; chest ?? bust in meta"
+  ],
+  "rules_updated": [],
+  "docs_updated": [
+    "docs/CLIENT_MODEL_PHOTO_VISIBILITY.md",
+    "docs/MODEL_PROFILE_PERSISTENCE_AND_VISIBILITY.md"
+  ],
+  "manual_review_required": [
+    "Production Resend / send-invite",
+    "Multi-org inviteOrganizationId behaviour",
+    "End-to-end agency upload → reload → client discoverability"
+  ],
+  "do_not_touch": [
+    "AuthContext core / bootstrapThenLoadProfile",
+    "Admin core / admin RPC definitions",
+    "Paywall core ordering",
+    "Invite/claim core architecture (no redesign)",
+    "calendar_entries RLS / booking_brief trust model",
+    "Unrelated pricing / seat-limit logic"
+  ]
+}

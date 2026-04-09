@@ -89,12 +89,13 @@ export async function getPhotosForModel(
     let query = supabase
       .from('model_photos')
       .select('*')
-      .eq('model_id', modelId)
-      .order('sort_order', { ascending: true });
+      .eq('model_id', modelId);
 
     if (type) {
       query = query.eq('photo_type', type);
     }
+
+    query = query.order('sort_order', { ascending: true });
 
     const { data, error } = await query;
     if (error) {
@@ -660,5 +661,30 @@ export async function syncPolaroidsToModel(modelId: string, urls: string[]): Pro
     return false;
   }
   return true;
+}
+
+/**
+ * Rebuild `models.portfolio_images` from `model_photos` (client-visible portfolio rows, sort_order).
+ * Use after drift detection or when opening the media panel so roster / discovery match `model_photos`.
+ */
+export async function rebuildPortfolioImagesFromModelPhotos(modelId: string): Promise<boolean> {
+  const photos = await getPhotosForModel(modelId, 'portfolio');
+  const visibleUrls = photos
+    .filter((p) => Boolean(p.is_visible_to_clients ?? p.visible))
+    .sort((a, b) => a.sort_order - b.sort_order)
+    .map((p) => p.url);
+  return syncPortfolioToModel(modelId, visibleUrls);
+}
+
+/**
+ * Rebuild `models.polaroids` from visible polaroid `model_photos` rows (package / guest contexts).
+ */
+export async function rebuildPolaroidsFromModelPhotos(modelId: string): Promise<boolean> {
+  const photos = await getPhotosForModel(modelId, 'polaroid');
+  const visibleUrls = photos
+    .filter((p) => Boolean(p.is_visible_to_clients ?? p.visible))
+    .sort((a, b) => a.sort_order - b.sort_order)
+    .map((p) => p.url);
+  return syncPolaroidsToModel(modelId, visibleUrls);
 }
 

@@ -30,6 +30,8 @@ import { uiCopy } from '../constants/uiCopy';
 import {
   confirmImageRights,
   guardImageUpload,
+  hasRecentImageRightsConfirmation,
+  IMAGE_RIGHTS_WINDOW_MINUTES,
 } from '../services/gdprComplianceSupabase';
 import { resolveStorageUrl } from '../storage/storageUrl';
 import { convertHeicToJpegWithStatus } from '../services/imageUtils';
@@ -39,6 +41,8 @@ import {
   getPhotosForModel,
   ModelPhoto,
   reorderPhotos,
+  rebuildPolaroidsFromModelPhotos,
+  rebuildPortfolioImagesFromModelPhotos,
   syncPolaroidsToModel,
   syncPortfolioToModel,
   updatePhoto,
@@ -59,6 +63,8 @@ type Props = {
   organizationId?: string | null;
   /** Called whenever visible portfolio photos change so parent can track cover availability. */
   onHasVisiblePortfolioChange?: (hasVisible: boolean) => void;
+  /** After aligning models.portfolio_images / polaroids with model_photos — refresh parent roster. */
+  onReconcileComplete?: () => void;
 };
 
 const copy = uiCopy.modelMedia;
@@ -82,6 +88,7 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
   modelId,
   organizationId,
   onHasVisiblePortfolioChange,
+  onReconcileComplete,
 }) => {
   const [portfolio, setPortfolio] = useState<ResolvedPhoto[]>([]);
   const [polaroids, setPolaroids] = useState<ResolvedPhoto[]>([]);
@@ -89,6 +96,8 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
 
   const [uploading, setUploading] = useState<'portfolio' | 'polaroid' | 'private' | null>(null);
   const [imageRightsConfirmed, setImageRightsConfirmed] = useState(false);
+  /** True when audit row exists within IMAGE_RIGHTS_WINDOW_MINUTES — upload allowed even if checkbox was reset. */
+  const [rightsAuditWindowActive, setRightsAuditWindowActive] = useState(false);
   const [newPortfolioUrl, setNewPortfolioUrl] = useState('');
   const [newPolaroidUrl, setNewPolaroidUrl] = useState('');
   /** Mutex to prevent parallel reorder / setCover / delete / toggle operations. */
@@ -117,11 +126,49 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
     setPolaroids(resolvedPola);
     setPrivatePhotos(resolvedPriv);
     onHasVisiblePortfolioChange?.(resolvedPort.some((p) => p.is_visible_to_clients));
-  }, [modelId, onHasVisiblePortfolioChange]);
+    // Align models.portfolio_images / models.polaroids with model_photos (fixes roster & client drift).
+    const okPort = await rebuildPortfolioImagesFromModelPhotos(modelId);
+    const okPol = await rebuildPolaroidsFromModelPhotos(modelId);
+    if (!okPort) {
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.alert(copy.portfolioColumnSyncFailed);
+      } else {
+        Alert.alert(uiCopy.common.error, copy.portfolioColumnSyncFailed);
+      }
+    }
+    if (!okPol) {
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.alert(copy.polaroidColumnSyncFailed);
+      } else {
+        Alert.alert(uiCopy.common.error, copy.polaroidColumnSyncFailed);
+      }
+    }
+    onReconcileComplete?.();
+  }, [modelId, onHasVisiblePortfolioChange, onReconcileComplete]);
 
   useEffect(() => {
     void loadPhotos();
   }, [loadPhotos]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user || cancelled) {
+        if (!cancelled) setRightsAuditWindowActive(false);
+        return;
+      }
+      const active = await hasRecentImageRightsConfirmation(
+        user.id,
+        modelId,
+        IMAGE_RIGHTS_WINDOW_MINUTES,
+      );
+      if (!cancelled) setRightsAuditWindowActive(active);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [modelId]);
 
   // ---------------------------------------------------------------------------
   // Sync helpers — keep models.portfolio_images and models.polaroids in sync
@@ -129,13 +176,27 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
 
   const syncPortfolio = useCallback(async (photos: ResolvedPhoto[]) => {
     const visibleUrls = photos.filter((p) => p.is_visible_to_clients).map((p) => p.url);
-    await syncPortfolioToModel(modelId, visibleUrls);
+    const ok = await syncPortfolioToModel(modelId, visibleUrls);
+    if (!ok) {
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.alert(copy.portfolioColumnSyncFailed);
+      } else {
+        Alert.alert(uiCopy.common.error, copy.portfolioColumnSyncFailed);
+      }
+    }
     onHasVisiblePortfolioChange?.(visibleUrls.length > 0);
   }, [modelId, onHasVisiblePortfolioChange]);
 
   const syncPolaroids = useCallback(async (photos: ResolvedPhoto[]) => {
     const visibleUrls = photos.filter((p) => p.is_visible_to_clients).map((p) => p.url);
-    await syncPolaroidsToModel(modelId, visibleUrls);
+    const ok = await syncPolaroidsToModel(modelId, visibleUrls);
+    if (!ok) {
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.alert(copy.polaroidColumnSyncFailed);
+      } else {
+        Alert.alert(uiCopy.common.error, copy.polaroidColumnSyncFailed);
+      }
+    }
   }, [modelId]);
 
   // ---------------------------------------------------------------------------
@@ -148,7 +209,7 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
   ) => {
     if (!files.length) return;
 
-    if (!imageRightsConfirmed) {
+    if (!imageRightsConfirmed && !rightsAuditWindowActive) {
       Alert.alert(copy.imageRightsRequiredTitle, copy.holdRightsBeforeUpload);
       return;
     }
@@ -177,6 +238,7 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
       return;
     }
 
+    setRightsAuditWindowActive(true);
     setUploading(section);
     try {
       for (const file of files) {
@@ -244,7 +306,7 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
     const trimmed = urlValue.trim();
     if (!trimmed) return;
 
-    if (!imageRightsConfirmed) {
+    if (!imageRightsConfirmed && !rightsAuditWindowActive) {
       Alert.alert(copy.imageRightsRequiredTitle, copy.holdRightsBeforeAddUrl);
       return;
     }
@@ -270,6 +332,7 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
       return;
     }
 
+    setRightsAuditWindowActive(true);
     const newRecord = await addPhoto(modelId, trimmed, section);
     if (!newRecord) { Alert.alert(uiCopy.common.error, copy.uploadError); return; }
     const resolved = await resolveDisplayUrl(newRecord);
@@ -582,9 +645,19 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
         }}>
           {imageRightsConfirmed && <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>✓</Text>}
         </View>
-        <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, flex: 1 }}>
-          I confirm I hold all necessary rights and consents to upload these images.
-        </Text>
+        <View style={{ flex: 1 }}>
+          <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary }}>
+            {legalCopy.chatFileRightsCheckbox}
+          </Text>
+          <Text style={{ fontSize: 10, color: colors.textSecondary, marginTop: 4, lineHeight: 14 }}>
+            {copy.imageRightsCheckboxSessionHint}
+          </Text>
+          {rightsAuditWindowActive ? (
+            <Text style={{ fontSize: 10, color: colors.accentGreen ?? '#2e7d32', marginTop: 4, lineHeight: 14 }}>
+              {copy.imageRightsSessionActiveHint}
+            </Text>
+          ) : null}
+        </View>
       </TouchableOpacity>
 
       {/* ── PORTFOLIO ───────────────────────────────────────────────────── */}

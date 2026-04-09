@@ -55,6 +55,7 @@ import {
   removeModelFromAgency,
   agencyLinkModelToUser,
   generateModelClaimToken,
+  buildModelClaimUrl,
   type SupabaseModel,
 } from '../services/modelsSupabase';
 import { BookingChatView } from './BookingChatView';
@@ -72,7 +73,13 @@ import { getApplicationById } from '../store/applicationsStore';
 import { OrgMessengerInline } from '../components/OrgMessengerInline';
 import { AgencySettingsTab } from '../components/AgencySettingsTab';
 // Recruiting chats (BookingChatView) live under Messages → Recruiting chats.
-import { uploadModelPhoto, upsertPhotosForModel, syncPortfolioToModel, syncPolaroidsToModel } from '../services/modelPhotosSupabase';
+import {
+  uploadModelPhoto,
+  upsertPhotosForModel,
+  syncPortfolioToModel,
+  getPhotosForModel,
+} from '../services/modelPhotosSupabase';
+import { normalizeDocumentspicturesModelImageRef } from '../utils/normalizeModelPortfolioUrl';
 import { confirmImageRights, guardImageUpload } from '../services/gdprComplianceSupabase';
 import { ModelMediaSettingsPanel } from '../components/ModelMediaSettingsPanel';
 import { getTerritoriesForModel, getTerritoriesForAgency, upsertTerritoriesForModel, bulkAddTerritoriesForModels } from '../services/territoriesSupabase';
@@ -107,6 +114,35 @@ async function geocodeCityForAgency(
     return null;
   }
 }
+
+/** Maps send-invite Edge JSON `error` codes (and invoke errors) to English UI text. */
+function describeSendInviteFailure(payload: unknown, invokeError: unknown): string {
+  const o = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {};
+  const code = typeof o.error === 'string' ? o.error : '';
+  const detail = typeof o.detail === 'string' ? o.detail : '';
+  switch (code) {
+    case 'email_service_not_configured':
+      return 'Email service is not configured for this project (missing provider key).';
+    case 'not_member_of_organization':
+      return 'You are not a member of the selected organization — cannot send from this team context.';
+    case 'agency_only':
+      return 'Only agency team members can send model claim emails.';
+    case 'owner_only':
+      return 'Only the organization owner can send this type of invitation.';
+    case 'email_send_failed':
+      return detail ? `Email provider error: ${detail.slice(0, 200)}` : 'Email provider rejected the message.';
+    case 'email_send_exception':
+      return 'Email could not be sent (network or server error).';
+    default:
+      break;
+  }
+  if (invokeError && typeof invokeError === 'object' && invokeError !== null && 'message' in invokeError) {
+    return String((invokeError as { message?: string }).message ?? 'Invoke failed');
+  }
+  if (code) return code;
+  return 'Unknown error';
+}
+
 import { supabase } from '../../lib/supabase';
 import {
   normalizeInput,
@@ -1974,8 +2010,24 @@ const MyModelsTab: React.FC<{
   const [completenessIssues, setCompletenessIssues] = useState<ReturnType<typeof checkModelCompleteness>>([]);
   const [saveFeedback, setSaveFeedback] = useState<'saving' | 'success' | 'error' | null>(null);
 
-  /** Tracked by ModelMediaSettingsPanel callback — used for profile completeness check. */
-  const [hasVisiblePortfolio, setHasVisiblePortfolio] = useState(false);
+  /** Client-visible portfolio rows from model_photos — source of truth for completeness (not models.portfolio_images alone). */
+  const [hasVisibleClientPortfolio, setHasVisibleClientPortfolio] = useState(false);
+
+  const refreshClientVisiblePortfolio = useCallback(() => {
+    if (!selectedModel?.id) {
+      setHasVisibleClientPortfolio(false);
+      return;
+    }
+    void getPhotosForModel(selectedModel.id, 'portfolio').then((rows) => {
+      setHasVisibleClientPortfolio(
+        rows.some((p) => Boolean(p.is_visible_to_clients ?? p.visible)),
+      );
+    });
+  }, [selectedModel?.id]);
+
+  useEffect(() => {
+    refreshClientVisiblePortfolio();
+  }, [refreshClientVisiblePortfolio]);
 
   const [territoryCountryCodes, setTerritoryCountryCodes] = useState<string[]>([]);
   const [territorySearch, setTerritorySearch] = useState('');
@@ -2038,11 +2090,11 @@ const MyModelsTab: React.FC<{
     }
     const ctx: CompletenessContext = {
       hasTerritories: territoryCountryCodes.length > 0,
-      hasVisiblePhoto: hasVisiblePortfolio,
+      hasVisiblePhoto: hasVisibleClientPortfolio,
     };
     setCompletenessIssues(checkModelCompleteness(selectedModel, ctx));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedModel?.id, territoryCountryCodes, hasVisiblePortfolio]);
+  }, [selectedModel?.id, territoryCountryCodes, hasVisibleClientPortfolio]);
 
   // Bulk selection state
   const [selectedModelIds, setSelectedModelIds] = useState<Set<string>>(new Set());
@@ -2239,10 +2291,13 @@ const MyModelsTab: React.FC<{
       // If the agency entered an email, generate a claim token and send an invite email.
       // Runs isolated — cannot block model creation or form reset.
       let emailSentOk = false;
+      let inviteFailureReason = '';
+      let claimTokenForManualLink: string | null = null;
       if (emailTrim) {
         try {
           const claimRes = await generateModelClaimToken(createdModelId, inviteOrganizationId ?? undefined);
           if (claimRes.ok) {
+            claimTokenForManualLink = claimRes.data.token;
             const { data: { session: currentSession } } = await supabase.auth.getSession();
             const invokeRes = await supabase.functions.invoke('send-invite', {
               body: {
@@ -2257,14 +2312,19 @@ const MyModelsTab: React.FC<{
                 ? { Authorization: `Bearer ${currentSession.access_token}` }
                 : undefined,
             });
-            emailSentOk = !invokeRes.error;
-            if (invokeRes.error) {
-              console.error('handleAddModel send-invite error:', invokeRes.error);
+            const body = invokeRes.data as { ok?: boolean; error?: string; detail?: string } | null;
+            if (!invokeRes.error && body?.ok === true) {
+              emailSentOk = true;
+            } else {
+              inviteFailureReason = describeSendInviteFailure(invokeRes.data, invokeRes.error);
+              console.error('handleAddModel send-invite failed:', inviteFailureReason, invokeRes);
             }
           } else {
+            inviteFailureReason = claimRes.error ?? 'Could not generate claim token';
             console.error('handleAddModel generateModelClaimToken error:', claimRes.error);
           }
         } catch (e) {
+          inviteFailureReason = e instanceof Error ? e.message : String(e);
           console.error('handleAddModel model invite exception:', e);
         }
       }
@@ -2347,7 +2407,10 @@ const MyModelsTab: React.FC<{
                 photo_type: 'portfolio' as const,
               })),
             );
-            await syncPortfolioToModel(createdModelId, uploadedUrls);
+            const portfolioSyncOk = await syncPortfolioToModel(createdModelId, uploadedUrls);
+            if (!portfolioSyncOk) {
+              Alert.alert(uiCopy.common.error, uiCopy.modelMedia.portfolioColumnSyncFailed);
+            }
           }
         }
 
@@ -2395,11 +2458,17 @@ const MyModelsTab: React.FC<{
       }
 
       const fresh = await getModelByIdFromSupabase(createdModelId);
-      const emailNote = emailTrim
-        ? emailSentOk
-          ? ` Invitation email sent to ${emailTrim}.`
-          : ` Could not send invitation email — share the invite link manually.`
-        : '';
+      let emailNote = '';
+      if (emailTrim) {
+        if (emailSentOk) {
+          emailNote = ` ${uiCopy.modelRoster.modelInviteEmailSentNote(emailTrim)}`;
+        } else {
+          emailNote = ` ${uiCopy.modelRoster.modelInviteEmailFailedNote(inviteFailureReason || 'Unknown error')}`;
+          if (claimTokenForManualLink) {
+            emailNote += ` ${uiCopy.modelRoster.modelInviteManualLinkNote} ${buildModelClaimUrl(claimTokenForManualLink)}`;
+          }
+        }
+      }
       const syncWarn = mergeResult.externalSyncIdsPersistFailed
         ? uiCopy.modelRoster.externalSyncIdsPersistWarning
         : '';
@@ -2635,7 +2704,7 @@ const MyModelsTab: React.FC<{
 
     // ── STEP 2: Portfolio alert (non-blocking) — completeness banner already
     //   shows a warning; photos are managed independently by ModelMediaSettingsPanel.
-    if (!hasVisiblePortfolio) {
+    if (!hasVisibleClientPortfolio) {
       Alert.alert(uiCopy.modelRoster.portfolioRequiredTitle, uiCopy.modelRoster.portfolioRequiredBody);
     }
 
@@ -2754,9 +2823,12 @@ const MyModelsTab: React.FC<{
     if (selectedModel) {
       const freshModel = await getModelByIdFromSupabase(selectedModel.id).catch(() => null);
       if (freshModel) {
+        const rows = await getPhotosForModel(selectedModel.id, 'portfolio');
+        const hasVis = rows.some((p) => Boolean(p.is_visible_to_clients ?? p.visible));
+        setHasVisibleClientPortfolio(hasVis);
         const ctx: CompletenessContext = {
           hasTerritories: territoryCountryCodes.length > 0,
-          hasVisiblePhoto: hasVisiblePortfolio,
+          hasVisiblePhoto: hasVis,
         };
         setCompletenessIssues(checkModelCompleteness(freshModel, ctx));
       }
@@ -2826,7 +2898,8 @@ const MyModelsTab: React.FC<{
           <ModelMediaSettingsPanel
             modelId={selectedModel.id}
             organizationId={inviteOrganizationId ?? null}
-            onHasVisiblePortfolioChange={setHasVisiblePortfolio}
+            onHasVisiblePortfolioChange={() => { refreshClientVisiblePortfolio(); }}
+            onReconcileComplete={() => { void Promise.resolve(onRefresh()); }}
           />
         </View>
 
@@ -3425,9 +3498,14 @@ const MyModelsTab: React.FC<{
                 {addModelImageRightsConfirmed && <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>✓</Text>}
               </View>
               <Text style={[s.metaText, { flex: 1 }]}>
-                I confirm I hold all necessary rights and consents to upload these images.
+                {uiCopy.legal.chatFileRightsCheckbox}
               </Text>
             </TouchableOpacity>
+          )}
+          {(addModelImageFiles.length > 0 || addModelPolaroidFiles.length > 0) && (
+            <Text style={{ fontSize: 10, color: colors.textSecondary, marginBottom: spacing.sm, lineHeight: 14 }}>
+              {uiCopy.modelMedia.imageRightsCheckboxSessionHint}
+            </Text>
           )}
           <TouchableOpacity
             style={[s.saveBtn, (!addModelEditState.name?.trim() || addLoading) && { opacity: 0.4 }]}
@@ -3529,9 +3607,12 @@ const MyModelsTab: React.FC<{
               </View>
             </TouchableOpacity>
             <TouchableOpacity style={[s.modelRow, { flex: 1, marginLeft: spacing.xs }]} onPress={() => setSelectedModel(m)}>
-              {(m.portfolio_images ?? [])[0] ? (
+              {(() => {
+                const raw = (m.portfolio_images ?? [])[0];
+                const coverUri = raw ? normalizeDocumentspicturesModelImageRef(raw, m.id) : '';
+                return coverUri ? (
                 <StorageImage
-                  uri={(m.portfolio_images ?? [])[0]}
+                  uri={coverUri}
                   style={{ width: 44, height: 44, borderRadius: 6, marginRight: spacing.sm, backgroundColor: colors.border }}
                   resizeMode="cover"
                 />
@@ -3539,10 +3620,13 @@ const MyModelsTab: React.FC<{
                 <View style={{ width: 44, height: 44, borderRadius: 6, marginRight: spacing.sm, backgroundColor: colors.border, alignItems: 'center', justifyContent: 'center' }}>
                   <Text style={{ fontSize: 18, color: colors.textSecondary }}>◻</Text>
                 </View>
-              )}
+              );
+              })()}
               <View style={{ flex: 1 }}>
                 <Text style={s.modelName}>{m.name}</Text>
-                <Text style={s.metaText}>{m.city ?? '—'} · H{m.height} C{m.bust ?? (m as any).chest ?? '—'} W{m.waist ?? '—'} H{m.hips ?? '—'}</Text>
+                <Text style={s.metaText}>
+                  {m.city ?? '—'} · H{m.height} C{(m as SupabaseModel).chest ?? m.bust ?? '—'} W{m.waist ?? '—'} H{m.hips ?? '—'}
+                </Text>
                 {(rosterTerritoriesMap[m.id] ?? []).length > 0 ? (
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 2, marginTop: 3 }}>
                     {(rosterTerritoriesMap[m.id] ?? []).slice(0, 6).map((code) => (

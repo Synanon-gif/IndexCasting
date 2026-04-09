@@ -4816,6 +4816,13 @@ const ProjectDetailView: React.FC<DetailProps> = ({
   const [confirmation, setConfirmation] = useState<string | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
+  const normalizedPortfolioUrls = useMemo(() => {
+    const id = data?.id ?? '';
+    const imgs = data?.portfolio?.images ?? [];
+    if (!id) return imgs;
+    return imgs.map((u) => normalizeDocumentspicturesModelImageRef(u, id));
+  }, [data?.id, data?.portfolio?.images]);
+
   useEffect(() => {
     if (!open) {
       setSelectedDate(null);
@@ -4876,7 +4883,7 @@ const ProjectDetailView: React.FC<DetailProps> = ({
               showsHorizontalScrollIndicator={false}
               style={styles.detailPortfolioRow}
             >
-              {(data.portfolio?.images || []).map((url, idx) => (
+              {normalizedPortfolioUrls.map((url, idx) => (
                 <TouchableOpacity key={`${idx}-${url}`} onPress={() => setLightboxIndex(idx)} activeOpacity={0.85}>
                   <View style={{ position: 'relative', overflow: 'hidden', borderRadius: 12 }}>
                     <StorageImage
@@ -4892,7 +4899,7 @@ const ProjectDetailView: React.FC<DetailProps> = ({
                   </View>
                 </TouchableOpacity>
               ))}
-              {(!data.portfolio?.images || data.portfolio.images.length === 0) && (
+              {normalizedPortfolioUrls.length === 0 && (
                 <Text style={styles.metaText}>No portfolio images</Text>
               )}
             </ScrollView>
@@ -4946,7 +4953,7 @@ const ProjectDetailView: React.FC<DetailProps> = ({
 
       {/* Lightbox */}
       {(() => {
-        const images = data?.portfolio?.images ?? [];
+        const images = normalizedPortfolioUrls;
         const currentUrl = lightboxIndex !== null ? images[lightboxIndex] : null;
         const hasPrev = lightboxIndex !== null && lightboxIndex > 0;
         const hasNext = lightboxIndex !== null && lightboxIndex < images.length - 1;
