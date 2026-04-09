@@ -1,5 +1,5 @@
 /**
- * ClientOrgProfileScreen — Phase 2A (internal, read-only)
+ * ClientOrgProfileScreen — Phase 2A/2C.1 (internal)
  *
  * Shows the client organization's profile:
  *  - Logo, name, description, contact info
@@ -7,8 +7,8 @@
  *  - Clean empty state when no media has been added yet
  *
  * Access: client owner + employee (RLS enforced server-side).
- * Owner sees a passive "Edit Profile" placeholder (non-functional in Phase 2A).
- * No public access, no edit flow, no media upload in this phase.
+ * Phase 2C.1: owner can edit text/contact fields via OrgProfileEditModal.
+ * No public access, no media upload in this phase.
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
@@ -29,6 +29,7 @@ import {
   type OrganizationProfile,
   type OrganizationProfileMedia,
 } from '../services/organizationProfilesSupabase';
+import { OrgProfileEditModal } from '../components/OrgProfileEditModal';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -50,6 +51,7 @@ export function ClientOrgProfileScreen({
   const [orgProfile, setOrgProfile] = useState<OrganizationProfile | null>(null);
   const [media, setMedia] = useState<OrganizationProfileMedia[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editOpen, setEditOpen] = useState(false);
 
   const { width } = useWindowDimensions();
   const CELL_GAP = spacing.xs;
@@ -129,6 +131,7 @@ export function ClientOrgProfileScreen({
     .join(', ');
 
   return (
+    <View style={{ flex: 1 }}>
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.background }}
       contentContainerStyle={s.scrollContent}
@@ -151,12 +154,13 @@ export function ClientOrgProfileScreen({
 
         <Text style={s.orgName}>{orgName ?? '—'}</Text>
 
-        {/* Owner-only Edit CTA placeholder (non-functional in Phase 2A) */}
+        {/* Owner-only Edit CTA (Phase 2C.1) */}
         {isOwner && (
           <TouchableOpacity
-            disabled
             style={s.editCta}
-            accessibilityLabel="Edit profile (coming soon)"
+            onPress={() => setEditOpen(true)}
+            accessibilityLabel="Edit profile"
+            accessibilityRole="button"
           >
             <Text style={s.editCtaText}>Edit Profile</Text>
           </TouchableOpacity>
@@ -188,6 +192,28 @@ export function ClientOrgProfileScreen({
       {/* ── Gallery ── */}
       {renderGallery()}
     </ScrollView>
+    {isOwner && organizationId && editOpen && (
+      <OrgProfileEditModal
+        visible
+        onClose={() => setEditOpen(false)}
+        organizationId={organizationId}
+        initialValues={{
+          description: orgProfile?.description ?? null,
+          address_line_1: orgProfile?.address_line_1 ?? null,
+          city: orgProfile?.city ?? null,
+          postal_code: orgProfile?.postal_code ?? null,
+          country: orgProfile?.country ?? null,
+          website_url: orgProfile?.website_url ?? null,
+          contact_email: orgProfile?.contact_email ?? null,
+          contact_phone: orgProfile?.contact_phone ?? null,
+        }}
+        onSaved={(updated) => {
+          setOrgProfile((prev) => (prev ? { ...prev, ...updated } : prev));
+          setEditOpen(false);
+        }}
+      />
+    )}
+    </View>
   );
 }
 
@@ -247,12 +273,11 @@ const s = StyleSheet.create({
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.md,
     marginBottom: spacing.sm,
-    opacity: 0.5,
   },
   editCtaText: {
     ...typography.label,
     fontSize: 12,
-    color: colors.textSecondary,
+    color: colors.textPrimary,
   },
   description: {
     ...typography.body,

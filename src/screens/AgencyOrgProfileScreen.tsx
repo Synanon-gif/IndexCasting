@@ -1,5 +1,5 @@
 /**
- * AgencyOrgProfileScreen — Phase 2A (internal, read-only)
+ * AgencyOrgProfileScreen — Phase 2A/2C.1 (internal)
  *
  * Shows the agency organization's profile:
  *  - Logo, name, description, contact info
@@ -7,8 +7,8 @@
  *  - 3-column alphabetical grid with model cover + name
  *
  * Access: agency owner + booker (RLS enforced server-side).
- * Owner sees a passive "Edit Profile" placeholder (non-functional in Phase 2A).
- * No public access, no edit flow, no media upload in this phase.
+ * Phase 2C.1: owner can edit text/contact fields via OrgProfileEditModal.
+ * No public access, no media upload in this phase.
  */
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
@@ -28,6 +28,7 @@ import {
   getOrganizationProfile,
   type OrganizationProfile,
 } from '../services/organizationProfilesSupabase';
+import { OrgProfileEditModal } from '../components/OrgProfileEditModal';
 import {
   getModelsForAgencyFromSupabase,
   type SupabaseModel,
@@ -63,6 +64,7 @@ export function AgencyOrgProfileScreen({
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [loadingModels, setLoadingModels] = useState(true);
   const [segment, setSegment] = useState<Segment>('women');
+  const [editOpen, setEditOpen] = useState(false);
 
   const { width } = useWindowDimensions();
   const CELL_GAP = spacing.xs;
@@ -158,12 +160,13 @@ export function AgencyOrgProfileScreen({
 
           <Text style={s.orgName}>{orgName ?? '—'}</Text>
 
-          {/* Owner-only Edit CTA placeholder (non-functional in Phase 2A) */}
+          {/* Owner-only Edit CTA (Phase 2C.1) */}
           {isOwner && (
             <TouchableOpacity
-              disabled
               style={s.editCta}
-              accessibilityLabel="Edit profile (coming soon)"
+              onPress={() => setEditOpen(true)}
+              accessibilityLabel="Edit profile"
+              accessibilityRole="button"
             >
               <Text style={s.editCtaText}>Edit Profile</Text>
             </TouchableOpacity>
@@ -231,22 +234,45 @@ export function AgencyOrgProfileScreen({
   }
 
   return (
-    <FlatList<SupabaseModel>
-      // key forces re-mount when segment changes to reset scroll position
-      key={segment}
-      data={filteredModels}
-      numColumns={3}
-      keyExtractor={(item) => item.id}
-      renderItem={renderModel}
-      ListHeaderComponent={renderHeader}
-      columnWrapperStyle={s.row}
-      contentContainerStyle={s.listContent}
-      style={{ flex: 1, backgroundColor: colors.background }}
-      showsVerticalScrollIndicator={false}
-      removeClippedSubviews
-      initialNumToRender={9}
-      maxToRenderPerBatch={9}
-    />
+    <View style={{ flex: 1 }}>
+      <FlatList<SupabaseModel>
+        // key forces re-mount when segment changes to reset scroll position
+        key={segment}
+        data={filteredModels}
+        numColumns={3}
+        keyExtractor={(item) => item.id}
+        renderItem={renderModel}
+        ListHeaderComponent={renderHeader}
+        columnWrapperStyle={s.row}
+        contentContainerStyle={s.listContent}
+        style={{ flex: 1, backgroundColor: colors.background }}
+        showsVerticalScrollIndicator={false}
+        removeClippedSubviews
+        initialNumToRender={9}
+        maxToRenderPerBatch={9}
+      />
+      {isOwner && organizationId && editOpen && (
+        <OrgProfileEditModal
+          visible
+          onClose={() => setEditOpen(false)}
+          organizationId={organizationId}
+          initialValues={{
+            description: orgProfile?.description ?? null,
+            address_line_1: orgProfile?.address_line_1 ?? null,
+            city: orgProfile?.city ?? null,
+            postal_code: orgProfile?.postal_code ?? null,
+            country: orgProfile?.country ?? null,
+            website_url: orgProfile?.website_url ?? null,
+            contact_email: orgProfile?.contact_email ?? null,
+            contact_phone: orgProfile?.contact_phone ?? null,
+          }}
+          onSaved={(updated) => {
+            setOrgProfile((prev) => (prev ? { ...prev, ...updated } : prev));
+            setEditOpen(false);
+          }}
+        />
+      )}
+    </View>
   );
 }
 
@@ -307,12 +333,11 @@ const s = StyleSheet.create({
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.md,
     marginBottom: spacing.sm,
-    opacity: 0.5,
   },
   editCtaText: {
     ...typography.label,
     fontSize: 12,
-    color: colors.textSecondary,
+    color: colors.textPrimary,
   },
   description: {
     ...typography.body,
