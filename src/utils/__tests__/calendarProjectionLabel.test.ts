@@ -17,6 +17,7 @@ const L = {
   priceAgreed: 'Price agreed',
   optionPending: 'Option (pending)',
   awaitingModel: 'Awaiting model',
+  awaitingClientJob: 'Job (client confirm)',
   yourConfirmationNeeded: 'Your confirmation needed',
 };
 
@@ -102,18 +103,19 @@ describe('calendarProjectionLabel', () => {
     expect(b.label).toBe(L.casting);
   });
 
-  it('maps option_confirmed when not in waiting_for_model gate', () => {
+  it('maps option_confirmed + approvals done to client job step (approval badge)', () => {
     const b = getCalendarProjectionBadge(
       baseOption({
         final_status: 'option_confirmed',
         status: 'confirmed',
+        client_price_status: 'accepted',
         model_approval: 'approved',
         model_account_linked: true,
       }),
       entry({ entry_type: 'option' }),
       L,
     );
-    expect(b.label).toBe(L.optionConfirmed);
+    expect(b.label).toBe(L.awaitingClientJob);
   });
 
   it('maps linked model pending to awaiting model (client view)', () => {
@@ -148,22 +150,28 @@ describe('calendarProjectionLabel', () => {
     expect(b.label).toBe(L.yourConfirmationNeeded);
   });
 
-  it('maps client_price_status pending', () => {
+  it('maps client_price_status pending to negotiating (not raw price-pending badge)', () => {
     const b = getCalendarProjectionBadge(
-      baseOption({ client_price_status: 'pending' }),
+      baseOption({ client_price_status: 'pending', proposed_price: 100 }),
       null,
       L,
     );
-    expect(b.label).toBe(L.pricePending);
+    expect(b.label).toBe(L.optionNegotiating);
   });
 
-  it('maps client_price_status accepted', () => {
+  it('maps price agreed + model pending to awaiting model (approval phase)', () => {
     const b = getCalendarProjectionBadge(
-      baseOption({ client_price_status: 'accepted', final_status: 'option_pending' }),
+      baseOption({
+        client_price_status: 'accepted',
+        final_status: 'option_pending',
+        status: 'in_negotiation',
+        model_approval: 'pending',
+        model_account_linked: true,
+      }),
       null,
       L,
     );
-    expect(b.label).toBe(L.priceAgreed);
+    expect(b.label).toBe(L.awaitingModel);
   });
 
   it('getBookingEntryProjectionBadge handles orphan booking row', () => {

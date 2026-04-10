@@ -166,11 +166,8 @@ import {
   buildEventsByDateFromUnifiedRows,
   type UnifiedAgencyCalendarRow,
 } from '../utils/agencyCalendarUnified';
-import {
-  deriveSmartAttentionState,
-  smartAttentionVisibleForRole,
-} from '../utils/optionRequestAttention';
-import { attentionHeaderLabel } from '../utils/negotiationAttentionLabels';
+import { attentionSignalsFromOptionRequestLike } from '../utils/optionRequestAttention';
+import { attentionHeaderLabelFromSignals } from '../utils/negotiationAttentionLabels';
 import { toDisplayStatus } from '../utils/statusHelpers';
 import { ClientOrganizationTeamSection } from '../components/ClientOrganizationTeamSection';
 import { OrgMessengerInline } from '../components/OrgMessengerInline';
@@ -3323,15 +3320,17 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
           const date = calendar_entry?.date ?? option.requested_date;
           const start = calendar_entry?.start_time ?? option.start_time ?? undefined;
           const end = calendar_entry?.end_time ?? option.end_time ?? undefined;
-          const att = deriveSmartAttentionState({
+          const calSig = attentionSignalsFromOptionRequestLike({
             status: option.status,
             finalStatus: option.final_status,
             clientPriceStatus: option.client_price_status,
             modelApproval: option.model_approval,
             modelAccountLinked: option.model_account_linked,
+            agencyCounterPrice: option.agency_counter_price,
+            proposedPrice: option.proposed_price,
             hasConflictWarning: false,
           });
-          const clientAttention = smartAttentionVisibleForRole(att, 'client');
+          const clientAttention = attentionHeaderLabelFromSignals(calSig, 'client') !== null;
           return (
             <TouchableOpacity
               key={option.id}
@@ -4253,14 +4252,16 @@ const MessagesView: React.FC<MessagesViewProps> = ({
     if (assignmentFilters.flagLabel !== 'all' && (assignment?.label ?? '').toLowerCase() !== assignmentFilters.flagLabel.toLowerCase()) return false;
     if (assignmentFilters.assignedMemberUserId !== 'all' && assignment?.assignedMemberUserId !== assignmentFilters.assignedMemberUserId) return false;
     if (attentionFilter === 'action_required') {
-      const state = deriveSmartAttentionState({
+      const sig = attentionSignalsFromOptionRequestLike({
         status: r.status,
         finalStatus: r.finalStatus ?? null,
         clientPriceStatus: r.clientPriceStatus ?? null,
         modelApproval: r.modelApproval,
         modelAccountLinked: r.modelAccountLinked ?? true,
+        agencyCounterPrice: r.agencyCounterPrice ?? null,
+        proposedPrice: r.proposedPrice ?? null,
       });
-      if (!attentionHeaderLabel(state, 'client')) return false;
+      if (!attentionHeaderLabelFromSignals(sig, 'client')) return false;
     }
     return true;
   });
@@ -4273,17 +4274,19 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   const agencyCounterPrice = request?.agencyCounterPrice;
   const currency = request?.currency ?? 'EUR';
   const displayStatus = request ? toDisplayStatus(request.status, request.finalStatus ?? null) : 'Draft';
-  const attentionStateForHeader = request
-    ? deriveSmartAttentionState({
-        status: request.status,
-        finalStatus: request.finalStatus ?? null,
-        clientPriceStatus: request.clientPriceStatus ?? null,
-        modelApproval: request.modelApproval,
-        modelAccountLinked: request.modelAccountLinked ?? true,
-      })
-    : 'no_attention';
   const headerAttentionLabel = request
-    ? attentionHeaderLabel(attentionStateForHeader, isAgency ? 'agency' : 'client')
+    ? attentionHeaderLabelFromSignals(
+        attentionSignalsFromOptionRequestLike({
+          status: request.status,
+          finalStatus: request.finalStatus ?? null,
+          clientPriceStatus: request.clientPriceStatus ?? null,
+          modelApproval: request.modelApproval,
+          modelAccountLinked: request.modelAccountLinked ?? true,
+          agencyCounterPrice: request.agencyCounterPrice ?? null,
+          proposedPrice: request.proposedPrice ?? null,
+        }),
+        isAgency ? 'agency' : 'client',
+      )
     : null;
   const negotiationDateLine = request
     ? `${request.date}${request.startTime ? ` · ${request.startTime}–${request.endTime}` : ''}`
@@ -4637,14 +4640,18 @@ const MessagesView: React.FC<MessagesViewProps> = ({
             const reqStatus = getRequestStatus(r.threadId) ?? r.status;
             const isArchived = archivedIds.has(r.threadId);
             const assignment = r.clientOrganizationId ? assignmentByClientOrgId[r.clientOrganizationId] : undefined;
-            const attentionState = deriveSmartAttentionState({
-              status: r.status,
-              finalStatus: r.finalStatus ?? null,
-              clientPriceStatus: r.clientPriceStatus ?? null,
-              modelApproval: r.modelApproval,
-              modelAccountLinked: r.modelAccountLinked ?? true,
-            });
-            const attentionListLabel = attentionHeaderLabel(attentionState, 'client');
+            const attentionListLabel = attentionHeaderLabelFromSignals(
+              attentionSignalsFromOptionRequestLike({
+                status: r.status,
+                finalStatus: r.finalStatus ?? null,
+                clientPriceStatus: r.clientPriceStatus ?? null,
+                modelApproval: r.modelApproval,
+                modelAccountLinked: r.modelAccountLinked ?? true,
+                agencyCounterPrice: r.agencyCounterPrice ?? null,
+                proposedPrice: r.proposedPrice ?? null,
+              }),
+              'client',
+            );
             return (
               <TouchableOpacity
                 key={r.threadId}

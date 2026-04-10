@@ -242,6 +242,8 @@ export const uiCopy = {
       optionPending: 'Option (pending)',
       /** Linked model must still confirm (aligned with Smart Attention waiting_for_model). */
       awaitingModel: 'Awaiting model',
+      /** Client must confirm job (approval phase; not raw price state). */
+      awaitingClientJob: 'Job (client confirm)',
       /** Model-facing grid/list — same state, different copy. */
       yourConfirmationNeeded: 'Your confirmation needed',
     },

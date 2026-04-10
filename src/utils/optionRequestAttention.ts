@@ -1,5 +1,6 @@
 import { toDisplayStatus } from './statusHelpers';
 
+/** @deprecated Prefer deriveNegotiationAttention + deriveApprovalAttention */
 export type SmartAttentionState =
   | 'no_attention'
   | 'waiting_for_client'
@@ -11,36 +12,118 @@ export type SmartAttentionState =
 
 export type SmartAttentionRole = 'agency' | 'client' | 'model';
 
-type AttentionSignalInput = {
+/**
+ * Dimension 1 — price / counter (who acts in negotiation). Never mix with approval labels.
+ */
+export type NegotiationAttentionState =
+  | 'negotiation_terminal'
+  | 'waiting_for_client_response'
+  | 'waiting_for_agency_response'
+  | 'counter_rejected'
+  | 'price_agreed'
+  | 'negotiation_open';
+
+/**
+ * Dimension 2 — approvals / option→job. Only meaningful once price is agreed (`client_price_status === 'accepted'`).
+ */
+export type ApprovalAttentionState =
+  | 'approval_inactive'
+  | 'waiting_for_model_confirmation'
+  | 'waiting_for_client_to_finalize_job'
+  | 'fully_cleared'
+  | 'job_completed';
+
+export type AttentionSignalInput = {
   status: string;
   finalStatus?: string | null;
   clientPriceStatus?: 'pending' | 'accepted' | 'rejected' | null;
   modelApproval?: 'pending' | 'approved' | 'rejected' | null;
   modelAccountLinked?: boolean | null;
   hasConflictWarning?: boolean;
+  /** When set, distinguishes agency counter pending client response vs agency must act on client proposal */
+  agencyCounterPrice?: number | null;
+  proposedPrice?: number | null;
 };
 
-/**
- * Whether an option/casting request should contribute to the client web Messages tab
- * attention indicator (dot). Uses the same non-terminal semantics as {@link toDisplayStatus}
- * — not read receipts and not “last message from agency”.
- */
-export function optionRequestNeedsMessagesTabAttention(r: {
-  status: string;
-  finalStatus?: string | null;
-}): boolean {
-  const d = toDisplayStatus(r.status, r.finalStatus ?? null);
-  return d === 'In negotiation' || d === 'Draft';
+function priceAgreed(input: AttentionSignalInput): boolean {
+  return input.clientPriceStatus === 'accepted';
 }
 
 /**
- * Canonical action-required state for option/casting requests.
- * This derives only from stable workflow fields and never from unread/read receipts.
- *
- * Order matters: `toDisplayStatus` maps `final_status === 'option_confirmed'` to "Confirmed"
- * even while `status` is still `in_negotiation` (agency accepted, model not yet). Those rows
- * must still surface `waiting_for_model` for client/agency attention — so the explicit
- * post-agency / pre-model-confirm branch runs before the displayStatus shortcut.
+ * Who must act on price — only D1 fields. Call when `client_price_status !== 'accepted'` or to show thread/footer price state.
+ */
+export function deriveNegotiationAttention(input: AttentionSignalInput): NegotiationAttentionState {
+  if (input.finalStatus === 'job_confirmed' || input.status === 'rejected') {
+    return 'negotiation_terminal';
+  }
+  if (priceAgreed(input)) {
+    return 'price_agreed';
+  }
+  const cps = input.clientPriceStatus ?? null;
+  if (cps === 'rejected') {
+    return 'counter_rejected';
+  }
+  if (cps === 'pending') {
+    const hasAgencyCounter =
+      input.agencyCounterPrice != null && !Number.isNaN(Number(input.agencyCounterPrice));
+    if (hasAgencyCounter) {
+      return 'waiting_for_client_response';
+    }
+    const hasProposed = input.proposedPrice != null && !Number.isNaN(Number(input.proposedPrice));
+    if (hasProposed) {
+      return 'waiting_for_agency_response';
+    }
+    return 'negotiation_open';
+  }
+  return 'negotiation_open';
+}
+
+/**
+ * Approval / option→job — D2 only. Uses price agreed + model + status + final_status.
+ */
+export function deriveApprovalAttention(input: AttentionSignalInput): ApprovalAttentionState {
+  if (input.finalStatus === 'job_confirmed') {
+    return 'job_completed';
+  }
+  if (input.status === 'rejected') {
+    return 'fully_cleared';
+  }
+  if (!priceAgreed(input)) {
+    return 'approval_inactive';
+  }
+
+  const modelAccountLinked = input.modelAccountLinked !== false;
+  const modelApproval = input.modelApproval ?? null;
+
+  if (
+    modelAccountLinked &&
+    modelApproval === 'pending' &&
+    input.status === 'in_negotiation' &&
+    (input.finalStatus === 'option_confirmed' || input.finalStatus === 'option_pending')
+  ) {
+    return 'waiting_for_model_confirmation';
+  }
+
+  const canClientFinalizeJob =
+    input.finalStatus === 'option_confirmed' &&
+    (modelAccountLinked
+      ? input.status === 'confirmed' && modelApproval === 'approved'
+      : input.status === 'in_negotiation' || input.status === 'confirmed');
+
+  if (canClientFinalizeJob) {
+    return 'waiting_for_client_to_finalize_job';
+  }
+
+  if (input.finalStatus === 'option_confirmed' || input.status === 'confirmed') {
+    return 'fully_cleared';
+  }
+
+  return 'fully_cleared';
+}
+
+/**
+ * Legacy combined Smart Attention — composed from negotiation + approval so thread vs inbox stay consistent.
+ * Prefer deriveNegotiationAttention / deriveApprovalAttention for new UI.
  */
 export function deriveSmartAttentionState(input: AttentionSignalInput): SmartAttentionState {
   const finalStatus = input.finalStatus ?? null;
@@ -57,7 +140,15 @@ export function deriveSmartAttentionState(input: AttentionSignalInput): SmartAtt
     return 'conflict_risk';
   }
 
-  // Agency accepted price; linked model must confirm (`modelConfirmOptionRequest` gate).
+  if (!priceAgreed(input)) {
+    const n = deriveNegotiationAttention(input);
+    if (n === 'negotiation_terminal') return 'no_attention';
+    if (n === 'counter_rejected') return 'counter_pending';
+    if (n === 'waiting_for_client_response') return 'waiting_for_client';
+    if (n === 'waiting_for_agency_response' || n === 'negotiation_open') return 'waiting_for_agency';
+    return 'waiting_for_agency';
+  }
+
   if (
     modelAccountLinked &&
     modelApproval === 'pending' &&
@@ -67,8 +158,20 @@ export function deriveSmartAttentionState(input: AttentionSignalInput): SmartAtt
     return 'waiting_for_model';
   }
 
-  // Option leg complete; client must confirm job promotion (`clientConfirmJobOnSupabase`).
-  if (finalStatus === 'option_confirmed' && input.status === 'confirmed') {
+  if (
+    finalStatus === 'option_confirmed' &&
+    input.status === 'confirmed' &&
+    (!modelAccountLinked || modelApproval === 'approved')
+  ) {
+    return 'job_confirmation_pending';
+  }
+
+  if (
+    finalStatus === 'option_confirmed' &&
+    !modelAccountLinked &&
+    input.status === 'in_negotiation' &&
+    clientPriceStatus === 'accepted'
+  ) {
     return 'job_confirmation_pending';
   }
 
@@ -81,6 +184,11 @@ export function deriveSmartAttentionState(input: AttentionSignalInput): SmartAtt
   }
 
   if (clientPriceStatus === 'pending') {
+    const hasAgencyCounter =
+      input.agencyCounterPrice != null && !Number.isNaN(Number(input.agencyCounterPrice));
+    if (hasAgencyCounter) {
+      return 'waiting_for_client';
+    }
     return 'waiting_for_agency';
   }
 
@@ -89,6 +197,19 @@ export function deriveSmartAttentionState(input: AttentionSignalInput): SmartAtt
   }
 
   return 'waiting_for_client';
+}
+
+/**
+ * Whether an option/casting request should contribute to the client web Messages tab
+ * attention indicator (dot). Uses the same non-terminal semantics as {@link toDisplayStatus}
+ * — not read receipts and not “last message from agency”.
+ */
+export function optionRequestNeedsMessagesTabAttention(r: {
+  status: string;
+  finalStatus?: string | null;
+}): boolean {
+  const d = toDisplayStatus(r.status, r.finalStatus ?? null);
+  return d === 'In negotiation' || d === 'Draft';
 }
 
 /**
@@ -129,4 +250,48 @@ export function smartAttentionVisibleForRole(state: SmartAttentionState, role: S
   if (state === 'waiting_for_agency' || state === 'counter_pending' || state === 'conflict_risk') return role === 'agency';
   if (state === 'waiting_for_client') return role === 'client';
   return true;
+}
+
+/** Header / summary: approval-only copy (Dimension 2). */
+export function approvalAttentionVisibleForRole(state: ApprovalAttentionState, role: SmartAttentionRole): boolean {
+  if (state === 'approval_inactive' || state === 'fully_cleared' || state === 'job_completed') return false;
+  if (state === 'waiting_for_model_confirmation') return role !== 'model';
+  if (state === 'waiting_for_client_to_finalize_job') return role === 'client';
+  return false;
+}
+
+/** Thread / negotiation footer: Dimension 1 visibility */
+export function negotiationAttentionVisibleForRole(n: NegotiationAttentionState, role: SmartAttentionRole): boolean {
+  if (n === 'negotiation_terminal' || n === 'price_agreed') return false;
+  if (n === 'waiting_for_client_response') return role === 'client';
+  if (n === 'waiting_for_agency_response' || n === 'counter_rejected' || n === 'negotiation_open') return role === 'agency';
+  return false;
+}
+
+/** Maps store / UI option rows to attention input (include counter + proposed for negotiation direction). */
+export function attentionSignalsFromOptionRequestLike(r: {
+  status: string;
+  finalStatus?: string | null;
+  clientPriceStatus?: 'pending' | 'accepted' | 'rejected' | null;
+  modelApproval?: 'pending' | 'approved' | 'rejected' | null;
+  modelAccountLinked?: boolean | null;
+  agencyCounterPrice?: number | null;
+  proposedPrice?: number | null;
+  hasConflictWarning?: boolean;
+}): AttentionSignalInput {
+  return {
+    status: r.status,
+    finalStatus: r.finalStatus ?? null,
+    clientPriceStatus: r.clientPriceStatus ?? null,
+    modelApproval: r.modelApproval ?? null,
+    modelAccountLinked: r.modelAccountLinked,
+    agencyCounterPrice: r.agencyCounterPrice ?? null,
+    proposedPrice: r.proposedPrice ?? null,
+    hasConflictWarning: r.hasConflictWarning ?? false,
+  };
+}
+
+/** Client "Confirm job" — only when approval dimension says so (matches RPC `client_confirm_option_job`). */
+export function clientMayConfirmJobFromSignals(input: AttentionSignalInput): boolean {
+  return deriveApprovalAttention(input) === 'waiting_for_client_to_finalize_job';
 }

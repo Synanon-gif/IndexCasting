@@ -1,13 +1,13 @@
 /**
- * Calendar projection labels/colors — derived only from existing `option_requests` +
- * `calendar_entries` fields (no new business states). Commercial terms stay on option rows;
- * see `agencyCalendarUnified.ts` header.
+ * Calendar projection labels/colors — approval-phase truth (Dimension 2), not raw price noise.
+ * Commercial amounts stay on option rows; see `agencyCalendarUnified.ts` header.
  */
 import type { SupabaseOptionRequest } from '../services/optionRequestsSupabase';
 import type { CalendarEntry } from '../services/calendarSupabase';
 import { CALENDAR_COLORS, calendarEntryColor } from './calendarColors';
 import { colors } from '../theme/theme';
 import type { CalendarDayEvent } from '../components/MonthCalendarView';
+import { attentionSignalsFromOptionRequestLike, deriveApprovalAttention } from './optionRequestAttention';
 
 /** User-visible strings — pass `uiCopy.calendar.projectionBadge` from callers. */
 export type CalendarProjectionLabels = {
@@ -17,10 +17,14 @@ export type CalendarProjectionLabels = {
   casting: string;
   optionConfirmed: string;
   optionNegotiating: string;
-  pricePending: string;
-  priceAgreed: string;
+  /** @deprecated Badges no longer use raw price-pending; kept for older call sites */
+  pricePending?: string;
+  /** @deprecated Badges no longer use raw price-agreed; kept for older call sites */
+  priceAgreed?: string;
   optionPending: string;
   awaitingModel: string;
+  /** Client must confirm job promotion (approval attention B). */
+  awaitingClientJob: string;
   yourConfirmationNeeded: string;
 };
 
@@ -47,19 +51,11 @@ function isCastingProjection(option: SupabaseOptionRequest, calendar_entry: Cale
 }
 
 const AWAITING_MODEL_BADGE_BG = '#7B1FA2';
-
-/** Same predicate as Smart Attention post-agency / pre-model branch (see optionRequestAttention). */
-function isAwaitingLinkedModelConfirmation(option: SupabaseOptionRequest): boolean {
-  if (option.model_account_linked === false || option.model_account_linked == null) return false;
-  if (option.model_approval !== 'pending') return false;
-  if (option.final_status !== 'option_confirmed') return false;
-  if (option.status !== 'in_negotiation') return false;
-  return true;
-}
+const CLIENT_JOB_BADGE_BG = '#5D4037';
 
 /**
  * Badge for an option row + optional calendar_entry (client & agency lists).
- * When a linked model must still confirm after agency acceptance — not generic "Option (confirmed)".
+ * Uses {@link deriveApprovalAttention} — not `client_price_status` alone.
  */
 export function getCalendarProjectionBadge(
   option: SupabaseOptionRequest,
@@ -71,12 +67,6 @@ export function getCalendarProjectionBadge(
 
   if (option.status === 'rejected') {
     return { label: labels.rejected, backgroundColor: colors.textSecondary, textColor };
-  }
-
-  if (isAwaitingLinkedModelConfirmation(option)) {
-    const label =
-      viewerRole === 'model' ? labels.yourConfirmationNeeded : labels.awaitingModel;
-    return { label, backgroundColor: AWAITING_MODEL_BADGE_BG, textColor };
   }
 
   if (isJobProjection(option, calendar_entry)) {
@@ -96,28 +86,48 @@ export function getCalendarProjectionBadge(
     };
   }
 
-  if (option.final_status === 'option_confirmed' || option.status === 'confirmed') {
+  const appr = deriveApprovalAttention(
+    attentionSignalsFromOptionRequestLike({
+      status: option.status,
+      finalStatus: option.final_status,
+      clientPriceStatus: option.client_price_status,
+      modelApproval: option.model_approval,
+      modelAccountLinked: option.model_account_linked,
+      agencyCounterPrice: option.agency_counter_price,
+      proposedPrice: option.proposed_price,
+    }),
+  );
+
+  if (appr === 'waiting_for_model_confirmation') {
+    const label =
+      viewerRole === 'model' ? labels.yourConfirmationNeeded : labels.awaitingModel;
+    return { label, backgroundColor: AWAITING_MODEL_BADGE_BG, textColor };
+  }
+
+  if (appr === 'waiting_for_client_to_finalize_job') {
     return {
-      label: labels.optionConfirmed,
-      backgroundColor: CALENDAR_COLORS.job,
+      label: labels.awaitingClientJob,
+      backgroundColor: CLIENT_JOB_BADGE_BG,
       textColor,
     };
   }
 
-  if (option.client_price_status === 'pending') {
+  if (appr === 'approval_inactive') {
     return {
-      label: labels.pricePending,
-      backgroundColor: CALENDAR_COLORS.option,
+      label: labels.optionNegotiating,
+      backgroundColor: '#1565C0',
       textColor,
     };
   }
 
-  if (option.client_price_status === 'accepted') {
-    return {
-      label: labels.priceAgreed,
-      backgroundColor: '#B8860B',
-      textColor,
-    };
+  if (appr === 'fully_cleared' || appr === 'job_completed') {
+    if (option.final_status === 'option_confirmed' || option.status === 'confirmed') {
+      return {
+        label: labels.optionConfirmed,
+        backgroundColor: CALENDAR_COLORS.job,
+        textColor,
+      };
+    }
   }
 
   if (option.status === 'in_negotiation') {
@@ -165,11 +175,23 @@ export function calendarGridColorForOptionItem(item: {
 }): string {
   const { option, calendar_entry } = item;
   if (option.status === 'rejected') return colors.textSecondary;
-  if (isAwaitingLinkedModelConfirmation(option)) return AWAITING_MODEL_BADGE_BG;
   if (isJobProjection(option, calendar_entry)) {
     return calendar_entry?.status === 'tentative' ? CALENDAR_COLORS.option : colors.buttonSkipRed;
   }
   if (isCastingProjection(option, calendar_entry)) return colors.textSecondary;
+  const appr = deriveApprovalAttention(
+    attentionSignalsFromOptionRequestLike({
+      status: option.status,
+      finalStatus: option.final_status,
+      clientPriceStatus: option.client_price_status,
+      modelApproval: option.model_approval,
+      modelAccountLinked: option.model_account_linked,
+      agencyCounterPrice: option.agency_counter_price,
+      proposedPrice: option.proposed_price,
+    }),
+  );
+  if (appr === 'waiting_for_model_confirmation') return AWAITING_MODEL_BADGE_BG;
+  if (appr === 'waiting_for_client_to_finalize_job') return CLIENT_JOB_BADGE_BG;
   const et = calendar_entry?.entry_type;
   return calendarEntryColor(et ?? 'option');
 }

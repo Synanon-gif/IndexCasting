@@ -227,14 +227,10 @@ import { getMyAgencyUsageLimits, type AgencyUsageLimits } from '../services/agen
 import { getAgencyOrganizationSeatLimit } from '../services/subscriptionSupabase';
 import { getLatestActivityLog, type ActivityLog } from '../services/activityLogsSupabase';
 import { uiCopy as _uiCopy } from '../constants/uiCopy';
-import {
-  deriveSmartAttentionState,
-  smartAttentionVisibleForRole,
-  type SmartAttentionState,
-} from '../utils/optionRequestAttention';
+import { attentionSignalsFromOptionRequestLike } from '../utils/optionRequestAttention';
 import { getCanonicalAgreedPrice, getNegotiationDisplayPriceCandidate } from '../utils/canonicalOptionPrice';
 import { formatOptionMoneyAmount } from '../utils/optionMoneyFormat';
-import { attentionHeaderLabel } from '../utils/negotiationAttentionLabels';
+import { attentionHeaderLabelFromSignals } from '../utils/negotiationAttentionLabels';
 import { toDisplayStatus } from '../utils/statusHelpers';
 
 const STATUS_LABELS: Record<ChatStatus, string> = {
@@ -248,19 +244,6 @@ const STATUS_COLORS: Record<ChatStatus, string> = OPTION_REQUEST_CHAT_STATUS_COL
 function isUuidString(value: string | null | undefined): boolean {
   if (!value || typeof value !== 'string') return false;
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.trim());
-}
-
-function attentionLabelForAgency(state: SmartAttentionState): string {
-  switch (state) {
-    case 'waiting_for_agency': return _uiCopy.dashboard.smartAttentionWaitingForAgency;
-    case 'counter_pending': return _uiCopy.dashboard.smartAttentionCounterPending;
-    case 'waiting_for_model': return _uiCopy.dashboard.smartAttentionWaitingForModel;
-    case 'conflict_risk': return _uiCopy.dashboard.smartAttentionConflictRisk;
-    case 'waiting_for_client': return _uiCopy.dashboard.smartAttentionWaitingForClient;
-    case 'job_confirmation_pending': return _uiCopy.dashboard.smartAttentionJobConfirmationPending;
-    case 'no_attention':
-    default: return _uiCopy.dashboard.smartAttentionNoAttention;
-  }
 }
 
 // ISO country names for the territories multi-select.
@@ -4604,14 +4587,16 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
     if (assignmentScope === 'unassigned' && !!assignment?.assignedMemberUserId) return false;
     if (assignmentFlagFilter !== 'all' && (assignment?.label ?? '').toLowerCase() !== assignmentFlagFilter.toLowerCase()) return false;
     if (attentionFilter === 'action_required') {
-      const state = deriveSmartAttentionState({
+      const sig = attentionSignalsFromOptionRequestLike({
         status: r.status,
         finalStatus: r.finalStatus ?? null,
         clientPriceStatus: r.clientPriceStatus ?? null,
         modelApproval: r.modelApproval,
         modelAccountLinked: r.modelAccountLinked ?? true,
+        agencyCounterPrice: r.agencyCounterPrice ?? null,
+        proposedPrice: r.proposedPrice ?? null,
       });
-      if (!smartAttentionVisibleForRole(state, 'agency')) return false;
+      if (!attentionHeaderLabelFromSignals(sig, 'agency')) return false;
     }
     return true;
   });
@@ -4625,16 +4610,20 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   const agencyCounterPrice = request?.agencyCounterPrice;
   const currency = request?.currency ?? 'EUR';
   const displayStatus = request ? toDisplayStatus(request.status, request.finalStatus ?? null) : 'Draft';
-  const attentionStateForHeader = request
-    ? deriveSmartAttentionState({
-        status: request.status,
-        finalStatus: request.finalStatus ?? null,
-        clientPriceStatus: request.clientPriceStatus ?? null,
-        modelApproval: request.modelApproval,
-        modelAccountLinked: request.modelAccountLinked ?? true,
-      })
-    : 'no_attention';
-  const headerAttentionLabel = request ? attentionHeaderLabel(attentionStateForHeader, 'agency') : null;
+  const headerAttentionLabel = request
+    ? attentionHeaderLabelFromSignals(
+        attentionSignalsFromOptionRequestLike({
+          status: request.status,
+          finalStatus: request.finalStatus ?? null,
+          clientPriceStatus: request.clientPriceStatus ?? null,
+          modelApproval: request.modelApproval,
+          modelAccountLinked: request.modelAccountLinked ?? true,
+          agencyCounterPrice: request.agencyCounterPrice ?? null,
+          proposedPrice: request.proposedPrice ?? null,
+        }),
+        'agency',
+      )
+    : null;
   const negotiationDateLine = request
     ? `${request.date}${request.startTime ? ` · ${request.startTime}–${request.endTime}` : ''}`
     : '';
@@ -5486,14 +5475,18 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
           visible.map((r) => {
             const reqStatus = getRequestStatus(r.threadId) ?? r.status;
             const assignment = r.clientOrganizationId ? assignmentByClientOrgId[r.clientOrganizationId] : undefined;
-            const attentionState = deriveSmartAttentionState({
-              status: r.status,
-              finalStatus: r.finalStatus ?? null,
-              clientPriceStatus: r.clientPriceStatus ?? null,
-              modelApproval: r.modelApproval,
-              modelAccountLinked: r.modelAccountLinked ?? true,
-            });
-            const showAttention = smartAttentionVisibleForRole(attentionState, 'agency');
+            const listAttentionLabel = attentionHeaderLabelFromSignals(
+              attentionSignalsFromOptionRequestLike({
+                status: r.status,
+                finalStatus: r.finalStatus ?? null,
+                clientPriceStatus: r.clientPriceStatus ?? null,
+                modelApproval: r.modelApproval,
+                modelAccountLinked: r.modelAccountLinked ?? true,
+                agencyCounterPrice: r.agencyCounterPrice ?? null,
+                proposedPrice: r.proposedPrice ?? null,
+              }),
+              'agency',
+            );
             const listFee =
               getCanonicalAgreedPrice({
                 proposed_price: r.proposedPrice ?? null,
@@ -5520,9 +5513,9 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                   ) : null}
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                  {showAttention ? (
+                  {listAttentionLabel ? (
                     <View style={[s.statusPill, { backgroundColor: '#dbeafe' }]}>
-                      <Text style={[s.statusPillLabel, { color: '#1d4ed8' }]}>{attentionLabelForAgency(attentionState)}</Text>
+                      <Text style={[s.statusPillLabel, { color: '#1d4ed8' }]}>{listAttentionLabel}</Text>
                     </View>
                   ) : null}
                   {listFee != null && (

@@ -735,8 +735,13 @@ export async function clientConfirmJobStore(threadId: string): Promise<boolean> 
   if (!req) return false;
   const ok = await clientConfirmJobOnSupabase(req.id);
   if (!ok) return false;
-  req.finalStatus = 'job_confirmed';
-  req.status = 'confirmed';
+  const refreshed = await getOptionRequestById(req.id);
+  if (refreshed) {
+    Object.assign(req, toLocalRequest(refreshed));
+  } else {
+    req.finalStatus = 'job_confirmed';
+    req.status = 'confirmed';
+  }
   await updateCalendarEntryToJob(req.id);
   const inserted = await addOptionSystemMessage(req.id, 'job_confirmed_by_client');
   if (inserted) {

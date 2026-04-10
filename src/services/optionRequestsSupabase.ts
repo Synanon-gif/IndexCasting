@@ -24,6 +24,12 @@ import { logAction } from '../utils/logAction';
 export const OPTION_REQUEST_SELECT =
   'id, client_id, model_id, agency_id, requested_date, status, project_id, client_name, model_name, proposed_price, agency_counter_price, client_price_status, final_status, request_type, currency, start_time, end_time, model_approval, model_approved_at, model_account_linked, booker_id, organization_id, agency_organization_id, client_organization_id, created_by, agency_assignee_user_id, created_at, updated_at';
 
+/**
+ * Atomic UPDATE guards: many mutations use `.eq('status', 'in_negotiation')` (or similar) so concurrent
+ * transitions do not double-apply — that is intentional concurrency control, not business “status filtering”.
+ * List reads prefer workflow columns (`final_status`, `client_price_status`, `model_approval`) in attention/calendar utils.
+ */
+
 /** Model-linked app: no price / negotiation columns (defense-in-depth vs UI-only hiding). */
 export const OPTION_REQUEST_SELECT_MODEL_SAFE =
   'id, client_id, model_id, agency_id, requested_date, status, project_id, client_name, model_name, final_status, request_type, currency, start_time, end_time, model_approval, model_approved_at, model_account_linked, booker_id, organization_id, agency_organization_id, client_organization_id, created_by, agency_assignee_user_id, created_at, updated_at';
@@ -750,26 +756,34 @@ export async function clientRejectCounterOfferOnSupabase(id: string): Promise<bo
 
 export async function clientConfirmJobOnSupabase(id: string): Promise<boolean> {
   try {
-    // Guard: only allow job confirmation from option_confirmed state.
-    // This prevents double-confirms from stale UI screens.
+    const { data: rpcOk, error: rpcErr } = await supabase.rpc('client_confirm_option_job', {
+      p_request_id: id,
+    });
+    if (rpcErr) {
+      console.error('clientConfirmJobOnSupabase RPC error:', rpcErr);
+      return false;
+    }
+    if (!rpcOk) {
+      console.warn(
+        'clientConfirmJobOnSupabase: RPC returned false — guards failed (price/approvals/status) or concurrent call',
+        id,
+      );
+      return false;
+    }
+
     const { data: updated, error } = await supabase
       .from('option_requests')
-      .update({
-        final_status: 'job_confirmed',
-        status: 'confirmed',
-      })
-      .eq('id', id)
-      .eq('final_status', 'option_confirmed')
       .select(OPTION_REQUEST_SELECT)
+      .eq('id', id)
       .maybeSingle();
 
     if (error) {
-      console.error('clientConfirmJobOnSupabase error:', error);
+      console.error('clientConfirmJobOnSupabase fetch after RPC error:', error);
       return false;
     }
 
     if (!updated) {
-      console.warn('clientConfirmJobOnSupabase: no row updated — not in option_confirmed state or concurrent call', id);
+      console.warn('clientConfirmJobOnSupabase: row missing after RPC', id);
       return false;
     }
 

@@ -1,4 +1,5 @@
 import {
+  deriveNegotiationAttention,
   deriveSmartAttentionState,
   modelInboxRequiresModelConfirmation,
   modelInboxSortPriority,
@@ -88,6 +89,33 @@ describe('deriveSmartAttentionState', () => {
         modelApproval: 'approved',
       }),
     ).toBe('no_attention');
+  });
+
+  it('maps agency counter pending to waiting_for_client (not agency)', () => {
+    expect(
+      deriveSmartAttentionState({
+        status: 'in_negotiation',
+        finalStatus: 'option_pending',
+        clientPriceStatus: 'pending',
+        agencyCounterPrice: 500,
+        proposedPrice: 400,
+        modelApproval: 'approved',
+      }),
+    ).toBe('waiting_for_client');
+  });
+});
+
+describe('deriveNegotiationAttention', () => {
+  it('returns waiting_for_client_response when agency has countered', () => {
+    expect(
+      deriveNegotiationAttention({
+        status: 'in_negotiation',
+        finalStatus: 'option_pending',
+        clientPriceStatus: 'pending',
+        agencyCounterPrice: 999,
+        proposedPrice: 100,
+      }),
+    ).toBe('waiting_for_client_response');
   });
 });
 

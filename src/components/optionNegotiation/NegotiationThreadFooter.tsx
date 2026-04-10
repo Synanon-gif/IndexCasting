@@ -2,6 +2,10 @@ import React from 'react';
 import { View, Text, TouchableOpacity, TextInput, StyleSheet } from 'react-native';
 import { colors, spacing, typography } from '../../theme/theme';
 import { uiCopy } from '../../constants/uiCopy';
+import {
+  attentionSignalsFromOptionRequestLike,
+  clientMayConfirmJobFromSignals,
+} from '../../utils/optionRequestAttention';
 import type { OptionRequest, ChatStatus } from '../../store/optionRequests';
 import type { ClientAssignmentFlag, AssignmentFlagColor } from '../../services/clientAssignmentsSupabase';
 
@@ -457,7 +461,17 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
         </View>
       )}
       {!isAgency &&
-        finalStatus === 'option_confirmed' &&
+        clientMayConfirmJobFromSignals(
+          attentionSignalsFromOptionRequestLike({
+            status: status ?? request.status,
+            finalStatus: finalStatus ?? request.finalStatus ?? null,
+            clientPriceStatus: clientPriceStatus ?? request.clientPriceStatus ?? null,
+            modelApproval: request.modelApproval,
+            modelAccountLinked: request.modelAccountLinked,
+            agencyCounterPrice: agencyCounterPrice ?? null,
+            proposedPrice: request.proposedPrice ?? null,
+          }),
+        ) &&
         request?.requestType === 'option' &&
         status !== 'rejected' && (
         <TouchableOpacity

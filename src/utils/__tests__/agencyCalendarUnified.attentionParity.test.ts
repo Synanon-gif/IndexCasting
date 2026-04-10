@@ -4,7 +4,8 @@ import {
   buildUnifiedAgencyCalendarRows,
   needsAgencyActionForOption,
 } from '../agencyCalendarUnified';
-import { deriveSmartAttentionState, smartAttentionVisibleForRole } from '../optionRequestAttention';
+import { attentionSignalsFromOptionRequestLike } from '../optionRequestAttention';
+import { attentionHeaderLabelFromSignals } from '../negotiationAttentionLabels';
 
 function minimalOption(overrides: Partial<SupabaseOptionRequest>): SupabaseOptionRequest {
   const now = new Date().toISOString();
@@ -48,8 +49,8 @@ function calendarItem(overrides: Partial<SupabaseOptionRequest>): AgencyCalendar
   };
 }
 
-describe('needsAgencyActionForOption — parity with deriveSmartAttentionState + agency role', () => {
-  it('matches smartAttentionVisibleForRole(deriveSmartAttentionState(...), agency) for arbitrary rows', () => {
+describe('needsAgencyActionForOption — parity with attentionHeaderLabelFromSignals (agency)', () => {
+  it('matches header attention gate for sample workflow rows', () => {
     const cases: Partial<SupabaseOptionRequest>[] = [
       { client_price_status: 'pending', final_status: 'option_pending', status: 'in_negotiation' },
       {
@@ -69,15 +70,17 @@ describe('needsAgencyActionForOption — parity with deriveSmartAttentionState +
     for (const c of cases) {
       const item = calendarItem(c);
       const opt = item.option;
-      const st = deriveSmartAttentionState({
+      const sig = attentionSignalsFromOptionRequestLike({
         status: opt.status,
         finalStatus: opt.final_status,
         clientPriceStatus: opt.client_price_status,
         modelApproval: opt.model_approval,
         modelAccountLinked: opt.model_account_linked,
+        agencyCounterPrice: opt.agency_counter_price,
+        proposedPrice: opt.proposed_price,
         hasConflictWarning: false,
       });
-      const expected = smartAttentionVisibleForRole(st, 'agency');
+      const expected = attentionHeaderLabelFromSignals(sig, 'agency') !== null;
       expect(needsAgencyActionForOption(item)).toBe(expected);
     }
   });

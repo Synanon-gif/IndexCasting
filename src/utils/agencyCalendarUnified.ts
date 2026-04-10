@@ -11,7 +11,8 @@ import type { UserCalendarEvent } from '../services/userCalendarEventsSupabase';
 import type { ClientAssignmentFlag } from '../services/clientAssignmentsSupabase';
 import { colors } from '../theme/theme';
 import { calendarGridColorForOptionItem } from './calendarProjectionLabel';
-import { deriveSmartAttentionState, smartAttentionVisibleForRole } from './optionRequestAttention';
+import { attentionSignalsFromOptionRequestLike } from './optionRequestAttention';
+import { attentionHeaderLabelFromSignals } from './negotiationAttentionLabels';
 
 export type AgencyCalendarCategory = 'option' | 'casting' | 'booking';
 
@@ -89,18 +90,20 @@ export function effectiveAssigneeForOption(
   return null;
 }
 
-/** Calendar "Action needed" / urgency filter — must stay aligned with Smart Attention for agency role. */
+/** Calendar "Action needed" — agency header attention (negotiation + approval), same gate as Messages list. */
 export function needsAgencyActionForOption(item: AgencyCalendarItem): boolean {
   const opt = item.option;
-  const st = deriveSmartAttentionState({
+  const sig = attentionSignalsFromOptionRequestLike({
     status: opt.status,
     finalStatus: opt.final_status,
     clientPriceStatus: opt.client_price_status,
     modelApproval: opt.model_approval,
     modelAccountLinked: opt.model_account_linked,
+    agencyCounterPrice: opt.agency_counter_price,
+    proposedPrice: opt.proposed_price,
     hasConflictWarning: false,
   });
-  return smartAttentionVisibleForRole(st, 'agency');
+  return attentionHeaderLabelFromSignals(sig, 'agency') !== null;
 }
 
 /**
