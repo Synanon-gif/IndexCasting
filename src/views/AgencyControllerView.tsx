@@ -192,7 +192,8 @@ import {
   MANUAL_EVENT_COLORS,
   type UserCalendarEvent,
 } from '../services/userCalendarEventsSupabase';
-import { MonthCalendarView, type CalendarDayEvent } from '../components/MonthCalendarView';
+import { B2BUnifiedCalendarBody } from '../components/B2BUnifiedCalendarBody';
+import type { CalendarDayEvent } from '../components/MonthCalendarView';
 import { ScreenScrollView } from '../components/ScreenScrollView';
 import { uiCopy } from '../constants/uiCopy';
 import { AgencyOrgProfileScreen } from '../screens/AgencyOrgProfileScreen';
@@ -206,7 +207,7 @@ import { runNetwalkCronSync } from '../services/netwalkSyncService';
 import { getAgencyApiKeys, saveAgencyApiConnection } from '../services/agencySettingsSupabase';
 import { checkModelCompleteness, type CompletenessContext } from '../utils/modelCompleteness';
 import { OPTION_REQUEST_CHAT_STATUS_COLORS } from '../utils/calendarColors';
-import { getCalendarProjectionBadge, getBookingEntryProjectionBadge } from '../utils/calendarProjectionLabel';
+import { dedupeCalendarGridEventsByOptionRequest, getCalendarProjectionBadge, getBookingEntryProjectionBadge } from '../utils/calendarProjectionLabel';
 import { getCalendarDetailNextStepText } from '../utils/calendarDetailNextStep';
 import {
   buildUnifiedAgencyCalendarRows,
@@ -1788,7 +1789,7 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
   );
 
   const eventsByDate = useMemo(
-    () => buildEventsByDateFromUnifiedRows(filteredUnified),
+    () => dedupeCalendarGridEventsByOptionRequest(buildEventsByDateFromUnifiedRows(filteredUnified)),
     [filteredUnified],
   );
 
@@ -1931,23 +1932,27 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
         {filterPill('No action', urgency === 'clear', () => setUrgency('clear'))}
       </View>
 
-      <MonthCalendarView
-        year={calendarMonth.year}
-        month={calendarMonth.month}
+      <B2BUnifiedCalendarBody
+        viewerRole="agency"
+        calendarMonth={calendarMonth}
+        setCalendarMonth={setCalendarMonth}
+        selectedDate={selectedDate}
+        setSelectedDate={setSelectedDate}
         eventsByDate={eventsByDate}
-        onSelectDay={setSelectedDate}
-        onPrevMonth={() => setCalendarMonth((m) => (m.month === 0 ? { year: m.year - 1, month: 11 } : { year: m.year, month: m.month - 1 }))}
-        onNextMonth={() => setCalendarMonth((m) => (m.month === 11 ? { year: m.year + 1, month: 0 } : { year: m.year, month: m.month + 1 }))}
+        filteredUnified={filteredUnified}
+        onOpenUnifiedRow={openUnifiedRow}
       />
 
       {selectedDate && (
         <View style={[s.modelRow, { marginBottom: spacing.sm }]}>
-          <Text style={s.sectionLabel}>Day: {selectedDate}</Text>
+          <Text style={s.sectionLabel}>
+            {uiCopy.calendar.selectedDayPrefix} {selectedDate}
+          </Text>
           <TouchableOpacity style={[s.filterPill, { alignSelf: 'flex-start', marginTop: spacing.xs }]} onPress={onAddEvent}>
             <Text style={s.filterPillLabel}>+ Event on this day</Text>
           </TouchableOpacity>
           {(eventsByDate[selectedDate] ?? []).length === 0 ? (
-            <Text style={s.metaText}>No entries on this day.</Text>
+            <Text style={s.metaText}>{uiCopy.calendar.noEntriesThisDay}</Text>
           ) : (
             (eventsByDate[selectedDate] ?? []).map((ev: CalendarDayEvent) => (
               <TouchableOpacity

@@ -63,6 +63,22 @@ import type { Conversation } from '../services/messengerSupabase';
 import { OrgMessengerInline } from '../components/OrgMessengerInline';
 import { ConfirmDestructiveModal } from '../components/ConfirmDestructiveModal';
 import { getCalendarDetailNextStepForModelLocalOption } from '../utils/calendarDetailNextStep';
+import { MonthCalendarView } from '../components/MonthCalendarView';
+import { CalendarViewModeBar, type CalendarViewMode } from '../components/CalendarViewModeBar';
+import { CalendarWeekGrid } from '../components/CalendarWeekGrid';
+import { CalendarDayTimeline } from '../components/CalendarDayTimeline';
+import {
+  buildEventsByDateFromModelEntries,
+  filterModelScheduleBlocksForDate,
+  filterModelScheduleBlocksForWeek,
+} from '../utils/modelCalendarSchedule';
+import {
+  addDaysYmd,
+  startOfWeekMonday,
+  todayYmd,
+  weekDayDates,
+} from '../utils/calendarTimelineLayout';
+import { calendarEntryColor } from '../utils/calendarColors';
 
 type ModelProfile = {
   id: string;
@@ -82,14 +98,6 @@ type ModelProfile = {
 type ModelTab = 'calendar' | 'messages' | 'options' | 'profile';
 
 const HOURS = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`);
-const ENTRY_COLORS: Record<string, string> = {
-  personal: '#2E7D32',
-  booking:  '#B71C1C',
-  job:      '#1B5E20',
-  option:   '#E65100',
-  gosee:    '#0288D1',
-  casting:  '#1565C0',
-};
 
 type ModelProfileScreenProps = {
   onBackToRoleSelection?: () => void;
@@ -116,6 +124,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   const [exportingData, setExportingData] = useState(false);
   const [calMonth, setCalMonth] = useState(() => { const n = new Date(); return { year: n.getFullYear(), month: n.getMonth() }; });
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [calendarViewMode, setCalendarViewMode] = useState<CalendarViewMode>('month');
   const [calEntries, setCalEntries] = useState<CalendarEntry[]>([]);
   const [newEntryTitle, setNewEntryTitle] = useState('');
   const [newEntryStart, setNewEntryStart] = useState('09:00');
@@ -542,10 +551,6 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openEntry?.id]);
 
-  const daysInMonth = new Date(calMonth.year, calMonth.month + 1, 0).getDate();
-  const firstDayOfWeek = new Date(calMonth.year, calMonth.month, 1).getDay();
-  const monthLabel = new Date(calMonth.year, calMonth.month).toLocaleString('en', { month: 'long', year: 'numeric' });
-
   const entriesForDate = useMemo(
     () =>
       calEntries
@@ -554,10 +559,35 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     [calEntries, selectedDate],
   );
 
-  const _dateHasEntry = (dateStr: string) => calEntries.some((e) => e.date === dateStr);
-  const dateEntryType = (dateStr: string): string | null => {
-    const entry = calEntries.find((e) => e.date === dateStr);
-    return entry?.entry_type ?? null;
+  const modelEventsByDate = useMemo(() => buildEventsByDateFromModelEntries(calEntries), [calEntries]);
+
+  const focusDateModel = selectedDate ?? todayYmd();
+  const modelWeekStart = useMemo(() => startOfWeekMonday(focusDateModel), [focusDateModel]);
+  const modelWeekDates = useMemo(() => weekDayDates(modelWeekStart), [modelWeekStart]);
+  const modelWeekEvents = useMemo(
+    () => filterModelScheduleBlocksForWeek(calEntries, modelWeekDates),
+    [calEntries, modelWeekDates],
+  );
+  const modelDayEvents = useMemo(
+    () => filterModelScheduleBlocksForDate(calEntries, focusDateModel),
+    [calEntries, focusDateModel],
+  );
+
+  const modelWeekRangeLabel = useMemo(() => {
+    const a = new Date(`${modelWeekDates[0]}T12:00:00`);
+    const b = new Date(`${modelWeekDates[6]}T12:00:00`);
+    return `${a.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${b.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+  }, [modelWeekDates]);
+
+  const modelDayDateLabel = useMemo(() => {
+    const d = new Date(`${focusDateModel}T12:00:00`);
+    return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  }, [focusDateModel]);
+
+  const shiftModelFocus = (d: string) => {
+    setSelectedDate(d);
+    const [y, m] = d.split('-').map(Number);
+    setCalMonth({ year: y, month: m - 1 });
   };
 
   const handleAddPersonalEntry = async () => {
@@ -873,113 +903,125 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
 
       {tab === 'calendar' && (
         <ScrollView style={{ flex: 1 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm }}>
-            <TouchableOpacity onPress={() => setCalMonth((p) => p.month === 0 ? { year: p.year - 1, month: 11 } : { ...p, month: p.month - 1 })}>
-              <Text style={{ fontSize: 20, color: colors.textPrimary }}>‹</Text>
-            </TouchableOpacity>
-            <Text style={{ ...typography.label, color: colors.textPrimary }}>{monthLabel}</Text>
-            <TouchableOpacity onPress={() => setCalMonth((p) => p.month === 11 ? { year: p.year + 1, month: 0 } : { ...p, month: p.month + 1 })}>
-              <Text style={{ fontSize: 20, color: colors.textPrimary }}>›</Text>
-            </TouchableOpacity>
-          </View>
+          <CalendarViewModeBar
+            mode={calendarViewMode}
+            onModeChange={setCalendarViewMode}
+            monthLabel={uiCopy.dashboard.monthViewLabel}
+            weekLabel={uiCopy.dashboard.weekViewLabel}
+            dayLabel={uiCopy.calendar.dayViewLabel}
+            compact={calendarViewMode !== 'month'}
+          />
 
-          <View style={{ flexDirection: 'row', marginBottom: 4 }}>
-            {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => (
-              <View key={d} style={{ flex: 1, alignItems: 'center' }}>
-                <Text style={{ ...typography.label, fontSize: 9, color: colors.textSecondary }}>{d}</Text>
-              </View>
-            ))}
-          </View>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: spacing.md }}>
-            {Array.from({ length: firstDayOfWeek }, (_, i) => (
-              <View key={`e-${i}`} style={{ width: `${100 / 7}%`, height: 40 }} />
-            ))}
-            {Array.from({ length: daysInMonth }, (_, i) => {
-              const day = i + 1;
-              const dateStr = `${calMonth.year}-${String(calMonth.month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-              const isSelected = dateStr === selectedDate;
-              const entryType = dateEntryType(dateStr);
-              const dotColor = entryType ? (ENTRY_COLORS[entryType] ?? colors.textSecondary) : null;
-              return (
-                <TouchableOpacity
-                  key={day}
-                  onPress={() => setSelectedDate(dateStr)}
-                  style={{ width: `${100 / 7}%`, height: 40, alignItems: 'center', justifyContent: 'center' }}
-                >
-                  <View style={{
-                    width: 34, height: 34, borderRadius: 17,
-                    alignItems: 'center', justifyContent: 'center',
-                    backgroundColor: isSelected ? colors.accentGreen : 'transparent',
-                    borderWidth: dotColor && !isSelected ? 2 : 0,
-                    borderColor: dotColor ?? 'transparent',
-                  }}>
-                    <Text style={{ ...typography.body, fontSize: 12, color: isSelected ? '#fff' : colors.textPrimary }}>{day}</Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+          <MonthCalendarView
+            year={calMonth.year}
+            month={calMonth.month}
+            eventsByDate={modelEventsByDate}
+            selectedDate={selectedDate}
+            compact={calendarViewMode !== 'month'}
+            onSelectDay={(d) => shiftModelFocus(d)}
+            onPrevMonth={() => setCalMonth((p) => (p.month === 0 ? { year: p.year - 1, month: 11 } : { ...p, month: p.month - 1 }))}
+            onNextMonth={() => setCalMonth((p) => (p.month === 11 ? { year: p.year + 1, month: 0 } : { ...p, month: p.month + 1 }))}
+          />
 
-          <View style={{ flexDirection: 'row', gap: spacing.md, marginBottom: spacing.md }}>
+          {calendarViewMode === 'week' && (
+            <CalendarWeekGrid
+              weekDates={modelWeekDates}
+              events={modelWeekEvents}
+              selectedDate={selectedDate}
+              onSelectDay={(d) => shiftModelFocus(d)}
+              onEventPress={(ev) => {
+                const entry = calEntries.find((e) => e.id === ev.id);
+                if (!entry) return;
+                setOpenEntry(entry);
+                setSharedNoteDraft('');
+                const existing =
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  (entry.booking_details as any)?.model_notes ??
+                  entry.note ??
+                  '';
+                setModelNotesDraft(existing);
+              }}
+              onPrevWeek={() => shiftModelFocus(addDaysYmd(focusDateModel, -7))}
+              onNextWeek={() => shiftModelFocus(addDaysYmd(focusDateModel, 7))}
+              rangeLabel={modelWeekRangeLabel}
+            />
+          )}
+
+          {calendarViewMode === 'day' && (
+            <CalendarDayTimeline
+              dateLabel={modelDayDateLabel}
+              events={modelDayEvents}
+              onEventPress={(ev) => {
+                const entry = calEntries.find((e) => e.id === ev.id);
+                if (!entry) return;
+                setOpenEntry(entry);
+                setSharedNoteDraft('');
+                const existing =
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  (entry.booking_details as any)?.model_notes ??
+                  entry.note ??
+                  '';
+                setModelNotesDraft(existing);
+              }}
+              onPrevDay={() => shiftModelFocus(addDaysYmd(focusDateModel, -1))}
+              onNextDay={() => shiftModelFocus(addDaysYmd(focusDateModel, 1))}
+            />
+          )}
+
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, marginBottom: spacing.md }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#2E7D32' }} />
-              <Text style={st.metaText}>Personal</Text>
+              <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: calendarEntryColor('personal') }} />
+              <Text style={st.metaText}>{uiCopy.dashboard.colorPersonalLabel}</Text>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#C62828' }} />
-              <Text style={st.metaText}>Gosee / Booking</Text>
+              <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: calendarEntryColor('booking') }} />
+              <Text style={st.metaText}>{uiCopy.dashboard.threadContextBooking}</Text>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#1565C0' }} />
-              <Text style={st.metaText}>Option (pending)</Text>
+              <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: calendarEntryColor('option') }} />
+              <Text style={st.metaText}>{uiCopy.dashboard.colorOptionLabel}</Text>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: calendarEntryColor('casting') }} />
+              <Text style={st.metaText}>{uiCopy.dashboard.colorCastingLabel}</Text>
             </View>
           </View>
 
           {selectedDate && (
             <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: spacing.md, marginBottom: spacing.md }}>
-              <Text style={st.sectionLabel}>{selectedDate}</Text>
-              <View style={{ borderLeftWidth: 2, borderLeftColor: colors.border, marginLeft: 8, paddingLeft: spacing.md, marginTop: spacing.sm }}>
-                {HOURS.map((hour) => {
-                  const entry = entriesForDate.find((e) => e.start_time?.slice(0, 5) === hour);
-                  return (
-                    <View key={hour} style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 2, minHeight: 24 }}>
-                      <Text style={{ ...typography.label, fontSize: 9, color: colors.textSecondary, width: 40 }}>{hour}</Text>
-                      {entry ? (
-                        <TouchableOpacity
-                          style={{
-                            flex: 1,
-                            backgroundColor:
-                              ENTRY_COLORS[entry.entry_type] ?? colors.textSecondary,
-                            borderRadius: 6,
-                            paddingHorizontal: spacing.sm,
-                            paddingVertical: 2,
-                            marginLeft: 4,
-                          }}
-                          onPress={() => {
-                            setOpenEntry(entry);
-                            setSharedNoteDraft('');
-                            const existing =
-                              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                              (entry.booking_details as any)?.model_notes ??
-                              entry.note ??
-                              '';
-                            setModelNotesDraft(existing);
-                          }}
-                        >
-                          <Text style={{ ...typography.body, fontSize: 11, color: '#fff' }}>
-                            {entry.title || entry.entry_type}
-                            {entry.end_time
-                              ? ` (until ${entry.end_time.slice(0, 5)})`
-                              : ''}
-                          </Text>
-                        </TouchableOpacity>
-                      ) : (
-                        <View style={{ flex: 1, height: 1, backgroundColor: colors.border, marginTop: 8, marginLeft: 4 }} />
-                      )}
-                    </View>
-                  );
-                })}
-              </View>
+              <Text style={st.sectionLabel}>
+                {uiCopy.calendar.selectedDayPrefix} {selectedDate}
+              </Text>
+              {entriesForDate.length === 0 ? (
+                <Text style={st.metaText}>{uiCopy.calendar.noEntriesThisDay}</Text>
+              ) : (
+                <View style={{ marginTop: spacing.sm, gap: spacing.xs }}>
+                  {entriesForDate.map((entry) => (
+                    <TouchableOpacity
+                      key={entry.id}
+                      style={{
+                        borderRadius: 8,
+                        padding: spacing.sm,
+                        backgroundColor: calendarEntryColor(entry.entry_type),
+                      }}
+                      onPress={() => {
+                        setOpenEntry(entry);
+                        setSharedNoteDraft('');
+                        const existing =
+                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                          (entry.booking_details as any)?.model_notes ??
+                          entry.note ??
+                          '';
+                        setModelNotesDraft(existing);
+                      }}
+                    >
+                      <Text style={{ ...typography.body, fontSize: 12, color: '#fff', fontWeight: '600' }}>
+                        {entry.start_time?.slice(0, 5) ?? '—'} · {entry.title || entry.entry_type}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
 
               <View style={{ marginTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.md }}>
                 <Text style={st.sectionLabel}>Add personal entry</Text>

@@ -22,6 +22,10 @@ export type MonthCalendarViewProps = {
   onSelectDay: (date: string) => void;
   onPrevMonth: () => void;
   onNextMonth: () => void;
+  /** Highlights the focused day (same source as week/day views). */
+  selectedDate?: string | null;
+  /** Denser cells when stacked with week/day views (same event data). */
+  compact?: boolean;
 };
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -50,6 +54,8 @@ export const MonthCalendarView: React.FC<MonthCalendarViewProps> = ({
   onSelectDay,
   onPrevMonth,
   onNextMonth,
+  selectedDate = null,
+  compact = false,
 }) => {
   const grid = React.useMemo(() => getMonthGrid(year, month), [year, month]);
   const monthLabel = new Date(year, month).toLocaleString('en-US', { month: 'long', year: 'numeric' });
@@ -74,20 +80,37 @@ export const MonthCalendarView: React.FC<MonthCalendarViewProps> = ({
         {grid.map((cell, idx) => {
           if (!cell.date) return <View key={idx} style={s.dayCell} />;
           const events = eventsByDate[cell.date] ?? [];
+          const isSelected = selectedDate != null && cell.date === selectedDate;
           return (
             <TouchableOpacity
               key={cell.date}
-              style={[s.dayCell, s.dayCellActive]}
+              style={[
+                s.dayCell,
+                s.dayCellActive,
+                compact && s.dayCellCompact,
+                isSelected && s.dayCellSelected,
+              ]}
               onPress={() => onSelectDay(cell.date!)}
               activeOpacity={0.7}
             >
-              <Text style={[s.dayNum, !cell.isCurrentMonth && s.dayNumMuted]}>{cell.dayNum}</Text>
+              <Text
+                style={[
+                  s.dayNum,
+                  !cell.isCurrentMonth && s.dayNumMuted,
+                  compact && s.dayNumCompact,
+                  isSelected && s.dayNumSelected,
+                ]}
+              >
+                {cell.dayNum}
+              </Text>
               {events.length > 0 && (
-                <View style={s.dotsRow}>
-                  {events.slice(0, 3).map((ev) => (
-                    <View key={ev.id} style={[s.dot, { backgroundColor: ev.color }]} />
+                <View style={[s.dotsRow, compact && s.dotsRowCompact]}>
+                  {events.slice(0, compact ? 2 : 3).map((ev) => (
+                    <View key={ev.id} style={[s.dot, compact && s.dotCompact, { backgroundColor: ev.color }]} />
                   ))}
-                  {events.length > 3 && <Text style={s.moreText}>+{events.length - 3}</Text>}
+                  {events.length > (compact ? 2 : 3) && (
+                    <Text style={s.moreText}>+{events.length - (compact ? 2 : 3)}</Text>
+                  )}
                 </View>
               )}
             </TouchableOpacity>
@@ -134,10 +157,23 @@ const s = StyleSheet.create({
     justifyContent: 'flex-start',
     alignItems: 'center',
   },
+  dayCellCompact: {
+    maxHeight: 40,
+    padding: 1,
+  },
   dayCellActive: { borderRadius: 8 },
+  dayCellSelected: {
+    borderWidth: 2,
+    borderColor: colors.textPrimary,
+    backgroundColor: colors.surface,
+  },
   dayNum: { ...typography.label, fontSize: 11, color: colors.textPrimary },
+  dayNumCompact: { fontSize: 10 },
+  dayNumSelected: { fontWeight: '700' },
   dayNumMuted: { color: colors.border },
   dotsRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 2, marginTop: 2 },
+  dotsRowCompact: { marginTop: 1, gap: 1 },
   dot: { width: 6, height: 6, borderRadius: 3 },
+  dotCompact: { width: 5, height: 5, borderRadius: 2 },
   moreText: { fontSize: 8, color: colors.textSecondary },
 });

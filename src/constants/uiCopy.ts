@@ -216,6 +216,12 @@ export const uiCopy = {
     bookingEntryDetailFallback: 'This calendar entry is not linked to a request thread.',
     /** Accessibility label for client calendar row attention dot */
     actionRequiredA11y: 'Action required',
+    /** Multi-view calendar (Agency / Client web). */
+    dayViewLabel: 'Day',
+    /** Prefix before a YYYY-MM-DD in the selected-day panel. */
+    selectedDayPrefix: 'Day:',
+    /** No events on the picked day (quick list). */
+    noEntriesThisDay: 'No entries on this day.',
     /** Month/list badges — calendar projection (existing DB fields only). */
     projectionBadge: {
       rejected: 'Rejected',

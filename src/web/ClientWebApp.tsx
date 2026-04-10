@@ -153,7 +153,7 @@ import {
   loadArchivedThreadIds,
   setThreadArchived,
 } from '../services/threadPreferencesSupabase';
-import { MonthCalendarView } from '../components/MonthCalendarView';
+import { B2BUnifiedCalendarBody } from '../components/B2BUnifiedCalendarBody';
 import { OPTION_REQUEST_CHAT_STATUS_COLORS } from '../utils/calendarColors';
 import {
   getCalendarProjectionBadge,
@@ -3232,18 +3232,22 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
         </View>
       </View>
 
-      <MonthCalendarView
-        year={calendarMonth.year}
-        month={calendarMonth.month}
+      <B2BUnifiedCalendarBody
+        viewerRole="client"
+        calendarMonth={calendarMonth}
+        setCalendarMonth={setCalendarMonth}
+        selectedDate={selectedDate}
+        setSelectedDate={setSelectedDate}
         eventsByDate={eventsByDate}
-        onSelectDay={setSelectedDate}
-        onPrevMonth={() => setCalendarMonth((m) => (m.month === 0 ? { year: m.year - 1, month: 11 } : { year: m.year, month: m.month - 1 }))}
-        onNextMonth={() => setCalendarMonth((m) => (m.month === 11 ? { year: m.year + 1, month: 0 } : { year: m.year, month: m.month + 1 }))}
+        filteredUnified={filteredUnified}
+        onOpenUnifiedRow={openUnifiedRow}
       />
 
       {selectedDate && (
         <View style={[styles.projectRow, { marginBottom: spacing.sm }]}>
-          <Text style={styles.sectionLabel}>Tag: {selectedDate}</Text>
+          <Text style={styles.sectionLabel}>
+            {uiCopy.calendar.selectedDayPrefix} {selectedDate}
+          </Text>
           <TouchableOpacity
             style={[styles.filterPill, { alignSelf: 'flex-start', marginTop: spacing.xs }]}
             onPress={onAddEvent}
@@ -3252,7 +3256,9 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
             <Text style={styles.filterPillLabel}>+ Event on this day</Text>
           </TouchableOpacity>
           {(eventsByDate[selectedDate] ?? []).length === 0 ? (
-            <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginTop: spacing.xs }}>No entries on this day.</Text>
+            <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginTop: spacing.xs }}>
+              {uiCopy.calendar.noEntriesThisDay}
+            </Text>
           ) : (
             (eventsByDate[selectedDate] ?? []).map((ev) => (
               <TouchableOpacity
