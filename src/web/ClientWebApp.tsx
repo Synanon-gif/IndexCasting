@@ -4354,7 +4354,10 @@ const MessagesView: React.FC<MessagesViewProps> = ({
     void (async () => {
       setDeletingOptionId(threadId);
       try {
-        const ok = await deleteOptionRequestFull(reqId);
+        const ok = await deleteOptionRequestFull(reqId, {
+          auditActor: 'client',
+          auditOrganizationId: clientOrgId,
+        });
         if (!ok) {
           showAppAlert(uiCopy.common.error, uiCopy.messages.deleteOptionRequestFailed);
           return;
@@ -4561,13 +4564,14 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                 onPress={() => onMsgFilterChange(f)}
               >
                 <Text style={[styles.filterPillLabel, msgFilter === f && styles.filterPillLabelActive]}>
-                  {f === 'current' ? 'Current' : 'Archived'}
+                  {f === 'current' ? uiCopy.messages.optionRequestListFilterCurrent : uiCopy.messages.optionRequestListFilterArchived}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
         )}
       </View>
+      <Text style={[styles.metaText, { marginBottom: spacing.sm }]}>{uiCopy.messages.archiveThreadDoesNotDeleteShort}</Text>
       <View style={{ flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.sm }}>
         <TouchableOpacity
           style={[styles.filterPill, attentionFilter === 'all' && styles.filterPillActive]}
@@ -4684,7 +4688,14 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                   <View style={[styles.statusPill, { backgroundColor: STATUS_COLORS[reqStatus] }]}>
                     <Text style={styles.statusPillLabel}>{STATUS_LABELS[reqStatus]}</Text>
                   </View>
-                  <TouchableOpacity onPress={() => toggleArchive(r.threadId)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <TouchableOpacity
+                    onPress={() => toggleArchive(r.threadId)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      isArchived ? uiCopy.messages.unarchiveThreadInListAccessibility : uiCopy.messages.archiveThreadInListAccessibility
+                    }
+                  >
                     <Text style={{ fontSize: 12, color: colors.textSecondary }}>{isArchived ? '↩' : '📦'}</Text>
                   </TouchableOpacity>
                 </View>

@@ -697,6 +697,13 @@ export const uiCopy = {
     deleteOptionRequestFailed: 'Could not delete this option request. Please try again.',
     deleteOptionRequestNotAllowed:
       'This option request cannot be deleted because the job was already confirmed.',
+    /** Option request list: archive is local list visibility only — not a server delete. */
+    optionRequestListFilterCurrent: 'Current',
+    optionRequestListFilterArchived: 'Archived',
+    archiveThreadInListAccessibility: 'Archive in this list',
+    unarchiveThreadInListAccessibility: 'Move back to current list',
+    archiveThreadDoesNotDeleteShort:
+      'Archiving only hides the thread in this list. Open it and use Delete to remove the request and calendars for everyone.',
   },
   /** Recruiting chat RPC errors and messages. */
   recruiting: {

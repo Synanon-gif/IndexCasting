@@ -4699,7 +4699,10 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
     void (async () => {
       setDeletingOptionId(threadId);
       try {
-        const ok = await deleteOptionRequestFull(reqId);
+        const ok = await deleteOptionRequestFull(reqId, {
+          auditActor: 'agency',
+          auditOrganizationId: agencyOrganizationIdProp,
+        });
         if (!ok) {
           showAppAlert(uiCopy.common.error, uiCopy.messages.deleteOptionRequestFailed);
           return;
@@ -5422,11 +5425,14 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
         <View style={{ flexDirection: 'row', gap: 4 }}>
           {(['current', 'archived'] as const).map((f) => (
             <TouchableOpacity key={f} style={[s.filterPill, msgFilter === f && s.filterPillActive]} onPress={() => setMsgFilter(f)}>
-              <Text style={[s.filterPillLabel, msgFilter === f && s.filterPillLabelActive]}>{f === 'current' ? 'Current' : 'Archived'}</Text>
+              <Text style={[s.filterPillLabel, msgFilter === f && s.filterPillLabelActive]}>
+                {f === 'current' ? uiCopy.messages.optionRequestListFilterCurrent : uiCopy.messages.optionRequestListFilterArchived}
+              </Text>
             </TouchableOpacity>
           ))}
         </View>
       </View>
+      <Text style={[s.metaText, { marginBottom: spacing.sm }]}>{uiCopy.messages.archiveThreadDoesNotDeleteShort}</Text>
       {Object.keys(assignmentByClientOrgId).length > 0 && (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.sm }}>
           {(['all', 'mine', 'unassigned'] as const).map((scope) => (
@@ -5545,7 +5551,15 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                   <View style={[s.statusPill, { backgroundColor: STATUS_COLORS[reqStatus] }]}>
                     <Text style={s.statusPillLabel}>{STATUS_LABELS[reqStatus]}</Text>
                   </View>
-                  <TouchableOpacity onPress={() => toggleArchive(r.threadId)}>
+                  <TouchableOpacity
+                    onPress={() => toggleArchive(r.threadId)}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      archivedIds.has(r.threadId)
+                        ? uiCopy.messages.unarchiveThreadInListAccessibility
+                        : uiCopy.messages.archiveThreadInListAccessibility
+                    }
+                  >
                     <Text style={{ fontSize: 12, color: colors.textSecondary }}>{archivedIds.has(r.threadId) ? '↩' : '📦'}</Text>
                   </TouchableOpacity>
                 </View>

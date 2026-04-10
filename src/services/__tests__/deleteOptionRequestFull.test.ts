@@ -10,10 +10,14 @@ jest.mock('../../utils/logAction', () => ({
 }));
 
 import { supabase } from '../../../lib/supabase';
+import { logAction } from '../../utils/logAction';
 import { deleteOptionRequestFull } from '../optionRequestsSupabase';
 
 const rpc = supabase.rpc as jest.Mock;
 const from = supabase.from as jest.Mock;
+
+const agencyOpts = { auditActor: 'agency' as const };
+const clientOpts = { auditActor: 'client' as const };
 
 describe('deleteOptionRequestFull', () => {
   beforeEach(() => {
@@ -48,8 +52,8 @@ describe('deleteOptionRequestFull', () => {
           model_account_linked: true,
           booker_id: null,
           organization_id: 'org-client-1',
-          agency_organization_id: null,
-          client_organization_id: null,
+          agency_organization_id: 'org-agency-1',
+          client_organization_id: 'org-client-1',
           created_by: null,
           agency_assignee_user_id: null,
           created_at: new Date().toISOString(),
@@ -64,23 +68,69 @@ describe('deleteOptionRequestFull', () => {
 
   it('returns false when row has final_status job_confirmed', async () => {
     mockOptionRow({ final_status: 'job_confirmed' });
-    await expect(deleteOptionRequestFull('opt-1')).resolves.toBe(false);
+    await expect(deleteOptionRequestFull('opt-1', agencyOpts)).resolves.toBe(false);
     expect(rpc).not.toHaveBeenCalled();
   });
 
   it('calls delete_option_request_full RPC and returns true on success', async () => {
     mockOptionRow();
     rpc.mockResolvedValue({ error: null });
-    await expect(deleteOptionRequestFull('opt-1')).resolves.toBe(true);
+    await expect(deleteOptionRequestFull('opt-1', agencyOpts)).resolves.toBe(true);
     expect(rpc).toHaveBeenCalledWith('delete_option_request_full', {
       p_option_request_id: 'opt-1',
     });
   });
 
+  it('logs audit with agency org when auditActor is agency', async () => {
+    mockOptionRow();
+    rpc.mockResolvedValue({ error: null });
+    await deleteOptionRequestFull('opt-1', agencyOpts);
+    expect(logAction).toHaveBeenCalledWith(
+      'org-agency-1',
+      'deleteOptionRequestFull',
+      expect.objectContaining({
+        type: 'audit',
+        action: 'option_request_deleted',
+        entityType: 'option_request',
+        entityId: 'opt-1',
+      }),
+    );
+  });
+
+  it('logs audit with client org when auditActor is client', async () => {
+    mockOptionRow();
+    rpc.mockResolvedValue({ error: null });
+    await deleteOptionRequestFull('opt-1', clientOpts);
+    expect(logAction).toHaveBeenCalledWith(
+      'org-client-1',
+      'deleteOptionRequestFull',
+      expect.objectContaining({
+        type: 'audit',
+        action: 'option_request_deleted',
+        entityId: 'opt-1',
+      }),
+    );
+  });
+
+  it('prefers explicit auditOrganizationId for audit log', async () => {
+    mockOptionRow();
+    rpc.mockResolvedValue({ error: null });
+    await deleteOptionRequestFull('opt-1', {
+      auditActor: 'agency',
+      auditOrganizationId: 'explicit-org-uuid',
+    });
+    expect(logAction).toHaveBeenCalledWith(
+      'explicit-org-uuid',
+      'deleteOptionRequestFull',
+      expect.objectContaining({ entityId: 'opt-1' }),
+    );
+  });
+
   it('returns false when RPC errors', async () => {
     mockOptionRow();
     rpc.mockResolvedValue({ error: { message: 'access_denied' } });
-    await expect(deleteOptionRequestFull('opt-1')).resolves.toBe(false);
+    await expect(deleteOptionRequestFull('opt-1', agencyOpts)).resolves.toBe(false);
+    expect(logAction).not.toHaveBeenCalled();
   });
 
   it('returns false when option row not found', async () => {
@@ -89,7 +139,7 @@ describe('deleteOptionRequestFull', () => {
       eq: jest.fn().mockReturnThis(),
       maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
     });
-    await expect(deleteOptionRequestFull('missing')).resolves.toBe(false);
+    await expect(deleteOptionRequestFull('missing', agencyOpts)).resolves.toBe(false);
     expect(rpc).not.toHaveBeenCalled();
   });
 });

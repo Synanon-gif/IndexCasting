@@ -1809,11 +1809,44 @@ export async function getPendingModelConfirmations(
   }
 }
 
+/** Who performed the delete — used to pick the correct org for audit_trail (log_audit_action membership). */
+export type DeleteOptionRequestAuditActor = 'agency' | 'client';
+
+export type DeleteOptionRequestFullOpts = {
+  /**
+   * Caller's organization UUID for audit_trail. Prefer when known (e.g. active team from profile).
+   * option_requests.organization_id is the CLIENT org — do not use it for agency-initiated deletes.
+   */
+  auditOrganizationId?: string | null;
+  /** Required: agency vs client determines fallback from the row when auditOrganizationId is omitted. */
+  auditActor: DeleteOptionRequestAuditActor;
+};
+
+/**
+ * Resolves org_id for log_audit_action after a successful delete.
+ * Agency: agency-side organizations.id (column or resolver). Client: client_organization_id ?? organization_id.
+ */
+async function resolveAuditOrganizationIdForOptionDelete(
+  row: SupabaseOptionRequest,
+  opts: DeleteOptionRequestFullOpts,
+): Promise<string | null> {
+  const explicit = opts.auditOrganizationId != null ? String(opts.auditOrganizationId).trim() : '';
+  if (explicit) return explicit;
+
+  if (opts.auditActor === 'agency') {
+    return resolveAgencyOrgIdForOptionNotification(row.agency_id, row.agency_organization_id);
+  }
+
+  const clientOrg = row.client_organization_id ?? row.organization_id;
+  const c = clientOrg != null ? String(clientOrg).trim() : '';
+  return c !== '' ? c : null;
+}
+
 /**
  * Atomically deletes an option_request and dependent rows (messages, calendar, booking_events, etc.).
  * Server enforces participant access and blocks when final_status = job_confirmed.
  */
-export async function deleteOptionRequestFull(id: string): Promise<boolean> {
+export async function deleteOptionRequestFull(id: string, opts: DeleteOptionRequestFullOpts): Promise<boolean> {
   try {
     const row = await getOptionRequestById(id);
     if (!row) {
@@ -1831,12 +1864,17 @@ export async function deleteOptionRequestFull(id: string): Promise<boolean> {
       console.error('deleteOptionRequestFull RPC error:', error);
       return false;
     }
-    logAction(row.organization_id, 'deleteOptionRequestFull', {
-      type: 'audit',
-      action: 'option_request_deleted',
-      entityType: 'option_request',
-      entityId: id,
-    });
+    const auditOrgId = await resolveAuditOrganizationIdForOptionDelete(row, opts);
+    if (auditOrgId) {
+      logAction(auditOrgId, 'deleteOptionRequestFull', {
+        type: 'audit',
+        action: 'option_request_deleted',
+        entityType: 'option_request',
+        entityId: id,
+      });
+    } else {
+      console.warn('[deleteOptionRequestFull] could not resolve audit org — audit log skipped', { id, auditActor: opts.auditActor });
+    }
     return true;
   } catch (e) {
     console.error('deleteOptionRequestFull exception:', e);

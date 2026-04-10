@@ -842,7 +842,10 @@ export async function clientRejectCounterStore(threadId: string): Promise<boolea
 export async function agencyRejectNegotiationStore(threadId: string): Promise<boolean> {
   const req = requestsCache.find((r) => r.threadId === threadId);
   if (!req) return false;
-  const ok = await deleteOptionRequestFull(req.id);
+  const ok = await deleteOptionRequestFull(req.id, {
+    auditActor: 'agency',
+    auditOrganizationId: req.agencyOrganizationId,
+  });
   if (!ok) return false;
   purgeOptionThreadFromStore(threadId);
   return true;
