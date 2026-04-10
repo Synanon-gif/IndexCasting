@@ -289,46 +289,67 @@ export async function insertOptionRequest(req: {
   const modelApproval = modelAccountLinked ? 'pending' : 'approved';
   const modelApprovedAt = modelAccountLinked ? null : new Date().toISOString();
 
+  const rowStatus = 'in_negotiation';
+  const rowFinalStatus = 'option_pending';
+  const rowClientPriceStatus = 'pending';
+
+  const insertRow = {
+    client_id: req.client_id,
+    model_id: req.model_id,
+    agency_id: req.agency_id,
+    requested_date: req.requested_date,
+    project_id: req.project_id || null,
+    client_name: req.client_name ? sanitizeHtml(normalizeInput(req.client_name)) : null,
+    model_name: req.model_name ? sanitizeHtml(normalizeInput(req.model_name)) : null,
+    proposed_price: req.proposed_price || null,
+    agency_counter_price: null,
+    client_price_status: rowClientPriceStatus,
+    final_status: rowFinalStatus,
+    request_type: req.request_type || 'option',
+    currency: req.currency || null,
+    start_time: req.start_time || null,
+    end_time: req.end_time || null,
+    status: rowStatus,
+    model_approval: modelApproval,
+    model_approved_at: modelApprovedAt,
+    model_account_linked: modelAccountLinked,
+    organization_id: orgId,
+    agency_organization_id: agencyOrgId,
+    client_organization_id: clientOrgId,
+    created_by: req.created_by ?? null,
+  };
+
   const { data, error } = await supabase
     .from('option_requests')
-    .insert({
-      client_id: req.client_id,
-      model_id: req.model_id,
-      agency_id: req.agency_id,
-      requested_date: req.requested_date,
-      project_id: req.project_id || null,
-      client_name: req.client_name ? sanitizeHtml(normalizeInput(req.client_name)) : null,
-      model_name: req.model_name ? sanitizeHtml(normalizeInput(req.model_name)) : null,
-      proposed_price: req.proposed_price || null,
-      agency_counter_price: null,
-      client_price_status: 'pending',
-      final_status: 'option_pending',
-      request_type: req.request_type || 'option',
-      currency: req.currency || null,
-      start_time: req.start_time || null,
-      end_time: req.end_time || null,
-      status: 'in_negotiation',
-      model_approval: modelApproval,
-      model_approved_at: modelApprovedAt,
-      model_account_linked: modelAccountLinked,
-      organization_id: orgId,
-      agency_organization_id: agencyOrgId,
-      client_organization_id: clientOrgId,
-      created_by: req.created_by ?? null,
-    })
+    .insert(insertRow)
     .select(OPTION_REQUEST_SELECT)
     .single();
   if (error) {
     const e = error as { code?: string; message?: string; details?: string; hint?: string };
+    const s = (v: string) => v.trim();
     console.error('[insertOptionRequest]', {
       code: e.code,
       message: e.message,
       details: e.details,
       hint: e.hint,
+      statusInsert: {
+        status: rowStatus,
+        statusEmpty: !s(rowStatus),
+        final_status: rowFinalStatus,
+        finalStatusEmpty: !s(rowFinalStatus),
+        client_price_status: rowClientPriceStatus,
+        clientPriceStatusEmpty: !s(rowClientPriceStatus),
+      },
       payloadSummary: {
         hasOrganizationId: !!orgId,
         hasClientOrgId: !!clientOrgId,
         hasAgencyOrgId: !!agencyOrgId,
+        organization_id_set: !!orgId,
+        client_organization_id_set: !!clientOrgId,
+        agency_organization_id_set: !!agencyOrgId,
+        organizationIdPrefix: orgId ? orgId.slice(0, 8) : null,
+        clientOrganizationIdPrefix: clientOrgId ? clientOrgId.slice(0, 8) : null,
+        agencyOrganizationIdPrefix: agencyOrgId ? agencyOrgId.slice(0, 8) : null,
         hasAgencyId: !!(req.agency_id && String(req.agency_id).trim()),
         hasProjectId: !!(req.project_id && String(req.project_id).trim()),
         requestType: req.request_type ?? 'option',
