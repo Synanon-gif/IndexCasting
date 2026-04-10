@@ -1186,6 +1186,25 @@ export const uiCopy = {
       'No model app account on file. The agency can negotiate and confirm with you without waiting for model approval. When confirmed, the booking appears in both calendars.',
     modelApprovedBooking: '✓ Approved by Model',
   },
+  /** Option/casting negotiation thread — fullscreen chat chrome (client + agency). */
+  optionNegotiationChat: {
+    back: 'Back',
+    confirmOption: 'Confirm option',
+    counterOffer: 'Counter offer',
+    rejectOption: 'Reject option',
+    messagePlaceholder: 'Message…',
+    send: 'Send',
+    rejectOptionTitle: 'Reject this request?',
+    rejectOptionMessage: 'The request will be marked as rejected.',
+    counterPlaceholder: 'Amount (e.g. 3000)',
+    proposeFeeHint: 'Propose a fee (optional)',
+    sendOffer: 'Send offer',
+    sendCounter: 'Send counter-offer',
+    declineProposedFee: 'Decline proposed fee',
+    clientPriceDeclinedCounterHint: 'Client price declined — enter a counter-offer',
+    negotiationContext: 'Negotiation',
+    proposedPriceLabel: 'Proposed price',
+  },
   modelMedia: {
     /** Alert title — image rights checkbox / confirm flow (portfolio, polaroids, agency add-model). */
     imageRightsRequiredTitle: 'Image Rights Required',

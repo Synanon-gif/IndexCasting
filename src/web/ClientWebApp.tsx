@@ -2,6 +2,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { handleTabPress, BOTTOM_TAB_BAR_HEIGHT } from '../navigation/bottomTabNavigation';
+import { OptionNegotiationChatShell } from '../components/optionNegotiation/OptionNegotiationChatShell';
+import { OptionSystemInfoBlock } from '../components/optionNegotiation/OptionSystemInfoBlock';
+import { shouldShowSystemMessageForViewer } from '../components/optionNegotiation/filterSystemMessagesForViewer';
 import {
   View,
   Text,
@@ -418,6 +421,10 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   const [optionDatePickerOpen, setOptionDatePickerOpen] = useState(false);
   const [optionDateModel, setOptionDateModel] = useState<ModelSummary | null>(null);
   const [openThreadIdOnMessages, setOpenThreadIdOnMessages] = useState<string | null>(null);
+  /** Where to return when closing fullscreen option negotiation (Back). */
+  const optionChatReturnRef = useRef<
+    { kind: 'list' } | { kind: 'tab'; tab: TopTab; restore?: () => void }
+  | null>(null);
   const [pendingClientB2BChat, setPendingClientB2BChat] = useState<{ conversationId: string; title: string } | null>(null);
   const [isChatWithAgencyLoading, setIsChatWithAgencyLoading] = useState(false);
   const [hasNew, setHasNew] = useState(false);
@@ -1687,6 +1694,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       countryCode?: string;
     }
   ) => {
+    const originTab = tab;
     const pkgExtra = packageViewState
       ? { source: 'package' as const, packageId: packageViewState.packageId }
       : {};
@@ -1710,6 +1718,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         ...pkgExtra,
         flowSource,
         onThreadReady: (dbThreadId) => {
+          optionChatReturnRef.current = { kind: 'tab', tab: originTab };
           setOpenThreadIdOnMessages(dbThreadId);
         },
       },
@@ -1769,7 +1778,18 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   const resetMessagesTabRoot = useCallback(() => {
     setOpenThreadIdOnMessages(null);
     setPendingClientB2BChat(null);
+    optionChatReturnRef.current = null;
   }, []);
+
+  const handleCloseOptionNegotiation = useCallback(() => {
+    const r = optionChatReturnRef.current;
+    optionChatReturnRef.current = null;
+    if (r?.kind === 'tab') {
+      setTab(r.tab);
+      if (r.tab === 'discover') resetDiscoverTabRoot();
+      if (r.tab === 'projects') resetProjectsTabRoot();
+    }
+  }, [setTab, resetDiscoverTabRoot, resetProjectsTabRoot]);
 
   const resetCalendarTabRoot = useCallback(() => {
     setSelectedCalendarItem(null);
@@ -1950,6 +1970,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
               setTab('messages');
             }}
             onSelectOption={(id) => {
+              optionChatReturnRef.current = { kind: 'tab', tab: 'dashboard' };
               setOpenThreadIdOnMessages(id);
               setTab('messages');
             }}
@@ -2015,6 +2036,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             onOpenOverview={openProjectOverview}
             onShareFolder={handleShareFolder}
             onOpenOptionChat={(threadId) => {
+              optionChatReturnRef.current = { kind: 'tab', tab: 'projects' };
               setOpenThreadIdOnMessages(threadId);
               setTab('messages');
             }}
@@ -2097,6 +2119,11 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             onBookingCardPress={() => setTab('calendar')}
             onPackagePress={(meta) => { void handlePackagePress(meta); }}
             onOptionRequestDeleted={() => { void loadClientCalendar(); }}
+            bottomTabInset={bottomTabInset}
+            onOptionThreadOpenedFromList={() => {
+              optionChatReturnRef.current = { kind: 'list' };
+            }}
+            onCloseOptionNegotiation={handleCloseOptionNegotiation}
           />
         )}
 
@@ -3808,6 +3835,12 @@ type MessagesViewProps = {
   onPackagePress?: (meta: Record<string, unknown>) => void;
   /** Refresh calendar / merged views after an option_request was deleted. */
   onOptionRequestDeleted?: () => void;
+  /** Tab bar + safe area inset for composer padding. */
+  bottomTabInset?: number;
+  /** Call when user opens a thread from the in-tab list (Back returns to list only). */
+  onOptionThreadOpenedFromList?: () => void;
+  /** After Back from fullscreen option chat: restore previous tab when opened from discover/project/dashboard. */
+  onCloseOptionNegotiation?: () => void;
 };
 
 const ClientB2BChatsPanel: React.FC<{
@@ -4030,9 +4063,14 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   onBookingCardPress,
   onPackagePress,
   onOptionRequestDeleted,
+  bottomTabInset: bottomTabInsetProp,
+  onOptionThreadOpenedFromList,
+  onCloseOptionNegotiation,
 }) => {
   const { height: messagesViewWindowHeight } = useWindowDimensions();
   const legacyChatPanelMessagesMaxHeight = getLegacyChatPanelMessagesMaxHeight(messagesViewWindowHeight);
+  const bottomTabInset = bottomTabInsetProp ?? BOTTOM_TAB_BAR_HEIGHT;
+  const [negotiationCounterExpanded, setNegotiationCounterExpanded] = useState(false);
   const [clientMsgTab, setClientMsgTab] = useState<'b2bChats' | 'optionRequests'>('b2bChats');
   const [clientMsgSearch, setClientMsgSearch] = useState('');
   const [requests, setRequests] = useState(getOptionRequests());
@@ -4144,6 +4182,8 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   const clientPriceStatus = request?.clientPriceStatus;
   const agencyCounterPrice = request?.agencyCounterPrice;
   const currency = request?.currency ?? 'EUR';
+  const viewerRole = isAgency ? 'agency' : 'client';
+  const filteredMessages = messages.filter((m) => shouldShowSystemMessageForViewer(m, viewerRole));
 
   const sendMessage = () => {
     const text = chatInput.trim();
@@ -4191,6 +4231,35 @@ const MessagesView: React.FC<MessagesViewProps> = ({
     );
   };
 
+  const handleBackOptionChat = () => {
+    setSelectedThreadId(null);
+    setNegotiationCounterExpanded(false);
+    setStatusDropdownOpen(false);
+    onCloseOptionNegotiation?.();
+  };
+
+  const handleRejectOptionNegotiation = () => {
+    if (!request?.threadId || !isAgency) return;
+    const threadId = request.threadId;
+    const run = () => {
+      setRequestStatus(threadId, 'rejected');
+      setRequests(getOptionRequests());
+    };
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const msg = `${uiCopy.optionNegotiationChat.rejectOptionTitle}\n\n${uiCopy.optionNegotiationChat.rejectOptionMessage}`;
+      if (window.confirm(msg)) run();
+      return;
+    }
+    Alert.alert(
+      uiCopy.optionNegotiationChat.rejectOptionTitle,
+      uiCopy.optionNegotiationChat.rejectOptionMessage,
+      [
+        { text: uiCopy.common.cancel, style: 'cancel' },
+        { text: uiCopy.optionNegotiationChat.rejectOption, style: 'destructive', onPress: run },
+      ],
+    );
+  };
+
   const openOrgChatFromRequest = async () => {
     if (!request?.agencyId || !clientOrgId || !currentUserId || openOrgChatBusy) return;
     setOpenOrgChatBusy(true);
@@ -4215,6 +4284,10 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   };
 
   const showClientMessagesTabs = !isAgency && !!clientUserId;
+  const optionFullscreenActive =
+    !!selectedThreadId &&
+    !!request &&
+    (!showClientMessagesTabs || clientMsgTab === 'optionRequests');
 
   return (
     <View style={styles.section}>
@@ -4259,6 +4332,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
             else onPendingClientB2BChatConsumed?.();
           }}
           onOpenRelatedRequest={(optionRequestId) => {
+            onOptionThreadOpenedFromList?.();
             setSelectedThreadId(optionRequestId);
             setClientMsgTab('optionRequests');
           }}
@@ -4267,6 +4341,8 @@ const MessagesView: React.FC<MessagesViewProps> = ({
           searchQuery={clientMsgSearch}
         />
       ) : (
+        <>
+      {!optionFullscreenActive ? (
         <>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm }}>
         <Text style={styles.sectionLabel}>Messages</Text>
@@ -4367,7 +4443,10 @@ const MessagesView: React.FC<MessagesViewProps> = ({
               <TouchableOpacity
                 key={r.threadId}
                 style={[styles.threadRow, selectedThreadId === r.threadId && styles.threadRowActive]}
-                onPress={() => setSelectedThreadId(r.threadId)}
+                onPress={() => {
+                  onOptionThreadOpenedFromList?.();
+                  setSelectedThreadId(r.threadId);
+                }}
               >
                 <View style={styles.threadRowLeft}>
                   <Text style={styles.threadTitle}>{r.modelName} · {r.date}</Text>
@@ -4408,39 +4487,34 @@ const MessagesView: React.FC<MessagesViewProps> = ({
           })
         )}
       </ScrollView>
+        </>
+      ) : null}
 
-      {request && (
-        <View style={[styles.chatPanel, Platform.OS === 'web' && { flex: 1, minHeight: 0 }]}>
-          <View style={styles.chatPanelHeader}>
-            <Text style={[styles.chatPanelTitle, { flex: 1 }]}>{request.modelName} · {request.date}</Text>
-            {isAgency ? (
-              <View style={styles.statusDropdownWrap}>
-                <Text style={styles.metaText}>Status: </Text>
-                <TouchableOpacity
-                  style={[styles.statusPill, { backgroundColor: status ? STATUS_COLORS[status] : colors.border }]}
-                  onPress={() => setStatusDropdownOpen(true)}
-                >
-                  <Text style={styles.statusPillLabel}>{status ? STATUS_LABELS[status] : '—'}</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View style={[styles.statusPill, status && { backgroundColor: STATUS_COLORS[status] }]}>
-                <Text style={styles.statusPillLabel}>{status ? STATUS_LABELS[status] : '—'}</Text>
-              </View>
-            )}
-            {finalStatus !== 'job_confirmed' ? (
+      {optionFullscreenActive && request ? (
+        <OptionNegotiationChatShell
+          title={isAgency ? `${request.clientName} · ${request.modelName}` : request.modelName}
+          subtitle={`${request.date}${request.startTime ? ` · ${request.startTime}–${request.endTime}` : ''}`}
+          onBack={handleBackOptionChat}
+          statusLabel={status ? STATUS_LABELS[status] : '—'}
+          statusBackgroundColor={status ? STATUS_COLORS[status] : colors.border}
+          onStatusPress={isAgency ? () => setStatusDropdownOpen(true) : undefined}
+          headerAccessory={
+            finalStatus !== 'job_confirmed' ? (
               <TouchableOpacity
                 onPress={handleDeleteOptionRequest}
                 disabled={!!deletingOptionId}
-                style={{ marginLeft: spacing.sm, opacity: deletingOptionId ? 0.5 : 1 }}
+                style={{ opacity: deletingOptionId ? 0.5 : 1 }}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
                 <Text style={{ fontSize: 12, color: colors.buttonSkipRed ?? '#c0392b', fontWeight: '600' }}>
                   {deletingOptionId ? uiCopy.common.loading : uiCopy.common.delete}
                 </Text>
               </TouchableOpacity>
-            ) : null}
-          </View>
+            ) : null
+          }
+          bottomInset={bottomTabInset}
+          footerTop={
+            <>
           {request.clientOrganizationId && (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.sm }}>
               {assignmentByClientOrgId[request.clientOrganizationId] ? (
@@ -4502,7 +4576,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
           )}
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.sm }}>
             <View style={[styles.statusPill, { backgroundColor: '#e0e7ff' }]}>
-              <Text style={[styles.statusPillLabel, { color: '#3730a3' }]}>{uiCopy.b2bChat.contextNegotiationThread}</Text>
+              <Text style={[styles.statusPillLabel, { color: '#3730a3' }]}>{uiCopy.optionNegotiationChat.negotiationContext}</Text>
             </View>
             <TouchableOpacity
               style={[styles.filterPill, openOrgChatBusy && { opacity: 0.6 }]}
@@ -4533,42 +4607,57 @@ const MessagesView: React.FC<MessagesViewProps> = ({
               </Text>
             </View>
           )}
-          {isAgency && request.modelApproval === 'approved' && clientPriceStatus === 'pending' && finalStatus !== 'job_confirmed' && request.proposedPrice != null && (
+          {isAgency && request.modelApproval === 'approved' && finalStatus !== 'job_confirmed' && status !== 'rejected' && (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm }}>
+              {request.proposedPrice != null && clientPriceStatus === 'pending' ? (
+                <TouchableOpacity
+                  style={[styles.filterPill, { backgroundColor: colors.buttonOptionGreen }]}
+                  onPress={async () => {
+                    if (request?.threadId) {
+                      await agencyAcceptClientPriceStore(request.threadId);
+                      setRequests(getOptionRequests());
+                    }
+                  }}
+                >
+                  <Text style={[styles.filterPillLabel, { color: '#fff' }]}>{uiCopy.optionNegotiationChat.confirmOption}</Text>
+                </TouchableOpacity>
+              ) : null}
               <TouchableOpacity
-                style={[styles.filterPill, { backgroundColor: colors.buttonOptionGreen }]}
-                onPress={async () => {
-                  if (request?.threadId) {
-                    await agencyAcceptClientPriceStore(request.threadId);
-                    setRequests(getOptionRequests());
-                  }
-                }}
+                style={styles.filterPill}
+                onPress={() => setNegotiationCounterExpanded((e) => !e)}
               >
-                <Text style={[styles.filterPillLabel, { color: '#fff' }]}>Accept client price</Text>
+                <Text style={styles.filterPillLabel}>{uiCopy.optionNegotiationChat.counterOffer}</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.filterPill, { borderWidth: 1, borderColor: colors.buttonSkipRed }]}
-                onPress={async () => {
-                  if (request?.threadId) {
-                    await agencyRejectClientPriceStore(request.threadId);
-                    setRequests(getOptionRequests());
-                  }
-                }}
-              >
-                <Text style={[styles.filterPillLabel, { color: colors.buttonSkipRed }]}>Reject client price</Text>
+              <TouchableOpacity style={[styles.filterPill, { borderWidth: 1, borderColor: colors.buttonSkipRed }]} onPress={handleRejectOptionNegotiation}>
+                <Text style={[styles.filterPillLabel, { color: colors.buttonSkipRed }]}>{uiCopy.optionNegotiationChat.rejectOption}</Text>
               </TouchableOpacity>
             </View>
           )}
-          {isAgency && request.modelApproval === 'approved' && clientPriceStatus === 'rejected' && finalStatus !== 'job_confirmed' && (
+          {isAgency && request.modelApproval === 'approved' && clientPriceStatus === 'pending' && finalStatus !== 'job_confirmed' && request.proposedPrice != null && (
+            <TouchableOpacity
+              style={{ alignSelf: 'flex-start', marginBottom: spacing.sm }}
+              onPress={async () => {
+                if (request?.threadId) {
+                  await agencyRejectClientPriceStore(request.threadId);
+                  setRequests(getOptionRequests());
+                }
+              }}
+            >
+              <Text style={{ ...typography.label, fontSize: 12, color: colors.buttonSkipRed, fontWeight: '600' }}>
+                {uiCopy.optionNegotiationChat.declineProposedFee}
+              </Text>
+            </TouchableOpacity>
+          )}
+          {isAgency && negotiationCounterExpanded && request.modelApproval === 'approved' && clientPriceStatus === 'rejected' && finalStatus !== 'job_confirmed' && (
             <View style={{ marginBottom: spacing.sm, padding: spacing.sm, backgroundColor: 'rgba(180,100,0,0.08)', borderRadius: 8 }}>
               <Text style={{ ...typography.label, fontSize: 11, color: colors.textPrimary, marginBottom: spacing.xs }}>
-                Client price declined — enter a counter-offer
+                {uiCopy.optionNegotiationChat.clientPriceDeclinedCounterHint}
               </Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
                 <TextInput
                   value={agencyCounterInput}
                   onChangeText={setAgencyCounterInput}
-                  placeholder="Counter (e.g. 3000)"
+                  placeholder={uiCopy.optionNegotiationChat.counterPlaceholder}
                   placeholderTextColor={colors.textSecondary}
                   keyboardType="numeric"
                   style={[styles.chatPanelInput, { flex: 1, minWidth: 120 }]}
@@ -4580,21 +4669,22 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                     if (!request?.threadId || isNaN(num)) return;
                     await agencyCounterOfferStore(request.threadId, num, currency);
                     setAgencyCounterInput('');
+                    setNegotiationCounterExpanded(false);
                     setRequests(getOptionRequests());
                   }}
                 >
-                  <Text style={[styles.filterPillLabel, { color: '#fff' }]}>Send counter-offer</Text>
+                  <Text style={[styles.filterPillLabel, { color: '#fff' }]}>{uiCopy.optionNegotiationChat.sendCounter}</Text>
                 </TouchableOpacity>
               </View>
             </View>
           )}
-          {isAgency && request.modelApproval === 'approved' && clientPriceStatus === 'pending' && finalStatus !== 'job_confirmed' && request.proposedPrice == null && (
+          {isAgency && negotiationCounterExpanded && request.modelApproval === 'approved' && clientPriceStatus === 'pending' && finalStatus !== 'job_confirmed' && request.proposedPrice == null && (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm, alignItems: 'center' }}>
-              <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary }}>Propose a fee (optional)</Text>
+              <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary }}>{uiCopy.optionNegotiationChat.proposeFeeHint}</Text>
               <TextInput
                 value={agencyCounterInput}
                 onChangeText={setAgencyCounterInput}
-                placeholder="Amount"
+                placeholder={uiCopy.optionNegotiationChat.counterPlaceholder}
                 placeholderTextColor={colors.textSecondary}
                 keyboardType="numeric"
                 style={[styles.chatPanelInput, { width: 100 }]}
@@ -4606,10 +4696,11 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                   if (!request?.threadId || isNaN(num)) return;
                   await agencyCounterOfferStore(request.threadId, num, currency);
                   setAgencyCounterInput('');
+                  setNegotiationCounterExpanded(false);
                   setRequests(getOptionRequests());
                 }}
               >
-                <Text style={styles.filterPillLabel}>Send offer</Text>
+                <Text style={styles.filterPillLabel}>{uiCopy.optionNegotiationChat.sendOffer}</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -4639,20 +4730,28 @@ const MessagesView: React.FC<MessagesViewProps> = ({
               <Text style={[styles.filterPillLabel, { color: '#fff' }]}>Confirm job</Text>
             </TouchableOpacity>
           )}
-          <ScrollView
-            style={[
-              styles.chatPanelMessages,
-              Platform.OS === 'web'
-                ? { flex: 1, minHeight: 0 }
-                : { maxHeight: legacyChatPanelMessagesMaxHeight },
-            ]}
-          >
-            {messages.map((msg) =>
+            </>
+          }
+          composer={
+            <View style={styles.chatPanelInputRow}>
+            <TextInput
+              value={chatInput}
+              onChangeText={setChatInput}
+              placeholder={uiCopy.optionNegotiationChat.messagePlaceholder}
+              placeholderTextColor={colors.textSecondary}
+              style={styles.chatPanelInput}
+            />
+            <TouchableOpacity style={styles.chatPanelSend} onPress={sendMessage}>
+              <Text style={styles.chatPanelSendLabel}>{uiCopy.optionNegotiationChat.send}</Text>
+            </TouchableOpacity>
+          </View>
+          }
+          containerStyle={{ flex: 1, minHeight: 0 }}
+        >
+          <>
+            {filteredMessages.map((msg) =>
               msg.from === 'system' ? (
-                <View key={msg.id} style={[styles.chatBubble, styles.chatBubbleSystem]}>
-                  <Text style={styles.chatBubbleSystemLabel}>{uiCopy.systemMessages.systemMessageLabel}</Text>
-                  <Text style={[styles.chatBubbleText, styles.chatBubbleSystemText]}>{msg.text}</Text>
-                </View>
+                <OptionSystemInfoBlock key={msg.id} text={msg.text} />
               ) : (
                 <View
                   key={msg.id}
@@ -4664,23 +4763,11 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                 </View>
               ),
             )}
-          </ScrollView>
-          <View style={styles.chatPanelInputRow}>
-            <TextInput
-              value={chatInput}
-              onChangeText={setChatInput}
-              placeholder="Message..."
-              placeholderTextColor={colors.textSecondary}
-              style={styles.chatPanelInput}
-            />
-            <TouchableOpacity style={styles.chatPanelSend} onPress={sendMessage}>
-              <Text style={styles.chatPanelSendLabel}>Send</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
+          </>
+        </OptionNegotiationChatShell>
+      ) : null}
 
-      {request && isAgency && statusDropdownOpen && (
+      {optionFullscreenActive && request && isAgency && statusDropdownOpen && (
         <StatusDropdownOverlay
           onSelect={(s) => {
             if (request) setRequestStatus(request.threadId, s);
