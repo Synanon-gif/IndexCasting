@@ -588,4 +588,24 @@ describe('getGuestLinkModels — RPC returns type-correct image arrays', () => {
     if (!result.ok) throw new Error('expected ok');
     expect(result.data).toEqual([]);
   });
+
+  it('passes through external https polaroid URLs when not in documentspictures path', async () => {
+    const external = 'https://cdn.example.com/polaroid/shot.jpg';
+    const rpcRows = [
+      {
+        id: 'model-ext', name: 'X', height: 180, bust: 90, waist: 70, hips: 92,
+        city: null, hair_color: null, eye_color: null, sex: 'male',
+        portfolio_images: [],
+        polaroids: [external],
+      },
+    ];
+    mockRpc.mockResolvedValue({ data: rpcRows, error: null });
+
+    const result = await getGuestLinkModels('link-polaroid-ext');
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.data[0].polaroids).toEqual([external]);
+    expect(mockCreateSignedUrl).not.toHaveBeenCalled();
+  });
 });

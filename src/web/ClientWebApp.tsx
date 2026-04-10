@@ -28,6 +28,11 @@ import { UI_DOUBLE_SUBMIT_DEBOUNCE_MS } from '../../lib/validation';
 import { showAppAlert } from '../utils/crossPlatformAlert';
 import { uiCopy } from '../constants/uiCopy';
 import { normalizeDocumentspicturesModelImageRef } from '../utils/normalizeModelPortfolioUrl';
+import {
+  getPackageCoverRawRef,
+  getPackageDisplayImages,
+  normalizePackageType,
+} from '../utils/packageDisplayMedia';
 import { canonicalDisplayCityForModel } from '../utils/canonicalModelCity';
 import { useAuth } from '../context/AuthContext';
 import { getModelsForClient, getModelData } from '../services/apiService';
@@ -1105,9 +1110,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         .then((data: any) => {
           if (packageViewState) {
             const raw = packageViewState.rawModels.find((m) => m.id === detailId);
-            const correctImages = packageViewState.packageType === 'polaroid'
-              ? (raw?.polaroids ?? [])
-              : (raw?.portfolio_images ?? []);
+            const correctImages = getPackageDisplayImages(raw, packageViewState.packageType);
             if (data) {
               setDetailData({
                 ...data,
@@ -1616,6 +1619,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         return;
       }
       const glModels = modelsRes.data;
+      const pkgType = normalizePackageType(gl.type);
       const packageModels: ModelSummary[] = glModels.map((m) => ({
         id: m.id,
         name: m.name,
@@ -1629,7 +1633,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         chest: (m as { chest?: number | null }).chest ?? m.bust ?? 0,
         legsInseam: 0,
         coverUrl: normalizeDocumentspicturesModelImageRef(
-          gl.type === 'polaroid' ? (m.polaroids?.[0] ?? '') : (m.portfolio_images?.[0] ?? ''),
+          getPackageCoverRawRef(m, pkgType),
           m.id,
         ),
         agencyId: null,
@@ -1648,7 +1652,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         name: packageName,
         models: packageModels,
         guestLink: typeof meta.guest_link === 'string' ? meta.guest_link : '',
-        packageType: gl.type,
+        packageType: pkgType,
         rawModels: glModels,
       });
       setCurrentIndex(0);
@@ -2118,6 +2122,13 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         data={detailData}
         onClose={closeDetails}
         onOptionRequest={handleOptionRequest}
+        detailMediaPackageType={
+          packageViewState &&
+          detailId &&
+          packageViewState.rawModels.some((m) => m.id === detailId)
+            ? packageViewState.packageType
+            : undefined
+        }
       />
 
       {selectedCalendarItem && (
@@ -4885,6 +4896,8 @@ type DetailProps = {
   data: MediaslideModel | null;
   onClose: () => void;
   onOptionRequest?: (modelName: string, modelId: string, date: string) => void;
+  /** When set, detail gallery copy/labels follow package type (authenticated package-open flow). */
+  detailMediaPackageType?: PackageType;
 };
 
 const ProjectDetailView: React.FC<DetailProps> = ({
@@ -4893,17 +4906,27 @@ const ProjectDetailView: React.FC<DetailProps> = ({
   data,
   onClose,
   onOptionRequest,
+  detailMediaPackageType,
 }) => {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<string | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
-  const normalizedPortfolioUrls = useMemo(() => {
+  const normalizedDisplayImageUrls = useMemo(() => {
     const id = data?.id ?? '';
     const imgs = data?.portfolio?.images ?? [];
     if (!id) return imgs;
     return imgs.map((u) => normalizeDocumentspicturesModelImageRef(u, id));
   }, [data?.id, data?.portfolio?.images]);
+
+  const mediaSectionLabel =
+    detailMediaPackageType === 'polaroid'
+      ? uiCopy.discover.detailMediaSectionPolaroid
+      : uiCopy.discover.detailMediaSectionPortfolio;
+  const mediaEmptyCopy =
+    detailMediaPackageType === 'polaroid'
+      ? uiCopy.discover.detailNoPolaroidImages
+      : uiCopy.discover.detailNoPortfolioImages;
 
   useEffect(() => {
     if (!open) {
@@ -4959,13 +4982,13 @@ const ProjectDetailView: React.FC<DetailProps> = ({
               </View>
             </View>
 
-            <Text style={styles.detailSectionLabel}>Portfolio</Text>
+            <Text style={styles.detailSectionLabel}>{mediaSectionLabel}</Text>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               style={styles.detailPortfolioRow}
             >
-              {normalizedPortfolioUrls.map((url, idx) => (
+              {normalizedDisplayImageUrls.map((url, idx) => (
                 <TouchableOpacity key={`${idx}-${url}`} onPress={() => setLightboxIndex(idx)} activeOpacity={0.85}>
                   <View style={{ position: 'relative', overflow: 'hidden', borderRadius: 12 }}>
                     <StorageImage
@@ -4980,8 +5003,8 @@ const ProjectDetailView: React.FC<DetailProps> = ({
                   </View>
                 </TouchableOpacity>
               ))}
-              {normalizedPortfolioUrls.length === 0 && (
-                <Text style={styles.metaText}>No portfolio images</Text>
+              {normalizedDisplayImageUrls.length === 0 && (
+                <Text style={styles.metaText}>{mediaEmptyCopy}</Text>
               )}
             </ScrollView>
 
@@ -5034,7 +5057,7 @@ const ProjectDetailView: React.FC<DetailProps> = ({
 
       {/* Lightbox */}
       {(() => {
-        const images = normalizedPortfolioUrls;
+        const images = normalizedDisplayImageUrls;
         const currentUrl = lightboxIndex !== null ? images[lightboxIndex] : null;
         const hasPrev = lightboxIndex !== null && lightboxIndex > 0;
         const hasNext = lightboxIndex !== null && lightboxIndex < images.length - 1;

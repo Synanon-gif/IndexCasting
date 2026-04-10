@@ -927,6 +927,12 @@ export const uiCopy = {
     detailMeasurementChest: 'Chest',
     detailMeasurementWaist: 'Waist',
     detailMeasurementHips: 'Hips',
+    /** Client web detail modal — image section when viewing a portfolio package. */
+    detailMediaSectionPortfolio: 'Portfolio',
+    /** Client web detail modal — image section when viewing a polaroid package. */
+    detailMediaSectionPolaroid: 'Polaroids',
+    detailNoPortfolioImages: 'No portfolio images',
+    detailNoPolaroidImages: 'No polaroid images',
   },
   /** Client Projects tab — project management actions. */
   projects: {

@@ -71,6 +71,7 @@ import {
 } from '../services/guestLinksSupabase';
 import { signInOrCreateGuestWithOtp } from '../services/guestAuthSupabase';
 import { uiCopy } from '../constants/uiCopy';
+import { getPackageCoverRawRef, getPackageDisplayImages, normalizePackageType } from '../utils/packageDisplayMedia';
 import { TermsScreen } from '../screens/TermsScreen';
 import { PrivacyScreen } from '../screens/PrivacyScreen';
 
@@ -233,6 +234,14 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
 
     return () => clearInterval(id);
   }, [linkId]);
+
+  const pkgType = normalizePackageType(link?.type);
+  const getGalleryImages = (m: GuestLinkModel): string[] =>
+    getPackageDisplayImages(m, pkgType);
+  const getCoverImage = (m: GuestLinkModel): string | undefined => {
+    const raw = getPackageCoverRawRef(m, pkgType);
+    return raw || undefined;
+  };
 
   const toggleModel = (id: string) => {
     setSelectedModelIds((prev) => {
@@ -503,16 +512,7 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
     );
   }
 
-  // ─── Gallery lightbox helper ────────────────────────────────────────────────
-  // Images are strictly separated by package type — never mixed.
-  const getGalleryImages = (m: GuestLinkModel): string[] =>
-    link?.type === 'polaroid'
-      ? (m.polaroids ?? [])
-      : (m.portfolio_images ?? []);
-
-  const getCoverImage = (m: GuestLinkModel): string | undefined =>
-    link?.type === 'polaroid' ? m.polaroids?.[0] : m.portfolio_images?.[0];
-
+  // ─── Gallery lightbox ───────────────────────────────────────────────────────
   const openGallery = (m: GuestLinkModel, startIndex = 0) => {
     setGalleryModel(m);
     setGalleryIndex(startIndex);
@@ -596,7 +596,7 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
         <Text style={styles.brand}>INDEX CASTING</Text>
         <View style={styles.headerMetaRow}>
           <Text style={styles.headerSub}>
-            {link?.type === 'polaroid' ? 'Polaroid Package' : 'Portfolio Package'} · {link?.agency_name || 'Agency'} · {models.length} models
+            {pkgType === 'polaroid' ? 'Polaroid Package' : 'Portfolio Package'} · {link?.agency_name || 'Agency'} · {models.length} models
           </Text>
           <View style={styles.guestBadgePill}>
             <Text style={styles.guestBadgePillLabel}>{copy.guestAccessBadge}</Text>

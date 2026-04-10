@@ -260,7 +260,13 @@ async function signImageUrls(
     urls.map(async (url) => {
       const normalized = normalizeDocumentspicturesModelImageRef(url, modelId);
       const path = extractStoragePath(normalized, DOCUMENTSPICTURES_BUCKET);
-      if (!path) return null;
+      if (!path) {
+        const passthrough = normalized.trim();
+        if (passthrough.startsWith('https://') || passthrough.startsWith('http://')) {
+          return passthrough;
+        }
+        return null;
+      }
       try {
         const { data, error } = await supabase.storage
           .from(DOCUMENTSPICTURES_BUCKET)
