@@ -499,6 +499,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     setRejectingBookingId(null);
     if (ok && profile) {
       await loadPendingConfirmations(profile.id);
+      await loadCalendar(profile.id);
     }
   };
 
