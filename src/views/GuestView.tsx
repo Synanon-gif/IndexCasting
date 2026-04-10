@@ -131,8 +131,12 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
         return;
       }
       setLink(g);
-      const results = await getGuestLinkModels(linkId);
-      setModels(results);
+      const modelsRes = await getGuestLinkModels(linkId);
+      if (!modelsRes.ok) {
+        setPageError(copy.modelsLoadFailed);
+        return;
+      }
+      setModels(modelsRes.data);
     } catch (e) {
       console.error('GuestView load error:', e);
       setPageError(copy.loadError);
@@ -218,9 +222,9 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
           return;
         }
         // Refresh signed URLs by re-fetching models
-        const results = await getGuestLinkModels(linkId);
-        if (results.length > 0) {
-          setModels(results);
+        const modelsRes = await getGuestLinkModels(linkId);
+        if (modelsRes.ok && modelsRes.data.length > 0) {
+          setModels(modelsRes.data);
         }
       } catch {
         // Non-fatal: images stay valid for 7 days — next interval will retry.

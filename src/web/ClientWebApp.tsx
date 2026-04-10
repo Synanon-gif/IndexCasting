@@ -1609,7 +1609,13 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         clearFeedbackLater();
         return;
       }
-      const glModels = await getGuestLinkModels(packageId);
+      const modelsRes = await getGuestLinkModels(packageId);
+      if (!modelsRes.ok) {
+        setFeedback(modelsRes.error);
+        clearFeedbackLater();
+        return;
+      }
+      const glModels = modelsRes.data;
       const packageModels: ModelSummary[] = glModels.map((m) => ({
         id: m.id,
         name: m.name,

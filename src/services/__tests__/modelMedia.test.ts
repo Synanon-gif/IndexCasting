@@ -29,7 +29,10 @@ jest.mock('../../../lib/supabase', () => ({
   supabase: {
     from: (...args: unknown[]) => mockFrom(...args),
     rpc: (...args: unknown[]) => mockRpc(...args),
-    auth: { getUser: () => mockAuthGetUser() },
+    auth: {
+      getUser: () => mockAuthGetUser(),
+      getSession: jest.fn().mockResolvedValue({ data: { session: null } }),
+    },
     storage: {
       from: (...args: unknown[]) => mockStorageFrom(...args),
     },
@@ -535,9 +538,11 @@ describe('getGuestLinkModels — RPC returns type-correct image arrays', () => {
     const result = await getGuestLinkModels('link-portfolio');
 
     expect(mockRpc).toHaveBeenCalledWith('get_guest_link_models', { p_link_id: 'link-portfolio' });
-    expect(result).toHaveLength(1);
-    expect(result[0].portfolio_images).toHaveLength(2);
-    expect(result[0].polaroids).toHaveLength(0);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.data).toHaveLength(1);
+    expect(result.data[0].portfolio_images).toHaveLength(2);
+    expect(result.data[0].polaroids).toHaveLength(0);
   });
 
   it('returns polaroids populated and portfolio_images = [] for a Polaroid Package', async () => {
@@ -557,24 +562,30 @@ describe('getGuestLinkModels — RPC returns type-correct image arrays', () => {
     const result = await getGuestLinkModels('link-polaroid');
 
     expect(mockRpc).toHaveBeenCalledWith('get_guest_link_models', { p_link_id: 'link-polaroid' });
-    expect(result).toHaveLength(1);
-    expect(result[0].polaroids).toHaveLength(2);
-    expect(result[0].portfolio_images).toHaveLength(0);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.data).toHaveLength(1);
+    expect(result.data[0].polaroids).toHaveLength(2);
+    expect(result.data[0].portfolio_images).toHaveLength(0);
   });
 
-  it('returns [] on RPC error — no crash', async () => {
+  it('returns ok:false on RPC error — no crash', async () => {
     mockRpc.mockResolvedValue({ data: null, error: { message: 'permission denied' } });
 
     const result = await getGuestLinkModels('link-bad');
 
-    expect(result).toEqual([]);
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected failure');
+    expect(result.error).toBeTruthy();
   });
 
-  it('returns [] for an invalid or expired link (RPC returns empty array)', async () => {
+  it('returns ok:true with empty data for an invalid or expired link (RPC returns empty array)', async () => {
     mockRpc.mockResolvedValue({ data: [], error: null });
 
     const result = await getGuestLinkModels('link-expired');
 
-    expect(result).toEqual([]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.data).toEqual([]);
   });
 });

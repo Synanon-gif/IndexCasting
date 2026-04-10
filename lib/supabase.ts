@@ -38,4 +38,11 @@ export const supabase = createClient(SAFE_URL, SAFE_KEY, {
     persistSession: true,
     detectSessionInUrl: Platform.OS === 'web',
   },
+  // Ensure apikey is always present on REST/fetch (some edge runtimes strip defaults).
+  // Do not set Authorization here — session bearer must win for authenticated calls.
+  global: {
+    headers: {
+      apikey: SAFE_KEY,
+    },
+  },
 });

@@ -1,5 +1,7 @@
 import { supabase } from '../../lib/supabase';
+import { uiCopy } from '../constants/uiCopy';
 import { extractBucketAndPath } from '../storage/storageUrl';
+import { serviceErr, serviceOkData, type ServiceResult } from '../types/serviceResult';
 import { normalizeDocumentspicturesModelImageRef } from '../utils/normalizeModelPortfolioUrl';
 
 /**
@@ -277,7 +279,8 @@ async function signImageUrls(
 /**
  * Fetches the models for an active guest link via a SECURITY DEFINER RPC.
  * Safe for anon callers — the RPC enforces the is_active + expiry guard.
- * Returns [] if the link is invalid/expired or on error.
+ *
+ * Returns {@link ServiceResult}: on failure callers must not treat as an empty package.
  *
  * M-3 fix (Security Audit 2026-04): image URLs are rewritten to signed URLs
  * so that links acquired in this session expire after the TTL rather than
@@ -285,14 +288,57 @@ async function signImageUrls(
  * 20260406: TTL increased from 15 min to 7 days to match the guest-link
  * access window. GuestView auto-refreshes every 6 h for long-lived sessions.
  */
-export async function getGuestLinkModels(linkId: string): Promise<GuestLinkModel[]> {
+export async function getGuestLinkModels(
+  linkId: string,
+): Promise<ServiceResult<GuestLinkModel[]>> {
+  const trimmed = linkId?.trim() ?? '';
+  if (!trimmed) {
+    return serviceErr(uiCopy.b2bChat.packageModelsLoadFailed);
+  }
+  const idPrefix = trimmed.length >= 8 ? `${trimmed.slice(0, 8)}…` : trimmed;
+
+  let hasSession = false;
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    hasSession = !!session;
+  } catch {
+    // non-fatal for diagnostics
+  }
+
+  // Introspect client only (no env.ts import — keeps Jest from loading expo-constants).
+  const sc = supabase as unknown as { supabaseUrl?: string; supabaseKey?: string };
+  let supabaseHost = '(unknown)';
+  try {
+    supabaseHost = new URL(sc.supabaseUrl || 'https://invalid.local').host;
+  } catch {
+    supabaseHost = '(parse-error)';
+  }
+  const hasNonEmptyAnonKey =
+    typeof sc.supabaseKey === 'string' && sc.supabaseKey.trim().length > 0;
+  const looksLikePlaceholderSupabaseUrl = (sc.supabaseUrl ?? '').includes('placeholder.supabase.co');
+
+  const diag = () => ({
+    p_link_id_prefix: idPrefix,
+    supabaseHost,
+    hasNonEmptyAnonKey,
+    looksLikePlaceholderSupabaseUrl,
+    hasSession,
+  });
+
   try {
     const { data, error } = await supabase.rpc('get_guest_link_models', {
-      p_link_id: linkId,
+      p_link_id: trimmed,
     });
     if (error) {
-      console.error('getGuestLinkModels RPC error:', error);
-      return [];
+      const e = error as { code?: string; message?: string; details?: string; hint?: string };
+      console.error('[getGuestLinkModels] rpc=get_guest_link_models', {
+        ...diag(),
+        code: e.code,
+        message: e.message,
+        details: e.details,
+        hint: e.hint,
+      });
+      return serviceErr(uiCopy.b2bChat.packageModelsLoadFailed);
     }
     const models = (data ?? []) as GuestLinkModel[];
 
@@ -310,10 +356,10 @@ export async function getGuestLinkModels(linkId: string): Promise<GuestLinkModel
         polaroids:        (await signImageUrls(m.polaroids, m.id)).filter((u): u is string => u !== null),
       })),
     );
-    return signed;
+    return serviceOkData(signed);
   } catch (e) {
-    console.error('getGuestLinkModels exception:', e);
-    return [];
+    console.error('[getGuestLinkModels] exception', { ...diag(), err: e });
+    return serviceErr(uiCopy.b2bChat.packageModelsLoadFailed);
   }
 }
 

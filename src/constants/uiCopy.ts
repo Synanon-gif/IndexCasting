@@ -599,6 +599,9 @@ export const uiCopy = {
     packageNoPreview: 'No preview available',
     /** Client opens shared package from chat — metadata RPC returned no row (invalid, expired, or inactive). */
     packageNotFoundOrExpired: 'Package not found or has expired.',
+    /** Models RPC failed (network, API config, or server) — do not show as empty package. */
+    packageModelsLoadFailed:
+      'Could not load models for this package. Check your connection and try again.',
     /** Client opens shared package — RPC/network failure (distinct from invalid link). */
     packageLoadFailed: 'Could not load package. Please try again.',
     exitPackageMode: 'Back to Discover',
@@ -1012,6 +1015,9 @@ export const uiCopy = {
     /** Hardcoded strings moved to uiCopy */
     invalidOrExpired: 'This link is invalid or has expired.',
     loadError: 'Could not load the package. Please try again.',
+    /** get_guest_link_models failed while link metadata was valid */
+    modelsLoadFailed:
+      'Could not load models for this package. Check your connection and try again.',
     loading: 'Loading…',
     legalTitle: 'Before you continue',
     legalTosLabel: 'I accept the Terms of Service',
