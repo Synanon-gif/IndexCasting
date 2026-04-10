@@ -20,7 +20,12 @@ export type CalendarProjectionLabels = {
   pricePending: string;
   priceAgreed: string;
   optionPending: string;
+  awaitingModel: string;
+  yourConfirmationNeeded: string;
 };
+
+/** Who views the calendar — affects copy when model must still confirm. */
+export type CalendarProjectionViewerRole = 'client' | 'agency' | 'model';
 
 export type CalendarProjectionBadge = {
   label: string;
@@ -41,18 +46,37 @@ function isCastingProjection(option: SupabaseOptionRequest, calendar_entry: Cale
   return false;
 }
 
+const AWAITING_MODEL_BADGE_BG = '#7B1FA2';
+
+/** Same predicate as Smart Attention post-agency / pre-model branch (see optionRequestAttention). */
+function isAwaitingLinkedModelConfirmation(option: SupabaseOptionRequest): boolean {
+  if (option.model_account_linked === false || option.model_account_linked == null) return false;
+  if (option.model_approval !== 'pending') return false;
+  if (option.final_status !== 'option_confirmed') return false;
+  if (option.status !== 'in_negotiation') return false;
+  return true;
+}
+
 /**
  * Badge for an option row + optional calendar_entry (client & agency lists).
+ * When a linked model must still confirm after agency acceptance — not generic "Option (confirmed)".
  */
 export function getCalendarProjectionBadge(
   option: SupabaseOptionRequest,
   calendar_entry: CalendarEntry | null,
   labels: CalendarProjectionLabels,
+  viewerRole: CalendarProjectionViewerRole = 'client',
 ): CalendarProjectionBadge {
   const textColor = '#fff';
 
   if (option.status === 'rejected') {
     return { label: labels.rejected, backgroundColor: colors.textSecondary, textColor };
+  }
+
+  if (isAwaitingLinkedModelConfirmation(option)) {
+    const label =
+      viewerRole === 'model' ? labels.yourConfirmationNeeded : labels.awaitingModel;
+    return { label, backgroundColor: AWAITING_MODEL_BADGE_BG, textColor };
   }
 
   if (isJobProjection(option, calendar_entry)) {
@@ -141,6 +165,7 @@ export function calendarGridColorForOptionItem(item: {
 }): string {
   const { option, calendar_entry } = item;
   if (option.status === 'rejected') return colors.textSecondary;
+  if (isAwaitingLinkedModelConfirmation(option)) return AWAITING_MODEL_BADGE_BG;
   if (isJobProjection(option, calendar_entry)) {
     return calendar_entry?.status === 'tentative' ? CALENDAR_COLORS.option : colors.buttonSkipRed;
   }

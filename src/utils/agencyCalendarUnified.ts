@@ -10,7 +10,7 @@ import type { AgencyCalendarItem, CalendarEntry } from '../services/calendarSupa
 import type { UserCalendarEvent } from '../services/userCalendarEventsSupabase';
 import type { ClientAssignmentFlag } from '../services/clientAssignmentsSupabase';
 import { colors } from '../theme/theme';
-import { calendarEntryColor } from './calendarColors';
+import { calendarGridColorForOptionItem } from './calendarProjectionLabel';
 import { deriveSmartAttentionState, smartAttentionVisibleForRole } from './optionRequestAttention';
 
 export type AgencyCalendarCategory = 'option' | 'casting' | 'booking';
@@ -251,8 +251,14 @@ export function filterUnifiedAgencyCalendarRows(
 /** Month grid dots — must match list filtering (same ids as unified rows). */
 export function buildEventsByDateFromUnifiedRows(
   rows: UnifiedAgencyCalendarRow[],
-): Record<string, Array<{ id: string; color: string; title: string; kind?: string }>> {
-  const map: Record<string, Array<{ id: string; color: string; title: string; kind?: string }>> = {};
+): Record<
+  string,
+  Array<{ id: string; color: string; title: string; kind?: string; optionRequestId?: string | null }>
+> {
+  const map: Record<
+    string,
+    Array<{ id: string; color: string; title: string; kind?: string; optionRequestId?: string | null }>
+  > = {};
   for (const row of rows) {
     const date = row.date;
     if (!date) continue;
@@ -268,11 +274,16 @@ export function buildEventsByDateFromUnifiedRows(
     }
     if (row.kind === 'option') {
       const et = row.item.calendar_entry?.entry_type;
+      const color = calendarGridColorForOptionItem({
+        option: row.item.option,
+        calendar_entry: row.item.calendar_entry,
+      });
       map[date].push({
         id: row.id,
-        color: calendarEntryColor(et),
+        color,
         title: row.title,
         kind: et ?? 'option',
+        optionRequestId: row.item.option.id,
       });
       continue;
     }
@@ -284,6 +295,7 @@ export function buildEventsByDateFromUnifiedRows(
       color,
       title: row.title,
       kind: row.entry.entry_type ?? 'booking',
+      optionRequestId: row.entry.option_request_id ?? undefined,
     });
   }
   return map;

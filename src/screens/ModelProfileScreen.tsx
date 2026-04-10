@@ -62,6 +62,7 @@ import { listModelAgencyDirectConversations } from '../services/b2bOrgChatSupaba
 import type { Conversation } from '../services/messengerSupabase';
 import { OrgMessengerInline } from '../components/OrgMessengerInline';
 import { ConfirmDestructiveModal } from '../components/ConfirmDestructiveModal';
+import { getCalendarDetailNextStepForModelLocalOption } from '../utils/calendarDetailNextStep';
 
 type ModelProfile = {
   id: string;
@@ -1415,6 +1416,48 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                   {entry.client_name && (
                     <Text style={st.metaText}>Client: {entry.client_name}</Text>
                   )}
+                  {openEntry.option_request_id ? (
+                    <>
+                      <Text style={[st.metaText, { marginTop: spacing.sm }]}>
+                        <Text style={{ fontWeight: '600' }}>{uiCopy.calendar.nextStepLabel}: </Text>
+                        {(() => {
+                          const localReq = getRequestByThreadId(openEntry.option_request_id!);
+                          if (!localReq) return uiCopy.calendar.nextStepNegotiating;
+                          return getCalendarDetailNextStepForModelLocalOption(localReq, {
+                            nextStepAwaitingModel: uiCopy.calendar.nextStepAwaitingModel,
+                            nextStepAwaitingAgency: uiCopy.calendar.nextStepAwaitingAgency,
+                            nextStepAwaitingClient: uiCopy.calendar.nextStepAwaitingClient,
+                            nextStepJobConfirm: uiCopy.calendar.nextStepJobConfirm,
+                            nextStepNegotiating: uiCopy.calendar.nextStepNegotiating,
+                            nextStepNoAction: uiCopy.calendar.nextStepNoAction,
+                            nextStepYourConfirm: uiCopy.calendar.nextStepYourConfirm,
+                          });
+                        })()}
+                      </Text>
+                      <TouchableOpacity
+                        style={{
+                          marginTop: spacing.sm,
+                          borderRadius: 999,
+                          backgroundColor: colors.textPrimary,
+                          paddingVertical: spacing.sm,
+                          alignItems: 'center',
+                        }}
+                        onPress={() => {
+                          const id = openEntry.option_request_id;
+                          if (!id) return;
+                          setSelectedOptionThread(id);
+                          setTab('options');
+                          setOpenEntry(null);
+                          setModelNotesDraft('');
+                          void loadMessagesForThread(id);
+                        }}
+                      >
+                        <Text style={{ ...typography.label, color: colors.surface }}>
+                          {uiCopy.calendar.openNegotiationThread}
+                        </Text>
+                      </TouchableOpacity>
+                    </>
+                  ) : null}
                 </View>
               );
             })()}

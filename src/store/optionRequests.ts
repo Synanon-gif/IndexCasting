@@ -223,7 +223,13 @@ export function addOptionRequest(
 
   (async () => {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user?.id) return;
+    if (!user?.id) {
+      requestsCache = requestsCache.filter((x) => x.id !== req.id);
+      messagesCache = messagesCache.filter((m) => m.id !== autoMessage.id);
+      notify();
+      showAppAlert(uiCopy.common.error, uiCopy.alerts.optionRequestRequiresSignIn);
+      return;
+    }
     const clientId = user.id;
 
     let organizationId: string | null = null;

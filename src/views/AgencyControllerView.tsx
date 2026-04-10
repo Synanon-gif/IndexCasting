@@ -207,6 +207,7 @@ import { getAgencyApiKeys, saveAgencyApiConnection } from '../services/agencySet
 import { checkModelCompleteness, type CompletenessContext } from '../utils/modelCompleteness';
 import { OPTION_REQUEST_CHAT_STATUS_COLORS } from '../utils/calendarColors';
 import { getCalendarProjectionBadge, getBookingEntryProjectionBadge } from '../utils/calendarProjectionLabel';
+import { getCalendarDetailNextStepText } from '../utils/calendarDetailNextStep';
 import {
   buildUnifiedAgencyCalendarRows,
   filterUnifiedAgencyCalendarRows,
@@ -242,6 +243,11 @@ const STATUS_LABELS: Record<ChatStatus, string> = {
 };
 
 const STATUS_COLORS: Record<ChatStatus, string> = OPTION_REQUEST_CHAT_STATUS_COLORS;
+
+function isUuidString(value: string | null | undefined): boolean {
+  if (!value || typeof value !== 'string') return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.trim());
+}
 
 function attentionLabelForAgency(state: SmartAttentionState): string {
   switch (state) {
@@ -769,10 +775,21 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
             setSelectedManualEvent(ev);
             setSelectedCalendarItem(null);
           }}
-          onOpenBookingEntry={(be) => Alert.alert(
-            be.title ?? uiCopy.calendar.bookingEvent,
-            `${uiCopy.calendar.date}: ${be.date}\n${uiCopy.calendar.status}: ${be.status ?? '—'}`,
-          )}
+          onOpenBookingEntry={(be) => {
+            const oid = be.option_request_id?.trim();
+            if (oid && isUuidString(oid)) {
+              setSearchOptionId(oid);
+              setTab('messages');
+              setSelectedCalendarItem(null);
+              setAgencyNotesDraft('');
+              setAgencySharedNoteDraft('');
+              return;
+            }
+            Alert.alert(
+              be.title ?? uiCopy.calendar.bookingEvent,
+              `${uiCopy.calendar.date}: ${be.date}\n${uiCopy.calendar.status}: ${be.status ?? '—'}${be.entry_type ? `\nType: ${be.entry_type}` : ''}\n\n${uiCopy.calendar.bookingEntryDetailFallback}`,
+            );
+          }}
           onAddEvent={() => setShowAddManualEvent(true)}
         />
       )}
@@ -1069,6 +1086,32 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                     {date}
                     {start ? ` · ${start}${end ? `–${end}` : ''}` : ''}
                   </Text>
+                  <Text style={[s.metaText, { marginTop: spacing.sm }]}>
+                    <Text style={{ fontWeight: '600' }}>{uiCopy.calendar.nextStepLabel}: </Text>
+                    {getCalendarDetailNextStepText(option, calendar_entry, 'agency', {
+                      nextStepAwaitingModel: uiCopy.calendar.nextStepAwaitingModel,
+                      nextStepAwaitingAgency: uiCopy.calendar.nextStepAwaitingAgency,
+                      nextStepAwaitingClient: uiCopy.calendar.nextStepAwaitingClient,
+                      nextStepJobConfirm: uiCopy.calendar.nextStepJobConfirm,
+                      nextStepNegotiating: uiCopy.calendar.nextStepNegotiating,
+                      nextStepNoAction: uiCopy.calendar.nextStepNoAction,
+                      nextStepYourConfirm: uiCopy.calendar.nextStepYourConfirm,
+                    })}
+                  </Text>
+                  <TouchableOpacity
+                    style={[s.saveBtn, { marginTop: spacing.sm, alignSelf: 'stretch', backgroundColor: colors.textPrimary }]}
+                    onPress={() => {
+                      setSearchOptionId(option.id);
+                      setTab('messages');
+                      setSelectedCalendarItem(null);
+                      setAgencyNotesDraft('');
+                      setAgencySharedNoteDraft('');
+                    }}
+                  >
+                    <Text style={[s.saveBtnLabel, { color: colors.surface }]}>
+                      {uiCopy.calendar.openNegotiationThread}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               );
             })()}
@@ -1642,6 +1685,7 @@ function renderAgencyCalendarOptionBadge(item: AgencyCalendarItem) {
     item.option,
     item.calendar_entry,
     uiCopy.calendar.projectionBadge,
+    'agency',
   );
   return (
     <View

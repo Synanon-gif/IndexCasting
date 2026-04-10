@@ -16,6 +16,8 @@ const L = {
   pricePending: 'Price (pending)',
   priceAgreed: 'Price agreed',
   optionPending: 'Option (pending)',
+  awaitingModel: 'Awaiting model',
+  yourConfirmationNeeded: 'Your confirmation needed',
 };
 
 function baseOption(over: Partial<SupabaseOptionRequest> = {}): SupabaseOptionRequest {
@@ -39,6 +41,7 @@ function baseOption(over: Partial<SupabaseOptionRequest> = {}): SupabaseOptionRe
     end_time: null,
     model_approval: 'pending',
     model_approved_at: null,
+    model_account_linked: true,
     booker_id: null,
     organization_id: null,
     agency_organization_id: null,
@@ -99,13 +102,50 @@ describe('calendarProjectionLabel', () => {
     expect(b.label).toBe(L.casting);
   });
 
-  it('maps option_confirmed', () => {
+  it('maps option_confirmed when not in waiting_for_model gate', () => {
     const b = getCalendarProjectionBadge(
-      baseOption({ final_status: 'option_confirmed' }),
+      baseOption({
+        final_status: 'option_confirmed',
+        status: 'confirmed',
+        model_approval: 'approved',
+        model_account_linked: true,
+      }),
       entry({ entry_type: 'option' }),
       L,
     );
     expect(b.label).toBe(L.optionConfirmed);
+  });
+
+  it('maps linked model pending to awaiting model (client view)', () => {
+    const b = getCalendarProjectionBadge(
+      baseOption({
+        status: 'in_negotiation',
+        final_status: 'option_confirmed',
+        client_price_status: 'accepted',
+        model_approval: 'pending',
+        model_account_linked: true,
+      }),
+      entry({ entry_type: 'option' }),
+      L,
+      'client',
+    );
+    expect(b.label).toBe(L.awaitingModel);
+  });
+
+  it('maps linked model pending to your confirmation needed (model view)', () => {
+    const b = getCalendarProjectionBadge(
+      baseOption({
+        status: 'in_negotiation',
+        final_status: 'option_confirmed',
+        client_price_status: 'accepted',
+        model_approval: 'pending',
+        model_account_linked: true,
+      }),
+      entry({ entry_type: 'option' }),
+      L,
+      'model',
+    );
+    expect(b.label).toBe(L.yourConfirmationNeeded);
   });
 
   it('maps client_price_status pending', () => {

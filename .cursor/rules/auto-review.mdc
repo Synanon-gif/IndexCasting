@@ -219,6 +219,7 @@ Q10: Leakt diese Änderung Verhandlungs-/kommerzielle Felder an Model-queries od
 - `supabase.rpc('admin_*', ...)` in non-admin Service/View (außerhalb `adminSupabase.ts` / `AdminDashboard`) — Risiko 18: Admin-RPCs erzwingen `assert_is_admin()`, non-admin Caller bekommen immer HTTP 400/403
 - `models`-INSERT ohne 23505-Recovery wenn E-Mail gesetzt — Risiko 19: Unique-Constraint auf `models.email` führt zu Dead-End; muss scoped lookup + 23505 retry haben
 - **Connection-Gate:** Erstkontakt-Flows wieder an **Pflicht**-`client_agency_connections` gekoppelt (Discover oder freigegebener Package-/Projekt-/Guest-Kontext reicht als Signal) — siehe `system-invariants.mdc` **### 1. CONNECTIONLESS FIRST-CONTACT INVARIANT**
+- **Kalender-Deeplink / Projektion:** Navigation vom Kalender in Threads **ohne** `option_requests.id` / `option_request_id` (z. B. nur Modelname oder Datum-Match) — Blocker; Kalender-Badge/„confirmed“-Anzeige die **Smart Attention** (`waiting_for_model` vs. `model_account_linked`) bricht — Blocker (siehe `system-invariants.mdc` **Kalender-UI — Deeplinks & Projektion**).
 
 ---
 

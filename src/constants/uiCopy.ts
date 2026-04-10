@@ -88,6 +88,9 @@ export const uiCopy = {
       'No agency territory found for this model and country. Booking cannot be created.',
     missingCountryCode:
       'Country is missing. Booking cannot be routed without a selected territory country.',
+    /** addOptionRequest: no Supabase session (guest / signed-out client surface). */
+    optionRequestRequiresSignIn:
+      'Sign in to submit an option or casting request. Nothing was sent.',
   },
   team: {
     section: 'Team',
@@ -198,6 +201,21 @@ export const uiCopy = {
     saveNotes: 'Save notes',
     savingNotes: 'Saving…',
     bookingDetailsTitle: 'Booking details',
+    /** Primary action — jump from calendar overlay to canonical option/casting thread (Messages). */
+    openNegotiationThread: 'Open negotiation',
+    /** Calendar detail — one-line next step from Smart Attention (role-filtered in UI). */
+    nextStepLabel: 'Next step',
+    nextStepAwaitingModel: 'Waiting for the model to confirm.',
+    nextStepAwaitingAgency: 'Waiting for the agency.',
+    nextStepAwaitingClient: 'Waiting for your organization.',
+    nextStepJobConfirm: 'Confirm this job when ready.',
+    nextStepNegotiating: 'Negotiation in progress.',
+    nextStepNoAction: 'No action required from you right now.',
+    nextStepYourConfirm: 'Confirm or decline in the request thread.',
+    /** Booking calendar row without link to option_requests — read-only detail. */
+    bookingEntryDetailFallback: 'This calendar entry is not linked to a request thread.',
+    /** Accessibility label for client calendar row attention dot */
+    actionRequiredA11y: 'Action required',
     /** Month/list badges — calendar projection (existing DB fields only). */
     projectionBadge: {
       rejected: 'Rejected',
@@ -209,6 +227,10 @@ export const uiCopy = {
       pricePending: 'Price (pending)',
       priceAgreed: 'Price agreed',
       optionPending: 'Option (pending)',
+      /** Linked model must still confirm (aligned with Smart Attention waiting_for_model). */
+      awaitingModel: 'Awaiting model',
+      /** Model-facing grid/list — same state, different copy. */
+      yourConfirmationNeeded: 'Your confirmation needed',
     },
   },
   /** Structured production fields on option-linked calendar rows (booking_details.booking_brief). */

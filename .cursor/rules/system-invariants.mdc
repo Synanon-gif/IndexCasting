@@ -328,6 +328,8 @@ Smart Attention, Inbox-, Thread- und Kalenderzustände müssen für alle Parteie
 
 **Kalender-Konsistenz:** `calendar_entries` / Workflow **rollenübergreifend** konsistent (Client, Agency, Model): Evolution Option → bestätigte Option → Booking/Job → Ablehnung/Storno — aligned mit Workflow-Wahrheit (Booking-Brief-Trust-Modell in Doku; keine feldweise RLS-Fiktion).
 
+**Kalender-UI — Deeplinks & Projektion (2026):** Navigation vom Kalender in den kanonischen Negotiation-Thread **nur** über stabile IDs (`option_requests.id` = Thread-ID; `calendar_entries.option_request_id` / `booking_events`-Links). Keine Heuristik über Namen oder Datum. Monats-/Listen-Badges und „Next step“-Hinweise müssen mit **Smart Attention** und **`model_account_linked`** übereinstimmen — insbesondere kein generisches „Option (confirmed)“, solange ein verknüpftes Model noch bestätigen muss (`waiting_for_model`). Client-Kalenderliste nutzt dieselbe **unified** Merge-Logik wie die Agency (inkl. orphan `booking_events`), nur mit rollenpassender Darstellung.
+
 ### 7. RETURNING / RLS PARITY INVARIANT
 
 **INSERT-RLS und SELECT-Sichtbarkeit** für PostgREST-**RETURNING** müssen für berechtigte Caller **konsistent** sein: keine Policy, die frisch eingefügte Rows im selben Statement für berechtigte Teilnehmer **unsichtbar** macht (kein „nur Self-Read“-Muster, das bei INSERT+RETURNING bricht).

@@ -63,6 +63,7 @@ import {
   getBookingEventsAsCalendarEntries,
   type CalendarEntry,
   type ClientCalendarItem,
+  type AgencyCalendarItem,
   type BookingDetails,
   updateBookingDetails,
   appendSharedBookingNote,
@@ -152,13 +153,19 @@ import {
   loadArchivedThreadIds,
   setThreadArchived,
 } from '../services/threadPreferencesSupabase';
-import { MonthCalendarView, type CalendarDayEvent } from '../components/MonthCalendarView';
+import { MonthCalendarView } from '../components/MonthCalendarView';
 import { OPTION_REQUEST_CHAT_STATUS_COLORS } from '../utils/calendarColors';
 import {
   getCalendarProjectionBadge,
-  calendarGridColorForOptionItem,
   dedupeCalendarGridEventsByOptionRequest,
 } from '../utils/calendarProjectionLabel';
+import { getCalendarDetailNextStepText } from '../utils/calendarDetailNextStep';
+import {
+  buildUnifiedAgencyCalendarRows,
+  filterUnifiedAgencyCalendarRows,
+  buildEventsByDateFromUnifiedRows,
+  type UnifiedAgencyCalendarRow,
+} from '../utils/agencyCalendarUnified';
 import {
   deriveSmartAttentionState,
   smartAttentionVisibleForRole,
@@ -177,6 +184,11 @@ import { ClientOrgProfileScreen } from '../screens/ClientOrgProfileScreen';
 
 /** Signed-URL lifetime for authenticated client views of model photos (private bucket). */
 const CLIENT_MODEL_IMAGE_TTL_SEC = 3600;
+
+function isUuidString(value: string | null | undefined): boolean {
+  if (!value || typeof value !== 'string') return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.trim());
+}
 
 /** Thin wrapper to pass client org metrics panel with owner role. */
 const ClientOrgMetricsPanelWrapper: React.FC<{ orgId: string }> = ({ orgId }) => (
@@ -1824,6 +1836,16 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     setClientSharedNoteDraft('');
   }, []);
 
+  const navigateToOptionThreadFromCalendar = useCallback(
+    (optionRequestId: string) => {
+      optionChatReturnRef.current = { kind: 'tab', tab: 'calendar' };
+      setOpenThreadIdOnMessages(optionRequestId);
+      setTab('messages');
+      resetCalendarTabRoot();
+    },
+    [resetCalendarTabRoot, setTab],
+  );
+
   const handleBottomTabPress = useCallback(
     (key: TopTab) => {
       handleTabPress({
@@ -2117,10 +2139,17 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                 setSelectedManualEvent(ev);
                 setSelectedCalendarItem(null);
               }}
-              onOpenBookingEntry={(be) => Alert.alert(
-                be.title ?? uiCopy.calendar.bookingEvent,
-                `${uiCopy.calendar.date}: ${be.date}\n${uiCopy.calendar.status}: ${be.status ?? '—'}`,
-              )}
+              onOpenBookingEntry={(be) => {
+                const oid = be.option_request_id?.trim();
+                if (oid && isUuidString(oid)) {
+                  navigateToOptionThreadFromCalendar(oid);
+                  return;
+                }
+                Alert.alert(
+                  be.title ?? uiCopy.calendar.bookingEvent,
+                  `${uiCopy.calendar.date}: ${be.date}\n${uiCopy.calendar.status}: ${be.status ?? '—'}${be.entry_type ? `\nType: ${be.entry_type}` : ''}\n\n${uiCopy.calendar.bookingEntryDetailFallback}`,
+                );
+              }}
               onAddEvent={() => isRealClient && setShowAddManualEvent(true)}
             />
           </View>
@@ -2232,6 +2261,28 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                     {date}
                     {start ? ` · ${start}${end ? `–${end}` : ''}` : ''}
                   </Text>
+                  {isRealClient ? (
+                    <>
+                      <Text style={[styles.metaText, { marginTop: spacing.sm }]}>
+                        <Text style={{ fontWeight: '600' }}>{uiCopy.calendar.nextStepLabel}: </Text>
+                        {getCalendarDetailNextStepText(option, calendar_entry, 'client', {
+                          nextStepAwaitingModel: uiCopy.calendar.nextStepAwaitingModel,
+                          nextStepAwaitingAgency: uiCopy.calendar.nextStepAwaitingAgency,
+                          nextStepAwaitingClient: uiCopy.calendar.nextStepAwaitingClient,
+                          nextStepJobConfirm: uiCopy.calendar.nextStepJobConfirm,
+                          nextStepNegotiating: uiCopy.calendar.nextStepNegotiating,
+                          nextStepNoAction: uiCopy.calendar.nextStepNoAction,
+                          nextStepYourConfirm: uiCopy.calendar.nextStepYourConfirm,
+                        })}
+                      </Text>
+                      <TouchableOpacity
+                        style={[styles.primaryButton, { marginTop: spacing.sm, alignSelf: 'stretch' }]}
+                        onPress={() => navigateToOptionThreadFromCalendar(option.id)}
+                      >
+                        <Text style={styles.primaryLabel}>{uiCopy.calendar.openNegotiationThread}</Text>
+                      </TouchableOpacity>
+                    </>
+                  ) : null}
                 </View>
               );
             })()}
@@ -3065,77 +3116,76 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
   const [calendarMonth, setCalendarMonth] = useState({ year: now.getFullYear(), month: now.getMonth() });
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
-  const eventsByDate = useMemo(() => {
-    const map: Record<string, CalendarDayEvent[]> = {};
-    manualEvents.forEach((ev) => {
-      if (!map[ev.date]) map[ev.date] = [];
-      map[ev.date].push({ id: ev.id, color: ev.color, title: ev.title, kind: 'manual' });
-    });
-    items.forEach((item) => {
-      const date = item.calendar_entry?.date ?? item.option.requested_date ?? '';
-      if (!date) return;
-      if (!map[date]) map[date] = [];
-      const entryType = item.calendar_entry?.entry_type;
-      const color = calendarGridColorForOptionItem(item);
-      map[date].push({
-        id: item.option.id,
-        color,
-        title: item.option.model_name ?? 'Model',
-        kind: entryType ?? 'option',
-        optionRequestId: item.option.id,
-      });
-    });
-    // Merge booking_events as the single source of truth; skip entries already covered
-    // by a calendar_entry sharing the same option_request_id to avoid duplicates.
-    const coveredOptionIds = new Set(
-      items.map((i) => i.calendar_entry?.option_request_id).filter(Boolean),
-    );
-    bookingEventEntries.forEach((be) => {
-      if (be.option_request_id && coveredOptionIds.has(be.option_request_id)) return;
-      const date = be.date;
-      if (!date) return;
-      if (!map[date]) map[date] = [];
-      let color = '#1565C0';
-      if (be.entry_type === 'booking') color = colors.buttonSkipRed;
-      else if (be.entry_type === 'casting' || be.entry_type === 'gosee') color = colors.textSecondary;
-      map[date].push({
-        id: be.id,
-        color,
-        title: be.title ?? 'Booking',
-        kind: be.entry_type ?? 'booking',
-        optionRequestId: be.option_request_id ?? undefined,
-      });
-    });
-    return dedupeCalendarGridEventsByOptionRequest(map);
-  }, [items, manualEvents, bookingEventEntries]);
+  const itemByOptionId = useMemo(() => {
+    const m = new Map<string, AgencyCalendarItem>();
+    for (const i of items) m.set(i.option.id, i as AgencyCalendarItem);
+    return m;
+  }, [items]);
+
+  const unifiedAll = useMemo(
+    () =>
+      buildUnifiedAgencyCalendarRows(
+        items as AgencyCalendarItem[],
+        bookingEventEntries,
+        manualEvents,
+        assignmentByClientOrgId,
+        itemByOptionId,
+      ),
+    [items, bookingEventEntries, manualEvents, assignmentByClientOrgId, itemByOptionId],
+  );
+
+  const filteredUnified = useMemo(
+    () =>
+      filterUnifiedAgencyCalendarRows(unifiedAll, {
+        modelQuery: '',
+        fromDate: '',
+        toDate: '',
+        typeFilter: 'all',
+        assigneeFilter: 'all',
+        clientScope: 'all',
+        urgency: 'all',
+        currentUserId: null,
+        assignmentByClientOrgId,
+      }),
+    [unifiedAll, assignmentByClientOrgId],
+  );
+
+  const eventsByDate = useMemo(
+    () =>
+      dedupeCalendarGridEventsByOptionRequest(
+        buildEventsByDateFromUnifiedRows(filteredUnified),
+      ),
+    [filteredUnified],
+  );
 
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
-  const sorted = useMemo(
+  const sortedUnified = useMemo(
     () =>
-      [...items]
-        .filter((a) => {
-          const date = a.calendar_entry?.date ?? a.option.requested_date;
-          return date != null && date >= today;
-        })
-        .sort((a, b) =>
-          (a.option.requested_date || '').localeCompare(b.option.requested_date || ''),
-        ),
-    [items, today],
-  );
-  const sortedManual = useMemo(
-    () =>
-      [...manualEvents]
-        .filter((ev) => (ev.date || '') >= today)
-        .sort((a, b) => a.date.localeCompare(b.date) || (a.start_time || '').localeCompare(b.start_time || '')),
-    [manualEvents, today],
+      [...filteredUnified]
+        .filter((r) => r.date >= today)
+        .sort((a, b) => a.sortKey.localeCompare(b.sortKey)),
+    [filteredUnified, today],
   );
 
-  const renderBadge = (item: ClientCalendarItem) => {
+  const openUnifiedRow = (row: UnifiedAgencyCalendarRow) => {
+    if (row.kind === 'manual') {
+      onOpenManualEvent(row.ev);
+      return;
+    }
+    if (row.kind === 'booking') {
+      onOpenBookingEntry?.(row.entry);
+      return;
+    }
+    onOpenDetails(row.item as ClientCalendarItem);
+  };
+
+  const renderOptionRowBadge = (item: ClientCalendarItem) => {
     const badge = getCalendarProjectionBadge(
       item.option,
       item.calendar_entry,
       uiCopy.calendar.projectionBadge,
+      'client',
     );
     return (
       <View
@@ -3209,12 +3259,8 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
                 key={ev.id}
                 style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, paddingVertical: 4 }}
                 onPress={() => {
-                  const manual = manualEvents.find((e) => e.id === ev.id);
-                  if (manual) { onOpenManualEvent(manual); return; }
-                  const item = items.find((i) => (i.calendar_entry?.date ?? i.option.requested_date) === selectedDate && i.option.id === ev.id);
-                  if (item) { onOpenDetails(item); return; }
-                  const beEntry = bookingEventEntries.find((be) => be.id === ev.id);
-                  if (beEntry && onOpenBookingEntry) onOpenBookingEntry(beEntry);
+                  const row = filteredUnified.find((r) => r.id === ev.id);
+                  if (row) openUnifiedRow(row);
                 }}
               >
                 <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: ev.color, marginRight: spacing.sm }} />
@@ -3225,34 +3271,62 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
         </View>
       )}
 
-      {sorted.length === 0 && sortedManual.length === 0 && !loading && (
+      {sortedUnified.length === 0 && !loading && (
         <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.sm }}>
           No calendar entries yet. Add your own events or wait for confirmed options/jobs.
         </Text>
       )}
 
       <ScrollView style={{ flex: 1 }}>
-        {sortedManual.map((ev) => (
-          <TouchableOpacity
-            key={ev.id}
-            style={styles.projectRow}
-            onPress={() => onOpenManualEvent(ev)}
-          >
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xs }}>
-              <Text style={styles.projectName}>{ev.title} · {ev.date}</Text>
-              <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: ev.color }} />
-            </View>
-            <Text style={styles.metaText}>
-              {ev.start_time || '—'}{ev.end_time ? ` – ${ev.end_time}` : ''}
-              {ev.note ? ` · ${ev.note}` : ''}
-            </Text>
-          </TouchableOpacity>
-        ))}
-        {sorted.map((item) => {
+        {sortedUnified.map((row) => {
+          if (row.kind === 'manual') {
+            const ev = row.ev;
+            return (
+              <TouchableOpacity
+                key={row.id}
+                style={styles.projectRow}
+                onPress={() => onOpenManualEvent(ev)}
+              >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xs }}>
+                  <Text style={styles.projectName}>{ev.title} · {ev.date}</Text>
+                  <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: ev.color }} />
+                </View>
+                <Text style={styles.metaText}>
+                  {ev.start_time || '—'}{ev.end_time ? ` – ${ev.end_time}` : ''}
+                  {ev.note ? ` · ${ev.note}` : ''}
+                </Text>
+              </TouchableOpacity>
+            );
+          }
+          if (row.kind === 'booking') {
+            const be = row.entry;
+            return (
+              <TouchableOpacity
+                key={row.id}
+                style={styles.projectRow}
+                onPress={() => onOpenBookingEntry?.(be)}
+              >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xs }}>
+                  <Text style={styles.projectName}>{row.title} · {be.date}</Text>
+                </View>
+                <Text style={styles.metaText}>{be.note ?? ''}</Text>
+              </TouchableOpacity>
+            );
+          }
+          const item = row.item as ClientCalendarItem;
           const { option, calendar_entry } = item;
           const date = calendar_entry?.date ?? option.requested_date;
           const start = calendar_entry?.start_time ?? option.start_time ?? undefined;
           const end = calendar_entry?.end_time ?? option.end_time ?? undefined;
+          const att = deriveSmartAttentionState({
+            status: option.status,
+            finalStatus: option.final_status,
+            clientPriceStatus: option.client_price_status,
+            modelApproval: option.model_approval,
+            modelAccountLinked: option.model_account_linked,
+            hasConflictWarning: false,
+          });
+          const clientAttention = smartAttentionVisibleForRole(att, 'client');
           return (
             <TouchableOpacity
               key={option.id}
@@ -3267,24 +3341,37 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
                   marginBottom: spacing.xs,
                 }}
               >
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.projectName}>
-                    {option.model_name ?? 'Model'} · {date}
-                  </Text>
-                  <Text style={styles.metaText}>
-                    {option.client_name ?? 'Client'}
-                    {start ? ` · ${start}${end ? `–${end}` : ''}` : ''}
-                  </Text>
-                  {option.client_organization_id && assignmentByClientOrgId[option.client_organization_id] ? (
-                    <Text style={styles.metaText}>
-                      {assignmentByClientOrgId[option.client_organization_id].label}
-                      {assignmentByClientOrgId[option.client_organization_id].assignedMemberName
-                        ? ` · ${assignmentByClientOrgId[option.client_organization_id].assignedMemberName}`
-                        : ''}
-                    </Text>
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
+                  {clientAttention ? (
+                    <View
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: 4,
+                        backgroundColor: colors.buttonSkipRed,
+                      }}
+                      accessibilityLabel={uiCopy.calendar.actionRequiredA11y}
+                    />
                   ) : null}
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.projectName}>
+                      {option.model_name ?? 'Model'} · {date}
+                    </Text>
+                    <Text style={styles.metaText}>
+                      {option.client_name ?? 'Client'}
+                      {start ? ` · ${start}${end ? `–${end}` : ''}` : ''}
+                    </Text>
+                    {option.client_organization_id && assignmentByClientOrgId[option.client_organization_id] ? (
+                      <Text style={styles.metaText}>
+                        {assignmentByClientOrgId[option.client_organization_id].label}
+                        {assignmentByClientOrgId[option.client_organization_id].assignedMemberName
+                          ? ` · ${assignmentByClientOrgId[option.client_organization_id].assignedMemberName}`
+                          : ''}
+                      </Text>
+                    ) : null}
+                  </View>
                 </View>
-                {renderBadge(item)}
+                {renderOptionRowBadge(item)}
               </View>
               {calendar_entry?.booking_details && (
                 <Text
