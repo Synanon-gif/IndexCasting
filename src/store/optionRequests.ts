@@ -1,7 +1,7 @@
 /**
  * Option Requests + Chat (Client ↔ Agency).
  * Alle Anfragen und Chats in Supabase gespeichert (option_requests + option_request_messages).
- * Pro Partei laden: loadOptionRequestsForClient(), loadOptionRequestsForAgency(agencyId),
+ * Pro Partei laden: loadOptionRequestsForClient(clientOrgId?), loadOptionRequestsForAgency(agencyId),
  * loadOptionsForModel(modelId). Cache wird mit den jeweiligen Daten gefüllt.
  */
 
@@ -486,13 +486,17 @@ export async function loadOptionsForModel(modelId: string): Promise<void> {
   } catch { /* keep cache */ }
 }
 
-export async function loadOptionRequestsForClient(): Promise<void> {
+export async function loadOptionRequestsForClient(clientOrganizationId?: string | null): Promise<void> {
   try {
-    const remote = await fetchRequestsForCurrentClient();
+    const remote = await fetchRequestsForCurrentClient(
+      clientOrganizationId != null && String(clientOrganizationId).trim() !== ''
+        ? { clientOrganizationId }
+        : undefined,
+    );
     requestsCache = remote.map(toLocalRequest);
     notify();
-  } catch {
-    /* keep cache */
+  } catch (e) {
+    console.error('[loadOptionRequestsForClient] failed — keeping previous cache', e);
   }
 }
 
@@ -504,7 +508,9 @@ export async function loadOptionRequestsForAgency(
     const remote = await fetchRequestsForAgency(agencyId, undefined, agencyOrganizationId);
     requestsCache = remote.map(toLocalRequest);
     notify();
-  } catch { /* keep cache */ }
+  } catch (e) {
+    console.error('[loadOptionRequestsForAgency] failed — keeping previous cache', e);
+  }
 }
 
 export function getRequestStatus(threadId: string): ChatStatus | undefined {

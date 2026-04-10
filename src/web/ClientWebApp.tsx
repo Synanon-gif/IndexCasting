@@ -808,16 +808,16 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
 
   useEffect(() => {
     if (realClientId) {
-      loadOptionRequestsForClient();
+      void loadOptionRequestsForClient(clientOrgId);
     }
-  }, [realClientId]);
+  }, [realClientId, clientOrgId]);
 
   // Refresh option threads when opening Messages (reliable after navigation / background tab).
   useEffect(() => {
     if (realClientId && tab === 'messages') {
-      void loadOptionRequestsForClient();
+      void loadOptionRequestsForClient(clientOrgId);
     }
-  }, [tab, realClientId]);
+  }, [tab, realClientId, clientOrgId]);
 
   useEffect(() => {
     // Reset session dedup on every new filter-driven query (new discovery context).
@@ -2329,7 +2329,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                     });
                     if (ok && realClientId) {
                       await loadClientCalendar();
-                      await loadOptionRequestsForClient();
+                      await loadOptionRequestsForClient(clientOrgId);
                       const items = await getCalendarEntriesForClient(realClientId);
                       const next = items.find((x) => x.option.id === selectedCalendarItem.option.id);
                       if (next) setSelectedCalendarItem(next);
@@ -2361,7 +2361,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                 }
                 onAfterSave={async () => {
                   await loadClientCalendar();
-                  await loadOptionRequestsForClient();
+                  await loadOptionRequestsForClient(clientOrgId);
                   const items = await getCalendarEntriesForClient(realClientId);
                   const next = items.find((x) => x.option.id === selectedCalendarItem.option.id);
                   if (next) setSelectedCalendarItem(next);
@@ -4210,11 +4210,11 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   useEffect(() => {
     if (!openThreadId) return;
     setClientMsgTab('optionRequests');
-    void loadOptionRequestsForClient().then(() => {
+    void loadOptionRequestsForClient(clientOrgId).then(() => {
       setSelectedThreadId(openThreadId);
       onClearOpenThreadId();
     });
-  }, [openThreadId, onClearOpenThreadId]);
+  }, [openThreadId, onClearOpenThreadId, clientOrgId]);
 
   useEffect(() => {
     if (selectedThreadId) {
@@ -4353,7 +4353,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
         }
         purgeOptionThreadFromStore(threadId);
         setSelectedThreadId(null);
-        await loadOptionRequestsForClient();
+        await loadOptionRequestsForClient(clientOrgId);
         onOptionRequestDeleted?.();
       } finally {
         setDeletingOptionId(null);
@@ -4482,6 +4482,13 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   }, [request?.threadId, isAgency, showNegotiationCalendarHint]);
 
   const showClientMessagesTabs = !isAgency && !!clientUserId;
+
+  // Selecting a negotiation thread must show the Option Requests tab (not B2B-only shell).
+  useEffect(() => {
+    if (!selectedThreadId || !showClientMessagesTabs) return;
+    setClientMsgTab('optionRequests');
+  }, [selectedThreadId, showClientMessagesTabs]);
+
   const optionFullscreenActive =
     !!selectedThreadId &&
     !!request &&

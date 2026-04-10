@@ -112,7 +112,7 @@ describe('deleteOptionRequestFull', () => {
     );
   });
 
-  it('prefers explicit auditOrganizationId for audit log', async () => {
+  it('prefers explicit auditOrganizationId for audit log when auditActor is agency', async () => {
     mockOptionRow();
     rpc.mockResolvedValue({ error: null });
     await deleteOptionRequestFull('opt-1', {
@@ -121,6 +121,23 @@ describe('deleteOptionRequestFull', () => {
     });
     expect(logAction).toHaveBeenCalledWith(
       'explicit-org-uuid',
+      'deleteOptionRequestFull',
+      expect.objectContaining({ entityId: 'opt-1' }),
+    );
+  });
+
+  it('client audit prefers row client_organization_id over explicit auditOrganizationId', async () => {
+    mockOptionRow({
+      client_organization_id: 'org-client-canonical',
+      organization_id: 'org-client-legacy',
+    });
+    rpc.mockResolvedValue({ error: null });
+    await deleteOptionRequestFull('opt-1', {
+      auditActor: 'client',
+      auditOrganizationId: 'profile-org-mismatch',
+    });
+    expect(logAction).toHaveBeenCalledWith(
+      'org-client-canonical',
       'deleteOptionRequestFull',
       expect.objectContaining({ entityId: 'opt-1' }),
     );

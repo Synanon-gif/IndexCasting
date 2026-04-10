@@ -123,6 +123,11 @@ export type OptionRequestListOptions = {
    * Pass to load earlier items ("Load more").
    */
   afterCreatedAt?: string;
+  /**
+   * When set (client web), restricts the query to this client org (defense-in-depth + RLS).
+   * Matches rows where client_organization_id or organization_id equals this UUID.
+   */
+  clientOrganizationId?: string | null;
 };
 
 export async function getOptionRequests(
@@ -194,6 +199,10 @@ export async function getOptionRequestsForCurrentClient(
       .select(OPTION_REQUEST_SELECT)
       .order('created_at', { ascending: false })
       .limit(opts?.limit ?? 100);
+    const org = opts?.clientOrganizationId != null ? String(opts.clientOrganizationId).trim() : '';
+    if (org) {
+      q = q.or(`client_organization_id.eq.${org},organization_id.eq.${org}`);
+    }
     if (opts?.afterCreatedAt) q = q.lt('created_at', opts.afterCreatedAt);
     const { data, error } = await q;
     if (error) { console.error('getOptionRequestsForCurrentClient error:', error); return []; }
@@ -1824,13 +1833,23 @@ export type DeleteOptionRequestFullOpts = {
 
 /**
  * Resolves org_id for log_audit_action after a successful delete.
- * Agency: agency-side organizations.id (column or resolver). Client: client_organization_id ?? organization_id.
+ * Agency: explicit profile org or resolver from row. Client: row client org first (matches RLS participant), then explicit fallback.
  */
 async function resolveAuditOrganizationIdForOptionDelete(
   row: SupabaseOptionRequest,
   opts: DeleteOptionRequestFullOpts,
 ): Promise<string | null> {
   const explicit = opts.auditOrganizationId != null ? String(opts.auditOrganizationId).trim() : '';
+
+  if (opts.auditActor === 'client') {
+    const fromRow = [row.client_organization_id, row.organization_id]
+      .map((x) => (x != null ? String(x).trim() : ''))
+      .find((s) => s !== '');
+    if (fromRow) return fromRow;
+    if (explicit) return explicit;
+    return null;
+  }
+
   if (explicit) return explicit;
 
   if (opts.auditActor === 'agency') {
