@@ -18,7 +18,7 @@ vollständig durchlaufen werden, **bevor** Code committed oder weitergeschrieben
 | **Organizations** | Wird `org_id`, `organization_members`, `get_my_org_context()` oder Org-Routing berührt? |
 | **RLS** | Wird eine Policy erstellt/geändert, oder eine Tabelle/Funktion im RLS-SELECT-Pfad verändert? |
 | **Assignments** | Wird `model_assignments`, `model_agency_territories`, Rollen-Mapping oder Sichtbarkeit berührt? |
-| **Discover / First-contact** | Discover, Chat-Bootstrap, Add-to-Project, Option/Casting/Booking, Packages, Guest-Links — siehe `system-invariants.mdc` **CONNECTIONLESS DISCOVERY…** |
+| **Discover / First-contact** | Discover, Chat-Bootstrap, Add-to-Project, Option/Casting/Booking, Packages, Guest-Links — siehe `system-invariants.mdc` **FIRST-CONTACT, REQUEST ECOSYSTEM & DOWNSTREAM PARITY** (12 Invarianten, **### 1** Connectionless) |
 | **Calendar / Attention** | Kalender-Workflow, Smart Attention, Model-Bestätigung — rollenübergreifende Konsistenz |
 
 ---
@@ -81,7 +81,7 @@ vollständig durchlaufen werden, **bevor** Code committed oder weitergeschrieben
 - **Client B2B Projects — Org-Kontext bei RPCs:** Siehe `system-invariants.mdc` **CLIENT PROJECT ORG CONTEXT (B2B)** — wo möglich explizites `organization_id` mitsenden; implizite Org-Auflösung nur als Fallback.
 - **Client B2B Projects — `add_model_to_project`:** Wenn `clientOrgId` / `profile.organization_id` bekannt ist, MUSS `addModelToProject(projectId, modelId, organizationId)` die Org mitsenden (`p_organization_id`) — vermeidet Multi-Org-`LIMIT 1`-Drift in der RPC.
 - **Client B2B Projects — Ghost state:** Sync bei leerer Remote-Projektliste überschreibt den UI-State nicht und lässt alte localStorage-Projekte stehen? → Blocker.
-- **Connection-Gate-Regression:** Neue oder geänderte RPC/Policy/UI/Service führt Erstkontakt-Flows (Chat, Add-to-Project, Option/Casting/Booking, Package, Guest) an **bestehende/akzeptierte** `client_agency_connections` — obwohl Discover-Sichtbarkeit das Produkt-Signal ist? → Blocker — siehe `system-invariants.mdc` **Connectionless first-contact**.
+- **Connection-Gate-Regression:** Neue oder geänderte RPC/Policy/UI/Service führt Erstkontakt-Flows (Chat, Add-to-Project, Option/Casting/Booking, Package, Guest) an **bestehende/akzeptierte** `client_agency_connections` — obwohl Discover-Sichtbarkeit oder ein freigegebener Package-/Projekt-/Guest-Kontext das Produkt-Signal ist? → Blocker — siehe `system-invariants.mdc` **### 1. CONNECTIONLESS FIRST-CONTACT INVARIANT**.
 - **Discover-Downstream-Drift:** Strengere oder andere Agency-/Territory-Auflösung als in Discover für dieselbe Client+Territory-Kombination (ohne explizites Product-Approval)? → Blocker.
 - **Package silent fail:** Package zeigt „0 models“ oder leere Medien bei Load-Fehler; oder verlässt sich nur auf Mirror-Arrays statt `model_photos` + Signing wo relevant? → Blocker.
 - **Option/Casting initial state:** Insert setzt `model_approval` o. Ä. „schon bestätigt“, obwohl das nicht die Produktregel ist? → Blocker.
@@ -147,9 +147,9 @@ Fehlen diese Punkte → Änderung gilt als **UNSAFE** bis nachgeholt.
 
 ## 2d. Mandatory regression — First-contact ecosystem
 
-**Pflicht:** Berührt die Änderung eines der folgenden Gebiete — **nicht** nur die lokale Stelle testen; **Regression-Sweep** über alle zusammenhängenden Flows (siehe `system-invariants.mdc` **CONNECTIONLESS DISCOVERY…**):
+**Pflicht:** Berührt die Änderung eines der folgenden Gebiete — **nicht** nur die lokale Stelle testen; **Regression-Sweep** über alle zusammenhängenden Flows und Rollen (kanonisch: `system-invariants.mdc` **### 12. MANDATORY REGRESSION SWEEP INVARIANT**):
 
-Discover · Package-Loading · Guest-Links · Projekte · Option/Casting-Requests · Messenger/Chat-Bootstrap · Kalender-Workflow · Smart Attention · Model-Bestätigung
+`option_requests` · Casting Requests · `option_request_messages` / Systemnachrichten-RPC · Package öffnen & -Aktionen · Project-Detail-Flows · Guest-Links · Discover · Messenger/Chat-Bootstrap · Kalender-Workflow · Smart Attention · Model-Bestätigung · Notification-Resolver (`agency_organization_id` etc.) · responsive Chat-/Navigations-Shells (wenn Kontext/Folgepfade berührt werden können)
 
 ### Minimum — manuelle Regression-Checkliste (15)
 
@@ -217,7 +217,7 @@ Q10: Leakt diese Änderung Verhandlungs-/kommerzielle Felder an Model-queries od
 - Neuer Browser-Datei-Upload ohne **Upload technical parity** (upload-consent-matrix.mdc): fehlende Magic Bytes, fehlende HEIC-Behandlung wenn erlaubt, fehlendes `upsert: false` / unsicherer Pfad
 - `supabase.rpc('admin_*', ...)` in non-admin Service/View (außerhalb `adminSupabase.ts` / `AdminDashboard`) — Risiko 18: Admin-RPCs erzwingen `assert_is_admin()`, non-admin Caller bekommen immer HTTP 400/403
 - `models`-INSERT ohne 23505-Recovery wenn E-Mail gesetzt — Risiko 19: Unique-Constraint auf `models.email` führt zu Dead-End; muss scoped lookup + 23505 retry haben
-- **Connection-Gate:** Erstkontakt-Flows wieder an **Pflicht**-`client_agency_connections` gekoppelt (Discover reicht als Signal) — siehe `system-invariants.mdc` **Connectionless first-contact**
+- **Connection-Gate:** Erstkontakt-Flows wieder an **Pflicht**-`client_agency_connections` gekoppelt (Discover oder freigegebener Package-/Projekt-/Guest-Kontext reicht als Signal) — siehe `system-invariants.mdc` **### 1. CONNECTIONLESS FIRST-CONTACT INVARIANT**
 
 ---
 
@@ -228,4 +228,4 @@ Q10: Leakt diese Änderung Verhandlungs-/kommerzielle Felder an Model-queries od
 - Org-Isolation (keine Daten-Leaks zwischen Tenants)
 - Admin-Always-Access (Admin kann immer einloggen, immer alles sehen)
 - RLS-Konsistenz (keine 42P17-Fehler)
-- **Connectionless Discover / First-contact:** keine Connect-first-Pflicht; Downstream-Parität zu Discover; Packages/Guest/Projekte/Requests/Kalender/Attention wie in `system-invariants.mdc` und Checkliste **§2d**
+- **Connectionless Discover / First-contact:** keine Connect-first-Pflicht; Downstream-Parität zu Discover; Packages/Guest/Projekte/Requests/Kalender/Attention wie in `system-invariants.mdc` (**FIRST-CONTACT…** **### 1**–**### 12**) und Checkliste **§2d**

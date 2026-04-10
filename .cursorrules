@@ -114,7 +114,7 @@ Vollständige englische Invarianten: [.cursor/rules/agency-media-panels-and-sql-
 - **Packages:** keine stille „0 models“ / leere Medien bei fehlgeschlagenem Load oder nur Mirror-Spalten wenn `model_photos` Daten hat; Signed URLs korrekt.
 - **Regression:** Änderungen an diesen Bereichen → Sweep über verwandte Flows; Checkliste **§2d** in `.cursor/rules/auto-review.mdc`.
 
-Vollständige Invarianten: [.cursor/rules/system-invariants.mdc](.cursor/rules/system-invariants.mdc) (Abschnitt **CONNECTIONLESS DISCOVERY, FIRST-CONTACT & DOWNSTREAM PARITY**).
+Vollständige Invarianten: [.cursor/rules/system-invariants.mdc](.cursor/rules/system-invariants.mdc) (Abschnitt **FIRST-CONTACT, REQUEST ECOSYSTEM & DOWNSTREAM PARITY (kanonisch)** — 12 Invarianten **### 1**–**### 12**).
 
 ## 4b. UI-Sprache & Copy (verbindlich)
 - **Die gesamte Nutzeroberfläche ist Englisch (English-only):** alle sichtbaren Texte für Agency, Client und Model — Buttons, Labels, Alerts, Placeholder, leere Zustände, Fehlermeldungen aus dem Produkt.

@@ -265,11 +265,13 @@ if (error) return { ok: false, reason: error.message }; // 23505 = eigentlicher 
 **Gilt für:** `confirmImageRights`, und alle zukünftigen `confirmX()` Funktionen die
 vor Upload-Aktionen stehen. Konsistent implementiert in `gdprComplianceSupabase.ts` (20260406).
 
-## CONNECTIONLESS DISCOVERY, FIRST-CONTACT & DOWNSTREAM PARITY (Product Invariants)
+## FIRST-CONTACT, REQUEST ECOSYSTEM & DOWNSTREAM PARITY (kanonisch)
 
-Sichtbarkeit eines Models in **Discover** ist für Erstkontakt-Workflows ein **gültiges Produkt-Signal** (neben Auth, Tenant-Isolation, Discover-Eligibility, Paywall wo vorgesehen). **Kein** Pfad darf wieder eine versteckte Pflicht einführen: „zuerst `client_agency_connections` akzeptieren“.
+Zwölf kanonische Invarianten für Erstkontakt-, Option/Casting-, Package-/Projekt- und Folgepfade. Technische Umsetzung Systemnachrichten und Regression sind in **### 4**, **### 7** und **### 12** gebündelt (vormals getrennte Abschnitte „Connectionless Discovery…“ und „Option/Casting Thread — System Messages“).
 
-### Connectionless first-contact (kein Connection-Gate)
+### 1. CONNECTIONLESS FIRST-CONTACT INVARIANT
+
+**Produktfreigabe:** Sichtbarkeit in **Discover** ist ein gültiges Signal; ebenso ein **legitimer, produktseitig freigegebener** Kontext über **Portfolio-/Polaroid-Package**, **Client-Projekt**, **Swipe** oder **Guest/External** (soweit fachlich erlaubt) — jeweils neben Auth, Tenant-Isolation, Eligibility, Paywall wo vorgesehen. **Kein** Pfad darf eine versteckte Pflicht einführen: „zuerst `client_agency_connections` akzeptieren“.
 
 Die folgenden Flows MÜSSEN **ohne** vorbestehende manuell akzeptierte oder explizite `client_agency_connections`-Zeile funktionieren (sofern das Produkt Auth/Org/Visibility vorsieht):
 
@@ -285,68 +287,97 @@ Die folgenden Flows MÜSSEN **ohne** vorbestehende manuell akzeptierte oder expl
 
 **Erlaubte Guards (Beispiele):** Auth wo produktseitig vorgesehen; Org-Mitgliedschaft / Tenant-Isolation; Model-Sichtbarkeit / Discover-Eligibility; Package-/Link-Gültigkeit und Ablauf; territory-spezifische Agency-Auflösung; Platform/Paywall nur wo **explizit** Produktregel; rollenspezifische Bestätigungen **nach** Request-Erstellung — aber **nie** als Ersatz für ein verstecktes „Connect first“.
 
-**Hinweis:** `client_agency_connections` kann für optionale Connection-Request-UX bestehen bleiben; sie ist **kein** genereller Vorläufer für Discover-gestützte Erstkontakt-Workflows.
+**Hinweis:** `client_agency_connections` kann für optionale Connection-Request-UX bestehen bleiben; sie ist **kein** genereller Vorläufer für Erstkontakt-Workflows.
 
-### Discover-Parität (Agency-/Territory-Kontext)
+### 2. ENTRY-POINT PARITY INVARIANT
 
-Wenn ein Model für einen Client in einem Territory in **Discover** sichtbar ist, müssen alle **client-seitigen** Erstkontakt-Flows gegen denselben **effektiven** Agency-/Territory-Kontext auflösen wie Discover — z. B.: Add-to-Project, Option/Casting/Booking-Einstiege, Package-Aktionen, Chat-Bootstrap.
+**Discover-Parität (Agency-/Territory-Kontext):** Wenn ein Model für einen Client in einem Territory in **Discover** sichtbar ist, müssen **client-seitige** Erstkontakt-Flows gegen denselben **effektiven** Agency-/Territory-Kontext auflösen wie Discover (z. B. Add-to-Project, Option/Casting/Booking, Package-Aktionen, Chat-Bootstrap). **Verboten:** strengere oder abweichende Agency-Resolution in Downstream-Flows gegenüber Discover — außer **explizit** dokumentiert und product-approved.
 
-**Verboten:** strengere oder abweichende Agency-Resolution in Downstream-Flows gegenüber Discover — außer **explizit** dokumentiert und product-approved.
+**Gleiche Kernregeln für denselben Request-Typ** über Einstiege: **Discover**, **Portfolio Package**, **Polaroid Package**, **Project Flow**, **Swipe**, **Guest/External** (soweit erlaubt). Keine widersprüchlichen Kernregeln pro Einstieg ohne Product-Approval.
 
-### Package-Invariante
+**Gemeinsame Kernpfade zentral halten:** Resolver (z. B. Agency-/Org-Auflösung), Request-Erstellung ([`addOptionRequest`](../../src/store/optionRequests.ts) / `insertOptionRequest`), Messaging-Folgepfade, Smart Attention, Kalender-Folgeobjekte (`calendar_entries`), Notifications. **Verboten:** parallele „Workflow-Message“-Semantik oder abweichende Business-Logik nur für einen Einstieg.
 
-Packages (Chat, Guest-Link, authentifizierte Client-Ansicht) müssen **Models und Medien** korrekt laden: Portfolio- und Polaroid-Packages, Guest-Packages, authentifizierte Package-Views.
+**Option / Casting Request — Erstellung:** aus allen **freigegebenen** Einstiegen; **Initial-Insert** kanonisch **minimal**; DB-Defaults für Initialzustand — außer Produkt schreibt explizit anders. **Verboten:** Request bei Erstellung bereits als „model-approved“ markieren, wenn das **nicht** die feste Produktregel ist.
 
-**Verboten — stilles Versagen:**
+### 3. ROLE INTEGRITY INVARIANT
 
-- „0 models“, obwohl der Load fehlgeschlagen ist
-- leere Medien nur wegen **veralteter Mirror-Arrays** (`models.portfolio_images` / `polaroids`), wenn `model_photos` die sichtbaren Medien enthält
-- Open-Flow blockiert durch **unpassende** Kopplung an Paywall/Helper (nicht produktseitig begründet)
+**Kein Actor** darf Nachrichten im Namen einer **anderen Rolle** erzeugen. Client darf **niemals** agency-authored Messages fälschen; Agency **niemals** client-authored; Model **niemals** Agency-/Client-Rollen fälschen. **Agency-Spoofing** (und jede andere Rollen-Imitation) ist fachlich und technisch falsch.
 
-**Medien-Parität:** Portfolio → sichtbare Portfolio-Medien; Polaroid → sichtbare Polaroid-Medien; Signed URLs korrekt; **keine** versteckte Alleinhängigkeit von Mirror-Spalten — siehe §27.1 `.cursorrules` und `model_photos`-Autorität.
+Chat-Integrität: Client schreibt nur `client`-authored Zeilen; Agency nur `agency`; Model nur `model`. Automatische Workflow-Hinweise **imitieren** keine dieser Rollen.
 
-### Projekt-Invariante
+### 4. SYSTEM MESSAGE INVARIANT
 
-Projekte sind **Client-Workspace-Tools**: konsistent für alle Mitglieder der Client-Org nach Produktregeln. Wenn Discover-sichtbare Models ohne Connection hinzugefügt werden dürfen, dürfen **weder** RPC noch RLS ein Connection-Gate reaktivieren.
+Automatische Workflow-Hinweise sind **keine** Teilnehmernachrichten. Sie müssen als echte **System-Semantik** modelliert sein:
 
-**Hydration nach Reload:** DB-Wahrheit (`client_projects` / `client_project_models`) muss abgebildet werden; erfolgreich hinzugefügte Models dürfen **nicht** still verworfen werden (siehe **CLIENT B2B PROJECTS** + Reconciliation).
+- In `option_request_messages`: **`from_role = 'system'`**, Persistenz **nur** über **`public.insert_option_request_system_message`** (SECURITY DEFINER, `option_request_visible_to_me`, Trigger-Session-Flag `app.option_request_system_message`). Kein direktes `INSERT` mit `from_role = system` aus dem Client; **keine** Workflow-Zeilen unter falschem `client` / `agency` / `model`.
+- Neue Arten: `p_kind` in der RPC per **Allowlist** erweitern; englischer Text **1:1** zu `uiCopy.systemMessages` und zum SQL-`CASE` halten.
 
-### Option / Casting Request
+**UI:** Systemhinweise **system-/info-artig** rendern — **nicht** wie normale Teilnehmer-Bubbles oder so, dass sie eine Rolle vortäuschen.
 
-Erstellung aus allen **freigegebenen** Einstiegen: Discover, Projekt, Portfolio-/Polaroid-Package, Swipe, Guest (wo produktfreigegeben).
+### 5. NO-MODEL-ACCOUNT INVARIANT
 
-- **Initial-Insert:** kanonisches **minimales** Payload; DB-Defaults für Initialzustand — außer Produkt schreibt explizit anders.
-- **Verboten:** Request bei Erstellung bereits als „model-approved“ markieren, wenn das **nicht** die feste Produktregel ist.
+Wenn `model_account_linked = false`, darf der erlaubte Option-/Casting-Flow **trotzdem** laufen; die Agency kann gemäß Produktlogik ohne Model-App-Bestätigung weiterarbeiten. **Aber:** Es darf **nicht** so dargestellt werden, als hätten Model oder Agency bereits aktiv eine Teilnehmernachricht „gesendet“. Hinweise laufen als **`system`** (z. B. Kinds `no_model_account` / `no_model_account_client_notice`); weder Agency- noch Model-Perspektive durch User-Chatzeilen vortäuschen.
 
-### Model-Account-Bestätigung
+### 6. MODEL-ACCOUNT CONFIRMATION INVARIANT
 
-Hat das Model einen Account, muss der Workflow **explizite** Model-Bestätigung tracken; ohne Account gelten die **No-Account**-Produktregeln.
+Hat das Model einen Account, muss der Workflow **explizite** Model-Bestätigung und Status sauber entlang der Rollen abbilden: Option, Casting, Job, Confirmed, Rejected, Counter, Pending — konsistent über Smart Attention, Sichtbarkeit und Übergänge.
 
-Smart Attention, Inbox-, Thread- und Kalenderzustände müssen für alle Parteien erkennbar machen: wer bestätigen muss; ob noch Option; ob Job geworden; Ablehnung; ausstehende Preisverhandlung — im Rahmen der erlaubten Rollen-Sichtbarkeit (siehe unten).
+Smart Attention, Inbox-, Thread- und Kalenderzustände müssen für alle Parteien erkennbar machen: wer bestätigen muss; ob noch Option; ob Job geworden; Ablehnung; ausstehende Preisverhandlung — im Rahmen der erlaubten Rollen-Sichtbarkeit. Siehe auch **SMART ATTENTION / ASSIGNMENT INVARIANTS**; Attention ist Action-Required-Layer, kein Security-Layer.
 
-### Datenminimierung / Rollen-Sichtbarkeit
+**Datenminimierung / Rollen-Sichtbarkeit:** Models nur modell-sichere Teilmengen; Agencies Verhandlungs-/kommerzielle Felder wie vorgesehen; Clients client-sicheren Request-State. **Verboten:** model-facing Queries exposieren Agency/Client-Verhandlungsfelder — außer **explizit** approved.
 
-- **Models:** nur die für Models vorgesehene Teilmenge an Option/Casting/Request-Information.
-- **Agencies:** Verhandlungs- und kommerzielle Details wie vorgesehen.
-- **Clients:** client-sicherer Request-State wie vorgesehen.
+**Kalender-Konsistenz:** `calendar_entries` / Workflow **rollenübergreifend** konsistent (Client, Agency, Model): Evolution Option → bestätigte Option → Booking/Job → Ablehnung/Storno — aligned mit Workflow-Wahrheit (Booking-Brief-Trust-Modell in Doku; keine feldweise RLS-Fiktion).
 
-**Verboten:** model-facing Queries exposieren Agency/Client-Verhandlungsfelder — außer **explizit** approved.
+### 7. RETURNING / RLS PARITY INVARIANT
 
-### Kalender-Konsistenz
+**INSERT-RLS und SELECT-Sichtbarkeit** für PostgREST-**RETURNING** müssen für berechtigte Caller **konsistent** sein: keine Policy, die frisch eingefügte Rows im selben Statement für berechtigte Teilnehmer **unsichtbar** macht (kein „nur Self-Read“-Muster, das bei INSERT+RETURNING bricht).
 
-`calendar_entries` / Workflow müssen **rollenübergreifend** konsistent bleiben (Client, Agency, Model): Status, Darstellung, Evolution Option → bestätigte Option → Booking/Job → Ablehnung/Storno — aligned mit Workflow-Wahrheit (siehe Booking-Brief-Trust-Modell in Doku; keine feldweise RLS-Fiktion).
+Gilt u. a. für **`option_requests`**, **`option_request_messages`** und ähnliche INSERT+RETURNING-Pfade. Nach INSERT müssen Nachrichten-/Request-Zeilen für berechtigte Teilnehmer lesbar bleiben (Migrationen `option_request_visible_*`, z. B. `20260544`).
 
-### Guest-Flow
+**Spezialfall Bestätigungen / Uploads:** Idempotenz und Vermeidung von RETURNING-Konflikten für `confirmX()` — siehe **CONFIRMATION-FLOWS — IDEMPOTENZ PFLICHT** (eigenes Pflicht-Pattern, nicht abschwächen).
 
-Gültige Guest-Links müssen erfolgreich öffnen, Packages/Medien laden und **freigegebene** Guest-Interaktionen erlauben — ohne Abhängigkeit von **unrelated** authenticated-only Paywall-Helpers.
+### 8. REQUEST-CONTEXT RESOLVER INVARIANT
 
-Guest-Chat / Guest-Request: **explizite** guest-sichere RLS-/Pfad-Logik — nicht versehentlich nur Org-Member-Logik.
+Wenn eine **`option_requests`-Zeile** kanonische Kontextfelder enthält — insbesondere **`agency_organization_id`** — müssen Folgepfade diese **bevorzugen** (vom Row lesbar, robust bei Client-RLS auf `organizations`). Spätere **client-seitige** `organizations`-Lookups über `agency_id` sind **Fallback**, nicht die bevorzugte Quelle. Referenz: `resolveAgencyOrgIdForOptionNotification` in [`optionRequestsSupabase.ts`](../../src/services/optionRequestsSupabase.ts). Kein stilles „agency org not found“, wenn die Spalte gesetzt ist.
 
-### Regression-Pflicht (Querschnitt)
+**Gilt insbesondere für:** Notifications, Booking-/Kalender-Folgeobjekte, Thread-/Message-Kontexte.
 
-Änderungen an Discover, Package-Loading, Guest-Links, Projekten, Option/Casting-Requests, Messenger/Chat-Bootstrap, Kalender-Workflow, Smart Attention oder Model-Bestätigung erfordern einen **Regression-Sweep** über alle **verbundenen** Flows — nicht nur den lokalen Bugfix.
+### 9. PACKAGE / PROJECT STABILITY INVARIANT
 
-Vollständige manuelle Checkliste: `.cursor/rules/auto-review.mdc` (Abschnitt **2d. Mandatory regression — First-contact ecosystem**).
+**Package:** Models und Medien korrekt laden (Portfolio/Polaroid/Guest/authentifizierte Views). **Verboten — stilles Versagen:** „0 models“ bei Load-Fehler; leere Medien nur wegen veralteter Mirror-Arrays wenn `model_photos` Daten hat; Open-Flow durch unpassende Paywall-Kopplung blockiert (ohne Produktgrund). **Medien-Parität:** siehe §27.1 `.cursorrules`, `model_photos`-Autorität.
+
+**Projekt:** DB-Wahrheit `client_projects` / `client_project_models`; Hydration nach Reload; kein Connection-Gate durch RPC/RLS wenn Produkt connectionless erlaubt — siehe **CLIENT B2B PROJECTS** und **PACKAGE/PROJECT MODE ISOLATION (ClientWebApp.tsx)**.
+
+**Stabilität bei Kernlogik-Fixes:** Änderungen an **gemeinsamer** Resolver-/Request-/Message-/Kalender-/Notification-Logik dürfen nicht unnötig Package- vs. Project-spezifische Verzweigungen einführen. **Jede** solche Änderung erfordert Regression über **alle** betroffenen Kontexte (Discover, Package, Projekt, Messenger). Package-/Projekt-Kontext darf durch Navigations- oder reine UI-Anpassungen nicht verloren gehen (siehe **### 11**).
+
+**Guest-Flow:** Gültige Guest-Links öffnen, Medien laden, freigegebene Interaktionen — ohne Abhängigkeit von unrelated authenticated-only Helpers; guest-sichere RLS-/Pfad-Logik.
+
+### 10. RESPONSIVE UI INVARIANT
+
+Responsive / device-adaptive UI darf **Domain-Logik nicht** ändern. Desktop und Mobile dürfen unterschiedliche Layouts, Panels, Spacing, Navigation und Informationsdichte haben — **dieselbe** Rollen-, Status-, Kalender-, Resolver- und Workflow-Logik. Breakpoints, Screen-Size- und Form-Factor-Erkennung beeinflussen nur **Präsentation und Navigation**, nicht fachliche Wahrheit.
+
+**Zielbild:** Mobile = kompakter, WhatsApp-artig, klare Back-Navigation; Desktop/Web = mehr Übersicht, Side-by-side wo sinnvoll. **Funktionsparität** bleibt erhalten.
+
+### 11. NAVIGATION INVARIANT
+
+In jedem tieferen Kontext (Project, Package, Thread, Detail, Kalenderdetail, Negotiation) muss **klare Back-Navigation** existieren; Back führt möglichst zum **echten Ursprungskontext** zurück. Navigation darf keinen Kontext „verschlucken“. Zielbild: intuitiv wie WhatsApp / native Mobile Apps (Umsetzung bleibt UI-Schicht; siehe **### 10**).
+
+### 12. MANDATORY REGRESSION SWEEP INVARIANT
+
+Änderungen an einem der folgenden Bereiche lösen einen **gezielten Regression-Sweep** über alle direkt betroffenen **Einstiege** und **Rollen** aus — nicht nur lokaler Bugfix:
+
+- `option_requests` / Option-Flows
+- Casting Requests
+- `option_request_messages` / Systemnachrichten-RPC
+- Package öffnen / Package-Aktionen
+- Project-Detail-Flows
+- Guest-Links
+- Smart Attention
+- Kalender-Workflow
+- Notification-Resolver (inkl. `agency_organization_id`-Pfad)
+- Responsive Chat-/Navigations-Shells (nur wenn sie Kontext oder Folgepfade berühren könnten)
+
+Vollständige manuelle Checkliste: `.cursor/rules/auto-review.mdc` (**§2d. Mandatory regression — First-contact ecosystem**).
 
 ## CLIENT B2B PROJECTS (org-weit, DB truth — ClientWebApp)
 
@@ -692,17 +723,6 @@ ON CONFLICT (model_id, source) DO UPDATE SET city = EXCLUDED.city, ...;
 
 ---
 
-## OPTION / CASTING THREAD — SYSTEM MESSAGES (unveränderlich, 2026-05)
-
-- Automatische Workflow-Hinweise in `option_request_messages` nutzen **`from_role = 'system'`** und werden **nur** über **`public.insert_option_request_system_message`** persistiert (SECURITY DEFINER, `option_request_visible_to_me`, Trigger-Session-Flag `app.option_request_system_message`). Kein direktes `INSERT` mit `from_role = system` aus dem Client; **keine** Workflow-Zeilen unter falschem `client` / `agency` / `model`.
-- **Role integrity:** Client darf nur `client`-authored Chatzeilen schreiben; Agency nur `agency`; Model nur `model`. Automatische Hinweise **dürfen keine** dieser Rollen **imitieren** — nur `system` via RPC.
-- **No-model-account:** Wenn `model_account_linked = false`, dürfen weder Agency- noch Model-Perspektive durch eine Chatzeile vorgetäuscht werden; Hinweise laufen als **`system`** (`no_model_account` / `no_model_account_client_notice` o. Ä. Kinds).
-- **Entry-point parity:** Discover, Project, Portfolio/Polaroid Package, Swipe → dieselbe zentrale Anfragelogik ([`addOptionRequest`](../../src/store/optionRequests.ts) / `insertOptionRequest`); keine parallele „Workflow-Message“-Semantik pro Einstieg.
-- **Notification resolver:** Agency-Org-Benachrichtigungen **`option_requests.agency_organization_id` zuerst** (vom Request-Row lesbar trotz Client-RLS auf `organizations`), Fallback `organizations` über `agency_id` — z. B. `resolveAgencyOrgIdForOptionNotification` in [`optionRequestsSupabase.ts`](../../src/services/optionRequestsSupabase.ts). Kein stilles „agency org not found“, wenn die Spalte gesetzt ist.
-- **RETURNING / RLS:** Nach INSERT müssen Nachrichten-Zeilen für berechtigte Teilnehmer lesbar bleiben (keine Policy, die nur Self-Reads auf neu eingefügten Rows blockiert — siehe migrations `option_request_visible_*` / `20260544`).
-- **Mandatory regression:** Jede Änderung an Option/Casting-Messages, RPC, Notifications oder Request-Insert → Sweep über Client/Agency/Model-UI und alle Entry Points (siehe **CONNECTIONLESS DISCOVERY…** Regression-Checkliste in `.cursor/rules/auto-review.mdc`).
-- Neue Arten: `p_kind` in der RPC per **Allowlist** erweitern; englischer Text **1:1** zu `uiCopy.systemMessages` und zum SQL-`CASE` halten.
-
 ## ROLE-SCOPED LOOKUP INVARIANT (unveränderlich, 2026-05-18)
 
 - Non-admin product flows (agency, client, model) **MUST NEVER** call `admin_*` RPCs
@@ -738,7 +758,7 @@ ON CONFLICT (model_id, source) DO UPDATE SET city = EXCLUDED.city, ...;
 
 ## SMART ATTENTION / ASSIGNMENT INVARIANTS
 
-- Bestätigungs- und Kontostatus (Model mit/ohne Account) siehe **CONNECTIONLESS DISCOVERY…** (Model-Account-Bestätigung) — Attention bleibt Action-Required-Layer, kein Security-Layer.
+- Bestätigungs- und Kontostatus (Model mit/ohne Account) siehe **FIRST-CONTACT, REQUEST ECOSYSTEM & DOWNSTREAM PARITY** (**### 5** / **### 6**) — Attention bleibt Action-Required-Layer, kein Security-Layer.
 - Org-weite Sichtbarkeit bleibt unverändert; weder Assignment noch Attention dürfen Daten verstecken.
 - Client Assignment bleibt Workflow-Metadaten (`client_organization_id`-gebunden), niemals Security-/Access-Control.
 - Owner-only Agency ohne Booker ist ein gültiger und voll unterstützter Startzustand.
