@@ -283,7 +283,9 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
       )}
       {isAgency && agencyMayActOnFee && finalStatus !== 'job_confirmed' && status !== 'rejected' && (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm }}>
-          {request.proposedPrice != null && clientPriceStatus === 'pending' ? (
+          {request.proposedPrice != null &&
+          clientPriceStatus === 'pending' &&
+          agencyCounterPrice == null ? (
             <TouchableOpacity
               style={[styles.filterPill, { backgroundColor: colors.buttonOptionGreen }, busy && { opacity: 0.5 }]}
               disabled={busy}

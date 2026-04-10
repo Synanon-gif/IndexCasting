@@ -554,20 +554,25 @@ export async function setAgencyCounterOffer(
       })
       .eq('id', id)
       .eq('status', 'in_negotiation')
-      .select('id, organization_id')
+      .select('id, agency_id, agency_organization_id')
       .maybeSingle();
     if (error) { console.error('setAgencyCounterOffer error:', error); return false; }
     if (!data?.id) {
       console.warn('setAgencyCounterOffer: no row updated — request not in_negotiation', id);
       return false;
     }
-    const orgId = (data as { id: string; organization_id: string | null }).organization_id;
-    logAction(orgId, 'setAgencyCounterOffer', {
-      type: 'option',
-      action: 'option_price_countered',
-      entityId: id,
-      newData: { counter_price: counterPrice },
-    });
+    const row = data as { agency_id: string; agency_organization_id: string | null };
+    const auditOrgId = await resolveAgencyOrgIdForOptionNotification(row.agency_id, row.agency_organization_id);
+    if (auditOrgId) {
+      logAction(auditOrgId, 'setAgencyCounterOffer', {
+        type: 'option',
+        action: 'option_price_countered',
+        entityId: id,
+        newData: { counter_price: counterPrice },
+      });
+    } else {
+      console.warn('[setAgencyCounterOffer] could not resolve agency org — audit log skipped', id);
+    }
     return true;
   } catch (e) {
     console.error('setAgencyCounterOffer exception:', e);
@@ -697,36 +702,45 @@ export async function clientAcceptCounterPrice(id: string): Promise<boolean> {
 
 /**
  * Client lehnt das Gegenangebot der Agency ab.
- * Setzt status=rejected + client_price_status=rejected atomar.
- *
- * Guard: verhindert Reject eines bereits bestätigten oder bereits abgelehnten
- * Requests (VULN-H2). Double-layer mit DB-Trigger trg_validate_option_status.
+ * Kanonisch: SECURITY DEFINER RPC `client_reject_counter_offer` setzt nur
+ * `client_price_status = 'rejected'` (kein `status = rejected` — Negotiation
+ * bleibt offen für neuen Counter; vermeidet Drift/42703 bei direktem PATCH auf `status`).
  */
 export async function clientRejectCounterOfferOnSupabase(id: string): Promise<boolean> {
   try {
-    const { data, error } = await supabase
-      .from('option_requests')
-      .update({
-        client_price_status: 'rejected',
-        status: 'rejected',
-      })
-      .eq('id', id)
-      .neq('status', 'confirmed')    // VULN-H2: kein Reject nach Bestätigung
-      .neq('status', 'rejected')     // Idempotenz-Schutz
-      .select('id, organization_id')
-      .maybeSingle();
-    if (error) { console.error('clientRejectCounterOfferOnSupabase error:', error); return false; }
-    if (!data?.id) {
-      console.warn('clientRejectCounterOfferOnSupabase: no row updated — request already confirmed or rejected', id);
+    const { data, error } = await supabase.rpc('client_reject_counter_offer', {
+      p_request_id: id,
+    });
+    if (error) {
+      console.error('clientRejectCounterOfferOnSupabase RPC error:', error);
       return false;
     }
-    const orgIdRC = (data as { id: string; organization_id: string | null }).organization_id;
-    logAction(orgIdRC, 'clientRejectCounterOfferOnSupabase', {
-      type: 'option',
-      action: 'option_rejected',
-      entityId: id,
-      newData: { rejected_by: 'client', reason: 'counter_offer_rejected' },
-    });
+    if (!data) {
+      console.warn(
+        'clientRejectCounterOfferOnSupabase: RPC returned false — not pending counter or wrong state',
+        id,
+      );
+      return false;
+    }
+    void (async () => {
+      try {
+        const { data: row } = await supabase
+          .from('option_requests')
+          .select('organization_id, client_organization_id')
+          .eq('id', id)
+          .maybeSingle();
+        const r = row as { organization_id: string | null; client_organization_id: string | null } | null;
+        const orgIdRC = r?.client_organization_id ?? r?.organization_id ?? null;
+        logAction(orgIdRC, 'clientRejectCounterOfferOnSupabase', {
+          type: 'option',
+          action: 'option_rejected',
+          entityId: id,
+          newData: { rejected_by: 'client', reason: 'counter_offer_rejected' },
+        });
+      } catch {
+        console.warn('[clientRejectCounterOfferOnSupabase] could not resolve org for audit log');
+      }
+    })();
     return true;
   } catch (e) {
     console.error('clientRejectCounterOfferOnSupabase exception:', e);

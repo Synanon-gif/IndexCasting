@@ -1233,7 +1233,8 @@ export const uiCopy = {
     agencyDeclinedPrice: 'Agency declined the proposed fee. A counter offer can be sent below.',
     agencyCounterOffer: (price: number, currency: string) => `Agency proposed ${price} ${currency}.`,
     clientAcceptedCounter: 'Client accepted the agency proposal.',
-    clientRejectedCounter: 'Client declined the counter offer.',
+    clientRejectedCounter:
+      'Client declined the counter offer. The agency can send a new counter offer.',
     jobConfirmedByClient: 'Job confirmed by client.',
     /** Agency-facing kind `no_model_account` in SQL RPC — persisted as from_role=system only. */
     noModelAccount:

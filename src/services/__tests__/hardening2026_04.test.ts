@@ -103,33 +103,39 @@ describe('agencyRejectRequest — VULN-H2 status guard', () => {
   });
 });
 
-// ─── VULN-H2: clientRejectCounterOfferOnSupabase status guard ────────────────
+// ─── VULN-H2: clientRejectCounterOfferOnSupabase — RPC client_reject_counter_offer
 
-describe('clientRejectCounterOfferOnSupabase — VULN-H2 status guard', () => {
-  it('returns true when request is in_negotiation (happy path)', async () => {
-    from.mockReturnValue(chain({ data: { id: 'req-1' }, error: null }, 'maybeSingle'));
+describe('clientRejectCounterOfferOnSupabase — RPC guard', () => {
+  it('returns true when RPC succeeds (happy path)', async () => {
+    rpc.mockResolvedValue({ data: true, error: null });
+    from.mockReturnValue(
+      chain({ data: { organization_id: 'c-org', client_organization_id: null }, error: null }, 'maybeSingle'),
+    );
     expect(await clientRejectCounterOfferOnSupabase('req-1')).toBe(true);
   });
 
-  it('returns false and warns when request is already confirmed (0 rows)', async () => {
-    from.mockReturnValue(chain({ data: null, error: null }, 'maybeSingle'));
+  it('returns false and warns when RPC returns false (wrong state)', async () => {
+    rpc.mockResolvedValue({ data: false, error: null });
     expect(await clientRejectCounterOfferOnSupabase('confirmed-req')).toBe(false);
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('confirmed or rejected'),
+      expect.stringContaining('not pending counter'),
       'confirmed-req',
     );
   });
 
-  it('returns false on DB error', async () => {
-    from.mockReturnValue(chain({ data: null, error: { message: 'rls violation' } }, 'maybeSingle'));
+  it('returns false on RPC error', async () => {
+    rpc.mockResolvedValue({ data: null, error: { message: 'rls violation' } });
     expect(await clientRejectCounterOfferOnSupabase('req-1')).toBe(false);
     expect(errSpy).toHaveBeenCalled();
   });
 
-  it('double-reject returns false on second call (idempotency guard)', async () => {
-    from
-      .mockReturnValueOnce(chain({ data: { id: 'req-1' }, error: null }, 'maybeSingle'))
-      .mockReturnValueOnce(chain({ data: null, error: null }, 'maybeSingle'));
+  it('double-reject returns false on second call (idempotency)', async () => {
+    rpc
+      .mockResolvedValueOnce({ data: true, error: null })
+      .mockResolvedValueOnce({ data: false, error: null });
+    from.mockReturnValue(
+      chain({ data: { organization_id: 'c-org', client_organization_id: null }, error: null }, 'maybeSingle'),
+    );
     await clientRejectCounterOfferOnSupabase('req-1');
     expect(await clientRejectCounterOfferOnSupabase('req-1')).toBe(false);
   });

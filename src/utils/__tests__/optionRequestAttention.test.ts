@@ -78,6 +78,17 @@ describe('deriveSmartAttentionState', () => {
       }),
     ).toBe('counter_pending');
   });
+
+  it('does not surface counter_pending when status is rejected (terminal row) even if client_price_status is rejected', () => {
+    expect(
+      deriveSmartAttentionState({
+        status: 'rejected',
+        finalStatus: 'option_pending',
+        clientPriceStatus: 'rejected',
+        modelApproval: 'approved',
+      }),
+    ).toBe('no_attention');
+  });
 });
 
 describe('smartAttentionVisibleForRole', () => {

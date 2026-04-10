@@ -114,7 +114,17 @@ describe('setAgencyCounterOffer', () => {
   it('returns true when request is in_negotiation (1 row updated)', async () => {
     // Chains: .update().eq(id).eq(status,'in_negotiation').select().maybeSingle()
     // maybeSingle is the terminal call → use makeChain with 'maybeSingle'
-    const chain = makeChain({ data: { id: 'req-1' }, error: null }, 'maybeSingle');
+    const chain = makeChain(
+      {
+        data: {
+          id: 'req-1',
+          agency_id: 'agency-row-1',
+          agency_organization_id: 'agency-org-uuid',
+        },
+        error: null,
+      },
+      'maybeSingle',
+    );
     from.mockReturnValue(chain);
 
     const result = await setAgencyCounterOffer('req-1', 2500);
@@ -181,33 +191,32 @@ describe('agencyAcceptClientPrice — RPC route (EXPLOIT-C1 fix)', () => {
 });
 
 // ─── clientRejectCounterOfferOnSupabase ───────────────────────────────────────
-// VULN-H2 fix: now includes .neq('status','confirmed').neq('status','rejected')
-// guards and terminates with .select('id').maybeSingle().
+// Routes through SECURITY DEFINER RPC client_reject_counter_offer (20260550).
 
 describe('clientRejectCounterOfferOnSupabase', () => {
-  it('returns true on success (request in_negotiation)', async () => {
-    // Chain: update → eq → neq('confirmed') → neq('rejected') → select → maybeSingle
+  it('returns true on success (RPC true)', async () => {
+    rpc.mockResolvedValue({ data: true, error: null });
     from.mockReturnValue(
-      makeChain({ data: { id: 'req-1' }, error: null }, 'maybeSingle'),
+      makeChain(
+        { data: { organization_id: 'client-org', client_organization_id: null }, error: null },
+        'maybeSingle',
+      ),
     );
     expect(await clientRejectCounterOfferOnSupabase('req-1')).toBe(true);
+    expect(rpc).toHaveBeenCalledWith('client_reject_counter_offer', { p_request_id: 'req-1' });
   });
 
-  it('returns false on DB error', async () => {
-    from.mockReturnValue(
-      makeChain({ data: null, error: { message: 'timeout' } }, 'maybeSingle'),
-    );
+  it('returns false on RPC error', async () => {
+    rpc.mockResolvedValue({ data: null, error: { message: 'timeout' } });
     expect(await clientRejectCounterOfferOnSupabase('req-1')).toBe(false);
     expect(consoleErrorSpy).toHaveBeenCalled();
   });
 
-  it('returns false when request is confirmed (0 rows — VULN-H2 guard)', async () => {
-    from.mockReturnValue(
-      makeChain({ data: null, error: null }, 'maybeSingle'),
-    );
+  it('returns false when RPC returns false (wrong state / idempotency)', async () => {
+    rpc.mockResolvedValue({ data: false, error: null });
     expect(await clientRejectCounterOfferOnSupabase('confirmed-req')).toBe(false);
     expect(consoleWarnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('confirmed or rejected'),
+      expect.stringContaining('not pending counter'),
       'confirmed-req',
     );
   });
