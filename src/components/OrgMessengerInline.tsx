@@ -15,12 +15,10 @@ import {
   ActivityIndicator,
   AppState,
   type AppStateStatus,
-  useWindowDimensions,
 } from 'react-native';
 import { StorageImage } from './StorageImage';
 import ChatLayoutFix from './ChatLayoutFix';
 import { colors, spacing, typography } from '../theme/theme';
-import { getMessagesScrollMaxHeight } from '../theme/chatLayout';
 import { uiCopy } from '../constants/uiCopy';
 import {
   getMessagesWithSenderInfo,
@@ -90,8 +88,8 @@ export type OrgMessengerInlineProps = {
    */
   onPackagePress?: (metadata: Record<string, unknown>) => void;
   /**
-   * Web B2B split: use flex-constrained message scroll so the composer stays in view
-   * instead of a window-fraction maxHeight that can push the input below the fold.
+   * Legacy: previously gated flex layout on web. Web always uses ChatLayoutFix now;
+   * prop kept for call-site compatibility (ignored).
    */
   useFlexMessengerScroll?: boolean;
   /**
@@ -147,16 +145,12 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   onBookingCardPress,
   onOpenRelatedRequest,
   onPackagePress,
-  useFlexMessengerScroll = false,
+  useFlexMessengerScroll: _legacyUseFlexMessengerScroll = false,
   viewerRole,
   onBookingStatusUpdated,
   onOrgPress,
   composerBottomInsetOverride,
 }) => {
-  const { height: windowHeight } = useWindowDimensions();
-  const messagesScrollMaxHeight = getMessagesScrollMaxHeight(windowHeight);
-  const useFlexScroll =
-    Platform.OS === 'web' && useFlexMessengerScroll;
   const [msgs, setMsgs] = useState<MessageWithSender[]>([]);
   const [input, setInput] = useState('');
   const [shareOpen, setShareOpen] = useState<'package' | 'model' | null>(null);
@@ -467,9 +461,6 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   const threadContextAssignment = threadContext?.clientFlagLabel
     ? `${threadContext.clientFlagLabel}${threadContext.assignedMemberName ? ` · ${threadContext.assignedMemberName}` : ''}`
     : null;
-
-  /** Native + web B2B split: flex message area + tab bar / home-indicator padding on composer. */
-  const useFlexLayout = useFlexScroll || Platform.OS !== 'web';
 
   const messengerHeader = (
     <>
@@ -827,25 +818,17 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
     <View
       style={[
         styles.chatPanel,
-        useFlexLayout && { flex: 1, minHeight: 0, flexDirection: 'column' as const },
+        { flex: 1, minHeight: 0, flexDirection: 'column' as const },
         containerStyle,
       ]}
     >
-      {useFlexLayout ? (
-        <ChatLayoutFix
-          header={messengerHeader}
-          messageList={messageNodes}
-          composer={messengerComposer}
-          edgePadding={0}
-          bottomTabInset={composerBottomInsetOverride}
-        />
-      ) : (
-        <>
-          {messengerHeader}
-          <ScrollView style={{ maxHeight: messagesScrollMaxHeight }}>{messageNodes}</ScrollView>
-          {messengerComposer}
-        </>
-      )}
+      <ChatLayoutFix
+        header={messengerHeader}
+        messageList={messageNodes}
+        composer={messengerComposer}
+        edgePadding={0}
+        bottomTabInset={composerBottomInsetOverride}
+      />
 
       <Modal visible={shareOpen !== null} transparent animationType="fade">
         <Pressable style={styles.modalBackdrop} onPress={() => setShareOpen(null)}>

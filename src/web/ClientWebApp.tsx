@@ -4010,13 +4010,7 @@ const ClientB2BChatsPanel: React.FC<{
   ) : null;
 
   return (
-    <View
-      style={
-        b2bWebSplit
-          ? { marginTop: spacing.sm, flex: 1, minHeight: 0 }
-          : { marginTop: spacing.sm }
-      }
-    >
+    <View style={{ marginTop: spacing.sm, flex: 1, minHeight: 0 }}>
       {b2bWebSplit ? (
         <View
           style={{
@@ -4033,7 +4027,7 @@ const ClientB2BChatsPanel: React.FC<{
       ) : (
         <>
           {threadListEl}
-          {messengerEl}
+          <View style={{ flex: 1, minHeight: 0 }}>{messengerEl}</View>
         </>
       )}
       {viewingAgencyProfileState && (
@@ -4406,7 +4400,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
       </ScrollView>
 
       {request && (
-        <View style={styles.chatPanel}>
+        <View style={[styles.chatPanel, Platform.OS === 'web' && { flex: 1, minHeight: 0 }]}>
           <View style={styles.chatPanelHeader}>
             <Text style={styles.chatPanelTitle}>{request.modelName} · {request.date}</Text>
             {isAgency ? (
@@ -4623,7 +4617,14 @@ const MessagesView: React.FC<MessagesViewProps> = ({
               <Text style={[styles.filterPillLabel, { color: '#fff' }]}>Confirm job</Text>
             </TouchableOpacity>
           )}
-          <ScrollView style={[styles.chatPanelMessages, { maxHeight: legacyChatPanelMessagesMaxHeight }]}>
+          <ScrollView
+            style={[
+              styles.chatPanelMessages,
+              Platform.OS === 'web'
+                ? { flex: 1, minHeight: 0 }
+                : { maxHeight: legacyChatPanelMessagesMaxHeight },
+            ]}
+          >
             {messages.map((msg) => (
               <View
                 key={msg.id}

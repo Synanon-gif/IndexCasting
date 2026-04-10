@@ -370,7 +370,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: spacing.lg,
   },
-  container: { flex: 1, backgroundColor: colors.background },
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+    ...(Platform.OS === 'web' ? { minHeight: 0 } : {}),
+  },
   loadingText: {
     ...typography.body,
     color: colors.textSecondary,
@@ -467,8 +471,8 @@ const styles = StyleSheet.create({
   },
 
   // Chat area
-  chatArea: { flex: 1 },
-  messengerContainer: { flex: 1 },
+  chatArea: { flex: 1, ...(Platform.OS === 'web' ? { minHeight: 0 } : {}) },
+  messengerContainer: { flex: 1, ...(Platform.OS === 'web' ? { minHeight: 0 } : {}) },
 
   // Upgrade modal
   modalOverlay: {

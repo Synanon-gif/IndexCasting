@@ -198,7 +198,13 @@ export const BookingChatView: React.FC<Props> = ({
 
   const chatBody = (
     <View style={styles.overlay}>
-      <View style={[styles.card, { maxWidth: chatOverlayMaxWidth }]}>
+      <View
+        style={[
+          styles.card,
+          { maxWidth: chatOverlayMaxWidth },
+          Platform.OS === 'web' && { flex: 1, minHeight: 0, flexDirection: 'column' as const },
+        ]}
+      >
           <View style={styles.header}>
             <View style={{ flex: 1 }}>
               {fromRole === 'model' ? (
@@ -266,7 +272,13 @@ export const BookingChatView: React.FC<Props> = ({
               </ScrollView>
             </View>
           )}
-          <ScrollView style={[styles.messages, { maxHeight: bookingMessagesMaxHeight }]} contentContainerStyle={styles.messagesContent}>
+          <ScrollView
+            style={[
+              styles.messages,
+              Platform.OS === 'web' ? { flex: 1, minHeight: 0 } : { maxHeight: bookingMessagesMaxHeight },
+            ]}
+            contentContainerStyle={styles.messagesContent}
+          >
             {messages.map((msg) => {
               const isSelf = msg.from === fromRole;
               const resolvedFileUrl = msg.fileUrl ? (signedUrls[msg.fileUrl] ?? null) : null;

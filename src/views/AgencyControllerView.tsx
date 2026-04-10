@@ -4851,7 +4851,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                       ))}
                     </ScrollView>
                   </View>
-                  <View style={{ flex: CHAT_MESSENGER_FLEX, minWidth: 0 }}>
+                  <View style={{ flex: CHAT_MESSENGER_FLEX, minWidth: 0, minHeight: 0 }}>
                     {activeConnectionChatId ? (
                       <OrgMessengerInline
                         conversationId={activeConnectionChatId}
@@ -4903,29 +4903,32 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                     </View>
                   ))}
                   {activeConnectionChatId ? (
-                    <OrgMessengerInline
-                      conversationId={activeConnectionChatId}
-                      headerTitle={activeConnectionChatTitle}
-                      viewerUserId={currentUserId}
-                      threadContext={{ type: uiCopy.b2bChat.contextOrgChat }}
-                      agencyId={agencyId}
-                      guestLinks={guestLinksForChat}
-                      modelsForShare={modelsForShare}
-                      onOpenRelatedRequest={(optionRequestId) => {
-                        setMessagesSection('optionRequests');
-                        setSelectedThreadId(optionRequestId);
-                      }}
-                      onBookingCardPress={onBookingCardPress}
-                      viewerRole="agency"
-                      onBookingStatusUpdated={() => onBookingCardPress?.()}
-                      onOrgPress={() => {
-                        const conv = b2bConversations.find((c) => c.id === activeConnectionChatId);
-                        const orgId = conv?.client_organization_id ?? null;
-                        if (!orgId) return;
-                        setViewingClientProfileOrgId(orgId);
-                        setViewingClientProfileOrgName(activeConnectionChatTitle);
-                      }}
-                    />
+                    <View style={{ flex: 1, minHeight: 0, marginTop: spacing.md }}>
+                      <OrgMessengerInline
+                        conversationId={activeConnectionChatId}
+                        headerTitle={activeConnectionChatTitle}
+                        viewerUserId={currentUserId}
+                        threadContext={{ type: uiCopy.b2bChat.contextOrgChat }}
+                        agencyId={agencyId}
+                        guestLinks={guestLinksForChat}
+                        modelsForShare={modelsForShare}
+                        onOpenRelatedRequest={(optionRequestId) => {
+                          setMessagesSection('optionRequests');
+                          setSelectedThreadId(optionRequestId);
+                        }}
+                        onBookingCardPress={onBookingCardPress}
+                        viewerRole="agency"
+                        onBookingStatusUpdated={() => onBookingCardPress?.()}
+                        containerStyle={{ marginTop: 0, flex: 1 }}
+                        onOrgPress={() => {
+                          const conv = b2bConversations.find((c) => c.id === activeConnectionChatId);
+                          const orgId = conv?.client_organization_id ?? null;
+                          if (!orgId) return;
+                          setViewingClientProfileOrgId(orgId);
+                          setViewingClientProfileOrgName(activeConnectionChatTitle);
+                        }}
+                      />
+                    </View>
                   ) : null}
                 </>
               )}
