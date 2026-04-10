@@ -78,7 +78,7 @@ export type SupabaseOptionRequestModelSafe = Omit<
 export type SupabaseOptionMessage = {
   id: string;
   option_request_id: string;
-  from_role: 'client' | 'agency';
+  from_role: 'client' | 'agency' | 'model' | 'system';
   text: string;
   // optional, for future system / typed messages
   message_type?: 'user' | 'system';
@@ -86,6 +86,18 @@ export type SupabaseOptionMessage = {
   booker_name: string | null;
   created_at: string;
 };
+
+/** Must match public.insert_option_request_system_message kinds + SQL CASE. */
+export type SystemOptionMessageKind =
+  | 'no_model_account'
+  | 'no_model_account_client_notice'
+  | 'agency_accepted_price'
+  | 'agency_declined_price'
+  | 'agency_counter_offer'
+  | 'client_accepted_counter'
+  | 'client_rejected_counter'
+  | 'job_confirmed_by_client'
+  | 'model_approved_booking';
 
 export type SupabaseOptionDocument = {
   id: string;
@@ -805,7 +817,7 @@ export async function getOptionMessages(
 
 export async function addOptionMessage(
   requestId: string,
-  fromRole: 'client' | 'agency',
+  fromRole: 'client' | 'agency' | 'model',
   text: string
 ): Promise<SupabaseOptionMessage | null> {
   try {
@@ -850,6 +862,7 @@ export async function addOptionMessage(
     // Fire-and-forget: notify the opposing party about the new message.
     // agency sends → notify client user (client_id)
     // client sends → notify agency org (resolved from agency_id, NOT organization_id which is the CLIENT org)
+    // model sends → notify agency org
     void (async () => {
       const { data: req } = await supabase
         .from('option_requests')
@@ -866,7 +879,7 @@ export async function addOptionMessage(
           message: uiCopy.notifications.newOptionMessage.message,
           metadata: { option_request_id: requestId },
         });
-      } else if (fromRole === 'client' && req.agency_id) {
+      } else if ((fromRole === 'client' || fromRole === 'model') && req.agency_id) {
         // Resolve the agency organisation — req.organization_id is the CLIENT org, not the agency.
         const agencyOrgId = await fetchAgencyOrgId(req.agency_id as string);
         if (!agencyOrgId) {
@@ -886,6 +899,107 @@ export async function addOptionMessage(
     return data as SupabaseOptionMessage;
   } catch (e) {
     console.error('addOptionMessage exception:', e);
+    return null;
+  }
+}
+
+/**
+ * Workflow-only thread lines (`from_role = system`). Server maps `kind` to canonical English text;
+ * clients cannot insert `system` directly (trigger + RPC session flag).
+ */
+export async function addOptionSystemMessage(
+  requestId: string,
+  kind: SystemOptionMessageKind,
+  opts?: { price?: number; currency?: string },
+): Promise<SupabaseOptionMessage | null> {
+  try {
+    if (kind === 'agency_counter_offer' && (opts?.price === undefined || !opts?.currency?.trim())) {
+      console.error('addOptionSystemMessage: agency_counter_offer requires price and currency');
+      return null;
+    }
+
+    const { data: newId, error: rpcErr } = await supabase.rpc('insert_option_request_system_message', {
+      p_option_request_id: requestId,
+      p_kind: kind,
+      p_price: kind === 'agency_counter_offer' ? opts?.price ?? null : null,
+      p_currency: kind === 'agency_counter_offer' ? opts?.currency?.trim() ?? null : null,
+    });
+
+    if (rpcErr) {
+      console.error('addOptionSystemMessage RPC error:', rpcErr);
+      return null;
+    }
+    const id = typeof newId === 'string' ? newId : null;
+    if (!id) {
+      console.error('addOptionSystemMessage: RPC returned no id');
+      return null;
+    }
+
+    const { data: row, error: fetchErr } = await supabase
+      .from('option_request_messages')
+      .select('id, option_request_id, from_role, text, booker_id, booker_name, created_at')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (fetchErr || !row) {
+      console.error('addOptionSystemMessage: fetch row error:', fetchErr);
+      return null;
+    }
+
+    const msg = row as SupabaseOptionMessage;
+
+    // Mirror prior addOptionMessage notification directions: “agency” kinds → client; “client” kinds → agency org.
+    void (async () => {
+      const { data: req } = await supabase
+        .from('option_requests')
+        .select('client_id, agency_id')
+        .eq('id', requestId)
+        .maybeSingle();
+      if (!req) return;
+
+      const notifyClientKinds: SystemOptionMessageKind[] = [
+        'agency_accepted_price',
+        'agency_declined_price',
+        'agency_counter_offer',
+        'model_approved_booking',
+      ];
+      const notifyAgencyKinds: SystemOptionMessageKind[] = [
+        'no_model_account_client_notice',
+        'client_accepted_counter',
+        'client_rejected_counter',
+        'job_confirmed_by_client',
+      ];
+
+      if (notifyClientKinds.includes(kind) && req.client_id) {
+        await createNotification({
+          user_id: req.client_id as string,
+          type: 'new_option_message',
+          title: uiCopy.notifications.newOptionMessage.title,
+          message: uiCopy.notifications.newOptionMessage.message,
+          metadata: { option_request_id: requestId },
+        });
+      } else if (notifyAgencyKinds.includes(kind) && req.agency_id) {
+        const agencyOrgId = await fetchAgencyOrgId(req.agency_id as string);
+        if (!agencyOrgId) {
+          console.error(
+            '[notifications] addOptionSystemMessage: agency org not found for agency_id',
+            req.agency_id,
+          );
+        } else {
+          await createNotification({
+            organization_id: agencyOrgId,
+            type: 'new_option_message',
+            title: uiCopy.notifications.newOptionMessage.title,
+            message: uiCopy.notifications.newOptionMessage.message,
+            metadata: { option_request_id: requestId },
+          });
+        }
+      }
+    })();
+
+    return msg;
+  } catch (e) {
+    console.error('addOptionSystemMessage exception:', e);
     return null;
   }
 }

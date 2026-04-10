@@ -1164,6 +1164,8 @@ export const uiCopy = {
     },
   },
   systemMessages: {
+    /** Centered workflow lines (`from_role = system`); not a participant chat message. */
+    systemMessageLabel: 'System',
     agencyAcceptedPrice: 'Agency accepted the proposed fee.',
     agencyDeclinedPrice: 'Agency declined the proposed fee. A counter offer can be sent below.',
     agencyCounterOffer: (price: number, currency: string) => `Agency proposed ${price} ${currency}.`,

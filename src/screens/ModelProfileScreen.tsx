@@ -1276,11 +1276,42 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
               </TouchableOpacity>
             </View>
             <ScrollView style={{ maxHeight: optionChatMessagesMaxH, marginBottom: spacing.sm }}>
-              {getMessages(selectedOptionThread).map((msg) => (
-                <View key={msg.id} style={{ alignSelf: msg.from === 'agency' ? 'flex-end' : 'flex-start', maxWidth: '85%', paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: 12, marginBottom: spacing.xs, backgroundColor: msg.from === 'agency' ? colors.buttonOptionGreen : '#E2E0DB' }}>
-                  <Text style={{ ...typography.body, fontSize: 12, color: msg.from === 'agency' ? '#fff' : colors.textPrimary }}>{msg.text}</Text>
-                </View>
-              ))}
+              {getMessages(selectedOptionThread).map((msg) =>
+                msg.from === 'system' ? (
+                  <View
+                    key={msg.id}
+                    style={{
+                      alignSelf: 'center',
+                      maxWidth: '90%',
+                      paddingHorizontal: spacing.sm,
+                      paddingVertical: spacing.xs,
+                      borderRadius: 12,
+                      marginBottom: spacing.xs,
+                      backgroundColor: '#E8E6E3',
+                    }}
+                  >
+                    <Text style={{ ...typography.label, fontSize: 9, color: colors.textSecondary, textAlign: 'center' }}>
+                      {uiCopy.systemMessages.systemMessageLabel}
+                    </Text>
+                    <Text style={{ ...typography.body, fontSize: 12, color: colors.textPrimary, textAlign: 'center' }}>{msg.text}</Text>
+                  </View>
+                ) : (
+                  <View
+                    key={msg.id}
+                    style={{
+                      alignSelf: msg.from === 'agency' ? 'flex-end' : 'flex-start',
+                      maxWidth: '85%',
+                      paddingHorizontal: spacing.sm,
+                      paddingVertical: spacing.xs,
+                      borderRadius: 12,
+                      marginBottom: spacing.xs,
+                      backgroundColor: msg.from === 'agency' ? colors.buttonOptionGreen : '#E2E0DB',
+                    }}
+                  >
+                    <Text style={{ ...typography.body, fontSize: 12, color: msg.from === 'agency' ? '#fff' : colors.textPrimary }}>{msg.text}</Text>
+                  </View>
+                ),
+              )}
             </ScrollView>
             <View style={{ flexDirection: 'row', gap: spacing.sm }}>
               <TextInput value={optChatInput} onChangeText={setOptChatInput} placeholder="Message..." placeholderTextColor={colors.textSecondary}

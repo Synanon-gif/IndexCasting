@@ -692,6 +692,11 @@ ON CONFLICT (model_id, source) DO UPDATE SET city = EXCLUDED.city, ...;
 
 ---
 
+## OPTION / CASTING THREAD — SYSTEM MESSAGES (unveränderlich, 2026-05)
+
+- Automatische Workflow-Hinweise in `option_request_messages` nutzen **`from_role = 'system'`** und werden **nur** über **`public.insert_option_request_system_message`** persistiert (SECURITY DEFINER, `option_request_visible_to_me`, Trigger **`app.option_request_system_message`**). Kein direktes `INSERT` mit `from_role = system` aus dem Client; **keine** Workflow-Zeilen unter falschem `client` / `agency` / `model`.
+- Neue Arten: `p_kind` in der RPC per **Allowlist** erweitern; englischer Text **1:1** zu `uiCopy.systemMessages` und zum SQL-`CASE` halten.
+
 ## ROLE-SCOPED LOOKUP INVARIANT (unveränderlich, 2026-05-18)
 
 - Non-admin product flows (agency, client, model) **MUST NEVER** call `admin_*` RPCs

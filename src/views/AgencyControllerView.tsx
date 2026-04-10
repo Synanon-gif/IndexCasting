@@ -5288,11 +5288,18 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
             </View>
           )}
           <ScrollView style={{ maxHeight: agencyLegacyChatMessagesMaxH, marginBottom: spacing.sm }}>
-            {messages.map((msg) => (
-              <View key={msg.id} style={[s.chatBubble, msg.from === 'agency' ? s.chatBubbleAgency : s.chatBubbleClient]}>
-                <Text style={[s.chatBubbleText, msg.from === 'agency' && s.chatBubbleTextAgency]}>{msg.text}</Text>
-              </View>
-            ))}
+            {messages.map((msg) =>
+              msg.from === 'system' ? (
+                <View key={msg.id} style={[s.chatBubble, s.chatBubbleSystem]}>
+                  <Text style={s.chatBubbleSystemLabel}>{uiCopy.systemMessages.systemMessageLabel}</Text>
+                  <Text style={[s.chatBubbleText, s.chatBubbleSystemText]}>{msg.text}</Text>
+                </View>
+              ) : (
+                <View key={msg.id} style={[s.chatBubble, msg.from === 'agency' ? s.chatBubbleAgency : s.chatBubbleClient]}>
+                  <Text style={[s.chatBubbleText, msg.from === 'agency' && s.chatBubbleTextAgency]}>{msg.text}</Text>
+                </View>
+              ),
+            )}
           </ScrollView>
           <View style={{ flexDirection: 'row', gap: spacing.sm }}>
             <TextInput value={chatInput} onChangeText={setChatInput} placeholder="Message..." placeholderTextColor={colors.textSecondary} style={s.chatInput} />
@@ -6308,6 +6315,9 @@ const s = StyleSheet.create({
   chatBubble: { alignSelf: 'flex-start', maxWidth: '85%', paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: 12, marginBottom: spacing.xs, backgroundColor: '#F0EEEA' },
   chatBubbleAgency: { alignSelf: 'flex-end', backgroundColor: colors.buttonOptionGreen },
   chatBubbleClient: { backgroundColor: '#E2E0DB' },
+  chatBubbleSystem: { alignSelf: 'center' as const, maxWidth: '92%', backgroundColor: '#E8E6E3' },
+  chatBubbleSystemLabel: { ...typography.label, fontSize: 10, color: colors.textSecondary, marginBottom: 2, textAlign: 'center' as const },
+  chatBubbleSystemText: { textAlign: 'center' as const },
   chatBubbleText: { ...typography.body, fontSize: 12, color: colors.textPrimary },
   chatBubbleTextAgency: { color: colors.surface },
   /** Single-line search on Messages tab — never use flex:1 (RN Web expands to huge height). */

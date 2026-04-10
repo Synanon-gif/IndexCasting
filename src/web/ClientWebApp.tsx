@@ -4590,16 +4590,23 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                 : { maxHeight: legacyChatPanelMessagesMaxHeight },
             ]}
           >
-            {messages.map((msg) => (
-              <View
-                key={msg.id}
-                style={[styles.chatBubble, msg.from === (isAgency ? 'agency' : 'client') ? styles.chatBubbleSelf : styles.chatBubbleOther]}
-              >
-                <Text style={[styles.chatBubbleText, msg.from === (isAgency ? 'agency' : 'client') && styles.chatBubbleTextSelf]}>
-                  {msg.text}
-                </Text>
-              </View>
-            ))}
+            {messages.map((msg) =>
+              msg.from === 'system' ? (
+                <View key={msg.id} style={[styles.chatBubble, styles.chatBubbleSystem]}>
+                  <Text style={styles.chatBubbleSystemLabel}>{uiCopy.systemMessages.systemMessageLabel}</Text>
+                  <Text style={[styles.chatBubbleText, styles.chatBubbleSystemText]}>{msg.text}</Text>
+                </View>
+              ) : (
+                <View
+                  key={msg.id}
+                  style={[styles.chatBubble, msg.from === (isAgency ? 'agency' : 'client') ? styles.chatBubbleSelf : styles.chatBubbleOther]}
+                >
+                  <Text style={[styles.chatBubbleText, msg.from === (isAgency ? 'agency' : 'client') && styles.chatBubbleTextSelf]}>
+                    {msg.text}
+                  </Text>
+                </View>
+              ),
+            )}
           </ScrollView>
           <View style={styles.chatPanelInputRow}>
             <TextInput
@@ -6840,6 +6847,21 @@ const styles = StyleSheet.create({
   },
   chatBubbleTextSelf: {
     color: colors.surface,
+  },
+  chatBubbleSystem: {
+    alignSelf: 'center',
+    maxWidth: '92%',
+    backgroundColor: '#E8E6E3',
+  },
+  chatBubbleSystemLabel: {
+    ...typography.label,
+    fontSize: 10,
+    color: colors.textSecondary,
+    marginBottom: 2,
+    textAlign: 'center',
+  },
+  chatBubbleSystemText: {
+    textAlign: 'center',
   },
   chatPanelInputRow: {
     flexDirection: 'row',

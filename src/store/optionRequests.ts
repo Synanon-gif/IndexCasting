@@ -13,6 +13,7 @@ import {
   updateModelApproval,
   getOptionMessages as fetchMessages,
   addOptionMessage,
+  addOptionSystemMessage,
   getOptionRequestsForModel,
   getOptionRequestsForCurrentClient as fetchRequestsForCurrentClient,
   getOptionRequestsForAgency as fetchRequestsForAgency,
@@ -79,7 +80,7 @@ export type OptionRequest = {
 export type ChatMessage = {
   id: string;
   threadId: string;
-  from: 'client' | 'agency' | 'model';
+  from: 'client' | 'agency' | 'model' | 'system';
   text: string;
   createdAt: number;
 };
@@ -113,10 +114,19 @@ function toLocalRequest(r: SupabaseOptionRequest | SupabaseOptionRequestModelSaf
 }
 
 function toLocalMessage(m: SupabaseOptionMessage): ChatMessage {
+  const role = m.from_role;
+  const from: ChatMessage['from'] =
+    role === 'system'
+      ? 'system'
+      : role === 'model'
+        ? 'model'
+        : role === 'agency'
+          ? 'agency'
+          : 'client';
   return {
     id: m.id,
     threadId: m.option_request_id,
-    from: m.from_role as 'client' | 'agency',
+    from,
     text: m.text,
     createdAt: new Date(m.created_at).getTime(),
   };
@@ -384,7 +394,7 @@ export function addOptionRequest(
 
       // DB trigger enforces from_role vs caller: clients cannot insert agency-authored rows.
       if (local.modelAccountLinked === false) {
-        addOptionMessage(result.id, 'client', uiCopy.systemMessages.noModelAccountClientNotice);
+        void addOptionSystemMessage(result.id, 'no_model_account_client_notice');
       }
       notify();
       extra?.onThreadReady?.(result.id);
@@ -411,15 +421,16 @@ export async function approveOptionAsModel(threadId: string): Promise<boolean> {
     console.error('[approveOptionAsModel] updateModelApproval failed – rolled back', req.id);
     return false;
   }
-  const approvedText = uiCopy.systemMessages.modelApprovedBooking;
-  messagesCache.push({
-    id: `msg-${Date.now()}`,
-    threadId,
-    from: 'agency',
-    text: approvedText,
-    createdAt: Date.now(),
-  });
-  addOptionMessage(req.id, 'agency', approvedText);
+  const inserted = await addOptionSystemMessage(req.id, 'model_approved_booking');
+  if (inserted) {
+    messagesCache.push({
+      id: inserted.id,
+      threadId,
+      from: 'system',
+      text: inserted.text,
+      createdAt: new Date(inserted.created_at).getTime(),
+    });
+  }
   notify();
   return true;
 }
@@ -531,7 +542,8 @@ export function addMessage(threadId: string, from: 'client' | 'agency' | 'model'
 
   const req = requestsCache.find((r) => r.threadId === threadId);
   if (req) {
-    const supabaseRole: 'client' | 'agency' = from === 'client' ? 'client' : 'agency';
+    const supabaseRole: 'client' | 'agency' | 'model' =
+      from === 'client' ? 'client' : from === 'model' ? 'model' : 'agency';
     addOptionMessage(req.id, supabaseRole, text);
   }
 }
@@ -593,9 +605,16 @@ export async function agencyAcceptClientPriceStore(threadId: string): Promise<bo
     if (updated.final_status === 'option_confirmed') {
       // Calendar entry is created by the DB trigger fn_ensure_calendar_on_option_confirmed
       // (migration_calendar_booking_audit_fixes_2026_04.sql) — no client-side call needed.
-      const text = uiCopy.systemMessages.agencyAcceptedPrice;
-      await addOptionMessage(req.id, 'agency', text);
-      messagesCache.push({ id: `msg-${Date.now()}`, threadId, from: 'agency', text, createdAt: Date.now() });
+      const inserted = await addOptionSystemMessage(req.id, 'agency_accepted_price');
+      if (inserted) {
+        messagesCache.push({
+          id: inserted.id,
+          threadId,
+          from: 'system',
+          text: inserted.text,
+          createdAt: new Date(inserted.created_at).getTime(),
+        });
+      }
     }
     notify();
   }
@@ -611,9 +630,19 @@ export async function agencyCounterOfferStore(threadId: string, counterPrice: nu
   req.agencyCounterPrice = counterPrice;
   req.clientPriceStatus = 'pending';
   req.finalStatus = 'option_pending';
-  const text = uiCopy.systemMessages.agencyCounterOffer(counterPrice, currency);
-  await addOptionMessage(req.id, 'agency', text);
-  messagesCache.push({ id: `msg-${Date.now()}`, threadId, from: 'agency', text, createdAt: Date.now() });
+  const inserted = await addOptionSystemMessage(req.id, 'agency_counter_offer', {
+    price: counterPrice,
+    currency,
+  });
+  if (inserted) {
+    messagesCache.push({
+      id: inserted.id,
+      threadId,
+      from: 'system',
+      text: inserted.text,
+      createdAt: new Date(inserted.created_at).getTime(),
+    });
+  }
 
   // Web push (browser Notification API)
   const agency = req.agencyId ? await getAgencyById(req.agencyId) : null;
@@ -642,9 +671,16 @@ export async function agencyRejectClientPriceStore(threadId: string): Promise<bo
   const ok = await agencyRejectClientPriceDb(req.id);
   if (!ok) return false;
   req.clientPriceStatus = 'rejected';
-  const text = uiCopy.systemMessages.agencyDeclinedPrice;
-  await addOptionMessage(req.id, 'agency', text);
-  messagesCache.push({ id: `msg-${Date.now()}`, threadId, from: 'agency', text, createdAt: Date.now() });
+  const inserted = await addOptionSystemMessage(req.id, 'agency_declined_price');
+  if (inserted) {
+    messagesCache.push({
+      id: inserted.id,
+      threadId,
+      from: 'system',
+      text: inserted.text,
+      createdAt: new Date(inserted.created_at).getTime(),
+    });
+  }
   notify();
   return true;
 }
@@ -661,9 +697,16 @@ export async function clientAcceptCounterStore(threadId: string): Promise<boolea
     if (updated.final_status === 'option_confirmed') {
       // Calendar entry is created by the DB trigger fn_ensure_calendar_on_option_confirmed
       // (migration_calendar_booking_audit_fixes_2026_04.sql) — no client-side call needed.
-      const text = uiCopy.systemMessages.clientAcceptedCounter;
-      await addOptionMessage(req.id, 'client', text);
-      messagesCache.push({ id: `msg-${Date.now()}`, threadId, from: 'client', text, createdAt: Date.now() });
+      const inserted = await addOptionSystemMessage(req.id, 'client_accepted_counter');
+      if (inserted) {
+        messagesCache.push({
+          id: inserted.id,
+          threadId,
+          from: 'system',
+          text: inserted.text,
+          createdAt: new Date(inserted.created_at).getTime(),
+        });
+      }
     }
     notify();
   }
@@ -687,9 +730,16 @@ export async function clientConfirmJobStore(threadId: string): Promise<boolean> 
   req.finalStatus = 'job_confirmed';
   req.status = 'confirmed';
   await updateCalendarEntryToJob(req.id);
-  const text = uiCopy.systemMessages.jobConfirmedByClient;
-  await addOptionMessage(req.id, 'client', text);
-  messagesCache.push({ id: `msg-${Date.now()}`, threadId, from: 'client', text, createdAt: Date.now() });
+  const inserted = await addOptionSystemMessage(req.id, 'job_confirmed_by_client');
+  if (inserted) {
+    messagesCache.push({
+      id: inserted.id,
+      threadId,
+      from: 'system',
+      text: inserted.text,
+      createdAt: new Date(inserted.created_at).getTime(),
+    });
+  }
 
   // Notify agency org + model about job confirmation.
   // full.organization_id is the CLIENT org — do NOT notify it here (client triggered this action).
@@ -749,9 +799,16 @@ export async function clientRejectCounterStore(threadId: string): Promise<boolea
   if (!ok) return false;
   req.clientPriceStatus = 'rejected';
   req.status = 'rejected';
-  const text = uiCopy.systemMessages.clientRejectedCounter;
-  await addOptionMessage(req.id, 'client', text);
-  messagesCache.push({ id: `msg-${Date.now()}`, threadId, from: 'client', text, createdAt: Date.now() });
+  const inserted = await addOptionSystemMessage(req.id, 'client_rejected_counter');
+  if (inserted) {
+    messagesCache.push({
+      id: inserted.id,
+      threadId,
+      from: 'system',
+      text: inserted.text,
+      createdAt: new Date(inserted.created_at).getTime(),
+    });
+  }
 
   // Notify agency org about the rejection.
   // full.organization_id is the CLIENT org — resolve agency org explicitly.
