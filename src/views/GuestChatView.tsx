@@ -18,6 +18,7 @@ import {
   ActivityIndicator, TextInput, Modal, Platform, Linking,
   useWindowDimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, typography } from '../theme/theme';
 import { getChatOverlayMaxWidth } from '../theme/chatLayout';
@@ -104,6 +105,8 @@ async function getAgencyOrgIdForLink(linkId: string): Promise<string | null> {
 
 export const GuestChatView: React.FC = () => {
   const { width: guestWinW } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const composerBottomInset = Math.max(insets.bottom, spacing.sm);
   const upgradeModalMaxW = getChatOverlayMaxWidth(guestWinW);
   const { session, profile, refreshProfile } = useAuth();
   const userId = session?.user?.id ?? null;
@@ -161,7 +164,7 @@ export const GuestChatView: React.FC = () => {
       // get_agency_org_id_for_link() validates the link is active + non-expired server-side.
       const orgId = await getAgencyOrgIdForLink(linkId);
       if (!orgId) {
-        setChatError('Could not find the agency workspace. Please contact the agency directly.');
+        setChatError(copy.agencyWorkspaceNotFound);
         setLoading(false);
         return;
       }
@@ -254,7 +257,7 @@ export const GuestChatView: React.FC = () => {
       <View style={styles.centered}>
         <Text style={styles.brand}>INDEX CASTING</Text>
         <Text style={styles.subtitle}>
-          No active conversation found. Open a guest link to start a request.
+          {copy.noConversationHint}
         </Text>
       </View>
     );
@@ -298,7 +301,7 @@ export const GuestChatView: React.FC = () => {
           conversationId={conversation.id}
           headerTitle=""
           viewerUserId={userId}
-          composerBottomInsetOverride={0}
+          composerBottomInsetOverride={composerBottomInset}
           containerStyle={styles.messengerContainer}
           onPackagePress={(meta) => {
             const url = typeof meta.guest_link === 'string' ? meta.guest_link : null;
@@ -318,7 +321,7 @@ export const GuestChatView: React.FC = () => {
           <View style={[styles.modalCard, { maxWidth: upgradeModalMaxW }]}>
             <Text style={styles.modalTitle}>{copy.upgradeTitle}</Text>
             <Text style={styles.modalBody}>
-              Create a free client account to unlock model discovery, projects, and team management.
+              {copy.upgradeModalBody}
             </Text>
 
             <TextInput

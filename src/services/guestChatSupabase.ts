@@ -6,6 +6,10 @@
  *
  * Context ID pattern for guest chats: "guest:<guestUserId>:<agencyOrgId>"
  * This makes the conversation stable (idempotent) across sessions.
+ *
+ * RLS (see migration 20260536): guests are not organization_members; inserts require
+ * `conversations_insert_creator` guest branch and `messages_insert_sender` bypass when
+ * `conversations.guest_user_id = auth.uid()`.
  */
 
 import { supabase } from '../../lib/supabase';

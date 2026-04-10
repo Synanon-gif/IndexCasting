@@ -257,7 +257,7 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
 
     const trimmedEmail = email.trim().toLowerCase();
     if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
-      setFormError('Please enter a valid email address.');
+      setFormError(copy.invalidEmail);
       return;
     }
 
@@ -329,8 +329,10 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
         </View>
         <Text style={styles.title}>{copy.legalTitle}</Text>
         <Text style={styles.subtitle}>
-          {link?.agency_name || 'An agency'} has shared a selection of models with you.
-          Please accept the terms to continue.
+          {copy.legalPackageIntro.replace(
+            '{agencyName}',
+            (link?.agency_name && link.agency_name.trim()) || copy.legalPackageIntroFallbackAgency,
+          )}
         </Text>
 
         <TouchableOpacity
@@ -392,7 +394,7 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
         <Text style={styles.title}>{copy.checkEmail}</Text>
         <Text style={styles.subtitle}>{copy.checkEmailSubtitle}</Text>
         <Text style={styles.subtitleSmall}>
-          We sent a link to{' '}
+          {copy.checkEmailSentToPrefix}{' '}
           <Text style={styles.emailHighlight}>{email}</Text>
         </Text>
       </View>
@@ -403,7 +405,12 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
   if (phase === 'request_form' || phase === 'submitting') {
     const isSubmitting = phase === 'submitting';
     return (
-      <ScrollView style={styles.container} contentContainerStyle={styles.formContent}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.formContent}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
         <View style={styles.header}>
           <Text style={styles.brand}>INDEX CASTING</Text>
           <TouchableOpacity onPress={() => setPhase('browse')}>
@@ -414,8 +421,8 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
         <Text style={styles.sectionTitle}>{copy.selectModels}</Text>
         <Text style={styles.sectionHint}>
           {selectedModelIds.size > 0
-            ? `${selectedModelIds.size} model(s) selected`
-            : 'Tap a model to select or deselect.'}
+            ? copy.requestFormSelectHintCount.replace('{count}', String(selectedModelIds.size))
+            : copy.requestFormSelectHintEmpty}
         </Text>
 
         <View style={styles.modelGrid}>
@@ -458,7 +465,7 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
         <Text style={styles.fieldLabel}>{copy.dateLabel}</Text>
         <TextInput
           style={styles.input}
-          placeholder="YYYY-MM-DD (optional)"
+          placeholder={copy.datePlaceholderOptional}
           placeholderTextColor={colors.textSecondary}
           value={requestDate}
           onChangeText={setRequestDate}
@@ -468,7 +475,7 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
         <Text style={styles.fieldLabel}>{copy.messageLabelInput}</Text>
         <TextInput
           style={[styles.input, styles.inputMultiline]}
-          placeholder="Tell the agency about your project…"
+          placeholder={copy.messagePlaceholderProject}
           placeholderTextColor={colors.textSecondary}
           value={requestMessage}
           onChangeText={setRequestMessage}
@@ -505,8 +512,10 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
         </TouchableOpacity>
 
         <Text style={styles.legalNote}>
-          By submitting, you agree that your email and request will be shared with{' '}
-          {link?.agency_name || 'the agency'}.
+          {copy.submitRequestLegalNote.replace(
+            '{agencyName}',
+            (link?.agency_name && link.agency_name.trim()) || copy.submitRequestAgencyFallback,
+          )}
         </Text>
       </ScrollView>
     );
@@ -596,7 +605,11 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
         <Text style={styles.brand}>INDEX CASTING</Text>
         <View style={styles.headerMetaRow}>
           <Text style={styles.headerSub}>
-            {pkgType === 'polaroid' ? 'Polaroid Package' : 'Portfolio Package'} · {link?.agency_name || 'Agency'} · {models.length} models
+            {pkgType === 'polaroid' ? copy.packageTypePolaroidLabel : copy.packageTypePortfolioLabel}
+            {' · '}
+            {link?.agency_name || copy.browseHeaderAgencyFallback}
+            {' · '}
+            {copy.modelsCountInHeader.replace('{count}', String(models.length))}
           </Text>
           <View style={styles.guestBadgePill}>
             <Text style={styles.guestBadgePillLabel}>{copy.guestAccessBadge}</Text>
@@ -654,7 +667,11 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
                   {m.hips ? ` · Hips ${m.hips} cm` : ''}
                 </Text>
                 <Text style={styles.modelMeta}>
-                  {m.sex ? `${m.sex === 'female' ? 'Female' : 'Male'}` : ''}
+                  {m.sex
+                    ? m.sex === 'female'
+                      ? copy.sexFemale
+                      : copy.sexMale
+                    : ''}
                   {m.hair_color ? `${m.sex ? ' · ' : ''}${m.hair_color}` : ''}
                   {m.eye_color ? ` · ${m.eye_color}` : ''}
                   {displayCity ? ` · ${displayCity}` : ''}
@@ -672,7 +689,7 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
           onPress={() => setPhase('request_form')}
         >
           <Text style={styles.contactBtnLabel}>
-            {copy.browseSendRequest} {link?.agency_name || 'Agency'}
+            {copy.browseSendRequest} {link?.agency_name || copy.browseHeaderAgencyFallback}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -830,7 +847,7 @@ const styles = StyleSheet.create({
   grid: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: 140 },
   formContent: {
     paddingHorizontal: spacing.lg,
-    paddingBottom: 80,
+    paddingBottom: spacing.xl * 3,
   },
   sectionTitle: {
     ...typography.label,

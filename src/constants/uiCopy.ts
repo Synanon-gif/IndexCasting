@@ -1026,6 +1026,10 @@ export const uiCopy = {
       'Could not load models for this package. Check your connection and try again.',
     loading: 'Loading…',
     legalTitle: 'Before you continue',
+    /** Legal gate body: use {agencyName} placeholder or empty for generic copy. */
+    legalPackageIntro:
+      '{agencyName} has shared a selection of models with you. Please accept the terms to continue.',
+    legalPackageIntroFallbackAgency: 'An agency',
     legalTosLabel: 'I accept the Terms of Service',
     legalPrivacyLabel: 'I accept the Privacy Policy',
     legalContinue: 'View Models',
@@ -1046,19 +1050,40 @@ export const uiCopy = {
     requestSent: 'Request sent',
     requestSentSubtitle: 'The agency will get back to you shortly.',
     selectModels: 'Select models for your request',
+    requestFormSelectHintEmpty: 'Tap a model to select or deselect.',
+    requestFormSelectHintCount: '{count} model(s) selected',
+    invalidEmail: 'Please enter a valid email address.',
     dateLabel: 'Preferred date',
+    datePlaceholderOptional: 'YYYY-MM-DD (optional)',
     messageLabelInput: 'Your message',
+    messagePlaceholderProject: 'Tell the agency about your project…',
+    submitRequestLegalNote:
+      'By submitting, you agree that your email and request will be shared with {agencyName}.',
+    submitRequestAgencyFallback: 'the agency',
+    packageTypePolaroidLabel: 'Polaroid Package',
+    packageTypePortfolioLabel: 'Portfolio Package',
+    browseHeaderAgencyFallback: 'Agency',
+    modelsCountInHeader: '{count} models',
+    sexFemale: 'Female',
+    sexMale: 'Male',
+    checkEmailSentToPrefix: 'We sent a link to',
     submitRequest: 'Send Request',
     emailLabel: 'Your email address',
     emailPlaceholder: 'you@example.com',
     submitting: 'Sending…',
     chatTitle: 'Guest Chat',
+    noConversationHint:
+      'No active conversation found. Open a guest link to start a request.',
+    upgradeModalBody:
+      'Create a free client account to unlock model discovery, projects, and team management.',
     selectedModels: 'Selected models',
     noModelsSelected: 'No models selected.',
     agencyLabel: 'Agency',
     guestClientLabel: 'Guest Client',
     loadingChat: 'Loading chat…',
     chatError: 'Could not load chat. Please try again.',
+    agencyWorkspaceNotFound:
+      'Could not find the agency workspace. Please contact the agency directly.',
   },
   /** Model – "My Applications" view status labels and feedback strings. */
   modelApplications: {
