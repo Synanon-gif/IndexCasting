@@ -16,6 +16,8 @@ export type NegotiationChipsRowProps = {
   clientPriceStatus?: 'pending' | 'accepted' | 'rejected' | null;
   finalStatus?: 'option_pending' | 'option_confirmed' | 'job_confirmed' | null;
   currency: string | undefined;
+  /** When false, only workflow + attention chips (prices live in NegotiationSummaryCard). */
+  showPriceLines?: boolean;
 };
 
 export const NegotiationChipsRow: React.FC<NegotiationChipsRowProps> = ({
@@ -26,6 +28,7 @@ export const NegotiationChipsRow: React.FC<NegotiationChipsRowProps> = ({
   clientPriceStatus,
   finalStatus,
   currency,
+  showPriceLines = true,
 }) => {
   const agreed = getCanonicalAgreedPrice({
     proposed_price: proposedPrice ?? null,
@@ -53,7 +56,7 @@ export const NegotiationChipsRow: React.FC<NegotiationChipsRowProps> = ({
           </View>
         ) : null}
       </View>
-      {(agreed != null || proposedPrice != null || agencyCounterPrice != null) && (
+      {showPriceLines && (agreed != null || proposedPrice != null || agencyCounterPrice != null) && (
         <View style={styles.priceCol}>
           {agreed != null ? (
             <Text style={styles.priceLineAgreed}>

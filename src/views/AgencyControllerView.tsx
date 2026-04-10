@@ -4417,6 +4417,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   const [processingRequestId, setProcessingRequestId] = useState<string | null>(null);
   const [deletingOptionId, setDeletingOptionId] = useState<string | null>(null);
   const [deleteOptionModalVisible, setDeleteOptionModalVisible] = useState(false);
+  const [rejectNegotiationModalVisible, setRejectNegotiationModalVisible] = useState(false);
   const [negotiationCounterExpanded, setNegotiationCounterExpanded] = useState(false);
   const [calendarHint, setCalendarHint] = useState<string | null>(null);
   const calendarHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -4617,6 +4618,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
         ? _uiCopy.optionNegotiationChat.modelAvailabilityConfirmedHint
         : _uiCopy.optionNegotiationChat.modelMustPreApproveBeforeAgencyActs
     : null;
+  const showDesktopNegotiationRail = deviceType === 'desktop';
 
   const sendMessage = () => {
     const text = chatInput.trim();
@@ -4672,6 +4674,38 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
         setSelectedThreadId(null);
         await loadOptionRequestsForAgency(agencyId, agencyOrganizationIdProp);
         onOptionRequestDeleted?.();
+      } finally {
+        setDeletingOptionId(null);
+      }
+    })();
+  };
+
+  const openRejectNegotiationModal = () => {
+    if (!request || !selectedThreadId || !agencyId || deletingOptionId) return;
+    if (request.finalStatus === 'job_confirmed') {
+      showAppAlert(uiCopy.messages.deleteOptionRequestNotAllowed);
+      return;
+    }
+    setRejectNegotiationModalVisible(true);
+  };
+
+  const confirmRejectNegotiationRequest = () => {
+    if (!request || !selectedThreadId || !agencyId || deletingOptionId) return;
+    const threadId = request.threadId;
+    setRejectNegotiationModalVisible(false);
+    void (async () => {
+      setDeletingOptionId(threadId);
+      try {
+        const ok = await agencyRejectNegotiationStore(threadId);
+        if (!ok) {
+          showAppAlert(uiCopy.common.error, uiCopy.messages.deleteOptionRequestFailed);
+          return;
+        }
+        setSelectedThreadId(null);
+        setRequests(getOptionRequests());
+        await loadOptionRequestsForAgency(agencyId, agencyOrganizationIdProp);
+        onOptionRequestDeleted?.();
+        showNegotiationCalendarHint();
       } finally {
         setDeletingOptionId(null);
       }
@@ -4743,31 +4777,6 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   const handleBackOptionChat = () => {
     setSelectedThreadId(null);
     setNegotiationCounterExpanded(false);
-  };
-
-  const handleRejectOptionNegotiation = () => {
-    if (!request?.threadId) return;
-    const threadId = request.threadId;
-    const run = () => {
-      void (async () => {
-        await agencyRejectNegotiationStore(threadId);
-        setRequests(getOptionRequests());
-        showNegotiationCalendarHint();
-      })();
-    };
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      const msg = `${uiCopy.optionNegotiationChat.rejectOptionTitle}\n\n${uiCopy.optionNegotiationChat.rejectOptionMessage}`;
-      if (window.confirm(msg)) run();
-      return;
-    }
-    Alert.alert(
-      uiCopy.optionNegotiationChat.rejectOptionTitle,
-      uiCopy.optionNegotiationChat.rejectOptionMessage,
-      [
-        { text: uiCopy.common.cancel, style: 'cancel' },
-        { text: uiCopy.optionNegotiationChat.rejectOption, style: 'destructive', onPress: run },
-      ],
-    );
   };
 
   const showNegotiationCalendarHint = useCallback(() => {
@@ -4843,6 +4852,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                 clientPriceStatus={clientPriceStatus}
                 finalStatus={finalStatus}
                 currency={currency}
+                showPriceLines={false}
               />
             }
             headerAccessory={
@@ -4901,19 +4911,21 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                     onAgencyRejectClientPrice={runAgencyRejectClientPrice}
                     onAgencyCounterOffer={runAgencyCounterOffer}
                     onAgencyProposeInitialFee={runAgencyCounterOffer}
-                    onRejectNegotiation={handleRejectOptionNegotiation}
+                    onRejectNegotiation={openRejectNegotiationModal}
                     onClientAcceptCounter={async () => {}}
                     onClientConfirmJob={async () => {}}
                     showAgencyExtras
                     assignmentMode="readonly"
                     contextThreadLabel={uiCopy.b2bChat.contextNegotiationThread}
                     requireAgencyIdForOrgChat={false}
+                    suppressDuplicateMeta
                   />
                 </ScrollView>
               ) : null
             }
             bottomInset={bottomTabInset}
             footerTop={
+              showDesktopNegotiationRail ? null : (
               <NegotiationThreadFooter
                 request={request}
                 isAgency
@@ -4937,14 +4949,16 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                 onAgencyRejectClientPrice={runAgencyRejectClientPrice}
                 onAgencyCounterOffer={runAgencyCounterOffer}
                 onAgencyProposeInitialFee={runAgencyCounterOffer}
-                onRejectNegotiation={handleRejectOptionNegotiation}
+                onRejectNegotiation={openRejectNegotiationModal}
                 onClientAcceptCounter={async () => {}}
                 onClientConfirmJob={async () => {}}
                 showAgencyExtras
                 assignmentMode="readonly"
                 contextThreadLabel={uiCopy.b2bChat.contextNegotiationThread}
                 requireAgencyIdForOrgChat={false}
+                suppressDuplicateMeta
               />
+              )
             }
             composerTopBanner={
               calendarHint ? (
@@ -4967,6 +4981,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
             }
           >
             <>
+              {!showDesktopNegotiationRail ? (
               <NegotiationSummaryCard
                 modelName={request.modelName}
                 clientName={request.clientName}
@@ -4983,6 +4998,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                 finalStatusLine={negotiationFinalStatusLine}
                 confirmationSummaryLine={negotiationConfirmationSummaryLine}
               />
+              ) : null}
               {filteredMessages.map((msg, i) => {
                 const prev = i > 0 ? filteredMessages[i - 1] : null;
                 const compact = !!(prev && prev.from === msg.from && msg.from !== 'system');
@@ -5017,6 +5033,18 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
           confirmDisabled={!!deletingOptionId}
           onConfirm={confirmDeleteOptionRequest}
           onCancel={() => setDeleteOptionModalVisible(false)}
+          detailLine1={request.modelName}
+          detailLine2={`${request.date}${request.startTime ? ` · ${request.startTime}–${request.endTime}` : ''}`}
+        />
+        <ConfirmDestructiveModal
+          visible={rejectNegotiationModalVisible}
+          title={uiCopy.optionNegotiationChat.rejectOptionTitle}
+          message={uiCopy.optionNegotiationChat.rejectOptionMessage}
+          confirmLabel={uiCopy.optionNegotiationChat.rejectOption}
+          cancelLabel={uiCopy.common.cancel}
+          confirmDisabled={!!deletingOptionId}
+          onConfirm={confirmRejectNegotiationRequest}
+          onCancel={() => setRejectNegotiationModalVisible(false)}
           detailLine1={request.modelName}
           detailLine2={`${request.date}${request.startTime ? ` · ${request.startTime}–${request.endTime}` : ''}`}
         />

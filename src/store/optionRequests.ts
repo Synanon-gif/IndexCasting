@@ -22,8 +22,8 @@ import {
   agencyAcceptRequest,
   clientAcceptCounterPrice,
   clientRejectCounterOfferOnSupabase,
-  agencyRejectRequest,
   clientConfirmJobOnSupabase,
+  deleteOptionRequestFull,
   resolveAgencyOrgIdForOptionNotification,
   type SupabaseOptionRequest,
   type SupabaseOptionRequestModelSafe,
@@ -830,22 +830,14 @@ export async function clientRejectCounterStore(threadId: string): Promise<boolea
 }
 
 /**
- * Agency rejects the whole negotiation (server: status=rejected, final_status=null, client_price_status=rejected).
- * Use instead of `updateOptionRequestStatus` so notifications and final_status stay consistent.
+ * Agency rejects the whole negotiation — same atomic delete as trash (`delete_option_request_full`).
+ * Removes thread, messages, calendar hooks, notifications for this request (blocked when job_confirmed).
  */
 export async function agencyRejectNegotiationStore(threadId: string): Promise<boolean> {
   const req = requestsCache.find((r) => r.threadId === threadId);
   if (!req) return false;
-  const ok = await agencyRejectRequest(req.id);
+  const ok = await deleteOptionRequestFull(req.id);
   if (!ok) return false;
-  const updated = await getOptionRequestById(req.id);
-  if (updated) {
-    Object.assign(req, toLocalRequest(updated));
-  } else {
-    req.status = 'rejected';
-    req.finalStatus = undefined;
-    req.clientPriceStatus = 'rejected';
-  }
-  notify();
+  purgeOptionThreadFromStore(threadId);
   return true;
 }

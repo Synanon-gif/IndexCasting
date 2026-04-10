@@ -23,6 +23,8 @@ export type ConfirmDestructiveModalProps = {
   /** Extra context lines (e.g. model name, date) — UI only */
   detailLine1?: string;
   detailLine2?: string;
+  /** destructive = red danger button; confirm = primary (e.g. model availability accept) */
+  tone?: 'destructive' | 'confirm';
 };
 
 /**
@@ -39,6 +41,7 @@ export const ConfirmDestructiveModal: React.FC<ConfirmDestructiveModalProps> = (
   confirmDisabled = false,
   detailLine1,
   detailLine2,
+  tone = 'destructive',
 }) => (
   <Modal
     visible={visible}
@@ -49,7 +52,7 @@ export const ConfirmDestructiveModal: React.FC<ConfirmDestructiveModalProps> = (
     <Pressable style={styles.backdrop} onPress={onCancel}>
       <Pressable style={styles.card} onPress={(e) => e.stopPropagation()}>
         <Text style={styles.icon} accessibilityLabel="">
-          🗑️
+          {tone === 'confirm' ? '✓' : '🗑️'}
         </Text>
         <Text style={styles.title}>{title}</Text>
         {detailLine1 ? <Text style={styles.detail}>{detailLine1}</Text> : null}
@@ -60,12 +63,15 @@ export const ConfirmDestructiveModal: React.FC<ConfirmDestructiveModalProps> = (
             <Text style={styles.btnSecondaryText}>{cancelLabel}</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.btnDanger, confirmDisabled && styles.btnDisabled]}
+            style={[
+              tone === 'confirm' ? styles.btnPrimary : styles.btnDanger,
+              confirmDisabled && styles.btnDisabled,
+            ]}
             onPress={onConfirm}
             disabled={confirmDisabled}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Text style={styles.btnDangerText}>{confirmLabel}</Text>
+            <Text style={tone === 'confirm' ? styles.btnPrimaryText : styles.btnDangerText}>{confirmLabel}</Text>
           </TouchableOpacity>
         </View>
       </Pressable>
@@ -141,8 +147,21 @@ const styles = StyleSheet.create({
     backgroundColor: colors.buttonSkipRed,
     borderRadius: 8,
   },
+  btnPrimary: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.buttonOptionGreen,
+    borderRadius: 8,
+  },
   btnDisabled: {
     opacity: 0.5,
+  },
+  btnPrimaryText: {
+    ...typography.label,
+    fontSize: 13,
+    color: '#fff',
+    textTransform: 'none',
+    letterSpacing: 0,
   },
   btnDangerText: {
     ...typography.label,

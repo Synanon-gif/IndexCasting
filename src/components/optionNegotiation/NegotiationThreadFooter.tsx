@@ -49,6 +49,10 @@ export type NegotiationThreadFooterProps = {
   contextThreadLabel?: string;
   /** When true, org-chat button also requires `request.agencyId` (client web). Agency app passes false. */
   requireAgencyIdForOrgChat?: boolean;
+  /**
+   * When the summary card / chips already show price + status + model hints, hide repeated banners in the footer.
+   */
+  suppressDuplicateMeta?: boolean;
 };
 
 /**
@@ -87,6 +91,7 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
   assignmentMode = 'manage',
   contextThreadLabel = uiCopy.optionNegotiationChat.negotiationContext,
   requireAgencyIdForOrgChat = true,
+  suppressDuplicateMeta = false,
 }) => {
   const busy = actionBusy;
 
@@ -182,20 +187,20 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
           </Text>
         </TouchableOpacity>
       </View>
-      {showAgencyExtras && request.proposedPrice != null && (
+      {!suppressDuplicateMeta && showAgencyExtras && request.proposedPrice != null && (
         <Text style={{ ...typography.label, fontSize: 10, color: colors.accentBrown, marginBottom: spacing.xs }}>
           {uiCopy.optionNegotiationChat.proposedPriceLabel}:{' '}
           {currency === 'USD' ? '$' : currency === 'GBP' ? '£' : currency === 'CHF' ? 'CHF ' : '€'}
           {request.proposedPrice}
         </Text>
       )}
-      {request.modelAccountLinked === false ? (
+      {!suppressDuplicateMeta && request.modelAccountLinked === false ? (
         <View style={styles.noModelBanner}>
           <Text style={{ ...typography.label, fontSize: 11, color: colors.textPrimary }}>
             {uiCopy.dashboard.optionRequestFinalStatusNoModelAppHint}
           </Text>
         </View>
-      ) : showAgencyExtras ? (
+      ) : !suppressDuplicateMeta && showAgencyExtras ? (
         <View
           style={[
             styles.approvalBanner,
@@ -220,7 +225,7 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
           </Text>
         </View>
       ) : null}
-      {finalStatus && (
+      {!suppressDuplicateMeta && finalStatus ? (
         <View
           style={[
             styles.finalBanner,
@@ -240,7 +245,7 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
                 : uiCopy.dashboard.optionRequestStatusPending}
           </Text>
         </View>
-      )}
+      ) : null}
       {isAgency && request.modelApproval === 'approved' && finalStatus !== 'job_confirmed' && status !== 'rejected' && (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm }}>
           {request.proposedPrice != null && clientPriceStatus === 'pending' ? (
@@ -254,8 +259,11 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
               <Text style={[styles.filterPillLabel, { color: '#fff' }]}>{uiCopy.optionNegotiationChat.confirmOption}</Text>
             </TouchableOpacity>
           ) : null}
-          <TouchableOpacity style={styles.filterPill} onPress={() => setNegotiationCounterExpanded((e) => !e)}>
-            <Text style={styles.filterPillLabel}>{uiCopy.optionNegotiationChat.counterOffer}</Text>
+          <TouchableOpacity
+            style={[styles.filterPill, { backgroundColor: colors.buttonOptionGreen, borderWidth: 0 }]}
+            onPress={() => setNegotiationCounterExpanded((e) => !e)}
+          >
+            <Text style={[styles.filterPillLabel, { color: '#fff' }]}>{uiCopy.optionNegotiationChat.counterOffer}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.filterPill, { borderWidth: 1, borderColor: colors.buttonSkipRed }]}
@@ -265,6 +273,48 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
           </TouchableOpacity>
         </View>
       )}
+      {isAgency &&
+        negotiationCounterExpanded &&
+        request.modelApproval === 'approved' &&
+        clientPriceStatus === 'pending' &&
+        request.proposedPrice != null &&
+        finalStatus !== 'job_confirmed' && (
+          <View style={styles.counterBox}>
+            <Text style={{ ...typography.label, fontSize: 11, color: colors.textPrimary, marginBottom: spacing.xs }}>
+              {uiCopy.optionNegotiationChat.counterOfferPendingHint}
+            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+              <TextInput
+                value={agencyCounterInput}
+                onChangeText={setAgencyCounterInput}
+                placeholder={uiCopy.optionNegotiationChat.counterPlaceholder}
+                placeholderTextColor={colors.textSecondary}
+                keyboardType="numeric"
+                style={[styles.chatInput, { flex: 1, minWidth: 120 }]}
+              />
+              <TouchableOpacity
+                style={[styles.filterPill, { paddingHorizontal: spacing.sm, backgroundColor: colors.textPrimary }, busy && { opacity: 0.5 }]}
+                disabled={busy}
+                onPress={() => {
+                  const num = parseFloat(agencyCounterInput.trim());
+                  if (isNaN(num)) return;
+                  void onAgencyCounterOffer(num);
+                }}
+              >
+                <Text style={[styles.filterPillLabel, { color: '#fff' }]}>{uiCopy.optionNegotiationChat.sendCounter}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.filterPill}
+                onPress={() => {
+                  setAgencyCounterInput('');
+                  setNegotiationCounterExpanded(false);
+                }}
+              >
+                <Text style={styles.filterPillLabel}>{uiCopy.common.cancel}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
       {isAgency && request.modelApproval === 'approved' && clientPriceStatus === 'pending' && finalStatus !== 'job_confirmed' && request.proposedPrice != null && (
         <TouchableOpacity
           style={{ alignSelf: 'flex-start', marginBottom: spacing.sm }}

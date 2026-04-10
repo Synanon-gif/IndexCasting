@@ -61,6 +61,7 @@ import { exportUserData, downloadUserDataExport } from '../services/gdprComplian
 import { listModelAgencyDirectConversations } from '../services/b2bOrgChatSupabase';
 import type { Conversation } from '../services/messengerSupabase';
 import { OrgMessengerInline } from '../components/OrgMessengerInline';
+import { ConfirmDestructiveModal } from '../components/ConfirmDestructiveModal';
 
 type ModelProfile = {
   id: string;
@@ -145,6 +146,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   const [pendingConfirmations, setPendingConfirmations] = useState<SupabaseOptionRequest[]>([]);
   const [confirmingBookingId, setConfirmingBookingId] = useState<string | null>(null);
   const [rejectingBookingId, setRejectingBookingId] = useState<string | null>(null);
+  const [optionActionModal, setOptionActionModal] = useState<{ id: string; action: 'confirm' | 'reject' } | null>(null);
   const [actingOnOption, setActingOnOption] = useState(false);
   const [addingEntry, setAddingEntry] = useState(false);
 
@@ -1114,7 +1116,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                   </Text>
                   <View style={{ flexDirection: 'row', gap: spacing.sm }}>
                     <TouchableOpacity
-                      onPress={() => void handleConfirmBooking(req.id)}
+                      onPress={() => setOptionActionModal({ id: req.id, action: 'confirm' })}
                       disabled={confirmingBookingId === req.id || rejectingBookingId === req.id}
                       style={{
                         flex: 1, borderRadius: 999,
@@ -1128,7 +1130,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      onPress={() => void handleRejectBooking(req.id)}
+                      onPress={() => setOptionActionModal({ id: req.id, action: 'reject' })}
                       disabled={confirmingBookingId === req.id || rejectingBookingId === req.id}
                       style={{
                         flex: 1, borderRadius: 999, borderWidth: 1,
@@ -1741,6 +1743,51 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
           </View>
         </View>
       )}
+
+      <ConfirmDestructiveModal
+        visible={!!optionActionModal}
+        title={
+          optionActionModal?.action === 'confirm'
+            ? uiCopy.optionNegotiationChat.modelConfirmAvailabilityTitle
+            : uiCopy.optionNegotiationChat.modelDeclineAvailabilityTitle
+        }
+        message={
+          optionActionModal?.action === 'confirm'
+            ? uiCopy.optionNegotiationChat.modelConfirmAvailabilityMessage
+            : uiCopy.optionNegotiationChat.modelDeclineAvailabilityMessage
+        }
+        confirmLabel={
+          optionActionModal?.action === 'confirm'
+            ? uiCopy.common.confirm
+            : uiCopy.optionNegotiationChat.modelDeclineAvailabilityConfirm
+        }
+        cancelLabel={uiCopy.common.cancel}
+        tone={optionActionModal?.action === 'confirm' ? 'confirm' : 'destructive'}
+        onConfirm={() => {
+          if (!optionActionModal) return;
+          const { id, action } = optionActionModal;
+          setOptionActionModal(null);
+          if (action === 'confirm') void handleConfirmBooking(id);
+          else void handleRejectBooking(id);
+        }}
+        onCancel={() => setOptionActionModal(null)}
+        detailLine1={
+          optionActionModal
+            ? (pendingConfirmations.find((r) => r.id === optionActionModal.id)?.client_name as string | undefined) ?? undefined
+            : undefined
+        }
+        detailLine2={
+          optionActionModal
+            ? (() => {
+                const r = pendingConfirmations.find((x) => x.id === optionActionModal.id);
+                if (!r) return undefined;
+                return `${r.requested_date}${r.start_time ? ` · ${String(r.start_time).slice(0, 5)}` : ''}${
+                  r.end_time ? `–${String(r.end_time).slice(0, 5)}` : ''
+                }`;
+              })()
+            : undefined
+        }
+      />
     </View>
   );
 };

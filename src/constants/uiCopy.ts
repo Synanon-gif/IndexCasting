@@ -657,9 +657,9 @@ export const uiCopy = {
     startChat: 'Start chat',
     openChat: 'Open chat',
     modelDirectChatFailed: 'Could not open chat with this model. Please try again.',
-    deleteOptionRequestTitle: 'Delete option request?',
+    deleteOptionRequestTitle: 'Delete this request?',
     deleteOptionRequestMessage:
-      'Do you really want to delete this option? This cannot be undone.',
+      'This removes the option or casting request for everyone before the job is confirmed. Calendars and threads will be cleared. This cannot be undone.',
     deleteOptionRequestFailed: 'Could not delete this option request. Please try again.',
     deleteOptionRequestNotAllowed:
       'This option request cannot be deleted because the job was already confirmed.',
@@ -1193,12 +1193,23 @@ export const uiCopy = {
   optionNegotiationChat: {
     back: 'Back',
     confirmOption: 'Confirm option',
-    counterOffer: 'Counter offer',
-    rejectOption: 'Reject option',
+    counterOffer: 'Make counter offer',
+    rejectOption: 'Remove request',
+    /** Agency: counter while client proposed price is still pending */
+    counterOfferPendingHint: 'Enter a counter-offer to send to the client (their proposed fee stays visible until they respond).',
     messagePlaceholder: 'Message…',
     send: 'Send',
-    rejectOptionTitle: 'Reject this request?',
-    rejectOptionMessage: 'The request will be marked as rejected.',
+    rejectOptionTitle: 'Remove this request?',
+    rejectOptionMessage:
+      'This permanently removes the option or casting for all parties before the job is confirmed. Calendars and threads will be cleared. This cannot be undone.',
+    /** Model — Profile → Options booking requests */
+    modelConfirmAvailabilityTitle: 'Confirm availability?',
+    modelConfirmAvailabilityMessage:
+      'You confirm you are available for this booking request. The agency and client will be notified.',
+    modelDeclineAvailabilityTitle: 'Decline this request?',
+    modelDeclineAvailabilityMessage:
+      'You decline this booking request. The agency and client will be notified.',
+    modelDeclineAvailabilityConfirm: 'Decline',
     counterPlaceholder: 'Amount (e.g. 3000)',
     proposeFeeHint: 'Propose a fee (optional)',
     sendOffer: 'Send offer',
