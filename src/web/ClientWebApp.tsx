@@ -4625,6 +4625,8 @@ const MessagesView: React.FC<MessagesViewProps> = ({
               attentionLabel={headerAttentionLabel}
               proposedPrice={request.proposedPrice}
               agencyCounterPrice={request.agencyCounterPrice}
+              clientPriceStatus={clientPriceStatus}
+              finalStatus={finalStatus}
               currency={currency}
             />
           }
@@ -4654,6 +4656,8 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                   attentionLabel={headerAttentionLabel}
                   proposedPrice={request.proposedPrice}
                   agencyCounterPrice={request.agencyCounterPrice}
+                  clientPriceStatus={clientPriceStatus}
+                  finalStatus={finalStatus}
                   currency={currency}
                   requestTypeLabel={negotiationRequestTypeLabel}
                   finalStatusLine={negotiationFinalStatusLine}
@@ -4754,6 +4758,8 @@ const MessagesView: React.FC<MessagesViewProps> = ({
               attentionLabel={headerAttentionLabel}
               proposedPrice={request.proposedPrice}
               agencyCounterPrice={request.agencyCounterPrice}
+              clientPriceStatus={clientPriceStatus}
+              finalStatus={finalStatus}
               currency={currency}
               requestTypeLabel={negotiationRequestTypeLabel}
               finalStatusLine={negotiationFinalStatusLine}

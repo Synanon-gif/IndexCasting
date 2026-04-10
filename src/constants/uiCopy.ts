@@ -1208,6 +1208,8 @@ export const uiCopy = {
     negotiationContext: 'Negotiation',
     proposedPriceLabel: 'Proposed price',
     counterPriceLabel: 'Counter',
+    /** Shown when client_price_status is accepted and option/job is confirmed — canonical agreed fee. */
+    agreedPriceLabel: 'Agreed price',
     /** Agency: linked model has not pre-approved — negotiation actions stay disabled until the model acts in the model app. */
     modelMustPreApproveBeforeAgencyActs:
       'Waiting for the model to confirm availability in the model app (Profile → Options or Calendar) before you can confirm or counter the fee.',

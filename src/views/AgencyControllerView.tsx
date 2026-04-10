@@ -229,6 +229,8 @@ import {
   smartAttentionVisibleForRole,
   type SmartAttentionState,
 } from '../utils/optionRequestAttention';
+import { getCanonicalAgreedPrice, getNegotiationDisplayPriceCandidate } from '../utils/canonicalOptionPrice';
+import { formatOptionMoneyAmount } from '../utils/optionMoneyFormat';
 import { attentionHeaderLabel } from '../utils/negotiationAttentionLabels';
 import { toDisplayStatus } from '../utils/statusHelpers';
 
@@ -4838,6 +4840,8 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                 attentionLabel={headerAttentionLabel}
                 proposedPrice={request.proposedPrice}
                 agencyCounterPrice={request.agencyCounterPrice}
+                clientPriceStatus={clientPriceStatus}
+                finalStatus={finalStatus}
                 currency={currency}
               />
             }
@@ -4867,6 +4871,8 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                     attentionLabel={headerAttentionLabel}
                     proposedPrice={request.proposedPrice}
                     agencyCounterPrice={request.agencyCounterPrice}
+                    clientPriceStatus={clientPriceStatus}
+                    finalStatus={finalStatus}
                     currency={currency}
                     requestTypeLabel={negotiationRequestTypeLabel}
                     finalStatusLine={negotiationFinalStatusLine}
@@ -4970,6 +4976,8 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                 attentionLabel={headerAttentionLabel}
                 proposedPrice={request.proposedPrice}
                 agencyCounterPrice={request.agencyCounterPrice}
+                clientPriceStatus={clientPriceStatus}
+                finalStatus={finalStatus}
                 currency={currency}
                 requestTypeLabel={negotiationRequestTypeLabel}
                 finalStatusLine={negotiationFinalStatusLine}
@@ -5412,6 +5420,19 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
               modelAccountLinked: r.modelAccountLinked ?? true,
             });
             const showAttention = smartAttentionVisibleForRole(attentionState, 'agency');
+            const listFee =
+              getCanonicalAgreedPrice({
+                proposed_price: r.proposedPrice ?? null,
+                agency_counter_price: r.agencyCounterPrice ?? null,
+                client_price_status: r.clientPriceStatus ?? null,
+                final_status: r.finalStatus ?? null,
+              }) ??
+              getNegotiationDisplayPriceCandidate({
+                proposed_price: r.proposedPrice ?? null,
+                agency_counter_price: r.agencyCounterPrice ?? null,
+                client_price_status: r.clientPriceStatus ?? null,
+                final_status: r.finalStatus ?? null,
+              });
             return (
               <TouchableOpacity key={r.threadId} style={[s.threadRow, selectedThreadId === r.threadId && s.threadRowActive]} onPress={() => setSelectedThreadId(r.threadId)}>
                 <View style={{ flex: 1 }}>
@@ -5430,8 +5451,10 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                       <Text style={[s.statusPillLabel, { color: '#1d4ed8' }]}>{attentionLabelForAgency(attentionState)}</Text>
                     </View>
                   ) : null}
-                  {r.proposedPrice != null && (
-                    <Text style={{ ...typography.label, fontSize: 9, color: colors.accentBrown }}>€{r.proposedPrice}</Text>
+                  {listFee != null && (
+                    <Text style={{ ...typography.label, fontSize: 9, color: colors.accentBrown }}>
+                      {formatOptionMoneyAmount(listFee, r.currency)}
+                    </Text>
                   )}
                   <View style={[
                     s.approvalBadge,

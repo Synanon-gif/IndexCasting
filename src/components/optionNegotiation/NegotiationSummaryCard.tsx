@@ -5,6 +5,7 @@ import { uiCopy } from '../../constants/uiCopy';
 import type { DisplayStatus } from '../../utils/statusHelpers';
 import { workflowLabelFromDisplayStatus } from '../../utils/negotiationWorkflowLabel';
 import { formatOptionMoneyAmount } from '../../utils/optionMoneyFormat';
+import { getCanonicalAgreedPrice } from '../../utils/canonicalOptionPrice';
 
 export type NegotiationSummaryCardProps = {
   modelName: string;
@@ -15,6 +16,8 @@ export type NegotiationSummaryCardProps = {
   attentionLabel: string | null;
   proposedPrice: number | undefined;
   agencyCounterPrice: number | undefined;
+  clientPriceStatus?: 'pending' | 'accepted' | 'rejected' | null;
+  finalStatus?: 'option_pending' | 'option_confirmed' | 'job_confirmed' | null;
   currency: string | undefined;
   requestTypeLabel: string;
   finalStatusLine: string | null;
@@ -31,11 +34,20 @@ export const NegotiationSummaryCard: React.FC<NegotiationSummaryCardProps> = ({
   attentionLabel,
   proposedPrice,
   agencyCounterPrice,
+  clientPriceStatus,
+  finalStatus,
   currency,
   requestTypeLabel,
   finalStatusLine,
   confirmationSummaryLine,
-}) => (
+}) => {
+  const agreed = getCanonicalAgreedPrice({
+    proposed_price: proposedPrice ?? null,
+    agency_counter_price: agencyCounterPrice ?? null,
+    client_price_status: clientPriceStatus ?? null,
+    final_status: finalStatus ?? null,
+  });
+  return (
   <View style={styles.card}>
     <Text style={styles.title} numberOfLines={2}>
       {isAgency && clientName ? `${clientName} · ${modelName}` : modelName}
@@ -48,6 +60,11 @@ export const NegotiationSummaryCard: React.FC<NegotiationSummaryCardProps> = ({
     {finalStatusLine ? <Text style={styles.final}>{finalStatusLine}</Text> : null}
     {confirmationSummaryLine ? <Text style={styles.confirmationHint}>{confirmationSummaryLine}</Text> : null}
     <View style={styles.priceBlock}>
+      {agreed != null ? (
+        <Text style={styles.priceAgreed}>
+          {uiCopy.optionNegotiationChat.agreedPriceLabel}: {formatOptionMoneyAmount(agreed, currency)}
+        </Text>
+      ) : null}
       {proposedPrice != null ? (
         <Text style={styles.price}>
           {uiCopy.optionNegotiationChat.proposedPriceLabel}: {formatOptionMoneyAmount(proposedPrice, currency)}
@@ -61,7 +78,8 @@ export const NegotiationSummaryCard: React.FC<NegotiationSummaryCardProps> = ({
     </View>
     <Text style={styles.type}>{requestTypeLabel}</Text>
   </View>
-);
+  );
+};
 
 const styles = StyleSheet.create({
   card: {
@@ -131,6 +149,12 @@ const styles = StyleSheet.create({
   priceBlock: {
     gap: 4,
     marginTop: spacing.xs,
+  },
+  priceAgreed: {
+    ...typography.body,
+    fontSize: 14,
+    color: colors.textPrimary,
+    fontWeight: '700',
   },
   price: {
     ...typography.body,

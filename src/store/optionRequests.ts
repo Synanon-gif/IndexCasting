@@ -9,7 +9,6 @@ import {
   getOptionRequestById,
   insertOptionRequest,
   resolveAgencyOrganizationIdForOptionRequest,
-  updateOptionRequestStatus,
   updateModelApproval,
   getOptionMessages as fetchMessages,
   addOptionMessage,
@@ -500,27 +499,6 @@ export async function loadOptionRequestsForAgency(
     requestsCache = remote.map(toLocalRequest);
     notify();
   } catch { /* keep cache */ }
-}
-
-export function setRequestStatus(threadId: string, status: ChatStatus): void {
-  const req = requestsCache.find((r) => r.threadId === threadId);
-  if (!req) return;
-
-  const prev = req.status;
-  req.status = status;
-  notify();
-
-  // Pass prev as fromStatus so the DB UPDATE only succeeds when the row is
-  // still in the expected prior state — prevents blind status jumps and races.
-  // Calendar entries for the confirmed path are created atomically by the DB trigger
-  // fn_ensure_calendar_on_option_confirmed — no client-side upsert needed here.
-  void updateOptionRequestStatus(req.id, status, prev).then((ok) => {
-    if (!ok) {
-      req.status = prev;
-      notify();
-      console.error('[setRequestStatus] Supabase rejected status update', req.id);
-    }
-  });
 }
 
 export function getRequestStatus(threadId: string): ChatStatus | undefined {

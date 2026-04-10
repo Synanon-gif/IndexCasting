@@ -571,6 +571,8 @@ export async function setAgencyCounterOffer(
  * Routes through the SECURITY DEFINER RPC agency_confirm_client_price()
  * which validates server-side that the caller is an actual agency org member.
  *
+ * Canonical agreed fee after success: `agency_counter_price ?? proposed_price` (see `getCanonicalAgreedPrice`).
+ *
  * EXPLOIT-C1 fix: The previous direct UPDATE allowed any participant
  * (incl. the client) to flip client_price_status to 'accepted'.
  * The RPC enforces role at DB level, independent of client-side RLS.
@@ -645,6 +647,8 @@ export async function agencyRejectClientPrice(id: string): Promise<boolean> {
  * Client accepts the agency's counter-offer price.
  * Routes through the SECURITY DEFINER RPC client_accept_counter_offer()
  * which validates server-side that the caller is the actual client.
+ *
+ * Canonical agreed fee after success: `agency_counter_price ?? proposed_price` (see `getCanonicalAgreedPrice`).
  *
  * EXPLOIT-C1 fix: The previous direct UPDATE allowed any participant
  * (incl. the agency) to self-approve their own counter-offer.

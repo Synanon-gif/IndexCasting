@@ -6,12 +6,15 @@ import type { DisplayStatus } from '../../utils/statusHelpers';
 import { statusBgColor, statusColor } from '../../utils/statusHelpers';
 import { workflowLabelFromDisplayStatus } from '../../utils/negotiationWorkflowLabel';
 import { formatOptionMoneyAmount } from '../../utils/optionMoneyFormat';
+import { getCanonicalAgreedPrice } from '../../utils/canonicalOptionPrice';
 
 export type NegotiationChipsRowProps = {
   displayStatus: DisplayStatus;
   attentionLabel: string | null;
   proposedPrice: number | undefined;
   agencyCounterPrice: number | undefined;
+  clientPriceStatus?: 'pending' | 'accepted' | 'rejected' | null;
+  finalStatus?: 'option_pending' | 'option_confirmed' | 'job_confirmed' | null;
   currency: string | undefined;
 };
 
@@ -20,8 +23,16 @@ export const NegotiationChipsRow: React.FC<NegotiationChipsRowProps> = ({
   attentionLabel,
   proposedPrice,
   agencyCounterPrice,
+  clientPriceStatus,
+  finalStatus,
   currency,
 }) => {
+  const agreed = getCanonicalAgreedPrice({
+    proposed_price: proposedPrice ?? null,
+    agency_counter_price: agencyCounterPrice ?? null,
+    client_price_status: clientPriceStatus ?? null,
+    final_status: finalStatus ?? null,
+  });
   const wfLabel = workflowLabelFromDisplayStatus(displayStatus);
   const wfColor = statusColor(displayStatus);
   const wfBg = statusBgColor(displayStatus);
@@ -42,8 +53,13 @@ export const NegotiationChipsRow: React.FC<NegotiationChipsRowProps> = ({
           </View>
         ) : null}
       </View>
-      {(proposedPrice != null || agencyCounterPrice != null) && (
+      {(agreed != null || proposedPrice != null || agencyCounterPrice != null) && (
         <View style={styles.priceCol}>
+          {agreed != null ? (
+            <Text style={styles.priceLineAgreed}>
+              {uiCopy.optionNegotiationChat.agreedPriceLabel}: {formatOptionMoneyAmount(agreed, currency)}
+            </Text>
+          ) : null}
           {proposedPrice != null ? (
             <Text style={styles.priceLine}>
               {uiCopy.optionNegotiationChat.proposedPriceLabel}: {formatOptionMoneyAmount(proposedPrice, currency)}
@@ -103,6 +119,14 @@ const styles = StyleSheet.create({
     ...typography.label,
     fontSize: 12,
     color: colors.textSecondary,
+    textTransform: 'none',
+    letterSpacing: 0,
+  },
+  priceLineAgreed: {
+    ...typography.label,
+    fontSize: 12,
+    color: colors.textPrimary,
+    fontWeight: '700',
     textTransform: 'none',
     letterSpacing: 0,
   },
