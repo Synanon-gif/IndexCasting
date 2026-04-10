@@ -18,6 +18,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { StorageImage } from './StorageImage';
+import ChatLayoutFix from './ChatLayoutFix';
 import { colors, spacing, typography } from '../theme/theme';
 import { getMessagesScrollMaxHeight } from '../theme/chatLayout';
 import { uiCopy } from '../constants/uiCopy';
@@ -110,6 +111,11 @@ export type OrgMessengerInlineProps = {
    * counterparty's organization profile (Phase 2B).
    */
   onOrgPress?: () => void;
+  /**
+   * When using flex chat layout (native / web split), padding below the composer for the tab bar.
+   * Set to 0 when the messenger sits in a shell without a bottom tab (e.g. guest chat).
+   */
+  composerBottomInsetOverride?: number;
 };
 
 function payloadType(m: MessageWithSender): MessagePayloadType {
@@ -145,6 +151,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   viewerRole,
   onBookingStatusUpdated,
   onOrgPress,
+  composerBottomInsetOverride,
 }) => {
   const { height: windowHeight } = useWindowDimensions();
   const messagesScrollMaxHeight = getMessagesScrollMaxHeight(windowHeight);
@@ -461,14 +468,11 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
     ? `${threadContext.clientFlagLabel}${threadContext.assignedMemberName ? ` · ${threadContext.assignedMemberName}` : ''}`
     : null;
 
-  return (
-    <View
-      style={[
-        styles.chatPanel,
-        useFlexScroll && { flex: 1, minHeight: 0, flexDirection: 'column' as const },
-        containerStyle,
-      ]}
-    >
+  /** Native + web B2B split: flex message area + tab bar / home-indicator padding on composer. */
+  const useFlexLayout = useFlexScroll || Platform.OS !== 'web';
+
+  const messengerHeader = (
+    <>
       {onOrgPress ? (
         <TouchableOpacity onPress={onOrgPress} style={styles.chatPanelTitleBtn}>
           <Text style={[styles.chatPanelTitle, styles.chatPanelTitleClickable]}>{headerTitle}</Text>
@@ -504,15 +508,10 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
           ) : null}
         </View>
       ) : null}
+    </>
+  );
 
-      <ScrollView
-        style={
-          useFlexScroll
-            ? { flex: 1, minHeight: 0 }
-            : { maxHeight: messagesScrollMaxHeight }
-        }
-      >
-        {msgs.map((m) => {
+  const messageNodes = msgs.map((m) => {
           const pt = payloadType(m);
           const rawFileUrl = (m as { file_url?: string | null }).file_url ?? null;
           const fileType = (m as { file_type?: string | null }).file_type ?? null;
@@ -746,9 +745,10 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
               ) : null}
             </View>
           );
-        })}
-      </ScrollView>
+  });
 
+  const messengerComposer = (
+    <>
       {sendError ? (
         <Text style={styles.uploadError}>{sendError}</Text>
       ) : null}
@@ -820,6 +820,32 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
           )}
         </TouchableOpacity>
       </View>
+    </>
+  );
+
+  return (
+    <View
+      style={[
+        styles.chatPanel,
+        useFlexLayout && { flex: 1, minHeight: 0, flexDirection: 'column' as const },
+        containerStyle,
+      ]}
+    >
+      {useFlexLayout ? (
+        <ChatLayoutFix
+          header={messengerHeader}
+          messageList={messageNodes}
+          composer={messengerComposer}
+          edgePadding={0}
+          bottomTabInset={composerBottomInsetOverride}
+        />
+      ) : (
+        <>
+          {messengerHeader}
+          <ScrollView style={{ maxHeight: messagesScrollMaxHeight }}>{messageNodes}</ScrollView>
+          {messengerComposer}
+        </>
+      )}
 
       <Modal visible={shareOpen !== null} transparent animationType="fade">
         <Pressable style={styles.modalBackdrop} onPress={() => setShareOpen(null)}>

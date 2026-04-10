@@ -298,6 +298,7 @@ export const GuestChatView: React.FC = () => {
           conversationId={conversation.id}
           headerTitle=""
           viewerUserId={userId}
+          composerBottomInsetOverride={0}
           containerStyle={styles.messengerContainer}
           onPackagePress={(meta) => {
             const url = typeof meta.guest_link === 'string' ? meta.guest_link : null;
