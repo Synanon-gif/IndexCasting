@@ -89,7 +89,8 @@ export function effectiveAssigneeForOption(
   return null;
 }
 
-function needsAgencyActionForOption(item: AgencyCalendarItem): boolean {
+/** Calendar "Action needed" / urgency filter — must stay aligned with Smart Attention for agency role. */
+export function needsAgencyActionForOption(item: AgencyCalendarItem): boolean {
   const opt = item.option;
   const st = deriveSmartAttentionState({
     status: opt.status,
