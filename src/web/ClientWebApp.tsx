@@ -1451,11 +1451,18 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   }, [currentModelForEffect?.id, clientOrgId]);
 
   const openProjectDiscovery = (projectId: string) => {
+    setActiveProjectId(projectId);
     setSharedProjectId(projectId);
     setTab('discover');
   };
 
-  const openProjectOverview = (id: string) => setProjectOverviewId(id);
+  /** Project container: model list (same as legacy Overview). */
+  const openProjectFolder = (projectId: string) => {
+    setActiveProjectId(projectId);
+    setProjectOverviewId(projectId);
+    setTab('projects');
+  };
+
   const closeProjectOverview = () => setProjectOverviewId(null);
 
   const handleRemoveModelFromProject = async (projectId: string, modelId: string) => {
@@ -1552,6 +1559,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   };
 
   const _openSharedLinkForProject = (projectId: string) => {
+    setActiveProjectId(projectId);
     setSharedProjectId(projectId);
     setTab('discover');
   };
@@ -1599,6 +1607,11 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   };
 
   const exitSharedMode = () => {
+    const id = sharedProjectId;
+    if (id) {
+      setActiveProjectId(id);
+      setProjectOverviewId(id);
+    }
     setSharedProjectId(null);
     setTab('projects');
   };
@@ -2019,6 +2032,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             project={projects.find((p) => p.id === projectOverviewId) ?? null}
             onBack={closeProjectOverview}
             onRemoveModel={handleRemoveModelFromProject}
+            onBrowseDiscover={openProjectDiscovery}
           />
         ) : tab === 'projects' ? (
           <ProjectsView
@@ -2032,8 +2046,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             canDeleteProject={(p) =>
               !realClientId || p.ownerId == null || p.ownerId === realClientId}
             onOpenDetails={openDetails}
-            onOpenProject={openProjectDiscovery}
-            onOpenOverview={openProjectOverview}
+            onOpenProject={openProjectFolder}
             onShareFolder={handleShareFolder}
             onOpenOptionChat={(threadId) => {
               optionChatReturnRef.current = { kind: 'tab', tab: 'projects' };
@@ -3411,8 +3424,8 @@ type ProjectsProps = {
   onDeleteProject: (id: string) => void;
   canDeleteProject: (p: Project) => boolean;
   onOpenDetails: (id: string) => void;
+  /** Opens project folder (scrollable model list). */
   onOpenProject: (id: string) => void;
-  onOpenOverview: (id: string) => void;
   onShareFolder: (project: Project) => void;
   onOpenOptionChat: (threadId: string) => void;
 };
@@ -3427,7 +3440,6 @@ const ProjectsView: React.FC<ProjectsProps> = ({
   onDeleteProject,
   canDeleteProject,
   onOpenProject,
-  onOpenOverview,
   onShareFolder,
   onOpenOptionChat,
 }) => {
@@ -3476,14 +3488,6 @@ const ProjectsView: React.FC<ProjectsProps> = ({
                 onPress={() => onOpenProject(p.id)}
               >
                 <Text style={styles.projectActionBtnLabel}>{uiCopy.projects.open}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.projectActionBtn, styles.projectActionBtnSecondary]}
-                onPress={() => onOpenOverview(p.id)}
-              >
-                <Text style={[styles.projectActionBtnLabel, styles.projectActionBtnLabelSecondary]}>
-                  {uiCopy.projects.overview}
-                </Text>
               </TouchableOpacity>
             </View>
 
@@ -3537,12 +3541,14 @@ type ProjectOverviewProps = {
   project: Project | null;
   onBack: () => void;
   onRemoveModel: (projectId: string, modelId: string) => Promise<void>;
+  onBrowseDiscover: (projectId: string) => void;
 };
 
 const ProjectOverviewView: React.FC<ProjectOverviewProps> = ({
   project,
   onBack,
   onRemoveModel,
+  onBrowseDiscover,
 }) => {
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
   const [errorId, setErrorId] = useState<string | null>(null);
@@ -3567,7 +3573,7 @@ const ProjectOverviewView: React.FC<ProjectOverviewProps> = ({
   if (!project) return null;
 
   return (
-    <View style={styles.section}>
+    <View style={[styles.section, { flex: 1, minHeight: 0 }]}>
       <View style={styles.overviewHeader}>
         <TouchableOpacity onPress={onBack} style={styles.overviewBackBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <Text style={styles.overviewBackLabel}>{uiCopy.projects.back}</Text>
@@ -3575,7 +3581,15 @@ const ProjectOverviewView: React.FC<ProjectOverviewProps> = ({
         <Text style={styles.overviewTitle}>{project.name}</Text>
       </View>
 
-      <ScrollView style={styles.overviewList}>
+      <TouchableOpacity
+        style={styles.overviewBrowseBtn}
+        onPress={() => onBrowseDiscover(project.id)}
+        activeOpacity={0.85}
+      >
+        <Text style={styles.overviewBrowseBtnLabel}>{uiCopy.projects.browseInDiscover}</Text>
+      </TouchableOpacity>
+
+      <ScrollView style={[styles.overviewList, { flex: 1, minHeight: 0 }]} contentContainerStyle={styles.overviewListContent}>
         {project.models.length === 0 && (
           <View style={styles.emptyProjects}>
             <Text style={styles.emptyCopy}>{uiCopy.projects.emptyOverview}</Text>
@@ -6721,8 +6735,25 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     flex: 1,
   },
+  overviewBrowseBtn: {
+    marginBottom: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: 10,
+    backgroundColor: colors.accentBrown,
+    alignItems: 'center',
+  },
+  overviewBrowseBtnLabel: {
+    ...typography.label,
+    fontSize: 14,
+    color: '#fff',
+    fontWeight: '600',
+  },
   overviewList: {
     flex: 1,
+  },
+  overviewListContent: {
+    paddingBottom: spacing.xl,
   },
   overviewModelRow: {
     flexDirection: 'row',

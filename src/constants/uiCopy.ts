@@ -944,7 +944,10 @@ export const uiCopy = {
   projects: {
     deleteConfirm: 'Delete this project? All models will be removed from it.',
     open: 'Open',
+    /** Opens project folder (model list); Discover is a second step from the folder. */
     overview: 'Overview',
+    /** Primary action inside project folder — opens this project's models in Discover swipe. */
+    browseInDiscover: 'Browse in Discover',
     overviewTitle: 'Project Overview',
     deleteFromProject: 'Delete from Project',
     deleteFromProjectConfirm: 'Remove this model from the project?',
