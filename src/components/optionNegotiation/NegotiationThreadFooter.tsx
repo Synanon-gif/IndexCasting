@@ -187,6 +187,22 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
           </Text>
         </TouchableOpacity>
       </View>
+      {isAgency &&
+        request.modelAccountLinked !== false &&
+        request.modelApproval === 'pending' &&
+        finalStatus !== 'job_confirmed' &&
+        status !== 'rejected' && (
+          <Text
+            style={{
+              ...typography.label,
+              fontSize: 11,
+              color: colors.textSecondary,
+              marginBottom: spacing.sm,
+            }}
+          >
+            {uiCopy.optionNegotiationChat.modelMustPreApproveBeforeAgencyActs}
+          </Text>
+        )}
       {!suppressDuplicateMeta && showAgencyExtras && request.proposedPrice != null && (
         <Text style={{ ...typography.label, fontSize: 10, color: colors.accentBrown, marginBottom: spacing.xs }}>
           {uiCopy.optionNegotiationChat.proposedPriceLabel}:{' '}
@@ -335,6 +351,9 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
         finalStatus !== 'job_confirmed' && (
           <View style={styles.counterBox}>
             <Text style={{ ...typography.label, fontSize: 11, color: colors.textPrimary, marginBottom: spacing.xs }}>
+              {uiCopy.optionNegotiationChat.agencyNegotiationAfterClientDecline}
+            </Text>
+            <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary, marginBottom: spacing.xs }}>
               {uiCopy.optionNegotiationChat.clientPriceDeclinedCounterHint}
             </Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
@@ -416,7 +435,10 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
           ) : null}
         </View>
       )}
-      {!isAgency && finalStatus === 'option_confirmed' && request?.requestType === 'option' && (
+      {!isAgency &&
+        finalStatus === 'option_confirmed' &&
+        request?.requestType === 'option' &&
+        status !== 'rejected' && (
         <TouchableOpacity
           style={[styles.filterPill, { marginBottom: spacing.sm, backgroundColor: colors.accentBrown }]}
           onPress={() => {
@@ -425,6 +447,20 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
         >
           <Text style={[styles.filterPillLabel, { color: '#fff' }]}>{uiCopy.optionNegotiationChat.confirmJob}</Text>
         </TouchableOpacity>
+      )}
+      {(finalStatus === 'job_confirmed' || status === 'rejected') && (
+        <Text
+          style={{
+            ...typography.label,
+            fontSize: 11,
+            color: colors.textSecondary,
+            marginBottom: spacing.sm,
+          }}
+        >
+          {finalStatus === 'job_confirmed'
+            ? uiCopy.optionNegotiationChat.negotiationFeeClosedJobConfirmed
+            : uiCopy.optionNegotiationChat.negotiationFeeClosedRejected}
+        </Text>
       )}
     </>
   );

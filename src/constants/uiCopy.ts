@@ -1281,6 +1281,11 @@ export const uiCopy = {
       'No model app on file — the agency can confirm the booking with you without a model app step.',
     /** Client: agency accepted; linked model must still confirm in-app. */
     clientWaitingForModelConfirm: 'Waiting for the model to confirm the booking in their app.',
+    /** B2B thread: terminal — no further fee negotiation. */
+    negotiationFeeClosedRejected: 'This request was rejected. Fee negotiation is closed.',
+    negotiationFeeClosedJobConfirmed: 'Job confirmed. Fee negotiation is closed.',
+    /** Agency: client declined proposed fee — prompt to send another counter. */
+    agencyNegotiationAfterClientDecline: 'Client declined the proposed fee — you can send a new counter-offer below.',
   },
   modelMedia: {
     /** Alert title — image rights checkbox / confirm flow (portfolio, polaroids, agency add-model). */

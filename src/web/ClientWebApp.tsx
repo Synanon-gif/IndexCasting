@@ -3890,26 +3890,6 @@ const STATUS_LABELS: Record<ChatStatus, string> = {
 
 const STATUS_COLORS: Record<ChatStatus, string> = OPTION_REQUEST_CHAT_STATUS_COLORS;
 
-function attentionLabelForClient(state: SmartAttentionState): string {
-  switch (state) {
-    case 'waiting_for_client':
-      return uiCopy.dashboard.smartAttentionWaitingForClient;
-    case 'job_confirmation_pending':
-      return uiCopy.dashboard.smartAttentionJobConfirmationPending;
-    case 'waiting_for_model':
-      return uiCopy.dashboard.smartAttentionWaitingForModel;
-    case 'counter_pending':
-      return uiCopy.dashboard.smartAttentionCounterPending;
-    case 'conflict_risk':
-      return uiCopy.dashboard.smartAttentionConflictRisk;
-    case 'waiting_for_agency':
-      return uiCopy.dashboard.smartAttentionWaitingForAgency;
-    case 'no_attention':
-    default:
-      return uiCopy.dashboard.smartAttentionNoAttention;
-  }
-}
-
 type MessagesViewProps = {
   openThreadId: string | null;
   onClearOpenThreadId: () => void;
@@ -4220,11 +4200,15 @@ const MessagesView: React.FC<MessagesViewProps> = ({
     return unsub;
   }, []);
 
+  // Deep-link / calendar / dashboard: must switch to Option Requests tab — otherwise
+  // optionFullscreenActive stays false while clientMsgTab defaults to b2bChats.
   useEffect(() => {
-    if (openThreadId) {
+    if (!openThreadId) return;
+    setClientMsgTab('optionRequests');
+    void loadOptionRequestsForClient().then(() => {
       setSelectedThreadId(openThreadId);
       onClearOpenThreadId();
-    }
+    });
   }, [openThreadId, onClearOpenThreadId]);
 
   useEffect(() => {
@@ -4271,7 +4255,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
         modelApproval: r.modelApproval,
         modelAccountLinked: r.modelAccountLinked ?? true,
       });
-      if (!smartAttentionVisibleForRole(state, 'client')) return false;
+      if (!attentionHeaderLabel(state, 'client')) return false;
     }
     return true;
   });
@@ -4648,7 +4632,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
               modelApproval: r.modelApproval,
               modelAccountLinked: r.modelAccountLinked ?? true,
             });
-            const showAttention = smartAttentionVisibleForRole(attentionState, 'client');
+            const attentionListLabel = attentionHeaderLabel(attentionState, 'client');
             return (
               <TouchableOpacity
                 key={r.threadId}
@@ -4669,10 +4653,10 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                   ) : null}
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
-                  {showAttention ? (
+                  {attentionListLabel ? (
                     <View style={[styles.statusPill, { backgroundColor: '#dbeafe' }]}>
                       <Text style={[styles.statusPillLabel, { color: '#1d4ed8' }]}>
-                        {attentionLabelForClient(attentionState)}
+                        {attentionListLabel}
                       </Text>
                     </View>
                   ) : null}
