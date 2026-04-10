@@ -290,18 +290,10 @@ export async function insertOptionRequest(req: {
       ? String(req.client_organization_id).trim()
       : null;
 
-  const { data: modelRow } = await supabase
-    .from('models')
-    .select('user_id')
-    .eq('id', req.model_id)
-    .maybeSingle();
-  const modelAccountLinked = !!(modelRow as { user_id?: string | null } | null)?.user_id;
-  const modelApproval = modelAccountLinked ? 'pending' : 'approved';
-  const modelApprovedAt = modelAccountLinked ? null : new Date().toISOString();
-
-  const rowStatus = 'in_negotiation';
-  const rowFinalStatus = 'option_pending';
-  const rowClientPriceStatus = 'pending';
+  // Initial client insert: only request-creation fields. Do not send model_approval /
+  // model_approved_at / model_account_linked / status / final_status / client_price_status —
+  // DB defaults apply (pending, in_negotiation, option_pending, etc.). Agency/model steps
+  // update those columns after insert.
 
   const insertRow = {
     client_id: req.client_id,
@@ -313,21 +305,27 @@ export async function insertOptionRequest(req: {
     model_name: req.model_name ? sanitizeHtml(normalizeInput(req.model_name)) : null,
     proposed_price: req.proposed_price || null,
     agency_counter_price: null,
-    client_price_status: rowClientPriceStatus,
-    final_status: rowFinalStatus,
     request_type: req.request_type || 'option',
     currency: req.currency || null,
     start_time: req.start_time || null,
     end_time: req.end_time || null,
-    status: rowStatus,
-    model_approval: modelApproval,
-    model_approved_at: modelApprovedAt,
-    model_account_linked: modelAccountLinked,
     organization_id: orgId,
     agency_organization_id: agencyOrgId,
     client_organization_id: clientOrgId,
     created_by: req.created_by ?? null,
   };
+
+  console.info('[insertOptionRequest] insertRowPreview', {
+    insertKeys: Object.keys(insertRow).sort(),
+    sendsModelApproval: Object.prototype.hasOwnProperty.call(insertRow, 'model_approval'),
+    sendsModelApprovedAt: Object.prototype.hasOwnProperty.call(insertRow, 'model_approved_at'),
+    sendsModelAccountLinked: Object.prototype.hasOwnProperty.call(insertRow, 'model_account_linked'),
+    sendsStatus: Object.prototype.hasOwnProperty.call(insertRow, 'status'),
+    sendsFinalStatus: Object.prototype.hasOwnProperty.call(insertRow, 'final_status'),
+    sendsClientPriceStatus: Object.prototype.hasOwnProperty.call(insertRow, 'client_price_status'),
+    organizationIdPrefix: orgId ? orgId.slice(0, 8) : null,
+    clientOrgIdPrefix: clientOrgId ? clientOrgId.slice(0, 8) : null,
+  });
 
   const { data, error } = await supabase
     .from('option_requests')
@@ -336,19 +334,17 @@ export async function insertOptionRequest(req: {
     .single();
   if (error) {
     const e = error as { code?: string; message?: string; details?: string; hint?: string };
-    const s = (v: string) => v.trim();
     console.error('[insertOptionRequest]', {
       code: e.code,
       message: e.message,
       details: e.details,
       hint: e.hint,
-      statusInsert: {
-        status: rowStatus,
-        statusEmpty: !s(rowStatus),
-        final_status: rowFinalStatus,
-        finalStatusEmpty: !s(rowFinalStatus),
-        client_price_status: rowClientPriceStatus,
-        clientPriceStatusEmpty: !s(rowClientPriceStatus),
+      insertRowDefaultsExpected: {
+        status: 'in_negotiation',
+        final_status: 'option_pending',
+        client_price_status: 'pending',
+        model_approval: 'pending',
+        model_account_linked: false,
       },
       payloadSummary: {
         hasOrganizationId: !!orgId,

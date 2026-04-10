@@ -192,7 +192,7 @@ export function addOptionRequest(
     startTime: extra?.startTime,
     endTime: extra?.endTime,
     modelApproval: 'pending',
-    modelAccountLinked: true,
+    modelAccountLinked: false,
     finalStatus: 'option_pending',
     clientPriceStatus: 'pending',
   };
