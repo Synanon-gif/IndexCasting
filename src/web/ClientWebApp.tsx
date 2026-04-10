@@ -1689,15 +1689,25 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     const pkgExtra = packageViewState
       ? { source: 'package' as const, packageId: packageViewState.packageId }
       : {};
+    const resolvedProjectId = projectId ?? sharedProjectId ?? activeProjectId ?? undefined;
+    const flowSource =
+      packageViewState != null
+        ? packageViewState.packageType === 'polaroid'
+          ? ('polaroid_package' as const)
+          : ('portfolio_package' as const)
+        : resolvedProjectId
+          ? ('project' as const)
+          : ('discover' as const);
     addOptionRequest(
       'Client',
       modelName,
       modelId,
       date,
-      projectId ?? sharedProjectId ?? activeProjectId ?? undefined,
+      resolvedProjectId,
       {
         ...extra,
         ...pkgExtra,
+        flowSource,
         onThreadReady: (dbThreadId) => {
           setOpenThreadIdOnMessages(dbThreadId);
         },

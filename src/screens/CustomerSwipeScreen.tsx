@@ -285,7 +285,7 @@ export const CustomerSwipeScreen: React.FC = () => {
       model.id,
       date,
       undefined,
-      { requestType: 'option', countryCode: countryFromCityFilter },
+      { requestType: 'option', countryCode: countryFromCityFilter, flowSource: 'swipe' },
     );
 
     setIsSendingOption(false);

@@ -216,6 +216,37 @@ export async function getOptionRequestsForAgency(
   }
 }
 
+export async function resolveAgencyOrganizationIdForOptionRequest(
+  modelId: string,
+  agencyId: string,
+  countryCode: string | null | undefined,
+): Promise<string | null> {
+  if (!modelId?.trim() || !agencyId?.trim()) return null;
+  try {
+    const { data, error } = await supabase.rpc('resolve_agency_organization_id_for_option_request', {
+      p_model_id: modelId.trim(),
+      p_agency_id: agencyId.trim(),
+      p_country_code: countryCode?.trim() ? countryCode.trim() : null,
+    });
+    if (error) {
+      const e = error as { code?: string; message?: string; details?: string; hint?: string };
+      console.error('[resolveAgencyOrganizationIdForOptionRequest]', {
+        code: e.code,
+        message: e.message,
+        details: e.details,
+        hint: e.hint,
+      });
+      return null;
+    }
+    if (data == null) return null;
+    const s = String(data).trim();
+    return s !== '' ? s : null;
+  } catch (ex) {
+    console.error('[resolveAgencyOrganizationIdForOptionRequest] exception:', ex);
+    return null;
+  }
+}
+
 export async function insertOptionRequest(req: {
   client_id: string;
   model_id: string;

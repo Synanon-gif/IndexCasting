@@ -8,6 +8,7 @@
 import {
   getOptionRequestById,
   insertOptionRequest,
+  resolveAgencyOrganizationIdForOptionRequest,
   updateOptionRequestStatus,
   updateModelApproval,
   getOptionMessages as fetchMessages,
@@ -36,6 +37,14 @@ import { notifyClientAgencyCounterOffer } from '../services/pushNotifications';
 import { showAppAlert } from '../utils/crossPlatformAlert';
 import { uiCopy } from '../constants/uiCopy';
 import { optionRequestNeedsMessagesTabAttention } from '../utils/optionRequestAttention';
+
+export type OptionRequestFlowSource =
+  | 'discover'
+  | 'portfolio_package'
+  | 'polaroid_package'
+  | 'project'
+  | 'swipe'
+  | 'other';
 
 export type ChatStatus = 'in_negotiation' | 'confirmed' | 'rejected';
 
@@ -157,6 +166,8 @@ export function addOptionRequest(
     packageId?: string;
     /** Called after the option_request row exists (real UUID thread id for Messages UI). */
     onThreadReady?: (dbThreadId: string) => void;
+    /** Telemetry / debugging: which client surface initiated the request. */
+    flowSource?: OptionRequestFlowSource;
   }
 ): string {
   const threadId = `thread-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -259,16 +270,30 @@ export function addOptionRequest(
     let agencyOrganizationId: string | null = null;
     try {
       if (agencyId) {
-        const { data: agencyOrgRow } = await supabase
-          .from('organizations')
-          .select('id')
-          .eq('agency_id', agencyId)
-          .maybeSingle();
-        agencyOrganizationId = (agencyOrgRow as { id?: string } | null)?.id ?? null;
+        agencyOrganizationId = await resolveAgencyOrganizationIdForOptionRequest(
+          modelId,
+          agencyId,
+          countryCodeUsedForBooking,
+        );
       }
     } catch {
       agencyOrganizationId = null;
     }
+
+    const flowSource = extra?.flowSource ?? 'other';
+    const normStart = extra?.startTime?.trim() ? extra.startTime : null;
+    const normEnd = extra?.endTime?.trim() ? extra.endTime : null;
+
+    console.info('[addOptionRequest] resolution', {
+      flowSource,
+      actingUserId: clientId,
+      clientOrganizationId: organizationId,
+      modelId,
+      requestType,
+      countryCode: countryCodeUsedForBooking,
+      resolvedAgencyId: agencyId,
+      resolvedAgencyOrganizationId: agencyOrganizationId,
+    });
 
     // Calendar conflict check — informational only (fail-open).
     // Warns the user when the model already has a confirmed booking on the
@@ -276,8 +301,8 @@ export function addOptionRequest(
     const conflictResult = await checkCalendarConflict(
       modelId,
       date,
-      extra?.startTime ?? null,
-      extra?.endTime ?? null,
+      normStart,
+      normEnd,
     );
     if (conflictResult.has_conflict) {
       const conflictTitles = conflictResult.conflicting_entries
@@ -299,8 +324,8 @@ export function addOptionRequest(
       model_name: modelName,
       proposed_price: extra?.proposedPrice,
       currency: extra?.currency,
-      start_time: extra?.startTime,
-      end_time: extra?.endTime,
+      start_time: normStart ?? undefined,
+      end_time: normEnd ?? undefined,
       request_type: requestType,
       organization_id: organizationId,
       client_organization_id: organizationId ?? null,
@@ -312,7 +337,16 @@ export function addOptionRequest(
       requestsCache = requestsCache.filter((x) => x.id !== req.id);
       messagesCache = messagesCache.filter((m) => m.id !== autoMessage.id);
       notify();
-      console.error('[addOptionRequest] insertOptionRequest returned null – optimistic entry rolled back');
+      console.error('[addOptionRequest] insertOptionRequest returned null – optimistic entry rolled back', {
+        flowSource,
+        actingUserId: clientId,
+        clientOrganizationId: organizationId,
+        modelId,
+        requestType,
+        countryCode: countryCodeUsedForBooking,
+        resolvedAgencyId: agencyId,
+        resolvedAgencyOrganizationId: agencyOrganizationId,
+      });
       return;
     }
     if (result) {

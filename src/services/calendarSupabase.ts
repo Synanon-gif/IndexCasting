@@ -699,6 +699,11 @@ export type ConflictResult = {
  * date + time window. Returns { has_conflict: false } on error (fail-open:
  * conflict check is informational only, never blocks the user).
  */
+function normalizeCalendarRpcTime(t: string | null | undefined): string | null {
+  const s = t?.trim();
+  return s ? s : null;
+}
+
 export async function checkCalendarConflict(
   modelId: string,
   date: string,
@@ -709,8 +714,8 @@ export async function checkCalendarConflict(
     const { data, error } = await supabase.rpc('check_calendar_conflict', {
       p_model_id: modelId,
       p_date: date,
-      p_start: startTime,
-      p_end: endTime,
+      p_start: normalizeCalendarRpcTime(startTime),
+      p_end: normalizeCalendarRpcTime(endTime),
     });
     if (error) throw error;
     return data as ConflictResult;
