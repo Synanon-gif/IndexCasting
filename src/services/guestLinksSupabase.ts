@@ -191,6 +191,8 @@ export async function deleteGuestLink(linkId: string): Promise<boolean> {
  * Private photos are never included. Image arrays are mutually exclusive:
  *   Portfolio package → portfolio_images populated, polaroids = []
  *   Polaroid package  → polaroids populated, portfolio_images = []
+ *   Polaroid URLs may come from models.polaroids mirror or, when empty, visible
+ *   polaroid rows in model_photos (get_guest_link_models RPC).
  */
 export type GuestLinkModel = {
   id: string;

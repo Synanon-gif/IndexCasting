@@ -2118,7 +2118,6 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         data={detailData}
         onClose={closeDetails}
         onOptionRequest={handleOptionRequest}
-        isPackageMode={isPackageMode}
       />
 
       {selectedCalendarItem && (
@@ -2708,60 +2707,6 @@ type DiscoverProps = {
   tabBarBottomInset?: number;
 };
 
-/**
- * Watermark overlay for guest-link / package views.
- * Renders a grid of semi-transparent diagonal "PREVIEW" labels.
- * pointerEvents="none" ensures the overlay never blocks taps on images below.
- *
- * Architecture note (M2): The serve-watermarked-image Edge Function (JWT-required)
- * handles per-image server-side SVG watermarking for authenticated agency/client
- * users requesting individual images. This React overlay is appropriate for the
- * shared/package discovery context because the images are already resolved to
- * signed URLs before rendering. Migrating to serve-watermarked-image here would
- * require passing storage paths (not signed URLs) through the discovery pipeline,
- * which is a larger architectural change tracked separately.
- */
-const GuestWatermark: React.FC = () => (
-  <View
-    pointerEvents="none"
-    style={{
-      position: 'absolute',
-      top: 0, left: 0, right: 0, bottom: 0,
-      overflow: 'hidden',
-      zIndex: 10,
-    }}
-  >
-    {[0, 1, 2, 3, 4].map((row) =>
-      [0, 1].map((col) => (
-        <View
-          key={`${row}-${col}`}
-          style={{
-            position: 'absolute',
-            top: `${row * 25}%` as unknown as number,
-            left: `${col * 50}%` as unknown as number,
-            width: '60%' as unknown as number,
-            alignItems: 'center',
-            transform: [{ rotate: '-30deg' }],
-          }}
-        >
-          <Text
-            style={{
-              color: 'rgba(255,255,255,0.28)',
-              fontSize: 13,
-              fontWeight: '700',
-              letterSpacing: 2,
-              textTransform: 'uppercase',
-            }}
-            selectable={false}
-          >
-            PREVIEW · IndexCasting
-          </Text>
-        </View>
-      ))
-    )}
-  </View>
-);
-
 const DiscoverView: React.FC<DiscoverProps> = ({
   models,
   current,
@@ -2832,7 +2777,6 @@ const DiscoverView: React.FC<DiscoverProps> = ({
                         <View style={[styles.packageGridImage, { backgroundColor: colors.border }]} />
                       }
                     />
-                    <GuestWatermark />
                     <View style={styles.coverGradientOverlay} />
                     <View style={styles.coverMeasurementsOverlay}>
                       <Text style={styles.coverNameOnImage}>{m.name}</Text>
@@ -4941,7 +4885,6 @@ type DetailProps = {
   data: MediaslideModel | null;
   onClose: () => void;
   onOptionRequest?: (modelName: string, modelId: string, date: string) => void;
-  isPackageMode?: boolean;
 };
 
 const ProjectDetailView: React.FC<DetailProps> = ({
@@ -4950,7 +4893,6 @@ const ProjectDetailView: React.FC<DetailProps> = ({
   data,
   onClose,
   onOptionRequest,
-  isPackageMode = false,
 }) => {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<string | null>(null);
@@ -5035,7 +4977,6 @@ const ProjectDetailView: React.FC<DetailProps> = ({
                         <View style={[styles.detailPortfolioImage, { backgroundColor: colors.border }]} />
                       }
                     />
-                    {isPackageMode && <GuestWatermark />}
                   </View>
                 </TouchableOpacity>
               ))}
@@ -5122,7 +5063,6 @@ const ProjectDetailView: React.FC<DetailProps> = ({
                     <View style={[styles.lightboxImage, { backgroundColor: colors.border }]} />
                   }
                 />
-                {isPackageMode && <GuestWatermark />}
               </View>
 
               {/* Pfeil links */}
