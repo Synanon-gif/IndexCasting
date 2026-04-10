@@ -84,7 +84,9 @@ import { normalizeDocumentspicturesModelImageRef } from '../utils/normalizeModel
 import { confirmImageRights, guardImageUpload } from '../services/gdprComplianceSupabase';
 import { ModelMediaSettingsPanel } from '../components/ModelMediaSettingsPanel';
 import { OptionNegotiationChatShell } from '../components/optionNegotiation/OptionNegotiationChatShell';
-import { OptionSystemInfoBlock } from '../components/optionNegotiation/OptionSystemInfoBlock';
+import { NegotiationMessageRow } from '../components/optionNegotiation/NegotiationMessageRow';
+import { ConfirmDestructiveModal } from '../components/ConfirmDestructiveModal';
+import { useDeviceType } from '../hooks/useDeviceType';
 import { shouldShowSystemMessageForViewer } from '../components/optionNegotiation/filterSystemMessagesForViewer';
 import { getTerritoriesForModel, getTerritoriesForAgency, upsertTerritoriesForModel, bulkAddTerritoriesForModels } from '../services/territoriesSupabase';
 import {
@@ -4382,6 +4384,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   bottomTabInset,
 }) => {
   const { width: agencyMsgWinW, height: agencyMsgWinH } = useWindowDimensions();
+  const { deviceType } = useDeviceType();
   const agencyB2bWebSplit = Platform.OS === 'web' && shouldUseB2BWebSplit(agencyMsgWinW);
   const agencyThreadListScrollMax = agencyB2bWebSplit
     ? getThreadListMaxHeightSplit(agencyMsgWinH)
@@ -4407,6 +4410,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   const [openOrgChatBusy, setOpenOrgChatBusy] = useState(false);
   const [processingRequestId, setProcessingRequestId] = useState<string | null>(null);
   const [deletingOptionId, setDeletingOptionId] = useState<string | null>(null);
+  const [deleteOptionModalVisible, setDeleteOptionModalVisible] = useState(false);
   const [negotiationCounterExpanded, setNegotiationCounterExpanded] = useState(false);
   const [msgFilter, setMsgFilter] = useState<'current' | 'archived' | 'applications'>('current');
   const [assignmentScope, setAssignmentScope] = useState<'all' | 'mine' | 'unassigned'>('all');
@@ -4600,15 +4604,21 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
     }
   };
 
-  const handleDeleteOptionRequest = () => {
+  const openDeleteOptionModal = () => {
     if (!request || !selectedThreadId || !agencyId || deletingOptionId) return;
     if (request.finalStatus === 'job_confirmed') {
       showAppAlert(uiCopy.messages.deleteOptionRequestNotAllowed);
       return;
     }
+    setDeleteOptionModalVisible(true);
+  };
+
+  const confirmDeleteOptionRequest = () => {
+    if (!request || !selectedThreadId || !agencyId || deletingOptionId) return;
     const threadId = request.threadId;
     const reqId = request.id;
-    const run = async () => {
+    setDeleteOptionModalVisible(false);
+    void (async () => {
       setDeletingOptionId(threadId);
       try {
         const ok = await deleteOptionRequestFull(reqId);
@@ -4623,20 +4633,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
       } finally {
         setDeletingOptionId(null);
       }
-    };
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      const msg = `${uiCopy.messages.deleteOptionRequestTitle}\n\n${uiCopy.messages.deleteOptionRequestMessage}`;
-      if (window.confirm(msg)) void run();
-      return;
-    }
-    Alert.alert(
-      uiCopy.messages.deleteOptionRequestTitle,
-      uiCopy.messages.deleteOptionRequestMessage,
-      [
-        { text: uiCopy.common.cancel, style: 'cancel' },
-        { text: uiCopy.common.delete, style: 'destructive', onPress: () => { void run(); } },
-      ],
-    );
+    })();
   };
 
   const searchActive = messagesSearch.trim().length > 0;
@@ -4747,15 +4744,31 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
             headerAccessory={
               finalStatus !== 'job_confirmed' ? (
                 <TouchableOpacity
-                  onPress={handleDeleteOptionRequest}
+                  onPress={openDeleteOptionModal}
                   disabled={!!deletingOptionId}
                   style={{ opacity: deletingOptionId ? 0.5 : 1 }}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityLabel={uiCopy.common.delete}
                 >
-                  <Text style={{ fontSize: 12, color: colors.buttonSkipRed ?? '#c0392b', fontWeight: '600' }}>
-                    {deletingOptionId ? uiCopy.common.loading : uiCopy.common.delete}
-                  </Text>
+                  <Text style={{ fontSize: 18, color: colors.buttonSkipRed ?? '#c0392b' }}>🗑️</Text>
                 </TouchableOpacity>
+              ) : null
+            }
+            deviceType={deviceType}
+            rightPanel={
+              request ? (
+                <View style={{ flex: 1, padding: spacing.md }}>
+                  <Text style={[typography.label, { fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm }]}>
+                    {uiCopy.b2bChat.contextNegotiationThread}
+                  </Text>
+                  <Text style={[typography.body, { fontSize: 14, color: colors.textPrimary }]} numberOfLines={2}>
+                    {`${request.clientName} · ${request.modelName}`}
+                  </Text>
+                  <Text style={[typography.label, { fontSize: 11, color: colors.textSecondary, marginTop: spacing.md }]}>
+                    {request.date}
+                    {request.startTime ? ` · ${request.startTime}–${request.endTime}` : ''}
+                  </Text>
+                </View>
               ) : null
             }
             bottomInset={bottomTabInset}
@@ -4960,17 +4973,27 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
               </View>
             }
           >
-            {filteredMessages.map((msg) =>
-              msg.from === 'system' ? (
-                <OptionSystemInfoBlock key={msg.id} text={msg.text} />
-              ) : (
-                <View key={msg.id} style={[s.chatBubble, msg.from === 'agency' ? s.chatBubbleAgency : s.chatBubbleClient]}>
-                  <Text style={[s.chatBubbleText, msg.from === 'agency' && s.chatBubbleTextAgency]}>{msg.text}</Text>
-                </View>
-              ),
-            )}
+            {filteredMessages.map((msg) => (
+              <NegotiationMessageRow
+                key={msg.id}
+                id={msg.id}
+                from={msg.from}
+                text={msg.text}
+                viewerRole="agency"
+              />
+            ))}
           </OptionNegotiationChatShell>
         </View>
+        <ConfirmDestructiveModal
+          visible={deleteOptionModalVisible}
+          title={uiCopy.messages.deleteOptionRequestTitle}
+          message={uiCopy.messages.deleteOptionRequestMessage}
+          confirmLabel={uiCopy.common.delete}
+          cancelLabel={uiCopy.common.cancel}
+          confirmDisabled={!!deletingOptionId}
+          onConfirm={confirmDeleteOptionRequest}
+          onCancel={() => setDeleteOptionModalVisible(false)}
+        />
         {statusDropdownOpen && (
           <Modal transparent animationType="fade" visible={statusDropdownOpen} onRequestClose={() => setStatusDropdownOpen(false)}>
             <TouchableOpacity

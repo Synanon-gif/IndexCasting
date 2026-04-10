@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, type ViewStyle } from 'react-native';
 import { colors, spacing, typography } from '../../theme/theme';
 import { uiCopy } from '../../constants/uiCopy';
+import type { DeviceType } from '../../theme/breakpoints';
 
 export type OptionNegotiationChatShellProps = {
   /** Main title (counterparty + context). */
@@ -25,6 +26,9 @@ export type OptionNegotiationChatShellProps = {
   /** Padding below composer (tab bar + safe area). */
   bottomInset: number;
   containerStyle?: ViewStyle;
+  /** Responsive shell: optional third column on desktop only. */
+  deviceType?: DeviceType;
+  rightPanel?: React.ReactNode;
 };
 
 export const OptionNegotiationChatShell: React.FC<OptionNegotiationChatShellProps> = ({
@@ -41,8 +45,13 @@ export const OptionNegotiationChatShell: React.FC<OptionNegotiationChatShellProp
   composer,
   bottomInset,
   containerStyle,
-}) => (
-  <View style={[styles.root, containerStyle]}>
+  deviceType,
+  rightPanel,
+}) => {
+  const showRightRail = !!rightPanel && deviceType === 'desktop';
+
+  const main = (
+    <View style={styles.mainColumn}>
     <View style={styles.header}>
       <TouchableOpacity onPress={onBack} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} style={styles.backBtn}>
         <Text style={styles.backArrow}>←</Text>
@@ -90,14 +99,40 @@ export const OptionNegotiationChatShell: React.FC<OptionNegotiationChatShellProp
     {footerTop ? <View style={styles.footerTop}>{footerTop}</View> : null}
 
     <View style={[styles.composerWrap, { paddingBottom: bottomInset }]}>{composer}</View>
-  </View>
-);
+    </View>
+  );
+
+  return (
+    <View style={[styles.root, showRightRail && styles.rootWithRail, containerStyle]}>
+      {main}
+      {showRightRail ? <View style={styles.rightRail}>{rightPanel}</View> : null}
+    </View>
+  );
+};
 
 const styles = StyleSheet.create({
   root: {
     flex: 1,
     minHeight: 0,
     alignSelf: 'stretch',
+  },
+  rootWithRail: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+  mainColumn: {
+    flex: 1,
+    minHeight: 0,
+    minWidth: 0,
+    alignSelf: 'stretch',
+  },
+  rightRail: {
+    width: 280,
+    maxWidth: '32%',
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: colors.border,
+    backgroundColor: colors.surface,
+    flexShrink: 0,
   },
   header: {
     flexDirection: 'row',

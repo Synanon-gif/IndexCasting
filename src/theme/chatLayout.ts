@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import { BREAKPOINT_TABLET_MAX } from './breakpoints';
 
 /**
  * Central chat workspace layout tokens — widths, split ratios, message-area heights.
@@ -11,8 +12,11 @@ export const CHAT_OVERLAY_WIDTH_PERCENT = 75;
 /** Never exceed this width (px) for chat overlays on large desktops. */
 export const CHAT_OVERLAY_MAX_WIDTH_CAP = 1024;
 
-/** Below this window width (px), B2B stays stacked; at/above, optional thread|chat row split (web). */
-export const CHAT_B2B_SPLIT_BREAKPOINT = 960;
+/**
+ * Below this window width (px), B2B stays stacked; at/above, thread|chat row split (web).
+ * Aligned with `useDeviceType()` desktop threshold (>= BREAKPOINT_TABLET_MAX).
+ */
+export const CHAT_B2B_SPLIT_BREAKPOINT = BREAKPOINT_TABLET_MAX;
 
 /** Wide web: thread list column ~28%, messenger ~72% of the messages row. */
 export const CHAT_THREAD_LIST_FLEX = 0.28;

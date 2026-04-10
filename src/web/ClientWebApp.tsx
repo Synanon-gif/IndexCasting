@@ -3,7 +3,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { handleTabPress, BOTTOM_TAB_BAR_HEIGHT } from '../navigation/bottomTabNavigation';
 import { OptionNegotiationChatShell } from '../components/optionNegotiation/OptionNegotiationChatShell';
-import { OptionSystemInfoBlock } from '../components/optionNegotiation/OptionSystemInfoBlock';
+import { NegotiationMessageRow } from '../components/optionNegotiation/NegotiationMessageRow';
+import { ConfirmDestructiveModal } from '../components/ConfirmDestructiveModal';
+import { useDeviceType } from '../hooks/useDeviceType';
 import { shouldShowSystemMessageForViewer } from '../components/optionNegotiation/filterSystemMessagesForViewer';
 import {
   View,
@@ -22,7 +24,6 @@ import { colors, spacing, typography } from '../theme/theme';
 import {
   CHAT_MESSENGER_FLEX,
   CHAT_THREAD_LIST_FLEX,
-  getLegacyChatPanelMessagesMaxHeight,
   getThreadListMaxHeight,
   getThreadListMaxHeightSplit,
   shouldUseB2BWebSplit,
@@ -4081,8 +4082,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   onOptionThreadOpenedFromList,
   onCloseOptionNegotiation,
 }) => {
-  const { height: messagesViewWindowHeight } = useWindowDimensions();
-  const legacyChatPanelMessagesMaxHeight = getLegacyChatPanelMessagesMaxHeight(messagesViewWindowHeight);
+  const { deviceType } = useDeviceType();
   const bottomTabInset = bottomTabInsetProp ?? BOTTOM_TAB_BAR_HEIGHT;
   const [negotiationCounterExpanded, setNegotiationCounterExpanded] = useState(false);
   const [clientMsgTab, setClientMsgTab] = useState<'b2bChats' | 'optionRequests'>('b2bChats');
@@ -4101,6 +4101,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   });
   const [attentionFilter, setAttentionFilter] = useState<'all' | 'action_required'>('all');
   const [deletingOptionId, setDeletingOptionId] = useState<string | null>(null);
+  const [deleteOptionModalVisible, setDeleteOptionModalVisible] = useState(false);
   const [editingAssignmentThreadId, setEditingAssignmentThreadId] = useState<string | null>(null);
   const [archivedIds, setArchivedIds] = useState<Set<string>>(() => {
     // Seed from localStorage for instant display before the server load completes.
@@ -4206,15 +4207,21 @@ const MessagesView: React.FC<MessagesViewProps> = ({
     setChatInput('');
   };
 
-  const handleDeleteOptionRequest = () => {
+  const openDeleteOptionModal = () => {
     if (!request || !selectedThreadId || deletingOptionId) return;
     if (request.finalStatus === 'job_confirmed') {
       showAppAlert(uiCopy.messages.deleteOptionRequestNotAllowed);
       return;
     }
+    setDeleteOptionModalVisible(true);
+  };
+
+  const confirmDeleteOptionRequest = () => {
+    if (!request || !selectedThreadId || deletingOptionId) return;
     const threadId = request.threadId;
     const reqId = request.id;
-    const run = async () => {
+    setDeleteOptionModalVisible(false);
+    void (async () => {
       setDeletingOptionId(threadId);
       try {
         const ok = await deleteOptionRequestFull(reqId);
@@ -4229,20 +4236,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
       } finally {
         setDeletingOptionId(null);
       }
-    };
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      const msg = `${uiCopy.messages.deleteOptionRequestTitle}\n\n${uiCopy.messages.deleteOptionRequestMessage}`;
-      if (window.confirm(msg)) void run();
-      return;
-    }
-    Alert.alert(
-      uiCopy.messages.deleteOptionRequestTitle,
-      uiCopy.messages.deleteOptionRequestMessage,
-      [
-        { text: uiCopy.common.cancel, style: 'cancel' },
-        { text: uiCopy.common.delete, style: 'destructive', onPress: () => { void run(); } },
-      ],
-    );
+    })();
   };
 
   const handleBackOptionChat = () => {
@@ -4515,15 +4509,31 @@ const MessagesView: React.FC<MessagesViewProps> = ({
           headerAccessory={
             finalStatus !== 'job_confirmed' ? (
               <TouchableOpacity
-                onPress={handleDeleteOptionRequest}
+                onPress={openDeleteOptionModal}
                 disabled={!!deletingOptionId}
                 style={{ opacity: deletingOptionId ? 0.5 : 1 }}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityLabel={uiCopy.common.delete}
               >
-                <Text style={{ fontSize: 12, color: colors.buttonSkipRed ?? '#c0392b', fontWeight: '600' }}>
-                  {deletingOptionId ? uiCopy.common.loading : uiCopy.common.delete}
-                </Text>
+                <Text style={{ fontSize: 18, color: colors.buttonSkipRed ?? '#c0392b' }}>🗑️</Text>
               </TouchableOpacity>
+            ) : null
+          }
+          deviceType={deviceType}
+          rightPanel={
+            request ? (
+              <View style={{ flex: 1, padding: spacing.md }}>
+                <Text style={[typography.label, { fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm }]}>
+                  {uiCopy.optionNegotiationChat.negotiationContext}
+                </Text>
+                <Text style={[typography.body, { fontSize: 14, color: colors.textPrimary }]} numberOfLines={2}>
+                  {isAgency ? `${request.clientName} · ${request.modelName}` : request.modelName}
+                </Text>
+                <Text style={[typography.label, { fontSize: 11, color: colors.textSecondary, marginTop: spacing.md }]}>
+                  {request.date}
+                  {request.startTime ? ` · ${request.startTime}–${request.endTime}` : ''}
+                </Text>
+              </View>
             ) : null
           }
           bottomInset={bottomTabInset}
@@ -4763,20 +4773,15 @@ const MessagesView: React.FC<MessagesViewProps> = ({
           containerStyle={{ flex: 1, minHeight: 0 }}
         >
           <>
-            {filteredMessages.map((msg) =>
-              msg.from === 'system' ? (
-                <OptionSystemInfoBlock key={msg.id} text={msg.text} />
-              ) : (
-                <View
-                  key={msg.id}
-                  style={[styles.chatBubble, msg.from === (isAgency ? 'agency' : 'client') ? styles.chatBubbleSelf : styles.chatBubbleOther]}
-                >
-                  <Text style={[styles.chatBubbleText, msg.from === (isAgency ? 'agency' : 'client') && styles.chatBubbleTextSelf]}>
-                    {msg.text}
-                  </Text>
-                </View>
-              ),
-            )}
+            {filteredMessages.map((msg) => (
+              <NegotiationMessageRow
+                key={msg.id}
+                id={msg.id}
+                from={msg.from}
+                text={msg.text}
+                viewerRole={isAgency ? 'agency' : 'client'}
+              />
+            ))}
           </>
         </OptionNegotiationChatShell>
       ) : null}
@@ -4790,6 +4795,17 @@ const MessagesView: React.FC<MessagesViewProps> = ({
           onClose={() => setStatusDropdownOpen(false)}
         />
       )}
+
+      <ConfirmDestructiveModal
+        visible={deleteOptionModalVisible}
+        title={uiCopy.messages.deleteOptionRequestTitle}
+        message={uiCopy.messages.deleteOptionRequestMessage}
+        confirmLabel={uiCopy.common.delete}
+        cancelLabel={uiCopy.common.cancel}
+        confirmDisabled={!!deletingOptionId}
+        onConfirm={confirmDeleteOptionRequest}
+        onCancel={() => setDeleteOptionModalVisible(false)}
+      />
         </>
       )}
     </View>

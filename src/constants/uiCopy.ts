@@ -659,7 +659,7 @@ export const uiCopy = {
     modelDirectChatFailed: 'Could not open chat with this model. Please try again.',
     deleteOptionRequestTitle: 'Delete option request?',
     deleteOptionRequestMessage:
-      'Do you really want to delete this option request? This cannot be undone.',
+      'Do you really want to delete this option? This cannot be undone.',
     deleteOptionRequestFailed: 'Could not delete this option request. Please try again.',
     deleteOptionRequestNotAllowed:
       'This option request cannot be deleted because the job was already confirmed.',

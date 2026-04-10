@@ -7,6 +7,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, Modal, ScrollView, Image, Platform, ActivityIndicator, Linking, Pressable, useWindowDimensions } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
+import { bubbleColorsForSender } from '../theme/roleColors';
 import { getChatOverlayMaxWidth, getMessagesScrollMaxHeight } from '../theme/chatLayout';
 import {
   getRecruitingMessages,
@@ -316,11 +317,24 @@ export const BookingChatView: React.FC<Props> = ({
                   ) : null}
                   {/* Text content */}
                   {msg.text ? (
-                    <View style={[styles.bubble, isSelf ? styles.bubbleSelf : styles.bubbleOther]}>
-                      <Text style={[styles.bubbleText, isSelf && styles.bubbleTextSelf]}>
-                        {msg.text}
-                      </Text>
-                    </View>
+                    (() => {
+                      const rc = bubbleColorsForSender(msg.from);
+                      return (
+                        <View
+                          style={[
+                            styles.bubble,
+                            {
+                              backgroundColor: rc.bubbleBackground,
+                              borderWidth: StyleSheet.hairlineWidth,
+                              borderColor: rc.borderColor,
+                              alignSelf: isSelf ? 'flex-end' : 'flex-start',
+                            },
+                          ]}
+                        >
+                          <Text style={[styles.bubbleText, { color: rc.bubbleText }]}>{msg.text}</Text>
+                        </View>
+                      );
+                    })()
                   ) : null}
                 </View>
               );
