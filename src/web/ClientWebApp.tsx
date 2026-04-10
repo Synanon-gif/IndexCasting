@@ -169,7 +169,6 @@ import {
 import {
   deriveSmartAttentionState,
   smartAttentionVisibleForRole,
-  type SmartAttentionState,
 } from '../utils/optionRequestAttention';
 import { attentionHeaderLabel } from '../utils/negotiationAttentionLabels';
 import { toDisplayStatus } from '../utils/statusHelpers';
