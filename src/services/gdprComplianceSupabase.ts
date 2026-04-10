@@ -62,6 +62,7 @@ export type AuditActionType =
   | 'option_price_accepted' | 'option_price_rejected'
   | 'option_confirmed' | 'option_rejected'
   | 'option_schedule_updated' | 'option_document_uploaded'
+  | 'option_request_deleted'
   | 'application_accepted' | 'application_rejected'
   | 'profile_updated' | 'model_created' | 'model_updated' | 'model_removed'
   | 'model_visibility_changed'

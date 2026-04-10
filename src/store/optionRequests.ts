@@ -731,6 +731,13 @@ export function resetOptionRequestsStore(): void {
   notify();
 }
 
+/** After server-side delete of an option_request: drop thread + messages from local cache. */
+export function purgeOptionThreadFromStore(threadId: string): void {
+  requestsCache = requestsCache.filter((r) => r.threadId !== threadId);
+  messagesCache = messagesCache.filter((m) => m.threadId !== threadId);
+  notify();
+}
+
 /** Client confirms job → job_confirmed; update calendar to Job, system message + notifications. */
 export async function clientConfirmJobStore(threadId: string): Promise<boolean> {
   const req = requestsCache.find((r) => r.threadId === threadId);

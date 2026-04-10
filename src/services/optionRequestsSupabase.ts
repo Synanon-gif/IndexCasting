@@ -1805,6 +1805,41 @@ export async function getPendingModelConfirmations(
   }
 }
 
+/**
+ * Atomically deletes an option_request and dependent rows (messages, calendar, booking_events, etc.).
+ * Server enforces participant access and blocks when final_status = job_confirmed.
+ */
+export async function deleteOptionRequestFull(id: string): Promise<boolean> {
+  try {
+    const row = await getOptionRequestById(id);
+    if (!row) {
+      console.error('[deleteOptionRequestFull] option request not found', id);
+      return false;
+    }
+    if (row.final_status === 'job_confirmed') {
+      console.warn('[deleteOptionRequestFull] blocked: job_confirmed', id);
+      return false;
+    }
+    const { error } = await supabase.rpc('delete_option_request_full', {
+      p_option_request_id: id,
+    });
+    if (error) {
+      console.error('deleteOptionRequestFull RPC error:', error);
+      return false;
+    }
+    logAction(row.organization_id, 'deleteOptionRequestFull', {
+      type: 'audit',
+      action: 'option_request_deleted',
+      entityType: 'option_request',
+      entityId: id,
+    });
+    return true;
+  } catch (e) {
+    console.error('deleteOptionRequestFull exception:', e);
+    return false;
+  }
+}
+
 export async function sendAgencyInvitation(agencyName: string, email: string, invitedBy?: string): Promise<string | null> {
   // Legacy flow (agency_invitations): kept for backward compatibility.
   // Canonical invite invariant for team/member onboarding is implemented via:

@@ -41,6 +41,7 @@ import {
   getRequestStatus,
   setRequestStatus,
   loadOptionRequestsForAgency,
+  purgeOptionThreadFromStore,
   refreshOptionRequestInCache,
   loadMessagesForThread,
   agencyAcceptClientPriceStore,
@@ -174,7 +175,7 @@ import {
   type SharedBookingNote,
 } from '../services/calendarSupabase';
 import BookingBriefEditor from '../components/BookingBriefEditor';
-import { updateOptionRequestSchedule } from '../services/optionRequestsSupabase';
+import { deleteOptionRequestFull, updateOptionRequestSchedule } from '../services/optionRequestsSupabase';
 import {
   getManualEventsForOwner,
   getManualEventsForOrg,
@@ -728,6 +729,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
           pendingOptionRequestId={searchOptionId}
           onPendingOptionRequestConsumed={() => setSearchOptionId(null)}
           assignmentByClientOrgId={assignmentByClientOrgId}
+          onOptionRequestDeleted={() => { void loadAgencyCalendar(); }}
         />
       )}
 
@@ -4353,6 +4355,7 @@ type AgencyMessagesTabProps = {
   pendingOptionRequestId?: string | null;
   onPendingOptionRequestConsumed?: () => void;
   assignmentByClientOrgId?: Record<string, ClientAssignmentFlag>;
+  onOptionRequestDeleted?: () => void;
 };
 
 const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
@@ -4370,6 +4373,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   pendingOptionRequestId,
   onPendingOptionRequestConsumed,
   assignmentByClientOrgId = {},
+  onOptionRequestDeleted,
 }) => {
   const { width: agencyMsgWinW, height: agencyMsgWinH } = useWindowDimensions();
   const agencyB2bWebSplit = Platform.OS === 'web' && shouldUseB2BWebSplit(agencyMsgWinW);
@@ -4397,6 +4401,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   const [agencyCounterInput, setAgencyCounterInput] = useState('');
   const [openOrgChatBusy, setOpenOrgChatBusy] = useState(false);
   const [processingRequestId, setProcessingRequestId] = useState<string | null>(null);
+  const [deletingOptionId, setDeletingOptionId] = useState<string | null>(null);
   const [msgFilter, setMsgFilter] = useState<'current' | 'archived' | 'applications'>('current');
   const [assignmentScope, setAssignmentScope] = useState<'all' | 'mine' | 'unassigned'>('all');
   const [assignmentFlagFilter, setAssignmentFlagFilter] = useState<string>('all');
@@ -4586,6 +4591,45 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
     } finally {
       setOpenOrgChatBusy(false);
     }
+  };
+
+  const handleDeleteOptionRequest = () => {
+    if (!request || !selectedThreadId || !agencyId || deletingOptionId) return;
+    if (request.finalStatus === 'job_confirmed') {
+      showAppAlert(uiCopy.messages.deleteOptionRequestNotAllowed);
+      return;
+    }
+    const threadId = request.threadId;
+    const reqId = request.id;
+    const run = async () => {
+      setDeletingOptionId(threadId);
+      try {
+        const ok = await deleteOptionRequestFull(reqId);
+        if (!ok) {
+          showAppAlert(uiCopy.common.error, uiCopy.messages.deleteOptionRequestFailed);
+          return;
+        }
+        purgeOptionThreadFromStore(threadId);
+        setSelectedThreadId(null);
+        await loadOptionRequestsForAgency(agencyId, agencyOrganizationIdProp);
+        onOptionRequestDeleted?.();
+      } finally {
+        setDeletingOptionId(null);
+      }
+    };
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const msg = `${uiCopy.messages.deleteOptionRequestTitle}\n\n${uiCopy.messages.deleteOptionRequestMessage}`;
+      if (window.confirm(msg)) void run();
+      return;
+    }
+    Alert.alert(
+      uiCopy.messages.deleteOptionRequestTitle,
+      uiCopy.messages.deleteOptionRequestMessage,
+      [
+        { text: uiCopy.common.cancel, style: 'cancel' },
+        { text: uiCopy.common.delete, style: 'destructive', onPress: () => { void run(); } },
+      ],
+    );
   };
 
   const searchActive = messagesSearch.trim().length > 0;
@@ -5106,13 +5150,26 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
       {request && (
         <View style={s.chatPanel}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm }}>
-            <Text style={s.chatTitle}>{request.clientName} · {request.modelName}</Text>
-            <TouchableOpacity
-              style={[s.statusPill, status && { backgroundColor: STATUS_COLORS[status] }]}
-              onPress={() => setStatusDropdownOpen((o) => !o)}
-            >
-              <Text style={s.statusPillLabel}>{status ? STATUS_LABELS[status] : '—'}</Text>
-            </TouchableOpacity>
+            <Text style={[s.chatTitle, { flex: 1, marginRight: spacing.sm }]}>{request.clientName} · {request.modelName}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+              <TouchableOpacity
+                style={[s.statusPill, status && { backgroundColor: STATUS_COLORS[status] }]}
+                onPress={() => setStatusDropdownOpen((o) => !o)}
+              >
+                <Text style={s.statusPillLabel}>{status ? STATUS_LABELS[status] : '—'}</Text>
+              </TouchableOpacity>
+              {finalStatus !== 'job_confirmed' ? (
+                <TouchableOpacity
+                  onPress={handleDeleteOptionRequest}
+                  disabled={!!deletingOptionId}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={{ fontSize: 12, color: colors.buttonSkipRed ?? '#c0392b', fontWeight: '600', opacity: deletingOptionId ? 0.5 : 1 }}>
+                    {deletingOptionId ? uiCopy.common.loading : uiCopy.common.delete}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
           </View>
           {request.clientOrganizationId && assignmentByClientOrgId[request.clientOrganizationId] ? (
             <Text style={[s.metaText, { marginBottom: spacing.xs }]}>

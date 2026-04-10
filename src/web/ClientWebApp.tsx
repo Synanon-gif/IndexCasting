@@ -98,6 +98,7 @@ import {
   setRequestStatus,
   getRequestStatus,
   loadOptionRequestsForClient,
+  purgeOptionThreadFromStore,
   refreshOptionRequestInCache,
   loadMessagesForThread,
   agencyAcceptClientPriceStore,
@@ -113,7 +114,7 @@ import {
   getB2BConversationTitleForViewer,
 } from '../services/b2bOrgChatSupabase';
 import type { Conversation } from '../services/messengerSupabase';
-import { sendAgencyInvitation } from '../services/optionRequestsSupabase';
+import { deleteOptionRequestFull, sendAgencyInvitation } from '../services/optionRequestsSupabase';
 import {
   ensureClientOrganization,
   getClientOrganizationIdForUser,
@@ -2095,6 +2096,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             onPendingClientB2BChatConsumed={() => setPendingClientB2BChat(null)}
             onBookingCardPress={() => setTab('calendar')}
             onPackagePress={(meta) => { void handlePackagePress(meta); }}
+            onOptionRequestDeleted={() => { void loadClientCalendar(); }}
           />
         )}
 
@@ -3804,6 +3806,8 @@ type MessagesViewProps = {
   onPendingClientB2BChatConsumed?: () => void;
   onBookingCardPress?: (meta: Record<string, unknown>) => void;
   onPackagePress?: (meta: Record<string, unknown>) => void;
+  /** Refresh calendar / merged views after an option_request was deleted. */
+  onOptionRequestDeleted?: () => void;
 };
 
 const ClientB2BChatsPanel: React.FC<{
@@ -4025,6 +4029,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   onPendingClientB2BChatConsumed,
   onBookingCardPress,
   onPackagePress,
+  onOptionRequestDeleted,
 }) => {
   const { height: messagesViewWindowHeight } = useWindowDimensions();
   const legacyChatPanelMessagesMaxHeight = getLegacyChatPanelMessagesMaxHeight(messagesViewWindowHeight);
@@ -4043,6 +4048,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
     assignedMemberUserId: 'all',
   });
   const [attentionFilter, setAttentionFilter] = useState<'all' | 'action_required'>('all');
+  const [deletingOptionId, setDeletingOptionId] = useState<string | null>(null);
   const [editingAssignmentThreadId, setEditingAssignmentThreadId] = useState<string | null>(null);
   const [archivedIds, setArchivedIds] = useState<Set<string>>(() => {
     // Seed from localStorage for instant display before the server load completes.
@@ -4144,6 +4150,45 @@ const MessagesView: React.FC<MessagesViewProps> = ({
     if (!text || !selectedThreadId) return;
     addMessage(selectedThreadId, isAgency ? 'agency' : 'client', text);
     setChatInput('');
+  };
+
+  const handleDeleteOptionRequest = () => {
+    if (!request || !selectedThreadId || deletingOptionId) return;
+    if (request.finalStatus === 'job_confirmed') {
+      showAppAlert(uiCopy.messages.deleteOptionRequestNotAllowed);
+      return;
+    }
+    const threadId = request.threadId;
+    const reqId = request.id;
+    const run = async () => {
+      setDeletingOptionId(threadId);
+      try {
+        const ok = await deleteOptionRequestFull(reqId);
+        if (!ok) {
+          showAppAlert(uiCopy.common.error, uiCopy.messages.deleteOptionRequestFailed);
+          return;
+        }
+        purgeOptionThreadFromStore(threadId);
+        setSelectedThreadId(null);
+        await loadOptionRequestsForClient();
+        onOptionRequestDeleted?.();
+      } finally {
+        setDeletingOptionId(null);
+      }
+    };
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const msg = `${uiCopy.messages.deleteOptionRequestTitle}\n\n${uiCopy.messages.deleteOptionRequestMessage}`;
+      if (window.confirm(msg)) void run();
+      return;
+    }
+    Alert.alert(
+      uiCopy.messages.deleteOptionRequestTitle,
+      uiCopy.messages.deleteOptionRequestMessage,
+      [
+        { text: uiCopy.common.cancel, style: 'cancel' },
+        { text: uiCopy.common.delete, style: 'destructive', onPress: () => { void run(); } },
+      ],
+    );
   };
 
   const openOrgChatFromRequest = async () => {
@@ -4367,7 +4412,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
       {request && (
         <View style={[styles.chatPanel, Platform.OS === 'web' && { flex: 1, minHeight: 0 }]}>
           <View style={styles.chatPanelHeader}>
-            <Text style={styles.chatPanelTitle}>{request.modelName} · {request.date}</Text>
+            <Text style={[styles.chatPanelTitle, { flex: 1 }]}>{request.modelName} · {request.date}</Text>
             {isAgency ? (
               <View style={styles.statusDropdownWrap}>
                 <Text style={styles.metaText}>Status: </Text>
@@ -4383,6 +4428,18 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                 <Text style={styles.statusPillLabel}>{status ? STATUS_LABELS[status] : '—'}</Text>
               </View>
             )}
+            {finalStatus !== 'job_confirmed' ? (
+              <TouchableOpacity
+                onPress={handleDeleteOptionRequest}
+                disabled={!!deletingOptionId}
+                style={{ marginLeft: spacing.sm, opacity: deletingOptionId ? 0.5 : 1 }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={{ fontSize: 12, color: colors.buttonSkipRed ?? '#c0392b', fontWeight: '600' }}>
+                  {deletingOptionId ? uiCopy.common.loading : uiCopy.common.delete}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
           {request.clientOrganizationId && (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.sm }}>
