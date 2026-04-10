@@ -336,7 +336,7 @@ Gilt u. a. für **`option_requests`**, **`option_request_messages`** und ähnl
 
 **Spezialfall Bestätigungen / Uploads:** Idempotenz und Vermeidung von RETURNING-Konflikten für `confirmX()` — siehe **CONFIRMATION-FLOWS — IDEMPOTENZ PFLICHT** (eigenes Pflicht-Pattern, nicht abschwächen).
 
-**Negotiation state truth (UI):** Do not drive confirm/reject/counter solely from `option_requests.status` via blind updates — use the existing RPC/store paths (`agencyRejectRequest`, `agencyAcceptRequest` / price accept RPCs, `client_accept_counter_offer`, `clientRejectCounterOfferOnSupabase` / `clientRejectCounterStore`) so `final_status`, `client_price_status`, and notifications stay aligned. Fee/commercial truth remains on `option_requests`; `calendar_entries` from `fn_ensure_calendar_on_option_confirmed` carry schedule/title, not a parallel fee authority.
+**Negotiation state truth (UI):** Do not drive confirm/reject/counter solely from `option_requests.status` via blind updates — use the existing RPC/store paths (`agencyAcceptRequest` / price accept RPCs, `client_accept_counter_offer`, `clientRejectCounterOfferOnSupabase` / `clientRejectCounterStore`, **`agencyRejectNegotiationStore` → `deleteOptionRequestFull`** for agency full removal before job, **`deleteOptionRequestFull`** for trash) so `final_status`, `client_price_status`, and downstream calendars stay aligned. Service `agencyRejectRequest` (UPDATE-only) remains for legacy/tests — **not** the product path for agency „remove entire request“ (that uses `delete_option_request_full`). Fee/commercial truth remains on `option_requests`; `calendar_entries` from `fn_ensure_calendar_on_option_confirmed` carry schedule/title, not a parallel fee authority.
 
 ### 8. REQUEST-CONTEXT RESOLVER INVARIANT
 

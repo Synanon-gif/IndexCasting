@@ -116,6 +116,15 @@ Vollständige englische Invarianten: [.cursor/rules/agency-media-panels-and-sql-
 
 Vollständige Invarianten: [.cursor/rules/system-invariants.mdc](.cursor/rules/system-invariants.mdc) (Abschnitt **FIRST-CONTACT, REQUEST ECOSYSTEM & DOWNSTREAM PARITY (kanonisch)** — 12 Invarianten **### 1**–**### 12**).
 
+### 4c.3 Option / Casting negotiation — delete parity & UI (kanonisch)
+
+- **Vollständiges Entfernen vor `job_confirmed`:** Kanonisch die RPC `public.delete_option_request_full` (z. B. Migration `20260546`) — entfernt abhängige Zeilen inkl. `calendar_entries`, `user_calendar_events`, `booking_events`, Messages, passende Notifications, `option_requests`. Frontend: `deleteOptionRequestFull` (`optionRequestsSupabase`) + `purgeOptionThreadFromStore` + Reload der Option-Liste; nach Delete Kalender-Refresh wo bereits `onOptionRequestDeleted` / `load*Calendar` verdrahtet ist. **Blockiert** bei `final_status = job_confirmed`.
+- **Agency „Remove request“ (Negotiation):** `agencyRejectNegotiationStore` (`optionRequests.ts`) ruft **`deleteOptionRequestFull`** — gleiche Atomarität wie Papierkorb (**kein** `agencyRejectRequest`-UPDATE für diese Produkt-UI). `agencyRejectRequest` in Services nur für bestehende Tests/Legacy-Pfade; neue Features nicht darauf als Agency-„kompletter Abbruch“ aufsetzen.
+- **Kalender bei `status → rejected` ohne Row-Delete:** Trigger `fn_cancel_calendar_on_option_rejected` (Migration `20260548`) setzt verknüpfte Kalenderzeilen auf `cancelled` — historisches Root-SQL nur als Referenz; Deploy nur über `supabase/migrations/`.
+- **UI — Duplikate vermeiden:** `NegotiationChipsRow` mit `showPriceLines={false}` wenn Preise in `NegotiationSummaryCard`; **Desktop:** nur **eine** `NegotiationThreadFooter`-Instanz (`footerTop` ausblenden wenn Desktop-`rightPanel` die Actions enthält); `suppressDuplicateMeta` auf dem Footer, wenn die Summary-Karte Status/Preise/Model-Hinweise bereits zeigt (`NegotiationThreadFooter`).
+- **Counter-Offer:** Wenn `client_price_status === 'pending'` und `proposedPrice` gesetzt, muss ein **sichtbarer** Counter-Block (Betrag, Send, Cancel) existieren — nicht nur Toggle ohne Eingabe; Label „Make counter offer“ / Primary-Button über bestehende `colors` (`NegotiationThreadFooter`).
+- **Bestätigung:** Kein stiller Delete/Reject — `ConfirmDestructiveModal` für zerstörerische Schritte (Agency Remove, Client Decline agency proposal, Model Accept/Decline availability); Texte in `uiCopy`, nicht hardcoden.
+
 ## 4b. UI-Sprache & Copy (verbindlich)
 - **Die gesamte Nutzeroberfläche ist Englisch (English-only):** alle sichtbaren Texte für Agency, Client und Model — Buttons, Labels, Alerts, Placeholder, leere Zustände, Fehlermeldungen aus dem Produkt.
 - **Zentrale Quelle:** Nutzer-Texte kommen aus `src/constants/uiCopy.ts` (`uiCopy`). Keine neuen deutschsprachigen UI-Strings; keine Hardcodes derselben Phrase an vielen Stellen — lieber ein Key in `uiCopy` erweitern.
