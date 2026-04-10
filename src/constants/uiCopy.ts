@@ -1170,7 +1170,12 @@ export const uiCopy = {
     clientAcceptedCounter: 'Client accepted the agency proposal.',
     clientRejectedCounter: 'Client declined the counter offer.',
     jobConfirmedByClient: 'Job confirmed by client.',
-    noModelAccount: 'No model app account on file — you can negotiate and confirm with the client without waiting for model approval. The booking will appear in client and agency calendars when confirmed.',
+    /** Agency-facing copy (e.g. future agency-only flows). Do not insert as client. */
+    noModelAccount:
+      'No model app account on file — you can negotiate and confirm with the client without waiting for model approval. The booking will appear in client and agency calendars when confirmed.',
+    /** Client-originated thread: inserted with from_role=client (cannot forge agency). */
+    noModelAccountClientNotice:
+      'No model app account on file. The agency can negotiate and confirm with you without waiting for model approval. When confirmed, the booking appears in both calendars.',
     modelApprovedBooking: '✓ Approved by Model',
   },
   modelMedia: {

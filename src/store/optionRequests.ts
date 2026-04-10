@@ -382,8 +382,9 @@ export function addOptionRequest(
         });
       }
 
+      // DB trigger enforces from_role vs caller: clients cannot insert agency-authored rows.
       if (local.modelAccountLinked === false) {
-        addOptionMessage(result.id, 'agency', uiCopy.systemMessages.noModelAccount);
+        addOptionMessage(result.id, 'client', uiCopy.systemMessages.noModelAccountClientNotice);
       }
       notify();
       extra?.onThreadReady?.(result.id);
