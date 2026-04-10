@@ -84,6 +84,12 @@ export const B2BUnifiedCalendarBody: React.FC<B2BUnifiedCalendarBodyProps> = ({
     return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
   }, [focusDate]);
 
+  const viewModeHint = useMemo(() => {
+    if (viewMode === 'week') return uiCopy.calendar.viewModeHintWeek;
+    if (viewMode === 'day') return uiCopy.calendar.viewModeHintDay;
+    return uiCopy.calendar.viewModeHintMonth;
+  }, [viewMode]);
+
   return (
     <View>
       <CalendarViewModeBar
@@ -92,7 +98,9 @@ export const B2BUnifiedCalendarBody: React.FC<B2BUnifiedCalendarBodyProps> = ({
         monthLabel={uiCopy.dashboard.monthViewLabel}
         weekLabel={uiCopy.dashboard.weekViewLabel}
         dayLabel={uiCopy.calendar.dayViewLabel}
-        compact={viewMode !== 'month'}
+        compact={false}
+        sectionTitle={uiCopy.calendar.viewModeHeading}
+        sectionHint={viewModeHint}
       />
 
       <MonthCalendarView

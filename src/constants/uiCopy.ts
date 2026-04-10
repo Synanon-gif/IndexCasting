@@ -216,8 +216,15 @@ export const uiCopy = {
     bookingEntryDetailFallback: 'This calendar entry is not linked to a request thread.',
     /** Accessibility label for client calendar row attention dot */
     actionRequiredA11y: 'Action required',
-    /** Multi-view calendar (Agency / Client web). */
+    /** Multi-view calendar (Agency / Client web / Model). */
     dayViewLabel: 'Day',
+    /** Visible heading above Month / Week / Day controls. */
+    viewModeHeading: 'Calendar view',
+    /** Shown under the view switch when Month is selected. */
+    viewModeHintMonth:
+      'Month shows the full grid. Use Week or Day for more detail on bookings and options.',
+    viewModeHintWeek: 'Week shows seven days and timed events. Tap a day or an event to open it.',
+    viewModeHintDay: 'Day lists everything scheduled on the selected day.',
     /** Prefix before a YYYY-MM-DD in the selected-day panel. */
     selectedDayPrefix: 'Day:',
     /** No events on the picked day (quick list). */
@@ -1292,6 +1299,12 @@ export const uiCopy = {
     negotiationFeeClosedJobConfirmed: 'Job confirmed. Fee negotiation is closed.',
     /** Agency: client declined proposed fee — prompt to send another counter. */
     agencyNegotiationAfterClientDecline: 'Client declined the proposed fee — you can send a new counter-offer below.',
+    /**
+     * Agency — always visible above fee actions when negotiation is allowed.
+     * Explains that counter-offer starts with “Make counter offer” (discoverability).
+     */
+    agencyNegotiationFeeStepIntro:
+      'Negotiate the fee with the client: tap “Make counter offer” to enter an amount and send it — the client sees it in this thread and in Messages. Use Confirm to accept their proposed fee, or Remove request to end before the job.',
   },
   modelMedia: {
     /** Alert title — image rights checkbox / confirm flow (portfolio, polaroids, agency add-model). */

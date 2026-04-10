@@ -584,6 +584,12 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
   }, [focusDateModel]);
 
+  const modelCalendarViewHint = useMemo(() => {
+    if (calendarViewMode === 'week') return uiCopy.calendar.viewModeHintWeek;
+    if (calendarViewMode === 'day') return uiCopy.calendar.viewModeHintDay;
+    return uiCopy.calendar.viewModeHintMonth;
+  }, [calendarViewMode]);
+
   const shiftModelFocus = (d: string) => {
     setSelectedDate(d);
     const [y, m] = d.split('-').map(Number);
@@ -909,7 +915,9 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
             monthLabel={uiCopy.dashboard.monthViewLabel}
             weekLabel={uiCopy.dashboard.weekViewLabel}
             dayLabel={uiCopy.calendar.dayViewLabel}
-            compact={calendarViewMode !== 'month'}
+            compact={false}
+            sectionTitle={uiCopy.calendar.viewModeHeading}
+            sectionHint={modelCalendarViewHint}
           />
 
           <MonthCalendarView
