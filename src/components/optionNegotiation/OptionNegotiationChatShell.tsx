@@ -20,6 +20,10 @@ export type OptionNegotiationChatShellProps = {
   onStatusPress?: () => void;
   /** Scrollable message area */
   children: React.ReactNode;
+  /** Chips / meta row pinned below title row, above message scroll. */
+  headerBelowTitle?: React.ReactNode;
+  /** Optional banner between action bar and composer (e.g. calendar hint). */
+  composerTopBanner?: React.ReactNode;
   /** Optional area above composer (agency actions, client CTAs). */
   footerTop?: React.ReactNode;
   composer: React.ReactNode;
@@ -41,6 +45,8 @@ export const OptionNegotiationChatShell: React.FC<OptionNegotiationChatShellProp
   headerAccessory,
   onStatusPress,
   children,
+  headerBelowTitle,
+  composerTopBanner,
   footerTop,
   composer,
   bottomInset,
@@ -87,6 +93,8 @@ export const OptionNegotiationChatShell: React.FC<OptionNegotiationChatShellProp
       )}
     </View>
 
+    {headerBelowTitle ? <View style={styles.headerMeta}>{headerBelowTitle}</View> : null}
+
     <ScrollView
       style={styles.scroll}
       contentContainerStyle={styles.scrollContent}
@@ -97,6 +105,8 @@ export const OptionNegotiationChatShell: React.FC<OptionNegotiationChatShellProp
     </ScrollView>
 
     {footerTop ? <View style={styles.footerTop}>{footerTop}</View> : null}
+
+    {composerTopBanner ? <View style={styles.composerBanner}>{composerTopBanner}</View> : null}
 
     <View style={[styles.composerWrap, { paddingBottom: bottomInset }]}>{composer}</View>
     </View>
@@ -142,6 +152,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
     flexShrink: 0,
+  },
+  headerMeta: {
+    flexShrink: 0,
+    paddingBottom: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
   },
   backBtn: {
     flexDirection: 'row',
@@ -206,6 +223,14 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
     paddingTop: spacing.sm,
     paddingHorizontal: spacing.xs,
+  },
+  composerBanner: {
+    flexShrink: 0,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    backgroundColor: 'rgba(34, 197, 94, 0.08)',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
   },
   composerWrap: {
     flexShrink: 0,

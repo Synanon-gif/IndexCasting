@@ -1207,6 +1207,7 @@ export const uiCopy = {
     clientPriceDeclinedCounterHint: 'Client price declined — enter a counter-offer',
     negotiationContext: 'Negotiation',
     proposedPriceLabel: 'Proposed price',
+    counterPriceLabel: 'Counter',
   },
   modelMedia: {
     /** Alert title — image rights checkbox / confirm flow (portfolio, polaroids, agency add-model). */
@@ -1567,6 +1568,8 @@ export const uiCopy = {
     threadContextBooking:   'Booking',
     /** Option request row when model_name is null (search / lists). */
     optionRequestUnnamedModel: 'Unnamed model',
+    /** Workflow badge when toDisplayStatus === Draft */
+    optionRequestWorkflowDraft: 'Draft',
     /** Option / casting request thread — negotiation lifecycle (Messages list pills). */
     optionRequestStatusInNegotiation: 'In negotiation',
     optionRequestStatusConfirmed: 'Confirmed',
@@ -1589,6 +1592,8 @@ export const uiCopy = {
     smartAttentionJobConfirmationPending: 'Job confirmation pending',
     smartAttentionFilterAll: 'All attention',
     smartAttentionFilterActionRequired: 'Action required only',
+    /** Shown briefly after negotiation actions that sync to calendar (UI only). */
+    negotiationCalendarSyncedHint: 'This option is reflected in your calendar.',
     reminderSet:            'Reminder set',
     reminderNone:           'No reminder',
     weekViewLabel:          'Week',

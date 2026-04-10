@@ -23,7 +23,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.sm,
-    marginVertical: spacing.xs,
+    marginVertical: spacing.sm,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     backgroundColor: 'rgba(120,120,120,0.08)',

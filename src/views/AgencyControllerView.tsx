@@ -85,6 +85,9 @@ import { confirmImageRights, guardImageUpload } from '../services/gdprCompliance
 import { ModelMediaSettingsPanel } from '../components/ModelMediaSettingsPanel';
 import { OptionNegotiationChatShell } from '../components/optionNegotiation/OptionNegotiationChatShell';
 import { NegotiationMessageRow } from '../components/optionNegotiation/NegotiationMessageRow';
+import { NegotiationChipsRow } from '../components/optionNegotiation/NegotiationChipsRow';
+import { NegotiationSummaryCard } from '../components/optionNegotiation/NegotiationSummaryCard';
+import { NegotiationThreadFooter } from '../components/optionNegotiation/NegotiationThreadFooter';
 import { ConfirmDestructiveModal } from '../components/ConfirmDestructiveModal';
 import { useDeviceType } from '../hooks/useDeviceType';
 import { shouldShowSystemMessageForViewer } from '../components/optionNegotiation/filterSystemMessagesForViewer';
@@ -226,6 +229,8 @@ import {
   smartAttentionVisibleForRole,
   type SmartAttentionState,
 } from '../utils/optionRequestAttention';
+import { attentionHeaderLabel } from '../utils/negotiationAttentionLabels';
+import { toDisplayStatus } from '../utils/statusHelpers';
 
 const STATUS_LABELS: Record<ChatStatus, string> = {
   in_negotiation: _uiCopy.dashboard.optionRequestStatusInNegotiation,
@@ -4412,6 +4417,9 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   const [deletingOptionId, setDeletingOptionId] = useState<string | null>(null);
   const [deleteOptionModalVisible, setDeleteOptionModalVisible] = useState(false);
   const [negotiationCounterExpanded, setNegotiationCounterExpanded] = useState(false);
+  const [calendarHint, setCalendarHint] = useState<string | null>(null);
+  const calendarHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [editingAssignmentThreadId, setEditingAssignmentThreadId] = useState<string | null>(null);
   const [msgFilter, setMsgFilter] = useState<'current' | 'archived' | 'applications'>('current');
   const [assignmentScope, setAssignmentScope] = useState<'all' | 'mine' | 'unassigned'>('all');
   const [assignmentFlagFilter, setAssignmentFlagFilter] = useState<string>('all');
@@ -4573,8 +4581,34 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   const status = request ? getRequestStatus(request.threadId) ?? request.status : null;
   const finalStatus = request?.finalStatus;
   const clientPriceStatus = request?.clientPriceStatus;
-  const _agencyCounterPrice = request?.agencyCounterPrice;
+  const agencyCounterPrice = request?.agencyCounterPrice;
   const currency = request?.currency ?? 'EUR';
+  const displayStatus = request ? toDisplayStatus(request.status, request.finalStatus ?? null) : 'Draft';
+  const attentionStateForHeader = request
+    ? deriveSmartAttentionState({
+        status: request.status,
+        finalStatus: request.finalStatus ?? null,
+        clientPriceStatus: request.clientPriceStatus ?? null,
+        modelApproval: request.modelApproval,
+        modelAccountLinked: request.modelAccountLinked ?? true,
+      })
+    : 'no_attention';
+  const headerAttentionLabel = request ? attentionHeaderLabel(attentionStateForHeader, 'agency') : null;
+  const negotiationDateLine = request
+    ? `${request.date}${request.startTime ? ` · ${request.startTime}–${request.endTime}` : ''}`
+    : '';
+  const negotiationFinalStatusLine =
+    request && request.finalStatus
+      ? `${request.requestType === 'casting' ? _uiCopy.dashboard.threadContextCasting : _uiCopy.dashboard.threadContextOption} — ${
+          request.finalStatus === 'job_confirmed'
+            ? _uiCopy.dashboard.optionRequestStatusJobConfirmed
+            : request.finalStatus === 'option_confirmed'
+              ? _uiCopy.dashboard.optionRequestStatusConfirmed
+              : _uiCopy.dashboard.optionRequestStatusPending
+        }`
+      : null;
+  const negotiationRequestTypeLabel =
+    request?.requestType === 'casting' ? _uiCopy.dashboard.threadContextCasting : _uiCopy.dashboard.threadContextOption;
 
   const sendMessage = () => {
     const text = chatInput.trim();
@@ -4726,6 +4760,56 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
     );
   };
 
+  const showNegotiationCalendarHint = useCallback(() => {
+    if (calendarHintTimerRef.current) clearTimeout(calendarHintTimerRef.current);
+    setCalendarHint(_uiCopy.dashboard.negotiationCalendarSyncedHint);
+    calendarHintTimerRef.current = setTimeout(() => {
+      setCalendarHint(null);
+      calendarHintTimerRef.current = null;
+    }, 4000);
+  }, []);
+
+  const runAgencyAcceptClientPrice = useCallback(async () => {
+    if (!request?.threadId || processingRequestId) return;
+    setProcessingRequestId(request.threadId);
+    try {
+      await agencyAcceptClientPriceStore(request.threadId);
+      setRequests(getOptionRequests());
+      showNegotiationCalendarHint();
+    } finally {
+      setProcessingRequestId(null);
+    }
+  }, [request?.threadId, processingRequestId, showNegotiationCalendarHint]);
+
+  const runAgencyRejectClientPrice = useCallback(async () => {
+    if (!request?.threadId || processingRequestId) return;
+    setProcessingRequestId(request.threadId);
+    try {
+      await agencyRejectClientPriceStore(request.threadId);
+      setRequests(getOptionRequests());
+      showNegotiationCalendarHint();
+    } finally {
+      setProcessingRequestId(null);
+    }
+  }, [request?.threadId, processingRequestId, showNegotiationCalendarHint]);
+
+  const runAgencyCounterOffer = useCallback(
+    async (amount: number) => {
+      if (!request?.threadId || processingRequestId) return;
+      setProcessingRequestId(request.threadId);
+      try {
+        await agencyCounterOfferStore(request.threadId, amount, currency);
+        setAgencyCounterInput('');
+        setNegotiationCounterExpanded(false);
+        setRequests(getOptionRequests());
+        showNegotiationCalendarHint();
+      } finally {
+        setProcessingRequestId(null);
+      }
+    },
+    [request?.threadId, processingRequestId, currency, showNegotiationCalendarHint],
+  );
+
   const optionFullscreenActive =
     messagesSection === 'optionRequests' && !!selectedThreadId && !!request;
 
@@ -4741,6 +4825,15 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
             statusLabel={status ? STATUS_LABELS[status] : '—'}
             statusBackgroundColor={status ? STATUS_COLORS[status] : colors.border}
             onStatusPress={() => setStatusDropdownOpen((o) => !o)}
+            headerBelowTitle={
+              <NegotiationChipsRow
+                displayStatus={displayStatus}
+                attentionLabel={headerAttentionLabel}
+                proposedPrice={request.proposedPrice}
+                agencyCounterPrice={request.agencyCounterPrice}
+                currency={currency}
+              />
+            }
             headerAccessory={
               finalStatus !== 'job_confirmed' ? (
                 <TouchableOpacity
@@ -4756,207 +4849,100 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
             }
             deviceType={deviceType}
             rightPanel={
-              request ? (
-                <View style={{ flex: 1, padding: spacing.md }}>
-                  <Text style={[typography.label, { fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm }]}>
-                    {uiCopy.b2bChat.contextNegotiationThread}
-                  </Text>
-                  <Text style={[typography.body, { fontSize: 14, color: colors.textPrimary }]} numberOfLines={2}>
-                    {`${request.clientName} · ${request.modelName}`}
-                  </Text>
-                  <Text style={[typography.label, { fontSize: 11, color: colors.textSecondary, marginTop: spacing.md }]}>
-                    {request.date}
-                    {request.startTime ? ` · ${request.startTime}–${request.endTime}` : ''}
-                  </Text>
-                </View>
+              deviceType === 'desktop' ? (
+                <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: spacing.md, paddingBottom: spacing.lg }}>
+                  <NegotiationSummaryCard
+                    modelName={request.modelName}
+                    clientName={request.clientName}
+                    isAgency
+                    dateLine={negotiationDateLine}
+                    displayStatus={displayStatus}
+                    attentionLabel={headerAttentionLabel}
+                    proposedPrice={request.proposedPrice}
+                    agencyCounterPrice={request.agencyCounterPrice}
+                    currency={currency}
+                    requestTypeLabel={negotiationRequestTypeLabel}
+                    finalStatusLine={negotiationFinalStatusLine}
+                  />
+                  <NegotiationChipsRow
+                    displayStatus={displayStatus}
+                    attentionLabel={headerAttentionLabel}
+                    proposedPrice={request.proposedPrice}
+                    agencyCounterPrice={request.agencyCounterPrice}
+                    currency={currency}
+                  />
+                  <NegotiationThreadFooter
+                    request={request}
+                    isAgency
+                    status={status}
+                    finalStatus={finalStatus}
+                    clientPriceStatus={clientPriceStatus}
+                    currency={currency}
+                    agencyCounterPrice={agencyCounterPrice}
+                    negotiationCounterExpanded={negotiationCounterExpanded}
+                    setNegotiationCounterExpanded={setNegotiationCounterExpanded}
+                    agencyCounterInput={agencyCounterInput}
+                    setAgencyCounterInput={setAgencyCounterInput}
+                    actionBusy={processingRequestId === request.threadId}
+                    assignmentByClientOrgId={assignmentByClientOrgId}
+                    assignableMembers={[]}
+                    editingAssignmentThreadId={editingAssignmentThreadId}
+                    setEditingAssignmentThreadId={setEditingAssignmentThreadId}
+                    openOrgChatBusy={openOrgChatBusy}
+                    openOrgChatFromRequest={openOrgChatFromRequest}
+                    onAgencyAcceptClientPrice={runAgencyAcceptClientPrice}
+                    onAgencyRejectClientPrice={runAgencyRejectClientPrice}
+                    onAgencyCounterOffer={runAgencyCounterOffer}
+                    onAgencyProposeInitialFee={runAgencyCounterOffer}
+                    onRejectNegotiation={handleRejectOptionNegotiation}
+                    onClientAcceptCounter={async () => {}}
+                    onClientConfirmJob={async () => {}}
+                    showAgencyExtras
+                    assignmentMode="readonly"
+                    contextThreadLabel={uiCopy.b2bChat.contextNegotiationThread}
+                    requireAgencyIdForOrgChat={false}
+                  />
+                </ScrollView>
               ) : null
             }
             bottomInset={bottomTabInset}
             footerTop={
-              <>
-                {request.clientOrganizationId && assignmentByClientOrgId[request.clientOrganizationId] ? (
-                  <Text style={[s.metaText, { marginBottom: spacing.xs }]}>
-                    Client assignment: {assignmentByClientOrgId[request.clientOrganizationId].label}
-                    {assignmentByClientOrgId[request.clientOrganizationId].assignedMemberName
-                      ? ` · ${assignmentByClientOrgId[request.clientOrganizationId].assignedMemberName}`
-                      : ''}
-                  </Text>
-                ) : null}
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.sm }}>
-                  <View style={[s.statusPill, { backgroundColor: '#e0e7ff' }]}>
-                    <Text style={[s.statusPillLabel, { color: '#3730a3' }]}>{uiCopy.b2bChat.contextNegotiationThread}</Text>
-                  </View>
-                  <TouchableOpacity
-                    style={[s.filterPill, openOrgChatBusy && { opacity: 0.6 }]}
-                    disabled={openOrgChatBusy || !request.clientOrganizationId}
-                    onPress={() => { void openOrgChatFromRequest(); }}
-                  >
-                    <Text style={s.filterPillLabel}>
-                      {openOrgChatBusy ? uiCopy.common.loading : uiCopy.b2bChat.openOrgChat}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-                {request.proposedPrice != null && (
-                  <Text style={{ ...typography.label, fontSize: 10, color: colors.accentBrown, marginBottom: spacing.xs }}>
-                    {uiCopy.optionNegotiationChat.proposedPriceLabel}:{' '}
-                    {currency === 'USD' ? '$' : currency === 'GBP' ? '£' : currency === 'CHF' ? 'CHF ' : '€'}
-                    {request.proposedPrice}
-                  </Text>
-                )}
-                {request.modelAccountLinked === false ? (
-                  <View style={{ paddingVertical: spacing.xs, paddingHorizontal: spacing.sm, marginBottom: spacing.sm, backgroundColor: 'rgba(100,100,100,0.12)', borderRadius: 8 }}>
-                    <Text style={{ ...typography.label, fontSize: 11, color: colors.textPrimary }}>
-                      {uiCopy.dashboard.optionRequestFinalStatusNoModelAppHint}
-                    </Text>
-                  </View>
-                ) : (
-                  <View style={[
-                    s.approvalBanner,
-                    request.modelApproval === 'approved' && s.approvalBannerApproved,
-                    request.modelApproval === 'rejected' && s.approvalBannerRejected,
-                    request.modelApproval === 'pending' && s.approvalBannerPending,
-                  ]}>
-                    <Text style={[
-                      s.approvalBannerText,
-                      request.modelApproval === 'approved' && s.approvalBannerTextApproved,
-                      request.modelApproval === 'rejected' && s.approvalBannerTextRejected,
-                      request.modelApproval === 'pending' && s.approvalBannerTextPending,
-                    ]}>
-                      {request.modelApproval === 'approved'
-                        ? uiCopy.dashboard.optionRequestModelApprovalApproved
-                        : request.modelApproval === 'rejected'
-                          ? uiCopy.dashboard.optionRequestModelApprovalRejected
-                          : uiCopy.dashboard.optionRequestModelApprovalPending}
-                    </Text>
-                  </View>
-                )}
-                {finalStatus && (
-                  <View style={{ paddingVertical: spacing.xs, paddingHorizontal: spacing.sm, marginBottom: spacing.sm, backgroundColor: finalStatus === 'job_confirmed' ? 'rgba(0,120,0,0.15)' : finalStatus === 'option_confirmed' ? 'rgba(0,80,200,0.12)' : 'rgba(120,120,0,0.12)', borderRadius: 8 }}>
-                    <Text style={{ ...typography.label, fontSize: 11, color: colors.textPrimary }}>
-                      {request.requestType === 'casting' ? uiCopy.dashboard.threadContextCasting : uiCopy.dashboard.threadContextOption} -{' '}
-                      {finalStatus === 'job_confirmed' ? uiCopy.dashboard.optionRequestStatusJobConfirmed : finalStatus === 'option_confirmed' ? uiCopy.dashboard.optionRequestStatusConfirmed : uiCopy.dashboard.optionRequestStatusPending}
-                    </Text>
-                  </View>
-                )}
-                {request.modelApproval === 'approved' && finalStatus !== 'job_confirmed' && status !== 'rejected' && (
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm }}>
-                    {request.proposedPrice != null && clientPriceStatus === 'pending' ? (
-                      <TouchableOpacity
-                        style={[s.filterPill, { backgroundColor: colors.buttonOptionGreen, opacity: processingRequestId === request.threadId ? 0.5 : 1 }]}
-                        disabled={processingRequestId === request.threadId}
-                        onPress={async () => {
-                          if (!request?.threadId || processingRequestId) return;
-                          setProcessingRequestId(request.threadId);
-                          try {
-                            await agencyAcceptClientPriceStore(request.threadId);
-                            setRequests(getOptionRequests());
-                          } finally {
-                            setProcessingRequestId(null);
-                          }
-                        }}
-                      >
-                        <Text style={[s.filterPillLabel, { color: '#fff' }]}>{uiCopy.optionNegotiationChat.confirmOption}</Text>
-                      </TouchableOpacity>
-                    ) : null}
-                    <TouchableOpacity
-                      style={s.filterPill}
-                      onPress={() => setNegotiationCounterExpanded((e) => !e)}
-                    >
-                      <Text style={s.filterPillLabel}>{uiCopy.optionNegotiationChat.counterOffer}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={[s.filterPill, { borderWidth: 1, borderColor: colors.buttonSkipRed }]} onPress={handleRejectOptionNegotiation}>
-                      <Text style={[s.filterPillLabel, { color: colors.buttonSkipRed }]}>{uiCopy.optionNegotiationChat.rejectOption}</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-                {request.modelApproval === 'approved' && clientPriceStatus === 'pending' && finalStatus !== 'job_confirmed' && request.proposedPrice != null && (
-                  <TouchableOpacity
-                    style={{ alignSelf: 'flex-start', marginBottom: spacing.sm }}
-                    onPress={async () => {
-                      if (!request?.threadId || processingRequestId) return;
-                      setProcessingRequestId(request.threadId);
-                      try {
-                        await agencyRejectClientPriceStore(request.threadId);
-                        setRequests(getOptionRequests());
-                      } finally {
-                        setProcessingRequestId(null);
-                      }
-                    }}
-                  >
-                    <Text style={{ ...typography.label, fontSize: 12, color: colors.buttonSkipRed, fontWeight: '600' }}>
-                      {uiCopy.optionNegotiationChat.declineProposedFee}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-                {negotiationCounterExpanded && request.modelApproval === 'approved' && clientPriceStatus === 'rejected' && finalStatus !== 'job_confirmed' && (
-                  <View style={{ marginBottom: spacing.sm, padding: spacing.sm, backgroundColor: 'rgba(180,100,0,0.08)', borderRadius: 8 }}>
-                    <Text style={{ ...typography.label, fontSize: 11, color: colors.textPrimary, marginBottom: spacing.xs }}>
-                      {uiCopy.optionNegotiationChat.clientPriceDeclinedCounterHint}
-                    </Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
-                      <TextInput
-                        value={agencyCounterInput}
-                        onChangeText={setAgencyCounterInput}
-                        placeholder={uiCopy.optionNegotiationChat.counterPlaceholder}
-                        placeholderTextColor={colors.textSecondary}
-                        keyboardType="numeric"
-                        style={[s.chatInput, { flex: 1, minWidth: 120 }]}
-                      />
-                      <TouchableOpacity
-                        style={[s.filterPill, { paddingHorizontal: spacing.sm, backgroundColor: colors.textPrimary, opacity: processingRequestId === request.threadId ? 0.5 : 1 }]}
-                        disabled={processingRequestId === request.threadId}
-                        onPress={async () => {
-                          const num = parseFloat(agencyCounterInput.trim());
-                          if (!request?.threadId || isNaN(num) || processingRequestId) return;
-                          setProcessingRequestId(request.threadId);
-                          try {
-                            await agencyCounterOfferStore(request.threadId, num, currency);
-                            setAgencyCounterInput('');
-                            setNegotiationCounterExpanded(false);
-                            setRequests(getOptionRequests());
-                          } finally {
-                            setProcessingRequestId(null);
-                          }
-                        }}
-                      >
-                        <Text style={[s.filterPillLabel, { color: '#fff' }]}>{uiCopy.optionNegotiationChat.sendCounter}</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                )}
-                {negotiationCounterExpanded && request.modelApproval === 'approved' && clientPriceStatus === 'pending' && finalStatus !== 'job_confirmed' && request.proposedPrice == null && (
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm, alignItems: 'center' }}>
-                    <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary }}>{uiCopy.optionNegotiationChat.proposeFeeHint}</Text>
-                    <TextInput
-                      value={agencyCounterInput}
-                      onChangeText={setAgencyCounterInput}
-                      placeholder={uiCopy.optionNegotiationChat.counterPlaceholder}
-                      placeholderTextColor={colors.textSecondary}
-                      keyboardType="numeric"
-                      style={[s.chatInput, { width: 100 }]}
-                    />
-                    <TouchableOpacity
-                      style={[s.filterPill, { paddingHorizontal: spacing.sm, opacity: processingRequestId === request.threadId ? 0.5 : 1 }]}
-                      disabled={processingRequestId === request.threadId}
-                      onPress={async () => {
-                        const num = parseFloat(agencyCounterInput.trim());
-                        if (!request?.threadId || isNaN(num) || processingRequestId) return;
-                        setProcessingRequestId(request.threadId);
-                        try {
-                          await agencyCounterOfferStore(request.threadId, num, currency);
-                          setAgencyCounterInput('');
-                          setNegotiationCounterExpanded(false);
-                          setRequests(getOptionRequests());
-                        } finally {
-                          setProcessingRequestId(null);
-                        }
-                      }}
-                    >
-                      <Text style={s.filterPillLabel}>{uiCopy.optionNegotiationChat.sendOffer}</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </>
+              <NegotiationThreadFooter
+                request={request}
+                isAgency
+                status={status}
+                finalStatus={finalStatus}
+                clientPriceStatus={clientPriceStatus}
+                currency={currency}
+                agencyCounterPrice={agencyCounterPrice}
+                negotiationCounterExpanded={negotiationCounterExpanded}
+                setNegotiationCounterExpanded={setNegotiationCounterExpanded}
+                agencyCounterInput={agencyCounterInput}
+                setAgencyCounterInput={setAgencyCounterInput}
+                actionBusy={processingRequestId === request.threadId}
+                assignmentByClientOrgId={assignmentByClientOrgId}
+                assignableMembers={[]}
+                editingAssignmentThreadId={editingAssignmentThreadId}
+                setEditingAssignmentThreadId={setEditingAssignmentThreadId}
+                openOrgChatBusy={openOrgChatBusy}
+                openOrgChatFromRequest={openOrgChatFromRequest}
+                onAgencyAcceptClientPrice={runAgencyAcceptClientPrice}
+                onAgencyRejectClientPrice={runAgencyRejectClientPrice}
+                onAgencyCounterOffer={runAgencyCounterOffer}
+                onAgencyProposeInitialFee={runAgencyCounterOffer}
+                onRejectNegotiation={handleRejectOptionNegotiation}
+                onClientAcceptCounter={async () => {}}
+                onClientConfirmJob={async () => {}}
+                showAgencyExtras
+                assignmentMode="readonly"
+                contextThreadLabel={uiCopy.b2bChat.contextNegotiationThread}
+                requireAgencyIdForOrgChat={false}
+              />
+            }
+            composerTopBanner={
+              calendarHint ? (
+                <Text style={{ ...typography.label, fontSize: 12, color: colors.textPrimary }}>{calendarHint}</Text>
+              ) : null
             }
             composer={
               <View style={{ flexDirection: 'row', gap: spacing.sm }}>
@@ -4973,15 +4959,43 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
               </View>
             }
           >
-            {filteredMessages.map((msg) => (
-              <NegotiationMessageRow
-                key={msg.id}
-                id={msg.id}
-                from={msg.from}
-                text={msg.text}
-                viewerRole="agency"
+            <>
+              <NegotiationSummaryCard
+                modelName={request.modelName}
+                clientName={request.clientName}
+                isAgency
+                dateLine={negotiationDateLine}
+                displayStatus={displayStatus}
+                attentionLabel={headerAttentionLabel}
+                proposedPrice={request.proposedPrice}
+                agencyCounterPrice={request.agencyCounterPrice}
+                currency={currency}
+                requestTypeLabel={negotiationRequestTypeLabel}
+                finalStatusLine={negotiationFinalStatusLine}
               />
-            ))}
+              {filteredMessages.map((msg, i) => {
+                const prev = i > 0 ? filteredMessages[i - 1] : null;
+                const compact = !!(prev && prev.from === msg.from && msg.from !== 'system');
+                const timeLabel =
+                  msg.createdAt != null
+                    ? new Date(msg.createdAt).toLocaleTimeString(undefined, {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })
+                    : undefined;
+                return (
+                  <NegotiationMessageRow
+                    key={msg.id}
+                    id={msg.id}
+                    from={msg.from}
+                    text={msg.text}
+                    viewerRole="agency"
+                    compactTop={compact}
+                    timeLabel={timeLabel}
+                  />
+                );
+              })}
+            </>
           </OptionNegotiationChatShell>
         </View>
         <ConfirmDestructiveModal
@@ -4993,6 +5007,8 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
           confirmDisabled={!!deletingOptionId}
           onConfirm={confirmDeleteOptionRequest}
           onCancel={() => setDeleteOptionModalVisible(false)}
+          detailLine1={request.modelName}
+          detailLine2={`${request.date}${request.startTime ? ` · ${request.startTime}–${request.endTime}` : ''}`}
         />
         {statusDropdownOpen && (
           <Modal transparent animationType="fade" visible={statusDropdownOpen} onRequestClose={() => setStatusDropdownOpen(false)}>

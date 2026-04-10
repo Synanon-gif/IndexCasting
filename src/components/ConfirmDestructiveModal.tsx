@@ -20,6 +20,9 @@ export type ConfirmDestructiveModalProps = {
   onCancel: () => void;
   /** Disables confirm while async work runs */
   confirmDisabled?: boolean;
+  /** Extra context lines (e.g. model name, date) — UI only */
+  detailLine1?: string;
+  detailLine2?: string;
 };
 
 /**
@@ -34,6 +37,8 @@ export const ConfirmDestructiveModal: React.FC<ConfirmDestructiveModalProps> = (
   onConfirm,
   onCancel,
   confirmDisabled = false,
+  detailLine1,
+  detailLine2,
 }) => (
   <Modal
     visible={visible}
@@ -47,6 +52,8 @@ export const ConfirmDestructiveModal: React.FC<ConfirmDestructiveModalProps> = (
           🗑️
         </Text>
         <Text style={styles.title}>{title}</Text>
+        {detailLine1 ? <Text style={styles.detail}>{detailLine1}</Text> : null}
+        {detailLine2 ? <Text style={styles.detail}>{detailLine2}</Text> : null}
         <Text style={styles.message}>{message}</Text>
         <View style={styles.actions}>
           <TouchableOpacity style={styles.btnSecondary} onPress={onCancel} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -96,6 +103,13 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     textTransform: 'none',
     letterSpacing: 0,
+  },
+  detail: {
+    ...typography.body,
+    fontSize: 13,
+    color: colors.textPrimary,
+    textAlign: 'center',
+    marginBottom: spacing.xs,
   },
   message: {
     ...typography.body,
