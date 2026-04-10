@@ -107,6 +107,15 @@ if (ok) {
 
 Vollständige englische Invarianten: [.cursor/rules/agency-media-panels-and-sql-randomness.mdc](.cursor/rules/agency-media-panels-and-sql-randomness.mdc).
 
+### 4c.2 Connectionless Discover & First-Contact (Verweis)
+
+- **Discover-Sichtbarkeit** ist Produkt-Signal für Erstkontakt: Chat mit Agency, Add-to-Project, Option/Casting/Booking-Einstiege, Packages, Guest (wo freigegeben) dürfen **kein** verstecktes „zuerst `client_agency_connections` akzeptieren“ erzwingen.
+- **Downstream-Parität:** Agency-/Territory-Auflösung muss zu Discover passen (keine strengeren RPC-/UI-Regeln ohne Product-Approval).
+- **Packages:** keine stille „0 models“ / leere Medien bei fehlgeschlagenem Load oder nur Mirror-Spalten wenn `model_photos` Daten hat; Signed URLs korrekt.
+- **Regression:** Änderungen an diesen Bereichen → Sweep über verwandte Flows; Checkliste **§2d** in `.cursor/rules/auto-review.mdc`.
+
+Vollständige Invarianten: [.cursor/rules/system-invariants.mdc](.cursor/rules/system-invariants.mdc) (Abschnitt **CONNECTIONLESS DISCOVERY, FIRST-CONTACT & DOWNSTREAM PARITY**).
+
 ## 4b. UI-Sprache & Copy (verbindlich)
 - **Die gesamte Nutzeroberfläche ist Englisch (English-only):** alle sichtbaren Texte für Agency, Client und Model — Buttons, Labels, Alerts, Placeholder, leere Zustände, Fehlermeldungen aus dem Produkt.
 - **Zentrale Quelle:** Nutzer-Texte kommen aus `src/constants/uiCopy.ts` (`uiCopy`). Keine neuen deutschsprachigen UI-Strings; keine Hardcodes derselben Phrase an vielen Stellen — lieber ein Key in `uiCopy` erweitern.

@@ -265,6 +265,89 @@ if (error) return { ok: false, reason: error.message }; // 23505 = eigentlicher 
 **Gilt für:** `confirmImageRights`, und alle zukünftigen `confirmX()` Funktionen die
 vor Upload-Aktionen stehen. Konsistent implementiert in `gdprComplianceSupabase.ts` (20260406).
 
+## CONNECTIONLESS DISCOVERY, FIRST-CONTACT & DOWNSTREAM PARITY (Product Invariants)
+
+Sichtbarkeit eines Models in **Discover** ist für Erstkontakt-Workflows ein **gültiges Produkt-Signal** (neben Auth, Tenant-Isolation, Discover-Eligibility, Paywall wo vorgesehen). **Kein** Pfad darf wieder eine versteckte Pflicht einführen: „zuerst `client_agency_connections` akzeptieren“.
+
+### Connectionless first-contact (kein Connection-Gate)
+
+Die folgenden Flows MÜSSEN **ohne** vorbestehende manuell akzeptierte oder explizite `client_agency_connections`-Zeile funktionieren (sofern das Produkt Auth/Org/Visibility vorsieht):
+
+- Client ↔ Agency Chat (B2B-Messaging / Thread-Bootstrap)
+- Model zur Auswahl / zum Projekt hinzufügen
+- Option Request
+- Casting Request
+- Booking-/Job-Request-Einstiege
+- Package öffnen / Package-Interaktion
+- Guest-Link öffnen / Guest-Interaktion (wo produktseitig freigegeben)
+
+**Verboten:** Migration, Policy, RPC, Trigger, UI-Guard oder Service-Helper, der diese Flows an eine **bestehende** Connection-Akzeptanz koppelt.
+
+**Erlaubte Guards (Beispiele):** Auth wo produktseitig vorgesehen; Org-Mitgliedschaft / Tenant-Isolation; Model-Sichtbarkeit / Discover-Eligibility; Package-/Link-Gültigkeit und Ablauf; territory-spezifische Agency-Auflösung; Platform/Paywall nur wo **explizit** Produktregel; rollenspezifische Bestätigungen **nach** Request-Erstellung — aber **nie** als Ersatz für ein verstecktes „Connect first“.
+
+**Hinweis:** `client_agency_connections` kann für optionale Connection-Request-UX bestehen bleiben; sie ist **kein** genereller Vorläufer für Discover-gestützte Erstkontakt-Workflows.
+
+### Discover-Parität (Agency-/Territory-Kontext)
+
+Wenn ein Model für einen Client in einem Territory in **Discover** sichtbar ist, müssen alle **client-seitigen** Erstkontakt-Flows gegen denselben **effektiven** Agency-/Territory-Kontext auflösen wie Discover — z. B.: Add-to-Project, Option/Casting/Booking-Einstiege, Package-Aktionen, Chat-Bootstrap.
+
+**Verboten:** strengere oder abweichende Agency-Resolution in Downstream-Flows gegenüber Discover — außer **explizit** dokumentiert und product-approved.
+
+### Package-Invariante
+
+Packages (Chat, Guest-Link, authentifizierte Client-Ansicht) müssen **Models und Medien** korrekt laden: Portfolio- und Polaroid-Packages, Guest-Packages, authentifizierte Package-Views.
+
+**Verboten — stilles Versagen:**
+
+- „0 models“, obwohl der Load fehlgeschlagen ist
+- leere Medien nur wegen **veralteter Mirror-Arrays** (`models.portfolio_images` / `polaroids`), wenn `model_photos` die sichtbaren Medien enthält
+- Open-Flow blockiert durch **unpassende** Kopplung an Paywall/Helper (nicht produktseitig begründet)
+
+**Medien-Parität:** Portfolio → sichtbare Portfolio-Medien; Polaroid → sichtbare Polaroid-Medien; Signed URLs korrekt; **keine** versteckte Alleinhängigkeit von Mirror-Spalten — siehe §27.1 `.cursorrules` und `model_photos`-Autorität.
+
+### Projekt-Invariante
+
+Projekte sind **Client-Workspace-Tools**: konsistent für alle Mitglieder der Client-Org nach Produktregeln. Wenn Discover-sichtbare Models ohne Connection hinzugefügt werden dürfen, dürfen **weder** RPC noch RLS ein Connection-Gate reaktivieren.
+
+**Hydration nach Reload:** DB-Wahrheit (`client_projects` / `client_project_models`) muss abgebildet werden; erfolgreich hinzugefügte Models dürfen **nicht** still verworfen werden (siehe **CLIENT B2B PROJECTS** + Reconciliation).
+
+### Option / Casting Request
+
+Erstellung aus allen **freigegebenen** Einstiegen: Discover, Projekt, Portfolio-/Polaroid-Package, Swipe, Guest (wo produktfreigegeben).
+
+- **Initial-Insert:** kanonisches **minimales** Payload; DB-Defaults für Initialzustand — außer Produkt schreibt explizit anders.
+- **Verboten:** Request bei Erstellung bereits als „model-approved“ markieren, wenn das **nicht** die feste Produktregel ist.
+
+### Model-Account-Bestätigung
+
+Hat das Model einen Account, muss der Workflow **explizite** Model-Bestätigung tracken; ohne Account gelten die **No-Account**-Produktregeln.
+
+Smart Attention, Inbox-, Thread- und Kalenderzustände müssen für alle Parteien erkennbar machen: wer bestätigen muss; ob noch Option; ob Job geworden; Ablehnung; ausstehende Preisverhandlung — im Rahmen der erlaubten Rollen-Sichtbarkeit (siehe unten).
+
+### Datenminimierung / Rollen-Sichtbarkeit
+
+- **Models:** nur die für Models vorgesehene Teilmenge an Option/Casting/Request-Information.
+- **Agencies:** Verhandlungs- und kommerzielle Details wie vorgesehen.
+- **Clients:** client-sicherer Request-State wie vorgesehen.
+
+**Verboten:** model-facing Queries exposieren Agency/Client-Verhandlungsfelder — außer **explizit** approved.
+
+### Kalender-Konsistenz
+
+`calendar_entries` / Workflow müssen **rollenübergreifend** konsistent bleiben (Client, Agency, Model): Status, Darstellung, Evolution Option → bestätigte Option → Booking/Job → Ablehnung/Storno — aligned mit Workflow-Wahrheit (siehe Booking-Brief-Trust-Modell in Doku; keine feldweise RLS-Fiktion).
+
+### Guest-Flow
+
+Gültige Guest-Links müssen erfolgreich öffnen, Packages/Medien laden und **freigegebene** Guest-Interaktionen erlauben — ohne Abhängigkeit von **unrelated** authenticated-only Paywall-Helpers.
+
+Guest-Chat / Guest-Request: **explizite** guest-sichere RLS-/Pfad-Logik — nicht versehentlich nur Org-Member-Logik.
+
+### Regression-Pflicht (Querschnitt)
+
+Änderungen an Discover, Package-Loading, Guest-Links, Projekten, Option/Casting-Requests, Messenger/Chat-Bootstrap, Kalender-Workflow, Smart Attention oder Model-Bestätigung erfordern einen **Regression-Sweep** über alle **verbundenen** Flows — nicht nur den lokalen Bugfix.
+
+Vollständige manuelle Checkliste: `.cursor/rules/auto-review.mdc` (Abschnitt **2d. Mandatory regression — First-contact ecosystem**).
+
 ## CLIENT B2B PROJECTS (org-weit, DB truth — ClientWebApp)
 
 - **Source of truth (authenticated client mit `organization_id`):** Projektliste und Zugehörigkeit der Models kommen aus **`client_projects`** + **`client_project_models`**, geladen z. B. via `fetchHydratedClientProjectsForOrg` / Hydration mit `getModelByIdForClientFromSupabase`. **localStorage** ist nur Mirror/Offline-Fallback bis die Org aufgelöst ist — **nicht** die alleinige Wahrheit für „welche Models hängen an welchem Projekt“ nach Login/Reload.
@@ -644,6 +727,7 @@ ON CONFLICT (model_id, source) DO UPDATE SET city = EXCLUDED.city, ...;
 
 ## SMART ATTENTION / ASSIGNMENT INVARIANTS
 
+- Bestätigungs- und Kontostatus (Model mit/ohne Account) siehe **CONNECTIONLESS DISCOVERY…** (Model-Account-Bestätigung) — Attention bleibt Action-Required-Layer, kein Security-Layer.
 - Org-weite Sichtbarkeit bleibt unverändert; weder Assignment noch Attention dürfen Daten verstecken.
 - Client Assignment bleibt Workflow-Metadaten (`client_organization_id`-gebunden), niemals Security-/Access-Control.
 - Owner-only Agency ohne Booker ist ein gültiger und voll unterstützter Startzustand.
