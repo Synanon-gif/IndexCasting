@@ -24,6 +24,7 @@ import {
   clientAcceptCounterPrice,
   clientRejectCounterOfferOnSupabase,
   clientConfirmJobOnSupabase,
+  resolveAgencyOrgIdForOptionNotification,
   type SupabaseOptionRequest,
   type SupabaseOptionRequestModelSafe,
   type SupabaseOptionMessage,
@@ -374,7 +375,7 @@ export function addOptionRequest(
       }
       const m = messagesCache.find((x) => x.id === autoMessage.id);
       if (m) m.threadId = result.id;
-      addOptionMessage(result.id, 'client', autoText);
+      void addOptionMessage(result.id, 'client', autoText);
 
       // Booking must be visible in B2B chat as a typed message.
       const bookingCountryCode = (countryCodeUsedForBooking ?? '').trim().toUpperCase();
@@ -392,9 +393,18 @@ export function addOptionRequest(
         });
       }
 
-      // DB trigger enforces from_role vs caller: clients cannot insert agency-authored rows.
+      // Workflow hint: from_role=system via RPC only (no agency/client spoofing).
       if (local.modelAccountLinked === false) {
-        void addOptionSystemMessage(result.id, 'no_model_account_client_notice');
+        const sys = await addOptionSystemMessage(result.id, 'no_model_account_client_notice');
+        if (sys) {
+          messagesCache.push({
+            id: sys.id,
+            threadId: result.id,
+            from: 'system',
+            text: sys.text,
+            createdAt: new Date(sys.created_at).getTime(),
+          });
+        }
       }
       notify();
       extra?.onThreadReady?.(result.id);
@@ -748,12 +758,10 @@ export async function clientConfirmJobStore(threadId: string): Promise<boolean> 
   if (full) {
     const notifications: Parameters<typeof createNotifications>[0] = [];
 
-    const { data: agencyOrgRow } = await supabase
-      .from('organizations')
-      .select('id')
-      .eq('agency_id', full.agency_id)
-      .maybeSingle();
-    const agencyOrgId = (agencyOrgRow as { id: string } | null)?.id;
+    const agencyOrgId = await resolveAgencyOrgIdForOptionNotification(
+      full.agency_id,
+      full.agency_organization_id,
+    );
 
     if (!agencyOrgId) {
       console.error('[notifications] clientConfirmJobStore: agency org not found for agency_id', full.agency_id, '— agency notification skipped.');
@@ -814,12 +822,10 @@ export async function clientRejectCounterStore(threadId: string): Promise<boolea
   // full.organization_id is the CLIENT org — resolve agency org explicitly.
   const full = await getOptionRequestById(req.id);
   if (full) {
-    const { data: agencyOrgRow } = await supabase
-      .from('organizations')
-      .select('id')
-      .eq('agency_id', full.agency_id)
-      .maybeSingle();
-    const agencyOrgId = (agencyOrgRow as { id: string } | null)?.id;
+    const agencyOrgId = await resolveAgencyOrgIdForOptionNotification(
+      full.agency_id,
+      full.agency_organization_id,
+    );
     if (!agencyOrgId) {
       console.error('[notifications] clientRejectCounterStore: agency org not found for agency_id', full.agency_id, '— notification skipped.');
     } else {

@@ -393,9 +393,12 @@ export async function insertOptionRequest(req: {
 
   // Notify the AGENCY org about the new request.
   // IMPORTANT: inserted.organization_id is the CLIENT org (used for RLS scoping).
-  // We must look up the agency org separately via agency_id.
+  // Prefer inserted.agency_organization_id (readable under client RLS) over orgs table lookup.
   void (async () => {
-    const agencyOrgId = await fetchAgencyOrgId(inserted.agency_id);
+    const agencyOrgId = await resolveAgencyOrgIdForOptionNotification(
+      inserted.agency_id,
+      inserted.agency_organization_id,
+    );
     if (!agencyOrgId) {
       console.error('[notifications] insertOptionRequest: agency org not found for agency_id', inserted.agency_id, '— notification skipped.');
       return;
@@ -866,7 +869,7 @@ export async function addOptionMessage(
     void (async () => {
       const { data: req } = await supabase
         .from('option_requests')
-        .select('client_id, agency_id, organization_id')
+        .select('client_id, agency_id, organization_id, agency_organization_id')
         .eq('id', requestId)
         .maybeSingle();
       if (!req) return;
@@ -881,7 +884,10 @@ export async function addOptionMessage(
         });
       } else if ((fromRole === 'client' || fromRole === 'model') && req.agency_id) {
         // Resolve the agency organisation — req.organization_id is the CLIENT org, not the agency.
-        const agencyOrgId = await fetchAgencyOrgId(req.agency_id as string);
+        const agencyOrgId = await resolveAgencyOrgIdForOptionNotification(
+          req.agency_id as string,
+          req.agency_organization_id,
+        );
         if (!agencyOrgId) {
           console.error('[notifications] addOptionMessage: agency org not found for agency_id', req.agency_id, '— notification skipped.');
         } else {
@@ -952,7 +958,7 @@ export async function addOptionSystemMessage(
     void (async () => {
       const { data: req } = await supabase
         .from('option_requests')
-        .select('client_id, agency_id')
+        .select('client_id, agency_id, agency_organization_id')
         .eq('id', requestId)
         .maybeSingle();
       if (!req) return;
@@ -979,7 +985,10 @@ export async function addOptionSystemMessage(
           metadata: { option_request_id: requestId },
         });
       } else if (notifyAgencyKinds.includes(kind) && req.agency_id) {
-        const agencyOrgId = await fetchAgencyOrgId(req.agency_id as string);
+        const agencyOrgId = await resolveAgencyOrgIdForOptionNotification(
+          req.agency_id as string,
+          req.agency_organization_id,
+        );
         if (!agencyOrgId) {
           console.error(
             '[notifications] addOptionSystemMessage: agency org not found for agency_id',
@@ -1298,6 +1307,10 @@ export async function uploadOptionDocument(
  *
  * NOTE: option_requests.organization_id is the CLIENT org, NOT the agency org.
  * Always use this helper when you need to notify the agency side.
+ *
+ * For option-request flows, prefer {@link resolveAgencyOrgIdForOptionNotification}:
+ * client sessions often cannot SELECT the agency row in `organizations` (RLS),
+ * but `option_requests.agency_organization_id` is already set and readable.
  */
 async function fetchAgencyOrgId(agencyId: string): Promise<string | null> {
   try {
@@ -1311,6 +1324,25 @@ async function fetchAgencyOrgId(agencyId: string): Promise<string | null> {
     console.error('fetchAgencyOrgId exception:', e);
     return null;
   }
+}
+
+/** Non-empty trimmed UUID from option_requests.agency_organization_id, or null. */
+function agencyOrgIdFromOptionRequestRow(agencyOrganizationId: string | null | undefined): string | null {
+  const s = agencyOrganizationId != null ? String(agencyOrganizationId).trim() : '';
+  return s !== '' ? s : null;
+}
+
+/**
+ * Agency-side org UUID for notifications: use column from option_requests first
+ * (RLS-safe for clients), then fallback to organizations lookup.
+ */
+export async function resolveAgencyOrgIdForOptionNotification(
+  agencyId: string,
+  agencyOrganizationId: string | null | undefined,
+): Promise<string | null> {
+  const fromRow = agencyOrgIdFromOptionRequestRow(agencyOrganizationId);
+  if (fromRow) return fromRow;
+  return fetchAgencyOrgId(agencyId);
 }
 
 /**
@@ -1327,11 +1359,10 @@ async function createBookingEventFromRequest(req: SupabaseOptionRequest): Promis
       : req.final_status === 'job_confirmed' ? 'job'
       : 'option';
 
-    const { data: agencyOrg } = await supabase
-      .from('organizations')
-      .select('id')
-      .eq('agency_id', req.agency_id)
-      .maybeSingle();
+    const agencyOrgIdResolved = await resolveAgencyOrgIdForOptionNotification(
+      req.agency_id,
+      req.agency_organization_id,
+    );
 
     const { data: user } = await supabase.auth.getUser();
     const { error } = await supabase
@@ -1339,7 +1370,7 @@ async function createBookingEventFromRequest(req: SupabaseOptionRequest): Promis
       .insert({
         model_id: req.model_id,
         client_org_id: req.organization_id ?? null,
-        agency_org_id: (agencyOrg as { id: string } | null)?.id ?? null,
+        agency_org_id: agencyOrgIdResolved,
         date: req.requested_date,
         type: eventType,
         status: 'pending' as const,
@@ -1360,7 +1391,7 @@ async function createBookingEventFromRequest(req: SupabaseOptionRequest): Promis
       console.error('createBookingEventFromRequest insert error:', error);
       return;
     }
-    const bookingOrgId = (agencyOrg as { id: string } | null)?.id ?? req.organization_id;
+    const bookingOrgId = agencyOrgIdResolved ?? req.organization_id;
     logAction(bookingOrgId, 'createBookingEventFromRequest', {
       type: 'booking',
       action: 'booking_created',
@@ -1669,7 +1700,7 @@ export async function modelRejectOptionRequest(id: string): Promise<boolean> {
       // Guard: only reject when the model approval is still pending.
       // Prevents transitioning an already-approved or already-rejected row.
       .eq('model_approval', 'pending')
-      .select('id, agency_id, client_id, organization_id')
+      .select('id, agency_id, client_id, organization_id, agency_organization_id')
       .maybeSingle();
 
     if (error) {
@@ -1681,7 +1712,13 @@ export async function modelRejectOptionRequest(id: string): Promise<boolean> {
       return false;
     }
 
-    const rejectRow = rejectData as { id: string; agency_id: string | null; client_id: string | null; organization_id: string | null };
+    const rejectRow = rejectData as {
+      id: string;
+      agency_id: string | null;
+      client_id: string | null;
+      organization_id: string | null;
+      agency_organization_id: string | null;
+    };
     logAction(rejectRow.organization_id, 'modelRejectOptionRequest', {
       type: 'option',
       action: 'option_rejected',
@@ -1692,11 +1729,20 @@ export async function modelRejectOptionRequest(id: string): Promise<boolean> {
     // Notify agency and client about the model rejection (fire-and-forget).
     void (async () => {
       try {
-        const row = rejectData as { id: string; agency_id: string | null; client_id: string | null; organization_id: string | null };
+        const row = rejectData as {
+          id: string;
+          agency_id: string | null;
+          client_id: string | null;
+          organization_id: string | null;
+          agency_organization_id: string | null;
+        };
         const notifications: Parameters<typeof createNotifications>[0] = [];
 
         if (row.agency_id) {
-          const agencyOrgId = await fetchAgencyOrgId(row.agency_id);
+          const agencyOrgId = await resolveAgencyOrgIdForOptionNotification(
+            row.agency_id,
+            row.agency_organization_id,
+          );
           if (!agencyOrgId) {
             console.error('[notifications] modelRejectOptionRequest: agency org not found for agency_id', row.agency_id, '— agency notification skipped.');
           } else {
@@ -1840,8 +1886,8 @@ async function notifyModelConfirmedOption(req: SupabaseOptionRequest): Promise<v
     const notifications = [];
 
     // IMPORTANT: req.organization_id is the CLIENT org, not the agency org.
-    // Resolve the agency org via agency_id — same pattern as createBookingEventFromRequest.
-    const agencyOrgId = await fetchAgencyOrgId(req.agency_id);
+    // Prefer req.agency_organization_id (RLS-safe for clients) over organizations lookup.
+    const agencyOrgId = await resolveAgencyOrgIdForOptionNotification(req.agency_id, req.agency_organization_id);
 
     if (!agencyOrgId) {
       console.error('[notifications] notifyModelConfirmedOption: agency org not found for agency_id', req.agency_id, '— agency notification skipped.');

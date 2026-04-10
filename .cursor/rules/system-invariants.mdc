@@ -694,7 +694,13 @@ ON CONFLICT (model_id, source) DO UPDATE SET city = EXCLUDED.city, ...;
 
 ## OPTION / CASTING THREAD — SYSTEM MESSAGES (unveränderlich, 2026-05)
 
-- Automatische Workflow-Hinweise in `option_request_messages` nutzen **`from_role = 'system'`** und werden **nur** über **`public.insert_option_request_system_message`** persistiert (SECURITY DEFINER, `option_request_visible_to_me`, Trigger **`app.option_request_system_message`**). Kein direktes `INSERT` mit `from_role = system` aus dem Client; **keine** Workflow-Zeilen unter falschem `client` / `agency` / `model`.
+- Automatische Workflow-Hinweise in `option_request_messages` nutzen **`from_role = 'system'`** und werden **nur** über **`public.insert_option_request_system_message`** persistiert (SECURITY DEFINER, `option_request_visible_to_me`, Trigger-Session-Flag `app.option_request_system_message`). Kein direktes `INSERT` mit `from_role = system` aus dem Client; **keine** Workflow-Zeilen unter falschem `client` / `agency` / `model`.
+- **Role integrity:** Client darf nur `client`-authored Chatzeilen schreiben; Agency nur `agency`; Model nur `model`. Automatische Hinweise **dürfen keine** dieser Rollen **imitieren** — nur `system` via RPC.
+- **No-model-account:** Wenn `model_account_linked = false`, dürfen weder Agency- noch Model-Perspektive durch eine Chatzeile vorgetäuscht werden; Hinweise laufen als **`system`** (`no_model_account` / `no_model_account_client_notice` o. Ä. Kinds).
+- **Entry-point parity:** Discover, Project, Portfolio/Polaroid Package, Swipe → dieselbe zentrale Anfragelogik ([`addOptionRequest`](../../src/store/optionRequests.ts) / `insertOptionRequest`); keine parallele „Workflow-Message“-Semantik pro Einstieg.
+- **Notification resolver:** Agency-Org-Benachrichtigungen **`option_requests.agency_organization_id` zuerst** (vom Request-Row lesbar trotz Client-RLS auf `organizations`), Fallback `organizations` über `agency_id` — z. B. `resolveAgencyOrgIdForOptionNotification` in [`optionRequestsSupabase.ts`](../../src/services/optionRequestsSupabase.ts). Kein stilles „agency org not found“, wenn die Spalte gesetzt ist.
+- **RETURNING / RLS:** Nach INSERT müssen Nachrichten-Zeilen für berechtigte Teilnehmer lesbar bleiben (keine Policy, die nur Self-Reads auf neu eingefügten Rows blockiert — siehe migrations `option_request_visible_*` / `20260544`).
+- **Mandatory regression:** Jede Änderung an Option/Casting-Messages, RPC, Notifications oder Request-Insert → Sweep über Client/Agency/Model-UI und alle Entry Points (siehe **CONNECTIONLESS DISCOVERY…** Regression-Checkliste in `.cursor/rules/auto-review.mdc`).
 - Neue Arten: `p_kind` in der RPC per **Allowlist** erweitern; englischer Text **1:1** zu `uiCopy.systemMessages` und zum SQL-`CASE` halten.
 
 ## ROLE-SCOPED LOOKUP INVARIANT (unveränderlich, 2026-05-18)

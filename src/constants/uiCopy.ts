@@ -1172,10 +1172,10 @@ export const uiCopy = {
     clientAcceptedCounter: 'Client accepted the agency proposal.',
     clientRejectedCounter: 'Client declined the counter offer.',
     jobConfirmedByClient: 'Job confirmed by client.',
-    /** Agency-facing copy (e.g. future agency-only flows). Do not insert as client. */
+    /** Agency-facing kind `no_model_account` in SQL RPC — persisted as from_role=system only. */
     noModelAccount:
       'No model app account on file — you can negotiate and confirm with the client without waiting for model approval. The booking will appear in client and agency calendars when confirmed.',
-    /** Client-originated thread: inserted with from_role=client (cannot forge agency). */
+    /** Kind `no_model_account_client_notice`: `insert_option_request_system_message` → from_role=system (not a client chat line). */
     noModelAccountClientNotice:
       'No model app account on file. The agency can negotiate and confirm with you without waiting for model approval. When confirmed, the booking appears in both calendars.',
     modelApprovedBooking: '✓ Approved by Model',
