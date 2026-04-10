@@ -50,6 +50,18 @@ function priceAgreed(input: AttentionSignalInput): boolean {
 }
 
 /**
+ * Price accepted in DB plus at least one commercial anchor — use to lock counter/reject UI.
+ * Stricter than RPC `client_confirm_option_job` (which only checks `client_price_status`).
+ */
+export function priceCommerciallySettledForUi(input: AttentionSignalInput): boolean {
+  if (input.clientPriceStatus !== 'accepted') return false;
+  const hasAgency =
+    input.agencyCounterPrice != null && !Number.isNaN(Number(input.agencyCounterPrice));
+  const hasProposed = input.proposedPrice != null && !Number.isNaN(Number(input.proposedPrice));
+  return hasAgency || hasProposed;
+}
+
+/**
  * Who must act on price — only D1 fields. Call when `client_price_status !== 'accepted'` or to show thread/footer price state.
  */
 export function deriveNegotiationAttention(input: AttentionSignalInput): NegotiationAttentionState {

@@ -5,6 +5,7 @@ import { uiCopy } from '../../constants/uiCopy';
 import {
   attentionSignalsFromOptionRequestLike,
   clientMayConfirmJobFromSignals,
+  priceCommerciallySettledForUi,
 } from '../../utils/optionRequestAttention';
 import type { OptionRequest, ChatStatus } from '../../store/optionRequests';
 import type { ClientAssignmentFlag, AssignmentFlagColor } from '../../services/clientAssignmentsSupabase';
@@ -100,6 +101,25 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
   const busy = actionBusy;
   /** No model app: agency negotiates with client without in-app model approval (see store / RPC). */
   const agencyMayActOnFee = request.modelAccountLinked === false || request.modelApproval === 'approved';
+
+  const signals = attentionSignalsFromOptionRequestLike({
+    status: status ?? request.status,
+    finalStatus: finalStatus ?? request.finalStatus ?? null,
+    clientPriceStatus: clientPriceStatus ?? request.clientPriceStatus ?? null,
+    modelApproval: request.modelApproval,
+    modelAccountLinked: request.modelAccountLinked,
+    agencyCounterPrice: agencyCounterPrice ?? null,
+    proposedPrice: request.proposedPrice ?? null,
+  });
+  const priceLocked = priceCommerciallySettledForUi(signals);
+  const agencyAwaitingClientOnCounter =
+    isAgency &&
+    agencyMayActOnFee &&
+    !priceLocked &&
+    agencyCounterPrice != null &&
+    clientPriceStatus === 'pending' &&
+    finalStatus !== 'job_confirmed' &&
+    status !== 'rejected';
 
   return (
     <>
@@ -270,6 +290,8 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
       ) : null}
       {isAgency &&
         agencyMayActOnFee &&
+        !priceLocked &&
+        !agencyAwaitingClientOnCounter &&
         finalStatus !== 'job_confirmed' &&
         status !== 'rejected' &&
         (clientPriceStatus === 'pending' || clientPriceStatus === 'rejected') && (
@@ -285,7 +307,38 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
           {uiCopy.optionNegotiationChat.agencyNegotiationFeeStepIntro}
         </Text>
       )}
-      {isAgency && agencyMayActOnFee && finalStatus !== 'job_confirmed' && status !== 'rejected' && (
+      {isAgency && agencyMayActOnFee && agencyAwaitingClientOnCounter && (
+        <>
+          <Text
+            style={{
+              ...typography.body,
+              fontSize: 12,
+              lineHeight: 17,
+              color: colors.textSecondary,
+              marginBottom: spacing.sm,
+            }}
+          >
+            {uiCopy.optionNegotiationChat.agencyCounterAwaitingClientResponse}
+          </Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm }}>
+            <TouchableOpacity
+              style={[styles.filterPill, { borderWidth: 1, borderColor: colors.buttonSkipRed }, busy && { opacity: 0.5 }]}
+              disabled={busy}
+              onPress={onRejectNegotiation}
+            >
+              <Text style={[styles.filterPillLabel, { color: colors.buttonSkipRed }]}>
+                {uiCopy.optionNegotiationChat.rejectOption}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </>
+      )}
+      {isAgency &&
+        agencyMayActOnFee &&
+        !priceLocked &&
+        !agencyAwaitingClientOnCounter &&
+        finalStatus !== 'job_confirmed' &&
+        status !== 'rejected' && (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm }}>
           {request.proposedPrice != null &&
           clientPriceStatus === 'pending' &&
@@ -317,6 +370,7 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
       {isAgency &&
         negotiationCounterExpanded &&
         agencyMayActOnFee &&
+        !priceLocked &&
         clientPriceStatus === 'pending' &&
         request.proposedPrice != null &&
         finalStatus !== 'job_confirmed' && (
@@ -356,7 +410,12 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
             </View>
           </View>
         )}
-      {isAgency && agencyMayActOnFee && clientPriceStatus === 'pending' && finalStatus !== 'job_confirmed' && request.proposedPrice != null && (
+      {isAgency &&
+        agencyMayActOnFee &&
+        !priceLocked &&
+        clientPriceStatus === 'pending' &&
+        finalStatus !== 'job_confirmed' &&
+        request.proposedPrice != null && (
         <TouchableOpacity
           style={{ alignSelf: 'flex-start', marginBottom: spacing.sm }}
           disabled={busy}
@@ -372,6 +431,7 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
       {isAgency &&
         negotiationCounterExpanded &&
         agencyMayActOnFee &&
+        !priceLocked &&
         clientPriceStatus === 'rejected' &&
         finalStatus !== 'job_confirmed' && (
           <View style={styles.counterBox}>
@@ -407,6 +467,7 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
       {isAgency &&
         negotiationCounterExpanded &&
         agencyMayActOnFee &&
+        !priceLocked &&
         clientPriceStatus === 'pending' &&
         finalStatus !== 'job_confirmed' &&
         request.proposedPrice == null && (
@@ -433,7 +494,11 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
             </TouchableOpacity>
           </View>
         )}
-      {!isAgency && agencyCounterPrice != null && clientPriceStatus === 'pending' && finalStatus !== 'job_confirmed' && (
+      {!isAgency &&
+        !priceLocked &&
+        agencyCounterPrice != null &&
+        clientPriceStatus === 'pending' &&
+        finalStatus !== 'job_confirmed' && (
         <View style={{ marginBottom: spacing.sm, gap: spacing.xs }}>
           <TouchableOpacity
             style={[styles.filterPill, { backgroundColor: colors.buttonOptionGreen }]}
@@ -461,17 +526,7 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
         </View>
       )}
       {!isAgency &&
-        clientMayConfirmJobFromSignals(
-          attentionSignalsFromOptionRequestLike({
-            status: status ?? request.status,
-            finalStatus: finalStatus ?? request.finalStatus ?? null,
-            clientPriceStatus: clientPriceStatus ?? request.clientPriceStatus ?? null,
-            modelApproval: request.modelApproval,
-            modelAccountLinked: request.modelAccountLinked,
-            agencyCounterPrice: agencyCounterPrice ?? null,
-            proposedPrice: request.proposedPrice ?? null,
-          }),
-        ) &&
+        clientMayConfirmJobFromSignals(signals) &&
         request?.requestType === 'option' &&
         status !== 'rejected' && (
         <TouchableOpacity

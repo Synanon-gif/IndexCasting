@@ -1308,6 +1308,9 @@ export const uiCopy = {
      */
     agencyNegotiationFeeStepIntro:
       'Negotiate the fee with the client: tap “Make counter offer” to enter an amount and send it — the client sees it in this thread and in Messages. Use Confirm to accept their proposed fee, or Remove request to end before the job.',
+    /** Agency: counter sent; client must accept or decline before another counter. */
+    agencyCounterAwaitingClientResponse:
+      'Your counter-offer is pending. Waiting for the client to accept or decline.',
   },
   modelMedia: {
     /** Alert title — image rights checkbox / confirm flow (portfolio, polaroids, agency add-model). */

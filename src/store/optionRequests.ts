@@ -808,9 +808,14 @@ export async function clientRejectCounterStore(threadId: string): Promise<boolea
   if (!req) return false;
   const ok = await clientRejectCounterOfferOnSupabase(req.id);
   if (!ok) return false;
-  req.clientPriceStatus = 'rejected';
-  /** Keep negotiation open in UI — do not set ChatStatus to rejected (hides agency actions). */
-  req.status = 'in_negotiation';
+  const refreshed = await getOptionRequestById(req.id);
+  if (refreshed) {
+    Object.assign(req, toLocalRequest(refreshed));
+  } else {
+    req.clientPriceStatus = 'rejected';
+    /** Keep negotiation open in UI — do not set ChatStatus to rejected (hides agency actions). */
+    req.status = 'in_negotiation';
+  }
   const inserted = await addOptionSystemMessage(req.id, 'client_rejected_counter');
   if (inserted) {
     messagesCache.push({

@@ -42,7 +42,7 @@ export function attentionHeaderLabelFromSignals(
     case 'waiting_for_agency_response':
       return role === 'agency' ? action : uiCopy.dashboard.smartAttentionWaitingForAgency;
     case 'counter_rejected':
-      return role === 'agency' ? action : uiCopy.dashboard.smartAttentionCounterPending;
+      return role === 'agency' ? action : uiCopy.dashboard.smartAttentionWaitingForAgency;
     case 'negotiation_open':
       return role === 'agency' ? action : uiCopy.dashboard.smartAttentionWaitingForAgency;
     default:

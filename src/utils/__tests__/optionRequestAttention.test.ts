@@ -4,6 +4,7 @@ import {
   modelInboxRequiresModelConfirmation,
   modelInboxSortPriority,
   optionRequestNeedsMessagesTabAttention,
+  priceCommerciallySettledForUi,
   smartAttentionVisibleForRole,
 } from '../optionRequestAttention';
 
@@ -116,6 +117,39 @@ describe('deriveNegotiationAttention', () => {
         proposedPrice: 100,
       }),
     ).toBe('waiting_for_client_response');
+  });
+});
+
+describe('priceCommerciallySettledForUi', () => {
+  it('is true when accepted and proposed price exists', () => {
+    expect(
+      priceCommerciallySettledForUi({
+        status: 'in_negotiation',
+        clientPriceStatus: 'accepted',
+        proposedPrice: 100,
+      }),
+    ).toBe(true);
+  });
+
+  it('is true when accepted and agency counter exists', () => {
+    expect(
+      priceCommerciallySettledForUi({
+        status: 'in_negotiation',
+        clientPriceStatus: 'accepted',
+        agencyCounterPrice: 200,
+      }),
+    ).toBe(true);
+  });
+
+  it('is false when accepted but no price anchors', () => {
+    expect(
+      priceCommerciallySettledForUi({
+        status: 'in_negotiation',
+        clientPriceStatus: 'accepted',
+        proposedPrice: null,
+        agencyCounterPrice: null,
+      }),
+    ).toBe(false);
   });
 });
 
