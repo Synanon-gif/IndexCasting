@@ -1208,6 +1208,25 @@ export const uiCopy = {
     negotiationContext: 'Negotiation',
     proposedPriceLabel: 'Proposed price',
     counterPriceLabel: 'Counter',
+    /** Agency: linked model has not pre-approved — negotiation actions stay disabled until the model acts in the model app. */
+    modelMustPreApproveBeforeAgencyActs:
+      'Waiting for the model to confirm availability in the model app (Profile → Options or Calendar) before you can confirm or counter the fee.',
+    /** Agency: model pre-approved availability — price negotiation is enabled. */
+    modelAvailabilityConfirmedHint: 'Model availability confirmed — you can negotiate the fee with the client.',
+    /** Agency: no linked model account — client/agency negotiation does not wait on model app approval. */
+    noModelAppNegotiationHint:
+      'No model app account on file — negotiate and confirm with the client; calendars sync when the option is confirmed.',
+    rejectCounterOffer: 'Decline agency proposal',
+    rejectCounterOfferTitle: 'Decline this proposal?',
+    rejectCounterOfferMessage: 'The request will be closed. You can start a new request if needed.',
+    confirmJob: 'Confirm job',
+    /** Model inbox: tap opens Profile → Options for this request. */
+    modelInboxOpenInProfileHint: 'Open in Profile → Options',
+    /** Client: no model app — agency finalizes with client only. */
+    clientNoModelAppHint:
+      'No model app on file — the agency can confirm the booking with you without a model app step.',
+    /** Client: agency accepted; linked model must still confirm in-app. */
+    clientWaitingForModelConfirm: 'Waiting for the model to confirm the booking in their app.',
   },
   modelMedia: {
     /** Alert title — image rights checkbox / confirm flow (portfolio, polaroids, agency add-model). */

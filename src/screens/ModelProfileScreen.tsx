@@ -27,6 +27,7 @@ import {
   approveOptionAsModel,
   rejectOptionAsModel,
   loadOptionsForModel,
+  loadMessagesForThread,
   type OptionRequest,
 } from '../store/optionRequests';
 import {
@@ -92,11 +93,16 @@ type ModelProfileScreenProps = {
   onBackToRoleSelection?: () => void;
   /** Wenn gesetzt: Model dieses Users laden (echte Anmeldung). Sonst: erstes Model (Demo). */
   userId?: string | null;
+  /** When set (e.g. from Model inbox), open Options tab and this negotiation thread once. */
+  focusOptionRequestId?: string | null;
+  onConsumedFocusOption?: () => void;
 };
 
 export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   onBackToRoleSelection,
   userId,
+  focusOptionRequestId,
+  onConsumedFocusOption,
 }) => {
   const { width: modelProfileWindowWidth, height: modelProfileWindowHeight } = useWindowDimensions();
   const optionChatOverlayMaxW = getChatOverlayMaxWidth(modelProfileWindowWidth);
@@ -432,6 +438,23 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     const unsub = subscribe(() => setOptions(getOptionRequests()));
     return unsub;
   }, []);
+
+  useEffect(() => {
+    if (!focusOptionRequestId || !profile?.id) return;
+    let cancelled = false;
+    void (async () => {
+      await loadOptionsForModel(profile.id);
+      if (cancelled) return;
+      await loadMessagesForThread(focusOptionRequestId);
+      if (cancelled) return;
+      setTab('options');
+      setSelectedOptionThread(focusOptionRequestId);
+      onConsumedFocusOption?.();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [focusOptionRequestId, profile?.id, onConsumedFocusOption]);
 
   const loadCalendar = async (modelId: string) => {
     const [legacyEntries, bookingEvents] = await Promise.all([

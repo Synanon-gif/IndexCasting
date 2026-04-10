@@ -102,8 +102,9 @@ import {
   addMessage,
   getRequestByThreadId,
   getOptionRequestsByProjectId,
-  setRequestStatus,
   getRequestStatus,
+  agencyRejectNegotiationStore,
+  clientRejectCounterStore,
   loadOptionRequestsForClient,
   purgeOptionThreadFromStore,
   refreshOptionRequestInCache,
@@ -4095,7 +4096,6 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   const [requests, setRequests] = useState(getOptionRequests());
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [chatInput, setChatInput] = useState('');
-  const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
   const [agencyCounterInput, setAgencyCounterInput] = useState('');
   const [calendarHint, setCalendarHint] = useState<string | null>(null);
   const calendarHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -4232,6 +4232,21 @@ const MessagesView: React.FC<MessagesViewProps> = ({
       : null;
   const negotiationRequestTypeLabel =
     request?.requestType === 'casting' ? uiCopy.dashboard.threadContextCasting : uiCopy.dashboard.threadContextOption;
+  const negotiationConfirmationSummaryLine = request
+    ? isAgency
+      ? request.modelAccountLinked === false
+        ? uiCopy.optionNegotiationChat.noModelAppNegotiationHint
+        : request.modelApproval === 'approved'
+          ? uiCopy.optionNegotiationChat.modelAvailabilityConfirmedHint
+          : uiCopy.optionNegotiationChat.modelMustPreApproveBeforeAgencyActs
+      : request.modelAccountLinked === false
+        ? uiCopy.optionNegotiationChat.clientNoModelAppHint
+        : request.finalStatus === 'option_confirmed' &&
+            request.status === 'in_negotiation' &&
+            request.modelApproval === 'pending'
+          ? uiCopy.optionNegotiationChat.clientWaitingForModelConfirm
+          : null
+    : null;
   const viewerRole = isAgency ? 'agency' : 'client';
   const filteredMessages = messages.filter((m) => shouldShowSystemMessageForViewer(m, viewerRole));
 
@@ -4277,30 +4292,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   const handleBackOptionChat = () => {
     setSelectedThreadId(null);
     setNegotiationCounterExpanded(false);
-    setStatusDropdownOpen(false);
     onCloseOptionNegotiation?.();
-  };
-
-  const handleRejectOptionNegotiation = () => {
-    if (!request?.threadId || !isAgency) return;
-    const threadId = request.threadId;
-    const run = () => {
-      setRequestStatus(threadId, 'rejected');
-      setRequests(getOptionRequests());
-    };
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      const msg = `${uiCopy.optionNegotiationChat.rejectOptionTitle}\n\n${uiCopy.optionNegotiationChat.rejectOptionMessage}`;
-      if (window.confirm(msg)) run();
-      return;
-    }
-    Alert.alert(
-      uiCopy.optionNegotiationChat.rejectOptionTitle,
-      uiCopy.optionNegotiationChat.rejectOptionMessage,
-      [
-        { text: uiCopy.common.cancel, style: 'cancel' },
-        { text: uiCopy.optionNegotiationChat.rejectOption, style: 'destructive', onPress: run },
-      ],
-    );
   };
 
   const openOrgChatFromRequest = async () => {
@@ -4374,6 +4366,44 @@ const MessagesView: React.FC<MessagesViewProps> = ({
     setRequests(getOptionRequests());
     showNegotiationCalendarHint();
   }, [request?.threadId, showNegotiationCalendarHint]);
+
+  const runClientRejectCounter = useCallback(async () => {
+    if (!request?.threadId) return;
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const ok = window.confirm(
+        `${uiCopy.optionNegotiationChat.rejectCounterOfferTitle}\n\n${uiCopy.optionNegotiationChat.rejectCounterOfferMessage}`,
+      );
+      if (!ok) return;
+    }
+    await clientRejectCounterStore(request.threadId);
+    setRequests(getOptionRequests());
+    showNegotiationCalendarHint();
+  }, [request?.threadId, showNegotiationCalendarHint]);
+
+  const handleRejectOptionNegotiation = useCallback(() => {
+    if (!request?.threadId || !isAgency) return;
+    const threadId = request.threadId;
+    const run = () => {
+      void (async () => {
+        await agencyRejectNegotiationStore(threadId);
+        setRequests(getOptionRequests());
+        showNegotiationCalendarHint();
+      })();
+    };
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const msg = `${uiCopy.optionNegotiationChat.rejectOptionTitle}\n\n${uiCopy.optionNegotiationChat.rejectOptionMessage}`;
+      if (window.confirm(msg)) run();
+      return;
+    }
+    Alert.alert(
+      uiCopy.optionNegotiationChat.rejectOptionTitle,
+      uiCopy.optionNegotiationChat.rejectOptionMessage,
+      [
+        { text: uiCopy.common.cancel, style: 'cancel' },
+        { text: uiCopy.optionNegotiationChat.rejectOption, style: 'destructive', onPress: run },
+      ],
+    );
+  }, [request?.threadId, isAgency, showNegotiationCalendarHint]);
 
   const showClientMessagesTabs = !isAgency && !!clientUserId;
   const optionFullscreenActive =
@@ -4589,7 +4619,6 @@ const MessagesView: React.FC<MessagesViewProps> = ({
           onBack={handleBackOptionChat}
           statusLabel={status ? STATUS_LABELS[status] : '—'}
           statusBackgroundColor={status ? STATUS_COLORS[status] : colors.border}
-          onStatusPress={isAgency ? () => setStatusDropdownOpen(true) : undefined}
           headerBelowTitle={
             <NegotiationChipsRow
               displayStatus={displayStatus}
@@ -4628,13 +4657,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                   currency={currency}
                   requestTypeLabel={negotiationRequestTypeLabel}
                   finalStatusLine={negotiationFinalStatusLine}
-                />
-                <NegotiationChipsRow
-                  displayStatus={displayStatus}
-                  attentionLabel={headerAttentionLabel}
-                  proposedPrice={request.proposedPrice}
-                  agencyCounterPrice={request.agencyCounterPrice}
-                  currency={currency}
+                  confirmationSummaryLine={negotiationConfirmationSummaryLine}
                 />
                 <NegotiationThreadFooter
                   request={request}
@@ -4661,6 +4684,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                   onAgencyProposeInitialFee={runAgencyCounterOffer}
                   onRejectNegotiation={handleRejectOptionNegotiation}
                   onClientAcceptCounter={runClientAcceptCounter}
+                  onClientRejectCounter={runClientRejectCounter}
                   onClientConfirmJob={runClientConfirmJob}
                   showAgencyExtras={false}
                 />
@@ -4694,6 +4718,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
               onAgencyProposeInitialFee={runAgencyCounterOffer}
               onRejectNegotiation={handleRejectOptionNegotiation}
               onClientAcceptCounter={runClientAcceptCounter}
+              onClientRejectCounter={runClientRejectCounter}
               onClientConfirmJob={runClientConfirmJob}
               showAgencyExtras={false}
             />
@@ -4732,6 +4757,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
               currency={currency}
               requestTypeLabel={negotiationRequestTypeLabel}
               finalStatusLine={negotiationFinalStatusLine}
+              confirmationSummaryLine={negotiationConfirmationSummaryLine}
             />
             {filteredMessages.map((msg, i) => {
               const prev = i > 0 ? filteredMessages[i - 1] : null;
@@ -4759,16 +4785,6 @@ const MessagesView: React.FC<MessagesViewProps> = ({
         </OptionNegotiationChatShell>
       ) : null}
 
-      {optionFullscreenActive && request && isAgency && statusDropdownOpen && (
-        <StatusDropdownOverlay
-          onSelect={(s) => {
-            if (request) setRequestStatus(request.threadId, s);
-            setStatusDropdownOpen(false);
-          }}
-          onClose={() => setStatusDropdownOpen(false)}
-        />
-      )}
-
       <ConfirmDestructiveModal
         visible={deleteOptionModalVisible}
         title={uiCopy.messages.deleteOptionRequestTitle}
@@ -4788,33 +4804,6 @@ const MessagesView: React.FC<MessagesViewProps> = ({
         </>
       )}
     </View>
-  );
-};
-
-const StatusDropdownOverlay: React.FC<{
-  onSelect: (s: ChatStatus) => void;
-  onClose: () => void;
-}> = ({ onSelect, onClose }) => {
-  return (
-    <TouchableOpacity
-      style={styles.statusDropdownBackdrop}
-      activeOpacity={1}
-      onPress={onClose}
-    >
-      <View style={styles.statusDropdown}>
-        {(['in_negotiation', 'confirmed', 'rejected'] as ChatStatus[]).map((s) => (
-          <TouchableOpacity
-            key={s}
-            style={styles.statusDropdownItem}
-            onPress={() => onSelect(s)}
-          >
-            <Text style={[styles.statusPillLabel, { color: STATUS_COLORS[s] }]}>
-              {STATUS_LABELS[s]}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </TouchableOpacity>
   );
 };
 
@@ -6987,10 +6976,6 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontFamily: 'serif',
   },
-  statusDropdownWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
   chatPanelMessages: {
     marginBottom: spacing.sm,
   },
@@ -7061,31 +7046,6 @@ const styles = StyleSheet.create({
     ...typography.label,
     fontSize: 10,
     color: colors.surface,
-  },
-  statusDropdownBackdrop: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.06)',
-    justifyContent: 'flex-start',
-    alignItems: 'flex-end',
-    paddingTop: 80,
-    paddingRight: spacing.lg,
-    zIndex: 10,
-  },
-  statusDropdown: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingVertical: spacing.xs,
-    minWidth: 140,
-  },
-  statusDropdownItem: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
   },
   optionDateCard: {
     width: '100%',

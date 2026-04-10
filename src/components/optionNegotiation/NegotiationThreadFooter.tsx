@@ -35,6 +35,8 @@ export type NegotiationThreadFooterProps = {
   onAgencyProposeInitialFee: (amount: number) => Promise<void>;
   onRejectNegotiation: () => void;
   onClientAcceptCounter: () => Promise<void>;
+  /** Decline agency counter-offer (closes request) — optional; omit on agency-only surfaces. */
+  onClientRejectCounter?: () => Promise<void>;
   onClientConfirmJob: () => Promise<void>;
   /**
    * Agency native fullscreen: show proposed price line under org row + model-approval strip when the model is linked.
@@ -79,6 +81,7 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
   onAgencyProposeInitialFee,
   onRejectNegotiation,
   onClientAcceptCounter,
+  onClientRejectCounter,
   onClientConfirmJob,
   showAgencyExtras = false,
   assignmentMode = 'manage',
@@ -337,17 +340,31 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
           </View>
         )}
       {!isAgency && agencyCounterPrice != null && clientPriceStatus === 'pending' && finalStatus !== 'job_confirmed' && (
-        <TouchableOpacity
-          style={[styles.filterPill, { marginBottom: spacing.sm, backgroundColor: colors.buttonOptionGreen }]}
-          onPress={() => {
-            void onClientAcceptCounter();
-          }}
-        >
-          <Text style={[styles.filterPillLabel, { color: '#fff' }]}>
-            Accept agency proposal ({currency === 'USD' ? '$' : currency === 'GBP' ? '£' : currency === 'CHF' ? 'CHF ' : '€'}
-            {agencyCounterPrice})
-          </Text>
-        </TouchableOpacity>
+        <View style={{ marginBottom: spacing.sm, gap: spacing.xs }}>
+          <TouchableOpacity
+            style={[styles.filterPill, { backgroundColor: colors.buttonOptionGreen }]}
+            onPress={() => {
+              void onClientAcceptCounter();
+            }}
+          >
+            <Text style={[styles.filterPillLabel, { color: '#fff' }]}>
+              Accept agency proposal ({currency === 'USD' ? '$' : currency === 'GBP' ? '£' : currency === 'CHF' ? 'CHF ' : '€'}
+              {agencyCounterPrice})
+            </Text>
+          </TouchableOpacity>
+          {onClientRejectCounter ? (
+            <TouchableOpacity
+              style={[styles.filterPill, { borderWidth: 1, borderColor: colors.buttonSkipRed }]}
+              onPress={() => {
+                void onClientRejectCounter();
+              }}
+            >
+              <Text style={[styles.filterPillLabel, { color: colors.buttonSkipRed }]}>
+                {uiCopy.optionNegotiationChat.rejectCounterOffer}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
       )}
       {!isAgency && finalStatus === 'option_confirmed' && request?.requestType === 'option' && (
         <TouchableOpacity
@@ -356,7 +373,7 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
             void onClientConfirmJob();
           }}
         >
-          <Text style={[styles.filterPillLabel, { color: '#fff' }]}>Confirm job</Text>
+          <Text style={[styles.filterPillLabel, { color: '#fff' }]}>{uiCopy.optionNegotiationChat.confirmJob}</Text>
         </TouchableOpacity>
       )}
     </>

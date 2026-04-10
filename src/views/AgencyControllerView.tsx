@@ -38,7 +38,7 @@ import {
   addMessage,
   getRequestByThreadId,
   getRequestStatus,
-  setRequestStatus,
+  agencyRejectNegotiationStore,
   loadOptionRequestsForAgency,
   purgeOptionThreadFromStore,
   refreshOptionRequestInCache,
@@ -4410,7 +4410,6 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   const [requests, setRequests] = useState(getOptionRequests());
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [chatInput, setChatInput] = useState('');
-  const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
   const [agencyCounterInput, setAgencyCounterInput] = useState('');
   const [openOrgChatBusy, setOpenOrgChatBusy] = useState(false);
   const [processingRequestId, setProcessingRequestId] = useState<string | null>(null);
@@ -4609,6 +4608,13 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
       : null;
   const negotiationRequestTypeLabel =
     request?.requestType === 'casting' ? _uiCopy.dashboard.threadContextCasting : _uiCopy.dashboard.threadContextOption;
+  const negotiationConfirmationSummaryLine = request
+    ? request.modelAccountLinked === false
+      ? _uiCopy.optionNegotiationChat.noModelAppNegotiationHint
+      : request.modelApproval === 'approved'
+        ? _uiCopy.optionNegotiationChat.modelAvailabilityConfirmedHint
+        : _uiCopy.optionNegotiationChat.modelMustPreApproveBeforeAgencyActs
+    : null;
 
   const sendMessage = () => {
     const text = chatInput.trim();
@@ -4735,15 +4741,17 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   const handleBackOptionChat = () => {
     setSelectedThreadId(null);
     setNegotiationCounterExpanded(false);
-    setStatusDropdownOpen(false);
   };
 
   const handleRejectOptionNegotiation = () => {
     if (!request?.threadId) return;
     const threadId = request.threadId;
     const run = () => {
-      setRequestStatus(threadId, 'rejected');
-      setRequests(getOptionRequests());
+      void (async () => {
+        await agencyRejectNegotiationStore(threadId);
+        setRequests(getOptionRequests());
+        showNegotiationCalendarHint();
+      })();
     };
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       const msg = `${uiCopy.optionNegotiationChat.rejectOptionTitle}\n\n${uiCopy.optionNegotiationChat.rejectOptionMessage}`;
@@ -4824,7 +4832,6 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
             backLabel={uiCopy.optionNegotiationChat.back}
             statusLabel={status ? STATUS_LABELS[status] : '—'}
             statusBackgroundColor={status ? STATUS_COLORS[status] : colors.border}
-            onStatusPress={() => setStatusDropdownOpen((o) => !o)}
             headerBelowTitle={
               <NegotiationChipsRow
                 displayStatus={displayStatus}
@@ -4863,13 +4870,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                     currency={currency}
                     requestTypeLabel={negotiationRequestTypeLabel}
                     finalStatusLine={negotiationFinalStatusLine}
-                  />
-                  <NegotiationChipsRow
-                    displayStatus={displayStatus}
-                    attentionLabel={headerAttentionLabel}
-                    proposedPrice={request.proposedPrice}
-                    agencyCounterPrice={request.agencyCounterPrice}
-                    currency={currency}
+                    confirmationSummaryLine={negotiationConfirmationSummaryLine}
                   />
                   <NegotiationThreadFooter
                     request={request}
@@ -4972,6 +4973,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                 currency={currency}
                 requestTypeLabel={negotiationRequestTypeLabel}
                 finalStatusLine={negotiationFinalStatusLine}
+                confirmationSummaryLine={negotiationConfirmationSummaryLine}
               />
               {filteredMessages.map((msg, i) => {
                 const prev = i > 0 ? filteredMessages[i - 1] : null;
@@ -5010,30 +5012,6 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
           detailLine1={request.modelName}
           detailLine2={`${request.date}${request.startTime ? ` · ${request.startTime}–${request.endTime}` : ''}`}
         />
-        {statusDropdownOpen && (
-          <Modal transparent animationType="fade" visible={statusDropdownOpen} onRequestClose={() => setStatusDropdownOpen(false)}>
-            <TouchableOpacity
-              style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-start', paddingTop: 56 }}
-              activeOpacity={1}
-              onPress={() => setStatusDropdownOpen(false)}
-            >
-              <View style={{ alignSelf: 'center', backgroundColor: colors.surface, borderRadius: 8, padding: spacing.sm, minWidth: 220, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border }}>
-                {(['in_negotiation', 'confirmed', 'rejected'] as ChatStatus[]).map((st) => (
-                  <TouchableOpacity
-                    key={st}
-                    style={[s.filterPill, { marginBottom: spacing.xs, borderColor: STATUS_COLORS[st] }]}
-                    onPress={() => {
-                      if (request) setRequestStatus(request.threadId, st);
-                      setStatusDropdownOpen(false);
-                    }}
-                  >
-                    <Text style={[s.filterPillLabel, { color: STATUS_COLORS[st] }]}>{STATUS_LABELS[st]}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </TouchableOpacity>
-          </Modal>
-        )}
       </>
     );
   }

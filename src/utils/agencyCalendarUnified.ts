@@ -1,6 +1,10 @@
 /**
  * Agency calendar: merge option_requests/calendar_entries, booking_events, manual events
  * for consistent filtering and list/grid views (visibility unchanged — filter-only).
+ *
+ * Commercial terms: canonical agreed/proposed amounts live on `option_requests` (and RPC logic).
+ * `calendar_entries` rows created by `fn_ensure_calendar_on_option_confirmed` carry schedule/title;
+ * do not treat calendar JSON alone as the fee source of truth.
  */
 import type { AgencyCalendarItem, CalendarEntry } from '../services/calendarSupabase';
 import type { UserCalendarEvent } from '../services/userCalendarEventsSupabase';

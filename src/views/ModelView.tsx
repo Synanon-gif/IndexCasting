@@ -26,6 +26,9 @@ type ModelViewProps = {
 export const ModelView: React.FC<ModelViewProps> = ({ onBackToRoleSelection, userId }) => {
   const [modelId, setModelId] = useState<string | null | 'loading'>('loading');
   const [activeTab, setActiveTab] = useState<ModelTab>('inbox');
+  /** Opens Profile → Options on the given option_request id (thread id === row id). */
+  const [focusOptionRequestId, setFocusOptionRequestId] = useState<string | null>(null);
+  const clearFocusOptionRequest = useCallback(() => setFocusOptionRequestId(null), []);
 
   useEffect(() => {
     if (!userId) {
@@ -75,18 +78,32 @@ export const ModelView: React.FC<ModelViewProps> = ({ onBackToRoleSelection, use
       </View>
 
       {activeTab === 'inbox' && modelId && (
-        <ModelUnifiedInbox modelId={modelId} />
+        <ModelUnifiedInbox
+          modelId={modelId}
+          onOpenRequest={(id) => {
+            setFocusOptionRequestId(id);
+            setActiveTab('profile');
+          }}
+        />
       )}
 
       {activeTab === 'profile' && (
-        <ModelProfileScreen onBackToRoleSelection={onBackToRoleSelection} userId={userId ?? undefined} />
+        <ModelProfileScreen
+          onBackToRoleSelection={onBackToRoleSelection}
+          userId={userId ?? undefined}
+          focusOptionRequestId={focusOptionRequestId}
+          onConsumedFocusOption={clearFocusOptionRequest}
+        />
       )}
     </View>
   );
 };
 
 /** Priority-sorted unified inbox: action_required → unread → chronological. */
-const ModelUnifiedInbox: React.FC<{ modelId: string }> = ({ modelId }) => {
+const ModelUnifiedInbox: React.FC<{
+  modelId: string;
+  onOpenRequest: (optionRequestId: string) => void;
+}> = ({ modelId, onOpenRequest }) => {
   const [requests, setRequests] = useState<SupabaseOptionRequestModelSafe[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -162,7 +179,12 @@ const ModelUnifiedInbox: React.FC<{ modelId: string }> = ({ modelId }) => {
           modelAccountLinked: r.model_account_linked ?? true,
         });
         return (
-          <View key={r.id} style={[styles.inboxRow, isActionRequired && styles.inboxRowHighlight]}>
+          <TouchableOpacity
+            key={r.id}
+            activeOpacity={0.75}
+            onPress={() => onOpenRequest(r.id)}
+            style={[styles.inboxRow, isActionRequired && styles.inboxRowHighlight]}
+          >
             <View style={{ flex: 1 }}>
               {isActionRequired && (
                 <Text style={styles.actionTag}>{uiCopy.dashboard.smartAttentionWaitingForModel}</Text>
@@ -176,13 +198,14 @@ const ModelUnifiedInbox: React.FC<{ modelId: string }> = ({ modelId }) => {
                   {r.request_type === 'casting' ? copy.threadContextCasting : copy.threadContextOption}
                 </Text>
               ) : null}
+              <Text style={styles.inboxOpenHint}>{uiCopy.optionNegotiationChat.modelInboxOpenInProfileHint}</Text>
             </View>
             <View style={[styles.statusBadge, { backgroundColor: statusBgColor(displayStatus) }]}>
               <Text style={[styles.statusText, { color: statusColor(displayStatus) }]}>
                 {displayStatus}
               </Text>
             </View>
-          </View>
+          </TouchableOpacity>
         );
       })}
     </ScrollView>
@@ -245,6 +268,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textSecondary,
     textAlign: 'center',
+  },
+  inboxOpenHint: {
+    fontSize: 10,
+    color: colors.textSecondary,
+    marginTop: 4,
   },
   inboxRow: {
     flexDirection: 'row',

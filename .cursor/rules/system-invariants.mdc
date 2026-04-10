@@ -336,6 +336,8 @@ Gilt u. a. für **`option_requests`**, **`option_request_messages`** und ähnl
 
 **Spezialfall Bestätigungen / Uploads:** Idempotenz und Vermeidung von RETURNING-Konflikten für `confirmX()` — siehe **CONFIRMATION-FLOWS — IDEMPOTENZ PFLICHT** (eigenes Pflicht-Pattern, nicht abschwächen).
 
+**Negotiation state truth (UI):** Do not drive confirm/reject/counter solely from `option_requests.status` via blind updates — use the existing RPC/store paths (`agencyRejectRequest`, `agencyAcceptRequest` / price accept RPCs, `client_accept_counter_offer`, `clientRejectCounterOfferOnSupabase` / `clientRejectCounterStore`) so `final_status`, `client_price_status`, and notifications stay aligned. Fee/commercial truth remains on `option_requests`; `calendar_entries` from `fn_ensure_calendar_on_option_confirmed` carry schedule/title, not a parallel fee authority.
+
 ### 8. REQUEST-CONTEXT RESOLVER INVARIANT
 
 Wenn eine **`option_requests`-Zeile** kanonische Kontextfelder enthält — insbesondere **`agency_organization_id`** — müssen Folgepfade diese **bevorzugen** (vom Row lesbar, robust bei Client-RLS auf `organizations`). Spätere **client-seitige** `organizations`-Lookups über `agency_id` sind **Fallback**, nicht die bevorzugte Quelle. Referenz: `resolveAgencyOrgIdForOptionNotification` in [`optionRequestsSupabase.ts`](../../src/services/optionRequestsSupabase.ts). Kein stilles „agency org not found“, wenn die Spalte gesetzt ist.

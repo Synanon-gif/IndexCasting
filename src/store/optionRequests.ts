@@ -23,6 +23,7 @@ import {
   agencyAcceptRequest,
   clientAcceptCounterPrice,
   clientRejectCounterOfferOnSupabase,
+  agencyRejectRequest,
   clientConfirmJobOnSupabase,
   resolveAgencyOrgIdForOptionNotification,
   type SupabaseOptionRequest,
@@ -846,6 +847,27 @@ export async function clientRejectCounterStore(threadId: string): Promise<boolea
     }
   }
 
+  notify();
+  return true;
+}
+
+/**
+ * Agency rejects the whole negotiation (server: status=rejected, final_status=null, client_price_status=rejected).
+ * Use instead of `updateOptionRequestStatus` so notifications and final_status stay consistent.
+ */
+export async function agencyRejectNegotiationStore(threadId: string): Promise<boolean> {
+  const req = requestsCache.find((r) => r.threadId === threadId);
+  if (!req) return false;
+  const ok = await agencyRejectRequest(req.id);
+  if (!ok) return false;
+  const updated = await getOptionRequestById(req.id);
+  if (updated) {
+    Object.assign(req, toLocalRequest(updated));
+  } else {
+    req.status = 'rejected';
+    req.finalStatus = undefined;
+    req.clientPriceStatus = 'rejected';
+  }
   notify();
   return true;
 }

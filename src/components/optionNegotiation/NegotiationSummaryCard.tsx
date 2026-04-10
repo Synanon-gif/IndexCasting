@@ -18,6 +18,8 @@ export type NegotiationSummaryCardProps = {
   currency: string | undefined;
   requestTypeLabel: string;
   finalStatusLine: string | null;
+  /** Optional: model availability / pre-approval context (agency); client sees null or shorter line. */
+  confirmationSummaryLine?: string | null;
 };
 
 export const NegotiationSummaryCard: React.FC<NegotiationSummaryCardProps> = ({
@@ -32,6 +34,7 @@ export const NegotiationSummaryCard: React.FC<NegotiationSummaryCardProps> = ({
   currency,
   requestTypeLabel,
   finalStatusLine,
+  confirmationSummaryLine,
 }) => (
   <View style={styles.card}>
     <Text style={styles.title} numberOfLines={2}>
@@ -43,6 +46,7 @@ export const NegotiationSummaryCard: React.FC<NegotiationSummaryCardProps> = ({
       {attentionLabel ? <Text style={styles.attention}>{attentionLabel}</Text> : null}
     </View>
     {finalStatusLine ? <Text style={styles.final}>{finalStatusLine}</Text> : null}
+    {confirmationSummaryLine ? <Text style={styles.confirmationHint}>{confirmationSummaryLine}</Text> : null}
     <View style={styles.priceBlock}>
       {proposedPrice != null ? (
         <Text style={styles.price}>
@@ -112,6 +116,14 @@ const styles = StyleSheet.create({
     ...typography.label,
     fontSize: 11,
     color: colors.textSecondary,
+    marginBottom: spacing.xs,
+    textTransform: 'none',
+    letterSpacing: 0,
+  },
+  confirmationHint: {
+    ...typography.label,
+    fontSize: 11,
+    color: colors.accentBrown,
     marginBottom: spacing.xs,
     textTransform: 'none',
     letterSpacing: 0,
