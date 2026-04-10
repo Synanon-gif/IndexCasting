@@ -24,6 +24,10 @@ import { logAction } from '../utils/logAction';
 export const OPTION_REQUEST_SELECT =
   'id, client_id, model_id, agency_id, requested_date, status, project_id, client_name, model_name, proposed_price, agency_counter_price, client_price_status, final_status, request_type, currency, start_time, end_time, model_approval, model_approved_at, model_account_linked, booker_id, organization_id, agency_organization_id, client_organization_id, created_by, agency_assignee_user_id, created_at, updated_at';
 
+/** Model-linked app: no price / negotiation columns (defense-in-depth vs UI-only hiding). */
+export const OPTION_REQUEST_SELECT_MODEL_SAFE =
+  'id, client_id, model_id, agency_id, requested_date, status, project_id, client_name, model_name, final_status, request_type, currency, start_time, end_time, model_approval, model_approved_at, model_account_linked, booker_id, organization_id, agency_organization_id, client_organization_id, created_by, agency_assignee_user_id, created_at, updated_at';
+
 /**
  * Option Requests + Chat (Kunde ↔ Agentur).
  * Alle Anfragen, Nachrichten und Anhänge in Supabase:
@@ -64,6 +68,12 @@ export type SupabaseOptionRequest = {
   created_at: string;
   updated_at: string;
 };
+
+/** Row from {@link getOptionRequestsForModel} — price fields omitted at the API layer. */
+export type SupabaseOptionRequestModelSafe = Omit<
+  SupabaseOptionRequest,
+  'proposed_price' | 'agency_counter_price' | 'client_price_status'
+>;
 
 export type SupabaseOptionMessage = {
   id: string;
@@ -963,16 +973,16 @@ export async function updateModelApproval(
 export async function getOptionRequestsForModel(
   modelId: string,
   limit = 200,
-): Promise<SupabaseOptionRequest[]> {
+): Promise<SupabaseOptionRequestModelSafe[]> {
   try {
     const { data, error } = await supabase
       .from('option_requests')
-      .select(OPTION_REQUEST_SELECT)
+      .select(OPTION_REQUEST_SELECT_MODEL_SAFE)
       .eq('model_id', modelId)
       .order('created_at', { ascending: false })
       .limit(limit);
     if (error) { console.error('getOptionRequestsForModel error:', error); return []; }
-    return (data ?? []) as SupabaseOptionRequest[];
+    return (data ?? []) as SupabaseOptionRequestModelSafe[];
   } catch (e) {
     console.error('getOptionRequestsForModel exception:', e);
     return [];

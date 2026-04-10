@@ -10,11 +10,11 @@ import {
 import { ModelProfileScreen } from '../screens/ModelProfileScreen';
 import { ModelApplicationsView } from './ModelApplicationsView';
 import { getModelForUserFromSupabase } from '../services/modelsSupabase';
-import { getOptionRequestsForModel, type SupabaseOptionRequest } from '../services/optionRequestsSupabase';
+import { getOptionRequestsForModel, type SupabaseOptionRequestModelSafe } from '../services/optionRequestsSupabase';
 import { colors, spacing } from '../theme/theme';
 import { uiCopy } from '../constants/uiCopy';
 import { toDisplayStatus, statusColor, statusBgColor } from '../utils/statusHelpers';
-import { deriveSmartAttentionState, smartAttentionVisibleForRole } from '../utils/optionRequestAttention';
+import { modelInboxRequiresModelConfirmation, modelInboxSortPriority } from '../utils/optionRequestAttention';
 
 type ModelTab = 'inbox' | 'profile';
 
@@ -87,7 +87,7 @@ export const ModelView: React.FC<ModelViewProps> = ({ onBackToRoleSelection, use
 
 /** Priority-sorted unified inbox: action_required → unread → chronological. */
 const ModelUnifiedInbox: React.FC<{ modelId: string }> = ({ modelId }) => {
-  const [requests, setRequests] = useState<SupabaseOptionRequest[]>([]);
+  const [requests, setRequests] = useState<SupabaseOptionRequestModelSafe[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const copy = uiCopy.dashboard;
@@ -111,17 +111,13 @@ const ModelUnifiedInbox: React.FC<{ modelId: string }> = ({ modelId }) => {
   /** Assign priority: action-required first, then by recency. */
   const sorted = useMemo(() => {
     return [...requests].sort((a, b) => {
-      const priority = (r: SupabaseOptionRequest): number => {
-        const state = deriveSmartAttentionState({
+      const priority = (r: SupabaseOptionRequestModelSafe): number =>
+        modelInboxSortPriority({
           status: r.status,
           finalStatus: r.final_status ?? null,
-          clientPriceStatus: r.client_price_status ?? null,
           modelApproval: r.model_approval,
           modelAccountLinked: r.model_account_linked ?? true,
         });
-        if (smartAttentionVisibleForRole(state, 'model')) return 0;
-        return 2;
-      };
       const diff = priority(a) - priority(b);
       if (diff !== 0) return diff;
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
@@ -159,14 +155,12 @@ const ModelUnifiedInbox: React.FC<{ modelId: string }> = ({ modelId }) => {
     <ScrollView style={styles.scroll} contentContainerStyle={{ padding: spacing.md }}>
       {sorted.map((r) => {
         const displayStatus = toDisplayStatus(r.status, r.final_status ?? null);
-        const attentionState = deriveSmartAttentionState({
+        const isActionRequired = modelInboxRequiresModelConfirmation({
           status: r.status,
           finalStatus: r.final_status ?? null,
-          clientPriceStatus: r.client_price_status ?? null,
           modelApproval: r.model_approval,
           modelAccountLinked: r.model_account_linked ?? true,
         });
-        const isActionRequired = smartAttentionVisibleForRole(attentionState, 'model');
         return (
           <View key={r.id} style={[styles.inboxRow, isActionRequired && styles.inboxRowHighlight]}>
             <View style={{ flex: 1 }}>

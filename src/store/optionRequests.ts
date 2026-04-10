@@ -24,6 +24,7 @@ import {
   clientRejectCounterOfferOnSupabase,
   clientConfirmJobOnSupabase,
   type SupabaseOptionRequest,
+  type SupabaseOptionRequestModelSafe,
   type SupabaseOptionMessage,
 } from '../services/optionRequestsSupabase';
 import { createNotification, createNotifications } from '../services/notificationsSupabase';
@@ -83,7 +84,7 @@ export type ChatMessage = {
   createdAt: number;
 };
 
-function toLocalRequest(r: SupabaseOptionRequest): OptionRequest {
+function toLocalRequest(r: SupabaseOptionRequest | SupabaseOptionRequestModelSafe): OptionRequest {
   return {
     id: r.id,
     clientName: r.client_name ?? 'Client',
@@ -95,9 +96,9 @@ function toLocalRequest(r: SupabaseOptionRequest): OptionRequest {
     threadId: r.id,
     status: r.status,
     projectId: r.project_id ?? undefined,
-    proposedPrice: r.proposed_price ?? undefined,
-    agencyCounterPrice: r.agency_counter_price ?? undefined,
-    clientPriceStatus: r.client_price_status ?? undefined,
+    proposedPrice: 'proposed_price' in r ? (r.proposed_price ?? undefined) : undefined,
+    agencyCounterPrice: 'agency_counter_price' in r ? (r.agency_counter_price ?? undefined) : undefined,
+    clientPriceStatus: 'client_price_status' in r ? (r.client_price_status ?? undefined) : undefined,
     finalStatus: r.final_status ?? undefined,
     requestType: r.request_type ?? 'option',
     currency: r.currency ?? undefined,
@@ -105,6 +106,7 @@ function toLocalRequest(r: SupabaseOptionRequest): OptionRequest {
     endTime: r.end_time ?? undefined,
     modelApproval: r.model_approval ?? 'pending',
     modelApprovedAt: r.model_approved_at ?? undefined,
+    modelAccountLinked: r.model_account_linked ?? undefined,
     agencyId: r.agency_id,
     agencyOrganizationId: r.agency_organization_id ?? undefined,
   };
