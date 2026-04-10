@@ -11,6 +11,8 @@ export type CalendarDayEvent = {
   color: string;
   title: string;
   kind?: string;
+  /** Dedupe key for option-linked tiles (same day). */
+  optionRequestId?: string | null;
 };
 
 export type MonthCalendarViewProps = {

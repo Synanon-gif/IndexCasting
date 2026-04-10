@@ -198,6 +198,18 @@ export const uiCopy = {
     saveNotes: 'Save notes',
     savingNotes: 'Saving…',
     bookingDetailsTitle: 'Booking details',
+    /** Month/list badges — calendar projection (existing DB fields only). */
+    projectionBadge: {
+      rejected: 'Rejected',
+      job: 'Job',
+      jobTentative: 'Job (tentative)',
+      casting: 'Casting',
+      optionConfirmed: 'Option (confirmed)',
+      optionNegotiating: 'Option (negotiating)',
+      pricePending: 'Price (pending)',
+      priceAgreed: 'Price agreed',
+      optionPending: 'Option (pending)',
+    },
   },
   /** Structured production fields on option-linked calendar rows (booking_details.booking_brief). */
   bookingBrief: {

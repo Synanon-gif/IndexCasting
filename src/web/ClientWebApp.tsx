@@ -155,6 +155,11 @@ import {
 import { MonthCalendarView, type CalendarDayEvent } from '../components/MonthCalendarView';
 import { OPTION_REQUEST_CHAT_STATUS_COLORS } from '../utils/calendarColors';
 import {
+  getCalendarProjectionBadge,
+  calendarGridColorForOptionItem,
+  dedupeCalendarGridEventsByOptionRequest,
+} from '../utils/calendarProjectionLabel';
+import {
   deriveSmartAttentionState,
   smartAttentionVisibleForRole,
   type SmartAttentionState,
@@ -2139,6 +2144,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             onBookingCardPress={() => setTab('calendar')}
             onPackagePress={(meta) => { void handlePackagePress(meta); }}
             onOptionRequestDeleted={() => { void loadClientCalendar(); }}
+            onOptionProjectionChanged={() => { void loadClientCalendar(); }}
             bottomTabInset={bottomTabInset}
             onOptionThreadOpenedFromList={() => {
               optionChatReturnRef.current = { kind: 'list' };
@@ -3070,14 +3076,13 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
       if (!date) return;
       if (!map[date]) map[date] = [];
       const entryType = item.calendar_entry?.entry_type;
-      let color = '#1565C0';
-      if (entryType === 'booking') color = colors.buttonSkipRed;
-      else if (entryType === 'casting' || entryType === 'gosee') color = colors.textSecondary;
+      const color = calendarGridColorForOptionItem(item);
       map[date].push({
         id: item.option.id,
         color,
         title: item.option.model_name ?? 'Model',
         kind: entryType ?? 'option',
+        optionRequestId: item.option.id,
       });
     });
     // Merge booking_events as the single source of truth; skip entries already covered
@@ -3098,9 +3103,10 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
         color,
         title: be.title ?? 'Booking',
         kind: be.entry_type ?? 'booking',
+        optionRequestId: be.option_request_id ?? undefined,
       });
     });
-    return map;
+    return dedupeCalendarGridEventsByOptionRequest(map);
   }, [items, manualEvents, bookingEventEntries]);
 
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
@@ -3126,46 +3132,28 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
   );
 
   const renderBadge = (item: ClientCalendarItem) => {
-    const { option, calendar_entry } = item;
-    const entryType = calendar_entry?.entry_type;
-    let kind: 'Option' | 'Job' | 'Casting' = 'Option';
-    if (entryType === 'booking') kind = 'Job';
-    if (entryType === 'casting' || entryType === 'gosee') kind = 'Casting';
-    const isJobConfirmed = calendar_entry?.status === 'booked';
-
-    let color = '#1565C0'; // blue for options
-    if (kind === 'Job' && isJobConfirmed) {
-      color = colors.buttonSkipRed;
-    } else if (kind === 'Casting' && option.status === 'confirmed') {
-      color = colors.textSecondary;
-    }
-
-    const label =
-      kind === 'Job'
-        ? 'Job'
-        : kind === 'Casting'
-        ? 'Casting'
-        : option.status === 'confirmed'
-        ? 'Option (confirmed)'
-        : 'Option (pending)';
-
+    const badge = getCalendarProjectionBadge(
+      item.option,
+      item.calendar_entry,
+      uiCopy.calendar.projectionBadge,
+    );
     return (
       <View
         style={{
           borderRadius: 999,
           paddingHorizontal: spacing.sm,
           paddingVertical: spacing.xs,
-          backgroundColor: color,
+          backgroundColor: badge.backgroundColor,
         }}
       >
         <Text
           style={{
             ...typography.label,
             fontSize: 10,
-            color: '#fff',
+            color: badge.textColor,
           }}
         >
-          {label}
+          {badge.label}
         </Text>
       </View>
     );
@@ -3856,6 +3844,8 @@ type MessagesViewProps = {
   onPackagePress?: (meta: Record<string, unknown>) => void;
   /** Refresh calendar / merged views after an option_request was deleted. */
   onOptionRequestDeleted?: () => void;
+  /** Refresh calendar cache after negotiation actions that update projection (price, confirm, reject). */
+  onOptionProjectionChanged?: () => void;
   /** Tab bar + safe area inset for composer padding. */
   bottomTabInset?: number;
   /** Call when user opens a thread from the in-tab list (Back returns to list only). */
@@ -4084,6 +4074,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   onBookingCardPress,
   onPackagePress,
   onOptionRequestDeleted,
+  onOptionProjectionChanged,
   bottomTabInset: bottomTabInsetProp,
   onOptionThreadOpenedFromList,
   onCloseOptionNegotiation,
@@ -4321,13 +4312,14 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   };
 
   const showNegotiationCalendarHint = useCallback(() => {
+    onOptionProjectionChanged?.();
     if (calendarHintTimerRef.current) clearTimeout(calendarHintTimerRef.current);
     setCalendarHint(uiCopy.dashboard.negotiationCalendarSyncedHint);
     calendarHintTimerRef.current = setTimeout(() => {
       setCalendarHint(null);
       calendarHintTimerRef.current = null;
     }, 4000);
-  }, []);
+  }, [onOptionProjectionChanged]);
 
   const runAgencyAcceptClientPrice = useCallback(async () => {
     if (!request?.threadId) return;

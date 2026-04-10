@@ -205,7 +205,8 @@ import { runMediaslideCronSync } from '../services/mediaslideSyncService';
 import { runNetwalkCronSync } from '../services/netwalkSyncService';
 import { getAgencyApiKeys, saveAgencyApiConnection } from '../services/agencySettingsSupabase';
 import { checkModelCompleteness, type CompletenessContext } from '../utils/modelCompleteness';
-import { calendarEntryColor, OPTION_REQUEST_CHAT_STATUS_COLORS } from '../utils/calendarColors';
+import { OPTION_REQUEST_CHAT_STATUS_COLORS } from '../utils/calendarColors';
+import { getCalendarProjectionBadge, getBookingEntryProjectionBadge } from '../utils/calendarProjectionLabel';
 import {
   buildUnifiedAgencyCalendarRows,
   filterUnifiedAgencyCalendarRows,
@@ -741,6 +742,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
           onPendingOptionRequestConsumed={() => setSearchOptionId(null)}
           assignmentByClientOrgId={assignmentByClientOrgId}
           onOptionRequestDeleted={() => { void loadAgencyCalendar(); }}
+          onOptionProjectionChanged={() => { void loadAgencyCalendar(); }}
           bottomTabInset={bottomTabInset}
         />
       )}
@@ -1636,52 +1638,37 @@ type AgencyCalendarTabProps = {
 };
 
 function renderAgencyCalendarOptionBadge(item: AgencyCalendarItem) {
-  const { option, calendar_entry } = item;
-  const entryType = calendar_entry?.entry_type;
-  let kind: 'Option' | 'Job' | 'Casting' = 'Option';
-  if (entryType === 'booking') kind = 'Job';
-  if (entryType === 'casting' || entryType === 'gosee') kind = 'Casting';
-  const isJobConfirmed = calendar_entry?.status === 'booked';
-
-  let color = '#1565C0';
-  if (kind === 'Job' && isJobConfirmed) {
-    color = colors.buttonSkipRed;
-  } else if (kind === 'Casting' && option.status === 'confirmed') {
-    color = colors.textSecondary;
-  }
-
-  const label =
-    kind === 'Job'
-      ? 'Job'
-      : kind === 'Casting'
-        ? 'Casting'
-        : option.status === 'confirmed'
-          ? 'Option (confirmed)'
-          : 'Option (pending)';
-
+  const badge = getCalendarProjectionBadge(
+    item.option,
+    item.calendar_entry,
+    uiCopy.calendar.projectionBadge,
+  );
   return (
     <View
       style={{
         borderRadius: 999,
         paddingHorizontal: spacing.sm,
         paddingVertical: spacing.xs,
-        backgroundColor: color,
+        backgroundColor: badge.backgroundColor,
       }}
     >
-      <Text style={{ ...typography.label, fontSize: 10, color: '#fff' }}>{label}</Text>
+      <Text style={{ ...typography.label, fontSize: 10, color: badge.textColor }}>{badge.label}</Text>
     </View>
   );
 }
 
 function renderBookingEntryBadge(entry: CalendarEntry) {
-  const t = entry.entry_type;
-  const label = t === 'booking' ? 'Booking' : t === 'casting' || t === 'gosee' ? 'Casting' : 'Option';
-  let bg = '#1565C0';
-  if (t === 'booking') bg = colors.buttonSkipRed;
-  else if (t === 'casting' || t === 'gosee') bg = colors.textSecondary;
+  const badge = getBookingEntryProjectionBadge(entry, uiCopy.calendar.projectionBadge);
   return (
-    <View style={{ borderRadius: 999, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, backgroundColor: bg }}>
-      <Text style={{ ...typography.label, fontSize: 10, color: '#fff' }}>{label}</Text>
+    <View
+      style={{
+        borderRadius: 999,
+        paddingHorizontal: spacing.sm,
+        paddingVertical: spacing.xs,
+        backgroundColor: badge.backgroundColor,
+      }}
+    >
+      <Text style={{ ...typography.label, fontSize: 10, color: badge.textColor }}>{badge.label}</Text>
     </View>
   );
 }
@@ -4368,6 +4355,8 @@ type AgencyMessagesTabProps = {
   onPendingOptionRequestConsumed?: () => void;
   assignmentByClientOrgId?: Record<string, ClientAssignmentFlag>;
   onOptionRequestDeleted?: () => void;
+  /** Refresh calendar cache after negotiation updates (price, confirm, etc.). */
+  onOptionProjectionChanged?: () => void;
   /** Tab bar + safe area inset for negotiation composer (same as AgencyControllerView content padding). */
   bottomTabInset: number;
 };
@@ -4388,6 +4377,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   onPendingOptionRequestConsumed,
   assignmentByClientOrgId = {},
   onOptionRequestDeleted,
+  onOptionProjectionChanged,
   bottomTabInset,
 }) => {
   const { width: agencyMsgWinW, height: agencyMsgWinH } = useWindowDimensions();
@@ -4780,13 +4770,14 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   };
 
   const showNegotiationCalendarHint = useCallback(() => {
+    onOptionProjectionChanged?.();
     if (calendarHintTimerRef.current) clearTimeout(calendarHintTimerRef.current);
     setCalendarHint(_uiCopy.dashboard.negotiationCalendarSyncedHint);
     calendarHintTimerRef.current = setTimeout(() => {
       setCalendarHint(null);
       calendarHintTimerRef.current = null;
     }, 4000);
-  }, []);
+  }, [onOptionProjectionChanged]);
 
   const runAgencyAcceptClientPrice = useCallback(async () => {
     if (!request?.threadId || processingRequestId) return;
