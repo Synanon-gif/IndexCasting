@@ -45,10 +45,6 @@ export type AttentionSignalInput = {
   proposedPrice?: number | null;
 };
 
-function priceAgreed(input: AttentionSignalInput): boolean {
-  return input.clientPriceStatus === 'accepted';
-}
-
 /**
  * Price accepted in DB plus at least one commercial anchor — use to lock counter/reject UI.
  * Stricter than RPC `client_confirm_option_job` (which only checks `client_price_status`).
@@ -68,7 +64,8 @@ export function deriveNegotiationAttention(input: AttentionSignalInput): Negotia
   if (input.finalStatus === 'job_confirmed' || input.status === 'rejected') {
     return 'negotiation_terminal';
   }
-  if (priceAgreed(input)) {
+  // Align D1 "deal closed" with footer lock — not raw `client_price_status` alone.
+  if (priceCommerciallySettledForUi(input)) {
     return 'price_agreed';
   }
   const cps = input.clientPriceStatus ?? null;
@@ -91,7 +88,7 @@ export function deriveNegotiationAttention(input: AttentionSignalInput): Negotia
 }
 
 /**
- * Approval / option→job — D2 only. Uses price agreed + model + status + final_status.
+ * Approval / option→job — D2 only. Requires commercial settlement (same gate as footer lock), plus model + status + final_status.
  */
 export function deriveApprovalAttention(input: AttentionSignalInput): ApprovalAttentionState {
   if (input.finalStatus === 'job_confirmed') {
@@ -100,7 +97,7 @@ export function deriveApprovalAttention(input: AttentionSignalInput): ApprovalAt
   if (input.status === 'rejected') {
     return 'fully_cleared';
   }
-  if (!priceAgreed(input)) {
+  if (!priceCommerciallySettledForUi(input)) {
     return 'approval_inactive';
   }
 
@@ -152,7 +149,7 @@ export function deriveSmartAttentionState(input: AttentionSignalInput): SmartAtt
     return 'conflict_risk';
   }
 
-  if (!priceAgreed(input)) {
+  if (!priceCommerciallySettledForUi(input)) {
     const n = deriveNegotiationAttention(input);
     if (n === 'negotiation_terminal') return 'no_attention';
     if (n === 'counter_rejected') return 'counter_pending';

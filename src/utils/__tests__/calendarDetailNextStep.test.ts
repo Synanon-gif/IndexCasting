@@ -72,4 +72,44 @@ describe('getCalendarDetailNextStepText — signal parity (counter + proposed)',
     expect(getCalendarDetailNextStepText(option, null, 'agency', baseCopy)).toBe(baseCopy.nextStepNegotiating);
     expect(getCalendarDetailNextStepText(option, null, 'client', baseCopy)).toBe(baseCopy.nextStepAwaitingAgency);
   });
+
+  it('counter_rejected: agency sees action line, client sees awaiting agency, model sees negotiating', () => {
+    const option = minimalOption({
+      proposed_price: 5000,
+      agency_counter_price: 4500,
+      client_price_status: 'rejected',
+      final_status: 'option_pending',
+      status: 'in_negotiation',
+    });
+    expect(getCalendarDetailNextStepText(option, null, 'agency', baseCopy)).toBe(baseCopy.nextStepNegotiating);
+    expect(getCalendarDetailNextStepText(option, null, 'client', baseCopy)).toBe(baseCopy.nextStepAwaitingAgency);
+    expect(getCalendarDetailNextStepText(option, null, 'model', baseCopy)).toBe(baseCopy.nextStepNegotiating);
+  });
+
+  it('commercially settled + model pending: next-step matches approval (await model for client/agency)', () => {
+    const option = minimalOption({
+      proposed_price: 5000,
+      client_price_status: 'accepted',
+      final_status: 'option_confirmed',
+      status: 'in_negotiation',
+      model_approval: 'pending',
+      model_account_linked: true,
+    });
+    expect(getCalendarDetailNextStepText(option, null, 'client', baseCopy)).toBe(baseCopy.nextStepAwaitingModel);
+    expect(getCalendarDetailNextStepText(option, null, 'agency', baseCopy)).toBe(baseCopy.nextStepAwaitingModel);
+    expect(getCalendarDetailNextStepText(option, null, 'model', baseCopy)).toBe(baseCopy.nextStepYourConfirm);
+  });
+
+  it('job_confirmed: all roles see no-action next step', () => {
+    const option = minimalOption({
+      proposed_price: 100,
+      client_price_status: 'accepted',
+      final_status: 'job_confirmed',
+      status: 'confirmed',
+      model_approval: 'approved',
+    });
+    expect(getCalendarDetailNextStepText(option, null, 'client', baseCopy)).toBe(baseCopy.nextStepNoAction);
+    expect(getCalendarDetailNextStepText(option, null, 'agency', baseCopy)).toBe(baseCopy.nextStepNoAction);
+    expect(getCalendarDetailNextStepText(option, null, 'model', baseCopy)).toBe(baseCopy.nextStepNoAction);
+  });
 });

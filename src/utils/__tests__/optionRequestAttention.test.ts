@@ -1,4 +1,5 @@
 import {
+  deriveApprovalAttention,
   deriveNegotiationAttention,
   deriveSmartAttentionState,
   modelInboxRequiresModelConfirmation,
@@ -44,6 +45,7 @@ describe('deriveSmartAttentionState', () => {
         finalStatus: 'option_confirmed',
         clientPriceStatus: 'accepted',
         modelApproval: 'approved',
+        proposedPrice: 100,
       }),
     ).toBe('job_confirmation_pending');
   });
@@ -55,6 +57,7 @@ describe('deriveSmartAttentionState', () => {
         finalStatus: 'option_confirmed',
         clientPriceStatus: 'accepted',
         modelApproval: 'pending',
+        proposedPrice: 100,
       }),
     ).toBe('waiting_for_model');
   });
@@ -66,6 +69,7 @@ describe('deriveSmartAttentionState', () => {
         finalStatus: 'option_pending',
         clientPriceStatus: 'accepted',
         modelApproval: 'pending',
+        proposedPrice: 100,
       }),
     ).toBe('waiting_for_model');
   });
@@ -117,6 +121,47 @@ describe('deriveNegotiationAttention', () => {
         proposedPrice: 100,
       }),
     ).toBe('waiting_for_client_response');
+  });
+
+  it('does not return price_agreed when accepted in DB but no commercial anchor (aligns with footer lock)', () => {
+    expect(
+      deriveNegotiationAttention({
+        status: 'in_negotiation',
+        finalStatus: 'option_pending',
+        clientPriceStatus: 'accepted',
+        proposedPrice: null,
+        agencyCounterPrice: null,
+      }),
+    ).toBe('negotiation_open');
+  });
+});
+
+describe('deriveApprovalAttention', () => {
+  it('stays approval_inactive when accepted without commercial anchor', () => {
+    expect(
+      deriveApprovalAttention({
+        status: 'in_negotiation',
+        finalStatus: 'option_confirmed',
+        clientPriceStatus: 'accepted',
+        proposedPrice: null,
+        agencyCounterPrice: null,
+        modelApproval: 'pending',
+        modelAccountLinked: true,
+      }),
+    ).toBe('approval_inactive');
+  });
+
+  it('returns waiting_for_model_confirmation when price is commercially settled and model must confirm', () => {
+    expect(
+      deriveApprovalAttention({
+        status: 'in_negotiation',
+        finalStatus: 'option_confirmed',
+        clientPriceStatus: 'accepted',
+        proposedPrice: 500,
+        modelApproval: 'pending',
+        modelAccountLinked: true,
+      }),
+    ).toBe('waiting_for_model_confirmation');
   });
 });
 

@@ -628,9 +628,14 @@ export async function agencyCounterOfferStore(threadId: string, counterPrice: nu
   if (!req) return false;
   const ok = await setAgencyCounterOffer(req.id, counterPrice);
   if (!ok) return false;
-  req.agencyCounterPrice = counterPrice;
-  req.clientPriceStatus = 'pending';
-  req.finalStatus = 'option_pending';
+  const refreshedAfterRpc = await getOptionRequestById(req.id);
+  if (refreshedAfterRpc) {
+    Object.assign(req, toLocalRequest(refreshedAfterRpc));
+  } else {
+    req.agencyCounterPrice = counterPrice;
+    req.clientPriceStatus = 'pending';
+    req.finalStatus = 'option_pending';
+  }
   const inserted = await addOptionSystemMessage(req.id, 'agency_counter_offer', {
     price: counterPrice,
     currency,
@@ -650,7 +655,7 @@ export async function agencyCounterOfferStore(threadId: string, counterPrice: nu
   notifyClientAgencyCounterOffer(agency?.name ?? 'Agency');
 
   // Persistent DB notification so the client sees it in the notification bell.
-  const full = await getOptionRequestById(req.id);
+  const full = refreshedAfterRpc ?? (await getOptionRequestById(req.id));
   if (full?.client_id) {
     void createNotification({
       user_id: full.client_id,
