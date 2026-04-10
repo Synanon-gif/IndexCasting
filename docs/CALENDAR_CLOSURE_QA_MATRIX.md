@@ -4,6 +4,8 @@ This checklist supports the **Final Calendar Reality QA** after the calendar har
 
 **Baseline hardening commit (reference):** `8c691a6` — `fix(calendar): projection labels, refresh on negotiation, grid dedupe`
 
+**Closure follow-up (model pending-reject refresh):** `4e1e62d` — `fix(calendar): refresh model calendar after pending booking reject`
+
 ## Product decision (open)
 
 | Topic | Question | Default until decided |
