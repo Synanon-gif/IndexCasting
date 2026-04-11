@@ -64,6 +64,7 @@ import { ConfirmDestructiveModal } from '../components/ConfirmDestructiveModal';
 import { shouldShowSystemMessageForViewer } from '../components/optionNegotiation/filterSystemMessagesForViewer';
 import { getCalendarDetailNextStepForModelLocalOption } from '../utils/calendarDetailNextStep';
 import { MonthCalendarView } from '../components/MonthCalendarView';
+import { ModelCalendarMonthAgenda } from '../components/ModelCalendarMonthAgenda';
 import { CalendarViewModeBar, type CalendarViewMode } from '../components/CalendarViewModeBar';
 import { CalendarWeekGrid } from '../components/CalendarWeekGrid';
 import { CalendarDayTimeline } from '../components/CalendarDayTimeline';
@@ -604,8 +605,9 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   const modelCalendarViewHint = useMemo(() => {
     if (calendarViewMode === 'week') return uiCopy.calendar.viewModeHintWeek;
     if (calendarViewMode === 'day') return uiCopy.calendar.viewModeHintDay;
+    if (isMobileModel && calendarViewMode === 'month') return uiCopy.calendar.viewModeHintMonthAgenda;
     return uiCopy.calendar.viewModeHintMonth;
-  }, [calendarViewMode]);
+  }, [calendarViewMode, isMobileModel]);
 
   const shiftModelFocus = (d: string) => {
     setSelectedDate(d);
@@ -937,16 +939,36 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
             sectionHint={modelCalendarViewHint}
           />
 
-          <MonthCalendarView
-            year={calMonth.year}
-            month={calMonth.month}
-            eventsByDate={modelEventsByDate}
-            selectedDate={selectedDate}
-            compact={calendarViewMode !== 'month'}
-            onSelectDay={(d) => shiftModelFocus(d)}
-            onPrevMonth={() => setCalMonth((p) => (p.month === 0 ? { year: p.year - 1, month: 11 } : { ...p, month: p.month - 1 }))}
-            onNextMonth={() => setCalMonth((p) => (p.month === 11 ? { year: p.year + 1, month: 0 } : { ...p, month: p.month + 1 }))}
-          />
+          {isMobileModel && calendarViewMode === 'month' ? (
+            <ModelCalendarMonthAgenda
+              calendarMonth={calMonth}
+              setCalendarMonth={setCalMonth}
+              selectedDate={selectedDate}
+              setSelectedDate={setSelectedDate}
+              entries={calEntries}
+              onEntryPress={(entry) => {
+                setOpenEntry(entry);
+                setSharedNoteDraft('');
+                const existing =
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  (entry.booking_details as any)?.model_notes ??
+                  entry.note ??
+                  '';
+                setModelNotesDraft(existing);
+              }}
+            />
+          ) : (
+            <MonthCalendarView
+              year={calMonth.year}
+              month={calMonth.month}
+              eventsByDate={modelEventsByDate}
+              selectedDate={selectedDate}
+              compact={calendarViewMode !== 'month'}
+              onSelectDay={(d) => shiftModelFocus(d)}
+              onPrevMonth={() => setCalMonth((p) => (p.month === 0 ? { year: p.year - 1, month: 11 } : { ...p, month: p.month - 1 }))}
+              onNextMonth={() => setCalMonth((p) => (p.month === 11 ? { year: p.year + 1, month: 0 } : { ...p, month: p.month + 1 }))}
+            />
+          )}
 
           {calendarViewMode === 'week' && (
             <CalendarWeekGrid
@@ -1017,7 +1039,9 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
               <Text style={st.sectionLabel}>
                 {uiCopy.calendar.selectedDayPrefix} {selectedDate}
               </Text>
-              {entriesForDate.length === 0 ? (
+              {isMobileModel && calendarViewMode === 'month' ? (
+                <Text style={[st.metaText, { marginTop: spacing.xs }]}>{uiCopy.calendar.agendaDayHint}</Text>
+              ) : entriesForDate.length === 0 ? (
                 <Text style={st.metaText}>{uiCopy.calendar.noEntriesThisDay}</Text>
               ) : (
                 <View style={{ marginTop: spacing.sm, gap: spacing.xs }}>

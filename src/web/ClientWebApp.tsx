@@ -391,8 +391,12 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   const auth = useAuth();
   const { width: clientWindowWidth, height: clientWindowHeight } = useWindowDimensions();
   const clientIsMobile = isMobileWidth(clientWindowWidth);
-  const shellPaddingH = clientIsMobile ? spacing.sm : spacing.lg;
-  const [tab, setTab] = useState<TopTab>('dashboard');
+  /** Mobile: 16px horizontal — readable touch targets without wasting width like oversized gutters. */
+  const shellPaddingH = clientIsMobile ? spacing.md : spacing.lg;
+  const [tab, setTab] = useState<TopTab>(() =>
+    typeof window !== 'undefined' && isMobileWidth(window.innerWidth) ? 'messages' : 'dashboard',
+  );
+  const [mobileWorkspaceMenuOpen, setMobileWorkspaceMenuOpen] = useState(false);
   const [showActiveOptions, setShowActiveOptions] = useState(false);
   const [models, setModels] = useState<ModelSummary[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -1985,15 +1989,31 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       <View style={[styles.appShell, { paddingBottom: bottomTabInset, paddingTop: Math.max(spacing.xs, insets.top + 2), paddingHorizontal: shellPaddingH }]}>
         <View style={styles.topBar}>
           <View style={styles.topBarRow}>
-            <TouchableOpacity
-              style={styles.backArrowTouchable}
-              onPress={onBackToRoleSelection}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            >
-              <Text style={{ ...typography.label, fontSize: 12, color: colors.textSecondary }}>Logout</Text>
-            </TouchableOpacity>
-            <Text style={styles.brand}>INDEX CASTING</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+            <View style={styles.topBarSide}>
+              <TouchableOpacity
+                style={styles.backArrowTouchable}
+                onPress={onBackToRoleSelection}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
+                <Text style={{ ...typography.label, fontSize: 12, color: colors.textSecondary }}>Logout</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.topBarCenter}>
+              <Text style={styles.brand} numberOfLines={1}>
+                INDEX CASTING
+              </Text>
+            </View>
+            <View style={[styles.topBarSide, styles.topBarSideRight]}>
+              {clientIsMobile ? (
+                <TouchableOpacity
+                  onPress={() => setMobileWorkspaceMenuOpen(true)}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                >
+                  <Text style={{ fontSize: 12, color: colors.textSecondary, fontWeight: '600' }}>
+                    {uiCopy.clientWeb.workspaceMenu.openLabel}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
               <TouchableOpacity
                 onPress={() => setSettingsOpen(true)}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
@@ -2181,6 +2201,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                 );
               }}
               onAddEvent={() => isRealClient && setShowAddManualEvent(true)}
+              isMobile={clientIsMobile}
             />
           </View>
         )}
@@ -2780,6 +2801,53 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         <SettingsPanel realClientId={realClientId} onClose={() => setSettingsOpen(false)} />
       )}
 
+      {clientIsMobile ? (
+        <Modal
+          visible={mobileWorkspaceMenuOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setMobileWorkspaceMenuOpen(false)}
+        >
+          <View style={styles.workspaceMenuOuter}>
+            <TouchableOpacity
+              style={styles.workspaceMenuBackdropTouchable}
+              activeOpacity={1}
+              onPress={() => setMobileWorkspaceMenuOpen(false)}
+            />
+            <View style={styles.workspaceMenuCard}>
+              <Text style={styles.workspaceMenuTitle}>{uiCopy.clientWeb.workspaceMenu.title}</Text>
+              <Text style={styles.workspaceMenuSubtitle}>{uiCopy.clientWeb.workspaceMenu.subtitle}</Text>
+              {(
+                [
+                  ['dashboard', uiCopy.clientWeb.bottomTabs.dashboard],
+                  ['discover', uiCopy.clientWeb.bottomTabs.discover],
+                  ['calendar', uiCopy.clientWeb.bottomTabs.calendar],
+                  ['team', uiCopy.clientWeb.bottomTabs.team],
+                  ['profile', uiCopy.clientWeb.bottomTabs.profile],
+                ] as const
+              ).map(([k, label]) => (
+                <TouchableOpacity
+                  key={k}
+                  style={styles.workspaceMenuRow}
+                  onPress={() => {
+                    handleBottomTabPress(k);
+                    setMobileWorkspaceMenuOpen(false);
+                  }}
+                >
+                  <Text style={styles.workspaceMenuRowLabel}>{label}</Text>
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity
+                style={styles.workspaceMenuClose}
+                onPress={() => setMobileWorkspaceMenuOpen(false)}
+              >
+                <Text style={styles.workspaceMenuCloseLabel}>{uiCopy.common.close}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      ) : null}
+
       <View
         style={[styles.bottomTabBar, clientMobileWebBottomTabPosition, { paddingBottom: insets.bottom }]}
         onLayout={(e) => {
@@ -2789,37 +2857,70 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
           }
         }}
       >
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.bottomTabRow}>
-          {(['dashboard', 'discover', 'messages', 'calendar', 'agencies', 'projects', 'profile'] as TopTab[]).map((key) => (
-            <TouchableOpacity
-              key={key}
-              onPress={() => handleBottomTabPress(key)}
-              style={styles.bottomTabItem}
-            >
-              <Text style={[styles.bottomTabLabel, tab === key && styles.bottomTabLabelActive]}>
-                {key === 'dashboard'
-                  ? uiCopy.clientWeb.bottomTabs.dashboard
-                  : key === 'discover'
-                  ? uiCopy.clientWeb.bottomTabs.discover
-                  : key === 'projects'
-                  ? uiCopy.clientWeb.bottomTabs.projects
-                  : key === 'calendar'
-                  ? uiCopy.clientWeb.bottomTabs.calendar
-                  : key === 'agencies'
-                  ? uiCopy.clientWeb.bottomTabs.agencies
-                  : key === 'team'
-                  ? uiCopy.clientWeb.bottomTabs.team
-                  : key === 'profile'
-                  ? uiCopy.clientWeb.bottomTabs.profile
-                  : uiCopy.clientWeb.bottomTabs.messages}
-              </Text>
-              {key === 'messages' && hasNew && (
-                <View style={styles.bottomTabDot} />
-              )}
-              {tab === key && <View style={styles.bottomTabUnderline} />}
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+        {clientIsMobile ? (
+          <View style={styles.bottomTabRowMobile}>
+            {(['agencies', 'messages', 'projects'] as const).map((key) => {
+              const label =
+                key === 'agencies'
+                  ? uiCopy.clientWeb.mobileBottomTabs.agency
+                  : key === 'messages'
+                    ? uiCopy.clientWeb.mobileBottomTabs.messages
+                    : uiCopy.clientWeb.mobileBottomTabs.projects;
+              const active = tab === key;
+              return (
+                <TouchableOpacity
+                  key={key}
+                  onPress={() => handleBottomTabPress(key)}
+                  style={styles.bottomTabItemMobile}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                >
+                  <Text
+                    style={[styles.bottomTabLabelMobile, active && styles.bottomTabLabelActive]}
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                  >
+                    {label}
+                  </Text>
+                  {key === 'messages' && hasNew ? <View style={styles.bottomTabDotMobile} /> : null}
+                  {active ? <View style={styles.bottomTabUnderlineMobile} /> : <View style={styles.bottomTabUnderlinePlaceholder} />}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        ) : (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.bottomTabRow}>
+            {(['dashboard', 'discover', 'messages', 'calendar', 'agencies', 'projects', 'profile'] as TopTab[]).map((key) => (
+              <TouchableOpacity
+                key={key}
+                onPress={() => handleBottomTabPress(key)}
+                style={styles.bottomTabItem}
+              >
+                <Text style={[styles.bottomTabLabel, tab === key && styles.bottomTabLabelActive]}>
+                  {key === 'dashboard'
+                    ? uiCopy.clientWeb.bottomTabs.dashboard
+                    : key === 'discover'
+                      ? uiCopy.clientWeb.bottomTabs.discover
+                      : key === 'projects'
+                        ? uiCopy.clientWeb.bottomTabs.projects
+                        : key === 'calendar'
+                          ? uiCopy.clientWeb.bottomTabs.calendar
+                          : key === 'agencies'
+                            ? uiCopy.clientWeb.bottomTabs.agencies
+                            : key === 'team'
+                              ? uiCopy.clientWeb.bottomTabs.team
+                              : key === 'profile'
+                                ? uiCopy.clientWeb.bottomTabs.profile
+                                : uiCopy.clientWeb.bottomTabs.messages}
+                </Text>
+                {key === 'messages' && hasNew && (
+                  <View style={styles.bottomTabDot} />
+                )}
+                {tab === key && <View style={styles.bottomTabUnderline} />}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
       </View>
     </View>
   );
@@ -3158,6 +3259,8 @@ type ClientCalendarViewProps = {
   canAddManualEvents?: boolean;
   /** Extra bottom padding so list clears fixed client bottom tab bar when scrolled. */
   scrollBottomInset?: number;
+  /** Narrow layout: month view uses scrollable agenda inside B2B body — hide duplicate list below. */
+  isMobile?: boolean;
   onRefresh: () => void;
   onOpenDetails: (item: ClientCalendarItem) => void;
   onOpenManualEvent: (event: UserCalendarEvent) => void;
@@ -3173,6 +3276,7 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
   loading,
   canAddManualEvents = true,
   scrollBottomInset = 0,
+  isMobile = false,
   onRefresh,
   onOpenDetails,
   onOpenManualEvent,
@@ -3341,6 +3445,7 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
         eventsByDate={eventsByDate}
         filteredUnified={filteredUnified}
         onOpenUnifiedRow={openUnifiedRow}
+        assignmentByClientOrgId={assignmentByClientOrgId}
       />
 
       {selectedDate && (
@@ -3355,24 +3460,32 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
           >
             <Text style={styles.filterPillLabel}>+ Event on this day</Text>
           </TouchableOpacity>
-          {(eventsByDate[selectedDate] ?? []).length === 0 ? (
-            <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginTop: spacing.xs }}>
-              {uiCopy.calendar.noEntriesThisDay}
-            </Text>
+          {!isMobile ? (
+            <>
+              {(eventsByDate[selectedDate] ?? []).length === 0 ? (
+                <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginTop: spacing.xs }}>
+                  {uiCopy.calendar.noEntriesThisDay}
+                </Text>
+              ) : (
+                (eventsByDate[selectedDate] ?? []).map((ev) => (
+                  <TouchableOpacity
+                    key={ev.id}
+                    style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, paddingVertical: 4 }}
+                    onPress={() => {
+                      const row = filteredUnified.find((r) => r.id === ev.id);
+                      if (row) openUnifiedRow(row);
+                    }}
+                  >
+                    <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: ev.color, marginRight: spacing.sm }} />
+                    <Text style={styles.metaText}>{ev.title}</Text>
+                  </TouchableOpacity>
+                ))
+              )}
+            </>
           ) : (
-            (eventsByDate[selectedDate] ?? []).map((ev) => (
-              <TouchableOpacity
-                key={ev.id}
-                style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, paddingVertical: 4 }}
-                onPress={() => {
-                  const row = filteredUnified.find((r) => r.id === ev.id);
-                  if (row) openUnifiedRow(row);
-                }}
-              >
-                <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: ev.color, marginRight: spacing.sm }} />
-                <Text style={styles.metaText}>{ev.title}</Text>
-              </TouchableOpacity>
-            ))
+            <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginTop: spacing.xs }}>
+              {uiCopy.calendar.agendaDayHint}
+            </Text>
           )}
         </View>
       )}
@@ -3383,8 +3496,9 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
         </Text>
       )}
 
-      {/* Inline list — no nested ScrollView; the outer ScrollView handles scroll */}
-        {sortedUnified.map((row) => {
+      {/* Inline list — desktop / tablet; mobile month uses UnifiedCalendarAgenda inside B2B */}
+        {!isMobile &&
+          sortedUnified.map((row) => {
           if (row.kind === 'manual') {
             const ev = row.ev;
             return (
@@ -6056,9 +6170,28 @@ const styles = StyleSheet.create({
   },
   topBarRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     paddingBottom: spacing.xs,
+    width: '100%',
+  },
+  topBarSide: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    minWidth: 0,
+  },
+  topBarSideRight: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  topBarCenter: {
+    flexShrink: 0,
+    paddingHorizontal: spacing.xs,
+    alignItems: 'center',
+    justifyContent: 'center',
+    maxWidth: '46%',
   },
   bottomTabBar: {
     position: 'absolute' as const,
@@ -6109,6 +6242,111 @@ const styles = StyleSheet.create({
     width: 24,
     borderRadius: 1,
     backgroundColor: colors.textPrimary,
+  },
+  bottomTabRowMobile: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    width: '100%',
+    paddingHorizontal: spacing.xs,
+    gap: 0,
+  },
+  bottomTabItemMobile: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xs,
+    paddingHorizontal: 2,
+    position: 'relative' as const,
+  },
+  bottomTabLabelMobile: {
+    ...typography.label,
+    fontSize: 11,
+    lineHeight: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    width: '100%',
+    paddingHorizontal: 2,
+  },
+  bottomTabUnderlineMobile: {
+    marginTop: 4,
+    height: 2,
+    width: '72%',
+    maxWidth: 56,
+    borderRadius: 1,
+    backgroundColor: colors.textPrimary,
+  },
+  bottomTabUnderlinePlaceholder: {
+    marginTop: 4,
+    height: 2,
+    width: '72%',
+    maxWidth: 56,
+    opacity: 0,
+  },
+  bottomTabDotMobile: {
+    position: 'absolute' as const,
+    top: 0,
+    right: '12%',
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#E74C3C',
+  },
+  workspaceMenuOuter: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.md,
+  },
+  workspaceMenuBackdropTouchable: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  workspaceMenuCard: {
+    width: '100%',
+    maxWidth: 400,
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    zIndex: 2,
+  },
+  workspaceMenuTitle: {
+    ...typography.heading,
+    fontSize: 17,
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
+  },
+  workspaceMenuSubtitle: {
+    ...typography.body,
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: spacing.md,
+    lineHeight: 18,
+  },
+  workspaceMenuRow: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    borderRadius: 10,
+    marginBottom: 2,
+    backgroundColor: colors.background,
+  },
+  workspaceMenuRowLabel: {
+    ...typography.label,
+    fontSize: 14,
+    color: colors.textPrimary,
+    fontWeight: '600',
+  },
+  workspaceMenuClose: {
+    marginTop: spacing.md,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+  },
+  workspaceMenuCloseLabel: {
+    ...typography.label,
+    fontSize: 13,
+    color: colors.textSecondary,
   },
   backArrowTouchable: {
     marginRight: spacing.sm,

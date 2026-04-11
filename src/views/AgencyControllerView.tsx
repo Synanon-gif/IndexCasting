@@ -751,6 +751,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
           teamMembers={teamMembers}
           currentUserId={session?.user?.id ?? null}
           loading={calendarLoading}
+          isMobileLayout={agencyIsMobile}
           onRefresh={loadAgencyCalendar}
           onOpenDetails={(item) => {
             setSelectedCalendarItem(item);
@@ -1668,6 +1669,8 @@ type AgencyCalendarTabProps = {
   teamMembers: Array<{ user_id: string; display_name: string | null; email?: string | null }>;
   currentUserId: string | null;
   loading: boolean;
+  /** Narrow viewport: scrollable month agenda — hide duplicate list below calendar body. */
+  isMobileLayout?: boolean;
   onRefresh: () => void;
   onOpenDetails: (item: AgencyCalendarItem) => void;
   onOpenManualEvent: (ev: UserCalendarEvent) => void;
@@ -1720,6 +1723,7 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
   teamMembers,
   currentUserId,
   loading,
+  isMobileLayout = false,
   onRefresh,
   onOpenDetails,
   onOpenManualEvent,
@@ -1937,6 +1941,7 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
         eventsByDate={eventsByDate}
         filteredUnified={filteredUnified}
         onOpenUnifiedRow={openUnifiedRow}
+        assignmentByClientOrgId={assignmentByClientOrgId}
       />
 
       {selectedDate && (
@@ -1947,22 +1952,28 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
           <TouchableOpacity style={[s.filterPill, { alignSelf: 'flex-start', marginTop: spacing.xs }]} onPress={onAddEvent}>
             <Text style={s.filterPillLabel}>+ Event on this day</Text>
           </TouchableOpacity>
-          {(eventsByDate[selectedDate] ?? []).length === 0 ? (
-            <Text style={s.metaText}>{uiCopy.calendar.noEntriesThisDay}</Text>
+          {!isMobileLayout ? (
+            <>
+              {(eventsByDate[selectedDate] ?? []).length === 0 ? (
+                <Text style={s.metaText}>{uiCopy.calendar.noEntriesThisDay}</Text>
+              ) : (
+                (eventsByDate[selectedDate] ?? []).map((ev: CalendarDayEvent) => (
+                  <TouchableOpacity
+                    key={ev.id}
+                    style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, paddingVertical: 4 }}
+                    onPress={() => {
+                      const row = filteredUnified.find((r) => r.id === ev.id);
+                      if (row) openUnifiedRow(row);
+                    }}
+                  >
+                    <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: ev.color, marginRight: spacing.sm }} />
+                    <Text style={s.metaText}>{ev.title}</Text>
+                  </TouchableOpacity>
+                ))
+              )}
+            </>
           ) : (
-            (eventsByDate[selectedDate] ?? []).map((ev: CalendarDayEvent) => (
-              <TouchableOpacity
-                key={ev.id}
-                style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, paddingVertical: 4 }}
-                onPress={() => {
-                  const row = filteredUnified.find((r) => r.id === ev.id);
-                  if (row) openUnifiedRow(row);
-                }}
-              >
-                <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: ev.color, marginRight: spacing.sm }} />
-                <Text style={s.metaText}>{ev.title}</Text>
-              </TouchableOpacity>
-            ))
+            <Text style={s.metaText}>{uiCopy.calendar.agendaDayHint}</Text>
           )}
         </View>
       )}
@@ -1971,7 +1982,8 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
         <Text style={s.metaText}>No calendar entries yet.</Text>
       )}
 
-      {sortedUnified.map((row) => {
+      {!isMobileLayout &&
+        sortedUnified.map((row) => {
         if (row.kind === 'manual') {
           const ev = row.ev;
           return (

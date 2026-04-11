@@ -229,6 +229,12 @@ export const uiCopy = {
     /** Shown under the view switch when Month is selected. */
     viewModeHintMonth:
       'Month shows the full grid. Use Week or Day for more detail on bookings and options.',
+    /** Narrow screens: month view is a scrollable agenda list instead of a dot grid. */
+    viewModeHintMonthAgenda:
+      'Scroll the list for this month. Use Week or Day for hourly detail.',
+    agendaEmptyMonth: 'No entries in this month.',
+    /** Shown under “Day:” on mobile when the scrollable agenda already lists that day’s entries. */
+    agendaDayHint: 'Entries for this day are listed in the month agenda above.',
     viewModeHintWeek: 'Week shows seven days and timed events. Tap a day or an event to open it.',
     viewModeHintDay: 'Day lists everything scheduled on the selected day.',
     /** Prefix before a YYYY-MM-DD in the selected-day panel. */
@@ -394,6 +400,17 @@ export const uiCopy = {
       team: 'Team',
       messages: 'Messages',
       profile: 'Profile',
+    },
+    /** Mobile primary bar — short labels, equal columns; full feature set via workspace menu. */
+    mobileBottomTabs: {
+      agency: 'Agency',
+      messages: 'Messages',
+      projects: 'Projects',
+    },
+    workspaceMenu: {
+      openLabel: 'More',
+      title: 'Workspace',
+      subtitle: 'Open other areas of your organization account.',
     },
   },
   auth: {
