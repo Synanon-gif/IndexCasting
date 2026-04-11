@@ -69,6 +69,8 @@ export const BookingChatView: React.FC<Props> = ({
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [fileRightsConfirmed, setFileRightsConfirmed] = useState(false);
+  /** Web-only: consent row is hidden until user taps the attach button. */
+  const [showConsentRow, setShowConsentRow] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   /** Blocks rapid double-send (client-side only; not server rate limiting). */
   const lastSendAtRef = useRef(0);
@@ -179,12 +181,32 @@ export const BookingChatView: React.FC<Props> = ({
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
+      setShowConsentRow(false);
+      setFileRightsConfirmed(false);
     }
   };
 
   const openFileInput = () => {
     if (Platform.OS === 'web' && fileInputRef.current) {
       fileInputRef.current.click();
+    }
+  };
+
+  /** On web: show consent row first; on native: open picker directly. */
+  const handleAttachPress = () => {
+    if (Platform.OS !== 'web') {
+      openFileInput();
+      return;
+    }
+    setShowConsentRow(true);
+  };
+
+  /** When user checks the consent box, auto-open the file picker. */
+  const handleConsentToggle = () => {
+    const next = !fileRightsConfirmed;
+    setFileRightsConfirmed(next);
+    if (next) {
+      openFileInput();
     }
   };
 
@@ -372,10 +394,10 @@ export const BookingChatView: React.FC<Props> = ({
         })}
       </ScrollView>
       {uploadError ? <Text style={styles.uploadError}>{uploadError}</Text> : null}
-      {Platform.OS === 'web' ? (
+      {Platform.OS === 'web' && showConsentRow ? (
         <TouchableOpacity
           style={styles.rightsRow}
-          onPress={() => setFileRightsConfirmed(!fileRightsConfirmed)}
+          onPress={handleConsentToggle}
           accessibilityRole="checkbox"
           accessibilityState={{ checked: fileRightsConfirmed }}
         >
@@ -401,10 +423,10 @@ export const BookingChatView: React.FC<Props> = ({
         <TouchableOpacity
           style={[
             styles.attachBtn,
-            (!fromRole || uploading || (Platform.OS === 'web' && !fileRightsConfirmed)) && { opacity: 0.4 },
+            (!fromRole || uploading) && { opacity: 0.4 },
           ]}
-          onPress={openFileInput}
-          disabled={uploading || (Platform.OS === 'web' && !fileRightsConfirmed)}
+          onPress={handleAttachPress}
+          disabled={uploading}
         >
           {uploading ? (
             <ActivityIndicator size="small" color={colors.textSecondary} />

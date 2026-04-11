@@ -177,6 +177,8 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   const [sendError, setSendError] = useState<string | null>(null);
   /** Web-only: must be checked before opening file picker (paired with confirmImageRights on upload). */
   const [fileRightsConfirmed, setFileRightsConfirmed] = useState(false);
+  /** Web-only: consent row is hidden until user taps the attach button. */
+  const [showConsentRow, setShowConsentRow] = useState(false);
   const [bookingActionLoading, setBookingActionLoading] = useState<string | null>(null);
 
   const handleBookingAction = async (bookingEventId: string, newStatus: BookingEventStatus) => {
@@ -208,6 +210,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
 
   useEffect(() => {
     setFileRightsConfirmed(false);
+    setShowConsentRow(false);
   }, [conversationId]);
 
   useEffect(() => {
@@ -425,12 +428,32 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
+      setShowConsentRow(false);
+      setFileRightsConfirmed(false);
     }
   };
 
   const openFileInput = () => {
     if (Platform.OS === 'web' && fileInputRef.current) {
       fileInputRef.current.click();
+    }
+  };
+
+  /** On web: show consent row first; on native: open picker directly. */
+  const handleAttachPress = () => {
+    if (Platform.OS !== 'web') {
+      openFileInput();
+      return;
+    }
+    setShowConsentRow(true);
+  };
+
+  /** When user checks the consent box, auto-open the file picker. */
+  const handleConsentToggle = () => {
+    const next = !fileRightsConfirmed;
+    setFileRightsConfirmed(next);
+    if (next) {
+      openFileInput();
     }
   };
 
@@ -763,10 +786,10 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
       {uploadError ? (
         <Text style={styles.uploadError}>{uploadError}</Text>
       ) : null}
-      {Platform.OS === 'web' ? (
+      {Platform.OS === 'web' && showConsentRow ? (
         <TouchableOpacity
           style={styles.rightsRow}
-          onPress={() => setFileRightsConfirmed(!fileRightsConfirmed)}
+          onPress={handleConsentToggle}
           accessibilityRole="checkbox"
           accessibilityState={{ checked: fileRightsConfirmed }}
         >
@@ -793,12 +816,10 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
         <TouchableOpacity
           style={[
             styles.attachBtn,
-            (!viewerUserId ||
-              uploading ||
-              (Platform.OS === 'web' && !fileRightsConfirmed)) && { opacity: 0.4 },
+            (!viewerUserId || uploading) && { opacity: 0.4 },
           ]}
-          onPress={openFileInput}
-          disabled={!viewerUserId || uploading || (Platform.OS === 'web' && !fileRightsConfirmed)}
+          onPress={handleAttachPress}
+          disabled={!viewerUserId || uploading}
         >
           {uploading ? (
             <ActivityIndicator size="small" color={colors.textSecondary} />
