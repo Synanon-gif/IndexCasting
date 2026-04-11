@@ -197,6 +197,231 @@ export const BookingChatView: React.FC<Props> = ({
     }
   };
 
+  // Whether the chat is rendered as a full inset panel (above tab bar) vs a floating modal card.
+  const isInset = presentation === 'insetAboveBottomNav';
+
+  // In inset mode, messages expand to fill remaining space (flex:1).
+  // In modal mode on native, cap height to avoid overflow.
+  const messagesScrollStyle = isInset || Platform.OS === 'web'
+    ? [styles.messages, { flex: 1, minHeight: 0 }]
+    : [styles.messages, { maxHeight: bookingMessagesMaxHeight }];
+
+  // Shared inner content (header + optional profile strip + messages + input)
+  const chatInner = (
+    <>
+      <View style={styles.header}>
+        <View style={{ flex: 1 }}>
+          {fromRole === 'model' ? (
+            <View style={styles.modelAgencyBanner}>
+              <Text style={styles.modelAgencyKicker}>You are chatting with</Text>
+              <TouchableOpacity
+                style={styles.brandRow}
+                disabled={!agencyOrgIdForProfile}
+                onPress={() => agencyOrgIdForProfile && setShowAgencyProfile(true)}
+                activeOpacity={agencyOrgIdForProfile ? 0.7 : 1}
+              >
+                {agencyLogoUrl ? (
+                  <Image source={{ uri: agencyLogoUrl }} style={styles.agencyLogo} resizeMode="contain" />
+                ) : (
+                  <View style={styles.agencyLogoPlaceholder}>
+                    <Text style={styles.agencyLogoLetter}>{displayAgencyName.charAt(0).toUpperCase()}</Text>
+                  </View>
+                )}
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.agencyName, agencyOrgIdForProfile ? styles.agencyNameClickable : null]}>{displayAgencyName}</Text>
+                  {thread ? <Text style={styles.modelLine}>As: {thread.modelName}</Text> : null}
+                </View>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View>
+              <Text style={styles.title}>{thread ? thread.modelName : 'Chat'}</Text>
+              {application && (
+                <Text style={styles.subtitle}>
+                  {application.city || '—'} · {application.height} cm · {application.gender || '—'}
+                </Text>
+              )}
+              {thread?.chatType === 'active_model' && (
+                <View style={styles.chatTypeBadge}>
+                  <Text style={styles.chatTypeBadgeLabel}>Active Model</Text>
+                </View>
+              )}
+            </View>
+          )}
+        </View>
+        <View style={{ alignItems: 'flex-end', gap: spacing.xs }}>
+          {fromRole === 'agency' && Platform.OS === 'web' && (
+            <TouchableOpacity onPress={copyBookingLink}>
+              <Text style={styles.copyLinkLabel}>Link for model</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity onPress={onClose} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+            <Text style={styles.closeLabel}>Close</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+      {application && (
+        <View style={styles.profileRow}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {[application.images?.closeUp, application.images?.fullBody, application.images?.profile]
+              .filter(Boolean)
+              .map((uri, idx) => (
+                <Image
+                  key={idx}
+                  source={{ uri: uri! }}
+                  style={styles.profileImage}
+                  resizeMode="contain"
+                />
+              ))}
+          </ScrollView>
+        </View>
+      )}
+      <ScrollView
+        style={messagesScrollStyle}
+        contentContainerStyle={[styles.messagesContent, { flexGrow: 1 }]}
+        keyboardShouldPersistTaps="handled"
+      >
+        {messages.map((msg) => {
+          const isSelf = msg.from === fromRole;
+          const resolvedFileUrl = msg.fileUrl ? (signedUrls[msg.fileUrl] ?? null) : null;
+          const isImage = !!msg.fileType && msg.fileType.startsWith('image/');
+          return (
+            <View key={msg.id} style={[styles.bubbleWrapper, isSelf && styles.bubbleWrapperSelf]}>
+              {/* Image attachment */}
+              {msg.fileUrl && isImage ? (
+                resolvedFileUrl ? (
+                  <Pressable onPress={() => openUrl(resolvedFileUrl)}>
+                    <Image
+                      source={{ uri: resolvedFileUrl }}
+                      style={styles.attachedImage}
+                      resizeMode="cover"
+                    />
+                  </Pressable>
+                ) : (
+                  <View style={styles.attachedImagePlaceholder}>
+                    <ActivityIndicator size="small" color={colors.textSecondary} />
+                  </View>
+                )
+              ) : null}
+              {/* Non-image file attachment */}
+              {msg.fileUrl && !isImage ? (
+                <Pressable
+                  style={[styles.fileCard, isSelf && styles.fileCardSelf]}
+                  onPress={() => resolvedFileUrl && openUrl(resolvedFileUrl)}
+                >
+                  <Text style={styles.fileCardIcon}>📎</Text>
+                  <Text style={[styles.fileCardLabel, isSelf && styles.fileCardLabelSelf]} numberOfLines={1}>
+                    Attachment
+                  </Text>
+                  <Text style={styles.fileCardOpen}>Open</Text>
+                </Pressable>
+              ) : null}
+              {/* Text content */}
+              {msg.text ? (
+                (() => {
+                  const rc = bubbleColorsForSender(msg.from);
+                  return (
+                    <View
+                      style={[
+                        styles.bubble,
+                        {
+                          backgroundColor: rc.bubbleBackground,
+                          borderWidth: StyleSheet.hairlineWidth,
+                          borderColor: rc.borderColor,
+                          alignSelf: isSelf ? 'flex-end' : 'flex-start',
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.bubbleText, { color: rc.bubbleText }]}>{msg.text}</Text>
+                    </View>
+                  );
+                })()
+              ) : null}
+            </View>
+          );
+        })}
+      </ScrollView>
+      {uploadError ? <Text style={styles.uploadError}>{uploadError}</Text> : null}
+      {Platform.OS === 'web' ? (
+        <TouchableOpacity
+          style={styles.rightsRow}
+          onPress={() => setFileRightsConfirmed(!fileRightsConfirmed)}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: fileRightsConfirmed }}
+        >
+          <View style={[styles.rightsBox, fileRightsConfirmed && styles.rightsBoxOn]}>
+            {fileRightsConfirmed ? <Text style={styles.rightsCheck}>✓</Text> : null}
+          </View>
+          <Text style={styles.rightsLabel}>{uiCopy.legal.chatFileRightsCheckbox}</Text>
+        </TouchableOpacity>
+      ) : null}
+      <View style={styles.inputRow}>
+        {Platform.OS === 'web' ? (
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void handleFileSelected(file);
+            }}
+          />
+        ) : null}
+        <TouchableOpacity
+          style={[
+            styles.attachBtn,
+            (!fromRole || uploading || (Platform.OS === 'web' && !fileRightsConfirmed)) && { opacity: 0.4 },
+          ]}
+          onPress={openFileInput}
+          disabled={uploading || (Platform.OS === 'web' && !fileRightsConfirmed)}
+        >
+          {uploading ? (
+            <ActivityIndicator size="small" color={colors.textSecondary} />
+          ) : (
+            <Text style={styles.attachBtnLabel}>📎</Text>
+          )}
+        </TouchableOpacity>
+        <TextInput
+          value={chatInput}
+          onChangeText={setChatInput}
+          placeholder="Message…"
+          placeholderTextColor={colors.textSecondary}
+          style={styles.input}
+          editable={!uploading}
+          onSubmitEditing={sendMessage}
+        />
+        <TouchableOpacity style={[styles.send, uploading && { opacity: 0.5 }]} onPress={sendMessage} disabled={uploading}>
+          <Text style={styles.sendLabel}>Send</Text>
+        </TouchableOpacity>
+      </View>
+    </>
+  );
+
+  const orgProfileModal = showAgencyProfile && agencyOrgIdForProfile ? (
+    <OrgProfileModal
+      visible
+      onClose={() => setShowAgencyProfile(false)}
+      orgType="agency"
+      organizationId={agencyOrgIdForProfile}
+      agencyId={applicationAgencyId ?? application?.agencyId ?? null}
+      orgName={displayAgencyName}
+    />
+  ) : null;
+
+  // insetAboveBottomNav: fills the full area above the tab bar (true WhatsApp-style fullscreen panel).
+  if (isInset) {
+    return (
+      <View style={[styles.insetShell, { bottom: bottomInset }]}>
+        <View style={styles.insetPanel}>
+          {chatInner}
+        </View>
+        {orgProfileModal}
+      </View>
+    );
+  }
+
+  // modal: centered floating card with dim overlay.
   const chatBody = (
     <View style={styles.overlay}>
       <View
@@ -206,229 +431,15 @@ export const BookingChatView: React.FC<Props> = ({
           Platform.OS === 'web' && { flex: 1, minHeight: 0, flexDirection: 'column' as const },
         ]}
       >
-          <View style={styles.header}>
-            <View style={{ flex: 1 }}>
-              {fromRole === 'model' ? (
-                <View style={styles.modelAgencyBanner}>
-                  <Text style={styles.modelAgencyKicker}>You are chatting with</Text>
-                  <TouchableOpacity
-                    style={styles.brandRow}
-                    disabled={!agencyOrgIdForProfile}
-                    onPress={() => agencyOrgIdForProfile && setShowAgencyProfile(true)}
-                    activeOpacity={agencyOrgIdForProfile ? 0.7 : 1}
-                  >
-                    {agencyLogoUrl ? (
-                      <Image source={{ uri: agencyLogoUrl }} style={styles.agencyLogo} resizeMode="contain" />
-                    ) : (
-                      <View style={styles.agencyLogoPlaceholder}>
-                        <Text style={styles.agencyLogoLetter}>{displayAgencyName.charAt(0).toUpperCase()}</Text>
-                      </View>
-                    )}
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.agencyName, agencyOrgIdForProfile ? styles.agencyNameClickable : null]}>{displayAgencyName}</Text>
-                      {thread ? <Text style={styles.modelLine}>As: {thread.modelName}</Text> : null}
-                    </View>
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <View>
-                  <Text style={styles.title}>{thread ? thread.modelName : 'Chat'}</Text>
-                  {application && (
-                    <Text style={styles.subtitle}>
-                      {application.city || '—'} · {application.height} cm · {application.gender || '—'}
-                    </Text>
-                  )}
-                  {thread?.chatType === 'active_model' && (
-                    <View style={styles.chatTypeBadge}>
-                      <Text style={styles.chatTypeBadgeLabel}>Active Model</Text>
-                    </View>
-                  )}
-                </View>
-              )}
-            </View>
-            <View style={{ alignItems: 'flex-end', gap: spacing.xs }}>
-              {fromRole === 'agency' && Platform.OS === 'web' && (
-                <TouchableOpacity onPress={copyBookingLink}>
-                  <Text style={styles.copyLinkLabel}>Link for model</Text>
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity onPress={onClose}>
-                <Text style={styles.closeLabel}>Close</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-          {application && (
-            <View style={styles.profileRow}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                {[application.images?.closeUp, application.images?.fullBody, application.images?.profile]
-                  .filter(Boolean)
-                  .map((uri, idx) => (
-                    <Image
-                      key={idx}
-                      source={{ uri: uri! }}
-                      style={styles.profileImage}
-                      resizeMode="contain"
-                    />
-                  ))}
-              </ScrollView>
-            </View>
-          )}
-          <ScrollView
-            style={[
-              styles.messages,
-              Platform.OS === 'web' ? { flex: 1, minHeight: 0 } : { maxHeight: bookingMessagesMaxHeight },
-            ]}
-            contentContainerStyle={styles.messagesContent}
-          >
-            {messages.map((msg) => {
-              const isSelf = msg.from === fromRole;
-              const resolvedFileUrl = msg.fileUrl ? (signedUrls[msg.fileUrl] ?? null) : null;
-              const isImage = !!msg.fileType && msg.fileType.startsWith('image/');
-              return (
-                <View key={msg.id} style={[styles.bubbleWrapper, isSelf && styles.bubbleWrapperSelf]}>
-                  {/* Image attachment */}
-                  {msg.fileUrl && isImage ? (
-                    resolvedFileUrl ? (
-                      <Pressable onPress={() => openUrl(resolvedFileUrl)}>
-                        <Image
-                          source={{ uri: resolvedFileUrl }}
-                          style={styles.attachedImage}
-                          resizeMode="cover"
-                        />
-                      </Pressable>
-                    ) : (
-                      <View style={styles.attachedImagePlaceholder}>
-                        <ActivityIndicator size="small" color={colors.textSecondary} />
-                      </View>
-                    )
-                  ) : null}
-                  {/* Non-image file attachment */}
-                  {msg.fileUrl && !isImage ? (
-                    <Pressable
-                      style={[styles.fileCard, isSelf && styles.fileCardSelf]}
-                      onPress={() => resolvedFileUrl && openUrl(resolvedFileUrl)}
-                    >
-                      <Text style={styles.fileCardIcon}>📎</Text>
-                      <Text style={[styles.fileCardLabel, isSelf && styles.fileCardLabelSelf]} numberOfLines={1}>
-                        Attachment
-                      </Text>
-                      <Text style={styles.fileCardOpen}>Open</Text>
-                    </Pressable>
-                  ) : null}
-                  {/* Text content */}
-                  {msg.text ? (
-                    (() => {
-                      const rc = bubbleColorsForSender(msg.from);
-                      return (
-                        <View
-                          style={[
-                            styles.bubble,
-                            {
-                              backgroundColor: rc.bubbleBackground,
-                              borderWidth: StyleSheet.hairlineWidth,
-                              borderColor: rc.borderColor,
-                              alignSelf: isSelf ? 'flex-end' : 'flex-start',
-                            },
-                          ]}
-                        >
-                          <Text style={[styles.bubbleText, { color: rc.bubbleText }]}>{msg.text}</Text>
-                        </View>
-                      );
-                    })()
-                  ) : null}
-                </View>
-              );
-            })}
-          </ScrollView>
-          {uploadError ? <Text style={styles.uploadError}>{uploadError}</Text> : null}
-          {Platform.OS === 'web' ? (
-            <TouchableOpacity
-              style={styles.rightsRow}
-              onPress={() => setFileRightsConfirmed(!fileRightsConfirmed)}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: fileRightsConfirmed }}
-            >
-              <View style={[styles.rightsBox, fileRightsConfirmed && styles.rightsBoxOn]}>
-                {fileRightsConfirmed ? <Text style={styles.rightsCheck}>✓</Text> : null}
-              </View>
-              <Text style={styles.rightsLabel}>{uiCopy.legal.chatFileRightsCheckbox}</Text>
-            </TouchableOpacity>
-          ) : null}
-          <View style={styles.inputRow}>
-            {Platform.OS === 'web' ? (
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt"
-                style={{ display: 'none' }}
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) void handleFileSelected(file);
-                }}
-              />
-            ) : null}
-            <TouchableOpacity
-              style={[
-                styles.attachBtn,
-                (!fromRole || uploading || (Platform.OS === 'web' && !fileRightsConfirmed)) && { opacity: 0.4 },
-              ]}
-              onPress={openFileInput}
-              disabled={uploading || (Platform.OS === 'web' && !fileRightsConfirmed)}
-            >
-              {uploading ? (
-                <ActivityIndicator size="small" color={colors.textSecondary} />
-              ) : (
-                <Text style={styles.attachBtnLabel}>📎</Text>
-              )}
-            </TouchableOpacity>
-            <TextInput
-              value={chatInput}
-              onChangeText={setChatInput}
-              placeholder="Message…"
-              placeholderTextColor={colors.textSecondary}
-              style={styles.input}
-              editable={!uploading}
-              onSubmitEditing={sendMessage}
-            />
-            <TouchableOpacity style={[styles.send, uploading && { opacity: 0.5 }]} onPress={sendMessage} disabled={uploading}>
-              <Text style={styles.sendLabel}>Send</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        {chatInner}
       </View>
+    </View>
   );
-
-  if (presentation === 'insetAboveBottomNav') {
-    return (
-      <View style={[styles.insetShell, { bottom: bottomInset }]} pointerEvents="box-none">
-        {chatBody}
-        {showAgencyProfile && agencyOrgIdForProfile && (
-          <OrgProfileModal
-            visible
-            onClose={() => setShowAgencyProfile(false)}
-            orgType="agency"
-            organizationId={agencyOrgIdForProfile}
-            agencyId={applicationAgencyId ?? application?.agencyId ?? null}
-            orgName={displayAgencyName}
-          />
-        )}
-      </View>
-    );
-  }
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
       {chatBody}
-      {showAgencyProfile && agencyOrgIdForProfile && (
-        <OrgProfileModal
-          visible
-          onClose={() => setShowAgencyProfile(false)}
-          orgType="agency"
-          organizationId={agencyOrgIdForProfile}
-          agencyId={applicationAgencyId ?? application?.agencyId ?? null}
-          orgName={displayAgencyName}
-        />
-      )}
+      {orgProfileModal}
     </Modal>
   );
 };
@@ -440,6 +451,14 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     zIndex: 900,
+  },
+  // Fullscreen panel inside insetShell — fills the entire available space.
+  insetPanel: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    overflow: 'hidden',
   },
   overlay: {
     flex: 1,

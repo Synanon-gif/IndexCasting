@@ -14,9 +14,22 @@ import {
 
 export function buildEventsByDateFromModelEntries(entries: CalendarEntry[]): Record<string, CalendarDayEvent[]> {
   const map: Record<string, CalendarDayEvent[]> = {};
+  // Track which option_request_ids we have already added per date so that multiple
+  // calendar_entries rows for the same option (e.g. after a lifecycle transition) don't
+  // produce multiple dots on the same day — matches the B2B month grid dedup invariant.
+  const seenOptionPerDate = new Map<string, Set<string>>();
+
   for (const e of entries) {
     const d = e.date;
     if (!d) continue;
+
+    if (e.option_request_id) {
+      let seenSet = seenOptionPerDate.get(d);
+      if (!seenSet) { seenSet = new Set(); seenOptionPerDate.set(d, seenSet); }
+      if (seenSet.has(e.option_request_id)) continue;
+      seenSet.add(e.option_request_id);
+    }
+
     if (!map[d]) map[d] = [];
     map[d].push({
       id: e.id,

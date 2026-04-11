@@ -117,6 +117,8 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   const { width: modelProfileWindowWidth, height: modelProfileWindowHeight } = useWindowDimensions();
   const optionChatOverlayMaxW = getChatOverlayMaxWidth(modelProfileWindowWidth);
   const optionChatMessagesMaxH = getMessagesScrollMaxHeight(modelProfileWindowHeight);
+  // True on mobile-width viewports — option chat overlay fills the inset area instead of floating.
+  const isMobileModel = modelProfileWindowWidth < 768;
   const { signOut } = useAuth();
   const [profile, setProfile] = useState<ModelProfile | null>(null);
   const [tab, setTab] = useState<ModelTab>('calendar');
@@ -1341,8 +1343,24 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
       </View>
 
       {selectedOptionThread && (
-        <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: bottomTabInset, backgroundColor: 'rgba(0,0,0,0.1)', justifyContent: 'center', alignItems: 'center', padding: spacing.lg, zIndex: 995 }}>
-          <View style={{ width: '100%', maxWidth: optionChatOverlayMaxW, maxHeight: '80%', backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.border, padding: spacing.md }}>
+        <View
+          style={{
+            position: 'absolute', left: 0, right: 0, top: 0, bottom: bottomTabInset, zIndex: 995,
+            // On mobile: fullscreen panel. On desktop: dimmed overlay with centered card.
+            ...(isMobileModel
+              ? { backgroundColor: colors.surface }
+              : { backgroundColor: 'rgba(0,0,0,0.1)', justifyContent: 'center' as const, alignItems: 'center' as const, padding: spacing.lg }),
+          }}
+        >
+          <View
+            style={{
+              // Mobile: fill entire inset area. Desktop: floating card.
+              ...(isMobileModel
+                ? { flex: 1, backgroundColor: colors.surface, overflow: 'hidden' as const }
+                : { width: '100%', maxWidth: optionChatOverlayMaxW, maxHeight: '80%', backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.border }),
+              padding: spacing.md,
+            }}
+          >
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
                 {optionChatAgency?.logo_url ? (
@@ -1353,11 +1371,16 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                   <Text style={{ ...typography.label, color: colors.textPrimary }}>{optionChatAgency?.name ?? 'Agency'}</Text>
                 </View>
               </View>
-              <TouchableOpacity onPress={() => setSelectedOptionThread(null)}>
+              <TouchableOpacity onPress={() => setSelectedOptionThread(null)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
                 <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary }}>Close</Text>
               </TouchableOpacity>
             </View>
-            <ScrollView style={{ maxHeight: optionChatMessagesMaxH, marginBottom: spacing.sm }}>
+            {/* Messages: flex:1 on mobile fills remaining space; capped on desktop */}
+            <ScrollView
+              style={isMobileModel ? { flex: 1, marginBottom: spacing.sm } : { maxHeight: optionChatMessagesMaxH, marginBottom: spacing.sm }}
+              contentContainerStyle={{ flexGrow: 1 }}
+              keyboardShouldPersistTaps="handled"
+            >
               {getMessages(selectedOptionThread).filter((m) => shouldShowSystemMessageForViewer(m, 'model')).map((msg) =>
                 msg.from === 'system' ? (
                   <View

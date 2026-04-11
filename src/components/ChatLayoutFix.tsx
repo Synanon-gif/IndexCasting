@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, ScrollView, StyleSheet, Platform } from 'react-native';
+import { View, ScrollView, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme/theme';
 import { BOTTOM_TAB_BAR_HEIGHT } from '../navigation/bottomTabNavigation';
@@ -37,7 +37,7 @@ export default function ChatLayoutFix({
           contentContainerStyle={[
             styles.messagesContent,
             { paddingHorizontal: edgePadding },
-            Platform.OS === 'web' ? { flexGrow: 1 } : null,
+            { flexGrow: 1 },
           ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, type ViewStyle } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, type ViewStyle } from 'react-native';
 import { colors, spacing, typography } from '../../theme/theme';
 import { uiCopy } from '../../constants/uiCopy';
 import type { DeviceType } from '../../theme/breakpoints';
@@ -56,61 +56,76 @@ export const OptionNegotiationChatShell: React.FC<OptionNegotiationChatShellProp
 }) => {
   const showRightRail = !!rightPanel && deviceType === 'desktop';
 
-  const main = (
+  const innerContent = (
     <View style={styles.mainColumn}>
-    <View style={styles.header}>
-      <TouchableOpacity onPress={onBack} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} style={styles.backBtn}>
-        <Text style={styles.backArrow}>←</Text>
-        <Text style={styles.backText}>{backLabel}</Text>
-      </TouchableOpacity>
-      <View style={styles.headerCenter}>
-        <Text style={styles.title} numberOfLines={1}>
-          {title}
-        </Text>
-        {subtitle ? (
-          <Text style={styles.subtitle} numberOfLines={1}>
-            {subtitle}
-          </Text>
-        ) : null}
-      </View>
-      {headerAccessory ? <View style={styles.headerAccessory}>{headerAccessory}</View> : null}
-      {onStatusPress ? (
-        <TouchableOpacity
-          style={[styles.statusPill, { backgroundColor: statusBackgroundColor }]}
-          onPress={onStatusPress}
-          activeOpacity={0.85}
-        >
-          <Text style={styles.statusPillText} numberOfLines={1}>
-            {statusLabel}
-          </Text>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={onBack} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} style={styles.backBtn}>
+          <Text style={styles.backArrow}>←</Text>
+          <Text style={styles.backText} numberOfLines={1}>{backLabel}</Text>
         </TouchableOpacity>
-      ) : (
-        <View style={[styles.statusPill, { backgroundColor: statusBackgroundColor }]}>
-          <Text style={styles.statusPillText} numberOfLines={1}>
-            {statusLabel}
+        <View style={styles.headerCenter}>
+          <Text style={styles.title} numberOfLines={2}>
+            {title}
           </Text>
+          {subtitle ? (
+            <Text style={styles.subtitle} numberOfLines={1}>
+              {subtitle}
+            </Text>
+          ) : null}
         </View>
-      )}
-    </View>
+        {headerAccessory ? <View style={styles.headerAccessory}>{headerAccessory}</View> : null}
+        {onStatusPress ? (
+          <TouchableOpacity
+            style={[styles.statusPill, { backgroundColor: statusBackgroundColor }]}
+            onPress={onStatusPress}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.statusPillText} numberOfLines={1}>
+              {statusLabel}
+            </Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={[styles.statusPill, { backgroundColor: statusBackgroundColor }]}>
+            <Text style={styles.statusPillText} numberOfLines={1}>
+              {statusLabel}
+            </Text>
+          </View>
+        )}
+      </View>
 
-    {headerBelowTitle ? <View style={styles.headerMeta}>{headerBelowTitle}</View> : null}
+      {headerBelowTitle ? <View style={styles.headerMeta}>{headerBelowTitle}</View> : null}
 
-    <ScrollView
-      style={styles.scroll}
-      contentContainerStyle={styles.scrollContent}
-      keyboardShouldPersistTaps="handled"
-      showsVerticalScrollIndicator
-    >
-      {children}
-    </ScrollView>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator
+      >
+        {children}
+      </ScrollView>
 
-    {footerTop ? <View style={styles.footerTop}>{footerTop}</View> : null}
+      {footerTop ? <View style={styles.footerTop}>{footerTop}</View> : null}
 
-    {composerTopBanner ? <View style={styles.composerBanner}>{composerTopBanner}</View> : null}
+      {composerTopBanner ? <View style={styles.composerBanner}>{composerTopBanner}</View> : null}
 
-    <View style={[styles.composerWrap, { paddingBottom: bottomInset }]}>{composer}</View>
+      <View style={[styles.composerWrap, { paddingBottom: bottomInset }]}>{composer}</View>
     </View>
   );
+
+  // On native, wrap with KeyboardAvoidingView so the composer stays above the keyboard.
+  // On web the browser handles viewport resize; KeyboardAvoidingView can interfere.
+  const main =
+    Platform.OS !== 'web' ? (
+      <KeyboardAvoidingView
+        style={styles.mainColumn}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={0}
+      >
+        {innerContent}
+      </KeyboardAvoidingView>
+    ) : (
+      innerContent
+    );
 
   return (
     <View style={[styles.root, showRightRail && styles.rootWithRail, containerStyle]}>
@@ -135,6 +150,7 @@ const styles = StyleSheet.create({
     minHeight: 0,
     minWidth: 0,
     alignSelf: 'stretch',
+    overflow: 'hidden',
   },
   rightRail: {
     width: 280,
@@ -164,7 +180,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    maxWidth: '28%',
+    flexShrink: 0,
+    minWidth: 48,
+    maxWidth: 120,
   },
   backArrow: {
     ...typography.label,
@@ -199,7 +217,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: 6,
     borderRadius: 8,
-    maxWidth: '34%',
+    flexShrink: 1,
+    maxWidth: 130,
   },
   statusPillText: {
     ...typography.label,

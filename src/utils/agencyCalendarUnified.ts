@@ -143,9 +143,23 @@ export function buildUnifiedAgencyCalendarRows(
     };
   });
 
+  // Fallback dedup set: date + model_id pairs already covered by option rows.
+  // booking_events with source_option_request_id = null cannot be matched by ID, so we
+  // suppress them when the same model appears on the same date via an option row.
+  const coveredDateModelPairs = new Set<string>(
+    optionRows
+      .filter((r): r is Extract<UnifiedAgencyCalendarRow, { kind: 'option' }> => r.kind === 'option' && !!r.item.option.model_id)
+      .map((r) => `${r.date}|${r.item.option.model_id}`),
+  );
+
   const bookingRows: UnifiedAgencyCalendarRow[] = [];
   for (const be of bookingEventEntries) {
+    // Primary dedup: same option_request_id already covered.
     if (be.option_request_id && coveredOptionIds.has(be.option_request_id)) continue;
+    // Fallback dedup: no option_request_id link, but same model on same date — suppress orphan.
+    if (!be.option_request_id && be.model_id) {
+      if (coveredDateModelPairs.has(`${be.date ?? ''}|${be.model_id}`)) continue;
+    }
     const date = be.date ?? '';
     const category = normalizeBookingEntryCategory(be);
     let effectiveAssigneeUserId: string | null = null;
