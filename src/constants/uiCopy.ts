@@ -310,9 +310,10 @@ export const uiCopy = {
       'This invitation was sent to a different email address. Please sign out and sign in (or create an account) with the email address the invitation was sent to.',
     expiredOrUsed:
       'This invitation link has already been used or has expired. Please ask for a new invitation.',
-    alreadyMember: 'You are already a member of another organization.',
+    alreadyMember:
+      'Your account is already a member of another organization. Each account can only belong to one organization at a time. Please use a different email address to accept this invitation, or contact the person who invited you.',
     wrongRole:
-      'Your account type does not match this invitation. Please contact the person who invited you.',
+      'Your account type does not match this invitation. This can happen if you previously signed up with a different role. Please contact the person who invited you or create a new account with the correct email.',
     genericFail: 'Could not accept the invitation. Please try again or ask for a new invitation link.',
     signOutBtn: 'Sign out',
     dismissBtn: 'OK',

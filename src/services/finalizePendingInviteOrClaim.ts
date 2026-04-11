@@ -42,7 +42,12 @@ const emptyResult = (): FinalizeInviteClaimResult => ({
 let finalizeChain: Promise<FinalizeInviteClaimResult> = Promise.resolve(emptyResult());
 
 function isFatalInviteError(err: string | undefined): boolean {
-  return err === 'email_mismatch' || err === 'invalid_or_expired';
+  return (
+    err === 'email_mismatch' ||
+    err === 'invalid_or_expired' ||
+    err === 'already_member_of_another_org' ||
+    err === 'wrong_profile_role'
+  );
 }
 
 function isAlreadyDoneInviteError(err: string | undefined): boolean {
@@ -84,6 +89,8 @@ function showInviteAlerts(
     Alert.alert(uiCopy.inviteErrors.title, uiCopy.inviteErrors.expiredOrUsed);
   } else if (err === 'already_member_of_another_org') {
     Alert.alert(uiCopy.inviteErrors.title, uiCopy.inviteErrors.alreadyMember);
+  } else if (err === 'wrong_profile_role') {
+    Alert.alert(uiCopy.inviteErrors.title, uiCopy.inviteErrors.wrongRole);
   } else if (err) {
     Alert.alert(uiCopy.inviteErrors.title, uiCopy.inviteErrors.genericFail);
   }

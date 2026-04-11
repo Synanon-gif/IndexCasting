@@ -578,12 +578,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         inviteError = finEarly.invite.error;
 
         if (options?.isInviteSignup && finEarly.invite.attempted && !inviteAcceptedOk) {
-          const errMsg =
-            inviteError === 'email_mismatch'
-              ? uiCopy.inviteErrors.emailMismatch
-              : inviteError === 'invalid_or_expired'
-                ? uiCopy.inviteErrors.expiredOrUsed
-                : uiCopy.inviteErrors.genericFail;
+          let errMsg: string;
+          if (inviteError === 'email_mismatch') {
+            errMsg = uiCopy.inviteErrors.emailMismatch;
+          } else if (inviteError === 'invalid_or_expired') {
+            errMsg = uiCopy.inviteErrors.expiredOrUsed;
+          } else if (inviteError === 'already_member_of_another_org') {
+            errMsg = uiCopy.inviteErrors.alreadyMember;
+          } else if (inviteError === 'wrong_profile_role') {
+            errMsg = uiCopy.inviteErrors.wrongRole;
+          } else {
+            errMsg = uiCopy.inviteErrors.genericFail;
+          }
           console.warn('[signUp] isInviteSignup but invite failed:', inviteError);
           return { error: errMsg };
         }
