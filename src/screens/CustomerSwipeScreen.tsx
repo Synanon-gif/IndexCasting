@@ -128,6 +128,7 @@ export const CustomerSwipeScreen: React.FC = () => {
       setClientOrgId(orgId);
       sessionSeenIds.current = loadSessionIds(orgId);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- id+role+organization_id cover all reads; full profile ref would over-fire
   }, [auth?.profile?.id, auth?.profile?.role, auth?.profile?.organization_id]);
 
   const loadNextPage = useCallback(async () => {

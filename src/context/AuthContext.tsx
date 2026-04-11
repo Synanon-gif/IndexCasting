@@ -512,7 +512,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Semantically identical to getUser(): both yield the current user's ID.
     const { data: { session: s } } = await supabase.auth.getSession();
     if (s?.user) await loadProfile(s.user.id);
-  // loadProfile is defined in the same closure and stable across renders
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- loadProfile is defined in the same closure and stable across renders
   }, []);
 
   const signUp = async (

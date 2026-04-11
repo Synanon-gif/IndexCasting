@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Agency org for notifications: prefer option_requests.agency_organization_id (RLS-safe for clients).
  */

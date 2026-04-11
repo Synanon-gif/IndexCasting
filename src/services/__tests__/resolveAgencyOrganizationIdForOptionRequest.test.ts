@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * resolveAgencyOrganizationIdForOptionRequest — RPC wrapper for agency org UUID.
  */

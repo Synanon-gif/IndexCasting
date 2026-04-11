@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * insertOptionRequest: empty-string org IDs must not be sent (RLS WITH CHECK).
  */

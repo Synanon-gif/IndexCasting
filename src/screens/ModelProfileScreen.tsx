@@ -12,7 +12,6 @@ import {
   roundCoord,
   locationSourceLabel,
   type ModelLocation,
-  type LocationSource,  // used in handleShareLocation type cast
 } from '../services/modelLocationsSupabase';
 import { supabase } from '../../lib/supabase';
 import { UI_DOUBLE_SUBMIT_DEBOUNCE_MS } from '../../lib/validation';

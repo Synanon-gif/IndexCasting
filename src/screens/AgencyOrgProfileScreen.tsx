@@ -522,11 +522,16 @@ export function AgencyOrgProfileScreen({
     handleLogoPress,
     handleLogoDelete,
     handleLogoFileChange,
-    // Phase 3A.3
     shareUrl,
     shareCopied,
     handleCopyShareLink,
     handleOpenShareLink,
+    handleSavePublicSettings,
+    handleToggleIsPublic,
+    publicFeedback,
+    publicFeedbackIsError,
+    publicSaving,
+    slugDraft,
   ]);
 
   if (loading) {
