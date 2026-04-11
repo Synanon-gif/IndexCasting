@@ -58,7 +58,13 @@ export function InviteAcceptanceScreen({
 
         {loading && <ActivityIndicator size="large" color={colors.textPrimary} style={{ marginVertical: spacing.lg }} />}
 
-        {error && <Text style={styles.error}>{error}</Text>}
+        {error && (
+          <Text style={styles.error}>
+            {error}
+            {'\n'}
+            {uiCopy.invite.previewFailedSignInHint}
+          </Text>
+        )}
 
         {!loading && preview && (
           <>
@@ -86,14 +92,23 @@ export function InviteAcceptanceScreen({
           <Text style={styles.body}>{uiCopy.invite.invalidLink}</Text>
         )}
 
-        {preview && !loading && (
+        {!loading && (preview || error) && (
           <View style={styles.btnCol}>
-            <TouchableOpacity style={styles.primaryBtn} onPress={onContinueSignup}>
-              <Text style={styles.primaryLabel}>{uiCopy.invite.signUpToAccept}</Text>
+            {preview && (
+              <TouchableOpacity style={styles.primaryBtn} onPress={onContinueSignup}>
+                <Text style={styles.primaryLabel}>{uiCopy.invite.signUpToAccept}</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={error && !preview ? styles.primaryBtn : styles.secondaryBtn} onPress={onContinueLogin}>
+              <Text style={error && !preview ? styles.primaryLabel : styles.secondaryLabel}>
+                {uiCopy.invite.alreadyHaveAccount}
+              </Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.secondaryBtn} onPress={onContinueLogin}>
-              <Text style={styles.secondaryLabel}>{uiCopy.invite.alreadyHaveAccount}</Text>
-            </TouchableOpacity>
+            {!preview && (
+              <TouchableOpacity style={styles.secondaryBtn} onPress={onContinueSignup}>
+                <Text style={styles.secondaryLabel}>{uiCopy.invite.signUpToAccept}</Text>
+              </TouchableOpacity>
+            )}
             {Platform.OS === 'web' && (
               <TouchableOpacity onPress={copyHint} style={styles.linkBtn}>
                 <Text style={styles.linkLabel}>{copied ? uiCopy.invite.linkCopied : uiCopy.invite.copyLink}</Text>

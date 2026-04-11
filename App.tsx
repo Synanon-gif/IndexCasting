@@ -222,7 +222,7 @@ function AppContent() {
   const { session, loading, profile, signOut, refreshProfile, orgDeactivated, clearOrgDeactivated, isPasswordRecovery } = useAuth();
   const [sharedParams] = useState<{ name: string; ids: string[] } | null>(getSharedParams);
   const [bookingThreadId, setBookingThreadId] = useState<string | null>(getBookingThreadId);
-  const [guestLinkId] = useState<string | null>(getGuestLinkId);
+  const [guestLinkId, setGuestLinkId] = useState<string | null>(getGuestLinkId);
   const initialRouting =
     Platform.OS === 'web'
       ? computeInitialInviteClaimFromUrlAndPeek()
@@ -393,6 +393,24 @@ function AppContent() {
       window.history.replaceState({}, '', u.pathname + u.search + u.hash);
     }
   }, [isAuthenticatedNonGuest, guestLinkId]);
+
+  // Restore pending guest link after signup: if user signed up from GuestView,
+  // the link ID was persisted to localStorage. On the next authenticated mount,
+  // restore it so the user can return to the package they were viewing.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    if (guestLinkId) return;
+    if (!session) return;
+    try {
+      const pending = localStorage.getItem('ic_pending_guest_link');
+      if (!pending) return;
+      localStorage.removeItem('ic_pending_guest_link');
+      const u = new URL(window.location.href);
+      u.searchParams.set('guest', pending);
+      window.history.replaceState({}, '', u.pathname + u.search + u.hash);
+      setGuestLinkId(pending);
+    } catch { /* best-effort */ }
+  }, [session, guestLinkId]);
 
   useEffect(() => {
     if (!inviteTokenState) return;
@@ -688,7 +706,8 @@ function AppContent() {
           : uiCopy.invite.roleMember;
 
     // Model claim gate — before login when model claim token is in URL or persisted storage
-    if (modelInviteTokenState && modelClaimAuthPhase === 'gate' && (modelClaimPreviewLoading || modelClaimPreview)) {
+    // Show gate screen also on error so the user is not dropped to a bare AuthScreen without context.
+    if (modelInviteTokenState && modelClaimAuthPhase === 'gate' && (modelClaimPreviewLoading || modelClaimPreview || modelClaimPreviewError)) {
       return (
         <>
           <ModelClaimScreen
@@ -709,7 +728,8 @@ function AppContent() {
       );
     }
 
-    if (inviteTokenState && inviteAuthPhase === 'gate' && (invitePreviewLoading || invitePreview)) {
+    // Show gate screen also on error so the user is not dropped to a bare AuthScreen without context.
+    if (inviteTokenState && inviteAuthPhase === 'gate' && (invitePreviewLoading || invitePreview || invitePreviewError)) {
       return (
         <>
           <InviteAcceptanceScreen
@@ -748,14 +768,26 @@ function AppContent() {
                   lockedProfileRole: inviteLockedRole,
                   inviteRoleLabel,
                 }
-              : undefined
+              : inviteTokenState && !invitePreview
+                ? {
+                    orgName: '',
+                    lockedProfileRole: 'client',
+                    inviteRoleLabel: uiCopy.invite.roleMember,
+                    fallbackBanner: uiCopy.invite.previewFailedBanner,
+                  }
+                : undefined
           }
           modelClaimAuth={
             isModelClaimAuth && modelClaimPreview?.valid
               ? {
                   agencyName: modelClaimPreview.agency_name ?? '',
                 }
-              : undefined
+              : isModelClaimAuth && !modelClaimPreview?.valid
+                ? {
+                    agencyName: '',
+                    fallbackBanner: uiCopy.modelClaim.previewFailedBanner,
+                  }
+                : undefined
           }
         />
         <StatusBar style="dark" />

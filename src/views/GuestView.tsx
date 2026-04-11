@@ -696,7 +696,7 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
           style={styles.createAccountBtn}
           onPress={() => {
             if (Platform.OS === 'web' && typeof window !== 'undefined') {
-              // Strip ?guest= and add ?signup=1 so App.tsx opens AuthScreen in signup mode.
+              try { localStorage.setItem('ic_pending_guest_link', linkId); } catch { /* best-effort */ }
               const u = new URL(window.location.href);
               u.searchParams.delete('guest');
               u.searchParams.set('signup', '1');

@@ -76,7 +76,13 @@ export function ModelClaimScreen({
           />
         )}
 
-        {error && <Text style={styles.error}>{error}</Text>}
+        {error && (
+          <Text style={styles.error}>
+            {error}
+            {'\n'}
+            {uiCopy.modelClaim.previewFailedSignInHint}
+          </Text>
+        )}
 
         {!loading && isValid && preview && (
           <>
@@ -99,14 +105,23 @@ export function ModelClaimScreen({
           <Text style={styles.body}>{uiCopy.modelClaim.invalidLink}</Text>
         )}
 
-        {isValid && !loading && (
+        {!loading && (isValid || error) && (
           <View style={styles.btnCol}>
-            <TouchableOpacity style={styles.primaryBtn} onPress={onContinueSignup}>
-              <Text style={styles.primaryLabel}>{uiCopy.modelClaim.createAccount}</Text>
+            {isValid && (
+              <TouchableOpacity style={styles.primaryBtn} onPress={onContinueSignup}>
+                <Text style={styles.primaryLabel}>{uiCopy.modelClaim.createAccount}</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={error && !isValid ? styles.primaryBtn : styles.secondaryBtn} onPress={onContinueLogin}>
+              <Text style={error && !isValid ? styles.primaryLabel : styles.secondaryLabel}>
+                {uiCopy.modelClaim.alreadyHaveAccount}
+              </Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.secondaryBtn} onPress={onContinueLogin}>
-              <Text style={styles.secondaryLabel}>{uiCopy.modelClaim.alreadyHaveAccount}</Text>
-            </TouchableOpacity>
+            {!isValid && (
+              <TouchableOpacity style={styles.secondaryBtn} onPress={onContinueSignup}>
+                <Text style={styles.secondaryLabel}>{uiCopy.modelClaim.createAccount}</Text>
+              </TouchableOpacity>
+            )}
             {Platform.OS === 'web' && (
               <TouchableOpacity onPress={copyHint} style={styles.linkBtn}>
                 <Text style={styles.linkLabel}>

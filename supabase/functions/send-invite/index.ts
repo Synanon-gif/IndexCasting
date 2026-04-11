@@ -413,6 +413,19 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
   }
 
+  // ── Model-claim token validation ───────────────────────────────────────────
+  if (type === 'model_claim') {
+    const { data: previewData, error: previewErr } = await supabase.rpc('get_model_claim_preview', { p_token: token });
+    if (previewErr || !previewData || !(previewData as { valid?: boolean }).valid) {
+      console.warn('[send-invite] model_claim token invalid or expired', {
+        userId: user.id,
+        previewErr: previewErr?.message,
+        valid: (previewData as { valid?: boolean } | null)?.valid,
+      });
+      return jsonResponse({ error: 'invalid_or_expired_claim_token' }, 400, corsHeaders);
+    }
+  }
+
   // ── Resend API Key ─────────────────────────────────────────────────────────
   const resendKey = Deno.env.get('RESEND_API_KEY');
   if (!resendKey) {

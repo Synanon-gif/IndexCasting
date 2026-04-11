@@ -17,10 +17,12 @@ type AuthScreenProps = {
     orgName: string;
     lockedProfileRole: 'agent' | 'client';
     inviteRoleLabel: string;
+    fallbackBanner?: string;
   };
   /** Model-Claim: Locks role to 'model', shows agency name banner. */
   modelClaimAuth?: {
     agencyName: string;
+    fallbackBanner?: string;
   };
 };
 
@@ -133,14 +135,18 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
         {inviteAuth && (
           <Text style={styles.inviteBanner}>
-            {uiCopy.auth.inviteLine
-              .replace('{org}', inviteAuth.orgName)
-              .replace('{role}', inviteAuth.inviteRoleLabel)}
+            {inviteAuth.fallbackBanner
+              ? inviteAuth.fallbackBanner
+              : uiCopy.auth.inviteLine
+                  .replace('{org}', inviteAuth.orgName)
+                  .replace('{role}', inviteAuth.inviteRoleLabel)}
           </Text>
         )}
         {modelClaimAuth && (
           <Text style={styles.inviteBanner}>
-            {uiCopy.auth.modelClaimBannerLine.replace('{agency}', modelClaimAuth.agencyName)}
+            {modelClaimAuth.fallbackBanner
+              ? modelClaimAuth.fallbackBanner
+              : uiCopy.auth.modelClaimBannerLine.replace('{agency}', modelClaimAuth.agencyName)}
           </Text>
         )}
 

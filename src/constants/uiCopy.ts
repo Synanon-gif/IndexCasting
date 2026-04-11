@@ -297,6 +297,10 @@ export const uiCopy = {
     invalidLink: 'Invalid or expired invitation link.',
     copyLink: 'Copy invitation link',
     linkCopied: 'Link copied',
+    previewFailedSignInHint:
+      'If you already have an account, please sign in — your invitation will complete automatically.',
+    previewFailedBanner:
+      'You have a pending team invitation. Sign in or create an account to continue.',
     roleBookerAgency: 'Booker (Agency)',
     roleEmployeeClient: 'Employee (Client)',
     roleMember: 'Member',
@@ -344,6 +348,10 @@ export const uiCopy = {
     invalidLink: 'Invalid or expired model invitation link.',
     copyLink: 'Copy invitation link',
     linkCopied: 'Link copied',
+    previewFailedSignInHint:
+      'If you already have an account, please sign in — your model profile will link automatically.',
+    previewFailedBanner:
+      'You have a pending model profile invitation. Sign in or create an account to continue.',
   },
   /** One-time banner after accept_organization_invitation / claim_model_by_token succeeds (finalizePendingInviteOrClaim). */
   inviteClaimSuccess: {
@@ -446,10 +454,10 @@ export const uiCopy = {
       'Check your email — we sent a confirmation link. Open it to verify your address, then sign in with the password you chose.',
     /** Extra guidance when signing up from an organization invitation link (append or second line). */
     signUpEmailConfirmationInviteNote:
-      'After you confirm and sign in, your invitation will complete automatically. If anything is missing, open the same invitation link again before it expires.',
+      'After you confirm and sign in, your invitation will complete automatically. If you open the confirmation email on a different device or browser, please also re-open your original invitation link afterwards so your membership can be finalized.',
     /** Extra guidance when signing up from a model claim link. */
     signUpEmailConfirmationModelClaimNote:
-      'After you confirm and sign in, your model profile should link automatically. If it does not, open the same invitation link again before it expires.',
+      'After you confirm and sign in, your model profile should link automatically. If you open the confirmation email on a different device or browser, please also re-open your original invitation link afterwards so your profile can be connected.',
     /** Link to go back from forgot-password mode to login. */
     forgotPasswordBack: 'Back to login',
     /** Title of the set-new-password screen (shown after clicking reset link). */
