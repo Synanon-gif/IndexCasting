@@ -4909,6 +4909,58 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   const optionFullscreenActive =
     messagesSection === 'optionRequests' && !!selectedThreadId && !!request;
 
+  // Mobile: B2B client chat fullscreen — same WhatsApp pattern as optionFullscreenActive.
+  // On mobile (non-split), opening a chat hides the list entirely.
+  const b2bChatFullscreenActive =
+    messagesSection === 'clientRequests' && !!activeConnectionChatId && !agencyB2bWebSplit;
+
+  if (b2bChatFullscreenActive) {
+    const activeConv = b2bConversations.find((c) => c.id === activeConnectionChatId);
+    return (
+      <>
+        <View style={{ flex: 1, minHeight: 0, alignSelf: 'stretch' }}>
+          <OrgMessengerInline
+            conversationId={activeConnectionChatId}
+            headerTitle={activeConnectionChatTitle}
+            viewerUserId={currentUserId}
+            threadContext={{ type: uiCopy.b2bChat.contextOrgChat }}
+            agencyId={agencyId}
+            guestLinks={guestLinksForChat}
+            modelsForShare={modelsForShare}
+            composerBottomInsetOverride={0}
+            onOpenRelatedRequest={(optionRequestId) => {
+              setActiveConnectionChatId(null);
+              setMessagesSection('optionRequests');
+              setSelectedThreadId(optionRequestId);
+            }}
+            onBookingCardPress={onBookingCardPress}
+            viewerRole="agency"
+            onBookingStatusUpdated={() => onBookingCardPress?.()}
+            containerStyle={{ flex: 1 }}
+            onOrgPress={() => {
+              const orgId = activeConv?.client_organization_id ?? null;
+              if (!orgId) return;
+              setViewingClientProfileOrgId(orgId);
+              setViewingClientProfileOrgName(activeConnectionChatTitle);
+            }}
+            onBack={() => setActiveConnectionChatId(null)}
+            backLabel={uiCopy.messages.backToChats}
+          />
+        </View>
+        {viewingClientProfileOrgId && (
+          <OrgProfileModal
+            visible
+            onClose={() => setViewingClientProfileOrgId(null)}
+            orgType="client"
+            organizationId={viewingClientProfileOrgId}
+            agencyId={null}
+            orgName={viewingClientProfileOrgName}
+          />
+        )}
+      </>
+    );
+  }
+
   if (optionFullscreenActive && request) {
     return (
       <>
@@ -5365,6 +5417,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                   </View>
                 </View>
               ) : (
+                // Mobile (non-split): list only — chat opens fullscreen via b2bChatFullscreenActive early return
                 <>
                   {b2bConversations.map((c) => (
                     <View
@@ -5386,35 +5439,6 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                       </TouchableOpacity>
                     </View>
                   ))}
-                  {activeConnectionChatId ? (
-                    <View style={{ flex: 1, minHeight: 0, marginTop: spacing.md }}>
-                      <OrgMessengerInline
-                        conversationId={activeConnectionChatId}
-                        headerTitle={activeConnectionChatTitle}
-                        viewerUserId={currentUserId}
-                        threadContext={{ type: uiCopy.b2bChat.contextOrgChat }}
-                        agencyId={agencyId}
-                        guestLinks={guestLinksForChat}
-                        modelsForShare={modelsForShare}
-                        composerBottomInsetOverride={0}
-                        onOpenRelatedRequest={(optionRequestId) => {
-                          setMessagesSection('optionRequests');
-                          setSelectedThreadId(optionRequestId);
-                        }}
-                        onBookingCardPress={onBookingCardPress}
-                        viewerRole="agency"
-                        onBookingStatusUpdated={() => onBookingCardPress?.()}
-                        containerStyle={{ marginTop: 0, flex: 1 }}
-                        onOrgPress={() => {
-                          const conv = b2bConversations.find((c) => c.id === activeConnectionChatId);
-                          const orgId = conv?.client_organization_id ?? null;
-                          if (!orgId) return;
-                          setViewingClientProfileOrgId(orgId);
-                          setViewingClientProfileOrgName(activeConnectionChatTitle);
-                        }}
-                      />
-                    </View>
-                  ) : null}
                 </>
               )}
             </>
