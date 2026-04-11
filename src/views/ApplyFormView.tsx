@@ -714,7 +714,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   imageBox: {
-    height: 160,
+    aspectRatio: 3 / 4,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
@@ -726,6 +726,7 @@ const styles = StyleSheet.create({
   previewImage: {
     width: '100%',
     height: '100%',
+    borderRadius: 12,
   },
   imagePlaceholder: {
     ...typography.body,

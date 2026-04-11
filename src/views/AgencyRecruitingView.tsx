@@ -8,10 +8,10 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Image,
   Modal,
   TextInput,
 } from 'react-native';
+import { StorageImage } from '../components/StorageImage';
 import countries from 'i18n-iso-countries';
 import enLocale from 'i18n-iso-countries/langs/en.json';
 import { colors, spacing, typography } from '../theme/theme';
@@ -403,7 +403,7 @@ export const AgencyRecruitingView: React.FC<{
                 <View key={app.id} style={styles.bookingChatRow}>
                   <TouchableOpacity style={styles.bookingChatThumbWrap} onPress={() => openApplicationDetails(app)} activeOpacity={0.85}>
                     {thumbUri ? (
-                      <Image source={{ uri: thumbUri }} style={styles.bookingChatThumb} resizeMode="contain" />
+                      <StorageImage uri={thumbUri} style={styles.bookingChatThumb} resizeMode="cover" />
                     ) : (
                       <View style={[styles.bookingChatThumb, styles.bookingChatThumbPlaceholder]}>
                         <Text style={styles.bookingChatThumbPlaceholderText} numberOfLines={1}>
@@ -487,10 +487,10 @@ export const AgencyRecruitingView: React.FC<{
               onPress={() => current && openApplicationDetails(current)}
             >
               {(current.images?.closeUp || current.images?.fullBody || current.images?.profile) ? (
-                <Image
-                  source={{ uri: current.images.closeUp || current.images.fullBody || current.images.profile }}
+                <StorageImage
+                  uri={current.images.closeUp || current.images.fullBody || current.images.profile}
                   style={styles.cardImage}
-                  resizeMode="contain"
+                  resizeMode="cover"
                 />
               ) : (
                 <View style={styles.cardImagePlaceholder}>
@@ -588,7 +588,7 @@ export const AgencyRecruitingView: React.FC<{
                           activeOpacity={1}
                         >
                           {uri ? (
-                            <Image source={{ uri }} style={styles.photoSwipeImage} resizeMode="contain" />
+                            <StorageImage uri={uri} style={styles.photoSwipeImage} resizeMode="cover" />
                           ) : (
                             <View style={[styles.photoSwipeImage, styles.detailPhotoPlaceholder]}>
                               <Text style={styles.detailBodyMuted}>No photo</Text>
@@ -664,7 +664,7 @@ export const AgencyRecruitingView: React.FC<{
           {detailApplication && (() => {
             const uris = [detailApplication.images?.closeUp, detailApplication.images?.fullBody, detailApplication.images?.profile].filter(Boolean) as string[];
             const uri = uris[Math.min(photoIndex, Math.max(0, uris.length - 1))];
-            return uri ? <Image source={{ uri }} style={styles.fullscreenPhoto} resizeMode="contain" /> : null;
+            return uri ? <StorageImage uri={uri} style={styles.fullscreenPhoto} resizeMode="contain" /> : null;
           })()}
           <Text style={styles.fullscreenPhotoHint}>Tap to close</Text>
         </TouchableOpacity>
@@ -919,13 +919,13 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   cardImageWrap: {
-    height: 380,
+    aspectRatio: 3 / 4,
     position: 'relative',
   },
   cardImage: {
     width: '100%',
     height: '100%',
-    backgroundColor: '#D0CEC7',
+    backgroundColor: colors.surface,
   },
   cardImagePlaceholder: {
     width: '100%',
@@ -1127,13 +1127,12 @@ const styles = StyleSheet.create({
   },
   photoSwipeImageWrap: {
     flex: 1,
-    minHeight: 200,
   },
   photoSwipeImage: {
     width: '100%',
-    height: 220,
+    aspectRatio: 3 / 4,
     borderRadius: 12,
-    backgroundColor: colors.border,
+    backgroundColor: colors.surface,
   },
   fullscreenPhotoOverlay: {
     flex: 1,

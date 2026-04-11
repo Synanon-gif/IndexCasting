@@ -73,6 +73,13 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
 
   const fetchAccessStatus = useCallback(async () => {
     if (loadingRef.current) return;
+
+    // Guard: only call can_access_platform when an authenticated session exists.
+    // Without this, the initial mount fires before AuthContext restores the session
+    // and the RPC is called with the anon key → 401 (only granted to authenticated).
+    const { data: { session: currentSession } } = await supabase.auth.getSession();
+    if (!currentSession?.access_token) return;
+
     loadingRef.current = true;
     setRefreshing(true);
     try {

@@ -6,6 +6,7 @@
  */
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, Modal, ScrollView, Image, Platform, ActivityIndicator, Linking, Pressable, useWindowDimensions, KeyboardAvoidingView, BackHandler } from 'react-native';
+import { StorageImage } from '../components/StorageImage';
 import { colors, spacing, typography } from '../theme/theme';
 import { bubbleColorsForSender } from '../theme/roleColors';
 import { getChatOverlayMaxWidth, getMessagesScrollMaxHeight } from '../theme/chatLayout';
@@ -294,11 +295,11 @@ export const BookingChatView: React.FC<Props> = ({
           <View style={[styles.profileRow, isMobileNative && styles.profileRowMobile]}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               {photos.map((uri, idx) => (
-                <Image
+                <StorageImage
                   key={idx}
-                  source={{ uri: uri! }}
+                  uri={uri!}
                   style={isMobileNative ? styles.profileImageMobile : styles.profileImage}
-                  resizeMode="contain"
+                  resizeMode="cover"
                 />
               ))}
             </ScrollView>
