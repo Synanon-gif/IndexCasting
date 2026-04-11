@@ -35,7 +35,6 @@ import { supabase } from '../../lib/supabase';
 import { confirmImageRights } from '../services/gdprComplianceSupabase';
 import { getModelByIdFromSupabase } from '../services/modelsSupabase';
 import { normalizeDocumentspicturesModelImageRef } from '../utils/normalizeModelPortfolioUrl';
-import { QUICK_REPLIES } from '../constants/quickReplies';
 import { buildGuestUrl, type GuestLink } from '../services/guestLinksSupabase';
 import {
   bookingStatusLabel,
@@ -175,10 +174,12 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   const [sending, setSending] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
-  /** Web-only: must be checked before opening file picker (paired with confirmImageRights on upload). */
+  /** Web-only: checked by user after selecting a file, before upload starts. */
   const [fileRightsConfirmed, setFileRightsConfirmed] = useState(false);
-  /** Web-only: consent row is hidden until user taps the attach button. */
+  /** Web-only: consent row is only shown after a file has been selected. */
   const [showConsentRow, setShowConsentRow] = useState(false);
+  /** Web-only: file awaiting consent confirmation before upload. */
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [bookingActionLoading, setBookingActionLoading] = useState<string | null>(null);
 
   const handleBookingAction = async (bookingEventId: string, newStatus: BookingEventStatus) => {
@@ -211,6 +212,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   useEffect(() => {
     setFileRightsConfirmed(false);
     setShowConsentRow(false);
+    setPendingFile(null);
   }, [conversationId]);
 
   useEffect(() => {
@@ -364,10 +366,6 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
 
   const handleFileSelected = async (file: File) => {
     if (!viewerUserId) return;
-    if (Platform.OS === 'web' && !fileRightsConfirmed) {
-      setUploadError(uiCopy.legal.chatFileRightsMissing);
-      return;
-    }
     setUploading(true);
     setUploadError(null);
     try {
@@ -430,6 +428,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
       if (fileInputRef.current) fileInputRef.current.value = '';
       setShowConsentRow(false);
       setFileRightsConfirmed(false);
+      setPendingFile(null);
     }
   };
 
@@ -439,22 +438,26 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
     }
   };
 
-  /** On web: show consent row first; on native: open picker directly. */
+  /** Open file picker directly; consent row appears only after a file is selected. */
   const handleAttachPress = () => {
-    if (Platform.OS !== 'web') {
-      openFileInput();
-      return;
-    }
-    setShowConsentRow(true);
+    openFileInput();
   };
 
-  /** When user checks the consent box, auto-open the file picker. */
+  /** When user checks the consent box after selecting a file, start the upload. */
   const handleConsentToggle = () => {
     const next = !fileRightsConfirmed;
     setFileRightsConfirmed(next);
-    if (next) {
-      openFileInput();
+    if (next && pendingFile) {
+      void handleFileSelected(pendingFile);
     }
+  };
+
+  /** Called when a file is chosen via the picker — shows consent row before uploading. */
+  const handleFileInputChange = (file: File) => {
+    setPendingFile(file);
+    setShowConsentRow(true);
+    setFileRightsConfirmed(false);
+    setUploadError(null);
   };
 
   const sendRich = async (type: MessagePayloadType, text: string, metadata?: Record<string, unknown>) => {
@@ -809,7 +812,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
             style={{ display: 'none' }}
             onChange={(e) => {
               const file = e.target.files?.[0];
-              if (file) void handleFileSelected(file);
+              if (file) handleFileInputChange(file);
             }}
           />
         ) : null}
@@ -827,7 +830,6 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
             <Text style={styles.attachBtnLabel}>📎</Text>
           )}
         </TouchableOpacity>
-        <QuickReplyChips onSelect={(text) => setInput(text)} />
         <TextInput
           value={input}
           onChangeText={(v) => { setInput(v); if (sendError) setSendError(null); }}
@@ -931,35 +933,6 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   );
 };
 
-/** Horizontal scrollable quick reply chips shown above the message input. */
-const QuickReplyChips: React.FC<{ onSelect: (text: string) => void }> = ({ onSelect }) => {
-  const HScroll = ScrollView;
-  return (
-    <HScroll
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      style={{ marginBottom: spacing.xs }}
-      contentContainerStyle={{ gap: spacing.xs, paddingVertical: spacing.xs }}
-    >
-      {QUICK_REPLIES.map((reply) => (
-        <TouchableOpacity
-          key={reply}
-          onPress={() => onSelect(reply)}
-          style={{
-            borderRadius: 999,
-            borderWidth: 1,
-            borderColor: colors.border,
-            paddingHorizontal: spacing.sm + 2,
-            paddingVertical: 4,
-            backgroundColor: colors.background,
-          }}
-        >
-          <Text style={{ fontSize: 12, color: colors.textPrimary }}>{reply}</Text>
-        </TouchableOpacity>
-      ))}
-    </HScroll>
-  );
-};
 
 const styles = StyleSheet.create({
   chatPanel: {

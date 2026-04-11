@@ -69,8 +69,10 @@ export const BookingChatView: React.FC<Props> = ({
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [fileRightsConfirmed, setFileRightsConfirmed] = useState(false);
-  /** Web-only: consent row is hidden until user taps the attach button. */
+  /** Web-only: consent row is only shown after a file has been selected. */
   const [showConsentRow, setShowConsentRow] = useState(false);
+  /** Web-only: file awaiting consent confirmation before upload. */
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   /** Blocks rapid double-send (client-side only; not server rate limiting). */
   const lastSendAtRef = useRef(0);
@@ -146,10 +148,6 @@ export const BookingChatView: React.FC<Props> = ({
   };
 
   const handleFileSelected = async (file: File) => {
-    if (!fileRightsConfirmed) {
-      setUploadError(uiCopy.legal.chatFileRightsMissing);
-      return;
-    }
     setUploading(true);
     setUploadError(null);
     try {
@@ -183,6 +181,7 @@ export const BookingChatView: React.FC<Props> = ({
       if (fileInputRef.current) fileInputRef.current.value = '';
       setShowConsentRow(false);
       setFileRightsConfirmed(false);
+      setPendingFile(null);
     }
   };
 
@@ -192,22 +191,26 @@ export const BookingChatView: React.FC<Props> = ({
     }
   };
 
-  /** On web: show consent row first; on native: open picker directly. */
+  /** Open file picker directly; consent row appears only after a file is selected. */
   const handleAttachPress = () => {
-    if (Platform.OS !== 'web') {
-      openFileInput();
-      return;
-    }
-    setShowConsentRow(true);
+    openFileInput();
   };
 
-  /** When user checks the consent box, auto-open the file picker. */
+  /** When user checks the consent box after selecting a file, start the upload. */
   const handleConsentToggle = () => {
     const next = !fileRightsConfirmed;
     setFileRightsConfirmed(next);
-    if (next) {
-      openFileInput();
+    if (next && pendingFile) {
+      void handleFileSelected(pendingFile);
     }
+  };
+
+  /** Called when a file is chosen via the picker — shows consent row before uploading. */
+  const handleFileInputChange = (file: File) => {
+    setPendingFile(file);
+    setShowConsentRow(true);
+    setFileRightsConfirmed(false);
+    setUploadError(null);
   };
 
   const displayAgencyName = agencyName || initialAgencyName || 'Agency';
@@ -416,7 +419,7 @@ export const BookingChatView: React.FC<Props> = ({
             style={{ display: 'none' }}
             onChange={(e) => {
               const file = e.target.files?.[0];
-              if (file) void handleFileSelected(file);
+              if (file) handleFileInputChange(file);
             }}
           />
         ) : null}
