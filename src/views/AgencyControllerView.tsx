@@ -618,23 +618,23 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   );
 
   return (
-    <View style={[s.container, { paddingTop: Math.max(spacing.xl, insets.top + spacing.sm) }]}>
-      <TouchableOpacity style={s.backRow} onPress={onBackToRoleSelection} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-        <Text style={s.backArrow}>←</Text>
-        <Text style={s.backLabel}>Logout</Text>
-      </TouchableOpacity>
-
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+    <View style={[s.container, { paddingTop: Math.max(spacing.xs, insets.top + 2) }]}>
+      <View style={s.topShell}>
         <Text style={s.brand}>INDEX CASTING</Text>
-        <TouchableOpacity
-          onPress={() => {
-            const subject = encodeURIComponent('Help Request – Agency – Casting Index');
-            const body = encodeURIComponent('Hello Casting Index Team,\n\nI need help with:\n\n');
-            Linking.openURL(`mailto:admin@castingindex.com?subject=${subject}&body=${body}`);
-          }}
-        >
-          <Text style={{ ...typography.label, fontSize: 12, color: colors.textSecondary }}>Help</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+          <TouchableOpacity
+            onPress={() => {
+              const subject = encodeURIComponent('Help Request – Agency – Casting Index');
+              const body = encodeURIComponent('Hello Casting Index Team,\n\nI need help with:\n\n');
+              Linking.openURL(`mailto:admin@castingindex.com?subject=${subject}&body=${body}`);
+            }}
+          >
+            <Text style={{ ...typography.headingCompact, fontSize: 11, color: colors.textSecondary }}>Help</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={onBackToRoleSelection} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+            <Text style={{ ...typography.headingCompact, fontSize: 11, color: colors.textSecondary }}>Logout</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={{ flex: 1, paddingBottom: bottomTabInset }}>
@@ -4880,7 +4880,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   if (optionFullscreenActive && request) {
     return (
       <>
-        <View style={{ flex: 1, minHeight: 0, alignSelf: 'stretch' }}>
+        <View style={{ flex: 1, minHeight: 0, alignSelf: 'stretch', marginHorizontal: -spacing.lg }}>
           <OptionNegotiationChatShell
             title={`${request.clientName} · ${request.modelName}`}
             subtitle={`${request.date}${request.startTime ? ` · ${request.startTime}–${request.endTime}` : ''}`}
@@ -5098,32 +5098,57 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   }
 
   return (
-    <ScreenScrollView>
-      <Text style={s.sectionLabel}>Messages</Text>
-      <Text style={[s.metaText, { marginBottom: spacing.sm }]}>{uiCopy.b2bChat.messagesIntroAgency}</Text>
-
-      <View style={[s.messagesSearchRow, { marginBottom: spacing.sm }]}>
-        <TextInput
-          value={messagesSearch}
-          onChangeText={setMessagesSearch}
-          placeholder={uiCopy.messages.searchPlaceholder}
-          placeholderTextColor={colors.textSecondary}
-          style={s.messagesSearchBar}
-          clearButtonMode="while-editing"
-          multiline={false}
-          numberOfLines={1}
-          returnKeyType="search"
-        />
-        {messagesSearch.length > 0 && (
-          <TouchableOpacity
-            onPress={() => setMessagesSearch('')}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            style={s.messagesSearchClear}
+    <View style={{ flex: 1, minHeight: 0 }}>
+      {/* Compact fixed header: search + horizontal section tabs */}
+      <View style={s.msgsFixedTop}>
+        <View style={[s.messagesSearchRow, { marginBottom: spacing.xs }]}>
+          <TextInput
+            value={messagesSearch}
+            onChangeText={setMessagesSearch}
+            placeholder={uiCopy.messages.searchPlaceholder}
+            placeholderTextColor={colors.textSecondary}
+            style={s.messagesSearchBar}
+            clearButtonMode="while-editing"
+            multiline={false}
+            numberOfLines={1}
+            returnKeyType="search"
+          />
+          {messagesSearch.length > 0 && (
+            <TouchableOpacity
+              onPress={() => setMessagesSearch('')}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={s.messagesSearchClear}
+            >
+              <Text style={s.messagesSearchClearText}>✕</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+        {!searchActive && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={s.msgsSectionTabsScroll}
+            contentContainerStyle={s.msgsSectionTabsContent}
           >
-            <Text style={s.messagesSearchClearText}>✕</Text>
-          </TouchableOpacity>
+            {(['clientRequests', 'recruiting', 'optionRequests'] as const).map((key) => (
+              <TouchableOpacity
+                key={key}
+                style={[s.filterPill, messagesSection === key && s.filterPillActive]}
+                onPress={() => setMessagesSection(key)}
+              >
+                <Text style={[s.filterPillLabel, messagesSection === key && s.filterPillLabelActive]}>
+                  {key === 'optionRequests'
+                    ? uiCopy.b2bChat.tabOptionRequests
+                    : key === 'recruiting'
+                      ? uiCopy.b2bChat.tabRecruiting
+                      : uiCopy.b2bChat.tabB2BChatsAgencyView}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
         )}
       </View>
+    <ScreenScrollView>
 
       {searchActive ? (
         <View>
@@ -5243,33 +5268,12 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
         </View>
       ) : (
         <>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: spacing.md }}>
-        {(['clientRequests', 'recruiting', 'optionRequests'] as const).map((key) => (
-          <TouchableOpacity
-            key={key}
-            style={[s.filterPill, messagesSection === key && s.filterPillActive]}
-            onPress={() => setMessagesSection(key)}
-          >
-            <Text style={[s.filterPillLabel, messagesSection === key && s.filterPillLabelActive]}>
-              {key === 'optionRequests'
-                ? uiCopy.b2bChat.tabOptionRequests
-                : key === 'recruiting'
-                  ? uiCopy.b2bChat.tabRecruiting
-                  : uiCopy.b2bChat.tabB2BChatsAgencyView}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
       {messagesSection === 'clientRequests' ? (
         <View style={{ marginBottom: spacing.lg }}>
           {!agencyId ? (
             <Text style={s.metaText}>{uiCopy.b2bChat.noAgencyContext}</Text>
           ) : (
             <>
-              <Text style={[s.metaText, { marginBottom: spacing.sm, fontWeight: '600' }]}>
-                {uiCopy.b2bChat.tabB2BChatsAgencyView}
-              </Text>
               {b2bConversations.length === 0 ? (
                 <Text style={s.metaText}>{uiCopy.b2bChat.noClientChatsYetAgency}</Text>
               ) : agencyB2bWebSplit ? (
@@ -5584,6 +5588,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
       </>
       )}
     </ScreenScrollView>
+    </View>
   );
 };
 
@@ -6474,12 +6479,19 @@ const s = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
+    paddingTop: spacing.xs,
+  },
+  topShell: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: spacing.xs,
+    marginBottom: spacing.xs,
   },
   backRow: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm, gap: spacing.xs },
   backArrow: { fontSize: 22, color: colors.textPrimary },
   backLabel: { ...typography.label, fontSize: 11, color: colors.textSecondary },
-  brand: { ...typography.heading, color: colors.textPrimary, marginBottom: spacing.md },
+  brand: { ...typography.headingCompact, color: colors.textPrimary, marginBottom: 0 },
   heading: { ...typography.heading, fontSize: 18, color: colors.textPrimary, marginBottom: spacing.md },
   tabRow: { flexDirection: 'row', gap: spacing.lg, alignItems: 'center' },
   bottomBar: {
@@ -6508,6 +6520,7 @@ const s = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingVertical: spacing.sm, paddingHorizontal: spacing.sm,
     borderWidth: 1, borderColor: colors.border, borderRadius: 12, marginBottom: spacing.xs,
+    minWidth: 0, overflow: 'hidden',
   },
   bookingChatRow: {
     flexDirection: 'row',
@@ -6518,6 +6531,8 @@ const s = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: 12,
     marginBottom: spacing.xs,
+    minWidth: 0,
+    overflow: 'hidden',
   },
   bookingChatThumbWrap: {
     width: 56,
@@ -6573,6 +6588,8 @@ const s = StyleSheet.create({
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingVertical: spacing.sm, paddingHorizontal: spacing.sm,
     borderBottomWidth: 1, borderBottomColor: colors.border,
+    minWidth: 0,
+    overflow: 'hidden',
   },
   threadRowActive: { backgroundColor: '#F3F0EC' },
   statusPill: { borderRadius: 999, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
@@ -6590,6 +6607,22 @@ const s = StyleSheet.create({
   chatBubbleSystemText: { textAlign: 'center' as const },
   chatBubbleText: { ...typography.body, fontSize: 12, color: colors.textPrimary },
   chatBubbleTextAgency: { color: colors.surface },
+  /** Compact fixed header for Messages tab: search + horizontal section pills. */
+  msgsFixedTop: {
+    paddingBottom: spacing.xs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+    marginBottom: spacing.xs,
+  },
+  msgsSectionTabsScroll: {
+    flexShrink: 0,
+  },
+  msgsSectionTabsContent: {
+    flexDirection: 'row' as const,
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: 0,
+  },
   /** Single-line search on Messages tab — never use flex:1 (RN Web expands to huge height). */
   messagesSearchRow: {
     flexDirection: 'row' as const,

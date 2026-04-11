@@ -267,12 +267,11 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity style={styles.backRow} onPress={onBackToRoleSelection} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-        <Text style={styles.backArrow}>←</Text>
-        <Text style={styles.backLabel}>Logout</Text>
-      </TouchableOpacity>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.md }}>
+      <View style={styles.topShell}>
         <Text style={styles.brand}>INDEX CASTING</Text>
+        <TouchableOpacity onPress={onBackToRoleSelection} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+          <Text style={{ ...typography.headingCompact, fontSize: 11, color: colors.textSecondary }}>Logout</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={{ flex: 1 }}>
@@ -623,12 +622,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
+    paddingTop: spacing.xs,
   },
+  topShell: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: spacing.xs, marginBottom: spacing.xs },
   backRow: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm },
   backArrow: { fontSize: 24, color: colors.textPrimary, marginRight: spacing.sm },
   backLabel: { ...typography.label, color: colors.textSecondary },
-  brand: { ...typography.heading, fontSize: 16, color: colors.textPrimary },
+  brand: { ...typography.headingCompact, color: colors.textPrimary },
   heading: { ...typography.heading, fontSize: 20, color: colors.textPrimary, marginBottom: spacing.xs },
   subtitle: { ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.lg },
   applyBtn: {

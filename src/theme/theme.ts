@@ -31,6 +31,14 @@ export const typography = {
     letterSpacing: 1.4,
     textTransform: 'uppercase' as const,
   },
+  /** Compact brand wordmark for non-dashboard product screens — significantly smaller than heading. */
+  headingCompact: {
+    fontFamily,
+    fontSize: 13,
+    letterSpacing: 1.6,
+    fontWeight: '600' as const,
+    textTransform: 'uppercase' as const,
+  },
   body: {
     fontFamily,
     fontSize: 15,

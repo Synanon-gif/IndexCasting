@@ -1962,7 +1962,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
           </View>
         </View>
       )}
-      <View style={[styles.appShell, { paddingBottom: bottomTabInset }]}>
+      <View style={[styles.appShell, { paddingBottom: bottomTabInset, paddingTop: Math.max(spacing.xs, insets.top + 2) }]}>
         <View style={styles.topBar}>
           <View style={styles.topBarRow}>
             <TouchableOpacity
@@ -4554,35 +4554,39 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   return (
     <View style={styles.section}>
       {showClientMessagesTabs && (
-        <TextInput
-          value={clientMsgSearch}
-          onChangeText={setClientMsgSearch}
-          placeholder={uiCopy.messages.searchPlaceholderClient}
-          placeholderTextColor={colors.textSecondary}
-          style={[styles.searchInput, { marginBottom: spacing.sm }]}
-          multiline={false}
-          numberOfLines={1}
-          returnKeyType="search"
-        />
-      )}
-      {showClientMessagesTabs && (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: spacing.md }}>
-          <TouchableOpacity
-            style={[styles.filterPill, clientMsgTab === 'b2bChats' && styles.filterPillActive]}
-            onPress={() => setClientMsgTab('b2bChats')}
+        <View style={styles.msgsFixedTop}>
+          <TextInput
+            value={clientMsgSearch}
+            onChangeText={setClientMsgSearch}
+            placeholder={uiCopy.messages.searchPlaceholderClient}
+            placeholderTextColor={colors.textSecondary}
+            style={[styles.searchInput, { marginBottom: spacing.xs }]}
+            multiline={false}
+            numberOfLines={1}
+            returnKeyType="search"
+          />
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ flexDirection: 'row', gap: spacing.sm, paddingVertical: spacing.xs }}
           >
-            <Text style={[styles.filterPillLabel, clientMsgTab === 'b2bChats' && styles.filterPillLabelActive]}>
-              {uiCopy.b2bChat.tabB2BChatsClientView}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.filterPill, clientMsgTab === 'optionRequests' && styles.filterPillActive]}
-            onPress={() => setClientMsgTab('optionRequests')}
-          >
-            <Text style={[styles.filterPillLabel, clientMsgTab === 'optionRequests' && styles.filterPillLabelActive]}>
-              {uiCopy.b2bChat.tabOptionRequests}
-            </Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterPill, clientMsgTab === 'b2bChats' && styles.filterPillActive]}
+              onPress={() => setClientMsgTab('b2bChats')}
+            >
+              <Text style={[styles.filterPillLabel, clientMsgTab === 'b2bChats' && styles.filterPillLabelActive]}>
+                {uiCopy.b2bChat.tabB2BChatsClientView}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterPill, clientMsgTab === 'optionRequests' && styles.filterPillActive]}
+              onPress={() => setClientMsgTab('optionRequests')}
+            >
+              <Text style={[styles.filterPillLabel, clientMsgTab === 'optionRequests' && styles.filterPillLabelActive]}>
+                {uiCopy.b2bChat.tabOptionRequests}
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
         </View>
       )}
       {showClientMessagesTabs && clientMsgTab === 'b2bChats' ? (
@@ -4606,25 +4610,21 @@ const MessagesView: React.FC<MessagesViewProps> = ({
         <>
       {!optionFullscreenActive ? (
         <>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm }}>
-        <Text style={styles.sectionLabel}>Messages</Text>
-        {onMsgFilterChange && (
-          <View style={{ flexDirection: 'row', gap: 4 }}>
-            {(['current', 'archived'] as const).map((f) => (
-              <TouchableOpacity
-                key={f}
-                style={[styles.filterPill, msgFilter === f && styles.filterPillActive]}
-                onPress={() => onMsgFilterChange(f)}
-              >
-                <Text style={[styles.filterPillLabel, msgFilter === f && styles.filterPillLabelActive]}>
-                  {f === 'current' ? uiCopy.messages.optionRequestListFilterCurrent : uiCopy.messages.optionRequestListFilterArchived}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-      </View>
-      <Text style={[styles.metaText, { marginBottom: spacing.sm }]}>{uiCopy.messages.archiveThreadDoesNotDeleteShort}</Text>
+      {onMsgFilterChange && (
+        <View style={{ flexDirection: 'row', gap: 4, marginBottom: spacing.xs }}>
+          {(['current', 'archived'] as const).map((f) => (
+            <TouchableOpacity
+              key={f}
+              style={[styles.filterPill, msgFilter === f && styles.filterPillActive]}
+              onPress={() => onMsgFilterChange(f)}
+            >
+              <Text style={[styles.filterPillLabel, msgFilter === f && styles.filterPillLabelActive]}>
+                {f === 'current' ? uiCopy.messages.optionRequestListFilterCurrent : uiCopy.messages.optionRequestListFilterArchived}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
       <View style={{ flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.sm }}>
         <TouchableOpacity
           style={[styles.filterPill, attentionFilter === 'all' && styles.filterPillActive]}
@@ -4903,7 +4903,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
             </TouchableOpacity>
           </View>
           }
-          containerStyle={{ flex: 1, minHeight: 0 }}
+          containerStyle={{ flex: 1, minHeight: 0, marginHorizontal: -spacing.lg }}
         >
           <>
             {!showDesktopNegotiationRail ? (
@@ -5962,15 +5962,16 @@ const styles = StyleSheet.create({
     maxWidth: 1200,
     alignSelf: 'center',
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
+    paddingTop: spacing.xs,
   },
   topBar: {
-    marginBottom: spacing.lg,
+    marginBottom: spacing.xs,
   },
   topBarRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingBottom: spacing.xs,
   },
   bottomTabBar: {
     position: 'absolute' as const,
@@ -6032,7 +6033,7 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   brand: {
-    ...typography.heading,
+    ...typography.headingCompact,
     color: colors.textPrimary,
   },
   sharedRight: {
@@ -7101,6 +7102,12 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
   },
   /** Messages tab — compact pill search (matches agency web). */
+  msgsFixedTop: {
+    paddingBottom: spacing.xs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+    marginBottom: spacing.xs,
+  },
   searchInput: {
     alignSelf: 'stretch',
     width: '100%' as const,

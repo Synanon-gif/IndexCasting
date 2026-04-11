@@ -687,25 +687,25 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   }
 
   return (
-    <View style={[st.container, { paddingTop: Math.max(spacing.xl, insets.top + spacing.sm) }]}>
-      {onBackToRoleSelection && (
-        <TouchableOpacity style={st.backRow} onPress={onBackToRoleSelection} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-          <Text style={st.backArrow}>←</Text>
-          <Text style={st.backLabel}>Logout</Text>
-        </TouchableOpacity>
-      )}
-
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+    <View style={[st.container, { paddingTop: Math.max(spacing.xs, insets.top + 2) }]}>
+      <View style={st.topShell}>
         <Text style={st.brand}>INDEX CASTING</Text>
-        <TouchableOpacity
-          onPress={() => {
-            const subject = encodeURIComponent('Help Request – Model – Casting Index');
-            const body = encodeURIComponent('Hello Casting Index Team,\n\nI need help with:\n\n');
-            Linking.openURL(`mailto:admin@castingindex.com?subject=${subject}&body=${body}`);
-          }}
-        >
-          <Text style={{ ...typography.label, fontSize: 12, color: colors.textSecondary }}>Help</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+          <TouchableOpacity
+            onPress={() => {
+              const subject = encodeURIComponent('Help Request – Model – Casting Index');
+              const body = encodeURIComponent('Hello Casting Index Team,\n\nI need help with:\n\n');
+              Linking.openURL(`mailto:admin@castingindex.com?subject=${subject}&body=${body}`);
+            }}
+          >
+            <Text style={{ ...typography.headingCompact, fontSize: 11, color: colors.textSecondary }}>Help</Text>
+          </TouchableOpacity>
+          {onBackToRoleSelection && (
+            <TouchableOpacity onPress={onBackToRoleSelection} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+              <Text style={{ ...typography.headingCompact, fontSize: 11, color: colors.textSecondary }}>Logout</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
       <Text style={st.heading}>{profile.name}</Text>
 
@@ -1923,11 +1923,12 @@ const Measure: React.FC<MeasureProps> = ({ label, value }) => (
 );
 
 const st = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background, paddingHorizontal: spacing.lg, paddingTop: spacing.xl },
+  container: { flex: 1, backgroundColor: colors.background, paddingHorizontal: spacing.lg, paddingTop: spacing.xs },
+  topShell: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: spacing.xs, marginBottom: spacing.xs },
   backRow: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm, gap: spacing.xs },
   backArrow: { fontSize: 22, color: colors.textPrimary },
   backLabel: { ...typography.label, fontSize: 11, color: colors.textSecondary },
-  brand: { ...typography.heading, color: colors.textPrimary, marginBottom: spacing.xs },
+  brand: { ...typography.headingCompact, color: colors.textPrimary, marginBottom: 0 },
   heading: { ...typography.heading, fontSize: 18, color: colors.textPrimary, marginBottom: spacing.md },
   label: { ...typography.label, color: colors.textSecondary, marginBottom: spacing.sm },
   tabRow: { flexDirection: 'row', gap: spacing.lg, alignItems: 'center', paddingHorizontal: spacing.sm },
