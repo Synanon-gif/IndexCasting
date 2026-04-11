@@ -84,6 +84,7 @@ export function getCalendarDetailNextStepText(
   _calendar_entry: CalendarEntry | null,
   role: 'client' | 'agency' | 'model',
   c: CalendarDetailNextStepCopy,
+  hasConflictWarning = false,
 ): string {
   const sig = attentionSignalsFromOptionRequestLike({
     status: option.status,
@@ -93,7 +94,7 @@ export function getCalendarDetailNextStepText(
     modelAccountLinked: option.model_account_linked,
     agencyCounterPrice: option.agency_counter_price,
     proposedPrice: option.proposed_price,
-    hasConflictWarning: false,
+    hasConflictWarning,
   });
   return nextStepFromSignals(sig, role, c);
 }
@@ -102,6 +103,7 @@ export function getCalendarDetailNextStepText(
 export function getCalendarDetailNextStepForModelLocalOption(
   opt: OptionRequest,
   c: CalendarDetailNextStepCopy,
+  hasConflictWarning = false,
 ): string {
   const sig = attentionSignalsFromOptionRequestLike({
     status: opt.status,
@@ -111,7 +113,7 @@ export function getCalendarDetailNextStepForModelLocalOption(
     modelAccountLinked: opt.modelAccountLinked,
     agencyCounterPrice: opt.agencyCounterPrice ?? null,
     proposedPrice: opt.proposedPrice ?? null,
-    hasConflictWarning: false,
+    hasConflictWarning,
   });
   return nextStepFromSignals(sig, 'model', c);
 }

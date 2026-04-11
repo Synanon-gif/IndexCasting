@@ -27,9 +27,15 @@ describe('optionRequestNeedsMessagesTabAttention', () => {
     ).toBe(true);
   });
 
-  it('is false when final_status implies Confirmed display (even if status still in_negotiation)', () => {
+  it('is true when option_confirmed (Option confirmed is an active state requiring finalization)', () => {
     expect(
       optionRequestNeedsMessagesTabAttention({ status: 'in_negotiation', finalStatus: 'option_confirmed' }),
+    ).toBe(true);
+  });
+
+  it('is false when job_confirmed (fully terminal)', () => {
+    expect(
+      optionRequestNeedsMessagesTabAttention({ status: 'confirmed', finalStatus: 'job_confirmed' }),
     ).toBe(false);
   });
 
@@ -61,7 +67,20 @@ describe('deriveSmartAttentionState', () => {
     ).toBe('job_confirmation_pending');
   });
 
-  it('returns waiting_for_model when agency accepted but model still pending (in_negotiation + option_confirmed)', () => {
+  it('returns waiting_for_model when agency accepted but model still pending (in_negotiation + option_confirmed, linked model)', () => {
+    expect(
+      deriveSmartAttentionState({
+        status: 'in_negotiation',
+        finalStatus: 'option_confirmed',
+        clientPriceStatus: 'accepted',
+        modelApproval: 'pending',
+        modelAccountLinked: true,
+        proposedPrice: 100,
+      }),
+    ).toBe('waiting_for_model');
+  });
+
+  it('returns job_confirmation_pending when option_confirmed but model not linked (no-account branch)', () => {
     expect(
       deriveSmartAttentionState({
         status: 'in_negotiation',
@@ -70,10 +89,23 @@ describe('deriveSmartAttentionState', () => {
         modelApproval: 'pending',
         proposedPrice: 100,
       }),
+    ).toBe('job_confirmation_pending');
+  });
+
+  it('returns waiting_for_model for pending model approval (linked model)', () => {
+    expect(
+      deriveSmartAttentionState({
+        status: 'in_negotiation',
+        finalStatus: 'option_pending',
+        clientPriceStatus: 'accepted',
+        modelApproval: 'pending',
+        modelAccountLinked: true,
+        proposedPrice: 100,
+      }),
     ).toBe('waiting_for_model');
   });
 
-  it('returns waiting_for_model for pending model approval', () => {
+  it('returns waiting_for_client when model not linked and approval pending (no-account: agency proceeds)', () => {
     expect(
       deriveSmartAttentionState({
         status: 'in_negotiation',
@@ -82,7 +114,7 @@ describe('deriveSmartAttentionState', () => {
         modelApproval: 'pending',
         proposedPrice: 100,
       }),
-    ).toBe('waiting_for_model');
+    ).toBe('waiting_for_client');
   });
 
   it('returns counter_pending when client rejected agency terms', () => {

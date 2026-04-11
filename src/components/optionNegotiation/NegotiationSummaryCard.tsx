@@ -23,6 +23,8 @@ export type NegotiationSummaryCardProps = {
   finalStatusLine: string | null;
   /** Optional: model availability / pre-approval context (agency); client sees null or shorter line. */
   confirmationSummaryLine?: string | null;
+  /** Role-based visibility gate: hide commercial data from models. Defaults to 'client'. */
+  viewerRole?: 'client' | 'agency' | 'model';
 };
 
 export const NegotiationSummaryCard: React.FC<NegotiationSummaryCardProps> = ({
@@ -40,7 +42,9 @@ export const NegotiationSummaryCard: React.FC<NegotiationSummaryCardProps> = ({
   requestTypeLabel,
   finalStatusLine,
   confirmationSummaryLine,
+  viewerRole = 'client',
 }) => {
+  const showPrices = viewerRole !== 'model';
   const agreed = getCanonicalAgreedPrice({
     proposed_price: proposedPrice ?? null,
     agency_counter_price: agencyCounterPrice ?? null,
@@ -59,23 +63,25 @@ export const NegotiationSummaryCard: React.FC<NegotiationSummaryCardProps> = ({
     </View>
     {finalStatusLine ? <Text style={styles.final}>{finalStatusLine}</Text> : null}
     {confirmationSummaryLine ? <Text style={styles.confirmationHint}>{confirmationSummaryLine}</Text> : null}
-    <View style={styles.priceBlock}>
-      {agreed != null ? (
-        <Text style={styles.priceAgreed}>
-          {uiCopy.optionNegotiationChat.agreedPriceLabel}: {formatOptionMoneyAmount(agreed, currency)}
-        </Text>
-      ) : null}
-      {proposedPrice != null ? (
-        <Text style={styles.price}>
-          {uiCopy.optionNegotiationChat.proposedPriceLabel}: {formatOptionMoneyAmount(proposedPrice, currency)}
-        </Text>
-      ) : null}
-      {agencyCounterPrice != null ? (
-        <Text style={styles.price}>
-          {uiCopy.optionNegotiationChat.counterPriceLabel}: {formatOptionMoneyAmount(agencyCounterPrice, currency)}
-        </Text>
-      ) : null}
-    </View>
+    {showPrices ? (
+      <View style={styles.priceBlock}>
+        {agreed != null ? (
+          <Text style={styles.priceAgreed}>
+            {uiCopy.optionNegotiationChat.agreedPriceLabel}: {formatOptionMoneyAmount(agreed, currency)}
+          </Text>
+        ) : null}
+        {proposedPrice != null ? (
+          <Text style={styles.price}>
+            {uiCopy.optionNegotiationChat.proposedPriceLabel}: {formatOptionMoneyAmount(proposedPrice, currency)}
+          </Text>
+        ) : null}
+        {agencyCounterPrice != null ? (
+          <Text style={styles.price}>
+            {uiCopy.optionNegotiationChat.counterPriceLabel}: {formatOptionMoneyAmount(agencyCounterPrice, currency)}
+          </Text>
+        ) : null}
+      </View>
+    ) : null}
     <Text style={styles.type}>{requestTypeLabel}</Text>
   </View>
   );

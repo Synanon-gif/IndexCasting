@@ -1,4 +1,5 @@
 import { toDisplayStatus } from './statusHelpers';
+import { priceCommerciallySettled } from './priceSettlement';
 
 /** @deprecated Prefer deriveNegotiationAttention + deriveApprovalAttention */
 export type SmartAttentionState =
@@ -47,14 +48,10 @@ export type AttentionSignalInput = {
 
 /**
  * Price accepted in DB plus at least one commercial anchor — use to lock counter/reject UI.
- * Stricter than RPC `client_confirm_option_job` (which only checks `client_price_status`).
+ * Delegates to centralized `priceCommerciallySettled` to avoid duplication.
  */
 export function priceCommerciallySettledForUi(input: AttentionSignalInput): boolean {
-  if (input.clientPriceStatus !== 'accepted') return false;
-  const hasAgency =
-    input.agencyCounterPrice != null && !Number.isNaN(Number(input.agencyCounterPrice));
-  const hasProposed = input.proposedPrice != null && !Number.isNaN(Number(input.proposedPrice));
-  return hasAgency || hasProposed;
+  return priceCommerciallySettled(input);
 }
 
 /**
@@ -101,7 +98,7 @@ export function deriveApprovalAttention(input: AttentionSignalInput): ApprovalAt
     return 'approval_inactive';
   }
 
-  const modelAccountLinked = input.modelAccountLinked !== false;
+  const modelAccountLinked = input.modelAccountLinked === true;
   const modelApproval = input.modelApproval ?? null;
 
   if (
@@ -143,7 +140,7 @@ export function deriveSmartAttentionState(input: AttentionSignalInput): SmartAtt
   });
   const modelApproval = input.modelApproval ?? null;
   const clientPriceStatus = input.clientPriceStatus ?? null;
-  const modelAccountLinked = input.modelAccountLinked !== false;
+  const modelAccountLinked = input.modelAccountLinked === true;
 
   if (finalStatus === 'job_confirmed') {
     return 'no_attention';
@@ -223,13 +220,27 @@ export function optionRequestNeedsMessagesTabAttention(r: {
   clientPriceStatus?: 'pending' | 'accepted' | 'rejected' | null;
   agencyCounterPrice?: number | null;
   proposedPrice?: number | null;
+  modelApproval?: 'pending' | 'approved' | 'rejected' | null;
+  modelAccountLinked?: boolean | null;
 }): boolean {
   const d = toDisplayStatus(r.status, r.finalStatus ?? null, {
     clientPriceStatus: r.clientPriceStatus,
     agencyCounterPrice: r.agencyCounterPrice,
     proposedPrice: r.proposedPrice,
   });
-  return d === 'In negotiation' || d === 'Draft' || d === 'Price agreed';
+  if (d === 'In negotiation' || d === 'Draft' || d === 'Price agreed' || d === 'Option confirmed') {
+    return true;
+  }
+  const appr = deriveApprovalAttention({
+    status: r.status,
+    finalStatus: r.finalStatus ?? null,
+    clientPriceStatus: r.clientPriceStatus ?? null,
+    modelApproval: r.modelApproval ?? null,
+    modelAccountLinked: r.modelAccountLinked,
+    agencyCounterPrice: r.agencyCounterPrice ?? null,
+    proposedPrice: r.proposedPrice ?? null,
+  });
+  return appr === 'waiting_for_model_confirmation' || appr === 'waiting_for_client_to_finalize_job';
 }
 
 /**
@@ -258,7 +269,7 @@ export function modelInboxSortPriority(input: {
   modelAccountLinked?: boolean | null;
 }): number {
   if (modelInboxRequiresModelConfirmation(input)) return 0;
-  const modelAccountLinked = input.modelAccountLinked !== false;
+  const modelAccountLinked = input.modelAccountLinked === true;
   if (modelAccountLinked && input.modelApproval === 'pending') return 1;
   return 2;
 }

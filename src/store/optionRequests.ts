@@ -10,6 +10,7 @@ import {
   insertOptionRequest,
   resolveAgencyOrganizationIdForOptionRequest,
   updateModelApproval,
+  modelRejectOptionRequest,
   getOptionMessages as fetchMessages,
   addOptionMessage,
   addOptionSystemMessage,
@@ -455,13 +456,16 @@ export async function rejectOptionAsModel(threadId: string): Promise<boolean> {
   const req = requestsCache.find((r) => r.threadId === threadId);
   if (!req) return false;
   const prevApproval = req.modelApproval;
+  const prevStatus = req.status;
   req.modelApproval = 'rejected';
+  req.status = 'rejected';
   notify();
-  const ok = await updateModelApproval(req.id, 'rejected');
+  const ok = await modelRejectOptionRequest(req.id);
   if (!ok) {
     req.modelApproval = prevApproval;
+    req.status = prevStatus;
     notify();
-    console.error('[rejectOptionAsModel] updateModelApproval failed – rolled back', req.id);
+    console.error('[rejectOptionAsModel] modelRejectOptionRequest failed – rolled back', req.id);
   }
   return ok;
 }

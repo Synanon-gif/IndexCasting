@@ -15,23 +15,29 @@ describe('statusHelpers', () => {
     ).toBe('Price agreed');
   });
 
-  it('does not show Price agreed once option_confirmed (Confirmed wins)', () => {
+  it('does not show Price agreed once option_confirmed (Option confirmed wins)', () => {
     expect(
       toDisplayStatus('in_negotiation', 'option_confirmed', {
         clientPriceStatus: 'accepted',
         agencyCounterPrice: 500,
         proposedPrice: null,
       }),
-    ).toBe('Confirmed');
+    ).toBe('Option confirmed');
   });
 
   it('prioritizes final_status when mapping display state', () => {
-    expect(toDisplayStatus('in_negotiation', 'option_confirmed')).toBe('Confirmed');
+    expect(toDisplayStatus('in_negotiation', 'option_confirmed')).toBe('Option confirmed');
     expect(toDisplayStatus('rejected', 'job_confirmed')).toBe('Confirmed');
   });
 
-  it('keeps option_confirmed as Confirmed display (attention layer handles job confirmation pending separately)', () => {
+  it('distinguishes option_confirmed from job_confirmed', () => {
     expect(toDisplayStatus('confirmed', 'option_confirmed')).toBe('Confirmed');
+    expect(toDisplayStatus('confirmed', 'job_confirmed')).toBe('Confirmed');
+  });
+
+  it('keeps stable colors for Option confirmed', () => {
+    expect(statusColor('Option confirmed')).toBe('#0d9488');
+    expect(statusBgColor('Option confirmed')).toBe('#ccfbf1');
   });
 
   it('keeps stable colors for In negotiation', () => {

@@ -6,10 +6,13 @@
  * only the UI presentation is standardized.
  */
 
+import { priceCommerciallySettled } from './priceSettlement';
+
 export type DisplayStatus =
   | 'Draft'
   | 'In negotiation'
   | 'Price agreed'
+  | 'Option confirmed'
   | 'Confirmed'
   | 'Rejected';
 
@@ -19,14 +22,6 @@ export type OptionPriceDisplaySignals = {
   agencyCounterPrice?: number | null;
   proposedPrice?: number | null;
 };
-
-function isPriceCommerciallySettledForDisplay(s: OptionPriceDisplaySignals | null | undefined): boolean {
-  if (!s || s.clientPriceStatus !== 'accepted') return false;
-  const hasAgency =
-    s.agencyCounterPrice != null && !Number.isNaN(Number(s.agencyCounterPrice));
-  const hasProposed = s.proposedPrice != null && !Number.isNaN(Number(s.proposedPrice));
-  return hasAgency || hasProposed;
-}
 
 /**
  * Converts the internal option_request status + final_status to a single
@@ -40,12 +35,18 @@ export function toDisplayStatus(
   priceSignals?: OptionPriceDisplaySignals | null,
 ): DisplayStatus {
   if (finalStatus === 'job_confirmed') return 'Confirmed';
-  if (status === 'confirmed' || finalStatus === 'option_confirmed') return 'Confirmed';
+  if (status === 'confirmed' && finalStatus === 'option_confirmed') return 'Confirmed';
+  if (finalStatus === 'option_confirmed') return 'Option confirmed';
+  if (status === 'confirmed') return 'Confirmed';
   if (status === 'rejected') return 'Rejected';
   if (status === 'in_negotiation') {
     if (
       priceSignals &&
-      isPriceCommerciallySettledForDisplay(priceSignals) &&
+      priceCommerciallySettled({
+        clientPriceStatus: priceSignals.clientPriceStatus ?? null,
+        agencyCounterPrice: priceSignals.agencyCounterPrice ?? null,
+        proposedPrice: priceSignals.proposedPrice ?? null,
+      }) &&
       finalStatus !== 'option_confirmed' &&
       finalStatus !== 'job_confirmed'
     ) {
@@ -60,6 +61,7 @@ export function toDisplayStatus(
 export function statusColor(displayStatus: DisplayStatus): string {
   switch (displayStatus) {
     case 'Confirmed': return '#16a34a'; // green-600
+    case 'Option confirmed': return '#0d9488'; // teal-600
     case 'Rejected':  return '#dc2626'; // red-600
     case 'In negotiation': return '#d97706'; // amber-600
     case 'Price agreed': return '#2563eb'; // blue-600
@@ -72,6 +74,7 @@ export function statusColor(displayStatus: DisplayStatus): string {
 export function statusBgColor(displayStatus: DisplayStatus): string {
   switch (displayStatus) {
     case 'Confirmed': return '#dcfce7'; // green-100
+    case 'Option confirmed': return '#ccfbf1'; // teal-100
     case 'Rejected':  return '#fee2e2'; // red-100
     case 'In negotiation': return '#fef3c7'; // amber-100
     case 'Price agreed': return '#dbeafe'; // blue-100

@@ -125,7 +125,7 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
     <>
       {assignmentMode === 'readonly' && request.clientOrganizationId && assignmentByClientOrgId[request.clientOrganizationId] ? (
         <Text style={[styles.metaText, { marginBottom: spacing.xs }]}>
-          Client assignment: {assignmentByClientOrgId[request.clientOrganizationId].label}
+          {uiCopy.optionNegotiationChat.clientAssignmentLabel}: {assignmentByClientOrgId[request.clientOrganizationId].label}
           {assignmentByClientOrgId[request.clientOrganizationId].assignedMemberName
             ? ` · ${assignmentByClientOrgId[request.clientOrganizationId].assignedMemberName}`
             : ''}
@@ -135,13 +135,13 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.sm }}>
           {assignmentByClientOrgId[request.clientOrganizationId] ? (
             <Text style={styles.metaText}>
-              Client flag: {assignmentByClientOrgId[request.clientOrganizationId].label}
+              {uiCopy.optionNegotiationChat.clientFlagLabel}: {assignmentByClientOrgId[request.clientOrganizationId].label}
               {assignmentByClientOrgId[request.clientOrganizationId].assignedMemberName
                 ? ` · ${assignmentByClientOrgId[request.clientOrganizationId].assignedMemberName}`
                 : ''}
             </Text>
           ) : (
-            <Text style={styles.metaText}>Client flag: none</Text>
+            <Text style={styles.metaText}>{uiCopy.optionNegotiationChat.clientFlagLabel}: {uiCopy.optionNegotiationChat.clientFlagNone}</Text>
           )}
           {isAgency && onSaveClientAssignment && (
             <TouchableOpacity
@@ -150,7 +150,7 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
                 setEditingAssignmentThreadId((prev) => (prev === request.threadId ? null : request.threadId))
               }
             >
-              <Text style={styles.filterPillLabel}>Edit</Text>
+              <Text style={styles.filterPillLabel}>{uiCopy.optionNegotiationChat.editLabel}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -368,7 +368,7 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
         </View>
       )}
       {isAgency &&
-        negotiationCounterExpanded &&
+        (negotiationCounterExpanded || (clientPriceStatus === 'pending' && request.proposedPrice != null && agencyCounterPrice == null)) &&
         agencyMayActOnFee &&
         !priceLocked &&
         clientPriceStatus === 'pending' &&
@@ -507,7 +507,7 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
             }}
           >
             <Text style={[styles.filterPillLabel, { color: '#fff' }]}>
-              Accept agency proposal ({currency === 'USD' ? '$' : currency === 'GBP' ? '£' : currency === 'CHF' ? 'CHF ' : '€'}
+              {uiCopy.optionNegotiationChat.acceptAgencyProposal} ({currency === 'USD' ? '$' : currency === 'GBP' ? '£' : currency === 'CHF' ? 'CHF ' : '€'}
               {agencyCounterPrice})
             </Text>
           </TouchableOpacity>

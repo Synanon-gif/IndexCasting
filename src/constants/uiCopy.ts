@@ -1292,6 +1292,11 @@ export const uiCopy = {
     /** Agency: no linked model account — client/agency negotiation does not wait on model app approval. */
     noModelAppNegotiationHint:
       'No model app account on file — negotiate and confirm with the client; calendars sync when the option is confirmed.',
+    clientAssignmentLabel: 'Client assignment',
+    clientFlagLabel: 'Client flag',
+    clientFlagNone: 'none',
+    editLabel: 'Edit',
+    acceptAgencyProposal: 'Accept agency proposal',
     rejectCounterOffer: 'Decline agency proposal',
     rejectCounterOfferTitle: 'Decline this proposal?',
     rejectCounterOfferMessage: 'The request will be closed. You can start a new request if needed.',

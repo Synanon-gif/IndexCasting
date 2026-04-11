@@ -142,17 +142,32 @@ export async function createBooking(booking: {
     .single();
   if (error) { console.error('createBooking error:', error); return null; }
   const created = data as Booking;
-  logAction(booking.agency_id, 'createBooking', {
-    type: 'booking',
-    action: 'booking_created',
-    entityId: created.id,
-    newData: {
-      model_id: booking.model_id,
-      client_id: booking.client_id,
-      fee_total: booking.fee_total,
-      booking_date: booking.booking_date,
-    },
-  });
+
+  void (async () => {
+    try {
+      const { data: orgRow } = await supabase
+        .from('organizations')
+        .select('id')
+        .eq('agency_id', booking.agency_id)
+        .eq('type', 'agency')
+        .maybeSingle();
+      const orgId = (orgRow as { id: string } | null)?.id ?? null;
+      logAction(orgId, 'createBooking', {
+        type: 'booking',
+        action: 'booking_created',
+        entityId: created.id,
+        newData: {
+          model_id: booking.model_id,
+          client_id: booking.client_id,
+          fee_total: booking.fee_total,
+          booking_date: booking.booking_date,
+        },
+      });
+    } catch (e) {
+      console.error('createBooking audit log failed:', e);
+    }
+  })();
+
   return created;
 }
 
