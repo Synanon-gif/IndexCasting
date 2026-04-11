@@ -5,6 +5,7 @@
  *   1. Name (always set in the form, but checked defensively)
  *   2. At least one visible portfolio photo
  *   3. At least one territory of representation
+ *   4. At least one visibility category (Fashion or Commercial) — required by get_discovery_models
  *
  * Everything else is RECOMMENDED: the model will appear in client discovery
  * and agency My Models even if these fields are missing, but the agency
@@ -13,7 +14,6 @@
  * Recommended fields improve discoverability and client-filter matching:
  *   - height (used in measurement filters)
  *   - country_code (supplements territory for direct location lookup)
- *   - visibility flags (both false = hidden from all client views)
  *   - email (needed to link model app account)
  *   - chest measurement (DB may use `chest` and/or legacy `bust`; completeness uses chest ?? bust), waist, hips
  *   - legs_inseam, shoe_size
@@ -79,12 +79,11 @@ export function checkModelCompleteness(
 
   // ── Recommended — improve discoverability and filter matching ──────────────
 
-  // Both visibility flags off = hidden from all client type queries.
   if (!model.is_visible_fashion && !model.is_visible_commercial) {
     issues.push({
       field: 'visibility',
-      label: 'Not visible to any client type (Fashion or Commercial). Assign at least one category or remove all categories to show in both.',
-      severity: 'recommended',
+      label: 'Not visible to any client type (Fashion or Commercial) — model will NOT appear in client discovery. Assign at least one.',
+      severity: 'critical',
     });
   }
 
@@ -191,8 +190,8 @@ export function hasBlockingIssues(
  * Returns the profile completion percentage (0–100).
  *
  * Weights: critical issues count double against recommended issues.
- * Total possible issues = 3 critical + 9 recommended = 3*2 + 9*1 = 15 points.
- * Completion = (15 - deducted) / 15 * 100, clamped to [0, 100].
+ * Total possible issues = 4 critical + 8 recommended = 4*2 + 8*1 = 16 points.
+ * Completion = (16 - deducted) / 16 * 100, clamped to [0, 100].
  */
 export function getCompletionPercent(
   model: Partial<SupabaseModel>,
@@ -202,7 +201,7 @@ export function getCompletionPercent(
   const criticalCount    = issues.filter((i) => i.severity === 'critical').length;
   const recommendedCount = issues.filter((i) => i.severity === 'recommended').length;
 
-  const MAX_POINTS = 3 * 2 + 9 * 1; // 15 = max weight when all issues present
+  const MAX_POINTS = 4 * 2 + 8 * 1; // 16 = max weight when all issues present
   const deducted = criticalCount * 2 + recommendedCount * 1;
   const score = Math.max(0, MAX_POINTS - deducted);
   return Math.round((score / MAX_POINTS) * 100);

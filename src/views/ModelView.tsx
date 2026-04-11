@@ -133,7 +133,7 @@ const ModelUnifiedInbox: React.FC<{
           status: r.status,
           finalStatus: r.final_status ?? null,
           modelApproval: r.model_approval,
-          modelAccountLinked: r.model_account_linked ?? true,
+          modelAccountLinked: r.model_account_linked ?? false,
         });
       const diff = priority(a) - priority(b);
       if (diff !== 0) return diff;
@@ -176,7 +176,7 @@ const ModelUnifiedInbox: React.FC<{
           status: r.status,
           finalStatus: r.final_status ?? null,
           modelApproval: r.model_approval,
-          modelAccountLinked: r.model_account_linked ?? true,
+          modelAccountLinked: r.model_account_linked ?? false,
         });
         return (
           <TouchableOpacity

@@ -48,7 +48,7 @@ import {
   getPendingModelConfirmations,
   modelConfirmOptionRequest,
   modelRejectOptionRequest,
-  type SupabaseOptionRequest,
+  type SupabaseOptionRequestModelSafe,
 } from '../services/optionRequestsSupabase';
 import { getAgencyById, type Agency } from '../services/agenciesSupabase';
 import { getAgencyNamesByThreadIds } from '../services/recruitingChatSupabase';
@@ -153,7 +153,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   const [bookingAgencyByThread, setBookingAgencyByThread] = useState<Record<string, string>>({});
   const [agencyDirectConvs, setAgencyDirectConvs] = useState<Conversation[]>([]);
   const [openDirectConvId, setOpenDirectConvId] = useState<string | null>(null);
-  const [pendingConfirmations, setPendingConfirmations] = useState<SupabaseOptionRequest[]>([]);
+  const [pendingConfirmations, setPendingConfirmations] = useState<SupabaseOptionRequestModelSafe[]>([]);
   const [confirmingBookingId, setConfirmingBookingId] = useState<string | null>(null);
   const [rejectingBookingId, setRejectingBookingId] = useState<string | null>(null);
   const [optionActionModal, setOptionActionModal] = useState<{ id: string; action: 'confirm' | 'reject' } | null>(null);

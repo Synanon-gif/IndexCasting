@@ -630,3 +630,42 @@ export async function getSignedChatFileUrl(
     return null;
   }
 }
+
+/**
+ * Removes all chat-file attachments for a conversation from storage.
+ * Intended for GDPR right-to-erasure and retention cleanup.
+ * Silently skips on error (fire-and-forget) — caller decides retry.
+ */
+export async function removeConversationChatFiles(conversationId: string): Promise<number> {
+  try {
+    const { data: msgs, error } = await supabase
+      .from('messages')
+      .select('file_url')
+      .eq('conversation_id', conversationId)
+      .not('file_url', 'is', null);
+
+    if (error || !msgs?.length) return 0;
+
+    const paths = msgs
+      .map((m: { file_url: string | null }) => m.file_url)
+      .filter((p): p is string => !!p)
+      .map((p) => {
+        if (p.includes('/storage/v1/object/public/chat-files/')) {
+          return p.split('/storage/v1/object/public/chat-files/')[1];
+        }
+        return p;
+      });
+
+    if (!paths.length) return 0;
+
+    const { error: removeError } = await supabase.storage.from('chat-files').remove(paths);
+    if (removeError) {
+      console.error('removeConversationChatFiles storage error:', removeError);
+      return 0;
+    }
+    return paths.length;
+  } catch (e) {
+    console.error('removeConversationChatFiles exception:', e);
+    return 0;
+  }
+}

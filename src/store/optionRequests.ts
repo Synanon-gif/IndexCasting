@@ -402,14 +402,24 @@ export function addOptionRequest(
 
       // Workflow hint: from_role=system via RPC only (no agency/client spoofing).
       if (local.modelAccountLinked === false) {
-        const sys = await addOptionSystemMessage(result.id, 'no_model_account_client_notice');
-        if (sys) {
+        const sysClient = await addOptionSystemMessage(result.id, 'no_model_account_client_notice');
+        if (sysClient) {
           messagesCache.push({
-            id: sys.id,
+            id: sysClient.id,
             threadId: result.id,
             from: 'system',
-            text: sys.text,
-            createdAt: new Date(sys.created_at).getTime(),
+            text: sysClient.text,
+            createdAt: new Date(sysClient.created_at).getTime(),
+          });
+        }
+        const sysAgency = await addOptionSystemMessage(result.id, 'no_model_account');
+        if (sysAgency) {
+          messagesCache.push({
+            id: sysAgency.id,
+            threadId: result.id,
+            from: 'system',
+            text: sysAgency.text,
+            createdAt: new Date(sysAgency.created_at).getTime(),
           });
         }
       }

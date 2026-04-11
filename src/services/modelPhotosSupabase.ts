@@ -19,6 +19,7 @@ import {
   toStorageUri,
   resolveStorageUrl,
   invalidateStorageUrlCache,
+  extractBucketAndPath,
 } from '../storage/storageUrl';
 
 /** Allowed MIME types for model photos (images only — no PDFs in portfolio). */
@@ -314,12 +315,9 @@ export async function deletePhoto(photoId: string, url: string): Promise<boolean
       .maybeSingle();
     const freedBytes: number = (photoRow as { file_size_bytes?: number } | null)?.file_size_bytes ?? 0;
 
-    const storagePath = extractStoragePath(url);
-    if (storagePath) {
-      const bucket = url.includes('/documents/') && !url.includes('/documentspictures/')
-        ? 'documents'
-        : PUBLIC_IMAGES_BUCKET;
-      const { error: storageError } = await supabase.storage.from(bucket).remove([storagePath]);
+    const extracted = extractBucketAndPath(url);
+    if (extracted) {
+      const { error: storageError } = await supabase.storage.from(extracted.bucket).remove([extracted.path]);
       if (storageError) {
         console.error('deletePhoto storage error:', storageError);
         // Continue to delete DB row even if storage deletion fails (avoids orphaned DB rows).
@@ -351,21 +349,6 @@ export async function deletePhoto(photoId: string, url: string): Promise<boolean
   }
 }
 
-/**
- * Extracts the storage object path (relative to bucket root) from a Supabase public or signed URL.
- * Returns null if the URL does not appear to be a Supabase Storage URL.
- */
-function extractStoragePath(url: string): string | null {
-  try {
-    // Public URL format:  .../storage/v1/object/public/<bucket>/<path>
-    // Signed URL format:  .../storage/v1/object/sign/<bucket>/<path>?token=...
-    const match = url.match(/\/storage\/v1\/object\/(?:public|sign)\/[^/]+\/(.+?)(?:\?|$)/);
-    if (match?.[1]) return decodeURIComponent(match[1]);
-    return null;
-  } catch {
-    return null;
-  }
-}
 
 export async function updatePhoto(
   photoId: string,

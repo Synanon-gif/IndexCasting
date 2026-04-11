@@ -819,6 +819,8 @@ export type GetOptionMessagesOptions = {
    * Pass to retrieve older messages ("Load more").
    */
   beforeId?: string;
+  /** When 'model', price-related system messages are excluded server-side. */
+  viewerRole?: 'client' | 'agency' | 'model';
 };
 
 /**
@@ -838,6 +840,10 @@ export async function getOptionMessages(
       .eq('option_request_id', requestId)
       .order('created_at', { ascending: false })
       .limit(limit);
+
+    if (opts?.viewerRole === 'model') {
+      q = q.eq('visible_to_model', true);
+    }
 
     if (opts?.beforeId) {
       const { data: cursorRow } = await supabase
@@ -1881,11 +1887,11 @@ export async function modelRejectOptionRequest(id: string): Promise<boolean> {
  */
 export async function getPendingModelConfirmations(
   modelId: string,
-): Promise<SupabaseOptionRequest[]> {
+): Promise<SupabaseOptionRequestModelSafe[]> {
   try {
     const { data, error } = await supabase
       .from('option_requests')
-      .select(OPTION_REQUEST_SELECT)
+      .select(OPTION_REQUEST_SELECT_MODEL_SAFE)
       .eq('model_id', modelId)
       .eq('model_approval', 'pending')
       .eq('model_account_linked', true)
@@ -1897,7 +1903,7 @@ export async function getPendingModelConfirmations(
       console.error('getPendingModelConfirmations error:', error);
       return [];
     }
-    return (data ?? []) as SupabaseOptionRequest[];
+    return (data ?? []) as SupabaseOptionRequestModelSafe[];
   } catch (e) {
     console.error('getPendingModelConfirmations exception:', e);
     return [];

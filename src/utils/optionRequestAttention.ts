@@ -113,7 +113,7 @@ export function deriveApprovalAttention(input: AttentionSignalInput): ApprovalAt
   const canClientFinalizeJob =
     input.finalStatus === 'option_confirmed' &&
     (modelAccountLinked
-      ? input.status === 'confirmed' && modelApproval === 'approved'
+      ? modelApproval === 'approved' && (input.status === 'confirmed' || input.status === 'in_negotiation')
       : input.status === 'in_negotiation' || input.status === 'confirmed');
 
   if (canClientFinalizeJob) {
@@ -295,7 +295,9 @@ export function approvalAttentionVisibleForRole(state: ApprovalAttentionState, r
 export function negotiationAttentionVisibleForRole(n: NegotiationAttentionState, role: SmartAttentionRole): boolean {
   if (n === 'negotiation_terminal' || n === 'price_agreed') return false;
   if (n === 'waiting_for_client_response') return role === 'client';
-  if (n === 'waiting_for_agency_response' || n === 'counter_rejected' || n === 'negotiation_open') return role === 'agency';
+  if (n === 'waiting_for_agency_response' || n === 'counter_rejected' || n === 'negotiation_open') {
+    return role === 'agency' || role === 'client';
+  }
   return false;
 }
 
