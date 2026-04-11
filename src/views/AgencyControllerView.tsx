@@ -4970,6 +4970,10 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
             subtitle={`${request.date}${request.startTime ? ` · ${request.startTime}–${request.endTime}` : ''}`}
             onBack={handleBackOptionChat}
             backLabel={uiCopy.optionNegotiationChat.back}
+            onTitlePress={request.clientOrganizationId ? () => {
+              setViewingClientProfileOrgId(request.clientOrganizationId!);
+              setViewingClientProfileOrgName(request.clientName);
+            } : undefined}
             statusLabel={status ? STATUS_LABELS[status] : '—'}
             statusBackgroundColor={status ? STATUS_COLORS[status] : colors.border}
             headerBelowTitle={

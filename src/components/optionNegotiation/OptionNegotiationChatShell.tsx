@@ -42,6 +42,8 @@ export type OptionNegotiationChatShellProps = {
    * Pass the height of any fixed header above the shell when needed.
    */
   keyboardVerticalOffset?: number;
+  /** Tap on the title to open the counterparty's profile. When provided, title becomes a pressable link. */
+  onTitlePress?: () => void;
 };
 
 export const OptionNegotiationChatShell: React.FC<OptionNegotiationChatShellProps> = ({
@@ -63,6 +65,7 @@ export const OptionNegotiationChatShell: React.FC<OptionNegotiationChatShellProp
   deviceType,
   rightPanel,
   keyboardVerticalOffset = 0,
+  onTitlePress,
 }) => {
   const showRightRail = !!rightPanel && deviceType === 'desktop';
 
@@ -73,16 +76,34 @@ export const OptionNegotiationChatShell: React.FC<OptionNegotiationChatShellProp
           <Text style={styles.backArrow}>←</Text>
           <Text style={styles.backText} numberOfLines={1}>{backLabel}</Text>
         </TouchableOpacity>
-        <View style={styles.headerCenter}>
-          <Text style={styles.title} numberOfLines={2}>
-            {title}
-          </Text>
-          {subtitle ? (
-            <Text style={styles.subtitle} numberOfLines={1}>
-              {subtitle}
+        {onTitlePress ? (
+          <TouchableOpacity
+            style={styles.headerCenter}
+            onPress={onTitlePress}
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+          >
+            <Text style={[styles.title, styles.titlePressable]} numberOfLines={2}>
+              {title}
             </Text>
-          ) : null}
-        </View>
+            {subtitle ? (
+              <Text style={styles.subtitle} numberOfLines={1}>
+                {subtitle}
+              </Text>
+            ) : null}
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.headerCenter}>
+            <Text style={styles.title} numberOfLines={2}>
+              {title}
+            </Text>
+            {subtitle ? (
+              <Text style={styles.subtitle} numberOfLines={1}>
+                {subtitle}
+              </Text>
+            ) : null}
+          </View>
+        )}
         {headerAccessory ? <View style={styles.headerAccessory}>{headerAccessory}</View> : null}
         {onStatusPress ? (
           <TouchableOpacity
@@ -222,6 +243,10 @@ const styles = StyleSheet.create({
     ...typography.heading,
     fontSize: 16,
     color: colors.textPrimary,
+  },
+  titlePressable: {
+    color: colors.accent,
+    textDecorationLine: 'underline' as const,
   },
   subtitle: {
     ...typography.label,

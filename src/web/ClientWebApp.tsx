@@ -56,7 +56,7 @@ import {
 } from '../services/clientDiscoverySupabase';
 import { getModelsNearLocation, roundCoord, type NearbyModel } from '../services/modelLocationsSupabase';
 import { getGuestLink, getGuestLinkModels, type GuestLinkModel, type PackageType } from '../services/guestLinksSupabase';
-import { getAgencies, type Agency } from '../services/agenciesSupabase';
+import { getAgencies, getAgencyChatDisplayById, type Agency } from '../services/agenciesSupabase';
 import { AGENCY_SEGMENT_TYPES } from '../constants/agencyTypes';
 import { type ModelFilters, defaultModelFilters } from '../utils/modelFilters';
 import ModelFiltersPanel from '../components/ModelFiltersPanel';
@@ -4407,6 +4407,14 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   // Tracks whether ClientB2BChatsPanel has an active chat open on mobile (non-split).
   // When true, the search bar + tabs are hidden so only the chat is visible.
   const [b2bChatIsOpen, setB2bChatIsOpen] = useState(false);
+  // For client option threads: resolved agency display name for the header title.
+  const [agencyTitleForThread, setAgencyTitleForThread] = useState<string | null>(null);
+  // Viewing agency org profile from option thread header tap.
+  const [viewingOptReqAgencyProfile, setViewingOptReqAgencyProfile] = useState<{
+    orgId: string;
+    agencyId: string | null;
+    orgName: string | null;
+  } | null>(null);
   const [requests, setRequests] = useState(getOptionRequests());
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   // Reset mobile summary collapse whenever a different negotiation thread is opened.
@@ -4477,6 +4485,21 @@ const MessagesView: React.FC<MessagesViewProps> = ({
       loadMessagesForThread(selectedThreadId);
     }
   }, [selectedThreadId]);
+
+  // Resolve agency display name for the open option thread (client side only).
+  // isAgency is always false here (MessagesView is only used by clients in ClientWebApp).
+  useEffect(() => {
+    const agencyId = requests.find((r) => r.id === selectedThreadId)?.agencyId;
+    if (!selectedThreadId || !agencyId) {
+      setAgencyTitleForThread(null);
+      return;
+    }
+    let cancelled = false;
+    getAgencyChatDisplayById(agencyId).then((row) => {
+      if (!cancelled) setAgencyTitleForThread(row?.name ?? null);
+    });
+    return () => { cancelled = true; };
+  }, [selectedThreadId, requests]);
 
   const toggleArchive = (threadId: string) => {
     setArchivedIds((prev) => {
@@ -4975,9 +4998,26 @@ const MessagesView: React.FC<MessagesViewProps> = ({
 
       {optionFullscreenActive && request ? (
         <OptionNegotiationChatShell
-          title={isAgency ? `${request.clientName} · ${request.modelName}` : request.modelName}
-          subtitle={`${request.date}${request.startTime ? ` · ${request.startTime}–${request.endTime}` : ''}`}
+          title={
+            isAgency
+              ? `${request.clientName} · ${request.modelName}`
+              : (agencyTitleForThread ?? request.modelName)
+          }
+          subtitle={
+            isAgency
+              ? `${request.date}${request.startTime ? ` · ${request.startTime}–${request.endTime}` : ''}`
+              : `${request.modelName} · ${request.date}${request.startTime ? ` · ${request.startTime}–${request.endTime}` : ''}`
+          }
           onBack={handleBackOptionChat}
+          onTitlePress={
+            !isAgency && request.agencyOrganizationId
+              ? () => setViewingOptReqAgencyProfile({
+                  orgId: request.agencyOrganizationId!,
+                  agencyId: request.agencyId ?? null,
+                  orgName: agencyTitleForThread,
+                })
+              : undefined
+          }
           statusLabel={status ? STATUS_LABELS[status] : '—'}
           statusBackgroundColor={status ? STATUS_COLORS[status] : colors.border}
           headerBelowTitle={
@@ -5204,6 +5244,17 @@ const MessagesView: React.FC<MessagesViewProps> = ({
             : undefined
         }
       />
+
+      {viewingOptReqAgencyProfile && (
+        <OrgProfileModal
+          visible
+          onClose={() => setViewingOptReqAgencyProfile(null)}
+          orgType="agency"
+          organizationId={viewingOptReqAgencyProfile.orgId}
+          agencyId={viewingOptReqAgencyProfile.agencyId}
+          orgName={viewingOptReqAgencyProfile.orgName}
+        />
+      )}
         </>
       )}
     </View>
