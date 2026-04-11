@@ -14,6 +14,8 @@ import {
 } from '../services/applicationsSupabase';
 import { startRecruitingChat, addRecruitingMessage } from './recruitingChats';
 import { updateThreadAgency, updateThreadChatType } from '../services/recruitingChatSupabase';
+import { createNotification } from '../services/notificationsSupabase';
+import { uiCopy } from '../constants/uiCopy';
 
 export type ApplicationStatus = 'pending' | 'pending_model_confirmation' | 'accepted' | 'rejected';
 
@@ -23,6 +25,8 @@ export type ModelApplication = {
   id: string;
   /** Target agency for this application (for chat branding). */
   agencyId?: string | null;
+  /** User ID of the applicant (for notifications). */
+  applicantUserId?: string | null;
   firstName: string;
   lastName: string;
   age: number;
@@ -58,6 +62,7 @@ function toLocal(a: SupabaseApplication): ModelApplication {
   return {
     id: a.id,
     agencyId: a.agency_id ?? undefined,
+    applicantUserId: a.applicant_user_id ?? undefined,
     firstName: a.first_name,
     lastName: a.last_name,
     age: a.age,
@@ -217,6 +222,17 @@ export async function acceptApplication(
   app.status = 'pending_model_confirmation';
   app.chatThreadId = threadId;
   notify();
+
+  if (app.applicantUserId) {
+    void createNotification({
+      user_id: app.applicantUserId,
+      type: 'application_accepted',
+      title: uiCopy.notifications.applicationAccepted.title,
+      message: uiCopy.notifications.applicationAccepted.message,
+      metadata: { application_id: applicationId },
+    });
+  }
+
   return { threadId, modelId: null };
 }
 
@@ -268,9 +284,19 @@ export async function rejectApplication(applicationId: string): Promise<void> {
   
   const ok = await updateApplicationStatus(applicationId, 'rejected');
   if (!ok) return;
-  
+
   app.status = 'rejected';
   notify();
+
+  if (app.applicantUserId) {
+    void createNotification({
+      user_id: app.applicantUserId,
+      type: 'application_rejected',
+      title: uiCopy.notifications.applicationRejected.title,
+      message: uiCopy.notifications.applicationRejected.message,
+      metadata: { application_id: applicationId },
+    });
+  }
 }
 
 export async function refreshApplications(): Promise<void> {

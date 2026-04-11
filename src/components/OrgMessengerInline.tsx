@@ -195,7 +195,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
     reload();
     if (viewerUserId) void markAllAsRead(conversationId, viewerUserId);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversationId]);
+  }, [conversationId, viewerUserId]);
 
   useEffect(() => {
     setFileRightsConfirmed(false);

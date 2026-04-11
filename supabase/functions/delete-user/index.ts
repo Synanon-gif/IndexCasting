@@ -157,23 +157,33 @@ Deno.serve(async (req: Request) => {
 
     for (const { bucket, prefix } of storageBuckets) {
       try {
-        // List all objects under the user's prefix (max 1000 per call; iterate if needed).
-        const { data: objects, error: listError } = await adminClient.storage
-          .from(bucket)
-          .list(prefix, { limit: 1000 });
+        let hasMore = true;
+        while (hasMore) {
+          const { data: objects, error: listError } = await adminClient.storage
+            .from(bucket)
+            .list(prefix, { limit: 1000 });
 
-        if (listError) {
-          console.error(`delete-user: storage list error (${bucket}/${prefix}):`, listError.message);
-          storageCleanupErrors.push(`list:${bucket}`);
-          continue;
-        }
+          if (listError) {
+            console.error(`delete-user: storage list error (${bucket}/${prefix}):`, listError.message);
+            storageCleanupErrors.push(`list:${bucket}`);
+            break;
+          }
 
-        if (objects && objects.length > 0) {
+          if (!objects || objects.length === 0) {
+            hasMore = false;
+            break;
+          }
+
           const paths = objects.map((obj) => `${prefix}${obj.name}`);
           const { error: removeError } = await adminClient.storage.from(bucket).remove(paths);
           if (removeError) {
             console.error(`delete-user: storage remove error (${bucket}):`, removeError.message);
             storageCleanupErrors.push(`remove:${bucket}`);
+            break;
+          }
+
+          if (objects.length < 1000) {
+            hasMore = false;
           }
         }
       } catch (storageEx) {

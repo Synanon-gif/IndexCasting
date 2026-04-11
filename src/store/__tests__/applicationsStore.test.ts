@@ -24,6 +24,19 @@ jest.mock('../../services/recruitingChatSupabase', () => ({
   updateThreadChatType: jest.fn(),
 }));
 
+jest.mock('../../services/notificationsSupabase', () => ({
+  createNotification: jest.fn(),
+}));
+
+jest.mock('../../constants/uiCopy', () => ({
+  uiCopy: {
+    notifications: {
+      applicationAccepted: { title: 'test', message: 'test' },
+      applicationRejected: { title: 'test', message: 'test' },
+    },
+  },
+}));
+
 import {
   getApplications,
   getPendingApplications,

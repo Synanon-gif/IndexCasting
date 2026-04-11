@@ -122,6 +122,22 @@ export async function createNotification(
         }
         return;
       }
+
+      const bookingId = typeof meta.booking_id === 'string' ? meta.booking_id : null;
+      if (bookingId) {
+        const { error: rpcError } = await supabase.rpc('notify_org_for_booking_event', {
+          p_booking_id: bookingId,
+          p_target_organization_id: orgId,
+          p_type: params.type,
+          p_title: params.title,
+          p_message: params.message,
+          p_metadata: meta,
+        });
+        if (rpcError) {
+          console.error('createNotification (notify_org_for_booking_event) error:', rpcError);
+        }
+        return;
+      }
     }
 
     // Self-targeting, org member org-wide, or legacy paths without option/thread metadata.

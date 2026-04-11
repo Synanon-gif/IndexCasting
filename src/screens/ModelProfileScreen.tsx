@@ -457,7 +457,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     void (async () => {
       await loadOptionsForModel(profile.id);
       if (cancelled) return;
-      await loadMessagesForThread(focusOptionRequestId);
+      await loadMessagesForThread(focusOptionRequestId, { viewerRole: 'model' });
       if (cancelled) return;
       setTab('options');
       setSelectedOptionThread(focusOptionRequestId);
@@ -1504,7 +1504,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                           setTab('options');
                           setOpenEntry(null);
                           setModelNotesDraft('');
-                          void loadMessagesForThread(id);
+                          void loadMessagesForThread(id, { viewerRole: 'model' });
                         }}
                       >
                         <Text style={{ ...typography.label, color: colors.surface }}>

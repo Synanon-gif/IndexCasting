@@ -100,6 +100,19 @@ export async function ensureHydrated(userId: string): Promise<void> {
     });
     cleanupFns.push(unsubOrg);
   }
+
+  // Refresh from DB when the page/app returns to foreground.
+  // Covers cases where realtime missed an UPDATE (mark-as-read on other device)
+  // or INSERT events were lost during background/sleep.
+  if (typeof document !== 'undefined') {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        void refreshNotifications();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    cleanupFns.push(() => document.removeEventListener('visibilitychange', handleVisibility));
+  }
 }
 
 /**

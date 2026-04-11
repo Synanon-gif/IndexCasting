@@ -109,7 +109,7 @@ function toLocalRequest(r: SupabaseOptionRequest | SupabaseOptionRequestModelSaf
     endTime: r.end_time ?? undefined,
     modelApproval: r.model_approval ?? 'pending',
     modelApprovedAt: r.model_approved_at ?? undefined,
-    modelAccountLinked: r.model_account_linked ?? undefined,
+    modelAccountLinked: r.model_account_linked ?? false,
     agencyId: r.agency_id,
     agencyOrganizationId: r.agency_organization_id ?? undefined,
   };
@@ -579,10 +579,13 @@ export function getOptionRequestsByProjectId(projectId: string): OptionRequest[]
   return requestsCache.filter((r) => r.projectId === projectId);
 }
 
-export async function loadMessagesForThread(threadId: string): Promise<ChatMessage[]> {
+export async function loadMessagesForThread(
+  threadId: string,
+  opts?: { viewerRole?: 'client' | 'agency' | 'model' },
+): Promise<ChatMessage[]> {
   const req = requestsCache.find((r) => r.threadId === threadId);
   if (!req) return [];
-  const remote = await fetchMessages(req.id);
+  const remote = await fetchMessages(req.id, opts?.viewerRole ? { viewerRole: opts.viewerRole } : undefined);
   const mapped = remote.map(toLocalMessage);
   messagesCache = messagesCache.filter((m) => m.threadId !== threadId);
   messagesCache.push(...mapped);

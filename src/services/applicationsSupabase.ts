@@ -7,6 +7,8 @@ import {
   hasRecentImageRightsForSessionKey,
   IMAGE_RIGHTS_WINDOW_MINUTES,
 } from './gdprComplianceSupabase';
+import { createNotification } from './notificationsSupabase';
+import { uiCopy } from '../constants/uiCopy';
 
 /**
  * Model-Bewerbungen (Apply) – in Supabase gespeichert.
@@ -313,7 +315,34 @@ export async function insertApplication(app: {
       console.error('insertApplication error:', error);
       return null;
     }
-    return data as SupabaseApplication;
+
+    const inserted = data as SupabaseApplication;
+
+    if (inserted.agency_id) {
+      void (async () => {
+        try {
+          const { data: org } = await supabase
+            .from('organizations')
+            .select('id')
+            .eq('agency_id', inserted.agency_id!)
+            .eq('type', 'agency')
+            .maybeSingle();
+          if (org?.id) {
+            void createNotification({
+              organization_id: org.id,
+              type: 'application_received',
+              title: uiCopy.notifications.applicationReceived.title,
+              message: uiCopy.notifications.applicationReceived.message,
+              metadata: { application_id: inserted.id },
+            });
+          }
+        } catch (notifErr) {
+          console.error('insertApplication: notification failed', notifErr);
+        }
+      })();
+    }
+
+    return inserted;
   } catch (e) {
     console.error('insertApplication exception:', e);
     return null;

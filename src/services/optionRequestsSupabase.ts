@@ -1013,7 +1013,6 @@ export async function addOptionSystemMessage(
       const notifyClientKinds: SystemOptionMessageKind[] = [
         'agency_accepted_price',
         'agency_declined_price',
-        'agency_counter_offer',
         'model_approved_booking',
       ];
       const notifyAgencyKinds: SystemOptionMessageKind[] = [
@@ -1968,6 +1967,10 @@ export async function deleteOptionRequestFull(id: string, opts: DeleteOptionRequ
       console.warn('[deleteOptionRequestFull] blocked: job_confirmed', id);
       return false;
     }
+
+    // Pre-collect storage paths before the RPC deletes DB rows.
+    const storagePaths = await collectOptionDocStoragePaths(id);
+
     const { error } = await supabase.rpc('delete_option_request_full', {
       p_option_request_id: id,
     });
@@ -1986,10 +1989,45 @@ export async function deleteOptionRequestFull(id: string, opts: DeleteOptionRequ
     } else {
       console.warn('[deleteOptionRequestFull] could not resolve audit org — audit log skipped', { id, auditActor: opts.auditActor });
     }
+
+    if (storagePaths.length > 0) {
+      void cleanupOptionDocStorage(storagePaths);
+    }
+
     return true;
   } catch (e) {
     console.error('deleteOptionRequestFull exception:', e);
     return false;
+  }
+}
+
+async function collectOptionDocStoragePaths(requestId: string): Promise<string[]> {
+  try {
+    const { data, error } = await supabase
+      .from('option_documents')
+      .select('file_url')
+      .eq('option_request_id', requestId);
+    if (error || !data) return [];
+    return data
+      .map((d) => (d as { file_url?: string }).file_url)
+      .filter((p): p is string => !!p && !p.startsWith('http'));
+  } catch {
+    return [];
+  }
+}
+
+async function cleanupOptionDocStorage(paths: string[]): Promise<void> {
+  const BATCH = 100;
+  for (let i = 0; i < paths.length; i += BATCH) {
+    try {
+      const batch = paths.slice(i, i + BATCH);
+      const { error } = await supabase.storage.from('chat-files').remove(batch);
+      if (error) {
+        console.error('[deleteOptionRequestFull] storage cleanup error:', error);
+      }
+    } catch (e) {
+      console.error('[deleteOptionRequestFull] storage cleanup exception:', e);
+    }
   }
 }
 

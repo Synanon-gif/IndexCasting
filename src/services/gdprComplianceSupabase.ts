@@ -115,11 +115,18 @@ export const IMAGE_RIGHTS_WINDOW_MINUTES = 60;
  * Permanently deletes all data for an organization.
  * Callable only by the organization owner.
  * Logs the deletion in audit_trail before wiping.
+ *
+ * Storage cleanup: Collects model-photo storage paths BEFORE the RPC
+ * deletes DB rows, then removes files from the documentspictures bucket
+ * afterwards. Best-effort — storage failures do not block the RPC result.
  */
 export async function deleteOrganizationData(
   orgId: string,
 ): Promise<ComplianceResult> {
   try {
+    // Pre-collect storage paths before the RPC deletes DB rows.
+    const storagePathsToDelete = await collectOrgStoragePaths(orgId);
+
     const { error } = await supabase.rpc('delete_organization_data', {
       p_org_id: orgId,
     });
@@ -130,10 +137,91 @@ export async function deleteOrganizationData(
       }
       return { ok: false, reason: error.message ?? 'unknown_error' };
     }
+
+    // Best-effort storage cleanup after successful DB deletion.
+    if (storagePathsToDelete.length > 0) {
+      void cleanupStoragePaths('documentspictures', storagePathsToDelete);
+    }
+
     return { ok: true, data: undefined };
   } catch (e) {
     console.error('[gdpr] deleteOrganizationData exception:', e);
     return { ok: false, reason: 'exception' };
+  }
+}
+
+/**
+ * Collects storage paths for model photos that belong to models of the org's
+ * agency. Called before delete_organization_data wipes the DB rows.
+ */
+async function collectOrgStoragePaths(orgId: string): Promise<string[]> {
+  try {
+    const { data: org } = await supabase
+      .from('organizations')
+      .select('agency_id, type')
+      .eq('id', orgId)
+      .maybeSingle();
+
+    if (!org?.agency_id || org.type !== 'agency') return [];
+
+    const { data: photos } = await supabase
+      .from('model_photos')
+      .select('storage_path, model_id')
+      .in('model_id', supabase
+        .from('models')
+        .select('id')
+        .eq('agency_id', org.agency_id) as unknown as string[],
+      );
+
+    if (!photos?.length) {
+      // Fallback: list files by model_id prefix from models table
+      const { data: models } = await supabase
+        .from('models')
+        .select('id')
+        .eq('agency_id', org.agency_id);
+      if (!models?.length) return [];
+
+      const paths: string[] = [];
+      for (const m of models) {
+        try {
+          const { data: files } = await supabase.storage
+            .from('documentspictures')
+            .list(`model-photos/${m.id}`, { limit: 1000 });
+          if (files?.length) {
+            paths.push(...files.map((f) => `model-photos/${m.id}/${f.name}`));
+          }
+        } catch {
+          console.warn(`[gdpr] collectOrgStoragePaths: list failed for model ${m.id}`);
+        }
+      }
+      return paths;
+    }
+
+    return photos
+      .map((p) => (p as { storage_path?: string }).storage_path)
+      .filter((p): p is string => !!p);
+  } catch (e) {
+    console.error('[gdpr] collectOrgStoragePaths exception:', e);
+    return [];
+  }
+}
+
+/**
+ * Best-effort removal of storage objects. Processes in batches of 100.
+ * Failures are logged but never thrown.
+ */
+async function cleanupStoragePaths(bucket: string, paths: string[]): Promise<void> {
+  const BATCH = 100;
+  for (let i = 0; i < paths.length; i += BATCH) {
+    try {
+      const batch = paths.slice(i, i + BATCH);
+      const { error } = await supabase.storage.from(bucket).remove(batch);
+      if (error) {
+        console.error(`[gdpr] cleanupStoragePaths batch error (${bucket}):`, error);
+      }
+    } catch (e) {
+      console.error(`[gdpr] cleanupStoragePaths batch exception (${bucket}):`, e);
+    }
   }
 }
 
