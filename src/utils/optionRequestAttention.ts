@@ -211,8 +211,14 @@ export function deriveSmartAttentionState(input: AttentionSignalInput): SmartAtt
 
 /**
  * Whether an option/casting request should contribute to the client web Messages tab
- * attention indicator (dot). Uses the same non-terminal semantics as {@link toDisplayStatus}
- * — not read receipts and not “last message from agency”.
+ * attention indicator (dot).
+ *
+ * Canonical rule: derives from the same D1 (negotiation) + D2 (approval) attention
+ * logic as `attentionHeaderLabelFromSignals` so the tab-dot and the thread header can
+ * never disagree. Inline re-implementation to avoid a circular import
+ * (negotiationAttentionLabels.ts imports from this file).
+ *
+ * Result: true when `attentionHeaderLabelFromSignals(input, 'client') !== null`.
  */
 export function optionRequestNeedsMessagesTabAttention(r: {
   status: string;
@@ -223,15 +229,7 @@ export function optionRequestNeedsMessagesTabAttention(r: {
   modelApproval?: 'pending' | 'approved' | 'rejected' | null;
   modelAccountLinked?: boolean | null;
 }): boolean {
-  const d = toDisplayStatus(r.status, r.finalStatus ?? null, {
-    clientPriceStatus: r.clientPriceStatus,
-    agencyCounterPrice: r.agencyCounterPrice,
-    proposedPrice: r.proposedPrice,
-  });
-  if (d === 'In negotiation' || d === 'Draft' || d === 'Price agreed' || d === 'Option confirmed') {
-    return true;
-  }
-  const appr = deriveApprovalAttention({
+  const input: AttentionSignalInput = {
     status: r.status,
     finalStatus: r.finalStatus ?? null,
     clientPriceStatus: r.clientPriceStatus ?? null,
@@ -239,8 +237,17 @@ export function optionRequestNeedsMessagesTabAttention(r: {
     modelAccountLinked: r.modelAccountLinked,
     agencyCounterPrice: r.agencyCounterPrice ?? null,
     proposedPrice: r.proposedPrice ?? null,
-  });
-  return appr === 'waiting_for_model_confirmation' || appr === 'waiting_for_client_to_finalize_job';
+  };
+
+  // D2: approval attention visible for client — mirrors attentionHeaderLabelFromSignals D2 branch
+  const appr = deriveApprovalAttention(input);
+  if (approvalAttentionVisibleForRole(appr, 'client')) {
+    return true;
+  }
+
+  // D1: negotiation attention visible for client — mirrors attentionHeaderLabelFromSignals D1 branch
+  const neg = deriveNegotiationAttention(input);
+  return negotiationAttentionVisibleForRole(neg, 'client');
 }
 
 /**

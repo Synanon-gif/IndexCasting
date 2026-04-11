@@ -427,6 +427,14 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
 
   const sendRich = async (type: MessagePayloadType, text: string, metadata?: Record<string, unknown>) => {
     if (!viewerUserId || sending) return;
+
+    // Apply the same rate limit guard as sendChat so rich and plain paths are equally hardened.
+    const rateCheck = messageLimiter.check(viewerUserId);
+    if (!rateCheck.ok) {
+      setSendError(uiCopy.validation.rateLimitMessages);
+      return;
+    }
+
     setSending(true);
     try {
       await sendMessengerMessage(conversationId, viewerUserId, text, undefined, undefined, {

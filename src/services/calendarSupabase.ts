@@ -510,14 +510,19 @@ export async function appendSharedBookingNote(
   const attemptAppend = async (): Promise<boolean> => {
     const { data, error } = await supabase
       .from('calendar_entries')
-      .select('id, booking_details, updated_at')
+      .select('id, booking_details, updated_at, status')
       .eq('option_request_id', optionRequestId);
     if (error) {
       console.error('appendSharedBookingNote select error:', error);
       return false;
     }
-    const rows = data as { id: string; booking_details: BookingDetails | null; updated_at: string }[];
-    if (!rows.length) return false;
+    const allRows = data as { id: string; booking_details: BookingDetails | null; updated_at: string; status: string }[];
+    if (!allRows.length) return false;
+
+    // Only write to the active (non-cancelled) canonical row.
+    // If all are cancelled, fall back to the most recent one to avoid a silent no-op.
+    const activeRows = allRows.filter((r) => r.status !== 'cancelled');
+    const rows = activeRows.length > 0 ? activeRows : [allRows[allRows.length - 1]];
 
     let allUpdated = true;
     for (const row of rows) {

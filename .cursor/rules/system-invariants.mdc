@@ -775,3 +775,142 @@ ON CONFLICT (model_id, source) DO UPDATE SET city = EXCLUDED.city, ...;
 Wenn eine geplante Änderung eine der obigen Garantien verletzt:
 → NICHT implementieren → stattdessen sicheren Alternativweg vorschlagen
 → Im Zweifel: die sicherere Option wählen
+
+---
+
+## NEGOTIATION / CONFIRMATION CANONICAL INVARIANTS (Deep Audit 2026-04)
+
+Diese Invarianten ergänzen die bestehenden Regeln. Bei Widerspruch gilt die **restriktivere** Anforderung.
+
+### A. COMMERCIAL NEGOTIATION — CLIENT ↔ AGENCY ONLY (NIEMALS verletzbar)
+
+Preisverhandlung ist ausschließlich ein Client↔Agency-Prozess. Models sind **kein** Teilnehmer der Preisfindung.
+
+**Gilt für alle Oberflächen:**
+- `proposed_price`, `agency_counter_price`, `client_price_status` dürfen **niemals** in Model-Queries, System-Nachrichten, Realtime-Events, Summary-Cards, Chat-Historien oder Client-Side-Payloads im Model-Kontext erscheinen
+- `OPTION_REQUEST_SELECT_MODEL_SAFE` ist der **einzig erlaubte SELECT** für model-facing Abfragen; `OPTION_REQUEST_SELECT` ist für Models **verboten**
+- `visible_to_model = false` auf `option_request_messages` muss automatisch per DB-Trigger für preis-relevante System-Nachrichten gesetzt werden
+- Filtering allein durch UI-Hiding (`filterSystemMessagesForViewer`) reicht **nicht** — serverseitige Filterung ist Pflicht (Defense-in-Depth)
+
+**Verboten:**
+```typescript
+// ❌ NIEMALS: voller SELECT für Model-User
+getPendingModelConfirmations() → OPTION_REQUEST_SELECT  // beinhaltet Preise
+
+// ✅ PFLICHT:
+getPendingModelConfirmations() → OPTION_REQUEST_SELECT_MODEL_SAFE
+```
+
+### B. MODEL ACCOUNT BRANCHING — EINDEUTIGE FALLBACK-REGEL (NIEMALS verletzbar)
+
+`model_account_linked` ist ein nullable Boolean. Das Default-Verhalten bei `null` ist **immer** `false` (= kein Model-Account).
+
+**Verboten:** `model_account_linked ?? true` an irgendeiner Stelle im Code.
+**Pflicht:** `model_account_linked ?? false` überall wo ein Fallback benötigt wird.
+
+**Warum:** `null` aus der DB bedeutet „unbekannt". Im Zweifel nie einen Model-Warteschritt erzwingen.
+
+**Invarianten:**
+- **Mit Model-Account:** Option gilt erst als vollständig bestätigt wenn (1) Preis kommerziell einig, (2) Agency accept, (3) Model hat bestätigt. `status = 'confirmed'` OHNE Model-Bestätigung ist kein vollständiger Abschluss.
+- **Ohne Model-Account:** Agency-Accept führt direkt zu `status = 'confirmed'` + `model_approval = 'approved'` (auto). Kein Model-Warteschritt, kein `waiting_for_model`-Signal, keine `model_approval = 'pending'`-Schleife.
+- `deriveApprovalAttention` darf `waiting_for_model_confirmation` **nur** bei `modelAccountLinked === true` (explizit `true`) zurückgeben, **nie** bei `null` oder `false`.
+
+### C. CLIENT JOB CONFIRMATION — ERLAUBTE ZUSTÄNDE (unveränderlich)
+
+Client darf Job nur bestätigen wenn **alle** folgenden Bedingungen gleichzeitig erfüllt sind:
+
+1. `client_price_status = 'accepted'` — Preis ist kommerziell einig
+2. `final_status = 'option_confirmed'` — Option ist bestätigt
+3. Für verlinkte Models: `model_approval = 'approved'`
+4. `status IN ('in_negotiation', 'confirmed')` — kein `rejected`-Status
+
+**Wichtig:** Nach Counter-Accept-Flow kann `status = 'in_negotiation'` bei bereits `model_approval = 'approved'` vorliegen — das ist ein gültiger Zustand für Job-Confirm (kein Deadlock mehr nach Fix M4). Die RPC `client_confirm_option_job` setzt `status = 'confirmed'` im UPDATE atomar.
+
+### D. MODEL DATA SAFETY CONTRACT (unveränderlich)
+
+Models dürfen **niemals** kommerzielle Daten empfangen — weder in DB-Payloads noch in Realtime noch in System-Nachrichten.
+
+**Konkrete Pflichten:**
+- Jede neue model-facing Abfrage auf `option_requests` MUSS `OPTION_REQUEST_SELECT_MODEL_SAFE` verwenden
+- Neue System-Nachricht-Kinds die Preise enthalten: `visible_to_model = false` im Trigger-CASE setzen
+- `getOptionMessages(..., { viewerRole: 'model' })` → serverseitig `.eq('visible_to_model', true)` filtern
+- Model-facing APIs sind **data contract safe** — nicht nur UI-safe
+
+**Erlaubte model-facing Felder (Whitelist):**
+`id`, `client_id`, `model_id`, `agency_id`, `requested_date`, `status`, `project_id`, `client_name`, `model_name`, `final_status`, `request_type`, `currency`, `start_time`, `end_time`, `model_approval`, `model_approved_at`, `model_account_linked`, `booker_id`, `organization_id`, `agency_organization_id`, `client_organization_id`, `created_by`, `agency_assignee_user_id`, `created_at`, `updated_at`
+
+### E. SMART ATTENTION — SPLIT UND KONSISTENZ (unveränderlich)
+
+Smart Attention besteht aus **zwei unabhängigen Dimensionen** die nicht verwechselt oder zusammengeführt werden dürfen:
+
+**D1 — Negotiation Attention:** Wer muss in der Preisverhandlung handeln?
+**D2 — Approval Attention:** Welche finale Bestätigung fehlt?
+
+**Konsistenz-Invariante (NIEMALS verletzen):**
+- Thread-Header, Listen-Rows, Messages-Tab-Dot, Kalender-Badge, Kalender-Next-Step müssen für denselben Request **dasselbe Signal** liefern
+- Wenn eine Oberfläche „Await agency" zeigt, darf keine andere Oberfläche „terminal/no-action" implizieren
+- `negotiationAttentionVisibleForRole` für `waiting_for_agency_response` / `counter_rejected` / `negotiation_open` gilt für **Agency UND Client** — nicht nur Agency
+- `optionRequestNeedsMessagesTabAttention` und `attentionHeaderLabelFromSignals` müssen aus **derselben** kanonischen Logik ableiten
+
+**Messages-Tab-Dot ist kein Unread-Counter:** Er zeigt an ob ein Request Action Required ist — identisch zu `attentionHeaderLabelFromSignals !== null`.
+
+**Verboten:**
+- Tab-Dot `true` aber kein Attention-Label im Thread
+- Tab-Dot `false` aber Kalender zeigt „Await agency"
+- Eigene parallele Heuristik neben `attentionHeaderLabelFromSignals`
+
+### F. REJECTION / TERMINAL SEMANTICS (unveränderlich)
+
+Ein abgelehnter Request muss auf **allen** Ebenen konsistent terminal sein:
+
+- `status = 'rejected'` setzt `final_status` über Trigger auf `option_pending` zurück (kein stale `option_confirmed` bei rejected)
+- Trigger `fn_reset_final_status_on_rejection` (Migration `20260555`) ist kanonisch — niemals umgehen
+- UI: Keine Action-Buttons auf abgelehnten Requests
+- Notifications/Calendar: Bereinigung durch `delete_option_request_full` oder `fn_cancel_calendar_on_option_rejected`
+- Stale `final_status = 'option_confirmed'` bei `status = 'rejected'` = **Release-Blocker**
+
+### G. CALENDAR AS PROJECTION — SINGLE CANONICAL EVENT (unveränderlich)
+
+Kalender ist eine Projektion des Lifecycle-Wahrheit. Er ist **keine** zweite Wahrheitsquelle.
+
+**Für einen Lifecycle-Chain (Option/Job/Casting):**
+- Nur **eine** kanonische sichtbare Hauptkontext-Zeile in `calendar_entries` (nicht-cancelled)
+- Notizen/Details/SharedNotes werden **unter** diesem Hauptkontext gespeichert, nicht als separate Lifecycle-Events
+- `appendSharedBookingNote` und `updateBookingDetails` schreiben **nur** auf die aktive (nicht-cancelled) Zeile
+- Bei mehreren Zeilen mit gleicher `option_request_id`: bevorzuge `status != 'cancelled'`
+
+**Verboten:**
+- Shared-Note Write auf cancelled/stale `calendar_entries`
+- Doppelte sichtbare Lifecycle-Contexts für denselben Option-Request
+- Calendar-Badge oder Next-Step die von einem anderen Wahrheitssystem als `deriveNegotiationAttention` + `deriveApprovalAttention` abgeleitet werden
+
+### H. DISCOVERY VISIBILITY IS CRITICAL (unveränderlich)
+
+Ein Model ohne mindestens eine Sichtbarkeits-Kategorie (`is_visible_fashion = true` ODER `is_visible_commercial = true`) erscheint **nicht** in `get_discovery_models`. Das ist eine **kritische** Lücke, keine empfohlene Optimierung.
+
+- Completeness-Check (`checkModelCompleteness`) muss diesen Zustand als `severity: 'critical'` melden
+- Agency-UI muss die Warnung deutlich sichtbar kommunizieren: „Model will NOT appear in client discovery"
+- `is_visible_fashion` und `is_visible_commercial` beide `false/null` = Discovery-Ausschluss = kritisch
+
+### I. SECURITY DEFINER FUNCTIONS — row_security = off PFLICHT (unveränderlich)
+
+Jede `SECURITY DEFINER`-Funktion, die RLS-geschützte Tabellen liest oder schreibt und dabei Caller-RLS umgehen soll, **MUSS** `SET row_security TO off` setzen.
+
+Ohne `SET row_security TO off` wertet PostgreSQL 15+ die RLS-Policies der referenzierten Tabellen auch innerhalb der Funktion aus → latente Rekursionsgefahr / leere Ergebnisse / 42P17.
+
+**Dies ist eine Sicherheitsinvariante, nicht optional.**
+
+Gültige Ausnahmen (müssen dokumentiert sein):
+- Trigger-Funktionen (kein Caller-Kontext)
+- Self-Scope-Funktionen die nur eigene Daten lesen (`auth.uid()`-only Gate ohne Multi-Tenant-Tabellen)
+
+### J. OWNER / BOOKER / EMPLOYEE PARITY (unveränderlich)
+
+Wenn ein Workflow für Org-Mitglieder allgemein vorgesehen ist, darf er **nicht** still nur für Owner funktionieren.
+
+**Paritätsregel:**
+- Agency: Owner und Booker sind im Tagesgeschäft **funktional gleichwertig** — Kalender, Messages, Model-Portfolio, Casting-Flows, alle Workflows außer Owner-Exklusivrechten
+- Client: Owner und Employee sind im Tagesgeschäft **funktional gleichwertig** — Casting/Option, Verhandlung, Kommunikation, alle Workflows außer Owner-Exklusivrechten
+- **Owner-Exklusivrechte (abschließende Liste):** Billing-Checkout, Team-Invites, Member-Remove, Org-Löschung
+
+**Test-Pflicht bei neuen Features:** Jeder neue Workflow muss explizit für Owner, Booker/Employee gleichermaßen verifiziert werden. „Funktioniert für Owner" ist kein hinreichender Nachweis.

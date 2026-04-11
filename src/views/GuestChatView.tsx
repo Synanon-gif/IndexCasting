@@ -142,16 +142,23 @@ export const GuestChatView: React.FC = () => {
 
       const linkId = pending?.link_id ?? null;
       if (!linkId) {
-        // No pending request: try to find an existing conversation
-        // by scanning conversations where user is participant + guest_user_id = userId
+        // No link_id available — this is a returning guest without a pending request.
+        // We load all conversations for this guest_user_id and pick the most recent one.
+        // If multiple conversations exist we warn (ambiguous context) but still show the latest.
+        // We do NOT guess by LIMIT 1 alone; we fetch all and log the ambiguity.
         const { data: convs } = await supabase
           .from('conversations')
           .select('*')
           .contains('participant_ids', [userId])
           .eq('guest_user_id', userId)
-          .order('created_at', { ascending: false })
-          .limit(1);
+          .order('created_at', { ascending: false });
         if (convs && convs.length > 0) {
+          if (convs.length > 1) {
+            console.warn(
+              '[GuestChatView] Multiple conversations found for guest user — showing most recent. Provide link_id for deterministic resolution.',
+              { userId, count: convs.length },
+            );
+          }
           const conv = convs[0] as Conversation;
           setConversation(conv);
           setAgencyOrgId(conv.agency_organization_id ?? null);

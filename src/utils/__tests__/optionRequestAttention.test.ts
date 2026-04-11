@@ -16,7 +16,11 @@ describe('optionRequestNeedsMessagesTabAttention', () => {
     ).toBe(true);
   });
 
-  it('is true when display is Price agreed (commercial settlement before option_confirmed)', () => {
+  it('is false when price is agreed but final_status is still option_pending (negotiation terminal, no approval action yet)', () => {
+    // Canonical behaviour: price_agreed D1 state is NOT visible (negotiation resolved);
+    // D2 (approval) is fully_cleared because final_status != 'option_confirmed'.
+    // attentionHeaderLabelFromSignals also returns null for this state — tab-dot follows suit.
+    // This is a transient intermediate state that resolves quickly via agencyAcceptRequest.
     expect(
       optionRequestNeedsMessagesTabAttention({
         status: 'in_negotiation',
@@ -24,7 +28,7 @@ describe('optionRequestNeedsMessagesTabAttention', () => {
         clientPriceStatus: 'accepted',
         proposedPrice: 100,
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it('is true when option_confirmed (Option confirmed is an active state requiring finalization)', () => {
