@@ -141,7 +141,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.md,
     paddingTop: spacing.xl * 1.5,
     paddingBottom: spacing.xl,
     justifyContent: 'space-between',

@@ -340,7 +340,7 @@ export const AgencyRecruitingView: React.FC<{
         </Text>
       </View>
 
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+      <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: spacing.sm, paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border }}>
         {(['pending', 'shortlist', 'accepted'] as const).map((t) => (
           <TouchableOpacity
             key={t}
@@ -359,7 +359,7 @@ export const AgencyRecruitingView: React.FC<{
       </View>
 
       {recruitTab === 'accepted' ? (
-        <ScrollView style={{ flex: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.md }}>
+        <ScrollView style={{ flex: 1, paddingHorizontal: spacing.sm, paddingTop: spacing.md }}>
           {acceptedList.length === 0 ? (
             <View style={styles.empty}>
               <Text style={styles.emptyTitle}>No accepted applications</Text>
@@ -382,7 +382,7 @@ export const AgencyRecruitingView: React.FC<{
           )}
         </ScrollView>
       ) : recruitTab === 'shortlist' ? (
-        <ScrollView style={{ flex: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.md }} contentContainerStyle={{ paddingBottom: spacing.xl }}>
+        <ScrollView style={{ flex: 1, paddingHorizontal: spacing.sm, paddingTop: spacing.md }} contentContainerStyle={{ paddingBottom: spacing.xl }}>
           <Text style={[styles.filterLabel, { marginBottom: spacing.sm }]}>
             Includes everyone you saved and everyone with an active recruiting chat (same as Messages → Recruiting chats, before acceptance).
           </Text>
@@ -454,7 +454,7 @@ export const AgencyRecruitingView: React.FC<{
         </ScrollView>
       ) : (
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: spacing.xl }} showsVerticalScrollIndicator={false}>
-      <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.sm }}>
+      <View style={{ paddingHorizontal: spacing.sm, paddingTop: spacing.sm }}>
         <ModelFiltersPanel filters={filters} onChangeFilters={setFilters} />
       </View>
 
@@ -778,7 +778,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.sm,
     paddingTop: spacing.sm,
     paddingBottom: spacing.sm,
     borderBottomWidth: 1,
@@ -908,7 +908,7 @@ const styles = StyleSheet.create({
   },
   cardWrap: {
     flex: 1,
-    padding: spacing.lg,
+    padding: spacing.sm,
     justifyContent: 'center',
   },
   card: {
@@ -1057,7 +1057,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.2)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: spacing.lg,
+    padding: spacing.sm,
   },
   chatCard: {
     width: '100%',
@@ -1160,7 +1160,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   limitBanner: {
-    marginHorizontal: spacing.lg,
+    marginHorizontal: spacing.sm,
     marginBottom: spacing.sm,
     backgroundColor: '#FFF3CD',
     borderRadius: 10,

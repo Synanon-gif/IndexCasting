@@ -185,7 +185,7 @@ const ModelUnifiedInbox: React.FC<{
             onPress={() => onOpenRequest(r.id)}
             style={[styles.inboxRow, isActionRequired && styles.inboxRowHighlight]}
           >
-            <View style={{ flex: 1 }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
               {isActionRequired && (
                 <Text style={styles.actionTag}>{uiCopy.dashboard.smartAttentionWaitingForModel}</Text>
               )}

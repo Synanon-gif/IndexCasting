@@ -621,7 +621,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.md,
     paddingTop: spacing.xs,
   },
   topShell: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: spacing.xs, marginBottom: spacing.xs },
@@ -743,12 +743,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.35)',
     justifyContent: 'center',
-    padding: spacing.lg,
+    padding: spacing.sm,
   },
   confirmCard: {
     backgroundColor: colors.surface,
     borderRadius: 14,
-    padding: spacing.lg,
+    padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
     maxWidth: 400,

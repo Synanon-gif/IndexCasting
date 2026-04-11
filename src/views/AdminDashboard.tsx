@@ -1534,14 +1534,14 @@ const styles = StyleSheet.create({
 
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: spacing.lg, paddingTop: spacing.xl, paddingBottom: spacing.md,
+    paddingHorizontal: spacing.md, paddingTop: spacing.lg, paddingBottom: spacing.md,
     borderBottomWidth: 1, borderBottomColor: colors.border,
   },
   brand: { ...typography.heading, fontSize: 16, color: colors.textPrimary, letterSpacing: 1 },
   logoutLabel: { ...typography.label, fontSize: 12, color: colors.textSecondary },
 
   tabScroll: { borderBottomWidth: 1, borderBottomColor: colors.border, maxHeight: 48 },
-  tabRow: { flexDirection: 'row', paddingHorizontal: spacing.lg, paddingVertical: 8, gap: 6 },
+  tabRow: { flexDirection: 'row', paddingHorizontal: spacing.sm, paddingVertical: 8, gap: 6 },
   tabBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingVertical: 5, paddingHorizontal: 14,
@@ -1569,11 +1569,11 @@ const styles = StyleSheet.create({
   migrationBanner: {
     backgroundColor: '#2c2c0a', borderLeftWidth: 3, borderLeftColor: '#f39c12',
     paddingHorizontal: spacing.md, paddingVertical: 8,
-    marginHorizontal: spacing.lg, marginTop: 8, borderRadius: 4,
+    marginHorizontal: spacing.md, marginTop: 8, borderRadius: 4,
   },
   migrationBannerText: { ...typography.body, fontSize: 11, color: '#f39c12' },
 
-  scrollArea: { flex: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.md },
+  scrollArea: { flex: 1, paddingHorizontal: spacing.md, paddingTop: spacing.md },
 
   searchInput: {
     ...typography.body, color: colors.textPrimary,

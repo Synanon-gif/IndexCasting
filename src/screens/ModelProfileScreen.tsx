@@ -697,7 +697,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   }
 
   return (
-    <View style={[st.container, { paddingTop: Math.max(spacing.xs, insets.top + 2) }]}>
+    <View style={[st.container, { paddingTop: Math.max(spacing.xs, insets.top + 2), paddingHorizontal: isMobileModel ? spacing.sm : spacing.lg }]}>
       <View style={st.topShell}>
         <Text style={st.brand}>INDEX CASTING</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
@@ -1372,7 +1372,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
             }}
           >
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
                 {optionChatAgency?.logo_url ? (
                   <Image source={{ uri: optionChatAgency.logo_url }} style={{ width: 32, height: 32, borderRadius: 6 }} resizeMode="contain" />
                 ) : null}
@@ -1451,19 +1451,19 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
             backgroundColor: 'rgba(0,0,0,0.08)',
             justifyContent: 'center',
             alignItems: 'center',
-            paddingHorizontal: spacing.lg,
+            paddingHorizontal: isMobileModel ? spacing.xs : spacing.lg,
           }}
         >
           <View
             style={{
               width: '100%',
-              maxWidth: 420,
-              maxHeight: '85%',
+              maxWidth: 480,
+              maxHeight: '92%',
               borderRadius: 18,
               borderWidth: 1,
               borderColor: colors.border,
               backgroundColor: colors.surface,
-              padding: spacing.lg,
+              padding: isMobileModel ? spacing.md : spacing.lg,
             }}
           >
             <View
@@ -1484,6 +1484,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                 <Text style={st.backLabel}>Close</Text>
               </TouchableOpacity>
             </View>
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator contentContainerStyle={{ paddingBottom: 30 }}>
             {(() => {
               const entry = openEntry;
               let kind: 'Option' | 'Job' | 'Casting' | 'Personal' = 'Personal';
@@ -1872,6 +1873,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                 </Text>
               </TouchableOpacity>
             </View>
+            </ScrollView>
           </View>
         </View>
       )}
@@ -1933,7 +1935,7 @@ const Measure: React.FC<MeasureProps> = ({ label, value }) => (
 );
 
 const st = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background, paddingHorizontal: spacing.lg, paddingTop: spacing.xs },
+  container: { flex: 1, backgroundColor: colors.background, paddingHorizontal: spacing.md, paddingTop: spacing.xs },
   topShell: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: spacing.xs, marginBottom: spacing.xs },
   backRow: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm, gap: spacing.xs },
   backArrow: { fontSize: 22, color: colors.textPrimary },

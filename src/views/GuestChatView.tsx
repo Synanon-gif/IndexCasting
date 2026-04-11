@@ -375,7 +375,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: spacing.lg,
+    padding: spacing.md,
   },
   container: {
     flex: 1,
@@ -436,6 +436,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#856404',
     flex: 1,
+    minWidth: 0,
   },
   bannerCta: {
     backgroundColor: '#856404',
@@ -482,7 +483,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: spacing.lg,
+    padding: spacing.sm,
   },
   modalCard: {
     backgroundColor: colors.surface,

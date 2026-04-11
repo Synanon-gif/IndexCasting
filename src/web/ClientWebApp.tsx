@@ -9,6 +9,7 @@ import { NegotiationSummaryCard } from '../components/optionNegotiation/Negotiat
 import { NegotiationThreadFooter } from '../components/optionNegotiation/NegotiationThreadFooter';
 import { ConfirmDestructiveModal } from '../components/ConfirmDestructiveModal';
 import { useDeviceType } from '../hooks/useDeviceType';
+import { isMobileWidth } from '../theme/breakpoints';
 import { shouldShowSystemMessageForViewer } from '../components/optionNegotiation/filterSystemMessagesForViewer';
 import {
   View,
@@ -387,7 +388,9 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   onBackToRoleSelection,
 }) => {
   const auth = useAuth();
-  const { height: clientWindowHeight } = useWindowDimensions();
+  const { width: clientWindowWidth, height: clientWindowHeight } = useWindowDimensions();
+  const clientIsMobile = isMobileWidth(clientWindowWidth);
+  const shellPaddingH = clientIsMobile ? spacing.sm : spacing.lg;
   const [tab, setTab] = useState<TopTab>('dashboard');
   const [showActiveOptions, setShowActiveOptions] = useState(false);
   const [models, setModels] = useState<ModelSummary[]>([]);
@@ -1963,7 +1966,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
           </View>
         </View>
       )}
-      <View style={[styles.appShell, { paddingBottom: bottomTabInset, paddingTop: Math.max(spacing.xs, insets.top + 2) }]}>
+      <View style={[styles.appShell, { paddingBottom: bottomTabInset, paddingTop: Math.max(spacing.xs, insets.top + 2), paddingHorizontal: shellPaddingH }]}>
         <View style={styles.topBar}>
           <View style={styles.topBarRow}>
             <TouchableOpacity
@@ -2750,35 +2753,37 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
           }
         }}
       >
-        {(['dashboard', 'discover', 'messages', 'calendar', 'agencies', 'projects', 'profile'] as TopTab[]).map((key) => (
-          <TouchableOpacity
-            key={key}
-            onPress={() => handleBottomTabPress(key)}
-            style={styles.bottomTabItem}
-          >
-            <Text style={[styles.bottomTabLabel, tab === key && styles.bottomTabLabelActive]}>
-              {key === 'dashboard'
-                ? uiCopy.clientWeb.bottomTabs.dashboard
-                : key === 'discover'
-                ? uiCopy.clientWeb.bottomTabs.discover
-                : key === 'projects'
-                ? uiCopy.clientWeb.bottomTabs.projects
-                : key === 'calendar'
-                ? uiCopy.clientWeb.bottomTabs.calendar
-                : key === 'agencies'
-                ? uiCopy.clientWeb.bottomTabs.agencies
-                : key === 'team'
-                ? uiCopy.clientWeb.bottomTabs.team
-                : key === 'profile'
-                ? uiCopy.clientWeb.bottomTabs.profile
-                : uiCopy.clientWeb.bottomTabs.messages}
-            </Text>
-            {key === 'messages' && hasNew && (
-              <View style={styles.bottomTabDot} />
-            )}
-            {tab === key && <View style={styles.bottomTabUnderline} />}
-          </TouchableOpacity>
-        ))}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.bottomTabRow}>
+          {(['dashboard', 'discover', 'messages', 'calendar', 'agencies', 'projects', 'profile'] as TopTab[]).map((key) => (
+            <TouchableOpacity
+              key={key}
+              onPress={() => handleBottomTabPress(key)}
+              style={styles.bottomTabItem}
+            >
+              <Text style={[styles.bottomTabLabel, tab === key && styles.bottomTabLabelActive]}>
+                {key === 'dashboard'
+                  ? uiCopy.clientWeb.bottomTabs.dashboard
+                  : key === 'discover'
+                  ? uiCopy.clientWeb.bottomTabs.discover
+                  : key === 'projects'
+                  ? uiCopy.clientWeb.bottomTabs.projects
+                  : key === 'calendar'
+                  ? uiCopy.clientWeb.bottomTabs.calendar
+                  : key === 'agencies'
+                  ? uiCopy.clientWeb.bottomTabs.agencies
+                  : key === 'team'
+                  ? uiCopy.clientWeb.bottomTabs.team
+                  : key === 'profile'
+                  ? uiCopy.clientWeb.bottomTabs.profile
+                  : uiCopy.clientWeb.bottomTabs.messages}
+              </Text>
+              {key === 'messages' && hasNew && (
+                <View style={styles.bottomTabDot} />
+              )}
+              {tab === key && <View style={styles.bottomTabUnderline} />}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       </View>
     </View>
   );
@@ -4728,25 +4733,25 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                     </Text>
                   ) : null}
                 </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flexShrink: 0, flexWrap: 'wrap' }}>
                   {attentionListLabel ? (
                     <View style={[styles.statusPill, { backgroundColor: '#dbeafe' }]}>
-                      <Text style={[styles.statusPillLabel, { color: '#1d4ed8' }]}>
+                      <Text style={[styles.statusPillLabel, { color: '#1d4ed8' }]} numberOfLines={1}>
                         {attentionListLabel}
                       </Text>
                     </View>
                   ) : null}
                   {r.modelAccountLinked === false ? (
-                    <Text style={{ ...typography.label, fontSize: 9, color: colors.textSecondary }}>
+                    <Text style={{ ...typography.label, fontSize: 9, color: colors.textSecondary }} numberOfLines={1}>
                       {uiCopy.dashboard.optionRequestModelApprovalNoApp}
                     </Text>
                   ) : r.modelApproval === 'approved' ? (
-                    <Text style={{ ...typography.label, fontSize: 9, color: colors.buttonOptionGreen }}>
+                    <Text style={{ ...typography.label, fontSize: 9, color: colors.buttonOptionGreen }} numberOfLines={1}>
                       {uiCopy.dashboard.optionRequestModelApprovalApproved}
                     </Text>
                   ) : null}
                   <View style={[styles.statusPill, { backgroundColor: STATUS_COLORS[reqStatus] }]}>
-                    <Text style={styles.statusPillLabel}>{STATUS_LABELS[reqStatus]}</Text>
+                    <Text style={styles.statusPillLabel} numberOfLines={1}>{STATUS_LABELS[reqStatus]}</Text>
                   </View>
                   <TouchableOpacity
                     onPress={() => toggleArchive(r.threadId)}
@@ -5737,11 +5742,11 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
     <View style={{
       position: 'absolute', left: 0, right: 0, top: 0, bottom: 0,
       backgroundColor: 'rgba(0,0,0,0.08)', justifyContent: 'center', alignItems: 'center',
-      paddingHorizontal: spacing.lg, zIndex: 100,
+      paddingHorizontal: spacing.sm, zIndex: 100,
     }}>
       <View style={{
-        width: '100%', maxWidth: 520, maxHeight: '90%', borderRadius: 18,
-        borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, padding: spacing.lg,
+        width: '100%', maxWidth: 520, maxHeight: '92%', borderRadius: 18,
+        borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, padding: spacing.md,
       }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm }}>
           <Text style={{ ...typography.heading, fontSize: 16, color: colors.textPrimary }}>Settings</Text>
@@ -5756,7 +5761,7 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
             </TouchableOpacity>
           ))}
         </View>
-        <ScrollView>
+        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator>
           {settingsTab === 'profile' ? (
             <>
               <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary, marginBottom: 4 }}>Display name</Text>
@@ -5982,24 +5987,24 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     zIndex: 1000,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    flexWrap: 'wrap' as const,
-    gap: spacing.sm,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     backgroundColor: colors.background,
     paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
     maxWidth: 1200,
     width: '100%',
     alignSelf: 'center',
   },
+  bottomTabRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.sm,
+  },
   bottomTabItem: {
     alignItems: 'center',
     paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.sm,
     position: 'relative' as const,
   },
   bottomTabLabel: {
@@ -6181,6 +6186,7 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontWeight: '600',
     flex: 1,
+    minWidth: 0,
   },
   packageBannerExit: {
     ...typography.body,
@@ -6202,7 +6208,7 @@ const styles = StyleSheet.create({
   },
   packageGridImageContainer: {
     width: '100%',
-    height: 320,
+    height: 360,
     position: 'relative',
   },
   packageGridImage: {
@@ -6226,7 +6232,7 @@ const styles = StyleSheet.create({
   },
   coverCard: {
     width: '100%',
-    maxWidth: 520,
+    maxWidth: 600,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: colors.border,
@@ -6235,7 +6241,7 @@ const styles = StyleSheet.create({
   },
   coverImageContainer: {
     position: 'relative',
-    height: 360,
+    height: 420,
     zIndex: 0,
   },
   coverImageTouchable: {
@@ -6267,7 +6273,7 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     height: 120,
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
     justifyContent: 'flex-end',
     zIndex: 2,
@@ -6325,12 +6331,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   coverMeta: {
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
   },
   cardButtonRow: {
     flexDirection: 'row',
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
     paddingBottom: spacing.md,
     gap: spacing.md,
@@ -6366,7 +6372,7 @@ const styles = StyleSheet.create({
     color: colors.buttonOptionGreen,
   },
   cardButtonRowSecondary: {
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.md,
     paddingBottom: spacing.md,
     backgroundColor: colors.surface,
   },
@@ -6682,17 +6688,17 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.08)',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.sm,
   },
   detailCard: {
     width: '100%',
     maxWidth: 640,
-    maxHeight: '90%',
+    maxHeight: '92%',
     borderRadius: 18,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    padding: spacing.lg,
+    padding: spacing.md,
   },
   detailHeaderRow: {
     flexDirection: 'row',
@@ -6740,8 +6746,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   detailPortfolioImage: {
-    width: 160,
-    height: 220,
+    width: 180,
+    height: 240,
     marginRight: spacing.sm,
     borderRadius: 12,
     backgroundColor: colors.border,
@@ -7032,8 +7038,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.lg,
+    paddingHorizontal: spacing.sm,
+    paddingBottom: spacing.md,
   },
   bottomBarInner: {
     maxWidth: 1200,
@@ -7072,7 +7078,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.08)',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.sm,
   },
   pickerCard: {
     width: '100%',
@@ -7134,7 +7140,7 @@ const styles = StyleSheet.create({
   threadRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.sm,
     borderBottomWidth: 1,
@@ -7145,6 +7151,7 @@ const styles = StyleSheet.create({
   },
   threadRowLeft: {
     flex: 1,
+    minWidth: 0,
   },
   threadTitle: {
     ...typography.body,

@@ -1,10 +1,14 @@
 import React, { useMemo } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
+import { isMobileWidth } from '../theme/breakpoints';
 import type { CalendarScheduleBlock } from '../utils/calendarUnifiedTimeline';
 import { formatMinutesAsHm } from '../utils/calendarTimelineLayout';
 
 const WEEKDAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const COL_GAP = 4;
+const GRID_PADDING = spacing.sm;
+const COL_WIDTH_DESKTOP = 112;
 
 export type CalendarWeekGridProps = {
   weekDates: string[];
@@ -30,6 +34,15 @@ export const CalendarWeekGrid: React.FC<CalendarWeekGridProps> = ({
   rangeLabel,
   maxChipsPerDay = 4,
 }) => {
+  const { width: windowWidth } = useWindowDimensions();
+  const isMobile = isMobileWidth(windowWidth);
+
+  const colWidth = useMemo(() => {
+    if (!isMobile) return COL_WIDTH_DESKTOP;
+    const available = windowWidth - 2 * GRID_PADDING - 6 * COL_GAP - 2;
+    return Math.max(36, Math.floor(available / 7));
+  }, [windowWidth, isMobile]);
+
   const byDate = useMemo(() => {
     const m: Record<string, CalendarScheduleBlock[]> = {};
     for (const d of weekDates) m[d] = [];
@@ -41,6 +54,9 @@ export const CalendarWeekGrid: React.FC<CalendarWeekGridProps> = ({
     }
     return m;
   }, [events, weekDates]);
+
+  const chipFontSize = isMobile ? 8 : 9;
+  const mobileMaxChips = isMobile ? 2 : maxChipsPerDay;
 
   return (
     <View style={styles.wrap}>
@@ -67,8 +83,8 @@ export const CalendarWeekGrid: React.FC<CalendarWeekGridProps> = ({
           <Text style={styles.navChevron}>›</Text>
         </TouchableOpacity>
       </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <View style={styles.columns}>
+      {isMobile ? (
+        <View style={[styles.columns, { gap: COL_GAP }]}>
           {weekDates.map((date, idx) => {
             const dayNum = Number(date.slice(8, 10));
             const list = byDate[date] ?? [];
@@ -77,14 +93,14 @@ export const CalendarWeekGrid: React.FC<CalendarWeekGridProps> = ({
             return (
               <TouchableOpacity
                 key={date}
-                style={[styles.col, isSelected && styles.colSelected, isToday && !isSelected && styles.colToday]}
+                style={[styles.col, { width: colWidth, minHeight: 100 }, isSelected && styles.colSelected, isToday && !isSelected && styles.colToday]}
                 onPress={() => onSelectDay(date)}
                 activeOpacity={0.85}
               >
                 <Text style={styles.wd}>{WEEKDAY_SHORT[idx]}</Text>
                 <Text style={[styles.dayNum, isSelected && styles.dayNumSelected]}>{dayNum}</Text>
                 <View style={styles.chips}>
-                  {list.slice(0, maxChipsPerDay).map((ev) => (
+                  {list.slice(0, mobileMaxChips).map((ev) => (
                     <TouchableOpacity
                       key={ev.id + ev.startMin}
                       onPress={(e) => {
@@ -93,25 +109,64 @@ export const CalendarWeekGrid: React.FC<CalendarWeekGridProps> = ({
                       }}
                       style={[styles.chip, { backgroundColor: ev.color }]}
                     >
-                      <Text style={styles.chipText} numberOfLines={1}>
-                        {formatMinutesAsHm(ev.startMin)} {ev.title}
+                      <Text style={[styles.chipText, { fontSize: chipFontSize }]} numberOfLines={1}>
+                        {formatMinutesAsHm(ev.startMin)}
                       </Text>
                     </TouchableOpacity>
                   ))}
-                  {list.length > maxChipsPerDay ? (
-                    <Text style={styles.more}>+{list.length - maxChipsPerDay}</Text>
+                  {list.length > mobileMaxChips ? (
+                    <Text style={styles.more}>+{list.length - mobileMaxChips}</Text>
                   ) : null}
                 </View>
               </TouchableOpacity>
             );
           })}
         </View>
-      </ScrollView>
+      ) : (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <View style={[styles.columns, { gap: COL_GAP }]}>
+            {weekDates.map((date, idx) => {
+              const dayNum = Number(date.slice(8, 10));
+              const list = byDate[date] ?? [];
+              const isSelected = selectedDate === date;
+              const isToday = date === new Date().toISOString().slice(0, 10);
+              return (
+                <TouchableOpacity
+                  key={date}
+                  style={[styles.col, { width: colWidth }, isSelected && styles.colSelected, isToday && !isSelected && styles.colToday]}
+                  onPress={() => onSelectDay(date)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.wd}>{WEEKDAY_SHORT[idx]}</Text>
+                  <Text style={[styles.dayNum, isSelected && styles.dayNumSelected]}>{dayNum}</Text>
+                  <View style={styles.chips}>
+                    {list.slice(0, maxChipsPerDay).map((ev) => (
+                      <TouchableOpacity
+                        key={ev.id + ev.startMin}
+                        onPress={(e) => {
+                          e.stopPropagation?.();
+                          onEventPress(ev);
+                        }}
+                        style={[styles.chip, { backgroundColor: ev.color }]}
+                      >
+                        <Text style={styles.chipText} numberOfLines={1}>
+                          {formatMinutesAsHm(ev.startMin)} {ev.title}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                    {list.length > maxChipsPerDay ? (
+                      <Text style={styles.more}>+{list.length - maxChipsPerDay}</Text>
+                    ) : null}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </ScrollView>
+      )}
     </View>
   );
 };
-
-const COL_WIDTH = 112;
 
 const styles = StyleSheet.create({
   wrap: {
@@ -119,7 +174,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: 12,
     backgroundColor: colors.surface,
-    padding: spacing.sm,
+    padding: GRID_PADDING,
     marginBottom: spacing.md,
   },
   headerRow: {
@@ -131,9 +186,8 @@ const styles = StyleSheet.create({
   navHit: { padding: spacing.xs },
   navChevron: { fontSize: 22, color: colors.textPrimary, fontWeight: '600' },
   rangeText: { ...typography.label, fontSize: 12, color: colors.textPrimary, flex: 1, textAlign: 'center' },
-  columns: { flexDirection: 'row', gap: 6 },
+  columns: { flexDirection: 'row' },
   col: {
-    width: COL_WIDTH,
     minHeight: 140,
     borderRadius: 10,
     borderWidth: 1,

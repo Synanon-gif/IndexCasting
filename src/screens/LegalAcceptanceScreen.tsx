@@ -117,7 +117,7 @@ export const LegalAcceptanceScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' },
-  content: { width: '100%', maxWidth: 440, padding: spacing.lg, alignItems: 'center' },
+  content: { width: '100%', maxWidth: 440, padding: spacing.md, alignItems: 'center' },
   brand: { ...typography.heading, color: colors.textPrimary, marginBottom: spacing.sm },
   title: { ...typography.heading, fontSize: 20, color: colors.textPrimary, marginBottom: spacing.xs },
   subtitle: { ...typography.body, color: colors.textSecondary, textAlign: 'center', marginBottom: spacing.xl },

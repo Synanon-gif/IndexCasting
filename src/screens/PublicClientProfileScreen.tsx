@@ -290,7 +290,7 @@ const s = StyleSheet.create({
     backgroundColor: colors.background,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: spacing.lg,
+    padding: spacing.md,
   },
   notFoundTitle: {
     ...typography.heading,

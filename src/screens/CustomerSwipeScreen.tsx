@@ -618,9 +618,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.xl,
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.lg,
   },
   headerRow: {
     flexDirection: 'row',
@@ -671,13 +671,14 @@ const styles = StyleSheet.create({
   },
   metaRow: {
     flexDirection: 'row',
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
     alignItems: 'flex-end',
-    gap: spacing.lg,
+    gap: spacing.md,
   },
   nameCol: {
     flex: 1,
+    minWidth: 0,
   },
   name: {
     ...typography.heading,
@@ -738,10 +739,10 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   drawer: {
-    width: '72%',
+    width: '78%',
     backgroundColor: colors.surface,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
     marginTop: spacing.xl,
     borderTopLeftRadius: 16,
     borderBottomLeftRadius: 16,
@@ -829,7 +830,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.1)',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.sm,
   },
   detailCard: {
     width: '100%',
@@ -841,7 +842,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   detailContent: {
-    padding: spacing.lg,
+    padding: spacing.md,
     gap: spacing.md,
   },
   detailHeaderRow: {

@@ -191,7 +191,7 @@ const styles = StyleSheet.create({
     gap: 4,
     flexShrink: 0,
     minWidth: 48,
-    maxWidth: 120,
+    maxWidth: 140,
   },
   backArrow: {
     ...typography.label,

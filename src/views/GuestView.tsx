@@ -717,7 +717,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: spacing.lg,
+    padding: spacing.md,
   },
   container: { flex: 1, backgroundColor: colors.background },
   brand: { ...typography.heading, color: colors.textPrimary, marginBottom: spacing.sm },
@@ -835,8 +835,8 @@ const styles = StyleSheet.create({
   primaryBtnDisabled: { opacity: 0.4 },
   primaryBtnLabel: { ...typography.label, color: colors.surface },
   header: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.lg,
     paddingBottom: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
@@ -844,9 +844,9 @@ const styles = StyleSheet.create({
   headerSub: { ...typography.body, color: colors.textSecondary, fontSize: 12 },
   backLink: { ...typography.body, color: colors.textSecondary, fontSize: 13, marginTop: 4 },
   scrollArea: { flex: 1 },
-  grid: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: 140 },
+  grid: { paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: 140 },
   formContent: {
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.md,
     paddingBottom: spacing.xl * 3,
   },
   sectionTitle: {
@@ -876,7 +876,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     flex: 1,
     minWidth: 140,
-    maxWidth: 200,
   },
   modelCardSelected: {
     borderColor: colors.textPrimary,

@@ -90,6 +90,7 @@ import { NegotiationSummaryCard } from '../components/optionNegotiation/Negotiat
 import { NegotiationThreadFooter } from '../components/optionNegotiation/NegotiationThreadFooter';
 import { ConfirmDestructiveModal } from '../components/ConfirmDestructiveModal';
 import { useDeviceType } from '../hooks/useDeviceType';
+import { isMobileWidth } from '../theme/breakpoints';
 import { shouldShowSystemMessageForViewer } from '../components/optionNegotiation/filterSystemMessagesForViewer';
 import { getTerritoriesForModel, getTerritoriesForAgency, upsertTerritoriesForModel, bulkAddTerritoriesForModels } from '../services/territoriesSupabase';
 import {
@@ -280,7 +281,9 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   onBackToRoleSelection,
 }) => {
   const { signOut, profile, session, refreshProfile } = useAuth();
-  const { height: agencyWindowHeight } = useWindowDimensions();
+  const { width: agencyWindowWidth, height: agencyWindowHeight } = useWindowDimensions();
+  const agencyIsMobile = isMobileWidth(agencyWindowWidth);
+  const agencyShellPaddingH = agencyIsMobile ? spacing.sm : spacing.lg;
   const [tab, setTab] = useState<AgencyTab>('dashboard');
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [dissolvingOrg, setDissolvingOrg] = useState(false);
@@ -619,7 +622,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   );
 
   return (
-    <View style={[s.container, { paddingTop: Math.max(spacing.xs, insets.top + 2) }]}>
+    <View style={[s.container, { paddingTop: Math.max(spacing.xs, insets.top + 2), paddingHorizontal: agencyShellPaddingH }]}>
       <View style={s.topShell}>
         <Text style={s.brand}>INDEX CASTING</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
@@ -1015,19 +1018,19 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
             backgroundColor: 'rgba(0,0,0,0.08)',
             justifyContent: 'center',
             alignItems: 'center',
-            paddingHorizontal: spacing.lg,
+            paddingHorizontal: agencyIsMobile ? spacing.xs : spacing.lg,
           }}
         >
           <View
             style={{
               width: '100%',
               maxWidth: 520,
-              maxHeight: '90%',
+              maxHeight: '92%',
               borderRadius: 18,
               borderWidth: 1,
               borderColor: colors.border,
               backgroundColor: colors.surface,
-              padding: spacing.lg,
+              padding: agencyIsMobile ? spacing.md : spacing.lg,
             }}
           >
             <View
@@ -1334,9 +1337,9 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
       )}
 
       {showAddManualEvent && (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.08)', justifyContent: 'center', alignItems: 'center', padding: spacing.lg }]}>
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.08)', justifyContent: 'center', alignItems: 'center', padding: agencyIsMobile ? spacing.xs : spacing.lg }]}>
           <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setShowAddManualEvent(false)} />
-          <View style={{ width: '100%', maxWidth: 400, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, padding: spacing.lg }}>
+          <View style={{ width: '100%', maxWidth: 400, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, padding: agencyIsMobile ? spacing.md : spacing.lg }}>
             <Text style={s.sectionLabel}>Add event</Text>
             <TextInput placeholder="Title" value={newEventForm.title} onChangeText={(t) => setNewEventForm((f) => ({ ...f, title: t }))} placeholderTextColor={colors.textSecondary} style={s.editInput} />
             <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>Date (YYYY-MM-DD)</Text>
@@ -1426,9 +1429,9 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
       )}
 
       {selectedManualEvent && (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.08)', justifyContent: 'center', alignItems: 'center', padding: spacing.lg }]}>
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.08)', justifyContent: 'center', alignItems: 'center', padding: agencyIsMobile ? spacing.xs : spacing.lg }]}>
           <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setSelectedManualEvent(null)} />
-          <View style={{ width: '100%', maxWidth: 400, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, padding: spacing.lg }}>
+          <View style={{ width: '100%', maxWidth: 400, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, padding: agencyIsMobile ? spacing.md : spacing.lg }}>
             <Text style={s.sectionLabel}>{uiCopy.clientWeb.editEvent}</Text>
             <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>Title</Text>
             <TextInput
@@ -2040,6 +2043,8 @@ const MyModelsTab: React.FC<{
   focusModelId?: string | null;
   onFocusConsumed?: () => void;
 }> = ({ models, agencyId, agencyName, inviteOrganizationId, onRefresh, focusModelId, onFocusConsumed }) => {
+  const { width: _myModelsWidth } = useWindowDimensions();
+  const agencyIsMobile = isMobileWidth(_myModelsWidth);
   const [selectedModel, setSelectedModel] = useState<SupabaseModel | null>(null);
   const [selectedModelLocation, setSelectedModelLocation] = useState<ModelLocation | null>(null);
   const [filters, setFilters] = useState<ModelFilters>(defaultModelFilters);
@@ -4038,7 +4043,7 @@ const MyModelsTab: React.FC<{
       >
         <View style={{
           flex: 1, backgroundColor: 'rgba(0,0,0,0.25)',
-          justifyContent: 'center', alignItems: 'center', padding: spacing.lg,
+          justifyContent: 'center', alignItems: 'center', padding: agencyIsMobile ? spacing.xs : spacing.lg,
         }}>
           <View style={{
             width: '100%', maxWidth: 480,
@@ -5522,20 +5527,20 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
               });
             return (
               <TouchableOpacity key={r.threadId} style={[s.threadRow, selectedThreadId === r.threadId && s.threadRowActive]} onPress={() => setSelectedThreadId(r.threadId)}>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.modelName}>{r.modelName} · {r.date}</Text>
-                  <Text style={s.metaText}>{r.clientName}{r.startTime ? ` · ${r.startTime}–${r.endTime}` : ''}</Text>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={s.modelName} numberOfLines={1}>{r.modelName} · {r.date}</Text>
+                  <Text style={s.metaText} numberOfLines={1}>{r.clientName}{r.startTime ? ` · ${r.startTime}–${r.endTime}` : ''}</Text>
                   {assignment ? (
-                    <Text style={s.metaText}>
+                    <Text style={s.metaText} numberOfLines={1}>
                       {assignment.label}
                       {assignment.assignedMemberName ? ` · ${assignment.assignedMemberName}` : ''}
                     </Text>
                   ) : null}
                 </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0, flexWrap: 'wrap' }}>
                   {listAttentionLabel ? (
                     <View style={[s.statusPill, { backgroundColor: '#dbeafe' }]}>
-                      <Text style={[s.statusPillLabel, { color: '#1d4ed8' }]}>{listAttentionLabel}</Text>
+                      <Text style={[s.statusPillLabel, { color: '#1d4ed8' }]} numberOfLines={1}>{listAttentionLabel}</Text>
                     </View>
                   ) : null}
                   {listFee != null && (
@@ -5910,9 +5915,10 @@ const GuestLinksTab: React.FC<{
   models: SupabaseModel[];
   viewerUserId: string | null;
 }> = ({ agencyId, agencyEmail, agencyName, models, viewerUserId }) => {
+  const { width: _guestLinksWidth } = useWindowDimensions();
+  const agencyIsMobile = isMobileWidth(_guestLinksWidth);
   const copy = uiCopy.guestLinks;
 
-  // Package creation
   const [label, setLabel] = useState('');
   const [modelSearch, setModelSearch] = useState('');
   const [selectedModelIds, setSelectedModelIds] = useState<Set<string>>(new Set());
@@ -6130,7 +6136,7 @@ const GuestLinksTab: React.FC<{
 
   return (
     <>
-      <ScreenScrollView contentStyle={{ paddingHorizontal: spacing.lg, paddingTop: spacing.md }}>
+      <ScreenScrollView contentStyle={{ paddingHorizontal: agencyIsMobile ? spacing.sm : spacing.lg, paddingTop: spacing.md }}>
 
         {/* ── Create Package ─────────────────────────────────────────────── */}
         <Text style={s.sectionLabel}>{copy.createSection}</Text>
@@ -6343,7 +6349,7 @@ const GuestLinksTab: React.FC<{
             <View style={{
               backgroundColor: colors.background,
               borderTopLeftRadius: 20, borderTopRightRadius: 20,
-              padding: spacing.lg, maxHeight: '75%',
+              padding: agencyIsMobile ? spacing.md : spacing.lg, maxHeight: '80%',
             }}>
               <Text style={{ ...typography.heading, fontSize: 16, color: colors.textPrimary, marginBottom: 4 }}>
                 {copy.sendInAppModalTitle}
@@ -6591,7 +6597,7 @@ const s = StyleSheet.create({
   filterPillLabel: { ...typography.label, fontSize: 10, color: colors.textSecondary },
   filterPillLabelActive: { color: colors.surface },
   threadRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
     paddingVertical: spacing.sm, paddingHorizontal: spacing.sm,
     borderBottomWidth: 1, borderBottomColor: colors.border,
     minWidth: 0,
@@ -6635,7 +6641,7 @@ const s = StyleSheet.create({
     alignItems: 'center' as const,
     alignSelf: 'stretch' as const,
     width: '100%' as const,
-    maxWidth: 400,
+    maxWidth: 540,
     height: 40,
     minHeight: 40,
     borderWidth: 1,

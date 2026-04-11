@@ -1300,7 +1300,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',
     justifyContent: 'center',
-    padding: spacing.lg,
+    padding: spacing.sm,
   },
   modalCard: {
     backgroundColor: colors.surface,

@@ -284,15 +284,27 @@ export function dedupeUnifiedRowsByOptionRequest(
       .filter((r): r is Extract<UnifiedAgencyCalendarRow, { kind: 'option' }> => r.kind === 'option')
       .map((r) => r.item.option.id),
   );
+  const optionCalEntryIds = new Set<string>(
+    rows
+      .filter((r): r is Extract<UnifiedAgencyCalendarRow, { kind: 'option' }> => r.kind === 'option' && !!r.item.calendar_entry?.option_request_id)
+      .map((r) => r.item.calendar_entry!.option_request_id!),
+  );
   const optionDateModel = new Set<string>(
     rows
       .filter((r): r is Extract<UnifiedAgencyCalendarRow, { kind: 'option' }> => r.kind === 'option' && !!r.item.option.model_id)
       .map((r) => `${r.date}|${r.item.option.model_id}`),
   );
+  const optionDates = new Set<string>(
+    rows
+      .filter((r): r is Extract<UnifiedAgencyCalendarRow, { kind: 'option' }> => r.kind === 'option')
+      .map((r) => r.date),
+  );
   return rows.filter((r) => {
     if (r.kind !== 'booking') return true;
     if (r.entry.option_request_id && optionIds.has(r.entry.option_request_id)) return false;
+    if (r.entry.option_request_id && optionCalEntryIds.has(r.entry.option_request_id)) return false;
     if (r.entry.model_id && optionDateModel.has(`${r.entry.date ?? ''}|${r.entry.model_id}`)) return false;
+    if (r.entry.option_request_id && optionDates.has(r.date)) return false;
     return true;
   });
 }

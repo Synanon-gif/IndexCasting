@@ -86,7 +86,7 @@ export const PendingActivationScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', paddingHorizontal: spacing.lg },
+  container: { flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', paddingHorizontal: spacing.md },
   content: { width: '100%', maxWidth: 440, alignItems: 'center' },
   brand: { ...typography.heading, color: colors.textPrimary, marginBottom: spacing.lg },
   icon: { fontSize: 48, marginBottom: spacing.md },

@@ -113,7 +113,7 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     textTransform: 'none',
     letterSpacing: 0,
-    maxWidth: 220,
+    flexShrink: 1,
   },
   priceCol: {
     gap: 2,

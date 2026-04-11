@@ -351,9 +351,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.md,
   },
-  content: { width: '100%', maxWidth: 380, alignItems: 'center' },
+  content: { width: '100%', maxWidth: 420, alignItems: 'center' },
   brand: { ...typography.heading, color: colors.textPrimary, marginBottom: spacing.sm },
   subtitle: { ...typography.body, color: colors.textSecondary, marginBottom: spacing.md },
   inviteBanner: {

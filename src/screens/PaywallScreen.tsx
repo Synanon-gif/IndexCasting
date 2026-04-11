@@ -300,7 +300,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   content: {
-    padding: spacing.lg,
+    padding: spacing.md,
     paddingBottom: spacing.xl * 2,
   },
   header: {
@@ -365,7 +365,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: spacing.lg,
+    padding: spacing.md,
     marginBottom: spacing.md,
   },
   cardHighlighted: {

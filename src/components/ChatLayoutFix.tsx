@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, ScrollView, StyleSheet, TouchableOpacity, Text } from 'react-native';
+import { View, ScrollView, StyleSheet, TouchableOpacity, Text, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, typography } from '../theme/theme';
+import { isMobileWidth } from '../theme/breakpoints';
 import { BOTTOM_TAB_BAR_HEIGHT } from '../navigation/bottomTabNavigation';
 
 export type ChatLayoutFixProps = {
@@ -25,11 +26,13 @@ export default function ChatLayoutFix({
   messageList,
   composer,
   bottomTabInset,
-  edgePadding = 16,
+  edgePadding: edgePaddingProp,
   onBack,
   backLabel = 'Back',
 }: ChatLayoutFixProps) {
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const edgePadding = edgePaddingProp ?? (isMobileWidth(width) ? spacing.sm : 16);
 
   const tabBarReserve =
     bottomTabInset !== undefined ? bottomTabInset : BOTTOM_TAB_BAR_HEIGHT;
