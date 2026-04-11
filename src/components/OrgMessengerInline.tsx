@@ -114,6 +114,13 @@ export type OrgMessengerInlineProps = {
    * Set to 0 when the messenger sits in a shell without a bottom tab (e.g. guest chat).
    */
   composerBottomInsetOverride?: number;
+  /**
+   * When provided, a WhatsApp-like back button is prepended to the messenger header.
+   * Use on mobile when a thread is selected within a list (e.g. B2B chats panel).
+   * Non-breaking: omitting this prop keeps the existing header unchanged.
+   */
+  onBack?: () => void;
+  backLabel?: string;
 };
 
 function payloadType(m: MessageWithSender): MessagePayloadType {
@@ -150,6 +157,8 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   onBookingStatusUpdated,
   onOrgPress,
   composerBottomInsetOverride,
+  onBack,
+  backLabel,
 }) => {
   const [msgs, setMsgs] = useState<MessageWithSender[]>([]);
   const [input, setInput] = useState('');
@@ -836,6 +845,8 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
         composer={messengerComposer}
         edgePadding={0}
         bottomTabInset={composerBottomInsetOverride}
+        onBack={onBack}
+        backLabel={backLabel}
       />
 
       <Modal visible={shareOpen !== null} transparent animationType="fade">

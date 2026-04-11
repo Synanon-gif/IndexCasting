@@ -33,6 +33,12 @@ export type OptionNegotiationChatShellProps = {
   /** Responsive shell: optional third column on desktop only. */
   deviceType?: DeviceType;
   rightPanel?: React.ReactNode;
+  /**
+   * KeyboardAvoidingView vertical offset on native (iOS).
+   * Default 0 works when no additional top chrome exists above the shell.
+   * Pass the height of any fixed header above the shell when needed.
+   */
+  keyboardVerticalOffset?: number;
 };
 
 export const OptionNegotiationChatShell: React.FC<OptionNegotiationChatShellProps> = ({
@@ -53,6 +59,7 @@ export const OptionNegotiationChatShell: React.FC<OptionNegotiationChatShellProp
   containerStyle,
   deviceType,
   rightPanel,
+  keyboardVerticalOffset = 0,
 }) => {
   const showRightRail = !!rightPanel && deviceType === 'desktop';
 
@@ -119,7 +126,7 @@ export const OptionNegotiationChatShell: React.FC<OptionNegotiationChatShellProp
       <KeyboardAvoidingView
         style={styles.mainColumn}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={0}
+        keyboardVerticalOffset={keyboardVerticalOffset}
       >
         {innerContent}
       </KeyboardAvoidingView>
@@ -164,10 +171,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    paddingBottom: spacing.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
     flexShrink: 0,
+    minHeight: 52,
   },
   headerMeta: {
     flexShrink: 0,

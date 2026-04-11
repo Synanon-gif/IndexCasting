@@ -271,36 +271,33 @@ export const GuestChatView: React.FC = () => {
   }
 
   const displayName = profile?.display_name || session?.user?.email || 'Guest';
+  // Compact subtitle: "Guest · N models requested" or just "Guest"
+  const compactSub = selectedModelIds.length > 0
+    ? `${copy.guestClientLabel} · ${selectedModelIds.length} model${selectedModelIds.length === 1 ? '' : 's'} requested`
+    : copy.guestClientLabel;
 
   return (
     <View style={styles.container}>
-      {/* ── Limited-access banner ── */}
-      <View style={styles.banner}>
-        <Text style={styles.bannerText}>{copy.banner}</Text>
-        <TouchableOpacity
-          style={styles.bannerCta}
-          onPress={() => setShowUpgradeModal(true)}
-        >
-          <Text style={styles.bannerCtaText}>{copy.upgradeButton}</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* ── Header ── */}
+      {/* ── Compact unified header: banner + chat title + context in two rows ── */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>{copy.chatTitle}</Text>
-        <Text style={styles.headerSub}>
-          {displayName} · {copy.guestClientLabel}
-        </Text>
-      </View>
-
-      {/* ── Selected models summary (read-only) ── */}
-      {selectedModelIds.length > 0 && (
-        <View style={styles.modelsSummary}>
-          <Text style={styles.modelsSummaryLabel}>
-            {copy.selectedModels}: {selectedModelIds.length} model(s) requested
-          </Text>
+        {/* Top row: banner strip with upgrade CTA */}
+        <View style={styles.bannerRow}>
+          <Text style={styles.bannerText} numberOfLines={1}>{copy.banner}</Text>
+          <TouchableOpacity
+            style={styles.bannerCta}
+            onPress={() => setShowUpgradeModal(true)}
+          >
+            <Text style={styles.bannerCtaText}>{copy.upgradeButton}</Text>
+          </TouchableOpacity>
         </View>
-      )}
+        {/* Bottom row: chat title + guest context */}
+        <View style={styles.headerTitleRow}>
+          <View style={styles.headerTitleBlock}>
+            <Text style={styles.headerTitle} numberOfLines={1}>{copy.chatTitle}</Text>
+            <Text style={styles.headerSub} numberOfLines={1}>{displayName} · {compactSub}</Text>
+          </View>
+        </View>
+      </View>
 
       {/* ── Chat thread ── */}
       <View style={styles.chatArea}>
@@ -416,13 +413,19 @@ const styles = StyleSheet.create({
     maxWidth: 360,
   },
 
-  // Banner
-  banner: {
-    backgroundColor: '#FFF3CD',
+  // Unified compact header (banner row + title row)
+  header: {
     borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    flexShrink: 0,
+  },
+  // Top strip: limited-access banner + upgrade CTA
+  bannerRow: {
+    backgroundColor: '#FFF3CD',
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#FFEAA7',
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: 6,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -430,54 +433,43 @@ const styles = StyleSheet.create({
   },
   bannerText: {
     ...typography.body,
-    fontSize: 12,
+    fontSize: 11,
     color: '#856404',
     flex: 1,
   },
   bannerCta: {
     backgroundColor: '#856404',
-    paddingVertical: 4,
+    paddingVertical: 3,
     paddingHorizontal: spacing.sm,
-    borderRadius: 6,
+    borderRadius: 5,
+    flexShrink: 0,
   },
   bannerCtaText: {
     ...typography.label,
     fontSize: 11,
     color: '#FFF3CD',
   },
-
-  // Header
-  header: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+  // Bottom row: chat title + guest context (compact, WhatsApp-like)
+  headerTitleRow: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerTitleBlock: {
+    flex: 1,
+    minWidth: 0,
   },
   headerTitle: {
     ...typography.heading,
-    fontSize: 17,
+    fontSize: 15,
     color: colors.textPrimary,
   },
   headerSub: {
     ...typography.body,
-    fontSize: 12,
+    fontSize: 11,
     color: colors.textSecondary,
-    marginTop: 2,
-  },
-
-  // Models summary
-  modelsSummary: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  modelsSummaryLabel: {
-    ...typography.body,
-    fontSize: 12,
-    color: colors.textSecondary,
+    marginTop: 1,
   },
 
   // Chat area

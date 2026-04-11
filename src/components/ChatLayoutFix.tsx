@@ -1,7 +1,7 @@
 import React from 'react';
-import { View, ScrollView, StyleSheet } from 'react-native';
+import { View, ScrollView, StyleSheet, TouchableOpacity, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors } from '../theme/theme';
+import { colors, spacing, typography } from '../theme/theme';
 import { BOTTOM_TAB_BAR_HEIGHT } from '../navigation/bottomTabNavigation';
 
 export type ChatLayoutFixProps = {
@@ -12,6 +12,12 @@ export type ChatLayoutFixProps = {
   bottomTabInset?: number;
   /** Horizontal padding for messages + composer; use 0 when parent already pads (e.g. card). */
   edgePadding?: number;
+  /**
+   * When provided, a WhatsApp-like back button is prepended to the header row.
+   * Non-breaking: existing call-sites that don't pass onBack see no change.
+   */
+  onBack?: () => void;
+  backLabel?: string;
 };
 
 export default function ChatLayoutFix({
@@ -20,6 +26,8 @@ export default function ChatLayoutFix({
   composer,
   bottomTabInset,
   edgePadding = 16,
+  onBack,
+  backLabel = 'Back',
 }: ChatLayoutFixProps) {
   const insets = useSafeAreaInsets();
 
@@ -27,9 +35,26 @@ export default function ChatLayoutFix({
     bottomTabInset !== undefined ? bottomTabInset : BOTTOM_TAB_BAR_HEIGHT;
   const composerBottomPadding = tabBarReserve + insets.bottom;
 
+  // When onBack is provided, prepend the back button to the header area.
+  const headerContent = onBack ? (
+    <View style={styles.headerRow}>
+      <TouchableOpacity
+        onPress={onBack}
+        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        style={styles.backBtn}
+      >
+        <Text style={styles.backArrow}>←</Text>
+        <Text style={styles.backText}>{backLabel}</Text>
+      </TouchableOpacity>
+      {header ? <View style={styles.headerContent}>{header}</View> : null}
+    </View>
+  ) : header ? (
+    <View style={styles.header}>{header}</View>
+  ) : null;
+
   return (
     <View style={styles.screen}>
-      {header ? <View style={styles.header}>{header}</View> : null}
+      {headerContent}
 
       <View style={styles.content}>
         <ScrollView
@@ -65,6 +90,40 @@ const styles = StyleSheet.create({
   },
   header: {
     flexShrink: 0,
+  },
+  // Row that contains back button + optional header content side-by-side
+  headerRow: {
+    flexShrink: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  headerContent: {
+    flex: 1,
+    minWidth: 0,
+  },
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flexShrink: 0,
+    minWidth: 48,
+    maxWidth: 90,
+  },
+  backArrow: {
+    ...typography.label,
+    fontSize: 18,
+    color: colors.textPrimary,
+  },
+  backText: {
+    ...typography.label,
+    fontSize: 13,
+    color: colors.accent,
+    fontWeight: '600' as const,
   },
   content: {
     flex: 1,

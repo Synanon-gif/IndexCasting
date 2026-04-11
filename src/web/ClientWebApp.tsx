@@ -4111,7 +4111,7 @@ const ClientB2BChatsPanel: React.FC<{
       headerTitle={messengerTitle}
       viewerUserId={auth.profile?.id ?? null}
       threadContext={{ type: uiCopy.b2bChat.contextOrgChat }}
-      containerStyle={b2bWebSplit ? { marginTop: 0, flex: 1 } : { marginTop: spacing.md }}
+      containerStyle={b2bWebSplit ? { marginTop: 0, flex: 1 } : { flex: 1, minHeight: 0 }}
       useFlexMessengerScroll={b2bWebSplit}
       onBookingCardPress={onBookingCardPress}
       onPackagePress={onPackagePress}
@@ -4126,6 +4126,9 @@ const ClientB2BChatsPanel: React.FC<{
           });
         })();
       } : undefined}
+      // Mobile (non-split): show back button to return to thread list
+      onBack={b2bWebSplit ? undefined : () => setSelectedId(null)}
+      backLabel={uiCopy.messages.backToChats ?? 'Chats'}
     />
   ) : null;
 
@@ -4145,10 +4148,12 @@ const ClientB2BChatsPanel: React.FC<{
           <View style={{ flex: CHAT_MESSENGER_FLEX, minWidth: 0, minHeight: 0 }}>{messengerEl}</View>
         </View>
       ) : (
-        <>
-          {threadListEl}
+        // Mobile: WhatsApp pattern — show list OR messenger (not both), messenger fills screen
+        activeConversationId ? (
           <View style={{ flex: 1, minHeight: 0 }}>{messengerEl}</View>
-        </>
+        ) : (
+          <>{threadListEl}</>
+        )
       )}
       {viewingAgencyProfileState && (
         <OrgProfileModal
@@ -4189,10 +4194,17 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   const { deviceType } = useDeviceType();
   const bottomTabInset = bottomTabInsetProp ?? BOTTOM_TAB_BAR_HEIGHT;
   const [negotiationCounterExpanded, setNegotiationCounterExpanded] = useState(false);
+  // Mobile: NegotiationSummaryCard is collapsed by default (chips in header already show status).
+  // Desktop: always visible in the right rail — this state is ignored on desktop.
+  const [mobileSummaryCollapsed, setMobileSummaryCollapsed] = useState(true);
   const [clientMsgTab, setClientMsgTab] = useState<'b2bChats' | 'optionRequests'>('b2bChats');
   const [clientMsgSearch, setClientMsgSearch] = useState('');
   const [requests, setRequests] = useState(getOptionRequests());
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
+  // Reset mobile summary collapse whenever a different negotiation thread is opened.
+  useEffect(() => {
+    setMobileSummaryCollapsed(true);
+  }, [selectedThreadId]);
   const [chatInput, setChatInput] = useState('');
   const [agencyCounterInput, setAgencyCounterInput] = useState('');
   const [calendarHint, setCalendarHint] = useState<string | null>(null);
@@ -4895,22 +4907,36 @@ const MessagesView: React.FC<MessagesViewProps> = ({
         >
           <>
             {!showDesktopNegotiationRail ? (
-            <NegotiationSummaryCard
-              modelName={request.modelName}
-              clientName={request.clientName}
-              isAgency={isAgency}
-              dateLine={negotiationDateLine}
-              displayStatus={displayStatus}
-              attentionLabel={headerAttentionLabel}
-              proposedPrice={request.proposedPrice}
-              agencyCounterPrice={request.agencyCounterPrice}
-              clientPriceStatus={clientPriceStatus}
-              finalStatus={finalStatus}
-              currency={currency}
-              requestTypeLabel={negotiationRequestTypeLabel}
-              finalStatusLine={negotiationFinalStatusLine}
-              confirmationSummaryLine={negotiationConfirmationSummaryLine}
-            />
+              <>
+                {/* Mobile: collapsible summary — collapsed by default since chips show key status */}
+                <TouchableOpacity
+                  onPress={() => setMobileSummaryCollapsed((v) => !v)}
+                  style={styles.mobileSummaryToggle}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={styles.mobileSummaryToggleLabel}>
+                    {mobileSummaryCollapsed ? '↓ Details' : '↑ Hide details'}
+                  </Text>
+                </TouchableOpacity>
+                {!mobileSummaryCollapsed ? (
+                  <NegotiationSummaryCard
+                    modelName={request.modelName}
+                    clientName={request.clientName}
+                    isAgency={isAgency}
+                    dateLine={negotiationDateLine}
+                    displayStatus={displayStatus}
+                    attentionLabel={headerAttentionLabel}
+                    proposedPrice={request.proposedPrice}
+                    agencyCounterPrice={request.agencyCounterPrice}
+                    clientPriceStatus={clientPriceStatus}
+                    finalStatus={finalStatus}
+                    currency={currency}
+                    requestTypeLabel={negotiationRequestTypeLabel}
+                    finalStatusLine={negotiationFinalStatusLine}
+                    confirmationSummaryLine={negotiationConfirmationSummaryLine}
+                  />
+                ) : null}
+              </>
             ) : null}
             {filteredMessages.map((msg, i) => {
               const prev = i > 0 ? filteredMessages[i - 1] : null;
@@ -7214,6 +7240,18 @@ const styles = StyleSheet.create({
     ...typography.label,
     fontSize: 10,
     color: colors.surface,
+  },
+  // Mobile: toggle button for NegotiationSummaryCard collapse/expand
+  mobileSummaryToggle: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  mobileSummaryToggleLabel: {
+    ...typography.label,
+    fontSize: 11,
+    color: colors.accent,
+    fontWeight: '600' as const,
   },
   optionDateCard: {
     width: '100%',

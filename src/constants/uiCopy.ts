@@ -734,6 +734,8 @@ export const uiCopy = {
     unarchiveThreadInListAccessibility: 'Move back to current list',
     archiveThreadDoesNotDeleteShort:
       'Archiving only hides the thread in this list. Open it and use Delete to remove the request and calendars for everyone.',
+    /** Mobile back label in B2B chat panel messenger — returns to thread list. */
+    backToChats: 'Chats',
   },
   /** Recruiting chat RPC errors and messages. */
   recruiting: {

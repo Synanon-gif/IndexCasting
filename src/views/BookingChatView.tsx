@@ -5,7 +5,7 @@
  * Before acceptance, the chat is a Recruiting Chat (handled in AgencyRecruitingView).
  */
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, Modal, ScrollView, Image, Platform, ActivityIndicator, Linking, Pressable, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, Modal, ScrollView, Image, Platform, ActivityIndicator, Linking, Pressable, useWindowDimensions, KeyboardAvoidingView, BackHandler } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { bubbleColorsForSender } from '../theme/roleColors';
 import { getChatOverlayMaxWidth, getMessagesScrollMaxHeight } from '../theme/chatLayout';
@@ -200,64 +200,90 @@ export const BookingChatView: React.FC<Props> = ({
   // Whether the chat is rendered as a full inset panel (above tab bar) vs a floating modal card.
   const isInset = presentation === 'insetAboveBottomNav';
 
+  // Android hardware back: treat as close/back
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      onClose();
+      return true;
+    });
+    return () => sub.remove();
+  }, [onClose]);
+
   // In inset mode, messages expand to fill remaining space (flex:1).
   // In modal mode on native, cap height to avoid overflow.
   const messagesScrollStyle = isInset || Platform.OS === 'web'
     ? [styles.messages, { flex: 1, minHeight: 0 }]
     : [styles.messages, { maxHeight: bookingMessagesMaxHeight }];
 
+  // Resolve title and subtitle for the unified WhatsApp-like header
+  const headerTitle = fromRole === 'model'
+    ? displayAgencyName
+    : (thread ? thread.modelName : 'Chat');
+  const headerSubtitle = fromRole === 'model'
+    ? (thread ? `As: ${thread.modelName}` : null)
+    : (application ? `${application.city || '—'} · ${application.height} cm` : null);
+
   // Shared inner content (header + optional profile strip + messages + input)
   const chatInner = (
     <>
+      {/* ── WhatsApp-like header ── */}
       <View style={styles.header}>
-        <View style={{ flex: 1 }}>
-          {fromRole === 'model' ? (
-            <View style={styles.modelAgencyBanner}>
-              <Text style={styles.modelAgencyKicker}>You are chatting with</Text>
-              <TouchableOpacity
-                style={styles.brandRow}
-                disabled={!agencyOrgIdForProfile}
-                onPress={() => agencyOrgIdForProfile && setShowAgencyProfile(true)}
-                activeOpacity={agencyOrgIdForProfile ? 0.7 : 1}
-              >
-                {agencyLogoUrl ? (
-                  <Image source={{ uri: agencyLogoUrl }} style={styles.agencyLogo} resizeMode="contain" />
-                ) : (
-                  <View style={styles.agencyLogoPlaceholder}>
-                    <Text style={styles.agencyLogoLetter}>{displayAgencyName.charAt(0).toUpperCase()}</Text>
-                  </View>
-                )}
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.agencyName, agencyOrgIdForProfile ? styles.agencyNameClickable : null]}>{displayAgencyName}</Text>
-                  {thread ? <Text style={styles.modelLine}>As: {thread.modelName}</Text> : null}
+        {/* Back / Close: left side — always present */}
+        <TouchableOpacity
+          onPress={onClose}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          style={styles.backBtn}
+        >
+          <Text style={styles.backArrow}>←</Text>
+          <Text style={styles.backText}>Back</Text>
+        </TouchableOpacity>
+
+        {/* Center: title + optional subtitle */}
+        <View style={styles.headerCenter}>
+          {fromRole === 'model' && agencyOrgIdForProfile ? (
+            <TouchableOpacity
+              onPress={() => setShowAgencyProfile(true)}
+              activeOpacity={0.7}
+              style={styles.headerTitleBtn}
+            >
+              {agencyLogoUrl ? (
+                <Image source={{ uri: agencyLogoUrl }} style={styles.agencyLogoSmall} resizeMode="contain" />
+              ) : (
+                <View style={styles.agencyLogoPlaceholderSmall}>
+                  <Text style={styles.agencyLogoLetter}>{displayAgencyName.charAt(0).toUpperCase()}</Text>
                 </View>
-              </TouchableOpacity>
-            </View>
+              )}
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.title} numberOfLines={1}>{headerTitle}</Text>
+                {headerSubtitle ? <Text style={styles.subtitle} numberOfLines={1}>{headerSubtitle}</Text> : null}
+              </View>
+            </TouchableOpacity>
           ) : (
-            <View>
-              <Text style={styles.title}>{thread ? thread.modelName : 'Chat'}</Text>
-              {application && (
-                <Text style={styles.subtitle}>
-                  {application.city || '—'} · {application.height} cm · {application.gender || '—'}
-                </Text>
-              )}
-              {thread?.chatType === 'active_model' && (
-                <View style={styles.chatTypeBadge}>
-                  <Text style={styles.chatTypeBadgeLabel}>Active Model</Text>
-                </View>
-              )}
+            <View style={styles.headerTitleBtn}>
+              {fromRole === 'agency' && agencyLogoUrl ? (
+                <Image source={{ uri: agencyLogoUrl }} style={styles.agencyLogoSmall} resizeMode="contain" />
+              ) : null}
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.title} numberOfLines={1}>{headerTitle}</Text>
+                {headerSubtitle ? <Text style={styles.subtitle} numberOfLines={1}>{headerSubtitle}</Text> : null}
+              </View>
             </View>
           )}
         </View>
-        <View style={{ alignItems: 'flex-end', gap: spacing.xs }}>
+
+        {/* Right: secondary actions */}
+        <View style={styles.headerRight}>
+          {thread?.chatType === 'active_model' && (
+            <View style={styles.chatTypeBadge}>
+              <Text style={styles.chatTypeBadgeLabel}>Active</Text>
+            </View>
+          )}
           {fromRole === 'agency' && Platform.OS === 'web' && (
-            <TouchableOpacity onPress={copyBookingLink}>
-              <Text style={styles.copyLinkLabel}>Link for model</Text>
+            <TouchableOpacity onPress={copyBookingLink} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={styles.copyLinkLabel}>Share</Text>
             </TouchableOpacity>
           )}
-          <TouchableOpacity onPress={onClose} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <Text style={styles.closeLabel}>Close</Text>
-          </TouchableOpacity>
         </View>
       </View>
       {application && (
@@ -409,12 +435,23 @@ export const BookingChatView: React.FC<Props> = ({
     />
   ) : null;
 
+  // Wrap chatInner with KAV on native so the composer stays above the keyboard.
+  const chatInnerWithKAV = Platform.OS !== 'web' ? (
+    <KeyboardAvoidingView
+      style={{ flex: 1, minHeight: 0 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={0}
+    >
+      {chatInner}
+    </KeyboardAvoidingView>
+  ) : chatInner;
+
   // insetAboveBottomNav: fills the full area above the tab bar (true WhatsApp-style fullscreen panel).
   if (isInset) {
     return (
       <View style={[styles.insetShell, { bottom: bottomInset }]}>
         <View style={styles.insetPanel}>
-          {chatInner}
+          {chatInnerWithKAV}
         </View>
         {orgProfileModal}
       </View>
@@ -431,7 +468,7 @@ export const BookingChatView: React.FC<Props> = ({
           Platform.OS === 'web' && { flex: 1, minHeight: 0, flexDirection: 'column' as const },
         ]}
       >
-        {chatInner}
+        {chatInnerWithKAV}
       </View>
     </View>
   );
@@ -469,18 +506,58 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    maxHeight: '80%',
+    maxHeight: '85%',
     backgroundColor: colors.surface,
     borderRadius: 18,
     borderWidth: 1,
     borderColor: colors.border,
     padding: spacing.md,
   },
+  // WhatsApp-like unified header
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.md,
+    gap: spacing.sm,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+    flexShrink: 0,
+  },
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flexShrink: 0,
+    minWidth: 48,
+    maxWidth: 90,
+  },
+  backArrow: {
+    ...typography.label,
+    fontSize: 18,
+    color: colors.textPrimary,
+  },
+  backText: {
+    ...typography.label,
+    fontSize: 13,
+    color: colors.accent,
+    fontWeight: '600',
+  },
+  headerCenter: {
+    flex: 1,
+    minWidth: 0,
+  },
+  headerTitleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flex: 1,
+    minWidth: 0,
+  },
+  headerRight: {
+    flexShrink: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
   subtitle: {
     ...typography.body,
@@ -489,8 +566,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   chatTypeBadge: {
-    alignSelf: 'flex-start',
-    marginTop: 4,
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
     borderRadius: 999,
@@ -501,85 +576,40 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: colors.surface,
   },
-  brandRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  agencyLogo: {
-    width: 44,
-    height: 44,
-    borderRadius: 8,
-    backgroundColor: colors.border,
-  },
   agencyLogoSmall: {
-    width: 28,
-    height: 28,
+    width: 30,
+    height: 30,
     borderRadius: 6,
     backgroundColor: colors.border,
+    flexShrink: 0,
   },
-  agencyLogoPlaceholder: {
-    width: 44,
-    height: 44,
-    borderRadius: 8,
+  agencyLogoPlaceholderSmall: {
+    width: 30,
+    height: 30,
+    borderRadius: 6,
     backgroundColor: colors.textPrimary,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   agencyLogoLetter: {
     ...typography.heading,
-    fontSize: 18,
+    fontSize: 14,
     color: colors.surface,
-  },
-  agencyName: {
-    ...typography.heading,
-    fontSize: 15,
-    color: colors.textPrimary,
-  },
-  agencyNameClickable: {
-    textDecorationLine: 'underline',
-  },
-  modelLine: {
-    ...typography.body,
-    fontSize: 11,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  replyingAs: {
-    ...typography.label,
-    fontSize: 10,
-    color: colors.textSecondary,
-    marginTop: 2,
   },
   title: {
     ...typography.heading,
-    fontSize: 16,
+    fontSize: 15,
     color: colors.textPrimary,
   },
   messagesContent: {
     flexGrow: 1,
     paddingBottom: spacing.sm,
   },
-  closeLabel: {
-    ...typography.label,
-    fontSize: 11,
-    color: colors.textSecondary,
-  },
   copyLinkLabel: {
     ...typography.label,
-    fontSize: 10,
+    fontSize: 11,
     color: colors.buttonOptionGreen,
-  },
-  modelAgencyBanner: {
-    marginBottom: spacing.xs,
-  },
-  modelAgencyKicker: {
-    ...typography.label,
-    fontSize: 10,
-    color: colors.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    marginBottom: spacing.xs,
   },
   profileRow: {
     marginBottom: spacing.sm,
