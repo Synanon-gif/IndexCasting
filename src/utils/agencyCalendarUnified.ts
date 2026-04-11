@@ -117,8 +117,11 @@ export function buildUnifiedAgencyCalendarRows(
   assignmentByClientOrgId: Record<string, ClientAssignmentFlag>,
   itemByOptionId: Map<string, AgencyCalendarItem>,
 ): UnifiedAgencyCalendarRow[] {
-  const coveredOptionIds = new Set(
-    items.map((i) => i.calendar_entry?.option_request_id).filter(Boolean) as string[],
+  const coveredOptionIds = new Set<string>(
+    [
+      ...items.map((i) => i.calendar_entry?.option_request_id).filter(Boolean) as string[],
+      ...items.map((i) => i.option?.id).filter(Boolean) as string[],
+    ],
   );
 
   const optionRows: UnifiedAgencyCalendarRow[] = items.map((item) => {

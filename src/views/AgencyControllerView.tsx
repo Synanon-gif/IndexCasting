@@ -279,6 +279,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   onBackToRoleSelection,
 }) => {
   const { signOut, profile, session, refreshProfile } = useAuth();
+  const { height: agencyWindowHeight } = useWindowDimensions();
   const [tab, setTab] = useState<AgencyTab>('dashboard');
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [dissolvingOrg, setDissolvingOrg] = useState(false);
@@ -1047,6 +1048,11 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                 <Text style={s.backLabel}>Close</Text>
               </TouchableOpacity>
             </View>
+            <ScrollView
+              style={{ maxHeight: agencyWindowHeight * 0.85, width: '100%' }}
+              contentContainerStyle={{ paddingBottom: spacing.xl }}
+              keyboardShouldPersistTaps="handled"
+            >
             {selectedCalendarItem && (() => {
               const { option, calendar_entry } = selectedCalendarItem;
               const entryType = calendar_entry?.entry_type;
@@ -1321,6 +1327,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                 </Text>
               </TouchableOpacity>
             </View>
+            </ScrollView>
           </View>
         </View>
       )}
@@ -4609,7 +4616,13 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   const clientPriceStatus = request?.clientPriceStatus;
   const agencyCounterPrice = request?.agencyCounterPrice;
   const currency = request?.currency ?? 'EUR';
-  const displayStatus = request ? toDisplayStatus(request.status, request.finalStatus ?? null) : 'Draft';
+  const displayStatus = request
+    ? toDisplayStatus(request.status, request.finalStatus ?? null, {
+        clientPriceStatus: request.clientPriceStatus ?? null,
+        agencyCounterPrice: request.agencyCounterPrice ?? null,
+        proposedPrice: request.proposedPrice ?? null,
+      })
+    : 'Draft';
   const headerAttentionLabel = request
     ? attentionHeaderLabelFromSignals(
         attentionSignalsFromOptionRequestLike({

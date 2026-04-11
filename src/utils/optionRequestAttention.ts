@@ -136,7 +136,11 @@ export function deriveApprovalAttention(input: AttentionSignalInput): ApprovalAt
  */
 export function deriveSmartAttentionState(input: AttentionSignalInput): SmartAttentionState {
   const finalStatus = input.finalStatus ?? null;
-  const displayStatus = toDisplayStatus(input.status, finalStatus);
+  const displayStatus = toDisplayStatus(input.status, finalStatus, {
+    clientPriceStatus: input.clientPriceStatus ?? null,
+    agencyCounterPrice: input.agencyCounterPrice ?? null,
+    proposedPrice: input.proposedPrice ?? null,
+  });
   const modelApproval = input.modelApproval ?? null;
   const clientPriceStatus = input.clientPriceStatus ?? null;
   const modelAccountLinked = input.modelAccountLinked !== false;
@@ -216,9 +220,16 @@ export function deriveSmartAttentionState(input: AttentionSignalInput): SmartAtt
 export function optionRequestNeedsMessagesTabAttention(r: {
   status: string;
   finalStatus?: string | null;
+  clientPriceStatus?: 'pending' | 'accepted' | 'rejected' | null;
+  agencyCounterPrice?: number | null;
+  proposedPrice?: number | null;
 }): boolean {
-  const d = toDisplayStatus(r.status, r.finalStatus ?? null);
-  return d === 'In negotiation' || d === 'Draft';
+  const d = toDisplayStatus(r.status, r.finalStatus ?? null, {
+    clientPriceStatus: r.clientPriceStatus,
+    agencyCounterPrice: r.agencyCounterPrice,
+    proposedPrice: r.proposedPrice,
+  });
+  return d === 'In negotiation' || d === 'Draft' || d === 'Price agreed';
 }
 
 /**

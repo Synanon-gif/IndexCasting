@@ -164,6 +164,7 @@ import {
   buildUnifiedAgencyCalendarRows,
   filterUnifiedAgencyCalendarRows,
   buildEventsByDateFromUnifiedRows,
+  type AgencyCalendarTypeFilter,
   type UnifiedAgencyCalendarRow,
 } from '../utils/agencyCalendarUnified';
 import { attentionSignalsFromOptionRequestLike } from '../utils/optionRequestAttention';
@@ -385,6 +386,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   onBackToRoleSelection,
 }) => {
   const auth = useAuth();
+  const { height: clientWindowHeight } = useWindowDimensions();
   const [tab, setTab] = useState<TopTab>('dashboard');
   const [showActiveOptions, setShowActiveOptions] = useState(false);
   const [models, setModels] = useState<ModelSummary[]>([]);
@@ -2236,6 +2238,11 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                 <Text style={styles.closeLabel}>Close</Text>
               </TouchableOpacity>
             </View>
+            <ScrollView
+              style={{ maxHeight: clientWindowHeight * 0.85, width: '100%' }}
+              contentContainerStyle={{ paddingBottom: spacing.xl }}
+              keyboardShouldPersistTaps="handled"
+            >
             {(() => {
               const { option, calendar_entry } = selectedCalendarItem;
               const entryType = calendar_entry?.entry_type;
@@ -2499,6 +2506,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                 </Text>
               </TouchableOpacity>
             </View>
+            </ScrollView>
           </View>
         </View>
       )}
@@ -3111,6 +3119,7 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
   const now = new Date();
   const [calendarMonth, setCalendarMonth] = useState({ year: now.getFullYear(), month: now.getMonth() });
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [typeFilter, setTypeFilter] = useState<AgencyCalendarTypeFilter>('all');
 
   const itemByOptionId = useMemo(() => {
     const m = new Map<string, AgencyCalendarItem>();
@@ -3136,14 +3145,14 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
         modelQuery: '',
         fromDate: '',
         toDate: '',
-        typeFilter: 'all',
+        typeFilter,
         assigneeFilter: 'all',
         clientScope: 'all',
         urgency: 'all',
         currentUserId: null,
         assignmentByClientOrgId,
       }),
-    [unifiedAll, assignmentByClientOrgId],
+    [unifiedAll, assignmentByClientOrgId, typeFilter],
   );
 
   const eventsByDate = useMemo(
@@ -3226,6 +3235,33 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
             </Text>
           </TouchableOpacity>
         </View>
+      </View>
+
+      <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.xs }}>
+        {uiCopy.calendar.typeFilterHeading}
+      </Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.sm }}>
+        {[
+          { k: 'all' as const, label: uiCopy.calendar.typeFilterAll },
+          { k: 'option' as const, label: uiCopy.calendar.typeFilterOption },
+          { k: 'casting' as const, label: uiCopy.calendar.typeFilterCasting },
+          { k: 'booking' as const, label: uiCopy.calendar.typeFilterBooking },
+        ].map(({ k, label }) => (
+          <TouchableOpacity
+            key={k}
+            onPress={() => setTypeFilter(k)}
+            style={{
+              paddingHorizontal: spacing.sm,
+              paddingVertical: spacing.xs,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: typeFilter === k ? colors.textPrimary : colors.border,
+              backgroundColor: typeFilter === k ? colors.surface : 'transparent',
+            }}
+          >
+            <Text style={{ ...typography.label, fontSize: 11, color: colors.textPrimary }}>{label}</Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
       <B2BUnifiedCalendarBody
@@ -4273,7 +4309,13 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   const clientPriceStatus = request?.clientPriceStatus;
   const agencyCounterPrice = request?.agencyCounterPrice;
   const currency = request?.currency ?? 'EUR';
-  const displayStatus = request ? toDisplayStatus(request.status, request.finalStatus ?? null) : 'Draft';
+  const displayStatus = request
+    ? toDisplayStatus(request.status, request.finalStatus ?? null, {
+        clientPriceStatus: request.clientPriceStatus ?? null,
+        agencyCounterPrice: request.agencyCounterPrice ?? null,
+        proposedPrice: request.proposedPrice ?? null,
+      })
+    : 'Draft';
   const headerAttentionLabel = request
     ? attentionHeaderLabelFromSignals(
         attentionSignalsFromOptionRequestLike({

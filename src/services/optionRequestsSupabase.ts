@@ -1387,11 +1387,10 @@ export async function resolveAgencyOrgIdForOptionNotification(
 }
 
 /**
- * Erstellt aus einem bestätigten option_request ein booking_event.
- * Idempotent: ein Unique-Constraint-Fehler (23505) auf uidx_booking_events_per_option_request
- * wird stillschweigend ignoriert — die DB-Trigger-Logik hat das Event bereits angelegt.
- * Wird intern von clientConfirmJobOnSupabase aufgerufen (status war bereits confirmed;
- * der Trigger tr_auto_booking_event_on_confirm feuert nicht erneut).
+ * Erstellt bzw. aktualisiert ein booking_event für den option_request-Lebenszyklus.
+ * Idempotent: bestehende Zeile (Trigger oder früherer Insert) wird per UPDATE auf den
+ * Ziel-`type` (option/job/casting) angehoben; 23505 auf model_id+date wird per
+ * Lookup+UPDATE aufgelöst, nicht ignoriert.
  */
 async function createBookingEventFromRequest(req: SupabaseOptionRequest): Promise<void> {
   try {
@@ -1405,40 +1404,101 @@ async function createBookingEventFromRequest(req: SupabaseOptionRequest): Promis
       req.agency_organization_id,
     );
 
+    const title = req.client_name ? `${req.client_name} – ${eventType}` : null;
+    const rowPayload = {
+      model_id: req.model_id,
+      client_org_id: req.organization_id ?? null,
+      agency_org_id: agencyOrgIdResolved,
+      date: req.requested_date,
+      type: eventType,
+      title,
+      source_option_request_id: req.id,
+    };
+
+    const { data: bySource } = await supabase
+      .from('booking_events')
+      .select('id, type')
+      .eq('source_option_request_id', req.id)
+      .neq('status', 'cancelled')
+      .maybeSingle();
+
+    if (bySource?.id) {
+      const curType = (bySource as { type?: string }).type;
+      if (curType !== eventType || req.final_status === 'job_confirmed') {
+        const { error: upErr } = await supabase
+          .from('booking_events')
+          .update({
+            type: eventType,
+            title,
+            date: req.requested_date,
+            agency_org_id: agencyOrgIdResolved,
+            client_org_id: req.organization_id ?? null,
+          })
+          .eq('id', (bySource as { id: string }).id);
+        if (upErr) {
+          console.error('createBookingEventFromRequest update by source error:', upErr);
+        }
+      }
+      return;
+    }
+
     const { data: user } = await supabase.auth.getUser();
     const { error } = await supabase
       .from('booking_events')
       .insert({
-        model_id: req.model_id,
-        client_org_id: req.organization_id ?? null,
-        agency_org_id: agencyOrgIdResolved,
-        date: req.requested_date,
-        type: eventType,
+        ...rowPayload,
         status: 'pending' as const,
-        title: req.client_name ? `${req.client_name} – ${eventType}` : null,
         note: null,
-        source_option_request_id: req.id,
         created_by: user.user?.id ?? null,
       });
 
-    if (error) {
-      // 23505 = unique_violation: the DB trigger already created this booking_event.
-      // Silently ignore — idempotency is guaranteed by uidx_booking_events_per_option_request.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      if ((error as any).code === '23505') {
-        console.info('createBookingEventFromRequest: booking_event already exists (idempotent, skipped)', req.id);
-        return;
-      }
+    if (!error) {
+      const bookingOrgId = agencyOrgIdResolved ?? req.organization_id;
+      logAction(bookingOrgId, 'createBookingEventFromRequest', {
+        type: 'booking',
+        action: 'booking_created',
+        entityId: req.id,
+        newData: { type: eventType, source_option_request_id: req.id },
+      });
+      return;
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const code = (error as any).code as string | undefined;
+    if (code !== '23505') {
       console.error('createBookingEventFromRequest insert error:', error);
       return;
     }
-    const bookingOrgId = agencyOrgIdResolved ?? req.organization_id;
-    logAction(bookingOrgId, 'createBookingEventFromRequest', {
-      type: 'booking',
-      action: 'booking_created',
-      entityId: req.id,
-      newData: { type: eventType, source_option_request_id: req.id },
-    });
+
+    const { data: clash } = await supabase
+      .from('booking_events')
+      .select('id, source_option_request_id')
+      .eq('model_id', req.model_id)
+      .eq('date', req.requested_date)
+      .neq('status', 'cancelled')
+      .maybeSingle();
+
+    const clashRow = clash as { id: string; source_option_request_id: string | null } | null;
+    if (clashRow?.id && (clashRow.source_option_request_id === req.id || clashRow.source_option_request_id == null)) {
+      const { error: up2 } = await supabase
+        .from('booking_events')
+        .update({
+          type: eventType,
+          title,
+          agency_org_id: agencyOrgIdResolved,
+          client_org_id: req.organization_id ?? null,
+          source_option_request_id: req.id,
+        })
+        .eq('id', clashRow.id);
+      if (up2) {
+        console.error('createBookingEventFromRequest reconcile-after-23505 error:', up2);
+      } else {
+        console.info('createBookingEventFromRequest: reconciled existing row after 23505', req.id);
+      }
+      return;
+    }
+
+    console.info('createBookingEventFromRequest: 23505 but no reconcilable row', req.id);
   } catch (e) {
     console.error('createBookingEventFromRequest exception:', e);
   }

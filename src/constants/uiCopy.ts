@@ -216,6 +216,12 @@ export const uiCopy = {
     bookingEntryDetailFallback: 'This calendar entry is not linked to a request thread.',
     /** Accessibility label for client calendar row attention dot */
     actionRequiredA11y: 'Action required',
+    /** B2B calendar — entry type filter (client parity with agency). */
+    typeFilterHeading: 'Entry type',
+    typeFilterAll: 'All',
+    typeFilterOption: 'Option',
+    typeFilterCasting: 'Casting',
+    typeFilterBooking: 'Job',
     /** Multi-view calendar (Agency / Client web / Model). */
     dayViewLabel: 'Day',
     /** Visible heading above Month / Week / Day controls. */
@@ -1675,6 +1681,8 @@ export const uiCopy = {
     optionRequestWorkflowDraft: 'Draft',
     /** Option / casting request thread — negotiation lifecycle (Messages list pills). */
     optionRequestStatusInNegotiation: 'In negotiation',
+    /** After client_price_status accepted + commercial anchor; before option_confirmed / job. */
+    optionRequestStatusPriceAgreed: 'Price agreed',
     optionRequestStatusConfirmed: 'Confirmed',
     optionRequestStatusRejected: 'Rejected',
     optionRequestStatusJobConfirmed: 'Job confirmed',

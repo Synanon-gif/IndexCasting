@@ -85,14 +85,53 @@ export async function createNotification(
       return;
     }
 
-    // Self-targeting or org-wide notifications go through direct INSERT (policy allows these).
+    const orgId = params.organization_id ?? null;
+    const meta = (params.metadata ?? {}) as Record<string, unknown>;
+
+    // Org broadcast (user_id null): clients/models are not members of the target org — use DEFINER RPCs.
+    if (orgId && targetUserId === null) {
+      const optId = typeof meta.option_request_id === 'string' ? meta.option_request_id : null;
+      const threadId = typeof meta.thread_id === 'string' ? meta.thread_id : null;
+
+      if (optId) {
+        const { error: rpcError } = await supabase.rpc('notify_org_for_option_request', {
+          p_option_request_id: optId,
+          p_target_organization_id: orgId,
+          p_type: params.type,
+          p_title: params.title,
+          p_message: params.message,
+          p_metadata: meta,
+        });
+        if (rpcError) {
+          console.error('createNotification (notify_org_for_option_request) error:', rpcError);
+        }
+        return;
+      }
+
+      if (threadId) {
+        const { error: rpcError } = await supabase.rpc('notify_org_for_recruiting_thread', {
+          p_thread_id: threadId,
+          p_target_organization_id: orgId,
+          p_type: params.type,
+          p_title: params.title,
+          p_message: params.message,
+          p_metadata: meta,
+        });
+        if (rpcError) {
+          console.error('createNotification (notify_org_for_recruiting_thread) error:', rpcError);
+        }
+        return;
+      }
+    }
+
+    // Self-targeting, org member org-wide, or legacy paths without option/thread metadata.
     const { error } = await supabase.from('notifications').insert({
       user_id:         targetUserId,
-      organization_id: params.organization_id ?? null,
+      organization_id: orgId,
       type:            params.type,
       title:           params.title,
       message:         params.message,
-      metadata:        params.metadata ?? {},
+      metadata:        meta,
     });
     if (error) {
       console.error('createNotification error:', error);

@@ -16,6 +16,17 @@ describe('optionRequestNeedsMessagesTabAttention', () => {
     ).toBe(true);
   });
 
+  it('is true when display is Price agreed (commercial settlement before option_confirmed)', () => {
+    expect(
+      optionRequestNeedsMessagesTabAttention({
+        status: 'in_negotiation',
+        finalStatus: 'option_pending',
+        clientPriceStatus: 'accepted',
+        proposedPrice: 100,
+      }),
+    ).toBe(true);
+  });
+
   it('is false when final_status implies Confirmed display (even if status still in_negotiation)', () => {
     expect(
       optionRequestNeedsMessagesTabAttention({ status: 'in_negotiation', finalStatus: 'option_confirmed' }),

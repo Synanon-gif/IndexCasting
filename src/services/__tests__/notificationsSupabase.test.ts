@@ -58,6 +58,51 @@ describe('notificationsSupabase', () => {
     );
   });
 
+  // ── Test 1b-org: org broadcast with option_request_id → DEFINER RPC ─────────
+  it('createNotification (org broadcast + option_request_id) calls notify_org_for_option_request', async () => {
+    (supabase.rpc as jest.Mock).mockResolvedValue({ error: null });
+
+    await createNotification({
+      organization_id: 'agency-org-1',
+      type: 'new_option_message',
+      title: 'Update',
+      message: 'Thread update',
+      metadata: { option_request_id: 'opt-req-uuid' },
+    });
+
+    expect(supabase.rpc).toHaveBeenCalledWith(
+      'notify_org_for_option_request',
+      expect.objectContaining({
+        p_option_request_id: 'opt-req-uuid',
+        p_target_organization_id: 'agency-org-1',
+        p_type: 'new_option_message',
+      }),
+    );
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  // ── Test 1c-org: org broadcast with thread_id → recruiting RPC ─────────────
+  it('createNotification (org broadcast + thread_id) calls notify_org_for_recruiting_thread', async () => {
+    (supabase.rpc as jest.Mock).mockResolvedValue({ error: null });
+
+    await createNotification({
+      organization_id: 'agency-org-2',
+      type: 'new_recruiting_message',
+      title: 'Recruiting',
+      message: 'New reply',
+      metadata: { thread_id: 'thread-uuid' },
+    });
+
+    expect(supabase.rpc).toHaveBeenCalledWith(
+      'notify_org_for_recruiting_thread',
+      expect.objectContaining({
+        p_thread_id: 'thread-uuid',
+        p_target_organization_id: 'agency-org-2',
+      }),
+    );
+    expect(from).not.toHaveBeenCalled();
+  });
+
   // ── Test 1b: createNotification (cross-party) routes through RPC ───────────
   it('createNotification (cross-party) calls send_notification RPC', async () => {
     (supabase.rpc as jest.Mock).mockResolvedValue({ error: null });
