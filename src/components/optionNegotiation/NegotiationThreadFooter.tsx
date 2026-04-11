@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, TextInput, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, TextInput, StyleSheet, Platform } from 'react-native';
 import { colors, spacing, typography } from '../../theme/theme';
 import { uiCopy } from '../../constants/uiCopy';
 import {
@@ -112,6 +112,7 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
     proposedPrice: request.proposedPrice ?? null,
   });
   const priceLocked = priceCommerciallySettledForUi(signals);
+  const isMobileNative = Platform.OS !== 'web';
   const agencyAwaitingClientOnCounter =
     isAgency &&
     agencyMayActOnFee &&
@@ -132,7 +133,7 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
         </Text>
       ) : null}
       {assignmentMode === 'manage' && request.clientOrganizationId && (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.sm }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: isMobileNative ? spacing.xs : spacing.sm }}>
           {assignmentByClientOrgId[request.clientOrganizationId] ? (
             <Text style={styles.metaText}>
               {uiCopy.optionNegotiationChat.clientFlagLabel}: {assignmentByClientOrgId[request.clientOrganizationId].label}
@@ -193,12 +194,18 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
           ))}
         </View>
       )}
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.sm }}>
-        <View style={[styles.statusPill, { backgroundColor: '#e0e7ff' }]}>
-          <Text style={[styles.statusPillLabel, { color: '#3730a3' }]}>{contextThreadLabel}</Text>
+      <View style={[
+        { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.xs, marginBottom: isMobileNative ? spacing.xs : spacing.sm },
+        isMobileNative && { opacity: 0.8 },
+      ]}>
+        <View style={[styles.statusPill, { backgroundColor: '#e0e7ff' }, isMobileNative && styles.statusPillMobile]}>
+          <Text style={[styles.statusPillLabel, { color: '#3730a3' }, isMobileNative && styles.statusPillLabelMobile]}>{contextThreadLabel}</Text>
         </View>
         <TouchableOpacity
-          style={[styles.filterPill, openOrgChatBusy && { opacity: 0.6 }]}
+          style={[
+            isMobileNative ? styles.orgChatLink : styles.filterPill,
+            openOrgChatBusy && { opacity: 0.6 },
+          ]}
           disabled={
             openOrgChatBusy ||
             (requireAgencyIdForOrgChat && !request.agencyId) ||
@@ -208,7 +215,7 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
             void openOrgChatFromRequest();
           }}
         >
-          <Text style={styles.filterPillLabel}>
+          <Text style={isMobileNative ? styles.orgChatLinkLabel : styles.filterPillLabel}>
             {openOrgChatBusy ? uiCopy.common.loading : uiCopy.b2bChat.openOrgChat}
           </Text>
         </TouchableOpacity>
@@ -579,9 +586,28 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 8,
   },
+  statusPillMobile: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
   statusPillLabel: {
     fontSize: 11,
     fontWeight: '600',
+  },
+  statusPillLabelMobile: {
+    fontSize: 10,
+  },
+  /** Mobile: org-chat as plain text link, not pill — secondary action */
+  orgChatLink: {
+    paddingVertical: 2,
+    paddingHorizontal: 2,
+  },
+  orgChatLinkLabel: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    textDecorationLine: 'underline',
+    fontWeight: '500',
   },
   chatInput: {
     borderWidth: StyleSheet.hairlineWidth,

@@ -527,6 +527,11 @@ export const uiCopy = {
     openChat: 'Open chat',
     applicationDefaultsSubtitle: 'Default details for your applications.',
     noApplicationsYet: 'No applications yet. Create an application first to edit defaults.',
+    agencyChatSectionLabel: 'Agency chat',
+    agencyChatSectionSubtitle: 'Direct chat with your agency',
+    directMessagesSectionLabel: 'Direct messages',
+    directMessagesSectionSubtitle: 'Messages sent directly by your agency',
+    composerPlaceholder: 'Message…',
   },
   login: {
     dummyFlow: 'Dummy flow — pick a role to open that workspace.',
@@ -1180,6 +1185,11 @@ export const uiCopy = {
     tab_settings: 'Settings',
     emptyState: 'No applications yet.',
     loadingApplications: 'Loading applications…',
+    deleteConfirmTitle: 'Delete application',
+    deleteConfirmBody: 'Are you sure you want to delete this application? This action cannot be undone.',
+    deleteConfirmAction: 'Delete',
+    confirmRepresentationError: 'Could not confirm representation. Please try again.',
+    declineRepresentationError: 'Could not decline representation. Please try again.',
   },
   /** Agency – Recruiting view feedback strings. */
   agencyRecruiting: {

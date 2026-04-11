@@ -4,6 +4,7 @@
  */
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Modal, Alert, TextInput, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, typography } from '../theme/theme';
 import { getApplicationsForApplicant, deleteApplication, updateApplicationsProfileForApplicant } from '../services/applicationsSupabase';
 import { FILTER_COUNTRIES, ETHNICITY_OPTIONS } from '../utils/modelFilters';
@@ -13,6 +14,7 @@ import { getAgencyChatDisplayById } from '../services/agenciesSupabase';
 import { ApplyFormView } from './ApplyFormView';
 import { BookingChatView } from './BookingChatView';
 import { uiCopy } from '../constants/uiCopy';
+import { BOTTOM_TAB_BAR_HEIGHT } from '../navigation/bottomTabNavigation';
 
 type ModelApplicationsViewProps = {
   applicantUserId: string;
@@ -56,6 +58,8 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
   applicantUserId,
   onBackToRoleSelection,
 }) => {
+  const insets = useSafeAreaInsets();
+  const bottomTabInset = BOTTOM_TAB_BAR_HEIGHT + insets.bottom;
   const [applications, setApplications] = useState<SupabaseApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [showApplyForm, setShowApplyForm] = useState(false);
@@ -213,12 +217,12 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
       return;
     }
     Alert.alert(
-      'Delete application',
-      'Are you sure you want to delete this application? This action cannot be undone.',
+      uiCopy.modelApplications.deleteConfirmTitle,
+      uiCopy.modelApplications.deleteConfirmBody,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: uiCopy.common.cancel, style: 'cancel' },
         {
-          text: 'Delete',
+          text: uiCopy.modelApplications.deleteConfirmAction,
           style: 'destructive',
           onPress: () => void runConfirmedDelete(app),
         },
@@ -233,10 +237,8 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
     if (result) {
       await refreshApplications();
       load();
-    } else if (Platform.OS === 'web') {
-      Alert.alert('Error', 'Could not confirm representation. Please try again.');
     } else {
-      Alert.alert('Error', 'Could not confirm representation. Please try again.');
+      Alert.alert(uiCopy.common.error, uiCopy.modelApplications.confirmRepresentationError);
     }
   };
 
@@ -247,10 +249,8 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
     if (ok) {
       await refreshApplications();
       load();
-    } else if (Platform.OS === 'web') {
-      Alert.alert('Error', 'Could not decline representation. Please try again.');
     } else {
-      Alert.alert('Error', 'Could not decline representation. Please try again.');
+      Alert.alert(uiCopy.common.error, uiCopy.modelApplications.declineRepresentationError);
     }
   };
 
@@ -563,16 +563,16 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
         )}
       </View>
 
-      <View style={styles.bottomBar}>
+      <View style={[styles.bottomBar, { paddingBottom: insets.bottom || spacing.sm }]}>
         <View style={styles.tabRow}>
           <TouchableOpacity style={styles.tabItem} onPress={() => setTab('applications')}>
-            <Text style={[styles.tabLabel, tab === 'applications' && styles.tabLabelActive]}>Applications</Text>
+            <Text style={[styles.tabLabel, tab === 'applications' && styles.tabLabelActive]}>{uiCopy.modelApplications.tab_applications}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.tabItem} onPress={() => setTab('messages')}>
-            <Text style={[styles.tabLabel, tab === 'messages' && styles.tabLabelActive]}>Messages</Text>
+            <Text style={[styles.tabLabel, tab === 'messages' && styles.tabLabelActive]}>{uiCopy.modelApplications.tab_messages}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.tabItem} onPress={() => setTab('settings')}>
-            <Text style={[styles.tabLabel, tab === 'settings' && styles.tabLabelActive]}>Settings</Text>
+            <Text style={[styles.tabLabel, tab === 'settings' && styles.tabLabelActive]}>{uiCopy.modelApplications.tab_settings}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -584,6 +584,8 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
           initialAgencyName={chatOpen.agencyName}
           applicationAgencyId={chatOpen.applicationAgencyId}
           onClose={() => setChatOpen(null)}
+          presentation="insetAboveBottomNav"
+          bottomInset={bottomTabInset}
         />
       )}
 
@@ -591,13 +593,11 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
         <Modal visible transparent animationType="fade" onRequestClose={() => setPendingDeleteApp(null)}>
           <View style={styles.confirmOverlay}>
             <View style={styles.confirmCard}>
-              <Text style={styles.confirmTitle}>Delete application</Text>
-              <Text style={styles.confirmBody}>
-                Are you sure you want to delete this application? This action cannot be undone.
-              </Text>
+              <Text style={styles.confirmTitle}>{uiCopy.modelApplications.deleteConfirmTitle}</Text>
+              <Text style={styles.confirmBody}>{uiCopy.modelApplications.deleteConfirmBody}</Text>
               <View style={styles.confirmRow}>
                 <TouchableOpacity style={styles.confirmBtnGhost} onPress={() => setPendingDeleteApp(null)}>
-                  <Text style={styles.confirmBtnGhostLabel}>Cancel</Text>
+                  <Text style={styles.confirmBtnGhostLabel}>{uiCopy.common.cancel}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.confirmBtnDanger}
@@ -607,7 +607,7 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
                     void runConfirmedDelete(a);
                   }}
                 >
-                  <Text style={styles.confirmBtnDangerLabel}>Delete</Text>
+                  <Text style={styles.confirmBtnDangerLabel}>{uiCopy.modelApplications.deleteConfirmAction}</Text>
                 </TouchableOpacity>
               </View>
             </View>

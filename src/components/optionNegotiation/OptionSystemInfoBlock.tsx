@@ -8,39 +8,38 @@ type Props = {
 
 /**
  * Workflow / system line — not a participant bubble (see system-invariants §4).
+ * Rendered as an iMessage-style centered milestone marker, not a banner block.
  */
 export const OptionSystemInfoBlock: React.FC<Props> = ({ text }) => (
-  <View style={styles.wrap} accessibilityRole="text">
-    <Text style={styles.icon} accessibilityLabel="">
-      ℹ️
-    </Text>
-    <Text style={styles.body}>{text}</Text>
+  <View style={styles.milestoneRow} accessibilityRole="text">
+    <View style={styles.line} />
+    <Text style={styles.milestoneText}>{text}</Text>
+    <View style={styles.line} />
   </View>
 );
 
 const styles = StyleSheet.create({
-  wrap: {
+  milestoneRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    marginVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
     gap: spacing.sm,
-    marginVertical: spacing.sm,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    backgroundColor: 'rgba(120,120,120,0.08)',
-    borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
   },
-  icon: {
-    ...typography.body,
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  body: {
-    ...typography.label,
+  line: {
     flex: 1,
-    fontSize: 12,
-    lineHeight: 18,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border,
+    opacity: 0.6,
+  },
+  milestoneText: {
+    ...typography.label,
+    fontSize: 11,
+    lineHeight: 16,
     color: colors.textSecondary,
+    textAlign: 'center',
+    opacity: 0.75,
+    flexShrink: 1,
+    paddingHorizontal: spacing.xs,
   },
 });

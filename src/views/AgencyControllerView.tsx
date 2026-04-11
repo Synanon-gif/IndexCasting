@@ -618,7 +618,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   );
 
   return (
-    <View style={s.container}>
+    <View style={[s.container, { paddingTop: Math.max(spacing.xl, insets.top + spacing.sm) }]}>
       <TouchableOpacity style={s.backRow} onPress={onBackToRoleSelection} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
         <Text style={s.backArrow}>←</Text>
         <Text style={s.backLabel}>Logout</Text>
@@ -4905,11 +4905,11 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                 <TouchableOpacity
                   onPress={openDeleteOptionModal}
                   disabled={!!deletingOptionId}
-                  style={{ opacity: deletingOptionId ? 0.5 : 1 }}
+                  style={{ opacity: deletingOptionId ? 0.5 : 1, paddingHorizontal: spacing.xs, paddingVertical: 4 }}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   accessibilityLabel={uiCopy.common.delete}
                 >
-                  <Text style={{ fontSize: 18, color: colors.buttonSkipRed ?? '#c0392b' }}>🗑️</Text>
+                  <Text style={{ ...typography.label, fontSize: 12, color: colors.buttonSkipRed ?? '#c0392b' }}>{uiCopy.common.delete}</Text>
                 </TouchableOpacity>
               ) : null
             }

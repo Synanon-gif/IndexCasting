@@ -687,7 +687,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   }
 
   return (
-    <View style={st.container}>
+    <View style={[st.container, { paddingTop: Math.max(spacing.xl, insets.top + spacing.sm) }]}>
       {onBackToRoleSelection && (
         <TouchableOpacity style={st.backRow} onPress={onBackToRoleSelection} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
           <Text style={st.backArrow}>←</Text>
@@ -1078,8 +1078,8 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
 
       {tab === 'messages' && (
         <ScrollView style={{ flex: 1 }}>
-          <Text style={st.sectionLabel}>Agency chat</Text>
-          <Text style={st.metaText}>Direct chat with your agency</Text>
+          <Text style={st.sectionLabel}>{uiCopy.model.agencyChatSectionLabel}</Text>
+          <Text style={st.metaText}>{uiCopy.model.agencyChatSectionSubtitle}</Text>
           <View style={{ gap: spacing.xs, marginTop: spacing.md }}>
             {bookingThreadIds.length === 0 ? (
               <Text style={st.metaText}>No chats yet. Your agency will appear here after accepting your application.</Text>
@@ -1104,8 +1104,8 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
 
           {agencyDirectConvs.length > 0 && (
             <>
-              <Text style={[st.sectionLabel, { marginTop: spacing.lg }]}>Direct messages</Text>
-              <Text style={st.metaText}>Messages sent directly by your agency</Text>
+              <Text style={[st.sectionLabel, { marginTop: spacing.lg }]}>{uiCopy.model.directMessagesSectionLabel}</Text>
+              <Text style={st.metaText}>{uiCopy.model.directMessagesSectionSubtitle}</Text>
               <View style={{ gap: spacing.xs, marginTop: spacing.md }}>
                 {agencyDirectConvs.map((conv) => (
                   <TouchableOpacity
@@ -1419,7 +1419,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
               )}
             </ScrollView>
             <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-              <TextInput value={optChatInput} onChangeText={setOptChatInput} placeholder="Message..." placeholderTextColor={colors.textSecondary}
+              <TextInput value={optChatInput} onChangeText={setOptChatInput} placeholder={uiCopy.model.composerPlaceholder} placeholderTextColor={colors.textSecondary}
                 style={{ flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 999, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, ...typography.body, fontSize: 12, color: colors.textPrimary }} />
               <TouchableOpacity onPress={() => { if (optChatInput.trim()) { addMessage(selectedOptionThread, 'model', optChatInput.trim()); setOptChatInput(''); } }}
                 style={{ borderRadius: 999, backgroundColor: colors.buttonOptionGreen, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, justifyContent: 'center' }}>

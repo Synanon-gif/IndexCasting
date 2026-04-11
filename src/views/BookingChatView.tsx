@@ -286,22 +286,25 @@ export const BookingChatView: React.FC<Props> = ({
           )}
         </View>
       </View>
-      {application && (
-        <View style={styles.profileRow}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {[application.images?.closeUp, application.images?.fullBody, application.images?.profile]
-              .filter(Boolean)
-              .map((uri, idx) => (
+      {application && (() => {
+        const photos = [application.images?.closeUp, application.images?.fullBody, application.images?.profile].filter(Boolean);
+        if (!photos.length) return null;
+        const isMobileNative = Platform.OS !== 'web';
+        return (
+          <View style={[styles.profileRow, isMobileNative && styles.profileRowMobile]}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {photos.map((uri, idx) => (
                 <Image
                   key={idx}
                   source={{ uri: uri! }}
-                  style={styles.profileImage}
+                  style={isMobileNative ? styles.profileImageMobile : styles.profileImage}
                   resizeMode="contain"
                 />
               ))}
-          </ScrollView>
-        </View>
-      )}
+            </ScrollView>
+          </View>
+        );
+      })()}
       <ScrollView
         style={messagesScrollStyle}
         contentContainerStyle={[styles.messagesContent, { flexGrow: 1 }]}
@@ -614,12 +617,22 @@ const styles = StyleSheet.create({
   profileRow: {
     marginBottom: spacing.sm,
   },
+  profileRowMobile: {
+    marginBottom: spacing.xs,
+  },
   profileImage: {
     width: 72,
     height: 90,
     borderRadius: 8,
     backgroundColor: colors.border,
     marginRight: spacing.sm,
+  },
+  profileImageMobile: {
+    width: 56,
+    height: 64,
+    borderRadius: 6,
+    backgroundColor: colors.border,
+    marginRight: spacing.xs,
   },
   messages: {
     marginBottom: spacing.sm,
