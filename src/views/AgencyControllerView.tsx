@@ -6477,6 +6477,9 @@ const GuestLinksTab: React.FC<{
 const s = StyleSheet.create({
   container: {
     flex: 1,
+    width: '100%',
+    maxWidth: 1200,
+    alignSelf: 'center',
     backgroundColor: colors.background,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.xs,
