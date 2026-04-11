@@ -4165,6 +4165,8 @@ const ClientB2BChatsPanel: React.FC<{
   onPackagePress?: (meta: Record<string, unknown>) => void;
   onOpenRelatedRequest?: (optionRequestId: string) => void;
   searchQuery?: string;
+  /** Called with true when a chat is actively open on mobile (non-split), false otherwise. */
+  onChatActiveChange?: (active: boolean) => void;
 }> = ({
   clientUserId,
   pendingOpen,
@@ -4173,6 +4175,7 @@ const ClientB2BChatsPanel: React.FC<{
   onPackagePress,
   onOpenRelatedRequest,
   searchQuery = '',
+  onChatActiveChange,
 }) => {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const b2bWebSplit = Platform.OS === 'web' && shouldUseB2BWebSplit(windowWidth);
@@ -4255,6 +4258,13 @@ const ClientB2BChatsPanel: React.FC<{
     onPendingConsumed?.();
     void listB2BConversationsForOrganization(clientOrgId).then(setRows);
   }, [pendingOpen?.conversationId, clientOrgId, onPendingConsumed, pendingOpen?.title]);
+
+  // Notify parent when a chat becomes active or inactive on mobile (non-split).
+  // This lets MessagesView hide the search/tab bar while inside a chat.
+  useEffect(() => {
+    const isMobileChat = !b2bWebSplit && !!selectedId;
+    onChatActiveChange?.(isMobileChat);
+  }, [selectedId, b2bWebSplit, onChatActiveChange]);
 
   if (orgLoading) {
     return <Text style={styles.metaText}>{uiCopy.b2bChat.clientWorkspaceLoading}</Text>;
@@ -4394,6 +4404,9 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   const [mobileSummaryCollapsed, setMobileSummaryCollapsed] = useState(true);
   const [clientMsgTab, setClientMsgTab] = useState<'b2bChats' | 'optionRequests'>('b2bChats');
   const [clientMsgSearch, setClientMsgSearch] = useState('');
+  // Tracks whether ClientB2BChatsPanel has an active chat open on mobile (non-split).
+  // When true, the search bar + tabs are hidden so only the chat is visible.
+  const [b2bChatIsOpen, setB2bChatIsOpen] = useState(false);
   const [requests, setRequests] = useState(getOptionRequests());
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   // Reset mobile summary collapse whenever a different negotiation thread is opened.
@@ -4748,7 +4761,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
 
   return (
     <View style={styles.section}>
-      {showClientMessagesTabs && !optionFullscreenActive && (
+      {showClientMessagesTabs && !optionFullscreenActive && !b2bChatIsOpen && (
         <View style={styles.msgsFixedTop}>
           <TextInput
             value={clientMsgSearch}
@@ -4800,6 +4813,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
           onBookingCardPress={onBookingCardPress}
           onPackagePress={onPackagePress}
           searchQuery={clientMsgSearch}
+          onChatActiveChange={setB2bChatIsOpen}
         />
       ) : (
         <>

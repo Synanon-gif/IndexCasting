@@ -5181,9 +5181,18 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
     );
   }
 
+  // Hide search + section tabs when a B2B chat is active on mobile (non-split).
+  // The early return for b2bChatFullscreenActive already skips this header, but this
+  // guard also covers the case where the code falls through to the main return.
+  const hideMsgsFixedTop =
+    !agencyB2bWebSplit &&
+    messagesSection === 'clientRequests' &&
+    !!activeConnectionChatId;
+
   return (
     <View style={{ flex: 1, minHeight: 0 }}>
-      {/* Compact fixed header: search + horizontal section tabs */}
+      {/* Compact fixed header: search + horizontal section tabs — hidden when inside a mobile chat */}
+      {!hideMsgsFixedTop && (
       <View style={s.msgsFixedTop}>
         <View style={[s.messagesSearchRow, { marginBottom: spacing.xs }]}>
           <TextInput
@@ -5232,6 +5241,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
           </ScrollView>
         )}
       </View>
+      )}
     <ScreenScrollView>
 
       {searchActive ? (
@@ -5415,6 +5425,39 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                       />
                     ) : null}
                   </View>
+                </View>
+              ) : activeConnectionChatId ? (
+                // Fallback: early return (b2bChatFullscreenActive) normally catches this,
+                // but if it somehow didn't fire, render the messenger fullscreen here too.
+                <View style={{ flex: 1, minHeight: 0 }}>
+                  <OrgMessengerInline
+                    conversationId={activeConnectionChatId}
+                    headerTitle={activeConnectionChatTitle}
+                    viewerUserId={currentUserId}
+                    threadContext={{ type: uiCopy.b2bChat.contextOrgChat }}
+                    agencyId={agencyId}
+                    guestLinks={guestLinksForChat}
+                    modelsForShare={modelsForShare}
+                    composerBottomInsetOverride={0}
+                    onOpenRelatedRequest={(optionRequestId) => {
+                      setActiveConnectionChatId(null);
+                      setMessagesSection('optionRequests');
+                      setSelectedThreadId(optionRequestId);
+                    }}
+                    onBookingCardPress={onBookingCardPress}
+                    viewerRole="agency"
+                    onBookingStatusUpdated={() => onBookingCardPress?.()}
+                    containerStyle={{ flex: 1 }}
+                    onOrgPress={() => {
+                      const conv = b2bConversations.find((c) => c.id === activeConnectionChatId);
+                      const orgId = conv?.client_organization_id ?? null;
+                      if (!orgId) return;
+                      setViewingClientProfileOrgId(orgId);
+                      setViewingClientProfileOrgName(activeConnectionChatTitle);
+                    }}
+                    onBack={() => setActiveConnectionChatId(null)}
+                    backLabel={uiCopy.messages.backToChats}
+                  />
                 </View>
               ) : (
                 // Mobile (non-split): list only — chat opens fullscreen via b2bChatFullscreenActive early return

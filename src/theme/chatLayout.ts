@@ -13,10 +13,12 @@ export const CHAT_OVERLAY_WIDTH_PERCENT = 75;
 export const CHAT_OVERLAY_MAX_WIDTH_CAP = 1024;
 
 /**
- * Below this window width (px), B2B stays stacked; at/above, thread|chat row split (web).
- * Aligned with `useDeviceType()` desktop threshold (>= BREAKPOINT_TABLET_MAX).
+ * Below this window width (px), B2B uses WhatsApp-like fullscreen chat (list OR messenger).
+ * Only at/above this width is the thread|chat row split shown (true wide desktop).
+ * Deliberately higher than BREAKPOINT_TABLET_MAX so that phones, tablets, and smaller
+ * laptops all get the mobile-first WhatsApp pattern — no list visible while in a chat.
  */
-export const CHAT_B2B_SPLIT_BREAKPOINT = BREAKPOINT_TABLET_MAX;
+export const CHAT_B2B_SPLIT_BREAKPOINT = 1400;
 
 /** Wide web: thread list column ~28%, messenger ~72% of the messages row. */
 export const CHAT_THREAD_LIST_FLEX = 0.28;
