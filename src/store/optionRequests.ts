@@ -9,7 +9,7 @@ import {
   getOptionRequestById,
   insertOptionRequest,
   resolveAgencyOrganizationIdForOptionRequest,
-  updateModelApproval,
+  modelConfirmOptionRequest,
   modelRejectOptionRequest,
   getOptionMessages as fetchMessages,
   addOptionMessage,
@@ -426,16 +426,18 @@ export async function approveOptionAsModel(threadId: string): Promise<boolean> {
   if (!req) return false;
   const prevApproval = req.modelApproval;
   const prevApprovedAt = req.modelApprovedAt;
+  const prevStatus = req.status;
   req.modelApproval = 'approved';
   req.modelApprovedAt = new Date().toISOString();
+  req.status = 'confirmed';
   notify();
-  const ok = await updateModelApproval(req.id, 'approved');
+  const ok = await modelConfirmOptionRequest(req.id);
   if (!ok) {
-    // Roll back optimistic change on failure.
     req.modelApproval = prevApproval;
     req.modelApprovedAt = prevApprovedAt;
+    req.status = prevStatus;
     notify();
-    console.error('[approveOptionAsModel] updateModelApproval failed – rolled back', req.id);
+    console.error('[approveOptionAsModel] modelConfirmOptionRequest failed – rolled back', req.id);
     return false;
   }
   const inserted = await addOptionSystemMessage(req.id, 'model_approved_booking');
@@ -457,13 +459,16 @@ export async function rejectOptionAsModel(threadId: string): Promise<boolean> {
   if (!req) return false;
   const prevApproval = req.modelApproval;
   const prevStatus = req.status;
+  const prevFinalStatus = req.finalStatus;
   req.modelApproval = 'rejected';
   req.status = 'rejected';
+  req.finalStatus = 'option_pending';
   notify();
   const ok = await modelRejectOptionRequest(req.id);
   if (!ok) {
     req.modelApproval = prevApproval;
     req.status = prevStatus;
+    req.finalStatus = prevFinalStatus;
     notify();
     console.error('[rejectOptionAsModel] modelRejectOptionRequest failed – rolled back', req.id);
   }
@@ -481,7 +486,10 @@ export async function loadOptionsForModel(modelId: string): Promise<void> {
     const remote = await getOptionRequestsForModel(modelId);
     if (remote.length > 0) {
       for (const r of remote) {
-        if (!requestsCache.find((x) => x.id === r.id)) {
+        const existing = requestsCache.find((x) => x.id === r.id);
+        if (existing) {
+          Object.assign(existing, toLocalRequest(r));
+        } else {
           requestsCache.push(toLocalRequest(r));
         }
       }
@@ -608,8 +616,6 @@ export async function agencyAcceptClientPriceStore(threadId: string): Promise<bo
   if (updated) {
     Object.assign(req, toLocalRequest(updated));
     if (updated.final_status === 'option_confirmed') {
-      // Calendar entry is created by the DB trigger fn_ensure_calendar_on_option_confirmed
-      // (migration_calendar_booking_audit_fixes_2026_04.sql) — no client-side call needed.
       const inserted = await addOptionSystemMessage(req.id, 'agency_accepted_price');
       if (inserted) {
         messagesCache.push({
@@ -622,6 +628,8 @@ export async function agencyAcceptClientPriceStore(threadId: string): Promise<bo
       }
     }
     notify();
+  } else {
+    console.warn('[agencyAcceptClientPriceStore] RPC succeeded but post-refresh failed — local state may be stale', req.id);
   }
   return true;
 }

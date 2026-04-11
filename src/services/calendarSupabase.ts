@@ -75,7 +75,7 @@ export type CalendarEntry = {
   end_time: string | null;
   title: string | null;
   entry_type: CalendarEntryType;
-  status: 'available' | 'blocked' | 'booked' | 'tentative';
+  status: 'available' | 'blocked' | 'booked' | 'tentative' | 'cancelled';
   booking_id: string | null;
   note: string | null;
   created_at: string;
@@ -432,10 +432,11 @@ export async function getCalendarEntriesForClient(clientId: string): Promise<Cli
     const optionIds = optionList.map((o) => o.id);
     const entryList = await fetchCalendarEntriesByOptionIds(optionIds);
 
-    return optionList.map((opt) => ({
-      option: opt,
-      calendar_entry: entryList.find((e) => e.option_request_id === opt.id) ?? null,
-    }));
+    return optionList.map((opt) => {
+      const matching = entryList.filter((e) => e.option_request_id === opt.id);
+      const active = matching.find((e) => e.status !== 'cancelled') ?? matching[matching.length - 1] ?? null;
+      return { option: opt, calendar_entry: active };
+    });
   } catch (e) {
     console.error('getCalendarEntriesForClient exception:', e);
     return [];
@@ -465,10 +466,11 @@ export async function getCalendarEntriesForAgency(agencyId: string): Promise<Age
     const optionIds = optionList.map((o) => o.id);
     const entryList = await fetchCalendarEntriesByOptionIds(optionIds);
 
-    return optionList.map((opt) => ({
-      option: opt,
-      calendar_entry: entryList.find((e) => e.option_request_id === opt.id) ?? null,
-    }));
+    return optionList.map((opt) => {
+      const matching = entryList.filter((e) => e.option_request_id === opt.id);
+      const active = matching.find((e) => e.status !== 'cancelled') ?? matching[matching.length - 1] ?? null;
+      return { option: opt, calendar_entry: active };
+    });
   } catch (e) {
     console.error('getCalendarEntriesForAgency exception:', e);
     return [];

@@ -166,7 +166,7 @@ describe('calendarProjectionLabel', () => {
     const b = getCalendarProjectionBadge(
       baseOption({
         client_price_status: 'accepted',
-        final_status: 'option_pending',
+        final_status: 'option_confirmed',
         status: 'in_negotiation',
         model_approval: 'pending',
         model_account_linked: true,

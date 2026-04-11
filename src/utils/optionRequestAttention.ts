@@ -105,7 +105,7 @@ export function deriveApprovalAttention(input: AttentionSignalInput): ApprovalAt
     modelAccountLinked &&
     modelApproval === 'pending' &&
     input.status === 'in_negotiation' &&
-    (input.finalStatus === 'option_confirmed' || input.finalStatus === 'option_pending')
+    input.finalStatus === 'option_confirmed'
   ) {
     return 'waiting_for_model_confirmation';
   }

@@ -1013,8 +1013,6 @@ export async function addOptionSystemMessage(
       const notifyAgencyKinds: SystemOptionMessageKind[] = [
         'no_model_account_client_notice',
         'client_accepted_counter',
-        'client_rejected_counter',
-        'job_confirmed_by_client',
       ];
 
       if (notifyClientKinds.includes(kind) && req.client_id) {
@@ -1796,10 +1794,9 @@ export async function modelRejectOptionRequest(id: string): Promise<boolean> {
       .update({
         model_approval: 'rejected',
         status: 'rejected',
+        final_status: 'option_pending',
       })
       .eq('id', id)
-      // Guard: only reject when the model approval is still pending.
-      // Prevents transitioning an already-approved or already-rejected row.
       .eq('model_approval', 'pending')
       .select('id, agency_id, client_id, organization_id, agency_organization_id')
       .maybeSingle();
@@ -1892,6 +1889,7 @@ export async function getPendingModelConfirmations(
       .eq('model_id', modelId)
       .eq('model_approval', 'pending')
       .eq('model_account_linked', true)
+      .eq('final_status', 'option_confirmed')
       .neq('status', 'rejected')
       .order('created_at', { ascending: false });
 

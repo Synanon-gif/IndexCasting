@@ -61,6 +61,7 @@ import { listModelAgencyDirectConversations } from '../services/b2bOrgChatSupaba
 import type { Conversation } from '../services/messengerSupabase';
 import { OrgMessengerInline } from '../components/OrgMessengerInline';
 import { ConfirmDestructiveModal } from '../components/ConfirmDestructiveModal';
+import { shouldShowSystemMessageForViewer } from '../components/optionNegotiation/filterSystemMessagesForViewer';
 import { getCalendarDetailNextStepForModelLocalOption } from '../utils/calendarDetailNextStep';
 import { MonthCalendarView } from '../components/MonthCalendarView';
 import { CalendarViewModeBar, type CalendarViewMode } from '../components/CalendarViewModeBar';
@@ -499,6 +500,11 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     if (ok && profile) {
       await loadPendingConfirmations(profile.id);
       await loadCalendar(profile.id);
+    } else if (!ok) {
+      Alert.alert(
+        uiCopy.common.error ?? 'Error',
+        'Could not confirm availability. The agency may not have accepted the price yet. Please try again later.',
+      );
     }
   };
 
@@ -1352,7 +1358,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
               </TouchableOpacity>
             </View>
             <ScrollView style={{ maxHeight: optionChatMessagesMaxH, marginBottom: spacing.sm }}>
-              {getMessages(selectedOptionThread).map((msg) =>
+              {getMessages(selectedOptionThread).filter((m) => shouldShowSystemMessageForViewer(m, 'model')).map((msg) =>
                 msg.from === 'system' ? (
                   <View
                     key={msg.id}
