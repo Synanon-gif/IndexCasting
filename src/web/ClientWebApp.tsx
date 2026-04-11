@@ -4422,6 +4422,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
     setMobileSummaryCollapsed(true);
   }, [selectedThreadId]);
   const [chatInput, setChatInput] = useState('');
+  const [chatInputHeight, setChatInputHeight] = useState(36);
   const [agencyCounterInput, setAgencyCounterInput] = useState('');
   const [calendarHint, setCalendarHint] = useState<string | null>(null);
   const calendarHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -4612,6 +4613,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
     if (!text || !selectedThreadId) return;
     addMessage(selectedThreadId, isAgency ? 'agency' : 'client', text);
     setChatInput('');
+    setChatInputHeight(36);
   };
 
   const openDeleteOptionModal = () => {
@@ -5145,7 +5147,10 @@ const MessagesView: React.FC<MessagesViewProps> = ({
               onChangeText={setChatInput}
               placeholder={uiCopy.optionNegotiationChat.messagePlaceholder}
               placeholderTextColor={colors.textSecondary}
-              style={styles.chatPanelInput}
+              style={[styles.chatPanelInput, { height: Math.max(36, Math.min(120, chatInputHeight)) }]}
+              multiline
+              blurOnSubmit={false}
+              onContentSizeChange={(e) => setChatInputHeight(e.nativeEvent.contentSize.height)}
             />
             <TouchableOpacity style={styles.chatPanelSend} onPress={sendMessage}>
               <Text style={styles.chatPanelSendLabel}>{uiCopy.optionNegotiationChat.send}</Text>
@@ -7612,7 +7617,7 @@ const styles = StyleSheet.create({
   },
   chatPanelInputRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     width: '100%',
     minWidth: 0,
     gap: spacing.sm,
@@ -7620,7 +7625,7 @@ const styles = StyleSheet.create({
   chatPanelInput: {
     flex: 1,
     minWidth: 0,
-    borderRadius: 999,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: colors.border,
     paddingHorizontal: spacing.md,
@@ -7628,6 +7633,8 @@ const styles = StyleSheet.create({
     ...typography.body,
     fontSize: 12,
     color: colors.textPrimary,
+    minHeight: 36,
+    maxHeight: 120,
   },
   chatPanelSend: {
     borderRadius: 999,

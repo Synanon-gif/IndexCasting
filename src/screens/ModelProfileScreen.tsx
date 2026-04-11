@@ -137,6 +137,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   const [options, setOptions] = useState<OptionRequest[]>([]);
   const [selectedOptionThread, setSelectedOptionThread] = useState<string | null>(null);
   const [optChatInput, setOptChatInput] = useState('');
+  const [optChatInputHeight, setOptChatInputHeight] = useState(36);
   const [locationLoading, setLocationLoading] = useState(false);
   const [openEntry, setOpenEntry] = useState<CalendarEntry | null>(null);
   const [modelNotesDraft, setModelNotesDraft] = useState('');
@@ -1453,10 +1454,12 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                 ),
               )}
             </ScrollView>
-            <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+            <View style={{ flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-end' }}>
               <TextInput value={optChatInput} onChangeText={setOptChatInput} placeholder={uiCopy.model.composerPlaceholder} placeholderTextColor={colors.textSecondary}
-                style={{ flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 999, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, ...typography.body, fontSize: 12, color: colors.textPrimary }} />
-              <TouchableOpacity onPress={() => { if (optChatInput.trim()) { addMessage(selectedOptionThread, 'model', optChatInput.trim()); setOptChatInput(''); } }}
+                multiline blurOnSubmit={false}
+                onContentSizeChange={(e) => setOptChatInputHeight(e.nativeEvent.contentSize.height)}
+                style={{ flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 18, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, ...typography.body, fontSize: 12, color: colors.textPrimary, minHeight: 36, maxHeight: 120, height: Math.max(36, Math.min(120, optChatInputHeight)) }} />
+              <TouchableOpacity onPress={() => { if (optChatInput.trim()) { addMessage(selectedOptionThread, 'model', optChatInput.trim()); setOptChatInput(''); setOptChatInputHeight(36); } }}
                 style={{ borderRadius: 999, backgroundColor: colors.buttonOptionGreen, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, justifyContent: 'center' }}>
                 <Text style={{ ...typography.label, fontSize: 11, color: '#fff' }}>Send</Text>
               </TouchableOpacity>

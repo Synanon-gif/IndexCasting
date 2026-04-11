@@ -161,6 +161,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
 }) => {
   const [msgs, setMsgs] = useState<MessageWithSender[]>([]);
   const [input, setInput] = useState('');
+  const [inputHeight, setInputHeight] = useState(36);
   const [shareOpen, setShareOpen] = useState<'package' | 'model' | null>(null);
   const [bookingModelNames, setBookingModelNames] = useState<Record<string, string>>({});
   /** Tracks model IDs whose name fetch is already in-flight or resolved, preventing duplicate requests. */
@@ -355,6 +356,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
         await sendMessengerMessage(conversationId, viewerUserId, text);
       }
       setInput('');
+      setInputHeight(36);
       reload();
     } catch (e) {
       console.error('sendChat error:', e);
@@ -835,9 +837,11 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
           onChangeText={(v) => { setInput(v); if (sendError) setSendError(null); }}
           placeholder={uiCopy.b2bChat.messagePlaceholder}
           placeholderTextColor={colors.textSecondary}
-          style={styles.chatPanelInput}
+          style={[styles.chatPanelInput, { height: Math.max(36, Math.min(120, inputHeight)) }]}
           editable={!!viewerUserId && !uploading && !sending}
-          onSubmitEditing={sendChat}
+          multiline
+          blurOnSubmit={false}
+          onContentSizeChange={(e) => setInputHeight(e.nativeEvent.contentSize.height)}
         />
         <TouchableOpacity
           style={[styles.chatPanelSend, (!viewerUserId || uploading || sending) && { opacity: 0.5 }]}
@@ -1263,14 +1267,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
     marginTop: spacing.sm,
-    alignItems: 'center',
+    alignItems: 'flex-end',
     width: '100%',
     minWidth: 0,
   },
   chatPanelInput: {
     flex: 1,
     minWidth: 0,
-    borderRadius: 999,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: colors.border,
     paddingHorizontal: spacing.md,
@@ -1278,6 +1282,8 @@ const styles = StyleSheet.create({
     ...typography.body,
     fontSize: 12,
     color: colors.textPrimary,
+    minHeight: 36,
+    maxHeight: 120,
   },
   chatPanelSend: {
     borderRadius: 999,

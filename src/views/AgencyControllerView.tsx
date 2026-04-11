@@ -4473,6 +4473,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   const [requests, setRequests] = useState(getOptionRequests());
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [chatInput, setChatInput] = useState('');
+  const [chatInputHeight, setChatInputHeight] = useState(36);
   const [agencyCounterInput, setAgencyCounterInput] = useState('');
   const [openOrgChatBusy, setOpenOrgChatBusy] = useState(false);
   const [processingRequestId, setProcessingRequestId] = useState<string | null>(null);
@@ -4698,6 +4699,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
     if (!text || !selectedThreadId) return;
     addMessage(selectedThreadId, 'agency', text);
     setChatInput('');
+    setChatInputHeight(36);
   };
 
   const openOrgChatFromRequest = async () => {
@@ -5099,13 +5101,16 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
               ) : null
             }
             composer={
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, width: '100%', minWidth: 0 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm, width: '100%', minWidth: 0 }}>
                 <TextInput
                   value={chatInput}
                   onChangeText={setChatInput}
                   placeholder={uiCopy.optionNegotiationChat.messagePlaceholder}
                   placeholderTextColor={colors.textSecondary}
-                  style={s.chatInput}
+                  style={[s.chatInput, { height: Math.max(36, Math.min(120, chatInputHeight)) }]}
+                  multiline
+                  blurOnSubmit={false}
+                  onContentSizeChange={(e) => setChatInputHeight(e.nativeEvent.contentSize.height)}
                 />
                 <TouchableOpacity style={s.chatSend} onPress={sendMessage}>
                   <Text style={s.chatSendLabel}>{uiCopy.optionNegotiationChat.send}</Text>
@@ -6774,12 +6779,14 @@ const s = StyleSheet.create({
     minWidth: 0,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 999,
+    borderRadius: 18,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     ...typography.body,
     fontSize: 12,
     color: colors.textPrimary,
+    minHeight: 36,
+    maxHeight: 120,
   },
   chatSend: { borderRadius: 999, backgroundColor: colors.buttonOptionGreen, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, justifyContent: 'center' },
   chatSendLabel: { ...typography.label, fontSize: 11, color: colors.surface },

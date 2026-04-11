@@ -60,6 +60,7 @@ export const BookingChatView: React.FC<Props> = ({
   const chatOverlayMaxWidth = getChatOverlayMaxWidth(windowWidth);
   const bookingMessagesMaxHeight = getMessagesScrollMaxHeight(windowHeight);
   const [chatInput, setChatInput] = useState('');
+  const [chatInputHeight, setChatInputHeight] = useState(36);
   const [messages, setMessages] = useState(() => getRecruitingMessages(threadId));
   const [agencyName, setAgencyName] = useState<string | null>(initialAgencyName ?? null);
   const [agencyLogoUrl, setAgencyLogoUrl] = useState<string | null>(null);
@@ -140,6 +141,7 @@ export const BookingChatView: React.FC<Props> = ({
     lastSendAtRef.current = now;
     addRecruitingMessage(threadId, fromRole, t);
     setChatInput('');
+    setChatInputHeight(36);
   };
 
   const openUrl = (url: string) => {
@@ -442,9 +444,11 @@ export const BookingChatView: React.FC<Props> = ({
           onChangeText={setChatInput}
           placeholder="Message…"
           placeholderTextColor={colors.textSecondary}
-          style={styles.input}
+          style={[styles.input, { height: Math.max(36, Math.min(120, chatInputHeight)) }]}
           editable={!uploading}
-          onSubmitEditing={sendMessage}
+          multiline
+          blurOnSubmit={false}
+          onContentSizeChange={(e) => setChatInputHeight(e.nativeEvent.contentSize.height)}
         />
         <TouchableOpacity style={[styles.send, uploading && { opacity: 0.5 }]} onPress={sendMessage} disabled={uploading}>
           <Text style={styles.sendLabel}>Send</Text>
@@ -794,7 +798,7 @@ const styles = StyleSheet.create({
   },
   inputRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     gap: spacing.sm,
   },
   input: {
@@ -806,6 +810,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     ...typography.body,
     color: colors.textPrimary,
+    minHeight: 36,
+    maxHeight: 120,
   },
   send: {
     paddingHorizontal: spacing.md,
