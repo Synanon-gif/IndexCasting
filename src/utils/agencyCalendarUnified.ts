@@ -305,6 +305,11 @@ export function dedupeUnifiedRowsByOptionRequest(
     if (r.entry.option_request_id && optionCalEntryIds.has(r.entry.option_request_id)) return false;
     if (r.entry.model_id && optionDateModel.has(`${r.entry.date ?? ''}|${r.entry.model_id}`)) return false;
     if (r.entry.option_request_id && optionDates.has(r.date)) return false;
+    // Aggressive fallback: if the booking row's date is covered by any option row,
+    // and the booking row has no unique model_id that isn't in the option set, suppress it.
+    // This prevents orphan booking_events rows without source_option_request_id from
+    // appearing alongside the lifecycle option row.
+    if (!r.entry.option_request_id && !r.entry.model_id && optionDates.has(r.date)) return false;
     return true;
   });
 }

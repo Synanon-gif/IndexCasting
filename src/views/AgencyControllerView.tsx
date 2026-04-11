@@ -2048,6 +2048,7 @@ const MyModelsTab: React.FC<{
   const [selectedModel, setSelectedModel] = useState<SupabaseModel | null>(null);
   const [selectedModelLocation, setSelectedModelLocation] = useState<ModelLocation | null>(null);
   const [filters, setFilters] = useState<ModelFilters>(defaultModelFilters);
+  const [rosterNameSearch, setRosterNameSearch] = useState('');
   const [editState, setEditState] = useState<ModelEditState>(buildEditState({ name: '' }));
 
   const [showAddForm, setShowAddForm] = useState(false);
@@ -2319,7 +2320,12 @@ const MyModelsTab: React.FC<{
       .slice(0, 40);
   }, [isoCountryList, territorySearch]);
 
-  const filtered = useMemo(() => filterModels(models, filters), [models, filters]);
+  const filtered = useMemo(() => {
+    const base = filterModels(models, filters);
+    const q = rosterNameSearch.trim().toLowerCase();
+    if (!q) return base;
+    return base.filter((m) => (m.name ?? '').toLowerCase().includes(q));
+  }, [models, filters, rosterNameSearch]);
 
   useEffect(() => {
     setSaveFeedback(null);
@@ -3541,7 +3547,17 @@ const MyModelsTab: React.FC<{
         )}
       </View>
 
-      <Text style={s.sectionLabel}>My Models</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.xs }}>
+        <Text style={s.sectionLabel}>My Models</Text>
+        <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary }}>{filtered.length} model{filtered.length === 1 ? '' : 's'}</Text>
+      </View>
+      <TextInput
+        value={rosterNameSearch}
+        onChangeText={setRosterNameSearch}
+        placeholder="Search by name…"
+        placeholderTextColor={colors.textSecondary}
+        style={[s.editInput, { marginBottom: spacing.sm, width: '100%' }]}
+      />
       <ModelFiltersPanel
         filters={filters}
         onChangeFilters={setFilters}
@@ -5277,7 +5293,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
       ) : (
         <>
       {messagesSection === 'clientRequests' ? (
-        <View style={{ marginBottom: spacing.lg }}>
+        <View style={{ flex: 1, minHeight: 0, marginBottom: spacing.lg }}>
           {!agencyId ? (
             <Text style={s.metaText}>{uiCopy.b2bChat.noAgencyContext}</Text>
           ) : (

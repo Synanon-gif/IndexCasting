@@ -2103,7 +2103,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         )}
 
         {tab === 'calendar' && (
-          <View style={{ flex: 1 }}>
+          <View style={{ flex: 1, minHeight: 0 }}>
             {!isRealClient ? (
               <View
                 style={{
@@ -3223,7 +3223,7 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
   };
 
   return (
-    <View style={styles.section}>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: spacing.xl * 2 }}>
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionLabel}>Calendar</Text>
         <View style={{ flexDirection: 'row', gap: spacing.sm, alignItems: 'center' }}>
@@ -3323,7 +3323,7 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
         </Text>
       )}
 
-      <ScrollView style={{ flex: 1 }}>
+      {/* Inline list — no nested ScrollView; the outer ScrollView handles scroll */}
         {sortedUnified.map((row) => {
           if (row.kind === 'manual') {
             const ev = row.ev;
@@ -3440,8 +3440,7 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
             </TouchableOpacity>
           );
         })}
-      </ScrollView>
-    </View>
+    </ScrollView>
   );
 };
 
@@ -4561,7 +4560,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
 
   return (
     <View style={styles.section}>
-      {showClientMessagesTabs && (
+      {showClientMessagesTabs && !optionFullscreenActive && (
         <View style={styles.msgsFixedTop}>
           <TextInput
             value={clientMsgSearch}
@@ -5968,9 +5967,11 @@ const styles = StyleSheet.create({
   appShell: {
     flex: 1,
     maxWidth: 1200,
+    width: '100%',
     alignSelf: 'center',
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.xs,
+    minHeight: 0,
   },
   topBar: {
     marginBottom: spacing.xs,
@@ -6229,10 +6230,11 @@ const styles = StyleSheet.create({
   coverRow: {
     alignItems: 'center',
     marginBottom: spacing.lg,
+    width: '100%',
   },
   coverCard: {
     width: '100%',
-    maxWidth: 600,
+    maxWidth: 640,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: colors.border,
@@ -6241,7 +6243,7 @@ const styles = StyleSheet.create({
   },
   coverImageContainer: {
     position: 'relative',
-    height: 420,
+    height: 480,
     zIndex: 0,
   },
   coverImageTouchable: {
@@ -6605,6 +6607,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   agencyLeft: {
+    flex: 1,
+    minWidth: 0,
     gap: 2,
   },
   agencyRight: {
@@ -6850,8 +6854,9 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.md,
     backgroundColor: colors.surface,
+    width: '100%',
   },
   projectCardActive: {
     borderColor: colors.accentBrown,
@@ -7120,7 +7125,6 @@ const styles = StyleSheet.create({
   searchInput: {
     alignSelf: 'stretch',
     width: '100%' as const,
-    maxWidth: 400,
     height: 40,
     minHeight: 40,
     borderWidth: 1,
