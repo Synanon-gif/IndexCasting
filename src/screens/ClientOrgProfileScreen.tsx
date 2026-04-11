@@ -59,6 +59,8 @@ export interface ClientOrgProfileScreenProps {
   orgName: string | null;
   /** 'owner' | 'employee' | null */
   orgMemberRole: string | null;
+  /** Extra bottom padding when embedded in client web shell with fixed bottom tab bar. */
+  scrollBottomInset?: number;
 }
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
@@ -67,6 +69,7 @@ export function ClientOrgProfileScreen({
   organizationId,
   orgName,
   orgMemberRole,
+  scrollBottomInset = 0,
 }: ClientOrgProfileScreenProps): React.ReactElement {
   const [orgProfile, setOrgProfile] = useState<OrganizationProfile | null>(null);
   const [media, setMedia] = useState<OrganizationProfileMedia[]>([]);
@@ -404,7 +407,12 @@ export function ClientOrgProfileScreen({
     <View style={{ flex: 1 }}>
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.background }}
-      contentContainerStyle={s.scrollContent}
+      contentContainerStyle={[
+        s.scrollContent,
+        scrollBottomInset > 0
+          ? { paddingBottom: Math.max(120, scrollBottomInset + spacing.lg) }
+          : null,
+      ]}
       showsVerticalScrollIndicator={false}
     >
       {/* ── Profile header ── */}

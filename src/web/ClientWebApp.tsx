@@ -23,6 +23,7 @@ import {
   Alert,
   Platform,
   useWindowDimensions,
+  type ViewStyle,
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import {
@@ -1800,6 +1801,21 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   const insets = useSafeAreaInsets();
   const bottomTabInset = Math.max(BOTTOM_TAB_BAR_HEIGHT, clientBottomTabBarHeight) + insets.bottom;
 
+  /** Web mobile: lock shell to viewport so document scroll does not move the bottom tab bar; inner tab ScrollViews scroll instead. */
+  const clientMobileWebShellLock =
+    clientIsMobile && Platform.OS === 'web'
+      ? {
+          height: clientWindowHeight,
+          maxHeight: clientWindowHeight,
+          overflow: 'hidden' as const,
+        }
+      : null;
+  /** RN ViewStyle omits CSS `fixed`; required for RN Web viewport-fixed client tab bar. */
+  const clientMobileWebBottomTabPosition: ViewStyle | null =
+    clientIsMobile && Platform.OS === 'web'
+      ? ({ position: 'fixed' } as unknown as ViewStyle)
+      : null;
+
   const resetDiscoverTabRoot = useCallback(() => {
     setDetailId(null);
     setDetailData(null);
@@ -1921,7 +1937,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   };
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, clientMobileWebShellLock]}>
       {/* GDPR: Geolocation + Nominatim consent banner — shown the first time "Near me" is activated */}
       {showGeoConsentBanner && (
         <View style={{
@@ -2008,29 +2024,37 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         </View>
 
         {tab === 'dashboard' && (
-          <ClientDashboardTab
-            orgId={clientOrgId}
-            userId={realClientId}
-            onNavigateMessages={() => setTab('messages')}
-            onNavigateCalendar={() => setTab('calendar')}
-            onNavigateRequests={() => setTab('messages')}
-            onSelectConversation={(id) => {
-              setPendingClientB2BChat({ conversationId: id, title: '' });
-              setTab('messages');
-            }}
-            onSelectOption={(id) => {
-              optionChatReturnRef.current = { kind: 'tab', tab: 'dashboard' };
-              setOpenThreadIdOnMessages(id);
-              setTab('messages');
-            }}
-            onSelectModel={(id) => { openDetails(id); setTab('discover'); }}
-          />
+          <ScrollView
+            style={{ flex: 1, minHeight: 0 }}
+            contentContainerStyle={{ paddingBottom: bottomTabInset + spacing.md, flexGrow: 1 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <ClientDashboardTab
+              orgId={clientOrgId}
+              userId={realClientId}
+              onNavigateMessages={() => setTab('messages')}
+              onNavigateCalendar={() => setTab('calendar')}
+              onNavigateRequests={() => setTab('messages')}
+              onSelectConversation={(id) => {
+                setPendingClientB2BChat({ conversationId: id, title: '' });
+                setTab('messages');
+              }}
+              onSelectOption={(id) => {
+                optionChatReturnRef.current = { kind: 'tab', tab: 'dashboard' };
+                setOpenThreadIdOnMessages(id);
+                setTab('messages');
+              }}
+              onSelectModel={(id) => { openDetails(id); setTab('discover'); }}
+            />
+          </ScrollView>
         )}
 
         {tab === 'discover' && showActiveOptions && (
           <ActiveOptionsView
             onClose={() => setShowActiveOptions(false)}
             assignmentByClientOrgId={assignmentByClientOrgId}
+            scrollBottomInset={bottomTabInset}
           />
         )}
 
@@ -2069,6 +2093,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             onBack={closeProjectOverview}
             onRemoveModel={handleRemoveModelFromProject}
             onBrowseDiscover={openProjectDiscovery}
+            scrollBottomInset={bottomTabInset}
           />
         ) : tab === 'projects' ? (
           <ProjectsView
@@ -2089,12 +2114,14 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
               setOpenThreadIdOnMessages(threadId);
               setTab('messages');
             }}
+            scrollBottomInset={bottomTabInset}
           />
         ) : null}
 
         {tab === 'agencies' && (
           <AgenciesView
             clientUserId={realClientId}
+            scrollBottomInset={bottomTabInset}
             onChatStarted={(conversationId, title) => {
               setPendingClientB2BChat({ conversationId, title });
               setTab('messages');
@@ -2128,6 +2155,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
               bookingEventEntries={bookingEventEntries}
               loading={calendarLoading}
               canAddManualEvents={isRealClient}
+              scrollBottomInset={bottomTabInset}
               onRefresh={loadClientCalendar}
               onOpenDetails={(item) => {
                 setSelectedCalendarItem(item);
@@ -2185,16 +2213,23 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         )}
 
         {tab === 'team' && (
-          <View style={{ flex: 1, alignSelf: 'stretch', paddingHorizontal: spacing.xs }}>
-            <Text style={{ ...typography.heading, fontSize: 18, color: colors.textPrimary, marginBottom: spacing.sm }}>
-              Team
-            </Text>
-            {clientOrgId && <OwnerBillingStatusCard variant="client" />}
-            {clientOrgId && auth.profile?.org_member_role === 'owner' && (
-              <ClientOrgMetricsPanelWrapper orgId={clientOrgId} />
-            )}
-            <ClientOrganizationTeamSection realClientId={realClientId} />
-          </View>
+          <ScrollView
+            style={{ flex: 1, minHeight: 0 }}
+            contentContainerStyle={{ paddingBottom: bottomTabInset + spacing.md }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={{ flex: 1, alignSelf: 'stretch', paddingHorizontal: spacing.xs }}>
+              <Text style={{ ...typography.heading, fontSize: 18, color: colors.textPrimary, marginBottom: spacing.sm }}>
+                Team
+              </Text>
+              {clientOrgId && <OwnerBillingStatusCard variant="client" />}
+              {clientOrgId && auth.profile?.org_member_role === 'owner' && (
+                <ClientOrgMetricsPanelWrapper orgId={clientOrgId} />
+              )}
+              <ClientOrganizationTeamSection realClientId={realClientId} />
+            </View>
+          </ScrollView>
         )}
 
         {tab === 'profile' && (
@@ -2202,6 +2237,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             organizationId={clientOrgId}
             orgName={auth.profile?.company_name ?? null}
             orgMemberRole={auth.profile?.org_member_role ?? null}
+            scrollBottomInset={bottomTabInset}
           />
         )}
 
@@ -2745,7 +2781,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       )}
 
       <View
-        style={[styles.bottomTabBar, { paddingBottom: insets.bottom }]}
+        style={[styles.bottomTabBar, clientMobileWebBottomTabPosition, { paddingBottom: insets.bottom }]}
         onLayout={(e) => {
           const h = e.nativeEvent.layout.height;
           if (h > 0) {
@@ -2961,146 +2997,154 @@ const DiscoverView: React.FC<DiscoverProps> = ({
   // No horizontal margin around card on mobile (full bleed); keep border radius only on desktop
   const cardBorderRadius = isMobileDiscover ? 12 : 20;
 
+  const discoverScrollPaddingBottom = Math.max(spacing.xl * 2, tabBarBottomInset + spacing.lg);
+
   return (
-    <View style={styles.section}>
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionLabel}>Discover</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-          {onShowActiveOptions && (
-            <TouchableOpacity
-              onPress={onShowActiveOptions}
-              style={{ backgroundColor: colors.background, borderRadius: 6, paddingHorizontal: spacing.sm, paddingVertical: 4, borderWidth: 1, borderColor: colors.border }}
-            >
-              <Text style={{ fontSize: 11, color: colors.textPrimary, fontWeight: '600' }}>
-                {uiCopy.dashboard.activeOptionsTitle}
-              </Text>
-            </TouchableOpacity>
-          )}
-          <Text style={styles.metaText}>
-            {models.length ? `${index + 1}/${models.length}` : '0/0'}
+    <View style={[styles.section, { minHeight: 0, flex: 1 }]}>
+      <ScrollView
+        style={Platform.OS === 'web' ? { flex: 1, minHeight: 0 } : { flex: 1 }}
+        contentContainerStyle={{ paddingBottom: discoverScrollPaddingBottom }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={Platform.OS !== 'web'}
+      >
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionLabel}>Discover</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+            {onShowActiveOptions && (
+              <TouchableOpacity
+                onPress={onShowActiveOptions}
+                style={{ backgroundColor: colors.background, borderRadius: 6, paddingHorizontal: spacing.sm, paddingVertical: 4, borderWidth: 1, borderColor: colors.border }}
+              >
+                <Text style={{ fontSize: 11, color: colors.textPrimary, fontWeight: '600' }}>
+                  {uiCopy.dashboard.activeOptionsTitle}
+                </Text>
+              </TouchableOpacity>
+            )}
+            <Text style={styles.metaText}>
+              {models.length ? `${index + 1}/${models.length}` : '0/0'}
+            </Text>
+          </View>
+        </View>
+
+        {!isSharedMode && (
+          <>
+            <ModelFiltersPanel
+              filters={filters}
+              onChangeFilters={onChangeFilters}
+              onSaveFilters={onSaveFilters}
+              filterSaveStatus={filterSaveStatus === 'idle' ? null : filterSaveStatus}
+              userCity={userCity}
+            />
+            <FilterExplanationBanner filters={filters} />
+          </>
+        )}
+
+        <View style={styles.activeProjectRow}>
+          <Text style={styles.metaText}>Active project</Text>
+          <Text style={styles.activeProjectName}>
+            {isSharedMode
+              ? (sharedProjectName ?? 'Project')
+              : activeProject
+                ? activeProject.name
+                : 'None'}
           </Text>
         </View>
-      </View>
 
-      {!isSharedMode && (
-        <>
-          <ModelFiltersPanel
-            filters={filters}
-            onChangeFilters={onChangeFilters}
-            onSaveFilters={onSaveFilters}
-            filterSaveStatus={filterSaveStatus === 'idle' ? null : filterSaveStatus}
-            userCity={userCity}
-          />
-          <FilterExplanationBanner filters={filters} />
-        </>
-      )}
-
-      <View style={styles.activeProjectRow}>
-        <Text style={styles.metaText}>Active project</Text>
-        <Text style={styles.activeProjectName}>
-          {isSharedMode
-            ? (sharedProjectName ?? 'Project')
-            : activeProject
-              ? activeProject.name
-              : 'None'}
-        </Text>
-      </View>
-
-      {current ? (
-        <View style={[styles.coverRow, isMobileDiscover && { marginHorizontal: -spacing.lg }]}>
-          <View style={[styles.coverCard, { maxWidth: cardMaxWidth, borderRadius: cardBorderRadius }]}>
-            <View style={[styles.coverImageContainer, { height: cardImageHeight }]}>
-              <TouchableOpacity
-                activeOpacity={0.9}
-                onPress={() => onOpenDetails(current.id)}
-                style={styles.coverImageTouchable}
-              >
-                <StorageImage
-                  uri={current.coverUrl || undefined}
-                  style={styles.coverImage}
-                  resizeMode="cover"
-                  ttlSeconds={CLIENT_MODEL_IMAGE_TTL_SEC}
-                  fallback={
-                    <View style={[styles.coverImage, { backgroundColor: colors.border }]} />
-                  }
-                />
-              </TouchableOpacity>
-              <View style={styles.coverGradientOverlay} />
-              <View style={styles.coverMeasurementsOverlay}>
-                <Text style={styles.coverNameOnImage}>{current.name}</Text>
-                <Text style={styles.coverMeasurementsLabel}>
-                  Height {current.height} cm · Chest {current.chest || current.bust || '—'} cm · Waist {current.waist || '—'} cm · Hips {current.hips || '—'} cm
-                  {current.legsInseam ? ` · Inseam ${current.legsInseam} cm` : ''}
-                </Text>
-                <Text style={styles.coverLocationLabel}>
-                  {current.hasRealLocation
-                    ? `${summaryDisplayCity(current) || '—'} · ${current.countryCode || '—'}`
-                    : `Represented in ${current.countryCode || '—'}${
-                        current.agencyName ? ` · ${current.agencyName}` : ''
-                      }`}
-                </Text>
-                {(current.isSportsWinter || current.isSportsSummer) && (
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
-                    {current.isSportsWinter && (
-                      <View style={styles.sportsBadge}>
-                        <Text style={styles.sportsBadgeLabel}>{uiCopy.sportCategories.winterSports}</Text>
-                      </View>
-                    )}
-                    {current.isSportsSummer && (
-                      <View style={styles.sportsBadge}>
-                        <Text style={styles.sportsBadgeLabel}>{uiCopy.sportCategories.summerSports}</Text>
-                      </View>
-                    )}
-                  </View>
-                )}
+        {current ? (
+          <View style={[styles.coverRow, isMobileDiscover && { marginHorizontal: -spacing.lg }]}>
+            <View style={[styles.coverCard, { maxWidth: cardMaxWidth, borderRadius: cardBorderRadius }]}>
+              <View style={[styles.coverImageContainer, { height: cardImageHeight }]}>
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={() => onOpenDetails(current.id)}
+                  style={styles.coverImageTouchable}
+                >
+                  <StorageImage
+                    uri={current.coverUrl || undefined}
+                    style={styles.coverImage}
+                    resizeMode="cover"
+                    ttlSeconds={CLIENT_MODEL_IMAGE_TTL_SEC}
+                    fallback={
+                      <View style={[styles.coverImage, { backgroundColor: colors.border }]} />
+                    }
+                  />
+                </TouchableOpacity>
+                <View style={styles.coverGradientOverlay} />
+                <View style={styles.coverMeasurementsOverlay}>
+                  <Text style={styles.coverNameOnImage}>{current.name}</Text>
+                  <Text style={styles.coverMeasurementsLabel}>
+                    Height {current.height} cm · Chest {current.chest || current.bust || '—'} cm · Waist {current.waist || '—'} cm · Hips {current.hips || '—'} cm
+                    {current.legsInseam ? ` · Inseam ${current.legsInseam} cm` : ''}
+                  </Text>
+                  <Text style={styles.coverLocationLabel}>
+                    {current.hasRealLocation
+                      ? `${summaryDisplayCity(current) || '—'} · ${current.countryCode || '—'}`
+                      : `Represented in ${current.countryCode || '—'}${
+                          current.agencyName ? ` · ${current.agencyName}` : ''
+                        }`}
+                  </Text>
+                  {(current.isSportsWinter || current.isSportsSummer) && (
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
+                      {current.isSportsWinter && (
+                        <View style={styles.sportsBadge}>
+                          <Text style={styles.sportsBadgeLabel}>{uiCopy.sportCategories.winterSports}</Text>
+                        </View>
+                      )}
+                      {current.isSportsSummer && (
+                        <View style={styles.sportsBadge}>
+                          <Text style={styles.sportsBadgeLabel}>{uiCopy.sportCategories.summerSports}</Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
+                </View>
               </View>
-            </View>
-            <View style={styles.cardButtonRow}>
-              <TouchableOpacity style={styles.nextButton} onPress={onNext}>
-                <Text style={styles.nextButtonLabel}>Next</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.optionButtonOutline}
-                onPress={() => onOpenOptionDatePicker(current)}
-              >
-                <Text style={styles.optionButtonOutlineLabel}>Option</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.cardButtonRowSecondary}>
-              <TouchableOpacity
-                style={[styles.addToSelectionButton, addingModelIds?.has(current.id) && { opacity: 0.4 }]}
-                onPress={() => onAddToProject(current)}
-                disabled={addingModelIds?.has(current.id) ?? false}
-              >
-                <Text style={styles.addToSelectionLabel}>
-                  {addingModelIds?.has(current.id) ? 'Adding…' : 'Add to selection'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-            {current.agencyId && (
+              <View style={styles.cardButtonRow}>
+                <TouchableOpacity style={styles.nextButton} onPress={onNext}>
+                  <Text style={styles.nextButtonLabel}>Next</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.optionButtonOutline}
+                  onPress={() => onOpenOptionDatePicker(current)}
+                >
+                  <Text style={styles.optionButtonOutlineLabel}>Option</Text>
+                </TouchableOpacity>
+              </View>
               <View style={styles.cardButtonRowSecondary}>
                 <TouchableOpacity
-                  style={[styles.chatWithAgencyButton, isChatWithAgencyLoading && { opacity: 0.5 }]}
-                  onPress={() => onChatWithAgency(current.agencyId!)}
-                  disabled={isChatWithAgencyLoading}
+                  style={[styles.addToSelectionButton, addingModelIds?.has(current.id) && { opacity: 0.4 }]}
+                  onPress={() => onAddToProject(current)}
+                  disabled={addingModelIds?.has(current.id) ?? false}
                 >
-                  <Text style={styles.chatWithAgencyLabel}>
-                    {isChatWithAgencyLoading
-                      ? uiCopy.discover.chatWithAgencyLoading
-                      : uiCopy.discover.chatWithAgency}
+                  <Text style={styles.addToSelectionLabel}>
+                    {addingModelIds?.has(current.id) ? 'Adding…' : 'Add to selection'}
                   </Text>
                 </TouchableOpacity>
               </View>
-            )}
+              {current.agencyId && (
+                <View style={styles.cardButtonRowSecondary}>
+                  <TouchableOpacity
+                    style={[styles.chatWithAgencyButton, isChatWithAgencyLoading && { opacity: 0.5 }]}
+                    onPress={() => onChatWithAgency(current.agencyId!)}
+                    disabled={isChatWithAgencyLoading}
+                  >
+                    <Text style={styles.chatWithAgencyLabel}>
+                      {isChatWithAgencyLoading
+                        ? uiCopy.discover.chatWithAgencyLoading
+                        : uiCopy.discover.chatWithAgency}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
           </View>
-        </View>
-      ) : (
-        <View style={styles.emptyDiscover}>
-          <Text style={styles.emptyTitle}>{uiCopy.discover.noMoreModels}</Text>
-          <Text style={styles.emptyCopy}>{uiCopy.discover.noMoreModelsSub}</Text>
-        </View>
-      )}
-
+        ) : (
+          <View style={styles.emptyDiscover}>
+            <Text style={styles.emptyTitle}>{uiCopy.discover.noMoreModels}</Text>
+            <Text style={styles.emptyCopy}>{uiCopy.discover.noMoreModelsSub}</Text>
+          </View>
+        )}
+      </ScrollView>
     </View>
   );
 };
@@ -3112,6 +3156,8 @@ type ClientCalendarViewProps = {
   bookingEventEntries?: CalendarEntry[];
   loading: boolean;
   canAddManualEvents?: boolean;
+  /** Extra bottom padding so list clears fixed client bottom tab bar when scrolled. */
+  scrollBottomInset?: number;
   onRefresh: () => void;
   onOpenDetails: (item: ClientCalendarItem) => void;
   onOpenManualEvent: (event: UserCalendarEvent) => void;
@@ -3126,6 +3172,7 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
   bookingEventEntries = [],
   loading,
   canAddManualEvents = true,
+  scrollBottomInset = 0,
   onRefresh,
   onOpenDetails,
   onOpenManualEvent,
@@ -3233,7 +3280,10 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
   };
 
   return (
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: spacing.xl * 2 }}>
+    <ScrollView
+      style={{ flex: 1 }}
+      contentContainerStyle={{ paddingBottom: spacing.xl * 2 + scrollBottomInset }}
+    >
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionLabel}>Calendar</Text>
         <View style={{ flexDirection: 'row', gap: spacing.sm, alignItems: 'center' }}>
@@ -3458,7 +3508,8 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
 const ActiveOptionsView: React.FC<{
   onClose: () => void;
   assignmentByClientOrgId?: Record<string, ClientAssignmentFlag>;
-}> = ({ onClose, assignmentByClientOrgId = {} }) => {
+  scrollBottomInset?: number;
+}> = ({ onClose, assignmentByClientOrgId = {}, scrollBottomInset = 0 }) => {
   const [requests, setRequests] = React.useState(getOptionRequests());
   const copy = uiCopy.dashboard;
 
@@ -3518,7 +3569,10 @@ const ActiveOptionsView: React.FC<{
         </TouchableOpacity>
         <Text style={{ fontSize: 16, fontWeight: '700', color: colors.textPrimary }}>{copy.activeOptionsTitle}</Text>
       </View>
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: spacing.md }}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: spacing.md, paddingBottom: spacing.md + scrollBottomInset }}
+      >
         {requests.length === 0 && (
           <Text style={{ fontSize: 13, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.xl }}>
             {copy.activeOptionsEmpty}
@@ -3567,6 +3621,7 @@ type ProjectsProps = {
   onOpenProject: (id: string) => void;
   onShareFolder: (project: Project) => void;
   onOpenOptionChat: (threadId: string) => void;
+  scrollBottomInset?: number;
 };
 
 const ProjectsView: React.FC<ProjectsProps> = ({
@@ -3581,9 +3636,10 @@ const ProjectsView: React.FC<ProjectsProps> = ({
   onOpenProject,
   onShareFolder,
   onOpenOptionChat,
+  scrollBottomInset = 0,
 }) => {
   return (
-    <View style={styles.section}>
+    <View style={[styles.section, { minHeight: 0 }]}>
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionLabel}>My Projects</Text>
       </View>
@@ -3601,7 +3657,10 @@ const ProjectsView: React.FC<ProjectsProps> = ({
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.projectsList}>
+      <ScrollView
+        style={[styles.projectsList, { minHeight: 0 }]}
+        contentContainerStyle={{ paddingBottom: scrollBottomInset + spacing.md }}
+      >
         {projects.map((p) => (
           <View
             key={p.id}
@@ -3681,6 +3740,7 @@ type ProjectOverviewProps = {
   onBack: () => void;
   onRemoveModel: (projectId: string, modelId: string) => Promise<void>;
   onBrowseDiscover: (projectId: string) => void;
+  scrollBottomInset?: number;
 };
 
 const ProjectOverviewView: React.FC<ProjectOverviewProps> = ({
@@ -3688,6 +3748,7 @@ const ProjectOverviewView: React.FC<ProjectOverviewProps> = ({
   onBack,
   onRemoveModel,
   onBrowseDiscover,
+  scrollBottomInset = 0,
 }) => {
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
   const [errorId, setErrorId] = useState<string | null>(null);
@@ -3728,7 +3789,10 @@ const ProjectOverviewView: React.FC<ProjectOverviewProps> = ({
         <Text style={styles.overviewBrowseBtnLabel}>{uiCopy.projects.browseInDiscover}</Text>
       </TouchableOpacity>
 
-      <ScrollView style={[styles.overviewList, { flex: 1, minHeight: 0 }]} contentContainerStyle={styles.overviewListContent}>
+      <ScrollView
+        style={[styles.overviewList, { flex: 1, minHeight: 0 }]}
+        contentContainerStyle={[styles.overviewListContent, { paddingBottom: spacing.xl + scrollBottomInset }]}
+      >
         {project.models.length === 0 && (
           <View style={styles.emptyProjects}>
             <Text style={styles.emptyCopy}>{uiCopy.projects.emptyOverview}</Text>
@@ -3787,7 +3851,8 @@ const ProjectOverviewView: React.FC<ProjectOverviewProps> = ({
 const AgenciesView: React.FC<{
   clientUserId: string | null;
   onChatStarted: (conversationId: string, agencyName: string) => void;
-}> = ({ clientUserId, onChatStarted }) => {
+  scrollBottomInset?: number;
+}> = ({ clientUserId, onChatStarted, scrollBottomInset = 0 }) => {
   const [search, setSearch] = useState('');
   const [agencies, setAgencies] = useState<Agency[]>([]);
   const [agencyTypeFilter, setAgencyTypeFilter] = useState<string[]>([]);
@@ -3847,7 +3912,7 @@ const AgenciesView: React.FC<{
   };
 
   return (
-    <View style={styles.section}>
+    <View style={[styles.section, { minHeight: 0 }]}>
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionLabel}>{uiCopy.b2bChat.agenciesSectionTitle}</Text>
         <Text style={styles.metaText}>{uiCopy.b2bChat.agenciesSubtitle}</Text>
@@ -3903,7 +3968,10 @@ const AgenciesView: React.FC<{
         </View>
       )}
 
-      <ScrollView style={{ flex: 1 }}>
+      <ScrollView
+        style={{ flex: 1, minHeight: 0 }}
+        contentContainerStyle={{ paddingBottom: scrollBottomInset + spacing.md }}
+      >
         <View style={styles.agencyList}>
           {filtered.map((a) => (
             <View key={a.id} style={styles.agencyRow}>
