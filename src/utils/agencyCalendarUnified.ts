@@ -270,46 +270,58 @@ export function filterUnifiedAgencyCalendarRows(
 }
 
 /**
- * Final-pass dedup for the scrollable list: removes booking rows whose
- * option_request_id or date+model_id is already covered by an option row.
- * Apply this to `filteredUnified` / `sortedUnified` as a safety net after
- * `buildUnifiedAgencyCalendarRows` (handles edge cases such as mismatched
- * agency_id vs agency_org_id fetch scopes).
+ * Final-pass dedup using CANONICAL LIFECYCLE KEYS — never date-only.
+ *
+ * Lifecycle key hierarchy (most → least specific):
+ *   1. option_request_id (UUID, authoritative)
+ *   2. date|model_id|start_time  (composite, stable if all three present)
+ *   3. date|model_id             (composite fallback, no time info)
+ *
+ * A booking row is suppressed when its lifecycle key matches an option row's
+ * lifecycle key. Two real separate events (different times, different models)
+ * are never suppressed — date-only matching is intentionally excluded.
+ *
+ * Apply to `filteredUnified` / `sortedUnified` after `buildUnifiedAgencyCalendarRows`
+ * as a final safety net for mismatched agency_id vs agency_org_id fetch scopes.
  */
 export function dedupeUnifiedRowsByOptionRequest(
   rows: UnifiedAgencyCalendarRow[],
 ): UnifiedAgencyCalendarRow[] {
-  const optionIds = new Set<string>(
-    rows
-      .filter((r): r is Extract<UnifiedAgencyCalendarRow, { kind: 'option' }> => r.kind === 'option')
-      .map((r) => r.item.option.id),
-  );
-  const optionCalEntryIds = new Set<string>(
-    rows
-      .filter((r): r is Extract<UnifiedAgencyCalendarRow, { kind: 'option' }> => r.kind === 'option' && !!r.item.calendar_entry?.option_request_id)
-      .map((r) => r.item.calendar_entry!.option_request_id!),
-  );
-  const optionDateModel = new Set<string>(
-    rows
-      .filter((r): r is Extract<UnifiedAgencyCalendarRow, { kind: 'option' }> => r.kind === 'option' && !!r.item.option.model_id)
-      .map((r) => `${r.date}|${r.item.option.model_id}`),
-  );
-  const optionDates = new Set<string>(
-    rows
-      .filter((r): r is Extract<UnifiedAgencyCalendarRow, { kind: 'option' }> => r.kind === 'option')
-      .map((r) => r.date),
-  );
+  // Build the set of lifecycle keys represented by option rows (authoritative source).
+  const optionLifecycleKeys = new Set<string>();
+  for (const r of rows) {
+    if (r.kind !== 'option') continue;
+    const opt = r.item.option;
+    // Key 1: option_request_id — primary, exact match
+    optionLifecycleKeys.add(`id:${opt.id}`);
+    // Key 1b: from calendar_entry.option_request_id if different
+    const ceId = r.item.calendar_entry?.option_request_id;
+    if (ceId && ceId !== opt.id) optionLifecycleKeys.add(`id:${ceId}`);
+    // Key 2: date|model_id|start_time — stable composite when all three known
+    if (opt.model_id && r.date) {
+      const calStart = r.item.calendar_entry?.start_time ?? null;
+      if (calStart) {
+        optionLifecycleKeys.add(`dmt:${r.date}|${opt.model_id}|${calStart}`);
+      }
+      // Key 3: date|model_id — used only when no start_time available
+      optionLifecycleKeys.add(`dm:${r.date}|${opt.model_id}`);
+    }
+  }
+
   return rows.filter((r) => {
     if (r.kind !== 'booking') return true;
-    if (r.entry.option_request_id && optionIds.has(r.entry.option_request_id)) return false;
-    if (r.entry.option_request_id && optionCalEntryIds.has(r.entry.option_request_id)) return false;
-    if (r.entry.model_id && optionDateModel.has(`${r.entry.date ?? ''}|${r.entry.model_id}`)) return false;
-    if (r.entry.option_request_id && optionDates.has(r.date)) return false;
-    // Aggressive fallback: if the booking row's date is covered by any option row,
-    // and the booking row has no unique model_id that isn't in the option set, suppress it.
-    // This prevents orphan booking_events rows without source_option_request_id from
-    // appearing alongside the lifecycle option row.
-    if (!r.entry.option_request_id && !r.entry.model_id && optionDates.has(r.date)) return false;
+    const e = r.entry;
+    // Check Key 1: option_request_id exact match
+    if (e.option_request_id && optionLifecycleKeys.has(`id:${e.option_request_id}`)) return false;
+    // Check Key 2: date|model_id|start_time composite (only if all present)
+    if (e.model_id && e.date && e.start_time) {
+      if (optionLifecycleKeys.has(`dmt:${e.date}|${e.model_id}|${e.start_time}`)) return false;
+    }
+    // Check Key 3: date|model_id (without start_time) — only if booking has no start_time
+    // so we don't suppress a legitimately different-time event for the same model on same day
+    if (e.model_id && e.date && !e.start_time) {
+      if (optionLifecycleKeys.has(`dm:${e.date}|${e.model_id}`)) return false;
+    }
     return true;
   });
 }

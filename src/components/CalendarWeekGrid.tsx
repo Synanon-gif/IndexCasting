@@ -93,7 +93,7 @@ export const CalendarWeekGrid: React.FC<CalendarWeekGridProps> = ({
             return (
               <TouchableOpacity
                 key={date}
-                style={[styles.col, { width: colWidth, minHeight: 100 }, isSelected && styles.colSelected, isToday && !isSelected && styles.colToday]}
+                style={[styles.col, { width: colWidth, minHeight: 110 }, isSelected && styles.colSelected, isToday && !isSelected && styles.colToday]}
                 onPress={() => onSelectDay(date)}
                 activeOpacity={0.85}
               >

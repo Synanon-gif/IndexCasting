@@ -2951,6 +2951,16 @@ const DiscoverView: React.FC<DiscoverProps> = ({
   }
 
   // Normal discover mode: single-card swipe
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const { width: discoverW, height: discoverH } = useWindowDimensions();
+  const isMobileDiscover = isMobileWidth(discoverW);
+  // Tinder-style: on mobile the card fills the screen edge-to-edge; on desktop cap at 640px
+  const cardMaxWidth = isMobileDiscover ? 9999 : 640;
+  // Image height: ~68% of visible viewport height on mobile for dominant presence; fixed on desktop
+  const cardImageHeight = isMobileDiscover ? Math.round(discoverH * 0.68) : 500;
+  // No horizontal margin around card on mobile (full bleed); keep border radius only on desktop
+  const cardBorderRadius = isMobileDiscover ? 12 : 20;
+
   return (
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
@@ -2997,9 +3007,9 @@ const DiscoverView: React.FC<DiscoverProps> = ({
       </View>
 
       {current ? (
-        <View style={styles.coverRow}>
-          <View style={styles.coverCard}>
-            <View style={styles.coverImageContainer}>
+        <View style={[styles.coverRow, isMobileDiscover && { marginHorizontal: -spacing.lg }]}>
+          <View style={[styles.coverCard, { maxWidth: cardMaxWidth, borderRadius: cardBorderRadius }]}>
+            <View style={[styles.coverImageContainer, { height: cardImageHeight }]}>
               <TouchableOpacity
                 activeOpacity={0.9}
                 onPress={() => onOpenDetails(current.id)}

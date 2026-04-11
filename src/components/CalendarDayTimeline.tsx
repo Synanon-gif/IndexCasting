@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import type { CalendarScheduleBlock } from '../utils/calendarUnifiedTimeline';
 import { assignOverlapLanes, formatMinutesAsHm } from '../utils/calendarTimelineLayout';
@@ -23,6 +23,10 @@ export const CalendarDayTimeline: React.FC<CalendarDayTimelineProps> = ({
   onPrevDay,
   onNextDay,
 }) => {
+  const { height: windowHeight } = useWindowDimensions();
+  // Timeline scrollable area: fill available height (window minus header/tabs/controls estimate)
+  // nestedScrollEnabled allows this inner scroll to work inside a parent page-level ScrollView
+  const timelineMaxHeight = Math.max(300, Math.round(windowHeight * 0.55));
   const pxPerMin = HOUR_HEIGHT / 60;
 
   const { lanes, displayStartMin, totalHeight, startHour, endHour } = useMemo(() => {
@@ -79,7 +83,11 @@ export const CalendarDayTimeline: React.FC<CalendarDayTimelineProps> = ({
           <Text style={styles.navChevron}>›</Text>
         </TouchableOpacity>
       </View>
-      <ScrollView style={{ maxHeight: 520 }} showsVerticalScrollIndicator>
+      <ScrollView
+        style={{ maxHeight: timelineMaxHeight }}
+        showsVerticalScrollIndicator
+        nestedScrollEnabled
+      >
         <View style={styles.bodyRow}>
           <View style={{ width: 44 }}>
             {hours.map((h) => (
