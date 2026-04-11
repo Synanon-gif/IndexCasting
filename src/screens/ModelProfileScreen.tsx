@@ -478,9 +478,19 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     const coveredOptionIds = new Set(
       legacyEntries.map((e) => e.option_request_id).filter(Boolean),
     );
+    // Fallback dedup: same date+model_id pair already covered by a legacy entry.
+    const coveredDateModel = new Set(
+      legacyEntries
+        .filter((e) => e.model_id)
+        .map((e) => `${e.date ?? ''}|${e.model_id}`),
+    );
     const beEntries = bookingEvents
       .map(bookingEventToCalendarEntry)
-      .filter((be) => !(be.option_request_id && coveredOptionIds.has(be.option_request_id)));
+      .filter((be) => {
+        if (be.option_request_id && coveredOptionIds.has(be.option_request_id)) return false;
+        if (be.model_id && coveredDateModel.has(`${be.date ?? ''}|${be.model_id}`)) return false;
+        return true;
+      });
     setCalEntries([...legacyEntries, ...beEntries]);
   };
 

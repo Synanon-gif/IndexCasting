@@ -156,10 +156,10 @@ export function buildUnifiedAgencyCalendarRows(
   for (const be of bookingEventEntries) {
     // Primary dedup: same option_request_id already covered.
     if (be.option_request_id && coveredOptionIds.has(be.option_request_id)) continue;
-    // Fallback dedup: no option_request_id link, but same model on same date — suppress orphan.
-    if (!be.option_request_id && be.model_id) {
-      if (coveredDateModelPairs.has(`${be.date ?? ''}|${be.model_id}`)) continue;
-    }
+    // Fallback dedup: same model on same date — suppress duplicate regardless of
+    // whether option_request_id is set (handles null source_option_request_id and
+    // scope mismatches between agency_id and agency_org_id fetch paths).
+    if (be.model_id && coveredDateModelPairs.has(`${be.date ?? ''}|${be.model_id}`)) continue;
     const date = be.date ?? '';
     const category = normalizeBookingEntryCategory(be);
     let effectiveAssigneeUserId: string | null = null;
@@ -265,6 +265,34 @@ export function filterUnifiedAgencyCalendarRows(
       }
     }
 
+    return true;
+  });
+}
+
+/**
+ * Final-pass dedup for the scrollable list: removes booking rows whose
+ * option_request_id or date+model_id is already covered by an option row.
+ * Apply this to `filteredUnified` / `sortedUnified` as a safety net after
+ * `buildUnifiedAgencyCalendarRows` (handles edge cases such as mismatched
+ * agency_id vs agency_org_id fetch scopes).
+ */
+export function dedupeUnifiedRowsByOptionRequest(
+  rows: UnifiedAgencyCalendarRow[],
+): UnifiedAgencyCalendarRow[] {
+  const optionIds = new Set<string>(
+    rows
+      .filter((r): r is Extract<UnifiedAgencyCalendarRow, { kind: 'option' }> => r.kind === 'option')
+      .map((r) => r.item.option.id),
+  );
+  const optionDateModel = new Set<string>(
+    rows
+      .filter((r): r is Extract<UnifiedAgencyCalendarRow, { kind: 'option' }> => r.kind === 'option' && !!r.item.option.model_id)
+      .map((r) => `${r.date}|${r.item.option.model_id}`),
+  );
+  return rows.filter((r) => {
+    if (r.kind !== 'booking') return true;
+    if (r.entry.option_request_id && optionIds.has(r.entry.option_request_id)) return false;
+    if (r.entry.model_id && optionDateModel.has(`${r.entry.date ?? ''}|${r.entry.model_id}`)) return false;
     return true;
   });
 }

@@ -164,6 +164,7 @@ import {
   buildUnifiedAgencyCalendarRows,
   filterUnifiedAgencyCalendarRows,
   buildEventsByDateFromUnifiedRows,
+  dedupeUnifiedRowsByOptionRequest,
   type AgencyCalendarTypeFilter,
   type UnifiedAgencyCalendarRow,
 } from '../utils/agencyCalendarUnified';
@@ -3167,9 +3168,11 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
 
   const sortedUnified = useMemo(
     () =>
-      [...filteredUnified]
-        .filter((r) => r.date >= today)
-        .sort((a, b) => a.sortKey.localeCompare(b.sortKey)),
+      dedupeUnifiedRowsByOptionRequest(
+        [...filteredUnified]
+          .filter((r) => r.date >= today)
+          .sort((a, b) => a.sortKey.localeCompare(b.sortKey)),
+      ),
     [filteredUnified, today],
   );
 

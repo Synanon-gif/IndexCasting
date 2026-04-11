@@ -73,7 +73,7 @@ export function getCalendarProjectionBadge(
     const tentative = calendar_entry?.status === 'tentative';
     return {
       label: tentative ? labels.jobTentative : labels.job,
-      backgroundColor: tentative ? CALENDAR_COLORS.option : colors.buttonSkipRed,
+      backgroundColor: tentative ? CALENDAR_COLORS.option : CALENDAR_COLORS.job,
       textColor,
     };
   }
@@ -156,7 +156,7 @@ export function getBookingEntryProjectionBadge(
     const tentative = entry.status === 'tentative';
     return {
       label: tentative ? labels.jobTentative : labels.job,
-      backgroundColor: tentative ? CALENDAR_COLORS.option : colors.buttonSkipRed,
+      backgroundColor: tentative ? CALENDAR_COLORS.option : CALENDAR_COLORS.job,
       textColor,
     };
   }
@@ -176,7 +176,7 @@ export function calendarGridColorForOptionItem(item: {
   const { option, calendar_entry } = item;
   if (option.status === 'rejected') return colors.textSecondary;
   if (isJobProjection(option, calendar_entry)) {
-    return calendar_entry?.status === 'tentative' ? CALENDAR_COLORS.option : colors.buttonSkipRed;
+    return calendar_entry?.status === 'tentative' ? CALENDAR_COLORS.option : CALENDAR_COLORS.job;
   }
   if (isCastingProjection(option, calendar_entry)) return colors.textSecondary;
   const appr = deriveApprovalAttention(

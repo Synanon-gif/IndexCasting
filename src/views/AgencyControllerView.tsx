@@ -213,6 +213,7 @@ import {
   buildUnifiedAgencyCalendarRows,
   filterUnifiedAgencyCalendarRows,
   buildEventsByDateFromUnifiedRows,
+  dedupeUnifiedRowsByOptionRequest,
   type AgencyCalendarTypeFilter,
   type AgencyCalendarAssigneeFilter,
   type AgencyCalendarClientScopeFilter,
@@ -1787,9 +1788,11 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
 
   const sortedUnified = useMemo(
     () =>
-      [...filteredUnified]
-        .filter((r) => r.date >= today)
-        .sort((a, b) => a.sortKey.localeCompare(b.sortKey)),
+      dedupeUnifiedRowsByOptionRequest(
+        [...filteredUnified]
+          .filter((r) => r.date >= today)
+          .sort((a, b) => a.sortKey.localeCompare(b.sortKey)),
+      ),
     [filteredUnified, today],
   );
 
