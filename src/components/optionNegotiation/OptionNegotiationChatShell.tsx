@@ -27,7 +27,10 @@ export type OptionNegotiationChatShellProps = {
   /** Optional area above composer (agency actions, client CTAs). */
   footerTop?: React.ReactNode;
   composer: React.ReactNode;
-  /** Padding below composer (tab bar + safe area). */
+  /**
+   * Padding below composer. Use `0` when the parent shell already reserves space for the bottom tab bar
+   * (e.g. ClientWebApp `appShell` / Agency main column `paddingBottom`) so the message row sits flush above the bar.
+   */
   bottomInset: number;
   containerStyle?: ViewStyle;
   /** Responsive shell: optional third column on desktop only. */
@@ -146,6 +149,8 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     minHeight: 0,
+    width: '100%',
+    maxWidth: '100%',
     alignSelf: 'stretch',
   },
   rootWithRail: {
@@ -172,18 +177,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: spacing.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
     flexShrink: 0,
     minHeight: 52,
+    maxWidth: '100%',
   },
   headerMeta: {
     flexShrink: 0,
     paddingBottom: spacing.sm,
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: spacing.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
+    maxWidth: '100%',
   },
   backBtn: {
     flexDirection: 'row',
@@ -243,6 +250,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingTop: spacing.sm,
     paddingBottom: spacing.sm,
+    paddingHorizontal: spacing.sm,
     flexGrow: 1,
   },
   footerTop: {
@@ -250,7 +258,8 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
     paddingTop: spacing.sm,
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    maxWidth: '100%',
   },
   composerBanner: {
     flexShrink: 0,
@@ -265,6 +274,7 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
     paddingTop: spacing.sm,
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    maxWidth: '100%',
   },
 });

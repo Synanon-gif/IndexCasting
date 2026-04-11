@@ -36,7 +36,12 @@ export default function ChatLayoutFix({
 
   const tabBarReserve =
     bottomTabInset !== undefined ? bottomTabInset : BOTTOM_TAB_BAR_HEIGHT;
-  const composerBottomPadding = tabBarReserve + insets.bottom;
+  /**
+   * Parent shells (ClientWebApp appShell, Agency main column) already reserve tab bar + safe area
+   * via paddingBottom. Passing bottomTabInset={0} avoids a second gap above the tab bar.
+   */
+  const composerBottomPadding =
+    tabBarReserve === 0 ? 0 : tabBarReserve + insets.bottom;
 
   // When onBack is provided, prepend the back button to the header area.
   const headerContent = onBack ? (

@@ -1349,6 +1349,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
             conversationId={openDirectConvId}
             headerTitle={agencyDirectConvs.find((c) => c.id === openDirectConvId)?.title ?? uiCopy.model.agencyLabel}
             viewerUserId={userId ?? null}
+            composerBottomInsetOverride={0}
           />
         </View>
       )}

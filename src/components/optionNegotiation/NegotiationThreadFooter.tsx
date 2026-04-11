@@ -285,7 +285,7 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
                 : { backgroundColor: 'rgba(120,120,0,0.12)' },
           ]}
         >
-          <Text style={{ ...typography.label, fontSize: 11, color: colors.textPrimary }}>
+          <Text style={{ ...typography.label, fontSize: 11, color: colors.textPrimary, flexShrink: 1 }}>
             {request.requestType === 'casting' ? uiCopy.dashboard.threadContextCasting : uiCopy.dashboard.threadContextOption} -{' '}
             {finalStatus === 'job_confirmed'
               ? uiCopy.dashboard.optionRequestStatusJobConfirmed
@@ -620,6 +620,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   noModelBanner: {
+    alignSelf: 'stretch',
+    maxWidth: '100%',
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.sm,
     marginBottom: spacing.sm,
@@ -627,6 +629,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   finalBanner: {
+    alignSelf: 'stretch',
+    maxWidth: '100%',
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.sm,
     marginBottom: spacing.sm,

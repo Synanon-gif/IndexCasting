@@ -2225,7 +2225,6 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             onPackagePress={(meta) => { void handlePackagePress(meta); }}
             onOptionRequestDeleted={() => { void loadClientCalendar(); }}
             onOptionProjectionChanged={() => { void loadClientCalendar(); }}
-            bottomTabInset={bottomTabInset}
             onOptionThreadOpenedFromList={() => {
               optionChatReturnRef.current = { kind: 'list' };
             }}
@@ -4152,8 +4151,6 @@ type MessagesViewProps = {
   onOptionRequestDeleted?: () => void;
   /** Refresh calendar cache after negotiation actions that update projection (price, confirm, reject). */
   onOptionProjectionChanged?: () => void;
-  /** Tab bar + safe area inset for composer padding. */
-  bottomTabInset?: number;
   /** Call when user opens a thread from the in-tab list (Back returns to list only). */
   onOptionThreadOpenedFromList?: () => void;
   /** After Back from fullscreen option chat: restore previous tab when opened from discover/project/dashboard. */
@@ -4310,6 +4307,7 @@ const ClientB2BChatsPanel: React.FC<{
       headerTitle={messengerTitle}
       viewerUserId={auth.profile?.id ?? null}
       threadContext={{ type: uiCopy.b2bChat.contextOrgChat }}
+      composerBottomInsetOverride={0}
       containerStyle={b2bWebSplit ? { marginTop: 0, flex: 1 } : { flex: 1, minHeight: 0 }}
       useFlexMessengerScroll={b2bWebSplit}
       onBookingCardPress={onBookingCardPress}
@@ -4386,12 +4384,10 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   onPackagePress,
   onOptionRequestDeleted,
   onOptionProjectionChanged,
-  bottomTabInset: bottomTabInsetProp,
   onOptionThreadOpenedFromList,
   onCloseOptionNegotiation,
 }) => {
   const { deviceType } = useDeviceType();
-  const bottomTabInset = bottomTabInsetProp ?? BOTTOM_TAB_BAR_HEIGHT;
   const [negotiationCounterExpanded, setNegotiationCounterExpanded] = useState(false);
   // Mobile: NegotiationSummaryCard is collapsed by default (chips in header already show status).
   // Desktop: always visible in the right rail — this state is ignored on desktop.
@@ -5048,7 +5044,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
               </ScrollView>
             ) : null
           }
-          bottomInset={bottomTabInset}
+          bottomInset={0}
           footerTop={
             showDesktopNegotiationRail ? null : (
             <NegotiationThreadFooter
@@ -5102,7 +5098,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
             </TouchableOpacity>
           </View>
           }
-          containerStyle={{ flex: 1, minHeight: 0, marginHorizontal: -spacing.lg }}
+          containerStyle={{ flex: 1, minHeight: 0, alignSelf: 'stretch' }}
         >
           <>
             {!showDesktopNegotiationRail ? (
@@ -6261,12 +6257,12 @@ const styles = StyleSheet.create({
   },
   bottomTabLabelMobile: {
     ...typography.label,
-    fontSize: 11,
-    lineHeight: 14,
+    fontSize: 10,
+    lineHeight: 13,
     color: colors.textSecondary,
     textAlign: 'center',
     width: '100%',
-    paddingHorizontal: 2,
+    paddingHorizontal: 0,
   },
   bottomTabUnderlineMobile: {
     marginTop: 4,
@@ -7551,10 +7547,14 @@ const styles = StyleSheet.create({
   },
   chatPanelInputRow: {
     flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    minWidth: 0,
     gap: spacing.sm,
   },
   chatPanelInput: {
     flex: 1,
+    minWidth: 0,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: colors.border,

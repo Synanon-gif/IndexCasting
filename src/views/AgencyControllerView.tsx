@@ -738,7 +738,6 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
           assignmentByClientOrgId={assignmentByClientOrgId}
           onOptionRequestDeleted={() => { void loadAgencyCalendar(); }}
           onOptionProjectionChanged={() => { void loadAgencyCalendar(); }}
-          bottomTabInset={bottomTabInset}
         />
       )}
 
@@ -4432,8 +4431,6 @@ type AgencyMessagesTabProps = {
   onOptionRequestDeleted?: () => void;
   /** Refresh calendar cache after negotiation updates (price, confirm, etc.). */
   onOptionProjectionChanged?: () => void;
-  /** Tab bar + safe area inset for negotiation composer (same as AgencyControllerView content padding). */
-  bottomTabInset: number;
 };
 
 const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
@@ -4453,7 +4450,6 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   assignmentByClientOrgId = {},
   onOptionRequestDeleted,
   onOptionProjectionChanged,
-  bottomTabInset,
 }) => {
   const { width: agencyMsgWinW, height: agencyMsgWinH } = useWindowDimensions();
   const { deviceType } = useDeviceType();
@@ -4916,7 +4912,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   if (optionFullscreenActive && request) {
     return (
       <>
-        <View style={{ flex: 1, minHeight: 0, alignSelf: 'stretch', marginHorizontal: -spacing.lg }}>
+        <View style={{ flex: 1, minHeight: 0, alignSelf: 'stretch' }}>
           <OptionNegotiationChatShell
             title={`${request.clientName} · ${request.modelName}`}
             subtitle={`${request.date}${request.startTime ? ` · ${request.startTime}–${request.endTime}` : ''}`}
@@ -5004,7 +5000,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                 </ScrollView>
               ) : null
             }
-            bottomInset={bottomTabInset}
+            bottomInset={0}
             footerTop={
               showDesktopNegotiationRail ? null : (
               <NegotiationThreadFooter
@@ -5047,7 +5043,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
               ) : null
             }
             composer={
-              <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, width: '100%', minWidth: 0 }}>
                 <TextInput
                   value={chatInput}
                   onChangeText={setChatInput}
@@ -5348,6 +5344,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                         agencyId={agencyId}
                         guestLinks={guestLinksForChat}
                         modelsForShare={modelsForShare}
+                        composerBottomInsetOverride={0}
                         onOpenRelatedRequest={(optionRequestId) => {
                           setMessagesSection('optionRequests');
                           setSelectedThreadId(optionRequestId);
@@ -5399,6 +5396,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                         agencyId={agencyId}
                         guestLinks={guestLinksForChat}
                         modelsForShare={modelsForShare}
+                        composerBottomInsetOverride={0}
                         onOpenRelatedRequest={(optionRequestId) => {
                           setMessagesSection('optionRequests');
                           setSelectedThreadId(optionRequestId);
@@ -6533,7 +6531,12 @@ const s = StyleSheet.create({
   backLabel: { ...typography.label, fontSize: 11, color: colors.textSecondary },
   brand: { ...typography.headingCompact, color: colors.textPrimary, marginBottom: 0 },
   heading: { ...typography.heading, fontSize: 18, color: colors.textPrimary, marginBottom: spacing.md },
-  tabRow: { flexDirection: 'row', gap: spacing.lg, alignItems: 'center' },
+  tabRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    alignItems: 'center',
+    paddingHorizontal: spacing.xs,
+  },
   bottomBar: {
     position: 'absolute' as const,
     left: 0,
@@ -6545,8 +6548,8 @@ const s = StyleSheet.create({
     paddingVertical: spacing.sm,
     backgroundColor: colors.background,
   },
-  tabItem: { alignItems: 'center' },
-  tabLabel: { ...typography.label, color: colors.textSecondary },
+  tabItem: { alignItems: 'center', paddingHorizontal: spacing.xs, flexShrink: 0 },
+  tabLabel: { ...typography.label, fontSize: 11, color: colors.textSecondary },
   tabLabelActive: { color: colors.accentGreen },
   tabUnderline: { marginTop: 4, height: 2, width: 24, backgroundColor: colors.accentGreen, borderRadius: 1 },
   sectionLabel: { ...typography.label, color: colors.textSecondary, marginBottom: spacing.xs },
@@ -6696,9 +6699,16 @@ const s = StyleSheet.create({
     color: colors.textSecondary,
   },
   chatInput: {
-    flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 999,
-    paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
-    ...typography.body, fontSize: 12, color: colors.textPrimary,
+    flex: 1,
+    minWidth: 0,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 999,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    ...typography.body,
+    fontSize: 12,
+    color: colors.textPrimary,
   },
   chatSend: { borderRadius: 999, backgroundColor: colors.buttonOptionGreen, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, justifyContent: 'center' },
   chatSendLabel: { ...typography.label, fontSize: 11, color: colors.surface },

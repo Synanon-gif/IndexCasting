@@ -1270,9 +1270,12 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginTop: spacing.sm,
     alignItems: 'center',
+    width: '100%',
+    minWidth: 0,
   },
   chatPanelInput: {
     flex: 1,
+    minWidth: 0,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: colors.border,

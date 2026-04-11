@@ -89,6 +89,8 @@ export const NegotiationSummaryCard: React.FC<NegotiationSummaryCardProps> = ({
 
 const styles = StyleSheet.create({
   card: {
+    alignSelf: 'stretch',
+    maxWidth: '100%',
     backgroundColor: colors.surface,
     borderRadius: 12,
     borderWidth: StyleSheet.hairlineWidth,
