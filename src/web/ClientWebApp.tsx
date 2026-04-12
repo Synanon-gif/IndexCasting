@@ -3742,7 +3742,7 @@ const ProjectOverviewView: React.FC<ProjectOverviewProps> = ({
               <StorageImage
                 uri={m.coverUrl || undefined}
                 style={styles.overviewModelImage}
-                resizeMode="cover"
+                resizeMode="contain"
                 ttlSeconds={CLIENT_MODEL_IMAGE_TTL_SEC}
                 fallback={
                   <View style={[styles.overviewModelImage, { backgroundColor: colors.border }]} />
@@ -5509,7 +5509,7 @@ const ProjectDetailView: React.FC<DetailProps> = ({
                     <StorageImage
                       uri={url || undefined}
                       style={styles.detailPortfolioImage}
-                      resizeMode="cover"
+                      resizeMode="contain"
                       ttlSeconds={CLIENT_MODEL_IMAGE_TTL_SEC}
                       fallback={
                         <View style={[styles.detailPortfolioImage, { backgroundColor: colors.border }]} />

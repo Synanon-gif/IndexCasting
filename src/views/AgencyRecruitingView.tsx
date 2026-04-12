@@ -490,7 +490,7 @@ export const AgencyRecruitingView: React.FC<{
                 <StorageImage
                   uri={current.images.closeUp || current.images.fullBody || current.images.profile}
                   style={styles.cardImage}
-                  resizeMode="cover"
+                  resizeMode="contain"
                 />
               ) : (
                 <View style={styles.cardImagePlaceholder}>
@@ -588,7 +588,7 @@ export const AgencyRecruitingView: React.FC<{
                           activeOpacity={1}
                         >
                           {uri ? (
-                            <StorageImage uri={uri} style={styles.photoSwipeImage} resizeMode="cover" />
+                            <StorageImage uri={uri} style={styles.photoSwipeImage} resizeMode="contain" />
                           ) : (
                             <View style={[styles.photoSwipeImage, styles.detailPhotoPlaceholder]}>
                               <Text style={styles.detailBodyMuted}>No photo</Text>

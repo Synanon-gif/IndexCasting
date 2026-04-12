@@ -668,3 +668,80 @@ Bei Änderungen an **Discovery**, **Invite-/Claim-Flows**, **Storage/Fotos**, **
 - **RPC calls:** Any RPC or service path that touches **`client_projects`** or **`client_project_models`** SHOULD pass an **explicit `organization_id`** when the API supports it (e.g. `p_organization_id` / `clientOrgId` from `profile.organization_id` or the active team).
 - **Implicit org resolution** inside the RPC (e.g. `LIMIT 1` on membership) is allowed only as a **fallback** when the caller truly cannot supply org context — not as the preferred default.
 - **Goal:** **deterministic org binding** for users who belong to multiple organizations.
+
+---
+
+## 28. Mobile, Responsive, Chat & Produkt-UX — Kanonische Regeln (Post QA Hardening)
+
+Ergänzt `system-invariants.mdc` **### 10** (Responsive UI) und bestehende Kalender-/Negotiation-/Invite-Regeln. Bei Widerspruch zur Security-/RLS-Ebene gelten weiterhin die restriktiveren Security-Regeln; UX-/Produktkanon hier ist Review- und GA-Pflicht.
+
+### 28.1 Mobile / Responsive / Chat
+
+1. **Mobile Chat-Screens sind Vollbild-Workspaces:** Sobald ein User einen konkreten Chat / Thread / Option-Request / Booking-Thread geöffnet hat, ist das ein eigener Mobile-Workspace. In diesem Zustand darf die normale Bottom-Tab-Bar **nicht** sichtbar sein. Der Composer muss so weit wie möglich nach unten an den Screenrand gezogen werden; der sichtbare Chat-Content maximalen vertikalen Raum erhalten. Gilt u. a. für: Agency↔Client-Org-Chat, Agency↔Model-Chat, Option-/Negotiation-Thread, booking-/projektbezogener Chat, Guest-/External-Chat sofern als Chat-Workspace geöffnet.
+
+2. **Chat-Liste vs. Chat-Detail strikt trennen:** Chat-Übersichten dürfen Search + Filter + Tab-Bar zeigen. Geöffnete Chats dürfen diese Listen-/Filter-Elemente **nicht** weiter sichtbar halten, wenn dadurch Content-Höhe verloren geht. Mobile UX: **Übersicht = Listenmodus**, **Detail = Vollbild-Chatmodus** (WhatsApp-artig).
+
+3. **Header-Compaction außerhalb des Dashboards:** Der große „INDEX CASTING“-Header darf außerhalb des Dashboards keinen unnötigen Platz verbrauchen. Alle Non-Dashboard-Screens nutzen einen **kompakten** Header: Branding sichtbar, Help/Logout erreichbar, maximaler Platz für Content. **Verboten:** doppelte Titelzeilen wie „MESSAGES“ + darunter nochmals die Arbeitsfläche; „CALENDAR“ + darunter übergroße Leerflächen ohne Nutzen.
+
+4. **Horizontale Controls bleiben horizontal:** Filter-Pills, Smart-Attention-Pills, View-Mode-Pills, Tab-Pills und Lifecycle-Chips **horizontal**; kein vertikales Zerbrechen / Letter-Stacking. Technik: `minWidth: 0`, `flexShrink`, horizontale Scrollbarkeit; **kein** Wrap für kritische Kontrollzeilen auf Mobile.
+
+5. **Bottom-Tab-Bar auf Mobile vollständig:** Mobile Bottom Navigation darf **keine** kanonischen Tabs verlieren. Wenn horizontal scrollbar, müssen **alle** kanonischen Tabs weiterhin erreichbar sein. Responsive-Fixes: nur Darstellung anpassen, **nie** Tabs entfernen.
+
+6. **Volle Breite als Mobile-Default:** Mobile Screens nutzen die verfügbare Breite maximal; große seitliche Leerflächen sind verboten (außer bewusst bei Dialogen/Modals). Bilder, Karten, Discover-Cards, Projects, Packages, Chat-Inhalte, Kalenderflächen füllen den Screen sinnvoll. Responsive-Fixes müssen die **echte Nutzfläche** verbessern, nicht nur Kosmetik.
+
+### 28.2 Kalender
+
+7. **Ein kanonisches sichtbares Event pro Lifecycle:** Pro Lifecycle (Option / Casting / Job) darf pro sichtbarem Termin nur **ein** kanonisches Event existieren. Notes / synced booking info / booking details **niemals** als zweites, separates Event neben demselben Lifecycle. Fortschritt Option → Casting → Job: Anzeige auf den **aktuellen** kanonischen Zustand mergen; sichtbare Kalender-Events folgen dem kanonischen Lifecycle, nicht historischen Nebeneinträgen.
+
+8. **Notes = Metadaten, keine eigenständigen Lifecycle-Events:** Shared notes / booking notes / synced booking notes sind Metadaten des Events (Details, Booking-Overlay, Calendar-Entry), **nicht** ein zweites Listenelement im Kalender. Gilt für Client, Agency, Model.
+
+9. **Month / Week / Day strikt isoliert:** Nur der gewählte Modus rendern — bei „Month“ kein Week-/Day-Content mit; bei „Week“ kein Month-Agenda/Month-Detail mit; bei „Day“ nur Day-Content. View-Modi **gegenseitig exklusiv**.
+
+10. **Kalender-Scrollpflicht:** Kalender-Ansichten dürfen nicht vertikal „eingesperrt“ sein. User muss auf Mobile und Desktop an Suchleiste, Filter, Event-Liste, Details und untere Bereiche gelangen. Keine nested scroll traps ohne echten Bedarf; Page-level scrolling ist Default, wenn sonst Content unerreichbar wird.
+
+11. **Kalenderfarben semantisch und kanonisch:** Option / Casting / Job überall **dieselbe** Farbsemantik. Ist ein Lifecycle in der UI als Job bestätigt, darf **kein** zweiter Eintrag mit alter Option-Farbe daneben stehen. Farbe folgt dem **aktuellen** kanonischen Lifecycle-State.
+
+### 28.3 Negotiation / Verfügbarkeit / Bestätigung
+
+12. **Preisverhandlung und Verfügbarkeitsbestätigung sind getrennte Achsen:** Beide können unabhängig fortschreiten. Gültige Zustände u. a.: Preis settled, Verfügbarkeit offen; Verfügbarkeit teilweise bestätigt, Preis offen; beides offen; beides abgeschlossen. UI, Header, Attention, Kalender und Tab-Dots müssen diese Trennung respektieren (ergänzt Smart-Attention-Regeln in §26 / system-invariants).
+
+13. **Model-Account-Logik kanonisch aus echter Verknüpfung:** „Model has account“ = echte Verknüpfung Model↔User; Ableitungen wie `model_account_linked` müssen dazu synchron sein. Kein blindes „no model account“, wenn das Model verknüpft ist. Offene Requests nach Model-Claim / Linking **nachziehen**.
+
+14. **Mit Model-Account:** Option inhaltlich final confirmed erst, wenn Preis (Client↔Agency) **und** Verfügbarkeit (Agency **und** Model) den Produktregeln entsprechen; danach kann der Client den Job final bestätigen. Smart Attention muss u. a. unterscheiden: waiting for model, action required agency, waiting for agency on price, waiting for client to finalize job.
+
+15. **Ohne Model-Account:** Verfügbarkeitsseite läuft über die Agency; kein `waiting_for_model`-Fake. Systemnachrichten, Kalender und Attention müssen diesen Branch sauber abbilden (`model_account_linked ?? false` bleibt maßgeblich — siehe system-invariants **Negotiation B**).
+
+### 28.4 Invite / Claim / Workspace
+
+16. **Landing im richtigen Workspace:** Nach Booker-Invite, Employee-Invite oder Model-Claim muss der User **direkt** im korrekten Workspace landen. Verboten: falscher Fallback-Screen, generischer Apply-as-Model trotz zugewiesenem Agency-Model, fehlende Membership, falsche Org-Zuordnung, richtiges Profil aber falscher Workspace. Email-Bestätigung, Re-Login und Token-Persistence müssen den Flow überleben (siehe §4b, §27.5–27.6, `invite-finalization.mdc`).
+
+17. **Finalisierung = Identität + Runtime-Routing:** Abgeschlossen erst wenn Profil/Rolle, Membership, Org-Zuordnung **und** Runtime-Routing / Workspace-Resolver stimmen und die UI ohne Reload den richtigen Screen zeigt (Backend-Finalisierung nicht nur UI-Gefühl).
+
+### 28.5 Bilder / Storage
+
+18. **Sichtbarkeit = auflösbar:** Wo das Produkt Bilder zeigen soll (Discovery, Packages, Projects, Recruiting Applications, Model Profiles, Previews), müssen Storage-Objekte **überall** zu renderbaren URLs aufgelöst werden; `supabase-storage://` zuverlässig normalisieren/signen. „Object not found“ bei eigentlich sichtbaren Bildern = **GA-blocking**.
+
+19. **Bildsichtbarkeit als Produktvertrag:** Wenn ein Screen Bildsichtbarkeit verspricht, darf keine Rolle dauerhaft leere Kacheln sehen, obwohl der Vertrag Bilder vorsieht (Alignment mit §27.1, §27.8, `CLIENT_MODEL_PHOTO_VISIBILITY.md`).
+
+### 28.6 Recruiting / Applications
+
+20. **Globale Applications:** Wenn das Produkt globale Model-Applications für alle Agenturen vorsieht, muss Recruiting so filtern/rendern — **keine** versehentliche `agency_id`-Verengung, die globale Bewerbungen unsichtbar macht.
+
+21. **Chat vor Accept:** Agency muss mit Bewerber-Model chatten können, **bevor** die Application akzeptiert wird. Accept darf keinen finalen Agency-Link voraussetzen, wenn das Produkt Vorab-Chat erlaubt. Thread und Application-Entity müssen konsistent verknüpft sein.
+
+22. **Finale Aufnahme mit Model-Bestätigung:** Intent-to-accept durch Agency kann vorher stehen; **finale** Agency-Zuordnung erst nach Model-Bestätigung, wenn das Produkt den Zwei-Schritt so definiert. UI und Backend müssen den Zwei-Schritt widerspiegeln.
+
+### 28.7 Review — Stop-Bedingungen („nicht done“)
+
+Ein Review ist **nicht** als erledigt zu markieren, solange noch vorkommt:
+
+- Chat-Composer sitzt im geöffneten Chat nicht unten am Screen / Bottom-Tab-Bar noch sichtbar im Chat-Workspace
+- Smart-Attention-Pills brechen vertikal um
+- Kalender: Lifecycle-Duplikate (Option + Job, Casting + Job, Note als zweites Event)
+- Month / Week / Day gleichzeitig gerendert
+- Scrollen in Kalender- oder Chat-Details blockiert / nested scroll trap ohne Not
+- Mobile nutzt die Breite nicht sinnvoll (künstliche Seitenränder)
+- Invite/Claim landet im falschen Workspace
+- Model mit Account wird noch als „No model account“ behandelt
+- Bilder: `resolveStorageUrl failed` / `Object not found` trotz Produkt-Sichtbarkeit
+- Recruiting: global gedacht, aber nicht global sichtbar

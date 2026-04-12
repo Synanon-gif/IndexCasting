@@ -610,7 +610,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
                       <Image
                         source={{ uri: resolvedFileUrl }}
                         style={styles.attachedImage}
-                        resizeMode="cover"
+                        resizeMode="contain"
                       />
                     </Pressable>
                   ) : (

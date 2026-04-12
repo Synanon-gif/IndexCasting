@@ -510,7 +510,7 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
         <Image
           source={{ uri: photo.displayUrl ?? undefined }}
           style={s.thumbnail}
-          resizeMode="cover"
+          resizeMode="contain"
         />
 
         {/* Label */}

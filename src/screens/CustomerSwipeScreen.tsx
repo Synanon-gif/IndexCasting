@@ -325,7 +325,7 @@ export const CustomerSwipeScreen: React.FC = () => {
             <StorageImage
               uri={current.gallery[0]}
               style={styles.image}
-              resizeMode="cover"
+              resizeMode="contain"
             />
           </View>
 
@@ -537,7 +537,7 @@ const DetailModal: React.FC<DetailModalProps> = ({ model, onClose }) => {
               <StorageImage
                 uri={model.gallery[0]}
                 style={styles.detailHeroImage}
-                resizeMode="cover"
+                resizeMode="contain"
               />
             </View>
 

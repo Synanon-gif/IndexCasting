@@ -132,7 +132,7 @@ export function PublicAgencyProfileScreen({
           <StorageImage
             uri={item.cover_url}
             style={{ width: cellWidth, height: cellHeight, borderRadius: 4 }}
-            resizeMode="cover"
+            resizeMode="contain"
           />
         ) : (
           <View

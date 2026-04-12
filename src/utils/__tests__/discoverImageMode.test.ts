@@ -5,7 +5,7 @@ describe('getHeroResizeMode', () => {
     expect(getHeroResizeMode(false)).toBe('contain');
   });
 
-  it('uses cover on mobile width', () => {
-    expect(getHeroResizeMode(true)).toBe('cover');
+  it('uses contain on mobile width (full image visible everywhere)', () => {
+    expect(getHeroResizeMode(true)).toBe('contain');
   });
 });

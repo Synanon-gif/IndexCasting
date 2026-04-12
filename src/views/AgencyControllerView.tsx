@@ -3564,7 +3564,7 @@ const MyModelsTab: React.FC<{
                       <Image
                         source={{ uri: objUrl }}
                         style={{ width: 60, height: 80, borderRadius: 4, borderWidth: i === 0 ? 2 : 1, borderColor: i === 0 ? colors.textPrimary : colors.border }}
-                        resizeMode="cover"
+                        resizeMode="contain"
                       />
                       {i === 0 && (
                         <View style={{ position: 'absolute', bottom: 2, left: 2, right: 2, backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 2, paddingVertical: 1 }}>
@@ -3632,7 +3632,7 @@ const MyModelsTab: React.FC<{
                       <Image
                         source={{ uri: objUrl }}
                         style={{ width: 60, height: 80, borderRadius: 4, borderWidth: 1, borderColor: colors.border }}
-                        resizeMode="cover"
+                        resizeMode="contain"
                       />
                       <View style={{ position: 'absolute', bottom: 2, left: 2, right: 2, backgroundColor: 'rgba(255,152,0,0.75)', borderRadius: 2, paddingVertical: 1 }}>
                         <Text style={{ color: '#fff', fontSize: 7, textAlign: 'center' }}>POLAROID</Text>

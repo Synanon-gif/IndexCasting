@@ -100,7 +100,7 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
                 <StorageImage
                   uri={m.coverUrl}
                   style={styles.cardImage}
-                  resizeMode="cover"
+                  resizeMode="contain"
                 />
                 <View style={styles.cardOverlay}>
                   <Text style={styles.cardName}>{m.name}</Text>

@@ -353,7 +353,7 @@ export function ClientOrgProfileScreen({
                   <StorageImage
                     uri={item.image_url}
                     style={{ width: cellWidth, height: cellHeight, borderRadius: 4 }}
-                    resizeMode="cover"
+                    resizeMode="contain"
                   />
                   {/* Delete overlay for owner */}
                   {isOwner && !isDeleting(item.id) && (

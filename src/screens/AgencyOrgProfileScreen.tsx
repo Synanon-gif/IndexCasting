@@ -261,7 +261,7 @@ export function AgencyOrgProfileScreen({
             <StorageImage
               uri={coverUri}
               style={{ width: cellWidth, height: imgH, borderRadius: 4 }}
-              resizeMode="cover"
+              resizeMode="contain"
             />
           ) : (
             <View

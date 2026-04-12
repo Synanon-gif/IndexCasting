@@ -439,7 +439,7 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
                   <Image
                     source={{ uri: getCoverImage(m)! }}
                     style={styles.modelImage}
-                    resizeMode="cover"
+                    resizeMode="contain"
                   />
                 ) : (
                   <View style={styles.modelImagePlaceholder}>
@@ -644,7 +644,7 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
                     <Image
                       source={{ uri: coverImage }}
                       style={styles.modelImage}
-                      resizeMode="cover"
+                      resizeMode="contain"
                     />
                     <GuestWatermark />
                     {imageCount > 1 && (

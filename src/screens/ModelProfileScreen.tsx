@@ -892,7 +892,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                               <StorageImage
                                 uri={photo.url}
                                 style={{ width: '100%', height: '100%' }}
-                                resizeMode="cover"
+                                resizeMode="contain"
                               />
                             </View>
                           ))}
@@ -921,7 +921,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                               <StorageImage
                                 uri={photo.url}
                                 style={{ width: '100%', height: '100%' }}
-                                resizeMode="cover"
+                                resizeMode="contain"
                               />
                             </View>
                           ))}

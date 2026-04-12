@@ -51,7 +51,7 @@ interface StorageImageProps {
 export function StorageImage({
   uri,
   style,
-  resizeMode = 'cover',
+  resizeMode = 'contain',
   ttlSeconds = 3_600,
   fallback,
   onLoad,

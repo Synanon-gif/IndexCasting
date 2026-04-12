@@ -510,7 +510,7 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 activeOpacity={0.8}
               >
                 {images[slot] ? (
-                  <Image source={{ uri: images[slot] }} style={styles.previewImage} resizeMode="cover" />
+                  <Image source={{ uri: images[slot] }} style={styles.previewImage} resizeMode="contain" />
                 ) : (
                   <Text style={styles.imagePlaceholder}>+ Photo</Text>
                 )}

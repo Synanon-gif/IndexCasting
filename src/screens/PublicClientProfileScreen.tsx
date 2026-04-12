@@ -112,7 +112,7 @@ export function PublicClientProfileScreen({
         <StorageImage
           uri={item.image_url}
           style={{ width: cellWidth, height: cellHeight, borderRadius: 4 }}
-          resizeMode="cover"
+          resizeMode="contain"
         />
         {item.title ? (
           <Text style={s.cellName} numberOfLines={1}>

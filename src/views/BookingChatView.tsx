@@ -327,7 +327,7 @@ export const BookingChatView: React.FC<Props> = ({
                   key={idx}
                   uri={uri!}
                   style={isMobileNative ? styles.profileImageMobile : styles.profileImage}
-                  resizeMode="cover"
+                  resizeMode="contain"
                 />
               ))}
             </ScrollView>
@@ -352,7 +352,7 @@ export const BookingChatView: React.FC<Props> = ({
                     <Image
                       source={{ uri: resolvedFileUrl }}
                       style={styles.attachedImage}
-                      resizeMode="cover"
+                      resizeMode="contain"
                     />
                   </Pressable>
                 ) : (
