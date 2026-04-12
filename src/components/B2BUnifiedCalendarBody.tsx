@@ -8,7 +8,6 @@ import { UnifiedCalendarAgenda } from './UnifiedCalendarAgenda';
 import { uiCopy } from '../constants/uiCopy';
 import { isMobileWidth } from '../theme/breakpoints';
 import type { UnifiedAgencyCalendarRow } from '../utils/agencyCalendarUnified';
-import { dedupeUnifiedRowsByOptionRequest } from '../utils/agencyCalendarUnified';
 import type { CalendarProjectionViewerRole } from '../utils/calendarProjectionLabel';
 import type { ClientAssignmentFlag } from '../services/clientAssignmentsSupabase';
 import {
@@ -57,11 +56,6 @@ export const B2BUnifiedCalendarBody: React.FC<B2BUnifiedCalendarBodyProps> = ({
   const today = useMemo(() => todayYmd(), []);
   const focusDate = selectedDate ?? today;
 
-  const dedupedUnified = useMemo(
-    () => dedupeUnifiedRowsByOptionRequest(filteredUnified),
-    [filteredUnified],
-  );
-
   const syncMonthToDate = (d: string) => {
     const [y, m] = d.split('-').map(Number);
     setCalendarMonth({ year: y, month: m - 1 });
@@ -73,8 +67,8 @@ export const B2BUnifiedCalendarBody: React.FC<B2BUnifiedCalendarBodyProps> = ({
   };
 
   const timelineEvents = useMemo(
-    () => buildTimelineEventsFromUnifiedRows(dedupedUnified, viewerRole, uiCopy.calendar.projectionBadge),
-    [dedupedUnified, viewerRole],
+    () => buildTimelineEventsFromUnifiedRows(filteredUnified, viewerRole, uiCopy.calendar.projectionBadge),
+    [filteredUnified, viewerRole],
   );
 
   const weekStart = useMemo(() => startOfWeekMonday(focusDate), [focusDate]);
@@ -104,11 +98,8 @@ export const B2BUnifiedCalendarBody: React.FC<B2BUnifiedCalendarBodyProps> = ({
   const viewModeHint = useMemo(() => {
     if (viewMode === 'week') return uiCopy.calendar.viewModeHintWeek;
     if (viewMode === 'day') return uiCopy.calendar.viewModeHintDay;
-    if (layoutIsMobile && viewMode === 'month') return uiCopy.calendar.viewModeHintMonthAgenda;
     return uiCopy.calendar.viewModeHintMonth;
-  }, [viewMode, layoutIsMobile]);
-
-  const showMobileMonthAgenda = layoutIsMobile && viewMode === 'month';
+  }, [viewMode]);
 
   return (
     <View>
@@ -123,24 +114,49 @@ export const B2BUnifiedCalendarBody: React.FC<B2BUnifiedCalendarBodyProps> = ({
         sectionHint={viewModeHint}
       />
 
-      {showMobileMonthAgenda ? (
-        <UnifiedCalendarAgenda
-          calendarMonth={calendarMonth}
-          setCalendarMonth={setCalendarMonth}
-          selectedDate={selectedDate}
-          setSelectedDate={setSelectedDate}
-          rows={dedupedUnified}
-          viewerRole={viewerRole}
-          assignmentByClientOrgId={assignmentByClientOrgId}
-          onOpenUnifiedRow={onOpenUnifiedRow}
-        />
-      ) : (
+      {/* Month grid — always visible in month mode (full grid on mobile + desktop) */}
+      {viewMode === 'month' && (
         <MonthCalendarView
           year={calendarMonth.year}
           month={calendarMonth.month}
           eventsByDate={eventsByDate}
           selectedDate={selectedDate}
-          compact={viewMode !== 'month'}
+          compact={false}
+          onSelectDay={(d) => {
+            shiftFocus(d);
+          }}
+          onPrevMonth={() =>
+            setCalendarMonth((m) => (m.month === 0 ? { year: m.year - 1, month: 11 } : { year: m.year, month: m.month - 1 }))
+          }
+          onNextMonth={() =>
+            setCalendarMonth((m) => (m.month === 11 ? { year: m.year + 1, month: 0 } : { year: m.year, month: m.month + 1 }))
+          }
+        />
+      )}
+
+      {/* Mobile month: scrollable agenda list below the full month grid */}
+      {layoutIsMobile && viewMode === 'month' && (
+        <UnifiedCalendarAgenda
+          calendarMonth={calendarMonth}
+          setCalendarMonth={setCalendarMonth}
+          selectedDate={selectedDate}
+          setSelectedDate={setSelectedDate}
+          rows={filteredUnified}
+          viewerRole={viewerRole}
+          assignmentByClientOrgId={assignmentByClientOrgId}
+          onOpenUnifiedRow={onOpenUnifiedRow}
+          hideHeader
+        />
+      )}
+
+      {/* Week/day: compact month picker on non-mobile */}
+      {!layoutIsMobile && viewMode !== 'month' && (
+        <MonthCalendarView
+          year={calendarMonth.year}
+          month={calendarMonth.month}
+          eventsByDate={eventsByDate}
+          selectedDate={selectedDate}
+          compact={true}
           onSelectDay={(d) => {
             shiftFocus(d);
           }}

@@ -607,9 +607,8 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   const modelCalendarViewHint = useMemo(() => {
     if (calendarViewMode === 'week') return uiCopy.calendar.viewModeHintWeek;
     if (calendarViewMode === 'day') return uiCopy.calendar.viewModeHintDay;
-    if (isMobileModel && calendarViewMode === 'month') return uiCopy.calendar.viewModeHintMonthAgenda;
     return uiCopy.calendar.viewModeHintMonth;
-  }, [calendarViewMode, isMobileModel]);
+  }, [calendarViewMode]);
 
   const shiftModelFocus = (d: string) => {
     setSelectedDate(d);
@@ -941,13 +940,28 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
             sectionHint={modelCalendarViewHint}
           />
 
-          {isMobileModel && calendarViewMode === 'month' ? (
+          {/* Full month grid — always shown in month mode (mobile + desktop) */}
+          {calendarViewMode === 'month' && (
+            <MonthCalendarView
+              year={calMonth.year}
+              month={calMonth.month}
+              eventsByDate={modelEventsByDate}
+              selectedDate={selectedDate}
+              compact={false}
+              onSelectDay={(d) => shiftModelFocus(d)}
+              onPrevMonth={() => setCalMonth((p) => (p.month === 0 ? { year: p.year - 1, month: 11 } : { ...p, month: p.month - 1 }))}
+              onNextMonth={() => setCalMonth((p) => (p.month === 11 ? { year: p.year + 1, month: 0 } : { ...p, month: p.month + 1 }))}
+            />
+          )}
+          {/* Mobile month: agenda list below the grid */}
+          {isMobileModel && calendarViewMode === 'month' && (
             <ModelCalendarMonthAgenda
               calendarMonth={calMonth}
               setCalendarMonth={setCalMonth}
               selectedDate={selectedDate}
               setSelectedDate={setSelectedDate}
               entries={calEntries}
+              hideHeader
               onEntryPress={(entry) => {
                 setOpenEntry(entry);
                 setSharedNoteDraft('');
@@ -959,13 +973,15 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                 setModelNotesDraft(existing);
               }}
             />
-          ) : (
+          )}
+          {/* Non-mobile, non-month: compact date picker */}
+          {!isMobileModel && calendarViewMode !== 'month' && (
             <MonthCalendarView
               year={calMonth.year}
               month={calMonth.month}
               eventsByDate={modelEventsByDate}
               selectedDate={selectedDate}
-              compact={calendarViewMode !== 'month'}
+              compact={true}
               onSelectDay={(d) => shiftModelFocus(d)}
               onPrevMonth={() => setCalMonth((p) => (p.month === 0 ? { year: p.year - 1, month: 11 } : { ...p, month: p.month - 1 }))}
               onNextMonth={() => setCalMonth((p) => (p.month === 11 ? { year: p.year + 1, month: 0 } : { ...p, month: p.month + 1 }))}

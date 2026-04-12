@@ -160,7 +160,6 @@ import type { CalendarViewMode } from '../components/CalendarViewModeBar';
 import { OPTION_REQUEST_CHAT_STATUS_COLORS } from '../utils/calendarColors';
 import {
   getCalendarProjectionBadge,
-  dedupeCalendarGridEventsByOptionRequest,
 } from '../utils/calendarProjectionLabel';
 import { getCalendarDetailNextStepText } from '../utils/calendarDetailNextStep';
 import {
@@ -3317,25 +3316,24 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
 
   const filteredUnified = useMemo(
     () =>
-      filterUnifiedAgencyCalendarRows(unifiedAll, {
-        modelQuery: '',
-        fromDate: '',
-        toDate: '',
-        typeFilter,
-        assigneeFilter: 'all',
-        clientScope: 'all',
-        urgency: 'all',
-        currentUserId: null,
-        assignmentByClientOrgId,
-      }),
+      dedupeUnifiedRowsByOptionRequest(
+        filterUnifiedAgencyCalendarRows(unifiedAll, {
+          modelQuery: '',
+          fromDate: '',
+          toDate: '',
+          typeFilter,
+          assigneeFilter: 'all',
+          clientScope: 'all',
+          urgency: 'all',
+          currentUserId: null,
+          assignmentByClientOrgId,
+        }),
+      ),
     [unifiedAll, assignmentByClientOrgId, typeFilter],
   );
 
   const eventsByDate = useMemo(
-    () =>
-      dedupeCalendarGridEventsByOptionRequest(
-        buildEventsByDateFromUnifiedRows(filteredUnified),
-      ),
+    () => buildEventsByDateFromUnifiedRows(filteredUnified),
     [filteredUnified],
   );
 
@@ -3343,11 +3341,9 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
 
   const sortedUnified = useMemo(
     () =>
-      dedupeUnifiedRowsByOptionRequest(
-        [...filteredUnified]
-          .filter((r) => r.date >= today)
-          .sort((a, b) => a.sortKey.localeCompare(b.sortKey)),
-      ),
+      [...filteredUnified]
+        .filter((r) => r.date >= today)
+        .sort((a, b) => a.sortKey.localeCompare(b.sortKey)),
     [filteredUnified, today],
   );
 

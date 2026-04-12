@@ -26,6 +26,8 @@ export type UnifiedCalendarAgendaProps = {
   viewerRole: CalendarProjectionViewerRole;
   assignmentByClientOrgId: Record<string, ClientAssignmentFlag>;
   onOpenUnifiedRow: (row: UnifiedAgencyCalendarRow) => void;
+  /** When true, suppress the built-in month header (parent already shows one). */
+  hideHeader?: boolean;
 };
 
 function rowInCalendarMonth(row: UnifiedAgencyCalendarRow, year: number, month0: number): boolean {
@@ -53,9 +55,9 @@ export const UnifiedCalendarAgenda: React.FC<UnifiedCalendarAgendaProps> = ({
   viewerRole,
   assignmentByClientOrgId,
   onOpenUnifiedRow,
+  hideHeader = false,
 }) => {
   const { year, month } = calendarMonth;
-  const monthLabel = new Date(year, month).toLocaleString('en-US', { month: 'long', year: 'numeric' });
 
   const rowsInMonth = useMemo(
     () => rows.filter((r) => rowInCalendarMonth(r, year, month)),
@@ -101,27 +103,31 @@ export const UnifiedCalendarAgenda: React.FC<UnifiedCalendarAgendaProps> = ({
 
   return (
     <View style={styles.wrapper}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() =>
-            setCalendarMonth((m) => (m.month === 0 ? { year: m.year - 1, month: 11 } : { year: m.year, month: m.month - 1 }))
-          }
-          hitSlop={12}
-          style={styles.navBtn}
-        >
-          <Text style={styles.navLabel}>‹</Text>
-        </TouchableOpacity>
-        <Text style={styles.monthTitle}>{monthLabel}</Text>
-        <TouchableOpacity
-          onPress={() =>
-            setCalendarMonth((m) => (m.month === 11 ? { year: m.year + 1, month: 0 } : { year: m.year, month: m.month + 1 }))
-          }
-          hitSlop={12}
-          style={styles.navBtn}
-        >
-          <Text style={styles.navLabel}>›</Text>
-        </TouchableOpacity>
-      </View>
+      {!hideHeader && (
+        <View style={styles.header}>
+          <TouchableOpacity
+            onPress={() =>
+              setCalendarMonth((m) => (m.month === 0 ? { year: m.year - 1, month: 11 } : { year: m.year, month: m.month - 1 }))
+            }
+            hitSlop={12}
+            style={styles.navBtn}
+          >
+            <Text style={styles.navLabel}>‹</Text>
+          </TouchableOpacity>
+          <Text style={styles.monthTitle}>
+            {new Date(year, month).toLocaleString('en-US', { month: 'long', year: 'numeric' })}
+          </Text>
+          <TouchableOpacity
+            onPress={() =>
+              setCalendarMonth((m) => (m.month === 11 ? { year: m.year + 1, month: 0 } : { year: m.year, month: m.month + 1 }))
+            }
+            hitSlop={12}
+            style={styles.navBtn}
+          >
+            <Text style={styles.navLabel}>›</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {sections.length === 0 ? (
         <Text style={styles.empty}>{uiCopy.calendar.agendaEmptyMonth}</Text>

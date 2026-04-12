@@ -109,6 +109,11 @@ export function needsAgencyActionForOption(item: AgencyCalendarItem): boolean {
 /**
  * Merge calendar sources. Booking rows that duplicate an option_request already represented
  * in `items` (same option_request_id on calendar_entry) are skipped — same rule as the view.
+ *
+ * Multi-layer dedup ensures a single lifecycle never produces two visible calendar events:
+ *   L1 — option_request_id exact match
+ *   L2 — date + model_id composite
+ *   L3 — date + normalised model_name (catches id mismatches between data sources)
  */
 export function buildUnifiedAgencyCalendarRows(
   items: AgencyCalendarItem[],
@@ -143,24 +148,48 @@ export function buildUnifiedAgencyCalendarRows(
     };
   });
 
-  // Fallback dedup set: date + model_id pairs already covered by option rows.
-  // booking_events with source_option_request_id = null cannot be matched by ID, so we
-  // suppress them when the same model appears on the same date via an option row.
-  const coveredDateModelPairs = new Set<string>(
-    optionRows
-      .filter((r): r is Extract<UnifiedAgencyCalendarRow, { kind: 'option' }> => r.kind === 'option' && !!r.item.option.model_id)
-      .map((r) => `${r.date}|${r.item.option.model_id}`),
-  );
+  // L2: date + model_id pairs already covered by option rows
+  const coveredDateModelPairs = new Set<string>();
+  // L3: date + normalised model name
+  const coveredDateModelNames = new Set<string>();
+  // Also collect bare dates that have at least one option row (for last-resort suppression)
+  const datesWithOptions = new Set<string>();
+
+  for (const r of optionRows) {
+    if (r.kind !== 'option') continue;
+    const opt = r.item.option;
+    if (r.date) datesWithOptions.add(r.date);
+    if (opt.model_id && r.date) {
+      coveredDateModelPairs.add(`${r.date}|${opt.model_id}`);
+    }
+    const name = (opt.model_name ?? '').trim().toLowerCase();
+    if (name && r.date) {
+      coveredDateModelNames.add(`${r.date}|${name}`);
+    }
+  }
 
   const bookingRows: UnifiedAgencyCalendarRow[] = [];
   for (const be of bookingEventEntries) {
-    // Primary dedup: same option_request_id already covered.
+    const beDate = be.date ?? '';
+    // L1: option_request_id exact match
     if (be.option_request_id && coveredOptionIds.has(be.option_request_id)) continue;
-    // Fallback dedup: same model on same date — suppress duplicate regardless of
-    // whether option_request_id is set (handles null source_option_request_id and
-    // scope mismatches between agency_id and agency_org_id fetch paths).
-    if (be.model_id && coveredDateModelPairs.has(`${be.date ?? ''}|${be.model_id}`)) continue;
-    const date = be.date ?? '';
+    // L2: date + model_id composite
+    if (be.model_id && coveredDateModelPairs.has(`${beDate}|${be.model_id}`)) continue;
+    // L3: date + model name (from booking title or CalendarEntry title)
+    const beName = (be.title ?? '').trim().toLowerCase();
+    if (beName && coveredDateModelNames.has(`${beDate}|${beName}`)) continue;
+    // L3b: check if any option row's model_name appears inside the booking title
+    if (beName && beDate && datesWithOptions.has(beDate)) {
+      let nameMatched = false;
+      for (const optName of coveredDateModelNames) {
+        if (!optName.startsWith(`${beDate}|`)) continue;
+        const justName = optName.slice(beDate.length + 1);
+        if (justName && beName.includes(justName)) { nameMatched = true; break; }
+      }
+      if (nameMatched) continue;
+    }
+
+    const date = beDate;
     const category = normalizeBookingEntryCategory(be);
     let effectiveAssigneeUserId: string | null = null;
     if (be.option_request_id) {
@@ -287,40 +316,50 @@ export function filterUnifiedAgencyCalendarRows(
 export function dedupeUnifiedRowsByOptionRequest(
   rows: UnifiedAgencyCalendarRow[],
 ): UnifiedAgencyCalendarRow[] {
-  // Build the set of lifecycle keys represented by option rows (authoritative source).
-  const optionLifecycleKeys = new Set<string>();
+  const optionIdKeys = new Set<string>();
+  const optionDateModelKeys = new Set<string>();
+  const optionDateNameKeys = new Set<string>();
+  const datesWithOptions = new Set<string>();
+
   for (const r of rows) {
     if (r.kind !== 'option') continue;
     const opt = r.item.option;
-    // Key 1: option_request_id — primary, exact match
-    optionLifecycleKeys.add(`id:${opt.id}`);
-    // Key 1b: from calendar_entry.option_request_id if different
+    if (r.date) datesWithOptions.add(r.date);
+
+    // K1: option_request_id
+    optionIdKeys.add(opt.id);
     const ceId = r.item.calendar_entry?.option_request_id;
-    if (ceId && ceId !== opt.id) optionLifecycleKeys.add(`id:${ceId}`);
-    // Key 2: date|model_id|start_time — stable composite when all three known
+    if (ceId && ceId !== opt.id) optionIdKeys.add(ceId);
+
+    // K2: date + model_id (always, regardless of start_time)
     if (opt.model_id && r.date) {
-      const calStart = r.item.calendar_entry?.start_time ?? null;
-      if (calStart) {
-        optionLifecycleKeys.add(`dmt:${r.date}|${opt.model_id}|${calStart}`);
-      }
-      // Key 3: date|model_id — used only when no start_time available
-      optionLifecycleKeys.add(`dm:${r.date}|${opt.model_id}`);
+      optionDateModelKeys.add(`${r.date}|${opt.model_id}`);
+    }
+    // K3: date + normalised model_name
+    const name = (opt.model_name ?? '').trim().toLowerCase();
+    if (name && r.date) {
+      optionDateNameKeys.add(`${r.date}|${name}`);
     }
   }
 
   return rows.filter((r) => {
     if (r.kind !== 'booking') return true;
     const e = r.entry;
-    // Check Key 1: option_request_id exact match
-    if (e.option_request_id && optionLifecycleKeys.has(`id:${e.option_request_id}`)) return false;
-    // Check Key 2: date|model_id|start_time composite (only if all present)
-    if (e.model_id && e.date && e.start_time) {
-      if (optionLifecycleKeys.has(`dmt:${e.date}|${e.model_id}|${e.start_time}`)) return false;
-    }
-    // Check Key 3: date|model_id (without start_time) — only if booking has no start_time
-    // so we don't suppress a legitimately different-time event for the same model on same day
-    if (e.model_id && e.date && !e.start_time) {
-      if (optionLifecycleKeys.has(`dm:${e.date}|${e.model_id}`)) return false;
+    const eDate = e.date ?? '';
+    // K1: option_request_id
+    if (e.option_request_id && optionIdKeys.has(e.option_request_id)) return false;
+    // K2: date + model_id (unconditional — start_time on bookingEventToCalendarEntry is null)
+    if (e.model_id && eDate && optionDateModelKeys.has(`${eDate}|${e.model_id}`)) return false;
+    // K3: date + title as model name
+    const eName = (e.title ?? '').trim().toLowerCase();
+    if (eName && eDate && optionDateNameKeys.has(`${eDate}|${eName}`)) return false;
+    // K3b: check if any option model_name appears inside the booking title
+    if (eName && eDate && datesWithOptions.has(eDate)) {
+      for (const k of optionDateNameKeys) {
+        if (!k.startsWith(`${eDate}|`)) continue;
+        const justName = k.slice(eDate.length + 1);
+        if (justName && eName.includes(justName)) return false;
+      }
     }
     return true;
   });
