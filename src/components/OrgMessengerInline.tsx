@@ -20,6 +20,10 @@ import { StorageImage } from './StorageImage';
 import ChatLayoutFix from './ChatLayoutFix';
 import { colors, spacing, typography } from '../theme/theme';
 import { bubbleColorsForSender, outgoingSelfBubbleColors } from '../theme/roleColors';
+import {
+  getOrgMessengerMessageColumnStyle,
+  getOrgMessengerSenderLineExtraStyle,
+} from './orgMessengerMessageLayout';
 import { uiCopy } from '../constants/uiCopy';
 import {
   getMessagesWithSenderInfo,
@@ -592,10 +596,13 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
           const isOwn = Boolean(viewerUserId && m.sender_id === viewerUserId);
           return (
             <View key={m.id} style={styles.msgBlock}>
-              <Text style={styles.senderLine}>{m.senderLabel}</Text>
+              <View style={getOrgMessengerMessageColumnStyle(isOwn)}>
+              <Text style={[styles.senderLine, getOrgMessengerSenderLineExtraStyle(isOwn)]}>
+                {m.senderLabel}
+              </Text>
               {/* File / image attachment */}
               {rawFileUrl ? (
-                <View style={[styles.attachmentRow, isOwn ? styles.attachmentRowOwn : styles.attachmentRowOther]}>
+                <View style={[styles.attachmentRow, isOwn ? styles.attachmentRowOutgoing : styles.attachmentRowIncoming]}>
                 {isImage ? (
                   resolvedFileUrl ? (
                     <Pressable onPress={() => openUrl(resolvedFileUrl)}>
@@ -626,7 +633,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
               ) : null}
               {/* Text content */}
               {pt === 'text' && m.text ? (
-                <View style={[styles.bubbleRow, isOwn ? styles.bubbleRowOwn : styles.bubbleRowOther]}>
+                <View style={styles.bubbleRow}>
                   <View
                     style={[
                       styles.msgBubble,
@@ -653,7 +660,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
                 </View>
               ) : null}
               {pt === 'link' ? (
-                <View style={[styles.bubbleRow, isOwn ? styles.bubbleRowOwn : styles.bubbleRowOther]}>
+                <View style={styles.bubbleRow}>
                   <View
                     style={[
                       styles.msgBubble,
@@ -866,6 +873,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
                   </View>
                 </TouchableOpacity>
               ) : null}
+              </View>
             </View>
           );
   });
@@ -1110,19 +1118,11 @@ const styles = StyleSheet.create({
     ...typography.label,
     fontSize: 10,
     color: colors.textSecondary,
-    marginBottom: 2,
+    marginBottom: 1,
   },
   bubbleRow: {
     width: '100%',
     marginBottom: spacing.xs,
-  },
-  bubbleRowOwn: {
-    alignItems: 'flex-end',
-    paddingLeft: '12%',
-    paddingRight: spacing.sm,
-  },
-  bubbleRowOther: {
-    alignItems: 'flex-start',
   },
   msgBubble: {
     maxWidth: '78%',
@@ -1144,12 +1144,10 @@ const styles = StyleSheet.create({
     width: '100%',
     marginBottom: spacing.xs,
   },
-  attachmentRowOwn: {
+  attachmentRowOutgoing: {
     alignItems: 'flex-end',
-    paddingLeft: '12%',
-    paddingRight: spacing.sm,
   },
-  attachmentRowOther: {
+  attachmentRowIncoming: {
     alignItems: 'flex-start',
   },
   chatBubbleText: {
