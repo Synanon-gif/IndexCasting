@@ -488,6 +488,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             },
           });
           const fin = lastBootstrapFinalizeRef.current;
+
+          // Fallback: if claim was not successful and user is a model, try deprecated email-based linking.
+          // This covers the path where session is established via email-confirmation redirect
+          // (onAuthStateChange → bootstrapThenLoadProfile) and the claim token was lost.
+          if (p.role === 'model' && !fin.claim.ok) {
+            try {
+              const { linkModelByEmail } = await import('../services/modelsSupabase');
+              await linkModelByEmail();
+              await loadProfile(userId);
+            } catch (e) {
+              console.error('bootstrapThenLoadProfile linkModelByEmail fallback error:', e);
+            }
+          }
+
           if (fin.invite.ok || fin.claim.ok) {
             const pr = profileRef.current;
             if (pr && !pr.is_admin && pr.role !== 'admin') {
@@ -526,10 +540,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const safeRole = validateSignupRole(role);
     const trimmedCompany = companyName?.trim() || null;
     const orgNameForB2b = safeRole === 'client' || safeRole === 'agent' ? trimmedCompany : null;
+
+    // When a model claim or invite token is pending, ensure the email confirmation
+    // redirects back to the same origin so localStorage tokens survive the round-trip.
+    let emailRedirectTo: string | undefined;
+    if (options?.isInviteSignup) {
+      emailRedirectTo = `${appUrl}/`;
+    } else {
+      try {
+        const { peekPendingModelClaimTokenSync } = await import('../storage/modelClaimToken');
+        if (peekPendingModelClaimTokenSync()) {
+          emailRedirectTo = `${appUrl}/`;
+        }
+      } catch { /* ignore */ }
+    }
+
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
+        ...(emailRedirectTo ? { emailRedirectTo } : {}),
         data: {
           role: safeRole,
           display_name: displayName || email.split('@')[0],

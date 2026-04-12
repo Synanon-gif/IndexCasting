@@ -1,9 +1,14 @@
+const mockMaybeSingle = jest.fn().mockResolvedValue({ data: { role: 'model', is_admin: false }, error: null });
+const mockEq = jest.fn().mockReturnValue({ maybeSingle: mockMaybeSingle });
+const mockSelect = jest.fn().mockReturnValue({ eq: mockEq });
+
 jest.mock('../../../lib/supabase', () => ({
   supabase: {
     rpc: jest.fn(),
-    from: jest.fn(),
+    from: jest.fn().mockReturnValue({ select: mockSelect }),
     auth: {
       getUser: jest.fn(() => Promise.resolve({ data: { user: { id: 'user-1' } }, error: null })),
+      getSession: jest.fn(() => Promise.resolve({ data: { session: { user: { id: 'user-1' } } }, error: null })),
     },
   },
 }));
@@ -116,30 +121,34 @@ describe('finalizePendingInviteOrClaim', () => {
     });
   });
 
-  it('does not run claim when invite fails fatally even if claim token present', async () => {
+  it('still runs claim when invite fails fatally (independent flows)', async () => {
     readInviteToken.mockResolvedValue('inv_tok');
     readModelClaimToken.mockResolvedValue('claim_tok');
     acceptOrganizationInvitation.mockResolvedValue({ ok: false, error: 'email_mismatch' });
+    claimModelByToken.mockResolvedValue({ ok: true, data: { modelId: 'm1', agencyId: 'a1' } });
 
     const r = await finalizePendingInviteOrClaim({});
 
-    expect(claimModelByToken).not.toHaveBeenCalled();
+    expect(claimModelByToken).toHaveBeenCalledWith('claim_tok');
     expect(r.invite.ok).toBe(false);
     expect(r.invite.state).toBe('fatal');
-    expect(r.claim.attempted).toBe(false);
+    expect(r.claim.attempted).toBe(true);
+    expect(r.claim.ok).toBe(true);
   });
 
-  it('keeps invite token for retryable invite errors (no silent token loss)', async () => {
+  it('keeps invite token for retryable invite errors but still runs claim', async () => {
     readInviteToken.mockResolvedValue('inv_tok');
     readModelClaimToken.mockResolvedValue('claim_tok');
     acceptOrganizationInvitation.mockResolvedValue({ ok: false, error: 'temporary_network_error' });
+    claimModelByToken.mockResolvedValue({ ok: true, data: { modelId: 'm1', agencyId: 'a1' } });
 
     const r = await finalizePendingInviteOrClaim({});
 
     expect(r.invite.state).toBe('retryable');
     expect(persistInviteToken).not.toHaveBeenCalledWith(null);
-    expect(claimModelByToken).not.toHaveBeenCalled();
-    expect(r.claim.attempted).toBe(false);
+    expect(claimModelByToken).toHaveBeenCalledWith('claim_tok');
+    expect(r.claim.attempted).toBe(true);
+    expect(r.claim.ok).toBe(true);
   });
 
   it('runs claim when no invite token', async () => {
@@ -196,5 +205,27 @@ describe('finalizePendingInviteOrClaim', () => {
     await finalizePendingInviteOrClaim({});
     expect(acceptOrganizationInvitation).not.toHaveBeenCalled();
     expect(claimModelByToken).not.toHaveBeenCalled();
+  });
+
+  it('skips claim when current user is admin (token preserved)', async () => {
+    readModelClaimToken.mockResolvedValue('claim_tok');
+    mockMaybeSingle.mockResolvedValueOnce({ data: { role: 'admin', is_admin: true }, error: null });
+
+    const r = await finalizePendingInviteOrClaim({});
+
+    expect(claimModelByToken).not.toHaveBeenCalled();
+    expect(r.claim.attempted).toBe(false);
+    expect(persistModelClaimToken).not.toHaveBeenCalledWith(null);
+  });
+
+  it('skips claim when current user is agent (token preserved)', async () => {
+    readModelClaimToken.mockResolvedValue('claim_tok');
+    mockMaybeSingle.mockResolvedValueOnce({ data: { role: 'agent', is_admin: false }, error: null });
+
+    const r = await finalizePendingInviteOrClaim({});
+
+    expect(claimModelByToken).not.toHaveBeenCalled();
+    expect(r.claim.attempted).toBe(false);
+    expect(persistModelClaimToken).not.toHaveBeenCalledWith(null);
   });
 });

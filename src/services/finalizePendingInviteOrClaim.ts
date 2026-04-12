@@ -10,6 +10,7 @@ import { readInviteToken, persistInviteToken } from '../storage/inviteToken';
 import { readModelClaimToken, persistModelClaimToken } from '../storage/modelClaimToken';
 import { uiCopy } from '../constants/uiCopy';
 import { emitInviteClaimSuccess } from '../utils/inviteClaimSuccessBus';
+import { supabase } from '../../lib/supabase';
 
 export type FinalizeInviteBranch = {
   attempted: boolean;
@@ -112,6 +113,36 @@ export type FinalizePendingOptions = {
   signOut?: () => void | Promise<void>;
 };
 
+/**
+ * Returns true if the current session user should NOT claim a model account.
+ * Admins, agents, and clients must not have their profile role overwritten to 'model'.
+ * The claim token is kept in storage for the correct user to consume later.
+ */
+async function shouldSkipClaimForCurrentUser(): Promise<boolean> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) return false;
+    const { data } = await supabase
+      .from('profiles')
+      .select('role, is_admin')
+      .eq('id', session.user.id)
+      .maybeSingle();
+    if (!data) return false;
+    if (data.is_admin) {
+      console.warn('[finalizePendingInviteOrClaim] skipping claim — current user is admin; token preserved');
+      return true;
+    }
+    if (data.role === 'agent' || data.role === 'client') {
+      console.warn('[finalizePendingInviteOrClaim] skipping claim — current user role is', data.role, '; token preserved');
+      return true;
+    }
+    return false;
+  } catch (e) {
+    console.error('[finalizePendingInviteOrClaim] shouldSkipClaimForCurrentUser error:', e);
+    return false;
+  }
+}
+
 /** RPC + token persistence only; no reload / success emit (caller decides). */
 async function runClaimMutationOnly(
   claimTok: string,
@@ -203,24 +234,28 @@ export function finalizePendingInviteOrClaim(
           });
           if (opts.showUiAlerts && out.invite.error) showInviteAlerts(out.invite.error, opts.signOut);
         }
-        return out;
+        // Do NOT return here — a pending model claim must still be attempted
+        // even when the invite fails (they are independent flows).
+      } else {
+        const orgId = inv.organization_id;
+        out.invite.state = 'success';
+        if (orgId) out.invite.organizationId = orgId;
+        await persistInviteToken(null);
+        if (orgId) emitInviteClaimSuccess({ kind: 'invite', organizationId: orgId });
       }
 
-      const orgId = inv.organization_id;
-      out.invite.state = 'success';
-      if (orgId) out.invite.organizationId = orgId;
-      await persistInviteToken(null);
-
-      if (claimTok) {
+      if (claimTok && !(await shouldSkipClaimForCurrentUser())) {
         await runClaimMutationOnly(claimTok, out, opts);
       }
 
-      try {
-        await opts.onSuccessReloadProfile?.();
-      } catch (e) {
-        console.error('[finalizePendingInviteOrClaim] onSuccessReloadProfile after invite chain error:', e);
+      const anyOk = out.invite.ok || out.claim.ok;
+      if (anyOk) {
+        try {
+          await opts.onSuccessReloadProfile?.();
+        } catch (e) {
+          console.error('[finalizePendingInviteOrClaim] onSuccessReloadProfile after invite chain error:', e);
+        }
       }
-      if (orgId) emitInviteClaimSuccess({ kind: 'invite', organizationId: orgId });
       if (out.claim.ok && out.claim.modelId && out.claim.agencyId) {
         emitInviteClaimSuccess({
           kind: 'claim',
@@ -231,7 +266,7 @@ export function finalizePendingInviteOrClaim(
       return out;
     }
 
-    if (claimTok) {
+    if (claimTok && !(await shouldSkipClaimForCurrentUser())) {
       await runClaimMutationOnly(claimTok, out, opts);
       if (out.claim.ok) {
         try {

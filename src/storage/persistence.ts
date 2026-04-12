@@ -30,12 +30,37 @@ const ALL_STATIC_KEYS = [
   'ci_agency_archived',
   // store/recruitingChats
   'ci_model_booking_thread_ids',
-  // invite / model claim (localStorage on web — sign-out must clear)
+  // invite / model claim tokens are intentionally EXCLUDED from sign-out clearing.
+  // The claim/invite flow spans two auth sessions (store token -> signUp -> email confirm -> login -> finalize).
+  // Clearing them on sign-out breaks the flow when the user signs out between storing the token and finalizing.
+  // Tokens are cleaned up by finalizePendingInviteOrClaim on success/fatal, not by sign-out.
+] as const;
+
+/**
+ * Invite / claim token keys that must survive sign-out.
+ * Only cleared explicitly by finalizePendingInviteOrClaim on success or fatal error.
+ */
+const INVITE_CLAIM_KEYS = [
   'ic_pending_invite_token',
   'ic_invite_flow_active',
   'ic_pending_model_claim_token',
   'ic_model_claim_flow_active',
 ] as const;
+
+/**
+ * Explicitly clears invite and model-claim tokens from localStorage.
+ * Called only from targeted cleanup paths — NOT from clearAllPersistence().
+ */
+export function clearInviteAndClaimTokens(): void {
+  if (!isAvailable()) return;
+  try {
+    for (const key of INVITE_CLAIM_KEYS) {
+      window.localStorage.removeItem(key);
+    }
+  } catch (e) {
+    console.error('clearInviteAndClaimTokens error:', e);
+  }
+}
 
 /**
  * Key prefixes for dynamic per-org or per-agency localStorage entries.
