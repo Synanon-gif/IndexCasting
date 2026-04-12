@@ -56,9 +56,17 @@ describe('insertOptionRequest — org id normalization', () => {
         }),
       }),
     });
+    const selectMock = jest.fn().mockReturnValue({
+      eq: jest.fn().mockReturnValue({
+        maybeSingle: jest.fn().mockResolvedValue({ data: { user_id: null }, error: null }),
+      }),
+    });
     from.mockImplementation((table: string) => {
       if (table === 'option_requests') {
         return { insert: insertMock };
+      }
+      if (table === 'models') {
+        return { select: selectMock };
       }
       return {};
     });
@@ -80,7 +88,7 @@ describe('insertOptionRequest — org id normalization', () => {
     expect(payload.agency_organization_id).toBeNull();
     expect(payload.model_approval).toBeUndefined();
     expect(payload.model_approved_at).toBeUndefined();
-    expect(payload.model_account_linked).toBeUndefined();
+    expect(payload.model_account_linked).toBe(false);
     expect(payload.status).toBeUndefined();
   });
 });

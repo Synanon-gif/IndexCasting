@@ -317,10 +317,20 @@ export async function insertOptionRequest(req: {
       ? String(req.client_organization_id).trim()
       : null;
 
-  // Initial client insert: only request-creation fields. Do not send model_approval /
-  // model_approved_at / model_account_linked / status / final_status / client_price_status —
-  // DB defaults apply (pending, in_negotiation, option_pending, etc.). Agency/model steps
-  // update those columns after insert.
+  // Derive model_account_linked from models.user_id (defense-in-depth;
+  // DB BEFORE INSERT trigger also sets this, but we send it explicitly so the
+  // optimistic UI value from the RETURNING row is immediately correct).
+  let modelAccountLinked = false;
+  try {
+    const { data: modelRow } = await supabase
+      .from('models')
+      .select('user_id')
+      .eq('id', req.model_id)
+      .maybeSingle();
+    modelAccountLinked = !!(modelRow as { user_id?: string | null } | null)?.user_id;
+  } catch (e) {
+    console.error('[insertOptionRequest] model user_id lookup failed, defaulting to false', e);
+  }
 
   const insertRow = {
     client_id: req.client_id,
@@ -340,6 +350,7 @@ export async function insertOptionRequest(req: {
     agency_organization_id: agencyOrgId,
     client_organization_id: clientOrgId,
     created_by: req.created_by ?? null,
+    model_account_linked: modelAccountLinked,
   };
 
   console.info('[insertOptionRequest] insertRowPreview', {

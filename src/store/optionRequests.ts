@@ -257,6 +257,10 @@ export function addOptionRequest(
       const model = await getModelByIdFromSupabase(modelId);
       const fallbackAgency = model?.agency_id ?? null;
 
+      // Derive model account status from canonical truth (models.user_id)
+      const modelHasAccount = !!(model as { user_id?: string | null } | null)?.user_id;
+      req.modelAccountLinked = modelHasAccount;
+
       const countryCodeUsed = extra?.countryCode?.trim()
         ? extra?.countryCode
         : model?.country_code ?? model?.country ?? null;
