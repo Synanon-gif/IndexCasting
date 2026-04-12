@@ -1343,9 +1343,18 @@ export const uiCopy = {
     counterPriceLabel: 'Counter',
     /** Shown when client_price_status is accepted and option/job is confirmed — canonical agreed fee. */
     agreedPriceLabel: 'Agreed price',
-    /** Agency: linked model has not pre-approved — availability confirmation waits on model, price negotiation stays independent. */
+    /**
+     * @deprecated Misleading order (agency confirms availability first). Use
+     * agencyConfirmAvailabilityBeforeModelStep / agencyWaitingForModelAfterAvailability instead.
+     */
     modelMustPreApproveBeforeAgencyActs:
       'Waiting for the model to confirm availability in the model app. You can still negotiate the fee independently.',
+    /** Agency: linked model, agency has not confirmed availability yet — model confirms only after you accept. */
+    agencyConfirmAvailabilityBeforeModelStep:
+      'Confirm availability first. After you accept, the model will be asked to confirm in their app. You can negotiate the fee in parallel.',
+    /** Agency: you already set availability to confirmed; model still pending in app. */
+    agencyWaitingForModelAfterAvailability:
+      'Waiting for the model to confirm in their app. You can still negotiate the fee with the client.',
     /** Agency: model pre-approved availability — price negotiation is enabled. */
     modelAvailabilityConfirmedHint: 'Model availability confirmed — you can negotiate the fee with the client.',
     /** Agency: no linked model account — client/agency negotiation does not wait on model app approval. */
@@ -1749,6 +1758,8 @@ export const uiCopy = {
     /** After client_price_status accepted + commercial anchor; before option_confirmed / job. */
     optionRequestStatusPriceAgreed: 'Price agreed',
     optionRequestStatusConfirmed: 'Confirmed',
+    /** Agency confirmed availability (option_confirmed) but linked model has not confirmed yet — not fully closed. */
+    optionRequestStatusAvailabilityConfirmedAwaitingModel: 'Availability confirmed · awaiting model',
     optionRequestStatusRejected: 'Rejected',
     optionRequestStatusJobConfirmed: 'Job confirmed',
     optionRequestStatusPending: 'Pending',

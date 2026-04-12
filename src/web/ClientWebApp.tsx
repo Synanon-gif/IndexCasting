@@ -196,6 +196,10 @@ import {
   resolveCanonicalOptionRequestIdForCalendarItem,
   resolveCanonicalOptionRequestIdFromBookingCalendarEntry,
 } from '../utils/calendarThreadDeepLink';
+import {
+  agencyNegotiationThreadSummaryHint,
+  optionConfirmedBannerLabel,
+} from '../utils/modelAccountNegotiationCopy';
 
 /** Signed-URL lifetime for authenticated client views of model photos (private bucket). */
 const CLIENT_MODEL_IMAGE_TTL_SEC = 3600;
@@ -4556,24 +4560,23 @@ const MessagesView: React.FC<MessagesViewProps> = ({
     : '';
   const negotiationFinalStatusLine =
     request && request.finalStatus
-      ? `${request.requestType === 'casting' ? uiCopy.dashboard.threadContextCasting : uiCopy.dashboard.threadContextOption} — ${
-          request.finalStatus === 'job_confirmed'
-            ? uiCopy.dashboard.optionRequestStatusJobConfirmed
-            : request.finalStatus === 'option_confirmed'
-              ? uiCopy.dashboard.optionRequestStatusConfirmed
-              : uiCopy.dashboard.optionRequestStatusPending
-        }`
+      ? `${request.requestType === 'casting' ? uiCopy.dashboard.threadContextCasting : uiCopy.dashboard.threadContextOption} — ${optionConfirmedBannerLabel({
+          finalStatus: request.finalStatus,
+          modelAccountLinked: request.modelAccountLinked,
+          modelApproval: request.modelApproval,
+        })}`
       : null;
   const negotiationRequestTypeLabel =
     request?.requestType === 'casting' ? uiCopy.dashboard.threadContextCasting : uiCopy.dashboard.threadContextOption;
   const showDesktopNegotiationRail = deviceType === 'desktop';
   const negotiationConfirmationSummaryLine = request
     ? isAgency
-      ? request.modelAccountLinked === false
-        ? uiCopy.optionNegotiationChat.noModelAppNegotiationHint
-        : request.modelApproval === 'approved'
-          ? uiCopy.optionNegotiationChat.modelAvailabilityConfirmedHint
-          : uiCopy.optionNegotiationChat.modelMustPreApproveBeforeAgencyActs
+      ? agencyNegotiationThreadSummaryHint({
+          modelAccountLinked: request.modelAccountLinked,
+          modelApproval: request.modelApproval,
+          finalStatus: request.finalStatus ?? null,
+          status: request.status,
+        })
       : request.modelAccountLinked === false
         ? uiCopy.optionNegotiationChat.clientNoModelAppHint
         : request.finalStatus === 'option_confirmed' &&

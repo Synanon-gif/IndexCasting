@@ -245,6 +245,10 @@ import {
   resolveCanonicalOptionRequestIdForCalendarItem,
   resolveCanonicalOptionRequestIdFromBookingCalendarEntry,
 } from '../utils/calendarThreadDeepLink';
+import {
+  agencyNegotiationThreadSummaryHint,
+  optionConfirmedBannerLabel,
+} from '../utils/modelAccountNegotiationCopy';
 
 const STATUS_LABELS: Record<ChatStatus, string> = {
   in_negotiation: _uiCopy.dashboard.optionRequestStatusInNegotiation,
@@ -4640,22 +4644,21 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
     : '';
   const negotiationFinalStatusLine =
     request && request.finalStatus
-      ? `${request.requestType === 'casting' ? _uiCopy.dashboard.threadContextCasting : _uiCopy.dashboard.threadContextOption} — ${
-          request.finalStatus === 'job_confirmed'
-            ? _uiCopy.dashboard.optionRequestStatusJobConfirmed
-            : request.finalStatus === 'option_confirmed'
-              ? _uiCopy.dashboard.optionRequestStatusConfirmed
-              : _uiCopy.dashboard.optionRequestStatusPending
-        }`
+      ? `${request.requestType === 'casting' ? _uiCopy.dashboard.threadContextCasting : _uiCopy.dashboard.threadContextOption} — ${optionConfirmedBannerLabel({
+          finalStatus: request.finalStatus,
+          modelAccountLinked: request.modelAccountLinked,
+          modelApproval: request.modelApproval,
+        })}`
       : null;
   const negotiationRequestTypeLabel =
     request?.requestType === 'casting' ? _uiCopy.dashboard.threadContextCasting : _uiCopy.dashboard.threadContextOption;
   const negotiationConfirmationSummaryLine = request
-    ? request.modelAccountLinked === false
-      ? _uiCopy.optionNegotiationChat.noModelAppNegotiationHint
-      : request.modelApproval === 'approved'
-        ? _uiCopy.optionNegotiationChat.modelAvailabilityConfirmedHint
-        : _uiCopy.optionNegotiationChat.modelMustPreApproveBeforeAgencyActs
+    ? agencyNegotiationThreadSummaryHint({
+        modelAccountLinked: request.modelAccountLinked,
+        modelApproval: request.modelApproval,
+        finalStatus: request.finalStatus ?? null,
+        status: request.status,
+      })
     : null;
   const showDesktopNegotiationRail = deviceType === 'desktop';
 

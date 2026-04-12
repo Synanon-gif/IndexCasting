@@ -7,6 +7,7 @@ import {
   clientMayConfirmJobFromSignals,
   priceCommerciallySettledForUi,
 } from '../../utils/optionRequestAttention';
+import { optionConfirmedBannerLabel } from '../../utils/modelAccountNegotiationCopy';
 import type { OptionRequest, ChatStatus } from '../../store/optionRequests';
 import type { ClientAssignmentFlag, AssignmentFlagColor } from '../../services/clientAssignmentsSupabase';
 
@@ -165,9 +166,13 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
       </View>
 
       {/* ── Compact model-status hint (agency only) ── */}
-      {isAgency && !isTerminal && modelPending && (
+      {isAgency &&
+        !isTerminal &&
+        modelPending &&
+        finalStatus === 'option_confirmed' &&
+        status === 'in_negotiation' && (
         <Text style={styles.compactHint}>
-          {uiCopy.optionNegotiationChat.modelMustPreApproveBeforeAgencyActs}
+          {uiCopy.optionNegotiationChat.agencyWaitingForModelAfterAvailability}
         </Text>
       )}
 
@@ -239,11 +244,11 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
             >
               <Text style={{ ...typography.label, fontSize: 11, color: colors.textPrimary, flexShrink: 1 }}>
                 {request.requestType === 'casting' ? uiCopy.dashboard.threadContextCasting : uiCopy.dashboard.threadContextOption} -{' '}
-                {finalStatus === 'job_confirmed'
-                  ? uiCopy.dashboard.optionRequestStatusJobConfirmed
-                  : finalStatus === 'option_confirmed'
-                    ? uiCopy.dashboard.optionRequestStatusConfirmed
-                    : uiCopy.dashboard.optionRequestStatusPending}
+                {optionConfirmedBannerLabel({
+                  finalStatus,
+                  modelAccountLinked: request.modelAccountLinked,
+                  modelApproval: request.modelApproval,
+                })}
               </Text>
             </View>
           ) : null}
