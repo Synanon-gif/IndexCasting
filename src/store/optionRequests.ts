@@ -43,6 +43,19 @@ import { showAppAlert } from '../utils/crossPlatformAlert';
 import { uiCopy } from '../constants/uiCopy';
 import { optionRequestNeedsMessagesTabAttention } from '../utils/optionRequestAttention';
 
+/** Per-thread guard against double-submit; DB updates remain idempotent. */
+const criticalOptionActionInflight = new Set<string>();
+
+function beginCriticalOptionAction(threadId: string): boolean {
+  if (criticalOptionActionInflight.has(threadId)) return false;
+  criticalOptionActionInflight.add(threadId);
+  return true;
+}
+
+function endCriticalOptionAction(threadId: string): void {
+  criticalOptionActionInflight.delete(threadId);
+}
+
 export type OptionRequestFlowSource =
   | 'discover'
   | 'portfolio_package'
@@ -446,55 +459,65 @@ export function addOptionRequest(
 export async function approveOptionAsModel(threadId: string): Promise<boolean> {
   const req = requestsCache.find((r) => r.threadId === threadId);
   if (!req) return false;
-  const prevApproval = req.modelApproval;
-  const prevApprovedAt = req.modelApprovedAt;
-  const prevStatus = req.status;
-  req.modelApproval = 'approved';
-  req.modelApprovedAt = new Date().toISOString();
-  req.status = 'confirmed';
-  notify();
-  const ok = await modelConfirmOptionRequest(req.id);
-  if (!ok) {
-    req.modelApproval = prevApproval;
-    req.modelApprovedAt = prevApprovedAt;
-    req.status = prevStatus;
+  if (!beginCriticalOptionAction(threadId)) return false;
+  try {
+    const prevApproval = req.modelApproval;
+    const prevApprovedAt = req.modelApprovedAt;
+    const prevStatus = req.status;
+    req.modelApproval = 'approved';
+    req.modelApprovedAt = new Date().toISOString();
+    req.status = 'confirmed';
     notify();
-    console.error('[approveOptionAsModel] modelConfirmOptionRequest failed – rolled back', req.id);
-    return false;
+    const ok = await modelConfirmOptionRequest(req.id);
+    if (!ok) {
+      req.modelApproval = prevApproval;
+      req.modelApprovedAt = prevApprovedAt;
+      req.status = prevStatus;
+      notify();
+      console.error('[approveOptionAsModel] modelConfirmOptionRequest failed – rolled back', req.id);
+      return false;
+    }
+    const inserted = await addOptionSystemMessage(req.id, 'model_approved_booking');
+    if (inserted) {
+      messagesCache.push({
+        id: inserted.id,
+        threadId,
+        from: 'system',
+        text: inserted.text,
+        createdAt: new Date(inserted.created_at).getTime(),
+      });
+    }
+    notify();
+    return true;
+  } finally {
+    endCriticalOptionAction(threadId);
   }
-  const inserted = await addOptionSystemMessage(req.id, 'model_approved_booking');
-  if (inserted) {
-    messagesCache.push({
-      id: inserted.id,
-      threadId,
-      from: 'system',
-      text: inserted.text,
-      createdAt: new Date(inserted.created_at).getTime(),
-    });
-  }
-  notify();
-  return true;
 }
 
 export async function rejectOptionAsModel(threadId: string): Promise<boolean> {
   const req = requestsCache.find((r) => r.threadId === threadId);
   if (!req) return false;
-  const prevApproval = req.modelApproval;
-  const prevStatus = req.status;
-  const prevFinalStatus = req.finalStatus;
-  req.modelApproval = 'rejected';
-  req.status = 'rejected';
-  req.finalStatus = 'option_pending';
-  notify();
-  const ok = await modelRejectOptionRequest(req.id);
-  if (!ok) {
-    req.modelApproval = prevApproval;
-    req.status = prevStatus;
-    req.finalStatus = prevFinalStatus;
+  if (!beginCriticalOptionAction(threadId)) return false;
+  try {
+    const prevApproval = req.modelApproval;
+    const prevStatus = req.status;
+    const prevFinalStatus = req.finalStatus;
+    req.modelApproval = 'rejected';
+    req.status = 'rejected';
+    req.finalStatus = 'option_pending';
     notify();
-    console.error('[rejectOptionAsModel] modelRejectOptionRequest failed – rolled back', req.id);
+    const ok = await modelRejectOptionRequest(req.id);
+    if (!ok) {
+      req.modelApproval = prevApproval;
+      req.status = prevStatus;
+      req.finalStatus = prevFinalStatus;
+      notify();
+      console.error('[rejectOptionAsModel] modelRejectOptionRequest failed – rolled back', req.id);
+    }
+    return ok;
+  } finally {
+    endCriticalOptionAction(threadId);
   }
-  return ok;
 }
 
 export function getOutstandingOptionsForModel(modelId: string): OptionRequest[] {
@@ -623,28 +646,32 @@ export async function refreshOptionRequestInCache(threadId: string): Promise<voi
 export async function agencyConfirmAvailabilityStore(threadId: string): Promise<boolean> {
   const req = requestsCache.find((r) => r.threadId === threadId);
   if (!req) return false;
+  if (!beginCriticalOptionAction(threadId)) return false;
+  try {
+    const result = await agencyAcceptRequest(req.id);
+    if (result === null) return false;
 
-  const result = await agencyAcceptRequest(req.id);
-  if (result === null) return false;
-
-  const updated = await getOptionRequestById(req.id);
-  if (updated) {
-    Object.assign(req, toLocalRequest(updated));
-    const inserted = await addOptionSystemMessage(req.id, 'agency_confirmed_availability');
-    if (inserted) {
-      messagesCache.push({
-        id: inserted.id,
-        threadId,
-        from: 'system',
-        text: inserted.text,
-        createdAt: new Date(inserted.created_at).getTime(),
-      });
+    const updated = await getOptionRequestById(req.id);
+    if (updated) {
+      Object.assign(req, toLocalRequest(updated));
+      const inserted = await addOptionSystemMessage(req.id, 'agency_confirmed_availability');
+      if (inserted) {
+        messagesCache.push({
+          id: inserted.id,
+          threadId,
+          from: 'system',
+          text: inserted.text,
+          createdAt: new Date(inserted.created_at).getTime(),
+        });
+      }
+      notify();
+    } else {
+      console.warn('[agencyConfirmAvailabilityStore] RPC succeeded but post-refresh failed — local state may be stale', req.id);
     }
-    notify();
-  } else {
-    console.warn('[agencyConfirmAvailabilityStore] RPC succeeded but post-refresh failed — local state may be stale', req.id);
+    return true;
+  } finally {
+    endCriticalOptionAction(threadId);
   }
-  return true;
 }
 
 /**
@@ -780,6 +807,7 @@ export function resetOptionRequestsStore(): void {
   requestsCache = [];
   messagesCache = [];
   hydrated = false;
+  criticalOptionActionInflight.clear();
   notify();
 }
 
@@ -794,73 +822,78 @@ export function purgeOptionThreadFromStore(threadId: string): void {
 export async function clientConfirmJobStore(threadId: string): Promise<boolean> {
   const req = requestsCache.find((r) => r.threadId === threadId);
   if (!req) return false;
-  const ok = await clientConfirmJobOnSupabase(req.id);
-  if (!ok) return false;
-  const refreshed = await getOptionRequestById(req.id);
-  if (refreshed) {
-    Object.assign(req, toLocalRequest(refreshed));
-  } else {
-    req.finalStatus = 'job_confirmed';
-    req.status = 'confirmed';
-  }
-  await updateCalendarEntryToJob(req.id);
-  const inserted = await addOptionSystemMessage(req.id, 'job_confirmed_by_client');
-  if (inserted) {
-    messagesCache.push({
-      id: inserted.id,
-      threadId,
-      from: 'system',
-      text: inserted.text,
-      createdAt: new Date(inserted.created_at).getTime(),
-    });
-  }
-
-  // Notify agency org + model about job confirmation.
-  // full.organization_id is the CLIENT org — do NOT notify it here (client triggered this action).
-  // Resolve the agency org the same way createBookingEventFromRequest does.
-  const full = await getOptionRequestById(req.id);
-  if (full) {
-    const notifications: Parameters<typeof createNotifications>[0] = [];
-
-    const agencyOrgId = await resolveAgencyOrgIdForOptionNotification(
-      full.agency_id,
-      full.agency_organization_id,
-    );
-
-    if (!agencyOrgId) {
-      console.error('[notifications] clientConfirmJobStore: agency org not found for agency_id', full.agency_id, '— agency notification skipped.');
+  if (!beginCriticalOptionAction(threadId)) return false;
+  try {
+    const ok = await clientConfirmJobOnSupabase(req.id);
+    if (!ok) return false;
+    const refreshed = await getOptionRequestById(req.id);
+    if (refreshed) {
+      Object.assign(req, toLocalRequest(refreshed));
     } else {
-      notifications.push({
-        organization_id: agencyOrgId,
-        type: 'job_confirmed',
-        title: uiCopy.notifications.jobConfirmed.title,
-        message: uiCopy.notifications.jobConfirmed.message,
-        metadata: { option_request_id: full.id },
+      req.finalStatus = 'job_confirmed';
+      req.status = 'confirmed';
+    }
+    await updateCalendarEntryToJob(req.id);
+    const inserted = await addOptionSystemMessage(req.id, 'job_confirmed_by_client');
+    if (inserted) {
+      messagesCache.push({
+        id: inserted.id,
+        threadId,
+        from: 'system',
+        text: inserted.text,
+        createdAt: new Date(inserted.created_at).getTime(),
       });
     }
 
-    if (full.model_account_linked) {
-      const { data: modelRow } = await supabase
-        .from('models')
-        .select('user_id')
-        .eq('id', full.model_id)
-        .maybeSingle();
-      const modelUserId = (modelRow as { user_id?: string | null } | null)?.user_id;
-      if (modelUserId) {
+    // Notify agency org + model about job confirmation.
+    // full.organization_id is the CLIENT org — do NOT notify it here (client triggered this action).
+    // Resolve the agency org the same way createBookingEventFromRequest does.
+    const full = await getOptionRequestById(req.id);
+    if (full) {
+      const notifications: Parameters<typeof createNotifications>[0] = [];
+
+      const agencyOrgId = await resolveAgencyOrgIdForOptionNotification(
+        full.agency_id,
+        full.agency_organization_id,
+      );
+
+      if (!agencyOrgId) {
+        console.error('[notifications] clientConfirmJobStore: agency org not found for agency_id', full.agency_id, '— agency notification skipped.');
+      } else {
         notifications.push({
-          user_id: modelUserId,
+          organization_id: agencyOrgId,
           type: 'job_confirmed',
           title: uiCopy.notifications.jobConfirmed.title,
           message: uiCopy.notifications.jobConfirmed.message,
           metadata: { option_request_id: full.id },
         });
       }
-    }
-    if (notifications.length > 0) void createNotifications(notifications);
-  }
 
-  notify();
-  return true;
+      if (full.model_account_linked) {
+        const { data: modelRow } = await supabase
+          .from('models')
+          .select('user_id')
+          .eq('id', full.model_id)
+          .maybeSingle();
+        const modelUserId = (modelRow as { user_id?: string | null } | null)?.user_id;
+        if (modelUserId) {
+          notifications.push({
+            user_id: modelUserId,
+            type: 'job_confirmed',
+            title: uiCopy.notifications.jobConfirmed.title,
+            message: uiCopy.notifications.jobConfirmed.message,
+            metadata: { option_request_id: full.id },
+          });
+        }
+      }
+      if (notifications.length > 0) void createNotifications(notifications);
+    }
+
+    notify();
+    return true;
+  } finally {
+    endCriticalOptionAction(threadId);
+  }
 }
 
 /** Client rejects agency counter offer → request is closed. */

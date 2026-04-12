@@ -11,6 +11,7 @@
 jest.mock('../../../lib/supabase', () => ({
   supabase: {
     from: jest.fn(),
+    rpc: jest.fn(),
     auth: { getUser: jest.fn().mockResolvedValue({ data: { user: { id: 'user-1' } } }) },
   },
 }));
@@ -27,9 +28,11 @@ import {
   modelConfirmOptionRequest,
   modelRejectOptionRequest,
   getPendingModelConfirmations,
+  clientConfirmJobOnSupabase,
 } from '../optionRequestsSupabase';
 
 const from = supabase.from as jest.Mock;
+const rpc = supabase.rpc as jest.Mock;
 const mockCreateBookingEvent = createBookingEvent as jest.Mock;
 
 const BASE_REQUEST = {
@@ -142,6 +145,37 @@ describe('agencyAcceptRequest', () => {
     const result = await agencyAcceptRequest('req-1');
     expect(result).toBe('confirmed');
     expect(mockCreateBookingEvent).not.toHaveBeenCalled();
+  });
+
+  it('returns null on second accept when update matches no row (double-click idempotency)', async () => {
+    const reqNoAccount = { ...BASE_REQUEST, model_account_linked: false };
+    const maybeSingle = jest
+      .fn()
+      .mockResolvedValueOnce({ data: { id: 'req-1' }, error: null })
+      .mockResolvedValueOnce({ data: null, error: null });
+    const updateChain: any = {
+      eq: jest.fn().mockReturnThis(),
+      select: jest.fn().mockReturnThis(),
+      maybeSingle,
+    };
+    let fromCall = 0;
+    from.mockImplementation(() => {
+      fromCall += 1;
+      if (fromCall % 2 === 1) {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: jest.fn().mockResolvedValue({ data: reqNoAccount, error: null }),
+            }),
+          }),
+        };
+      }
+      return { update: () => updateChain };
+    });
+
+    await expect(agencyAcceptRequest('req-1')).resolves.toBe('confirmed');
+    await expect(agencyAcceptRequest('req-1')).resolves.toBeNull();
+    expect(maybeSingle).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -300,13 +334,17 @@ describe('modelRejectOptionRequest', () => {
   });
 
   it('returns true on success', async () => {
-    // Chain: update → eq(id) → eq(model_approval,'pending') → select → maybeSingle
+    // Chain: update → eq(id) → eq(model_approval) → eq(final_status) → eq(status) → select → maybeSingle
     const maybeSingle = jest.fn().mockResolvedValue({ data: { id: 'req-1' }, error: null });
     const select      = jest.fn().mockReturnValue({ maybeSingle });
      
     const eqChain: jest.Mock = jest.fn().mockImplementation(() => ({ eq: eqChain, select }));
     from.mockReturnValue({ update: () => ({ eq: eqChain }) });
     await expect(modelRejectOptionRequest('req-1')).resolves.toBe(true);
+    expect(eqChain).toHaveBeenCalledWith('id', 'req-1');
+    expect(eqChain).toHaveBeenCalledWith('model_approval', 'pending');
+    expect(eqChain).toHaveBeenCalledWith('final_status', 'option_confirmed');
+    expect(eqChain).toHaveBeenCalledWith('status', 'in_negotiation');
   });
 
   it('returns false on DB error', async () => {
@@ -325,6 +363,37 @@ describe('modelRejectOptionRequest', () => {
     const eqChain: jest.Mock = jest.fn().mockImplementation(() => ({ eq: eqChain, select }));
     from.mockReturnValue({ update: () => ({ eq: eqChain }) });
     await expect(modelRejectOptionRequest('req-1')).resolves.toBe(false);
+  });
+});
+
+describe('clientConfirmJobOnSupabase', () => {
+  let consoleErrorSpy: jest.SpyInstance;
+  let consoleWarnSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    jest.resetAllMocks();
+    consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
+    consoleWarnSpy.mockRestore();
+  });
+
+  it('returns false when RPC returns false (idempotent / guards)', async () => {
+    rpc.mockResolvedValue({ data: false, error: null });
+    await expect(clientConfirmJobOnSupabase('req-1')).resolves.toBe(false);
+    expect(rpc).toHaveBeenCalledWith('client_confirm_option_job', { p_request_id: 'req-1' });
+    expect(from).not.toHaveBeenCalled();
+  });
+
+  it('second call with RPC false does not hit post-RPC fetch', async () => {
+    rpc.mockResolvedValue({ data: false, error: null });
+    await expect(clientConfirmJobOnSupabase('req-1')).resolves.toBe(false);
+    await expect(clientConfirmJobOnSupabase('req-1')).resolves.toBe(false);
+    expect(from).not.toHaveBeenCalled();
+    expect(rpc).toHaveBeenCalledTimes(2);
   });
 });
 

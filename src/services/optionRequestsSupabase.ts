@@ -1809,6 +1809,8 @@ export async function modelRejectOptionRequest(id: string): Promise<boolean> {
       })
       .eq('id', id)
       .eq('model_approval', 'pending')
+      .eq('final_status', 'option_confirmed')
+      .eq('status', 'in_negotiation')
       .select('id, agency_id, client_id, organization_id, agency_organization_id')
       .maybeSingle();
 
