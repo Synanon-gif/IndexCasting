@@ -703,7 +703,7 @@ Ergänzt `system-invariants.mdc` **### 10** (Responsive UI) und bestehende Kalen
 
 ### 28.3 Negotiation / Verfügbarkeit / Bestätigung
 
-12. **Preisverhandlung und Verfügbarkeitsbestätigung sind getrennte Achsen:** Beide können unabhängig fortschreiten. Gültige Zustände u. a.: Preis settled, Verfügbarkeit offen; Verfügbarkeit teilweise bestätigt, Preis offen; beides offen; beides abgeschlossen. UI, Header, Attention, Kalender und Tab-Dots müssen diese Trennung respektieren (ergänzt Smart-Attention-Regeln in §26 / system-invariants).
+12. **Preisverhandlung und Verfügbarkeitsbestätigung sind getrennte Achsen (Invariante K, 20260616):** Beide können unabhängig fortschreiten. Gültige Zustände u. a.: Preis settled, Verfügbarkeit offen; Verfügbarkeit teilweise bestätigt, Preis offen; beides offen; beides abgeschlossen. UI, Header, Attention, Kalender und Tab-Dots müssen diese Trennung respektieren (ergänzt Smart-Attention-Regeln in §26 / system-invariants). **Kanonisch:** `agencyConfirmAvailabilityStore` setzt NUR `final_status`; `agencyAcceptClientPriceStore` setzt NUR `client_price_status`; kein Handler darf beide Achsen mutieren (Ausnahme: `clientConfirmJobStore` / `client_confirm_option_job` als terminaler Schritt). Model-Approval blockiert NUR Axis 2 (Availability), NIE Axis 1 (Preis) — Agency darf den Preis IMMER verhandeln.
 
 13. **Model-Account-Logik kanonisch aus echter Verknüpfung:** „Model has account“ = echte Verknüpfung Model↔User; Ableitungen wie `model_account_linked` müssen dazu synchron sein. Kein blindes „no model account“, wenn das Model verknüpft ist. Offene Requests nach Model-Claim / Linking **nachziehen**.
 

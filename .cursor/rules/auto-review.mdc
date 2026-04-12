@@ -93,6 +93,9 @@ vollständig durchlaufen werden, **bevor** Code committed oder weitergeschrieben
 - **Option/Casting initial state:** Insert setzt `model_approval` o. Ä. „schon bestätigt“, obwohl das nicht die Produktregel ist? → Blocker.
 - **Rollen-Leak:** Model-facing Query liefert Agency/Client-Verhandlungsfelder ohne explizite Freigabe? → Blocker.
 - **Guest-Pfad:** Guest-Flow hängt an authenticated-only Org-Helpers / falscher RLS statt guest-sicherem Pfad? → Blocker.
+- **Achsen-Kopplung Preis + Availability (Risiko 25):** Neuer Button oder Store-Handler setzt **gleichzeitig** `client_price_status` (Axis 1) und `final_status` (Axis 2)? → Blocker — Achsen müssen vollständig entkoppelt sein. Einzige Ausnahme: `client_confirm_option_job` (terminal, setzt `job_confirmed` wenn BEIDE Achsen OK). Siehe `system-invariants.mdc` **### K. ZWEI-ACHSEN-TRENNUNG**.
+- **Fee-Blockade durch Model-Approval:** UI-Text oder Logik blockiert Preis-Aktionen (Accept/Counter/Decline) wenn `model_approval = 'pending'`? → Blocker — Model-Approval betrifft NUR Availability (Axis 2), NIE Preis (Axis 1). Agency darf den Preis IMMER verhandeln.
+- **Confirm-Button Semantik-Drift:** "Confirm option" / "Confirm availability"-Button ruft einen Handler auf, der auch Preis-Felder setzt? → Blocker. "Accept proposed fee"-Button ruft einen Handler auf, der `final_status` ändert? → Blocker.
 
 ---
 
@@ -190,6 +193,7 @@ Q7: Verwendet diese Änderung LIMIT 1 zur Caller-Identifikation / Org-Kontext-Au
 Q8: Verwendet ein neuer optimistischer Update-Handler irgendeinen Snapshot (`const snapshot = state`, `.slice()`, etc.) statt Inverse-Operation-Rollback (filter/add-back)?
 Q9: Führt diese Änderung ein verstecktes „Connect first“ (`client_agency_connections`) für Erstkontakt-Flows ein oder verschärft sie Discover-Downstream-Parität ohne Product-Approval?
 Q10: Leakt diese Änderung Verhandlungs-/kommerzielle Felder an Model-queries oder bricht Kalender-/Attention-Konsistenz über Rollen hinweg?
+Q11: Koppelt diese Änderung Preis (Axis 1) und Availability (Axis 2) in einem einzigen Button/Handler/RPC? (Ausnahme: client_confirm_option_job)
 ```
 
 → Wenn **eine** Antwort unklar oder „möglicherweise ja" ist:
@@ -230,6 +234,8 @@ Q10: Leakt diese Änderung Verhandlungs-/kommerzielle Felder an Model-queries od
 - **`appendSharedBookingNote` / `updateBookingDetails` auf cancelled Rows:** Neuer Code der diese Funktionen ohne `status != 'cancelled'`-Filter aufruft wenn mehrere `calendar_entries` mit gleicher `option_request_id` existieren — Blocker (Risiko 22 — schreibt stale History-Zeilen).
 - **Messages-Tab-Dot mit eigener Heuristik statt canonical attention:** Neue oder geänderte Tab-Dot-Logik die **nicht** aus `attentionHeaderLabelFromSignals` / `deriveNegotiationAttention` + `deriveApprovalAttention` ableitet — Blocker (Risiko 23 — Tab-Dot und Thread-Header divergieren).
 - **GuestChatView ohne explizites `link_id`:** Neuer Guest-Thread-Load der bei fehlendem `link_id` mit `LIMIT 1` Fallback einen zufälligen Thread wählt — Blocker (Risiko 24 — falsche Conversation bei mehreren Guest-Sessions).
+- **Achsen-Kopplung Preis ↔ Availability:** Neuer Negotiation-Button oder Store-Funktion setzt Felder **beider** Achsen (Axis 1: `client_price_status` UND Axis 2: `final_status`) in einem einzigen Aufruf — Blocker (Risiko 25 — System-Invariante K, Fix 20260616). Einzige erlaubte Ausnahme: `client_confirm_option_job` (terminaler Schritt, erfordert BEIDE Achsen).
+- **Fee-Blockade durch Model-Approval:** UI oder Logik verhindert Preis-Aktionen (Accept / Counter / Decline proposed fee) wenn `model_approval = 'pending'` — Blocker (Risiko 25 — Model-Approval betrifft NUR Availability; Preis bleibt IMMER verhandelbar).
 
 ---
 

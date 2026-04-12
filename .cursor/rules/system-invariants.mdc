@@ -937,3 +937,85 @@ Wenn ein Workflow für Org-Mitglieder allgemein vorgesehen ist, darf er **nicht*
 - **Owner-Exklusivrechte (abschließende Liste):** Billing-Checkout, Team-Invites, Member-Remove, Org-Löschung
 
 **Test-Pflicht bei neuen Features:** Jeder neue Workflow muss explizit für Owner, Booker/Employee gleichermaßen verifiziert werden. „Funktioniert für Owner" ist kein hinreichender Nachweis.
+
+### K. ZWEI-ACHSEN-TRENNUNG — PREIS UND AVAILABILITY SIND UNABHÄNGIG (unveränderlich, 20260616)
+
+Preisverhandlung (Axis 1) und Verfügbarkeitsbestätigung (Axis 2) sind **vollständig entkoppelte Achsen**. Keine Aktion darf beide Achsen gleichzeitig mutieren.
+
+**Achsen-Definition:**
+
+| Achse | Felder | Wer handelt | Store-Funktion |
+|-------|--------|-------------|----------------|
+| **Axis 1 — Preis** | `client_price_status`, `proposed_price`, `agency_counter_price` | Client ↔ Agency | `agencyAcceptClientPriceStore`, `agencyCounterOfferStore`, `clientAcceptCounterStore` |
+| **Axis 2 — Availability** | `final_status`, `model_approval`, `model_approved_at` | Agency (+ Model bei linked Account) | `agencyConfirmAvailabilityStore` |
+
+**Kanonische Invarianten:**
+
+1. **Keine Achsen-Kopplung:** Ein Button / eine Store-Funktion darf **nur** Felder einer einzigen Achse mutieren. Verboten: `agencyAcceptRequest` + `agencyAcceptClientPrice` im selben Handler.
+
+2. **Confirm availability ≠ Accept price:** "Confirm availability" (`agencyConfirmAvailabilityStore`) setzt NUR `final_status → option_confirmed` (+ `model_approval` je nach Model-Account-Status). Es berührt **NIEMALS** `client_price_status`.
+
+3. **Accept proposed fee ≠ Confirm availability:** "Accept proposed fee" (`agencyAcceptClientPriceStore`) setzt NUR `client_price_status → accepted`. Es berührt **NIEMALS** `final_status`.
+
+4. **Client Accept Counter ≠ Availability:** `clientAcceptCounterStore` / `client_accept_counter_offer` RPC setzt NUR `client_price_status → accepted`. `final_status` bleibt unverändert.
+
+5. **Job Confirmation erfordert BEIDE Achsen:** `client_confirm_option_job` (`clientConfirmJobStore`) ist die **einzige** Stelle, die `final_status → job_confirmed` setzt — und NUR wenn BEIDE Achsen erfüllt sind: `client_price_status = 'accepted'` UND `final_status = 'option_confirmed'` UND `model_approval = 'approved'` (bei linked Model).
+
+6. **Model-Approval blockiert NUR Availability, NIE Preis:** Wenn `model_account_linked = true` und `model_approval = 'pending'`, darf die Agency den Preis **trotzdem** verhandeln (Accept / Counter / Decline). Nur "Confirm availability" im Sinne von `final_status → option_confirmed` wartet bei linked-Model auf `model_approval = 'approved'`.
+
+7. **Preis offen + Option bestätigt ist ein gültiger Zustand:** `final_status = 'option_confirmed'` bei `client_price_status = 'pending'` ist ausdrücklich erlaubt. Beide Achsen dürfen in beliebiger Reihenfolge abgeschlossen werden.
+
+8. **Availability bestätigt + Preis offen ist ein gültiger Zustand:** `client_price_status = 'accepted'` bei `final_status = 'option_pending'` ist ausdrücklich erlaubt.
+
+**Verbotene Patterns:**
+
+```typescript
+// ❌ VERBOTEN: beide Achsen in einem Handler
+async function combinedAccept(threadId: string) {
+  await agencyAcceptRequest(req.id);     // Axis 2
+  await agencyAcceptClientPrice(req.id); // Axis 1 — VERBOTEN im selben Handler
+}
+
+// ❌ VERBOTEN: Preis-Button setzt final_status
+onPress={() => { setFinalStatus('option_confirmed'); setClientPriceStatus('accepted'); }}
+
+// ❌ VERBOTEN: Availability-Button setzt client_price_status
+onPress={() => { setFinalStatus('option_confirmed'); setClientPriceStatus('accepted'); }}
+
+// ❌ VERBOTEN: UI-Text suggeriert Fee-Blockade durch Model-Approval
+'Waiting for model before you can negotiate the fee'
+// ✅ KORREKT:
+'Waiting for the model to confirm availability. You can still negotiate the fee independently.'
+```
+
+**UI-Button-Mapping (kanonisch):**
+
+| Button (Agency) | Achse | Farbe | Store |
+|------|-------|-------|-------|
+| Confirm availability | Axis 2 | `buttonOptionGreen` | `agencyConfirmAvailabilityStore` |
+| Accept proposed fee | Axis 1 | `accentBrown` | `agencyAcceptClientPriceStore` |
+| Make counter offer | Axis 1 | `accentBrown` | `agencyCounterOfferStore` |
+| Remove request | Beide (terminal) | `buttonSkipRed` | `deleteOptionRequestFull` |
+
+| Button (Client) | Achse | Farbe | Store |
+|------|-------|-------|-------|
+| Accept agency proposal | Axis 1 | `buttonOptionGreen` | `clientAcceptCounterStore` |
+| Decline agency proposal | Terminal | `buttonSkipRed` | `clientRejectCounterStore` |
+| Confirm job | Beide (final) | `accentBrown` | `clientConfirmJobStore` |
+
+**System-Messages (kanonisch):**
+
+| Kind | Achse | Text |
+|------|-------|------|
+| `agency_confirmed_availability` | Axis 2 | "Agency confirmed availability for this option." |
+| `agency_accepted_price` | Axis 1 | "Agency accepted the proposed fee." |
+| `agency_declined_price` | Axis 1 | "Agency declined the proposed fee." |
+| `agency_counter_offer` | Axis 1 | "Agency proposed {price} {currency}." |
+| `client_accepted_counter` | Axis 1 | "Client accepted the agency proposal." |
+| `client_rejected_counter` | Terminal | "Client declined the counter offer." |
+| `job_confirmed_by_client` | Beide | "Job confirmed by client." |
+
+**Prüfpflicht bei JEDER Änderung an Negotiation-Buttons oder Store-Funktionen:**
+1. Setzt der Handler Felder von mehr als einer Achse? → STOP
+2. Setzt ein RPC sowohl `client_price_status` als auch `final_status`? → STOP (außer `client_confirm_option_job`)
+3. Blockiert UI-Text oder -Logik Fee-Aktionen basierend auf `model_approval`? → STOP
