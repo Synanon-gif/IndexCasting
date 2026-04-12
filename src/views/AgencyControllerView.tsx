@@ -5601,12 +5601,15 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                 final_status: r.finalStatus ?? null,
               });
             return (
-              <TouchableOpacity
+              <View
                 key={r.threadId}
                 style={[s.threadRow, s.threadRowOptionRequestList, selectedThreadId === r.threadId && s.threadRowActive]}
-                onPress={() => setSelectedThreadId(r.threadId)}
               >
-                <View style={s.optionRequestThreadNamesColumn}>
+                <TouchableOpacity
+                  style={s.optionRequestThreadNamesColumn}
+                  onPress={() => setSelectedThreadId(r.threadId)}
+                  accessibilityRole="button"
+                >
                   <Text style={s.modelName} numberOfLines={1} ellipsizeMode="tail">
                     {r.modelName} · {r.date}
                   </Text>
@@ -5620,7 +5623,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                       {assignment.assignedMemberName ? ` · ${assignment.assignedMemberName}` : ''}
                     </Text>
                   ) : null}
-                </View>
+                </TouchableOpacity>
                 <ScrollView
                   horizontal
                   nestedScrollEnabled
@@ -5677,7 +5680,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                     <Text style={{ fontSize: 12, color: colors.textSecondary }}>{archivedIds.has(r.threadId) ? '↩' : '📦'}</Text>
                   </TouchableOpacity>
                 </ScrollView>
-              </TouchableOpacity>
+              </View>
             );
           })
         )}

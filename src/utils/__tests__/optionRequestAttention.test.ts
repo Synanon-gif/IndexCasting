@@ -996,6 +996,98 @@ describe('state 5/6 drift audit — agency null-header consistency', () => {
     expect(smartAttentionVisibleForRole(smart6, 'agency')).toBe(false);
   });
 
+  // ──────── Retroactive model account creation (20260615) ────────
+  // A lifecycle confirmed under the no-model-account branch must NOT
+  // retroactively require model approval after the model creates an account.
+
+  describe('retroactive model account creation — no approval downgrade', () => {
+    // Scenario 1: option confirmed before model account, model_approval stayed 'approved'
+    // (correct DB state after trigger fix)
+    it('option_confirmed + model approved + now linked → fully_cleared (not waiting_for_model)', () => {
+      const input: AttentionSignalInput = {
+        status: 'in_negotiation',
+        finalStatus: 'option_confirmed',
+        clientPriceStatus: 'pending',
+        modelApproval: 'approved',
+        modelAccountLinked: true,
+      };
+      expect(deriveApprovalAttention(input)).toBe('fully_cleared');
+      expect(modelInboxRequiresModelConfirmation(input)).toBe(false);
+    });
+
+    // Scenario 2: option_confirmed + price settled + model approved + now linked
+    it('option_confirmed + price settled + model approved + now linked → waiting_for_client_to_finalize_job', () => {
+      const input: AttentionSignalInput = {
+        status: 'in_negotiation',
+        finalStatus: 'option_confirmed',
+        clientPriceStatus: 'accepted',
+        proposedPrice: 500,
+        modelApproval: 'approved',
+        modelAccountLinked: true,
+      };
+      expect(deriveApprovalAttention(input)).toBe('waiting_for_client_to_finalize_job');
+      expect(modelInboxRequiresModelConfirmation(input)).toBe(false);
+    });
+
+    // Scenario 3: already job_confirmed → terminal, no regression
+    it('job_confirmed stays terminal regardless of model linkage', () => {
+      const input: AttentionSignalInput = {
+        status: 'confirmed',
+        finalStatus: 'job_confirmed',
+        clientPriceStatus: 'accepted',
+        proposedPrice: 500,
+        modelApproval: 'approved',
+        modelAccountLinked: true,
+      };
+      expect(deriveApprovalAttention(input)).toBe('job_completed');
+      expect(modelInboxRequiresModelConfirmation(input)).toBe(false);
+      expect(attentionHeaderLabelFromSignals(input, 'agency')).toBeNull();
+      expect(attentionHeaderLabelFromSignals(input, 'client')).toBeNull();
+    });
+
+    // Scenario 4: status=confirmed (fully settled option) + model_approval still pending
+    // Defense-in-depth: even if DB has stale pending, confirmed status is terminal
+    it('status=confirmed + option_confirmed → fully_cleared even if model_approval is pending (defense-in-depth)', () => {
+      const input: AttentionSignalInput = {
+        status: 'confirmed',
+        finalStatus: 'option_confirmed',
+        clientPriceStatus: 'accepted',
+        proposedPrice: 500,
+        modelApproval: 'pending',
+        modelAccountLinked: true,
+      };
+      expect(deriveApprovalAttention(input)).toBe('waiting_for_client_to_finalize_job');
+      expect(modelInboxRequiresModelConfirmation(input)).toBe(false);
+    });
+
+    // Scenario 5: still genuinely open — model approval IS required (prospective)
+    it('still open (option_pending) + model linked → model approval can be required', () => {
+      const input: AttentionSignalInput = {
+        status: 'in_negotiation',
+        finalStatus: 'option_confirmed',
+        clientPriceStatus: 'pending',
+        modelApproval: 'pending',
+        modelAccountLinked: true,
+      };
+      expect(deriveApprovalAttention(input)).toBe('waiting_for_model_confirmation');
+      expect(modelInboxRequiresModelConfirmation(input)).toBe(true);
+    });
+
+    // Scenario 6: no-model-account flow — model never had account, approval not needed
+    it('no-model-account flow stays correct (model_approval auto-approved, no waiting)', () => {
+      const input: AttentionSignalInput = {
+        status: 'in_negotiation',
+        finalStatus: 'option_confirmed',
+        clientPriceStatus: 'accepted',
+        proposedPrice: 500,
+        modelApproval: 'approved',
+        modelAccountLinked: false,
+      };
+      expect(deriveApprovalAttention(input)).toBe('waiting_for_client_to_finalize_job');
+      expect(modelInboxRequiresModelConfirmation(input)).toBe(false);
+    });
+  });
+
   it('complete tab-dot ↔ header parity across ALL 16 states', () => {
     const allStates: AttentionSignalInput[] = [
       { status: 'in_negotiation', finalStatus: 'option_confirmed', clientPriceStatus: 'pending', proposedPrice: 100, modelApproval: 'rejected', modelAccountLinked: true },

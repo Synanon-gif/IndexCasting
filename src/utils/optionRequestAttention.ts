@@ -90,6 +90,14 @@ export function deriveNegotiationAttention(input: AttentionSignalInput): Negotia
  * Approval / availability — D2 only.
  * DECOUPLED from D1 (price): availability status is derived independently.
  * Job finalization requires BOTH axes (price settled + availability cleared).
+ *
+ * CANONICAL NON-RETROACTIVE RULE (20260615):
+ * A lifecycle confirmed under the no-model-account branch stays confirmed
+ * forever. The DB trigger (sync_model_account_linked) must NOT reset
+ * model_approval for rows with final_status IN ('option_confirmed',
+ * 'job_confirmed'). If somehow a confirmed row still has model_approval =
+ * 'pending' + model_account_linked = true, treat model_approval = 'approved'
+ * for confirmed lifecycles (defense-in-depth).
  */
 export function deriveApprovalAttention(input: AttentionSignalInput): ApprovalAttentionState {
   if (input.finalStatus === 'job_confirmed') {
@@ -105,6 +113,13 @@ export function deriveApprovalAttention(input: AttentionSignalInput): ApprovalAt
   const priceSettled = priceCommerciallySettledForUi(input);
 
   if (agencyConfirmed) {
+    // Defense-in-depth: if status is already 'confirmed' (fully settled),
+    // model approval cannot be retroactively required regardless of current
+    // model_approval field value. The lifecycle is terminal.
+    if (input.status === 'confirmed') {
+      return priceSettled ? 'waiting_for_client_to_finalize_job' : 'fully_cleared';
+    }
+
     if (
       modelAccountLinked &&
       modelApproval === 'pending' &&

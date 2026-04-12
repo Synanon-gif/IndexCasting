@@ -4835,19 +4835,22 @@ const MessagesView: React.FC<MessagesViewProps> = ({
               'client',
             );
             return (
-              <TouchableOpacity
+              <View
                 key={r.threadId}
                 style={[
                   styles.threadRow,
                   styles.threadRowOptionRequestList,
                   selectedThreadId === r.threadId && styles.threadRowActive,
                 ]}
-                onPress={() => {
-                  onOptionThreadOpenedFromList?.();
-                  setSelectedThreadId(r.threadId);
-                }}
               >
-                <View style={styles.optionRequestThreadNamesColumn}>
+                <TouchableOpacity
+                  style={styles.optionRequestThreadNamesColumn}
+                  onPress={() => {
+                    onOptionThreadOpenedFromList?.();
+                    setSelectedThreadId(r.threadId);
+                  }}
+                  accessibilityRole="button"
+                >
                   <Text style={styles.threadTitle} numberOfLines={1} ellipsizeMode="tail">
                     {r.modelName} · {r.date}
                   </Text>
@@ -4861,7 +4864,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                       {assignment.assignedMemberName ? ` · ${assignment.assignedMemberName}` : ''}
                     </Text>
                   ) : null}
-                </View>
+                </TouchableOpacity>
                 <ScrollView
                   horizontal
                   nestedScrollEnabled
@@ -4900,7 +4903,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                     <Text style={{ fontSize: 12, color: colors.textSecondary }}>{isArchived ? '↩' : '📦'}</Text>
                   </TouchableOpacity>
                 </ScrollView>
-              </TouchableOpacity>
+              </View>
             );
           })
         )}
