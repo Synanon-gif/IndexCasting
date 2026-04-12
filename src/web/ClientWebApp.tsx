@@ -2139,6 +2139,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             userCity={userCity}
             onShowActiveOptions={() => setShowActiveOptions(true)}
             tabBarBottomInset={bottomTabInset}
+            shellHorizontalPadding={shellPaddingH}
           />
         )}
 
@@ -2983,6 +2984,8 @@ type DiscoverProps = {
   onShowActiveOptions?: () => void;
   /** Bottom inset for package grid (clears absolute tab bar + safe area). */
   tabBarBottomInset?: number;
+  /** Must match `appShell` horizontal padding — used to full-bleed the swipe card without lateral shift. */
+  shellHorizontalPadding: number;
 };
 
 const DiscoverView: React.FC<DiscoverProps> = ({
@@ -3010,6 +3013,7 @@ const DiscoverView: React.FC<DiscoverProps> = ({
   onExitPackage,
   onShowActiveOptions,
   tabBarBottomInset = 0,
+  shellHorizontalPadding,
 }) => {
   // Package mode: grid layout matching GuestView (all models visible at once, no swipe)
   if (isPackageMode) {
@@ -3156,7 +3160,12 @@ const DiscoverView: React.FC<DiscoverProps> = ({
         </View>
 
         {current ? (
-          <View style={[styles.coverRow, isMobileDiscover && { marginHorizontal: -spacing.lg }]}>
+          <View
+            style={[
+              styles.coverRow,
+              isMobileDiscover && { marginHorizontal: -shellHorizontalPadding },
+            ]}
+          >
             <View style={[styles.coverCard, { maxWidth: cardMaxWidth, borderRadius: cardBorderRadius }]}>
               <View style={[styles.coverImageContainer, { height: cardImageHeight }]}>
                 <TouchableOpacity
@@ -6352,6 +6361,8 @@ const styles = StyleSheet.create({
   },
   packageGrid: {
     gap: spacing.md,
+    width: '100%',
+    alignItems: 'stretch',
   },
   packageGridCard: {
     backgroundColor: colors.surface,
