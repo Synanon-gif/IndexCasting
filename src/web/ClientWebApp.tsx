@@ -29,8 +29,8 @@ import { colors, spacing, typography } from '../theme/theme';
 import {
   CHAT_MESSENGER_FLEX,
   CHAT_THREAD_LIST_FLEX,
-  getThreadListMaxHeight,
-  getThreadListMaxHeightSplit,
+  flexFillColumn,
+  flexFillScroll,
   shouldUseB2BWebSplit,
 } from '../theme/chatLayout';
 import { UI_DOUBLE_SUBMIT_DEBOUNCE_MS } from '../../lib/validation';
@@ -4004,11 +4004,8 @@ const ClientB2BChatsPanel: React.FC<{
   searchQuery = '',
   onChatActiveChange,
 }) => {
-  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const { width: windowWidth } = useWindowDimensions();
   const b2bWebSplit = Platform.OS === 'web' && shouldUseB2BWebSplit(windowWidth);
-  const threadListScrollMax = b2bWebSplit
-    ? getThreadListMaxHeightSplit(windowHeight)
-    : getThreadListMaxHeight(windowHeight);
   const auth = useAuth();
   const [rows, setRows] = useState<Conversation[]>([]);
   const [titles, setTitles] = useState<Record<string, string>>({});
@@ -4171,7 +4168,12 @@ const ClientB2BChatsPanel: React.FC<{
 
   const threadListEl =
     filteredRows.length > 0 ? (
-      <ScrollView style={{ maxHeight: threadListScrollMax }}>
+      <ScrollView
+        style={flexFillScroll}
+        contentContainerStyle={{ flexGrow: 1, paddingBottom: spacing.sm }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator
+      >
         {filteredRows.map((c) => (
           <TouchableOpacity
             key={c.id}
@@ -4228,7 +4230,7 @@ const ClientB2BChatsPanel: React.FC<{
   ) : null;
 
   return (
-    <View style={{ marginTop: spacing.sm, flex: 1, minHeight: 0 }}>
+    <View style={[flexFillColumn, { marginTop: spacing.sm }]}>
       {b2bWebSplit ? (
         <View
           style={{
@@ -4247,7 +4249,7 @@ const ClientB2BChatsPanel: React.FC<{
         activeConversationId ? (
           <View style={{ flex: 1, minHeight: 0 }}>{messengerEl}</View>
         ) : (
-          <>{threadListEl}</>
+          <View style={flexFillColumn}>{threadListEl}</View>
         )
       )}
       {viewingAgencyProfileState && (
@@ -4687,7 +4689,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   }, [b2bChatIsOpen, optionFullscreenActive, onChatFullscreenChange]);
 
   return (
-    <View style={styles.section}>
+    <View style={[styles.section, flexFillColumn]}>
       {showClientMessagesTabs && !optionFullscreenActive && !b2bChatIsOpen && (
         <View style={styles.msgsFixedTop}>
           <TextInput
@@ -4743,9 +4745,9 @@ const MessagesView: React.FC<MessagesViewProps> = ({
           onChatActiveChange={setB2bChatIsOpen}
         />
       ) : (
-        <>
+        <View style={flexFillColumn}>
       {!optionFullscreenActive ? (
-        <>
+        <View style={flexFillColumn}>
       {onMsgFilterChange && (
         <View style={{ flexDirection: 'row', gap: 4, marginBottom: spacing.xs }}>
           {(['current', 'archived'] as const).map((f) => (
@@ -4822,7 +4824,12 @@ const MessagesView: React.FC<MessagesViewProps> = ({
           })}
         </View>
       )}
-      <ScrollView style={styles.threadList}>
+      <ScrollView
+        style={[styles.threadList, flexFillScroll]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator
+        contentContainerStyle={{ flexGrow: 1, paddingBottom: spacing.sm }}
+      >
         {visibleRequests.length === 0 ? (
           <Text style={styles.metaText}>{msgFilter === 'archived' ? 'No archived messages.' : 'No messages.'}</Text>
         ) : (
@@ -4916,7 +4923,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
           })
         )}
       </ScrollView>
-        </>
+        </View>
       ) : null}
 
       {optionFullscreenActive && request ? (
@@ -5183,7 +5190,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
           orgName={viewingOptReqAgencyProfile.orgName}
         />
       )}
-        </>
+        </View>
       )}
     </View>
   );
@@ -6367,6 +6374,7 @@ const styles = StyleSheet.create({
   },
   section: {
     flex: 1,
+    minHeight: 0,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -7405,13 +7413,14 @@ const styles = StyleSheet.create({
   },
   threadList: {
     flex: 1,
-    marginTop: spacing.sm,
+    minHeight: 0,
+    marginTop: spacing.xs,
   },
   threadRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.xs,
     paddingHorizontal: spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
@@ -7431,19 +7440,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   optionRequestThreadNamesColumn: {
-    flexGrow: 0,
-    flexShrink: 0,
-    width: '50%',
-    maxWidth: '52%',
-    minWidth: 132,
+    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 0,
+    maxWidth: '58%',
     paddingRight: spacing.sm,
   },
   optionRequestThreadAttentionScroll: {
     flex: 1,
+    flexBasis: 0,
+    flexGrow: 1,
+    flexShrink: 1,
     minWidth: 0,
     alignSelf: 'stretch',
-    // RN Web: flex child scroll region needs bounded width
-    width: 0,
   },
   optionRequestThreadAttentionScrollContent: {
     flexDirection: 'row',
@@ -7452,6 +7462,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     paddingVertical: 2,
     paddingLeft: spacing.xs,
+    paddingRight: spacing.md,
     minWidth: '100%',
   },
   threadRowUnreadDot: {

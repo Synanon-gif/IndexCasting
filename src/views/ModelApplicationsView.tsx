@@ -6,6 +6,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Modal, Alert, TextInput, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, typography } from '../theme/theme';
+import { flexFillColumn, flexFillScroll } from '../theme/chatLayout';
 import { getApplicationsForApplicant, deleteApplication, updateApplicationsProfileForApplicant } from '../services/applicationsSupabase';
 import { FILTER_COUNTRIES, ETHNICITY_OPTIONS } from '../utils/modelFilters';
 import { refreshApplications, confirmApplicationByModel, rejectApplicationByModel } from '../store/applicationsStore';
@@ -290,7 +291,7 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
         </TouchableOpacity>
       </View>
 
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, minHeight: 0 }}>
         {tab === 'applications' && (
           <>
             <Text style={styles.heading}>My Applications</Text>
@@ -388,34 +389,41 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
         )}
 
         {tab === 'messages' && (
-          <ScrollView style={{ flex: 1 }}>
+          <View style={flexFillColumn}>
             <Text style={styles.heading}>Messages</Text>
-            <Text style={styles.subtitle}>{uiCopy.model.chatsSubtitle}</Text>
+            <Text style={[styles.subtitle, { marginBottom: spacing.sm }]}>{uiCopy.model.chatsSubtitle}</Text>
             {messagesLoading ? (
               <ActivityIndicator size="small" color={colors.textPrimary} style={{ marginTop: spacing.lg }} />
             ) : messagesList.length === 0 ? (
               <Text style={styles.meta}>{uiCopy.model.noAgencyMessages}</Text>
             ) : (
-              messagesList.map((row) => (
-                <TouchableOpacity
-                  key={row.threadId}
-                  style={styles.card}
-                  onPress={() => {
-                    const app = applications.find((a) => a.recruiting_thread_id === row.threadId);
-                    setChatOpen({
-                      threadId: row.threadId,
-                      agencyName: row.agencyName,
-                      applicationAgencyId: app?.agency_id ?? null,
-                    });
-                  }}
-                >
-                  <Text style={styles.name}>{row.agencyName}</Text>
-                  <Text style={styles.meta}>{row.modelName} · {toStatusLabel(row.status)}</Text>
-                  <Text style={[styles.meta, { marginTop: 4, color: colors.buttonOptionGreen }]}>{uiCopy.model.openChat}</Text>
-                </TouchableOpacity>
-              ))
+              <ScrollView
+                style={flexFillScroll}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator
+                contentContainerStyle={{ paddingBottom: spacing.md }}
+              >
+                {messagesList.map((row) => (
+                  <TouchableOpacity
+                    key={row.threadId}
+                    style={styles.card}
+                    onPress={() => {
+                      const app = applications.find((a) => a.recruiting_thread_id === row.threadId);
+                      setChatOpen({
+                        threadId: row.threadId,
+                        agencyName: row.agencyName,
+                        applicationAgencyId: app?.agency_id ?? null,
+                      });
+                    }}
+                  >
+                    <Text style={styles.name}>{row.agencyName}</Text>
+                    <Text style={styles.meta}>{row.modelName} · {toStatusLabel(row.status)}</Text>
+                    <Text style={[styles.meta, { marginTop: 4, color: colors.buttonOptionGreen }]}>{uiCopy.model.openChat}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
             )}
-          </ScrollView>
+          </View>
         )}
 
         {tab === 'settings' && (
@@ -659,12 +667,13 @@ const styles = StyleSheet.create({
   applyBtnLabel: { ...typography.label, color: colors.textPrimary },
   list: { flex: 1 },
   card: {
-    padding: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
   },
   name: { ...typography.label, color: colors.textPrimary, marginBottom: 4 },
   meta: { ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: 8 },

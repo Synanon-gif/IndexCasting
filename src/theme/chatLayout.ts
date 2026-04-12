@@ -1,5 +1,28 @@
-import { Platform } from 'react-native';
-import { BREAKPOINT_TABLET_MAX } from './breakpoints';
+import { Platform, type ViewStyle } from 'react-native';
+
+/**
+ * Column region that must fill remaining viewport (thread lists, message tab bodies).
+ * `minHeight: 0` allows flex children to shrink; Web needs explicit stretch width.
+ */
+export const flexFillColumn: ViewStyle = {
+  flex: 1,
+  flexBasis: 0,
+  minHeight: 0,
+  alignSelf: 'stretch',
+  width: '100%',
+};
+
+/**
+ * Primary vertical ScrollView inside a flex column (thread overview lists).
+ * On RN Web, `flex:1` alone often does not allocate height — `height: 0` lets flex compute it.
+ */
+export const flexFillScroll: ViewStyle = {
+  flex: 1,
+  flexBasis: 0,
+  minHeight: 0,
+  alignSelf: 'stretch',
+  ...(Platform.OS === 'web' ? { height: 0 } : {}),
+};
 
 /**
  * Central chat workspace layout tokens — widths, split ratios, message-area heights.

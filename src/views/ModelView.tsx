@@ -12,6 +12,7 @@ import { ModelApplicationsView } from './ModelApplicationsView';
 import { getModelForUserFromSupabase } from '../services/modelsSupabase';
 import { getOptionRequestsForModel, type SupabaseOptionRequestModelSafe } from '../services/optionRequestsSupabase';
 import { colors, spacing } from '../theme/theme';
+import { flexFillScroll } from '../theme/chatLayout';
 import { uiCopy } from '../constants/uiCopy';
 import { toDisplayStatus, statusColor, statusBgColor } from '../utils/statusHelpers';
 import { modelInboxRequiresModelConfirmation, modelInboxSortPriority } from '../utils/optionRequestAttention';
@@ -89,13 +90,15 @@ export const ModelView: React.FC<ModelViewProps> = ({ onBackToRoleSelection, use
       </View>
 
       {activeTab === 'inbox' && modelId && (
-        <ModelUnifiedInbox
-          modelId={modelId}
-          onOpenRequest={(id) => {
-            setFocusOptionRequestId(id);
-            setActiveTab('profile');
-          }}
-        />
+        <View style={{ flex: 1, minHeight: 0, alignSelf: 'stretch' }}>
+          <ModelUnifiedInbox
+            modelId={modelId}
+            onOpenRequest={(id) => {
+              setFocusOptionRequestId(id);
+              setActiveTab('profile');
+            }}
+          />
+        </View>
       )}
 
       {activeTab === 'profile' && (
@@ -180,7 +183,12 @@ const ModelUnifiedInbox: React.FC<{
   }
 
   return (
-    <ScrollView style={styles.scroll} contentContainerStyle={{ padding: spacing.md }}>
+    <ScrollView
+      style={[styles.scroll, flexFillScroll]}
+      contentContainerStyle={{ paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.md }}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator
+    >
       {sorted.map((r) => {
         const rawDisplayStatus = toDisplayStatus(r.status, r.final_status ?? null);
         const isActionRequired = modelInboxRequiresModelConfirmation({
@@ -271,6 +279,8 @@ const styles = StyleSheet.create({
   },
   scroll: {
     flex: 1,
+    minHeight: 0,
+    alignSelf: 'stretch',
   },
   center: {
     flex: 1,
@@ -293,8 +303,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.surface,
     borderRadius: 10,
-    padding: spacing.md,
-    marginBottom: spacing.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.xs,
     borderWidth: 1,
     borderColor: colors.border,
   },

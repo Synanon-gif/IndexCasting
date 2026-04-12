@@ -25,8 +25,8 @@ import { colors, spacing, typography } from '../theme/theme';
 import {
   CHAT_MESSENGER_FLEX,
   CHAT_THREAD_LIST_FLEX,
-  getThreadListMaxHeight,
-  getThreadListMaxHeightSplit,
+  flexFillColumn,
+  flexFillScroll,
   shouldUseB2BWebSplit,
 } from '../theme/chatLayout';
 import { showAppAlert } from '../utils/crossPlatformAlert';
@@ -649,7 +649,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         </View>
       </View>
 
-      <View style={{ flex: 1, paddingBottom: agencyChatFullscreen ? 0 : bottomTabInset }}>
+      <View style={{ flex: 1, minHeight: 0, paddingBottom: agencyChatFullscreen ? 0 : bottomTabInset }}>
       {tab === 'dashboard' && (
         <View style={{ flex: 1 }}>
           {agencyOrganizationId && (
@@ -726,6 +726,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
       ) : null}
 
       {tab === 'messages' && (
+        <View style={flexFillColumn}>
         <AgencyMessagesTab
           recruitingThreads={bookingChatThreads}
           onRefreshRecruitingThreads={refreshBookingThreads}
@@ -748,6 +749,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
           onOptionProjectionChanged={() => { void loadAgencyCalendar(); }}
           onChatFullscreenChange={(active) => setAgencyChatFullscreen(active && agencyIsMobile)}
         />
+        </View>
       )}
 
       {tab === 'calendar' && (
@@ -4333,13 +4335,10 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   onOptionProjectionChanged,
   onChatFullscreenChange,
 }) => {
-  const { width: agencyMsgWinW, height: agencyMsgWinH } = useWindowDimensions();
+  const { width: agencyMsgWinW } = useWindowDimensions();
   const { deviceType } = useDeviceType();
   const insets = useSafeAreaInsets();
   const agencyB2bWebSplit = Platform.OS === 'web' && shouldUseB2BWebSplit(agencyMsgWinW);
-  const agencyThreadListScrollMax = agencyB2bWebSplit
-    ? getThreadListMaxHeightSplit(agencyMsgWinH)
-    : getThreadListMaxHeight(agencyMsgWinH);
   const [messagesSection, setMessagesSection] = useState<'optionRequests' | 'recruiting' | 'clientRequests'>('clientRequests');
   const [messagesSearch, setMessagesSearch] = useState('');
   const [modelDirectConvs, setModelDirectConvs] = useState<Conversation[]>([]);
@@ -5164,7 +5163,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
     !!activeConnectionChatId;
 
   return (
-    <View style={{ flex: 1, minHeight: 0 }}>
+    <View style={flexFillColumn}>
       {/* Compact fixed header: search + horizontal section tabs — hidden when inside a mobile chat */}
       {!hideMsgsFixedTop && (
       <View style={s.msgsFixedTop}>
@@ -5216,10 +5215,14 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
         )}
       </View>
       )}
-    <ScreenScrollView>
-
+    <View style={flexFillColumn}>
       {searchActive ? (
-        <View>
+        <ScrollView
+          style={flexFillScroll}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator
+          contentContainerStyle={{ paddingBottom: spacing.lg }}
+        >
           {/* Client chats */}
           {searchedB2b.length > 0 && (
             <View style={{ marginBottom: spacing.md }}>
@@ -5333,11 +5336,11 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
            searchedOptionRequests.length === 0 && searchedModels.length === 0 && (
             <Text style={s.metaText}>{uiCopy.messages.searchNoResults}</Text>
           )}
-        </View>
+        </ScrollView>
       ) : (
-        <>
+        <View style={flexFillColumn}>
       {messagesSection === 'clientRequests' ? (
-        <View style={{ flex: 1, minHeight: 0, marginBottom: spacing.lg }}>
+        <View style={flexFillColumn}>
           {!agencyId ? (
             <Text style={s.metaText}>{uiCopy.b2bChat.noAgencyContext}</Text>
           ) : (
@@ -5345,9 +5348,9 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
               {b2bConversations.length === 0 ? (
                 <Text style={s.metaText}>{uiCopy.b2bChat.noClientChatsYetAgency}</Text>
               ) : agencyB2bWebSplit ? (
-                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md }}>
-                  <View style={{ flex: CHAT_THREAD_LIST_FLEX, minWidth: 0 }}>
-                    <ScrollView style={{ maxHeight: agencyThreadListScrollMax }}>
+                <View style={{ flexDirection: 'row', alignItems: 'stretch', gap: spacing.md, flex: 1, minHeight: 0 }}>
+                  <View style={{ flex: CHAT_THREAD_LIST_FLEX, minWidth: 0, minHeight: 0 }}>
+                    <ScrollView style={flexFillScroll} contentContainerStyle={{ flexGrow: 1 }}>
                       {b2bConversations.map((c) => (
                         <View
                           key={c.id}
@@ -5450,7 +5453,12 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                 </View>
               ) : (
                 // Mobile (non-split): list only — chat opens fullscreen via b2bChatFullscreenActive early return
-                <>
+                <ScrollView
+                  style={flexFillScroll}
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator
+                  contentContainerStyle={{ paddingBottom: spacing.sm }}
+                >
                   {b2bConversations.map((c) => (
                     <View
                       key={c.id}
@@ -5479,7 +5487,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                       ) : null}
                     </View>
                   ))}
-                </>
+                </ScrollView>
               )}
             </>
           )}
@@ -5495,40 +5503,47 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
           )}
         </View>
       ) : messagesSection === 'recruiting' ? (
-        <View style={{ marginBottom: spacing.lg }}>
-          <Text style={[s.metaText, { marginBottom: spacing.md }]}>
+        <View style={flexFillColumn}>
+          <Text style={[s.metaText, { marginBottom: spacing.sm }]}>
             When you start a chat or accept an application from Recruiting, the thread appears here (and leaves the pending swipe queue). Same candidates are listed under Recruiting → My list until accepted.
           </Text>
           {recruitingThreads.length === 0 ? (
             <Text style={s.metaText}>No recruiting chats yet. Start a chat from Recruiting or accept an application.</Text>
           ) : (
-            recruitingThreads.map((thread) => {
-              const application = getApplicationById(thread.applicationId);
-              const thumbUri = application?.images?.closeUp || application?.images?.profile || application?.images?.fullBody;
-              return (
-                <TouchableOpacity
-                  key={thread.id}
-                  style={s.bookingChatRow}
-                  onPress={() => onOpenRecruitingThread(thread.id)}
-                >
-                  <View style={s.bookingChatThumbWrap}>
-                    {thumbUri ? (
-                      <StorageImage uri={thumbUri} style={s.bookingChatThumb} resizeMode="contain" />
-                    ) : (
-                      <View style={[s.bookingChatThumb, s.bookingChatThumbPlaceholder]}>
-                        <Text style={s.bookingChatThumbPlaceholderText} numberOfLines={1}>{thread.modelName}</Text>
-                      </View>
-                    )}
-                  </View>
-                  <Text style={[s.modelName, { flex: 1, marginLeft: spacing.sm }]} numberOfLines={1}>{thread.modelName}</Text>
-                  <Text style={s.backLabel}>Chat</Text>
-                </TouchableOpacity>
-              );
-            })
+            <ScrollView
+              style={flexFillScroll}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator
+              contentContainerStyle={{ paddingBottom: spacing.sm }}
+            >
+              {recruitingThreads.map((thread) => {
+                const application = getApplicationById(thread.applicationId);
+                const thumbUri = application?.images?.closeUp || application?.images?.profile || application?.images?.fullBody;
+                return (
+                  <TouchableOpacity
+                    key={thread.id}
+                    style={s.bookingChatRow}
+                    onPress={() => onOpenRecruitingThread(thread.id)}
+                  >
+                    <View style={s.bookingChatThumbWrap}>
+                      {thumbUri ? (
+                        <StorageImage uri={thumbUri} style={s.bookingChatThumb} resizeMode="contain" />
+                      ) : (
+                        <View style={[s.bookingChatThumb, s.bookingChatThumbPlaceholder]}>
+                          <Text style={s.bookingChatThumbPlaceholderText} numberOfLines={1}>{thread.modelName}</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={[s.modelName, { flex: 1, marginLeft: spacing.sm }]} numberOfLines={1}>{thread.modelName}</Text>
+                    <Text style={s.backLabel}>Chat</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
           )}
         </View>
       ) : messagesSection === 'optionRequests' ? (
-        <>
+        <View style={flexFillColumn}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm }}>
         <Text style={[s.sectionLabel, { fontSize: 14 }]}>Option request threads</Text>
         <View style={{ flexDirection: 'row', gap: 4 }}>
@@ -5583,7 +5598,12 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={{ flex: 1, maxHeight: agencyThreadListScrollMax }}>
+      <ScrollView
+        style={flexFillScroll}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator
+        contentContainerStyle={{ flexGrow: 1, paddingBottom: spacing.sm }}
+      >
         {visible.length === 0 ? (
           <Text style={s.metaText}>No messages.</Text>
         ) : (
@@ -5700,11 +5720,11 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
           })
         )}
       </ScrollView>
-        </>
+        </View>
       ) : null}
-      </>
+      </View>
       )}
-    </ScreenScrollView>
+    </View>
     </View>
   );
 };
@@ -6595,6 +6615,7 @@ const GuestLinksTab: React.FC<{
 const s = StyleSheet.create({
   container: {
     flex: 1,
+    minHeight: 0,
     width: '100%',
     maxWidth: 1200,
     alignSelf: 'center',
@@ -6644,14 +6665,14 @@ const s = StyleSheet.create({
   },
   modelRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingVertical: spacing.sm, paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs, paddingHorizontal: spacing.sm,
     borderWidth: 1, borderColor: colors.border, borderRadius: 12, marginBottom: spacing.xs,
     minWidth: 0, overflow: 'hidden',
   },
   bookingChatRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.xs,
     paddingHorizontal: spacing.sm,
     borderWidth: 1,
     borderColor: colors.border,
@@ -6712,7 +6733,7 @@ const s = StyleSheet.create({
   filterPillLabelActive: { color: colors.surface },
   threadRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
-    paddingVertical: spacing.sm, paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs, paddingHorizontal: spacing.sm,
     borderBottomWidth: 1, borderBottomColor: colors.border,
     minWidth: 0,
     overflow: 'hidden',
@@ -6726,18 +6747,20 @@ const s = StyleSheet.create({
     alignItems: 'center',
   },
   optionRequestThreadNamesColumn: {
-    flexGrow: 0,
-    flexShrink: 0,
-    width: '50%',
-    maxWidth: '52%',
-    minWidth: 132,
+    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 0,
+    maxWidth: '58%',
     paddingRight: spacing.sm,
   },
   optionRequestThreadAttentionScroll: {
     flex: 1,
+    flexBasis: 0,
+    flexGrow: 1,
+    flexShrink: 1,
     minWidth: 0,
     alignSelf: 'stretch',
-    width: 0,
   },
   optionRequestThreadAttentionScrollContent: {
     flexDirection: 'row',
@@ -6746,6 +6769,7 @@ const s = StyleSheet.create({
     gap: spacing.xs,
     paddingVertical: 2,
     paddingLeft: spacing.xs,
+    paddingRight: spacing.md,
     minWidth: '100%',
   },
   statusPill: { borderRadius: 999, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
