@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { View, useWindowDimensions } from 'react-native';
 import { MonthCalendarView, type CalendarDayEvent } from './MonthCalendarView';
 import { CalendarViewModeBar, type CalendarViewMode } from './CalendarViewModeBar';
@@ -8,6 +8,7 @@ import { UnifiedCalendarAgenda } from './UnifiedCalendarAgenda';
 import { uiCopy } from '../constants/uiCopy';
 import { isMobileWidth } from '../theme/breakpoints';
 import type { UnifiedAgencyCalendarRow } from '../utils/agencyCalendarUnified';
+import { dedupeUnifiedRowsByOptionRequest } from '../utils/agencyCalendarUnified';
 import type { CalendarProjectionViewerRole } from '../utils/calendarProjectionLabel';
 import type { ClientAssignmentFlag } from '../services/clientAssignmentsSupabase';
 import {
@@ -25,6 +26,8 @@ import {
 
 export type B2BUnifiedCalendarBodyProps = {
   viewerRole: CalendarProjectionViewerRole;
+  viewMode: CalendarViewMode;
+  onViewModeChange: (mode: CalendarViewMode) => void;
   calendarMonth: { year: number; month: number };
   setCalendarMonth: React.Dispatch<React.SetStateAction<{ year: number; month: number }>>;
   selectedDate: string | null;
@@ -38,6 +41,8 @@ export type B2BUnifiedCalendarBodyProps = {
 
 export const B2BUnifiedCalendarBody: React.FC<B2BUnifiedCalendarBodyProps> = ({
   viewerRole,
+  viewMode,
+  onViewModeChange,
   calendarMonth,
   setCalendarMonth,
   selectedDate,
@@ -49,9 +54,13 @@ export const B2BUnifiedCalendarBody: React.FC<B2BUnifiedCalendarBodyProps> = ({
 }) => {
   const { width: windowWidth } = useWindowDimensions();
   const layoutIsMobile = isMobileWidth(windowWidth);
-  const [viewMode, setViewMode] = useState<CalendarViewMode>('month');
   const today = useMemo(() => todayYmd(), []);
   const focusDate = selectedDate ?? today;
+
+  const dedupedUnified = useMemo(
+    () => dedupeUnifiedRowsByOptionRequest(filteredUnified),
+    [filteredUnified],
+  );
 
   const syncMonthToDate = (d: string) => {
     const [y, m] = d.split('-').map(Number);
@@ -64,8 +73,8 @@ export const B2BUnifiedCalendarBody: React.FC<B2BUnifiedCalendarBodyProps> = ({
   };
 
   const timelineEvents = useMemo(
-    () => buildTimelineEventsFromUnifiedRows(filteredUnified, viewerRole, uiCopy.calendar.projectionBadge),
-    [filteredUnified, viewerRole],
+    () => buildTimelineEventsFromUnifiedRows(dedupedUnified, viewerRole, uiCopy.calendar.projectionBadge),
+    [dedupedUnified, viewerRole],
   );
 
   const weekStart = useMemo(() => startOfWeekMonday(focusDate), [focusDate]);
@@ -105,7 +114,7 @@ export const B2BUnifiedCalendarBody: React.FC<B2BUnifiedCalendarBodyProps> = ({
     <View>
       <CalendarViewModeBar
         mode={viewMode}
-        onModeChange={setViewMode}
+        onModeChange={onViewModeChange}
         monthLabel={uiCopy.dashboard.monthViewLabel}
         weekLabel={uiCopy.dashboard.weekViewLabel}
         dayLabel={uiCopy.calendar.dayViewLabel}
@@ -120,7 +129,7 @@ export const B2BUnifiedCalendarBody: React.FC<B2BUnifiedCalendarBodyProps> = ({
           setCalendarMonth={setCalendarMonth}
           selectedDate={selectedDate}
           setSelectedDate={setSelectedDate}
-          rows={filteredUnified}
+          rows={dedupedUnified}
           viewerRole={viewerRole}
           assignmentByClientOrgId={assignmentByClientOrgId}
           onOpenUnifiedRow={onOpenUnifiedRow}

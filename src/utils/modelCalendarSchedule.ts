@@ -57,8 +57,37 @@ function blockFromEntry(e: CalendarEntry): CalendarScheduleBlock {
   };
 }
 
+/**
+ * Per-lifecycle dedup for model calendar entries: when multiple calendar_entries
+ * share the same option_request_id (e.g. lifecycle transitions), keep only the
+ * non-cancelled / most recent one so the same lifecycle never renders twice.
+ */
+export function dedupeModelCalendarEntries(entries: CalendarEntry[]): CalendarEntry[] {
+  const byOptionId = new Map<string, CalendarEntry>();
+  const result: CalendarEntry[] = [];
+
+  for (const e of entries) {
+    if (!e.option_request_id) {
+      result.push(e);
+      continue;
+    }
+    const existing = byOptionId.get(e.option_request_id);
+    if (!existing) {
+      byOptionId.set(e.option_request_id, e);
+      continue;
+    }
+    const existingCancelled = existing.status === 'cancelled';
+    const newCancelled = e.status === 'cancelled';
+    if (existingCancelled && !newCancelled) {
+      byOptionId.set(e.option_request_id, e);
+    }
+  }
+  result.push(...byOptionId.values());
+  return result;
+}
+
 export function filterModelScheduleBlocksForDate(entries: CalendarEntry[], date: string): CalendarScheduleBlock[] {
-  return entries
+  return dedupeModelCalendarEntries(entries)
     .filter((e) => e.date === date)
     .map(blockFromEntry)
     .sort((a, b) => a.startMin - b.startMin || a.title.localeCompare(b.title));
@@ -66,7 +95,7 @@ export function filterModelScheduleBlocksForDate(entries: CalendarEntry[], date:
 
 export function filterModelScheduleBlocksForWeek(entries: CalendarEntry[], weekDates: string[]): CalendarScheduleBlock[] {
   const set = new Set(weekDates);
-  return entries
+  return dedupeModelCalendarEntries(entries)
     .filter((e) => e.date && set.has(e.date))
     .map(blockFromEntry)
     .sort((a, b) => a.date.localeCompare(b.date) || a.startMin - b.startMin);

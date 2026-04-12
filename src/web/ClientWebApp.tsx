@@ -156,6 +156,7 @@ import {
   setThreadArchived,
 } from '../services/threadPreferencesSupabase';
 import { B2BUnifiedCalendarBody } from '../components/B2BUnifiedCalendarBody';
+import type { CalendarViewMode } from '../components/CalendarViewModeBar';
 import { OPTION_REQUEST_CHAT_STATUS_COLORS } from '../utils/calendarColors';
 import {
   getCalendarProjectionBadge,
@@ -3294,6 +3295,7 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
   const [calendarMonth, setCalendarMonth] = useState({ year: now.getFullYear(), month: now.getMonth() });
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<AgencyCalendarTypeFilter>('all');
+  const [calendarViewMode, setCalendarViewMode] = useState<CalendarViewMode>('month');
 
   const itemByOptionId = useMemo(() => {
     const m = new Map<string, AgencyCalendarItem>();
@@ -3445,6 +3447,8 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
 
       <B2BUnifiedCalendarBody
         viewerRole="client"
+        viewMode={calendarViewMode}
+        onViewModeChange={setCalendarViewMode}
         calendarMonth={calendarMonth}
         setCalendarMonth={setCalendarMonth}
         selectedDate={selectedDate}
@@ -3455,7 +3459,7 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
         assignmentByClientOrgId={assignmentByClientOrgId}
       />
 
-      {selectedDate && (
+      {calendarViewMode === 'month' && selectedDate && (
         <View style={[styles.projectRow, { marginBottom: spacing.sm }]}>
           <Text style={styles.sectionLabel}>
             {uiCopy.calendar.selectedDayPrefix} {selectedDate}
@@ -3497,14 +3501,14 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
         </View>
       )}
 
-      {sortedUnified.length === 0 && !loading && (
+      {calendarViewMode === 'month' && sortedUnified.length === 0 && !loading && (
         <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.sm }}>
           No calendar entries yet. Add your own events or wait for confirmed options/jobs.
         </Text>
       )}
 
       {/* Inline list — desktop / tablet; mobile month uses UnifiedCalendarAgenda inside B2B */}
-        {!isMobile &&
+        {calendarViewMode === 'month' && !isMobile &&
           sortedUnified.map((row) => {
           if (row.kind === 'manual') {
             const ev = row.ev;

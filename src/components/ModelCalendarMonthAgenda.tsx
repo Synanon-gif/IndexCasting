@@ -8,6 +8,7 @@ import { colors, spacing, typography } from '../theme/theme';
 import { uiCopy } from '../constants/uiCopy';
 import type { CalendarEntry } from '../services/calendarSupabase';
 import { calendarEntryColor } from '../utils/calendarColors';
+import { dedupeModelCalendarEntries } from '../utils/modelCalendarSchedule';
 
 export type ModelCalendarMonthAgendaProps = {
   calendarMonth: { year: number; month: number };
@@ -43,9 +44,11 @@ export const ModelCalendarMonthAgenda: React.FC<ModelCalendarMonthAgendaProps> =
   const { year, month } = calendarMonth;
   const monthLabel = new Date(year, month).toLocaleString('en-US', { month: 'long', year: 'numeric' });
 
+  const dedupedEntries = useMemo(() => dedupeModelCalendarEntries(entries), [entries]);
+
   const rowsInMonth = useMemo(
-    () => entries.filter((e) => entryInMonth(e, year, month)),
-    [entries, year, month],
+    () => dedupedEntries.filter((e) => entryInMonth(e, year, month)),
+    [dedupedEntries, year, month],
   );
 
   const sections = useMemo(() => {

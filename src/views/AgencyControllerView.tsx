@@ -195,6 +195,7 @@ import {
   type UserCalendarEvent,
 } from '../services/userCalendarEventsSupabase';
 import { B2BUnifiedCalendarBody } from '../components/B2BUnifiedCalendarBody';
+import type { CalendarViewMode } from '../components/CalendarViewModeBar';
 import type { CalendarDayEvent } from '../components/MonthCalendarView';
 import { ScreenScrollView } from '../components/ScreenScrollView';
 import { uiCopy } from '../constants/uiCopy';
@@ -1748,6 +1749,7 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
   const [assigneeFilter, setAssigneeFilter] = useState<AgencyCalendarAssigneeFilter>('all');
   const [clientScope, setClientScope] = useState<AgencyCalendarClientScopeFilter>('all');
   const [urgency, setUrgency] = useState<AgencyCalendarUrgencyFilter>('all');
+  const [calendarViewMode, setCalendarViewMode] = useState<CalendarViewMode>('month');
   const now = new Date();
   const [calendarMonth, setCalendarMonth] = useState({ year: now.getFullYear(), month: now.getMonth() });
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -1945,6 +1947,8 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
 
       <B2BUnifiedCalendarBody
         viewerRole="agency"
+        viewMode={calendarViewMode}
+        onViewModeChange={setCalendarViewMode}
         calendarMonth={calendarMonth}
         setCalendarMonth={setCalendarMonth}
         selectedDate={selectedDate}
@@ -1955,7 +1959,7 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
         assignmentByClientOrgId={assignmentByClientOrgId}
       />
 
-      {selectedDate && (
+      {calendarViewMode === 'month' && selectedDate && (
         <View style={[s.modelRow, { marginBottom: spacing.sm }]}>
           <Text style={s.sectionLabel}>
             {uiCopy.calendar.selectedDayPrefix} {selectedDate}
@@ -1989,11 +1993,11 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
         </View>
       )}
 
-      {sortedUnified.length === 0 && !loading && (
+      {calendarViewMode === 'month' && sortedUnified.length === 0 && !loading && (
         <Text style={s.metaText}>No calendar entries yet.</Text>
       )}
 
-      {!isMobileLayout &&
+      {calendarViewMode === 'month' && !isMobileLayout &&
         sortedUnified.map((row) => {
         if (row.kind === 'manual') {
           const ev = row.ev;

@@ -70,6 +70,7 @@ import { CalendarWeekGrid } from '../components/CalendarWeekGrid';
 import { CalendarDayTimeline } from '../components/CalendarDayTimeline';
 import {
   buildEventsByDateFromModelEntries,
+  dedupeModelCalendarEntries,
   filterModelScheduleBlocksForDate,
   filterModelScheduleBlocksForWeek,
 } from '../utils/modelCalendarSchedule';
@@ -572,7 +573,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
 
   const entriesForDate = useMemo(
     () =>
-      calEntries
+      dedupeModelCalendarEntries(calEntries)
         .filter((e) => e.date === selectedDate)
         .sort((a, b) => (a.start_time ?? '').localeCompare(b.start_time ?? '')),
     [calEntries, selectedDate],
@@ -1035,7 +1036,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
             </View>
           </View>
 
-          {selectedDate && (
+          {calendarViewMode === 'month' && selectedDate && (
             <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: spacing.md, marginBottom: spacing.md }}>
               <Text style={st.sectionLabel}>
                 {uiCopy.calendar.selectedDayPrefix} {selectedDate}
