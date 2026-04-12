@@ -15,6 +15,7 @@ import { colors, spacing } from '../theme/theme';
 import { uiCopy } from '../constants/uiCopy';
 import { toDisplayStatus, statusColor, statusBgColor } from '../utils/statusHelpers';
 import { modelInboxRequiresModelConfirmation, modelInboxSortPriority } from '../utils/optionRequestAttention';
+import { subscribeInviteClaimSuccess } from '../utils/inviteClaimSuccessBus';
 
 type ModelTab = 'inbox' | 'profile';
 
@@ -30,6 +31,8 @@ export const ModelView: React.FC<ModelViewProps> = ({ onBackToRoleSelection, use
   const [focusOptionRequestId, setFocusOptionRequestId] = useState<string | null>(null);
   const clearFocusOptionRequest = useCallback(() => setFocusOptionRequestId(null), []);
 
+  const [claimTick, setClaimTick] = useState(0);
+
   useEffect(() => {
     if (!userId) {
       setModelId(null);
@@ -41,7 +44,15 @@ export const ModelView: React.FC<ModelViewProps> = ({ onBackToRoleSelection, use
       if (!cancelled) setModelId(m ? m.id : null);
     });
     return () => { cancelled = true; };
-  }, [userId]);
+  }, [userId, claimTick]);
+
+  useEffect(() => {
+    return subscribeInviteClaimSuccess((payload) => {
+      if (payload.kind === 'claim') {
+        setClaimTick((t) => t + 1);
+      }
+    });
+  }, []);
 
   if (modelId === 'loading') {
     return (
