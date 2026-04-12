@@ -158,9 +158,6 @@ import {
 import { B2BUnifiedCalendarBody } from '../components/B2BUnifiedCalendarBody';
 import type { CalendarViewMode } from '../components/CalendarViewModeBar';
 import { OPTION_REQUEST_CHAT_STATUS_COLORS } from '../utils/calendarColors';
-import {
-  getCalendarProjectionBadge,
-} from '../utils/calendarProjectionLabel';
 import { getCalendarDetailNextStepText } from '../utils/calendarDetailNextStep';
 import {
   buildUnifiedAgencyCalendarRows,
@@ -3283,7 +3280,7 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
   loading,
   canAddManualEvents = true,
   scrollBottomInset = 0,
-  isMobile = false,
+  isMobile: _isMobile = false,
   onRefresh,
   onOpenDetails,
   onOpenManualEvent,
@@ -3337,16 +3334,6 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
     [filteredUnified],
   );
 
-  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
-
-  const sortedUnified = useMemo(
-    () =>
-      [...filteredUnified]
-        .filter((r) => r.date >= today)
-        .sort((a, b) => a.sortKey.localeCompare(b.sortKey)),
-    [filteredUnified, today],
-  );
-
   const openUnifiedRow = (row: UnifiedAgencyCalendarRow) => {
     if (row.kind === 'manual') {
       onOpenManualEvent(row.ev);
@@ -3357,35 +3344,6 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
       return;
     }
     onOpenDetails(row.item as ClientCalendarItem);
-  };
-
-  const renderOptionRowBadge = (item: ClientCalendarItem) => {
-    const badge = getCalendarProjectionBadge(
-      item.option,
-      item.calendar_entry,
-      uiCopy.calendar.projectionBadge,
-      'client',
-    );
-    return (
-      <View
-        style={{
-          borderRadius: 999,
-          paddingHorizontal: spacing.sm,
-          paddingVertical: spacing.xs,
-          backgroundColor: badge.backgroundColor,
-        }}
-      >
-        <Text
-          style={{
-            ...typography.label,
-            fontSize: 10,
-            color: badge.textColor,
-          }}
-        >
-          {badge.label}
-        </Text>
-      </View>
-    );
   };
 
   return (
@@ -3452,175 +3410,13 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
         eventsByDate={eventsByDate}
         filteredUnified={filteredUnified}
         onOpenUnifiedRow={openUnifiedRow}
-        assignmentByClientOrgId={assignmentByClientOrgId}
       />
 
-      {calendarViewMode === 'month' && selectedDate && (
-        <View style={[styles.projectRow, { marginBottom: spacing.sm }]}>
-          <Text style={styles.sectionLabel}>
-            {uiCopy.calendar.selectedDayPrefix} {selectedDate}
-          </Text>
-          <TouchableOpacity
-            style={[styles.filterPill, { alignSelf: 'flex-start', marginTop: spacing.xs }]}
-            onPress={onAddEvent}
-            disabled={!canAddManualEvents}
-          >
-            <Text style={styles.filterPillLabel}>+ Event on this day</Text>
-          </TouchableOpacity>
-          {!isMobile ? (
-            <>
-              {(eventsByDate[selectedDate] ?? []).length === 0 ? (
-                <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginTop: spacing.xs }}>
-                  {uiCopy.calendar.noEntriesThisDay}
-                </Text>
-              ) : (
-                (eventsByDate[selectedDate] ?? []).map((ev) => (
-                  <TouchableOpacity
-                    key={ev.id}
-                    style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, paddingVertical: 4 }}
-                    onPress={() => {
-                      const row = filteredUnified.find((r) => r.id === ev.id);
-                      if (row) openUnifiedRow(row);
-                    }}
-                  >
-                    <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: ev.color, marginRight: spacing.sm }} />
-                    <Text style={styles.metaText}>{ev.title}</Text>
-                  </TouchableOpacity>
-                ))
-              )}
-            </>
-          ) : (
-            <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginTop: spacing.xs }}>
-              {uiCopy.calendar.agendaDayHint}
-            </Text>
-          )}
-        </View>
-      )}
-
-      {calendarViewMode === 'month' && sortedUnified.length === 0 && !loading && (
+      {calendarViewMode === 'month' && filteredUnified.length === 0 && !loading && (
         <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.sm }}>
           No calendar entries yet. Add your own events or wait for confirmed options/jobs.
         </Text>
       )}
-
-      {/* Inline list — desktop / tablet; mobile month uses UnifiedCalendarAgenda inside B2B */}
-        {calendarViewMode === 'month' && !isMobile &&
-          sortedUnified.map((row) => {
-          if (row.kind === 'manual') {
-            const ev = row.ev;
-            return (
-              <TouchableOpacity
-                key={row.id}
-                style={styles.projectRow}
-                onPress={() => onOpenManualEvent(ev)}
-              >
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xs }}>
-                  <Text style={styles.projectName}>{ev.title} · {ev.date}</Text>
-                  <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: ev.color }} />
-                </View>
-                <Text style={styles.metaText}>
-                  {ev.start_time || '—'}{ev.end_time ? ` – ${ev.end_time}` : ''}
-                  {ev.note ? ` · ${ev.note}` : ''}
-                </Text>
-              </TouchableOpacity>
-            );
-          }
-          if (row.kind === 'booking') {
-            const be = row.entry;
-            return (
-              <TouchableOpacity
-                key={row.id}
-                style={styles.projectRow}
-                onPress={() => onOpenBookingEntry?.(be)}
-              >
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xs }}>
-                  <Text style={styles.projectName}>{row.title} · {be.date}</Text>
-                </View>
-                <Text style={styles.metaText}>{be.note ?? ''}</Text>
-              </TouchableOpacity>
-            );
-          }
-          const item = row.item as ClientCalendarItem;
-          const { option, calendar_entry } = item;
-          const date = calendar_entry?.date ?? option.requested_date;
-          const start = calendar_entry?.start_time ?? option.start_time ?? undefined;
-          const end = calendar_entry?.end_time ?? option.end_time ?? undefined;
-          const calSig = attentionSignalsFromOptionRequestLike({
-            status: option.status,
-            finalStatus: option.final_status,
-            clientPriceStatus: option.client_price_status,
-            modelApproval: option.model_approval,
-            modelAccountLinked: option.model_account_linked,
-            agencyCounterPrice: option.agency_counter_price,
-            proposedPrice: option.proposed_price,
-            hasConflictWarning: false,
-          });
-          const clientAttention = attentionHeaderLabelFromSignals(calSig, 'client') !== null;
-          return (
-            <TouchableOpacity
-              key={option.id}
-              style={styles.projectRow}
-              onPress={() => onOpenDetails(item)}
-            >
-              <View
-                style={{
-                  flexDirection: 'row',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  marginBottom: spacing.xs,
-                }}
-              >
-                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
-                  {clientAttention ? (
-                    <View
-                      style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: 4,
-                        backgroundColor: colors.buttonSkipRed,
-                      }}
-                      accessibilityLabel={uiCopy.calendar.actionRequiredA11y}
-                    />
-                  ) : null}
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.projectName}>
-                      {option.model_name ?? 'Model'} · {date}
-                    </Text>
-                    <Text style={styles.metaText}>
-                      {option.client_name ?? 'Client'}
-                      {start ? ` · ${start}${end ? `–${end}` : ''}` : ''}
-                    </Text>
-                    {option.client_organization_id && assignmentByClientOrgId[option.client_organization_id] ? (
-                      <Text style={styles.metaText}>
-                        {assignmentByClientOrgId[option.client_organization_id].label}
-                        {assignmentByClientOrgId[option.client_organization_id].assignedMemberName
-                          ? ` · ${assignmentByClientOrgId[option.client_organization_id].assignedMemberName}`
-                          : ''}
-                      </Text>
-                    ) : null}
-                  </View>
-                </View>
-                {renderOptionRowBadge(item)}
-              </View>
-              {calendar_entry?.booking_details && (
-                <Text
-                  style={{
-                    ...typography.body,
-                    fontSize: 11,
-                    color: colors.textSecondary,
-                    marginTop: 2,
-                  }}
-                  numberOfLines={2}
-                >
-                  {(calendar_entry.booking_details as any).client_notes ??
-                    (calendar_entry.booking_details as any).agency_notes ??
-                    (calendar_entry.booking_details as any).model_notes ??
-                    ''}
-                </Text>
-              )}
-            </TouchableOpacity>
-          );
-        })}
     </ScrollView>
   );
 };

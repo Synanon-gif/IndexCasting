@@ -64,13 +64,11 @@ import { ConfirmDestructiveModal } from '../components/ConfirmDestructiveModal';
 import { shouldShowSystemMessageForViewer } from '../components/optionNegotiation/filterSystemMessagesForViewer';
 import { getCalendarDetailNextStepForModelLocalOption } from '../utils/calendarDetailNextStep';
 import { MonthCalendarView } from '../components/MonthCalendarView';
-import { ModelCalendarMonthAgenda } from '../components/ModelCalendarMonthAgenda';
 import { CalendarViewModeBar, type CalendarViewMode } from '../components/CalendarViewModeBar';
 import { CalendarWeekGrid } from '../components/CalendarWeekGrid';
 import { CalendarDayTimeline } from '../components/CalendarDayTimeline';
 import {
   buildEventsByDateFromModelEntries,
-  dedupeModelCalendarEntries,
   filterModelScheduleBlocksForDate,
   filterModelScheduleBlocksForWeek,
 } from '../utils/modelCalendarSchedule';
@@ -571,13 +569,6 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openEntry?.id]);
 
-  const entriesForDate = useMemo(
-    () =>
-      dedupeModelCalendarEntries(calEntries)
-        .filter((e) => e.date === selectedDate)
-        .sort((a, b) => (a.start_time ?? '').localeCompare(b.start_time ?? '')),
-    [calEntries, selectedDate],
-  );
 
   const modelEventsByDate = useMemo(() => buildEventsByDateFromModelEntries(calEntries), [calEntries]);
 
@@ -940,7 +931,6 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
             sectionHint={modelCalendarViewHint}
           />
 
-          {/* Full month grid — always shown in month mode (mobile + desktop) */}
           {calendarViewMode === 'month' && (
             <MonthCalendarView
               year={calMonth.year}
@@ -948,41 +938,10 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
               eventsByDate={modelEventsByDate}
               selectedDate={selectedDate}
               compact={false}
-              onSelectDay={(d) => shiftModelFocus(d)}
-              onPrevMonth={() => setCalMonth((p) => (p.month === 0 ? { year: p.year - 1, month: 11 } : { ...p, month: p.month - 1 }))}
-              onNextMonth={() => setCalMonth((p) => (p.month === 11 ? { year: p.year + 1, month: 0 } : { ...p, month: p.month + 1 }))}
-            />
-          )}
-          {/* Mobile month: agenda list below the grid */}
-          {isMobileModel && calendarViewMode === 'month' && (
-            <ModelCalendarMonthAgenda
-              calendarMonth={calMonth}
-              setCalendarMonth={setCalMonth}
-              selectedDate={selectedDate}
-              setSelectedDate={setSelectedDate}
-              entries={calEntries}
-              hideHeader
-              onEntryPress={(entry) => {
-                setOpenEntry(entry);
-                setSharedNoteDraft('');
-                const existing =
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  (entry.booking_details as any)?.model_notes ??
-                  entry.note ??
-                  '';
-                setModelNotesDraft(existing);
+              onSelectDay={(d) => {
+                shiftModelFocus(d);
+                setCalendarViewMode('day');
               }}
-            />
-          )}
-          {/* Non-mobile, non-month: compact date picker */}
-          {!isMobileModel && calendarViewMode !== 'month' && (
-            <MonthCalendarView
-              year={calMonth.year}
-              month={calMonth.month}
-              eventsByDate={modelEventsByDate}
-              selectedDate={selectedDate}
-              compact={true}
-              onSelectDay={(d) => shiftModelFocus(d)}
               onPrevMonth={() => setCalMonth((p) => (p.month === 0 ? { year: p.year - 1, month: 11 } : { ...p, month: p.month - 1 }))}
               onNextMonth={() => setCalMonth((p) => (p.month === 11 ? { year: p.year + 1, month: 0 } : { ...p, month: p.month + 1 }))}
             />
@@ -1052,77 +1011,39 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
             </View>
           </View>
 
-          {calendarViewMode === 'month' && selectedDate && (
+          {calendarViewMode === 'day' && selectedDate && (
             <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: spacing.md, marginBottom: spacing.md }}>
-              <Text style={st.sectionLabel}>
-                {uiCopy.calendar.selectedDayPrefix} {selectedDate}
-              </Text>
-              {isMobileModel && calendarViewMode === 'month' ? (
-                <Text style={[st.metaText, { marginTop: spacing.xs }]}>{uiCopy.calendar.agendaDayHint}</Text>
-              ) : entriesForDate.length === 0 ? (
-                <Text style={st.metaText}>{uiCopy.calendar.noEntriesThisDay}</Text>
-              ) : (
-                <View style={{ marginTop: spacing.sm, gap: spacing.xs }}>
-                  {entriesForDate.map((entry) => (
-                    <TouchableOpacity
-                      key={entry.id}
-                      style={{
-                        borderRadius: 8,
-                        padding: spacing.sm,
-                        backgroundColor: calendarEntryColor(entry.entry_type),
-                      }}
-                      onPress={() => {
-                        setOpenEntry(entry);
-                        setSharedNoteDraft('');
-                        const existing =
-                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                          (entry.booking_details as any)?.model_notes ??
-                          entry.note ??
-                          '';
-                        setModelNotesDraft(existing);
-                      }}
-                    >
-                      <Text style={{ ...typography.body, fontSize: 12, color: '#fff', fontWeight: '600' }}>
-                        {entry.start_time?.slice(0, 5) ?? '—'} · {entry.title || entry.entry_type}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+              <Text style={st.sectionLabel}>Add personal entry</Text>
+              <TextInput value={newEntryTitle} onChangeText={setNewEntryTitle} placeholder="Title (e.g. Gym, Casting prep)" placeholderTextColor={colors.textSecondary} style={[st.input, { marginBottom: spacing.sm }]} />
+              <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ ...typography.label, fontSize: 9, color: colors.textSecondary }}>Start</Text>
+                  <ScrollView style={{ maxHeight: 80, borderWidth: 1, borderColor: colors.border, borderRadius: 8 }}>
+                    {HOURS.map((t) => (
+                      <TouchableOpacity key={t} onPress={() => setNewEntryStart(t)} style={{ padding: 4, backgroundColor: newEntryStart === t ? '#2E7D32' : 'transparent' }}>
+                        <Text style={{ ...typography.body, fontSize: 10, color: newEntryStart === t ? '#fff' : colors.textPrimary }}>{t}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
                 </View>
-              )}
-
-              <View style={{ marginTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.md }}>
-                <Text style={st.sectionLabel}>Add personal entry</Text>
-                <TextInput value={newEntryTitle} onChangeText={setNewEntryTitle} placeholder="Title (e.g. Gym, Casting prep)" placeholderTextColor={colors.textSecondary} style={[st.input, { marginBottom: spacing.sm }]} />
-                <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ ...typography.label, fontSize: 9, color: colors.textSecondary }}>Start</Text>
-                    <ScrollView style={{ maxHeight: 80, borderWidth: 1, borderColor: colors.border, borderRadius: 8 }}>
-                      {HOURS.map((t) => (
-                        <TouchableOpacity key={t} onPress={() => setNewEntryStart(t)} style={{ padding: 4, backgroundColor: newEntryStart === t ? '#2E7D32' : 'transparent' }}>
-                          <Text style={{ ...typography.body, fontSize: 10, color: newEntryStart === t ? '#fff' : colors.textPrimary }}>{t}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ ...typography.label, fontSize: 9, color: colors.textSecondary }}>End</Text>
-                    <ScrollView style={{ maxHeight: 80, borderWidth: 1, borderColor: colors.border, borderRadius: 8 }}>
-                      {HOURS.map((t) => (
-                        <TouchableOpacity key={t} onPress={() => setNewEntryEnd(t)} style={{ padding: 4, backgroundColor: newEntryEnd === t ? '#2E7D32' : 'transparent' }}>
-                          <Text style={{ ...typography.body, fontSize: 10, color: newEntryEnd === t ? '#fff' : colors.textPrimary }}>{t}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ ...typography.label, fontSize: 9, color: colors.textSecondary }}>End</Text>
+                  <ScrollView style={{ maxHeight: 80, borderWidth: 1, borderColor: colors.border, borderRadius: 8 }}>
+                    {HOURS.map((t) => (
+                      <TouchableOpacity key={t} onPress={() => setNewEntryEnd(t)} style={{ padding: 4, backgroundColor: newEntryEnd === t ? '#2E7D32' : 'transparent' }}>
+                        <Text style={{ ...typography.body, fontSize: 10, color: newEntryEnd === t ? '#fff' : colors.textPrimary }}>{t}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
                 </View>
-                <TouchableOpacity
-                  onPress={handleAddPersonalEntry}
-                  disabled={addingEntry}
-                  style={{ borderRadius: 999, backgroundColor: '#2E7D32', paddingVertical: spacing.sm, alignItems: 'center', opacity: addingEntry ? 0.5 : 1 }}
-                >
-                  <Text style={{ ...typography.label, color: '#fff' }}>{addingEntry ? 'Saving…' : 'Add entry'}</Text>
-                </TouchableOpacity>
               </View>
+              <TouchableOpacity
+                onPress={handleAddPersonalEntry}
+                disabled={addingEntry}
+                style={{ borderRadius: 999, backgroundColor: '#2E7D32', paddingVertical: spacing.sm, alignItems: 'center', opacity: addingEntry ? 0.5 : 1 }}
+              >
+                <Text style={{ ...typography.label, color: '#fff' }}>{addingEntry ? 'Saving…' : 'Add entry'}</Text>
+              </TouchableOpacity>
             </View>
           )}
         </ScrollView>

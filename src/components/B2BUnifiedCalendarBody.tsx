@@ -1,15 +1,12 @@
 import React, { useMemo } from 'react';
-import { View, useWindowDimensions } from 'react-native';
+import { View } from 'react-native';
 import { MonthCalendarView, type CalendarDayEvent } from './MonthCalendarView';
 import { CalendarViewModeBar, type CalendarViewMode } from './CalendarViewModeBar';
 import { CalendarWeekGrid } from './CalendarWeekGrid';
 import { CalendarDayTimeline } from './CalendarDayTimeline';
-import { UnifiedCalendarAgenda } from './UnifiedCalendarAgenda';
 import { uiCopy } from '../constants/uiCopy';
-import { isMobileWidth } from '../theme/breakpoints';
 import type { UnifiedAgencyCalendarRow } from '../utils/agencyCalendarUnified';
 import type { CalendarProjectionViewerRole } from '../utils/calendarProjectionLabel';
-import type { ClientAssignmentFlag } from '../services/clientAssignmentsSupabase';
 import {
   buildTimelineEventsFromUnifiedRows,
   filterTimelineEventsForDate,
@@ -34,8 +31,6 @@ export type B2BUnifiedCalendarBodyProps = {
   eventsByDate: Record<string, CalendarDayEvent[]>;
   filteredUnified: UnifiedAgencyCalendarRow[];
   onOpenUnifiedRow: (row: UnifiedAgencyCalendarRow) => void;
-  /** Workflow labels on agency/client rows — same as parent calendar lists. */
-  assignmentByClientOrgId?: Record<string, ClientAssignmentFlag>;
 };
 
 export const B2BUnifiedCalendarBody: React.FC<B2BUnifiedCalendarBodyProps> = ({
@@ -49,10 +44,7 @@ export const B2BUnifiedCalendarBody: React.FC<B2BUnifiedCalendarBodyProps> = ({
   eventsByDate,
   filteredUnified,
   onOpenUnifiedRow,
-  assignmentByClientOrgId = {},
 }) => {
-  const { width: windowWidth } = useWindowDimensions();
-  const layoutIsMobile = isMobileWidth(windowWidth);
   const today = useMemo(() => todayYmd(), []);
   const focusDate = selectedDate ?? today;
 
@@ -101,6 +93,11 @@ export const B2BUnifiedCalendarBody: React.FC<B2BUnifiedCalendarBodyProps> = ({
     return uiCopy.calendar.viewModeHintMonth;
   }, [viewMode]);
 
+  const handleMonthDayClick = (d: string) => {
+    shiftFocus(d);
+    onViewModeChange('day');
+  };
+
   return (
     <View>
       <CalendarViewModeBar
@@ -114,7 +111,6 @@ export const B2BUnifiedCalendarBody: React.FC<B2BUnifiedCalendarBodyProps> = ({
         sectionHint={viewModeHint}
       />
 
-      {/* Month grid — always visible in month mode (full grid on mobile + desktop) */}
       {viewMode === 'month' && (
         <MonthCalendarView
           year={calendarMonth.year}
@@ -122,44 +118,7 @@ export const B2BUnifiedCalendarBody: React.FC<B2BUnifiedCalendarBodyProps> = ({
           eventsByDate={eventsByDate}
           selectedDate={selectedDate}
           compact={false}
-          onSelectDay={(d) => {
-            shiftFocus(d);
-          }}
-          onPrevMonth={() =>
-            setCalendarMonth((m) => (m.month === 0 ? { year: m.year - 1, month: 11 } : { year: m.year, month: m.month - 1 }))
-          }
-          onNextMonth={() =>
-            setCalendarMonth((m) => (m.month === 11 ? { year: m.year + 1, month: 0 } : { year: m.year, month: m.month + 1 }))
-          }
-        />
-      )}
-
-      {/* Mobile month: scrollable agenda list below the full month grid */}
-      {layoutIsMobile && viewMode === 'month' && (
-        <UnifiedCalendarAgenda
-          calendarMonth={calendarMonth}
-          setCalendarMonth={setCalendarMonth}
-          selectedDate={selectedDate}
-          setSelectedDate={setSelectedDate}
-          rows={filteredUnified}
-          viewerRole={viewerRole}
-          assignmentByClientOrgId={assignmentByClientOrgId}
-          onOpenUnifiedRow={onOpenUnifiedRow}
-          hideHeader
-        />
-      )}
-
-      {/* Week/day: compact month picker on non-mobile */}
-      {!layoutIsMobile && viewMode !== 'month' && (
-        <MonthCalendarView
-          year={calendarMonth.year}
-          month={calendarMonth.month}
-          eventsByDate={eventsByDate}
-          selectedDate={selectedDate}
-          compact={true}
-          onSelectDay={(d) => {
-            shiftFocus(d);
-          }}
+          onSelectDay={handleMonthDayClick}
           onPrevMonth={() =>
             setCalendarMonth((m) => (m.month === 0 ? { year: m.year - 1, month: 11 } : { year: m.year, month: m.month - 1 }))
           }

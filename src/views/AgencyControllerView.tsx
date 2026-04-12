@@ -196,7 +196,6 @@ import {
 } from '../services/userCalendarEventsSupabase';
 import { B2BUnifiedCalendarBody } from '../components/B2BUnifiedCalendarBody';
 import type { CalendarViewMode } from '../components/CalendarViewModeBar';
-import type { CalendarDayEvent } from '../components/MonthCalendarView';
 import { ScreenScrollView } from '../components/ScreenScrollView';
 import { uiCopy } from '../constants/uiCopy';
 import { AgencyOrgProfileScreen } from '../screens/AgencyOrgProfileScreen';
@@ -210,7 +209,6 @@ import { runNetwalkCronSync } from '../services/netwalkSyncService';
 import { getAgencyApiKeys, saveAgencyApiConnection } from '../services/agencySettingsSupabase';
 import { checkModelCompleteness, type CompletenessContext } from '../utils/modelCompleteness';
 import { OPTION_REQUEST_CHAT_STATUS_COLORS } from '../utils/calendarColors';
-import { getCalendarProjectionBadge, getBookingEntryProjectionBadge } from '../utils/calendarProjectionLabel';
 import { getCalendarDetailNextStepText } from '../utils/calendarDetailNextStep';
 import {
   buildUnifiedAgencyCalendarRows,
@@ -1690,43 +1688,6 @@ type AgencyCalendarTabProps = {
   onAddEvent: () => void;
 };
 
-function renderAgencyCalendarOptionBadge(item: AgencyCalendarItem) {
-  const badge = getCalendarProjectionBadge(
-    item.option,
-    item.calendar_entry,
-    uiCopy.calendar.projectionBadge,
-    'agency',
-  );
-  return (
-    <View
-      style={{
-        borderRadius: 999,
-        paddingHorizontal: spacing.sm,
-        paddingVertical: spacing.xs,
-        backgroundColor: badge.backgroundColor,
-      }}
-    >
-      <Text style={{ ...typography.label, fontSize: 10, color: badge.textColor }}>{badge.label}</Text>
-    </View>
-  );
-}
-
-function renderBookingEntryBadge(entry: CalendarEntry) {
-  const badge = getBookingEntryProjectionBadge(entry, uiCopy.calendar.projectionBadge);
-  return (
-    <View
-      style={{
-        borderRadius: 999,
-        paddingHorizontal: spacing.sm,
-        paddingVertical: spacing.xs,
-        backgroundColor: badge.backgroundColor,
-      }}
-    >
-      <Text style={{ ...typography.label, fontSize: 10, color: badge.textColor }}>{badge.label}</Text>
-    </View>
-  );
-}
-
 const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
   items,
   assignmentByClientOrgId = {},
@@ -1735,7 +1696,8 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
   teamMembers,
   currentUserId,
   loading,
-  isMobileLayout = false,
+  // isMobileLayout kept in type for backward compat but unused after view isolation
+  isMobileLayout: _isMobileLayout = false,
   onRefresh,
   onOpenDetails,
   onOpenManualEvent,
@@ -1804,16 +1766,6 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
   const eventsByDate = useMemo(
     () => buildEventsByDateFromUnifiedRows(filteredUnified),
     [filteredUnified],
-  );
-
-  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
-
-  const sortedUnified = useMemo(
-    () =>
-      [...filteredUnified]
-        .filter((r) => r.date >= today)
-        .sort((a, b) => a.sortKey.localeCompare(b.sortKey)),
-    [filteredUnified, today],
   );
 
   const filterPill = (label: string, active: boolean, onPress: () => void) => (
@@ -1956,106 +1908,11 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
         eventsByDate={eventsByDate}
         filteredUnified={filteredUnified}
         onOpenUnifiedRow={openUnifiedRow}
-        assignmentByClientOrgId={assignmentByClientOrgId}
       />
 
-      {calendarViewMode === 'month' && selectedDate && (
-        <View style={[s.modelRow, { marginBottom: spacing.sm }]}>
-          <Text style={s.sectionLabel}>
-            {uiCopy.calendar.selectedDayPrefix} {selectedDate}
-          </Text>
-          <TouchableOpacity style={[s.filterPill, { alignSelf: 'flex-start', marginTop: spacing.xs }]} onPress={onAddEvent}>
-            <Text style={s.filterPillLabel}>+ Event on this day</Text>
-          </TouchableOpacity>
-          {!isMobileLayout ? (
-            <>
-              {(eventsByDate[selectedDate] ?? []).length === 0 ? (
-                <Text style={s.metaText}>{uiCopy.calendar.noEntriesThisDay}</Text>
-              ) : (
-                (eventsByDate[selectedDate] ?? []).map((ev: CalendarDayEvent) => (
-                  <TouchableOpacity
-                    key={ev.id}
-                    style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, paddingVertical: 4 }}
-                    onPress={() => {
-                      const row = filteredUnified.find((r) => r.id === ev.id);
-                      if (row) openUnifiedRow(row);
-                    }}
-                  >
-                    <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: ev.color, marginRight: spacing.sm }} />
-                    <Text style={s.metaText}>{ev.title}</Text>
-                  </TouchableOpacity>
-                ))
-              )}
-            </>
-          ) : (
-            <Text style={s.metaText}>{uiCopy.calendar.agendaDayHint}</Text>
-          )}
-        </View>
-      )}
-
-      {calendarViewMode === 'month' && sortedUnified.length === 0 && !loading && (
+      {calendarViewMode === 'month' && filteredUnified.length === 0 && !loading && (
         <Text style={s.metaText}>No calendar entries yet.</Text>
       )}
-
-      {calendarViewMode === 'month' && !isMobileLayout &&
-        sortedUnified.map((row) => {
-        if (row.kind === 'manual') {
-          const ev = row.ev;
-          return (
-            <TouchableOpacity key={row.id} style={s.modelRow} onPress={() => onOpenManualEvent(ev)}>
-              <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-                <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: ev.color || '#888' }} />
-                <View style={{ flex: 1 }}>
-                  <Text style={s.modelName}>{ev.title} · {ev.date}</Text>
-                  <Text style={s.metaText}>
-                    {ev.start_time || '—'}{ev.end_time ? ` – ${ev.end_time}` : ''}
-                    {ev.note ? ` · ${ev.note}` : ''}
-                  </Text>
-                </View>
-              </View>
-            </TouchableOpacity>
-          );
-        }
-        if (row.kind === 'booking') {
-          const be = row.entry;
-          return (
-            <TouchableOpacity key={row.id} style={s.modelRow} onPress={() => onOpenBookingEntry?.(be)}>
-              <View style={{ flex: 1 }}>
-                <Text style={s.modelName}>{row.title} · {be.date}</Text>
-                <Text style={s.metaText}>{be.note ?? ''}</Text>
-              </View>
-              {renderBookingEntryBadge(be)}
-            </TouchableOpacity>
-          );
-        }
-        const item = row.item;
-        const { option, calendar_entry } = item;
-        const date = calendar_entry?.date ?? option.requested_date;
-        const start = calendar_entry?.start_time ?? option.start_time ?? undefined;
-        const end = calendar_entry?.end_time ?? option.end_time ?? undefined;
-        return (
-          <TouchableOpacity key={option.id} style={s.modelRow} onPress={() => onOpenDetails(item)}>
-            <View style={{ flex: 1 }}>
-              <Text style={s.modelName}>
-                {option.model_name ?? 'Model'} · {date}
-              </Text>
-              <Text style={s.metaText}>
-                {option.client_name ?? 'Client'}
-                {start ? ` · ${start}${end ? `–${end}` : ''}` : ''}
-              </Text>
-              {option.client_organization_id && assignmentByClientOrgId[option.client_organization_id] ? (
-                <Text style={s.metaText}>
-                  {assignmentByClientOrgId[option.client_organization_id].label}
-                  {assignmentByClientOrgId[option.client_organization_id].assignedMemberName
-                    ? ` · ${assignmentByClientOrgId[option.client_organization_id].assignedMemberName}`
-                    : ''}
-                </Text>
-              ) : null}
-            </View>
-            {renderAgencyCalendarOptionBadge(item)}
-          </TouchableOpacity>
-        );
-      })}
     </ScreenScrollView>
   );
 };
