@@ -99,8 +99,8 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
   suppressDuplicateMeta = false,
 }) => {
   const busy = actionBusy;
-  /** No model app: agency negotiates with client without in-app model approval (see store / RPC). */
-  const agencyMayActOnFee = request.modelAccountLinked === false || request.modelApproval === 'approved';
+  /** Price axis is independent — agency can always negotiate price regardless of model approval. */
+  const agencyMayActOnFee = true;
 
   const signals = attentionSignalsFromOptionRequestLike({
     status: status ?? request.status,

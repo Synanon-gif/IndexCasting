@@ -16,11 +16,9 @@ describe('optionRequestNeedsMessagesTabAttention', () => {
     ).toBe(true);
   });
 
-  it('is false when price is agreed but final_status is still option_pending (negotiation terminal, no approval action yet)', () => {
-    // Canonical behaviour: price_agreed D1 state is NOT visible (negotiation resolved);
-    // D2 (approval) is fully_cleared because final_status != 'option_confirmed'.
-    // attentionHeaderLabelFromSignals also returns null for this state — tab-dot follows suit.
-    // This is a transient intermediate state that resolves quickly via agencyAcceptRequest.
+  it('is true when price is agreed but agency has not confirmed availability (D2: waiting_for_agency_confirmation)', () => {
+    // Decoupled: price agreed (D1 done) but agency hasn't confirmed availability →
+    // D2 shows waiting_for_agency_confirmation → tab-dot is true.
     expect(
       optionRequestNeedsMessagesTabAttention({
         status: 'in_negotiation',
@@ -28,7 +26,7 @@ describe('optionRequestNeedsMessagesTabAttention', () => {
         clientPriceStatus: 'accepted',
         proposedPrice: 100,
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it('is true when option_confirmed (Option confirmed is an active state requiring finalization)', () => {
@@ -96,7 +94,8 @@ describe('deriveSmartAttentionState', () => {
     ).toBe('job_confirmation_pending');
   });
 
-  it('returns waiting_for_model for pending model approval (linked model)', () => {
+  it('returns waiting_for_agency when price settled but agency has not confirmed (D2 decoupled)', () => {
+    // Decoupled: price settled + agency not yet confirmed → waiting_for_agency_confirmation → maps to waiting_for_agency
     expect(
       deriveSmartAttentionState({
         status: 'in_negotiation',
@@ -106,10 +105,11 @@ describe('deriveSmartAttentionState', () => {
         modelAccountLinked: true,
         proposedPrice: 100,
       }),
-    ).toBe('waiting_for_model');
+    ).toBe('waiting_for_agency');
   });
 
-  it('returns waiting_for_client when model not linked and approval pending (no-account: agency proceeds)', () => {
+  it('returns waiting_for_agency when price settled and model not linked but agency has not confirmed', () => {
+    // Decoupled: price axis done, availability axis pending (agency must confirm)
     expect(
       deriveSmartAttentionState({
         status: 'in_negotiation',
@@ -118,7 +118,7 @@ describe('deriveSmartAttentionState', () => {
         modelApproval: 'pending',
         proposedPrice: 100,
       }),
-    ).toBe('waiting_for_client');
+    ).toBe('waiting_for_agency');
   });
 
   it('returns counter_pending when client rejected agency terms', () => {
@@ -184,7 +184,9 @@ describe('deriveNegotiationAttention', () => {
 });
 
 describe('deriveApprovalAttention', () => {
-  it('stays approval_inactive when accepted without commercial anchor', () => {
+  it('returns waiting_for_model_confirmation when agency confirmed, even without commercial anchor (D2 decoupled from D1)', () => {
+    // Decoupled: D2 checks availability independently of price settlement.
+    // Agency confirmed (final_status = option_confirmed) + model pending → waiting_for_model.
     expect(
       deriveApprovalAttention({
         status: 'in_negotiation',
@@ -195,7 +197,7 @@ describe('deriveApprovalAttention', () => {
         modelApproval: 'pending',
         modelAccountLinked: true,
       }),
-    ).toBe('approval_inactive');
+    ).toBe('waiting_for_model_confirmation');
   });
 
   it('returns waiting_for_model_confirmation when price is commercially settled and model must confirm', () => {

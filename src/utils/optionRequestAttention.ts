@@ -1,4 +1,3 @@
-import { toDisplayStatus } from './statusHelpers';
 import { priceCommerciallySettled } from './priceSettlement';
 
 /** @deprecated Prefer deriveNegotiationAttention + deriveApprovalAttention */
@@ -25,10 +24,13 @@ export type NegotiationAttentionState =
   | 'negotiation_open';
 
 /**
- * Dimension 2 — approvals / option→job. Only meaningful once price is agreed (`client_price_status === 'accepted'`).
+ * Dimension 2 — availability / approvals / option→job.
+ * Independent of D1 (price). Agency confirmation is signaled by final_status.
+ * Job finalization still requires BOTH axes (price agreed + availability confirmed).
  */
 export type ApprovalAttentionState =
   | 'approval_inactive'
+  | 'waiting_for_agency_confirmation'
   | 'waiting_for_model_confirmation'
   | 'waiting_for_client_to_finalize_job'
   | 'fully_cleared'
@@ -85,7 +87,9 @@ export function deriveNegotiationAttention(input: AttentionSignalInput): Negotia
 }
 
 /**
- * Approval / option→job — D2 only. Requires commercial settlement (same gate as footer lock), plus model + status + final_status.
+ * Approval / availability — D2 only.
+ * DECOUPLED from D1 (price): availability status is derived independently.
+ * Job finalization requires BOTH axes (price settled + availability cleared).
  */
 export function deriveApprovalAttention(input: AttentionSignalInput): ApprovalAttentionState {
   if (input.finalStatus === 'job_confirmed') {
@@ -94,55 +98,56 @@ export function deriveApprovalAttention(input: AttentionSignalInput): ApprovalAt
   if (input.status === 'rejected') {
     return 'fully_cleared';
   }
-  if (!priceCommerciallySettledForUi(input)) {
-    return 'approval_inactive';
-  }
 
+  const agencyConfirmed = input.finalStatus === 'option_confirmed';
   const modelAccountLinked = input.modelAccountLinked === true;
   const modelApproval = input.modelApproval ?? null;
+  const priceSettled = priceCommerciallySettledForUi(input);
 
-  if (
-    modelAccountLinked &&
-    modelApproval === 'pending' &&
-    input.status === 'in_negotiation' &&
-    input.finalStatus === 'option_confirmed'
-  ) {
-    return 'waiting_for_model_confirmation';
-  }
+  if (agencyConfirmed) {
+    if (
+      modelAccountLinked &&
+      modelApproval === 'pending' &&
+      input.status === 'in_negotiation'
+    ) {
+      return 'waiting_for_model_confirmation';
+    }
 
-  const canClientFinalizeJob =
-    input.finalStatus === 'option_confirmed' &&
-    (modelAccountLinked
-      ? modelApproval === 'approved' && (input.status === 'confirmed' || input.status === 'in_negotiation')
-      : input.status === 'in_negotiation' || input.status === 'confirmed');
+    const availabilityCleared = !modelAccountLinked || modelApproval === 'approved';
 
-  if (canClientFinalizeJob) {
-    return 'waiting_for_client_to_finalize_job';
-  }
+    if (availabilityCleared && priceSettled) {
+      return 'waiting_for_client_to_finalize_job';
+    }
 
-  if (input.finalStatus === 'option_confirmed' || input.status === 'confirmed') {
+    if (availabilityCleared) {
+      return 'fully_cleared';
+    }
+
     return 'fully_cleared';
   }
 
-  return 'fully_cleared';
+  // Agency hasn't confirmed availability yet.
+  // Signal "waiting for agency" only when price is already settled (Flow 1).
+  if (priceSettled) {
+    return 'waiting_for_agency_confirmation';
+  }
+
+  return 'approval_inactive';
 }
 
 /**
- * Legacy combined Smart Attention — composed from negotiation + approval so thread vs inbox stay consistent.
+ * Legacy combined Smart Attention — composed from D1 (negotiation) + D2 (approval).
+ * Both dimensions are evaluated independently; D2 takes priority (approval > price).
  * Prefer deriveNegotiationAttention / deriveApprovalAttention for new UI.
  */
 export function deriveSmartAttentionState(input: AttentionSignalInput): SmartAttentionState {
   const finalStatus = input.finalStatus ?? null;
-  const displayStatus = toDisplayStatus(input.status, finalStatus, {
-    clientPriceStatus: input.clientPriceStatus ?? null,
-    agencyCounterPrice: input.agencyCounterPrice ?? null,
-    proposedPrice: input.proposedPrice ?? null,
-  });
-  const modelApproval = input.modelApproval ?? null;
-  const clientPriceStatus = input.clientPriceStatus ?? null;
-  const modelAccountLinked = input.modelAccountLinked === true;
 
   if (finalStatus === 'job_confirmed') {
+    return 'no_attention';
+  }
+
+  if (input.status === 'rejected') {
     return 'no_attention';
   }
 
@@ -150,63 +155,27 @@ export function deriveSmartAttentionState(input: AttentionSignalInput): SmartAtt
     return 'conflict_risk';
   }
 
-  if (!priceCommerciallySettledForUi(input)) {
-    const n = deriveNegotiationAttention(input);
-    if (n === 'negotiation_terminal') return 'no_attention';
-    if (n === 'counter_rejected') return 'counter_pending';
-    if (n === 'waiting_for_client_response') return 'waiting_for_client';
-    if (n === 'waiting_for_agency_response' || n === 'negotiation_open') return 'waiting_for_agency';
+  // D2 (approval / availability) — takes priority over D1
+  const appr = deriveApprovalAttention(input);
+
+  if (appr === 'waiting_for_model_confirmation') {
+    return 'waiting_for_model';
+  }
+  if (appr === 'waiting_for_client_to_finalize_job') {
+    return 'job_confirmation_pending';
+  }
+  if (appr === 'waiting_for_agency_confirmation') {
     return 'waiting_for_agency';
   }
 
-  if (
-    modelAccountLinked &&
-    modelApproval === 'pending' &&
-    finalStatus === 'option_confirmed' &&
-    input.status === 'in_negotiation'
-  ) {
-    return 'waiting_for_model';
-  }
+  // D1 (negotiation / price)
+  const n = deriveNegotiationAttention(input);
+  if (n === 'negotiation_terminal' || n === 'price_agreed') return 'no_attention';
+  if (n === 'counter_rejected') return 'counter_pending';
+  if (n === 'waiting_for_client_response') return 'waiting_for_client';
+  if (n === 'waiting_for_agency_response' || n === 'negotiation_open') return 'waiting_for_agency';
 
-  if (
-    finalStatus === 'option_confirmed' &&
-    input.status === 'confirmed' &&
-    (!modelAccountLinked || modelApproval === 'approved')
-  ) {
-    return 'job_confirmation_pending';
-  }
-
-  if (
-    finalStatus === 'option_confirmed' &&
-    !modelAccountLinked &&
-    input.status === 'in_negotiation' &&
-    clientPriceStatus === 'accepted'
-  ) {
-    return 'job_confirmation_pending';
-  }
-
-  if (displayStatus === 'Confirmed' || displayStatus === 'Rejected') {
-    return 'no_attention';
-  }
-
-  if (clientPriceStatus === 'rejected') {
-    return 'counter_pending';
-  }
-
-  if (clientPriceStatus === 'pending') {
-    const hasAgencyCounter =
-      input.agencyCounterPrice != null && !Number.isNaN(Number(input.agencyCounterPrice));
-    if (hasAgencyCounter) {
-      return 'waiting_for_client';
-    }
-    return 'waiting_for_agency';
-  }
-
-  if (modelAccountLinked && modelApproval === 'pending') {
-    return 'waiting_for_model';
-  }
-
-  return 'waiting_for_client';
+  return 'no_attention';
 }
 
 /**
@@ -293,6 +262,7 @@ export function smartAttentionVisibleForRole(state: SmartAttentionState, role: S
 /** Header / summary: approval-only copy (Dimension 2). */
 export function approvalAttentionVisibleForRole(state: ApprovalAttentionState, role: SmartAttentionRole): boolean {
   if (state === 'approval_inactive' || state === 'fully_cleared' || state === 'job_completed') return false;
+  if (state === 'waiting_for_agency_confirmation') return role === 'client' || role === 'agency';
   if (state === 'waiting_for_model_confirmation') return role !== 'model';
   if (state === 'waiting_for_client_to_finalize_job') return role === 'client';
   return false;

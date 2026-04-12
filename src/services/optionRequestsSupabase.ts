@@ -1519,13 +1519,16 @@ async function createBookingEventFromRequest(req: SupabaseOptionRequest): Promis
 }
 
 /**
- * Agency akzeptiert die gesamte Buchungsanfrage.
+ * Agency confirms AVAILABILITY for the option/casting request.
  *
- * - model_account_linked = false → sofortige Bestätigung; booking_event wird erstellt.
- * - model_account_linked = true  → wartet auf Model-Bestätigung; kein booking_event noch.
+ * DECOUPLED from price: this function only handles availability/confirmation.
+ * Price acceptance is handled independently by agencyAcceptClientPrice / price RPCs.
  *
- * Verwendet client_price_status = 'accepted' als internes Agency-Accept-Signal
- * (kompatibel zum bestehenden Preisverhandlungsflow).
+ * - model_account_linked = false → auto-approval (model_approval = 'approved').
+ * - model_account_linked = true + already pre-approved → confirmed.
+ * - model_account_linked = true + pending → waits for model confirmation.
+ *
+ * Status stays 'in_negotiation' until client confirms job (via client_confirm_option_job).
  */
 export async function agencyAcceptRequest(
   id: string,
@@ -1546,19 +1549,12 @@ export async function agencyAcceptRequest(
     const modelAccountLinked = r.model_account_linked ?? false;
 
     if (!modelAccountLinked) {
-      // Kein Model-Account → Agency-Bestätigung reicht aus.
-      // Guard: .eq('status', 'in_negotiation') makes the UPDATE atomic — a
-      // double-tap or concurrent call returns no row and is safely ignored.
-      // The booking_event is now created by the DB trigger
-      // tr_auto_booking_event_on_confirm (migration_chaos_hardening_2026_04.sql).
       const { data: updateData, error } = await supabase
         .from('option_requests')
         .update({
-          client_price_status: 'accepted',
           final_status: 'option_confirmed',
           model_approval: 'approved',
           model_approved_at: new Date().toISOString(),
-          status: 'confirmed',
         })
         .eq('id', id)
         .eq('status', 'in_negotiation')
@@ -1583,18 +1579,12 @@ export async function agencyAcceptRequest(
       return 'confirmed';
     }
 
-    // If the model has already pre-approved (via updateModelApproval), the agency
-    // accepting immediately finalises the booking — no second model step needed.
-    // This avoids the model_approval deadlock: modelConfirmOptionRequest requires
-    // model_approval = 'pending', but it would already be 'approved' after pre-approval.
     if (r.model_approval === 'approved') {
       const { data: updateData, error } = await supabase
         .from('option_requests')
         .update({
-          client_price_status: 'accepted',
           final_status: 'option_confirmed',
           model_approved_at: r.model_approved_at ?? new Date().toISOString(),
-          status: 'confirmed',
         })
         .eq('id', id)
         .eq('status', 'in_negotiation')
@@ -1619,14 +1609,11 @@ export async function agencyAcceptRequest(
       return 'confirmed';
     }
 
-    // Model hat Account aber noch nicht vorab genehmigt → wartet auf Model-Bestätigung.
-    // Same atomic guard: only transition if still in_negotiation.
+    // Model has account but hasn't pre-approved → wait for model confirmation.
     const { data: updateData, error } = await supabase
       .from('option_requests')
       .update({
-        client_price_status: 'accepted',
         final_status: 'option_confirmed',
-        // model_approval bleibt 'pending' → modelConfirmOptionRequest wird ausgeführt
       })
       .eq('id', id)
       .eq('status', 'in_negotiation')
@@ -1649,7 +1636,6 @@ export async function agencyAcceptRequest(
       newData: { result: 'awaiting_model_confirmation', model_account_linked: true, agency_id: r.agency_id },
     });
 
-    // Notify model user that their confirmation is needed
     void notifyModelAwaitingConfirmation(r.model_id, id);
 
     return 'awaiting_model_confirmation';

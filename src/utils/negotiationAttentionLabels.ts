@@ -18,6 +18,11 @@ export function attentionHeaderLabelFromSignals(
 ): string | null {
   const appr = deriveApprovalAttention(input);
   if (approvalAttentionVisibleForRole(appr, role)) {
+    if (appr === 'waiting_for_agency_confirmation') {
+      return role === 'agency'
+        ? uiCopy.dashboard.smartAttentionLabel
+        : uiCopy.dashboard.smartAttentionWaitingForAgencyConfirmation;
+    }
     if (appr === 'waiting_for_model_confirmation') {
       return uiCopy.dashboard.smartAttentionWaitingForModel;
     }

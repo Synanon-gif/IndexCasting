@@ -41,6 +41,10 @@ function nextStepFromSignals(
   }
 
   if (approvalAttentionVisibleForRole(appr, role)) {
+    if (appr === 'waiting_for_agency_confirmation') {
+      if (role === 'agency') return c.nextStepNegotiating;
+      return c.nextStepAwaitingAgency;
+    }
     if (appr === 'waiting_for_model_confirmation') {
       return c.nextStepAwaitingModel;
     }

@@ -98,6 +98,14 @@ export function getCalendarProjectionBadge(
     }),
   );
 
+  if (appr === 'waiting_for_agency_confirmation') {
+    return {
+      label: labels.optionNegotiating,
+      backgroundColor: '#1565C0',
+      textColor,
+    };
+  }
+
   if (appr === 'waiting_for_model_confirmation') {
     const label =
       viewerRole === 'model' ? labels.yourConfirmationNeeded : labels.awaitingModel;

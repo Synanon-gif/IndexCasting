@@ -610,24 +610,26 @@ export async function refreshOptionRequestInCache(threadId: string): Promise<voi
 }
 
 /**
- * Agency accepts request — unified path.
- * Routes through agencyAcceptRequest which handles:
- *   - model_account_linked check
- *   - booking_event creation (if no model account)
- *   - model notification (if model has account)
- * Falls back to price-only agencyAcceptClientPrice if agencyAcceptRequest returns null
- * (e.g. RLS prevents the fetch for older requests).
+ * Agency accepts request — dual-axis path.
+ *
+ * 1. agencyAcceptRequest: confirms AVAILABILITY (final_status → option_confirmed).
+ * 2. agencyAcceptClientPrice: accepts PRICE (client_price_status → accepted).
+ *
+ * Both axes are set independently. If availability confirmation fails,
+ * falls back to price-only (for edge cases / older requests).
  */
 export async function agencyAcceptClientPriceStore(threadId: string): Promise<boolean> {
   const req = requestsCache.find((r) => r.threadId === threadId);
   if (!req) return false;
 
-  const result = await agencyAcceptRequest(req.id);
+  // Axis 2: confirm availability
+  const availabilityResult = await agencyAcceptRequest(req.id);
 
-  if (result === null) {
-    // Fallback to price-only path for edge cases.
-    const ok = await agencyAcceptClientPrice(req.id);
-    if (!ok) return false;
+  // Axis 1: accept price (independent of availability result)
+  const priceOk = await agencyAcceptClientPrice(req.id);
+
+  if (availabilityResult === null && !priceOk) {
+    return false;
   }
 
   const updated = await getOptionRequestById(req.id);

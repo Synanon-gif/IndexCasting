@@ -1752,10 +1752,12 @@ export const uiCopy = {
     smartAttentionNoAttention: 'No action required',
     smartAttentionWaitingForClient: 'Waiting for client',
     smartAttentionWaitingForAgency: 'Waiting for agency',
+    smartAttentionWaitingForAgencyConfirmation: 'Waiting for agency confirmation',
     smartAttentionWaitingForModel: 'Waiting for model approval',
     smartAttentionCounterPending: 'Counter pending',
     smartAttentionConflictRisk: 'Conflict risk',
     smartAttentionJobConfirmationPending: 'Job confirmation pending',
+    smartAttentionPriceAgreedAwaitingConfirmation: 'Price agreed — awaiting confirmation',
     smartAttentionFilterAll: 'All attention',
     smartAttentionFilterActionRequired: 'Action required only',
     /** Shown briefly after negotiation actions that sync to calendar (UI only). */
