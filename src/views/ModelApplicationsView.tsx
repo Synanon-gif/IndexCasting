@@ -2,11 +2,11 @@
  * Für Models ohne zugeordneten Model-Eintrag: „My Applications“ + Apply as Model.
  * Tabs: Applications, Messages (Recruiting-Chats mit Agenturen), Settings.
  */
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Modal, Alert, TextInput, Platform } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Modal, Alert, TextInput, Platform, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, typography } from '../theme/theme';
-import { flexFillColumn, flexFillScroll } from '../theme/chatLayout';
+import { flexFillColumn, flexFillScrollWebWithMinHeight } from '../theme/chatLayout';
 import { getApplicationsForApplicant, deleteApplication, updateApplicationsProfileForApplicant } from '../services/applicationsSupabase';
 import { FILTER_COUNTRIES, ETHNICITY_OPTIONS } from '../utils/modelFilters';
 import { refreshApplications, confirmApplicationByModel, rejectApplicationByModel } from '../store/applicationsStore';
@@ -76,6 +76,11 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
   onBackToRoleSelection,
 }) => {
   const insets = useSafeAreaInsets();
+  const { height: modelAppWinH } = useWindowDimensions();
+  const webMessagesScrollStyle = useMemo(
+    () => flexFillScrollWebWithMinHeight(modelAppWinH, insets.top, insets.bottom, 'default'),
+    [modelAppWinH, insets.top, insets.bottom],
+  );
   const bottomTabInset = BOTTOM_TAB_BAR_HEIGHT + insets.bottom;
   const [applications, setApplications] = useState<SupabaseApplication[]>([]);
   const [loading, setLoading] = useState(true);
@@ -398,7 +403,7 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
               <Text style={styles.meta}>{uiCopy.model.noAgencyMessages}</Text>
             ) : (
               <ScrollView
-                style={flexFillScroll}
+                style={webMessagesScrollStyle}
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator
                 contentContainerStyle={{ paddingBottom: spacing.md }}

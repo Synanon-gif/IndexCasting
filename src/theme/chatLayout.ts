@@ -12,17 +12,46 @@ export const flexFillColumn: ViewStyle = {
   width: '100%',
 };
 
+/** Shared flex base for vertical thread-list ScrollViews (no web `height: 0` — see below). */
+const flexFillScrollCore: ViewStyle = {
+  flex: 1,
+  flexBasis: 0,
+  minHeight: 0,
+  alignSelf: 'stretch',
+};
+
 /**
  * Primary vertical ScrollView inside a flex column (thread overview lists).
  * On RN Web, `flex:1` alone often does not allocate height — `height: 0` lets flex compute it.
  */
 export const flexFillScroll: ViewStyle = {
-  flex: 1,
-  flexBasis: 0,
-  minHeight: 0,
-  alignSelf: 'stretch',
+  ...flexFillScrollCore,
   ...(Platform.OS === 'web' ? { height: 0 } : {}),
 };
+
+/**
+ * RN Web / Mobile Safari: nested flex often never gives ScrollView a real height — the list stays
+ * content-sized and leaves a large blank area. Use a viewport-based minHeight (in addition to flex)
+ * so the thread list always gets a tall scroll region. Native returns plain `flexFillScroll`.
+ *
+ * `chromeExtra` approximates brand bar, search, section tabs, optional filter stacks, bottom tab.
+ */
+export function flexFillScrollWebWithMinHeight(
+  windowHeight: number,
+  topInset: number,
+  bottomInset: number,
+  variant: 'optionFilters' | 'default',
+): ViewStyle {
+  if (Platform.OS !== 'web') {
+    return flexFillScroll;
+  }
+  const chromeExtra = variant === 'optionFilters' ? 400 : 300;
+  const minH = Math.max(220, windowHeight - topInset - bottomInset - chromeExtra);
+  return {
+    ...flexFillScrollCore,
+    minHeight: minH,
+  };
+}
 
 /**
  * Central chat workspace layout tokens — widths, split ratios, message-area heights.

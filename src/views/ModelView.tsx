@@ -6,13 +6,15 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  useWindowDimensions,
 } from 'react-native';
 import { ModelProfileScreen } from '../screens/ModelProfileScreen';
 import { ModelApplicationsView } from './ModelApplicationsView';
 import { getModelForUserFromSupabase } from '../services/modelsSupabase';
 import { getOptionRequestsForModel, type SupabaseOptionRequestModelSafe } from '../services/optionRequestsSupabase';
 import { colors, spacing } from '../theme/theme';
-import { flexFillScroll } from '../theme/chatLayout';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { flexFillScrollWebWithMinHeight } from '../theme/chatLayout';
 import { uiCopy } from '../constants/uiCopy';
 import { toDisplayStatus, statusColor, statusBgColor } from '../utils/statusHelpers';
 import { modelInboxRequiresModelConfirmation, modelInboxSortPriority } from '../utils/optionRequestAttention';
@@ -118,6 +120,12 @@ const ModelUnifiedInbox: React.FC<{
   modelId: string;
   onOpenRequest: (optionRequestId: string) => void;
 }> = ({ modelId, onOpenRequest }) => {
+  const insets = useSafeAreaInsets();
+  const { height: modelInboxWinH } = useWindowDimensions();
+  const webInboxScrollStyle = useMemo(
+    () => flexFillScrollWebWithMinHeight(modelInboxWinH, insets.top, insets.bottom, 'default'),
+    [modelInboxWinH, insets.top, insets.bottom],
+  );
   const [requests, setRequests] = useState<SupabaseOptionRequestModelSafe[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -184,7 +192,7 @@ const ModelUnifiedInbox: React.FC<{
 
   return (
     <ScrollView
-      style={[styles.scroll, flexFillScroll]}
+      style={[styles.scroll, webInboxScrollStyle]}
       contentContainerStyle={{ paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.md }}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator

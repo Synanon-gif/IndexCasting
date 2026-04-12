@@ -26,7 +26,7 @@ import {
   CHAT_MESSENGER_FLEX,
   CHAT_THREAD_LIST_FLEX,
   flexFillColumn,
-  flexFillScroll,
+  flexFillScrollWebWithMinHeight,
   shouldUseB2BWebSplit,
 } from '../theme/chatLayout';
 import { showAppAlert } from '../utils/crossPlatformAlert';
@@ -4335,9 +4335,17 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   onOptionProjectionChanged,
   onChatFullscreenChange,
 }) => {
-  const { width: agencyMsgWinW } = useWindowDimensions();
+  const { width: agencyMsgWinW, height: agencyMsgWinH } = useWindowDimensions();
   const { deviceType } = useDeviceType();
   const insets = useSafeAreaInsets();
+  const webThreadListScrollDefault = useMemo(
+    () => flexFillScrollWebWithMinHeight(agencyMsgWinH, insets.top, insets.bottom, 'default'),
+    [agencyMsgWinH, insets.top, insets.bottom],
+  );
+  const webThreadListScrollOption = useMemo(
+    () => flexFillScrollWebWithMinHeight(agencyMsgWinH, insets.top, insets.bottom, 'optionFilters'),
+    [agencyMsgWinH, insets.top, insets.bottom],
+  );
   const agencyB2bWebSplit = Platform.OS === 'web' && shouldUseB2BWebSplit(agencyMsgWinW);
   const [messagesSection, setMessagesSection] = useState<'optionRequests' | 'recruiting' | 'clientRequests'>('clientRequests');
   const [messagesSearch, setMessagesSearch] = useState('');
@@ -5218,7 +5226,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
     <View style={flexFillColumn}>
       {searchActive ? (
         <ScrollView
-          style={flexFillScroll}
+          style={webThreadListScrollDefault}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator
           contentContainerStyle={{ paddingBottom: spacing.lg }}
@@ -5350,7 +5358,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
               ) : agencyB2bWebSplit ? (
                 <View style={{ flexDirection: 'row', alignItems: 'stretch', gap: spacing.md, flex: 1, minHeight: 0 }}>
                   <View style={{ flex: CHAT_THREAD_LIST_FLEX, minWidth: 0, minHeight: 0 }}>
-                    <ScrollView style={flexFillScroll} contentContainerStyle={{ flexGrow: 1 }}>
+                    <ScrollView style={webThreadListScrollDefault} contentContainerStyle={{ flexGrow: 1 }}>
                       {b2bConversations.map((c) => (
                         <View
                           key={c.id}
@@ -5454,7 +5462,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
               ) : (
                 // Mobile (non-split): list only — chat opens fullscreen via b2bChatFullscreenActive early return
                 <ScrollView
-                  style={flexFillScroll}
+                  style={webThreadListScrollDefault}
                   keyboardShouldPersistTaps="handled"
                   showsVerticalScrollIndicator
                   contentContainerStyle={{ paddingBottom: spacing.sm }}
@@ -5511,7 +5519,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
             <Text style={s.metaText}>No recruiting chats yet. Start a chat from Recruiting or accept an application.</Text>
           ) : (
             <ScrollView
-              style={flexFillScroll}
+              style={webThreadListScrollDefault}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator
               contentContainerStyle={{ paddingBottom: spacing.sm }}
@@ -5599,7 +5607,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
       </View>
 
       <ScrollView
-        style={flexFillScroll}
+        style={webThreadListScrollOption}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator
         contentContainerStyle={{ flexGrow: 1, paddingBottom: spacing.sm }}

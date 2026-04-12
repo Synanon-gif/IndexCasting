@@ -30,7 +30,7 @@ import {
   CHAT_MESSENGER_FLEX,
   CHAT_THREAD_LIST_FLEX,
   flexFillColumn,
-  flexFillScroll,
+  flexFillScrollWebWithMinHeight,
   shouldUseB2BWebSplit,
 } from '../theme/chatLayout';
 import { UI_DOUBLE_SUBMIT_DEBOUNCE_MS } from '../../lib/validation';
@@ -4004,8 +4004,13 @@ const ClientB2BChatsPanel: React.FC<{
   searchQuery = '',
   onChatActiveChange,
 }) => {
-  const { width: windowWidth } = useWindowDimensions();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const b2bWebSplit = Platform.OS === 'web' && shouldUseB2BWebSplit(windowWidth);
+  const b2bPanelInsets = useSafeAreaInsets();
+  const clientB2bThreadListScrollStyle = useMemo(
+    () => flexFillScrollWebWithMinHeight(windowHeight, b2bPanelInsets.top, b2bPanelInsets.bottom, 'default'),
+    [windowHeight, b2bPanelInsets.top, b2bPanelInsets.bottom],
+  );
   const auth = useAuth();
   const [rows, setRows] = useState<Conversation[]>([]);
   const [titles, setTitles] = useState<Record<string, string>>({});
@@ -4169,7 +4174,7 @@ const ClientB2BChatsPanel: React.FC<{
   const threadListEl =
     filteredRows.length > 0 ? (
       <ScrollView
-        style={flexFillScroll}
+        style={clientB2bThreadListScrollStyle}
         contentContainerStyle={{ flexGrow: 1, paddingBottom: spacing.sm }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator
@@ -4290,6 +4295,11 @@ const MessagesView: React.FC<MessagesViewProps> = ({
 }) => {
   const { deviceType } = useDeviceType();
   const insets = useSafeAreaInsets();
+  const { height: msgViewportH } = useWindowDimensions();
+  const webOptionThreadListScrollStyle = useMemo(
+    () => flexFillScrollWebWithMinHeight(msgViewportH, insets.top, insets.bottom, 'optionFilters'),
+    [msgViewportH, insets.top, insets.bottom],
+  );
   const [negotiationCounterExpanded, setNegotiationCounterExpanded] = useState(false);
   // Mobile: NegotiationSummaryCard is collapsed by default (chips in header already show status).
   // Desktop: always visible in the right rail — this state is ignored on desktop.
@@ -4825,7 +4835,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
         </View>
       )}
       <ScrollView
-        style={[styles.threadList, flexFillScroll]}
+        style={[styles.threadList, webOptionThreadListScrollStyle]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator
         contentContainerStyle={{ flexGrow: 1, paddingBottom: spacing.sm }}
