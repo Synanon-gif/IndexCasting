@@ -7,6 +7,9 @@ import { normalizeDocumentspicturesModelImageRef } from '../utils/normalizeModel
 /**
  * Gast-Links (Agentur) – in Supabase, pro agency_id; guest_links inkl. model_ids.
  * Alle Daten pro Partei gespeichert und abrufbar.
+ *
+ * Scope: external **package** access via `get_guest_link_*` RPCs only — not the same
+ * code path as the public agency directory (`publicAgencyProfileSupabase.ts`).
  */
 export type PackageType = 'portfolio' | 'polaroid';
 
@@ -128,6 +131,29 @@ export async function getGuestLink(linkId: string): Promise<GuestLinkInfo | null
     return firstGuestLinkInfoRow(data);
   } catch (e) {
     console.error('[getGuestLink] exception', { p_link_id_prefix: idPrefix, err: e });
+    return null;
+  }
+}
+
+/**
+ * Resolves `agency organization_id` for a guest link via SECURITY DEFINER RPC
+ * `get_agency_org_id_for_link`. Server validates active / non-expired / non-deleted link
+ * (C-2). Never trust a client-supplied org id for guest context — use this instead.
+ */
+export async function getAgencyOrgIdForGuestLink(linkId: string): Promise<string | null> {
+  const trimmed = linkId?.trim();
+  if (!trimmed) return null;
+  try {
+    const { data, error } = await supabase.rpc('get_agency_org_id_for_link', {
+      p_link_id: trimmed,
+    });
+    if (error) {
+      console.error('getAgencyOrgIdForGuestLink error:', error);
+      return null;
+    }
+    return (data as string | null) ?? null;
+  } catch (e) {
+    console.error('getAgencyOrgIdForGuestLink exception:', e);
     return null;
   }
 }

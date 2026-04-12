@@ -4,7 +4,7 @@
  * Shown immediately after the user clicks the Magic Link and is authenticated.
  * Responsibilities:
  *   1. Read the pending booking request from sessionStorage (set by GuestView)
- *   2. Resolve the agency organization ID from the guest link agency_id
+ *   2. Resolve the agency organization ID via `getAgencyOrgIdForGuestLink` (verified link RPC)
  *   3. Create (or re-use) the guest ↔ agency conversation
  *   4. Send the booking_request message (once)
  *   5. Render the chat thread via OrgMessengerInline
@@ -25,6 +25,7 @@ import { getChatOverlayMaxWidth } from '../theme/chatLayout';
 import { uiCopy } from '../constants/uiCopy';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { getAgencyOrgIdForGuestLink } from '../services/guestLinksSupabase';
 import { validateUrl } from '../../lib/validation';
 import {
   createGuestConversation,
@@ -77,29 +78,6 @@ async function clearPendingRequest(): Promise<void> {
     await AsyncStorage.removeItem(GUEST_PENDING_KEY);
   } catch {
     // Non-fatal; pending will naturally expire
-  }
-}
-
-/**
- * Resolves the agency organization_id from a guest link ID via a
- * SECURITY DEFINER RPC.  This eliminates trust in the client-supplied
- * agency_id from sessionStorage: the org is derived from the verified
- * link row in the database (active, non-expired, non-deleted).
- * C-2 fix — Security Pentest 2026-04.
- */
-async function getAgencyOrgIdForLink(linkId: string): Promise<string | null> {
-  try {
-    const { data, error } = await supabase.rpc('get_agency_org_id_for_link', {
-      p_link_id: linkId,
-    });
-    if (error) {
-      console.error('getAgencyOrgIdForLink error:', error);
-      return null;
-    }
-    return (data as string | null) ?? null;
-  } catch (e) {
-    console.error('getAgencyOrgIdForLink exception:', e);
-    return null;
   }
 }
 
@@ -169,7 +147,7 @@ export const GuestChatView: React.FC = () => {
 
       // Resolve agency org from the verified link (not from sessionStorage agency_id).
       // get_agency_org_id_for_link() validates the link is active + non-expired server-side.
-      const orgId = await getAgencyOrgIdForLink(linkId);
+      const orgId = await getAgencyOrgIdForGuestLink(linkId);
       if (!orgId) {
         setChatError(copy.agencyWorkspaceNotFound);
         setLoading(false);

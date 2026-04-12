@@ -579,6 +579,15 @@ describe('getGuestLinkModels — RPC returns type-correct image arrays', () => {
     expect(result.error).toBeTruthy();
   });
 
+  it('returns ok:false for empty or whitespace-only link id (fail-closed)', async () => {
+    mockRpc.mockReset();
+    const a = await getGuestLinkModels('');
+    const b = await getGuestLinkModels('   \t  ');
+    expect(a.ok).toBe(false);
+    expect(b.ok).toBe(false);
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+
   it('returns ok:true with empty data for an invalid or expired link (RPC returns empty array)', async () => {
     mockRpc.mockResolvedValue({ data: [], error: null });
 

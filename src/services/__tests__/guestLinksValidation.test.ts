@@ -29,6 +29,7 @@ jest.mock('../../../lib/supabase', () => ({
 
 import {
   getGuestLink,
+  getAgencyOrgIdForGuestLink,
   deleteGuestLink,
   createGuestLink,
 } from '../guestLinksSupabase';
@@ -110,6 +111,44 @@ describe('getGuestLink — valid active link', () => {
   it('uses the security-definer RPC (not direct table access) to prevent enumeration', () => {
     // getGuestLink must route through 'get_guest_link_info' RPC — never from('guest_links')
     expect(mockFrom).not.toHaveBeenCalled();
+  });
+});
+
+// ─── getAgencyOrgIdForGuestLink (C-2 org resolution for guest chat) ─────────────
+
+describe('getAgencyOrgIdForGuestLink', () => {
+  it('returns org UUID when RPC succeeds', async () => {
+    mockRpc.mockResolvedValue({ data: '00000000-0000-0000-0000-00000000aa01', error: null });
+    const org = await getAgencyOrgIdForGuestLink('550e8400-e29b-41d4-a716-446655440000');
+    expect(org).toBe('00000000-0000-0000-0000-00000000aa01');
+    expect(mockRpc).toHaveBeenCalledWith('get_agency_org_id_for_link', {
+      p_link_id: '550e8400-e29b-41d4-a716-446655440000',
+    });
+  });
+
+  it('trims link id before RPC', async () => {
+    mockRpc.mockResolvedValue({ data: 'org-1', error: null });
+    await getAgencyOrgIdForGuestLink('  link-trim-2  ');
+    expect(mockRpc).toHaveBeenCalledWith('get_agency_org_id_for_link', { p_link_id: 'link-trim-2' });
+  });
+
+  it('returns null without calling RPC when link id is empty or whitespace', async () => {
+    mockRpc.mockReset();
+    expect(await getAgencyOrgIdForGuestLink('')).toBeNull();
+    expect(await getAgencyOrgIdForGuestLink('   ')).toBeNull();
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+
+  it('returns null on RPC error (fail-closed, no org leak)', async () => {
+    mockRpc.mockResolvedValue({ data: null, error: { message: 'invalid link' } });
+    const org = await getAgencyOrgIdForGuestLink('bad-link');
+    expect(org).toBeNull();
+  });
+
+  it('returns null on exception', async () => {
+    mockRpc.mockRejectedValue(new Error('network'));
+    const org = await getAgencyOrgIdForGuestLink('any-id');
+    expect(org).toBeNull();
   });
 });
 
