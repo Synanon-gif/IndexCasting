@@ -152,6 +152,8 @@ export function buildUnifiedAgencyCalendarRows(
   const coveredDateModelPairs = new Set<string>();
   // L3: date + normalised model name
   const coveredDateModelNames = new Set<string>();
+  // L4: date + stripped name (prefix/suffix removed)
+  const coveredDateStrippedNames = new Set<string>();
   // Also collect bare dates that have at least one option row (for last-resort suppression)
   const datesWithOptions = new Set<string>();
 
@@ -165,6 +167,13 @@ export function buildUnifiedAgencyCalendarRows(
     const name = (opt.model_name ?? '').trim().toLowerCase();
     if (name && r.date) {
       coveredDateModelNames.add(`${r.date}|${name}`);
+      const stripped = stripLifecycleAffixes(name);
+      if (stripped) coveredDateStrippedNames.add(`${r.date}|${stripped}`);
+    }
+    const ceTitle = (r.item.calendar_entry?.title ?? '').trim().toLowerCase();
+    if (ceTitle && r.date) {
+      const ceStripped = stripLifecycleAffixes(ceTitle);
+      if (ceStripped) coveredDateStrippedNames.add(`${r.date}|${ceStripped}`);
     }
   }
 
@@ -174,11 +183,17 @@ export function buildUnifiedAgencyCalendarRows(
     // L1: option_request_id exact match
     if (be.option_request_id && coveredOptionIds.has(be.option_request_id)) continue;
     // L2: date + model_id composite
-    if (be.model_id && coveredDateModelPairs.has(`${beDate}|${be.model_id}`)) continue;
+    if (be.model_id && beDate && coveredDateModelPairs.has(`${beDate}|${be.model_id}`)) continue;
     // L3: date + model name (from booking title or CalendarEntry title)
     const beName = (be.title ?? '').trim().toLowerCase();
-    if (beName && coveredDateModelNames.has(`${beDate}|${beName}`)) continue;
-    // L3b: check if any option row's model_name appears inside the booking title
+    if (beName && beDate && coveredDateModelNames.has(`${beDate}|${beName}`)) continue;
+    // L4: stripped name match (removes "Option – ", " – option", etc.)
+    if (beName && beDate) {
+      const stripped = stripLifecycleAffixes(beName);
+      if (stripped && coveredDateModelNames.has(`${beDate}|${stripped}`)) continue;
+      if (stripped && coveredDateStrippedNames.has(`${beDate}|${stripped}`)) continue;
+    }
+    // L5: check if any option row's model_name appears inside the booking title
     if (beName && beDate && datesWithOptions.has(beDate)) {
       let nameMatched = false;
       for (const optName of coveredDateModelNames) {
@@ -187,6 +202,19 @@ export function buildUnifiedAgencyCalendarRows(
         if (justName && beName.includes(justName)) { nameMatched = true; break; }
       }
       if (nameMatched) continue;
+    }
+    // L6: stripped booking name is substring of any option model_name (reverse)
+    if (beName && beDate && datesWithOptions.has(beDate)) {
+      const stripped = stripLifecycleAffixes(beName);
+      if (stripped) {
+        let reverseMatch = false;
+        for (const optName of coveredDateModelNames) {
+          if (!optName.startsWith(`${beDate}|`)) continue;
+          const justName = optName.slice(beDate.length + 1);
+          if (justName && justName.includes(stripped)) { reverseMatch = true; break; }
+        }
+        if (reverseMatch) continue;
+      }
     }
 
     const date = beDate;
@@ -299,19 +327,42 @@ export function filterUnifiedAgencyCalendarRows(
 }
 
 /**
- * Final-pass dedup using CANONICAL LIFECYCLE KEYS — never date-only.
+ * Strip common lifecycle prefixes/suffixes from calendar/booking titles
+ * so we can extract the core name (model or client name) for matching.
  *
- * Lifecycle key hierarchy (most → least specific):
- *   1. option_request_id (UUID, authoritative)
- *   2. date|model_id|start_time  (composite, stable if all three present)
- *   3. date|model_id             (composite fallback, no time info)
+ * Handles both "Option – Name" (calendar_entry trigger format) and
+ * "Name – option" (booking_event trigger / client-side format), with
+ * regular hyphens and en-dashes.
+ */
+function stripLifecycleAffixes(raw: string): string {
+  let t = raw;
+  const prefixes = [
+    'option \u2013 ', 'casting \u2013 ', 'job \u2013 ', 'booking \u2013 ',
+    'option - ', 'casting - ', 'job - ', 'booking - ',
+  ];
+  const suffixes = [
+    ' \u2013 option', ' \u2013 casting', ' \u2013 job', ' \u2013 booking',
+    ' - option', ' - casting', ' - job', ' - booking',
+  ];
+  for (const p of prefixes) { if (t.startsWith(p)) { t = t.slice(p.length); break; } }
+  for (const s of suffixes) { if (t.endsWith(s)) { t = t.slice(0, -s.length); break; } }
+  return t.trim();
+}
+
+/**
+ * Final-pass dedup — booking rows that represent the same lifecycle as an
+ * option row are suppressed.  Six layers ensure near-zero false negatives:
  *
- * A booking row is suppressed when its lifecycle key matches an option row's
- * lifecycle key. Two real separate events (different times, different models)
- * are never suppressed — date-only matching is intentionally excluded.
+ *   K1  option_request_id exact match (authoritative)
+ *   K2  date + model_id composite
+ *   K3  date + exact normalised name
+ *   K4  date + stripped name (prefix/suffix removed)
+ *   K5  option model_name is substring of booking title
+ *   K6  stripped booking name is substring of any option model_name (reverse)
  *
- * Apply to `filteredUnified` / `sortedUnified` after `buildUnifiedAgencyCalendarRows`
- * as a final safety net for mismatched agency_id vs agency_org_id fetch scopes.
+ * Two genuinely different events for the same model on the same date both
+ * arrive through the option_requests path, so suppressing booking rows
+ * whose lifecycle key matches an option row is always safe.
  */
 export function dedupeUnifiedRowsByOptionRequest(
   rows: UnifiedAgencyCalendarRow[],
@@ -319,6 +370,7 @@ export function dedupeUnifiedRowsByOptionRequest(
   const optionIdKeys = new Set<string>();
   const optionDateModelKeys = new Set<string>();
   const optionDateNameKeys = new Set<string>();
+  const optionDateStrippedKeys = new Set<string>();
   const datesWithOptions = new Set<string>();
 
   for (const r of rows) {
@@ -326,19 +378,27 @@ export function dedupeUnifiedRowsByOptionRequest(
     const opt = r.item.option;
     if (r.date) datesWithOptions.add(r.date);
 
-    // K1: option_request_id
     optionIdKeys.add(opt.id);
     const ceId = r.item.calendar_entry?.option_request_id;
     if (ceId && ceId !== opt.id) optionIdKeys.add(ceId);
 
-    // K2: date + model_id (always, regardless of start_time)
     if (opt.model_id && r.date) {
       optionDateModelKeys.add(`${r.date}|${opt.model_id}`);
     }
-    // K3: date + normalised model_name
+
     const name = (opt.model_name ?? '').trim().toLowerCase();
     if (name && r.date) {
       optionDateNameKeys.add(`${r.date}|${name}`);
+      const stripped = stripLifecycleAffixes(name);
+      if (stripped && stripped !== name) {
+        optionDateStrippedKeys.add(`${r.date}|${stripped}`);
+      }
+    }
+
+    const ceTitle = (r.item.calendar_entry?.title ?? '').trim().toLowerCase();
+    if (ceTitle && r.date) {
+      const ceStripped = stripLifecycleAffixes(ceTitle);
+      if (ceStripped) optionDateStrippedKeys.add(`${r.date}|${ceStripped}`);
     }
   }
 
@@ -346,14 +406,26 @@ export function dedupeUnifiedRowsByOptionRequest(
     if (r.kind !== 'booking') return true;
     const e = r.entry;
     const eDate = e.date ?? '';
+
     // K1: option_request_id
     if (e.option_request_id && optionIdKeys.has(e.option_request_id)) return false;
-    // K2: date + model_id (unconditional — start_time on bookingEventToCalendarEntry is null)
+
+    // K2: date + model_id
     if (e.model_id && eDate && optionDateModelKeys.has(`${eDate}|${e.model_id}`)) return false;
-    // K3: date + title as model name
+
     const eName = (e.title ?? '').trim().toLowerCase();
+
+    // K3: exact name match
     if (eName && eDate && optionDateNameKeys.has(`${eDate}|${eName}`)) return false;
-    // K3b: check if any option model_name appears inside the booking title
+
+    // K4: stripped name match (removes "Option – ", " – option", etc.)
+    if (eName && eDate) {
+      const stripped = stripLifecycleAffixes(eName);
+      if (stripped && optionDateNameKeys.has(`${eDate}|${stripped}`)) return false;
+      if (stripped && optionDateStrippedKeys.has(`${eDate}|${stripped}`)) return false;
+    }
+
+    // K5: any option model_name is a substring of the booking title
     if (eName && eDate && datesWithOptions.has(eDate)) {
       for (const k of optionDateNameKeys) {
         if (!k.startsWith(`${eDate}|`)) continue;
@@ -361,6 +433,19 @@ export function dedupeUnifiedRowsByOptionRequest(
         if (justName && eName.includes(justName)) return false;
       }
     }
+
+    // K6: stripped booking name is a substring of any option model_name (reverse)
+    if (eName && eDate && datesWithOptions.has(eDate)) {
+      const stripped = stripLifecycleAffixes(eName);
+      if (stripped) {
+        for (const k of optionDateNameKeys) {
+          if (!k.startsWith(`${eDate}|`)) continue;
+          const justName = k.slice(eDate.length + 1);
+          if (justName && justName.includes(stripped)) return false;
+        }
+      }
+    }
+
     return true;
   });
 }

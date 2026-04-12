@@ -479,17 +479,49 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     const coveredOptionIds = new Set(
       legacyEntries.map((e) => e.option_request_id).filter(Boolean),
     );
-    // Fallback dedup: same date+model_id pair already covered by a legacy entry.
     const coveredDateModel = new Set(
       legacyEntries
         .filter((e) => e.model_id)
         .map((e) => `${e.date ?? ''}|${e.model_id}`),
+    );
+    const coveredDateNames = new Set(
+      legacyEntries
+        .filter((e) => e.title)
+        .map((e) => `${e.date ?? ''}|${(e.title ?? '').trim().toLowerCase()}`),
+    );
+    const stripAffixes = (t: string): string => {
+      const pres = ['option \u2013 ', 'casting \u2013 ', 'job \u2013 ', 'booking \u2013 ',
+        'option - ', 'casting - ', 'job - ', 'booking - '];
+      const sufs = [' \u2013 option', ' \u2013 casting', ' \u2013 job', ' \u2013 booking',
+        ' - option', ' - casting', ' - job', ' - booking'];
+      let r = t;
+      for (const p of pres) { if (r.startsWith(p)) { r = r.slice(p.length); break; } }
+      for (const s of sufs) { if (r.endsWith(s)) { r = r.slice(0, -s.length); break; } }
+      return r.trim();
+    };
+    const coveredDateStripped = new Set(
+      legacyEntries
+        .filter((e) => e.title)
+        .map((e) => `${e.date ?? ''}|${stripAffixes((e.title ?? '').trim().toLowerCase())}`),
     );
     const beEntries = bookingEvents
       .map(bookingEventToCalendarEntry)
       .filter((be) => {
         if (be.option_request_id && coveredOptionIds.has(be.option_request_id)) return false;
         if (be.model_id && coveredDateModel.has(`${be.date ?? ''}|${be.model_id}`)) return false;
+        const beName = (be.title ?? '').trim().toLowerCase();
+        const beDate = be.date ?? '';
+        if (beName && beDate && coveredDateNames.has(`${beDate}|${beName}`)) return false;
+        if (beName && beDate) {
+          const stripped = stripAffixes(beName);
+          if (stripped && coveredDateNames.has(`${beDate}|${stripped}`)) return false;
+          if (stripped && coveredDateStripped.has(`${beDate}|${stripped}`)) return false;
+          for (const k of coveredDateNames) {
+            if (!k.startsWith(`${beDate}|`)) continue;
+            const n = k.slice(beDate.length + 1);
+            if (n && (beName.includes(n) || n.includes(stripped))) return false;
+          }
+        }
         return true;
       });
     setCalEntries([...legacyEntries, ...beEntries]);
