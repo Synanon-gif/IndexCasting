@@ -3,16 +3,17 @@ import { View, Text, StyleSheet } from 'react-native';
 import { spacing, typography } from '../../theme/theme';
 import { OptionSystemInfoBlock } from './OptionSystemInfoBlock';
 import {
-  bubbleColorsForSender,
   isSelfMessage,
+  negotiationBubbleAppearance,
   type ChatParticipantRole,
+  type NegotiationViewerRole,
 } from '../../theme/roleColors';
 
 export type NegotiationMessageRowProps = {
   id: string;
   from: ChatParticipantRole;
   text: string;
-  viewerRole: 'agency' | 'client';
+  viewerRole: NegotiationViewerRole;
   /** Tighter top margin when grouped with the previous bubble (same sender role). */
   compactTop?: boolean;
   /** Short time label (e.g. locale time) — shown under the bubble for this message. */
@@ -31,11 +32,11 @@ export const NegotiationMessageRow: React.FC<NegotiationMessageRowProps> = ({
   }
 
   const self = isSelfMessage(from, viewerRole);
-  const { bubbleBackground, bubbleText, borderColor } = bubbleColorsForSender(from);
+  const { bubbleBackground, bubbleText, borderColor } = negotiationBubbleAppearance(from, viewerRole);
 
   return (
     <View style={[styles.row, compactTop && styles.rowCompactTop, self ? styles.rowSelf : styles.rowOther]}>
-      <View style={styles.bubbleCol}>
+      <View style={[styles.bubbleCol, self && styles.bubbleColSelf]}>
         <View style={[styles.bubble, { backgroundColor: bubbleBackground, borderColor }]}>
           <Text style={[styles.bubbleText, { color: bubbleText }]}>{text}</Text>
         </View>
@@ -65,6 +66,12 @@ const styles = StyleSheet.create({
   },
   bubbleCol: {
     maxWidth: '88%',
+  },
+  /** Outgoing: narrower column + left gutter so the bubble is not flush to the right edge. */
+  bubbleColSelf: {
+    maxWidth: '76%',
+    marginLeft: '12%',
+    paddingRight: spacing.sm,
   },
   bubble: {
     maxWidth: '100%',

@@ -19,6 +19,7 @@ import {
 import { StorageImage } from './StorageImage';
 import ChatLayoutFix from './ChatLayoutFix';
 import { colors, spacing, typography } from '../theme/theme';
+import { bubbleColorsForSender, outgoingSelfBubbleColors } from '../theme/roleColors';
 import { uiCopy } from '../constants/uiCopy';
 import {
   getMessagesWithSenderInfo,
@@ -580,18 +581,22 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
     </>
   );
 
+  const incomingOrgTextBubble = bubbleColorsForSender('client');
+
   const messageNodes = msgs.map((m) => {
           const pt = payloadType(m);
           const rawFileUrl = (m as { file_url?: string | null }).file_url ?? null;
           const fileType = (m as { file_type?: string | null }).file_type ?? null;
           const resolvedFileUrl = rawFileUrl ? (signedUrls[rawFileUrl] ?? null) : null;
           const isImage = !!fileType && fileType.startsWith('image/');
+          const isOwn = Boolean(viewerUserId && m.sender_id === viewerUserId);
           return (
             <View key={m.id} style={styles.msgBlock}>
               <Text style={styles.senderLine}>{m.senderLabel}</Text>
               {/* File / image attachment */}
               {rawFileUrl ? (
-                isImage ? (
+                <View style={[styles.attachmentRow, isOwn ? styles.attachmentRowOwn : styles.attachmentRowOther]}>
+                {isImage ? (
                   resolvedFileUrl ? (
                     <Pressable onPress={() => openUrl(resolvedFileUrl)}>
                       <Image
@@ -616,16 +621,65 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
                     </Text>
                     <Text style={styles.fileCardOpen}>{uiCopy.b2bChat.openFile}</Text>
                   </Pressable>
-                )
+                )}
+                </View>
               ) : null}
               {/* Text content */}
               {pt === 'text' && m.text ? (
-                <Text style={styles.chatBubbleText}>{m.text}</Text>
+                <View style={[styles.bubbleRow, isOwn ? styles.bubbleRowOwn : styles.bubbleRowOther]}>
+                  <View
+                    style={[
+                      styles.msgBubble,
+                      isOwn
+                        ? {
+                            backgroundColor: outgoingSelfBubbleColors.bubbleBackground,
+                            borderColor: outgoingSelfBubbleColors.borderColor,
+                          }
+                        : {
+                            backgroundColor: incomingOrgTextBubble.bubbleBackground,
+                            borderColor: incomingOrgTextBubble.borderColor,
+                          },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.chatBubbleTextInBubble,
+                        { color: isOwn ? outgoingSelfBubbleColors.bubbleText : incomingOrgTextBubble.bubbleText },
+                      ]}
+                    >
+                      {m.text}
+                    </Text>
+                  </View>
+                </View>
               ) : null}
               {pt === 'link' ? (
-                <Pressable onPress={() => metaString(m, 'url') && openUrl(metaString(m, 'url')!)}>
-                  <Text style={styles.linkText}>{m.text || metaString(m, 'url') || 'Link'}</Text>
-                </Pressable>
+                <View style={[styles.bubbleRow, isOwn ? styles.bubbleRowOwn : styles.bubbleRowOther]}>
+                  <View
+                    style={[
+                      styles.msgBubble,
+                      isOwn
+                        ? {
+                            backgroundColor: outgoingSelfBubbleColors.bubbleBackground,
+                            borderColor: outgoingSelfBubbleColors.borderColor,
+                          }
+                        : {
+                            backgroundColor: incomingOrgTextBubble.bubbleBackground,
+                            borderColor: incomingOrgTextBubble.borderColor,
+                          },
+                    ]}
+                  >
+                    <Pressable onPress={() => metaString(m, 'url') && openUrl(metaString(m, 'url')!)}>
+                      <Text
+                        style={[
+                          styles.linkTextInBubble,
+                          { color: isOwn ? outgoingSelfBubbleColors.bubbleText : colors.accentGreen },
+                        ]}
+                      >
+                        {m.text || metaString(m, 'url') || 'Link'}
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
               ) : null}
               {pt === 'package' ? (() => {
                 const meta = (m as { metadata?: Record<string, unknown> }).metadata ?? {};
@@ -1057,6 +1111,46 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: colors.textSecondary,
     marginBottom: 2,
+  },
+  bubbleRow: {
+    width: '100%',
+    marginBottom: spacing.xs,
+  },
+  bubbleRowOwn: {
+    alignItems: 'flex-end',
+    paddingLeft: '12%',
+    paddingRight: spacing.sm,
+  },
+  bubbleRowOther: {
+    alignItems: 'flex-start',
+  },
+  msgBubble: {
+    maxWidth: '78%',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  chatBubbleTextInBubble: {
+    ...typography.body,
+    fontSize: 12,
+  },
+  linkTextInBubble: {
+    ...typography.body,
+    fontSize: 12,
+    textDecorationLine: 'underline',
+  },
+  attachmentRow: {
+    width: '100%',
+    marginBottom: spacing.xs,
+  },
+  attachmentRowOwn: {
+    alignItems: 'flex-end',
+    paddingLeft: '12%',
+    paddingRight: spacing.sm,
+  },
+  attachmentRowOther: {
+    alignItems: 'flex-start',
   },
   chatBubbleText: {
     ...typography.body,

@@ -8,7 +8,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, Modal, ScrollView, Image, Platform, ActivityIndicator, Linking, Pressable, useWindowDimensions, KeyboardAvoidingView, BackHandler } from 'react-native';
 import { StorageImage } from '../components/StorageImage';
 import { colors, spacing, typography } from '../theme/theme';
-import { bubbleColorsForSender } from '../theme/roleColors';
+import { bubbleColorsForSender, outgoingSelfBubbleColors } from '../theme/roleColors';
 import { getChatOverlayMaxWidth, getMessagesScrollMaxHeight } from '../theme/chatLayout';
 import {
   getRecruitingMessages,
@@ -376,11 +376,12 @@ export const BookingChatView: React.FC<Props> = ({
               {/* Text content */}
               {msg.text ? (
                 (() => {
-                  const rc = bubbleColorsForSender(msg.from);
+                  const rc = isSelf ? outgoingSelfBubbleColors : bubbleColorsForSender(msg.from);
                   return (
                     <View
                       style={[
                         styles.bubble,
+                        isSelf && styles.bubbleOutgoing,
                         {
                           backgroundColor: rc.bubbleBackground,
                           borderWidth: StyleSheet.hairlineWidth,
@@ -680,6 +681,12 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     borderRadius: 12,
     marginBottom: spacing.xs,
+  },
+  /** Outgoing text bubble: slight right gutter vs full flush-right. */
+  bubbleOutgoing: {
+    maxWidth: '76%',
+    marginLeft: '12%',
+    marginRight: spacing.sm,
   },
   bubbleSelf: {
     alignSelf: 'flex-end',

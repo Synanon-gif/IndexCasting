@@ -67,6 +67,7 @@ import {
   formatOptionTimeRangeSuffix,
   stripClockSeconds,
 } from '../utils/formatTimeForUi';
+import { bubbleColorsForSender, outgoingSelfBubbleColors } from '../theme/roleColors';
 import { getCalendarDetailNextStepForModelLocalOption } from '../utils/calendarDetailNextStep';
 import { MonthCalendarView } from '../components/MonthCalendarView';
 import { CalendarViewModeBar, type CalendarViewMode } from '../components/CalendarViewModeBar';
@@ -1414,20 +1415,30 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                     <Text style={{ ...typography.body, fontSize: 12, color: colors.textPrimary, textAlign: 'center' }}>{msg.text}</Text>
                   </View>
                 ) : (
-                  <View
-                    key={msg.id}
-                    style={{
-                      alignSelf: msg.from === 'agency' ? 'flex-end' : 'flex-start',
-                      maxWidth: '85%',
-                      paddingHorizontal: spacing.sm,
-                      paddingVertical: spacing.xs,
-                      borderRadius: 12,
-                      marginBottom: spacing.xs,
-                      backgroundColor: msg.from === 'agency' ? colors.buttonOptionGreen : '#E2E0DB',
-                    }}
-                  >
-                    <Text style={{ ...typography.body, fontSize: 12, color: msg.from === 'agency' ? '#fff' : colors.textPrimary }}>{msg.text}</Text>
-                  </View>
+                  (() => {
+                    const isOwn = msg.from === 'model';
+                    const rc = isOwn ? outgoingSelfBubbleColors : bubbleColorsForSender(msg.from);
+                    return (
+                      <View
+                        key={msg.id}
+                        style={{
+                          alignSelf: isOwn ? 'flex-end' : 'flex-start',
+                          maxWidth: isOwn ? '76%' : '85%',
+                          marginLeft: isOwn ? '12%' : 0,
+                          marginRight: isOwn ? spacing.sm : 0,
+                          paddingHorizontal: spacing.sm,
+                          paddingVertical: spacing.xs,
+                          borderRadius: 12,
+                          marginBottom: spacing.xs,
+                          backgroundColor: rc.bubbleBackground,
+                          borderWidth: StyleSheet.hairlineWidth,
+                          borderColor: rc.borderColor,
+                        }}
+                      >
+                        <Text style={{ ...typography.body, fontSize: 12, color: rc.bubbleText }}>{msg.text}</Text>
+                      </View>
+                    );
+                  })()
                 ),
               )}
             </ScrollView>

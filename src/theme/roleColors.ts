@@ -38,14 +38,45 @@ export function bubbleColorsForSender(from: ChatParticipantRole): {
   return roleMessageColors[from];
 }
 
+/** Unified outgoing bubble (current user) — soft green, dark text, all roles. */
+export const outgoingSelfBubbleColors = {
+  bubbleBackground: '#E6F2EC',
+  bubbleText: colors.textPrimary,
+  borderColor: '#C5D9CE',
+} as const;
+
+export type NegotiationViewerRole = 'agency' | 'client' | 'model';
+
 /**
- * Self = same side as viewer role (WhatsApp-style alignment only).
+ * Bubble colors for option/casting rows: outgoing (viewer's side) vs incoming (counterpart).
+ */
+export function negotiationBubbleAppearance(
+  from: ChatParticipantRole,
+  viewerRole: NegotiationViewerRole,
+): {
+  bubbleBackground: string;
+  bubbleText: string;
+  borderColor: string;
+} {
+  if (isSelfMessage(from, viewerRole)) {
+    return {
+      bubbleBackground: outgoingSelfBubbleColors.bubbleBackground,
+      bubbleText: outgoingSelfBubbleColors.bubbleText,
+      borderColor: outgoingSelfBubbleColors.borderColor,
+    };
+  }
+  return bubbleColorsForSender(from);
+}
+
+/**
+ * Self = same side as viewer role (alignment / outgoing styling).
  */
 export function isSelfMessage(
   from: ChatParticipantRole,
-  viewerRole: 'agency' | 'client',
+  viewerRole: NegotiationViewerRole,
 ): boolean {
   if (from === 'system') return false;
   if (viewerRole === 'agency') return from === 'agency';
+  if (viewerRole === 'model') return from === 'model';
   return from === 'client';
 }
