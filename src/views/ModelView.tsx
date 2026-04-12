@@ -182,13 +182,16 @@ const ModelUnifiedInbox: React.FC<{
   return (
     <ScrollView style={styles.scroll} contentContainerStyle={{ padding: spacing.md }}>
       {sorted.map((r) => {
-        const displayStatus = toDisplayStatus(r.status, r.final_status ?? null);
+        const rawDisplayStatus = toDisplayStatus(r.status, r.final_status ?? null);
         const isActionRequired = modelInboxRequiresModelConfirmation({
           status: r.status,
           finalStatus: r.final_status ?? null,
           modelApproval: r.model_approval,
           modelAccountLinked: r.model_account_linked ?? false,
         });
+        const displayStatus = isActionRequired ? 'Awaiting your approval' : rawDisplayStatus;
+        const badgeBg = isActionRequired ? '#fef3c7' : statusBgColor(rawDisplayStatus);
+        const badgeColor = isActionRequired ? '#b45309' : statusColor(rawDisplayStatus);
         return (
           <TouchableOpacity
             key={r.id}
@@ -211,8 +214,8 @@ const ModelUnifiedInbox: React.FC<{
               ) : null}
               <Text style={styles.inboxOpenHint}>{uiCopy.optionNegotiationChat.modelInboxOpenInProfileHint}</Text>
             </View>
-            <View style={[styles.statusBadge, { backgroundColor: statusBgColor(displayStatus) }]}>
-              <Text style={[styles.statusText, { color: statusColor(displayStatus) }]}>
+            <View style={[styles.statusBadge, { backgroundColor: badgeBg }]}>
+              <Text style={[styles.statusText, { color: badgeColor }]}>
                 {displayStatus}
               </Text>
             </View>

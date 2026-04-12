@@ -99,6 +99,7 @@ type ModelProfile = {
   currentLocation: string;
   hairColor: string;
   mediaslideSyncId: string | null;
+  agencyId: string | null;
 };
 
 type ModelTab = 'home' | 'calendar' | 'chats' | 'settings';
@@ -430,6 +431,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
         currentLocation: m.current_location ?? '', hairColor: m.hair_color ?? '',
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         mediaslideSyncId: (m as any).mediaslide_sync_id ?? null,
+        agencyId: m.agency_id ?? null,
       });
       loadCalendar(m.id);
       loadOptionsForModel(m.id);
@@ -590,11 +592,16 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   const jobTickets = useMemo(
     () =>
       profile
-        ? options.filter(
-            (o) =>
-              o.modelId === profile.id &&
-              (o.finalStatus === 'option_confirmed' || o.finalStatus === 'job_confirmed'),
-          )
+        ? options.filter((o) => {
+            if (o.modelId !== profile.id) return false;
+            if (o.finalStatus === 'job_confirmed') return true;
+            if (o.finalStatus === 'option_confirmed') {
+              const pendingModelApproval =
+                o.modelAccountLinked === true && o.modelApproval === 'pending';
+              return !pendingModelApproval;
+            }
+            return false;
+          })
         : [],
     [profile, options],
   );
@@ -1139,7 +1146,9 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
             {bookingThreadIds.length === 0 && agencyDirectConvs.length === 0 ? (
               <View style={{ alignItems: 'center', paddingVertical: spacing.xl }}>
                 <Text style={{ ...typography.body, fontSize: 13, color: colors.textSecondary, textAlign: 'center' }}>
-                  No conversations yet.{'\n'}Your agency will appear here once connected.
+                  {profile?.agencyId
+                    ? `No messages yet.${'\n'}Your agency chat will appear here once there are conversations.`
+                    : `No conversations yet.${'\n'}Your agency will appear here once connected.`}
                 </Text>
               </View>
             ) : (
