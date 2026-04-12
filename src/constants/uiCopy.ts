@@ -644,6 +644,8 @@ export const uiCopy = {
     agencyFallback: 'Agency',
     clientFallback: 'Client',
     openConversation: 'Open chat',
+    /** Accessibility label for blue unread dot on B2B thread rows */
+    unreadMessagesIndicatorA11y: 'Unread messages',
     contextOrgChat: 'Org chat',
     contextNegotiationThread: 'Negotiation thread',
     openOrgChat: 'Open org chat',

@@ -474,6 +474,32 @@ export async function markAllAsRead(conversationId: string, userId: string): Pro
   if (error) console.error('markAllAsRead error:', error);
 }
 
+/** True if there is at least one incoming message not yet marked read (UI list dot). */
+export async function conversationHasUnreadForViewer(
+  conversationId: string,
+  viewerUserId: string,
+): Promise<boolean> {
+  if (!conversationId?.trim() || !viewerUserId?.trim()) return false;
+  try {
+    const { data, error } = await supabase
+      .from('messages')
+      .select('id')
+      .eq('conversation_id', conversationId)
+      .neq('sender_id', viewerUserId)
+      .is('read_at', null)
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      console.error('conversationHasUnreadForViewer error:', error);
+      return false;
+    }
+    return data != null;
+  } catch (e) {
+    console.error('conversationHasUnreadForViewer exception:', e);
+    return false;
+  }
+}
+
 /**
  * Subscribe to new messages in a conversation.
  * Uses the shared channel pool — opening the same conversation from multiple

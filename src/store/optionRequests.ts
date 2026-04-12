@@ -5,6 +5,7 @@
  * loadOptionsForModel(modelId). Cache wird mit den jeweiligen Daten gefüllt.
  */
 
+import { formatParenTimeRange } from '../utils/formatTimeForUi';
 import {
   getOptionRequestById,
   insertOptionRequest,
@@ -186,7 +187,7 @@ export function addOptionRequest(
 ): string {
   const threadId = `thread-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const requestType = extra?.requestType ?? 'option';
-  const timeStr = extra?.startTime && extra?.endTime ? ` (${extra.startTime}–${extra.endTime})` : '';
+  const timeStr = formatParenTimeRange(extra?.startTime, extra?.endTime);
   const _label = requestType === 'casting' ? 'Casting' : 'Option';
   const req: OptionRequest = {
     id: `req-${Date.now()}`,

@@ -69,7 +69,11 @@ import {
   listAgencyModelDirectConversations,
 } from '../services/b2bOrgChatSupabase';
 import type { Conversation } from '../services/messengerSupabase';
-import { sendMessage } from '../services/messengerSupabase';
+import {
+  sendMessage,
+  conversationHasUnreadForViewer,
+  subscribeToConversation,
+} from '../services/messengerSupabase';
 import { getApplicationById } from '../store/applicationsStore';
 import { OrgMessengerInline } from '../components/OrgMessengerInline';
 import { AgencySettingsTab } from '../components/AgencySettingsTab';
@@ -82,6 +86,7 @@ import {
   rebuildPolaroidsFromModelPhotos,
 } from '../services/modelPhotosSupabase';
 import { normalizeDocumentspicturesModelImageRef } from '../utils/normalizeModelPortfolioUrl';
+import { formatDateWithOptionalTimeRange, formatOptionTimeRangeSuffix } from '../utils/formatTimeForUi';
 import { confirmImageRights, guardImageUpload } from '../services/gdprComplianceSupabase';
 import { ModelMediaSettingsPanel } from '../components/ModelMediaSettingsPanel';
 import { OptionNegotiationChatShell } from '../components/optionNegotiation/OptionNegotiationChatShell';
@@ -4345,6 +4350,11 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   const [modelsForShare, setModelsForShare] = useState<{ id: string; name: string }[]>([]);
   const [activeConnectionChatId, setActiveConnectionChatId] = useState<string | null>(null);
   const [activeConnectionChatTitle, setActiveConnectionChatTitle] = useState('');
+  const [b2bUnreadById, setB2bUnreadById] = useState<Record<string, boolean>>({});
+  const activeB2bChatRef = useRef<string | null>(null);
+  activeB2bChatRef.current = activeConnectionChatId;
+  const b2bConversationsRef = useRef(b2bConversations);
+  b2bConversationsRef.current = b2bConversations;
   const [viewingClientProfileOrgId, setViewingClientProfileOrgId] = useState<string | null>(null);
   const [viewingClientProfileOrgName, setViewingClientProfileOrgName] = useState<string | null>(null);
   const [requests, setRequests] = useState(getOptionRequests());
@@ -4404,6 +4414,57 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
     if (!agencyOrgIdB2b) return;
     void listB2BConversationsForOrganization(agencyOrgIdB2b).then(setB2bConversations);
   }, [agencyOrgIdB2b]);
+
+  const b2bConversationIdsKey = useMemo(
+    () => b2bConversations.map((c) => c.id).sort().join(','),
+    [b2bConversations],
+  );
+
+  useEffect(() => {
+    const list = b2bConversationsRef.current;
+    if (!currentUserId || list.length === 0) {
+      setB2bUnreadById({});
+      return;
+    }
+    let cancelled = false;
+    void Promise.all(
+      list.map(async (c) => {
+        const u = await conversationHasUnreadForViewer(c.id, currentUserId);
+        return [c.id, u] as const;
+      }),
+    ).then((pairs) => {
+      if (cancelled) return;
+      const next: Record<string, boolean> = {};
+      pairs.forEach(([id, u]) => {
+        next[id] = u;
+      });
+      setB2bUnreadById(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [b2bConversationIdsKey, currentUserId]);
+
+  useEffect(() => {
+    if (activeConnectionChatId) {
+      setB2bUnreadById((prev) => ({ ...prev, [activeConnectionChatId]: false }));
+    }
+  }, [activeConnectionChatId]);
+
+  useEffect(() => {
+    const list = b2bConversationsRef.current;
+    if (!currentUserId || list.length === 0) return;
+    const unsubs = list.map((c) =>
+      subscribeToConversation(c.id, (msg) => {
+        if (msg.sender_id !== currentUserId && activeB2bChatRef.current !== c.id) {
+          setB2bUnreadById((prev) => ({ ...prev, [c.id]: true }));
+        }
+      }),
+    );
+    return () => {
+      unsubs.forEach((u) => u());
+    };
+  }, [b2bConversationIdsKey, currentUserId]);
 
   const refreshModelDirectConvs = useCallback(() => {
     const orgId = agencyOrgIdB2b ?? agencyOrganizationIdProp;
@@ -4548,7 +4609,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
       )
     : null;
   const negotiationDateLine = request
-    ? `${request.date}${request.startTime ? ` · ${request.startTime}–${request.endTime}` : ''}`
+    ? formatDateWithOptionalTimeRange(request.date, request.startTime, request.endTime)
     : '';
   const negotiationFinalStatusLine =
     request && request.finalStatus
@@ -4858,7 +4919,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
         <View style={{ flex: 1, minHeight: 0, alignSelf: 'stretch' }}>
           <OptionNegotiationChatShell
             title={`${request.clientName} · ${request.modelName}`}
-            subtitle={`${request.date}${request.startTime ? ` · ${request.startTime}–${request.endTime}` : ''}`}
+            subtitle={formatDateWithOptionalTimeRange(request.date, request.startTime, request.endTime)}
             onBack={handleBackOptionChat}
             backLabel={uiCopy.optionNegotiationChat.back}
             onTitlePress={request.clientOrganizationId ? () => {
@@ -5061,7 +5122,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
           onConfirm={confirmDeleteOptionRequest}
           onCancel={() => setDeleteOptionModalVisible(false)}
           detailLine1={request.modelName}
-          detailLine2={`${request.date}${request.startTime ? ` · ${request.startTime}–${request.endTime}` : ''}`}
+          detailLine2={formatDateWithOptionalTimeRange(request.date, request.startTime, request.endTime)}
         />
         <ConfirmDestructiveModal
           visible={rejectNegotiationModalVisible}
@@ -5073,7 +5134,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
           onConfirm={confirmRejectNegotiationRequest}
           onCancel={() => setRejectNegotiationModalVisible(false)}
           detailLine1={request.modelName}
-          detailLine2={`${request.date}${request.startTime ? ` · ${request.startTime}–${request.endTime}` : ''}`}
+          detailLine2={formatDateWithOptionalTimeRange(request.date, request.startTime, request.endTime)}
         />
       </>
     );
@@ -5290,6 +5351,14 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                           >
                             <Text style={[s.filterPillLabel, s.filterPillLabelActive]}>{uiCopy.b2bChat.openConversation}</Text>
                           </TouchableOpacity>
+                          {currentUserId &&
+                          (b2bUnreadById[c.id] ?? false) &&
+                          activeConnectionChatId !== c.id ? (
+                            <View
+                              style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#2563EB' }}
+                              accessibilityLabel={uiCopy.b2bChat.unreadMessagesIndicatorA11y}
+                            />
+                          ) : null}
                         </View>
                       ))}
                     </ScrollView>
@@ -5385,6 +5454,14 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                       >
                         <Text style={[s.filterPillLabel, s.filterPillLabelActive]}>{uiCopy.b2bChat.openConversation}</Text>
                       </TouchableOpacity>
+                      {currentUserId &&
+                      (b2bUnreadById[c.id] ?? false) &&
+                      activeConnectionChatId !== c.id ? (
+                        <View
+                          style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#2563EB' }}
+                          accessibilityLabel={uiCopy.b2bChat.unreadMessagesIndicatorA11y}
+                        />
+                      ) : null}
                     </View>
                   ))}
                 </>
@@ -5527,7 +5604,10 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
               <TouchableOpacity key={r.threadId} style={[s.threadRow, selectedThreadId === r.threadId && s.threadRowActive]} onPress={() => setSelectedThreadId(r.threadId)}>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={s.modelName} numberOfLines={1}>{r.modelName} · {r.date}</Text>
-                  <Text style={s.metaText} numberOfLines={1}>{r.clientName}{r.startTime ? ` · ${r.startTime}–${r.endTime}` : ''}</Text>
+                  <Text style={s.metaText} numberOfLines={1}>
+                    {r.clientName}
+                    {formatOptionTimeRangeSuffix(r.startTime, r.endTime)}
+                  </Text>
                   {assignment ? (
                     <Text style={s.metaText} numberOfLines={1}>
                       {assignment.label}

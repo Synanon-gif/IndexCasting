@@ -43,6 +43,12 @@ import {
   normalizePackageType,
 } from '../utils/packageDisplayMedia';
 import { canonicalDisplayCityForModel } from '../utils/canonicalModelCity';
+import {
+  formatDateWithOptionalTimeRange,
+  formatOptionTimeRangeSuffix,
+  stripClockSeconds,
+} from '../utils/formatTimeForUi';
+import { getHeroResizeMode } from '../utils/discoverImageMode';
 import { useAuth } from '../context/AuthContext';
 import { getModelsForClient, getModelData } from '../services/apiService';
 import {
@@ -124,7 +130,11 @@ import {
   listB2BConversationsForOrganization,
   getB2BConversationTitleForViewer,
 } from '../services/b2bOrgChatSupabase';
-import type { Conversation } from '../services/messengerSupabase';
+import {
+  conversationHasUnreadForViewer,
+  subscribeToConversation,
+  type Conversation,
+} from '../services/messengerSupabase';
 import { deleteOptionRequestFull, sendAgencyInvitation } from '../services/optionRequestsSupabase';
 import {
   ensureClientOrganization,
@@ -3015,6 +3025,10 @@ const DiscoverView: React.FC<DiscoverProps> = ({
   tabBarBottomInset = 0,
   shellHorizontalPadding,
 }) => {
+  const { width: discoverW, height: discoverH } = useWindowDimensions();
+  const isMobileDiscover = isMobileWidth(discoverW);
+  const heroResizeMode = getHeroResizeMode(isMobileDiscover);
+
   // Package mode: grid layout matching GuestView (all models visible at once, no swipe)
   if (isPackageMode) {
     const packageTypeLabel = packageType === 'polaroid' ? 'Polaroid Package' : 'Portfolio Package';
@@ -3053,7 +3067,7 @@ const DiscoverView: React.FC<DiscoverProps> = ({
                     <StorageImage
                       uri={m.coverUrl || undefined}
                       style={styles.packageGridImage}
-                      resizeMode="cover"
+                      resizeMode={heroResizeMode}
                       ttlSeconds={CLIENT_MODEL_IMAGE_TTL_SEC}
                       fallback={
                         <View style={[styles.packageGridImage, { backgroundColor: colors.border }]} />
@@ -3096,9 +3110,6 @@ const DiscoverView: React.FC<DiscoverProps> = ({
   }
 
   // Normal discover mode: single-card swipe
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const { width: discoverW, height: discoverH } = useWindowDimensions();
-  const isMobileDiscover = isMobileWidth(discoverW);
   // Tinder-style: on mobile the card fills the screen edge-to-edge; on desktop cap at 640px
   const cardMaxWidth = isMobileDiscover ? 9999 : 640;
   // Image height: ~68% of visible viewport height on mobile for dominant presence; fixed on desktop
@@ -3176,7 +3187,7 @@ const DiscoverView: React.FC<DiscoverProps> = ({
                   <StorageImage
                     uri={current.coverUrl || undefined}
                     style={styles.coverImage}
-                    resizeMode="cover"
+                    resizeMode={heroResizeMode}
                     ttlSeconds={CLIENT_MODEL_IMAGE_TTL_SEC}
                     fallback={
                       <View style={[styles.coverImage, { backgroundColor: colors.border }]} />
@@ -4010,6 +4021,11 @@ const ClientB2BChatsPanel: React.FC<{
     agencyId: string | null;
     orgName: string;
   } | null>(null);
+  const [b2bUnreadById, setB2bUnreadById] = useState<Record<string, boolean>>({});
+  const selectedIdRef = useRef<string | null>(null);
+  selectedIdRef.current = selectedId;
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
 
   const reload = useCallback(() => {
     if (!clientOrgId) return;
@@ -4081,6 +4097,54 @@ const ClientB2BChatsPanel: React.FC<{
     onChatActiveChange?.(isMobileChat);
   }, [selectedId, b2bWebSplit, onChatActiveChange]);
 
+  const conversationIdsKey = useMemo(() => rows.map((c) => c.id).sort().join(','), [rows]);
+
+  useEffect(() => {
+    const list = rowsRef.current;
+    if (!clientUserId || list.length === 0) {
+      setB2bUnreadById({});
+      return;
+    }
+    let cancelled = false;
+    void Promise.all(
+      list.map(async (c) => {
+        const u = await conversationHasUnreadForViewer(c.id, clientUserId);
+        return [c.id, u] as const;
+      }),
+    ).then((pairs) => {
+      if (cancelled) return;
+      const next: Record<string, boolean> = {};
+      pairs.forEach(([id, u]) => {
+        next[id] = u;
+      });
+      setB2bUnreadById(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationIdsKey, clientUserId]);
+
+  useEffect(() => {
+    if (selectedId) {
+      setB2bUnreadById((prev) => ({ ...prev, [selectedId]: false }));
+    }
+  }, [selectedId]);
+
+  useEffect(() => {
+    const list = rowsRef.current;
+    if (!clientUserId || list.length === 0) return;
+    const unsubs = list.map((c) =>
+      subscribeToConversation(c.id, (msg) => {
+        if (msg.sender_id !== clientUserId && selectedIdRef.current !== c.id) {
+          setB2bUnreadById((prev) => ({ ...prev, [c.id]: true }));
+        }
+      }),
+    );
+    return () => {
+      unsubs.forEach((u) => u());
+    };
+  }, [conversationIdsKey, clientUserId]);
+
   if (orgLoading) {
     return <Text style={styles.metaText}>{uiCopy.b2bChat.clientWorkspaceLoading}</Text>;
   }
@@ -4117,6 +4181,14 @@ const ClientB2BChatsPanel: React.FC<{
               <Text style={styles.threadTitle}>{titles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback}</Text>
               <Text style={styles.metaText}>{new Date(c.updated_at).toLocaleString()}</Text>
             </View>
+            {clientUserId &&
+            (b2bUnreadById[c.id] ?? false) &&
+            selectedId !== c.id ? (
+              <View
+                style={styles.threadRowUnreadDot}
+                accessibilityLabel={uiCopy.b2bChat.unreadMessagesIndicatorA11y}
+              />
+            ) : null}
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -4392,7 +4464,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
       )
     : null;
   const negotiationDateLine = request
-    ? `${request.date}${request.startTime ? ` · ${request.startTime}–${request.endTime}` : ''}`
+    ? formatDateWithOptionalTimeRange(request.date, request.startTime, request.endTime)
     : '';
   const negotiationFinalStatusLine =
     request && request.finalStatus
@@ -4773,7 +4845,10 @@ const MessagesView: React.FC<MessagesViewProps> = ({
               >
                 <View style={styles.threadRowLeft}>
                   <Text style={styles.threadTitle}>{r.modelName} · {r.date}</Text>
-                  <Text style={styles.metaText}>{r.clientName}{r.startTime ? ` · ${r.startTime}–${r.endTime}` : ''}</Text>
+                  <Text style={styles.metaText}>
+                    {r.clientName}
+                    {formatOptionTimeRangeSuffix(r.startTime, r.endTime)}
+                  </Text>
                   {assignment ? (
                     <Text style={styles.metaText}>
                       {assignment.label}
@@ -4829,8 +4904,8 @@ const MessagesView: React.FC<MessagesViewProps> = ({
           }
           subtitle={
             isAgency
-              ? `${request.date}${request.startTime ? ` · ${request.startTime}–${request.endTime}` : ''}`
-              : `${request.modelName} · ${request.date}${request.startTime ? ` · ${request.startTime}–${request.endTime}` : ''}`
+              ? formatDateWithOptionalTimeRange(request.date, request.startTime, request.endTime)
+              : `${request.modelName} · ${formatDateWithOptionalTimeRange(request.date, request.startTime, request.endTime)}`
           }
           onBack={handleBackOptionChat}
           onTitlePress={
@@ -5052,7 +5127,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
         detailLine1={request?.modelName}
         detailLine2={
           request
-            ? `${request.date}${request.startTime ? ` · ${request.startTime}–${request.endTime}` : ''}`
+            ? formatDateWithOptionalTimeRange(request.date, request.startTime, request.endTime)
             : undefined
         }
       />
@@ -5067,7 +5142,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
         detailLine1={request?.modelName}
         detailLine2={
           request
-            ? `${request.date}${request.startTime ? ` · ${request.startTime}–${request.endTime}` : ''}`
+            ? formatDateWithOptionalTimeRange(request.date, request.startTime, request.endTime)
             : undefined
         }
       />
@@ -5148,7 +5223,7 @@ const OptionDatePickerModal: React.FC<OptionDatePickerModalProps> = ({
         `Hello,\n\nI would like to request ${requestType === 'casting' ? 'a casting' : 'an option'} for:\n\n` +
         `Model: ${model.name}\n` +
         `Date: ${selectedDate}\n` +
-        `Time: ${startTime} – ${endTime}\n` +
+        `Time: ${stripClockSeconds(startTime)} – ${stripClockSeconds(endTime)}\n` +
         (requestType === 'option' && p ? `Proposed Price: ${p}\n` : '') +
         `\nPlease confirm at your earliest convenience.\n\nBest regards`
       );
@@ -7309,7 +7384,7 @@ const styles = StyleSheet.create({
   threadRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.sm,
     borderBottomWidth: 1,
@@ -7321,6 +7396,15 @@ const styles = StyleSheet.create({
   threadRowLeft: {
     flex: 1,
     minWidth: 0,
+  },
+  threadRowUnreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#2563EB',
+    alignSelf: 'center',
+    flexShrink: 0,
+    marginLeft: spacing.sm,
   },
   threadTitle: {
     ...typography.body,

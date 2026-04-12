@@ -16,6 +16,7 @@ import { attentionSignalsFromOptionRequestLike } from '../utils/optionRequestAtt
 import { attentionHeaderLabelFromSignals } from '../utils/negotiationAttentionLabels';
 import type { ClientAssignmentFlag } from '../services/clientAssignmentsSupabase';
 import type { AgencyCalendarItem, CalendarEntry } from '../services/calendarSupabase';
+import { stripClockSeconds } from '../utils/formatTimeForUi';
 
 export type UnifiedCalendarAgendaProps = {
   calendarMonth: { year: number; month: number };
@@ -155,8 +156,8 @@ export const UnifiedCalendarAgenda: React.FC<UnifiedCalendarAgendaProps> = ({
                         <View style={[styles.dot, { backgroundColor: ev.color || '#888' }]} />
                       </View>
                       <Text style={styles.cardMeta}>
-                        {ev.start_time || '—'}
-                        {ev.end_time ? ` – ${ev.end_time}` : ''}
+                        {(ev.start_time ? stripClockSeconds(ev.start_time) : '') || '—'}
+                        {ev.end_time ? ` – ${stripClockSeconds(ev.end_time)}` : ''}
                         {ev.note ? ` · ${ev.note}` : ''}
                       </Text>
                     </TouchableOpacity>
@@ -214,7 +215,9 @@ export const UnifiedCalendarAgenda: React.FC<UnifiedCalendarAgendaProps> = ({
                             </Text>
                             <Text style={styles.cardMeta}>
                               {option.client_name ?? 'Client'}
-                              {start ? ` · ${start}${end ? `–${end}` : ''}` : ''}
+                              {start
+                                ? ` · ${stripClockSeconds(start)}${end ? `–${stripClockSeconds(end)}` : ''}`
+                                : ''}
                             </Text>
                             {viewerRole === 'agency' &&
                             option.client_organization_id &&

@@ -62,6 +62,11 @@ import type { Conversation } from '../services/messengerSupabase';
 import { OrgMessengerInline } from '../components/OrgMessengerInline';
 import { ConfirmDestructiveModal } from '../components/ConfirmDestructiveModal';
 import { shouldShowSystemMessageForViewer } from '../components/optionNegotiation/filterSystemMessagesForViewer';
+import {
+  formatDateWithOptionalTimeRange,
+  formatOptionTimeRangeSuffix,
+  stripClockSeconds,
+} from '../utils/formatTimeForUi';
 import { getCalendarDetailNextStepForModelLocalOption } from '../utils/calendarDetailNextStep';
 import { MonthCalendarView } from '../components/MonthCalendarView';
 import { CalendarViewModeBar, type CalendarViewMode } from '../components/CalendarViewModeBar';
@@ -1134,7 +1139,10 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
             <TouchableOpacity key={o.threadId} style={st.chatRow} onPress={() => setSelectedOptionThread(o.threadId)}>
               <View style={{ flex: 1 }}>
                 <Text style={st.chatRowLabel}>{o.clientName} · {o.date}</Text>
-                <Text style={st.metaText}>{o.modelName}{o.startTime ? ` · ${o.startTime}–${o.endTime}` : ''}</Text>
+                <Text style={st.metaText}>
+                  {o.modelName}
+                  {formatOptionTimeRangeSuffix(o.startTime, o.endTime)}
+                </Text>
               </View>
               <Text style={{ ...typography.label, fontSize: 9, color: o.modelApproval === 'approved' ? colors.buttonOptionGreen : '#B8860B' }}>
                 {o.modelApproval === 'approved'
@@ -1175,8 +1183,8 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                   </Text>
                   <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.sm }}>
                     {req.requested_date}
-                    {req.start_time ? ` · ${String(req.start_time).slice(0, 5)}` : ''}
-                    {req.end_time ? `–${String(req.end_time).slice(0, 5)}` : ''}
+                    {req.start_time ? ` · ${stripClockSeconds(String(req.start_time))}` : ''}
+                    {req.end_time ? `–${stripClockSeconds(String(req.end_time))}` : ''}
                   </Text>
                   <View style={{ flexDirection: 'row', gap: spacing.sm }}>
                     <TouchableOpacity
@@ -1236,8 +1244,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                   {o.requestType === 'casting' ? uiCopy.dashboard.threadContextCasting : uiCopy.dashboard.threadContextOption} · {o.finalStatus === 'job_confirmed' ? uiCopy.dashboard.optionRequestStatusJobConfirmed : uiCopy.dashboard.optionRequestStatusConfirmed}
                 </Text>
                 <Text style={st.metaText}>
-                  {o.clientName} · {o.date}
-                  {o.startTime ? ` · ${o.startTime}–${o.endTime}` : ''}
+                  {o.clientName} · {formatDateWithOptionalTimeRange(o.date, o.startTime, o.endTime)}
                 </Text>
               </View>
             ))
@@ -1251,7 +1258,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
             outstandingOptions.map((o) => (
               <View key={o.threadId} style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: spacing.md, marginTop: spacing.sm }}>
                 <Text style={{ ...typography.body, color: colors.textPrimary }}>{o.clientName} · {o.modelName}</Text>
-                <Text style={st.metaText}>{o.date}{o.startTime ? ` · ${o.startTime}–${o.endTime}` : ''}</Text>
+                <Text style={st.metaText}>{formatDateWithOptionalTimeRange(o.date, o.startTime, o.endTime)}</Text>
                 <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
                   <TouchableOpacity
                     onPress={() => handleApproveOption(o.threadId)}
