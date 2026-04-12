@@ -170,6 +170,36 @@ export async function upsertPublicSettings(
   }
 }
 
+/**
+ * Next `sort_order` for client gallery rows (PostgreSQL `integer` — must stay within 32-bit range).
+ * Uses max existing `sort_order` for `client_gallery` media in the org, then +1.
+ */
+export async function getNextClientGallerySortOrder(organizationId: string): Promise<number> {
+  if (!assertOrgContext(organizationId, 'getNextClientGallerySortOrder')) {
+    return 0;
+  }
+  try {
+    const { data, error } = await supabase
+      .from('organization_profile_media')
+      .select('sort_order')
+      .eq('organization_id', organizationId)
+      .eq('media_type', 'client_gallery')
+      .order('sort_order', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      console.error('[getNextClientGallerySortOrder] error:', error);
+      return 0;
+    }
+    const max = data?.sort_order;
+    const n = typeof max === 'number' && !Number.isNaN(max) ? max : -1;
+    return n + 1;
+  } catch (e) {
+    console.error('[getNextClientGallerySortOrder] exception:', e);
+    return 0;
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**

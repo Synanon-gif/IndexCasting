@@ -9,6 +9,7 @@ import { supabase } from '../../../lib/supabase';
 import {
   getOrganizationProfile,
   upsertOrganizationProfile,
+  getNextClientGallerySortOrder,
   listOrganizationProfileMedia,
   createOrganizationProfileMedia,
   deleteOrganizationProfileMedia,
@@ -136,6 +137,74 @@ describe('organizationProfilesSupabase', () => {
       const result = await upsertOrganizationProfile(ORG_ID, {});
       expect(result).toBe(false);
       expect(consoleErrorSpy).toHaveBeenCalled();
+    });
+  });
+
+  // ── getNextClientGallerySortOrder ──────────────────────────────────────────
+
+  describe('getNextClientGallerySortOrder', () => {
+    it('returns 0 when no client_gallery rows exist', async () => {
+      const maybeSingle = jest.fn().mockResolvedValue({ data: null, error: null });
+      from.mockReturnValue({
+        select: () => ({
+          eq: () => ({
+            eq: () => ({
+              order: () => ({
+                limit: () => ({ maybeSingle }),
+              }),
+            }),
+          }),
+        }),
+      });
+      const result = await getNextClientGallerySortOrder(ORG_ID);
+      expect(result).toBe(0);
+      expect(from).toHaveBeenCalledWith('organization_profile_media');
+    });
+
+    it('returns max sort_order + 1 when a row exists', async () => {
+      const maybeSingle = jest
+        .fn()
+        .mockResolvedValue({ data: { sort_order: 2 }, error: null });
+      from.mockReturnValue({
+        select: () => ({
+          eq: () => ({
+            eq: () => ({
+              order: () => ({
+                limit: () => ({ maybeSingle }),
+              }),
+            }),
+          }),
+        }),
+      });
+      const result = await getNextClientGallerySortOrder(ORG_ID);
+      expect(result).toBe(3);
+    });
+
+    it('returns 0 on query error (fail-soft)', async () => {
+      const maybeSingle = jest.fn().mockResolvedValue({
+        data: null,
+        error: { message: 'rls denied' },
+      });
+      from.mockReturnValue({
+        select: () => ({
+          eq: () => ({
+            eq: () => ({
+              order: () => ({
+                limit: () => ({ maybeSingle }),
+              }),
+            }),
+          }),
+        }),
+      });
+      const result = await getNextClientGallerySortOrder(ORG_ID);
+      expect(result).toBe(0);
+      expect(consoleErrorSpy).toHaveBeenCalled();
+    });
+
+    it('returns 0 when organizationId is empty', async () => {
+      const result = await getNextClientGallerySortOrder('');
+      expect(result).toBe(0);
+      expect(from).not.toHaveBeenCalled();
     });
   });
 

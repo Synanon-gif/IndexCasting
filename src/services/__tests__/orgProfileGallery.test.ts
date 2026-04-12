@@ -48,10 +48,12 @@ jest.mock('../../utils/orgGuard', () => ({
 
 const mockCreateOrganizationProfileMedia = jest.fn();
 const mockDeleteOrganizationProfileMedia = jest.fn();
+const mockGetNextClientGallerySortOrder = jest.fn().mockResolvedValue(0);
 
 jest.mock('../../services/organizationProfilesSupabase', () => ({
   createOrganizationProfileMedia: mockCreateOrganizationProfileMedia,
   deleteOrganizationProfileMedia: mockDeleteOrganizationProfileMedia,
+  getNextClientGallerySortOrder: mockGetNextClientGallerySortOrder,
 }));
 
 const mockConvertHeicToJpeg = jest.fn();
@@ -105,7 +107,7 @@ const MOCK_MEDIA = {
   organization_id: ORG_ID,
   media_type: 'client_gallery',
   image_url: IMAGE_URL,
-  sort_order: 1234567890,
+  sort_order: 0,
   is_visible_public: false,
   created_at: '2026-05-16T00:00:00Z',
   model_id: null,
@@ -118,6 +120,7 @@ const MOCK_MEDIA = {
 describe('uploadClientGalleryImage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockGetNextClientGallerySortOrder.mockResolvedValue(0);
     // Default happy-path
     mockConvertHeicToJpeg.mockResolvedValue({ file: makeFile(), conversionFailed: false });
     mockValidateFile.mockReturnValue({ ok: true });
@@ -189,12 +192,46 @@ describe('uploadClientGalleryImage', () => {
     const result = await uploadClientGalleryImage(ORG_ID, makeFile());
     expect(result.ok).toBe(true);
     expect(result.media).toEqual(MOCK_MEDIA);
+    expect(mockGetNextClientGallerySortOrder).toHaveBeenCalledWith(ORG_ID);
     expect(mockCreateOrganizationProfileMedia).toHaveBeenCalledWith(
       ORG_ID,
       expect.objectContaining({
         media_type: 'client_gallery',
         image_url: IMAGE_URL,
+        sort_order: 0,
       }),
+    );
+  });
+
+  test('uses safe integer sort_order from getNextClientGallerySortOrder (not millisecond timestamps)', async () => {
+    mockGetNextClientGallerySortOrder.mockResolvedValueOnce(5);
+    await uploadClientGalleryImage(ORG_ID, makeFile());
+    expect(mockCreateOrganizationProfileMedia).toHaveBeenCalledWith(
+      ORG_ID,
+      expect.objectContaining({
+        sort_order: 5,
+      }),
+    );
+    const sortOrder = mockCreateOrganizationProfileMedia.mock.calls[0][1].sort_order as number;
+    expect(sortOrder).toBeLessThanOrEqual(2147483647);
+  });
+
+  test('sequential uploads receive incremental sort_order when getNext returns ascending values', async () => {
+    mockGetNextClientGallerySortOrder.mockResolvedValueOnce(0).mockResolvedValueOnce(1);
+    mockCreateOrganizationProfileMedia
+      .mockResolvedValueOnce({ ...MOCK_MEDIA, id: 'm1' })
+      .mockResolvedValueOnce({ ...MOCK_MEDIA, id: 'm2', sort_order: 1 });
+    await uploadClientGalleryImage(ORG_ID, makeFile('a.jpg'));
+    await uploadClientGalleryImage(ORG_ID, makeFile('b.jpg'));
+    expect(mockCreateOrganizationProfileMedia).toHaveBeenNthCalledWith(
+      1,
+      ORG_ID,
+      expect.objectContaining({ sort_order: 0 }),
+    );
+    expect(mockCreateOrganizationProfileMedia).toHaveBeenNthCalledWith(
+      2,
+      ORG_ID,
+      expect.objectContaining({ sort_order: 1 }),
     );
   });
 

@@ -30,6 +30,7 @@ import { assertOrgContext } from '../utils/orgGuard';
 import {
   createOrganizationProfileMedia,
   deleteOrganizationProfileMedia,
+  getNextClientGallerySortOrder,
   type OrganizationProfileMedia,
 } from './organizationProfilesSupabase';
 
@@ -174,11 +175,12 @@ export async function uploadClientGalleryImage(
     return { ok: false, error: 'Upload failed. Please try again.' };
   }
 
-  // ── Step 8: Create organization_profile_media row ──
+  // ── Step 8: Create organization_profile_media row (sort_order: DB integer — never Date.now()) ──
+  const nextSort = await getNextClientGallerySortOrder(organizationId);
   const media = await createOrganizationProfileMedia(organizationId, {
     media_type: 'client_gallery',
     image_url: publicUrl,
-    sort_order: Date.now(),
+    sort_order: nextSort,
   });
 
   if (!media) {

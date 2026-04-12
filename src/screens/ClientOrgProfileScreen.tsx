@@ -173,22 +173,34 @@ export function ClientOrgProfileScreen({
 
   const handleGalleryFileChange = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file || !organizationId) return;
+      const files = e.target.files ? Array.from(e.target.files) : [];
       e.target.value = '';
+      if (files.length === 0 || !organizationId) return;
 
       setGalleryUploading(true);
-      const result = await uploadClientGalleryImage(organizationId, file);
-      setGalleryUploading(false);
-
-      if (result.ok && result.media) {
-        // Inverse-operation add: append new item to the end
-        setMedia((prev) => [...prev, result.media!]);
-      } else {
-        Alert.alert(
-          'Upload failed',
-          result.error ?? 'Could not upload image. Please try again.',
-        );
+      let failCount = 0;
+      let lastError: string | undefined;
+      const total = files.length;
+      try {
+        for (const file of files) {
+          const result = await uploadClientGalleryImage(organizationId, file);
+          if (result.ok && result.media) {
+            setMedia((prev) => [...prev, result.media!]);
+          } else {
+            failCount += 1;
+            lastError = result.error;
+          }
+        }
+        if (failCount > 0) {
+          Alert.alert(
+            failCount === total ? 'Upload failed' : 'Some uploads failed',
+            failCount === total
+              ? lastError ?? 'Could not upload images. Please try again.'
+              : `${failCount} of ${total} image(s) could not be uploaded. Others were added.`,
+          );
+        }
+      } finally {
+        setGalleryUploading(false);
       }
     },
     [organizationId],
@@ -322,6 +334,7 @@ export function ClientOrgProfileScreen({
             ref={galleryInputRef}
             type="file"
             accept="image/*"
+            multiple
             style={{ display: 'none' }}
             onChange={handleGalleryFileChange}
           />
