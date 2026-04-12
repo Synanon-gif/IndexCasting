@@ -191,14 +191,14 @@ import { GlobalSearchBar } from '../components/GlobalSearchBar';
 import { DashboardSummaryBar } from '../components/DashboardSummaryBar';
 import { StorageImage } from '../components/StorageImage';
 import { ClientOrgProfileScreen } from '../screens/ClientOrgProfileScreen';
+import {
+  isCalendarThreadUuid,
+  resolveCanonicalOptionRequestIdForCalendarItem,
+  resolveCanonicalOptionRequestIdFromBookingCalendarEntry,
+} from '../utils/calendarThreadDeepLink';
 
 /** Signed-URL lifetime for authenticated client views of model photos (private bucket). */
 const CLIENT_MODEL_IMAGE_TTL_SEC = 3600;
-
-function isUuidString(value: string | null | undefined): boolean {
-  if (!value || typeof value !== 'string') return false;
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.trim());
-}
 
 /** Thin wrapper to pass client org metrics panel with owner role. */
 const ClientOrgMetricsPanelWrapper: React.FC<{ orgId: string }> = ({ orgId }) => (
@@ -601,6 +601,21 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCalendarItem?.option.id]);
+
+  /** Keep calendar detail overlay aligned with latest fetch (status, booking_details) without name-based lookup. */
+  useEffect(() => {
+    setSelectedCalendarItem((prev) => {
+      if (!prev) return prev;
+      const fresh = calendarItems.find((x) => x.option.id === prev.option.id);
+      if (!fresh) return prev;
+      const sameOpt = prev.option.updated_at === fresh.option.updated_at;
+      const sameCe =
+        prev.calendar_entry?.id === fresh.calendar_entry?.id &&
+        JSON.stringify(prev.calendar_entry?.booking_details ?? null) ===
+          JSON.stringify(fresh.calendar_entry?.booking_details ?? null);
+      return sameOpt && sameCe ? prev : fresh;
+    });
+  }, [calendarItems]);
 
   useEffect(() => {
     if (!selectedManualEvent) return;
@@ -1923,9 +1938,14 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   }, []);
 
   const navigateToOptionThreadFromCalendar = useCallback(
-    (optionRequestId: string) => {
+    (optionRequestId: string | null | undefined) => {
+      const id = optionRequestId?.trim() ?? '';
+      if (!isCalendarThreadUuid(id)) {
+        showAppAlert(uiCopy.common.error, uiCopy.calendar.threadNavigationUnavailable);
+        return;
+      }
       optionChatReturnRef.current = { kind: 'tab', tab: 'calendar' };
-      setOpenThreadIdOnMessages(optionRequestId);
+      setOpenThreadIdOnMessages(id);
       setTab('messages');
       resetCalendarTabRoot();
     },
@@ -2256,8 +2276,8 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                 setSelectedCalendarItem(null);
               }}
               onOpenBookingEntry={(be) => {
-                const oid = be.option_request_id?.trim();
-                if (oid && isUuidString(oid)) {
+                const oid = resolveCanonicalOptionRequestIdFromBookingCalendarEntry(be);
+                if (oid) {
                   navigateToOptionThreadFromCalendar(oid);
                   return;
                 }
@@ -2407,7 +2427,11 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                       </Text>
                       <TouchableOpacity
                         style={[styles.primaryButton, { marginTop: spacing.sm, alignSelf: 'stretch' }]}
-                        onPress={() => navigateToOptionThreadFromCalendar(option.id)}
+                        onPress={() =>
+                          navigateToOptionThreadFromCalendar(
+                            resolveCanonicalOptionRequestIdForCalendarItem({ option, calendar_entry }),
+                          )
+                        }
                       >
                         <Text style={styles.primaryLabel}>{uiCopy.calendar.openNegotiationThread}</Text>
                       </TouchableOpacity>
@@ -3384,7 +3408,10 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
       onOpenBookingEntry?.(row.entry);
       return;
     }
-    onOpenDetails(row.item as ClientCalendarItem);
+    if (row.kind === 'option') {
+      onOpenDetails(row.item as ClientCalendarItem);
+      return;
+    }
   };
 
   return (

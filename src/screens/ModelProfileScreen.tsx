@@ -41,6 +41,7 @@ import {
   appendSharedBookingNote,
   type SharedBookingNote,
 } from '../services/calendarSupabase';
+import { resolveCanonicalOptionRequestIdFromBookingCalendarEntry } from '../utils/calendarThreadDeepLink';
 import BookingBriefEditor from '../components/BookingBriefEditor';
 import { getBookingEventsForModel } from '../services/bookingEventsSupabase';
 import {
@@ -1612,7 +1613,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                           alignItems: 'center',
                         }}
                         onPress={() => {
-                          const id = openEntry.option_request_id;
+                          const id = resolveCanonicalOptionRequestIdFromBookingCalendarEntry(openEntry);
                           if (!id) return;
                           setSelectedOptionThread(id);
                           setTab('home');

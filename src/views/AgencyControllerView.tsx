@@ -241,6 +241,10 @@ import { getCanonicalAgreedPrice, getNegotiationDisplayPriceCandidate } from '..
 import { formatOptionMoneyAmount } from '../utils/optionMoneyFormat';
 import { attentionHeaderLabelFromSignals } from '../utils/negotiationAttentionLabels';
 import { toDisplayStatus } from '../utils/statusHelpers';
+import {
+  resolveCanonicalOptionRequestIdForCalendarItem,
+  resolveCanonicalOptionRequestIdFromBookingCalendarEntry,
+} from '../utils/calendarThreadDeepLink';
 
 const STATUS_LABELS: Record<ChatStatus, string> = {
   in_negotiation: _uiCopy.dashboard.optionRequestStatusInNegotiation,
@@ -249,11 +253,6 @@ const STATUS_LABELS: Record<ChatStatus, string> = {
 };
 
 const STATUS_COLORS: Record<ChatStatus, string> = OPTION_REQUEST_CHAT_STATUS_COLORS;
-
-function isUuidString(value: string | null | undefined): boolean {
-  if (!value || typeof value !== 'string') return false;
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.trim());
-}
 
 // ISO country names for the territories multi-select.
 // Keep names in English for UI consistency.
@@ -546,6 +545,20 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   }, [selectedCalendarItem?.option.id]);
 
   useEffect(() => {
+    setSelectedCalendarItem((prev) => {
+      if (!prev) return prev;
+      const fresh = calendarItems.find((x) => x.option.id === prev.option.id);
+      if (!fresh) return prev;
+      const sameOpt = prev.option.updated_at === fresh.option.updated_at;
+      const sameCe =
+        prev.calendar_entry?.id === fresh.calendar_entry?.id &&
+        JSON.stringify(prev.calendar_entry?.booking_details ?? null) ===
+          JSON.stringify(fresh.calendar_entry?.booking_details ?? null);
+      return sameOpt && sameCe ? prev : fresh;
+    });
+  }, [calendarItems]);
+
+  useEffect(() => {
     if (!selectedManualEvent) return;
     setManualEventEditDraft({
       title: selectedManualEvent.title,
@@ -777,8 +790,8 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
             setSelectedCalendarItem(null);
           }}
           onOpenBookingEntry={(be) => {
-            const oid = be.option_request_id?.trim();
-            if (oid && isUuidString(oid)) {
+            const oid = resolveCanonicalOptionRequestIdFromBookingCalendarEntry(be);
+            if (oid) {
               setSearchOptionId(oid);
               setTab('messages');
               setSelectedCalendarItem(null);
@@ -1115,7 +1128,12 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                   <TouchableOpacity
                     style={[s.saveBtn, { marginTop: spacing.sm, alignSelf: 'stretch', backgroundColor: colors.textPrimary }]}
                     onPress={() => {
-                      setSearchOptionId(option.id);
+                      const threadId = resolveCanonicalOptionRequestIdForCalendarItem({ option, calendar_entry });
+                      if (!threadId) {
+                        showAppAlert(uiCopy.common.error, uiCopy.calendar.threadNavigationUnavailable);
+                        return;
+                      }
+                      setSearchOptionId(threadId);
                       setTab('messages');
                       setSelectedCalendarItem(null);
                       setAgencyNotesDraft('');

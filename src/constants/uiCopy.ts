@@ -214,6 +214,9 @@ export const uiCopy = {
     nextStepYourConfirm: 'Confirm or decline in the request thread.',
     /** Booking calendar row without link to option_requests — read-only detail. */
     bookingEntryDetailFallback: 'This calendar entry is not linked to a request thread.',
+    /** Valid option_requests id could not be resolved — do not navigate to an arbitrary thread. */
+    threadNavigationUnavailable:
+      'Could not open the request thread. Try refreshing the calendar. If this persists, contact support.',
     /** Accessibility label for client calendar row attention dot */
     actionRequiredA11y: 'Action required',
     /** B2B calendar — entry type filter (client parity with agency). */
