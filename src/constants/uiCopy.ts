@@ -1034,6 +1034,10 @@ export const uiCopy = {
   /** Client Projects tab — project management actions. */
   projects: {
     deleteConfirm: 'Delete this project? All models will be removed from it.',
+    /** Shown when the user taps Create without entering a project name. */
+    createNameRequired: 'Enter a project name first.',
+    /** Create button label while the project row is being saved. */
+    creatingProject: 'Creating…',
     open: 'Open',
     /** Opens project folder (model list); Discover is a second step from the folder. */
     overview: 'Overview',

@@ -15,6 +15,7 @@ import {
   View,
   Text,
   StyleSheet,
+  Pressable,
   TouchableOpacity,
   ScrollView,
   TextInput,
@@ -455,6 +456,8 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   const [detailData, setDetailData] = useState<MediaslideModel | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  /** True while My Projects "Create" is awaiting Supabase (prevents double-submit / dead taps). */
+  const [projectCreateBusy, setProjectCreateBusy] = useState(false);
   const [filters, setFilters] = useState<ModelFilters>(() => {
     const saved = loadClientFilters();
     if (saved) {
@@ -1324,11 +1327,23 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   };
 
   const createProject = async () => {
-    const created = await createProjectInternal(newProjectName);
-    if (!created) return;
-    setNewProjectName('');
-    setFeedback(`Created project "${created.name}".`);
-    clearFeedbackLater();
+    const trimmed = newProjectName.trim();
+    if (!trimmed) {
+      setFeedback(uiCopy.projects.createNameRequired);
+      clearFeedbackLater();
+      return;
+    }
+    if (projectCreateBusy) return;
+    setProjectCreateBusy(true);
+    try {
+      const created = await createProjectInternal(trimmed);
+      if (!created) return;
+      setNewProjectName('');
+      setFeedback(`Created project "${created.name}".`);
+      clearFeedbackLater();
+    } finally {
+      setProjectCreateBusy(false);
+    }
   };
 
   // Server Reconciliation Refetch — Level 4 consistency guarantee.
@@ -2172,6 +2187,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             newProjectName={newProjectName}
             setNewProjectName={setNewProjectName}
             onCreateProject={createProject}
+            creatingProject={projectCreateBusy}
             onDeleteProject={handleDeleteProject}
             canDeleteProject={(p) =>
               !realClientId || p.ownerId == null || p.ownerId === realClientId}
@@ -3555,6 +3571,7 @@ type ProjectsProps = {
   newProjectName: string;
   setNewProjectName: (v: string) => void;
   onCreateProject: () => void;
+  creatingProject?: boolean;
   onDeleteProject: (id: string) => void;
   canDeleteProject: (p: Project) => boolean;
   onOpenDetails: (id: string) => void;
@@ -3572,6 +3589,7 @@ const ProjectsView: React.FC<ProjectsProps> = ({
   newProjectName,
   setNewProjectName,
   onCreateProject,
+  creatingProject = false,
   onDeleteProject,
   canDeleteProject,
   onOpenProject,
@@ -3585,6 +3603,11 @@ const ProjectsView: React.FC<ProjectsProps> = ({
         <Text style={styles.sectionLabel}>My Projects</Text>
       </View>
 
+      {/*
+        Keep the create row OUTSIDE ScrollView: on RN Web, ScrollView often steals the first
+        tap / breaks TouchableOpacity onPress for header rows inside the scroll area (no handler
+        fire → no network). List scroll remains below.
+      */}
       <View style={styles.newProjectRow}>
         <TextInput
           value={newProjectName}
@@ -3592,13 +3615,34 @@ const ProjectsView: React.FC<ProjectsProps> = ({
           placeholder="New project, e.g. Zalando HW26"
           placeholderTextColor={colors.textSecondary}
           style={styles.input}
+          editable={!creatingProject}
+          returnKeyType="done"
+          blurOnSubmit={false}
+          onSubmitEditing={() => {
+            void onCreateProject();
+          }}
         />
-        <TouchableOpacity style={styles.primaryButton} onPress={onCreateProject}>
-          <Text style={styles.primaryLabel}>Create</Text>
-        </TouchableOpacity>
+        <Pressable
+          style={({ pressed }) => [
+            styles.primaryButton,
+            creatingProject && styles.primaryButtonDisabled,
+            pressed && !creatingProject && { opacity: 0.85 },
+          ]}
+          onPress={() => {
+            void onCreateProject();
+          }}
+          disabled={creatingProject}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: creatingProject }}
+        >
+          <Text style={styles.primaryLabel}>
+            {creatingProject ? uiCopy.projects.creatingProject : 'Create'}
+          </Text>
+        </Pressable>
       </View>
 
       <ScrollView
+        keyboardShouldPersistTaps="always"
         style={[styles.projectsList, { minHeight: 0 }]}
         contentContainerStyle={{ paddingBottom: scrollBottomInset + spacing.md }}
       >
