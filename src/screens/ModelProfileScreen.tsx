@@ -1209,13 +1209,22 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                 >
                   <Text style={{ ...typography.label, color: '#BF360C', marginBottom: 2 }}>
                     {req.request_type === 'casting' ? uiCopy.dashboard.threadContextCasting : uiCopy.dashboard.threadContextOption}
-                    {req.client_name ? ` · ${req.client_name}` : ''}
                   </Text>
-                  <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.sm }}>
+                  {req.client_name ? (
+                    <Text style={{ ...typography.body, fontSize: 12, color: colors.textPrimary, fontWeight: '600', marginBottom: 2 }}>
+                      {req.client_name}
+                    </Text>
+                  ) : null}
+                  <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: req.job_description ? 2 : spacing.sm }}>
                     {req.requested_date}
                     {req.start_time ? ` · ${stripClockSeconds(String(req.start_time))}` : ''}
                     {req.end_time ? `–${stripClockSeconds(String(req.end_time))}` : ''}
                   </Text>
+                  {req.job_description ? (
+                    <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, fontStyle: 'italic', marginBottom: spacing.sm }} numberOfLines={2}>
+                      {req.job_description}
+                    </Text>
+                  ) : null}
                   <View style={{ flexDirection: 'row', gap: spacing.sm }}>
                     <TouchableOpacity
                       onPress={() => setOptionActionModal({ id: req.id, action: 'confirm' })}
@@ -1272,9 +1281,17 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                   <Text style={{ ...typography.label, color: colors.textPrimary }}>
                     {o.requestType === 'casting' ? uiCopy.dashboard.threadContextCasting : uiCopy.dashboard.threadContextOption} · {o.finalStatus === 'job_confirmed' ? uiCopy.dashboard.optionRequestStatusJobConfirmed : uiCopy.dashboard.optionRequestStatusConfirmed}
                   </Text>
-                  <Text style={st.metaText}>
-                    {o.clientName} · {formatDateWithOptionalTimeRange(o.date, o.startTime, o.endTime)}
+                  <Text style={{ ...typography.body, fontSize: 12, color: colors.textPrimary, fontWeight: '600', marginBottom: 1 }}>
+                    {o.clientName}
                   </Text>
+                  <Text style={st.metaText}>
+                    {formatDateWithOptionalTimeRange(o.date, o.startTime, o.endTime)}
+                  </Text>
+                  {o.jobDescription ? (
+                    <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, fontStyle: 'italic', marginTop: 2 }} numberOfLines={2}>
+                      {o.jobDescription}
+                    </Text>
+                  ) : null}
                 </TouchableOpacity>
               ))
             )}
@@ -1299,8 +1316,16 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                     backgroundColor: colors.surface,
                   }}
                 >
-                  <Text style={{ ...typography.body, color: colors.textPrimary, fontWeight: '500' }}>{o.clientName}</Text>
+                  <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary }}>
+                    {o.requestType === 'casting' ? uiCopy.dashboard.threadContextCasting : uiCopy.dashboard.threadContextOption}
+                  </Text>
+                  <Text style={{ ...typography.body, color: colors.textPrimary, fontWeight: '600' }}>{o.clientName}</Text>
                   <Text style={st.metaText}>{formatDateWithOptionalTimeRange(o.date, o.startTime, o.endTime)}</Text>
+                  {o.jobDescription ? (
+                    <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, fontStyle: 'italic', marginTop: 2 }} numberOfLines={2}>
+                      {o.jobDescription}
+                    </Text>
+                  ) : null}
                 </TouchableOpacity>
               ))}
             </View>
@@ -1390,17 +1415,41 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
               padding: spacing.md,
             }}
           >
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm, flexShrink: 0 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
-                {optionChatAgency?.logo_url ? (
-                  <Image source={{ uri: optionChatAgency.logo_url }} style={{ width: 32, height: 32, borderRadius: 6 }} resizeMode="contain" />
-                ) : null}
-                <View>
-                  <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary }}>Agency</Text>
-                  <Text style={{ ...typography.label, color: colors.textPrimary }}>{optionChatAgency?.name ?? 'Agency'}</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: spacing.sm, flexShrink: 0 }}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  {optionChatAgency?.logo_url ? (
+                    <Image source={{ uri: optionChatAgency.logo_url }} style={{ width: 28, height: 28, borderRadius: 5 }} resizeMode="contain" />
+                  ) : null}
+                  <View>
+                    <Text style={{ ...typography.label, fontSize: 9, color: colors.textSecondary }}>Agency</Text>
+                    <Text style={{ ...typography.label, color: colors.textPrimary }}>{optionChatAgency?.name ?? 'Agency'}</Text>
+                  </View>
                 </View>
+                {(() => {
+                  const r = getRequestByThreadId(selectedOptionThread!);
+                  if (!r) return null;
+                  return (
+                    <View style={{ borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, paddingTop: 6 }}>
+                      {r.clientName && r.clientName !== 'Client' ? (
+                        <Text style={{ ...typography.body, fontSize: 11, color: colors.textPrimary, fontWeight: '600' }} numberOfLines={1}>
+                          {r.clientName}
+                        </Text>
+                      ) : null}
+                      <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary }}>
+                        {r.requestType === 'casting' ? uiCopy.dashboard.threadContextCasting : uiCopy.dashboard.threadContextOption}
+                        {' · '}{formatDateWithOptionalTimeRange(r.date, r.startTime, r.endTime)}
+                      </Text>
+                      {r.jobDescription ? (
+                        <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, fontStyle: 'italic', marginTop: 2 }} numberOfLines={2}>
+                          {r.jobDescription}
+                        </Text>
+                      ) : null}
+                    </View>
+                  );
+                })()}
               </View>
-              <TouchableOpacity onPress={() => setSelectedOptionThread(null)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+              <TouchableOpacity onPress={() => setSelectedOptionThread(null)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} style={{ marginLeft: spacing.sm }}>
                 <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary }}>Close</Text>
               </TouchableOpacity>
             </View>

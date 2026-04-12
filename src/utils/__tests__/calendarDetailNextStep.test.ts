@@ -31,6 +31,7 @@ function minimalOption(overrides: Partial<SupabaseOptionRequest>): SupabaseOptio
     project_id: null,
     client_name: 'Client',
     model_name: 'Model',
+    job_description: null,
     proposed_price: 100,
     agency_counter_price: null,
     client_price_status: 'pending',

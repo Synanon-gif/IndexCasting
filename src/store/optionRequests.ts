@@ -57,6 +57,8 @@ export type OptionRequest = {
   id: string;
   clientName: string;
   clientOrganizationId?: string;
+  /** Optional role / shoot description set by the client. Shown to the model in their inbox. */
+  jobDescription?: string;
   modelName: string;
   modelId: string;
   date: string;
@@ -93,6 +95,7 @@ function toLocalRequest(r: SupabaseOptionRequest | SupabaseOptionRequestModelSaf
     id: r.id,
     clientName: r.client_name ?? 'Client',
     clientOrganizationId: r.client_organization_id ?? r.organization_id ?? undefined,
+    jobDescription: r.job_description ?? undefined,
     modelName: r.model_name ?? 'Model',
     modelId: r.model_id,
     date: r.requested_date,
@@ -175,6 +178,8 @@ export function addOptionRequest(
     requestType?: 'option' | 'casting';
     currency?: string;
     countryCode?: string;
+    /** Optional role / shoot description entered by the client. Shown to the model. */
+    jobDescription?: string;
     /** Set when the request is triggered from a shared package. */
     source?: 'package';
     /** ID of the guest_links row if source is 'package'. */
@@ -204,6 +209,7 @@ export function addOptionRequest(
     currency: extra?.currency,
     startTime: extra?.startTime,
     endTime: extra?.endTime,
+    jobDescription: extra?.jobDescription,
     modelApproval: 'pending',
     modelAccountLinked: false,
     finalStatus: 'option_pending',
@@ -347,6 +353,7 @@ export function addOptionRequest(
       project_id: projectId,
       client_name: clientName,
       model_name: modelName,
+      job_description: extra?.jobDescription,
       proposed_price: extra?.proposedPrice,
       currency: extra?.currency,
       start_time: normStart ?? undefined,

@@ -22,7 +22,7 @@ import { guardUploadSession } from './gdprComplianceSupabase';
 import { logAction } from '../utils/logAction';
 
 export const OPTION_REQUEST_SELECT =
-  'id, client_id, model_id, agency_id, requested_date, status, project_id, client_name, model_name, proposed_price, agency_counter_price, client_price_status, final_status, request_type, currency, start_time, end_time, model_approval, model_approved_at, model_account_linked, booker_id, organization_id, agency_organization_id, client_organization_id, created_by, agency_assignee_user_id, created_at, updated_at';
+  'id, client_id, model_id, agency_id, requested_date, status, project_id, client_name, model_name, job_description, proposed_price, agency_counter_price, client_price_status, final_status, request_type, currency, start_time, end_time, model_approval, model_approved_at, model_account_linked, booker_id, organization_id, agency_organization_id, client_organization_id, created_by, agency_assignee_user_id, created_at, updated_at';
 
 /**
  * Atomic UPDATE guards: many mutations use `.eq('status', 'in_negotiation')` (or similar) so concurrent
@@ -32,7 +32,7 @@ export const OPTION_REQUEST_SELECT =
 
 /** Model-linked app: no price / negotiation columns (defense-in-depth vs UI-only hiding). */
 export const OPTION_REQUEST_SELECT_MODEL_SAFE =
-  'id, client_id, model_id, agency_id, requested_date, status, project_id, client_name, model_name, final_status, request_type, currency, start_time, end_time, model_approval, model_approved_at, model_account_linked, booker_id, organization_id, agency_organization_id, client_organization_id, created_by, agency_assignee_user_id, created_at, updated_at';
+  'id, client_id, model_id, agency_id, requested_date, status, project_id, client_name, model_name, job_description, final_status, request_type, currency, start_time, end_time, model_approval, model_approved_at, model_account_linked, booker_id, organization_id, agency_organization_id, client_organization_id, created_by, agency_assignee_user_id, created_at, updated_at';
 
 /**
  * Option Requests + Chat (Kunde ↔ Agentur).
@@ -51,6 +51,8 @@ export type SupabaseOptionRequest = {
   project_id: string | null;
   client_name: string | null;
   model_name: string | null;
+  /** Optional role / shoot description set by the client at booking time. Shown to the model. */
+  job_description: string | null;
   proposed_price: number | null;
   agency_counter_price: number | null;
   client_price_status: 'pending' | 'accepted' | 'rejected' | null;
@@ -294,6 +296,8 @@ export async function insertOptionRequest(req: {
   project_id?: string;
   client_name?: string;
   model_name?: string;
+  /** Optional role / shoot description set by the client. Shown to the model in their inbox. */
+  job_description?: string;
   proposed_price?: number;
   currency?: string;
   start_time?: string;
@@ -341,6 +345,7 @@ export async function insertOptionRequest(req: {
     project_id: req.project_id || null,
     client_name: req.client_name ? sanitizeHtml(normalizeInput(req.client_name)) : null,
     model_name: req.model_name ? sanitizeHtml(normalizeInput(req.model_name)) : null,
+    job_description: req.job_description ? sanitizeHtml(normalizeInput(req.job_description)) : null,
     proposed_price: req.proposed_price || null,
     agency_counter_price: null,
     request_type: req.request_type || 'option',

@@ -32,6 +32,7 @@ function baseOption(over: Partial<SupabaseOptionRequest> = {}): SupabaseOptionRe
     project_id: null,
     client_name: null,
     model_name: 'M',
+    job_description: null,
     proposed_price: null,
     agency_counter_price: null,
     client_price_status: null,

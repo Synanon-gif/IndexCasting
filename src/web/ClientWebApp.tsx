@@ -1784,6 +1784,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       requestType?: 'option' | 'casting';
       currency?: string;
       countryCode?: string;
+      jobDescription?: string;
     }
   ) => {
     const originTab = tab;
@@ -1799,8 +1800,9 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         : resolvedProjectId
           ? ('project' as const)
           : ('discover' as const);
+    const clientOrgName = auth.profile?.company_name ?? auth.profile?.display_name ?? 'Client';
     addOptionRequest(
-      'Client',
+      clientOrgName,
       modelName,
       modelId,
       date,
@@ -2639,7 +2641,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
           setOptionDatePickerOpen(false);
           setOptionDateModel(null);
         }}
-        onSubmit={(date, startTime, endTime, price, requestType, currency) =>
+        onSubmit={(date, startTime, endTime, price, requestType, currency, jobDescription) =>
           optionDateModel &&
           handleOptionRequest(optionDateModel.name, optionDateModel.id, date, undefined, {
             startTime,
@@ -2647,6 +2649,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             proposedPrice: price,
             requestType: requestType ?? 'option',
             currency: currency ?? 'EUR',
+            jobDescription,
             countryCode:
               filters.countryCode.trim() || optionDateModel.countryCode?.trim() || undefined,
           })
@@ -5210,7 +5213,7 @@ type OptionDatePickerModalProps = {
   open: boolean;
   model: ModelSummary | null;
   onClose: () => void;
-  onSubmit: (date: string, startTime: string, endTime: string, price?: number, requestType?: 'option' | 'casting', currency?: string) => void;
+  onSubmit: (date: string, startTime: string, endTime: string, price?: number, requestType?: 'option' | 'casting', currency?: string, jobDescription?: string) => void;
 };
 
 const TIME_SLOTS = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`);
@@ -5274,7 +5277,7 @@ const OptionDatePickerModal: React.FC<OptionDatePickerModalProps> = ({
       onClose();
       return;
     }
-    onSubmit(selectedDate, startTime, endTime, p, requestType, currency);
+    onSubmit(selectedDate, startTime, endTime, p, requestType, currency, roleDescription.trim() || undefined);
   };
 
   return (
