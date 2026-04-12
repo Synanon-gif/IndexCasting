@@ -401,12 +401,6 @@ export const uiCopy = {
       messages: 'Messages',
       profile: 'Profile',
     },
-    /** Mobile primary bar — short labels, equal columns; full feature set via workspace menu. */
-    mobileBottomTabs: {
-      agency: 'Agency',
-      messages: 'Messages',
-      projects: 'Projects',
-    },
     workspaceMenu: {
       openLabel: 'More',
       title: 'Workspace',

@@ -431,6 +431,11 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   );
   /** True when MessagesView is in fullscreen-chat mode on mobile — hides the bottom tab bar. */
   const [clientChatFullscreen, setClientChatFullscreen] = useState(false);
+  // Reset fullscreen flag whenever the user navigates away from the messages tab.
+  // Without this, a stuck `true` value would keep the bottom nav hidden on unrelated tabs.
+  useEffect(() => {
+    if (tab !== 'messages') setClientChatFullscreen(false);
+  }, [tab]);
   const [mobileWorkspaceMenuOpen, setMobileWorkspaceMenuOpen] = useState(false);
   const [showActiveOptions, setShowActiveOptions] = useState(false);
   const [models, setModels] = useState<ModelSummary[]>([]);
@@ -4323,7 +4328,7 @@ const ClientB2BChatsPanel: React.FC<{
       viewerUserId={auth.profile?.id ?? null}
       threadContext={{ type: uiCopy.b2bChat.contextOrgChat }}
       composerBottomInsetOverride={0}
-      containerStyle={b2bWebSplit ? { marginTop: 0, flex: 1 } : { flex: 1, minHeight: 0 }}
+      containerStyle={b2bWebSplit ? { marginTop: 0, flex: 1 } : { marginTop: 0, padding: 0, borderWidth: 0, borderRadius: 0, flex: 1, minHeight: 0 }}
       useFlexMessengerScroll={b2bWebSplit}
       onBookingCardPress={onBookingCardPress}
       onPackagePress={onPackagePress}
