@@ -504,11 +504,21 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
         <TouchableOpacity
           style={styles.actionsToggle}
           onPress={() => setActionsExpanded((prev) => !prev)}
-          activeOpacity={0.7}
+          activeOpacity={0.6}
         >
-          <Text style={styles.actionsToggleLabel}>
-            {actionsExpanded ? '▲ Hide actions' : '▼ Show actions'}
-          </Text>
+          <View style={styles.actionsToggleInner}>
+            <Text style={styles.actionsToggleArrow}>
+              {actionsExpanded ? '▾' : '▸'}
+            </Text>
+            <Text style={styles.actionsToggleLabel}>
+              {actionsExpanded ? 'Hide actions' : 'Actions'}
+            </Text>
+          </View>
+          {!actionsExpanded && !isTerminal && (
+            <View style={styles.actionsToggleBadge}>
+              <View style={styles.actionsToggleDot} />
+            </View>
+          )}
         </TouchableOpacity>
       )}
 
@@ -707,17 +717,40 @@ const styles = StyleSheet.create({
   actionsToggle: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 6,
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    paddingHorizontal: spacing.sm,
     marginBottom: spacing.xs,
-    backgroundColor: 'rgba(0,0,0,0.04)',
-    borderRadius: 8,
+    backgroundColor: 'rgba(139,90,43,0.08)',
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(139,90,43,0.2)',
+  },
+  actionsToggleInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  actionsToggleArrow: {
+    fontSize: 16,
+    color: colors.accentBrown,
+    fontWeight: '700',
   },
   actionsToggleLabel: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
     color: colors.accentBrown,
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
+  },
+  actionsToggleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  actionsToggleDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.accentBrown,
   },
 });
 
