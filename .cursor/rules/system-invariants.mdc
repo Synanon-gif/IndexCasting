@@ -854,6 +854,21 @@ Ein Lifecycle, der bereits in einem **availability-cleared** Zustand war (`model
 3. `final_status === 'option_confirmed'` (Agency hat Verfügbarkeit bestätigt)
 4. Status ist nicht-terminal (`status = 'in_negotiation'`)
 
+**KANONISCHE REIHENFOLGE — AGENCY AVAILABILITY VOR MODEL CONFIRMATION (unveränderlich, 20260616):**
+
+Das Model kann eine Option erst bestätigen, **nachdem** die Agency die Verfügbarkeit bestätigt hat (`final_status = 'option_confirmed'`). Solange die Agency `final_status = 'option_pending'` hat, ist für das Model kein Bestätigungs-Button sichtbar und `modelConfirmOptionRequest` lehnt den Aufruf ab.
+
+**Preisverhandlung ist davon vollständig unabhängig (Axis 1 ≠ Axis 2):**
+- Preis kann **vor, während oder nach** der Verfügbarkeitsbestätigung verhandelt werden
+- Model-Confirmation blockiert **niemals** die Preisverhandlung zwischen Client und Agency
+- Agency darf den Preis **immer** verhandeln (Accept / Counter), unabhängig von `model_approval`
+- Umgekehrt: Preisstatus hat **keinen** Einfluss darauf, ob das Model Verfügbarkeit bestätigen darf
+
+**Enforcement (dreischichtig):**
+- **Service:** `modelConfirmOptionRequest` prüft `final_status !== 'option_confirmed'` → return false (Z.1736)
+- **Attention:** `modelInboxRequiresModelConfirmation` prüft `finalStatus !== 'option_confirmed'` → return false (Z.262)
+- **Derive:** `deriveApprovalAttention` gibt `waiting_for_model_confirmation` nur bei `agencyConfirmed === true` (Z.131)
+
 **Semantische Klarstellung — „grandfathered approved":**
 `model_approval = 'approved'` im No-Model-Account-Flow bedeutet **nicht** „das Model hat aktiv bestätigt", sondern **„der Lifecycle ist availability-cleared durch Agency-Entscheidung unter dem No-Account-Pfad"**. Dieser Wert ist funktional gleichwertig mit einer aktiven Model-Bestätigung und darf nie als Indikator für eine echte Model-App-Interaktion missverstanden werden.
 

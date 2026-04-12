@@ -247,9 +247,20 @@ export function optionRequestNeedsMessagesTabAttention(r: {
 }
 
 /**
- * Model app inbox: true when this linked model must confirm/reject (same gate as
- * `modelConfirmOptionRequest` — agency already accepted, row still `in_negotiation`).
- * Not derived from `smartAttentionVisibleForRole` (that flag is for client/agency “who waits”).
+ * CANONICAL MODEL CONFIRMATION GATE (invariant, 20260616):
+ *
+ * A linked model may confirm/reject ONLY when ALL four conditions are met:
+ *   1. model_account_linked === true (has an app account)
+ *   2. model_approval === 'pending' (not already decided)
+ *   3. final_status === 'option_confirmed' (agency confirmed availability first)
+ *   4. status === 'in_negotiation' (not terminal)
+ *
+ * This means the agency MUST confirm availability BEFORE the model can act.
+ * Price negotiation (Axis 1) is fully independent — it may be open, settled,
+ * or counter-pending without affecting the model's ability to confirm.
+ *
+ * Same gate as `modelConfirmOptionRequest` in optionRequestsSupabase.ts.
+ * Not derived from `smartAttentionVisibleForRole` (that flag is for client/agency "who waits").
  */
 export function modelInboxRequiresModelConfirmation(input: {
   status: string;

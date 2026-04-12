@@ -194,6 +194,7 @@ Q8: Verwendet ein neuer optimistischer Update-Handler irgendeinen Snapshot (`con
 Q9: Führt diese Änderung ein verstecktes „Connect first“ (`client_agency_connections`) für Erstkontakt-Flows ein oder verschärft sie Discover-Downstream-Parität ohne Product-Approval?
 Q10: Leakt diese Änderung Verhandlungs-/kommerzielle Felder an Model-queries oder bricht Kalender-/Attention-Konsistenz über Rollen hinweg?
 Q11: Koppelt diese Änderung Preis (Axis 1) und Availability (Axis 2) in einem einzigen Button/Handler/RPC? (Ausnahme: client_confirm_option_job)
+Q12: Erlaubt diese Änderung dem Model eine Bestätigung BEVOR die Agency availability bestätigt hat (final_status = 'option_confirmed')? Model darf NUR nach Agency-Availability-Bestätigung handeln.
 ```
 
 → Wenn **eine** Antwort unklar oder „möglicherweise ja" ist:
@@ -236,6 +237,7 @@ Q11: Koppelt diese Änderung Preis (Axis 1) und Availability (Axis 2) in einem e
 - **GuestChatView ohne explizites `link_id`:** Neuer Guest-Thread-Load der bei fehlendem `link_id` mit `LIMIT 1` Fallback einen zufälligen Thread wählt — Blocker (Risiko 24 — falsche Conversation bei mehreren Guest-Sessions).
 - **Achsen-Kopplung Preis ↔ Availability:** Neuer Negotiation-Button oder Store-Funktion setzt Felder **beider** Achsen (Axis 1: `client_price_status` UND Axis 2: `final_status`) in einem einzigen Aufruf — Blocker (Risiko 25 — System-Invariante K, Fix 20260616). Einzige erlaubte Ausnahme: `client_confirm_option_job` (terminaler Schritt, erfordert BEIDE Achsen).
 - **Fee-Blockade durch Model-Approval:** UI oder Logik verhindert Preis-Aktionen (Accept / Counter / Decline proposed fee) wenn `model_approval = 'pending'` — Blocker (Risiko 25 — Model-Approval betrifft NUR Availability; Preis bleibt IMMER verhandelbar).
+- **Model-Bestätigung ohne Agency-Availability:** Neuer Code erlaubt dem Model eine Option zu bestätigen (`modelConfirmOptionRequest`, Model-Inbox-UI) ohne dass `final_status = 'option_confirmed'` (Agency hat Availability bestätigt) — Blocker (Risiko 26 — Dreischichtiges Enforcement: Service + Attention + Derive; Reihenfolge Agency→Model ist kanonisch unveränderlich).
 
 ---
 
