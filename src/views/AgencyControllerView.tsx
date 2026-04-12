@@ -5601,21 +5601,34 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                 final_status: r.finalStatus ?? null,
               });
             return (
-              <TouchableOpacity key={r.threadId} style={[s.threadRow, selectedThreadId === r.threadId && s.threadRowActive]} onPress={() => setSelectedThreadId(r.threadId)}>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={s.modelName} numberOfLines={1}>{r.modelName} · {r.date}</Text>
-                  <Text style={s.metaText} numberOfLines={1}>
+              <TouchableOpacity
+                key={r.threadId}
+                style={[s.threadRow, s.threadRowOptionRequestList, selectedThreadId === r.threadId && s.threadRowActive]}
+                onPress={() => setSelectedThreadId(r.threadId)}
+              >
+                <View style={s.optionRequestThreadNamesColumn}>
+                  <Text style={s.modelName} numberOfLines={1} ellipsizeMode="tail">
+                    {r.modelName} · {r.date}
+                  </Text>
+                  <Text style={s.metaText} numberOfLines={1} ellipsizeMode="tail">
                     {r.clientName}
                     {formatOptionTimeRangeSuffix(r.startTime, r.endTime)}
                   </Text>
                   {assignment ? (
-                    <Text style={s.metaText} numberOfLines={1}>
+                    <Text style={s.metaText} numberOfLines={1} ellipsizeMode="tail">
                       {assignment.label}
                       {assignment.assignedMemberName ? ` · ${assignment.assignedMemberName}` : ''}
                     </Text>
                   ) : null}
                 </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0, flexWrap: 'wrap' }}>
+                <ScrollView
+                  horizontal
+                  nestedScrollEnabled
+                  showsHorizontalScrollIndicator
+                  keyboardShouldPersistTaps="handled"
+                  style={s.optionRequestThreadAttentionScroll}
+                  contentContainerStyle={s.optionRequestThreadAttentionScrollContent}
+                >
                   {listAttentionLabel ? (
                     <View style={[s.statusPill, { backgroundColor: '#dbeafe' }]}>
                       <Text style={[s.statusPillLabel, { color: '#1d4ed8' }]} numberOfLines={1}>{listAttentionLabel}</Text>
@@ -5650,7 +5663,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                     </Text>
                   </View>
                   <View style={[s.statusPill, { backgroundColor: STATUS_COLORS[reqStatus] }]}>
-                    <Text style={s.statusPillLabel}>{STATUS_LABELS[reqStatus]}</Text>
+                    <Text style={s.statusPillLabel} numberOfLines={1}>{STATUS_LABELS[reqStatus]}</Text>
                   </View>
                   <TouchableOpacity
                     onPress={() => toggleArchive(r.threadId)}
@@ -5663,7 +5676,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                   >
                     <Text style={{ fontSize: 12, color: colors.textSecondary }}>{archivedIds.has(r.threadId) ? '↩' : '📦'}</Text>
                   </TouchableOpacity>
-                </View>
+                </ScrollView>
               </TouchableOpacity>
             );
           })
@@ -6687,6 +6700,36 @@ const s = StyleSheet.create({
     overflow: 'hidden',
   },
   threadRowActive: { backgroundColor: '#F3F0EC' },
+  /** Option-request list: names stay visible; attention strip scrolls on the right (end-aligned). */
+  threadRowOptionRequestList: {
+    width: '100%',
+    alignSelf: 'stretch',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+  },
+  optionRequestThreadNamesColumn: {
+    flexGrow: 0,
+    flexShrink: 0,
+    width: '50%',
+    maxWidth: '52%',
+    minWidth: 132,
+    paddingRight: spacing.sm,
+  },
+  optionRequestThreadAttentionScroll: {
+    flex: 1,
+    minWidth: 0,
+    alignSelf: 'stretch',
+    width: 0,
+  },
+  optionRequestThreadAttentionScrollContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: spacing.xs,
+    paddingVertical: 2,
+    paddingLeft: spacing.xs,
+    minWidth: '100%',
+  },
   statusPill: { borderRadius: 999, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   statusPillLabel: { ...typography.label, fontSize: 10, color: colors.surface },
   chatPanel: {

@@ -4837,26 +4837,39 @@ const MessagesView: React.FC<MessagesViewProps> = ({
             return (
               <TouchableOpacity
                 key={r.threadId}
-                style={[styles.threadRow, selectedThreadId === r.threadId && styles.threadRowActive]}
+                style={[
+                  styles.threadRow,
+                  styles.threadRowOptionRequestList,
+                  selectedThreadId === r.threadId && styles.threadRowActive,
+                ]}
                 onPress={() => {
                   onOptionThreadOpenedFromList?.();
                   setSelectedThreadId(r.threadId);
                 }}
               >
-                <View style={styles.threadRowLeft}>
-                  <Text style={styles.threadTitle}>{r.modelName} · {r.date}</Text>
-                  <Text style={styles.metaText}>
+                <View style={styles.optionRequestThreadNamesColumn}>
+                  <Text style={styles.threadTitle} numberOfLines={1} ellipsizeMode="tail">
+                    {r.modelName} · {r.date}
+                  </Text>
+                  <Text style={styles.metaText} numberOfLines={1} ellipsizeMode="tail">
                     {r.clientName}
                     {formatOptionTimeRangeSuffix(r.startTime, r.endTime)}
                   </Text>
                   {assignment ? (
-                    <Text style={styles.metaText}>
+                    <Text style={styles.metaText} numberOfLines={1} ellipsizeMode="tail">
                       {assignment.label}
                       {assignment.assignedMemberName ? ` · ${assignment.assignedMemberName}` : ''}
                     </Text>
                   ) : null}
                 </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flexShrink: 0, flexWrap: 'wrap' }}>
+                <ScrollView
+                  horizontal
+                  nestedScrollEnabled
+                  showsHorizontalScrollIndicator
+                  keyboardShouldPersistTaps="handled"
+                  style={styles.optionRequestThreadAttentionScroll}
+                  contentContainerStyle={styles.optionRequestThreadAttentionScrollContent}
+                >
                   {attentionListLabel ? (
                     <View style={[styles.statusPill, { backgroundColor: '#dbeafe' }]}>
                       <Text style={[styles.statusPillLabel, { color: '#1d4ed8' }]} numberOfLines={1}>
@@ -4886,7 +4899,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                   >
                     <Text style={{ fontSize: 12, color: colors.textSecondary }}>{isArchived ? '↩' : '📦'}</Text>
                   </TouchableOpacity>
-                </View>
+                </ScrollView>
               </TouchableOpacity>
             );
           })
@@ -7396,6 +7409,37 @@ const styles = StyleSheet.create({
   threadRowLeft: {
     flex: 1,
     minWidth: 0,
+  },
+  /** Option-request list: names stay visible; attention strip scrolls on the right (end-aligned). */
+  threadRowOptionRequestList: {
+    width: '100%',
+    alignSelf: 'stretch',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+  },
+  optionRequestThreadNamesColumn: {
+    flexGrow: 0,
+    flexShrink: 0,
+    width: '50%',
+    maxWidth: '52%',
+    minWidth: 132,
+    paddingRight: spacing.sm,
+  },
+  optionRequestThreadAttentionScroll: {
+    flex: 1,
+    minWidth: 0,
+    alignSelf: 'stretch',
+    // RN Web: flex child scroll region needs bounded width
+    width: 0,
+  },
+  optionRequestThreadAttentionScrollContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: spacing.xs,
+    paddingVertical: 2,
+    paddingLeft: spacing.xs,
+    minWidth: '100%',
   },
   threadRowUnreadDot: {
     width: 8,
