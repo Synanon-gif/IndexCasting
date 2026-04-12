@@ -154,8 +154,6 @@ export async function getApplications(
     return [];
   }
   if (agencyId === undefined) {
-    // RLS-only path: no explicit org filter. Defense-in-Depth missing.
-    // Callers SHOULD always pass agencyId — see rls-security-patterns.mdc Risiko 6.
     console.warn('[getApplications] called without agencyId — relying on RLS only (no defense-in-depth org filter)');
   }
   try {
@@ -164,7 +162,12 @@ export async function getApplications(
       .select('*')
       .order('created_at', { ascending: false })
       .limit(opts?.limit ?? 100);
-    if (agencyId) q = q.eq('agency_id', agencyId);
+    if (agencyId) {
+      // Global recruiting pool: load applications targeted at this agency,
+      // already accepted by this agency, OR unassigned (global pool visible
+      // to every agency per product rule + RLS select_v3).
+      q = q.or(`agency_id.eq.${agencyId},accepted_by_agency_id.eq.${agencyId},agency_id.is.null`);
+    }
     if (opts?.afterCreatedAt) q = q.lt('created_at', opts.afterCreatedAt);
     const { data, error } = await q;
     if (error) { console.error('getApplications error:', error); return []; }
@@ -213,7 +216,9 @@ export async function getApplicationsByStatus(
       .eq('status', status)
       .order('created_at', { ascending: false })
       .limit(opts?.limit ?? 100);
-    if (agencyId) q = q.eq('agency_id', agencyId);
+    if (agencyId) {
+      q = q.or(`agency_id.eq.${agencyId},accepted_by_agency_id.eq.${agencyId},agency_id.is.null`);
+    }
     if (opts?.afterCreatedAt) q = q.lt('created_at', opts.afterCreatedAt);
     const { data, error } = await q;
     if (error) { console.error('getApplicationsByStatus error:', error); return []; }
