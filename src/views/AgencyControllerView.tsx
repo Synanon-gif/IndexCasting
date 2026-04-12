@@ -17,6 +17,7 @@ import {
   Platform,
   ActivityIndicator,
   useWindowDimensions,
+  type ViewStyle,
 } from 'react-native';
 import countries from 'i18n-iso-countries';
 import enLocale from 'i18n-iso-countries/langs/en.json';
@@ -285,6 +286,8 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   const agencyIsMobile = isMobileWidth(agencyWindowWidth);
   const agencyShellPaddingH = agencyIsMobile ? spacing.sm : spacing.lg;
   const [tab, setTab] = useState<AgencyTab>('dashboard');
+  /** True when AgencyMessagesTab is in fullscreen-chat mode on mobile — hides the bottom bar. */
+  const [agencyChatFullscreen, setAgencyChatFullscreen] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [dissolvingOrg, setDissolvingOrg] = useState(false);
   const [orgDissolved, setOrgDissolved] = useState(false);
@@ -641,7 +644,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         </View>
       </View>
 
-      <View style={{ flex: 1, paddingBottom: bottomTabInset }}>
+      <View style={{ flex: 1, paddingBottom: agencyChatFullscreen ? 0 : bottomTabInset }}>
       {tab === 'dashboard' && (
         <View style={{ flex: 1 }}>
           {agencyOrganizationId && (
@@ -738,6 +741,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
           assignmentByClientOrgId={assignmentByClientOrgId}
           onOptionRequestDeleted={() => { void loadAgencyCalendar(); }}
           onOptionProjectionChanged={() => { void loadAgencyCalendar(); }}
+          onChatFullscreenChange={(active) => setAgencyChatFullscreen(active && agencyIsMobile)}
         />
       )}
 
@@ -992,7 +996,14 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         />
       )}
 
-      <View style={[s.bottomBar, { paddingBottom: insets.bottom }]}>
+      {!agencyChatFullscreen && (
+      <View
+        style={[
+          s.bottomBar,
+          { paddingBottom: insets.bottom },
+          Platform.OS === 'web' ? ({ position: 'fixed' } as unknown as ViewStyle) : null,
+        ]}
+      >
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -1006,6 +1017,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
           ))}
         </ScrollView>
       </View>
+      )}
 
       {selectedCalendarItem && (
         <View
@@ -4431,6 +4443,8 @@ type AgencyMessagesTabProps = {
   onOptionRequestDeleted?: () => void;
   /** Refresh calendar cache after negotiation updates (price, confirm, etc.). */
   onOptionProjectionChanged?: () => void;
+  /** Called with true when a chat occupies the full mobile screen — outer shell hides the bottom bar. */
+  onChatFullscreenChange?: (active: boolean) => void;
 };
 
 const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
@@ -4450,9 +4464,11 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   assignmentByClientOrgId = {},
   onOptionRequestDeleted,
   onOptionProjectionChanged,
+  onChatFullscreenChange,
 }) => {
   const { width: agencyMsgWinW, height: agencyMsgWinH } = useWindowDimensions();
   const { deviceType } = useDeviceType();
+  const insets = useSafeAreaInsets();
   const agencyB2bWebSplit = Platform.OS === 'web' && shouldUseB2BWebSplit(agencyMsgWinW);
   const agencyThreadListScrollMax = agencyB2bWebSplit
     ? getThreadListMaxHeightSplit(agencyMsgWinH)
@@ -4916,6 +4932,11 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   const b2bChatFullscreenActive =
     messagesSection === 'clientRequests' && !!activeConnectionChatId && !agencyB2bWebSplit;
 
+  // Notify outer shell so it can remove the bottom bar and free the full screen for the chat.
+  useEffect(() => {
+    onChatFullscreenChange?.(b2bChatFullscreenActive || optionFullscreenActive);
+  }, [b2bChatFullscreenActive, optionFullscreenActive, onChatFullscreenChange]);
+
   if (b2bChatFullscreenActive) {
     const activeConv = b2bConversations.find((c) => c.id === activeConnectionChatId);
     return (
@@ -4929,7 +4950,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
             agencyId={agencyId}
             guestLinks={guestLinksForChat}
             modelsForShare={modelsForShare}
-            composerBottomInsetOverride={0}
+            composerBottomInsetOverride={insets.bottom}
             onOpenRelatedRequest={(optionRequestId) => {
               setActiveConnectionChatId(null);
               setMessagesSection('optionRequests');
@@ -5058,7 +5079,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                 </ScrollView>
               ) : null
             }
-            bottomInset={0}
+            bottomInset={insets.bottom}
             footerTop={
               showDesktopNegotiationRail ? null : (
               <NegotiationThreadFooter

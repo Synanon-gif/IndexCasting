@@ -253,6 +253,39 @@ const ClientDashboardTab: React.FC<{
 
 type TopTab = 'dashboard' | 'discover' | 'projects' | 'agencies' | 'messages' | 'calendar' | 'team' | 'profile';
 
+/** Same tab set on narrow and wide web — narrow uses horizontal scroll. */
+const CLIENT_PRIMARY_BOTTOM_TABS: TopTab[] = [
+  'dashboard',
+  'discover',
+  'messages',
+  'calendar',
+  'agencies',
+  'projects',
+  'profile',
+];
+
+function labelForClientBottomTab(key: TopTab): string {
+  switch (key) {
+    case 'dashboard':
+      return uiCopy.clientWeb.bottomTabs.dashboard;
+    case 'discover':
+      return uiCopy.clientWeb.bottomTabs.discover;
+    case 'projects':
+      return uiCopy.clientWeb.bottomTabs.projects;
+    case 'calendar':
+      return uiCopy.clientWeb.bottomTabs.calendar;
+    case 'agencies':
+      return uiCopy.clientWeb.bottomTabs.agencies;
+    case 'team':
+      return uiCopy.clientWeb.bottomTabs.team;
+    case 'profile':
+      return uiCopy.clientWeb.bottomTabs.profile;
+    case 'messages':
+    default:
+      return uiCopy.clientWeb.bottomTabs.messages;
+  }
+}
+
 type ModelSummary = {
   id: string;
   name: string;
@@ -396,6 +429,8 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   const [tab, setTab] = useState<TopTab>(() =>
     typeof window !== 'undefined' && isMobileWidth(window.innerWidth) ? 'messages' : 'dashboard',
   );
+  /** True when MessagesView is in fullscreen-chat mode on mobile — hides the bottom tab bar. */
+  const [clientChatFullscreen, setClientChatFullscreen] = useState(false);
   const [mobileWorkspaceMenuOpen, setMobileWorkspaceMenuOpen] = useState(false);
   const [showActiveOptions, setShowActiveOptions] = useState(false);
   const [models, setModels] = useState<ModelSummary[]>([]);
@@ -1814,11 +1849,9 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
           overflow: 'hidden' as const,
         }
       : null;
-  /** RN ViewStyle omits CSS `fixed`; required for RN Web viewport-fixed client tab bar. */
-  const clientMobileWebBottomTabPosition: ViewStyle | null =
-    clientIsMobile && Platform.OS === 'web'
-      ? ({ position: 'fixed' } as unknown as ViewStyle)
-      : null;
+  /** RN ViewStyle omits CSS `fixed`; required for RN Web viewport-fixed client tab bar (all breakpoints). */
+  const clientWebBottomTabPosition: ViewStyle | null =
+    Platform.OS === 'web' ? ({ position: 'fixed' } as unknown as ViewStyle) : null;
 
   const resetDiscoverTabRoot = useCallback(() => {
     setDetailId(null);
@@ -1986,7 +2019,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
           </View>
         </View>
       )}
-      <View style={[styles.appShell, { paddingBottom: bottomTabInset, paddingTop: Math.max(spacing.xs, insets.top + 2), paddingHorizontal: shellPaddingH }]}>
+      <View style={[styles.appShell, { paddingBottom: clientChatFullscreen ? 0 : bottomTabInset, paddingTop: Math.max(spacing.xs, insets.top + 2), paddingHorizontal: shellPaddingH }]}>
         <View style={styles.topBar}>
           <View style={styles.topBarRow}>
             <View style={styles.topBarSide}>
@@ -2229,6 +2262,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
               optionChatReturnRef.current = { kind: 'list' };
             }}
             onCloseOptionNegotiation={handleCloseOptionNegotiation}
+            onChatFullscreenChange={(active) => setClientChatFullscreen(active && clientIsMobile)}
           />
         )}
 
@@ -2847,8 +2881,8 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         </Modal>
       ) : null}
 
-      <View
-        style={[styles.bottomTabBar, clientMobileWebBottomTabPosition, { paddingBottom: insets.bottom }]}
+      {!clientChatFullscreen && <View
+        style={[styles.bottomTabBar, clientWebBottomTabPosition, { paddingBottom: insets.bottom }]}
         onLayout={(e) => {
           const h = e.nativeEvent.layout.height;
           if (h > 0) {
@@ -2856,71 +2890,40 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
           }
         }}
       >
-        {clientIsMobile ? (
-          <View style={styles.bottomTabRowMobile}>
-            {(['agencies', 'messages', 'projects'] as const).map((key) => {
-              const label =
-                key === 'agencies'
-                  ? uiCopy.clientWeb.mobileBottomTabs.agency
-                  : key === 'messages'
-                    ? uiCopy.clientWeb.mobileBottomTabs.messages
-                    : uiCopy.clientWeb.mobileBottomTabs.projects;
-              const active = tab === key;
-              return (
-                <TouchableOpacity
-                  key={key}
-                  onPress={() => handleBottomTabPress(key)}
-                  style={styles.bottomTabItemMobile}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                >
-                  <Text
-                    style={[styles.bottomTabLabelMobile, active && styles.bottomTabLabelActive]}
-                    numberOfLines={1}
-                    ellipsizeMode="tail"
-                  >
-                    {label}
-                  </Text>
-                  {key === 'messages' && hasNew ? <View style={styles.bottomTabDotMobile} /> : null}
-                  {active ? <View style={styles.bottomTabUnderlineMobile} /> : <View style={styles.bottomTabUnderlinePlaceholder} />}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        ) : (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.bottomTabRow}>
-            {(['dashboard', 'discover', 'messages', 'calendar', 'agencies', 'projects', 'profile'] as TopTab[]).map((key) => (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={clientIsMobile}
+          keyboardShouldPersistTaps="handled"
+          style={{ width: '100%' }}
+          contentContainerStyle={styles.bottomTabRow}
+        >
+          {CLIENT_PRIMARY_BOTTOM_TABS.map((key) => {
+            const active = tab === key;
+            return (
               <TouchableOpacity
                 key={key}
                 onPress={() => handleBottomTabPress(key)}
-                style={styles.bottomTabItem}
+                style={[styles.bottomTabItem, clientIsMobile && styles.bottomTabItemScrollMobile]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
               >
-                <Text style={[styles.bottomTabLabel, tab === key && styles.bottomTabLabelActive]}>
-                  {key === 'dashboard'
-                    ? uiCopy.clientWeb.bottomTabs.dashboard
-                    : key === 'discover'
-                      ? uiCopy.clientWeb.bottomTabs.discover
-                      : key === 'projects'
-                        ? uiCopy.clientWeb.bottomTabs.projects
-                        : key === 'calendar'
-                          ? uiCopy.clientWeb.bottomTabs.calendar
-                          : key === 'agencies'
-                            ? uiCopy.clientWeb.bottomTabs.agencies
-                            : key === 'team'
-                              ? uiCopy.clientWeb.bottomTabs.team
-                              : key === 'profile'
-                                ? uiCopy.clientWeb.bottomTabs.profile
-                                : uiCopy.clientWeb.bottomTabs.messages}
+                <Text
+                  style={[
+                    styles.bottomTabLabel,
+                    clientIsMobile && styles.bottomTabLabelScrollMobile,
+                    active && styles.bottomTabLabelActive,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {labelForClientBottomTab(key)}
                 </Text>
-                {key === 'messages' && hasNew && (
-                  <View style={styles.bottomTabDot} />
-                )}
-                {tab === key && <View style={styles.bottomTabUnderline} />}
+                {key === 'messages' && hasNew ? <View style={styles.bottomTabDot} /> : null}
+                {active ? <View style={styles.bottomTabUnderline} /> : null}
               </TouchableOpacity>
-            ))}
-          </ScrollView>
-        )}
-      </View>
+            );
+          })}
+        </ScrollView>
+      </View>}
     </View>
   );
 };
@@ -4155,6 +4158,8 @@ type MessagesViewProps = {
   onOptionThreadOpenedFromList?: () => void;
   /** After Back from fullscreen option chat: restore previous tab when opened from discover/project/dashboard. */
   onCloseOptionNegotiation?: () => void;
+  /** Called with true when a chat occupies the full mobile screen — outer shell hides the bottom tab bar. */
+  onChatFullscreenChange?: (active: boolean) => void;
 };
 
 const ClientB2BChatsPanel: React.FC<{
@@ -4396,8 +4401,10 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   onOptionProjectionChanged,
   onOptionThreadOpenedFromList,
   onCloseOptionNegotiation,
+  onChatFullscreenChange,
 }) => {
   const { deviceType } = useDeviceType();
+  const insets = useSafeAreaInsets();
   const [negotiationCounterExpanded, setNegotiationCounterExpanded] = useState(false);
   // Mobile: NegotiationSummaryCard is collapsed by default (chips in header already show status).
   // Desktop: always visible in the right rail — this state is ignored on desktop.
@@ -4784,6 +4791,11 @@ const MessagesView: React.FC<MessagesViewProps> = ({
     !!request &&
     (!showClientMessagesTabs || clientMsgTab === 'optionRequests');
 
+  // Notify outer shell when this view occupies the full mobile screen so it can hide the tab bar.
+  useEffect(() => {
+    onChatFullscreenChange?.(b2bChatIsOpen || optionFullscreenActive);
+  }, [b2bChatIsOpen, optionFullscreenActive, onChatFullscreenChange]);
+
   return (
     <View style={styles.section}>
       {showClientMessagesTabs && !optionFullscreenActive && !b2bChatIsOpen && (
@@ -5100,7 +5112,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
               </ScrollView>
             ) : null
           }
-          bottomInset={0}
+          bottomInset={insets.bottom}
           footerTop={
             showDesktopNegotiationRail ? null : (
             <NegotiationThreadFooter
@@ -6284,11 +6296,19 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.sm,
     position: 'relative' as const,
+    flexShrink: 0,
+  },
+  bottomTabItemScrollMobile: {
+    minWidth: 72,
+    paddingHorizontal: spacing.xs,
   },
   bottomTabLabel: {
     ...typography.label,
     fontSize: 12,
     color: colors.textSecondary,
+  },
+  bottomTabLabelScrollMobile: {
+    fontSize: 11,
   },
   bottomTabLabelActive: {
     color: colors.textPrimary,
@@ -6308,55 +6328,6 @@ const styles = StyleSheet.create({
     width: 24,
     borderRadius: 1,
     backgroundColor: colors.textPrimary,
-  },
-  bottomTabRowMobile: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    width: '100%',
-    paddingHorizontal: spacing.xs,
-    gap: 0,
-  },
-  bottomTabItemMobile: {
-    flex: 1,
-    minWidth: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.xs,
-    paddingHorizontal: 2,
-    position: 'relative' as const,
-  },
-  bottomTabLabelMobile: {
-    ...typography.label,
-    fontSize: 10,
-    lineHeight: 13,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    width: '100%',
-    paddingHorizontal: 0,
-  },
-  bottomTabUnderlineMobile: {
-    marginTop: 4,
-    height: 2,
-    width: '72%',
-    maxWidth: 56,
-    borderRadius: 1,
-    backgroundColor: colors.textPrimary,
-  },
-  bottomTabUnderlinePlaceholder: {
-    marginTop: 4,
-    height: 2,
-    width: '72%',
-    maxWidth: 56,
-    opacity: 0,
-  },
-  bottomTabDotMobile: {
-    position: 'absolute' as const,
-    top: 0,
-    right: '12%',
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#E74C3C',
   },
   workspaceMenuOuter: {
     flex: 1,

@@ -37,11 +37,13 @@ export default function ChatLayoutFix({
   const tabBarReserve =
     bottomTabInset !== undefined ? bottomTabInset : BOTTOM_TAB_BAR_HEIGHT;
   /**
-   * Parent shells (ClientWebApp appShell, Agency main column) already reserve tab bar + safe area
-   * via paddingBottom. Passing bottomTabInset={0} avoids a second gap above the tab bar.
+   * When tabBarReserve === 0 the parent shell no longer reserves any space (tab bar hidden or
+   * parent already handled it). We still apply insets.bottom so the composer clears the device
+   * home indicator / safe-area on notched phones and PWA mode.
+   * On regular browser views insets.bottom is 0, so this has no visible effect.
    */
   const composerBottomPadding =
-    tabBarReserve === 0 ? 0 : tabBarReserve + insets.bottom;
+    tabBarReserve === 0 ? insets.bottom : tabBarReserve + insets.bottom;
 
   // When onBack is provided, prepend the back button to the header area.
   const headerContent = onBack ? (
