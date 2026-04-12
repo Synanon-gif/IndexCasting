@@ -137,7 +137,7 @@ export function deriveApprovalAttention(input: AttentionSignalInput): ApprovalAt
 
 /**
  * Legacy combined Smart Attention — composed from D1 (negotiation) + D2 (approval).
- * Both dimensions are evaluated independently; D2 takes priority (approval > price).
+ * Action-priority: "this role must act" signals win over "waiting for X" signals.
  * Prefer deriveNegotiationAttention / deriveApprovalAttention for new UI.
  */
 export function deriveSmartAttentionState(input: AttentionSignalInput): SmartAttentionState {
@@ -155,12 +155,10 @@ export function deriveSmartAttentionState(input: AttentionSignalInput): SmartAtt
     return 'conflict_risk';
   }
 
-  // D2 (approval / availability) — takes priority over D1
   const appr = deriveApprovalAttention(input);
+  const n = deriveNegotiationAttention(input);
 
-  if (appr === 'waiting_for_model_confirmation') {
-    return 'waiting_for_model';
-  }
+  // D2 action states (agency/client must act on availability)
   if (appr === 'waiting_for_client_to_finalize_job') {
     return 'job_confirmation_pending';
   }
@@ -168,12 +166,18 @@ export function deriveSmartAttentionState(input: AttentionSignalInput): SmartAtt
     return 'waiting_for_agency';
   }
 
-  // D1 (negotiation / price)
-  const n = deriveNegotiationAttention(input);
-  if (n === 'negotiation_terminal' || n === 'price_agreed') return 'no_attention';
+  // D1 action states (agency/client must act on price)
   if (n === 'counter_rejected') return 'counter_pending';
   if (n === 'waiting_for_client_response') return 'waiting_for_client';
   if (n === 'waiting_for_agency_response' || n === 'negotiation_open') return 'waiting_for_agency';
+
+  // D2 waiting states (someone else must act on availability)
+  if (appr === 'waiting_for_model_confirmation') {
+    return 'waiting_for_model';
+  }
+
+  // D1 terminal
+  if (n === 'negotiation_terminal' || n === 'price_agreed') return 'no_attention';
 
   return 'no_attention';
 }
@@ -254,7 +258,9 @@ export function smartAttentionVisibleForRole(state: SmartAttentionState, role: S
   if (state === 'no_attention') return false;
   if (state === 'job_confirmation_pending') return role === 'client';
   if (state === 'waiting_for_model') return role !== 'model';
-  if (state === 'waiting_for_agency' || state === 'counter_pending' || state === 'conflict_risk') return role === 'agency';
+  if (state === 'waiting_for_agency' || state === 'counter_pending' || state === 'conflict_risk') {
+    return role === 'agency' || role === 'client';
+  }
   if (state === 'waiting_for_client') return role === 'client';
   return true;
 }

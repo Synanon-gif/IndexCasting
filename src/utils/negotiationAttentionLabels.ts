@@ -9,50 +9,55 @@ import {
 } from './optionRequestAttention';
 
 /**
- * Header chip label — prefers approval attention (B); if inactive, negotiation attention (A).
- * Returns null when no attention should surface for this role.
+ * Header chip label — action-priority logic:
+ * "Action required" (this role must act) always beats "Waiting for X" (someone else must act).
+ *
+ * Priority: D2 action > D1 action > D2 waiting > D1 waiting
  */
 export function attentionHeaderLabelFromSignals(
   input: AttentionSignalInput,
   role: 'agency' | 'client',
 ): string | null {
   const appr = deriveApprovalAttention(input);
+  const neg = deriveNegotiationAttention(input);
+  const action = uiCopy.dashboard.smartAttentionLabel;
+
+  // ─── Tier 1: D2 action — this role must act on availability ───
+  if (appr === 'waiting_for_agency_confirmation' && role === 'agency') return action;
+  if (appr === 'waiting_for_client_to_finalize_job' && role === 'client') return action;
+
+  // ─── Tier 2: D1 action — this role must act on price ───
+  const agencyMustActOnPrice =
+    neg === 'waiting_for_agency_response' || neg === 'negotiation_open' || neg === 'counter_rejected';
+  if (role === 'agency' && agencyMustActOnPrice) return action;
+  if (role === 'client' && neg === 'waiting_for_client_response') return action;
+
+  // ─── Tier 3: D2 waiting — someone else must act on availability ───
   if (approvalAttentionVisibleForRole(appr, role)) {
     if (appr === 'waiting_for_agency_confirmation') {
-      return role === 'agency'
-        ? uiCopy.dashboard.smartAttentionLabel
-        : uiCopy.dashboard.smartAttentionWaitingForAgencyConfirmation;
+      return uiCopy.dashboard.smartAttentionWaitingForAgencyConfirmation;
     }
     if (appr === 'waiting_for_model_confirmation') {
       return uiCopy.dashboard.smartAttentionWaitingForModel;
     }
     if (appr === 'waiting_for_client_to_finalize_job') {
-      return role === 'client'
-        ? uiCopy.dashboard.smartAttentionLabel
-        : uiCopy.dashboard.smartAttentionJobConfirmationPending;
+      return uiCopy.dashboard.smartAttentionJobConfirmationPending;
     }
-    return null;
   }
 
-  const neg = deriveNegotiationAttention(input);
-  if (!negotiationAttentionVisibleForRole(neg, role)) {
-    return null;
+  // ─── Tier 4: D1 waiting — someone else must act on price ───
+  if (negotiationAttentionVisibleForRole(neg, role)) {
+    switch (neg) {
+      case 'waiting_for_client_response':
+        return uiCopy.dashboard.smartAttentionWaitingForClient;
+      case 'waiting_for_agency_response':
+      case 'counter_rejected':
+      case 'negotiation_open':
+        return uiCopy.dashboard.smartAttentionWaitingForAgency;
+    }
   }
 
-  const action = uiCopy.dashboard.smartAttentionLabel;
-
-  switch (neg) {
-    case 'waiting_for_client_response':
-      return role === 'client' ? action : uiCopy.dashboard.smartAttentionWaitingForClient;
-    case 'waiting_for_agency_response':
-      return role === 'agency' ? action : uiCopy.dashboard.smartAttentionWaitingForAgency;
-    case 'counter_rejected':
-      return role === 'agency' ? action : uiCopy.dashboard.smartAttentionWaitingForAgency;
-    case 'negotiation_open':
-      return role === 'agency' ? action : uiCopy.dashboard.smartAttentionWaitingForAgency;
-    default:
-      return null;
-  }
+  return null;
 }
 
 /**

@@ -35,49 +35,35 @@ function nextStepFromSignals(
   const appr = deriveApprovalAttention(sig);
   const neg = deriveNegotiationAttention(sig);
 
-  // Model must confirm option — calendar should still show the model-facing line (chip hides for model).
+  // Model must confirm option — calendar should still show the model-facing line.
   if (role === 'model' && appr === 'waiting_for_model_confirmation') {
     return c.nextStepYourConfirm;
   }
 
+  // ─── Action-priority: this role must act (D2 action > D1 action) ───
+  if (appr === 'waiting_for_agency_confirmation' && role === 'agency') return c.nextStepNegotiating;
+  if (appr === 'waiting_for_client_to_finalize_job' && role === 'client') return c.nextStepJobConfirm;
+
+  const agencyMustActOnPrice =
+    neg === 'waiting_for_agency_response' || neg === 'negotiation_open' || neg === 'counter_rejected';
+  if (role === 'agency' && agencyMustActOnPrice) return c.nextStepNegotiating;
+  if (role === 'client' && neg === 'waiting_for_client_response') return c.nextStepNegotiating;
+
+  // ─── Waiting: someone else must act (D2 waiting > D1 waiting) ───
   if (approvalAttentionVisibleForRole(appr, role)) {
-    if (appr === 'waiting_for_agency_confirmation') {
-      if (role === 'agency') return c.nextStepNegotiating;
-      return c.nextStepAwaitingAgency;
-    }
-    if (appr === 'waiting_for_model_confirmation') {
-      return c.nextStepAwaitingModel;
-    }
-    if (appr === 'waiting_for_client_to_finalize_job') {
-      return c.nextStepJobConfirm;
-    }
+    if (appr === 'waiting_for_agency_confirmation') return c.nextStepAwaitingAgency;
+    if (appr === 'waiting_for_model_confirmation') return c.nextStepAwaitingModel;
+    if (appr === 'waiting_for_client_to_finalize_job') return c.nextStepJobConfirm;
     return c.nextStepNegotiating;
   }
 
-  if (neg === 'negotiation_terminal') {
-    return c.nextStepNoAction;
-  }
+  if (neg === 'negotiation_terminal' || neg === 'price_agreed') return c.nextStepNoAction;
 
-  // price_agreed: no D1 action; D2 already handled above if active.
-  if (neg === 'price_agreed') {
-    return c.nextStepNoAction;
-  }
-
-  // Mirror negotiationAttentionLabels switch (client/agency wait semantics).
   if (neg === 'waiting_for_client_response') {
-    if (role === 'client') return c.nextStepNegotiating;
-    if (role === 'agency') return c.nextStepAwaitingClient;
-    return c.nextStepNegotiating;
+    return role === 'agency' ? c.nextStepAwaitingClient : c.nextStepNegotiating;
   }
-  if (neg === 'waiting_for_agency_response' || neg === 'negotiation_open') {
-    if (role === 'agency') return c.nextStepNegotiating;
-    if (role === 'client') return c.nextStepAwaitingAgency;
-    return c.nextStepNegotiating;
-  }
-  if (neg === 'counter_rejected') {
-    if (role === 'agency') return c.nextStepNegotiating;
-    if (role === 'client') return c.nextStepAwaitingAgency;
-    return c.nextStepNegotiating;
+  if (neg === 'waiting_for_agency_response' || neg === 'negotiation_open' || neg === 'counter_rejected') {
+    return role === 'client' ? c.nextStepAwaitingAgency : c.nextStepNegotiating;
   }
 
   return c.nextStepNoAction;

@@ -7,7 +7,9 @@ import {
   optionRequestNeedsMessagesTabAttention,
   priceCommerciallySettledForUi,
   smartAttentionVisibleForRole,
+  type AttentionSignalInput,
 } from '../optionRequestAttention';
+import { attentionHeaderLabelFromSignals } from '../negotiationAttentionLabels';
 
 describe('optionRequestNeedsMessagesTabAttention', () => {
   it('is true for in_negotiation without terminal final_status', () => {
@@ -248,9 +250,9 @@ describe('priceCommerciallySettledForUi', () => {
 });
 
 describe('smartAttentionVisibleForRole', () => {
-  it('shows waiting_for_agency only for agency role', () => {
+  it('shows waiting_for_agency for agency AND client (client sees "Waiting for agency")', () => {
     expect(smartAttentionVisibleForRole('waiting_for_agency', 'agency')).toBe(true);
-    expect(smartAttentionVisibleForRole('waiting_for_agency', 'client')).toBe(false);
+    expect(smartAttentionVisibleForRole('waiting_for_agency', 'client')).toBe(true);
   });
 
   it('hides waiting_for_model for model role (client/agency attention only)', () => {
@@ -316,5 +318,99 @@ describe('modelInboxSortPriority', () => {
       modelAccountLinked: true,
     });
     expect(mustConfirm).toBeLessThan(otherPending);
+  });
+});
+
+/**
+ * Adversarial: action-priority — when BOTH axes are active, the role that
+ * must act sees "Action required", not a passive "Waiting for X" label.
+ */
+describe('attentionHeaderLabelFromSignals — action-priority across all roles', () => {
+  const actionLabel = 'Action required';
+
+  // State 7: Agency confirmed availability, model pending, price NOT settled
+  const bothAxesActive: AttentionSignalInput = {
+    status: 'in_negotiation',
+    finalStatus: 'option_confirmed',
+    clientPriceStatus: 'pending',
+    proposedPrice: 100,
+    agencyCounterPrice: null,
+    modelApproval: 'pending',
+    modelAccountLinked: true,
+  };
+
+  it('agency sees "Action required" when D1 price action AND D2 model waiting', () => {
+    const label = attentionHeaderLabelFromSignals(bothAxesActive, 'agency');
+    expect(label).toBe(actionLabel);
+  });
+
+  it('client sees "Waiting for model" (D2 waiting) — no actionable signal for client', () => {
+    const label = attentionHeaderLabelFromSignals(bothAxesActive, 'client');
+    expect(label).toContain('model');
+    expect(label).not.toBe(actionLabel);
+  });
+
+  // Price settled but agency hasn't confirmed availability
+  const priceSettledNoAvailability: AttentionSignalInput = {
+    status: 'in_negotiation',
+    finalStatus: 'option_pending',
+    clientPriceStatus: 'accepted',
+    proposedPrice: 100,
+    modelApproval: 'pending',
+    modelAccountLinked: true,
+  };
+
+  it('agency sees "Action required" when price is settled but availability unconfirmed', () => {
+    const label = attentionHeaderLabelFromSignals(priceSettledNoAvailability, 'agency');
+    expect(label).toBe(actionLabel);
+  });
+
+  it('client sees "Waiting for agency" when price is settled but availability unconfirmed', () => {
+    const label = attentionHeaderLabelFromSignals(priceSettledNoAvailability, 'client');
+    expect(label).not.toBe(actionLabel);
+    expect(label).toBeTruthy();
+  });
+
+  // Both done, client must confirm job
+  const jobReady: AttentionSignalInput = {
+    status: 'in_negotiation',
+    finalStatus: 'option_confirmed',
+    clientPriceStatus: 'accepted',
+    proposedPrice: 100,
+    modelApproval: 'approved',
+    modelAccountLinked: true,
+  };
+
+  it('client sees "Action required" when both axes done (confirm job)', () => {
+    expect(attentionHeaderLabelFromSignals(jobReady, 'client')).toBe(actionLabel);
+  });
+
+  it('agency sees null when both axes done (nothing for agency to do)', () => {
+    expect(attentionHeaderLabelFromSignals(jobReady, 'agency')).toBeNull();
+  });
+
+  // Tab dot must agree with header for client
+  it('tab dot agrees with header for all states', () => {
+    const states: AttentionSignalInput[] = [
+      bothAxesActive,
+      priceSettledNoAvailability,
+      jobReady,
+      { status: 'rejected', finalStatus: null },
+      { status: 'confirmed', finalStatus: 'job_confirmed' },
+      { status: 'in_negotiation', finalStatus: 'option_pending', clientPriceStatus: 'pending', proposedPrice: 100 },
+    ];
+    for (const s of states) {
+      const headerNonNull = attentionHeaderLabelFromSignals(s, 'client') !== null;
+      const tabDot = optionRequestNeedsMessagesTabAttention({
+        status: s.status,
+        finalStatus: s.finalStatus,
+        clientPriceStatus: s.clientPriceStatus,
+        modelApproval: s.modelApproval,
+        modelAccountLinked: s.modelAccountLinked,
+        agencyCounterPrice: s.agencyCounterPrice,
+        proposedPrice: s.proposedPrice,
+      });
+      expect(tabDot).toBe(headerNonNull);
+    }
   });
 });
