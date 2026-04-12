@@ -130,6 +130,20 @@ describe('getCalendarDetailNextStepText — signal parity (counter + proposed)',
     expect(getCalendarDetailNextStepText(option, null, 'model', baseCopy)).toBe(baseCopy.nextStepYourConfirm);
   });
 
+  it('same as above for casting request_type: model still sees your-confirm (D2 parity)', () => {
+    const option = minimalOption({
+      proposed_price: 5000,
+      client_price_status: 'accepted',
+      final_status: 'option_confirmed',
+      status: 'in_negotiation',
+      model_approval: 'pending',
+      model_account_linked: true,
+      request_type: 'casting',
+    });
+    expect(getCalendarDetailNextStepText(option, null, 'model', baseCopy)).toBe(baseCopy.nextStepYourConfirm);
+    expect(getCalendarDetailNextStepText(option, null, 'client', baseCopy)).toBe(baseCopy.nextStepAwaitingModel);
+  });
+
   it('job_confirmed: all roles see no-action next step', () => {
     const option = minimalOption({
       proposed_price: 100,
@@ -375,6 +389,18 @@ describe('clientMayConfirmJobFromSignals — direct tests', () => {
       clientPriceStatus: 'accepted',
       proposedPrice: 100,
       modelApproval: 'approved',
+    };
+    expect(clientMayConfirmJobFromSignals(input)).toBe(false);
+  });
+
+  it('false when status is rejected (terminal)', () => {
+    const input: AttentionSignalInput = {
+      status: 'rejected',
+      finalStatus: 'option_confirmed',
+      clientPriceStatus: 'accepted',
+      proposedPrice: 100,
+      modelApproval: 'approved',
+      modelAccountLinked: true,
     };
     expect(clientMayConfirmJobFromSignals(input)).toBe(false);
   });

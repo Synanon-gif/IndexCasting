@@ -5,6 +5,7 @@
  */
 import {
   createBookingEvent,
+  createConfirmedBookingEvent,
   updateBookingEventStatus,
   getBookingEventsForModel,
   getBookingEventsForOrg,
@@ -130,6 +131,83 @@ describe('createBookingEvent', () => {
     });
 
     expect(result).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// createConfirmedBookingEvent — parity with optionRequestAttention availability gate
+// (!modelAccountLinked || modelApproval === 'approved')
+// ---------------------------------------------------------------------------
+describe('createConfirmedBookingEvent', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('returns null and does not insert when model is linked and approval is pending', async () => {
+    const result = await createConfirmedBookingEvent({
+      model_id: 'model-1',
+      agency_org_id: 'agency-org-1',
+      client_org_id: 'client-org-1',
+      date: '2026-05-01',
+      type: 'option',
+      modelAccountLinked: true,
+      modelApproval: 'pending',
+    });
+    expect(result).toBeNull();
+    expect(supabase.from).not.toHaveBeenCalled();
+  });
+
+  it('returns null without insert when model is linked and approval is rejected', async () => {
+    const result = await createConfirmedBookingEvent({
+      model_id: 'model-1',
+      date: '2026-05-01',
+      type: 'option',
+      modelAccountLinked: true,
+      modelApproval: 'rejected',
+    });
+    expect(result).toBeNull();
+    expect(supabase.from).not.toHaveBeenCalled();
+  });
+
+  it('inserts when model is not linked (agency-only confirmation path)', async () => {
+    const event = makeEvent();
+    getUserMock.mockResolvedValue({ data: { user: { id: 'user-1' } } });
+    const chain = makeChain({ data: event, error: null });
+    (supabase.from as jest.Mock).mockReturnValue(chain);
+    chain.insert.mockReturnValue(chain);
+    chain.select.mockReturnValue(chain);
+    chain.single.mockResolvedValue({ data: event, error: null });
+
+    const result = await createConfirmedBookingEvent({
+      model_id: 'model-1',
+      agency_org_id: 'agency-org-1',
+      date: '2026-05-01',
+      type: 'option',
+      modelAccountLinked: false,
+      modelApproval: 'pending',
+    });
+
+    expect(result).not.toBeNull();
+    expect(supabase.from).toHaveBeenCalledWith('booking_events');
+  });
+
+  it('inserts when model is linked and approval is approved', async () => {
+    const event = makeEvent();
+    getUserMock.mockResolvedValue({ data: { user: { id: 'user-1' } } });
+    const chain = makeChain({ data: event, error: null });
+    (supabase.from as jest.Mock).mockReturnValue(chain);
+    chain.insert.mockReturnValue(chain);
+    chain.select.mockReturnValue(chain);
+    chain.single.mockResolvedValue({ data: event, error: null });
+
+    const result = await createConfirmedBookingEvent({
+      model_id: 'model-1',
+      date: '2026-05-01',
+      type: 'option',
+      modelAccountLinked: true,
+      modelApproval: 'approved',
+    });
+
+    expect(result).not.toBeNull();
+    expect(supabase.from).toHaveBeenCalledWith('booking_events');
   });
 });
 

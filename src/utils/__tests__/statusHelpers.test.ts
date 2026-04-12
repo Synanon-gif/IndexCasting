@@ -25,6 +25,8 @@ describe('statusHelpers', () => {
     ).toBe('Option confirmed');
   });
 
+  // Model inbox: ModelView applies modelInboxRequiresModelConfirmation + "Awaiting your approval"
+  // so raw toDisplayStatus here is never the sole label for a linked model awaiting confirmation.
   it('prioritizes final_status when mapping display state', () => {
     expect(toDisplayStatus('in_negotiation', 'option_confirmed')).toBe('Option confirmed');
     expect(toDisplayStatus('rejected', 'job_confirmed')).toBe('Confirmed');
