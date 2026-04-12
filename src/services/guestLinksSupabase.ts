@@ -1,6 +1,6 @@
 import { supabase } from '../../lib/supabase';
 import { uiCopy } from '../constants/uiCopy';
-import { extractBucketAndPath } from '../storage/storageUrl';
+import { extractBucketAndPath, resolveStorageUrl } from '../storage/storageUrl';
 import { serviceErr, serviceOkData, type ServiceResult } from '../types/serviceResult';
 import { normalizeDocumentspicturesModelImageRef } from '../utils/normalizeModelPortfolioUrl';
 
@@ -267,19 +267,7 @@ async function signImageUrls(
         }
         return null;
       }
-      try {
-        const { data, error } = await supabase.storage
-          .from(DOCUMENTSPICTURES_BUCKET)
-          .createSignedUrl(path, GUEST_IMAGE_SIGNED_TTL_SECONDS);
-        if (error || !data?.signedUrl) {
-          console.warn('signImageUrls: could not sign URL, omitting (bucket is private)', { path, error });
-          return null;
-        }
-        return data.signedUrl;
-      } catch (e) {
-        console.warn('signImageUrls: exception signing URL, omitting', { path, error: e });
-        return null;
-      }
+      return resolveStorageUrl(normalized, GUEST_IMAGE_SIGNED_TTL_SECONDS);
     }),
   );
 }

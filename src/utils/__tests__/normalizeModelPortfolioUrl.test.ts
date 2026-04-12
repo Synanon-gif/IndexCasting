@@ -36,8 +36,40 @@ describe('normalizeDocumentspicturesModelImageRef', () => {
     expect(normalizeDocumentspicturesModelImageRef('', mid)).toBe('');
   });
 
-  it('does not treat strings with slashes as bare filename', () => {
+  it('does not treat non-uuid paths with slashes as relative model-photos', () => {
     const weird = 'foo/bar.jpg';
     expect(normalizeDocumentspicturesModelImageRef(weird, mid)).toBe(weird);
+  });
+
+  it('wraps model-applications/... path', () => {
+    const out = normalizeDocumentspicturesModelImageRef(
+      'model-applications/1234-closeUp-abc.jpg',
+      mid,
+    );
+    expect(out).toBe(
+      'supabase-storage://documentspictures/model-applications/1234-closeUp-abc.jpg',
+    );
+  });
+
+  it('wraps relative path with uuid sub-directory', () => {
+    const out = normalizeDocumentspicturesModelImageRef(
+      `${mid}/file.webp`,
+      mid,
+    );
+    expect(out).toBe(
+      `supabase-storage://documentspictures/model-photos/${mid}/file.webp`,
+    );
+  });
+
+  it('returns supabase-private URIs unchanged', () => {
+    const u = 'supabase-private://documents/model-private-photos/x/y.jpg';
+    expect(normalizeDocumentspicturesModelImageRef(u, mid)).toBe(u);
+  });
+
+  it('handles heic and heif extensions', () => {
+    const out = normalizeDocumentspicturesModelImageRef('photo.heic', mid);
+    expect(out).toBe(
+      `supabase-storage://documentspictures/model-photos/${mid}/photo.heic`,
+    );
   });
 });

@@ -6,11 +6,16 @@
  * in list views — resolution is async and non-blocking.
  *
  * M-3 full fix (Security Audit 2026-04).
+ * HARDENING (2026-04-12): uses isKnownBrokenUrl for instant placeholder on
+ * broken refs; tracks resolution failure to avoid infinite retry.
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Image, type ImageStyle, type StyleProp } from 'react-native';
-import { needsResolution, resolveStorageUrl } from '../storage/storageUrl';
+import { Image, View, type ImageStyle, type StyleProp, type ViewStyle } from 'react-native';
+import { isKnownBrokenUrl, needsResolution, resolveStorageUrl } from '../storage/storageUrl';
+
+/** Stable broken-image placeholder: neutral grey with a subtle icon hint. */
+const BROKEN_PLACEHOLDER_COLOR = '#e0e0e0';
 
 interface StorageImageProps {
   uri: string | null | undefined;
@@ -22,8 +27,8 @@ interface StorageImageProps {
    */
   ttlSeconds?: number;
   /**
-   * Element rendered while the URL is being resolved.
-   * Defaults to null (renders nothing until resolved).
+   * Element rendered while the URL is being resolved or if resolution fails.
+   * Defaults to a neutral grey placeholder.
    */
   fallback?: React.ReactElement | null;
   onLoad?: () => void;
@@ -40,21 +45,32 @@ interface StorageImageProps {
  *   - Any other https:// URL                     → rendered directly
  *
  * Signed URLs are cached in-memory via resolveStorageUrl (storageUrl.ts).
+ * Broken URLs (object not found) are negatively cached — the placeholder is
+ * shown instantly on subsequent renders without another API call.
  */
 export function StorageImage({
   uri,
   style,
   resizeMode = 'cover',
   ttlSeconds = 3_600,
-  fallback = null,
+  fallback,
   onLoad,
   onError,
 }: StorageImageProps): React.ReactElement | null {
+  const defaultPlaceholder = (
+    <View style={[{ backgroundColor: BROKEN_PLACEHOLDER_COLOR }, style as StyleProp<ViewStyle>]} />
+  );
+
   const [resolvedUri, setResolvedUri] = useState<string | null>(() => {
-    // Synchronous fast path: if the URI is already renderable, use it directly.
     if (!uri) return null;
+    if (isKnownBrokenUrl(uri)) return null;
     if (!needsResolution(uri)) return uri;
-    return null; // will be resolved asynchronously
+    return null;
+  });
+
+  // Track whether resolution explicitly failed (distinct from "still loading").
+  const [resolutionFailed, setResolutionFailed] = useState<boolean>(() => {
+    return !!uri && isKnownBrokenUrl(uri);
   });
 
   const mountedRef = useRef(true);
@@ -73,23 +89,37 @@ export function StorageImage({
 
     if (!uri) {
       setResolvedUri(null);
+      setResolutionFailed(false);
+      return;
+    }
+
+    if (isKnownBrokenUrl(uri)) {
+      setResolvedUri(null);
+      setResolutionFailed(true);
       return;
     }
 
     if (!needsResolution(uri)) {
       setResolvedUri(uri);
+      setResolutionFailed(false);
       return;
     }
 
-    // Async resolve — do NOT block render
+    setResolutionFailed(false);
     resolveStorageUrl(uri, ttlSeconds).then((resolved) => {
       if (mountedRef.current && lastUriRef.current === uri) {
         setResolvedUri(resolved);
+        if (!resolved) setResolutionFailed(true);
       }
     });
   }, [uri, ttlSeconds]);
 
-  if (!resolvedUri) return fallback ?? null;
+  if (!resolvedUri) {
+    if (resolutionFailed || !uri) {
+      return fallback !== undefined ? (fallback ?? null) : defaultPlaceholder;
+    }
+    return fallback !== undefined ? (fallback ?? null) : defaultPlaceholder;
+  }
 
   return (
     <Image

@@ -13,6 +13,7 @@ import {
 import { StorageImage } from '../components/StorageImage';
 import { colors, spacing, typography } from '../theme/theme';
 import { getModelData } from '../services/apiService';
+import { normalizeDocumentspicturesModelImageRef } from '../utils/normalizeModelPortfolioUrl';
 
 type SharedModel = {
   id: string;
@@ -51,7 +52,10 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
             id: m.id,
             name: m.name,
             measurements: m.measurements || { height: 0, chest: 0, waist: 0, hips: 0 },
-            coverUrl: m.portfolio?.images?.[0] || m.portfolio?.polaroids?.[0] || '',
+            coverUrl: normalizeDocumentspicturesModelImageRef(
+              m.portfolio?.images?.[0] || m.portfolio?.polaroids?.[0] || '',
+              m.id,
+            ),
           }));
         setModels(list);
       })

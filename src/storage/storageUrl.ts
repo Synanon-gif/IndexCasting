@@ -13,6 +13,14 @@
  *
  * Resolution produces a short-lived signed URL from Supabase Storage.
  * Results are cached in-memory until near-expiry (CACHE_GRACE_SECONDS).
+ *
+ * HARDENING (2026-04-12):
+ *   - Negative cache: URLs that fail with "Object not found" are cached for
+ *     NEGATIVE_CACHE_TTL_SECONDS and not re-attempted. This prevents console
+ *     spam storms and repeated 400 errors for genuinely missing objects.
+ *   - In-flight dedup: concurrent callers for the same URL share one Promise
+ *     instead of firing parallel createSignedUrl calls.
+ *   - Log-once: each broken URL is logged only once per session.
  */
 
 import { supabase } from '../../lib/supabase';
@@ -28,10 +36,23 @@ export const DEFAULT_SIGNED_TTL_SECONDS = 3_600;
 /** Refresh the cached URL this many seconds before it actually expires. */
 const CACHE_GRACE_SECONDS = 120;
 
+/** How long a "not found" result is cached before retrying (5 minutes). */
+const NEGATIVE_CACHE_TTL_SECONDS = 300;
+
 // ─── In-memory signed URL cache ───────────────────────────────────────────────
 // Key: canonical raw URI  →  Value: { signedUrl, expiresAt (unix seconds) }
 
 const urlCache = new Map<string, { signedUrl: string; expiresAt: number }>();
+
+// Negative cache: URLs whose objects don't exist in storage.
+// Value = unix-seconds timestamp when the entry expires.
+const brokenUrlCache = new Map<string, number>();
+
+// In-flight dedup: pending sign requests keyed by raw URL.
+const inflightRequests = new Map<string, Promise<string | null>>();
+
+// Log-once guard: tracks which URLs have already been logged this session.
+const loggedUrls = new Set<string>();
 
 // ─── URI helpers ──────────────────────────────────────────────────────────────
 
@@ -100,6 +121,20 @@ export function needsResolution(url: string): boolean {
 }
 
 /**
+ * Returns true when the given URI has been marked as broken (object not found
+ * in storage). Callers can use this to show a placeholder immediately without
+ * waiting for an async sign attempt.
+ */
+export function isKnownBrokenUrl(url: string): boolean {
+  if (!url) return false;
+  const expiresAt = brokenUrlCache.get(url);
+  if (expiresAt === undefined) return false;
+  if (expiresAt > Date.now() / 1_000) return true;
+  brokenUrlCache.delete(url);
+  return false;
+}
+
+/**
  * Converts a legacy full public URL to the canonical supabase-storage:// URI.
  * Used when normalising values before storing them in the DB.
  * No-ops for URIs that already use a custom scheme.
@@ -121,6 +156,8 @@ export function publicUrlToStorageUri(url: string): string {
  * than falling back to a potentially-public URL (H5 security fix).
  *
  * Signed URLs are cached in-memory until CACHE_GRACE_SECONDS before expiry.
+ * Broken URLs (Object not found) are negatively cached for NEGATIVE_CACHE_TTL_SECONDS.
+ * Concurrent calls for the same URL share a single sign request (in-flight dedup).
  *
  * @param url        - Raw storage URL, custom URI, or external URL.
  * @param ttlSeconds - Desired signed-URL lifetime (default: 1 h).
@@ -131,6 +168,9 @@ export async function resolveStorageUrl(
 ): Promise<string | null> {
   if (!url) return null;
 
+  // Fast path: negative cache — known broken, don't retry
+  if (isKnownBrokenUrl(url)) return null;
+
   // Fast path: already a valid, non-expired signed URL in cache
   const cached = urlCache.get(url);
   if (cached && cached.expiresAt > Date.now() / 1_000 + CACHE_GRACE_SECONDS) {
@@ -139,30 +179,64 @@ export async function resolveStorageUrl(
 
   const extracted = extractBucketAndPath(url);
   if (!extracted) {
-    // Not a Supabase Storage URL — return as-is (external CDN, data: URI, etc.)
     return url;
   }
 
-  try {
-    const { data, error } = await supabase.storage
-      .from(extracted.bucket)
-      .createSignedUrl(extracted.path, ttlSeconds);
+  // In-flight dedup: if another caller is already signing this URL, piggyback
+  const existing = inflightRequests.get(url);
+  if (existing) return existing;
 
-    if (error || !data?.signedUrl) {
-      console.error('[storageUrl] resolveStorageUrl failed', error, { url });
+  const signPromise = (async (): Promise<string | null> => {
+    try {
+      const { data, error } = await supabase.storage
+        .from(extracted.bucket)
+        .createSignedUrl(extracted.path, ttlSeconds);
+
+      if (error || !data?.signedUrl) {
+        const errMsg = (error as { message?: string })?.message ?? '';
+        const isNotFound = errMsg.includes('Object not found') ||
+          errMsg.includes('not found') ||
+          (error as { statusCode?: string | number })?.statusCode === '404';
+
+        if (isNotFound) {
+          brokenUrlCache.set(url, Date.now() / 1_000 + NEGATIVE_CACHE_TTL_SECONDS);
+        }
+
+        if (!loggedUrls.has(url)) {
+          loggedUrls.add(url);
+          console.warn('[storageUrl] resolveStorageUrl failed (logged once)', {
+            bucket: extracted.bucket,
+            path: extracted.path,
+            error: errMsg || error,
+            isNotFound,
+          });
+        }
+        return null;
+      }
+
+      urlCache.set(url, {
+        signedUrl: data.signedUrl,
+        expiresAt: Date.now() / 1_000 + ttlSeconds,
+      });
+
+      return data.signedUrl;
+    } catch (e) {
+      if (!loggedUrls.has(url)) {
+        loggedUrls.add(url);
+        console.warn('[storageUrl] resolveStorageUrl exception (logged once)', {
+          bucket: extracted.bucket,
+          path: extracted.path,
+          error: e,
+        });
+      }
       return null;
+    } finally {
+      inflightRequests.delete(url);
     }
+  })();
 
-    urlCache.set(url, {
-      signedUrl: data.signedUrl,
-      expiresAt: Date.now() / 1_000 + ttlSeconds,
-    });
-
-    return data.signedUrl;
-  } catch (e) {
-    console.error('[storageUrl] resolveStorageUrl exception', e);
-    return null;
-  }
+  inflightRequests.set(url, signPromise);
+  return signPromise;
 }
 
 /**
@@ -183,4 +257,15 @@ export async function resolveStorageUrls(
  */
 export function invalidateStorageUrlCache(url: string): void {
   urlCache.delete(url);
+  brokenUrlCache.delete(url);
+  loggedUrls.delete(url);
+}
+
+/**
+ * Clears the negative (broken) URL cache. Call after a bulk data migration
+ * or backfill to allow previously-broken URLs to be retried.
+ */
+export function clearBrokenUrlCache(): void {
+  brokenUrlCache.clear();
+  loggedUrls.clear();
 }
