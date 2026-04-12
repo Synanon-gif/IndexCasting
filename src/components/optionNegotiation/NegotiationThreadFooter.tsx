@@ -89,7 +89,7 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
   openOrgChatFromRequest,
   onAgencyConfirmAvailability,
   onAgencyAcceptClientPrice,
-  onAgencyRejectClientPrice,
+  onAgencyRejectClientPrice: _onAgencyRejectClientPrice,
   onAgencyCounterOffer,
   onAgencyProposeInitialFee,
   onRejectNegotiation,
@@ -104,6 +104,7 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
 }) => {
   const busy = actionBusy;
   const [detailsExpanded, setDetailsExpanded] = useState(false);
+  const [actionsExpanded, setActionsExpanded] = useState(false);
 
   const signals = attentionSignalsFromOptionRequestLike({
     status: status ?? request.status,
@@ -130,80 +131,11 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
   const modelLinked = request.modelAccountLinked === true;
   const modelPending = modelLinked && request.modelApproval === 'pending';
 
-  return (
-    <>
-      {/* ── Assignment (readonly or manage) ── */}
-      {assignmentMode === 'readonly' && request.clientOrganizationId && assignmentByClientOrgId[request.clientOrganizationId] ? (
-        <Text style={[styles.metaText, { marginBottom: spacing.xs }]}>
-          {uiCopy.optionNegotiationChat.clientAssignmentLabel}: {assignmentByClientOrgId[request.clientOrganizationId].label}
-          {assignmentByClientOrgId[request.clientOrganizationId].assignedMemberName
-            ? ` · ${assignmentByClientOrgId[request.clientOrganizationId].assignedMemberName}`
-            : ''}
-        </Text>
-      ) : null}
-      {assignmentMode === 'manage' && request.clientOrganizationId && (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: isMobileNative ? spacing.xs : spacing.sm }}>
-          {assignmentByClientOrgId[request.clientOrganizationId] ? (
-            <Text style={styles.metaText}>
-              {uiCopy.optionNegotiationChat.clientFlagLabel}: {assignmentByClientOrgId[request.clientOrganizationId].label}
-              {assignmentByClientOrgId[request.clientOrganizationId].assignedMemberName
-                ? ` · ${assignmentByClientOrgId[request.clientOrganizationId].assignedMemberName}`
-                : ''}
-            </Text>
-          ) : (
-            <Text style={styles.metaText}>{uiCopy.optionNegotiationChat.clientFlagLabel}: {uiCopy.optionNegotiationChat.clientFlagNone}</Text>
-          )}
-          {isAgency && onSaveClientAssignment && (
-            <TouchableOpacity
-              style={styles.filterPill}
-              onPress={() =>
-                setEditingAssignmentThreadId((prev) => (prev === request.threadId ? null : request.threadId))
-              }
-            >
-              <Text style={styles.filterPillLabel}>{uiCopy.optionNegotiationChat.editLabel}</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      )}
-      {assignmentMode === 'manage' && isAgency && onSaveClientAssignment && request.clientOrganizationId && editingAssignmentThreadId === request.threadId && (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.sm }}>
-          {(['gray', 'blue', 'green', 'amber', 'purple', 'red'] as AssignmentFlagColor[]).map((color) => (
-            <TouchableOpacity
-              key={color}
-              style={styles.filterPill}
-              onPress={() => {
-                void onSaveClientAssignment(request.clientOrganizationId!, {
-                  label: color.toUpperCase(),
-                  color,
-                  assignedMemberUserId:
-                    assignmentByClientOrgId[request.clientOrganizationId!]?.assignedMemberUserId ?? null,
-                });
-                setEditingAssignmentThreadId(null);
-              }}
-            >
-              <Text style={styles.filterPillLabel}>{color}</Text>
-            </TouchableOpacity>
-          ))}
-          {assignableMembers.slice(0, 6).map((member) => (
-            <TouchableOpacity
-              key={member.userId}
-              style={styles.filterPill}
-              onPress={() => {
-                const current = assignmentByClientOrgId[request.clientOrganizationId!];
-                void onSaveClientAssignment!(request.clientOrganizationId!, {
-                  label: current?.label ?? 'BLUE',
-                  color: current?.color ?? 'blue',
-                  assignedMemberUserId: member.userId,
-                });
-                setEditingAssignmentThreadId(null);
-              }}
-            >
-              <Text style={styles.filterPillLabel}>{member.name}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      )}
+  const agencyHasActions = isAgency && !isTerminal;
+  const showCollapsibleToggle = isMobileNative && agencyHasActions;
 
+  const agencyActionsContent = (
+    <>
       {/* ── Org chat row ── */}
       <View style={[
         { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.xs, marginBottom: isMobileNative ? spacing.xs : spacing.sm },
@@ -318,10 +250,6 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
         </>
       )}
 
-      {/* ══════════════════════════════════════════════════════════════════
-          AGENCY ACTION BUTTONS — Axis 2 (Availability) fully separate from Axis 1 (Price)
-         ══════════════════════════════════════════════════════════════════ */}
-
       {/* ── Axis 2: Confirm availability ── */}
       {isAgency && !isTerminal && availabilityNotYetConfirmed && (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm }}>
@@ -339,16 +267,6 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
             <Text style={[styles.filterPillLabel, { color: colors.buttonSkipRed }]}>{uiCopy.optionNegotiationChat.rejectOption}</Text>
           </TouchableOpacity>
         </View>
-      )}
-
-      {/* ── Fee negotiation hint (compact) ── */}
-      {isAgency &&
-        !priceLocked &&
-        !agencyAwaitingClientOnCounter &&
-        !isTerminal && (
-        <Text style={styles.compactHint}>
-          {uiCopy.optionNegotiationChat.agencyNegotiationFeeStepIntro}
-        </Text>
       )}
 
       {/* ── Agency waiting for client on counter ── */}
@@ -371,38 +289,34 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
         </>
       )}
 
-      {/* ── Axis 1: Price actions (Accept / Counter / Remove) ── */}
+      {/* ── Axis 1: Price actions (Accept + inline counter) ── */}
       {isAgency &&
         !priceLocked &&
         !agencyAwaitingClientOnCounter &&
         !isTerminal && (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm }}>
+        <>
           {request.proposedPrice != null &&
           clientPriceStatus === 'pending' &&
           agencyCounterPrice == null ? (
-            <TouchableOpacity
-              style={[styles.filterPill, { backgroundColor: colors.accentBrown }, busy && { opacity: 0.5 }]}
-              disabled={busy}
-              onPress={() => { void onAgencyAcceptClientPrice(); }}
-            >
-              <Text style={[styles.filterPillLabel, { color: '#fff' }]}>{uiCopy.optionNegotiationChat.acceptProposedFee}</Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm }}>
+              <TouchableOpacity
+                style={[styles.filterPill, { backgroundColor: colors.accentBrown }, busy && { opacity: 0.5 }]}
+                disabled={busy}
+                onPress={() => { void onAgencyAcceptClientPrice(); }}
+              >
+                <Text style={[styles.filterPillLabel, { color: '#fff' }]}>{uiCopy.optionNegotiationChat.acceptProposedFee}</Text>
+              </TouchableOpacity>
+            </View>
           ) : null}
-          <TouchableOpacity
-            style={[styles.filterPill, { backgroundColor: colors.accentBrown, borderWidth: 0 }]}
-            onPress={() => setNegotiationCounterExpanded((e) => !e)}
-          >
-            <Text style={[styles.filterPillLabel, { color: '#fff' }]}>{uiCopy.optionNegotiationChat.counterOffer}</Text>
-          </TouchableOpacity>
-        </View>
+        </>
       )}
 
-      {/* ── Counter-offer input (pending proposed) ── */}
+      {/* ── Counter-offer input (pending proposed — always visible when price is pending) ── */}
       {isAgency &&
-        (negotiationCounterExpanded || (clientPriceStatus === 'pending' && request.proposedPrice != null && agencyCounterPrice == null)) &&
         !priceLocked &&
         clientPriceStatus === 'pending' &&
         request.proposedPrice != null &&
+        agencyCounterPrice == null &&
         !isTerminal && (
           <View style={styles.counterBox}>
             <Text style={{ ...typography.label, fontSize: 11, color: colors.textPrimary, marginBottom: spacing.xs }}>
@@ -440,23 +354,6 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
             </View>
           </View>
         )}
-
-      {/* ── Decline proposed fee ── */}
-      {isAgency &&
-        !priceLocked &&
-        clientPriceStatus === 'pending' &&
-        !isTerminal &&
-        request.proposedPrice != null && (
-        <TouchableOpacity
-          style={{ alignSelf: 'flex-start', marginBottom: spacing.sm }}
-          disabled={busy}
-          onPress={() => { void onAgencyRejectClientPrice(); }}
-        >
-          <Text style={{ ...typography.label, fontSize: 12, color: colors.buttonSkipRed, fontWeight: '600' }}>
-            {uiCopy.optionNegotiationChat.declineProposedFee}
-          </Text>
-        </TouchableOpacity>
-      )}
 
       {/* ── Counter-offer input (after client decline) ── */}
       {isAgency &&
@@ -525,10 +422,128 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
             </TouchableOpacity>
           </View>
         )}
+    </>
+  );
 
-      {/* ══════════════════════════════════════════════════════════════════
-          CLIENT ACTION BUTTONS — Price only (Axis 1)
-         ══════════════════════════════════════════════════════════════════ */}
+  return (
+    <>
+      {/* ── Assignment (readonly or manage) ── */}
+      {assignmentMode === 'readonly' && request.clientOrganizationId && assignmentByClientOrgId[request.clientOrganizationId] ? (
+        <Text style={[styles.metaText, { marginBottom: spacing.xs }]}>
+          {uiCopy.optionNegotiationChat.clientAssignmentLabel}: {assignmentByClientOrgId[request.clientOrganizationId].label}
+          {assignmentByClientOrgId[request.clientOrganizationId].assignedMemberName
+            ? ` · ${assignmentByClientOrgId[request.clientOrganizationId].assignedMemberName}`
+            : ''}
+        </Text>
+      ) : null}
+      {assignmentMode === 'manage' && request.clientOrganizationId && (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: isMobileNative ? spacing.xs : spacing.sm }}>
+          {assignmentByClientOrgId[request.clientOrganizationId] ? (
+            <Text style={styles.metaText}>
+              {uiCopy.optionNegotiationChat.clientFlagLabel}: {assignmentByClientOrgId[request.clientOrganizationId].label}
+              {assignmentByClientOrgId[request.clientOrganizationId].assignedMemberName
+                ? ` · ${assignmentByClientOrgId[request.clientOrganizationId].assignedMemberName}`
+                : ''}
+            </Text>
+          ) : (
+            <Text style={styles.metaText}>{uiCopy.optionNegotiationChat.clientFlagLabel}: {uiCopy.optionNegotiationChat.clientFlagNone}</Text>
+          )}
+          {isAgency && onSaveClientAssignment && (
+            <TouchableOpacity
+              style={styles.filterPill}
+              onPress={() =>
+                setEditingAssignmentThreadId((prev) => (prev === request.threadId ? null : request.threadId))
+              }
+            >
+              <Text style={styles.filterPillLabel}>{uiCopy.optionNegotiationChat.editLabel}</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+      {assignmentMode === 'manage' && isAgency && onSaveClientAssignment && request.clientOrganizationId && editingAssignmentThreadId === request.threadId && (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.sm }}>
+          {(['gray', 'blue', 'green', 'amber', 'purple', 'red'] as AssignmentFlagColor[]).map((color) => (
+            <TouchableOpacity
+              key={color}
+              style={styles.filterPill}
+              onPress={() => {
+                void onSaveClientAssignment(request.clientOrganizationId!, {
+                  label: color.toUpperCase(),
+                  color,
+                  assignedMemberUserId:
+                    assignmentByClientOrgId[request.clientOrganizationId!]?.assignedMemberUserId ?? null,
+                });
+                setEditingAssignmentThreadId(null);
+              }}
+            >
+              <Text style={styles.filterPillLabel}>{color}</Text>
+            </TouchableOpacity>
+          ))}
+          {assignableMembers.slice(0, 6).map((member) => (
+            <TouchableOpacity
+              key={member.userId}
+              style={styles.filterPill}
+              onPress={() => {
+                const current = assignmentByClientOrgId[request.clientOrganizationId!];
+                void onSaveClientAssignment!(request.clientOrganizationId!, {
+                  label: current?.label ?? 'BLUE',
+                  color: current?.color ?? 'blue',
+                  assignedMemberUserId: member.userId,
+                });
+                setEditingAssignmentThreadId(null);
+              }}
+            >
+              <Text style={styles.filterPillLabel}>{member.name}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
+      {/* ── Mobile agency: collapsible actions toggle ── */}
+      {showCollapsibleToggle && (
+        <TouchableOpacity
+          style={styles.actionsToggle}
+          onPress={() => setActionsExpanded((prev) => !prev)}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.actionsToggleLabel}>
+            {actionsExpanded ? '▲ Hide actions' : '▼ Show actions'}
+          </Text>
+        </TouchableOpacity>
+      )}
+
+      {/* ── Agency actions (collapsible on mobile, always visible on desktop/web) ── */}
+      {isAgency && (!showCollapsibleToggle || actionsExpanded) && agencyActionsContent}
+
+      {/* ── Non-agency content (org chat row for client) ── */}
+      {!isAgency && (
+        <View style={[
+          { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.xs, marginBottom: isMobileNative ? spacing.xs : spacing.sm },
+          isMobileNative && { opacity: 0.8 },
+        ]}>
+          <View style={[styles.statusPill, { backgroundColor: '#e0e7ff' }, isMobileNative && styles.statusPillMobile]}>
+            <Text style={[styles.statusPillLabel, { color: '#3730a3' }, isMobileNative && styles.statusPillLabelMobile]}>{contextThreadLabel}</Text>
+          </View>
+          <TouchableOpacity
+            style={[
+              isMobileNative ? styles.orgChatLink : styles.filterPill,
+              openOrgChatBusy && { opacity: 0.6 },
+            ]}
+            disabled={
+              openOrgChatBusy ||
+              (requireAgencyIdForOrgChat && !request.agencyId) ||
+              !request.clientOrganizationId
+            }
+            onPress={() => {
+              void openOrgChatFromRequest();
+            }}
+          >
+            <Text style={isMobileNative ? styles.orgChatLinkLabel : styles.filterPillLabel}>
+              {openOrgChatBusy ? uiCopy.common.loading : uiCopy.b2bChat.openOrgChat}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* ── Client: accept agency counter (price only) ── */}
       {!isAgency &&
@@ -688,6 +703,21 @@ const styles = StyleSheet.create({
     color: colors.accentBrown,
     textDecorationLine: 'underline',
     fontWeight: '500',
+  },
+  actionsToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 6,
+    marginBottom: spacing.xs,
+    backgroundColor: 'rgba(0,0,0,0.04)',
+    borderRadius: 8,
+  },
+  actionsToggleLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.accentBrown,
+    letterSpacing: 0.3,
   },
 });
 

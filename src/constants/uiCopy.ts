@@ -1371,7 +1371,7 @@ export const uiCopy = {
      * Agency — short hint above fee actions.
      */
     agencyNegotiationFeeStepIntro:
-      'Negotiate the fee: use “Accept proposed fee” or “Make counter offer”.',
+      'Negotiate the fee: accept the proposed fee or enter a counter-offer below.',
     /** Agency: counter sent; client must accept or decline before another counter. */
     agencyCounterAwaitingClientResponse:
       'Your counter-offer is pending. Waiting for the client to accept or decline.',
