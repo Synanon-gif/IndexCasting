@@ -64,7 +64,6 @@ import { ConfirmDestructiveModal } from '../components/ConfirmDestructiveModal';
 import { shouldShowSystemMessageForViewer } from '../components/optionNegotiation/filterSystemMessagesForViewer';
 import {
   formatDateWithOptionalTimeRange,
-  formatOptionTimeRangeSuffix,
   stripClockSeconds,
 } from '../utils/formatTimeForUi';
 import { bubbleColorsForSender, outgoingSelfBubbleColors } from '../theme/roleColors';
@@ -102,7 +101,7 @@ type ModelProfile = {
   mediaslideSyncId: string | null;
 };
 
-type ModelTab = 'calendar' | 'messages' | 'options' | 'profile';
+type ModelTab = 'home' | 'calendar' | 'chats' | 'settings';
 
 const HOURS = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`);
 
@@ -128,7 +127,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   const isMobileModel = modelProfileWindowWidth < 768;
   const { signOut } = useAuth();
   const [profile, setProfile] = useState<ModelProfile | null>(null);
-  const [tab, setTab] = useState<ModelTab>('calendar');
+  const [tab, setTab] = useState<ModelTab>('home');
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [exportingData, setExportingData] = useState(false);
   const [calMonth, setCalMonth] = useState(() => { const n = new Date(); return { year: n.getFullYear(), month: n.getMonth() }; });
@@ -397,7 +396,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   }, []);
 
   useEffect(() => {
-    if (tab !== 'messages' || bookingThreadIds.length === 0) return;
+    if (tab !== 'chats' || bookingThreadIds.length === 0) return;
     let cancelled = false;
     // Resolves all thread→agencyName mappings in exactly 2 queries (batch),
     // replacing the previous N+1 loop (2 queries per thread).
@@ -410,7 +409,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   }, [tab, bookingThreadIds]);
 
   useEffect(() => {
-    if (tab !== 'messages' || !userId) return;
+    if (tab !== 'chats' || !userId) return;
     let cancelled = false;
     void listModelAgencyDirectConversations(userId).then((convs) => {
       if (!cancelled) setAgencyDirectConvs(convs);
@@ -480,7 +479,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
       if (cancelled) return;
       await loadMessagesForThread(focusOptionRequestId, { viewerRole: 'model' });
       if (cancelled) return;
-      setTab('options');
+      setTab('home');
       setSelectedOptionThread(focusOptionRequestId);
       onConsumedFocusOption?.();
     })();
@@ -694,10 +693,11 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
         setOpenEntry(null);
         setSelectedDate(null);
         break;
-      case 'messages':
+      case 'chats':
         setOpenBookingThreadId(null);
+        setOpenDirectConvId(null);
         break;
-      case 'options':
+      case 'home':
         setSelectedOptionThread(null);
         setOptChatInput('');
         break;
@@ -751,133 +751,101 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
       <Text style={st.heading}>{profile.name}</Text>
 
       <View style={{ flex: 1, paddingBottom: bottomTabInset }}>
-      {tab === 'profile' && (
+      {tab === 'settings' && (
         <ScrollView style={{ flex: 1 }}>
           <View style={st.section}>
-            <Text style={st.sectionLabel}>Status</Text>
-            <Text style={st.metaText}>Current location: {profile.currentLocation}</Text>
-            <Text style={st.metaText}>Base: {profile.city} · Hair: {profile.hairColor}</Text>
-            {profile.mediaslideSyncId ? (
-              <Text style={[st.metaText, { marginTop: 4, fontSize: 10, color: '#6b7280', letterSpacing: 0.5 }]}>
-                Mediaslide ID: {profile.mediaslideSyncId}
-              </Text>
-            ) : null}
+            <Text style={st.sectionLabel}>About</Text>
+            <Text style={st.metaText}>Base city: {profile.city || '—'}</Text>
+            <Text style={st.metaText}>Hair: {profile.hairColor || '—'}</Text>
           </View>
           {/* ── Location Section ─────────────────────────────── */}
           <View style={st.section}>
             <Text style={st.sectionLabel}>Location</Text>
 
-            {/* Active source badge — shows highest-priority resolved location */}
             {modelLocation ? (
               <View style={{
-                borderRadius: 8, padding: spacing.sm, marginBottom: spacing.sm,
+                flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                borderRadius: 10, padding: spacing.sm, marginBottom: spacing.md,
                 backgroundColor: modelLocation.source === 'live' ? '#e8f5e9'
                   : modelLocation.source === 'current' ? '#e3f2fd' : '#fff3e0',
-                borderLeftWidth: 3,
-                borderLeftColor: modelLocation.source === 'live' ? '#2e7d32'
-                  : modelLocation.source === 'current' ? '#1565c0' : '#e65100',
               }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ ...typography.label, fontSize: 11,
-                      color: modelLocation.source === 'live' ? '#2e7d32'
-                        : modelLocation.source === 'current' ? '#1565c0' : '#e65100' }}>
-                      {locationSourceLabel(modelLocation.source)}
-                    </Text>
-                    <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
-                      {[modelLocation.city, modelLocation.country_code].filter(Boolean).join(', ') || 'Location set'}
-                      {modelLocation.lat_approx != null ? ' · Near Me active' : ' · Not in Near Me (no geocoords)'}
-                    </Text>
-                    {modelLocation.source === 'agency' && (
-                      <Text style={{ fontSize: 10, color: '#9a6a00', marginTop: 2 }}>
-                        Set by your agency · Add your own city above to override
-                      </Text>
-                    )}
-                  </View>
-                  {/* Remove button only for model-owned sources (live/current).
-                      Agency location is managed by the agency, not the model. */}
-                  {modelLocation.source !== 'agency' && (
-                    <TouchableOpacity
-                      onPress={() => { void handleRemoveLocation(); }}
-                      disabled={removingLocation}
-                      style={{ paddingHorizontal: spacing.xs, paddingVertical: 4 }}
-                    >
-                      <Text style={{ fontSize: 11, color: '#e74c3c', fontWeight: '600' }}>
-                        {removingLocation ? '…' : 'Remove'}
-                      </Text>
-                    </TouchableOpacity>
-                  )}
+                <View style={{ flex: 1 }}>
+                  <Text style={{ ...typography.label, fontSize: 12, color: colors.textPrimary }}>
+                    {[modelLocation.city, modelLocation.country_code].filter(Boolean).join(', ') || 'Location set'}
+                  </Text>
+                  <Text style={{ ...typography.body, fontSize: 10, color: colors.textSecondary, marginTop: 2 }}>
+                    {locationSourceLabel(modelLocation.source)}
+                    {modelLocation.lat_approx != null ? ' · Near Me active' : ''}
+                    {modelLocation.source === 'agency' ? ' · Set by agency' : ''}
+                  </Text>
                 </View>
+                {modelLocation.source !== 'agency' && (
+                  <TouchableOpacity
+                    onPress={() => { void handleRemoveLocation(); }}
+                    disabled={removingLocation}
+                    style={{ paddingHorizontal: spacing.sm, paddingVertical: 6 }}
+                  >
+                    <Text style={{ fontSize: 11, color: '#e74c3c', fontWeight: '600' }}>
+                      {removingLocation ? '…' : '✕'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
             ) : (
-              <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm }}>
-                No active location. Set one below to appear in Near Me.
+              <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.sm }}>
+                No active location. Set one below to appear in Near Me searches.
               </Text>
             )}
 
-            {/* Mode A — Set current city (source='current', no GPS required) */}
-            <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary, marginBottom: 4 }}>
-              Set current city
+            <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm }}>
+              <TextInput
+                placeholder="Country (DE)"
+                value={currentCountryInput}
+                onChangeText={setCurrentCountryInput}
+                maxLength={2}
+                autoCapitalize="characters"
+                style={{ flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: spacing.sm, paddingVertical: 8, ...typography.body, fontSize: 13 }}
+              />
+              <TextInput
+                placeholder="City name"
+                value={currentCityInput}
+                onChangeText={setCurrentCityInput}
+                style={{ flex: 3, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: spacing.sm, paddingVertical: 8, ...typography.body, fontSize: 13 }}
+              />
+            </View>
+            <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+              <TouchableOpacity
+                onPress={() => { void handleSetCurrentCity(); }}
+                disabled={currentCityLoading || !currentCityInput.trim() || !currentCountryInput.trim()}
+                style={{
+                  flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+                  borderRadius: 999, backgroundColor: '#1565c0', paddingVertical: 10,
+                  opacity: (currentCityLoading || !currentCityInput.trim() || !currentCountryInput.trim()) ? 0.4 : 1,
+                }}
+              >
+                {currentCityLoading && <ActivityIndicator size="small" color="#fff" />}
+                <Text style={{ ...typography.label, color: '#fff', fontSize: 12 }}>
+                  {currentCityLoading ? 'Saving…' : 'Set city'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => { void handleShareLocation(); }}
+                disabled={locationLoading}
+                style={{
+                  flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+                  borderRadius: 999, backgroundColor: colors.accentGreen, paddingVertical: 10,
+                  opacity: locationLoading ? 0.5 : 1,
+                }}
+              >
+                {locationLoading && <ActivityIndicator size="small" color="#fff" />}
+                <Text style={{ ...typography.label, color: '#fff', fontSize: 12 }}>
+                  {locationLoading ? 'Locating…' : 'Share GPS'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={{ ...typography.body, fontSize: 10, color: colors.textSecondary, marginTop: 4 }}>
+              GPS shares your approximate city (±5 km). No exact coordinates are stored.
             </Text>
-            <TextInput
-              placeholder="Country code (e.g. DE, FR, US)"
-              value={currentCountryInput}
-              onChangeText={setCurrentCountryInput}
-              maxLength={2}
-              autoCapitalize="characters"
-              style={{
-                borderWidth: 1, borderColor: colors.border, borderRadius: 8,
-                paddingHorizontal: spacing.sm, paddingVertical: 8,
-                ...typography.body, fontSize: 13, marginBottom: 6,
-              }}
-            />
-            <TextInput
-              placeholder="City name"
-              value={currentCityInput}
-              onChangeText={setCurrentCityInput}
-              style={{
-                borderWidth: 1, borderColor: colors.border, borderRadius: 8,
-                paddingHorizontal: spacing.sm, paddingVertical: 8,
-                ...typography.body, fontSize: 13, marginBottom: spacing.xs,
-              }}
-            />
-            <TouchableOpacity
-              onPress={() => { void handleSetCurrentCity(); }}
-              disabled={currentCityLoading || !currentCityInput.trim() || !currentCountryInput.trim()}
-              style={{
-                flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs,
-                borderRadius: 999, backgroundColor: '#1565c0', paddingVertical: spacing.sm,
-                opacity: (currentCityLoading || !currentCityInput.trim() || !currentCountryInput.trim()) ? 0.5 : 1,
-                marginBottom: spacing.sm,
-              }}
-            >
-              {currentCityLoading && <ActivityIndicator size="small" color="#fff" />}
-              <Text style={{ ...typography.label, color: '#fff', fontSize: 13 }}>
-                {currentCityLoading ? 'Saving…' : 'Set current city'}
-              </Text>
-            </TouchableOpacity>
-
-            {/* Mode B — Share live GPS (source='live') */}
-            <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary, marginBottom: 4 }}>
-              Or share live GPS
-            </Text>
-            <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.xs }}>
-              Only your approximate city (±5 km) will be shared. No exact GPS is stored.
-            </Text>
-            <TouchableOpacity
-              onPress={() => { void handleShareLocation(); }}
-              disabled={locationLoading}
-              style={{
-                flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs,
-                borderRadius: 999, backgroundColor: colors.accentGreen, paddingVertical: spacing.sm,
-                opacity: locationLoading ? 0.6 : 1,
-              }}
-            >
-              {locationLoading && <ActivityIndicator size="small" color="#fff" />}
-              <Text style={{ ...typography.label, color: '#fff' }}>
-                {locationLoading ? 'Locating…' : 'Share live GPS'}
-              </Text>
-            </TouchableOpacity>
           </View>
           {/* ── End Location Section ──────────────────────── */}
           <View style={st.section}>
@@ -1163,37 +1131,33 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
         </ScrollView>
       )}
 
-      {tab === 'messages' && (
-        <ScrollView style={{ flex: 1 }}>
+      {tab === 'chats' && (
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: spacing.xl }}>
           <Text style={st.sectionLabel}>{uiCopy.model.agencyChatSectionLabel}</Text>
           <Text style={st.metaText}>{uiCopy.model.agencyChatSectionSubtitle}</Text>
           <View style={{ gap: spacing.xs, marginTop: spacing.md }}>
-            {bookingThreadIds.length === 0 ? (
-              <Text style={st.metaText}>No chats yet. Your agency will appear here after accepting your application.</Text>
+            {bookingThreadIds.length === 0 && agencyDirectConvs.length === 0 ? (
+              <View style={{ alignItems: 'center', paddingVertical: spacing.xl }}>
+                <Text style={{ ...typography.body, fontSize: 13, color: colors.textSecondary, textAlign: 'center' }}>
+                  No conversations yet.{'\n'}Your agency will appear here once connected.
+                </Text>
+              </View>
             ) : (
-              bookingThreadIds.map((id) => {
-                const t = getRecruitingThread(id);
-                if (!t) return null;
-                const agencyLabel = bookingAgencyByThread[id] ?? uiCopy.model.agencyLabel;
-                return (
-                  <TouchableOpacity key={id} style={st.chatRow} onPress={() => setOpenBookingThreadId(id)}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={st.chatRowKicker}>{uiCopy.model.agencyLabel}</Text>
-                      <Text style={st.chatRowLabel}>{agencyLabel}</Text>
-                      <Text style={st.metaText}>{t.modelName}</Text>
-                    </View>
-                    <Text style={st.chatRowOpen}>Chat</Text>
-                  </TouchableOpacity>
-                );
-              })
-            )}
-          </View>
-
-          {agencyDirectConvs.length > 0 && (
-            <>
-              <Text style={[st.sectionLabel, { marginTop: spacing.lg }]}>{uiCopy.model.directMessagesSectionLabel}</Text>
-              <Text style={st.metaText}>{uiCopy.model.directMessagesSectionSubtitle}</Text>
-              <View style={{ gap: spacing.xs, marginTop: spacing.md }}>
+              <>
+                {bookingThreadIds.map((id) => {
+                  const t = getRecruitingThread(id);
+                  if (!t) return null;
+                  const agencyLabel = bookingAgencyByThread[id] ?? uiCopy.model.agencyLabel;
+                  return (
+                    <TouchableOpacity key={id} style={st.chatRow} onPress={() => setOpenBookingThreadId(id)}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={st.chatRowKicker}>{uiCopy.model.agencyLabel}</Text>
+                        <Text style={st.chatRowLabel}>{agencyLabel}</Text>
+                      </View>
+                      <Text style={st.chatRowOpen}>Open</Text>
+                    </TouchableOpacity>
+                  );
+                })}
                 {agencyDirectConvs.map((conv) => (
                   <TouchableOpacity
                     key={conv.id}
@@ -1201,46 +1165,26 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                     onPress={() => setOpenDirectConvId(conv.id)}
                   >
                     <View style={{ flex: 1 }}>
-                      <Text style={st.chatRowKicker}>{uiCopy.model.agencyLabel}</Text>
+                      <Text style={st.chatRowKicker}>Direct</Text>
                       <Text style={st.chatRowLabel}>{conv.title ?? uiCopy.model.agencyLabel}</Text>
                     </View>
-                    <Text style={st.chatRowOpen}>Chat</Text>
+                    <Text style={st.chatRowOpen}>Open</Text>
                   </TouchableOpacity>
                 ))}
-              </View>
-            </>
-          )}
-
-          <Text style={[st.sectionLabel, { marginTop: spacing.lg }]}>Option chats</Text>
-          {options.filter((o) => o.status !== 'rejected').map((o) => (
-            <TouchableOpacity key={o.threadId} style={st.chatRow} onPress={() => setSelectedOptionThread(o.threadId)}>
-              <View style={{ flex: 1 }}>
-                <Text style={st.chatRowLabel}>{o.clientName} · {o.date}</Text>
-                <Text style={st.metaText}>
-                  {o.modelName}
-                  {formatOptionTimeRangeSuffix(o.startTime, o.endTime)}
-                </Text>
-              </View>
-              <Text style={{ ...typography.label, fontSize: 9, color: o.modelApproval === 'approved' ? colors.buttonOptionGreen : '#B8860B' }}>
-                {o.modelApproval === 'approved'
-                  ? uiCopy.dashboard.optionRequestModelApprovalApproved
-                  : o.modelApproval === 'rejected'
-                    ? uiCopy.dashboard.optionRequestModelApprovalRejected
-                    : uiCopy.dashboard.optionRequestModelApprovalPending}
-              </Text>
-            </TouchableOpacity>
-          ))}
+              </>
+            )}
+          </View>
         </ScrollView>
       )}
 
-      {tab === 'options' && (
+      {tab === 'home' && (
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1, paddingBottom: spacing.xl * 2 }}>
 
           {pendingConfirmations.length > 0 && (
-            <>
-              <Text style={st.sectionLabel}>Booking requests</Text>
+            <View style={{ marginBottom: spacing.lg }}>
+              <Text style={st.sectionLabel}>Action required</Text>
               <Text style={st.metaText}>
-                The agency has accepted these bookings on your behalf. Please confirm or decline.
+                Your agency confirmed these. Please accept or decline availability.
               </Text>
               {pendingConfirmations.map((req) => (
                 <View
@@ -1295,47 +1239,48 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                   </View>
                 </View>
               ))}
-            </>
+            </View>
           )}
 
-          <Text style={[st.sectionLabel, { marginTop: pendingConfirmations.length > 0 ? spacing.xl : 0 }]}>Confirmed jobs</Text>
-          <Text style={st.metaText}>
-            Confirmed options and jobs. Fee details are handled between agency and client.
-          </Text>
-          {jobTickets.length === 0 ? (
-            <Text style={[st.metaText, { marginTop: spacing.sm }]}>No confirmed tickets yet.</Text>
-          ) : (
-            jobTickets.map((o) => (
-              <View
-                key={o.threadId}
-                style={{
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  borderRadius: 12,
-                  padding: spacing.md,
-                  marginTop: spacing.sm,
-                  backgroundColor: colors.surface,
-                }}
-              >
-                <Text style={{ ...typography.label, color: colors.textPrimary }}>
-                  {o.requestType === 'casting' ? uiCopy.dashboard.threadContextCasting : uiCopy.dashboard.threadContextOption} · {o.finalStatus === 'job_confirmed' ? uiCopy.dashboard.optionRequestStatusJobConfirmed : uiCopy.dashboard.optionRequestStatusConfirmed}
-                </Text>
-                <Text style={st.metaText}>
-                  {o.clientName} · {formatDateWithOptionalTimeRange(o.date, o.startTime, o.endTime)}
-                </Text>
-              </View>
-            ))
-          )}
+          <View style={{ marginBottom: spacing.lg }}>
+            <Text style={st.sectionLabel}>Confirmed jobs</Text>
+            {jobTickets.length === 0 ? (
+              <Text style={[st.metaText, { marginTop: spacing.xs }]}>No confirmed jobs yet.</Text>
+            ) : (
+              jobTickets.map((o) => (
+                <TouchableOpacity
+                  key={o.threadId}
+                  onPress={() => { setSelectedOptionThread(o.threadId); void loadMessagesForThread(o.threadId, { viewerRole: 'model' }); }}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: colors.accentGreen,
+                    borderRadius: 12,
+                    padding: spacing.md,
+                    marginTop: spacing.sm,
+                    backgroundColor: '#f0fdf4',
+                  }}
+                >
+                  <Text style={{ ...typography.label, color: colors.textPrimary }}>
+                    {o.requestType === 'casting' ? uiCopy.dashboard.threadContextCasting : uiCopy.dashboard.threadContextOption} · {o.finalStatus === 'job_confirmed' ? uiCopy.dashboard.optionRequestStatusJobConfirmed : uiCopy.dashboard.optionRequestStatusConfirmed}
+                  </Text>
+                  <Text style={st.metaText}>
+                    {o.clientName} · {formatDateWithOptionalTimeRange(o.date, o.startTime, o.endTime)}
+                  </Text>
+                </TouchableOpacity>
+              ))
+            )}
+          </View>
 
           {outstandingOptions.length > 0 && (
-            <>
-              <Text style={[st.sectionLabel, { marginTop: spacing.xl }]}>Awaiting agency</Text>
+            <View style={{ marginBottom: spacing.lg }}>
+              <Text style={st.sectionLabel}>In negotiation</Text>
               <Text style={st.metaText}>
-                These options are in negotiation. Your agency will ask for your availability once confirmed.
+                Your agency will ask for your availability once the booking is confirmed.
               </Text>
               {outstandingOptions.map((o) => (
-                <View
+                <TouchableOpacity
                   key={o.threadId}
+                  onPress={() => { setSelectedOptionThread(o.threadId); void loadMessagesForThread(o.threadId, { viewerRole: 'model' }); }}
                   style={{
                     borderWidth: 1,
                     borderColor: colors.border,
@@ -1345,32 +1290,20 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                     backgroundColor: colors.surface,
                   }}
                 >
-                  <Text style={{ ...typography.body, color: colors.textPrimary }}>{o.clientName} · {o.modelName}</Text>
+                  <Text style={{ ...typography.body, color: colors.textPrimary, fontWeight: '500' }}>{o.clientName}</Text>
                   <Text style={st.metaText}>{formatDateWithOptionalTimeRange(o.date, o.startTime, o.endTime)}</Text>
-                  <Text style={{ ...typography.label, fontSize: 10, color: '#1565c0', marginTop: 4 }}>
-                    Waiting for agency confirmation
-                  </Text>
-                </View>
+                </TouchableOpacity>
               ))}
-            </>
+            </View>
           )}
 
-          <Text style={[st.sectionLabel, { marginTop: spacing.xl }]}>All options</Text>
-          {options.map((o) => (
-            <View key={o.threadId} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-              <View>
-                <Text style={{ ...typography.body, color: colors.textPrimary }}>{o.clientName} · {o.date}</Text>
-                <Text style={st.metaText}>{o.modelName}</Text>
-              </View>
-              <Text style={{ ...typography.label, fontSize: 10, color: o.modelApproval === 'approved' ? colors.buttonOptionGreen : o.modelApproval === 'rejected' ? colors.buttonSkipRed : '#B8860B' }}>
-                {o.modelApproval === 'approved'
-                  ? uiCopy.dashboard.optionRequestModelApprovalApproved
-                  : o.modelApproval === 'rejected'
-                    ? uiCopy.dashboard.optionRequestModelApprovalRejected
-                    : uiCopy.dashboard.optionRequestModelApprovalPending}
+          {pendingConfirmations.length === 0 && jobTickets.length === 0 && outstandingOptions.length === 0 && (
+            <View style={{ alignItems: 'center', paddingVertical: spacing.xl * 2 }}>
+              <Text style={{ ...typography.body, fontSize: 14, color: colors.textSecondary, textAlign: 'center' }}>
+                No active bookings or options.{'\n'}New requests from clients will appear here.
               </Text>
             </View>
-          ))}
+          )}
         </ScrollView>
       )}
       </View>
@@ -1409,26 +1342,24 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
       )}
 
       <View style={[st.bottomTabBar, { paddingBottom: insets.bottom }]}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.tabRow}>
+        <View style={st.tabRow}>
           {([
-            { key: 'calendar' as const, label: 'Calendar' },
-            { key: 'messages' as const, label: 'Messages' },
             {
-              key: 'options' as const,
-              label: `Options${
-                pendingConfirmations.length
-                  ? ` (${pendingConfirmations.length})`
-                  : ''
-              }`,
+              key: 'home' as const,
+              label: pendingConfirmations.length
+                ? `Home (${pendingConfirmations.length})`
+                : 'Home',
             },
-            { key: 'profile' as const, label: 'Profile' },
+            { key: 'calendar' as const, label: 'Calendar' },
+            { key: 'chats' as const, label: 'Chats' },
+            { key: 'settings' as const, label: 'Settings' },
           ]).map((t) => (
             <TouchableOpacity key={t.key} onPress={() => handleModelTabPress(t.key)} style={st.tabItem}>
               <Text style={[st.tabLabel, tab === t.key && st.tabLabelActive]}>{t.label}</Text>
               {tab === t.key && <View style={st.tabUnderline} />}
             </TouchableOpacity>
           ))}
-        </ScrollView>
+        </View>
       </View>
 
       {selectedOptionThread && (
@@ -1626,7 +1557,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                           const id = openEntry.option_request_id;
                           if (!id) return;
                           setSelectedOptionThread(id);
-                          setTab('options');
+                          setTab('home');
                           setOpenEntry(null);
                           setModelNotesDraft('');
                           void loadMessagesForThread(id, { viewerRole: 'model' });
@@ -2034,7 +1965,7 @@ const st = StyleSheet.create({
   brand: { ...typography.headingCompact, color: colors.textPrimary, marginBottom: 0 },
   heading: { ...typography.heading, fontSize: 18, color: colors.textPrimary, marginBottom: spacing.md },
   label: { ...typography.label, color: colors.textSecondary, marginBottom: spacing.sm },
-  tabRow: { flexDirection: 'row', gap: spacing.lg, alignItems: 'center', paddingHorizontal: spacing.sm },
+  tabRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around' },
   bottomTabBar: {
     position: 'absolute' as const,
     left: 0,
