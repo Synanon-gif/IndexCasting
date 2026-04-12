@@ -8,6 +8,7 @@ import {
   type ChatParticipantRole,
   type NegotiationViewerRole,
 } from '../../theme/roleColors';
+import { CHAT_BUBBLE_MAX_WIDTH } from '../orgMessengerMessageLayout';
 
 export type NegotiationMessageRowProps = {
   id: string;
@@ -66,15 +67,17 @@ const styles = StyleSheet.create({
   },
   bubbleCol: {
     maxWidth: '88%',
+    alignItems: 'flex-start',
   },
   /** Outgoing: narrower column + left gutter so the bubble is not flush to the right edge. */
   bubbleColSelf: {
     maxWidth: '76%',
     marginLeft: '12%',
     paddingRight: spacing.sm,
+    alignItems: 'flex-end',
   },
   bubble: {
-    maxWidth: '100%',
+    maxWidth: CHAT_BUBBLE_MAX_WIDTH,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: 14,

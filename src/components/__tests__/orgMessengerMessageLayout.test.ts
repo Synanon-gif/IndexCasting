@@ -1,10 +1,16 @@
 import {
+  CHAT_BUBBLE_MAX_WIDTH,
   getOrgMessengerMessageColumnStyle,
   getOrgMessengerSenderLineExtraStyle,
   orgMessengerLayoutTestExports,
 } from '../orgMessengerMessageLayout';
 
 describe('orgMessengerMessageLayout', () => {
+  it('exports canonical chat bubble max width fraction', () => {
+    expect(CHAT_BUBBLE_MAX_WIDTH).toBe('75%');
+    expect(orgMessengerLayoutTestExports.CHAT_BUBBLE_MAX_WIDTH).toBe('75%');
+  });
+
   describe('getOrgMessengerMessageColumnStyle', () => {
     it('right-aligns outgoing column with expected gutter', () => {
       const s = getOrgMessengerMessageColumnStyle(true);

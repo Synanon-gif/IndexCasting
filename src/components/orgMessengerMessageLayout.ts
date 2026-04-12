@@ -4,6 +4,9 @@ import { spacing } from '../theme/theme';
 /** Horizontal gutter for outgoing B2B message blocks (matches previous bubble-only offset). */
 const OUTGOING_GUTTER_LEFT = '12%';
 
+/** Max fraction of the message row width for text bubbles (WhatsApp-style). */
+export const CHAT_BUBBLE_MAX_WIDTH = '75%' as const;
+
 /**
  * Column wrapper for one message: aligns sender label + attachments + bubbles + cards together.
  */
@@ -25,4 +28,5 @@ export function getOrgMessengerSenderLineExtraStyle(isOwn: boolean): TextStyle {
 
 export const orgMessengerLayoutTestExports = {
   OUTGOING_GUTTER_LEFT,
+  CHAT_BUBBLE_MAX_WIDTH,
 };

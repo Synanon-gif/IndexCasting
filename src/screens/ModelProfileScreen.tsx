@@ -68,6 +68,7 @@ import {
   stripClockSeconds,
 } from '../utils/formatTimeForUi';
 import { bubbleColorsForSender, outgoingSelfBubbleColors } from '../theme/roleColors';
+import { CHAT_BUBBLE_MAX_WIDTH } from '../components/orgMessengerMessageLayout';
 import { getCalendarDetailNextStepForModelLocalOption } from '../utils/calendarDetailNextStep';
 import { MonthCalendarView } from '../components/MonthCalendarView';
 import { CalendarViewModeBar, type CalendarViewMode } from '../components/CalendarViewModeBar';
@@ -1423,7 +1424,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                         key={msg.id}
                         style={{
                           alignSelf: isOwn ? 'flex-end' : 'flex-start',
-                          maxWidth: isOwn ? '76%' : '85%',
+                          maxWidth: CHAT_BUBBLE_MAX_WIDTH,
                           marginLeft: isOwn ? '12%' : 0,
                           marginRight: isOwn ? spacing.sm : 0,
                           paddingHorizontal: spacing.sm,

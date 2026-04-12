@@ -9,6 +9,7 @@ import { View, Text, StyleSheet, TouchableOpacity, TextInput, Modal, ScrollView,
 import { StorageImage } from '../components/StorageImage';
 import { colors, spacing, typography } from '../theme/theme';
 import { bubbleColorsForSender, outgoingSelfBubbleColors } from '../theme/roleColors';
+import { CHAT_BUBBLE_MAX_WIDTH } from '../components/orgMessengerMessageLayout';
 import { getChatOverlayMaxWidth, getMessagesScrollMaxHeight } from '../theme/chatLayout';
 import {
   getRecruitingMessages,
@@ -676,7 +677,7 @@ const styles = StyleSheet.create({
   },
   bubble: {
     alignSelf: 'flex-start',
-    maxWidth: '85%',
+    maxWidth: CHAT_BUBBLE_MAX_WIDTH,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     borderRadius: 12,
@@ -684,7 +685,7 @@ const styles = StyleSheet.create({
   },
   /** Outgoing text bubble: slight right gutter vs full flush-right. */
   bubbleOutgoing: {
-    maxWidth: '76%',
+    maxWidth: CHAT_BUBBLE_MAX_WIDTH,
     marginLeft: '12%',
     marginRight: spacing.sm,
   },
@@ -705,7 +706,7 @@ const styles = StyleSheet.create({
   },
   bubbleWrapper: {
     alignSelf: 'flex-start',
-    maxWidth: '85%',
+    maxWidth: CHAT_BUBBLE_MAX_WIDTH,
     marginBottom: spacing.xs,
   },
   bubbleWrapperSelf: {

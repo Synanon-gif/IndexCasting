@@ -21,6 +21,7 @@ import ChatLayoutFix from './ChatLayoutFix';
 import { colors, spacing, typography } from '../theme/theme';
 import { bubbleColorsForSender, outgoingSelfBubbleColors } from '../theme/roleColors';
 import {
+  CHAT_BUBBLE_MAX_WIDTH,
   getOrgMessengerMessageColumnStyle,
   getOrgMessengerSenderLineExtraStyle,
 } from './orgMessengerMessageLayout';
@@ -633,7 +634,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
               ) : null}
               {/* Text content */}
               {pt === 'text' && m.text ? (
-                <View style={styles.bubbleRow}>
+                <View style={[styles.bubbleRow, isOwn ? styles.bubbleRowOutgoing : styles.bubbleRowIncoming]}>
                   <View
                     style={[
                       styles.msgBubble,
@@ -660,7 +661,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
                 </View>
               ) : null}
               {pt === 'link' ? (
-                <View style={styles.bubbleRow}>
+                <View style={[styles.bubbleRow, isOwn ? styles.bubbleRowOutgoing : styles.bubbleRowIncoming]}>
                   <View
                     style={[
                       styles.msgBubble,
@@ -1124,8 +1125,15 @@ const styles = StyleSheet.create({
     width: '100%',
     marginBottom: spacing.xs,
   },
+  /** Prevents default column stretch so bubbles size to content (max msgBubble). */
+  bubbleRowOutgoing: {
+    alignItems: 'flex-end',
+  },
+  bubbleRowIncoming: {
+    alignItems: 'flex-start',
+  },
   msgBubble: {
-    maxWidth: '78%',
+    maxWidth: CHAT_BUBBLE_MAX_WIDTH,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: 12,
