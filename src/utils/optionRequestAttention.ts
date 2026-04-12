@@ -98,6 +98,14 @@ export function deriveNegotiationAttention(input: AttentionSignalInput): Negotia
  * 'job_confirmed'). If somehow a confirmed row still has model_approval =
  * 'pending' + model_account_linked = true, treat model_approval = 'approved'
  * for confirmed lifecycles (defense-in-depth).
+ *
+ * SEMANTIC NOTE — "grandfathered approved":
+ * model_approval = 'approved' on no-model-account lifecycles means
+ * "availability was cleared by the agency under the no-account flow" — NOT
+ * "the model actively confirmed". The value is functionally equivalent for
+ * all derive/attention logic but must never be confused with an active
+ * model confirmation. It is a grandfathered/auto-approved state that
+ * protects already-confirmed lifecycles from retroactive reopening.
  */
 export function deriveApprovalAttention(input: AttentionSignalInput): ApprovalAttentionState {
   if (input.finalStatus === 'job_confirmed') {

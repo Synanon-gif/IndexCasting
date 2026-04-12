@@ -839,6 +839,29 @@ Models dürfen **niemals** kommerzielle Daten empfangen — weder in DB-Payloads
 **Erlaubte model-facing Felder (Whitelist):**
 `id`, `client_id`, `model_id`, `agency_id`, `requested_date`, `status`, `project_id`, `client_name`, `model_name`, `final_status`, `request_type`, `currency`, `start_time`, `end_time`, `model_approval`, `model_approved_at`, `model_account_linked`, `booker_id`, `organization_id`, `agency_organization_id`, `client_organization_id`, `created_by`, `agency_assignee_user_id`, `created_at`, `updated_at`
 
+### E-0. KANONISCHE NICHT-RÜCKFALL-REGEL — MODEL APPROVAL (unveränderlich, 20260615)
+
+Ein Lifecycle, der bereits in einem **availability-cleared** Zustand war (`model_approval = 'approved'` + `final_status IN ('option_confirmed', 'job_confirmed')`), darf durch spätere Änderungen an `model_account_linked` **niemals** wieder in einen Zustand gelangen, der zusätzliche vergangenheitsbezogene Approval-Aktionen verlangt.
+
+**Konkret:**
+- DB-Trigger `sync_model_account_linked` darf `model_approval` nur für Rows mit `final_status NOT IN ('option_confirmed', 'job_confirmed')` zurücksetzen (Migration `20260615`)
+- Frontend `deriveApprovalAttention`: `status = 'confirmed'` ist terminal — nie `waiting_for_model_confirmation` (Defense-in-Depth)
+- `modelInboxRequiresModelConfirmation` erfordert `status = 'in_negotiation'` — `confirmed` oder `rejected` sind ausgeschlossen
+
+**Model-Approval wird NUR benötigt wenn alle vier Bedingungen gleichzeitig erfüllt sind:**
+1. `model_account_linked === true` (explizit true, nicht null — Fallback ist immer `?? false`)
+2. `model_approval === 'pending'`
+3. `final_status === 'option_confirmed'` (Agency hat Verfügbarkeit bestätigt)
+4. Status ist nicht-terminal (`status = 'in_negotiation'`)
+
+**Semantische Klarstellung — „grandfathered approved":**
+`model_approval = 'approved'` im No-Model-Account-Flow bedeutet **nicht** „das Model hat aktiv bestätigt", sondern **„der Lifecycle ist availability-cleared durch Agency-Entscheidung unter dem No-Account-Pfad"**. Dieser Wert ist funktional gleichwertig mit einer aktiven Model-Bestätigung und darf nie als Indikator für eine echte Model-App-Interaktion missverstanden werden.
+
+**Verbotene Zustands-Übergänge:**
+- `option_confirmed` + `model_approval = 'approved'` → `model_approval = 'pending'` (durch Account-Erstellung)
+- `job_confirmed` + beliebiger `model_approval` → erneute Model-Action-Required-Signale
+- `status = 'confirmed'` → `waiting_for_model_confirmation` in irgendeiner Oberfläche
+
 ### E. SMART ATTENTION — SPLIT UND KONSISTENZ (unveränderlich)
 
 Smart Attention besteht aus **zwei unabhängigen Dimensionen** die nicht verwechselt oder zusammengeführt werden dürfen:
