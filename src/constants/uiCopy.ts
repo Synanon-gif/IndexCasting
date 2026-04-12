@@ -1279,6 +1279,10 @@ export const uiCopy = {
       title: 'Application declined',
       message: 'Your application has been declined.',
     },
+    applicationModelConfirmed: {
+      title: 'Model confirmed representation',
+      message: 'The model accepted your representation offer and is now in your roster.',
+    },
   },
   systemMessages: {
     /** Centered workflow lines (`from_role = system`); not a participant chat message. */

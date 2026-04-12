@@ -10,6 +10,7 @@ import {
   updateApplicationStatus,
   confirmApplicationByModel as confirmByModelService,
   rejectApplicationByModel as rejectByModelService,
+  notifyAgencyOfModelConfirmation,
   type SupabaseApplication,
 } from '../services/applicationsSupabase';
 import { startRecruitingChat, addRecruitingMessage } from './recruitingChats';
@@ -23,8 +24,14 @@ export type Gender = 'female' | 'male' | 'diverse' | '';
 
 export type ModelApplication = {
   id: string;
-  /** Target agency for this application (for chat branding). */
+  /** Target agency for this application (for chat branding; may be null for global applications). */
   agencyId?: string | null;
+  /**
+   * The agency that accepted this application (set on agency accept).
+   * May differ from agencyId when the model applied globally (agencyId = null)
+   * and any agency accepted.
+   */
+  acceptedByAgencyId?: string | null;
   /** User ID of the applicant (for notifications). */
   applicantUserId?: string | null;
   firstName: string;
@@ -62,6 +69,7 @@ function toLocal(a: SupabaseApplication): ModelApplication {
   return {
     id: a.id,
     agencyId: a.agency_id ?? undefined,
+    acceptedByAgencyId: a.accepted_by_agency_id ?? undefined,
     applicantUserId: a.applicant_user_id ?? undefined,
     firstName: a.first_name,
     lastName: a.last_name,
@@ -239,6 +247,7 @@ export async function acceptApplication(
 /**
  * Model bestätigt die Vertretungsanfrage.
  * Erst jetzt wird der Model-Eintrag angelegt.
+ * Notifies the accepting agency org after successful confirmation.
  */
 export async function confirmApplicationByModel(
   applicationId: string,
@@ -247,16 +256,27 @@ export async function confirmApplicationByModel(
   const app = cache.find((a) => a.id === applicationId);
   if (!app || app.status !== 'pending_model_confirmation') return null;
 
+  // Capture accepted_by_agency_id before the service call mutates the DB row.
+  // We need this to notify the agency org after confirmation succeeds.
+  const acceptedByAgencyId = (app as ModelApplication & { acceptedByAgencyId?: string | null })
+    .acceptedByAgencyId ?? null;
+
   const result = await confirmByModelService(applicationId, applicantUserId);
   if (!result) return null;
 
-  // Recruiting-Chat als active_model markieren (jetzt wirklich aktives Verhältnis)
+  // Mark recruiting chat as active_model (represents the finalised relationship)
   if (app.chatThreadId) {
     await updateThreadChatType(app.chatThreadId, 'active_model');
   }
 
   app.status = 'accepted';
   notify();
+
+  // Notify the accepting agency that the model confirmed representation
+  if (acceptedByAgencyId) {
+    void notifyAgencyOfModelConfirmation(acceptedByAgencyId, applicationId);
+  }
+
   return result;
 }
 
@@ -299,8 +319,13 @@ export async function rejectApplication(applicationId: string): Promise<void> {
   }
 }
 
+/**
+ * Reloads the applications cache from Supabase.
+ * For agency views: uses the current storeAgencyId scope (set by initApplicationsForAgency).
+ * For model views (no storeAgencyId): relies on RLS (applicant_user_id = auth.uid()).
+ */
 export async function refreshApplications(): Promise<void> {
-  const apps = await fetchApps();
+  const apps = await fetchApps(storeAgencyId);
   cache = apps.map(toLocal);
   notify();
 }

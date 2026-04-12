@@ -46,8 +46,24 @@ function statusColor(status: string): string {
   return '#F9A825';
 }
 
-/** PostgREST-Embed `agencies ( name )` – Objekt oder (selten) Array. */
+/**
+ * Resolves the display agency name from a PostgREST-embedded application row.
+ * Prefers the agency that accepted (accepted_agency, joined on accepted_by_agency_id)
+ * over the originally targeted agency (agencies, joined on agency_id) so that
+ * global applications (agency_id = NULL) show the correct accepting agency name.
+ */
 function embeddedAgencyName(app: SupabaseApplication): string | undefined {
+  // Try accepted_agency first (set when an agency accepted a global application)
+  const accepted = app.accepted_agency;
+  if (accepted != null) {
+    if (Array.isArray(accepted)) {
+      const name = (accepted[0] as { name?: string } | undefined)?.name;
+      if (name) return name;
+    } else if (accepted.name) {
+      return accepted.name;
+    }
+  }
+  // Fall back to the originally targeted agency
   const ag = app.agencies;
   if (ag == null) return undefined;
   if (Array.isArray(ag)) return (ag[0] as { name?: string } | undefined)?.name;

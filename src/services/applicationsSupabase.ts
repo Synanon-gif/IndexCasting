@@ -106,7 +106,12 @@ export async function resolveApplicationImageUrl(uriOrUrl: string): Promise<stri
   return resolveStorageUrl(uriOrUrl);
 }
 
-/** Von PostgREST: Embed über FK agency_id (nicht accepted_by_agency_id). */
+/**
+ * PostgREST FK-embed for agencies.
+ * - agencies: joined on agency_id (target agency, set at submission)
+ * - accepted_agency: joined on accepted_by_agency_id (the agency that accepted,
+ *   may differ from agency_id when the model applied globally with agency_id=NULL)
+ */
 export type SupabaseApplicationAgencyEmbed = { name: string } | null;
 
 export type ApplicationStatus = 'pending' | 'pending_model_confirmation' | 'accepted' | 'rejected';
@@ -131,8 +136,14 @@ export type SupabaseApplication = {
   updated_at: string;
   ethnicity?: string | null;
   country_code?: string | null;
-  /** Nur bei getApplicationsForApplicant; Key = PostgREST-Name für FK agency_id → agencies. */
+  /** FK agency_id → agencies (set at submission time; may be null for global applications). */
   agencies?: SupabaseApplicationAgencyEmbed;
+  /**
+   * FK accepted_by_agency_id → agencies (the agency that accepted the application).
+   * Populated only in getApplicationsForApplicant. Key name follows PostgREST alias
+   * syntax: agencies!accepted_by_agency_id aliased as accepted_agency.
+   */
+  accepted_agency?: SupabaseApplicationAgencyEmbed;
 };
 
 export type ApplicationListOptions = {
@@ -229,12 +240,19 @@ export async function getApplicationsByStatus(
   }
 }
 
-/** Bewerbungen des eingeloggten Models (für "My Applications"). Agency-Name nur als Embed (ein Feld). */
+/**
+ * Bewerbungen des eingeloggten Models (für "My Applications").
+ * Embeds both agency_id and accepted_by_agency_id so the model can see the
+ * correct agency name regardless of whether the application was targeted
+ * (agency_id set) or submitted globally (agency_id NULL, accepted_by_agency_id set).
+ */
 export async function getApplicationsForApplicant(applicantUserId: string): Promise<SupabaseApplication[]> {
   try {
     const { data, error } = await supabase
       .from('model_applications')
-      .select('*, agencies!agency_id ( name )')
+      .select(
+        '*, agencies!agency_id ( name ), accepted_agency:agencies!accepted_by_agency_id ( name )',
+      )
       .eq('applicant_user_id', applicantUserId)
       .order('created_at', { ascending: false })
       .limit(200);
@@ -557,6 +575,37 @@ export async function rejectApplicationByModel(
   } catch (e) {
     console.error('rejectApplicationByModel exception:', e);
     return false;
+  }
+}
+
+/**
+ * Notifies the accepting agency org that the model confirmed representation.
+ * Fire-and-forget — caller should not await.
+ */
+export async function notifyAgencyOfModelConfirmation(
+  agencyId: string,
+  applicationId: string,
+): Promise<void> {
+  try {
+    const { data: org } = await supabase
+      .from('organizations')
+      .select('id')
+      .eq('agency_id', agencyId)
+      .eq('type', 'agency')
+      .maybeSingle();
+    if (org?.id) {
+      void createNotification({
+        organization_id: org.id,
+        type: 'application_model_confirmed',
+        title: uiCopy.notifications.applicationModelConfirmed?.title ?? 'Model confirmed representation',
+        message:
+          uiCopy.notifications.applicationModelConfirmed?.message ??
+          'The model accepted your representation offer.',
+        metadata: { application_id: applicationId },
+      });
+    }
+  } catch (e) {
+    console.error('notifyAgencyOfModelConfirmation error:', e);
   }
 }
 
