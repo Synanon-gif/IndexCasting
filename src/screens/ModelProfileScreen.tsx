@@ -1394,11 +1394,11 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
               // Mobile: fill entire inset area. Desktop: floating card.
               ...(isMobileModel
                 ? { flex: 1, backgroundColor: colors.surface, overflow: 'hidden' as const }
-                : { width: '100%', maxWidth: optionChatOverlayMaxW, maxHeight: '80%', backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.border }),
+                : { width: '100%', maxWidth: optionChatOverlayMaxW, maxHeight: '80%', backgroundColor: colors.surface, borderRadius: 18, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' as const }),
               padding: spacing.md,
             }}
           >
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm, flexShrink: 0 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
                 {optionChatAgency?.logo_url ? (
                   <Image source={{ uri: optionChatAgency.logo_url }} style={{ width: 32, height: 32, borderRadius: 6 }} resizeMode="contain" />
@@ -1455,7 +1455,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                 ),
               )}
             </ScrollView>
-            <View style={{ flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-end' }}>
+            <View style={{ flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-end', flexShrink: 0 }}>
               <TextInput value={optChatInput} onChangeText={setOptChatInput} placeholder={uiCopy.model.composerPlaceholder} placeholderTextColor={colors.textSecondary}
                 multiline blurOnSubmit={false}
                 onContentSizeChange={(e) => setOptChatInputHeight(e.nativeEvent.contentSize.height)}

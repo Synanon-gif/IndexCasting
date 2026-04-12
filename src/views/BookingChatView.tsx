@@ -254,7 +254,7 @@ export const BookingChatView: React.FC<Props> = ({
 
   // Shared inner content (header + optional profile strip + messages + input)
   const chatInner = (
-    <>
+    <View style={styles.chatInnerColumn}>
       {/* ── WhatsApp-like header ── */}
       <View style={styles.header}>
         {/* Back / Close: left side — always present */}
@@ -454,7 +454,7 @@ export const BookingChatView: React.FC<Props> = ({
           <Text style={styles.sendLabel}>Send</Text>
         </TouchableOpacity>
       </View>
-    </>
+    </View>
   );
 
   const orgProfileModal = showAgencyProfile && agencyOrgIdForProfile ? (
@@ -545,6 +545,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     padding: spacing.md,
+    overflow: 'hidden',
+  },
+  chatInnerColumn: {
+    flex: 1,
+    minHeight: 0,
+    overflow: 'hidden',
   },
   // WhatsApp-like unified header
   header: {
@@ -753,6 +759,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginBottom: spacing.sm,
     paddingHorizontal: spacing.xs,
+    flexShrink: 0,
   },
   rightsBox: {
     width: 18,
@@ -782,6 +789,7 @@ const styles = StyleSheet.create({
     color: '#e53925',
     marginBottom: spacing.xs,
     marginHorizontal: spacing.xs,
+    flexShrink: 0,
   },
   attachBtn: {
     width: 36,
@@ -800,6 +808,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: spacing.sm,
+    flexShrink: 0,
   },
   input: {
     flex: 1,
