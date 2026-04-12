@@ -563,12 +563,15 @@ export async function setAgencyCounterOffer(
   counterPrice: number
 ): Promise<boolean> {
   try {
+    // Axis 1 only: counter-offer is a PRICE action.
+    // final_status (Axis 2 — availability) MUST NOT be touched here.
+    // Resetting final_status to 'option_pending' would destroy a previously
+    // confirmed availability — violating the two-axis independence invariant.
     const { data, error } = await supabase
       .from('option_requests')
       .update({
         agency_counter_price: counterPrice,
         client_price_status: 'pending',
-        final_status: 'option_pending',
       })
       .eq('id', id)
       .eq('status', 'in_negotiation')

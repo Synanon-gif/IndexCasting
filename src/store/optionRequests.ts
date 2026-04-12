@@ -681,9 +681,9 @@ export async function agencyCounterOfferStore(threadId: string, counterPrice: nu
   if (refreshedAfterRpc) {
     Object.assign(req, toLocalRequest(refreshedAfterRpc));
   } else {
+    // Fallback: only Axis 1 (price) fields — never touch finalStatus (Axis 2).
     req.agencyCounterPrice = counterPrice;
     req.clientPriceStatus = 'pending';
-    req.finalStatus = 'option_pending';
   }
   const inserted = await addOptionSystemMessage(req.id, 'agency_counter_offer', {
     price: counterPrice,
@@ -749,22 +749,22 @@ export async function clientAcceptCounterStore(threadId: string): Promise<boolea
   const updated = await getOptionRequestById(req.id);
   if (updated) {
     Object.assign(req, toLocalRequest(updated));
-    if (updated.final_status === 'option_confirmed') {
-      // Calendar entry is created by the DB trigger fn_ensure_calendar_on_option_confirmed
-      // (migration_calendar_booking_audit_fixes_2026_04.sql) — no client-side call needed.
-      const inserted = await addOptionSystemMessage(req.id, 'client_accepted_counter');
-      if (inserted) {
-        messagesCache.push({
-          id: inserted.id,
-          threadId,
-          from: 'system',
-          text: inserted.text,
-          createdAt: new Date(inserted.created_at).getTime(),
-        });
-      }
-    }
-    notify();
   }
+  // System message for client-accepted-counter is always emitted regardless of
+  // final_status. Price acceptance (Axis 1) is independent of availability (Axis 2).
+  // The old guard `if (final_status === 'option_confirmed')` suppressed the message
+  // when availability was not yet confirmed — breaking cross-role visibility.
+  const inserted = await addOptionSystemMessage(req.id, 'client_accepted_counter');
+  if (inserted) {
+    messagesCache.push({
+      id: inserted.id,
+      threadId,
+      from: 'system',
+      text: inserted.text,
+      createdAt: new Date(inserted.created_at).getTime(),
+    });
+  }
+  notify();
   return true;
 }
 

@@ -1123,3 +1123,296 @@ describe('state 5/6 drift audit — agency null-header consistency', () => {
     }
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ADVERSARIAL LIFECYCLE TESTS — counter-offer after availability confirmed
+// Covers the real-world bug: agency counter-offer must NOT reset final_status
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe('adversarial: counter-offer after availability confirmed (with model account)', () => {
+  // Scenario: availability confirmed by agency + model, then agency sends counter-offer.
+  // Before fix: setAgencyCounterOffer reset final_status to option_pending, causing
+  // attention to show "Waiting for agency approval" even though agency already confirmed.
+
+  const afterAvailabilityConfirmedByBoth: AttentionSignalInput = {
+    status: 'in_negotiation',
+    finalStatus: 'option_confirmed',
+    clientPriceStatus: 'pending',
+    proposedPrice: 200,
+    agencyCounterPrice: null,
+    modelApproval: 'approved',
+    modelAccountLinked: true,
+  };
+
+  it('step 1: after both agency+model confirmed, D2 is fully_cleared', () => {
+    const appr = deriveApprovalAttention(afterAvailabilityConfirmedByBoth);
+    expect(appr).toBe('fully_cleared');
+  });
+
+  it('step 1: D1 shows waiting_for_agency_response (agency has not accepted price yet)', () => {
+    const neg = deriveNegotiationAttention(afterAvailabilityConfirmedByBoth);
+    expect(neg).toBe('waiting_for_agency_response');
+  });
+
+  it('step 1: client header shows action label (agency must act on price)', () => {
+    const label = attentionHeaderLabelFromSignals(afterAvailabilityConfirmedByBoth, 'client');
+    expect(label).not.toBeNull();
+  });
+
+  const afterCounterOffer: AttentionSignalInput = {
+    ...afterAvailabilityConfirmedByBoth,
+    agencyCounterPrice: 350,
+    clientPriceStatus: 'pending',
+    // CRITICAL: final_status MUST remain 'option_confirmed' — counter-offer is Axis 1 only
+    finalStatus: 'option_confirmed',
+  };
+
+  it('step 2: after counter-offer, D2 remains fully_cleared (availability untouched)', () => {
+    const appr = deriveApprovalAttention(afterCounterOffer);
+    expect(appr).toBe('fully_cleared');
+  });
+
+  it('step 2: D1 shows waiting_for_client_response (counter-offer pending)', () => {
+    const neg = deriveNegotiationAttention(afterCounterOffer);
+    expect(neg).toBe('waiting_for_client_response');
+  });
+
+  it('step 2: client header shows action label (must respond to counter)', () => {
+    const label = attentionHeaderLabelFromSignals(afterCounterOffer, 'client');
+    expect(label).not.toBeNull();
+  });
+
+  it('step 2: agency header is null (agency has no action — counter is sent, waiting for client)', () => {
+    const label = attentionHeaderLabelFromSignals(afterCounterOffer, 'agency');
+    // Agency has nothing to do: counter sent, availability confirmed, model approved.
+    // Only the client has an action (accept/reject counter). No agency attention label.
+    expect(label).toBeNull();
+  });
+
+  it('step 2: MUST NOT show "waiting for agency approval" on client side', () => {
+    const appr = deriveApprovalAttention(afterCounterOffer);
+    expect(appr).not.toBe('waiting_for_agency_confirmation');
+  });
+
+  const afterClientAcceptsCounter: AttentionSignalInput = {
+    ...afterCounterOffer,
+    clientPriceStatus: 'accepted',
+  };
+
+  it('step 3: after client accepts counter, D1 is price_agreed', () => {
+    const neg = deriveNegotiationAttention(afterClientAcceptsCounter);
+    expect(neg).toBe('price_agreed');
+  });
+
+  it('step 3: D2 is waiting_for_client_to_finalize_job (both axes done)', () => {
+    const appr = deriveApprovalAttention(afterClientAcceptsCounter);
+    expect(appr).toBe('waiting_for_client_to_finalize_job');
+  });
+
+  it('step 3: client can now confirm job', () => {
+    expect(
+      deriveApprovalAttention(afterClientAcceptsCounter),
+    ).toBe('waiting_for_client_to_finalize_job');
+  });
+});
+
+describe('adversarial: counter-offer BEFORE availability confirmed (with model account)', () => {
+  const afterCounterBeforeAvailability: AttentionSignalInput = {
+    status: 'in_negotiation',
+    finalStatus: 'option_pending',
+    clientPriceStatus: 'pending',
+    proposedPrice: 200,
+    agencyCounterPrice: 350,
+    modelApproval: 'pending',
+    modelAccountLinked: true,
+  };
+
+  it('D1 shows waiting_for_client_response (counter pending)', () => {
+    const neg = deriveNegotiationAttention(afterCounterBeforeAvailability);
+    expect(neg).toBe('waiting_for_client_response');
+  });
+
+  it('D2 is approval_inactive (agency has not confirmed availability, price not settled)', () => {
+    const appr = deriveApprovalAttention(afterCounterBeforeAvailability);
+    expect(appr).toBe('approval_inactive');
+  });
+
+  const clientAccepts: AttentionSignalInput = {
+    ...afterCounterBeforeAvailability,
+    clientPriceStatus: 'accepted',
+  };
+
+  it('after client accepts counter (price settled), D2 shows waiting_for_agency_confirmation', () => {
+    const appr = deriveApprovalAttention(clientAccepts);
+    expect(appr).toBe('waiting_for_agency_confirmation');
+  });
+
+  const agencyConfirmsAvailability: AttentionSignalInput = {
+    ...clientAccepts,
+    finalStatus: 'option_confirmed',
+  };
+
+  it('after agency confirms availability, D2 shows waiting_for_model_confirmation', () => {
+    const appr = deriveApprovalAttention(agencyConfirmsAvailability);
+    expect(appr).toBe('waiting_for_model_confirmation');
+  });
+
+  const modelConfirms: AttentionSignalInput = {
+    ...agencyConfirmsAvailability,
+    modelApproval: 'approved',
+  };
+
+  it('after model confirms, D2 shows waiting_for_client_to_finalize_job', () => {
+    const appr = deriveApprovalAttention(modelConfirms);
+    expect(appr).toBe('waiting_for_client_to_finalize_job');
+  });
+});
+
+describe('adversarial: without model account scenarios', () => {
+  const baseNoAccount: AttentionSignalInput = {
+    status: 'in_negotiation',
+    finalStatus: 'option_pending',
+    clientPriceStatus: 'pending',
+    proposedPrice: 200,
+    modelApproval: 'pending',
+    modelAccountLinked: false,
+  };
+
+  it('agency confirms availability → model auto-approved', () => {
+    const afterAgencyConfirm: AttentionSignalInput = {
+      ...baseNoAccount,
+      finalStatus: 'option_confirmed',
+      modelApproval: 'approved',
+    };
+    const appr = deriveApprovalAttention(afterAgencyConfirm);
+    expect(appr).toBe('fully_cleared');
+  });
+
+  it('agency confirms availability + counters → D2 remains fully_cleared', () => {
+    const afterCounterNoAccount: AttentionSignalInput = {
+      ...baseNoAccount,
+      finalStatus: 'option_confirmed',
+      modelApproval: 'approved',
+      agencyCounterPrice: 350,
+      clientPriceStatus: 'pending',
+    };
+    const appr = deriveApprovalAttention(afterCounterNoAccount);
+    expect(appr).toBe('fully_cleared');
+    const neg = deriveNegotiationAttention(afterCounterNoAccount);
+    expect(neg).toBe('waiting_for_client_response');
+  });
+
+  it('price settled + availability confirmed → job ready', () => {
+    const jobReady: AttentionSignalInput = {
+      ...baseNoAccount,
+      finalStatus: 'option_confirmed',
+      modelApproval: 'approved',
+      agencyCounterPrice: 350,
+      clientPriceStatus: 'accepted',
+    };
+    const appr = deriveApprovalAttention(jobReady);
+    expect(appr).toBe('waiting_for_client_to_finalize_job');
+  });
+});
+
+describe('adversarial: rejection branches', () => {
+  it('client rejects counter → D1 counter_rejected, D2 unaffected', () => {
+    const input: AttentionSignalInput = {
+      status: 'in_negotiation',
+      finalStatus: 'option_confirmed',
+      clientPriceStatus: 'rejected',
+      agencyCounterPrice: 350,
+      proposedPrice: 200,
+      modelApproval: 'approved',
+      modelAccountLinked: true,
+    };
+    expect(deriveNegotiationAttention(input)).toBe('counter_rejected');
+    expect(deriveApprovalAttention(input)).toBe('fully_cleared');
+  });
+
+  it('model rejects availability → D2 fully_cleared (rejected status)', () => {
+    const input: AttentionSignalInput = {
+      status: 'rejected',
+      finalStatus: 'option_pending',
+      clientPriceStatus: 'pending',
+      proposedPrice: 200,
+      modelApproval: 'rejected',
+      modelAccountLinked: true,
+    };
+    expect(deriveApprovalAttention(input)).toBe('fully_cleared');
+    expect(deriveNegotiationAttention(input)).toBe('negotiation_terminal');
+  });
+
+  it('price settled but availability pending → D2 waiting_for_agency, not job-ready', () => {
+    const input: AttentionSignalInput = {
+      status: 'in_negotiation',
+      finalStatus: 'option_pending',
+      clientPriceStatus: 'accepted',
+      proposedPrice: 200,
+      modelApproval: 'pending',
+      modelAccountLinked: true,
+    };
+    expect(deriveApprovalAttention(input)).toBe('waiting_for_agency_confirmation');
+    expect(deriveNegotiationAttention(input)).toBe('price_agreed');
+  });
+
+  it('availability confirmed but price open → D2 fully_cleared, D1 waiting', () => {
+    const input: AttentionSignalInput = {
+      status: 'in_negotiation',
+      finalStatus: 'option_confirmed',
+      clientPriceStatus: 'pending',
+      proposedPrice: 200,
+      modelApproval: 'approved',
+      modelAccountLinked: true,
+    };
+    expect(deriveApprovalAttention(input)).toBe('fully_cleared');
+    expect(deriveNegotiationAttention(input)).toBe('waiting_for_agency_response');
+  });
+});
+
+describe('adversarial: cross-role attention consistency', () => {
+  const counterPendingAfterAvailability: AttentionSignalInput = {
+    status: 'in_negotiation',
+    finalStatus: 'option_confirmed',
+    clientPriceStatus: 'pending',
+    agencyCounterPrice: 350,
+    proposedPrice: 200,
+    modelApproval: 'approved',
+    modelAccountLinked: true,
+  };
+
+  it('client sees attention (must respond to counter), agency sees no attention (nothing to do)', () => {
+    const agencyLabel = attentionHeaderLabelFromSignals(counterPendingAfterAvailability, 'agency');
+    const clientLabel = attentionHeaderLabelFromSignals(counterPendingAfterAvailability, 'client');
+    // Agency: counter sent, availability confirmed, model approved → nothing to do
+    expect(agencyLabel).toBeNull();
+    // Client: must accept/reject counter → action required
+    expect(clientLabel).not.toBeNull();
+  });
+
+  it('tab-dot matches header for counter-after-availability state', () => {
+    const headerNonNull = attentionHeaderLabelFromSignals(counterPendingAfterAvailability, 'client') !== null;
+    const tabDot = optionRequestNeedsMessagesTabAttention(counterPendingAfterAvailability);
+    expect(tabDot).toBe(headerNonNull);
+  });
+
+  it('agency does not see contradictory "waiting for agency" pills', () => {
+    const agencyLabel = attentionHeaderLabelFromSignals(counterPendingAfterAvailability, 'agency');
+    // Agency has no label at all (counter sent, waiting for client) → no contradiction
+    expect(agencyLabel).toBeNull();
+  });
+
+  it('CRITICAL: counter after availability NEVER produces waiting_for_agency_confirmation', () => {
+    const appr = deriveApprovalAttention(counterPendingAfterAvailability);
+    expect(appr).not.toBe('waiting_for_agency_confirmation');
+  });
+
+  it('role-appropriate attention: client has action, agency waits', () => {
+    const agencyLabel = attentionHeaderLabelFromSignals(counterPendingAfterAvailability, 'agency');
+    const clientLabel = attentionHeaderLabelFromSignals(counterPendingAfterAvailability, 'client');
+    // Client must act (accept/reject counter)
+    expect(clientLabel).not.toBeNull();
+    // Agency has nothing to do — correct: no attention pill
+    expect(agencyLabel).toBeNull();
+  });
+});
