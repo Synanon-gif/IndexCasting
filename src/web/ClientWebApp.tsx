@@ -63,6 +63,7 @@ import {
 } from '../services/clientDiscoverySupabase';
 import { getModelsNearLocation, roundCoord, type NearbyModel } from '../services/modelLocationsSupabase';
 import { getGuestLink, getGuestLinkModels, type GuestLinkModel, type PackageType } from '../services/guestLinksSupabase';
+import { isOrganizationOwner } from '../services/orgRoleTypes';
 import { getAgencies, getAgencyChatDisplayById, type Agency } from '../services/agenciesSupabase';
 import { AGENCY_SEGMENT_TYPES } from '../constants/agencyTypes';
 import { type ModelFilters, defaultModelFilters } from '../utils/modelFilters';
@@ -2310,7 +2311,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                 Team
               </Text>
               {clientOrgId && <OwnerBillingStatusCard variant="client" />}
-              {clientOrgId && auth.profile?.org_member_role === 'owner' && (
+              {clientOrgId && isOrganizationOwner(auth.profile?.org_member_role) && (
                 <ClientOrgMetricsPanelWrapper orgId={clientOrgId} />
               )}
               <ClientOrganizationTeamSection realClientId={realClientId} />
@@ -5841,7 +5842,7 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
   const [deleting, setDeleting] = useState(false);
   const [dissolvingOrg, setDissolvingOrg] = useState(false);
   const [orgDissolved, setOrgDissolved] = useState(false);
-  const clientIsOwner = profile?.org_member_role === 'owner';
+  const clientIsOwner = isOrganizationOwner(profile?.org_member_role);
   const ownerRoleLoading = !!realClientId && !profile?.org_member_role;
   const clientOrgId = profile?.organization_id ?? null;
 

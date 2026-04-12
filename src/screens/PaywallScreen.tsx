@@ -23,6 +23,7 @@ import {
   View,
 } from 'react-native';
 import { uiCopy } from '../constants/uiCopy';
+import { isOrganizationOwner } from '../services/orgRoleTypes';
 import { useSubscription } from '../context/SubscriptionContext';
 import { useAuth } from '../context/AuthContext';
 import { createCheckoutSession, PLAN_LIMITS, type PlanType } from '../services/subscriptionSupabase';
@@ -162,7 +163,7 @@ export default function PaywallScreen() {
   const [loadingPlan, setLoadingPlan] = useState<PlanType | null>(null);
 
   // Only owners may initiate a subscription purchase.
-  const isOwner = profile?.org_member_role === 'owner';
+  const isOwner = isOrganizationOwner(profile?.org_member_role);
 
   const isTrialExpired    = accessStatus?.reason === 'no_active_subscription';
   const isTrialAlreadyUsed = accessStatus?.reason === 'trial_already_used';

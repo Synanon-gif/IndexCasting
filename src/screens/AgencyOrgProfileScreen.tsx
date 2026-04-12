@@ -44,6 +44,7 @@ import {
   getModelsForAgencyFromSupabase,
   type SupabaseModel,
 } from '../services/modelsSupabase';
+import { isOrganizationOwner } from '../services/orgRoleTypes';
 import {
   filterAndSortModelsBySegment,
   type ModelSegment,
@@ -100,7 +101,7 @@ export function AgencyOrgProfileScreen({
   const H_PAD = spacing.md * 2;
   const cellWidth = Math.floor((width - H_PAD - CELL_GAP * 2) / 3);
 
-  const isOwner = orgMemberRole === 'owner';
+  const isOwner = isOrganizationOwner(orgMemberRole);
   const loading = loadingProfile || loadingModels;
 
   // Load org profile and seed slug draft

@@ -18,6 +18,7 @@ import { uiCopy } from '../constants/uiCopy';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { describeSendInviteFailure, resendInviteEmail } from '../services/inviteDelivery';
+import { isClientOperationalMember, isOrganizationOwner } from '../services/orgRoleTypes';
 
 const inputStyle = {
   borderWidth: 1,
@@ -108,7 +109,7 @@ export const ClientOrganizationTeamSection: React.FC<{
 
   const handleInvite = async () => {
     if (!organizationId || !inviteEmail.trim()) return;
-    if (profile?.org_member_role !== 'owner') {
+    if (!isOrganizationOwner(profile?.org_member_role)) {
       Alert.alert(uiCopy.team.permissionAlertTitle, uiCopy.team.permissionAlertOwnerOnly);
       return;
     }
@@ -253,9 +254,9 @@ export const ClientOrganizationTeamSection: React.FC<{
   const acceptedInv = invitations.filter((i) => i.status === 'accepted');
 
   // Owner + Employee can view the team and invitation list
-  const canViewTeam = profile?.org_member_role === 'owner' || profile?.org_member_role === 'employee';
+  const canViewTeam = isClientOperationalMember(profile?.org_member_role);
   // Only the organization owner may send invitations
-  const canInvite = profile?.org_member_role === 'owner';
+  const canInvite = isOrganizationOwner(profile?.org_member_role);
   // Bookers are external team members and cannot see invitation lists
   const invitationListHiddenForMember = !canViewTeam && realClientId;
 

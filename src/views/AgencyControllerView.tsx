@@ -204,6 +204,7 @@ import { B2BUnifiedCalendarBody } from '../components/B2BUnifiedCalendarBody';
 import type { CalendarViewMode } from '../components/CalendarViewModeBar';
 import { ScreenScrollView } from '../components/ScreenScrollView';
 import { uiCopy } from '../constants/uiCopy';
+import { isOrganizationOwner } from '../services/orgRoleTypes';
 import { AgencyOrgProfileScreen } from '../screens/AgencyOrgProfileScreen';
 import { OrgProfileModal } from '../components/OrgProfileModal';
 import { type ModelFilters, defaultModelFilters, filterModels } from '../utils/modelFilters';
@@ -797,7 +798,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         {tab === 'bookers' && (
           <OrganizationTeamTab
             organizationId={agencyOrganizationId}
-            canInvite={profile?.org_member_role === 'owner'}
+            canInvite={isOrganizationOwner(profile?.org_member_role)}
             members={teamMembers}
             invitations={pendingInvites}
             onRefresh={() => void loadAgencyTeam()}
@@ -816,7 +817,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
           />
         )}
 
-      {tab === 'settings' && profile?.org_member_role === 'owner' && (
+      {tab === 'settings' && isOrganizationOwner(profile?.org_member_role) && (
         <ScreenScrollView>
           <OwnerBillingStatusCard variant="agency" />
           {agencyOrganizationId && (
@@ -935,7 +936,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         </ScreenScrollView>
       )}
 
-      {tab === 'settings' && profile?.org_member_role !== 'owner' && (
+      {tab === 'settings' && !isOrganizationOwner(profile?.org_member_role) && (
         <ScreenScrollView>
           <OwnerBillingStatusCard variant="agency" />
           <View style={{ marginTop: spacing.md, marginBottom: spacing.lg }}>

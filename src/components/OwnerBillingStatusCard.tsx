@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { uiCopy } from '../constants/uiCopy';
+import { isOrganizationOwner } from '../services/orgRoleTypes';
 import { useAuth } from '../context/AuthContext';
 import { useSubscription } from '../context/SubscriptionContext';
 import {
@@ -101,7 +102,7 @@ export const OwnerBillingStatusCard: React.FC<Props> = ({ variant }) => {
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [returnBanner, setReturnBanner] = useState<'success' | 'cancel' | null>(null);
 
-  const isOwner = profile?.org_member_role === 'owner';
+  const isOwner = isOrganizationOwner(profile?.org_member_role);
   const trialEndsAt = accessStatus?.trial_ends_at ?? null;
   const reason = accessStatus?.reason;
 

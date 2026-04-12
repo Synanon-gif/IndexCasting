@@ -50,6 +50,7 @@ import {
   publicClientUrl,
   publicClientHref,
 } from '../utils/orgProfilePublicSettings';
+import { isOrganizationOwner } from '../services/orgRoleTypes';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -97,7 +98,7 @@ export function ClientOrgProfileScreen({
   const cellWidth = Math.floor((width - H_PAD - CELL_GAP * 2) / 3);
   const cellHeight = Math.floor(cellWidth * 0.85);
 
-  const isOwner = orgMemberRole === 'owner';
+  const isOwner = isOrganizationOwner(orgMemberRole);
 
   // Load profile + media in parallel
   useEffect(() => {

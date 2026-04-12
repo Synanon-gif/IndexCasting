@@ -52,6 +52,25 @@ export function invitableRolesForOrgType(orgType: OrganizationType): OrgMemberRo
 }
 
 /**
+ * Organization Owner — sole role for billing checkout, team invites, org deletion,
+ * and other owner-only surfaces (see `.cursorrules` §8).
+ * Booker / Employee must never receive owner-only actions in UI; backend enforces the same.
+ */
+export function isOrganizationOwner(role: string | null | undefined): boolean {
+  return role === 'owner';
+}
+
+/** Agency: owner and booker have operational parity (calendar, models, guest flows, etc.). */
+export function isAgencyOperationalMember(role: string | null | undefined): boolean {
+  return role === 'owner' || role === 'booker';
+}
+
+/** Client: owner and employee have operational parity (projects, requests, calendar, etc.). */
+export function isClientOperationalMember(role: string | null | undefined): boolean {
+  return role === 'owner' || role === 'employee';
+}
+
+/**
  * Typed context that a user carries after login.
  * Wird vom AuthContext geladen und gibt die vollständige Org-Identität zurück.
  */
