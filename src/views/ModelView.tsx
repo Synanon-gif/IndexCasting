@@ -217,7 +217,7 @@ const ModelUnifiedInbox: React.FC<{
           >
             <View style={{ flex: 1, minWidth: 0 }}>
               {isActionRequired && (
-                <Text style={styles.actionTag}>{uiCopy.dashboard.smartAttentionWaitingForModel}</Text>
+                <Text style={styles.actionTag}>{uiCopy.dashboard.smartAttentionLabel}</Text>
               )}
               <Text style={styles.inboxModelName}>
                 {r.model_name?.trim() ? r.model_name : copy.optionRequestUnnamedModel}

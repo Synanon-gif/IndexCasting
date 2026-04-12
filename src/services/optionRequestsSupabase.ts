@@ -1896,7 +1896,7 @@ export async function getPendingModelConfirmations(
       .eq('model_approval', 'pending')
       .eq('model_account_linked', true)
       .eq('final_status', 'option_confirmed')
-      .neq('status', 'rejected')
+      .eq('status', 'in_negotiation')
       .order('created_at', { ascending: false });
 
     if (error) {

@@ -195,6 +195,8 @@ Q9: Führt diese Änderung ein verstecktes „Connect first“ (`client_agency_c
 Q10: Leakt diese Änderung Verhandlungs-/kommerzielle Felder an Model-queries oder bricht Kalender-/Attention-Konsistenz über Rollen hinweg?
 Q11: Koppelt diese Änderung Preis (Axis 1) und Availability (Axis 2) in einem einzigen Button/Handler/RPC? (Ausnahme: client_confirm_option_job)
 Q12: Erlaubt diese Änderung dem Model eine Bestätigung BEVOR die Agency availability bestätigt hat (final_status = 'option_confirmed')? Model darf NUR nach Agency-Availability-Bestätigung handeln.
+Q13: Verändert eine Axis-1 (Preis) Aktion in dieser Änderung Axis-2 Felder (final_status, model_approval) oder umgekehrt? (Ausnahme: client_confirm_option_job als terminaler Schritt)
+Q14: Nutzt diese Änderung eine eigene Attention-/Urgency-Heuristik statt der kanonischen Pipeline (attentionHeaderLabelFromSignals / deriveApprovalAttention / deriveNegotiationAttention)?
 ```
 
 → Wenn **eine** Antwort unklar oder „möglicherweise ja" ist:
@@ -238,6 +240,13 @@ Q12: Erlaubt diese Änderung dem Model eine Bestätigung BEVOR die Agency availa
 - **Achsen-Kopplung Preis ↔ Availability:** Neuer Negotiation-Button oder Store-Funktion setzt Felder **beider** Achsen (Axis 1: `client_price_status` UND Axis 2: `final_status`) in einem einzigen Aufruf — Blocker (Risiko 25 — System-Invariante K, Fix 20260616). Einzige erlaubte Ausnahme: `client_confirm_option_job` (terminaler Schritt, erfordert BEIDE Achsen).
 - **Fee-Blockade durch Model-Approval:** UI oder Logik verhindert Preis-Aktionen (Accept / Counter / Decline proposed fee) wenn `model_approval = 'pending'` — Blocker (Risiko 25 — Model-Approval betrifft NUR Availability; Preis bleibt IMMER verhandelbar).
 - **Model-Bestätigung ohne Agency-Availability:** Neuer Code erlaubt dem Model eine Option zu bestätigen (`modelConfirmOptionRequest`, Model-Inbox-UI) ohne dass `final_status = 'option_confirmed'` (Agency hat Availability bestätigt) — Blocker (Risiko 26 — Dreischichtiges Enforcement: Service + Attention + Derive; Reihenfolge Agency→Model ist kanonisch unveränderlich).
+- **Eigene Attention-Heuristik neben kanonischer Pipeline:** Neue UI-Logik die Attention/Urgency ableitet ohne `attentionHeaderLabelFromSignals` / `deriveApprovalAttention` / `deriveNegotiationAttention` — Blocker (Risiko 27 — Tab-Dot, Kalender-Dot, Header und Listen-Rows divergieren). Siehe `system-invariants.mdc` **SMART ATTENTION & CHAT-FILTER**.
+- **Axis-1-Write verändert Axis-2-Felder:** Service/Store-Funktion für Preis-Aktion (Counter-Offer, Accept/Reject Price) setzt `final_status` oder `model_approval` — Blocker (Risiko 28 — zerstört bestätigte Verfügbarkeit; Root Cause des 2026-04-12 Bugs: `setAgencyCounterOffer` schrieb `final_status: 'option_pending'` bei Counter-Offer).
+- **System-Message-Emission an final_status gekoppelt:** Preis-bezogene System-Messages nur emittiert wenn `final_status === 'option_confirmed'` — Blocker (Risiko 29 — unterdrückt Messages wenn Availability noch offen; Achsen sind unabhängig).
+- **`getPendingModelConfirmations` weicht von 4-Condition Gate ab:** Service-Query nutzt `.neq('status', 'rejected')` statt `.eq('status', 'in_negotiation')` — Blocker (Risiko 30 — stale confirmed rows könnten in Model-Inbox „Action required" anzeigen).
+- **Model-Inbox mit Agency/Client-Copy:** Model sieht "Waiting for model approval" (agency/client-Perspektive) statt "Action required" (model-Perspektive) — Warnung. Tag-Text muss model-zentrisch sein.
+- **Model-facing Fehlertext erwähnt Preis:** Alert-Text für Model enthält "price" oder andere Preis-bezogene Begriffe — Warnung (Model darf keine Preis-Informationen sehen).
+- **`toDisplayStatus` für Model MIT priceSignals:** Model-Inbox oder Model-View ruft `toDisplayStatus(status, finalStatus, { clientPriceStatus, ... })` mit Preis-Signalen auf — Blocker (Model-Ansicht darf keine preis-basierten Display-Status zeigen wie "Price agreed").
 
 ---
 
@@ -249,3 +258,4 @@ Q12: Erlaubt diese Änderung dem Model eine Bestätigung BEVOR die Agency availa
 - Admin-Always-Access (Admin kann immer einloggen, immer alles sehen)
 - RLS-Konsistenz (keine 42P17-Fehler)
 - **Connectionless Discover / First-contact:** keine Connect-first-Pflicht; Downstream-Parität zu Discover; Packages/Guest/Projekte/Requests/Kalender/Attention wie in `system-invariants.mdc` (**FIRST-CONTACT…** **### 1**–**### 12**) und Checkliste **§2d**
+- **Smart Attention Konsistenz:** Alle Oberflächen (Header, Listen, Tab-Dots, Kalender) leiten aus derselben kanonischen Pipeline ab; keine parallelen Heuristiken; Achsen bleiben unabhängig

@@ -567,7 +567,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     } else if (!ok) {
       Alert.alert(
         uiCopy.common.error ?? 'Error',
-        'Could not confirm availability. The agency may not have accepted the price yet. Please try again later.',
+        'Could not confirm availability. The agency may not have confirmed yet, or the request status has changed. Please try again later.',
       );
     }
   };

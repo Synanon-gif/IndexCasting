@@ -348,7 +348,7 @@ describe('getPendingModelConfirmations', () => {
           eq: () => ({
             eq: () => ({
               eq: () => ({
-                neq: () => ({ order }),
+                eq: () => ({ order }),
               }),
             }),
           }),
@@ -368,7 +368,7 @@ describe('getPendingModelConfirmations', () => {
           eq: () => ({
             eq: () => ({
               eq: () => ({
-                neq: () => ({ order }),
+                eq: () => ({ order }),
               }),
             }),
           }),

@@ -1034,3 +1034,110 @@ onPress={() => { setFinalStatus('option_confirmed'); setClientPriceStatus('accep
 1. Setzt der Handler Felder von mehr als einer Achse? → STOP
 2. Setzt ein RPC sowohl `client_price_status` als auch `final_status`? → STOP (außer `client_confirm_option_job`)
 3. Blockiert UI-Text oder -Logik Fee-Aktionen basierend auf `model_approval`? → STOP
+
+## SMART ATTENTION & CHAT-FILTER — KANONISCHES DERIVATION-SYSTEM (Adversarial Audit 2026-04-12)
+
+### Kanonische Derivation-Pipeline (unveränderlich)
+
+Alle Smart-Attention-Signale werden aus **einer einzigen Pipeline** abgeleitet:
+
+```
+option_requests Felder → attentionSignalsFromOptionRequestLike() → AttentionSignalInput
+ ├─ deriveNegotiationAttention() → D1 (Preis)
+ ├─ deriveApprovalAttention() → D2 (Verfügbarkeit)
+ └─ attentionHeaderLabelFromSignals(sig, role) → Header/Pills/Dots
+```
+
+**Alle UI-Oberflächen MÜSSEN aus dieser Pipeline ableiten — keine parallelen Heuristiken:**
+
+| Oberfläche | Funktion | Konsistenz-Invariante |
+|---|---|---|
+| Agency/Client Thread-Header | `attentionHeaderLabelFromSignals(sig, role)` | = Tab-Dot = Kalender-Dot |
+| Agency/Client Listen-Rows | `attentionHeaderLabelFromSignals(sig, role)` | = Thread-Header |
+| Client Messages-Tab-Dot | `optionRequestNeedsMessagesTabAttention()` | = `attentionHeaderLabelFromSignals(sig, 'client') !== null` |
+| Agency Kalender-Action | `needsAgencyActionForOption()` → `attentionHeaderLabelFromSignals(sig, 'agency')` | = Thread-Header |
+| Client Kalender-Dot | `UnifiedCalendarAgenda` → `attentionHeaderLabelFromSignals(calSig, 'client')` | = Thread-Header |
+| Kalender-Badge | `getCalendarProjectionBadge()` → nur `deriveApprovalAttention()` (D2) | Bewusst D2-lastig (Lifecycle) |
+| Kalender-Next-Step | `getCalendarDetailNextStepText()` → D2 + D1 (gleiche Priorität wie Header) | = Thread-Header-Semantik |
+| Kalender-Grid-Farbe | `calendarGridColorForOptionItem()` → nur `deriveApprovalAttention()` | Bewusst vereinfacht |
+| Model-Inbox | `modelInboxRequiresModelConfirmation()` | 4-Condition Gate (kein Header-Label) |
+
+### Achsen-Write-Invariante (Fix 2026-04-12, Root Cause #1)
+
+**NIEMALS** darf eine Axis-1-Aktion (Preis) die Axis-2-Felder (`final_status`, `model_approval`) verändern:
+
+```typescript
+// ❌ VERBOTEN: Counter-Offer setzt final_status zurück (zerstört bestätigte Verfügbarkeit)
+.update({ agency_counter_price: counterPrice, client_price_status: 'pending', final_status: 'option_pending' })
+
+// ✅ KORREKT: Counter-Offer berührt nur Axis-1-Felder
+.update({ agency_counter_price: counterPrice, client_price_status: 'pending' })
+```
+
+**Gefixt:** `setAgencyCounterOffer` (Service), `agencyCounterOfferStore` (Store-Fallback), `clientAcceptCounterStore` (System-Message-Guard entfernt).
+
+### System-Message-Emission — Axis-unabhängig (Fix 2026-04-12, Root Cause #2)
+
+System-Messages für Preis-Aktionen (Axis 1) MÜSSEN **immer** emittiert werden, unabhängig vom `final_status` (Axis 2):
+
+```typescript
+// ❌ VERBOTEN: System-Message nur wenn Availability bestätigt
+if (updated.final_status === 'option_confirmed') {
+  await addOptionSystemMessage(req.id, 'client_accepted_counter');
+}
+
+// ✅ KORREKT: System-Message immer emittieren (Achsen sind unabhängig)
+await addOptionSystemMessage(req.id, 'client_accepted_counter');
+```
+
+### Chat-Filter — Drei-Schichten-Defense (unveränderlich)
+
+Preis-Daten sind für Models auf **drei Ebenen** geschützt:
+
+1. **API-Layer:** `OPTION_REQUEST_SELECT_MODEL_SAFE` enthält keine Preis-Felder (`proposed_price`, `agency_counter_price`, `client_price_status` fehlen)
+2. **Server-Filter:** `getOptionMessages(..., { viewerRole: 'model' })` → `.eq('visible_to_model', true)`
+3. **Client-Filter:** `shouldShowSystemMessageForViewer(msg, 'model')` → versteckt preis-relevante System-Messages
+
+**Verboten:** Model-facing Query mit `OPTION_REQUEST_SELECT` statt `OPTION_REQUEST_SELECT_MODEL_SAFE`.
+
+### Model-Inbox — Kanonisches 4-Condition Gate (unveränderlich)
+
+Model-Bestätigungs-Buttons erscheinen **nur** wenn alle vier Bedingungen gleichzeitig erfüllt sind:
+
+```typescript
+modelInboxRequiresModelConfirmation({
+  modelAccountLinked: true,       // 1. Hat App-Account
+  modelApproval: 'pending',       // 2. Noch nicht entschieden
+  finalStatus: 'option_confirmed', // 3. Agency hat Verfügbarkeit bestätigt
+  status: 'in_negotiation',       // 4. Nicht terminal
+}) === true
+```
+
+**Service-Funktion `getPendingModelConfirmations`** nutzt identische Filter (`.eq('status', 'in_negotiation')`, nicht `.neq('status', 'rejected')`).
+**Model-Inbox Tag-Text:** `uiCopy.dashboard.smartAttentionLabel` ("Action required") — model-zentrische Perspektive, nicht agency/client-Perspektive.
+
+### Kalender ↔ Thread-Header Konsistenz-Regeln
+
+1. **Client Kalender-Dot** (`UnifiedCalendarAgenda`) MUSS mit `attentionHeaderLabelFromSignals(sig, 'client')` übereinstimmen
+2. **Agency Kalender-Action** (`needsAgencyActionForOption`) MUSS mit `attentionHeaderLabelFromSignals(sig, 'agency')` übereinstimmen
+3. **Kalender-Badge** darf vom Header-Label abweichen (bewusst D2-lastig), aber NICHT widersprechen
+4. **Kalender-Next-Step** MUSS dieselbe Priorität wie der Header nutzen (D2 action > D1 action > D2 waiting > D1 waiting)
+5. **DB-Trigger** `fn_ensure_calendar_on_option_confirmed` und `fn_cancel_calendar_on_option_rejected` pflegen `calendar_entries` — UI-Wahrheit kommt aus `option_requests`, nicht aus Kalender-JSON
+
+### Verbotene Patterns (Regression-Prevention)
+
+```typescript
+// ❌ VERBOTEN: Eigene Attention-Heuristik neben der kanonischen Pipeline
+const isUrgent = request.clientPriceStatus === 'pending' && request.agencyCounterPrice != null;
+// → Muss stattdessen attentionHeaderLabelFromSignals nutzen
+
+// ❌ VERBOTEN: model_account_linked ?? true (kanonischer Fallback ist immer ?? false)
+const hasAccount = request.modelAccountLinked ?? true;
+
+// ❌ VERBOTEN: Model-facing UI zeigt Preis-bezogene Attention-Labels
+// Model sieht KEINE Preis-Labels — nur Verfügbarkeits-Bestätigung
+
+// ❌ VERBOTEN: toDisplayStatus für Model MIT priceSignals aufrufen
+toDisplayStatus(status, finalStatus, { clientPriceStatus, agencyCounterPrice, proposedPrice })
+// → Model-Inbox: toDisplayStatus(status, finalStatus) — OHNE priceSignals
+```
