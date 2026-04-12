@@ -13,6 +13,8 @@ import {
   locationSourceLabel,
   type ModelLocation,
 } from '../services/modelLocationsSupabase';
+import { getPhotosForModel, type ModelPhoto } from '../services/modelPhotosSupabase';
+import { StorageImage } from '../components/StorageImage';
 import { supabase } from '../../lib/supabase';
 import { UI_DOUBLE_SUBMIT_DEBOUNCE_MS } from '../../lib/validation';
 import { getModelBookingThreadIds, getRecruitingThread, subscribeRecruitingChats } from '../store/recruitingChats';
@@ -23,8 +25,6 @@ import {
   addMessage,
   getRequestByThreadId,
   getOutstandingOptionsForModel,
-  approveOptionAsModel,
-  rejectOptionAsModel,
   loadOptionsForModel,
   loadMessagesForThread,
   type OptionRequest,
@@ -167,8 +167,10 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   const [confirmingBookingId, setConfirmingBookingId] = useState<string | null>(null);
   const [rejectingBookingId, setRejectingBookingId] = useState<string | null>(null);
   const [optionActionModal, setOptionActionModal] = useState<{ id: string; action: 'confirm' | 'reject' } | null>(null);
-  const [actingOnOption, setActingOnOption] = useState(false);
   const [addingEntry, setAddingEntry] = useState(false);
+
+  // Portfolio photos the agency uploaded for this model
+  const [modelPhotos, setModelPhotos] = useState<ModelPhoto[]>([]);
 
   // Location state — active source + manual 'current' city input
   const [modelLocation, setModelLocation] = useState<ModelLocation | null>(null);
@@ -456,6 +458,15 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   }, [profile?.id]);
 
   useEffect(() => {
+    if (!profile?.id) return;
+    let cancelled = false;
+    void getPhotosForModel(profile.id).then((photos) => {
+      if (!cancelled) setModelPhotos(photos.filter((p) => p.photo_type !== 'private'));
+    });
+    return () => { cancelled = true; };
+  }, [profile?.id]);
+
+  useEffect(() => {
     setOptions(getOptionRequests());
     const unsub = subscribe(() => setOptions(getOptionRequests()));
     return unsub;
@@ -570,10 +581,12 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     }
   };
 
-  const outstandingOptions = useMemo(() =>
-    profile ? getOutstandingOptionsForModel(profile.id) : [],
-    [profile]
-  );
+  const outstandingOptions = useMemo(() => {
+    if (!profile) return [];
+    const all = getOutstandingOptionsForModel(profile.id);
+    const confirmedIds = new Set(pendingConfirmations.map((c) => c.id));
+    return all.filter((o) => !confirmedIds.has(o.threadId));
+  }, [profile, pendingConfirmations]);
 
   const jobTickets = useMemo(
     () =>
@@ -667,25 +680,10 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     }
   };
 
-  const handleApproveOption = async (threadId: string) => {
-    if (actingOnOption) return;
-    setActingOnOption(true);
-    try {
-      await approveOptionAsModel(threadId);
-    } finally {
-      setActingOnOption(false);
-    }
-  };
-
-  const handleRejectOption = async (threadId: string) => {
-    if (actingOnOption) return;
-    setActingOnOption(true);
-    try {
-      await rejectOptionAsModel(threadId);
-    } finally {
-      setActingOnOption(false);
-    }
-  };
+  // Approve/reject for store-based options is unused since the DB-based
+  // "Booking requests" (pendingConfirmations) section handles model actions.
+  // Legacy store functions (approveOptionAsModel / rejectOptionAsModel)
+  // remain available in the store if needed for future flows.
 
   const insets = useSafeAreaInsets();
   const bottomTabInset = BOTTOM_TAB_BAR_HEIGHT + insets.bottom;
@@ -891,6 +889,83 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
               <Measure label={uiCopy.modelEdit.hipsLabel} value={profile.hips} />
             </View>
           </View>
+
+          {/* ── My Portfolio Section ──────────────────────── */}
+          {modelPhotos.length > 0 && (
+            <View style={st.section}>
+              <Text style={st.sectionLabel}>My Portfolio</Text>
+              <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm }}>
+                Photos managed by your agency. Contact your agency if you want to update these.
+              </Text>
+              {(() => {
+                const portfolioPhotos = modelPhotos.filter((p) => p.photo_type === 'portfolio');
+                const polaroidPhotos = modelPhotos.filter((p) => p.photo_type === 'polaroid');
+                return (
+                  <>
+                    {portfolioPhotos.length > 0 && (
+                      <>
+                        <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary, marginBottom: 4 }}>
+                          Portfolio ({portfolioPhotos.length})
+                        </Text>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.md }}>
+                          {portfolioPhotos.map((photo) => (
+                            <View
+                              key={photo.id}
+                              style={{
+                                width: isMobileModel ? 100 : 120,
+                                height: isMobileModel ? 140 : 168,
+                                borderRadius: 8,
+                                overflow: 'hidden',
+                                borderWidth: 1,
+                                borderColor: colors.border,
+                                backgroundColor: '#f5f5f5',
+                              }}
+                            >
+                              <StorageImage
+                                uri={photo.url}
+                                style={{ width: '100%', height: '100%' }}
+                                resizeMode="cover"
+                              />
+                            </View>
+                          ))}
+                        </View>
+                      </>
+                    )}
+                    {polaroidPhotos.length > 0 && (
+                      <>
+                        <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary, marginBottom: 4 }}>
+                          Polaroids ({polaroidPhotos.length})
+                        </Text>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
+                          {polaroidPhotos.map((photo) => (
+                            <View
+                              key={photo.id}
+                              style={{
+                                width: isMobileModel ? 80 : 100,
+                                height: isMobileModel ? 80 : 100,
+                                borderRadius: 8,
+                                overflow: 'hidden',
+                                borderWidth: 1,
+                                borderColor: colors.border,
+                                backgroundColor: '#f5f5f5',
+                              }}
+                            >
+                              <StorageImage
+                                uri={photo.url}
+                                style={{ width: '100%', height: '100%' }}
+                                resizeMode="cover"
+                              />
+                            </View>
+                          ))}
+                        </View>
+                      </>
+                    )}
+                  </>
+                );
+              })()}
+            </View>
+          )}
+          {/* ── End My Portfolio Section ──────────────────── */}
 
           <View style={[st.section, { marginTop: spacing.lg, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border }]}>
             <Text style={st.sectionLabel}>{uiCopy.privacyData.sectionTitle}</Text>
@@ -1223,9 +1298,9 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
             </>
           )}
 
-          <Text style={[st.sectionLabel, { marginTop: pendingConfirmations.length > 0 ? spacing.xl : 0 }]}>Job tickets</Text>
+          <Text style={[st.sectionLabel, { marginTop: pendingConfirmations.length > 0 ? spacing.xl : 0 }]}>Confirmed jobs</Text>
           <Text style={st.metaText}>
-            Confirmed options and jobs. Fee details are not shown to models (agency–client only).
+            Confirmed options and jobs. Fee details are handled between agency and client.
           </Text>
           {jobTickets.length === 0 ? (
             <Text style={[st.metaText, { marginTop: spacing.sm }]}>No confirmed tickets yet.</Text>
@@ -1252,33 +1327,32 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
             ))
           )}
 
-          <Text style={[st.sectionLabel, { marginTop: spacing.xl }]}>Outstanding options</Text>
-          <Text style={st.metaText}>Options that need your approval before the agency can confirm.</Text>
-          {outstandingOptions.length === 0 ? (
-            <Text style={[st.metaText, { marginTop: spacing.md }]}>No outstanding options.</Text>
-          ) : (
-            outstandingOptions.map((o) => (
-              <View key={o.threadId} style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: spacing.md, marginTop: spacing.sm }}>
-                <Text style={{ ...typography.body, color: colors.textPrimary }}>{o.clientName} · {o.modelName}</Text>
-                <Text style={st.metaText}>{formatDateWithOptionalTimeRange(o.date, o.startTime, o.endTime)}</Text>
-                <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
-                  <TouchableOpacity
-                    onPress={() => handleApproveOption(o.threadId)}
-                    disabled={actingOnOption}
-                    style={{ flex: 1, borderRadius: 999, backgroundColor: colors.buttonOptionGreen, paddingVertical: spacing.sm, alignItems: 'center', opacity: actingOnOption ? 0.5 : 1 }}
-                  >
-                    <Text style={{ ...typography.label, color: '#fff' }}>Approve</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => handleRejectOption(o.threadId)}
-                    disabled={actingOnOption}
-                    style={{ flex: 1, borderRadius: 999, borderWidth: 1, borderColor: colors.buttonSkipRed, paddingVertical: spacing.sm, alignItems: 'center', opacity: actingOnOption ? 0.5 : 1 }}
-                  >
-                    <Text style={{ ...typography.label, color: colors.buttonSkipRed }}>Decline</Text>
-                  </TouchableOpacity>
+          {outstandingOptions.length > 0 && (
+            <>
+              <Text style={[st.sectionLabel, { marginTop: spacing.xl }]}>Awaiting agency</Text>
+              <Text style={st.metaText}>
+                These options are in negotiation. Your agency will ask for your availability once confirmed.
+              </Text>
+              {outstandingOptions.map((o) => (
+                <View
+                  key={o.threadId}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    borderRadius: 12,
+                    padding: spacing.md,
+                    marginTop: spacing.sm,
+                    backgroundColor: colors.surface,
+                  }}
+                >
+                  <Text style={{ ...typography.body, color: colors.textPrimary }}>{o.clientName} · {o.modelName}</Text>
+                  <Text style={st.metaText}>{formatDateWithOptionalTimeRange(o.date, o.startTime, o.endTime)}</Text>
+                  <Text style={{ ...typography.label, fontSize: 10, color: '#1565c0', marginTop: 4 }}>
+                    Waiting for agency confirmation
+                  </Text>
                 </View>
-              </View>
-            ))
+              ))}
+            </>
           )}
 
           <Text style={[st.sectionLabel, { marginTop: spacing.xl }]}>All options</Text>
@@ -1342,8 +1416,8 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
             {
               key: 'options' as const,
               label: `Options${
-                outstandingOptions.length + pendingConfirmations.length
-                  ? ` (${outstandingOptions.length + pendingConfirmations.length})`
+                pendingConfirmations.length
+                  ? ` (${pendingConfirmations.length})`
                   : ''
               }`,
             },
