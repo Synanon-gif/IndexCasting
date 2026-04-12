@@ -118,6 +118,7 @@ import {
   purgeOptionThreadFromStore,
   refreshOptionRequestInCache,
   loadMessagesForThread,
+  agencyConfirmAvailabilityStore,
   agencyAcceptClientPriceStore,
   agencyCounterOfferStore,
   agencyRejectClientPriceStore,
@@ -4579,6 +4580,13 @@ const MessagesView: React.FC<MessagesViewProps> = ({
     }, 4000);
   }, [onOptionProjectionChanged]);
 
+  const runAgencyConfirmAvailability = useCallback(async () => {
+    if (!request?.threadId) return;
+    await agencyConfirmAvailabilityStore(request.threadId);
+    setRequests(getOptionRequests());
+    showNegotiationCalendarHint();
+  }, [request?.threadId, showNegotiationCalendarHint]);
+
   const runAgencyAcceptClientPrice = useCallback(async () => {
     if (!request?.threadId) return;
     await agencyAcceptClientPriceStore(request.threadId);
@@ -4999,6 +5007,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                   setEditingAssignmentThreadId={setEditingAssignmentThreadId}
                   openOrgChatBusy={openOrgChatBusy}
                   openOrgChatFromRequest={openOrgChatFromRequest}
+                  onAgencyConfirmAvailability={runAgencyConfirmAvailability}
                   onAgencyAcceptClientPrice={runAgencyAcceptClientPrice}
                   onAgencyRejectClientPrice={runAgencyRejectClientPrice}
                   onAgencyCounterOffer={runAgencyCounterOffer}
@@ -5035,6 +5044,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
               setEditingAssignmentThreadId={setEditingAssignmentThreadId}
               openOrgChatBusy={openOrgChatBusy}
               openOrgChatFromRequest={openOrgChatFromRequest}
+              onAgencyConfirmAvailability={runAgencyConfirmAvailability}
               onAgencyAcceptClientPrice={runAgencyAcceptClientPrice}
               onAgencyRejectClientPrice={runAgencyRejectClientPrice}
               onAgencyCounterOffer={runAgencyCounterOffer}

@@ -97,6 +97,7 @@ export type SupabaseOptionMessage = {
 export type SystemOptionMessageKind =
   | 'no_model_account'
   | 'no_model_account_client_notice'
+  | 'agency_confirmed_availability'
   | 'agency_accepted_price'
   | 'agency_declined_price'
   | 'agency_counter_offer'

@@ -1287,6 +1287,7 @@ export const uiCopy = {
   systemMessages: {
     /** Centered workflow lines (`from_role = system`); not a participant chat message. */
     systemMessageLabel: 'System',
+    agencyConfirmedAvailability: 'Agency confirmed availability for this option.',
     agencyAcceptedPrice: 'Agency accepted the proposed fee.',
     agencyDeclinedPrice: 'Agency declined the proposed fee. A counter offer can be sent below.',
     agencyCounterOffer: (price: number, currency: string) => `Agency proposed ${price} ${currency}.`,
@@ -1305,7 +1306,8 @@ export const uiCopy = {
   /** Option/casting negotiation thread — fullscreen chat chrome (client + agency). */
   optionNegotiationChat: {
     back: 'Back',
-    confirmOption: 'Confirm option',
+    confirmOption: 'Confirm availability',
+    acceptProposedFee: 'Accept proposed fee',
     counterOffer: 'Make counter offer',
     rejectOption: 'Remove request',
     /** Agency: counter while client proposed price is still pending */
@@ -1334,9 +1336,9 @@ export const uiCopy = {
     counterPriceLabel: 'Counter',
     /** Shown when client_price_status is accepted and option/job is confirmed — canonical agreed fee. */
     agreedPriceLabel: 'Agreed price',
-    /** Agency: linked model has not pre-approved — negotiation actions stay disabled until the model acts in the model app. */
+    /** Agency: linked model has not pre-approved — availability confirmation waits on model, price negotiation stays independent. */
     modelMustPreApproveBeforeAgencyActs:
-      'Waiting for the model to confirm availability in the model app (Profile → Options or Calendar) before you can confirm or counter the fee.',
+      'Waiting for the model to confirm availability in the model app. You can still negotiate the fee independently.',
     /** Agency: model pre-approved availability — price negotiation is enabled. */
     modelAvailabilityConfirmedHint: 'Model availability confirmed — you can negotiate the fee with the client.',
     /** Agency: no linked model account — client/agency negotiation does not wait on model app approval. */
@@ -1363,12 +1365,13 @@ export const uiCopy = {
     negotiationFeeClosedJobConfirmed: 'Job confirmed. Fee negotiation is closed.',
     /** Agency: client declined proposed fee — prompt to send another counter. */
     agencyNegotiationAfterClientDecline: 'Client declined the proposed fee — you can send a new counter-offer below.',
+    showDetails: 'Show details',
+    hideDetails: 'Hide details',
     /**
-     * Agency — always visible above fee actions when negotiation is allowed.
-     * Explains that counter-offer starts with “Make counter offer” (discoverability).
+     * Agency — short hint above fee actions.
      */
     agencyNegotiationFeeStepIntro:
-      'Negotiate the fee with the client: tap “Make counter offer” to enter an amount and send it — the client sees it in this thread and in Messages. Use Confirm to accept their proposed fee, or Remove request to end before the job.',
+      'Negotiate the fee: use “Accept proposed fee” or “Make counter offer”.',
     /** Agency: counter sent; client must accept or decline before another counter. */
     agencyCounterAwaitingClientResponse:
       'Your counter-offer is pending. Waiting for the client to accept or decline.',

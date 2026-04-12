@@ -44,6 +44,7 @@ import {
   purgeOptionThreadFromStore,
   refreshOptionRequestInCache,
   loadMessagesForThread,
+  agencyConfirmAvailabilityStore,
   agencyAcceptClientPriceStore,
   agencyCounterOfferStore,
   agencyRejectClientPriceStore,
@@ -4805,6 +4806,18 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
     }, 4000);
   }, [onOptionProjectionChanged]);
 
+  const runAgencyConfirmAvailability = useCallback(async () => {
+    if (!request?.threadId || processingRequestId) return;
+    setProcessingRequestId(request.threadId);
+    try {
+      await agencyConfirmAvailabilityStore(request.threadId);
+      setRequests(getOptionRequests());
+      showNegotiationCalendarHint();
+    } finally {
+      setProcessingRequestId(null);
+    }
+  }, [request?.threadId, processingRequestId, showNegotiationCalendarHint]);
+
   const runAgencyAcceptClientPrice = useCallback(async () => {
     if (!request?.threadId || processingRequestId) return;
     setProcessingRequestId(request.threadId);
@@ -4992,6 +5005,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                     setEditingAssignmentThreadId={setEditingAssignmentThreadId}
                     openOrgChatBusy={openOrgChatBusy}
                     openOrgChatFromRequest={openOrgChatFromRequest}
+                    onAgencyConfirmAvailability={runAgencyConfirmAvailability}
                     onAgencyAcceptClientPrice={runAgencyAcceptClientPrice}
                     onAgencyRejectClientPrice={runAgencyRejectClientPrice}
                     onAgencyCounterOffer={runAgencyCounterOffer}
@@ -5030,6 +5044,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                 setEditingAssignmentThreadId={setEditingAssignmentThreadId}
                 openOrgChatBusy={openOrgChatBusy}
                 openOrgChatFromRequest={openOrgChatFromRequest}
+                onAgencyConfirmAvailability={runAgencyConfirmAvailability}
                 onAgencyAcceptClientPrice={runAgencyAcceptClientPrice}
                 onAgencyRejectClientPrice={runAgencyRejectClientPrice}
                 onAgencyCounterOffer={runAgencyCounterOffer}

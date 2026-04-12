@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, TextInput, StyleSheet, Platform } from 'react-native';
 import { colors, spacing, typography } from '../../theme/theme';
 import { uiCopy } from '../../constants/uiCopy';
@@ -34,6 +34,9 @@ export type NegotiationThreadFooterProps = {
   setEditingAssignmentThreadId: React.Dispatch<React.SetStateAction<string | null>>;
   openOrgChatBusy: boolean;
   openOrgChatFromRequest: () => void;
+  /** Agency: confirm AVAILABILITY only (Axis 2 — final_status). */
+  onAgencyConfirmAvailability: () => Promise<void>;
+  /** Agency: accept client's proposed PRICE only (Axis 1 — client_price_status). */
   onAgencyAcceptClientPrice: () => Promise<void>;
   onAgencyRejectClientPrice: () => Promise<void>;
   onAgencyCounterOffer: (amount: number) => Promise<void>;
@@ -50,7 +53,7 @@ export type NegotiationThreadFooterProps = {
   showAgencyExtras?: boolean;
   /** Client web: full assignment editor; agency app: one-line read-only when a flag exists. */
   assignmentMode?: 'manage' | 'readonly';
-  /** First pill label next to “Open org chat” (agency thread copy vs. generic negotiation). */
+  /** First pill label next to "Open org chat" (agency thread copy vs. generic negotiation). */
   contextThreadLabel?: string;
   /** When true, org-chat button also requires `request.agencyId` (client web). Agency app passes false. */
   requireAgencyIdForOrgChat?: boolean;
@@ -62,7 +65,7 @@ export type NegotiationThreadFooterProps = {
 
 /**
  * Consolidated negotiation footer: assignment, org chat, model/final banners, agency/client CTAs + inline counter.
- * Same behavior as previous inline blocks in ClientWebApp / AgencyControllerView — presentation only.
+ * Availability (Axis 2) and Price (Axis 1) buttons are fully decoupled.
  */
 export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = ({
   request,
@@ -84,6 +87,7 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
   setEditingAssignmentThreadId,
   openOrgChatBusy,
   openOrgChatFromRequest,
+  onAgencyConfirmAvailability,
   onAgencyAcceptClientPrice,
   onAgencyRejectClientPrice,
   onAgencyCounterOffer,
@@ -99,8 +103,7 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
   suppressDuplicateMeta = false,
 }) => {
   const busy = actionBusy;
-  /** Price axis is independent — agency can always negotiate price regardless of model approval. */
-  const agencyMayActOnFee = true;
+  const [detailsExpanded, setDetailsExpanded] = useState(false);
 
   const signals = attentionSignalsFromOptionRequestLike({
     status: status ?? request.status,
@@ -115,15 +118,21 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
   const isMobileNative = Platform.OS !== 'web';
   const agencyAwaitingClientOnCounter =
     isAgency &&
-    agencyMayActOnFee &&
     !priceLocked &&
     agencyCounterPrice != null &&
     clientPriceStatus === 'pending' &&
     finalStatus !== 'job_confirmed' &&
     status !== 'rejected';
 
+  const isTerminal = finalStatus === 'job_confirmed' || status === 'rejected';
+  const availabilityNotYetConfirmed =
+    finalStatus !== 'option_confirmed' && finalStatus !== 'job_confirmed';
+  const modelLinked = request.modelAccountLinked === true;
+  const modelPending = modelLinked && request.modelApproval === 'pending';
+
   return (
     <>
+      {/* ── Assignment (readonly or manage) ── */}
       {assignmentMode === 'readonly' && request.clientOrganizationId && assignmentByClientOrgId[request.clientOrganizationId] ? (
         <Text style={[styles.metaText, { marginBottom: spacing.xs }]}>
           {uiCopy.optionNegotiationChat.clientAssignmentLabel}: {assignmentByClientOrgId[request.clientOrganizationId].label}
@@ -194,6 +203,8 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
           ))}
         </View>
       )}
+
+      {/* ── Org chat row ── */}
       <View style={[
         { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.xs, marginBottom: isMobileNative ? spacing.xs : spacing.sm },
         isMobileNative && { opacity: 0.8 },
@@ -220,111 +231,130 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
           </Text>
         </TouchableOpacity>
       </View>
-      {isAgency &&
-        request.modelAccountLinked !== false &&
-        request.modelApproval === 'pending' &&
-        finalStatus !== 'job_confirmed' &&
-        status !== 'rejected' && (
-          <Text
-            style={{
-              ...typography.label,
-              fontSize: 11,
-              color: colors.textSecondary,
-              marginBottom: spacing.sm,
-            }}
-          >
-            {uiCopy.optionNegotiationChat.modelMustPreApproveBeforeAgencyActs}
-          </Text>
-        )}
-      {!suppressDuplicateMeta && showAgencyExtras && request.proposedPrice != null && (
-        <Text style={{ ...typography.label, fontSize: 10, color: colors.accentBrown, marginBottom: spacing.xs }}>
-          {uiCopy.optionNegotiationChat.proposedPriceLabel}:{' '}
-          {currency === 'USD' ? '$' : currency === 'GBP' ? '£' : currency === 'CHF' ? 'CHF ' : '€'}
-          {request.proposedPrice}
+
+      {/* ── Compact model-status hint (agency only) ── */}
+      {isAgency && !isTerminal && modelPending && (
+        <Text style={styles.compactHint}>
+          {uiCopy.optionNegotiationChat.modelMustPreApproveBeforeAgencyActs}
         </Text>
       )}
-      {!suppressDuplicateMeta && request.modelAccountLinked === false ? (
-        <View style={styles.noModelBanner}>
-          <Text style={{ ...typography.label, fontSize: 11, color: colors.textPrimary }}>
-            {uiCopy.dashboard.optionRequestFinalStatusNoModelAppHint}
-          </Text>
-        </View>
-      ) : !suppressDuplicateMeta && showAgencyExtras ? (
-        <View
-          style={[
-            styles.approvalBanner,
-            request.modelApproval === 'approved' && styles.approvalBannerApproved,
-            request.modelApproval === 'rejected' && styles.approvalBannerRejected,
-            request.modelApproval === 'pending' && styles.approvalBannerPending,
-          ]}
+
+      {/* ── Collapsible details toggle ── */}
+      {isAgency && !isTerminal && (
+        <TouchableOpacity
+          style={{ marginBottom: spacing.xs }}
+          onPress={() => setDetailsExpanded((prev) => !prev)}
         >
-          <Text
-            style={[
-              styles.approvalBannerText,
-              request.modelApproval === 'approved' && styles.approvalBannerTextApproved,
-              request.modelApproval === 'rejected' && styles.approvalBannerTextRejected,
-              request.modelApproval === 'pending' && styles.approvalBannerTextPending,
-            ]}
+          <Text style={styles.toggleText}>
+            {detailsExpanded
+              ? uiCopy.optionNegotiationChat.hideDetails
+              : uiCopy.optionNegotiationChat.showDetails}
+          </Text>
+        </TouchableOpacity>
+      )}
+
+      {/* ── Expandable detail banners ── */}
+      {detailsExpanded && (
+        <>
+          {!suppressDuplicateMeta && showAgencyExtras && request.proposedPrice != null && (
+            <Text style={{ ...typography.label, fontSize: 10, color: colors.accentBrown, marginBottom: spacing.xs }}>
+              {uiCopy.optionNegotiationChat.proposedPriceLabel}:{' '}
+              {currency === 'USD' ? '$' : currency === 'GBP' ? '£' : currency === 'CHF' ? 'CHF ' : '€'}
+              {request.proposedPrice}
+            </Text>
+          )}
+          {!suppressDuplicateMeta && request.modelAccountLinked === false ? (
+            <View style={styles.noModelBanner}>
+              <Text style={{ ...typography.label, fontSize: 11, color: colors.textPrimary }}>
+                {uiCopy.dashboard.optionRequestFinalStatusNoModelAppHint}
+              </Text>
+            </View>
+          ) : !suppressDuplicateMeta && showAgencyExtras ? (
+            <View
+              style={[
+                styles.approvalBanner,
+                request.modelApproval === 'approved' && styles.approvalBannerApproved,
+                request.modelApproval === 'rejected' && styles.approvalBannerRejected,
+                request.modelApproval === 'pending' && styles.approvalBannerPending,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.approvalBannerText,
+                  request.modelApproval === 'approved' && styles.approvalBannerTextApproved,
+                  request.modelApproval === 'rejected' && styles.approvalBannerTextRejected,
+                  request.modelApproval === 'pending' && styles.approvalBannerTextPending,
+                ]}
+              >
+                {request.modelApproval === 'approved'
+                  ? uiCopy.dashboard.optionRequestModelApprovalApproved
+                  : request.modelApproval === 'rejected'
+                    ? uiCopy.dashboard.optionRequestModelApprovalRejected
+                    : uiCopy.dashboard.optionRequestModelApprovalPending}
+              </Text>
+            </View>
+          ) : null}
+          {!suppressDuplicateMeta && finalStatus ? (
+            <View
+              style={[
+                styles.finalBanner,
+                finalStatus === 'job_confirmed'
+                  ? { backgroundColor: 'rgba(0,120,0,0.15)' }
+                  : finalStatus === 'option_confirmed'
+                    ? { backgroundColor: 'rgba(0,80,200,0.12)' }
+                    : { backgroundColor: 'rgba(120,120,0,0.12)' },
+              ]}
+            >
+              <Text style={{ ...typography.label, fontSize: 11, color: colors.textPrimary, flexShrink: 1 }}>
+                {request.requestType === 'casting' ? uiCopy.dashboard.threadContextCasting : uiCopy.dashboard.threadContextOption} -{' '}
+                {finalStatus === 'job_confirmed'
+                  ? uiCopy.dashboard.optionRequestStatusJobConfirmed
+                  : finalStatus === 'option_confirmed'
+                    ? uiCopy.dashboard.optionRequestStatusConfirmed
+                    : uiCopy.dashboard.optionRequestStatusPending}
+              </Text>
+            </View>
+          ) : null}
+        </>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════
+          AGENCY ACTION BUTTONS — Axis 2 (Availability) fully separate from Axis 1 (Price)
+         ══════════════════════════════════════════════════════════════════ */}
+
+      {/* ── Axis 2: Confirm availability ── */}
+      {isAgency && !isTerminal && availabilityNotYetConfirmed && (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm }}>
+          <TouchableOpacity
+            style={[styles.filterPill, { backgroundColor: colors.buttonOptionGreen }, busy && { opacity: 0.5 }]}
+            disabled={busy}
+            onPress={() => { void onAgencyConfirmAvailability(); }}
           >
-            {request.modelApproval === 'approved'
-              ? uiCopy.dashboard.optionRequestModelApprovalApproved
-              : request.modelApproval === 'rejected'
-                ? uiCopy.dashboard.optionRequestModelApprovalRejected
-                : uiCopy.dashboard.optionRequestModelApprovalPending}
-          </Text>
+            <Text style={[styles.filterPillLabel, { color: '#fff' }]}>{uiCopy.optionNegotiationChat.confirmOption}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.filterPill, { borderWidth: 1, borderColor: colors.buttonSkipRed }]}
+            onPress={onRejectNegotiation}
+          >
+            <Text style={[styles.filterPillLabel, { color: colors.buttonSkipRed }]}>{uiCopy.optionNegotiationChat.rejectOption}</Text>
+          </TouchableOpacity>
         </View>
-      ) : null}
-      {!suppressDuplicateMeta && finalStatus ? (
-        <View
-          style={[
-            styles.finalBanner,
-            finalStatus === 'job_confirmed'
-              ? { backgroundColor: 'rgba(0,120,0,0.15)' }
-              : finalStatus === 'option_confirmed'
-                ? { backgroundColor: 'rgba(0,80,200,0.12)' }
-                : { backgroundColor: 'rgba(120,120,0,0.12)' },
-          ]}
-        >
-          <Text style={{ ...typography.label, fontSize: 11, color: colors.textPrimary, flexShrink: 1 }}>
-            {request.requestType === 'casting' ? uiCopy.dashboard.threadContextCasting : uiCopy.dashboard.threadContextOption} -{' '}
-            {finalStatus === 'job_confirmed'
-              ? uiCopy.dashboard.optionRequestStatusJobConfirmed
-              : finalStatus === 'option_confirmed'
-                ? uiCopy.dashboard.optionRequestStatusConfirmed
-                : uiCopy.dashboard.optionRequestStatusPending}
-          </Text>
-        </View>
-      ) : null}
+      )}
+
+      {/* ── Fee negotiation hint (compact) ── */}
       {isAgency &&
-        agencyMayActOnFee &&
         !priceLocked &&
         !agencyAwaitingClientOnCounter &&
-        finalStatus !== 'job_confirmed' &&
-        status !== 'rejected' &&
-        (clientPriceStatus === 'pending' || clientPriceStatus === 'rejected') && (
-        <Text
-          style={{
-            ...typography.body,
-            fontSize: 12,
-            lineHeight: 17,
-            color: colors.textSecondary,
-            marginBottom: spacing.sm,
-          }}
-        >
+        !isTerminal && (
+        <Text style={styles.compactHint}>
           {uiCopy.optionNegotiationChat.agencyNegotiationFeeStepIntro}
         </Text>
       )}
-      {isAgency && agencyMayActOnFee && agencyAwaitingClientOnCounter && (
+
+      {/* ── Agency waiting for client on counter ── */}
+      {isAgency && agencyAwaitingClientOnCounter && (
         <>
-          <Text
-            style={{
-              ...typography.body,
-              fontSize: 12,
-              lineHeight: 17,
-              color: colors.textSecondary,
-              marginBottom: spacing.sm,
-            }}
-          >
+          <Text style={styles.compactHint}>
             {uiCopy.optionNegotiationChat.agencyCounterAwaitingClientResponse}
           </Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm }}>
@@ -340,47 +370,40 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
           </View>
         </>
       )}
+
+      {/* ── Axis 1: Price actions (Accept / Counter / Remove) ── */}
       {isAgency &&
-        agencyMayActOnFee &&
         !priceLocked &&
         !agencyAwaitingClientOnCounter &&
-        finalStatus !== 'job_confirmed' &&
-        status !== 'rejected' && (
+        !isTerminal && (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm }}>
           {request.proposedPrice != null &&
           clientPriceStatus === 'pending' &&
           agencyCounterPrice == null ? (
             <TouchableOpacity
-              style={[styles.filterPill, { backgroundColor: colors.buttonOptionGreen }, busy && { opacity: 0.5 }]}
+              style={[styles.filterPill, { backgroundColor: colors.accentBrown }, busy && { opacity: 0.5 }]}
               disabled={busy}
-              onPress={() => {
-                void onAgencyAcceptClientPrice();
-              }}
+              onPress={() => { void onAgencyAcceptClientPrice(); }}
             >
-              <Text style={[styles.filterPillLabel, { color: '#fff' }]}>{uiCopy.optionNegotiationChat.confirmOption}</Text>
+              <Text style={[styles.filterPillLabel, { color: '#fff' }]}>{uiCopy.optionNegotiationChat.acceptProposedFee}</Text>
             </TouchableOpacity>
           ) : null}
           <TouchableOpacity
-            style={[styles.filterPill, { backgroundColor: colors.buttonOptionGreen, borderWidth: 0 }]}
+            style={[styles.filterPill, { backgroundColor: colors.accentBrown, borderWidth: 0 }]}
             onPress={() => setNegotiationCounterExpanded((e) => !e)}
           >
             <Text style={[styles.filterPillLabel, { color: '#fff' }]}>{uiCopy.optionNegotiationChat.counterOffer}</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.filterPill, { borderWidth: 1, borderColor: colors.buttonSkipRed }]}
-            onPress={onRejectNegotiation}
-          >
-            <Text style={[styles.filterPillLabel, { color: colors.buttonSkipRed }]}>{uiCopy.optionNegotiationChat.rejectOption}</Text>
-          </TouchableOpacity>
         </View>
       )}
+
+      {/* ── Counter-offer input (pending proposed) ── */}
       {isAgency &&
         (negotiationCounterExpanded || (clientPriceStatus === 'pending' && request.proposedPrice != null && agencyCounterPrice == null)) &&
-        agencyMayActOnFee &&
         !priceLocked &&
         clientPriceStatus === 'pending' &&
         request.proposedPrice != null &&
-        finalStatus !== 'job_confirmed' && (
+        !isTerminal && (
           <View style={styles.counterBox}>
             <Text style={{ ...typography.label, fontSize: 11, color: colors.textPrimary, marginBottom: spacing.xs }}>
               {uiCopy.optionNegotiationChat.counterOfferPendingHint}
@@ -417,30 +440,30 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
             </View>
           </View>
         )}
+
+      {/* ── Decline proposed fee ── */}
       {isAgency &&
-        agencyMayActOnFee &&
         !priceLocked &&
         clientPriceStatus === 'pending' &&
-        finalStatus !== 'job_confirmed' &&
+        !isTerminal &&
         request.proposedPrice != null && (
         <TouchableOpacity
           style={{ alignSelf: 'flex-start', marginBottom: spacing.sm }}
           disabled={busy}
-          onPress={() => {
-            void onAgencyRejectClientPrice();
-          }}
+          onPress={() => { void onAgencyRejectClientPrice(); }}
         >
           <Text style={{ ...typography.label, fontSize: 12, color: colors.buttonSkipRed, fontWeight: '600' }}>
             {uiCopy.optionNegotiationChat.declineProposedFee}
           </Text>
         </TouchableOpacity>
       )}
+
+      {/* ── Counter-offer input (after client decline) ── */}
       {isAgency &&
         negotiationCounterExpanded &&
-        agencyMayActOnFee &&
         !priceLocked &&
         clientPriceStatus === 'rejected' &&
-        finalStatus !== 'job_confirmed' && (
+        !isTerminal && (
           <View style={styles.counterBox}>
             <Text style={{ ...typography.label, fontSize: 11, color: colors.textPrimary, marginBottom: spacing.xs }}>
               {uiCopy.optionNegotiationChat.agencyNegotiationAfterClientDecline}
@@ -471,12 +494,13 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
             </View>
           </View>
         )}
+
+      {/* ── Propose initial fee (no price yet) ── */}
       {isAgency &&
         negotiationCounterExpanded &&
-        agencyMayActOnFee &&
         !priceLocked &&
         clientPriceStatus === 'pending' &&
-        finalStatus !== 'job_confirmed' &&
+        !isTerminal &&
         request.proposedPrice == null && (
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm, alignItems: 'center' }}>
             <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary }}>{uiCopy.optionNegotiationChat.proposeFeeHint}</Text>
@@ -501,17 +525,21 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
             </TouchableOpacity>
           </View>
         )}
+
+      {/* ══════════════════════════════════════════════════════════════════
+          CLIENT ACTION BUTTONS — Price only (Axis 1)
+         ══════════════════════════════════════════════════════════════════ */}
+
+      {/* ── Client: accept agency counter (price only) ── */}
       {!isAgency &&
         !priceLocked &&
         agencyCounterPrice != null &&
         clientPriceStatus === 'pending' &&
-        finalStatus !== 'job_confirmed' && (
+        !isTerminal && (
         <View style={{ marginBottom: spacing.sm, gap: spacing.xs }}>
           <TouchableOpacity
             style={[styles.filterPill, { backgroundColor: colors.buttonOptionGreen }]}
-            onPress={() => {
-              void onClientAcceptCounter();
-            }}
+            onPress={() => { void onClientAcceptCounter(); }}
           >
             <Text style={[styles.filterPillLabel, { color: '#fff' }]}>
               {uiCopy.optionNegotiationChat.acceptAgencyProposal} ({currency === 'USD' ? '$' : currency === 'GBP' ? '£' : currency === 'CHF' ? 'CHF ' : '€'}
@@ -521,9 +549,7 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
           {onClientRejectCounter ? (
             <TouchableOpacity
               style={[styles.filterPill, { borderWidth: 1, borderColor: colors.buttonSkipRed }]}
-              onPress={() => {
-                void onClientRejectCounter();
-              }}
+              onPress={() => { void onClientRejectCounter(); }}
             >
               <Text style={[styles.filterPillLabel, { color: colors.buttonSkipRed }]}>
                 {uiCopy.optionNegotiationChat.rejectCounterOffer}
@@ -532,28 +558,23 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
           ) : null}
         </View>
       )}
+
+      {/* ── Client: confirm job (requires BOTH axes settled) ── */}
       {!isAgency &&
         clientMayConfirmJobFromSignals(signals) &&
         request?.requestType === 'option' &&
         status !== 'rejected' && (
         <TouchableOpacity
           style={[styles.filterPill, { marginBottom: spacing.sm, backgroundColor: colors.accentBrown }]}
-          onPress={() => {
-            void onClientConfirmJob();
-          }}
+          onPress={() => { void onClientConfirmJob(); }}
         >
           <Text style={[styles.filterPillLabel, { color: '#fff' }]}>{uiCopy.optionNegotiationChat.confirmJob}</Text>
         </TouchableOpacity>
       )}
-      {(finalStatus === 'job_confirmed' || status === 'rejected') && (
-        <Text
-          style={{
-            ...typography.label,
-            fontSize: 11,
-            color: colors.textSecondary,
-            marginBottom: spacing.sm,
-          }}
-        >
+
+      {/* ── Terminal state hint ── */}
+      {isTerminal && (
+        <Text style={styles.compactHint}>
           {finalStatus === 'job_confirmed'
             ? uiCopy.optionNegotiationChat.negotiationFeeClosedJobConfirmed
             : uiCopy.optionNegotiationChat.negotiationFeeClosedRejected}
@@ -598,7 +619,6 @@ const styles = StyleSheet.create({
   statusPillLabelMobile: {
     fontSize: 10,
   },
-  /** Mobile: org-chat as plain text link, not pill — secondary action */
   orgChatLink: {
     paddingVertical: 2,
     paddingHorizontal: 2,
@@ -657,6 +677,18 @@ const styles = StyleSheet.create({
   approvalBannerTextApproved: { color: colors.buttonOptionGreen },
   approvalBannerTextRejected: { color: '#e74c3c' },
   approvalBannerTextPending: { color: '#B8860B' },
+  compactHint: {
+    ...typography.label,
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
+  },
+  toggleText: {
+    fontSize: 11,
+    color: colors.accentBrown,
+    textDecorationLine: 'underline',
+    fontWeight: '500',
+  },
 });
 
 /** Plan name: structured negotiation footer + inline counter — alias of NegotiationThreadFooter. */

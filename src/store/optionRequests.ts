@@ -610,42 +610,59 @@ export async function refreshOptionRequestInCache(threadId: string): Promise<voi
 }
 
 /**
- * Agency accepts request — dual-axis path.
- *
- * 1. agencyAcceptRequest: confirms AVAILABILITY (final_status → option_confirmed).
- * 2. agencyAcceptClientPrice: accepts PRICE (client_price_status → accepted).
- *
- * Both axes are set independently. If availability confirmation fails,
- * falls back to price-only (for edge cases / older requests).
+ * Agency confirms AVAILABILITY only (Axis 2: final_status → option_confirmed).
+ * Does NOT touch price. Price and availability are independent axes.
+ */
+export async function agencyConfirmAvailabilityStore(threadId: string): Promise<boolean> {
+  const req = requestsCache.find((r) => r.threadId === threadId);
+  if (!req) return false;
+
+  const result = await agencyAcceptRequest(req.id);
+  if (result === null) return false;
+
+  const updated = await getOptionRequestById(req.id);
+  if (updated) {
+    Object.assign(req, toLocalRequest(updated));
+    const inserted = await addOptionSystemMessage(req.id, 'agency_confirmed_availability');
+    if (inserted) {
+      messagesCache.push({
+        id: inserted.id,
+        threadId,
+        from: 'system',
+        text: inserted.text,
+        createdAt: new Date(inserted.created_at).getTime(),
+      });
+    }
+    notify();
+  } else {
+    console.warn('[agencyConfirmAvailabilityStore] RPC succeeded but post-refresh failed — local state may be stale', req.id);
+  }
+  return true;
+}
+
+/**
+ * Agency accepts the client's proposed PRICE only (Axis 1: client_price_status → accepted).
+ * Does NOT touch availability / final_status.
  */
 export async function agencyAcceptClientPriceStore(threadId: string): Promise<boolean> {
   const req = requestsCache.find((r) => r.threadId === threadId);
   if (!req) return false;
 
-  // Axis 2: confirm availability
-  const availabilityResult = await agencyAcceptRequest(req.id);
-
-  // Axis 1: accept price (independent of availability result)
   const priceOk = await agencyAcceptClientPrice(req.id);
-
-  if (availabilityResult === null && !priceOk) {
-    return false;
-  }
+  if (!priceOk) return false;
 
   const updated = await getOptionRequestById(req.id);
   if (updated) {
     Object.assign(req, toLocalRequest(updated));
-    if (updated.final_status === 'option_confirmed') {
-      const inserted = await addOptionSystemMessage(req.id, 'agency_accepted_price');
-      if (inserted) {
-        messagesCache.push({
-          id: inserted.id,
-          threadId,
-          from: 'system',
-          text: inserted.text,
-          createdAt: new Date(inserted.created_at).getTime(),
-        });
-      }
+    const inserted = await addOptionSystemMessage(req.id, 'agency_accepted_price');
+    if (inserted) {
+      messagesCache.push({
+        id: inserted.id,
+        threadId,
+        from: 'system',
+        text: inserted.text,
+        createdAt: new Date(inserted.created_at).getTime(),
+      });
     }
     notify();
   } else {
@@ -723,7 +740,7 @@ export async function agencyRejectClientPriceStore(threadId: string): Promise<bo
   return true;
 }
 
-/** Client accepts agency counter → option_confirmed; system message (calendar entry via DB trigger). */
+/** Client accepts agency counter → price accepted (Axis 1 only); system message. */
 export async function clientAcceptCounterStore(threadId: string): Promise<boolean> {
   const req = requestsCache.find((r) => r.threadId === threadId);
   if (!req) return false;
