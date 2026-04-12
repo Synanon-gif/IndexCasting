@@ -499,6 +499,8 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   };
 
   const showShare = !!agencyId && (guestLinks.length > 0 || modelsForShare.length > 0);
+  /** Mobile B2B thread (back button + agency share actions): keep header height close to client chat. */
+  const compactAgencyShareHeader = !!onBack && showShare;
 
   const threadContextLabel = threadContext
     ? [threadContext.type, threadContext.modelName, threadContext.date].filter(Boolean).join(' • ')
@@ -511,13 +513,30 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
     <>
       {onOrgPress ? (
         <TouchableOpacity onPress={onOrgPress} style={styles.chatPanelTitleBtn}>
-          <Text style={[styles.chatPanelTitle, styles.chatPanelTitleClickable]}>{headerTitle}</Text>
+          <Text
+            style={[
+              styles.chatPanelTitle,
+              styles.chatPanelTitleClickable,
+              compactAgencyShareHeader && styles.chatPanelTitleCompact,
+            ]}
+          >
+            {headerTitle}
+          </Text>
         </TouchableOpacity>
       ) : (
-        <Text style={styles.chatPanelTitle}>{headerTitle}</Text>
+        <Text style={[styles.chatPanelTitle, compactAgencyShareHeader && styles.chatPanelTitleCompact]}>
+          {headerTitle}
+        </Text>
       )}
       {threadContextLabel ? (
-        <Text style={styles.threadContextSubheader}>{threadContextLabel}</Text>
+        <Text
+          style={[
+            styles.threadContextSubheader,
+            compactAgencyShareHeader && styles.threadContextSubheaderCompact,
+          ]}
+        >
+          {threadContextLabel}
+        </Text>
       ) : null}
       {threadContextAssignment ? (
         <View
@@ -531,15 +550,29 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
       ) : null}
 
       {showShare ? (
-        <View style={styles.shareRow}>
+        <View style={[styles.shareRow, compactAgencyShareHeader && styles.shareRowCompact]}>
           {guestLinks.length > 0 ? (
-            <TouchableOpacity style={styles.shareBtn} onPress={() => setShareOpen('package')}>
-              <Text style={styles.shareBtnLabel}>{uiCopy.b2bChat.sharePackage}</Text>
+            <TouchableOpacity
+              style={[styles.shareBtn, compactAgencyShareHeader && styles.shareBtnCompact]}
+              onPress={() => setShareOpen('package')}
+            >
+              <Text
+                style={[styles.shareBtnLabel, compactAgencyShareHeader && styles.shareBtnLabelCompact]}
+              >
+                {uiCopy.b2bChat.sharePackage}
+              </Text>
             </TouchableOpacity>
           ) : null}
           {modelsForShare.length > 0 ? (
-            <TouchableOpacity style={styles.shareBtn} onPress={() => setShareOpen('model')}>
-              <Text style={styles.shareBtnLabel}>{uiCopy.b2bChat.shareModel}</Text>
+            <TouchableOpacity
+              style={[styles.shareBtn, compactAgencyShareHeader && styles.shareBtnCompact]}
+              onPress={() => setShareOpen('model')}
+            >
+              <Text
+                style={[styles.shareBtnLabel, compactAgencyShareHeader && styles.shareBtnLabelCompact]}
+              >
+                {uiCopy.b2bChat.shareModel}
+              </Text>
             </TouchableOpacity>
           ) : null}
         </View>
@@ -959,11 +992,17 @@ const styles = StyleSheet.create({
   chatPanelTitleClickable: {
     textDecorationLine: 'underline',
   },
+  chatPanelTitleCompact: {
+    marginBottom: 2,
+  },
   threadContextSubheader: {
     fontSize: 11,
     color: colors.textSecondary,
     marginBottom: spacing.sm,
     letterSpacing: 0.3,
+  },
+  threadContextSubheaderCompact: {
+    marginBottom: spacing.xs,
   },
   assignmentPill: {
     alignSelf: 'flex-start',
@@ -985,6 +1024,11 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginBottom: spacing.sm,
   },
+  shareRowCompact: {
+    flexWrap: 'nowrap',
+    gap: spacing.xs,
+    marginBottom: spacing.xs,
+  },
   shareBtn: {
     borderRadius: 999,
     borderWidth: 1,
@@ -993,10 +1037,17 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     backgroundColor: colors.surface,
   },
+  shareBtnCompact: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+  },
   shareBtnLabel: {
     ...typography.label,
     fontSize: 11,
     color: colors.textPrimary,
+  },
+  shareBtnLabelCompact: {
+    fontSize: 10,
   },
   msgBlock: {
     marginBottom: spacing.sm,

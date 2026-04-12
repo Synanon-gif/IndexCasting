@@ -210,7 +210,7 @@ import { runNetwalkCronSync } from '../services/netwalkSyncService';
 import { getAgencyApiKeys, saveAgencyApiConnection } from '../services/agencySettingsSupabase';
 import { checkModelCompleteness, type CompletenessContext } from '../utils/modelCompleteness';
 import { OPTION_REQUEST_CHAT_STATUS_COLORS } from '../utils/calendarColors';
-import { dedupeCalendarGridEventsByOptionRequest, getCalendarProjectionBadge, getBookingEntryProjectionBadge } from '../utils/calendarProjectionLabel';
+import { getCalendarProjectionBadge, getBookingEntryProjectionBadge } from '../utils/calendarProjectionLabel';
 import { getCalendarDetailNextStepText } from '../utils/calendarDetailNextStep';
 import {
   buildUnifiedAgencyCalendarRows,
@@ -1774,17 +1774,19 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
 
   const filteredUnified = useMemo(
     () =>
-      filterUnifiedAgencyCalendarRows(unifiedAll, {
-        modelQuery,
-        fromDate,
-        toDate,
-        typeFilter,
-        assigneeFilter,
-        clientScope,
-        urgency,
-        currentUserId,
-        assignmentByClientOrgId,
-      }),
+      dedupeUnifiedRowsByOptionRequest(
+        filterUnifiedAgencyCalendarRows(unifiedAll, {
+          modelQuery,
+          fromDate,
+          toDate,
+          typeFilter,
+          assigneeFilter,
+          clientScope,
+          urgency,
+          currentUserId,
+          assignmentByClientOrgId,
+        }),
+      ),
     [
       unifiedAll,
       modelQuery,
@@ -1800,7 +1802,7 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
   );
 
   const eventsByDate = useMemo(
-    () => dedupeCalendarGridEventsByOptionRequest(buildEventsByDateFromUnifiedRows(filteredUnified)),
+    () => buildEventsByDateFromUnifiedRows(filteredUnified),
     [filteredUnified],
   );
 
@@ -1808,11 +1810,9 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
 
   const sortedUnified = useMemo(
     () =>
-      dedupeUnifiedRowsByOptionRequest(
-        [...filteredUnified]
-          .filter((r) => r.date >= today)
-          .sort((a, b) => a.sortKey.localeCompare(b.sortKey)),
-      ),
+      [...filteredUnified]
+        .filter((r) => r.date >= today)
+        .sort((a, b) => a.sortKey.localeCompare(b.sortKey)),
     [filteredUnified, today],
   );
 
@@ -4954,7 +4954,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
             agencyId={agencyId}
             guestLinks={guestLinksForChat}
             modelsForShare={modelsForShare}
-            composerBottomInsetOverride={insets.bottom}
+            composerBottomInsetOverride={0}
             onOpenRelatedRequest={(optionRequestId) => {
               setActiveConnectionChatId(null);
               setMessagesSection('optionRequests');
@@ -4963,7 +4963,14 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
             onBookingCardPress={onBookingCardPress}
             viewerRole="agency"
             onBookingStatusUpdated={() => onBookingCardPress?.()}
-            containerStyle={{ flex: 1 }}
+            containerStyle={{
+              marginTop: 0,
+              padding: 0,
+              borderWidth: 0,
+              borderRadius: 0,
+              flex: 1,
+              minHeight: 0,
+            }}
             onOrgPress={() => {
               const orgId = activeConv?.client_organization_id ?? null;
               if (!orgId) return;
@@ -5481,7 +5488,14 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                     onBookingCardPress={onBookingCardPress}
                     viewerRole="agency"
                     onBookingStatusUpdated={() => onBookingCardPress?.()}
-                    containerStyle={{ flex: 1 }}
+                    containerStyle={{
+                      marginTop: 0,
+                      padding: 0,
+                      borderWidth: 0,
+                      borderRadius: 0,
+                      flex: 1,
+                      minHeight: 0,
+                    }}
                     onOrgPress={() => {
                       const conv = b2bConversations.find((c) => c.id === activeConnectionChatId);
                       const orgId = conv?.client_organization_id ?? null;
