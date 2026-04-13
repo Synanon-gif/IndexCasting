@@ -5,7 +5,22 @@
  * Before acceptance, the chat is a Recruiting Chat (handled in AgencyRecruitingView).
  */
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, Modal, ScrollView, Image, Platform, ActivityIndicator, Linking, Pressable, useWindowDimensions, KeyboardAvoidingView, BackHandler } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  TextInput,
+  Modal,
+  ScrollView,
+  Image,
+  Platform,
+  ActivityIndicator,
+  Pressable,
+  useWindowDimensions,
+  KeyboardAvoidingView,
+  BackHandler,
+} from 'react-native';
 import { StorageImage } from '../components/StorageImage';
 import { colors, spacing, typography } from '../theme/theme';
 import { bubbleColorsForSender, outgoingSelfBubbleColors } from '../theme/roleColors';
@@ -31,6 +46,7 @@ import { supabase } from '../../lib/supabase';
 import { confirmImageRights } from '../services/gdprComplianceSupabase';
 import { uiCopy } from '../constants/uiCopy';
 import { validateUrl, UI_DOUBLE_SUBMIT_DEBOUNCE_MS } from '../../lib/validation';
+import { openLinkWithFeedback } from '../utils/openLinkWithFeedback';
 
 type BookingChatPresentation = 'modal' | 'insetAboveBottomNav';
 
@@ -120,9 +136,7 @@ export const BookingChatView: React.FC<Props> = ({
   // Resolve signed URLs for file attachments
   useEffect(() => {
     let cancelled = false;
-    const paths = messages
-      .map((m) => m.fileUrl)
-      .filter((p): p is string => !!p && !signedUrls[p]);
+    const paths = messages.map((m) => m.fileUrl).filter((p): p is string => !!p && !signedUrls[p]);
     if (paths.length === 0) return;
     void Promise.all(
       paths.map(async (path) => {
@@ -130,8 +144,10 @@ export const BookingChatView: React.FC<Props> = ({
         if (url && !cancelled) setSignedUrls((prev) => ({ ...prev, [path]: url }));
       }),
     );
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages]);
 
   const sendMessage = () => {
@@ -147,7 +163,7 @@ export const BookingChatView: React.FC<Props> = ({
 
   const openUrl = (url: string) => {
     if (!validateUrl(url).ok) return;
-    void Linking.openURL(url).catch(() => {});
+    openLinkWithFeedback(url);
   };
 
   const handleFileSelected = async (file: File) => {
@@ -241,17 +257,24 @@ export const BookingChatView: React.FC<Props> = ({
 
   // In inset mode, messages expand to fill remaining space (flex:1).
   // In modal mode on native, cap height to avoid overflow.
-  const messagesScrollStyle = isInset || Platform.OS === 'web'
-    ? [styles.messages, { flex: 1, minHeight: 0, ...(Platform.OS === 'web' ? { height: 0 } : {}) }]
-    : [styles.messages, { maxHeight: bookingMessagesMaxHeight }];
+  const messagesScrollStyle =
+    isInset || Platform.OS === 'web'
+      ? [
+          styles.messages,
+          { flex: 1, minHeight: 0, ...(Platform.OS === 'web' ? { height: 0 } : {}) },
+        ]
+      : [styles.messages, { maxHeight: bookingMessagesMaxHeight }];
 
   // Resolve title and subtitle for the unified WhatsApp-like header
-  const headerTitle = fromRole === 'model'
-    ? displayAgencyName
-    : (thread ? thread.modelName : 'Chat');
-  const headerSubtitle = fromRole === 'model'
-    ? (thread ? `As: ${thread.modelName}` : null)
-    : (application ? `${application.city || '—'} · ${application.height} cm` : null);
+  const headerTitle = fromRole === 'model' ? displayAgencyName : thread ? thread.modelName : 'Chat';
+  const headerSubtitle =
+    fromRole === 'model'
+      ? thread
+        ? `As: ${thread.modelName}`
+        : null
+      : application
+        ? `${application.city || '—'} · ${application.height} cm`
+        : null;
 
   // Shared inner content (header + optional profile strip + messages + input)
   const chatInner = (
@@ -277,25 +300,47 @@ export const BookingChatView: React.FC<Props> = ({
               style={styles.headerTitleBtn}
             >
               {agencyLogoUrl ? (
-                <Image source={{ uri: agencyLogoUrl }} style={styles.agencyLogoSmall} resizeMode="contain" />
+                <Image
+                  source={{ uri: agencyLogoUrl }}
+                  style={styles.agencyLogoSmall}
+                  resizeMode="contain"
+                />
               ) : (
                 <View style={styles.agencyLogoPlaceholderSmall}>
-                  <Text style={styles.agencyLogoLetter}>{displayAgencyName.charAt(0).toUpperCase()}</Text>
+                  <Text style={styles.agencyLogoLetter}>
+                    {displayAgencyName.charAt(0).toUpperCase()}
+                  </Text>
                 </View>
               )}
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={styles.title} numberOfLines={1}>{headerTitle}</Text>
-                {headerSubtitle ? <Text style={styles.subtitle} numberOfLines={1}>{headerSubtitle}</Text> : null}
+                <Text style={styles.title} numberOfLines={1}>
+                  {headerTitle}
+                </Text>
+                {headerSubtitle ? (
+                  <Text style={styles.subtitle} numberOfLines={1}>
+                    {headerSubtitle}
+                  </Text>
+                ) : null}
               </View>
             </TouchableOpacity>
           ) : (
             <View style={styles.headerTitleBtn}>
               {fromRole === 'agency' && agencyLogoUrl ? (
-                <Image source={{ uri: agencyLogoUrl }} style={styles.agencyLogoSmall} resizeMode="contain" />
+                <Image
+                  source={{ uri: agencyLogoUrl }}
+                  style={styles.agencyLogoSmall}
+                  resizeMode="contain"
+                />
               ) : null}
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={styles.title} numberOfLines={1}>{headerTitle}</Text>
-                {headerSubtitle ? <Text style={styles.subtitle} numberOfLines={1}>{headerSubtitle}</Text> : null}
+                <Text style={styles.title} numberOfLines={1}>
+                  {headerTitle}
+                </Text>
+                {headerSubtitle ? (
+                  <Text style={styles.subtitle} numberOfLines={1}>
+                    {headerSubtitle}
+                  </Text>
+                ) : null}
               </View>
             </View>
           )}
@@ -309,31 +354,39 @@ export const BookingChatView: React.FC<Props> = ({
             </View>
           )}
           {fromRole === 'agency' && Platform.OS === 'web' && (
-            <TouchableOpacity onPress={copyBookingLink} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <TouchableOpacity
+              onPress={copyBookingLink}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
               <Text style={styles.copyLinkLabel}>Share</Text>
             </TouchableOpacity>
           )}
         </View>
       </View>
-      {application && (() => {
-        const photos = [application.images?.closeUp, application.images?.fullBody, application.images?.profile].filter(Boolean);
-        if (!photos.length) return null;
-        const isMobileNative = Platform.OS !== 'web';
-        return (
-          <View style={[styles.profileRow, isMobileNative && styles.profileRowMobile]}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {photos.map((uri, idx) => (
-                <StorageImage
-                  key={idx}
-                  uri={uri!}
-                  style={isMobileNative ? styles.profileImageMobile : styles.profileImage}
-                  resizeMode="contain"
-                />
-              ))}
-            </ScrollView>
-          </View>
-        );
-      })()}
+      {application &&
+        (() => {
+          const photos = [
+            application.images?.closeUp,
+            application.images?.fullBody,
+            application.images?.profile,
+          ].filter(Boolean);
+          if (!photos.length) return null;
+          const isMobileNative = Platform.OS !== 'web';
+          return (
+            <View style={[styles.profileRow, isMobileNative && styles.profileRowMobile]}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                {photos.map((uri, idx) => (
+                  <StorageImage
+                    key={idx}
+                    uri={uri!}
+                    style={isMobileNative ? styles.profileImageMobile : styles.profileImage}
+                    resizeMode="contain"
+                  />
+                ))}
+              </ScrollView>
+            </View>
+          );
+        })()}
       <ScrollView
         style={messagesScrollStyle}
         contentContainerStyle={[styles.messagesContent, { flexGrow: 1 }]}
@@ -368,34 +421,39 @@ export const BookingChatView: React.FC<Props> = ({
                   onPress={() => resolvedFileUrl && openUrl(resolvedFileUrl)}
                 >
                   <Text style={styles.fileCardIcon}>📎</Text>
-                  <Text style={[styles.fileCardLabel, isSelf && styles.fileCardLabelSelf]} numberOfLines={1}>
+                  <Text
+                    style={[styles.fileCardLabel, isSelf && styles.fileCardLabelSelf]}
+                    numberOfLines={1}
+                  >
                     Attachment
                   </Text>
                   <Text style={styles.fileCardOpen}>Open</Text>
                 </Pressable>
               ) : null}
               {/* Text content */}
-              {msg.text ? (
-                (() => {
-                  const rc = isSelf ? outgoingSelfBubbleColors : bubbleColorsForSender(msg.from);
-                  return (
-                    <View
-                      style={[
-                        styles.bubble,
-                        isSelf && styles.bubbleOutgoing,
-                        {
-                          backgroundColor: rc.bubbleBackground,
-                          borderWidth: StyleSheet.hairlineWidth,
-                          borderColor: rc.borderColor,
-                          alignSelf: isSelf ? 'flex-end' : 'flex-start',
-                        },
-                      ]}
-                    >
-                      <Text style={[styles.bubbleText, { color: rc.bubbleText }]}>{msg.text}</Text>
-                    </View>
-                  );
-                })()
-              ) : null}
+              {msg.text
+                ? (() => {
+                    const rc = isSelf ? outgoingSelfBubbleColors : bubbleColorsForSender(msg.from);
+                    return (
+                      <View
+                        style={[
+                          styles.bubble,
+                          isSelf && styles.bubbleOutgoing,
+                          {
+                            backgroundColor: rc.bubbleBackground,
+                            borderWidth: StyleSheet.hairlineWidth,
+                            borderColor: rc.borderColor,
+                            alignSelf: isSelf ? 'flex-end' : 'flex-start',
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.bubbleText, { color: rc.bubbleText }]}>
+                          {msg.text}
+                        </Text>
+                      </View>
+                    );
+                  })()
+                : null}
             </View>
           );
         })}
@@ -428,10 +486,7 @@ export const BookingChatView: React.FC<Props> = ({
           />
         ) : null}
         <TouchableOpacity
-          style={[
-            styles.attachBtn,
-            (!fromRole || uploading) && { opacity: 0.4 },
-          ]}
+          style={[styles.attachBtn, (!fromRole || uploading) && { opacity: 0.4 }]}
           onPress={handleAttachPress}
           disabled={uploading}
         >
@@ -452,42 +507,48 @@ export const BookingChatView: React.FC<Props> = ({
           blurOnSubmit={false}
           onContentSizeChange={(e) => setChatInputHeight(e.nativeEvent.contentSize.height)}
         />
-        <TouchableOpacity style={[styles.send, uploading && { opacity: 0.5 }]} onPress={sendMessage} disabled={uploading}>
+        <TouchableOpacity
+          style={[styles.send, uploading && { opacity: 0.5 }]}
+          onPress={sendMessage}
+          disabled={uploading}
+        >
           <Text style={styles.sendLabel}>Send</Text>
         </TouchableOpacity>
       </View>
     </View>
   );
 
-  const orgProfileModal = showAgencyProfile && agencyOrgIdForProfile ? (
-    <OrgProfileModal
-      visible
-      onClose={() => setShowAgencyProfile(false)}
-      orgType="agency"
-      organizationId={agencyOrgIdForProfile}
-      agencyId={applicationAgencyId ?? application?.agencyId ?? null}
-      orgName={displayAgencyName}
-    />
-  ) : null;
+  const orgProfileModal =
+    showAgencyProfile && agencyOrgIdForProfile ? (
+      <OrgProfileModal
+        visible
+        onClose={() => setShowAgencyProfile(false)}
+        orgType="agency"
+        organizationId={agencyOrgIdForProfile}
+        agencyId={applicationAgencyId ?? application?.agencyId ?? null}
+        orgName={displayAgencyName}
+      />
+    ) : null;
 
   // Wrap chatInner with KAV on native so the composer stays above the keyboard.
-  const chatInnerWithKAV = Platform.OS !== 'web' ? (
-    <KeyboardAvoidingView
-      style={{ flex: 1, minHeight: 0 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={0}
-    >
-      {chatInner}
-    </KeyboardAvoidingView>
-  ) : chatInner;
+  const chatInnerWithKAV =
+    Platform.OS !== 'web' ? (
+      <KeyboardAvoidingView
+        style={{ flex: 1, minHeight: 0 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={0}
+      >
+        {chatInner}
+      </KeyboardAvoidingView>
+    ) : (
+      chatInner
+    );
 
   // insetAboveBottomNav: fills the full area above the tab bar (true WhatsApp-style fullscreen panel).
   if (isInset) {
     return (
       <View style={[styles.insetShell, { bottom: bottomInset }]}>
-        <View style={styles.insetPanel}>
-          {chatInnerWithKAV}
-        </View>
+        <View style={styles.insetPanel}>{chatInnerWithKAV}</View>
         {orgProfileModal}
       </View>
     );

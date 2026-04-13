@@ -1,5 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Modal, Platform } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+  Modal,
+  Platform,
+} from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { useAuth } from '../context/AuthContext';
 import { uiCopy } from '../constants/uiCopy';
@@ -10,6 +19,8 @@ import { supabase } from '../../lib/supabase';
 
 type AuthScreenProps = {
   initialMode?: 'login' | 'signup';
+  /** When set (e.g. user opened ?shared= before sign-in), explains they may need to reopen the link after auth. */
+  sharedSelectionHint?: string | null;
   /** When true (plain login, no ?invite= in URL), stale invite tokens are cleared so sign-in cannot join the wrong org. */
   clearStaleInviteOnSignIn?: boolean;
   /** Einladung: Rolle fix (Agentur-Booker = agent, Client-Mitarbeiter = client). */
@@ -28,6 +39,7 @@ type AuthScreenProps = {
 
 export const AuthScreen: React.FC<AuthScreenProps> = ({
   initialMode = 'login',
+  sharedSelectionHint,
   clearStaleInviteOnSignIn = false,
   inviteAuth,
   modelClaimAuth,
@@ -39,7 +51,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const [displayName, setDisplayName] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [role, setRole] = useState<'model' | 'agent' | 'client'>(
-    modelClaimAuth ? 'model' : (inviteAuth?.lockedProfileRole ?? 'client')
+    modelClaimAuth ? 'model' : (inviteAuth?.lockedProfileRole ?? 'client'),
   );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -86,7 +98,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     } else {
       const r = modelClaimAuth ? 'model' : (inviteAuth?.lockedProfileRole ?? role);
       const isOrgInviteFlow = !!inviteAuth && !modelClaimAuth;
-      if (!isOrgInviteFlow && !modelClaimAuth && (r === 'client' || r === 'agent') && !companyName.trim()) {
+      if (
+        !isOrgInviteFlow &&
+        !modelClaimAuth &&
+        (r === 'client' || r === 'agent') &&
+        !companyName.trim()
+      ) {
         setError(uiCopy.auth.companyNameRequired);
         setBusy(false);
         return;
@@ -101,7 +118,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         r,
         displayName.trim() || undefined,
         company,
-        { isInviteSignup: isOrgInviteFlow }
+        { isInviteSignup: isOrgInviteFlow },
       );
       if (e) {
         setError(e);
@@ -120,18 +137,34 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
   return (
     <View style={styles.container}>
-      <Modal visible={termsVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setTermsVisible(false)}>
+      <Modal
+        visible={termsVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setTermsVisible(false)}
+      >
         <TermsScreen onClose={() => setTermsVisible(false)} />
       </Modal>
-      <Modal visible={privacyVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setPrivacyVisible(false)}>
+      <Modal
+        visible={privacyVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setPrivacyVisible(false)}
+      >
         <PrivacyScreen onClose={() => setPrivacyVisible(false)} />
       </Modal>
 
       <View style={styles.content}>
         <Text style={styles.brand}>INDEX CASTING</Text>
         <Text style={styles.subtitle}>
-          {inviteAuth || modelClaimAuth ? uiCopy.auth.inviteOrClaimContextSubtitle : uiCopy.auth.subtitleTagline}
+          {inviteAuth || modelClaimAuth
+            ? uiCopy.auth.inviteOrClaimContextSubtitle
+            : uiCopy.auth.subtitleTagline}
         </Text>
+
+        {sharedSelectionHint ? (
+          <Text style={styles.sharedSelectionHint}>{sharedSelectionHint}</Text>
+        ) : null}
 
         {inviteAuth && (
           <Text style={styles.inviteBanner}>
@@ -159,7 +192,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
           <View style={styles.modeRow}>
             <TouchableOpacity
               style={[styles.modeBtn, mode === 'login' && styles.modeBtnActive]}
-              onPress={() => { setMode('login'); setError(null); setSignUpAwaitingEmail(false); }}
+              onPress={() => {
+                setMode('login');
+                setError(null);
+                setSignUpAwaitingEmail(false);
+              }}
             >
               <Text style={[styles.modeBtnLabel, mode === 'login' && styles.modeBtnLabelActive]}>
                 {uiCopy.auth.loginTab}
@@ -167,7 +204,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.modeBtn, mode === 'signup' && styles.modeBtnActive]}
-              onPress={() => { setMode('signup'); setError(null); setSignUpAwaitingEmail(false); }}
+              onPress={() => {
+                setMode('signup');
+                setError(null);
+                setSignUpAwaitingEmail(false);
+              }}
             >
               <Text style={[styles.modeBtnLabel, mode === 'signup' && styles.modeBtnLabelActive]}>
                 {uiCopy.auth.signUpTab}
@@ -218,7 +259,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                       style={[styles.rolePill, role === r && styles.rolePillActive]}
                       onPress={() => setRole(r)}
                     >
-                      <Text style={[styles.rolePillLabel, role === r && styles.rolePillLabelActive]}>
+                      <Text
+                        style={[styles.rolePillLabel, role === r && styles.rolePillLabelActive]}
+                      >
                         {r === 'agent'
                           ? uiCopy.auth.roleAgency
                           : r === 'client'
@@ -265,12 +308,18 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
         {mode === 'signup' && signUpAwaitingEmail && (
           <View style={styles.signUpEmailInfo}>
-            <Text style={styles.signUpEmailInfoText}>{uiCopy.auth.signUpEmailConfirmationRequired}</Text>
+            <Text style={styles.signUpEmailInfoText}>
+              {uiCopy.auth.signUpEmailConfirmationRequired}
+            </Text>
             {inviteAuth && !modelClaimAuth ? (
-              <Text style={styles.signUpEmailInfoSub}>{uiCopy.auth.signUpEmailConfirmationInviteNote}</Text>
+              <Text style={styles.signUpEmailInfoSub}>
+                {uiCopy.auth.signUpEmailConfirmationInviteNote}
+              </Text>
             ) : null}
             {modelClaimAuth ? (
-              <Text style={styles.signUpEmailInfoSub}>{uiCopy.auth.signUpEmailConfirmationModelClaimNote}</Text>
+              <Text style={styles.signUpEmailInfoSub}>
+                {uiCopy.auth.signUpEmailConfirmationModelClaimNote}
+              </Text>
             ) : null}
           </View>
         )}
@@ -307,7 +356,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         {mode === 'login' && !inviteAuth && !modelClaimAuth && (
           <TouchableOpacity
             style={styles.forgotLink}
-            onPress={() => { setMode('forgot'); setError(null); setForgotSent(false); }}
+            onPress={() => {
+              setMode('forgot');
+              setError(null);
+              setForgotSent(false);
+            }}
           >
             <Text style={styles.forgotLinkLabel}>{uiCopy.auth.forgotPasswordLink}</Text>
           </TouchableOpacity>
@@ -316,7 +369,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
         {mode === 'forgot' && (
           <TouchableOpacity
             style={styles.forgotLink}
-            onPress={() => { setMode('login'); setError(null); setForgotSent(false); }}
+            onPress={() => {
+              setMode('login');
+              setError(null);
+              setForgotSent(false);
+            }}
           >
             <Text style={styles.forgotLinkLabel}>{uiCopy.auth.forgotPasswordBack}</Text>
           </TouchableOpacity>
@@ -339,7 +396,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
             <Text style={styles.legalLink}>{uiCopy.legal.privacyLabel}</Text>
           </TouchableOpacity>
         </View>
-
       </View>
     </View>
   );
@@ -356,6 +412,14 @@ const styles = StyleSheet.create({
   content: { width: '100%', maxWidth: 420, alignItems: 'center' },
   brand: { ...typography.heading, color: colors.textPrimary, marginBottom: spacing.sm },
   subtitle: { ...typography.body, color: colors.textSecondary, marginBottom: spacing.md },
+  sharedSelectionHint: {
+    ...typography.body,
+    fontSize: 12,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: spacing.md,
+    lineHeight: 18,
+  },
   inviteBanner: {
     ...typography.body,
     fontSize: 12,
@@ -404,8 +468,18 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     lineHeight: 16,
   },
-  roleLabel: { ...typography.label, color: colors.textSecondary, alignSelf: 'flex-start', marginBottom: spacing.xs },
-  roleRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md, alignSelf: 'flex-start' },
+  roleLabel: {
+    ...typography.label,
+    color: colors.textSecondary,
+    alignSelf: 'flex-start',
+    marginBottom: spacing.xs,
+  },
+  roleRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+    alignSelf: 'flex-start',
+  },
   rolePill: {
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.md,

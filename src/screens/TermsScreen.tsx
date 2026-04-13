@@ -1,16 +1,9 @@
 import React from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  StyleSheet,
-  SafeAreaView,
-  Linking,
-} from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { uiCopy } from '../constants/uiCopy';
 import { validateUrl } from '../../lib/validation';
+import { openLinkWithFeedback } from '../utils/openLinkWithFeedback';
 
 type Props = {
   /** Called when the user taps the close/back button. */
@@ -27,14 +20,19 @@ type Props = {
 export const TermsScreen: React.FC<Props> = ({ onClose }) => {
   const openExternal = () => {
     if (!validateUrl(uiCopy.legal.tosUrl).ok) return;
-    Linking.openURL(uiCopy.legal.tosUrl).catch(() => {});
+    openLinkWithFeedback(uiCopy.legal.tosUrl);
   };
 
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
         <Text style={styles.title}>{uiCopy.legal.termsScreenTitle}</Text>
-        <TouchableOpacity onPress={onClose} style={styles.closeBtn} accessibilityRole="button" accessibilityLabel={uiCopy.legal.legalScreenClose}>
+        <TouchableOpacity
+          onPress={onClose}
+          style={styles.closeBtn}
+          accessibilityRole="button"
+          accessibilityLabel={uiCopy.legal.legalScreenClose}
+        >
           <Text style={styles.closeLabel}>{uiCopy.legal.legalScreenClose}</Text>
         </TouchableOpacity>
       </View>
@@ -48,8 +46,8 @@ export const TermsScreen: React.FC<Props> = ({ onClose }) => {
           <Text style={styles.body}>
             By accessing or using the IndexCasting platform ("Service"), you agree to be bound by
             these Terms of Service ("Terms"). If you do not agree to these Terms, you may not use
-            the Service. These Terms apply to all users including Agency Owners, Bookers,
-            Client Owners, and Employees.
+            the Service. These Terms apply to all users including Agency Owners, Bookers, Client
+            Owners, and Employees.
           </Text>
         </View>
 
@@ -115,9 +113,9 @@ export const TermsScreen: React.FC<Props> = ({ onClose }) => {
           <Text style={styles.heading}>8. Limitation of Liability</Text>
           <Text style={styles.body}>
             To the maximum extent permitted by applicable law, IndexCasting shall not be liable for
-            any indirect, incidental, special, or consequential damages arising from your use of
-            the Service. Our total liability shall not exceed the amount paid by you in the
-            preceding 12 months.
+            any indirect, incidental, special, or consequential damages arising from your use of the
+            Service. Our total liability shall not exceed the amount paid by you in the preceding 12
+            months.
           </Text>
         </View>
 
@@ -140,7 +138,9 @@ export const TermsScreen: React.FC<Props> = ({ onClose }) => {
 
         <View style={styles.contactSection}>
           <Text style={styles.contactLabel}>{uiCopy.legal.legalContactHint}</Text>
-          <TouchableOpacity onPress={() => Linking.openURL(`mailto:${uiCopy.legal.legalContactEmail}`)}>
+          <TouchableOpacity
+            onPress={() => openLinkWithFeedback(`mailto:${uiCopy.legal.legalContactEmail}`)}
+          >
             <Text style={styles.contactEmail}>{uiCopy.legal.legalContactEmail}</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={openExternal} style={styles.externalLink}>

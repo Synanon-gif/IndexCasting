@@ -22,7 +22,8 @@ export const uiCopy = {
     no: 'No',
     reloadPage: 'Reload page',
     retry: 'Retry',
-    noAgencyContext: 'Your account is not linked to an agency yet. Please contact your administrator.',
+    noAgencyContext:
+      'Your account is not linked to an agency yet. Please contact your administrator.',
   },
   /** GDPR Art. 20 / 7 — agency settings tab + client web settings (English-only). */
   privacyData: {
@@ -120,7 +121,8 @@ export const uiCopy = {
     permissionAlertOwnerOnly: 'Only the organization owner can send invitations.',
     invitationCreatedWithLink: (link: string) =>
       `Share this link securely with the invitee (e.g. by email):\n\n${link}`,
-    invitationErrorBody: 'Could not create invitation. Ensure you are signed in as the organization owner.',
+    invitationErrorBody:
+      'Could not create invitation. Ensure you are signed in as the organization owner.',
     inviteBooker: 'Invite booker',
     inviteSendLink: 'Send invitation (create link)',
     teamSeatsUsage: (used: number, max: number) =>
@@ -169,8 +171,7 @@ export const uiCopy = {
     reschedule: 'Reschedule',
     rescheduleHelpAgency:
       'Updates the option, model calendar, and all mirrored entries for all parties.',
-    rescheduleHelpClient:
-      'Date and time apply to all parties (option + calendar) once saved.',
+    rescheduleHelpClient: 'Date and time apply to all parties (option + calendar) once saved.',
     saveSchedule: 'Save schedule',
     /** Client web: booking detail overlay — reschedule option/job */
     bookingUpdated: 'The booking was updated.',
@@ -179,8 +180,7 @@ export const uiCopy = {
     manualEventUpdateFailed: 'Could not save. Check date format YYYY-MM-DD.',
     deletePersonalCalendarEntry: 'Delete personal entry',
     manualBlockHelp: 'Edit or remove your personal block.',
-    optionScheduleHelp:
-      'Date and time are applied for all parties once saved.',
+    optionScheduleHelp: 'Date and time are applied for all parties once saved.',
     bookingEvent: 'Booking event',
     date: 'Date',
     status: 'Status',
@@ -195,7 +195,8 @@ export const uiCopy = {
     agencyNotesTitle: 'Agency notes (internal)',
     agencyNotesPlaceholder: 'Notes only your agency sees here — not shown to client or model.',
     clientNotesTitle: 'Client notes (internal)',
-    clientNotesPlaceholder: 'Notes only your client organization sees here — not shown to agency or model.',
+    clientNotesPlaceholder:
+      'Notes only your client organization sees here — not shown to agency or model.',
     modelNotesTitle: 'My notes (private)',
     modelNotesPlaceholder: 'Notes only you see here — not shown to client or agency.',
     saveNotes: 'Save notes',
@@ -233,8 +234,7 @@ export const uiCopy = {
     viewModeHintMonth:
       'Month shows the full grid. Use Week or Day for more detail on bookings and options.',
     /** Narrow screens: month view is a scrollable agenda list instead of a dot grid. */
-    viewModeHintMonthAgenda:
-      'Scroll the list for this month. Use Week or Day for hourly detail.',
+    viewModeHintMonthAgenda: 'Scroll the list for this month. Use Week or Day for hourly detail.',
     agendaEmptyMonth: 'No entries in this month.',
     /** Shown under “Day:” on mobile when the scrollable agenda already lists that day’s entries. */
     agendaDayHint: 'Entries for this day are listed in the month agenda above.',
@@ -260,8 +260,7 @@ export const uiCopy = {
     /** Short label for private block (distinct from “Private event” in the add menu). */
     agencyEventTypePrivateShort: 'Private',
     agencySelectModelsLabel: 'Select models',
-    agencyModelsSelected: (n: number) =>
-      `${n} model${n === 1 ? '' : 's'} selected`,
+    agencyModelsSelected: (n: number) => `${n} model${n === 1 ? '' : 's'} selected`,
     agencyAddingEvent: 'Adding…',
     agencyAddEventFormTitle: 'Add event',
     agencyAddEventSubmit: 'Add',
@@ -289,7 +288,8 @@ export const uiCopy = {
     sectionTitle: 'Booking brief',
     sectionIntro:
       'Structured production information. Choose who can see each field. This is not a chat — use shared notes below for conversation.',
-    emptyHint: 'Add shoot details, location, call time, or deliverables. Defaults to visible to everyone on this booking.',
+    emptyHint:
+      'Add shoot details, location, call time, or deliverables. Defaults to visible to everyone on this booking.',
     shootDetails: 'Shoot details',
     location: 'Location',
     contact: 'Contact',
@@ -348,7 +348,8 @@ export const uiCopy = {
       'Your account is already a member of another organization. Each account can only belong to one organization at a time. Please use a different email address to accept this invitation, or contact the person who invited you.',
     wrongRole:
       'Your account type does not match this invitation. This can happen if you previously signed up with a different role. Please contact the person who invited you or create a new account with the correct email.',
-    genericFail: 'Could not accept the invitation. Please try again or ask for a new invitation link.',
+    genericFail:
+      'Could not accept the invitation. Please try again or ask for a new invitation link.',
     signOutBtn: 'Sign out',
     dismissBtn: 'OK',
   },
@@ -411,8 +412,7 @@ export const uiCopy = {
   },
   clientWeb: {
     calendarCalloutTitle: 'Saving to calendar:',
-    calendarCalloutBody:
-      'Sign in with a Client account to save calendar entries.',
+    calendarCalloutBody: 'Sign in with a Client account to save calendar entries.',
     editEvent: 'Edit event',
     /** Sticky bottom navigation (Client workspace). */
     bottomTabs: {
@@ -444,7 +444,8 @@ export const uiCopy = {
     /**
      * Sign-up/login during org invite. Placeholders: {role} = Booker/Employee label, {accountType} = Agency or Client account type.
      */
-    inviteRoleLockedLine: 'Your role is set by this invitation: {role} (account type: {accountType}).',
+    inviteRoleLockedLine:
+      'Your role is set by this invitation: {role} (account type: {accountType}).',
     accountScheduledForDeletion:
       'Your account has been scheduled for deletion and is no longer accessible.',
     emailPasswordRequired: 'Email and password are required.',
@@ -528,13 +529,17 @@ export const uiCopy = {
     ownerOnly:
       'Only the organization owner can delete this workspace account. Contact your owner if you need to leave the team.',
     notAvailableSignedOut: 'Sign in with a full account to manage deletion.',
-    personalDeleteDescription: 'Remove your personal account from this platform. You will be removed from your organization and your account will be scheduled for deletion.',
+    personalDeleteDescription:
+      'Remove your personal account from this platform. You will be removed from your organization and your account will be scheduled for deletion.',
     personalDeleteConfirmTitle: 'Delete your account?',
-    personalDeleteConfirmMessage: 'You will be removed from your organization and your account will be scheduled for deletion. Data is kept for 30 days, then permanently removed. Continue?',
+    personalDeleteConfirmMessage:
+      'You will be removed from your organization and your account will be scheduled for deletion. Data is kept for 30 days, then permanently removed. Continue?',
     dissolveOrgTitle: 'Delete organization',
-    dissolveOrgDescription: 'This permanently removes the organization, all team members, and invitations. This cannot be undone. After deleting the organization, you can also delete your personal account.',
+    dissolveOrgDescription:
+      'This permanently removes the organization, all team members, and invitations. This cannot be undone. After deleting the organization, you can also delete your personal account.',
     dissolveOrgConfirmTitle: 'Delete organization?',
-    dissolveOrgConfirmMessage: 'Are you sure? All team members will be removed and the organization cannot be recovered. This cannot be undone.',
+    dissolveOrgConfirmMessage:
+      'Are you sure? All team members will be removed and the organization cannot be recovered. This cannot be undone.',
     dissolveOrgButton: 'Delete organization',
     dissolveOrgWorking: 'Deleting organization…',
     dissolveOrgSuccess: 'Organization deleted. You can now delete your personal account below.',
@@ -542,10 +547,17 @@ export const uiCopy = {
   },
   app: {
     crashTitle: 'Something went wrong',
-    crashBody:
-      'Something went wrong in the application. Please reload the page or try again.',
-    supabaseMissing:
-      'The application is not properly configured. Please contact support.',
+    crashBody: 'Something went wrong in the application. Please reload the page or try again.',
+    supabaseMissing: 'The application is not properly configured. Please contact support.',
+    /** Shown when session exists but profile is still loading (avoids a silent spinner). */
+    profileLoadingTitle: 'Loading your profile…',
+    profileLoadingHint:
+      'This usually takes a few seconds. If it takes too long, check your connection.',
+    /** Shown on Auth when URL contains a shared selection — re-open link after sign-in if needed. */
+    sharedListSignInHint:
+      'You opened a shared model list. After signing in, open the same link again if the list does not appear.',
+    /** Fallback when invite/claim success banner text resolver fails (success still applied). */
+    inviteClaimSuccessFallback: 'Welcome — your workspace access is ready.',
   },
   apply: {
     displayNameMissing:
@@ -572,7 +584,21 @@ export const uiCopy = {
     composerPlaceholder: 'Message…',
   },
   login: {
-    dummyFlow: 'Dummy flow — pick a role to open that workspace.',
+    /** Role-picker entry (e.g. dev / secondary entry) — not a full auth product path. */
+    rolePickerHelper:
+      'Choose how you want to continue. You will open that workspace after you continue.',
+    brandTitle: 'INDEX CASTING',
+    brandSubtitle: 'B2B platform for fashion casting.',
+    sectionAccess: 'Access',
+    accessCopy: 'Verified agencies and brands only. Use your work email to request access.',
+    roleLabelSelect: 'Select role',
+    continueAs: (roleLabel: string) => `Continue as ${roleLabel}`,
+    chooseRoleToContinue: 'Choose a role to continue',
+    linkCouldNotOpen: 'Could not open the link. Check your browser or try copying the URL.',
+    roleClient: 'Client',
+    roleModel: 'Model',
+    roleAgency: 'Agency',
+    roleSelectPlaceholder: 'Select role',
   },
   /** Agency app — Settings tab (organization owner only). */
   agencySettings: {
@@ -593,7 +619,8 @@ export const uiCopy = {
     fieldCity: 'City',
     fieldCountry: 'Country',
     save: 'Save settings',
-    saveFailed: 'Could not save settings. Make sure you are signed in as the organization owner and try again.',
+    saveFailed:
+      'Could not save settings. Make sure you are signed in as the organization owner and try again.',
     saveSuccess: 'Settings saved.',
     saveError: 'Could not save settings. Please try again.',
     bookerNoAccess: 'Only the organization owner can edit agency settings.',
@@ -606,7 +633,8 @@ export const uiCopy = {
     polaroidsTitle: 'Polaroids',
     polaroidsHint: 'Separate from portfolio. Only images marked visible appear in client swipe.',
     territoriesTitle: 'Territories of Representation',
-    territoriesHint: 'Select at least one country where this agency represents the model. Required.',
+    territoriesHint:
+      'Select at least one country where this agency represents the model. Required.',
     territoriesSearchPlaceholder: 'Search by country code or name…',
     noTerritoriesSelected: 'No territories selected.',
     territoriesRequiredTitle: 'Territory required',
@@ -636,8 +664,7 @@ export const uiCopy = {
     modelSaveFailed: 'Save failed — please try again',
     modelSaveButton: 'Save settings',
     modelInviteEmailSentNote: (email: string) => `Invitation email sent to ${email}.`,
-    modelInviteEmailFailedNote: (reason: string) =>
-      `Invitation email was not sent: ${reason}.`,
+    modelInviteEmailFailedNote: (reason: string) => `Invitation email was not sent: ${reason}.`,
     modelInviteManualLinkNote: 'Share this claim link with the model manually:',
     modelInviteSkippedAlreadyLinkedNote: 'Model account is already linked — invite skipped.',
   },
@@ -654,7 +681,8 @@ export const uiCopy = {
     /** Client Messages: B2B pill (you message agencies). */
     tabB2BChatsClientView: 'Agency chats',
     clientsSectionTitle: 'Clients',
-    clientsSectionSubtitle: 'Search client organizations (not individuals). Start an organization-to-organization chat.',
+    clientsSectionSubtitle:
+      'Search client organizations (not individuals). Start an organization-to-organization chat.',
     clientsSearchPlaceholder: 'Search by client organization name…',
     clientsEmpty: 'No client organizations match your search.',
     noAgencyContext: 'No agency context — cannot load chats.',
@@ -681,6 +709,8 @@ export const uiCopy = {
     openRelatedRequest: 'Open related request',
     relatedRequestUnavailable: 'No related request linked yet.',
     messagePlaceholder: 'Message…',
+    /** B2B + option threads: fetch earlier history when the initial page is full */
+    loadOlderMessages: 'Load older messages',
     send: 'Send',
     attachPhoto: 'Photo',
     attachFile: 'File',
@@ -703,7 +733,8 @@ export const uiCopy = {
     openPackage: 'Open package',
     modelIdLabel: 'Model ID',
     pickPackage: 'Choose a package to share',
-    pickPackageHint: 'The client will open this directly in their Discover tab with full booking access.',
+    pickPackageHint:
+      'The client will open this directly in their Discover tab with full booking access.',
     pickModel: 'Choose a model to share',
     packagePreviewLabel: 'models in this package',
     requestFromPackage: 'Request from this package',
@@ -738,11 +769,9 @@ export const uiCopy = {
     chatFailedTitle: 'Could not open chat',
     chatFailedGeneric: 'Could not create or load the chat. Check your network and try again.',
     /** PostgREST: RPC missing in Supabase project */
-    migrationRequiredResolveRpc:
-      'This feature is temporarily unavailable. Please contact support.',
+    migrationRequiredResolveRpc: 'This feature is temporarily unavailable. Please contact support.',
     /** PostgREST: create chat RPC missing */
-    migrationRequiredCreateB2bRpc:
-      'Could not start chat. Please try again or contact support.',
+    migrationRequiredCreateB2bRpc: 'Could not start chat. Please try again or contact support.',
     migrationRequiredB2bOrgDirectory:
       'Could not load the directory. Please try again or contact support.',
     /** ensureClientAgencyChat — agency org row missing after lookup + bootstrap */
@@ -791,7 +820,8 @@ export const uiCopy = {
     chatNotPending: 'Recruiting chat is only available while the application is pending.',
     chatSignInAgain: 'Please sign in again.',
     chatApplicationNotFound: 'Application not found.',
-    chatLinkFailed: 'Could not link the recruiting thread to the application. Check the database or contact support.',
+    chatLinkFailed:
+      'Could not link the recruiting thread to the application. Check the database or contact support.',
     chatSchemaMismatch: 'Could not start chat. Please try again or contact support.',
     chatServerError: 'A server error occurred. Please try again later.',
     chatPermissionDenied: 'You do not have permission to perform this action.',
@@ -864,15 +894,15 @@ export const uiCopy = {
     insertFailed: 'Could not save calendar entry. Please try again.',
     duplicateEvent: 'An event with the same title already exists on this date.',
     conflictWarningTitle: 'Schedule Conflict',
-    conflictWarningMessage: 'This model already has a booking on this date: {{entries}}. You can still submit the request.',
+    conflictWarningMessage:
+      'This model already has a booking on this date: {{entries}}. You can still submit the request.',
   },
   adminDashboard: {
     deletePermanentlyTitle: 'Delete account permanently',
     deletePermanentlyMessage:
       'This will permanently delete all profile data for this user. The user will no longer be able to sign in. Continue?',
     deleteData: 'Delete data',
-    purgeSuccess:
-      'Profile data deleted successfully.',
+    purgeSuccess: 'Profile data deleted successfully.',
     purgeFailed: 'Purge failed.',
     purgeFailedWithDetails: 'Purge failed: {details}',
     /** profiles.role — model / agent / client only */
@@ -980,7 +1010,8 @@ export const uiCopy = {
     currentLocationLabel: 'Current Location',
     categoryLabel: 'Categories',
     shareLocationToggle: 'Share approximate location',
-    shareLocationHint: 'Enables radius-based discovery. Only a rounded area (~5 km) is shared — never exact GPS.',
+    shareLocationHint:
+      'Enables radius-based discovery. Only a rounded area (~5 km) is shared — never exact GPS.',
     shareLocationSaved: 'Location saved.',
     shareLocationError: 'Could not save location. Please try again.',
   },
@@ -1020,25 +1051,29 @@ export const uiCopy = {
     inAppHint: 'Registered clients only — full booking tools.',
     sendInAppModalTitle: 'Send Package to Client',
     sendInAppModalHint: 'Choose a registered client organization to send this package to.',
-    sendInAppNoChats: 'No active B2B chats found. Open a chat thread with a client in Messages first.',
+    sendInAppNoChats:
+      'No active B2B chats found. Open a chat thread with a client in Messages first.',
     sendInAppLoading: 'Loading chats…',
     sendInAppSending: 'Sending…',
     sendInAppSuccess: 'Package sent successfully.',
     sendInAppError: 'Could not send the package. Please try again.',
     sendInAppCancelButton: 'Cancel',
     sectionTitle: 'External Package Links',
-    sectionDescription: 'Generate a link to share with clients who do not have an account. They can browse the package as a guest and send you a request.',
+    sectionDescription:
+      'Generate a link to share with clients who do not have an account. They can browse the package as a guest and send you a request.',
     generateButton: 'Generate Link',
     copyButton: 'Copy Link',
     accessLevelHint: 'Guest access only — no booking tools',
     vs: 'vs.',
-    inAppAlternative: 'To share a package with a registered client organization, use the "Share package" button in a B2B chat thread.',
+    inAppAlternative:
+      'To share a package with a registered client organization, use the "Share package" button in a B2B chat thread.',
     /** Package type selector — Step 1 of package creation. */
     packageTypeLabel: 'Package Type',
     packageTypePortfolio: 'Portfolio Package',
     packageTypePolaroid: 'Polaroid Package',
     packageTypePortfolioHint: 'Shows only portfolio images — used for standard client discovery.',
-    packageTypePolaroidHint: 'Shows only polaroid images — used for casting agencies that require measurement shots.',
+    packageTypePolaroidHint:
+      'Shows only polaroid images — used for casting agencies that require measurement shots.',
   },
   /** Client Discover tab — package mode overlay + agency chat action. */
   discover: {
@@ -1079,25 +1114,30 @@ export const uiCopy = {
     removeError: 'Could not remove model. Please try again.',
     back: '← Back',
     /** Legacy key; RPC no longer requires client_agency_connections — kept for stable imports. */
-    addToProjectNoConnection:
-      'Could not save the model to this project. Please try again.',
-    addToProjectWrongOrg: 'Could not add this model — this project belongs to a different organization.',
-    addToProjectNotOrgMember: 'Could not add this model — you are not a member of the selected client organization.',
-    addToProjectNoClientOrg: 'Could not add this model — no client organization is associated with your account.',
+    addToProjectNoConnection: 'Could not save the model to this project. Please try again.',
+    addToProjectWrongOrg:
+      'Could not add this model — this project belongs to a different organization.',
+    addToProjectNotOrgMember:
+      'Could not add this model — you are not a member of the selected client organization.',
+    addToProjectNoClientOrg:
+      'Could not add this model — no client organization is associated with your account.',
     addToProjectModelNoAgency: 'Could not add this model — profile data is incomplete (no agency).',
     addToProjectGeneric: 'Could not save the model to this project. Please try again.',
   },
   /** Agency — model profile completeness alerts shown in the My Models edit panel. */
   modelCompleteness: {
     bannerTitle: 'Profile Incomplete',
-    bannerSubtitle: 'This model is visible in My Models and packages, but some required or recommended fields are missing.',
+    bannerSubtitle:
+      'This model is visible in My Models and packages, but some required or recommended fields are missing.',
     bannerAllGood: 'Profile complete — no issues found.',
     severityCritical: 'Required',
     severityRecommended: 'Recommended',
     issueName: 'Name is missing — required for all views.',
     issuePhoto: 'No visible portfolio photo — clients cannot see this model.',
-    issueTerritory: 'No territory assigned — model will not appear in location-based client discovery.',
-    issueVisibility: 'Not visible to any client type. Assign at least one category or remove all to show in both.',
+    issueTerritory:
+      'No territory assigned — model will not appear in location-based client discovery.',
+    issueVisibility:
+      'Not visible to any client type. Assign at least one category or remove all to show in both.',
     issueHeight: 'Height missing — model excluded from height-based client filters.',
     issueCountry: 'No home country set — model appears via territory only.',
     issueEmail: 'No email — cannot link model app account (calendar, options, chats).',
@@ -1132,7 +1172,8 @@ export const uiCopy = {
     countrySearchPlaceholder: 'Search country…',
     sectionCity: 'City',
     cityPlaceholder: 'e.g. Berlin, Hamburg, Munich...',
-    cityPriorityHint: 'Models in this city appear first, followed by all models in the selected country.',
+    cityPriorityHint:
+      'Models in this city appear first, followed by all models in the selected country.',
     sectionHairColor: 'Hair color',
     hairColorPlaceholder: 'e.g. Brown, Blonde…',
     sectionHips: 'Hips (min–max)',
@@ -1150,7 +1191,8 @@ export const uiCopy = {
   guestFlow: {
     /** Shown at the top of GuestView to clearly communicate limited access. */
     guestAccessBadge: 'Guest Access',
-    guestAccessSubtitle: 'You are viewing a shared package as a guest. Create an account for full booking access.',
+    guestAccessSubtitle:
+      'You are viewing a shared package as a guest. Create an account for full booking access.',
     /** Hardcoded strings moved to uiCopy */
     invalidOrExpired: 'This link is invalid or has expired.',
     loadError: 'Could not load the package. Please try again.',
@@ -1205,8 +1247,7 @@ export const uiCopy = {
     emailPlaceholder: 'you@example.com',
     submitting: 'Sending…',
     chatTitle: 'Guest Chat',
-    noConversationHint:
-      'No active conversation found. Open a guest link to start a request.',
+    noConversationHint: 'No active conversation found. Open a guest link to start a request.',
     upgradeModalBody:
       'Create a free client account to unlock model discovery, projects, and team management.',
     selectedModels: 'Selected models',
@@ -1232,7 +1273,8 @@ export const uiCopy = {
     emptyState: 'No applications yet.',
     loadingApplications: 'Loading applications…',
     deleteConfirmTitle: 'Delete application',
-    deleteConfirmBody: 'Are you sure you want to delete this application? This action cannot be undone.',
+    deleteConfirmBody:
+      'Are you sure you want to delete this application? This action cannot be undone.',
     deleteConfirmAction: 'Delete',
     confirmRepresentationError: 'Could not confirm representation. Please try again.',
     declineRepresentationError: 'Could not decline representation. Please try again.',
@@ -1323,7 +1365,8 @@ export const uiCopy = {
     agencyConfirmedAvailability: 'Agency confirmed availability for this option.',
     agencyAcceptedPrice: 'Agency accepted the proposed fee.',
     agencyDeclinedPrice: 'Agency declined the proposed fee. A counter offer can be sent below.',
-    agencyCounterOffer: (price: number, currency: string) => `Agency proposed ${price} ${currency}.`,
+    agencyCounterOffer: (price: number, currency: string) =>
+      `Agency proposed ${price} ${currency}.`,
     clientAcceptedCounter: 'Client accepted the agency proposal.',
     clientRejectedCounter:
       'Client declined the counter offer. The agency can send a new counter offer.',
@@ -1345,7 +1388,8 @@ export const uiCopy = {
     counterOffer: 'Make counter offer',
     rejectOption: 'Remove request',
     /** Agency: counter while client proposed price is still pending */
-    counterOfferPendingHint: 'Enter a counter-offer to send to the client (their proposed fee stays visible until they respond).',
+    counterOfferPendingHint:
+      'Enter a counter-offer to send to the client (their proposed fee stays visible until they respond).',
     messagePlaceholder: 'Message…',
     send: 'Send',
     rejectOptionTitle: 'Remove this request?',
@@ -1383,7 +1427,8 @@ export const uiCopy = {
     agencyWaitingForModelAfterAvailability:
       'Waiting for the model to confirm in their app. You can still negotiate the fee with the client.',
     /** Agency: model pre-approved availability — price negotiation is enabled. */
-    modelAvailabilityConfirmedHint: 'Model availability confirmed — you can negotiate the fee with the client.',
+    modelAvailabilityConfirmedHint:
+      'Model availability confirmed — you can negotiate the fee with the client.',
     /** Agency: no linked model account — client/agency negotiation does not wait on model app approval. */
     noModelAppNegotiationHint:
       'No model app account on file — negotiate and confirm with the client; calendars sync when the option is confirmed.',
@@ -1407,7 +1452,8 @@ export const uiCopy = {
     negotiationFeeClosedRejected: 'This request was rejected. Fee negotiation is closed.',
     negotiationFeeClosedJobConfirmed: 'Job confirmed. Fee negotiation is closed.',
     /** Agency: client declined proposed fee — prompt to send another counter. */
-    agencyNegotiationAfterClientDecline: 'Client declined the proposed fee — you can send a new counter-offer below.',
+    agencyNegotiationAfterClientDecline:
+      'Client declined the proposed fee — you can send a new counter-offer below.',
     showDetails: 'Show details',
     hideDetails: 'Hide details',
     /**
@@ -1448,7 +1494,8 @@ export const uiCopy = {
     agencyLocationPersistFailedShort: 'Map location may be incomplete.',
     /** Appended to add-model success feedback when any sub-step failed (photos or map location). */
     addModelPersistenceWarningSuffix: ' Some items may not have saved fully — see alerts.',
-    addModelNoPortfolioUploadedBody: 'No portfolio photos could be uploaded. Please try again via Edit.',
+    addModelNoPortfolioUploadedBody:
+      'No portfolio photos could be uploaded. Please try again via Edit.',
     portfolioTitle: 'Portfolio',
     portfolioHint: 'First image is used as the cover in discovery and packages.',
     polaroidsTitle: 'Polaroids',
@@ -1484,7 +1531,8 @@ export const uiCopy = {
     /** Checkbox is per visit; server also requires a recent rights confirmation in the audit window. */
     imageRightsCheckboxSessionHint:
       'Check this each time you add uploads in this session. A confirmation is recorded when you upload.',
-    imageRightsSessionActiveHint: 'Image rights confirmed recently — you can upload without re-checking until the session window expires.',
+    imageRightsSessionActiveHint:
+      'Image rights confirmed recently — you can upload without re-checking until the session window expires.',
   },
   swipe: {
     headerLabel: 'The Swipe',
@@ -1517,7 +1565,8 @@ export const uiCopy = {
     unsafeUrl: 'Only HTTPS links are allowed.',
     blockedProtocol: 'This link type is not allowed for security reasons.',
     fileTooLarge: 'File is too large. Maximum size is 200 MB.',
-    fileTypeNotAllowed: 'This file type is not allowed. Please upload an image (JPEG, PNG, WebP) or PDF.',
+    fileTypeNotAllowed:
+      'This file type is not allowed. Please upload an image (JPEG, PNG, WebP) or PDF.',
     fileContentMismatch: 'File content does not match its type. Renamed files are not allowed.',
     fileEmpty: 'The selected file is empty.',
     rateLimitMessages: 'You are sending messages too quickly. Please wait a moment.',
@@ -1552,16 +1601,14 @@ export const uiCopy = {
     legalContactEmail: 'legal@indexcasting.com',
     legalPendingTitle: 'Document coming soon',
     legalPendingBody:
-      'The full legal text for this document will be published at launch. '
-      + 'Please contact us if you need the current version before then.',
+      'The full legal text for this document will be published at launch. ' +
+      'Please contact us if you need the current version before then.',
     /** Required checkbox before chat/recruiting file attachments (non-model portfolio). */
-    chatFileRightsCheckbox:
-      'I confirm I have all necessary rights and consents for this upload.',
+    chatFileRightsCheckbox: 'I confirm I have all necessary rights and consents for this upload.',
     chatFileRightsMissing:
       'Please confirm you have all necessary rights and consents for this upload.',
     /** DB / network failure after checkbox tick — same as model media panel. */
-    imageRightsConfirmationFailed:
-      'Rights confirmation could not be recorded. Please try again.',
+    imageRightsConfirmationFailed: 'Rights confirmation could not be recorded. Please try again.',
     /** Recent confirmation row missing or not readable — guard before upload. */
     imageRightsGuardVerificationFailed:
       'Rights confirmation could not be verified. Please try again.',
@@ -1577,8 +1624,10 @@ export const uiCopy = {
     warning95: 'Almost full! You are using over 95% of your storage.',
     deleteChatFiles: 'Delete all media in this chat',
     deletePortfolioFiles: 'Delete all portfolio images',
-    confirmDeleteChatFiles: 'This will permanently delete all files in this chat thread. This cannot be undone.',
-    confirmDeletePortfolio: 'This will permanently delete all portfolio images for this model. This cannot be undone.',
+    confirmDeleteChatFiles:
+      'This will permanently delete all files in this chat thread. This cannot be undone.',
+    confirmDeletePortfolio:
+      'This will permanently delete all portfolio images for this model. This cannot be undone.',
     deleteSuccess: 'Files deleted successfully.',
     deleteError: 'Could not delete files. Please try again.',
     // Admin storage override
@@ -1599,7 +1648,8 @@ export const uiCopy = {
     storageLimitUnlimitedSuccess: 'Organization set to unlimited storage.',
     storageLimitUnlimitedFailed: 'Could not set unlimited storage.',
     storageLimitInputPlaceholder: 'Limit in GB (e.g. 20)',
-    storageLimitConfirmUnlimited: 'Grant this organization unlimited storage? This removes all upload restrictions.',
+    storageLimitConfirmUnlimited:
+      'Grant this organization unlimited storage? This removes all upload restrictions.',
     storageLimitConfirmReset: 'Reset this organization to the default 5 GB storage limit?',
     storageLimitValidationNegative: 'Limit must be greater than 0 GB.',
     storageLimitValidationTooLarge: 'Limit cannot exceed 1024 GB (1 TB).',
@@ -1615,23 +1665,24 @@ export const uiCopy = {
     trialExpiredTitle: 'Your trial has ended',
     trialExpiredBody: 'Choose a plan to continue using Index Casting.',
     trialAlreadyUsedTitle: 'Trial not available',
-    trialAlreadyUsedBody: 'A free trial has already been used with this email address. Please subscribe to continue.',
+    trialAlreadyUsedBody:
+      'A free trial has already been used with this email address. Please subscribe to continue.',
     accessBlocked: 'Your account is currently inactive.',
     accessBlockedBody: 'Please subscribe to regain access.',
 
     // ── Plans ───────────────────────────────────────────────────────────────
-    planNameAgencyBasic:      'Agency Basic',
-    planNameAgencyPro:        'Agency Pro',
+    planNameAgencyBasic: 'Agency Basic',
+    planNameAgencyPro: 'Agency Pro',
     planNameAgencyEnterprise: 'Agency Enterprise',
-    planNameClient:           'Client',
-    planNameAdmin:            'Admin Access',
-    planNameTrial:            'Free Trial',
+    planNameClient: 'Client',
+    planNameAdmin: 'Admin Access',
+    planNameTrial: 'Free Trial',
 
     // ── Feature limits ──────────────────────────────────────────────────────
-    swipesPerDay:      (n: number) => `${n} swipes / day`,
-    swipesUnlimited:   'Unlimited swipes',
-    storageLimit:      (gb: number) => `${gb} GB storage`,
-    storageUnlimited:  'Unlimited storage',
+    swipesPerDay: (n: number) => `${n} swipes / day`,
+    swipesUnlimited: 'Unlimited swipes',
+    storageLimit: (gb: number) => `${gb} GB storage`,
+    storageUnlimited: 'Unlimited storage',
     fullPlatformAccess: 'Full platform access',
     realtimeMessaging: 'Real-time messaging',
     castingManagement: 'Casting management',
@@ -1639,46 +1690,46 @@ export const uiCopy = {
     agencyTeamSeatsUnlimited: 'Team members: unlimited or custom (Enterprise)',
 
     // ── CTAs ────────────────────────────────────────────────────────────────
-    upgradeCTA:          'Get Started',
-    upgradeNow:          'Upgrade Now',
-    manageSubscription:  'Manage Subscription',
-    continueFreeTrial:   'Continue Free Trial',
-    contactSales:        'Contact Sales',
+    upgradeCTA: 'Get Started',
+    upgradeNow: 'Upgrade Now',
+    manageSubscription: 'Manage Subscription',
+    continueFreeTrial: 'Continue Free Trial',
+    contactSales: 'Contact Sales',
 
     // ── Status labels ───────────────────────────────────────────────────────
-    statusActive:      'Active',
-    statusTrialing:    'Trial',
-    statusPastDue:     'Past Due',
-    statusCanceled:    'Canceled',
+    statusActive: 'Active',
+    statusTrialing: 'Trial',
+    statusPastDue: 'Past Due',
+    statusCanceled: 'Canceled',
     statusAdminAccess: 'Admin Override',
 
     // ── Admin billing panel ─────────────────────────────────────────────────
-    adminBillingTitle:            'Billing & Subscription',
-    adminBypassPaywall:           'Bypass Paywall',
-    adminBypassPaywallOn:         'Full access enabled (no payment required)',
-    adminBypassPaywallOff:        'Normal billing rules apply',
-    adminCustomPlan:              'Custom Plan',
-    adminCustomPlanPlaceholder:   'e.g. agency_pro',
-    adminSetPlan:                 'Set Plan',
-    adminSetPlanSuccess:          'Plan updated successfully.',
-    adminSetPlanFailed:           'Could not update plan.',
-    adminBypassSuccess:           'Paywall bypass updated.',
-    adminBypassFailed:            'Could not update paywall bypass.',
-    adminNoSubscription:          'No subscription record found.',
-    adminSubscriptionStatus:      'Subscription Status',
-    adminTrialEndsAt:             'Trial Ends',
-    adminCurrentPeriodEnd:        'Billing Period End',
-    adminStripeCustomer:          'Stripe Customer ID',
-    adminStripeSubscription:      'Stripe Subscription ID',
+    adminBillingTitle: 'Billing & Subscription',
+    adminBypassPaywall: 'Bypass Paywall',
+    adminBypassPaywallOn: 'Full access enabled (no payment required)',
+    adminBypassPaywallOff: 'Normal billing rules apply',
+    adminCustomPlan: 'Custom Plan',
+    adminCustomPlanPlaceholder: 'e.g. agency_pro',
+    adminSetPlan: 'Set Plan',
+    adminSetPlanSuccess: 'Plan updated successfully.',
+    adminSetPlanFailed: 'Could not update plan.',
+    adminBypassSuccess: 'Paywall bypass updated.',
+    adminBypassFailed: 'Could not update paywall bypass.',
+    adminNoSubscription: 'No subscription record found.',
+    adminSubscriptionStatus: 'Subscription Status',
+    adminTrialEndsAt: 'Trial Ends',
+    adminCurrentPeriodEnd: 'Billing Period End',
+    adminStripeCustomer: 'Stripe Customer ID',
+    adminStripeSubscription: 'Stripe Subscription ID',
 
     // ── Non-owner paywall notice ─────────────────────────────────────────────
     nonOwnerPaywallTitle: 'Subscription Required',
-    nonOwnerPaywallBody:  'Only your organization owner can manage and activate the subscription. Please contact them to upgrade.',
+    nonOwnerPaywallBody:
+      'Only your organization owner can manage and activate the subscription. Please contact them to upgrade.',
 
     // ── Paywall screen (no hardcoded English in component) ─────────────────
     paywallClientTitle: 'Activate Your Account',
-    paywallClientSubtitle:
-      'Your free trial has ended. Subscribe to regain full platform access.',
+    paywallClientSubtitle: 'Your free trial has ended. Subscribe to regain full platform access.',
     paywallClientLockedBody:
       'Your access is locked until you subscribe. No partial access is available.',
     planCardRecommendedBadge: 'RECOMMENDED',
@@ -1717,8 +1768,7 @@ export const uiCopy = {
       'Next step: subscribe before the trial ends to keep uninterrupted access.',
     ownerBillingNextStepSubscribe: 'Next step: choose a plan and complete checkout.',
     ownerBillingUpgradeFromTrialCTA: 'Subscribe now',
-    ownerBillingCheckoutReturnedSuccess:
-      'Checkout completed. Your access will update in a moment.',
+    ownerBillingCheckoutReturnedSuccess: 'Checkout completed. Your access will update in a moment.',
     ownerBillingCheckoutReturnedCancel:
       'Checkout was closed before completing. You can try again when ready.',
     billingTestModeNotice:
@@ -1726,56 +1776,68 @@ export const uiCopy = {
     billingPaymentsProcessedBy: 'Payments are processed securely by Stripe.',
 
     // ── Errors ──────────────────────────────────────────────────────────────
-    checkoutFailed:      'Could not open checkout. Please try again.',
-    checkoutLoading:     'Preparing checkout…',
-    accessCheckFailed:   'Could not verify platform access. Please try again.',
-    swipeLimitReached:   'Daily swipe limit reached. Upgrade your plan for more swipes.',
+    checkoutFailed: 'Could not open checkout. Please try again.',
+    checkoutLoading: 'Preparing checkout…',
+    accessCheckFailed: 'Could not verify platform access. Please try again.',
+    swipeLimitReached: 'Daily swipe limit reached. Upgrade your plan for more swipes.',
     storageLimitReached: 'Storage limit reached. Upgrade your plan for more storage.',
   },
   // ── Dashboard ──────────────────────────────────────────────────────────────
   dashboard: {
-    summaryOpenRequests:    'Open Requests',
-    summaryUnread:          'Unread Messages',
-    summaryToday:           'Today',
-    summaryLoading:         'Loading dashboard...',
-    lastActionPrefix:       'Last action:',
-    lastActionBy:           'by',
-    lastActionNone:         'No recent activity.',
-    swipesUsed:             '{used} / {total} swipes used today',
-    swipeLimitReached:      'Daily limit reached. Upgrade to continue.',
-    swipeLimitLoading:      'Checking swipe limit...',
-    profileCompletion:      'Profile {percent}% complete',
-    profileCompleteAll:     'Profile complete',
-    searchPlaceholder:      'Search models, castings, chats...',
-    searchResultsModels:    'Models',
-    searchResultsOptions:   'Option Requests',
-    searchResultsChats:     'Chats',
-    searchNoResults:        'No results found.',
-    searchMinLength:        'Type at least 2 characters to search.',
-    conflictWarning:        'Conflict detected: an existing event overlaps this time slot.',
-    conflictWarningTitle:   'Schedule Conflict',
-    activeOptionsTitle:     'My Active Options',
-    activeOptionsEmpty:     'No active option requests.',
-    activeOptionsGrouped:   'Grouped by status',
-    inboxTitle:             'Inbox',
-    profileTab:             'Profile',
-    inboxEmpty:             'No messages or requests.',
-    inboxActionRequired:    'Action Required',
-    inboxUnread:            'Unread',
-    orgMetricsTitle:        'Performance',
+    summaryOpenRequests: 'Open Requests',
+    summaryUnread: 'Unread Messages',
+    summaryToday: 'Today',
+    summaryLoading: 'Loading dashboard...',
+    lastActionPrefix: 'Last action:',
+    lastActionBy: 'by',
+    lastActionNone: 'No recent activity.',
+    swipesUsed: '{used} / {total} swipes used today',
+    swipeLimitReached: 'Daily limit reached. Upgrade to continue.',
+    swipeLimitLoading: 'Checking swipe limit...',
+    profileCompletion: 'Profile {percent}% complete',
+    profileCompleteAll: 'Profile complete',
+    searchPlaceholder: 'Search models, castings, chats...',
+    searchResultsModels: 'Models',
+    searchResultsOptions: 'Option Requests',
+    searchResultsChats: 'Chats',
+    searchNoResults: 'No results found.',
+    searchMinLength: 'Type at least 2 characters to search.',
+    conflictWarning: 'Conflict detected: an existing event overlaps this time slot.',
+    conflictWarningTitle: 'Schedule Conflict',
+    activeOptionsTitle: 'My Active Options',
+    activeOptionsEmpty: 'No active option requests.',
+    activeOptionsGrouped: 'Grouped by status',
+    inboxTitle: 'Inbox',
+    profileTab: 'Profile',
+    inboxEmpty: 'No messages or requests.',
+    inboxActionRequired: 'Action Required',
+    inboxUnread: 'Unread',
+    orgMetricsTitle: 'Performance',
     orgMetricsTotalOptions: 'Total Options',
-    orgMetricsConfirmed:    'Confirmed',
-    orgMetricsConversion:   'Conversion Rate',
-    orgMetricsLoading:      'Loading metrics...',
-    orgMetricsError:        'Could not load metrics.',
-    filterExplanation:      'Filtered by:',
-    filterSeenHidden:       'Already seen models hidden',
-    optionChecklistDate:    'Date is required',
-    optionChecklistRole:    'Role is required',
-    quickReplyLabel:        'Quick reply',
-    threadContextOption:    'Option',
-    threadContextCasting:   'Casting',
-    threadContextBooking:   'Booking',
+    orgMetricsConfirmed: 'Confirmed',
+    orgMetricsConversion: 'Conversion Rate',
+    orgMetricsLoading: 'Loading metrics...',
+    orgMetricsError: 'Could not load metrics.',
+    filterExplanation: 'Filtered by:',
+    filterSeenHidden: 'Already seen models hidden',
+    filterNearMe: 'Near me',
+    filterSportsWinter: 'Winter sports',
+    filterSportsSummer: 'Summer sports',
+    filterHair: (h: string) => `Hair ${h}`,
+    filterEthnicities: (n: number) => `Ethnicities (${n})`,
+    filterMeasurements: (label: string, range: string) => `${label} ${range} cm`,
+    /** Near me is on but we have no coordinates and no city for fallback — list is not distance-sorted. */
+    nearbyNeedsLocation:
+      'Near me is on, but location is unavailable. Allow location access or set your city in filters to sort by distance.',
+    nearbyLoadFailed: 'Could not load nearby models. Check your connection and try again.',
+    discoveryLoadMoreFailed:
+      'Could not load more results. Scroll up and try again, or adjust filters.',
+    optionChecklistDate: 'Date is required',
+    optionChecklistRole: 'Role is required',
+    quickReplyLabel: 'Quick reply',
+    threadContextOption: 'Option',
+    threadContextCasting: 'Casting',
+    threadContextBooking: 'Booking',
     /** Option request row when model_name is null (search / lists). */
     optionRequestUnnamedModel: 'Unnamed model',
     /** Workflow badge when toDisplayStatus === Draft */
@@ -1786,7 +1848,8 @@ export const uiCopy = {
     optionRequestStatusPriceAgreed: 'Price agreed',
     optionRequestStatusConfirmed: 'Confirmed',
     /** Agency confirmed availability (option_confirmed) but linked model has not confirmed yet — not fully closed. */
-    optionRequestStatusAvailabilityConfirmedAwaitingModel: 'Availability confirmed · awaiting model',
+    optionRequestStatusAvailabilityConfirmedAwaitingModel:
+      'Availability confirmed · awaiting model',
     optionRequestStatusRejected: 'Rejected',
     optionRequestStatusJobConfirmed: 'Job confirmed',
     optionRequestStatusPending: 'Pending',
@@ -1810,13 +1873,13 @@ export const uiCopy = {
     smartAttentionFilterActionRequired: 'Action required only',
     /** Shown briefly after negotiation actions that sync to calendar (UI only). */
     negotiationCalendarSyncedHint: 'This option is reflected in your calendar.',
-    reminderSet:            'Reminder set',
-    reminderNone:           'No reminder',
-    weekViewLabel:          'Week',
-    monthViewLabel:         'Month',
-    colorCastingLabel:      'Casting',
-    colorOptionLabel:       'Option',
-    colorPersonalLabel:     'Personal',
+    reminderSet: 'Reminder set',
+    reminderNone: 'No reminder',
+    weekViewLabel: 'Week',
+    monthViewLabel: 'Month',
+    colorCastingLabel: 'Casting',
+    colorOptionLabel: 'Option',
+    colorPersonalLabel: 'Personal',
   },
 } as const;
 

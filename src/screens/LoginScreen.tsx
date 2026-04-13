@@ -10,7 +10,7 @@ import { navigatePublicLegal } from '../utils/publicLegalRoutes';
 
 type Props = {
   onSelectRole: (role: UserRole) => void;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 } & NativeStackScreenProps<any>;
 
 export const LoginScreen: React.FC<Props> = ({ onSelectRole }) => {
@@ -20,81 +20,64 @@ export const LoginScreen: React.FC<Props> = ({ onSelectRole }) => {
 
   const roleLabel =
     selectedRole === 'client'
-      ? 'Client'
+      ? uiCopy.login.roleClient
       : selectedRole === 'model'
-      ? 'Model'
-      : selectedRole === 'agency'
-      ? 'Agency'
-      : 'Select role';
+        ? uiCopy.login.roleModel
+        : selectedRole === 'agency'
+          ? uiCopy.login.roleAgency
+          : uiCopy.login.roleSelectPlaceholder;
 
   return (
     <View style={styles.container}>
-      <Modal visible={termsVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setTermsVisible(false)}>
+      <Modal
+        visible={termsVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setTermsVisible(false)}
+      >
         <TermsScreen onClose={() => setTermsVisible(false)} />
       </Modal>
-      <Modal visible={privacyVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setPrivacyVisible(false)}>
+      <Modal
+        visible={privacyVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setPrivacyVisible(false)}
+      >
         <PrivacyScreen onClose={() => setPrivacyVisible(false)} />
       </Modal>
 
       <View style={styles.topBlock}>
-        <Text style={styles.brand}>INDEX CASTING</Text>
-        <Text style={styles.subtitle}>B2B platform for fashion casting.</Text>
+        <Text style={styles.brand}>{uiCopy.login.brandTitle}</Text>
+        <Text style={styles.subtitle}>{uiCopy.login.brandSubtitle}</Text>
       </View>
 
       <View style={styles.centerBlock}>
-        <Text style={styles.sectionLabel}>Access</Text>
-        <Text style={styles.copy}>
-          Verified agencies and brands only. Use your work email to request
-          access.
-        </Text>
+        <Text style={styles.sectionLabel}>{uiCopy.login.sectionAccess}</Text>
+        <Text style={styles.copy}>{uiCopy.login.accessCopy}</Text>
 
         <View style={styles.rolesRow}>
           <TouchableOpacity
-            style={[
-              styles.rolePill,
-              selectedRole === 'client' && styles.rolePillActive,
-            ]}
+            style={[styles.rolePill, selectedRole === 'client' && styles.rolePillActive]}
             onPress={() => setSelectedRole('client')}
           >
-            <Text
-              style={[
-                styles.roleLabel,
-                selectedRole === 'client' && styles.roleLabelActive,
-              ]}
-            >
-              Client
+            <Text style={[styles.roleLabel, selectedRole === 'client' && styles.roleLabelActive]}>
+              {uiCopy.login.roleClient}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[
-              styles.rolePill,
-              selectedRole === 'model' && styles.rolePillActive,
-            ]}
+            style={[styles.rolePill, selectedRole === 'model' && styles.rolePillActive]}
             onPress={() => setSelectedRole('model')}
           >
-            <Text
-              style={[
-                styles.roleLabel,
-                selectedRole === 'model' && styles.roleLabelActive,
-              ]}
-            >
-              Model
+            <Text style={[styles.roleLabel, selectedRole === 'model' && styles.roleLabelActive]}>
+              {uiCopy.login.roleModel}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[
-              styles.rolePill,
-              selectedRole === 'agency' && styles.rolePillActive,
-            ]}
+            style={[styles.rolePill, selectedRole === 'agency' && styles.rolePillActive]}
             onPress={() => setSelectedRole('agency')}
           >
-            <Text
-              style={[
-                styles.roleLabel,
-                selectedRole === 'agency' && styles.roleLabelActive,
-              ]}
-            >
-              Agency
+            <Text style={[styles.roleLabel, selectedRole === 'agency' && styles.roleLabelActive]}>
+              {uiCopy.login.roleAgency}
             </Text>
           </TouchableOpacity>
         </View>
@@ -102,18 +85,15 @@ export const LoginScreen: React.FC<Props> = ({ onSelectRole }) => {
 
       <View style={styles.bottomBlock}>
         <TouchableOpacity
-          style={[
-            styles.primaryButton,
-            !selectedRole && styles.primaryButtonDisabled,
-          ]}
+          style={[styles.primaryButton, !selectedRole && styles.primaryButtonDisabled]}
           disabled={!selectedRole}
           onPress={() => selectedRole && onSelectRole(selectedRole)}
         >
           <Text style={styles.primaryLabel}>
-            {selectedRole ? `Continue as ${roleLabel}` : 'Choose a role to enter'}
+            {selectedRole ? uiCopy.login.continueAs(roleLabel) : uiCopy.login.chooseRoleToContinue}
           </Text>
         </TouchableOpacity>
-        <Text style={styles.helperText}>{uiCopy.login.dummyFlow}</Text>
+        <Text style={styles.helperText}>{uiCopy.login.rolePickerHelper}</Text>
 
         <View style={styles.legalFooter}>
           <TouchableOpacity
@@ -233,4 +213,3 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
 });
-

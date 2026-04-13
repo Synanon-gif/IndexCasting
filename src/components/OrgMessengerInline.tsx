@@ -8,7 +8,6 @@ import {
   StyleSheet,
   type ViewStyle,
   Modal,
-  Linking,
   Pressable,
   Image,
   Platform,
@@ -41,6 +40,7 @@ import { supabase } from '../../lib/supabase';
 import { confirmImageRights } from '../services/gdprComplianceSupabase';
 import { getModelByIdFromSupabase } from '../services/modelsSupabase';
 import { normalizeDocumentspicturesModelImageRef } from '../utils/normalizeModelPortfolioUrl';
+import { openLinkWithFeedback } from '../utils/openLinkWithFeedback';
 import { buildGuestUrl, type GuestLink } from '../services/guestLinksSupabase';
 import {
   bookingStatusLabel,
@@ -213,7 +213,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   useEffect(() => {
     reload();
     if (viewerUserId) void markAllAsRead(conversationId, viewerUserId);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId, viewerUserId]);
 
   useEffect(() => {
@@ -225,7 +225,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   useEffect(() => {
     const unsub = subscribeToConversation(conversationId, () => reload());
     return unsub;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
 
   // Reconnect: when the app returns to foreground after being backgrounded,
@@ -238,7 +238,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
     };
     const sub = AppState.addEventListener('change', handleAppState);
     return () => sub.remove();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
 
   // Resolve booking model names for booking cards.
@@ -314,7 +314,6 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
         if (url) setSignedUrls((prev) => ({ ...prev, [path]: url }));
       }),
     );
-   
   }, [msgs]);
 
   const sendChat = async () => {
@@ -468,7 +467,11 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
     setUploadError(null);
   };
 
-  const sendRich = async (type: MessagePayloadType, text: string, metadata?: Record<string, unknown>) => {
+  const sendRich = async (
+    type: MessagePayloadType,
+    text: string,
+    metadata?: Record<string, unknown>,
+  ) => {
     if (!viewerUserId || sending) return;
 
     // Apply the same rate limit guard as sendChat so rich and plain paths are equally hardened.
@@ -501,7 +504,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
       console.warn('openUrl: blocked unsafe URL', url);
       return;
     }
-    void Linking.openURL(url).catch(() => {});
+    openLinkWithFeedback(url);
   };
 
   const showShare = !!agencyId && (guestLinks.length > 0 || modelsForShare.length > 0);
@@ -530,7 +533,9 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
           </Text>
         </TouchableOpacity>
       ) : (
-        <Text style={[styles.chatPanelTitle, compactAgencyShareHeader && styles.chatPanelTitleCompact]}>
+        <Text
+          style={[styles.chatPanelTitle, compactAgencyShareHeader && styles.chatPanelTitleCompact]}
+        >
           {headerTitle}
         </Text>
       )}
@@ -563,7 +568,10 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
               onPress={() => setShareOpen('package')}
             >
               <Text
-                style={[styles.shareBtnLabel, compactAgencyShareHeader && styles.shareBtnLabelCompact]}
+                style={[
+                  styles.shareBtnLabel,
+                  compactAgencyShareHeader && styles.shareBtnLabelCompact,
+                ]}
               >
                 {uiCopy.b2bChat.sharePackage}
               </Text>
@@ -575,7 +583,10 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
               onPress={() => setShareOpen('model')}
             >
               <Text
-                style={[styles.shareBtnLabel, compactAgencyShareHeader && styles.shareBtnLabelCompact]}
+                style={[
+                  styles.shareBtnLabel,
+                  compactAgencyShareHeader && styles.shareBtnLabelCompact,
+                ]}
               >
                 {uiCopy.b2bChat.shareModel}
               </Text>
@@ -589,107 +600,127 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   const incomingOrgTextBubble = bubbleColorsForSender('client');
 
   const messageNodes = msgs.map((m) => {
-          const pt = payloadType(m);
-          const rawFileUrl = (m as { file_url?: string | null }).file_url ?? null;
-          const fileType = (m as { file_type?: string | null }).file_type ?? null;
-          const resolvedFileUrl = rawFileUrl ? (signedUrls[rawFileUrl] ?? null) : null;
-          const isImage = !!fileType && fileType.startsWith('image/');
-          const isOwn = Boolean(viewerUserId && m.sender_id === viewerUserId);
-          return (
-            <View key={m.id} style={styles.msgBlock}>
-              <View style={getOrgMessengerMessageColumnStyle(isOwn)}>
-              <Text style={[styles.senderLine, getOrgMessengerSenderLineExtraStyle(isOwn)]}>
-                {m.senderLabel}
-              </Text>
-              {/* File / image attachment */}
-              {rawFileUrl ? (
-                <View style={[styles.attachmentRow, isOwn ? styles.attachmentRowOutgoing : styles.attachmentRowIncoming]}>
-                {isImage ? (
-                  resolvedFileUrl ? (
-                    <Pressable onPress={() => openUrl(resolvedFileUrl)}>
-                      <Image
-                        source={{ uri: resolvedFileUrl }}
-                        style={styles.attachedImage}
-                        resizeMode="contain"
-                      />
-                    </Pressable>
-                  ) : (
-                    <View style={styles.attachedImagePlaceholder}>
-                      <ActivityIndicator size="small" color={colors.textSecondary} />
-                    </View>
-                  )
-                ) : (
-                  <Pressable
-                    style={styles.fileCard}
-                    onPress={() => resolvedFileUrl && openUrl(resolvedFileUrl)}
-                  >
-                    <Text style={styles.fileCardIcon}>📎</Text>
-                    <Text style={styles.fileCardLabel} numberOfLines={1}>
-                      {uiCopy.b2bChat.fileAttachment}
-                    </Text>
-                    <Text style={styles.fileCardOpen}>{uiCopy.b2bChat.openFile}</Text>
+    const pt = payloadType(m);
+    const rawFileUrl = (m as { file_url?: string | null }).file_url ?? null;
+    const fileType = (m as { file_type?: string | null }).file_type ?? null;
+    const resolvedFileUrl = rawFileUrl ? (signedUrls[rawFileUrl] ?? null) : null;
+    const isImage = !!fileType && fileType.startsWith('image/');
+    const isOwn = Boolean(viewerUserId && m.sender_id === viewerUserId);
+    return (
+      <View key={m.id} style={styles.msgBlock}>
+        <View style={getOrgMessengerMessageColumnStyle(isOwn)}>
+          <Text style={[styles.senderLine, getOrgMessengerSenderLineExtraStyle(isOwn)]}>
+            {m.senderLabel}
+          </Text>
+          {/* File / image attachment */}
+          {rawFileUrl ? (
+            <View
+              style={[
+                styles.attachmentRow,
+                isOwn ? styles.attachmentRowOutgoing : styles.attachmentRowIncoming,
+              ]}
+            >
+              {isImage ? (
+                resolvedFileUrl ? (
+                  <Pressable onPress={() => openUrl(resolvedFileUrl)}>
+                    <Image
+                      source={{ uri: resolvedFileUrl }}
+                      style={styles.attachedImage}
+                      resizeMode="contain"
+                    />
                   </Pressable>
-                )}
-                </View>
-              ) : null}
-              {/* Text content */}
-              {pt === 'text' && m.text ? (
-                <View style={[styles.bubbleRow, isOwn ? styles.bubbleRowOutgoing : styles.bubbleRowIncoming]}>
-                  <View
+                ) : (
+                  <View style={styles.attachedImagePlaceholder}>
+                    <ActivityIndicator size="small" color={colors.textSecondary} />
+                  </View>
+                )
+              ) : (
+                <Pressable
+                  style={styles.fileCard}
+                  onPress={() => resolvedFileUrl && openUrl(resolvedFileUrl)}
+                >
+                  <Text style={styles.fileCardIcon}>📎</Text>
+                  <Text style={styles.fileCardLabel} numberOfLines={1}>
+                    {uiCopy.b2bChat.fileAttachment}
+                  </Text>
+                  <Text style={styles.fileCardOpen}>{uiCopy.b2bChat.openFile}</Text>
+                </Pressable>
+              )}
+            </View>
+          ) : null}
+          {/* Text content */}
+          {pt === 'text' && m.text ? (
+            <View
+              style={[
+                styles.bubbleRow,
+                isOwn ? styles.bubbleRowOutgoing : styles.bubbleRowIncoming,
+              ]}
+            >
+              <View
+                style={[
+                  styles.msgBubble,
+                  isOwn
+                    ? {
+                        backgroundColor: outgoingSelfBubbleColors.bubbleBackground,
+                        borderColor: outgoingSelfBubbleColors.borderColor,
+                      }
+                    : {
+                        backgroundColor: incomingOrgTextBubble.bubbleBackground,
+                        borderColor: incomingOrgTextBubble.borderColor,
+                      },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.chatBubbleTextInBubble,
+                    {
+                      color: isOwn
+                        ? outgoingSelfBubbleColors.bubbleText
+                        : incomingOrgTextBubble.bubbleText,
+                    },
+                  ]}
+                >
+                  {m.text}
+                </Text>
+              </View>
+            </View>
+          ) : null}
+          {pt === 'link' ? (
+            <View
+              style={[
+                styles.bubbleRow,
+                isOwn ? styles.bubbleRowOutgoing : styles.bubbleRowIncoming,
+              ]}
+            >
+              <View
+                style={[
+                  styles.msgBubble,
+                  isOwn
+                    ? {
+                        backgroundColor: outgoingSelfBubbleColors.bubbleBackground,
+                        borderColor: outgoingSelfBubbleColors.borderColor,
+                      }
+                    : {
+                        backgroundColor: incomingOrgTextBubble.bubbleBackground,
+                        borderColor: incomingOrgTextBubble.borderColor,
+                      },
+                ]}
+              >
+                <Pressable onPress={() => metaString(m, 'url') && openUrl(metaString(m, 'url')!)}>
+                  <Text
                     style={[
-                      styles.msgBubble,
-                      isOwn
-                        ? {
-                            backgroundColor: outgoingSelfBubbleColors.bubbleBackground,
-                            borderColor: outgoingSelfBubbleColors.borderColor,
-                          }
-                        : {
-                            backgroundColor: incomingOrgTextBubble.bubbleBackground,
-                            borderColor: incomingOrgTextBubble.borderColor,
-                          },
+                      styles.linkTextInBubble,
+                      { color: isOwn ? outgoingSelfBubbleColors.bubbleText : colors.accentGreen },
                     ]}
                   >
-                    <Text
-                      style={[
-                        styles.chatBubbleTextInBubble,
-                        { color: isOwn ? outgoingSelfBubbleColors.bubbleText : incomingOrgTextBubble.bubbleText },
-                      ]}
-                    >
-                      {m.text}
-                    </Text>
-                  </View>
-                </View>
-              ) : null}
-              {pt === 'link' ? (
-                <View style={[styles.bubbleRow, isOwn ? styles.bubbleRowOutgoing : styles.bubbleRowIncoming]}>
-                  <View
-                    style={[
-                      styles.msgBubble,
-                      isOwn
-                        ? {
-                            backgroundColor: outgoingSelfBubbleColors.bubbleBackground,
-                            borderColor: outgoingSelfBubbleColors.borderColor,
-                          }
-                        : {
-                            backgroundColor: incomingOrgTextBubble.bubbleBackground,
-                            borderColor: incomingOrgTextBubble.borderColor,
-                          },
-                    ]}
-                  >
-                    <Pressable onPress={() => metaString(m, 'url') && openUrl(metaString(m, 'url')!)}>
-                      <Text
-                        style={[
-                          styles.linkTextInBubble,
-                          { color: isOwn ? outgoingSelfBubbleColors.bubbleText : colors.accentGreen },
-                        ]}
-                      >
-                        {m.text || metaString(m, 'url') || 'Link'}
-                      </Text>
-                    </Pressable>
-                  </View>
-                </View>
-              ) : null}
-              {pt === 'package' ? (() => {
+                    {m.text || metaString(m, 'url') || 'Link'}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
+          {pt === 'package'
+            ? (() => {
                 const meta = (m as { metadata?: Record<string, unknown> }).metadata ?? {};
                 const previewIds = metaStringArray(m, 'preview_model_ids');
                 const packageLabel = metaString(m, 'package_label');
@@ -700,37 +731,39 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
                   <View style={styles.card}>
                     <View style={styles.cardTitleRow}>
                       <Text style={styles.cardTitle}>{uiCopy.b2bChat.sharedPackage}</Text>
-                      <View style={[
-                        styles.accessBadge,
-                        isInAppAccess ? styles.accessBadgeFull : styles.accessBadgeGuest,
-                      ]}>
-                        <Text style={[
-                          styles.accessBadgeLabel,
-                          isInAppAccess ? styles.accessBadgeLabelFull : styles.accessBadgeLabelGuest,
-                        ]}>
+                      <View
+                        style={[
+                          styles.accessBadge,
+                          isInAppAccess ? styles.accessBadgeFull : styles.accessBadgeGuest,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.accessBadgeLabel,
+                            isInAppAccess
+                              ? styles.accessBadgeLabelFull
+                              : styles.accessBadgeLabelGuest,
+                          ]}
+                        >
                           {isInAppAccess
                             ? uiCopy.b2bChat.packageBadgeFullAccess
                             : uiCopy.b2bChat.packageBadgeGuestAccess}
                         </Text>
                       </View>
                     </View>
-                    {packageName ? (
-                      <Text style={styles.packageLabel}>{packageName}</Text>
-                    ) : null}
+                    {packageName ? <Text style={styles.packageLabel}>{packageName}</Text> : null}
                     {packageLabel ? (
                       <Text style={packageName ? styles.chatSubText : styles.packageLabel}>
                         {packageLabel} {uiCopy.b2bChat.packagePreviewLabel}
                       </Text>
-                    ) : (
-                      !packageName ? (
-                        <Text style={styles.chatBubbleText} numberOfLines={2}>
-                          {m.text ?? ''}
-                        </Text>
-                      ) : null
-                    )}
+                    ) : !packageName ? (
+                      <Text style={styles.chatBubbleText} numberOfLines={2}>
+                        {m.text ?? ''}
+                      </Text>
+                    ) : null}
                     {previewIds.length > 0 ? (
                       <View style={styles.avatarRow}>
-                        {previewIds.slice(0, 4).map((modelId) => (
+                        {previewIds.slice(0, 4).map((modelId) =>
                           packageModelPhotos[modelId] ? (
                             <StorageImage
                               key={modelId}
@@ -742,8 +775,8 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
                             <View key={modelId} style={[styles.avatar, styles.avatarPlaceholder]}>
                               <Text style={styles.avatarPlaceholderText}>?</Text>
                             </View>
-                          )
-                        ))}
+                          ),
+                        )}
                       </View>
                     ) : null}
                     <View style={styles.cardActions}>
@@ -762,131 +795,150 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
                     </View>
                   </View>
                 );
-              })() : null}
-              {pt === 'model' ? (
-                <View style={styles.card}>
-                  <Text style={styles.cardTitle}>{uiCopy.b2bChat.sharedModel}</Text>
-                  <Text style={styles.chatBubbleText}>{m.text ?? ''}</Text>
-                  {metaString(m, 'model_id') ? (
-                    <Text style={styles.metaHint}>
-                      {uiCopy.b2bChat.modelIdLabel}: {metaString(m, 'model_id')}
-                    </Text>
-                  ) : null}
-                </View>
+              })()
+            : null}
+          {pt === 'model' ? (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>{uiCopy.b2bChat.sharedModel}</Text>
+              <Text style={styles.chatBubbleText}>{m.text ?? ''}</Text>
+              {metaString(m, 'model_id') ? (
+                <Text style={styles.metaHint}>
+                  {uiCopy.b2bChat.modelIdLabel}: {metaString(m, 'model_id')}
+                </Text>
               ) : null}
-              {pt === 'booking' ? (
-                <TouchableOpacity
-                  activeOpacity={0.85}
-                  onPress={() => {
-                    const meta = (m as { metadata?: Record<string, unknown> }).metadata ?? {};
-                    onBookingCardPress?.(meta);
-                  }}
-                >
-                  <View style={styles.card}>
-                    <Text style={styles.cardTitle}>{uiCopy.b2bChat.bookingCardTitle}</Text>
-                    <Text style={styles.chatBubbleText} numberOfLines={2}>
-                      {uiCopy.b2bChat.bookingModelLabel}:{' '}
-                      {(() => {
-                        const mid = metaString(m, 'model_id');
-                        if (!mid) return '—';
-                        return bookingModelNames[mid] ?? mid;
-                      })()}
-                    </Text>
-                    <Text style={styles.metaHint}>
-                      {uiCopy.b2bChat.bookingDateLabel}: {metaString(m, 'date') ?? '—'}
-                    </Text>
-                    {(() => {
-                      const rawStatus = metaString(m, 'status') ?? 'pending';
-                      const bookingId = metaString(m, 'booking_event_id') ?? metaString(m, 'booking_id');
-                      const relatedOptionRequestId = metaString(m, 'option_request_id');
-                      const label = bookingStatusLabel(rawStatus as BookingEventStatus);
-                      const isCancelled = rawStatus === 'cancelled';
-                      const isConfirmed = rawStatus === 'model_confirmed' || rawStatus === 'completed';
-                      const isActionLoading = (key: string) =>
-                        bookingActionLoading === (bookingId + ':' + key);
-
-                      return (
-                        <>
-                          <View
-                            style={[
-                              styles.statusBadge,
-                              isCancelled && styles.statusBadgeCancelled,
-                              isConfirmed && styles.statusBadgeConfirmed,
-                            ]}
-                          >
-                            <Text style={styles.statusBadgeLabel}>{label}</Text>
-                          </View>
-
-                          {/* Booking status action buttons — only when a booking_event_id is available */}
-                          {bookingId && !isCancelled && !isConfirmed && (
-                            <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-                              {viewerRole === 'agency' && rawStatus === 'pending' && (
-                                <TouchableOpacity
-                                  onPress={(e) => { e.stopPropagation?.(); void handleBookingAction(bookingId, 'agency_accepted'); }}
-                                  disabled={!!bookingActionLoading}
-                                  style={[styles.actionBtn, styles.actionBtnConfirm]}
-                                >
-                                  {isActionLoading('agency_accepted')
-                                    ? <ActivityIndicator size="small" color={colors.surface} />
-                                    : <Text style={styles.actionBtnLabel}>Accept</Text>}
-                                </TouchableOpacity>
-                              )}
-                              {viewerRole === 'model' && rawStatus === 'agency_accepted' && (
-                                <TouchableOpacity
-                                  onPress={(e) => { e.stopPropagation?.(); void handleBookingAction(bookingId, 'model_confirmed'); }}
-                                  disabled={!!bookingActionLoading}
-                                  style={[styles.actionBtn, styles.actionBtnConfirm]}
-                                >
-                                  {isActionLoading('model_confirmed')
-                                    ? <ActivityIndicator size="small" color={colors.surface} />
-                                    : <Text style={styles.actionBtnLabel}>Confirm</Text>}
-                                </TouchableOpacity>
-                              )}
-                              {(viewerRole === 'agency' || viewerRole === 'client') && (
-                                <TouchableOpacity
-                                  onPress={(e) => { e.stopPropagation?.(); void handleBookingAction(bookingId, 'cancelled'); }}
-                                  disabled={!!bookingActionLoading}
-                                  style={[styles.actionBtn, styles.actionBtnCancel]}
-                                >
-                                  {isActionLoading('cancelled')
-                                    ? <ActivityIndicator size="small" color={colors.textPrimary} />
-                                    : <Text style={[styles.actionBtnLabel, { color: colors.textPrimary }]}>Cancel</Text>}
-                                </TouchableOpacity>
-                              )}
-                            </View>
-                          )}
-                          {onOpenRelatedRequest && relatedOptionRequestId && (
-                            <View style={{ marginTop: 8 }}>
-                              <TouchableOpacity
-                                onPress={(e) => {
-                                  e.stopPropagation?.();
-                                  onOpenRelatedRequest(relatedOptionRequestId);
-                                }}
-                                style={styles.cardBtn}
-                              >
-                                <Text style={styles.cardBtnLabel}>{uiCopy.b2bChat.openRelatedRequest}</Text>
-                              </TouchableOpacity>
-                            </View>
-                          )}
-                        </>
-                      );
-                    })()}
-                  </View>
-                </TouchableOpacity>
-              ) : null}
-              </View>
             </View>
-          );
+          ) : null}
+          {pt === 'booking' ? (
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => {
+                const meta = (m as { metadata?: Record<string, unknown> }).metadata ?? {};
+                onBookingCardPress?.(meta);
+              }}
+            >
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>{uiCopy.b2bChat.bookingCardTitle}</Text>
+                <Text style={styles.chatBubbleText} numberOfLines={2}>
+                  {uiCopy.b2bChat.bookingModelLabel}:{' '}
+                  {(() => {
+                    const mid = metaString(m, 'model_id');
+                    if (!mid) return '—';
+                    return bookingModelNames[mid] ?? mid;
+                  })()}
+                </Text>
+                <Text style={styles.metaHint}>
+                  {uiCopy.b2bChat.bookingDateLabel}: {metaString(m, 'date') ?? '—'}
+                </Text>
+                {(() => {
+                  const rawStatus = metaString(m, 'status') ?? 'pending';
+                  const bookingId =
+                    metaString(m, 'booking_event_id') ?? metaString(m, 'booking_id');
+                  const relatedOptionRequestId = metaString(m, 'option_request_id');
+                  const label = bookingStatusLabel(rawStatus as BookingEventStatus);
+                  const isCancelled = rawStatus === 'cancelled';
+                  const isConfirmed = rawStatus === 'model_confirmed' || rawStatus === 'completed';
+                  const isActionLoading = (key: string) =>
+                    bookingActionLoading === bookingId + ':' + key;
+
+                  return (
+                    <>
+                      <View
+                        style={[
+                          styles.statusBadge,
+                          isCancelled && styles.statusBadgeCancelled,
+                          isConfirmed && styles.statusBadgeConfirmed,
+                        ]}
+                      >
+                        <Text style={styles.statusBadgeLabel}>{label}</Text>
+                      </View>
+
+                      {/* Booking status action buttons — only when a booking_event_id is available */}
+                      {bookingId && !isCancelled && !isConfirmed && (
+                        <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                          {viewerRole === 'agency' && rawStatus === 'pending' && (
+                            <TouchableOpacity
+                              onPress={(e) => {
+                                e.stopPropagation?.();
+                                void handleBookingAction(bookingId, 'agency_accepted');
+                              }}
+                              disabled={!!bookingActionLoading}
+                              style={[styles.actionBtn, styles.actionBtnConfirm]}
+                            >
+                              {isActionLoading('agency_accepted') ? (
+                                <ActivityIndicator size="small" color={colors.surface} />
+                              ) : (
+                                <Text style={styles.actionBtnLabel}>Accept</Text>
+                              )}
+                            </TouchableOpacity>
+                          )}
+                          {viewerRole === 'model' && rawStatus === 'agency_accepted' && (
+                            <TouchableOpacity
+                              onPress={(e) => {
+                                e.stopPropagation?.();
+                                void handleBookingAction(bookingId, 'model_confirmed');
+                              }}
+                              disabled={!!bookingActionLoading}
+                              style={[styles.actionBtn, styles.actionBtnConfirm]}
+                            >
+                              {isActionLoading('model_confirmed') ? (
+                                <ActivityIndicator size="small" color={colors.surface} />
+                              ) : (
+                                <Text style={styles.actionBtnLabel}>Confirm</Text>
+                              )}
+                            </TouchableOpacity>
+                          )}
+                          {(viewerRole === 'agency' || viewerRole === 'client') && (
+                            <TouchableOpacity
+                              onPress={(e) => {
+                                e.stopPropagation?.();
+                                void handleBookingAction(bookingId, 'cancelled');
+                              }}
+                              disabled={!!bookingActionLoading}
+                              style={[styles.actionBtn, styles.actionBtnCancel]}
+                            >
+                              {isActionLoading('cancelled') ? (
+                                <ActivityIndicator size="small" color={colors.textPrimary} />
+                              ) : (
+                                <Text
+                                  style={[styles.actionBtnLabel, { color: colors.textPrimary }]}
+                                >
+                                  Cancel
+                                </Text>
+                              )}
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      )}
+                      {onOpenRelatedRequest && relatedOptionRequestId && (
+                        <View style={{ marginTop: 8 }}>
+                          <TouchableOpacity
+                            onPress={(e) => {
+                              e.stopPropagation?.();
+                              onOpenRelatedRequest(relatedOptionRequestId);
+                            }}
+                            style={styles.cardBtn}
+                          >
+                            <Text style={styles.cardBtnLabel}>
+                              {uiCopy.b2bChat.openRelatedRequest}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </>
+                  );
+                })()}
+              </View>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      </View>
+    );
   });
 
   const messengerComposer = (
     <>
-      {sendError ? (
-        <Text style={styles.uploadError}>{sendError}</Text>
-      ) : null}
-      {uploadError ? (
-        <Text style={styles.uploadError}>{uploadError}</Text>
-      ) : null}
+      {sendError ? <Text style={styles.uploadError}>{sendError}</Text> : null}
+      {uploadError ? <Text style={styles.uploadError}>{uploadError}</Text> : null}
       {Platform.OS === 'web' && showConsentRow ? (
         <TouchableOpacity
           style={styles.rightsRow}
@@ -915,10 +967,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
           />
         ) : null}
         <TouchableOpacity
-          style={[
-            styles.attachBtn,
-            (!viewerUserId || uploading) && { opacity: 0.4 },
-          ]}
+          style={[styles.attachBtn, (!viewerUserId || uploading) && { opacity: 0.4 }]}
           onPress={handleAttachPress}
           disabled={!viewerUserId || uploading}
         >
@@ -930,7 +979,10 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
         </TouchableOpacity>
         <TextInput
           value={input}
-          onChangeText={(v) => { setInput(v); if (sendError) setSendError(null); }}
+          onChangeText={(v) => {
+            setInput(v);
+            if (sendError) setSendError(null);
+          }}
           placeholder={uiCopy.b2bChat.messagePlaceholder}
           placeholderTextColor={colors.textSecondary}
           style={[styles.chatPanelInput, { height: Math.max(36, Math.min(120, inputHeight)) }]}
@@ -940,7 +992,10 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
           onContentSizeChange={(e) => setInputHeight(e.nativeEvent.contentSize.height)}
         />
         <TouchableOpacity
-          style={[styles.chatPanelSend, (!viewerUserId || uploading || sending) && { opacity: 0.5 }]}
+          style={[
+            styles.chatPanelSend,
+            (!viewerUserId || uploading || sending) && { opacity: 0.5 },
+          ]}
           onPress={sendChat}
           disabled={!viewerUserId || uploading || sending}
         >
@@ -999,8 +1054,8 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
                       }
                     >
                       <Text style={styles.pickRowText}>
-                        {g.agency_name || g.agency_email || g.id.slice(0, 8)} · {g.model_ids?.length ?? 0}{' '}
-                        {uiCopy.b2bChat.modelsCount}
+                        {g.agency_name || g.agency_email || g.id.slice(0, 8)} ·{' '}
+                        {g.model_ids?.length ?? 0} {uiCopy.b2bChat.modelsCount}
                       </Text>
                     </TouchableOpacity>
                   ))
@@ -1032,7 +1087,6 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
     </View>
   );
 };
-
 
 const styles = StyleSheet.create({
   chatPanel: {

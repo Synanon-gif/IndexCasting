@@ -298,6 +298,7 @@ function AppContent() {
               setInviteClaimBannerText(text);
             } catch (e) {
               console.error('[App] resolveInviteAndClaimSuccessCombined:', e);
+              setInviteClaimBannerText(uiCopy.app.inviteClaimSuccessFallback);
             }
           })();
           return;
@@ -314,6 +315,7 @@ function AppContent() {
             setInviteClaimBannerText(text);
           } catch (e) {
             console.error('[App] resolveInviteClaimSuccessMessage:', e);
+            setInviteClaimBannerText(uiCopy.app.inviteClaimSuccessFallback);
           }
         })();
         return;
@@ -340,6 +342,7 @@ function AppContent() {
             setInviteClaimBannerText(text);
           } catch (e) {
             console.error('[App] resolveInviteClaimSuccessMessage (invite-only):', e);
+            setInviteClaimBannerText(uiCopy.app.inviteClaimSuccessFallback);
           }
         })();
       }, INVITE_SUCCESS_BANNER_DEBOUNCE_MS);
@@ -573,8 +576,14 @@ function AppContent() {
   // After signOut, session is null → this block is skipped → AuthScreen shown correctly.
   if (session && !profile) {
     return (
-      <View style={[styles.shell, { justifyContent: 'center', alignItems: 'center' }]}>
+      <View style={[styles.shell, { justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 }]}>
         <ActivityIndicator size="large" color={colors.textPrimary} />
+        <Text style={{ marginTop: 20, fontSize: 16, fontWeight: '600', color: colors.textPrimary, textAlign: 'center' }}>
+          {uiCopy.app.profileLoadingTitle}
+        </Text>
+        <Text style={{ marginTop: 10, fontSize: 14, color: colors.textSecondary, textAlign: 'center', lineHeight: 20 }}>
+          {uiCopy.app.profileLoadingHint}
+        </Text>
       </View>
     );
   }
@@ -760,6 +769,7 @@ function AppContent() {
       <>
         <AuthScreen
           initialMode={isModelClaimAuth ? modelClaimAuthMode : (guestSignupMode ? 'signup' : inviteAuthMode)}
+          sharedSelectionHint={sharedParams ? uiCopy.app.sharedListSignInHint : undefined}
           clearStaleInviteOnSignIn={!inviteTokenState && !modelInviteTokenState}
           inviteAuth={
             inviteTokenState && invitePreview && inviteLockedRole
@@ -829,7 +839,10 @@ function AppContent() {
   if (!effectiveRole) {
     return (
       <>
-        <AuthScreen clearStaleInviteOnSignIn={!(inviteTokenState || modelInviteTokenState)} />
+        <AuthScreen
+          clearStaleInviteOnSignIn={!(inviteTokenState || modelInviteTokenState)}
+          sharedSelectionHint={sharedParams ? uiCopy.app.sharedListSignInHint : undefined}
+        />
         <StatusBar style="dark" />
       </>
     );

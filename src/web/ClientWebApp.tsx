@@ -61,8 +61,17 @@ import {
   type DiscoveryModel,
   type DiscoveryCursor,
 } from '../services/clientDiscoverySupabase';
-import { getModelsNearLocation, roundCoord, type NearbyModel } from '../services/modelLocationsSupabase';
-import { getGuestLink, getGuestLinkModels, type GuestLinkModel, type PackageType } from '../services/guestLinksSupabase';
+import {
+  getModelsNearLocation,
+  roundCoord,
+  type NearbyModel,
+} from '../services/modelLocationsSupabase';
+import {
+  getGuestLink,
+  getGuestLinkModels,
+  type GuestLinkModel,
+  type PackageType,
+} from '../services/guestLinksSupabase';
 import { isOrganizationOwner } from '../services/orgRoleTypes';
 import { getAgencies, getAgencyChatDisplayById, type Agency } from '../services/agenciesSupabase';
 import { AGENCY_SEGMENT_TYPES } from '../constants/agencyTypes';
@@ -164,10 +173,7 @@ import {
   addModelToProject as addModelToProjectOnSupabase,
 } from '../services/projectsSupabase';
 import { supabase } from '../../lib/supabase';
-import {
-  loadArchivedThreadIds,
-  setThreadArchived,
-} from '../services/threadPreferencesSupabase';
+import { loadArchivedThreadIds, setThreadArchived } from '../services/threadPreferencesSupabase';
 import { B2BUnifiedCalendarBody } from '../components/B2BUnifiedCalendarBody';
 import type { CalendarViewMode } from '../components/CalendarViewModeBar';
 import { OPTION_REQUEST_CHAT_STATUS_COLORS } from '../utils/calendarColors';
@@ -238,7 +244,14 @@ const ClientDashboardTab: React.FC<{
 }) => (
   <View style={{ flex: 1 }}>
     {orgId && (
-      <View style={{ paddingHorizontal: spacing.sm, paddingTop: spacing.xs, paddingBottom: spacing.xs, zIndex: 200 }}>
+      <View
+        style={{
+          paddingHorizontal: spacing.sm,
+          paddingTop: spacing.xs,
+          paddingBottom: spacing.xs,
+          zIndex: 200,
+        }}
+      >
         <GlobalSearchBar
           orgId={orgId}
           onSelectModel={onSelectModel}
@@ -266,7 +279,15 @@ const ClientDashboardTab: React.FC<{
   </View>
 );
 
-type TopTab = 'dashboard' | 'discover' | 'projects' | 'agencies' | 'messages' | 'calendar' | 'team' | 'profile';
+type TopTab =
+  | 'dashboard'
+  | 'discover'
+  | 'projects'
+  | 'agencies'
+  | 'messages'
+  | 'calendar'
+  | 'team'
+  | 'profile';
 
 /** Same tab set on narrow and wide web — narrow uses horizontal scroll. */
 const CLIENT_PRIMARY_BOTTOM_TABS: TopTab[] = [
@@ -455,8 +476,12 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   const [showActiveOptions, setShowActiveOptions] = useState(false);
   const [models, setModels] = useState<ModelSummary[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [projects, setProjects] = useState<Project[]>(() => persistedProjectsToProjects(loadClientProjects()));
-  const [activeProjectId, setActiveProjectId] = useState<string | null>(() => loadClientActiveProjectId());
+  const [projects, setProjects] = useState<Project[]>(() =>
+    persistedProjectsToProjects(loadClientProjects()),
+  );
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(() =>
+    loadClientActiveProjectId(),
+  );
   const [newProjectName, setNewProjectName] = useState('');
   const [detailId, setDetailId] = useState<string | null>(null);
   const [detailData, setDetailData] = useState<MediaslideModel | null>(null);
@@ -492,7 +517,9 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     }
     return defaultModelFilters;
   });
-  const [filterSaveStatus, setFilterSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [filterSaveStatus, setFilterSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>(
+    'idle',
+  );
   const [sharedProjectId, setSharedProjectId] = useState<string | null>(null);
   const [packageViewState, setPackageViewState] = useState<{
     packageId: string;
@@ -511,9 +538,12 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   const [openThreadIdOnMessages, setOpenThreadIdOnMessages] = useState<string | null>(null);
   /** Where to return when closing fullscreen option negotiation (Back). */
   const optionChatReturnRef = useRef<
-    { kind: 'list' } | { kind: 'tab'; tab: TopTab; restore?: () => void }
-  | null>(null);
-  const [pendingClientB2BChat, setPendingClientB2BChat] = useState<{ conversationId: string; title: string } | null>(null);
+    { kind: 'list' } | { kind: 'tab'; tab: TopTab; restore?: () => void } | null
+  >(null);
+  const [pendingClientB2BChat, setPendingClientB2BChat] = useState<{
+    conversationId: string;
+    title: string;
+  } | null>(null);
   const [isChatWithAgencyLoading, setIsChatWithAgencyLoading] = useState(false);
   const [hasNew, setHasNew] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -526,6 +556,8 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   const [userLng, setUserLng] = useState<number | null>(null);
   /** Near me models fetched from the radius RPC (separate from territory-based baseModels). */
   const [nearbyModels, setNearbyModels] = useState<ModelSummary[]>([]);
+  const [nearbyLoadFailed, setNearbyLoadFailed] = useState(false);
+  const [discoveryLoadMoreFailed, setDiscoveryLoadMoreFailed] = useState(false);
   /**
    * GDPR: user has consented to location data being sent to Nominatim (OpenStreetMap).
    * Stored in localStorage so it persists across sessions.
@@ -572,13 +604,16 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   const [savingManualEventEdit, setSavingManualEventEdit] = useState(false);
   /** UUID of the client organisation this user belongs to (owner or employee). */
   const [clientOrgId, setClientOrgId] = useState<string | null>(null);
-  const [assignmentByClientOrgId, setAssignmentByClientOrgId] = useState<Record<string, ClientAssignmentFlag>>({});
-  const [assignableMembers, setAssignableMembers] = useState<Array<{ userId: string; name: string }>>([]);
+  const [assignmentByClientOrgId, setAssignmentByClientOrgId] = useState<
+    Record<string, ClientAssignmentFlag>
+  >({});
+  const [assignableMembers, setAssignableMembers] = useState<
+    Array<{ userId: string; name: string }>
+  >([]);
   const agencyOrgId =
     auth?.profile?.org_type === 'agency' ? (auth.profile.organization_id ?? null) : null;
 
-  const realClientId =
-    auth?.profile?.role === 'client' && auth.profile.id ? auth.profile.id : null;
+  const realClientId = auth?.profile?.role === 'client' && auth.profile.id ? auth.profile.id : null;
   const isRealClient = !!realClientId;
 
   /**
@@ -604,7 +639,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       start_time: (ce?.start_time ?? o.start_time ?? '09:00').toString().slice(0, 5),
       end_time: (ce?.end_time ?? o.end_time ?? '17:00').toString().slice(0, 5),
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCalendarItem?.option.id]);
 
   /** Keep calendar detail overlay aligned with latest fetch (status, booking_details) without name-based lookup. */
@@ -632,7 +667,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       note: selectedManualEvent.note ?? '',
       color: selectedManualEvent.color,
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedManualEvent?.id]);
 
   useEffect(() => {
@@ -683,17 +718,15 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             { headers: { 'Accept-Language': 'en', 'User-Agent': 'IndexCasting/1.0' } },
           );
           const data = await res.json();
-          const city =
-            data.address?.city ||
-            data.address?.town ||
-            data.address?.village ||
-            null;
+          const city = data.address?.city || data.address?.town || data.address?.village || null;
           if (city) setUserCity(city);
         } catch (e) {
           console.warn('[geolocation] reverse geocoding failed:', e);
         }
       },
-      (err) => { console.warn('[geolocation] position error:', err.code, err.message); },
+      (err) => {
+        console.warn('[geolocation] position error:', err.code, err.message);
+      },
       { timeout: 10000 },
     );
   }, [filters.nearby, geoConsentGiven, userLat, userLng]);
@@ -756,19 +789,35 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     };
     saveClientFilters(persisted);
   }, [
-    filters.sex, filters.heightMin, filters.heightMax, filters.ethnicities,
-    filters.countryCode, filters.city, filters.nearby,
-    filters.category, filters.sportsWinter, filters.sportsSummer,
-    filters.hairColor, filters.hipsMin, filters.hipsMax,
-    filters.waistMin, filters.waistMax, filters.chestMin, filters.chestMax,
-    filters.legsInseamMin, filters.legsInseamMax,
+    filters.sex,
+    filters.heightMin,
+    filters.heightMax,
+    filters.ethnicities,
+    filters.countryCode,
+    filters.city,
+    filters.nearby,
+    filters.category,
+    filters.sportsWinter,
+    filters.sportsSummer,
+    filters.hairColor,
+    filters.hipsMin,
+    filters.hipsMax,
+    filters.waistMin,
+    filters.waistMax,
+    filters.chestMin,
+    filters.chestMax,
+    filters.legsInseamMin,
+    filters.legsInseamMax,
   ]);
 
   // Resolve the client organisation for this user (owner or employee).
   // profile.organization_id is loaded by AuthContext via get_my_org_context() —
   // it already covers both owners and employees without an additional RPC call.
   useEffect(() => {
-    if (!realClientId) { setClientOrgId(null); return; }
+    if (!realClientId) {
+      setClientOrgId(null);
+      return;
+    }
     const profileOrgId = auth.profile?.organization_id;
     if (profileOrgId) {
       setClientOrgId(profileOrgId);
@@ -843,7 +892,6 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         legsInseamMax: preset.legsInseamMax ?? prev.legsInseamMax,
       }));
     });
-   
   }, [realClientId]);
 
   const loadClientCalendar = async () => {
@@ -868,9 +916,15 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       const seen = new Set<string>();
       const merged: UserCalendarEvent[] = [];
       for (const ev of [...orgEvents, ...personalEvents]) {
-        if (!seen.has(ev.id)) { seen.add(ev.id); merged.push(ev); }
+        if (!seen.has(ev.id)) {
+          seen.add(ev.id);
+          merged.push(ev);
+        }
       }
-      merged.sort((a, b) => a.date.localeCompare(b.date) || (a.start_time ?? '').localeCompare(b.start_time ?? ''));
+      merged.sort(
+        (a, b) =>
+          a.date.localeCompare(b.date) || (a.start_time ?? '').localeCompare(b.start_time ?? ''),
+      );
       setCalendarItems(items);
       setManualCalendarEvents(merged);
       setBookingEventEntries(beEntries);
@@ -883,7 +937,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     if (tab === 'calendar') {
       loadClientCalendar();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, realClientId, clientOrgId]);
 
   useEffect(() => {
@@ -907,6 +961,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     sessionSeenIds.current = new Set();
     setCurrentIndex(0);
     setDiscoveryCursor(null);
+    setDiscoveryLoadMoreFailed(false);
 
     void (async () => {
       const countryIso = filters.countryCode.trim() || undefined;
@@ -918,19 +973,22 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       const effectiveCategory = cat === 'High Fashion' ? 'High Fashion' : undefined;
 
       // Convert height range strings → numeric values for backend filtering.
-      const pInt = (v: string) => { const n = parseInt(v, 10); return isNaN(n) ? undefined : n; };
+      const pInt = (v: string) => {
+        const n = parseInt(v, 10);
+        return isNaN(n) ? undefined : n;
+      };
 
       const measurementFilters = {
-        heightMin:     pInt(filters.heightMin),
-        heightMax:     pInt(filters.heightMax),
-        ethnicities:   filters.ethnicities.length ? filters.ethnicities : undefined,
-        hairColor:     filters.hairColor.trim() || undefined,
-        hipsMin:       pInt(filters.hipsMin),
-        hipsMax:       pInt(filters.hipsMax),
-        waistMin:      pInt(filters.waistMin),
-        waistMax:      pInt(filters.waistMax),
-        chestMin:      pInt(filters.chestMin),
-        chestMax:      pInt(filters.chestMax),
+        heightMin: pInt(filters.heightMin),
+        heightMax: pInt(filters.heightMax),
+        ethnicities: filters.ethnicities.length ? filters.ethnicities : undefined,
+        hairColor: filters.hairColor.trim() || undefined,
+        hipsMin: pInt(filters.hipsMin),
+        hipsMax: pInt(filters.hipsMax),
+        waistMin: pInt(filters.waistMin),
+        waistMax: pInt(filters.waistMax),
+        chestMin: pInt(filters.chestMin),
+        chestMax: pInt(filters.chestMax),
         legsInseamMin: pInt(filters.legsInseamMin),
         legsInseamMax: pInt(filters.legsInseamMax),
         sex: (filters.sex !== 'all' ? filters.sex : undefined) as 'male' | 'female' | undefined,
@@ -940,9 +998,9 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       // country code are known. Falls back to the unranked legacy path otherwise.
       if (clientOrgId && countryIso) {
         const discoveryFilters = {
-          countryCode:  countryIso,
-          clientCity:   userCity ?? null,
-          category:     effectiveCategory ?? null,
+          countryCode: countryIso,
+          clientCity: userCity ?? null,
+          category: effectiveCategory ?? null,
           sportsWinter: filters.sportsWinter || false,
           sportsSummer: filters.sportsSummer || false,
           ...measurementFilters,
@@ -1011,12 +1069,24 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     })();
   }, [
     clientOrgId,
-    filters.sex, filters.heightMin, filters.heightMax, filters.ethnicities,
-    filters.countryCode, filters.city, filters.category,
-    filters.sportsWinter, filters.sportsSummer,
-    filters.hairColor, filters.hipsMin, filters.hipsMax,
-    filters.waistMin, filters.waistMax, filters.chestMin, filters.chestMax,
-    filters.legsInseamMin, filters.legsInseamMax,
+    filters.sex,
+    filters.heightMin,
+    filters.heightMax,
+    filters.ethnicities,
+    filters.countryCode,
+    filters.city,
+    filters.category,
+    filters.sportsWinter,
+    filters.sportsSummer,
+    filters.hairColor,
+    filters.hipsMin,
+    filters.hipsMax,
+    filters.waistMin,
+    filters.waistMax,
+    filters.chestMin,
+    filters.chestMax,
+    filters.legsInseamMin,
+    filters.legsInseamMax,
     userCity,
   ]);
 
@@ -1032,7 +1102,8 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       filters.nearby ||
       packageViewState != null ||
       sharedProjectId != null
-    ) return;
+    )
+      return;
 
     const remaining = filteredModels.length - 1 - currentIndex;
     if (remaining > LOAD_MORE_THRESHOLD) return;
@@ -1043,28 +1114,31 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     isLoadingMoreRef.current = true;
     const cat = filters.category;
     const effectiveCategory = cat === 'High Fashion' ? 'High Fashion' : undefined;
-    const pInt = (v: string) => { const n = parseInt(v, 10); return isNaN(n) ? undefined : n; };
+    const pInt = (v: string) => {
+      const n = parseInt(v, 10);
+      return isNaN(n) ? undefined : n;
+    };
 
     void (async () => {
       try {
         const { models: more, nextCursor } = await getDiscoveryModels(
           clientOrgId,
           {
-            countryCode:   countryIso,
-            clientCity:    userCity ?? null,
-            category:      effectiveCategory ?? null,
-            sportsWinter:  filters.sportsWinter || false,
-            sportsSummer:  filters.sportsSummer || false,
-            heightMin:     pInt(filters.heightMin),
-            heightMax:     pInt(filters.heightMax),
-            ethnicities:   filters.ethnicities.length ? filters.ethnicities : undefined,
-            hairColor:     filters.hairColor.trim() || undefined,
-            hipsMin:       pInt(filters.hipsMin),
-            hipsMax:       pInt(filters.hipsMax),
-            waistMin:      pInt(filters.waistMin),
-            waistMax:      pInt(filters.waistMax),
-            chestMin:      pInt(filters.chestMin),
-            chestMax:      pInt(filters.chestMax),
+            countryCode: countryIso,
+            clientCity: userCity ?? null,
+            category: effectiveCategory ?? null,
+            sportsWinter: filters.sportsWinter || false,
+            sportsSummer: filters.sportsSummer || false,
+            heightMin: pInt(filters.heightMin),
+            heightMax: pInt(filters.heightMax),
+            ethnicities: filters.ethnicities.length ? filters.ethnicities : undefined,
+            hairColor: filters.hairColor.trim() || undefined,
+            hipsMin: pInt(filters.hipsMin),
+            hipsMax: pInt(filters.hipsMax),
+            waistMin: pInt(filters.waistMin),
+            waistMax: pInt(filters.waistMax),
+            chestMin: pInt(filters.chestMin),
+            chestMax: pInt(filters.chestMax),
             legsInseamMin: pInt(filters.legsInseamMin),
             legsInseamMax: pInt(filters.legsInseamMax),
             sex: (filters.sex !== 'all' ? filters.sex : undefined) as 'male' | 'female' | undefined,
@@ -1073,26 +1147,54 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
           sessionSeenIds.current,
         );
         if (more.length > 0) {
+          setDiscoveryLoadMoreFailed(false);
           setModels((prev) => [...prev, ...more.map(mapDiscoveryModelToSummary)]);
           setDiscoveryCursor(nextCursor);
         } else {
+          setDiscoveryLoadMoreFailed(false);
           setDiscoveryCursor(null);
         }
       } catch (e) {
         console.error('[Discovery] loadMore error:', e);
+        setDiscoveryLoadMoreFailed(true);
       } finally {
         isLoadingMoreRef.current = false;
       }
     })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    currentIndex, discoveryCursor, clientOrgId, filters.nearby, packageViewState, sharedProjectId,
-    userCity, filters.countryCode, filters.sex, filters.heightMin, filters.heightMax,
-    filters.ethnicities, filters.category, filters.sportsWinter, filters.sportsSummer,
-    filters.hairColor, filters.hipsMin, filters.hipsMax, filters.waistMin, filters.waistMax,
-    filters.chestMin, filters.chestMax, filters.legsInseamMin, filters.legsInseamMax,
+    currentIndex,
+    discoveryCursor,
+    clientOrgId,
+    filters.nearby,
+    packageViewState,
+    sharedProjectId,
+    userCity,
+    filters.countryCode,
+    filters.sex,
+    filters.heightMin,
+    filters.heightMax,
+    filters.ethnicities,
+    filters.category,
+    filters.sportsWinter,
+    filters.sportsSummer,
+    filters.hairColor,
+    filters.hipsMin,
+    filters.hipsMax,
+    filters.waistMin,
+    filters.waistMax,
+    filters.chestMin,
+    filters.chestMax,
+    filters.legsInseamMin,
+    filters.legsInseamMax,
     models.length,
   ]);
+
+  useEffect(() => {
+    if (!filters.nearby) {
+      setNearbyLoadFailed(false);
+    }
+  }, [filters.nearby]);
 
   // Radius-based Near me discovery — only when nearby toggle is active AND we have coordinates.
   useEffect(() => {
@@ -1100,25 +1202,29 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       setNearbyModels([]);
       return;
     }
+    setNearbyLoadFailed(false);
     void (async () => {
       try {
         const cat = filters.category;
         const effectiveClientType = !cat ? 'all' : cat === 'Commercial' ? 'commercial' : 'fashion';
         const effectiveCategory = cat === 'High Fashion' ? 'High Fashion' : undefined;
-        const pInt = (v: string) => { const n = parseInt(v, 10); return isNaN(n) ? undefined : n; };
+        const pInt = (v: string) => {
+          const n = parseInt(v, 10);
+          return isNaN(n) ? undefined : n;
+        };
         const measurementFilters = {
-          heightMin:      pInt(filters.heightMin),
-          heightMax:      pInt(filters.heightMax),
-          ethnicities:    filters.ethnicities.length ? filters.ethnicities : undefined,
-          hairColor:      filters.hairColor.trim() || undefined,
-          hipsMin:        pInt(filters.hipsMin),
-          hipsMax:        pInt(filters.hipsMax),
-          waistMin:       pInt(filters.waistMin),
-          waistMax:       pInt(filters.waistMax),
-          chestMin:       pInt(filters.chestMin),
-          chestMax:       pInt(filters.chestMax),
-          legsInseamMin:  pInt(filters.legsInseamMin),
-          legsInseamMax:  pInt(filters.legsInseamMax),
+          heightMin: pInt(filters.heightMin),
+          heightMax: pInt(filters.heightMax),
+          ethnicities: filters.ethnicities.length ? filters.ethnicities : undefined,
+          hairColor: filters.hairColor.trim() || undefined,
+          hipsMin: pInt(filters.hipsMin),
+          hipsMax: pInt(filters.hipsMax),
+          waistMin: pInt(filters.waistMin),
+          waistMax: pInt(filters.waistMax),
+          chestMin: pInt(filters.chestMin),
+          chestMax: pInt(filters.chestMax),
+          legsInseamMin: pInt(filters.legsInseamMin),
+          legsInseamMax: pInt(filters.legsInseamMax),
           sex: (filters.sex !== 'all' ? filters.sex : undefined) as 'male' | 'female' | undefined,
         };
         const nearby: NearbyModel[] = await getModelsNearLocation(
@@ -1143,10 +1249,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
           hips: m.hips ?? 0,
           chest: m.chest ?? m.bust ?? 0,
           legsInseam: m.legs_inseam ?? 0,
-          coverUrl: normalizeDocumentspicturesModelImageRef(
-            m.portfolio_images?.[0] ?? '',
-            m.id,
-          ),
+          coverUrl: normalizeDocumentspicturesModelImageRef(m.portfolio_images?.[0] ?? '', m.id),
           agencyId: m.territory_agency_id ?? m.agency_id ?? null,
           agencyName: m.agency_name ?? null,
           countryCode: m.location_country_code ?? null,
@@ -1156,18 +1259,33 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
           sex: m.sex ?? null,
         }));
         setNearbyModels(mapped);
+        setNearbyLoadFailed(false);
       } catch (e) {
         console.error('getModelsNearLocation error:', e);
+        setNearbyLoadFailed(true);
         setNearbyModels([]);
       }
     })();
   }, [
-    filters.nearby, userLat, userLng,
-    filters.sex, filters.heightMin, filters.heightMax, filters.ethnicities,
-    filters.category, filters.sportsWinter, filters.sportsSummer,
-    filters.hairColor, filters.hipsMin, filters.hipsMax,
-    filters.waistMin, filters.waistMax, filters.chestMin, filters.chestMax,
-    filters.legsInseamMin, filters.legsInseamMax,
+    filters.nearby,
+    userLat,
+    userLng,
+    filters.sex,
+    filters.heightMin,
+    filters.heightMax,
+    filters.ethnicities,
+    filters.category,
+    filters.sportsWinter,
+    filters.sportsSummer,
+    filters.hairColor,
+    filters.hipsMin,
+    filters.hipsMax,
+    filters.waistMin,
+    filters.waistMax,
+    filters.chestMin,
+    filters.chestMax,
+    filters.legsInseamMin,
+    filters.legsInseamMax,
   ]);
 
   const activeProject = useMemo(
@@ -1197,7 +1315,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     // Otherwise → use baseModels as-is (all server-side filters already applied).
     if (filters.nearby) {
       if (userLat != null && userLng != null) {
-        return nearbyModels;  // radius RPC results, already sorted by distance
+        return nearbyModels; // radius RPC results, already sorted by distance
       }
       if (userCity) {
         // Geolocation permission denied but city resolved via Nominatim
@@ -1207,7 +1325,41 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       }
     }
     return baseModels;
-  }, [baseModels, nearbyModels, filters.nearby, userLat, userLng, userCity, isPackageMode, isSharedMode]);
+  }, [
+    baseModels,
+    nearbyModels,
+    filters.nearby,
+    userLat,
+    userLng,
+    userCity,
+    isPackageMode,
+    isSharedMode,
+  ]);
+
+  const discoverFilterMessages = useMemo(() => {
+    if (isPackageMode || isSharedMode) return [];
+    const out: { kind: 'warning' | 'error'; text: string }[] = [];
+    const cityTrim = userCity?.trim() ?? '';
+    if (filters.nearby && userLat == null && userLng == null && !cityTrim) {
+      out.push({ kind: 'warning', text: uiCopy.dashboard.nearbyNeedsLocation });
+    }
+    if (nearbyLoadFailed && filters.nearby) {
+      out.push({ kind: 'error', text: uiCopy.dashboard.nearbyLoadFailed });
+    }
+    if (discoveryLoadMoreFailed) {
+      out.push({ kind: 'error', text: uiCopy.dashboard.discoveryLoadMoreFailed });
+    }
+    return out;
+  }, [
+    isPackageMode,
+    isSharedMode,
+    filters.nearby,
+    userLat,
+    userLng,
+    userCity,
+    nearbyLoadFailed,
+    discoveryLoadMoreFailed,
+  ]);
 
   useEffect(() => {
     if (detailId) {
@@ -1266,11 +1418,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                 calendar: { blocked: [], available: [] },
               });
             }
-          } else if (
-            data &&
-            coverFromDiscover &&
-            !(data.portfolio?.images?.length)
-          ) {
+          } else if (data && coverFromDiscover && !data.portfolio?.images?.length) {
             setDetailData({
               ...data,
               portfolio: {
@@ -1289,10 +1437,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   }, [detailId, packageViewState, sharedProject]);
 
   const currentModel = useMemo(
-    () =>
-      filteredModels.length
-        ? filteredModels[currentIndex % filteredModels.length]
-        : null,
+    () => (filteredModels.length ? filteredModels[currentIndex % filteredModels.length] : null),
     [filteredModels, currentIndex],
   );
 
@@ -1383,9 +1528,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       const dbIdSet = new Set(dbModelIds);
       setProjects((prev) =>
         prev.map((p) =>
-          p.id === projectId
-            ? { ...p, models: p.models.filter((m) => dbIdSet.has(m.id)) }
-            : p,
+          p.id === projectId ? { ...p, models: p.models.filter((m) => dbIdSet.has(m.id)) } : p,
         ),
       );
     } catch (e) {
@@ -1401,9 +1544,8 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       clearFeedbackLater();
       return;
     }
-    const confirmed = typeof window !== 'undefined'
-      ? window.confirm(uiCopy.projects.deleteConfirm)
-      : true;
+    const confirmed =
+      typeof window !== 'undefined' ? window.confirm(uiCopy.projects.deleteConfirm) : true;
     if (!confirmed) return;
 
     // Level 3 — Inverse-Operation Rollback (NOT snapshot-based).
@@ -1478,9 +1620,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         p.id === projectId
           ? {
               ...p,
-              models: p.models.some((m) => m.id === model.id)
-                ? p.models
-                : [...p.models, model],
+              models: p.models.some((m) => m.id === model.id) ? p.models : [...p.models, model],
             }
           : p,
       ),
@@ -1492,9 +1632,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     // Territory alignment: prefer per-model country (Discover card) over filter bar so
     // p_country_iso matches get_discovery_models / MAT — not only filters.countryCode.
     const countryIsoForRpcRaw = model.countryCode ?? filters.countryCode;
-    const countryIsoForRpc = countryIsoForRpcRaw?.trim()
-      ? countryIsoForRpcRaw.trim()
-      : undefined;
+    const countryIsoForRpc = countryIsoForRpcRaw?.trim() ? countryIsoForRpcRaw.trim() : undefined;
     void addModelToProjectOnSupabase(
       projectId,
       model.id,
@@ -1502,7 +1640,11 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       countryIsoForRpc,
     )
       .then((result) => {
-        setAddingModelIds((prev) => { const s = new Set(prev); s.delete(model.id); return s; });
+        setAddingModelIds((prev) => {
+          const s = new Set(prev);
+          s.delete(model.id);
+          return s;
+        });
         if (result.ok) {
           // Server reconciliation refetch: silently align UI with DB after successful add.
           // Removes any stale in-memory models not confirmed in client_project_models.
@@ -1530,13 +1672,15 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       .catch((e) => {
         // Network-level rejection (extremely rare with Supabase JS client).
         console.error('addModelToProject: unexpected rejection', e);
-        setAddingModelIds((prev) => { const s = new Set(prev); s.delete(model.id); return s; });
+        setAddingModelIds((prev) => {
+          const s = new Set(prev);
+          s.delete(model.id);
+          return s;
+        });
         if (!alreadyPresent) {
           setProjects((prev) =>
             prev.map((p) =>
-              p.id === projectId
-                ? { ...p, models: p.models.filter((m) => m.id !== model.id) }
-                : p,
+              p.id === projectId ? { ...p, models: p.models.filter((m) => m.id !== model.id) } : p,
             ),
           );
         }
@@ -1553,7 +1697,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       filteredModels.length && !packageViewState && !sharedProjectId
         ? filteredModels[currentIndex % filteredModels.length]
         : null,
-     
+
     [filteredModels, currentIndex, packageViewState, sharedProjectId],
   );
 
@@ -1562,7 +1706,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     sessionSeenIds.current.add(currentModelForEffect.id);
     saveSessionId(clientOrgId, currentModelForEffect.id);
     void recordInteraction(currentModelForEffect.id, 'viewed');
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentModelForEffect?.id, clientOrgId]);
 
   const openProjectDiscovery = (projectId: string) => {
@@ -1604,9 +1748,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
 
     setProjects((prev) =>
       prev.map((p) =>
-        p.id === projectId
-          ? { ...p, models: p.models.filter((m) => m.id !== modelId) }
-          : p,
+        p.id === projectId ? { ...p, models: p.models.filter((m) => m.id !== modelId) } : p,
       ),
     );
 
@@ -1659,7 +1801,9 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     // An explicit "Pass/Reject" action is required to fire recordInteraction 'rejected'.
     setCurrentIndex((prev) => (prev + 1) % filteredModels.length);
     // Release mutex after a brief frame to debounce rapid taps.
-    setTimeout(() => { isNavigatingRef.current = false; }, 300);
+    setTimeout(() => {
+      isNavigatingRef.current = false;
+    }, 300);
   };
 
   const _onReject = () => {
@@ -1670,7 +1814,9 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       void recordInteraction(current.id, 'rejected');
     }
     setCurrentIndex((prev) => (prev + 1) % filteredModels.length);
-    setTimeout(() => { isNavigatingRef.current = false; }, 300);
+    setTimeout(() => {
+      isNavigatingRef.current = false;
+    }, 300);
   };
 
   const _openSharedLinkForProject = (projectId: string) => {
@@ -1768,18 +1914,16 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         hips: m.hips ?? 0,
         chest: (m as { chest?: number | null }).chest ?? m.bust ?? 0,
         legsInseam: 0,
-        coverUrl: normalizeDocumentspicturesModelImageRef(
-          getPackageCoverRawRef(m, pkgType),
-          m.id,
-        ),
+        coverUrl: normalizeDocumentspicturesModelImageRef(getPackageCoverRawRef(m, pkgType), m.id),
         agencyId: null,
         agencyName: null,
         countryCode: null,
         hasRealLocation: false,
       }));
       // Prefer the explicit label set by the agency; fall back to agency-name + count
-      const packageName = gl.label
-        ?? (gl.agency_name
+      const packageName =
+        gl.label ??
+        (gl.agency_name
           ? `${gl.agency_name} (${glModels.length} models)`
           : `Package (${glModels.length} models)`);
       setFeedback(null);
@@ -1821,7 +1965,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       currency?: string;
       countryCode?: string;
       jobDescription?: string;
-    }
+    },
   ) => {
     const originTab = tab;
     const pkgExtra = packageViewState
@@ -1837,46 +1981,42 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
           ? ('project' as const)
           : ('discover' as const);
     const clientOrgName = auth.profile?.company_name ?? auth.profile?.display_name ?? 'Client';
-    addOptionRequest(
-      clientOrgName,
-      modelName,
-      modelId,
-      date,
-      resolvedProjectId,
-      {
-        ...extra,
-        ...pkgExtra,
-        flowSource,
-        clientOrganizationName: clientOrgName,
-        onThreadReady: (dbThreadId) => {
-          optionChatReturnRef.current = { kind: 'tab', tab: originTab };
-          setOpenThreadIdOnMessages(dbThreadId);
-        },
+    addOptionRequest(clientOrgName, modelName, modelId, date, resolvedProjectId, {
+      ...extra,
+      ...pkgExtra,
+      flowSource,
+      clientOrganizationName: clientOrgName,
+      onThreadReady: (dbThreadId) => {
+        optionChatReturnRef.current = { kind: 'tab', tab: originTab };
+        setOpenThreadIdOnMessages(dbThreadId);
       },
-    );
+    });
     setOptionDatePickerOpen(false);
     setOptionDateModel(null);
     setTab('messages');
   };
 
-  const handleSaveClientAssignment = useCallback(async (
-    clientOrganizationId: string,
-    patch: { label: string; color: AssignmentFlagColor; assignedMemberUserId?: string | null },
-  ): Promise<void> => {
-    if (!agencyOrgId) return;
-    const saved = await upsertClientAssignmentFlag({
-      agencyOrganizationId: agencyOrgId,
-      clientOrganizationId,
-      label: patch.label,
-      color: patch.color,
-      assignedMemberUserId: patch.assignedMemberUserId ?? null,
-    });
-    if (!saved) return;
-    setAssignmentByClientOrgId((prev) => ({
-      ...prev,
-      [clientOrganizationId]: saved,
-    }));
-  }, [agencyOrgId]);
+  const handleSaveClientAssignment = useCallback(
+    async (
+      clientOrganizationId: string,
+      patch: { label: string; color: AssignmentFlagColor; assignedMemberUserId?: string | null },
+    ): Promise<void> => {
+      if (!agencyOrgId) return;
+      const saved = await upsertClientAssignmentFlag({
+        agencyOrganizationId: agencyOrgId,
+        clientOrganizationId,
+        label: patch.label,
+        color: patch.color,
+        assignedMemberUserId: patch.assignedMemberUserId ?? null,
+      });
+      if (!saved) return;
+      setAssignmentByClientOrgId((prev) => ({
+        ...prev,
+        [clientOrganizationId]: saved,
+      }));
+    },
+    [agencyOrgId],
+  );
 
   useEffect(() => {
     setHasNew(hasOpenOptionRequestAttention());
@@ -2004,10 +2144,16 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         clientUserId: realClientId,
       });
       if (result.ok) {
-        setPendingClientB2BChat({ conversationId: result.conversationId, title: uiCopy.b2bChat.agencyFallback });
+        setPendingClientB2BChat({
+          conversationId: result.conversationId,
+          title: uiCopy.b2bChat.agencyFallback,
+        });
         setTab('messages');
       } else {
-        showAppAlert(uiCopy.b2bChat.chatFailedTitle, result.reason || uiCopy.b2bChat.chatFailedGeneric);
+        showAppAlert(
+          uiCopy.b2bChat.chatFailedTitle,
+          result.reason || uiCopy.b2bChat.chatFailedGeneric,
+        );
       }
     } catch (e) {
       console.error('handleChatWithAgency exception:', e);
@@ -2034,27 +2180,42 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     <View style={[styles.root, clientMobileWebShellLock]}>
       {/* GDPR: Geolocation + Nominatim consent banner — shown the first time "Near me" is activated */}
       {showGeoConsentBanner && (
-        <View style={{
-          position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.55)', zIndex: 9999,
-          alignItems: 'center', justifyContent: 'center', padding: spacing.lg,
-        }}>
-          <View style={{
-            backgroundColor: colors.surface, borderRadius: 12, padding: spacing.lg,
-            maxWidth: 420, width: '100%', gap: spacing.md,
-          }}>
+        <View
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.55)',
+            zIndex: 9999,
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: spacing.lg,
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: colors.surface,
+              borderRadius: 12,
+              padding: spacing.lg,
+              maxWidth: 420,
+              width: '100%',
+              gap: spacing.md,
+            }}
+          >
             <Text style={{ ...typography.heading, fontSize: 16, color: colors.textPrimary }}>
               Location Access
             </Text>
             <Text style={{ ...typography.body, color: colors.textSecondary, lineHeight: 20 }}>
-              To show models near you, IndexCasting will request your device location and send
-              your approximate coordinates to{' '}
-              <Text style={{ color: colors.textPrimary }}>OpenStreetMap Nominatim</Text>
-              {' '}(a third-party geocoder) to determine your city.
+              To show models near you, IndexCasting will request your device location and send your
+              approximate coordinates to{' '}
+              <Text style={{ color: colors.textPrimary }}>OpenStreetMap Nominatim</Text> (a
+              third-party geocoder) to determine your city.
             </Text>
             <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary }}>
-              Your coordinates are rounded to ~5 km precision and are not stored on our servers.
-              You can withdraw consent at any time by disabling the "Near me" filter.
+              Your coordinates are rounded to ~5 km precision and are not stored on our servers. You
+              can withdraw consent at any time by disabling the "Near me" filter.
             </Text>
             <View style={{ flexDirection: 'row', gap: spacing.sm, justifyContent: 'flex-end' }}>
               <TouchableOpacity
@@ -2066,8 +2227,10 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
               <TouchableOpacity
                 onPress={handleGeoConsentAccept}
                 style={{
-                  backgroundColor: colors.accent, borderRadius: 8,
-                  paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
+                  backgroundColor: colors.accent,
+                  borderRadius: 8,
+                  paddingHorizontal: spacing.md,
+                  paddingVertical: spacing.sm,
                 }}
               >
                 <Text style={{ color: '#fff', fontWeight: '600' }}>Allow Location</Text>
@@ -2076,7 +2239,16 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
           </View>
         </View>
       )}
-      <View style={[styles.appShell, { paddingBottom: clientChatFullscreen ? 0 : bottomTabInset, paddingTop: Math.max(spacing.xs, insets.top + 2), paddingHorizontal: shellPaddingH }]}>
+      <View
+        style={[
+          styles.appShell,
+          {
+            paddingBottom: clientChatFullscreen ? 0 : bottomTabInset,
+            paddingTop: Math.max(spacing.xs, insets.top + 2),
+            paddingHorizontal: shellPaddingH,
+          },
+        ]}
+      >
         <View style={styles.topBar}>
           <View style={styles.topBarRow}>
             <View style={styles.topBarSide}>
@@ -2085,7 +2257,9 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                 onPress={onBackToRoleSelection}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               >
-                <Text style={{ ...typography.label, fontSize: 12, color: colors.textSecondary }}>Logout</Text>
+                <Text style={{ ...typography.label, fontSize: 12, color: colors.textSecondary }}>
+                  Logout
+                </Text>
               </TouchableOpacity>
             </View>
             <View style={styles.topBarCenter}>
@@ -2113,7 +2287,9 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
               <TouchableOpacity
                 onPress={() => {
                   const subject = encodeURIComponent('Help Request – Casting Index');
-                  const body = encodeURIComponent('Hello Casting Index Team,\n\nI need help with:\n\n');
+                  const body = encodeURIComponent(
+                    'Hello Casting Index Team,\n\nI need help with:\n\n',
+                  );
                   Linking.openURL(`mailto:admin@castingindex.com?subject=${subject}&body=${body}`);
                 }}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
@@ -2155,7 +2331,10 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                 setOpenThreadIdOnMessages(id);
                 setTab('messages');
               }}
-              onSelectModel={(id) => { openDetails(id); setTab('discover'); }}
+              onSelectModel={(id) => {
+                openDetails(id);
+                setTab('discover');
+              }}
             />
           </ScrollView>
         )}
@@ -2195,6 +2374,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             onShowActiveOptions={() => setShowActiveOptions(true)}
             tabBarBottomInset={bottomTabInset}
             shellHorizontalPadding={shellPaddingH}
+            discoverFilterMessages={discoverFilterMessages}
           />
         )}
 
@@ -2217,7 +2397,8 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             creatingProject={projectCreateBusy}
             onDeleteProject={handleDeleteProject}
             canDeleteProject={(p) =>
-              !realClientId || p.ownerId == null || p.ownerId === realClientId}
+              !realClientId || p.ownerId == null || p.ownerId === realClientId
+            }
             onOpenDetails={openDetails}
             onOpenProject={openProjectFolder}
             onShareFolder={handleShareFolder}
@@ -2272,9 +2453,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
               onOpenDetails={(item) => {
                 setSelectedCalendarItem(item);
                 setSelectedManualEvent(null);
-                const existing =
-                  (item.calendar_entry?.booking_details as any)?.client_notes ??
-                  '';
+                const existing = (item.calendar_entry?.booking_details as any)?.client_notes ?? '';
                 setClientNotesDraft(existing);
               }}
               onOpenManualEvent={(ev) => {
@@ -2314,9 +2493,15 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             pendingClientB2BChat={pendingClientB2BChat}
             onPendingClientB2BChatConsumed={() => setPendingClientB2BChat(null)}
             onBookingCardPress={() => setTab('calendar')}
-            onPackagePress={(meta) => { void handlePackagePress(meta); }}
-            onOptionRequestDeleted={() => { void loadClientCalendar(); }}
-            onOptionProjectionChanged={() => { void loadClientCalendar(); }}
+            onPackagePress={(meta) => {
+              void handlePackagePress(meta);
+            }}
+            onOptionRequestDeleted={() => {
+              void loadClientCalendar();
+            }}
+            onOptionProjectionChanged={() => {
+              void loadClientCalendar();
+            }}
             onOptionThreadOpenedFromList={() => {
               optionChatReturnRef.current = { kind: 'list' };
             }}
@@ -2333,7 +2518,14 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             showsVerticalScrollIndicator={false}
           >
             <View style={{ flex: 1, alignSelf: 'stretch', paddingHorizontal: spacing.xs }}>
-              <Text style={{ ...typography.heading, fontSize: 18, color: colors.textPrimary, marginBottom: spacing.sm }}>
+              <Text
+                style={{
+                  ...typography.heading,
+                  fontSize: 18,
+                  color: colors.textPrimary,
+                  marginBottom: spacing.sm,
+                }}
+              >
                 Team
               </Text>
               {clientOrgId && <OwnerBillingStatusCard variant="client" />}
@@ -2368,9 +2560,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         onClose={closeDetails}
         onOptionRequest={handleOptionRequest}
         detailMediaPackageType={
-          packageViewState &&
-          detailId &&
-          packageViewState.rawModels.some((m) => m.id === detailId)
+          packageViewState && detailId && packageViewState.rawModels.some((m) => m.id === detailId)
             ? packageViewState.packageType
             : undefined
         }
@@ -2396,273 +2586,304 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
               contentContainerStyle={{ paddingBottom: spacing.xl }}
               keyboardShouldPersistTaps="handled"
             >
-            {(() => {
-              const { option, calendar_entry } = selectedCalendarItem;
-              const entryType = calendar_entry?.entry_type;
-              let kind: 'Option' | 'Job' | 'Casting' = 'Option';
-              if (entryType === 'booking') kind = 'Job';
-              if (entryType === 'casting' || entryType === 'gosee') kind = 'Casting';
-              const date = calendar_entry?.date ?? option.requested_date;
-              const start =
-                calendar_entry?.start_time ?? option.start_time ?? undefined;
-              const end =
-                calendar_entry?.end_time ?? option.end_time ?? undefined;
-              return (
-                <View>
-                  <Text style={styles.metaText}>
-                    {kind} · {option.model_name ?? 'Model'} ·{' '}
-                    {option.client_name ?? 'Client'}
-                  </Text>
-                  <Text style={styles.metaText}>
-                    {date}
-                    {start ? ` · ${start}${end ? `–${end}` : ''}` : ''}
-                  </Text>
-                  {isRealClient ? (
-                    <>
-                      <Text style={[styles.metaText, { marginTop: spacing.sm }]}>
-                        <Text style={{ fontWeight: '600' }}>{uiCopy.calendar.nextStepLabel}: </Text>
-                        {getCalendarDetailNextStepText(option, calendar_entry, 'client', {
-                          nextStepAwaitingModel: uiCopy.calendar.nextStepAwaitingModel,
-                          nextStepAwaitingAgency: uiCopy.calendar.nextStepAwaitingAgency,
-                          nextStepAwaitingClient: uiCopy.calendar.nextStepAwaitingClient,
-                          nextStepJobConfirm: uiCopy.calendar.nextStepJobConfirm,
-                          nextStepNegotiating: uiCopy.calendar.nextStepNegotiating,
-                          nextStepNoAction: uiCopy.calendar.nextStepNoAction,
-                          nextStepYourConfirm: uiCopy.calendar.nextStepYourConfirm,
-                        })}
-                      </Text>
-                      <TouchableOpacity
-                        style={[styles.primaryButton, { marginTop: spacing.sm, alignSelf: 'stretch' }]}
-                        onPress={() =>
-                          navigateToOptionThreadFromCalendar(
-                            resolveCanonicalOptionRequestIdForCalendarItem({ option, calendar_entry }),
-                          )
-                        }
-                      >
-                        <Text style={styles.primaryLabel}>{uiCopy.calendar.openNegotiationThread}</Text>
-                      </TouchableOpacity>
-                    </>
-                  ) : null}
-                </View>
-              );
-            })()}
-            <View style={{ marginTop: spacing.md }}>
-              <Text style={styles.sectionLabel}>{uiCopy.calendar.reschedule}</Text>
-              <Text style={[styles.metaText, { marginBottom: spacing.sm }]}>
-                {uiCopy.calendar.optionScheduleHelp}
-              </Text>
-              <Text style={{ ...typography.label, marginBottom: 4 }}>Date (YYYY-MM-DD)</Text>
-              <TextInput
-                value={bookingScheduleDraft.date}
-                onChangeText={(t) => setBookingScheduleDraft((p) => ({ ...p, date: t }))}
-                placeholderTextColor={colors.textSecondary}
-                style={styles.input}
-              />
-              <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ ...typography.label, marginBottom: 4 }}>From</Text>
-                  <TextInput
-                    value={bookingScheduleDraft.start_time}
-                    onChangeText={(t) => setBookingScheduleDraft((p) => ({ ...p, start_time: t }))}
-                    placeholderTextColor={colors.textSecondary}
-                    style={styles.input}
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ ...typography.label, marginBottom: 4 }}>To</Text>
-                  <TextInput
-                    value={bookingScheduleDraft.end_time}
-                    onChangeText={(t) => setBookingScheduleDraft((p) => ({ ...p, end_time: t }))}
-                    placeholderTextColor={colors.textSecondary}
-                    style={styles.input}
-                  />
-                </View>
-              </View>
-              <TouchableOpacity
-                onPress={async () => {
-                  if (!selectedCalendarItem || !bookingScheduleDraft.date.trim()) return;
-                  setSavingBookingSchedule(true);
-                  try {
-                    const ok = await updateOptionRequestSchedule(selectedCalendarItem.option.id, {
-                      requested_date: bookingScheduleDraft.date.trim(),
-                      start_time: bookingScheduleDraft.start_time.trim() || null,
-                      end_time: bookingScheduleDraft.end_time.trim() || null,
-                    });
-                    if (ok && realClientId) {
-                      await loadClientCalendar();
-                      await loadOptionRequestsForClient(clientOrgId);
-                      const items = await getCalendarEntriesForClient(realClientId);
-                      const next = items.find((x) => x.option.id === selectedCalendarItem.option.id);
-                      if (next) setSelectedCalendarItem(next);
-                      Alert.alert(uiCopy.common.success, uiCopy.calendar.bookingUpdated);
-                    } else {
-                      Alert.alert(uiCopy.common.error, uiCopy.calendar.bookingUpdateFailed);
-                    }
-                  } finally {
-                    setSavingBookingSchedule(false);
-                  }
-                }}
-                style={[
-                  styles.primaryButton,
-                  { marginTop: spacing.sm, alignSelf: 'flex-end', opacity: savingBookingSchedule ? 0.6 : 1 },
-                ]}
-                disabled={savingBookingSchedule}
-              >
-                <Text style={styles.primaryLabel}>
-                  {savingBookingSchedule ? uiCopy.common.saving : uiCopy.calendar.saveSchedule}
-                </Text>
-              </TouchableOpacity>
-            </View>
-            {selectedCalendarItem.calendar_entry?.option_request_id && realClientId ? (
-              <BookingBriefEditor
-                role="client"
-                optionRequestId={selectedCalendarItem.option.id}
-                bookingBriefRaw={
-                  (selectedCalendarItem.calendar_entry.booking_details as BookingDetails | null)?.booking_brief
-                }
-                onAfterSave={async () => {
-                  await loadClientCalendar();
-                  await loadOptionRequestsForClient(clientOrgId);
-                  const items = await getCalendarEntriesForClient(realClientId);
-                  const next = items.find((x) => x.option.id === selectedCalendarItem.option.id);
-                  if (next) setSelectedCalendarItem(next);
-                }}
-              />
-            ) : null}
-            {selectedCalendarItem.calendar_entry ? (
+              {(() => {
+                const { option, calendar_entry } = selectedCalendarItem;
+                const entryType = calendar_entry?.entry_type;
+                let kind: 'Option' | 'Job' | 'Casting' = 'Option';
+                if (entryType === 'booking') kind = 'Job';
+                if (entryType === 'casting' || entryType === 'gosee') kind = 'Casting';
+                const date = calendar_entry?.date ?? option.requested_date;
+                const start = calendar_entry?.start_time ?? option.start_time ?? undefined;
+                const end = calendar_entry?.end_time ?? option.end_time ?? undefined;
+                return (
+                  <View>
+                    <Text style={styles.metaText}>
+                      {kind} · {option.model_name ?? 'Model'} · {option.client_name ?? 'Client'}
+                    </Text>
+                    <Text style={styles.metaText}>
+                      {date}
+                      {start ? ` · ${start}${end ? `–${end}` : ''}` : ''}
+                    </Text>
+                    {isRealClient ? (
+                      <>
+                        <Text style={[styles.metaText, { marginTop: spacing.sm }]}>
+                          <Text style={{ fontWeight: '600' }}>
+                            {uiCopy.calendar.nextStepLabel}:{' '}
+                          </Text>
+                          {getCalendarDetailNextStepText(option, calendar_entry, 'client', {
+                            nextStepAwaitingModel: uiCopy.calendar.nextStepAwaitingModel,
+                            nextStepAwaitingAgency: uiCopy.calendar.nextStepAwaitingAgency,
+                            nextStepAwaitingClient: uiCopy.calendar.nextStepAwaitingClient,
+                            nextStepJobConfirm: uiCopy.calendar.nextStepJobConfirm,
+                            nextStepNegotiating: uiCopy.calendar.nextStepNegotiating,
+                            nextStepNoAction: uiCopy.calendar.nextStepNoAction,
+                            nextStepYourConfirm: uiCopy.calendar.nextStepYourConfirm,
+                          })}
+                        </Text>
+                        <TouchableOpacity
+                          style={[
+                            styles.primaryButton,
+                            { marginTop: spacing.sm, alignSelf: 'stretch' },
+                          ]}
+                          onPress={() =>
+                            navigateToOptionThreadFromCalendar(
+                              resolveCanonicalOptionRequestIdForCalendarItem({
+                                option,
+                                calendar_entry,
+                              }),
+                            )
+                          }
+                        >
+                          <Text style={styles.primaryLabel}>
+                            {uiCopy.calendar.openNegotiationThread}
+                          </Text>
+                        </TouchableOpacity>
+                      </>
+                    ) : null}
+                  </View>
+                );
+              })()}
               <View style={{ marginTop: spacing.md }}>
-                <Text style={styles.sectionLabel}>{uiCopy.calendar.sharedNotesTitle}</Text>
+                <Text style={styles.sectionLabel}>{uiCopy.calendar.reschedule}</Text>
                 <Text style={[styles.metaText, { marginBottom: spacing.sm }]}>
-                  {uiCopy.calendar.sharedNotesHelpClient}
+                  {uiCopy.calendar.optionScheduleHelp}
                 </Text>
-                <ScrollView style={{ maxHeight: 120, marginBottom: spacing.sm }}>
-                  {(
-                    (selectedCalendarItem.calendar_entry?.booking_details as { shared_notes?: SharedBookingNote[] } | null)
-                      ?.shared_notes ?? []
-                  ).map((n, i) => (
-                    <View
-                      key={`${n.at}-${i}`}
-                      style={{
-                        marginBottom: 6,
-                        padding: 8,
-                        backgroundColor: colors.border,
-                        borderRadius: 8,
-                      }}
-                    >
-                      <Text style={{ fontSize: 10, color: colors.textSecondary }}>
-                        {n.role} · {new Date(n.at).toLocaleString('en-GB')}
-                      </Text>
-                      <Text style={{ fontSize: 12, color: colors.textPrimary }}>{n.text}</Text>
-                    </View>
-                  ))}
-                </ScrollView>
+                <Text style={{ ...typography.label, marginBottom: 4 }}>Date (YYYY-MM-DD)</Text>
                 <TextInput
-                  value={clientSharedNoteDraft}
-                  onChangeText={setClientSharedNoteDraft}
-                  multiline
-                  placeholder={uiCopy.calendar.sharedNotePlaceholder}
+                  value={bookingScheduleDraft.date}
+                  onChangeText={(t) => setBookingScheduleDraft((p) => ({ ...p, date: t }))}
                   placeholderTextColor={colors.textSecondary}
-                  style={[styles.input, { minHeight: 72, borderRadius: 12, textAlignVertical: 'top' }]}
+                  style={styles.input}
                 />
+                <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ ...typography.label, marginBottom: 4 }}>From</Text>
+                    <TextInput
+                      value={bookingScheduleDraft.start_time}
+                      onChangeText={(t) =>
+                        setBookingScheduleDraft((p) => ({ ...p, start_time: t }))
+                      }
+                      placeholderTextColor={colors.textSecondary}
+                      style={styles.input}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ ...typography.label, marginBottom: 4 }}>To</Text>
+                    <TextInput
+                      value={bookingScheduleDraft.end_time}
+                      onChangeText={(t) => setBookingScheduleDraft((p) => ({ ...p, end_time: t }))}
+                      placeholderTextColor={colors.textSecondary}
+                      style={styles.input}
+                    />
+                  </View>
+                </View>
                 <TouchableOpacity
                   onPress={async () => {
-                    if (!selectedCalendarItem || !clientSharedNoteDraft.trim()) return;
-                    const now = Date.now();
-                    if (now - lastAppendSharedNoteAtRef.current < UI_DOUBLE_SUBMIT_DEBOUNCE_MS) return;
-                    lastAppendSharedNoteAtRef.current = now;
-                    setSavingSharedNoteClient(true);
+                    if (!selectedCalendarItem || !bookingScheduleDraft.date.trim()) return;
+                    setSavingBookingSchedule(true);
                     try {
-                      const ok = await appendSharedBookingNote(
-                        selectedCalendarItem.option.id,
-                        'client',
-                        clientSharedNoteDraft,
-                      );
+                      const ok = await updateOptionRequestSchedule(selectedCalendarItem.option.id, {
+                        requested_date: bookingScheduleDraft.date.trim(),
+                        start_time: bookingScheduleDraft.start_time.trim() || null,
+                        end_time: bookingScheduleDraft.end_time.trim() || null,
+                      });
                       if (ok && realClientId) {
-                        setClientSharedNoteDraft('');
                         await loadClientCalendar();
+                        await loadOptionRequestsForClient(clientOrgId);
                         const items = await getCalendarEntriesForClient(realClientId);
-                        const next = items.find((x) => x.option.id === selectedCalendarItem.option.id);
+                        const next = items.find(
+                          (x) => x.option.id === selectedCalendarItem.option.id,
+                        );
                         if (next) setSelectedCalendarItem(next);
+                        Alert.alert(uiCopy.common.success, uiCopy.calendar.bookingUpdated);
+                      } else {
+                        Alert.alert(uiCopy.common.error, uiCopy.calendar.bookingUpdateFailed);
                       }
                     } finally {
-                      setSavingSharedNoteClient(false);
+                      setSavingBookingSchedule(false);
                     }
                   }}
                   style={[
                     styles.primaryButton,
-                    { marginTop: spacing.sm, alignSelf: 'flex-end', opacity: savingSharedNoteClient ? 0.6 : 1 },
+                    {
+                      marginTop: spacing.sm,
+                      alignSelf: 'flex-end',
+                      opacity: savingBookingSchedule ? 0.6 : 1,
+                    },
                   ]}
-                  disabled={savingSharedNoteClient}
+                  disabled={savingBookingSchedule}
                 >
                   <Text style={styles.primaryLabel}>
-                    {savingSharedNoteClient ? uiCopy.calendar.postingSharedNote : uiCopy.calendar.postSharedNote}
+                    {savingBookingSchedule ? uiCopy.common.saving : uiCopy.calendar.saveSchedule}
                   </Text>
                 </TouchableOpacity>
               </View>
-            ) : null}
-            <View style={{ marginTop: spacing.md }}>
-              <Text style={styles.sectionLabel}>{uiCopy.calendar.clientNotesTitle}</Text>
-              <TextInput
-                value={clientNotesDraft}
-                onChangeText={setClientNotesDraft}
-                multiline
-                placeholder={uiCopy.calendar.clientNotesPlaceholder}
-                placeholderTextColor={colors.textSecondary}
-                style={[
-                  styles.input,
-                  {
-                    height: 96,
-                    borderRadius: 12,
-                    textAlignVertical: 'top',
-                  },
-                ]}
-              />
-            </View>
-            <View
-              style={{
-                flexDirection: 'row',
-                justifyContent: 'flex-end',
-                gap: spacing.sm,
-                marginTop: spacing.lg,
-              }}
-            >
-              <TouchableOpacity
-                onPress={() => {
-                  setSelectedCalendarItem(null);
-                  setClientNotesDraft('');
-                }}
-                style={[styles.secondaryButton, { paddingHorizontal: spacing.lg }]}
-              >
-                <Text style={styles.secondaryLabel}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={async () => {
-                  if (!selectedCalendarItem) return;
-                  setSavingNotes(true);
-                  try {
-                    await updateBookingDetails(
-                      selectedCalendarItem.option.id,
-                      { client_notes: clientNotesDraft },
-                      'client',
-                    );
+              {selectedCalendarItem.calendar_entry?.option_request_id && realClientId ? (
+                <BookingBriefEditor
+                  role="client"
+                  optionRequestId={selectedCalendarItem.option.id}
+                  bookingBriefRaw={
+                    (selectedCalendarItem.calendar_entry.booking_details as BookingDetails | null)
+                      ?.booking_brief
+                  }
+                  onAfterSave={async () => {
                     await loadClientCalendar();
+                    await loadOptionRequestsForClient(clientOrgId);
+                    const items = await getCalendarEntriesForClient(realClientId);
+                    const next = items.find((x) => x.option.id === selectedCalendarItem.option.id);
+                    if (next) setSelectedCalendarItem(next);
+                  }}
+                />
+              ) : null}
+              {selectedCalendarItem.calendar_entry ? (
+                <View style={{ marginTop: spacing.md }}>
+                  <Text style={styles.sectionLabel}>{uiCopy.calendar.sharedNotesTitle}</Text>
+                  <Text style={[styles.metaText, { marginBottom: spacing.sm }]}>
+                    {uiCopy.calendar.sharedNotesHelpClient}
+                  </Text>
+                  <ScrollView style={{ maxHeight: 120, marginBottom: spacing.sm }}>
+                    {(
+                      (
+                        selectedCalendarItem.calendar_entry?.booking_details as {
+                          shared_notes?: SharedBookingNote[];
+                        } | null
+                      )?.shared_notes ?? []
+                    ).map((n, i) => (
+                      <View
+                        key={`${n.at}-${i}`}
+                        style={{
+                          marginBottom: 6,
+                          padding: 8,
+                          backgroundColor: colors.border,
+                          borderRadius: 8,
+                        }}
+                      >
+                        <Text style={{ fontSize: 10, color: colors.textSecondary }}>
+                          {n.role} · {new Date(n.at).toLocaleString('en-GB')}
+                        </Text>
+                        <Text style={{ fontSize: 12, color: colors.textPrimary }}>{n.text}</Text>
+                      </View>
+                    ))}
+                  </ScrollView>
+                  <TextInput
+                    value={clientSharedNoteDraft}
+                    onChangeText={setClientSharedNoteDraft}
+                    multiline
+                    placeholder={uiCopy.calendar.sharedNotePlaceholder}
+                    placeholderTextColor={colors.textSecondary}
+                    style={[
+                      styles.input,
+                      { minHeight: 72, borderRadius: 12, textAlignVertical: 'top' },
+                    ]}
+                  />
+                  <TouchableOpacity
+                    onPress={async () => {
+                      if (!selectedCalendarItem || !clientSharedNoteDraft.trim()) return;
+                      const now = Date.now();
+                      if (now - lastAppendSharedNoteAtRef.current < UI_DOUBLE_SUBMIT_DEBOUNCE_MS)
+                        return;
+                      lastAppendSharedNoteAtRef.current = now;
+                      setSavingSharedNoteClient(true);
+                      try {
+                        const ok = await appendSharedBookingNote(
+                          selectedCalendarItem.option.id,
+                          'client',
+                          clientSharedNoteDraft,
+                        );
+                        if (ok && realClientId) {
+                          setClientSharedNoteDraft('');
+                          await loadClientCalendar();
+                          const items = await getCalendarEntriesForClient(realClientId);
+                          const next = items.find(
+                            (x) => x.option.id === selectedCalendarItem.option.id,
+                          );
+                          if (next) setSelectedCalendarItem(next);
+                        }
+                      } finally {
+                        setSavingSharedNoteClient(false);
+                      }
+                    }}
+                    style={[
+                      styles.primaryButton,
+                      {
+                        marginTop: spacing.sm,
+                        alignSelf: 'flex-end',
+                        opacity: savingSharedNoteClient ? 0.6 : 1,
+                      },
+                    ]}
+                    disabled={savingSharedNoteClient}
+                  >
+                    <Text style={styles.primaryLabel}>
+                      {savingSharedNoteClient
+                        ? uiCopy.calendar.postingSharedNote
+                        : uiCopy.calendar.postSharedNote}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+              <View style={{ marginTop: spacing.md }}>
+                <Text style={styles.sectionLabel}>{uiCopy.calendar.clientNotesTitle}</Text>
+                <TextInput
+                  value={clientNotesDraft}
+                  onChangeText={setClientNotesDraft}
+                  multiline
+                  placeholder={uiCopy.calendar.clientNotesPlaceholder}
+                  placeholderTextColor={colors.textSecondary}
+                  style={[
+                    styles.input,
+                    {
+                      height: 96,
+                      borderRadius: 12,
+                      textAlignVertical: 'top',
+                    },
+                  ]}
+                />
+              </View>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  justifyContent: 'flex-end',
+                  gap: spacing.sm,
+                  marginTop: spacing.lg,
+                }}
+              >
+                <TouchableOpacity
+                  onPress={() => {
                     setSelectedCalendarItem(null);
                     setClientNotesDraft('');
-                  } finally {
-                    setSavingNotes(false);
-                  }
-                }}
-                style={[
-                  styles.primaryButton,
-                  { paddingHorizontal: spacing.lg, opacity: savingNotes ? 0.6 : 1 },
-                ]}
-                disabled={savingNotes}
-              >
-                <Text style={styles.primaryLabel}>
-                  {savingNotes ? uiCopy.calendar.savingNotes : uiCopy.calendar.saveNotes}
-                </Text>
-              </TouchableOpacity>
-            </View>
+                  }}
+                  style={[styles.secondaryButton, { paddingHorizontal: spacing.lg }]}
+                >
+                  <Text style={styles.secondaryLabel}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={async () => {
+                    if (!selectedCalendarItem) return;
+                    setSavingNotes(true);
+                    try {
+                      await updateBookingDetails(
+                        selectedCalendarItem.option.id,
+                        { client_notes: clientNotesDraft },
+                        'client',
+                      );
+                      await loadClientCalendar();
+                      setSelectedCalendarItem(null);
+                      setClientNotesDraft('');
+                    } finally {
+                      setSavingNotes(false);
+                    }
+                  }}
+                  style={[
+                    styles.primaryButton,
+                    { paddingHorizontal: spacing.lg, opacity: savingNotes ? 0.6 : 1 },
+                  ]}
+                  disabled={savingNotes}
+                >
+                  <Text style={styles.primaryLabel}>
+                    {savingNotes ? uiCopy.calendar.savingNotes : uiCopy.calendar.saveNotes}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </ScrollView>
           </View>
         </View>
@@ -2705,23 +2926,53 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
 
       {showAddManualEvent && (
         <View style={styles.detailOverlay}>
-          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setShowAddManualEvent(false)} />
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setShowAddManualEvent(false)}
+          />
           <View style={[styles.detailCard, { maxWidth: 400 }]}>
             <Text style={styles.detailTitle}>Add event</Text>
-            <TextInput placeholder="Title" value={newEventForm.title} onChangeText={(t) => setNewEventForm((f) => ({ ...f, title: t }))} placeholderTextColor={colors.textSecondary} style={styles.input} />
-            <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>Date (YYYY-MM-DD)</Text>
-            <TextInput placeholder="2025-03-15" value={newEventForm.date} onChangeText={(d) => setNewEventForm((f) => ({ ...f, date: d }))} placeholderTextColor={colors.textSecondary} style={styles.input} />
+            <TextInput
+              placeholder="Title"
+              value={newEventForm.title}
+              onChangeText={(t) => setNewEventForm((f) => ({ ...f, title: t }))}
+              placeholderTextColor={colors.textSecondary}
+              style={styles.input}
+            />
+            <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>
+              Date (YYYY-MM-DD)
+            </Text>
+            <TextInput
+              placeholder="2025-03-15"
+              value={newEventForm.date}
+              onChangeText={(d) => setNewEventForm((f) => ({ ...f, date: d }))}
+              placeholderTextColor={colors.textSecondary}
+              style={styles.input}
+            />
             <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
               <View style={{ flex: 1 }}>
                 <Text style={{ ...typography.label, marginBottom: 4 }}>From</Text>
-                <TextInput value={newEventForm.start_time} onChangeText={(t) => setNewEventForm((f) => ({ ...f, start_time: t }))} placeholderTextColor={colors.textSecondary} style={styles.input} />
+                <TextInput
+                  value={newEventForm.start_time}
+                  onChangeText={(t) => setNewEventForm((f) => ({ ...f, start_time: t }))}
+                  placeholderTextColor={colors.textSecondary}
+                  style={styles.input}
+                />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ ...typography.label, marginBottom: 4 }}>To</Text>
-                <TextInput value={newEventForm.end_time} onChangeText={(t) => setNewEventForm((f) => ({ ...f, end_time: t }))} placeholderTextColor={colors.textSecondary} style={styles.input} />
+                <TextInput
+                  value={newEventForm.end_time}
+                  onChangeText={(t) => setNewEventForm((f) => ({ ...f, end_time: t }))}
+                  placeholderTextColor={colors.textSecondary}
+                  style={styles.input}
+                />
               </View>
             </View>
-            <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>Note (private)</Text>
+            <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>
+              Note (private)
+            </Text>
             <TextInput
               value={newEventForm.note}
               onChangeText={(t) => setNewEventForm((f) => ({ ...f, note: t }))}
@@ -2729,22 +2980,43 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
               placeholderTextColor={colors.textSecondary}
               style={[styles.input, { minHeight: 64, textAlignVertical: 'top', borderRadius: 12 }]}
             />
-            <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>Color</Text>
+            <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>
+              Color
+            </Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {MANUAL_EVENT_COLORS.map((c) => (
-                <TouchableOpacity key={c} onPress={() => setNewEventForm((f) => ({ ...f, color: c }))} style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: c, borderWidth: newEventForm.color === c ? 2 : 0, borderColor: colors.textPrimary }} />
+                <TouchableOpacity
+                  key={c}
+                  onPress={() => setNewEventForm((f) => ({ ...f, color: c }))}
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 14,
+                    backgroundColor: c,
+                    borderWidth: newEventForm.color === c ? 2 : 0,
+                    borderColor: colors.textPrimary,
+                  }}
+                />
               ))}
             </View>
             <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg }}>
-              <TouchableOpacity style={[styles.filterPill, { flex: 1 }]} onPress={() => setShowAddManualEvent(false)}>
+              <TouchableOpacity
+                style={[styles.filterPill, { flex: 1 }]}
+                onPress={() => setShowAddManualEvent(false)}
+              >
                 <Text style={styles.filterPillLabel}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.primaryButton, { flex: 1 }]}
-                disabled={!newEventForm.title.trim() || !newEventForm.date.trim() || savingManualEvent}
+                disabled={
+                  !newEventForm.title.trim() || !newEventForm.date.trim() || savingManualEvent
+                }
                 onPress={async () => {
                   if (!realClientId) {
-                    Alert.alert(uiCopy.alerts.signInRequired, uiCopy.alerts.signInAsClientForCalendar);
+                    Alert.alert(
+                      uiCopy.alerts.signInRequired,
+                      uiCopy.alerts.signInAsClientForCalendar,
+                    );
                     return;
                   }
                   setSavingManualEvent(true);
@@ -2769,7 +3041,10 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                       color: MANUAL_EVENT_COLORS[0],
                     });
                   } else {
-                    Alert.alert('Event not saved', result.errorMessage || 'Please check the date (YYYY-MM-DD) and try again.');
+                    Alert.alert(
+                      'Event not saved',
+                      result.errorMessage || 'Please check the date (YYYY-MM-DD) and try again.',
+                    );
                   }
                 }}
               >
@@ -2782,17 +3057,25 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
 
       {selectedManualEvent && (
         <View style={styles.detailOverlay}>
-          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setSelectedManualEvent(null)} />
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setSelectedManualEvent(null)}
+          />
           <View style={[styles.detailCard, { maxWidth: 400 }]}>
             <Text style={styles.detailTitle}>{uiCopy.clientWeb.editEvent}</Text>
-            <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>Title</Text>
+            <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>
+              Title
+            </Text>
             <TextInput
               value={manualEventEditDraft.title}
               onChangeText={(t) => setManualEventEditDraft((p) => ({ ...p, title: t }))}
               placeholderTextColor={colors.textSecondary}
               style={styles.input}
             />
-            <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>Date (YYYY-MM-DD)</Text>
+            <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>
+              Date (YYYY-MM-DD)
+            </Text>
             <TextInput
               value={manualEventEditDraft.date}
               onChangeText={(t) => setManualEventEditDraft((p) => ({ ...p, date: t }))}
@@ -2819,7 +3102,9 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                 />
               </View>
             </View>
-            <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>Note (private)</Text>
+            <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>
+              Note (private)
+            </Text>
             <TextInput
               value={manualEventEditDraft.note}
               onChangeText={(t) => setManualEventEditDraft((p) => ({ ...p, note: t }))}
@@ -2827,7 +3112,9 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
               placeholderTextColor={colors.textSecondary}
               style={[styles.input, { minHeight: 72, textAlignVertical: 'top', borderRadius: 12 }]}
             />
-            <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>Color</Text>
+            <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>
+              Color
+            </Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {MANUAL_EVENT_COLORS.map((c) => (
                 <TouchableOpacity
@@ -2844,9 +3131,19 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                 />
               ))}
             </View>
-            <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg, flexWrap: 'wrap' }}>
+            <View
+              style={{
+                flexDirection: 'row',
+                gap: spacing.sm,
+                marginTop: spacing.lg,
+                flexWrap: 'wrap',
+              }}
+            >
               <TouchableOpacity
-                style={[styles.primaryButton, { flex: 1, minWidth: 120, opacity: savingManualEventEdit ? 0.6 : 1 }]}
+                style={[
+                  styles.primaryButton,
+                  { flex: 1, minWidth: 120, opacity: savingManualEventEdit ? 0.6 : 1 },
+                ]}
                 disabled={savingManualEventEdit || !manualEventEditDraft.title.trim()}
                 onPress={async () => {
                   if (!selectedManualEvent) return;
@@ -2884,9 +3181,14 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                   }
                 }}
               >
-                <Text style={[styles.filterPillLabel, { color: colors.buttonSkipRed }]}>Delete</Text>
+                <Text style={[styles.filterPillLabel, { color: colors.buttonSkipRed }]}>
+                  Delete
+                </Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.filterPill, { flex: 1, minWidth: 100 }]} onPress={() => setSelectedManualEvent(null)}>
+              <TouchableOpacity
+                style={[styles.filterPill, { flex: 1, minWidth: 100 }]}
+                onPress={() => setSelectedManualEvent(null)}
+              >
                 <Text style={styles.filterPillLabel}>Close</Text>
               </TouchableOpacity>
             </View>
@@ -2913,7 +3215,9 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             />
             <View style={styles.workspaceMenuCard}>
               <Text style={styles.workspaceMenuTitle}>{uiCopy.clientWeb.workspaceMenu.title}</Text>
-              <Text style={styles.workspaceMenuSubtitle}>{uiCopy.clientWeb.workspaceMenu.subtitle}</Text>
+              <Text style={styles.workspaceMenuSubtitle}>
+                {uiCopy.clientWeb.workspaceMenu.subtitle}
+              </Text>
               {(
                 [
                   ['dashboard', uiCopy.clientWeb.bottomTabs.dashboard],
@@ -2945,56 +3249,68 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         </Modal>
       ) : null}
 
-      {!clientChatFullscreen && <View
-        style={[styles.bottomTabBar, clientWebBottomTabPosition, { paddingBottom: insets.bottom }]}
-        onLayout={(e) => {
-          const h = e.nativeEvent.layout.height;
-          if (h > 0) {
-            setClientBottomTabBarHeight((prev) => (Math.abs(prev - h) > 0.5 ? h : prev));
-          }
-        }}
-      >
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={clientIsMobile}
-          keyboardShouldPersistTaps="handled"
-          style={{ width: '100%' }}
-          contentContainerStyle={styles.bottomTabRow}
+      {!clientChatFullscreen && (
+        <View
+          style={[
+            styles.bottomTabBar,
+            clientWebBottomTabPosition,
+            { paddingBottom: insets.bottom },
+          ]}
+          onLayout={(e) => {
+            const h = e.nativeEvent.layout.height;
+            if (h > 0) {
+              setClientBottomTabBarHeight((prev) => (Math.abs(prev - h) > 0.5 ? h : prev));
+            }
+          }}
         >
-          {CLIENT_PRIMARY_BOTTOM_TABS.map((key) => {
-            const active = tab === key;
-            return (
-              <TouchableOpacity
-                key={key}
-                onPress={() => handleBottomTabPress(key)}
-                style={[styles.bottomTabItem, clientIsMobile && styles.bottomTabItemScrollMobile]}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-              >
-                <Text
-                  style={[
-                    styles.bottomTabLabel,
-                    clientIsMobile && styles.bottomTabLabelScrollMobile,
-                    active && styles.bottomTabLabelActive,
-                  ]}
-                  numberOfLines={1}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={clientIsMobile}
+            keyboardShouldPersistTaps="handled"
+            style={{ width: '100%' }}
+            contentContainerStyle={styles.bottomTabRow}
+          >
+            {CLIENT_PRIMARY_BOTTOM_TABS.map((key) => {
+              const active = tab === key;
+              return (
+                <TouchableOpacity
+                  key={key}
+                  onPress={() => handleBottomTabPress(key)}
+                  style={[styles.bottomTabItem, clientIsMobile && styles.bottomTabItemScrollMobile]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
                 >
-                  {labelForClientBottomTab(key)}
-                </Text>
-                {key === 'messages' && hasNew ? <View style={styles.bottomTabDot} /> : null}
-                {active ? <View style={styles.bottomTabUnderline} /> : null}
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>}
+                  <Text
+                    style={[
+                      styles.bottomTabLabel,
+                      clientIsMobile && styles.bottomTabLabelScrollMobile,
+                      active && styles.bottomTabLabelActive,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {labelForClientBottomTab(key)}
+                  </Text>
+                  {key === 'messages' && hasNew ? <View style={styles.bottomTabDot} /> : null}
+                  {active ? <View style={styles.bottomTabUnderline} /> : null}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
     </View>
   );
 };
 
-/** Compact banner showing which filters are currently active. */
+/** Compact banner showing which filters are currently active (aligned with discovery / near-me RPCs). */
 const FilterExplanationBanner: React.FC<{ filters: ModelFilters }> = ({ filters }) => {
   const parts: string[] = [];
+  const addRange = (label: string, min: string, max: string) => {
+    if (!min?.trim() && !max?.trim()) return;
+    const range = [min, max].filter(Boolean).join('–');
+    parts.push(uiCopy.dashboard.filterMeasurements(label, range));
+  };
+  if (filters.nearby) parts.push(uiCopy.dashboard.filterNearMe);
   if (filters.heightMin || filters.heightMax) {
     const ht = [filters.heightMin, filters.heightMax].filter(Boolean).join('–');
     parts.push(`Height ${ht} cm`);
@@ -3003,17 +3319,40 @@ const FilterExplanationBanner: React.FC<{ filters: ModelFilters }> = ({ filters 
   if (filters.countryCode) parts.push(filters.countryCode.toUpperCase());
   if (filters.city) parts.push(filters.city);
   if (filters.category) parts.push(filters.category);
+  if (filters.sportsWinter) parts.push(uiCopy.dashboard.filterSportsWinter);
+  if (filters.sportsSummer) parts.push(uiCopy.dashboard.filterSportsSummer);
+  if (filters.hairColor.trim()) parts.push(uiCopy.dashboard.filterHair(filters.hairColor.trim()));
+  if (filters.ethnicities.length)
+    parts.push(uiCopy.dashboard.filterEthnicities(filters.ethnicities.length));
+  addRange('Hips', filters.hipsMin, filters.hipsMax);
+  addRange('Waist', filters.waistMin, filters.waistMax);
+  addRange('Chest', filters.chestMin, filters.chestMax);
+  addRange('Legs', filters.legsInseamMin, filters.legsInseamMax);
   if (parts.length === 0) return null;
   return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, paddingHorizontal: spacing.xs, paddingVertical: spacing.xs }}>
+    <View
+      style={{
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 4,
+        paddingHorizontal: spacing.xs,
+        paddingVertical: spacing.xs,
+      }}
+    >
       <Text style={{ fontSize: 11, color: colors.textSecondary }}>
         {uiCopy.dashboard.filterExplanation}
       </Text>
-      {parts.map((p) => (
-        <Text key={p} style={{ fontSize: 11, color: colors.textPrimary, fontWeight: '600' }}>{p}</Text>
+      {parts.map((p, i) => (
+        <Text
+          key={`${i}-${p}`}
+          style={{ fontSize: 11, color: colors.textPrimary, fontWeight: '600' }}
+        >
+          {p}
+        </Text>
       ))}
       <Text style={{ fontSize: 11, color: colors.textSecondary }}>
-        {'  •  '}{uiCopy.dashboard.filterSeenHidden}
+        {'  •  '}
+        {uiCopy.dashboard.filterSeenHidden}
       </Text>
     </View>
   );
@@ -3047,6 +3386,7 @@ type DiscoverProps = {
   tabBarBottomInset?: number;
   /** Must match `appShell` horizontal padding — used to full-bleed the swipe card without lateral shift. */
   shellHorizontalPadding: number;
+  discoverFilterMessages?: { kind: 'warning' | 'error'; text: string }[];
 };
 
 const DiscoverView: React.FC<DiscoverProps> = ({
@@ -3075,6 +3415,7 @@ const DiscoverView: React.FC<DiscoverProps> = ({
   onShowActiveOptions,
   tabBarBottomInset = 0,
   shellHorizontalPadding,
+  discoverFilterMessages = [],
 }) => {
   const { width: discoverW, height: discoverH } = useWindowDimensions();
   const isMobileDiscover = isMobileWidth(discoverW);
@@ -3094,7 +3435,10 @@ const DiscoverView: React.FC<DiscoverProps> = ({
           <Text style={styles.packageBannerText}>
             {packageName ?? uiCopy.discover.viewingPackage}
           </Text>
-          <TouchableOpacity onPress={onExitPackage} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <TouchableOpacity
+            onPress={onExitPackage}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
             <Text style={styles.packageBannerExit}>{uiCopy.discover.exitPackage}</Text>
           </TouchableOpacity>
         </View>
@@ -3110,10 +3454,7 @@ const DiscoverView: React.FC<DiscoverProps> = ({
           ) : (
             models.map((m) => (
               <View key={m.id} style={styles.packageGridCard}>
-                <TouchableOpacity
-                  activeOpacity={0.9}
-                  onPress={() => onOpenDetails(m.id)}
-                >
+                <TouchableOpacity activeOpacity={0.9} onPress={() => onOpenDetails(m.id)}>
                   <View style={styles.packageGridImageContainer}>
                     <StorageImage
                       uri={m.coverUrl || undefined}
@@ -3121,14 +3462,17 @@ const DiscoverView: React.FC<DiscoverProps> = ({
                       resizeMode={heroResizeMode}
                       ttlSeconds={CLIENT_MODEL_IMAGE_TTL_SEC}
                       fallback={
-                        <View style={[styles.packageGridImage, { backgroundColor: colors.border }]} />
+                        <View
+                          style={[styles.packageGridImage, { backgroundColor: colors.border }]}
+                        />
                       }
                     />
                     <View style={styles.coverGradientOverlay} />
                     <View style={styles.coverMeasurementsOverlay}>
                       <Text style={styles.coverNameOnImage}>{m.name}</Text>
                       <Text style={styles.coverMeasurementsLabel}>
-                        Height {m.height} cm · Chest {m.chest || m.bust || '—'} cm · Waist {m.waist || '—'} cm · Hips {m.hips || '—'} cm
+                        Height {m.height} cm · Chest {m.chest || m.bust || '—'} cm · Waist{' '}
+                        {m.waist || '—'} cm · Hips {m.hips || '—'} cm
                         {m.legsInseam ? ` · Inseam ${m.legsInseam} cm` : ''}
                       </Text>
                       <Text style={styles.coverLocationLabel}>{summaryDisplayCity(m) || '—'}</Text>
@@ -3143,7 +3487,10 @@ const DiscoverView: React.FC<DiscoverProps> = ({
                     <Text style={styles.optionButtonOutlineLabel}>Option</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={[styles.addToSelectionButton, addingModelIds?.has(m.id) && { opacity: 0.4 }]}
+                    style={[
+                      styles.addToSelectionButton,
+                      addingModelIds?.has(m.id) && { opacity: 0.4 },
+                    ]}
                     onPress={() => onAddToProject(m)}
                     disabled={addingModelIds?.has(m.id) ?? false}
                   >
@@ -3184,7 +3531,14 @@ const DiscoverView: React.FC<DiscoverProps> = ({
             {onShowActiveOptions && (
               <TouchableOpacity
                 onPress={onShowActiveOptions}
-                style={{ backgroundColor: colors.background, borderRadius: 6, paddingHorizontal: spacing.sm, paddingVertical: 4, borderWidth: 1, borderColor: colors.border }}
+                style={{
+                  backgroundColor: colors.background,
+                  borderRadius: 6,
+                  paddingHorizontal: spacing.sm,
+                  paddingVertical: 4,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                }}
               >
                 <Text style={{ fontSize: 11, color: colors.textPrimary, fontWeight: '600' }}>
                   {uiCopy.dashboard.activeOptionsTitle}
@@ -3199,6 +3553,29 @@ const DiscoverView: React.FC<DiscoverProps> = ({
 
         {!isSharedMode && (
           <>
+            {discoverFilterMessages.length > 0 ? (
+              <View
+                style={{ paddingHorizontal: spacing.xs, gap: spacing.xs, marginBottom: spacing.xs }}
+              >
+                {discoverFilterMessages.map((msg, i) => (
+                  <View
+                    key={`dfm-${i}-${msg.kind}`}
+                    style={{
+                      padding: spacing.sm,
+                      borderRadius: 8,
+                      borderLeftWidth: 4,
+                      borderLeftColor:
+                        msg.kind === 'error' ? colors.buttonSkipRed : colors.accentBrown,
+                      backgroundColor: colors.surface,
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, color: colors.textPrimary, lineHeight: 18 }}>
+                      {msg.text}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
             <ModelFiltersPanel
               filters={filters}
               onChangeFilters={onChangeFilters}
@@ -3228,7 +3605,9 @@ const DiscoverView: React.FC<DiscoverProps> = ({
               isMobileDiscover && { marginHorizontal: -shellHorizontalPadding },
             ]}
           >
-            <View style={[styles.coverCard, { maxWidth: cardMaxWidth, borderRadius: cardBorderRadius }]}>
+            <View
+              style={[styles.coverCard, { maxWidth: cardMaxWidth, borderRadius: cardBorderRadius }]}
+            >
               <View style={[styles.coverImageContainer, { height: cardImageHeight }]}>
                 <TouchableOpacity
                   activeOpacity={0.9}
@@ -3249,7 +3628,8 @@ const DiscoverView: React.FC<DiscoverProps> = ({
                 <View style={styles.coverMeasurementsOverlay}>
                   <Text style={styles.coverNameOnImage}>{current.name}</Text>
                   <Text style={styles.coverMeasurementsLabel}>
-                    Height {current.height} cm · Chest {current.chest || current.bust || '—'} cm · Waist {current.waist || '—'} cm · Hips {current.hips || '—'} cm
+                    Height {current.height} cm · Chest {current.chest || current.bust || '—'} cm ·
+                    Waist {current.waist || '—'} cm · Hips {current.hips || '—'} cm
                     {current.legsInseam ? ` · Inseam ${current.legsInseam} cm` : ''}
                   </Text>
                   <Text style={styles.coverLocationLabel}>
@@ -3263,12 +3643,16 @@ const DiscoverView: React.FC<DiscoverProps> = ({
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
                       {current.isSportsWinter && (
                         <View style={styles.sportsBadge}>
-                          <Text style={styles.sportsBadgeLabel}>{uiCopy.sportCategories.winterSports}</Text>
+                          <Text style={styles.sportsBadgeLabel}>
+                            {uiCopy.sportCategories.winterSports}
+                          </Text>
                         </View>
                       )}
                       {current.isSportsSummer && (
                         <View style={styles.sportsBadge}>
-                          <Text style={styles.sportsBadgeLabel}>{uiCopy.sportCategories.summerSports}</Text>
+                          <Text style={styles.sportsBadgeLabel}>
+                            {uiCopy.sportCategories.summerSports}
+                          </Text>
                         </View>
                       )}
                     </View>
@@ -3288,7 +3672,10 @@ const DiscoverView: React.FC<DiscoverProps> = ({
               </View>
               <View style={styles.cardButtonRowSecondary}>
                 <TouchableOpacity
-                  style={[styles.addToSelectionButton, addingModelIds?.has(current.id) && { opacity: 0.4 }]}
+                  style={[
+                    styles.addToSelectionButton,
+                    addingModelIds?.has(current.id) && { opacity: 0.4 },
+                  ]}
                   onPress={() => onAddToProject(current)}
                   disabled={addingModelIds?.has(current.id) ?? false}
                 >
@@ -3300,7 +3687,10 @@ const DiscoverView: React.FC<DiscoverProps> = ({
               {current.agencyId && (
                 <View style={styles.cardButtonRowSecondary}>
                   <TouchableOpacity
-                    style={[styles.chatWithAgencyButton, isChatWithAgencyLoading && { opacity: 0.5 }]}
+                    style={[
+                      styles.chatWithAgencyButton,
+                      isChatWithAgencyLoading && { opacity: 0.5 },
+                    ]}
                     onPress={() => onChatWithAgency(current.agencyId!)}
                     disabled={isChatWithAgencyLoading}
                   >
@@ -3359,7 +3749,10 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
   onAddEvent,
 }) => {
   const now = new Date();
-  const [calendarMonth, setCalendarMonth] = useState({ year: now.getFullYear(), month: now.getMonth() });
+  const [calendarMonth, setCalendarMonth] = useState({
+    year: now.getFullYear(),
+    month: now.getMonth(),
+  });
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<AgencyCalendarTypeFilter>('all');
   const [calendarViewMode, setCalendarViewMode] = useState<CalendarViewMode>('month');
@@ -3429,27 +3822,52 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
         <Text style={styles.sectionLabel}>Calendar</Text>
         <View style={{ flexDirection: 'row', gap: spacing.sm, alignItems: 'center' }}>
           {!canAddManualEvents && (
-            <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginRight: spacing.sm }}>Sign in to save your own events</Text>
+            <Text
+              style={{
+                ...typography.body,
+                fontSize: 12,
+                color: colors.textSecondary,
+                marginRight: spacing.sm,
+              }}
+            >
+              Sign in to save your own events
+            </Text>
           )}
           <TouchableOpacity
-            style={[styles.filterPill, { paddingHorizontal: spacing.sm }, !canAddManualEvents && { opacity: 0.6 }]}
+            style={[
+              styles.filterPill,
+              { paddingHorizontal: spacing.sm },
+              !canAddManualEvents && { opacity: 0.6 },
+            ]}
             onPress={onAddEvent}
             disabled={!canAddManualEvents}
           >
             <Text style={styles.filterPillLabel}>+ Add event</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.filterTrigger} onPress={onRefresh}>
-            <Text style={styles.filterTriggerLabel}>
-              {loading ? 'Loading…' : 'Refresh'}
-            </Text>
+            <Text style={styles.filterTriggerLabel}>{loading ? 'Loading…' : 'Refresh'}</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.xs }}>
+      <Text
+        style={{
+          ...typography.label,
+          fontSize: 11,
+          color: colors.textSecondary,
+          marginBottom: spacing.xs,
+        }}
+      >
         {uiCopy.calendar.typeFilterHeading}
       </Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.sm }}>
+      <View
+        style={{
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          gap: spacing.xs,
+          marginBottom: spacing.sm,
+        }}
+      >
         {[
           { k: 'all' as const, label: uiCopy.calendar.typeFilterAll },
           { k: 'option' as const, label: uiCopy.calendar.typeFilterOption },
@@ -3468,7 +3886,9 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
               backgroundColor: typeFilter === k ? colors.surface : 'transparent',
             }}
           >
-            <Text style={{ ...typography.label, fontSize: 11, color: colors.textPrimary }}>{label}</Text>
+            <Text style={{ ...typography.label, fontSize: 11, color: colors.textPrimary }}>
+              {label}
+            </Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -3487,7 +3907,14 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
       />
 
       {calendarViewMode === 'month' && filteredUnified.length === 0 && !loading && (
-        <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.sm }}>
+        <Text
+          style={{
+            ...typography.body,
+            fontSize: 12,
+            color: colors.textSecondary,
+            marginBottom: spacing.sm,
+          }}
+        >
           No calendar entries yet. Add your own events or wait for confirmed options/jobs.
         </Text>
       )}
@@ -3512,19 +3939,30 @@ const ActiveOptionsView: React.FC<{
 
   const grouped = React.useMemo(() => {
     const negotiating = requests.filter((r) => r.status === 'in_negotiation');
-    const confirmed   = requests.filter((r) => r.status === 'confirmed');
-    const rejected    = requests.filter((r) => r.status === 'rejected');
+    const confirmed = requests.filter((r) => r.status === 'confirmed');
+    const rejected = requests.filter((r) => r.status === 'rejected');
     return { negotiating, confirmed, rejected };
   }, [requests]);
 
   const renderRow = (r: ReturnType<typeof getOptionRequests>[0]) => (
-    <View key={r.threadId} style={{
-      flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-      paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border,
-    }}>
+    <View
+      key={r.threadId}
+      style={{
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingVertical: spacing.sm,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border,
+      }}
+    >
       <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textPrimary }}>{r.modelName}</Text>
-        {r.date ? <Text style={{ fontSize: 11, color: colors.textSecondary }}>{r.date}</Text> : null}
+        <Text style={{ fontSize: 13, fontWeight: '600', color: colors.textPrimary }}>
+          {r.modelName}
+        </Text>
+        {r.date ? (
+          <Text style={{ fontSize: 11, color: colors.textSecondary }}>{r.date}</Text>
+        ) : null}
         {r.clientOrganizationId && assignmentByClientOrgId[r.clientOrganizationId] ? (
           <Text style={{ fontSize: 10, color: colors.textSecondary, marginTop: 2 }}>
             {assignmentByClientOrgId[r.clientOrganizationId].label}
@@ -3534,14 +3972,29 @@ const ActiveOptionsView: React.FC<{
           </Text>
         ) : null}
       </View>
-      <View style={{
-        backgroundColor: r.status === 'confirmed' ? '#dcfce7' : r.status === 'rejected' ? '#fee2e2' : '#fef3c7',
-        borderRadius: 6, paddingHorizontal: spacing.sm, paddingVertical: 2,
-      }}>
-        <Text style={{
-          fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5,
-          color: r.status === 'confirmed' ? '#16a34a' : r.status === 'rejected' ? '#dc2626' : '#92400e',
-        }}>
+      <View
+        style={{
+          backgroundColor:
+            r.status === 'confirmed' ? '#dcfce7' : r.status === 'rejected' ? '#fee2e2' : '#fef3c7',
+          borderRadius: 6,
+          paddingHorizontal: spacing.sm,
+          paddingVertical: 2,
+        }}
+      >
+        <Text
+          style={{
+            fontSize: 10,
+            fontWeight: '600',
+            textTransform: 'uppercase',
+            letterSpacing: 0.5,
+            color:
+              r.status === 'confirmed'
+                ? '#16a34a'
+                : r.status === 'rejected'
+                  ? '#dc2626'
+                  : '#92400e',
+          }}
+        >
           {r.status === 'in_negotiation'
             ? copy.optionRequestStatusInNegotiation
             : r.status === 'confirmed'
@@ -3554,24 +4007,55 @@ const ActiveOptionsView: React.FC<{
 
   return (
     <View style={{ flex: 1 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          padding: spacing.md,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+        }}
+      >
         <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Text style={{ fontSize: 18, color: colors.textPrimary, marginRight: spacing.md }}>‹</Text>
+          <Text style={{ fontSize: 18, color: colors.textPrimary, marginRight: spacing.md }}>
+            ‹
+          </Text>
         </TouchableOpacity>
-        <Text style={{ fontSize: 16, fontWeight: '700', color: colors.textPrimary }}>{copy.activeOptionsTitle}</Text>
+        <Text style={{ fontSize: 16, fontWeight: '700', color: colors.textPrimary }}>
+          {copy.activeOptionsTitle}
+        </Text>
       </View>
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: spacing.md, paddingBottom: spacing.md + scrollBottomInset }}
+        contentContainerStyle={{
+          padding: spacing.md,
+          paddingBottom: spacing.md + scrollBottomInset,
+        }}
       >
         {requests.length === 0 && (
-          <Text style={{ fontSize: 13, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.xl }}>
+          <Text
+            style={{
+              fontSize: 13,
+              color: colors.textSecondary,
+              textAlign: 'center',
+              marginTop: spacing.xl,
+            }}
+          >
             {copy.activeOptionsEmpty}
           </Text>
         )}
         {grouped.negotiating.length > 0 && (
           <View style={{ marginBottom: spacing.md }}>
-            <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 1, marginBottom: spacing.sm }}>
+            <Text
+              style={{
+                fontSize: 11,
+                fontWeight: '600',
+                color: colors.textSecondary,
+                textTransform: 'uppercase',
+                letterSpacing: 1,
+                marginBottom: spacing.sm,
+              }}
+            >
               {copy.optionRequestStatusInNegotiation} ({grouped.negotiating.length})
             </Text>
             {grouped.negotiating.map(renderRow)}
@@ -3579,7 +4063,16 @@ const ActiveOptionsView: React.FC<{
         )}
         {grouped.confirmed.length > 0 && (
           <View style={{ marginBottom: spacing.md }}>
-            <Text style={{ fontSize: 11, fontWeight: '600', color: colors.accentGreen, textTransform: 'uppercase', letterSpacing: 1, marginBottom: spacing.sm }}>
+            <Text
+              style={{
+                fontSize: 11,
+                fontWeight: '600',
+                color: colors.accentGreen,
+                textTransform: 'uppercase',
+                letterSpacing: 1,
+                marginBottom: spacing.sm,
+              }}
+            >
               {copy.optionRequestStatusConfirmed} ({grouped.confirmed.length})
             </Text>
             {grouped.confirmed.map(renderRow)}
@@ -3587,7 +4080,16 @@ const ActiveOptionsView: React.FC<{
         )}
         {grouped.rejected.length > 0 && (
           <View style={{ marginBottom: spacing.md }}>
-            <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 1, marginBottom: spacing.sm }}>
+            <Text
+              style={{
+                fontSize: 11,
+                fontWeight: '600',
+                color: colors.textSecondary,
+                textTransform: 'uppercase',
+                letterSpacing: 1,
+                marginBottom: spacing.sm,
+              }}
+            >
               {copy.optionRequestStatusRejected} ({grouped.rejected.length})
             </Text>
             {grouped.rejected.map(renderRow)}
@@ -3683,10 +4185,7 @@ const ProjectsView: React.FC<ProjectsProps> = ({
         {projects.map((p) => (
           <View
             key={p.id}
-            style={[
-              styles.projectCard,
-              activeProjectId === p.id && styles.projectCardActive,
-            ]}
+            style={[styles.projectCard, activeProjectId === p.id && styles.projectCardActive]}
           >
             <TouchableOpacity
               activeOpacity={0.7}
@@ -3700,10 +4199,7 @@ const ProjectsView: React.FC<ProjectsProps> = ({
             </TouchableOpacity>
 
             <View style={styles.projectPrimaryActions}>
-              <TouchableOpacity
-                style={styles.projectActionBtn}
-                onPress={() => onOpenProject(p.id)}
-              >
+              <TouchableOpacity style={styles.projectActionBtn} onPress={() => onOpenProject(p.id)}>
                 <Text style={styles.projectActionBtnLabel}>{uiCopy.projects.open}</Text>
               </TouchableOpacity>
             </View>
@@ -3716,7 +4212,10 @@ const ProjectsView: React.FC<ProjectsProps> = ({
               )}
               {canDeleteProject(p) ? (
                 <TouchableOpacity
-                  onPress={(e) => { e.stopPropagation(); onDeleteProject(p.id); }}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    onDeleteProject(p.id);
+                  }}
                 >
                   <Text style={styles.deleteProjectLabel}>Delete</Text>
                 </TouchableOpacity>
@@ -3732,7 +4231,9 @@ const ProjectsView: React.FC<ProjectsProps> = ({
                     style={styles.projectOptionChatRow}
                     onPress={() => onOpenOptionChat(r.threadId)}
                   >
-                    <Text style={styles.projectOptionChatText}>{r.modelName} · {r.date}</Text>
+                    <Text style={styles.projectOptionChatText}>
+                      {r.modelName} · {r.date}
+                    </Text>
                     <Text style={styles.projectOptionChatOpen}>Open chat</Text>
                   </TouchableOpacity>
                 ))}
@@ -3744,9 +4245,7 @@ const ProjectsView: React.FC<ProjectsProps> = ({
         {projects.length === 0 && (
           <View style={styles.emptyProjects}>
             <Text style={styles.emptyTitle}>No projects yet</Text>
-            <Text style={styles.emptyCopy}>
-              Create a project and add models from Discover.
-            </Text>
+            <Text style={styles.emptyCopy}>Create a project and add models from Discover.</Text>
           </View>
         )}
       </ScrollView>
@@ -3794,7 +4293,11 @@ const ProjectOverviewView: React.FC<ProjectOverviewProps> = ({
   return (
     <View style={[styles.section, { flex: 1, minHeight: 0 }]}>
       <View style={styles.overviewHeader}>
-        <TouchableOpacity onPress={onBack} style={styles.overviewBackBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+        <TouchableOpacity
+          onPress={onBack}
+          style={styles.overviewBackBtn}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
           <Text style={styles.overviewBackLabel}>{uiCopy.projects.back}</Text>
         </TouchableOpacity>
         <Text style={styles.overviewTitle}>{project.name}</Text>
@@ -3810,7 +4313,10 @@ const ProjectOverviewView: React.FC<ProjectOverviewProps> = ({
 
       <ScrollView
         style={[styles.overviewList, { flex: 1, minHeight: 0 }]}
-        contentContainerStyle={[styles.overviewListContent, { paddingBottom: spacing.xl + scrollBottomInset }]}
+        contentContainerStyle={[
+          styles.overviewListContent,
+          { paddingBottom: spacing.xl + scrollBottomInset },
+        ]}
       >
         {project.models.length === 0 && (
           <View style={styles.emptyProjects}>
@@ -3894,7 +4400,7 @@ const AgenciesView: React.FC<{
       (a) =>
         a.name.toLowerCase().includes(q) ||
         (a.city && a.city.toLowerCase().includes(q)) ||
-        (a.focus && a.focus.toLowerCase().includes(q))
+        (a.focus && a.focus.toLowerCase().includes(q)),
     );
   }, [search, agencies]);
 
@@ -3943,28 +4449,58 @@ const AgenciesView: React.FC<{
         placeholderTextColor={colors.textSecondary}
         style={styles.agencySearchInput}
       />
-      <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.xs }}>
+      <Text
+        style={{
+          ...typography.label,
+          fontSize: 11,
+          color: colors.textSecondary,
+          marginBottom: spacing.xs,
+        }}
+      >
         {uiCopy.b2bChat.agencyTypeFilterLabel}
       </Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.md }}>
+      <View
+        style={{
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          gap: spacing.sm,
+          marginBottom: spacing.md,
+        }}
+      >
         {AGENCY_SEGMENT_TYPES.map((seg) => {
           const on = agencyTypeFilter.includes(seg);
           return (
             <TouchableOpacity
               key={seg}
-              style={[styles.filterPill, on && { borderColor: colors.accentGreen, backgroundColor: colors.surface }]}
+              style={[
+                styles.filterPill,
+                on && { borderColor: colors.accentGreen, backgroundColor: colors.surface },
+              ]}
               onPress={() => {
-                setAgencyTypeFilter((prev) => (on ? prev.filter((x) => x !== seg) : [...prev, seg]));
+                setAgencyTypeFilter((prev) =>
+                  on ? prev.filter((x) => x !== seg) : [...prev, seg],
+                );
               }}
             >
-              <Text style={[styles.filterPillLabel, on && { color: colors.accentGreen }]}>{seg}</Text>
+              <Text style={[styles.filterPillLabel, on && { color: colors.accentGreen }]}>
+                {seg}
+              </Text>
             </TouchableOpacity>
           );
         })}
       </View>
 
       {showNotFound && (
-        <View style={{ padding: spacing.md, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, marginBottom: spacing.md }}>
+        <View
+          style={{
+            padding: spacing.md,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+            backgroundColor: colors.surface,
+            marginBottom: spacing.md,
+          }}
+        >
           <Text style={{ ...typography.body, color: colors.textPrimary, marginBottom: spacing.sm }}>
             {uiCopy.b2bChat.agencyNotFoundTitle}
           </Text>
@@ -3982,7 +4518,16 @@ const AgenciesView: React.FC<{
             </TouchableOpacity>
           </View>
           {invitationFeedback ? (
-            <Text style={{ ...typography.body, fontSize: 12, color: colors.accentGreen, marginTop: spacing.xs }}>{invitationFeedback}</Text>
+            <Text
+              style={{
+                ...typography.body,
+                fontSize: 12,
+                color: colors.accentGreen,
+                marginTop: spacing.xs,
+              }}
+            >
+              {invitationFeedback}
+            </Text>
           ) : null}
         </View>
       )}
@@ -4014,7 +4559,10 @@ const AgenciesView: React.FC<{
                 >
                   <Text style={styles.contactButtonLabel}>{uiCopy.b2bChat.startChat}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.agencyContactLink} onPress={() => Linking.openURL(`mailto:${a.email || 'contact@agency.com'}`)}>
+                <TouchableOpacity
+                  style={styles.agencyContactLink}
+                  onPress={() => Linking.openURL(`mailto:${a.email || 'contact@agency.com'}`)}
+                >
                   <Text style={styles.agencyContactLinkLabel}>{uiCopy.b2bChat.contactLink}</Text>
                 </TouchableOpacity>
               </View>
@@ -4089,7 +4637,13 @@ const ClientB2BChatsPanel: React.FC<{
   const b2bWebSplit = Platform.OS === 'web' && shouldUseB2BWebSplit(windowWidth);
   const b2bPanelInsets = useSafeAreaInsets();
   const clientB2bThreadListScrollStyle = useMemo(
-    () => flexFillScrollWebWithMinHeight(windowHeight, b2bPanelInsets.top, b2bPanelInsets.bottom, 'default'),
+    () =>
+      flexFillScrollWebWithMinHeight(
+        windowHeight,
+        b2bPanelInsets.top,
+        b2bPanelInsets.bottom,
+        'default',
+      ),
     [windowHeight, b2bPanelInsets.top, b2bPanelInsets.bottom],
   );
   const auth = useAuth();
@@ -4181,7 +4735,14 @@ const ClientB2BChatsPanel: React.FC<{
     onChatActiveChange?.(isMobileChat);
   }, [selectedId, b2bWebSplit, onChatActiveChange]);
 
-  const conversationIdsKey = useMemo(() => rows.map((c) => c.id).sort().join(','), [rows]);
+  const conversationIdsKey = useMemo(
+    () =>
+      rows
+        .map((c) => c.id)
+        .sort()
+        .join(','),
+    [rows],
+  );
 
   useEffect(() => {
     const list = rowsRef.current;
@@ -4240,12 +4801,13 @@ const ClientB2BChatsPanel: React.FC<{
   const selectedRow = selectedId ? rows.find((r) => r.id === selectedId) : undefined;
   const activeConversationId = selectedRow?.id ?? selectedId ?? null;
   const messengerTitle =
-    (activeConversationId &&
-      (titles[activeConversationId] ?? optimisticThreadTitle ?? null)) ??
+    (activeConversationId && (titles[activeConversationId] ?? optimisticThreadTitle ?? null)) ??
     uiCopy.b2bChat.chatPartnerFallback;
 
   const filteredRows = searchQuery.trim()
-    ? rows.filter((c) => (titles[c.id] ?? '').toLowerCase().includes(searchQuery.trim().toLowerCase()))
+    ? rows.filter((c) =>
+        (titles[c.id] ?? '').toLowerCase().includes(searchQuery.trim().toLowerCase()),
+      )
     : rows;
 
   if (rows.length === 0 && !activeConversationId) {
@@ -4267,12 +4829,12 @@ const ClientB2BChatsPanel: React.FC<{
             onPress={() => setSelectedId(c.id)}
           >
             <View style={styles.threadRowLeft}>
-              <Text style={styles.threadTitle}>{titles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback}</Text>
+              <Text style={styles.threadTitle}>
+                {titles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback}
+              </Text>
               <Text style={styles.metaText}>{new Date(c.updated_at).toLocaleString()}</Text>
             </View>
-            {clientUserId &&
-            (b2bUnreadById[c.id] ?? false) &&
-            selectedId !== c.id ? (
+            {clientUserId && (b2bUnreadById[c.id] ?? false) && selectedId !== c.id ? (
               <View
                 style={styles.threadRowUnreadDot}
                 accessibilityLabel={uiCopy.b2bChat.unreadMessagesIndicatorA11y}
@@ -4294,21 +4856,29 @@ const ClientB2BChatsPanel: React.FC<{
       viewerUserId={auth.profile?.id ?? null}
       threadContext={{ type: uiCopy.b2bChat.contextOrgChat }}
       composerBottomInsetOverride={0}
-      containerStyle={b2bWebSplit ? { marginTop: 0, flex: 1 } : { marginTop: 0, padding: 0, borderWidth: 0, borderRadius: 0, flex: 1, minHeight: 0 }}
+      containerStyle={
+        b2bWebSplit
+          ? { marginTop: 0, flex: 1 }
+          : { marginTop: 0, padding: 0, borderWidth: 0, borderRadius: 0, flex: 1, minHeight: 0 }
+      }
       useFlexMessengerScroll={b2bWebSplit}
       onBookingCardPress={onBookingCardPress}
       onPackagePress={onPackagePress}
       onOpenRelatedRequest={onOpenRelatedRequest}
-      onOrgPress={targetAgencyOrgId ? () => {
-        void (async () => {
-          const agencyId = await getAgencyIdForOrganization(targetAgencyOrgId);
-          setViewingAgencyProfileState({
-            orgId: targetAgencyOrgId,
-            agencyId,
-            orgName: messengerTitle,
-          });
-        })();
-      } : undefined}
+      onOrgPress={
+        targetAgencyOrgId
+          ? () => {
+              void (async () => {
+                const agencyId = await getAgencyIdForOrganization(targetAgencyOrgId);
+                setViewingAgencyProfileState({
+                  orgId: targetAgencyOrgId,
+                  agencyId,
+                  orgName: messengerTitle,
+                });
+              })();
+            }
+          : undefined
+      }
       // Mobile (non-split): show back button to return to thread list
       onBack={b2bWebSplit ? undefined : () => setSelectedId(null)}
       backLabel={uiCopy.messages.backToChats ?? 'Chats'}
@@ -4328,15 +4898,15 @@ const ClientB2BChatsPanel: React.FC<{
           }}
         >
           <View style={{ flex: CHAT_THREAD_LIST_FLEX, minWidth: 0 }}>{threadListEl}</View>
-          <View style={{ flex: CHAT_MESSENGER_FLEX, minWidth: 0, minHeight: 0 }}>{messengerEl}</View>
+          <View style={{ flex: CHAT_MESSENGER_FLEX, minWidth: 0, minHeight: 0 }}>
+            {messengerEl}
+          </View>
         </View>
+      ) : // Mobile: WhatsApp pattern — show list OR messenger (not both), messenger fills screen
+      activeConversationId ? (
+        <View style={{ flex: 1, minHeight: 0 }}>{messengerEl}</View>
       ) : (
-        // Mobile: WhatsApp pattern — show list OR messenger (not both), messenger fills screen
-        activeConversationId ? (
-          <View style={{ flex: 1, minHeight: 0 }}>{messengerEl}</View>
-        ) : (
-          <View style={flexFillColumn}>{threadListEl}</View>
-        )
+        <View style={flexFillColumn}>{threadListEl}</View>
       )}
       {viewingAgencyProfileState && (
         <OrgProfileModal
@@ -4410,7 +4980,10 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   const [calendarHint, setCalendarHint] = useState<string | null>(null);
   const calendarHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [openOrgChatBusy, setOpenOrgChatBusy] = useState(false);
-  const [localPendingB2BChat, setLocalPendingB2BChat] = useState<{ conversationId: string; title: string } | null>(null);
+  const [localPendingB2BChat, setLocalPendingB2BChat] = useState<{
+    conversationId: string;
+    title: string;
+  } | null>(null);
   const [assignmentFilters, setAssignmentFilters] = useState<AssignmentFilters>({
     scope: 'all',
     flagLabel: 'all',
@@ -4428,7 +5001,9 @@ const MessagesView: React.FC<MessagesViewProps> = ({
     try {
       const raw = window.localStorage.getItem('ci_archived_threads');
       return raw ? new Set(JSON.parse(raw)) : new Set();
-    } catch { return new Set(); }
+    } catch {
+      return new Set();
+    }
   });
 
   // Load archived thread IDs from the server (cross-device persistence).
@@ -4483,7 +5058,9 @@ const MessagesView: React.FC<MessagesViewProps> = ({
     getAgencyChatDisplayById(agencyId).then((row) => {
       if (!cancelled) setAgencyTitleForThread(row?.name ?? null);
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [selectedThreadId, requests]);
 
   const toggleArchive = (threadId: string) => {
@@ -4507,20 +5084,36 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   const clientCounterparties = useMemo(() => extractCounterparties(requests, 'client'), [requests]);
 
   const visibleRequests = requests.filter((r) => {
-    if (msgFilter === 'archived' ? !archivedIds.has(r.threadId) : archivedIds.has(r.threadId)) return false;
+    if (msgFilter === 'archived' ? !archivedIds.has(r.threadId) : archivedIds.has(r.threadId))
+      return false;
     if (counterpartyFilter) {
       const agencyKey = r.agencyOrganizationId ?? r.agencyId ?? '';
       if (agencyKey !== counterpartyFilter) return false;
     }
     if (clientMsgSearch.trim()) {
       const q = clientMsgSearch.trim().toLowerCase();
-      return (r.modelName ?? '').toLowerCase().includes(q) || (r.clientName ?? '').toLowerCase().includes(q);
+      return (
+        (r.modelName ?? '').toLowerCase().includes(q) ||
+        (r.clientName ?? '').toLowerCase().includes(q)
+      );
     }
-    const assignment = r.clientOrganizationId ? assignmentByClientOrgId[r.clientOrganizationId] : undefined;
-    if (assignmentFilters.scope === 'mine' && assignment?.assignedMemberUserId !== currentUserId) return false;
-    if (assignmentFilters.scope === 'unassigned' && !!assignment?.assignedMemberUserId) return false;
-    if (assignmentFilters.flagLabel !== 'all' && (assignment?.label ?? '').toLowerCase() !== assignmentFilters.flagLabel.toLowerCase()) return false;
-    if (assignmentFilters.assignedMemberUserId !== 'all' && assignment?.assignedMemberUserId !== assignmentFilters.assignedMemberUserId) return false;
+    const assignment = r.clientOrganizationId
+      ? assignmentByClientOrgId[r.clientOrganizationId]
+      : undefined;
+    if (assignmentFilters.scope === 'mine' && assignment?.assignedMemberUserId !== currentUserId)
+      return false;
+    if (assignmentFilters.scope === 'unassigned' && !!assignment?.assignedMemberUserId)
+      return false;
+    if (
+      assignmentFilters.flagLabel !== 'all' &&
+      (assignment?.label ?? '').toLowerCase() !== assignmentFilters.flagLabel.toLowerCase()
+    )
+      return false;
+    if (
+      assignmentFilters.assignedMemberUserId !== 'all' &&
+      assignment?.assignedMemberUserId !== assignmentFilters.assignedMemberUserId
+    )
+      return false;
     if (attentionFilter === 'action_required') {
       const sig = attentionSignalsFromOptionRequestLike({
         status: r.status,
@@ -4538,7 +5131,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
 
   const request = selectedThreadId ? getRequestByThreadId(selectedThreadId) : null;
   const messages = selectedThreadId ? getMessages(selectedThreadId) : [];
-  const status = request ? getRequestStatus(request.threadId) ?? request.status : null;
+  const status = request ? (getRequestStatus(request.threadId) ?? request.status) : null;
   const finalStatus = request?.finalStatus;
   const clientPriceStatus = request?.clientPriceStatus;
   const agencyCounterPrice = request?.agencyCounterPrice;
@@ -4569,14 +5162,18 @@ const MessagesView: React.FC<MessagesViewProps> = ({
     : '';
   const negotiationFinalStatusLine =
     request && request.finalStatus
-      ? `${request.requestType === 'casting' ? uiCopy.dashboard.threadContextCasting : uiCopy.dashboard.threadContextOption} — ${optionConfirmedBannerLabel({
-          finalStatus: request.finalStatus,
-          modelAccountLinked: request.modelAccountLinked,
-          modelApproval: request.modelApproval,
-        })}`
+      ? `${request.requestType === 'casting' ? uiCopy.dashboard.threadContextCasting : uiCopy.dashboard.threadContextOption} — ${optionConfirmedBannerLabel(
+          {
+            finalStatus: request.finalStatus,
+            modelAccountLinked: request.modelAccountLinked,
+            modelApproval: request.modelApproval,
+          },
+        )}`
       : null;
   const negotiationRequestTypeLabel =
-    request?.requestType === 'casting' ? uiCopy.dashboard.threadContextCasting : uiCopy.dashboard.threadContextOption;
+    request?.requestType === 'casting'
+      ? uiCopy.dashboard.threadContextCasting
+      : uiCopy.dashboard.threadContextOption;
   const showDesktopNegotiationRail = deviceType === 'desktop';
   const negotiationConfirmationSummaryLine = request
     ? isAgency
@@ -4656,7 +5253,10 @@ const MessagesView: React.FC<MessagesViewProps> = ({
         clientOrganizationId: clientOrgId,
       });
       if (!result.ok) {
-        showAppAlert(uiCopy.b2bChat.chatFailedTitle, result.reason || uiCopy.b2bChat.chatFailedGeneric);
+        showAppAlert(
+          uiCopy.b2bChat.chatFailedTitle,
+          result.reason || uiCopy.b2bChat.chatFailedGeneric,
+        );
         return;
       }
       setClientMsgTab('b2bChats');
@@ -4802,21 +5402,38 @@ const MessagesView: React.FC<MessagesViewProps> = ({
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ flexDirection: 'row', gap: spacing.sm, paddingVertical: spacing.xs }}
+            contentContainerStyle={{
+              flexDirection: 'row',
+              gap: spacing.sm,
+              paddingVertical: spacing.xs,
+            }}
           >
             <TouchableOpacity
               style={[styles.filterPill, clientMsgTab === 'b2bChats' && styles.filterPillActive]}
               onPress={() => setClientMsgTab('b2bChats')}
             >
-              <Text style={[styles.filterPillLabel, clientMsgTab === 'b2bChats' && styles.filterPillLabelActive]}>
+              <Text
+                style={[
+                  styles.filterPillLabel,
+                  clientMsgTab === 'b2bChats' && styles.filterPillLabelActive,
+                ]}
+              >
                 {uiCopy.b2bChat.tabB2BChatsClientView}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.filterPill, clientMsgTab === 'optionRequests' && styles.filterPillActive]}
+              style={[
+                styles.filterPill,
+                clientMsgTab === 'optionRequests' && styles.filterPillActive,
+              ]}
               onPress={() => setClientMsgTab('optionRequests')}
             >
-              <Text style={[styles.filterPillLabel, clientMsgTab === 'optionRequests' && styles.filterPillLabelActive]}>
+              <Text
+                style={[
+                  styles.filterPillLabel,
+                  clientMsgTab === 'optionRequests' && styles.filterPillLabelActive,
+                ]}
+              >
                 {uiCopy.b2bChat.tabOptionRequests}
               </Text>
             </TouchableOpacity>
@@ -4843,256 +5460,365 @@ const MessagesView: React.FC<MessagesViewProps> = ({
         />
       ) : (
         <View style={flexFillColumn}>
-      {!optionFullscreenActive ? (
-        <View style={flexFillColumn}>
-      {onMsgFilterChange && (
-        <View style={{ flexDirection: 'row', gap: 4, marginBottom: spacing.xs }}>
-          {(['current', 'archived'] as const).map((f) => (
-            <TouchableOpacity
-              key={f}
-              style={[styles.filterPill, msgFilter === f && styles.filterPillActive]}
-              onPress={() => onMsgFilterChange(f)}
-            >
-              <Text style={[styles.filterPillLabel, msgFilter === f && styles.filterPillLabelActive]}>
-                {f === 'current' ? uiCopy.messages.optionRequestListFilterCurrent : uiCopy.messages.optionRequestListFilterArchived}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      )}
-      <View style={{ flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.sm }}>
-        <TouchableOpacity
-          style={[styles.filterPill, attentionFilter === 'all' && styles.filterPillActive]}
-          onPress={() => setAttentionFilter('all')}
-        >
-          <Text style={[styles.filterPillLabel, attentionFilter === 'all' && styles.filterPillLabelActive]}>
-            {uiCopy.dashboard.smartAttentionFilterAll}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.filterPill, attentionFilter === 'action_required' && styles.filterPillActive]}
-          onPress={() => setAttentionFilter('action_required')}
-        >
-          <Text style={[styles.filterPillLabel, attentionFilter === 'action_required' && styles.filterPillLabelActive]}>
-            {uiCopy.dashboard.smartAttentionFilterActionRequired}
-          </Text>
-        </TouchableOpacity>
-      </View>
-      {Object.keys(assignmentByClientOrgId).length > 0 && (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.sm }}>
-          {(['all', 'mine', 'unassigned'] as const).map((scope) => (
-            <TouchableOpacity
-              key={scope}
-              style={[styles.filterPill, assignmentFilters.scope === scope && styles.filterPillActive]}
-              onPress={() => setAssignmentFilters((prev) => ({ ...prev, scope }))}
-            >
-              <Text style={[styles.filterPillLabel, assignmentFilters.scope === scope && styles.filterPillLabelActive]}>
-                {scope === 'all' ? 'All clients' : scope === 'mine' ? 'My clients' : 'Unassigned'}
-              </Text>
-            </TouchableOpacity>
-          ))}
-          {['all', ...Array.from(new Set(Object.values(assignmentByClientOrgId).map((a) => a.label.toLowerCase())))]
-            .slice(0, 6)
-            .map((flagLabel) => (
-              <TouchableOpacity
-                key={`flag-${flagLabel}`}
-                style={[styles.filterPill, assignmentFilters.flagLabel === flagLabel && styles.filterPillActive]}
-                onPress={() => setAssignmentFilters((prev) => ({ ...prev, flagLabel }))}
-              >
-                <Text style={[styles.filterPillLabel, assignmentFilters.flagLabel === flagLabel && styles.filterPillLabelActive]}>
-                  {flagLabel === 'all' ? 'Any flag' : `Flag ${flagLabel}`}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          {['all', ...assignableMembers.map((m) => m.userId)].slice(0, 8).map((userId) => {
-            const member = assignableMembers.find((m) => m.userId === userId);
-            const label = userId === 'all' ? 'Any member' : (member?.name ?? 'Member');
-            return (
-              <TouchableOpacity
-                key={`member-${userId}`}
-                style={[styles.filterPill, assignmentFilters.assignedMemberUserId === userId && styles.filterPillActive]}
-                onPress={() => setAssignmentFilters((prev) => ({ ...prev, assignedMemberUserId: userId }))}
-              >
-                <Text style={[styles.filterPillLabel, assignmentFilters.assignedMemberUserId === userId && styles.filterPillLabelActive]}>
-                  {label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      )}
-      {clientCounterparties.length > 1 && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexShrink: 0, marginBottom: spacing.sm }} contentContainerStyle={{ gap: spacing.xs }}>
-          <TouchableOpacity style={[styles.filterPill, !counterpartyFilter && styles.filterPillActive]} onPress={() => setCounterpartyFilter(null)}>
-            <Text style={[styles.filterPillLabel, !counterpartyFilter && styles.filterPillLabelActive]}>All agencies</Text>
-          </TouchableOpacity>
-          {clientCounterparties.map((cp) => (
-            <TouchableOpacity key={cp.id} style={[styles.filterPill, counterpartyFilter === cp.id && styles.filterPillActive]} onPress={() => setCounterpartyFilter(counterpartyFilter === cp.id ? null : cp.id)}>
-              <Text style={[styles.filterPillLabel, counterpartyFilter === cp.id && styles.filterPillLabelActive]} numberOfLines={1}>{cp.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      )}
-      <ScrollView
-        style={[styles.threadList, webOptionThreadListScrollStyle]}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator
-        contentContainerStyle={{ flexGrow: 1, paddingBottom: spacing.sm }}
-      >
-        {visibleRequests.length === 0 ? (
-          <Text style={styles.metaText}>{msgFilter === 'archived' ? 'No archived messages.' : 'No messages.'}</Text>
-        ) : (
-          visibleRequests.map((r) => {
-            const reqStatus = getRequestStatus(r.threadId) ?? r.status;
-            const isArchived = archivedIds.has(r.threadId);
-            const assignment = r.clientOrganizationId ? assignmentByClientOrgId[r.clientOrganizationId] : undefined;
-            const attentionListLabel = attentionHeaderLabelFromSignals(
-              attentionSignalsFromOptionRequestLike({
-                status: r.status,
-                finalStatus: r.finalStatus ?? null,
-                clientPriceStatus: r.clientPriceStatus ?? null,
-                modelApproval: r.modelApproval,
-                modelAccountLinked: r.modelAccountLinked ?? false,
-                agencyCounterPrice: r.agencyCounterPrice ?? null,
-                proposedPrice: r.proposedPrice ?? null,
-              }),
-              'client',
-            );
-            return (
-              <View
-                key={r.threadId}
-                style={[
-                  styles.threadRow,
-                  styles.threadRowOptionRequestList,
-                  selectedThreadId === r.threadId && styles.threadRowActive,
-                ]}
-              >
+          {!optionFullscreenActive ? (
+            <View style={flexFillColumn}>
+              {onMsgFilterChange && (
+                <View style={{ flexDirection: 'row', gap: 4, marginBottom: spacing.xs }}>
+                  {(['current', 'archived'] as const).map((f) => (
+                    <TouchableOpacity
+                      key={f}
+                      style={[styles.filterPill, msgFilter === f && styles.filterPillActive]}
+                      onPress={() => onMsgFilterChange(f)}
+                    >
+                      <Text
+                        style={[
+                          styles.filterPillLabel,
+                          msgFilter === f && styles.filterPillLabelActive,
+                        ]}
+                      >
+                        {f === 'current'
+                          ? uiCopy.messages.optionRequestListFilterCurrent
+                          : uiCopy.messages.optionRequestListFilterArchived}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+              <View style={{ flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.sm }}>
                 <TouchableOpacity
-                  style={styles.optionRequestThreadNamesColumn}
-                  onPress={() => {
-                    onOptionThreadOpenedFromList?.();
-                    setSelectedThreadId(r.threadId);
-                  }}
-                  accessibilityRole="button"
+                  style={[styles.filterPill, attentionFilter === 'all' && styles.filterPillActive]}
+                  onPress={() => setAttentionFilter('all')}
                 >
-                  <Text style={styles.threadTitle} numberOfLines={1} ellipsizeMode="tail">
-                    {r.modelName} · {r.date}
+                  <Text
+                    style={[
+                      styles.filterPillLabel,
+                      attentionFilter === 'all' && styles.filterPillLabelActive,
+                    ]}
+                  >
+                    {uiCopy.dashboard.smartAttentionFilterAll}
                   </Text>
-                  <Text style={styles.metaText} numberOfLines={1} ellipsizeMode="tail">
-                    {r.clientName}
-                    {formatOptionTimeRangeSuffix(r.startTime, r.endTime)}
-                  </Text>
-                  {assignment ? (
-                    <Text style={styles.metaText} numberOfLines={1} ellipsizeMode="tail">
-                      {assignment.label}
-                      {assignment.assignedMemberName ? ` · ${assignment.assignedMemberName}` : ''}
-                    </Text>
-                  ) : null}
                 </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.filterPill,
+                    attentionFilter === 'action_required' && styles.filterPillActive,
+                  ]}
+                  onPress={() => setAttentionFilter('action_required')}
+                >
+                  <Text
+                    style={[
+                      styles.filterPillLabel,
+                      attentionFilter === 'action_required' && styles.filterPillLabelActive,
+                    ]}
+                  >
+                    {uiCopy.dashboard.smartAttentionFilterActionRequired}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              {Object.keys(assignmentByClientOrgId).length > 0 && (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    flexWrap: 'wrap',
+                    gap: spacing.xs,
+                    marginBottom: spacing.sm,
+                  }}
+                >
+                  {(['all', 'mine', 'unassigned'] as const).map((scope) => (
+                    <TouchableOpacity
+                      key={scope}
+                      style={[
+                        styles.filterPill,
+                        assignmentFilters.scope === scope && styles.filterPillActive,
+                      ]}
+                      onPress={() => setAssignmentFilters((prev) => ({ ...prev, scope }))}
+                    >
+                      <Text
+                        style={[
+                          styles.filterPillLabel,
+                          assignmentFilters.scope === scope && styles.filterPillLabelActive,
+                        ]}
+                      >
+                        {scope === 'all'
+                          ? 'All clients'
+                          : scope === 'mine'
+                            ? 'My clients'
+                            : 'Unassigned'}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                  {[
+                    'all',
+                    ...Array.from(
+                      new Set(
+                        Object.values(assignmentByClientOrgId).map((a) => a.label.toLowerCase()),
+                      ),
+                    ),
+                  ]
+                    .slice(0, 6)
+                    .map((flagLabel) => (
+                      <TouchableOpacity
+                        key={`flag-${flagLabel}`}
+                        style={[
+                          styles.filterPill,
+                          assignmentFilters.flagLabel === flagLabel && styles.filterPillActive,
+                        ]}
+                        onPress={() => setAssignmentFilters((prev) => ({ ...prev, flagLabel }))}
+                      >
+                        <Text
+                          style={[
+                            styles.filterPillLabel,
+                            assignmentFilters.flagLabel === flagLabel &&
+                              styles.filterPillLabelActive,
+                          ]}
+                        >
+                          {flagLabel === 'all' ? 'Any flag' : `Flag ${flagLabel}`}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  {['all', ...assignableMembers.map((m) => m.userId)].slice(0, 8).map((userId) => {
+                    const member = assignableMembers.find((m) => m.userId === userId);
+                    const label = userId === 'all' ? 'Any member' : (member?.name ?? 'Member');
+                    return (
+                      <TouchableOpacity
+                        key={`member-${userId}`}
+                        style={[
+                          styles.filterPill,
+                          assignmentFilters.assignedMemberUserId === userId &&
+                            styles.filterPillActive,
+                        ]}
+                        onPress={() =>
+                          setAssignmentFilters((prev) => ({
+                            ...prev,
+                            assignedMemberUserId: userId,
+                          }))
+                        }
+                      >
+                        <Text
+                          style={[
+                            styles.filterPillLabel,
+                            assignmentFilters.assignedMemberUserId === userId &&
+                              styles.filterPillLabelActive,
+                          ]}
+                        >
+                          {label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+              {clientCounterparties.length > 1 && (
                 <ScrollView
                   horizontal
-                  nestedScrollEnabled
-                  showsHorizontalScrollIndicator
-                  keyboardShouldPersistTaps="handled"
-                  style={styles.optionRequestThreadAttentionScroll}
-                  contentContainerStyle={styles.optionRequestThreadAttentionScrollContent}
+                  showsHorizontalScrollIndicator={false}
+                  style={{ flexShrink: 0, marginBottom: spacing.sm }}
+                  contentContainerStyle={{ gap: spacing.xs }}
                 >
-                  {attentionListLabel ? (
-                    <View style={[styles.statusPill, { backgroundColor: '#dbeafe' }]}>
-                      <Text style={[styles.statusPillLabel, { color: '#1d4ed8' }]} numberOfLines={1}>
-                        {attentionListLabel}
-                      </Text>
-                    </View>
-                  ) : null}
-                  {r.modelAccountLinked === false ? (
-                    <Text style={{ ...typography.label, fontSize: 9, color: colors.textSecondary }} numberOfLines={1}>
-                      {uiCopy.dashboard.optionRequestModelApprovalNoApp}
-                    </Text>
-                  ) : r.modelApproval === 'approved' ? (
-                    <Text style={{ ...typography.label, fontSize: 9, color: colors.buttonOptionGreen }} numberOfLines={1}>
-                      {uiCopy.dashboard.optionRequestModelApprovalApproved}
-                    </Text>
-                  ) : null}
-                  <View style={[styles.statusPill, { backgroundColor: STATUS_COLORS[reqStatus] }]}>
-                    <Text style={styles.statusPillLabel} numberOfLines={1}>{STATUS_LABELS[reqStatus]}</Text>
-                  </View>
                   <TouchableOpacity
-                    onPress={() => toggleArchive(r.threadId)}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    accessibilityRole="button"
-                    accessibilityLabel={
-                      isArchived ? uiCopy.messages.unarchiveThreadInListAccessibility : uiCopy.messages.archiveThreadInListAccessibility
-                    }
+                    style={[styles.filterPill, !counterpartyFilter && styles.filterPillActive]}
+                    onPress={() => setCounterpartyFilter(null)}
                   >
-                    <Text style={{ fontSize: 12, color: colors.textSecondary }}>{isArchived ? '↩' : '📦'}</Text>
+                    <Text
+                      style={[
+                        styles.filterPillLabel,
+                        !counterpartyFilter && styles.filterPillLabelActive,
+                      ]}
+                    >
+                      All agencies
+                    </Text>
                   </TouchableOpacity>
+                  {clientCounterparties.map((cp) => (
+                    <TouchableOpacity
+                      key={cp.id}
+                      style={[
+                        styles.filterPill,
+                        counterpartyFilter === cp.id && styles.filterPillActive,
+                      ]}
+                      onPress={() =>
+                        setCounterpartyFilter(counterpartyFilter === cp.id ? null : cp.id)
+                      }
+                    >
+                      <Text
+                        style={[
+                          styles.filterPillLabel,
+                          counterpartyFilter === cp.id && styles.filterPillLabelActive,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {cp.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
                 </ScrollView>
-              </View>
-            );
-          })
-        )}
-      </ScrollView>
-        </View>
-      ) : null}
-
-      {optionFullscreenActive && request ? (
-        <OptionNegotiationChatShell
-          title={
-            isAgency
-              ? `${request.clientName} · ${request.modelName}`
-              : (agencyTitleForThread ?? request.modelName)
-          }
-          subtitle={
-            isAgency
-              ? formatDateWithOptionalTimeRange(request.date, request.startTime, request.endTime)
-              : `${request.modelName} · ${formatDateWithOptionalTimeRange(request.date, request.startTime, request.endTime)}`
-          }
-          onBack={handleBackOptionChat}
-          onTitlePress={
-            !isAgency && request.agencyOrganizationId
-              ? () => setViewingOptReqAgencyProfile({
-                  orgId: request.agencyOrganizationId!,
-                  agencyId: request.agencyId ?? null,
-                  orgName: agencyTitleForThread,
-                })
-              : undefined
-          }
-          statusLabel={status ? STATUS_LABELS[status] : '—'}
-          statusBackgroundColor={status ? STATUS_COLORS[status] : colors.border}
-          headerBelowTitle={
-            <NegotiationChipsRow
-              displayStatus={displayStatus}
-              attentionLabel={headerAttentionLabel}
-              proposedPrice={request.proposedPrice}
-              agencyCounterPrice={request.agencyCounterPrice}
-              clientPriceStatus={clientPriceStatus}
-              finalStatus={finalStatus}
-              currency={currency}
-              showPriceLines={false}
-            />
-          }
-          headerAccessory={
-            finalStatus !== 'job_confirmed' ? (
-              <TouchableOpacity
-                onPress={openDeleteOptionModal}
-                disabled={!!deletingOptionId}
-                style={{ opacity: deletingOptionId ? 0.5 : 1 }}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                accessibilityLabel={uiCopy.common.delete}
+              )}
+              <ScrollView
+                style={[styles.threadList, webOptionThreadListScrollStyle]}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator
+                contentContainerStyle={{ flexGrow: 1, paddingBottom: spacing.sm }}
               >
-                <Text style={{ fontSize: 18, color: colors.buttonSkipRed ?? '#c0392b' }}>🗑️</Text>
-              </TouchableOpacity>
-            ) : null
-          }
-          deviceType={deviceType}
-          rightPanel={
-            deviceType === 'desktop' ? (
-              <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: spacing.md, paddingBottom: spacing.lg }}>
-                <NegotiationSummaryCard
-                  modelName={request.modelName}
-                  clientName={request.clientName}
-                  isAgency={isAgency}
-                  dateLine={negotiationDateLine}
+                {visibleRequests.length === 0 ? (
+                  <Text style={styles.metaText}>
+                    {msgFilter === 'archived' ? 'No archived messages.' : 'No messages.'}
+                  </Text>
+                ) : (
+                  visibleRequests.map((r) => {
+                    const reqStatus = getRequestStatus(r.threadId) ?? r.status;
+                    const isArchived = archivedIds.has(r.threadId);
+                    const assignment = r.clientOrganizationId
+                      ? assignmentByClientOrgId[r.clientOrganizationId]
+                      : undefined;
+                    const attentionListLabel = attentionHeaderLabelFromSignals(
+                      attentionSignalsFromOptionRequestLike({
+                        status: r.status,
+                        finalStatus: r.finalStatus ?? null,
+                        clientPriceStatus: r.clientPriceStatus ?? null,
+                        modelApproval: r.modelApproval,
+                        modelAccountLinked: r.modelAccountLinked ?? false,
+                        agencyCounterPrice: r.agencyCounterPrice ?? null,
+                        proposedPrice: r.proposedPrice ?? null,
+                      }),
+                      'client',
+                    );
+                    return (
+                      <View
+                        key={r.threadId}
+                        style={[
+                          styles.threadRow,
+                          styles.threadRowOptionRequestList,
+                          selectedThreadId === r.threadId && styles.threadRowActive,
+                        ]}
+                      >
+                        <TouchableOpacity
+                          style={styles.optionRequestThreadNamesColumn}
+                          onPress={() => {
+                            onOptionThreadOpenedFromList?.();
+                            setSelectedThreadId(r.threadId);
+                          }}
+                          accessibilityRole="button"
+                        >
+                          <Text style={styles.threadTitle} numberOfLines={1} ellipsizeMode="tail">
+                            {r.modelName} · {r.date}
+                          </Text>
+                          <Text style={styles.metaText} numberOfLines={1} ellipsizeMode="tail">
+                            {r.clientName}
+                            {formatOptionTimeRangeSuffix(r.startTime, r.endTime)}
+                          </Text>
+                          {assignment ? (
+                            <Text style={styles.metaText} numberOfLines={1} ellipsizeMode="tail">
+                              {assignment.label}
+                              {assignment.assignedMemberName
+                                ? ` · ${assignment.assignedMemberName}`
+                                : ''}
+                            </Text>
+                          ) : null}
+                        </TouchableOpacity>
+                        <ScrollView
+                          horizontal
+                          nestedScrollEnabled
+                          showsHorizontalScrollIndicator
+                          keyboardShouldPersistTaps="handled"
+                          style={styles.optionRequestThreadAttentionScroll}
+                          contentContainerStyle={styles.optionRequestThreadAttentionScrollContent}
+                        >
+                          {attentionListLabel ? (
+                            <View style={[styles.statusPill, { backgroundColor: '#dbeafe' }]}>
+                              <Text
+                                style={[styles.statusPillLabel, { color: '#1d4ed8' }]}
+                                numberOfLines={1}
+                              >
+                                {attentionListLabel}
+                              </Text>
+                            </View>
+                          ) : null}
+                          {r.modelAccountLinked === false ? (
+                            <Text
+                              style={{
+                                ...typography.label,
+                                fontSize: 9,
+                                color: colors.textSecondary,
+                              }}
+                              numberOfLines={1}
+                            >
+                              {uiCopy.dashboard.optionRequestModelApprovalNoApp}
+                            </Text>
+                          ) : r.modelApproval === 'approved' ? (
+                            <Text
+                              style={{
+                                ...typography.label,
+                                fontSize: 9,
+                                color: colors.buttonOptionGreen,
+                              }}
+                              numberOfLines={1}
+                            >
+                              {uiCopy.dashboard.optionRequestModelApprovalApproved}
+                            </Text>
+                          ) : null}
+                          <View
+                            style={[
+                              styles.statusPill,
+                              { backgroundColor: STATUS_COLORS[reqStatus] },
+                            ]}
+                          >
+                            <Text style={styles.statusPillLabel} numberOfLines={1}>
+                              {STATUS_LABELS[reqStatus]}
+                            </Text>
+                          </View>
+                          <TouchableOpacity
+                            onPress={() => toggleArchive(r.threadId)}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            accessibilityRole="button"
+                            accessibilityLabel={
+                              isArchived
+                                ? uiCopy.messages.unarchiveThreadInListAccessibility
+                                : uiCopy.messages.archiveThreadInListAccessibility
+                            }
+                          >
+                            <Text style={{ fontSize: 12, color: colors.textSecondary }}>
+                              {isArchived ? '↩' : '📦'}
+                            </Text>
+                          </TouchableOpacity>
+                        </ScrollView>
+                      </View>
+                    );
+                  })
+                )}
+              </ScrollView>
+            </View>
+          ) : null}
+
+          {optionFullscreenActive && request ? (
+            <OptionNegotiationChatShell
+              title={
+                isAgency
+                  ? `${request.clientName} · ${request.modelName}`
+                  : (agencyTitleForThread ?? request.modelName)
+              }
+              subtitle={
+                isAgency
+                  ? formatDateWithOptionalTimeRange(
+                      request.date,
+                      request.startTime,
+                      request.endTime,
+                    )
+                  : `${request.modelName} · ${formatDateWithOptionalTimeRange(request.date, request.startTime, request.endTime)}`
+              }
+              onBack={handleBackOptionChat}
+              onTitlePress={
+                !isAgency && request.agencyOrganizationId
+                  ? () =>
+                      setViewingOptReqAgencyProfile({
+                        orgId: request.agencyOrganizationId!,
+                        agencyId: request.agencyId ?? null,
+                        orgName: agencyTitleForThread,
+                      })
+                  : undefined
+              }
+              statusLabel={status ? STATUS_LABELS[status] : '—'}
+              statusBackgroundColor={status ? STATUS_COLORS[status] : colors.border}
+              headerBelowTitle={
+                <NegotiationChipsRow
                   displayStatus={displayStatus}
                   attentionLabel={headerAttentionLabel}
                   proposedPrice={request.proposedPrice}
@@ -5100,205 +5826,251 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                   clientPriceStatus={clientPriceStatus}
                   finalStatus={finalStatus}
                   currency={currency}
-                  requestTypeLabel={negotiationRequestTypeLabel}
-                  finalStatusLine={negotiationFinalStatusLine}
-                  confirmationSummaryLine={negotiationConfirmationSummaryLine}
+                  showPriceLines={false}
                 />
-                <NegotiationThreadFooter
-                  request={request}
-                  isAgency={isAgency}
-                  status={status}
-                  finalStatus={finalStatus}
-                  clientPriceStatus={clientPriceStatus}
-                  currency={currency}
-                  agencyCounterPrice={agencyCounterPrice}
-                  negotiationCounterExpanded={negotiationCounterExpanded}
-                  setNegotiationCounterExpanded={setNegotiationCounterExpanded}
-                  agencyCounterInput={agencyCounterInput}
-                  setAgencyCounterInput={setAgencyCounterInput}
-                  assignmentByClientOrgId={assignmentByClientOrgId}
-                  assignableMembers={assignableMembers}
-                  onSaveClientAssignment={onSaveClientAssignment}
-                  editingAssignmentThreadId={editingAssignmentThreadId}
-                  setEditingAssignmentThreadId={setEditingAssignmentThreadId}
-                  openOrgChatBusy={openOrgChatBusy}
-                  openOrgChatFromRequest={openOrgChatFromRequest}
-                  onAgencyConfirmAvailability={runAgencyConfirmAvailability}
-                  onAgencyAcceptClientPrice={runAgencyAcceptClientPrice}
-                  onAgencyRejectClientPrice={runAgencyRejectClientPrice}
-                  onAgencyCounterOffer={runAgencyCounterOffer}
-                  onAgencyProposeInitialFee={runAgencyCounterOffer}
-                  onRejectNegotiation={handleRejectOptionNegotiation}
-                  onClientAcceptCounter={runClientAcceptCounter}
-                  onClientRejectCounter={openRejectCounterModal}
-                  onClientConfirmJob={runClientConfirmJob}
-                  showAgencyExtras={false}
-                  suppressDuplicateMeta
-                />
-              </ScrollView>
-            ) : null
-          }
-          bottomInset={insets.bottom}
-          footerTop={
-            showDesktopNegotiationRail ? null : (
-            <NegotiationThreadFooter
-              request={request}
-              isAgency={isAgency}
-              status={status}
-              finalStatus={finalStatus}
-              clientPriceStatus={clientPriceStatus}
-              currency={currency}
-              agencyCounterPrice={agencyCounterPrice}
-              negotiationCounterExpanded={negotiationCounterExpanded}
-              setNegotiationCounterExpanded={setNegotiationCounterExpanded}
-              agencyCounterInput={agencyCounterInput}
-              setAgencyCounterInput={setAgencyCounterInput}
-              assignmentByClientOrgId={assignmentByClientOrgId}
-              assignableMembers={assignableMembers}
-              onSaveClientAssignment={onSaveClientAssignment}
-              editingAssignmentThreadId={editingAssignmentThreadId}
-              setEditingAssignmentThreadId={setEditingAssignmentThreadId}
-              openOrgChatBusy={openOrgChatBusy}
-              openOrgChatFromRequest={openOrgChatFromRequest}
-              onAgencyConfirmAvailability={runAgencyConfirmAvailability}
-              onAgencyAcceptClientPrice={runAgencyAcceptClientPrice}
-              onAgencyRejectClientPrice={runAgencyRejectClientPrice}
-              onAgencyCounterOffer={runAgencyCounterOffer}
-              onAgencyProposeInitialFee={runAgencyCounterOffer}
-              onRejectNegotiation={handleRejectOptionNegotiation}
-              onClientAcceptCounter={runClientAcceptCounter}
-              onClientRejectCounter={openRejectCounterModal}
-              onClientConfirmJob={runClientConfirmJob}
-              showAgencyExtras={false}
-              suppressDuplicateMeta
-            />
-            )
-          }
-          composerTopBanner={
-            calendarHint ? (
-              <Text style={{ ...typography.label, fontSize: 12, color: colors.textPrimary }}>{calendarHint}</Text>
-            ) : null
-          }
-          composer={
-            <View style={styles.chatPanelInputRow}>
-            <TextInput
-              value={chatInput}
-              onChangeText={setChatInput}
-              placeholder={uiCopy.optionNegotiationChat.messagePlaceholder}
-              placeholderTextColor={colors.textSecondary}
-              style={[styles.chatPanelInput, { height: Math.max(36, Math.min(120, chatInputHeight)) }]}
-              multiline
-              blurOnSubmit={false}
-              onContentSizeChange={(e) => setChatInputHeight(e.nativeEvent.contentSize.height)}
-            />
-            <TouchableOpacity style={styles.chatPanelSend} onPress={sendMessage}>
-              <Text style={styles.chatPanelSendLabel}>{uiCopy.optionNegotiationChat.send}</Text>
-            </TouchableOpacity>
-          </View>
-          }
-          containerStyle={{ flex: 1, minHeight: 0, alignSelf: 'stretch' }}
-        >
-          <>
-            {!showDesktopNegotiationRail ? (
-              <>
-                {/* Mobile: collapsible summary — collapsed by default since chips show key status */}
-                <TouchableOpacity
-                  onPress={() => setMobileSummaryCollapsed((v) => !v)}
-                  style={styles.mobileSummaryToggle}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Text style={styles.mobileSummaryToggleLabel}>
-                    {mobileSummaryCollapsed ? '↓ Details' : '↑ Hide details'}
-                  </Text>
-                </TouchableOpacity>
-                {!mobileSummaryCollapsed ? (
-                  <NegotiationSummaryCard
-                    modelName={request.modelName}
-                    clientName={request.clientName}
+              }
+              headerAccessory={
+                finalStatus !== 'job_confirmed' ? (
+                  <TouchableOpacity
+                    onPress={openDeleteOptionModal}
+                    disabled={!!deletingOptionId}
+                    style={{ opacity: deletingOptionId ? 0.5 : 1 }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityLabel={uiCopy.common.delete}
+                  >
+                    <Text style={{ fontSize: 18, color: colors.buttonSkipRed ?? '#c0392b' }}>
+                      🗑️
+                    </Text>
+                  </TouchableOpacity>
+                ) : null
+              }
+              deviceType={deviceType}
+              rightPanel={
+                deviceType === 'desktop' ? (
+                  <ScrollView
+                    style={{ flex: 1 }}
+                    contentContainerStyle={{ padding: spacing.md, paddingBottom: spacing.lg }}
+                  >
+                    <NegotiationSummaryCard
+                      modelName={request.modelName}
+                      clientName={request.clientName}
+                      isAgency={isAgency}
+                      dateLine={negotiationDateLine}
+                      displayStatus={displayStatus}
+                      attentionLabel={headerAttentionLabel}
+                      proposedPrice={request.proposedPrice}
+                      agencyCounterPrice={request.agencyCounterPrice}
+                      clientPriceStatus={clientPriceStatus}
+                      finalStatus={finalStatus}
+                      currency={currency}
+                      requestTypeLabel={negotiationRequestTypeLabel}
+                      finalStatusLine={negotiationFinalStatusLine}
+                      confirmationSummaryLine={negotiationConfirmationSummaryLine}
+                    />
+                    <NegotiationThreadFooter
+                      request={request}
+                      isAgency={isAgency}
+                      status={status}
+                      finalStatus={finalStatus}
+                      clientPriceStatus={clientPriceStatus}
+                      currency={currency}
+                      agencyCounterPrice={agencyCounterPrice}
+                      negotiationCounterExpanded={negotiationCounterExpanded}
+                      setNegotiationCounterExpanded={setNegotiationCounterExpanded}
+                      agencyCounterInput={agencyCounterInput}
+                      setAgencyCounterInput={setAgencyCounterInput}
+                      assignmentByClientOrgId={assignmentByClientOrgId}
+                      assignableMembers={assignableMembers}
+                      onSaveClientAssignment={onSaveClientAssignment}
+                      editingAssignmentThreadId={editingAssignmentThreadId}
+                      setEditingAssignmentThreadId={setEditingAssignmentThreadId}
+                      openOrgChatBusy={openOrgChatBusy}
+                      openOrgChatFromRequest={openOrgChatFromRequest}
+                      onAgencyConfirmAvailability={runAgencyConfirmAvailability}
+                      onAgencyAcceptClientPrice={runAgencyAcceptClientPrice}
+                      onAgencyRejectClientPrice={runAgencyRejectClientPrice}
+                      onAgencyCounterOffer={runAgencyCounterOffer}
+                      onAgencyProposeInitialFee={runAgencyCounterOffer}
+                      onRejectNegotiation={handleRejectOptionNegotiation}
+                      onClientAcceptCounter={runClientAcceptCounter}
+                      onClientRejectCounter={openRejectCounterModal}
+                      onClientConfirmJob={runClientConfirmJob}
+                      showAgencyExtras={false}
+                      suppressDuplicateMeta
+                    />
+                  </ScrollView>
+                ) : null
+              }
+              bottomInset={insets.bottom}
+              footerTop={
+                showDesktopNegotiationRail ? null : (
+                  <NegotiationThreadFooter
+                    request={request}
                     isAgency={isAgency}
-                    dateLine={negotiationDateLine}
-                    displayStatus={displayStatus}
-                    attentionLabel={headerAttentionLabel}
-                    proposedPrice={request.proposedPrice}
-                    agencyCounterPrice={request.agencyCounterPrice}
-                    clientPriceStatus={clientPriceStatus}
+                    status={status}
                     finalStatus={finalStatus}
+                    clientPriceStatus={clientPriceStatus}
                     currency={currency}
-                    requestTypeLabel={negotiationRequestTypeLabel}
-                    finalStatusLine={negotiationFinalStatusLine}
-                    confirmationSummaryLine={negotiationConfirmationSummaryLine}
+                    agencyCounterPrice={agencyCounterPrice}
+                    negotiationCounterExpanded={negotiationCounterExpanded}
+                    setNegotiationCounterExpanded={setNegotiationCounterExpanded}
+                    agencyCounterInput={agencyCounterInput}
+                    setAgencyCounterInput={setAgencyCounterInput}
+                    assignmentByClientOrgId={assignmentByClientOrgId}
+                    assignableMembers={assignableMembers}
+                    onSaveClientAssignment={onSaveClientAssignment}
+                    editingAssignmentThreadId={editingAssignmentThreadId}
+                    setEditingAssignmentThreadId={setEditingAssignmentThreadId}
+                    openOrgChatBusy={openOrgChatBusy}
+                    openOrgChatFromRequest={openOrgChatFromRequest}
+                    onAgencyConfirmAvailability={runAgencyConfirmAvailability}
+                    onAgencyAcceptClientPrice={runAgencyAcceptClientPrice}
+                    onAgencyRejectClientPrice={runAgencyRejectClientPrice}
+                    onAgencyCounterOffer={runAgencyCounterOffer}
+                    onAgencyProposeInitialFee={runAgencyCounterOffer}
+                    onRejectNegotiation={handleRejectOptionNegotiation}
+                    onClientAcceptCounter={runClientAcceptCounter}
+                    onClientRejectCounter={openRejectCounterModal}
+                    onClientConfirmJob={runClientConfirmJob}
+                    showAgencyExtras={false}
+                    suppressDuplicateMeta
                   />
+                )
+              }
+              composerTopBanner={
+                calendarHint ? (
+                  <Text style={{ ...typography.label, fontSize: 12, color: colors.textPrimary }}>
+                    {calendarHint}
+                  </Text>
+                ) : null
+              }
+              composer={
+                <View style={styles.chatPanelInputRow}>
+                  <TextInput
+                    value={chatInput}
+                    onChangeText={setChatInput}
+                    placeholder={uiCopy.optionNegotiationChat.messagePlaceholder}
+                    placeholderTextColor={colors.textSecondary}
+                    style={[
+                      styles.chatPanelInput,
+                      { height: Math.max(36, Math.min(120, chatInputHeight)) },
+                    ]}
+                    multiline
+                    blurOnSubmit={false}
+                    onContentSizeChange={(e) =>
+                      setChatInputHeight(e.nativeEvent.contentSize.height)
+                    }
+                  />
+                  <TouchableOpacity style={styles.chatPanelSend} onPress={sendMessage}>
+                    <Text style={styles.chatPanelSendLabel}>
+                      {uiCopy.optionNegotiationChat.send}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              }
+              containerStyle={{ flex: 1, minHeight: 0, alignSelf: 'stretch' }}
+            >
+              <>
+                {!showDesktopNegotiationRail ? (
+                  <>
+                    {/* Mobile: collapsible summary — collapsed by default since chips show key status */}
+                    <TouchableOpacity
+                      onPress={() => setMobileSummaryCollapsed((v) => !v)}
+                      style={styles.mobileSummaryToggle}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Text style={styles.mobileSummaryToggleLabel}>
+                        {mobileSummaryCollapsed ? '↓ Details' : '↑ Hide details'}
+                      </Text>
+                    </TouchableOpacity>
+                    {!mobileSummaryCollapsed ? (
+                      <NegotiationSummaryCard
+                        modelName={request.modelName}
+                        clientName={request.clientName}
+                        isAgency={isAgency}
+                        dateLine={negotiationDateLine}
+                        displayStatus={displayStatus}
+                        attentionLabel={headerAttentionLabel}
+                        proposedPrice={request.proposedPrice}
+                        agencyCounterPrice={request.agencyCounterPrice}
+                        clientPriceStatus={clientPriceStatus}
+                        finalStatus={finalStatus}
+                        currency={currency}
+                        requestTypeLabel={negotiationRequestTypeLabel}
+                        finalStatusLine={negotiationFinalStatusLine}
+                        confirmationSummaryLine={negotiationConfirmationSummaryLine}
+                      />
+                    ) : null}
+                  </>
                 ) : null}
+                {filteredMessages.map((msg, i) => {
+                  const prev = i > 0 ? filteredMessages[i - 1] : null;
+                  const compact = !!(prev && prev.from === msg.from && msg.from !== 'system');
+                  const timeLabel =
+                    msg.createdAt != null
+                      ? new Date(msg.createdAt).toLocaleTimeString(undefined, {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })
+                      : undefined;
+                  return (
+                    <NegotiationMessageRow
+                      key={msg.id}
+                      id={msg.id}
+                      from={msg.from}
+                      text={msg.text}
+                      viewerRole={isAgency ? 'agency' : 'client'}
+                      compactTop={compact}
+                      timeLabel={timeLabel}
+                    />
+                  );
+                })}
               </>
-            ) : null}
-            {filteredMessages.map((msg, i) => {
-              const prev = i > 0 ? filteredMessages[i - 1] : null;
-              const compact = !!(prev && prev.from === msg.from && msg.from !== 'system');
-              const timeLabel =
-                msg.createdAt != null
-                  ? new Date(msg.createdAt).toLocaleTimeString(undefined, {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })
-                  : undefined;
-              return (
-                <NegotiationMessageRow
-                  key={msg.id}
-                  id={msg.id}
-                  from={msg.from}
-                  text={msg.text}
-                  viewerRole={isAgency ? 'agency' : 'client'}
-                  compactTop={compact}
-                  timeLabel={timeLabel}
-                />
-              );
-            })}
-          </>
-        </OptionNegotiationChatShell>
-      ) : null}
+            </OptionNegotiationChatShell>
+          ) : null}
 
-      <ConfirmDestructiveModal
-        visible={deleteOptionModalVisible}
-        title={uiCopy.messages.deleteOptionRequestTitle}
-        message={uiCopy.messages.deleteOptionRequestMessage}
-        confirmLabel={uiCopy.common.delete}
-        cancelLabel={uiCopy.common.cancel}
-        confirmDisabled={!!deletingOptionId}
-        onConfirm={confirmDeleteOptionRequest}
-        onCancel={() => setDeleteOptionModalVisible(false)}
-        detailLine1={request?.modelName}
-        detailLine2={
-          request
-            ? formatDateWithOptionalTimeRange(request.date, request.startTime, request.endTime)
-            : undefined
-        }
-      />
-      <ConfirmDestructiveModal
-        visible={rejectCounterModalVisible}
-        title={uiCopy.optionNegotiationChat.rejectCounterOfferTitle}
-        message={uiCopy.optionNegotiationChat.rejectCounterOfferMessage}
-        confirmLabel={uiCopy.optionNegotiationChat.rejectCounterOffer}
-        cancelLabel={uiCopy.common.cancel}
-        onConfirm={confirmRejectCounterOffer}
-        onCancel={() => setRejectCounterModalVisible(false)}
-        detailLine1={request?.modelName}
-        detailLine2={
-          request
-            ? formatDateWithOptionalTimeRange(request.date, request.startTime, request.endTime)
-            : undefined
-        }
-      />
+          <ConfirmDestructiveModal
+            visible={deleteOptionModalVisible}
+            title={uiCopy.messages.deleteOptionRequestTitle}
+            message={uiCopy.messages.deleteOptionRequestMessage}
+            confirmLabel={uiCopy.common.delete}
+            cancelLabel={uiCopy.common.cancel}
+            confirmDisabled={!!deletingOptionId}
+            onConfirm={confirmDeleteOptionRequest}
+            onCancel={() => setDeleteOptionModalVisible(false)}
+            detailLine1={request?.modelName}
+            detailLine2={
+              request
+                ? formatDateWithOptionalTimeRange(request.date, request.startTime, request.endTime)
+                : undefined
+            }
+          />
+          <ConfirmDestructiveModal
+            visible={rejectCounterModalVisible}
+            title={uiCopy.optionNegotiationChat.rejectCounterOfferTitle}
+            message={uiCopy.optionNegotiationChat.rejectCounterOfferMessage}
+            confirmLabel={uiCopy.optionNegotiationChat.rejectCounterOffer}
+            cancelLabel={uiCopy.common.cancel}
+            onConfirm={confirmRejectCounterOffer}
+            onCancel={() => setRejectCounterModalVisible(false)}
+            detailLine1={request?.modelName}
+            detailLine2={
+              request
+                ? formatDateWithOptionalTimeRange(request.date, request.startTime, request.endTime)
+                : undefined
+            }
+          />
 
-      {viewingOptReqAgencyProfile && (
-        <OrgProfileModal
-          visible
-          onClose={() => setViewingOptReqAgencyProfile(null)}
-          orgType="agency"
-          organizationId={viewingOptReqAgencyProfile.orgId}
-          agencyId={viewingOptReqAgencyProfile.agencyId}
-          orgName={viewingOptReqAgencyProfile.orgName}
-        />
-      )}
+          {viewingOptReqAgencyProfile && (
+            <OrgProfileModal
+              visible
+              onClose={() => setViewingOptReqAgencyProfile(null)}
+              orgType="agency"
+              organizationId={viewingOptReqAgencyProfile.orgId}
+              agencyId={viewingOptReqAgencyProfile.agencyId}
+              orgName={viewingOptReqAgencyProfile.orgName}
+            />
+          )}
         </View>
       )}
     </View>
@@ -5309,7 +6081,15 @@ type OptionDatePickerModalProps = {
   open: boolean;
   model: ModelSummary | null;
   onClose: () => void;
-  onSubmit: (date: string, startTime: string, endTime: string, price?: number, requestType?: 'option' | 'casting', currency?: string, jobDescription?: string) => void;
+  onSubmit: (
+    date: string,
+    startTime: string,
+    endTime: string,
+    price?: number,
+    requestType?: 'option' | 'casting',
+    currency?: string,
+    jobDescription?: string,
+  ) => void;
 };
 
 const TIME_SLOTS = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`);
@@ -5327,7 +6107,10 @@ const OptionDatePickerModal: React.FC<OptionDatePickerModalProps> = ({
   onClose,
   onSubmit,
 }) => {
-  const [calMonth, setCalMonth] = useState(() => { const n = new Date(); return { year: n.getFullYear(), month: n.getMonth() }; });
+  const [calMonth, setCalMonth] = useState(() => {
+    const n = new Date();
+    return { year: n.getFullYear(), month: n.getMonth() };
+  });
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [startTime, setStartTime] = useState('09:00');
   const [endTime, setEndTime] = useState('17:00');
@@ -5342,11 +6125,20 @@ const OptionDatePickerModal: React.FC<OptionDatePickerModalProps> = ({
 
   const daysInMonth = new Date(calMonth.year, calMonth.month + 1, 0).getDate();
   const firstDayOfWeek = new Date(calMonth.year, calMonth.month, 1).getDay();
-  const monthLabel = new Date(calMonth.year, calMonth.month).toLocaleString('en', { month: 'long', year: 'numeric' });
+  const monthLabel = new Date(calMonth.year, calMonth.month).toLocaleString('en', {
+    month: 'long',
+    year: 'numeric',
+  });
   const today = new Date().toISOString().slice(0, 10);
 
-  const prevMonth = () => setCalMonth((p) => p.month === 0 ? { year: p.year - 1, month: 11 } : { ...p, month: p.month - 1 });
-  const nextMonth = () => setCalMonth((p) => p.month === 11 ? { year: p.year + 1, month: 0 } : { ...p, month: p.month + 1 });
+  const prevMonth = () =>
+    setCalMonth((p) =>
+      p.month === 0 ? { year: p.year - 1, month: 11 } : { ...p, month: p.month - 1 },
+    );
+  const nextMonth = () =>
+    setCalMonth((p) =>
+      p.month === 11 ? { year: p.year + 1, month: 0 } : { ...p, month: p.month + 1 },
+    );
 
   const handleSubmit = () => {
     setSubmitError(null);
@@ -5360,51 +6152,90 @@ const OptionDatePickerModal: React.FC<OptionDatePickerModalProps> = ({
     }
     const p = requestType === 'option' && price.trim() ? parseFloat(price) : undefined;
     if (sendVia === 'email') {
-      const subject = encodeURIComponent(`${requestType === 'casting' ? 'Casting' : 'Option'} Request – ${model.name} – ${selectedDate}`);
+      const subject = encodeURIComponent(
+        `${requestType === 'casting' ? 'Casting' : 'Option'} Request – ${model.name} – ${selectedDate}`,
+      );
       const body = encodeURIComponent(
         `Hello,\n\nI would like to request ${requestType === 'casting' ? 'a casting' : 'an option'} for:\n\n` +
-        `Model: ${model.name}\n` +
-        `Date: ${selectedDate}\n` +
-        `Time: ${stripClockSeconds(startTime)} – ${stripClockSeconds(endTime)}\n` +
-        (requestType === 'option' && p ? `Proposed Price: ${p}\n` : '') +
-        `\nPlease confirm at your earliest convenience.\n\nBest regards`
+          `Model: ${model.name}\n` +
+          `Date: ${selectedDate}\n` +
+          `Time: ${stripClockSeconds(startTime)} – ${stripClockSeconds(endTime)}\n` +
+          (requestType === 'option' && p ? `Proposed Price: ${p}\n` : '') +
+          `\nPlease confirm at your earliest convenience.\n\nBest regards`,
       );
       Linking.openURL(`mailto:?subject=${subject}&body=${body}`);
       onClose();
       return;
     }
-    onSubmit(selectedDate, startTime, endTime, p, requestType, currency, roleDescription.trim() || undefined);
+    onSubmit(
+      selectedDate,
+      startTime,
+      endTime,
+      p,
+      requestType,
+      currency,
+      roleDescription.trim() || undefined,
+    );
   };
 
   return (
     <View style={styles.detailOverlay}>
       <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose} />
-      <View style={[styles.optionDateCard, { maxWidth: 440, marginBottom: 100, paddingBottom: spacing.lg }]}>
-        <Text style={styles.optionDateCardTitle}>{requestType === 'casting' ? 'Request casting' : 'Request option'}</Text>
+      <View
+        style={[
+          styles.optionDateCard,
+          { maxWidth: 440, marginBottom: 100, paddingBottom: spacing.lg },
+        ]}
+      >
+        <Text style={styles.optionDateCardTitle}>
+          {requestType === 'casting' ? 'Request casting' : 'Request option'}
+        </Text>
         <Text style={styles.metaText}>Select date and time for {model.name}</Text>
 
         <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm }}>
           {(['option', 'casting'] as const).map((t) => (
             <TouchableOpacity
               key={t}
-              style={[styles.filterPill, requestType === t && styles.filterPillActive, { paddingHorizontal: spacing.md }]}
+              style={[
+                styles.filterPill,
+                requestType === t && styles.filterPillActive,
+                { paddingHorizontal: spacing.md },
+              ]}
               onPress={() => setRequestType(t)}
             >
-              <Text style={[styles.filterPillLabel, requestType === t && styles.filterPillLabelActive]}>{t === 'option' ? 'Option' : 'Casting'}</Text>
+              <Text
+                style={[styles.filterPillLabel, requestType === t && styles.filterPillLabelActive]}
+              >
+                {t === 'option' ? 'Option' : 'Casting'}
+              </Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: spacing.md, marginBottom: spacing.sm }}>
-          <TouchableOpacity onPress={prevMonth}><Text style={{ fontSize: 18, color: colors.textPrimary }}>‹</Text></TouchableOpacity>
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginTop: spacing.md,
+            marginBottom: spacing.sm,
+          }}
+        >
+          <TouchableOpacity onPress={prevMonth}>
+            <Text style={{ fontSize: 18, color: colors.textPrimary }}>‹</Text>
+          </TouchableOpacity>
           <Text style={{ ...typography.label, color: colors.textPrimary }}>{monthLabel}</Text>
-          <TouchableOpacity onPress={nextMonth}><Text style={{ fontSize: 18, color: colors.textPrimary }}>›</Text></TouchableOpacity>
+          <TouchableOpacity onPress={nextMonth}>
+            <Text style={{ fontSize: 18, color: colors.textPrimary }}>›</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={{ flexDirection: 'row', marginBottom: 4 }}>
           {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => (
             <View key={d} style={{ flex: 1, alignItems: 'center' }}>
-              <Text style={{ ...typography.label, fontSize: 9, color: colors.textSecondary }}>{d}</Text>
+              <Text style={{ ...typography.label, fontSize: 9, color: colors.textSecondary }}>
+                {d}
+              </Text>
             </View>
           ))}
         </View>
@@ -5429,15 +6260,25 @@ const OptionDatePickerModal: React.FC<OptionDatePickerModalProps> = ({
                   justifyContent: 'center',
                 }}
               >
-                <View style={{
-                  width: 32, height: 32, borderRadius: 16,
-                  alignItems: 'center', justifyContent: 'center',
-                  backgroundColor: isSelected ? colors.accentGreen : 'transparent',
-                }}>
-                  <Text style={{
-                    ...typography.body, fontSize: 12,
-                    color: isPast ? colors.border : isSelected ? '#fff' : colors.textPrimary,
-                  }}>{day}</Text>
+                <View
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 16,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: isSelected ? colors.accentGreen : 'transparent',
+                  }}
+                >
+                  <Text
+                    style={{
+                      ...typography.body,
+                      fontSize: 12,
+                      color: isPast ? colors.border : isSelected ? '#fff' : colors.textPrimary,
+                    }}
+                  >
+                    {day}
+                  </Text>
                 </View>
               </TouchableOpacity>
             );
@@ -5446,21 +6287,83 @@ const OptionDatePickerModal: React.FC<OptionDatePickerModalProps> = ({
 
         <View style={{ flexDirection: 'row', gap: spacing.md, marginTop: spacing.md }}>
           <View style={{ flex: 1 }}>
-            <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary, marginBottom: 4 }}>From</Text>
-            <ScrollView style={{ maxHeight: 100, borderWidth: 1, borderColor: colors.border, borderRadius: 8 }}>
+            <Text
+              style={{
+                ...typography.label,
+                fontSize: 10,
+                color: colors.textSecondary,
+                marginBottom: 4,
+              }}
+            >
+              From
+            </Text>
+            <ScrollView
+              style={{
+                maxHeight: 100,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 8,
+              }}
+            >
               {TIME_SLOTS.map((t) => (
-                <TouchableOpacity key={t} onPress={() => setStartTime(t)} style={{ padding: 6, backgroundColor: startTime === t ? colors.accentGreen : 'transparent' }}>
-                  <Text style={{ ...typography.body, fontSize: 11, color: startTime === t ? '#fff' : colors.textPrimary }}>{t}</Text>
+                <TouchableOpacity
+                  key={t}
+                  onPress={() => setStartTime(t)}
+                  style={{
+                    padding: 6,
+                    backgroundColor: startTime === t ? colors.accentGreen : 'transparent',
+                  }}
+                >
+                  <Text
+                    style={{
+                      ...typography.body,
+                      fontSize: 11,
+                      color: startTime === t ? '#fff' : colors.textPrimary,
+                    }}
+                  >
+                    {t}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary, marginBottom: 4 }}>To</Text>
-            <ScrollView style={{ maxHeight: 100, borderWidth: 1, borderColor: colors.border, borderRadius: 8 }}>
+            <Text
+              style={{
+                ...typography.label,
+                fontSize: 10,
+                color: colors.textSecondary,
+                marginBottom: 4,
+              }}
+            >
+              To
+            </Text>
+            <ScrollView
+              style={{
+                maxHeight: 100,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 8,
+              }}
+            >
               {TIME_SLOTS.map((t) => (
-                <TouchableOpacity key={t} onPress={() => setEndTime(t)} style={{ padding: 6, backgroundColor: endTime === t ? colors.accentGreen : 'transparent' }}>
-                  <Text style={{ ...typography.body, fontSize: 11, color: endTime === t ? '#fff' : colors.textPrimary }}>{t}</Text>
+                <TouchableOpacity
+                  key={t}
+                  onPress={() => setEndTime(t)}
+                  style={{
+                    padding: 6,
+                    backgroundColor: endTime === t ? colors.accentGreen : 'transparent',
+                  }}
+                >
+                  <Text
+                    style={{
+                      ...typography.body,
+                      fontSize: 11,
+                      color: endTime === t ? '#fff' : colors.textPrimary,
+                    }}
+                  >
+                    {t}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -5469,7 +6372,16 @@ const OptionDatePickerModal: React.FC<OptionDatePickerModalProps> = ({
 
         {requestType === 'option' && (
           <View style={{ marginTop: spacing.md }}>
-            <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary, marginBottom: 4 }}>Proposed price (visible to agency only)</Text>
+            <Text
+              style={{
+                ...typography.label,
+                fontSize: 10,
+                color: colors.textSecondary,
+                marginBottom: 4,
+              }}
+            >
+              Proposed price (visible to agency only)
+            </Text>
             <View style={{ flexDirection: 'row', gap: spacing.sm }}>
               <TextInput
                 value={price}
@@ -5483,10 +6395,20 @@ const OptionDatePickerModal: React.FC<OptionDatePickerModalProps> = ({
                 {(['EUR', 'USD', 'GBP', 'CHF'] as const).map((c) => (
                   <TouchableOpacity
                     key={c}
-                    style={[styles.filterPill, currency === c && styles.filterPillActive, { paddingHorizontal: 8, paddingVertical: 6 }]}
+                    style={[
+                      styles.filterPill,
+                      currency === c && styles.filterPillActive,
+                      { paddingHorizontal: 8, paddingVertical: 6 },
+                    ]}
                     onPress={() => setCurrency(c)}
                   >
-                    <Text style={[styles.filterPillLabel, currency === c && styles.filterPillLabelActive, { fontSize: 10 }]}>
+                    <Text
+                      style={[
+                        styles.filterPillLabel,
+                        currency === c && styles.filterPillLabelActive,
+                        { fontSize: 10 },
+                      ]}
+                    >
                       {c === 'EUR' ? '€' : c === 'USD' ? '$' : c === 'GBP' ? '£' : 'CHF'}
                     </Text>
                   </TouchableOpacity>
@@ -5497,12 +6419,22 @@ const OptionDatePickerModal: React.FC<OptionDatePickerModalProps> = ({
         )}
 
         <View style={{ marginTop: spacing.md }}>
-          <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary, marginBottom: 4 }}>
+          <Text
+            style={{
+              ...typography.label,
+              fontSize: 10,
+              color: colors.textSecondary,
+              marginBottom: 4,
+            }}
+          >
             Role / Job description <Text style={{ color: '#dc2626' }}>*</Text>
           </Text>
           <TextInput
             value={roleDescription}
-            onChangeText={(t) => { setRoleDescription(t); setSubmitError(null); }}
+            onChangeText={(t) => {
+              setRoleDescription(t);
+              setSubmitError(null);
+            }}
             placeholder="e.g. Runway model, Photographer, Brand ambassador"
             placeholderTextColor={colors.textSecondary}
             style={[styles.input, { height: 36 }]}
@@ -5510,19 +6442,36 @@ const OptionDatePickerModal: React.FC<OptionDatePickerModalProps> = ({
         </View>
 
         {submitError ? (
-          <Text style={{ fontSize: 12, color: '#dc2626', marginTop: spacing.sm }}>{submitError}</Text>
+          <Text style={{ fontSize: 12, color: '#dc2626', marginTop: spacing.sm }}>
+            {submitError}
+          </Text>
         ) : null}
 
         <View style={{ marginTop: spacing.md }}>
-          <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary, marginBottom: 4 }}>Send via</Text>
+          <Text
+            style={{
+              ...typography.label,
+              fontSize: 10,
+              color: colors.textSecondary,
+              marginBottom: 4,
+            }}
+          >
+            Send via
+          </Text>
           <View style={{ flexDirection: 'row', gap: spacing.sm }}>
             {(['app', 'email'] as const).map((v) => (
               <TouchableOpacity
                 key={v}
-                style={[styles.filterPill, sendVia === v && styles.filterPillActive, { paddingHorizontal: spacing.md }]}
+                style={[
+                  styles.filterPill,
+                  sendVia === v && styles.filterPillActive,
+                  { paddingHorizontal: spacing.md },
+                ]}
                 onPress={() => setSendVia(v)}
               >
-                <Text style={[styles.filterPillLabel, sendVia === v && styles.filterPillLabelActive]}>
+                <Text
+                  style={[styles.filterPillLabel, sendVia === v && styles.filterPillLabelActive]}
+                >
                   {v === 'app' ? 'In-App' : 'Email'}
                 </Text>
               </TouchableOpacity>
@@ -5530,16 +6479,35 @@ const OptionDatePickerModal: React.FC<OptionDatePickerModalProps> = ({
           </View>
         </View>
 
-        <View style={{ flexDirection: 'row', gap: spacing.md, marginTop: spacing.xl, marginBottom: spacing.md }}>
-          <TouchableOpacity onPress={onClose} style={[styles.filterPill, { flex: 1, alignItems: 'center' }]}>
+        <View
+          style={{
+            flexDirection: 'row',
+            gap: spacing.md,
+            marginTop: spacing.xl,
+            marginBottom: spacing.md,
+          }}
+        >
+          <TouchableOpacity
+            onPress={onClose}
+            style={[styles.filterPill, { flex: 1, alignItems: 'center' }]}
+          >
             <Text style={styles.filterPillLabel}>Cancel</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleSubmit}
             disabled={!selectedDate || !roleDescription.trim()}
-            style={[styles.primaryButton, { flex: 1, opacity: (selectedDate && roleDescription.trim()) ? 1 : 0.4 }]}
+            style={[
+              styles.primaryButton,
+              { flex: 1, opacity: selectedDate && roleDescription.trim() ? 1 : 0.4 },
+            ]}
           >
-            <Text style={styles.primaryLabel}>{sendVia === 'email' ? 'Open in Email' : requestType === 'casting' ? 'Send casting request' : 'Send option'}</Text>
+            <Text style={styles.primaryLabel}>
+              {sendVia === 'email'
+                ? 'Open in Email'
+                : requestType === 'casting'
+                  ? 'Send casting request'
+                  : 'Send option'}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -5606,35 +6574,39 @@ const ProjectDetailView: React.FC<DetailProps> = ({
     <View style={styles.detailOverlay}>
       <View style={styles.detailCard}>
         <View style={styles.detailHeaderRow}>
-          <Text style={styles.detailTitle}>
-            {data ? data.name : 'Loading'}
-          </Text>
+          <Text style={styles.detailTitle}>{data ? data.name : 'Loading'}</Text>
           <TouchableOpacity onPress={onClose}>
             <Text style={styles.closeLabel}>Close</Text>
           </TouchableOpacity>
         </View>
 
-        {loading && (
-          <Text style={styles.metaText}>Loading…</Text>
-        )}
+        {loading && <Text style={styles.metaText}>Loading…</Text>}
 
         {!loading && data && (
           <ScrollView style={styles.detailScroll}>
             <View style={styles.detailMeasurementsRow}>
               <View style={styles.detailMeasureItem}>
-                <Text style={styles.detailMeasureLabel}>{uiCopy.discover.detailMeasurementHeight}</Text>
+                <Text style={styles.detailMeasureLabel}>
+                  {uiCopy.discover.detailMeasurementHeight}
+                </Text>
                 <Text style={styles.detailMeasureValue}>{data.measurements.height}</Text>
               </View>
               <View style={styles.detailMeasureItem}>
-                <Text style={styles.detailMeasureLabel}>{uiCopy.discover.detailMeasurementChest}</Text>
+                <Text style={styles.detailMeasureLabel}>
+                  {uiCopy.discover.detailMeasurementChest}
+                </Text>
                 <Text style={styles.detailMeasureValue}>{data.measurements.chest}</Text>
               </View>
               <View style={styles.detailMeasureItem}>
-                <Text style={styles.detailMeasureLabel}>{uiCopy.discover.detailMeasurementWaist}</Text>
+                <Text style={styles.detailMeasureLabel}>
+                  {uiCopy.discover.detailMeasurementWaist}
+                </Text>
                 <Text style={styles.detailMeasureValue}>{data.measurements.waist}</Text>
               </View>
               <View style={styles.detailMeasureItem}>
-                <Text style={styles.detailMeasureLabel}>{uiCopy.discover.detailMeasurementHips}</Text>
+                <Text style={styles.detailMeasureLabel}>
+                  {uiCopy.discover.detailMeasurementHips}
+                </Text>
                 <Text style={styles.detailMeasureValue}>{data.measurements.hips}</Text>
               </View>
             </View>
@@ -5646,7 +6618,11 @@ const ProjectDetailView: React.FC<DetailProps> = ({
               style={styles.detailPortfolioRow}
             >
               {normalizedDisplayImageUrls.map((url, idx) => (
-                <TouchableOpacity key={`${idx}-${url}`} onPress={() => setLightboxIndex(idx)} activeOpacity={0.85}>
+                <TouchableOpacity
+                  key={`${idx}-${url}`}
+                  onPress={() => setLightboxIndex(idx)}
+                  activeOpacity={0.85}
+                >
                   <View style={{ position: 'relative', overflow: 'hidden', borderRadius: 12 }}>
                     <StorageImage
                       uri={url || undefined}
@@ -5654,7 +6630,9 @@ const ProjectDetailView: React.FC<DetailProps> = ({
                       resizeMode="contain"
                       ttlSeconds={CLIENT_MODEL_IMAGE_TTL_SEC}
                       fallback={
-                        <View style={[styles.detailPortfolioImage, { backgroundColor: colors.border }]} />
+                        <View
+                          style={[styles.detailPortfolioImage, { backgroundColor: colors.border }]}
+                        />
                       }
                     />
                   </View>
@@ -5680,17 +6658,12 @@ const ProjectDetailView: React.FC<DetailProps> = ({
             </View>
 
             <Text style={styles.detailSectionLabel}>Request option</Text>
-            <Text style={styles.metaText}>
-              Request option for a specific date.
-            </Text>
+            <Text style={styles.metaText}>Request option for a specific date.</Text>
             <View style={styles.optionDatesRow}>
               {OPTION_DATES.map((d) => (
                 <TouchableOpacity
                   key={d}
-                  style={[
-                    styles.optionDatePill,
-                    selectedDate === d && styles.optionDatePillActive,
-                  ]}
+                  style={[styles.optionDatePill, selectedDate === d && styles.optionDatePillActive]}
                   onPress={() => requestOption(d)}
                 >
                   <Text
@@ -5705,9 +6678,7 @@ const ProjectDetailView: React.FC<DetailProps> = ({
               ))}
             </View>
 
-            {confirmation && (
-              <Text style={styles.confirmationText}>{confirmation}</Text>
-            )}
+            {confirmation && <Text style={styles.confirmationText}>{confirmation}</Text>}
           </ScrollView>
         )}
       </View>
@@ -5775,10 +6746,7 @@ const ProjectDetailView: React.FC<DetailProps> = ({
               )}
 
               {/* Schließen-Button */}
-              <TouchableOpacity
-                style={styles.lightboxClose}
-                onPress={() => setLightboxIndex(null)}
-              >
+              <TouchableOpacity style={styles.lightboxClose} onPress={() => setLightboxIndex(null)}>
                 <Text style={styles.lightboxCloseLabel}>✕</Text>
               </TouchableOpacity>
             </View>
@@ -5827,9 +6795,7 @@ const ProjectPicker: React.FC<ProjectPickerProps> = ({
             <Text style={styles.closeLabel}>Close</Text>
           </TouchableOpacity>
         </View>
-        <Text style={styles.metaText}>
-          Choose a project for {pendingModel.name}.
-        </Text>
+        <Text style={styles.metaText}>Choose a project for {pendingModel.name}.</Text>
 
         <ScrollView style={styles.pickerList}>
           {projects.map((p) => {
@@ -5929,9 +6895,17 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
     setSaving(true);
     try {
       if (typeof window !== 'undefined') {
-        window.localStorage.setItem('ci_client_settings', JSON.stringify({
-          displayName, companyName, phone, website, instagram, linkedin,
-        }));
+        window.localStorage.setItem(
+          'ci_client_settings',
+          JSON.stringify({
+            displayName,
+            companyName,
+            phone,
+            website,
+            instagram,
+            linkedin,
+          }),
+        );
       }
       // Persist display name to Supabase (profiles.display_name) so it is
       // visible to admins and consistent across devices.
@@ -5952,33 +6926,29 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
   };
 
   const handleRequestAccountDeletion = () => {
-    Alert.alert(
-      uiCopy.accountDeletion.confirmTitle,
-      uiCopy.accountDeletion.confirmMessage,
-      [
-        { text: uiCopy.common.cancel, style: 'cancel' },
-        {
-          text: uiCopy.accountDeletion.button,
-          style: 'destructive',
-          onPress: async () => {
-            setDeleting(true);
-            const { requestAccountDeletion } = await import('../services/accountSupabase');
-            const res = await requestAccountDeletion();
-            setDeleting(false);
-            if (res.ok) {
-              onClose();
-              await signOut();
-              return;
-            }
-            if (res.reason === 'not_owner') {
-              Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.ownerOnly);
-            } else {
-              Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.failed);
-            }
-          },
+    Alert.alert(uiCopy.accountDeletion.confirmTitle, uiCopy.accountDeletion.confirmMessage, [
+      { text: uiCopy.common.cancel, style: 'cancel' },
+      {
+        text: uiCopy.accountDeletion.button,
+        style: 'destructive',
+        onPress: async () => {
+          setDeleting(true);
+          const { requestAccountDeletion } = await import('../services/accountSupabase');
+          const res = await requestAccountDeletion();
+          setDeleting(false);
+          if (res.ok) {
+            onClose();
+            await signOut();
+            return;
+          }
+          if (res.reason === 'not_owner') {
+            Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.ownerOnly);
+          } else {
+            Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.failed);
+          }
         },
-      ]
-    );
+      },
+    ]);
   };
 
   const handleRequestPersonalAccountDeletion = () => {
@@ -6003,7 +6973,7 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
             Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.failed);
           },
         },
-      ]
+      ],
     );
   };
 
@@ -6024,47 +6994,132 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
             if (result.ok) {
               setOrgDissolved(true);
               void refreshProfile();
-              Alert.alert(uiCopy.accountDeletion.dissolveOrgTitle, uiCopy.accountDeletion.dissolveOrgSuccess);
+              Alert.alert(
+                uiCopy.accountDeletion.dissolveOrgTitle,
+                uiCopy.accountDeletion.dissolveOrgSuccess,
+              );
             } else {
               Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.dissolveOrgFailed);
             }
           },
         },
-      ]
+      ],
     );
   };
 
   return (
-    <View style={{
-      position: 'absolute', left: 0, right: 0, top: 0, bottom: 0,
-      backgroundColor: 'rgba(0,0,0,0.08)', justifyContent: 'center', alignItems: 'center',
-      paddingHorizontal: spacing.sm, zIndex: 100,
-    }}>
-      <View style={{
-        width: '100%', maxWidth: 520, maxHeight: '92%', borderRadius: 18,
-        borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, padding: spacing.md,
-      }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm }}>
-          <Text style={{ ...typography.heading, fontSize: 16, color: colors.textPrimary }}>Settings</Text>
+    <View
+      style={{
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        top: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0,0,0,0.08)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: spacing.sm,
+        zIndex: 100,
+      }}
+    >
+      <View
+        style={{
+          width: '100%',
+          maxWidth: 520,
+          maxHeight: '92%',
+          borderRadius: 18,
+          borderWidth: 1,
+          borderColor: colors.border,
+          backgroundColor: colors.surface,
+          padding: spacing.md,
+        }}
+      >
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: spacing.sm,
+          }}
+        >
+          <Text style={{ ...typography.heading, fontSize: 16, color: colors.textPrimary }}>
+            Settings
+          </Text>
           <TouchableOpacity onPress={onClose}>
-            <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary }}>{uiCopy.common.close}</Text>
+            <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary }}>
+              {uiCopy.common.close}
+            </Text>
           </TouchableOpacity>
         </View>
         <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md }}>
           {(['profile', 'team'] as const).map((t) => (
-            <TouchableOpacity key={t} onPress={() => setSettingsTab(t)} style={{ paddingVertical: 4, paddingHorizontal: spacing.md, borderRadius: 999, borderWidth: 1, borderColor: settingsTab === t ? colors.textPrimary : colors.border, backgroundColor: settingsTab === t ? colors.textPrimary : 'transparent' }}>
-              <Text style={{ ...typography.label, fontSize: 11, color: settingsTab === t ? colors.surface : colors.textSecondary }}>{t === 'profile' ? 'Profile' : 'Team'}</Text>
+            <TouchableOpacity
+              key={t}
+              onPress={() => setSettingsTab(t)}
+              style={{
+                paddingVertical: 4,
+                paddingHorizontal: spacing.md,
+                borderRadius: 999,
+                borderWidth: 1,
+                borderColor: settingsTab === t ? colors.textPrimary : colors.border,
+                backgroundColor: settingsTab === t ? colors.textPrimary : 'transparent',
+              }}
+            >
+              <Text
+                style={{
+                  ...typography.label,
+                  fontSize: 11,
+                  color: settingsTab === t ? colors.surface : colors.textSecondary,
+                }}
+              >
+                {t === 'profile' ? 'Profile' : 'Team'}
+              </Text>
             </TouchableOpacity>
           ))}
         </View>
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator>
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ paddingBottom: 40 }}
+          showsVerticalScrollIndicator
+        >
           {settingsTab === 'profile' ? (
             <>
-              <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary, marginBottom: 4 }}>Display name</Text>
-              <TextInput value={displayName} onChangeText={setDisplayName} placeholder="Your name" placeholderTextColor={colors.textSecondary} style={[settingsInputStyle, { marginBottom: spacing.md }]} />
+              <Text
+                style={{
+                  ...typography.label,
+                  fontSize: 10,
+                  color: colors.textSecondary,
+                  marginBottom: 4,
+                }}
+              >
+                Display name
+              </Text>
+              <TextInput
+                value={displayName}
+                onChangeText={setDisplayName}
+                placeholder="Your name"
+                placeholderTextColor={colors.textSecondary}
+                style={[settingsInputStyle, { marginBottom: spacing.md }]}
+              />
 
-              <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary, marginBottom: 4 }}>
-                Company {ownerRoleLoading ? '' : clientIsOwner ? '' : <Text style={{ fontWeight: '400', color: colors.textSecondary }}>(read-only)</Text>}
+              <Text
+                style={{
+                  ...typography.label,
+                  fontSize: 10,
+                  color: colors.textSecondary,
+                  marginBottom: 4,
+                }}
+              >
+                Company{' '}
+                {ownerRoleLoading ? (
+                  ''
+                ) : clientIsOwner ? (
+                  ''
+                ) : (
+                  <Text style={{ fontWeight: '400', color: colors.textSecondary }}>
+                    (read-only)
+                  </Text>
+                )}
               </Text>
               {clientIsOwner ? (
                 <TextInput
@@ -6076,34 +7131,123 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
                 />
               ) : (
                 <View style={[settingsInputStyle, { justifyContent: 'center', marginBottom: 4 }]}>
-                  <Text style={{ ...typography.body, fontSize: 13, color: colors.textPrimary }}>{companyName || '—'}</Text>
+                  <Text style={{ ...typography.body, fontSize: 13, color: colors.textPrimary }}>
+                    {companyName || '—'}
+                  </Text>
                 </View>
               )}
               {!ownerRoleLoading && !clientIsOwner && (
-                <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.md }}>
+                <Text
+                  style={{
+                    ...typography.body,
+                    fontSize: 11,
+                    color: colors.textSecondary,
+                    marginBottom: spacing.md,
+                  }}
+                >
                   Only the organization owner can change the company name.
                 </Text>
               )}
               {clientIsOwner && <View style={{ marginBottom: spacing.md }} />}
 
-              <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary, marginBottom: 4 }}>Phone</Text>
-              <TextInput value={phone} onChangeText={setPhone} placeholder="+49..." placeholderTextColor={colors.textSecondary} keyboardType="phone-pad" style={[settingsInputStyle, { marginBottom: spacing.md }]} />
+              <Text
+                style={{
+                  ...typography.label,
+                  fontSize: 10,
+                  color: colors.textSecondary,
+                  marginBottom: 4,
+                }}
+              >
+                Phone
+              </Text>
+              <TextInput
+                value={phone}
+                onChangeText={setPhone}
+                placeholder="+49..."
+                placeholderTextColor={colors.textSecondary}
+                keyboardType="phone-pad"
+                style={[settingsInputStyle, { marginBottom: spacing.md }]}
+              />
 
-              <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary, marginBottom: 4 }}>Website</Text>
-              <TextInput value={website} onChangeText={setWebsite} placeholder="https://..." placeholderTextColor={colors.textSecondary} style={[settingsInputStyle, { marginBottom: spacing.md }]} />
+              <Text
+                style={{
+                  ...typography.label,
+                  fontSize: 10,
+                  color: colors.textSecondary,
+                  marginBottom: 4,
+                }}
+              >
+                Website
+              </Text>
+              <TextInput
+                value={website}
+                onChangeText={setWebsite}
+                placeholder="https://..."
+                placeholderTextColor={colors.textSecondary}
+                style={[settingsInputStyle, { marginBottom: spacing.md }]}
+              />
 
-              <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary, marginBottom: spacing.xs }}>Social links</Text>
-              <TextInput value={instagram} onChangeText={setInstagram} placeholder="Instagram URL" placeholderTextColor={colors.textSecondary} style={[settingsInputStyle, { marginBottom: spacing.sm }]} />
-              <TextInput value={linkedin} onChangeText={setLinkedin} placeholder="LinkedIn URL" placeholderTextColor={colors.textSecondary} style={[settingsInputStyle, { marginBottom: spacing.lg }]} />
+              <Text
+                style={{
+                  ...typography.label,
+                  fontSize: 10,
+                  color: colors.textSecondary,
+                  marginBottom: spacing.xs,
+                }}
+              >
+                Social links
+              </Text>
+              <TextInput
+                value={instagram}
+                onChangeText={setInstagram}
+                placeholder="Instagram URL"
+                placeholderTextColor={colors.textSecondary}
+                style={[settingsInputStyle, { marginBottom: spacing.sm }]}
+              />
+              <TextInput
+                value={linkedin}
+                onChangeText={setLinkedin}
+                placeholder="LinkedIn URL"
+                placeholderTextColor={colors.textSecondary}
+                style={[settingsInputStyle, { marginBottom: spacing.lg }]}
+              />
 
-              <TouchableOpacity onPress={() => { void handleSave(); }} disabled={saving} style={{ borderRadius: 999, backgroundColor: colors.accentGreen, paddingVertical: spacing.sm, alignItems: 'center', opacity: saving ? 0.6 : 1 }}>
-                <Text style={{ ...typography.label, color: colors.surface }}>{saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save settings'}</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  void handleSave();
+                }}
+                disabled={saving}
+                style={{
+                  borderRadius: 999,
+                  backgroundColor: colors.accentGreen,
+                  paddingVertical: spacing.sm,
+                  alignItems: 'center',
+                  opacity: saving ? 0.6 : 1,
+                }}
+              >
+                <Text style={{ ...typography.label, color: colors.surface }}>
+                  {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save settings'}
+                </Text>
               </TouchableOpacity>
 
-              <View style={{ marginTop: spacing.xl, paddingTop: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border }}>
+              <View
+                style={{
+                  marginTop: spacing.xl,
+                  paddingTop: spacing.lg,
+                  borderTopWidth: 1,
+                  borderTopColor: colors.border,
+                }}
+              >
                 {!realClientId ? (
                   <>
-                    <Text style={{ ...typography.label, fontSize: 12, color: colors.textPrimary, marginBottom: 4 }}>
+                    <Text
+                      style={{
+                        ...typography.label,
+                        fontSize: 12,
+                        color: colors.textPrimary,
+                        marginBottom: 4,
+                      }}
+                    >
                       {uiCopy.accountDeletion.sectionTitle}
                     </Text>
                     <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary }}>
@@ -6111,89 +7255,205 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
                     </Text>
                   </>
                 ) : ownerRoleLoading ? (
-                  <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary }}>{uiCopy.common.loading}</Text>
+                  <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary }}>
+                    {uiCopy.common.loading}
+                  </Text>
                 ) : clientIsOwner ? (
                   <>
                     {/* Dissolve organization — owners only */}
                     {!orgDissolved && (
-                      <View style={{ marginBottom: spacing.lg, paddingBottom: spacing.lg, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-                        <Text style={{ ...typography.label, fontSize: 12, color: colors.textPrimary, marginBottom: 4 }}>
+                      <View
+                        style={{
+                          marginBottom: spacing.lg,
+                          paddingBottom: spacing.lg,
+                          borderBottomWidth: 1,
+                          borderBottomColor: colors.border,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            ...typography.label,
+                            fontSize: 12,
+                            color: colors.textPrimary,
+                            marginBottom: 4,
+                          }}
+                        >
                           {uiCopy.accountDeletion.dissolveOrgTitle}
                         </Text>
-                        <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm }}>
+                        <Text
+                          style={{
+                            ...typography.body,
+                            fontSize: 11,
+                            color: colors.textSecondary,
+                            marginBottom: spacing.sm,
+                          }}
+                        >
                           {uiCopy.accountDeletion.dissolveOrgDescription}
                         </Text>
                         <TouchableOpacity
                           onPress={handleDissolveOrganization}
                           disabled={dissolvingOrg}
-                          style={{ borderRadius: 999, borderWidth: 1, borderColor: '#e74c3c', paddingVertical: spacing.sm, alignItems: 'center', opacity: dissolvingOrg ? 0.6 : 1 }}
+                          style={{
+                            borderRadius: 999,
+                            borderWidth: 1,
+                            borderColor: '#e74c3c',
+                            paddingVertical: spacing.sm,
+                            alignItems: 'center',
+                            opacity: dissolvingOrg ? 0.6 : 1,
+                          }}
                         >
                           <Text style={{ ...typography.label, fontSize: 12, color: '#e74c3c' }}>
-                            {dissolvingOrg ? uiCopy.accountDeletion.dissolveOrgWorking : uiCopy.accountDeletion.dissolveOrgButton}
+                            {dissolvingOrg
+                              ? uiCopy.accountDeletion.dissolveOrgWorking
+                              : uiCopy.accountDeletion.dissolveOrgButton}
                           </Text>
                         </TouchableOpacity>
                       </View>
                     )}
                     {orgDissolved && (
-                      <View style={{ marginBottom: spacing.md, padding: spacing.sm, backgroundColor: 'rgba(0,120,0,0.08)', borderRadius: 8 }}>
-                        <Text style={{ ...typography.body, fontSize: 11, color: colors.textPrimary }}>{uiCopy.accountDeletion.dissolveOrgSuccess}</Text>
+                      <View
+                        style={{
+                          marginBottom: spacing.md,
+                          padding: spacing.sm,
+                          backgroundColor: 'rgba(0,120,0,0.08)',
+                          borderRadius: 8,
+                        }}
+                      >
+                        <Text
+                          style={{ ...typography.body, fontSize: 11, color: colors.textPrimary }}
+                        >
+                          {uiCopy.accountDeletion.dissolveOrgSuccess}
+                        </Text>
                       </View>
                     )}
                     {/* Delete personal account */}
-                    <Text style={{ ...typography.label, fontSize: 12, color: colors.textPrimary, marginBottom: 4 }}>
+                    <Text
+                      style={{
+                        ...typography.label,
+                        fontSize: 12,
+                        color: colors.textPrimary,
+                        marginBottom: 4,
+                      }}
+                    >
                       {uiCopy.accountDeletion.sectionTitle}
                     </Text>
-                    <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm }}>
+                    <Text
+                      style={{
+                        ...typography.body,
+                        fontSize: 11,
+                        color: colors.textSecondary,
+                        marginBottom: spacing.sm,
+                      }}
+                    >
                       {uiCopy.accountDeletion.description}
                     </Text>
                     <TouchableOpacity
                       onPress={handleRequestAccountDeletion}
                       disabled={deleting}
-                      style={{ borderRadius: 999, borderWidth: 1, borderColor: '#e74c3c', paddingVertical: spacing.sm, alignItems: 'center' }}
+                      style={{
+                        borderRadius: 999,
+                        borderWidth: 1,
+                        borderColor: '#e74c3c',
+                        paddingVertical: spacing.sm,
+                        alignItems: 'center',
+                      }}
                     >
                       <Text style={{ ...typography.label, fontSize: 12, color: '#e74c3c' }}>
-                        {deleting ? uiCopy.accountDeletion.buttonWorking : uiCopy.accountDeletion.button}
+                        {deleting
+                          ? uiCopy.accountDeletion.buttonWorking
+                          : uiCopy.accountDeletion.button}
                       </Text>
                     </TouchableOpacity>
                   </>
                 ) : (
                   <>
                     {/* Non-owner employee: personal account deletion only */}
-                    <Text style={{ ...typography.label, fontSize: 12, color: colors.textPrimary, marginBottom: 4 }}>
+                    <Text
+                      style={{
+                        ...typography.label,
+                        fontSize: 12,
+                        color: colors.textPrimary,
+                        marginBottom: 4,
+                      }}
+                    >
                       {uiCopy.accountDeletion.sectionTitle}
                     </Text>
-                    <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm }}>
+                    <Text
+                      style={{
+                        ...typography.body,
+                        fontSize: 11,
+                        color: colors.textSecondary,
+                        marginBottom: spacing.sm,
+                      }}
+                    >
                       {uiCopy.accountDeletion.personalDeleteDescription}
                     </Text>
                     <TouchableOpacity
                       onPress={handleRequestPersonalAccountDeletion}
                       disabled={deleting}
-                      style={{ borderRadius: 999, borderWidth: 1, borderColor: '#e74c3c', paddingVertical: spacing.sm, alignItems: 'center' }}
+                      style={{
+                        borderRadius: 999,
+                        borderWidth: 1,
+                        borderColor: '#e74c3c',
+                        paddingVertical: spacing.sm,
+                        alignItems: 'center',
+                      }}
                     >
                       <Text style={{ ...typography.label, fontSize: 12, color: '#e74c3c' }}>
-                        {deleting ? uiCopy.accountDeletion.buttonWorking : uiCopy.accountDeletion.button}
+                        {deleting
+                          ? uiCopy.accountDeletion.buttonWorking
+                          : uiCopy.accountDeletion.button}
                       </Text>
                     </TouchableOpacity>
                   </>
                 )}
 
                 {/* ── GDPR Data Export + Consent Withdrawal (Art. 20 + Art. 7) ─── */}
-                <View style={{ marginTop: spacing.lg, paddingTop: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border }}>
-                  <Text style={{ ...typography.label, fontSize: 12, color: colors.textPrimary, marginBottom: 4 }}>
+                <View
+                  style={{
+                    marginTop: spacing.lg,
+                    paddingTop: spacing.lg,
+                    borderTopWidth: 1,
+                    borderTopColor: colors.border,
+                  }}
+                >
+                  <Text
+                    style={{
+                      ...typography.label,
+                      fontSize: 12,
+                      color: colors.textPrimary,
+                      marginBottom: 4,
+                    }}
+                  >
                     {uiCopy.privacyData.sectionTitle}
                   </Text>
-                  <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm }}>
+                  <Text
+                    style={{
+                      ...typography.body,
+                      fontSize: 11,
+                      color: colors.textSecondary,
+                      marginBottom: spacing.sm,
+                    }}
+                  >
                     {uiCopy.privacyData.art20Body}
                   </Text>
                   <TouchableOpacity
                     onPress={async () => {
                       try {
-                        const { data: { user } } = await import('../../lib/supabase').then(m => m.supabase.auth.getUser());
+                        const {
+                          data: { user },
+                        } = await import('../../lib/supabase').then((m) =>
+                          m.supabase.auth.getUser(),
+                        );
                         if (!user) return;
-                        const { downloadUserDataExport } = await import('../services/gdprComplianceSupabase');
+                        const { downloadUserDataExport } =
+                          await import('../services/gdprComplianceSupabase');
                         const okDl = await downloadUserDataExport(user.id);
                         if (okDl) {
-                          showAppAlert(uiCopy.privacyData.downloadStartedTitle, uiCopy.privacyData.downloadStartedBody);
+                          showAppAlert(
+                            uiCopy.privacyData.downloadStartedTitle,
+                            uiCopy.privacyData.downloadStartedBody,
+                          );
                         } else {
                           showAppAlert(uiCopy.common.error, uiCopy.privacyData.couldNotExport);
                         }
@@ -6202,38 +7462,74 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
                         showAppAlert(uiCopy.common.error, uiCopy.privacyData.couldNotExport);
                       }
                     }}
-                    style={{ borderRadius: 999, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.sm, alignItems: 'center', marginBottom: spacing.sm }}
+                    style={{
+                      borderRadius: 999,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      paddingVertical: spacing.sm,
+                      alignItems: 'center',
+                      marginBottom: spacing.sm,
+                    }}
                   >
-                    <Text style={{ ...typography.label, fontSize: 12, color: colors.textSecondary }}>
+                    <Text
+                      style={{ ...typography.label, fontSize: 12, color: colors.textSecondary }}
+                    >
                       {uiCopy.privacyData.downloadMyData}
                     </Text>
                   </TouchableOpacity>
 
-                  <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm, marginTop: spacing.sm }}>
+                  <Text
+                    style={{
+                      ...typography.body,
+                      fontSize: 11,
+                      color: colors.textSecondary,
+                      marginBottom: spacing.sm,
+                      marginTop: spacing.sm,
+                    }}
+                  >
                     {uiCopy.privacyData.art7Body}
                   </Text>
                   <TouchableOpacity
                     onPress={async () => {
-                      const confirmed = window?.confirm?.(uiCopy.privacyData.withdrawConfirmClientWeb);
+                      const confirmed = window?.confirm?.(
+                        uiCopy.privacyData.withdrawConfirmClientWeb,
+                      );
                       if (!confirmed) return;
                       try {
                         const { withdrawConsent } = await import('../services/consentSupabase');
                         const m = await withdrawConsent('marketing', 'user_requested');
                         const a = await withdrawConsent('analytics', 'user_requested');
                         if (!m.ok || !a.ok) {
-                          showAppAlert(uiCopy.common.error, uiCopy.privacyData.couldNotWithdrawConsent);
+                          showAppAlert(
+                            uiCopy.common.error,
+                            uiCopy.privacyData.couldNotWithdrawConsent,
+                          );
                           return;
                         }
                         void refreshProfile();
-                        showAppAlert(uiCopy.privacyData.consentWithdrawnTitle, uiCopy.privacyData.consentWithdrawnBody);
+                        showAppAlert(
+                          uiCopy.privacyData.consentWithdrawnTitle,
+                          uiCopy.privacyData.consentWithdrawnBody,
+                        );
                       } catch (e) {
                         console.error('SettingsPanel withdraw consent error:', e);
-                        showAppAlert(uiCopy.common.error, uiCopy.privacyData.couldNotWithdrawConsent);
+                        showAppAlert(
+                          uiCopy.common.error,
+                          uiCopy.privacyData.couldNotWithdrawConsent,
+                        );
                       }
                     }}
-                    style={{ borderRadius: 999, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.sm, alignItems: 'center' }}
+                    style={{
+                      borderRadius: 999,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      paddingVertical: spacing.sm,
+                      alignItems: 'center',
+                    }}
                   >
-                    <Text style={{ ...typography.label, fontSize: 12, color: colors.textSecondary }}>
+                    <Text
+                      style={{ ...typography.label, fontSize: 12, color: colors.textSecondary }}
+                    >
                       {uiCopy.privacyData.withdrawOptionalConsent}
                     </Text>
                   </TouchableOpacity>
@@ -6250,9 +7546,13 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
 };
 
 const settingsInputStyle: any = {
-  borderWidth: 1, borderColor: colors.border, borderRadius: 12,
-  paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
-  ...typography.body, color: colors.textPrimary,
+  borderWidth: 1,
+  borderColor: colors.border,
+  borderRadius: 12,
+  paddingHorizontal: spacing.md,
+  paddingVertical: spacing.sm,
+  ...typography.body,
+  color: colors.textPrimary,
 };
 
 const styles = StyleSheet.create({
@@ -7811,4 +9111,3 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
 });
-

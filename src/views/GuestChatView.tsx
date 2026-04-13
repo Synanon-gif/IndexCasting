@@ -14,8 +14,14 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity,
-  ActivityIndicator, TextInput, Modal, Platform, Linking,
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ActivityIndicator,
+  TextInput,
+  Modal,
+  Platform,
   useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -27,6 +33,7 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { getAgencyOrgIdForGuestLink } from '../services/guestLinksSupabase';
 import { validateUrl } from '../../lib/validation';
+import { openLinkWithFeedback } from '../utils/openLinkWithFeedback';
 import {
   createGuestConversation,
   sendGuestBookingRequest,
@@ -241,18 +248,17 @@ export const GuestChatView: React.FC = () => {
     return (
       <View style={styles.centered}>
         <Text style={styles.brand}>INDEX CASTING</Text>
-        <Text style={styles.subtitle}>
-          {copy.noConversationHint}
-        </Text>
+        <Text style={styles.subtitle}>{copy.noConversationHint}</Text>
       </View>
     );
   }
 
   const displayName = profile?.display_name || session?.user?.email || 'Guest';
   // Compact subtitle: "Guest · N models requested" or just "Guest"
-  const compactSub = selectedModelIds.length > 0
-    ? `${copy.guestClientLabel} · ${selectedModelIds.length} model${selectedModelIds.length === 1 ? '' : 's'} requested`
-    : copy.guestClientLabel;
+  const compactSub =
+    selectedModelIds.length > 0
+      ? `${copy.guestClientLabel} · ${selectedModelIds.length} model${selectedModelIds.length === 1 ? '' : 's'} requested`
+      : copy.guestClientLabel;
 
   return (
     <View style={styles.container}>
@@ -260,19 +266,22 @@ export const GuestChatView: React.FC = () => {
       <View style={styles.header}>
         {/* Top row: banner strip with upgrade CTA */}
         <View style={styles.bannerRow}>
-          <Text style={styles.bannerText} numberOfLines={1}>{copy.banner}</Text>
-          <TouchableOpacity
-            style={styles.bannerCta}
-            onPress={() => setShowUpgradeModal(true)}
-          >
+          <Text style={styles.bannerText} numberOfLines={1}>
+            {copy.banner}
+          </Text>
+          <TouchableOpacity style={styles.bannerCta} onPress={() => setShowUpgradeModal(true)}>
             <Text style={styles.bannerCtaText}>{copy.upgradeButton}</Text>
           </TouchableOpacity>
         </View>
         {/* Bottom row: chat title + guest context */}
         <View style={styles.headerTitleRow}>
           <View style={styles.headerTitleBlock}>
-            <Text style={styles.headerTitle} numberOfLines={1}>{copy.chatTitle}</Text>
-            <Text style={styles.headerSub} numberOfLines={1}>{displayName} · {compactSub}</Text>
+            <Text style={styles.headerTitle} numberOfLines={1}>
+              {copy.chatTitle}
+            </Text>
+            <Text style={styles.headerSub} numberOfLines={1}>
+              {displayName} · {compactSub}
+            </Text>
           </View>
         </View>
       </View>
@@ -287,7 +296,7 @@ export const GuestChatView: React.FC = () => {
           containerStyle={styles.messengerContainer}
           onPackagePress={(meta) => {
             const url = typeof meta.guest_link === 'string' ? meta.guest_link : null;
-            if (url && validateUrl(url).ok) void Linking.openURL(url).catch(() => {});
+            if (url && validateUrl(url).ok) openLinkWithFeedback(url);
           }}
         />
       </View>
@@ -302,9 +311,7 @@ export const GuestChatView: React.FC = () => {
         <View style={styles.modalOverlay}>
           <View style={[styles.modalCard, { maxWidth: upgradeModalMaxW }]}>
             <Text style={styles.modalTitle}>{copy.upgradeTitle}</Text>
-            <Text style={styles.modalBody}>
-              {copy.upgradeModalBody}
-            </Text>
+            <Text style={styles.modalBody}>{copy.upgradeModalBody}</Text>
 
             <TextInput
               style={styles.modalInput}
@@ -315,9 +322,7 @@ export const GuestChatView: React.FC = () => {
               editable={!upgrading}
             />
 
-            {upgradeError && (
-              <Text style={styles.upgradeError}>{upgradeError}</Text>
-            )}
+            {upgradeError && <Text style={styles.upgradeError}>{upgradeError}</Text>}
 
             <TouchableOpacity
               style={[styles.upgradeBtn, upgrading && styles.upgradeBtnDisabled]}
