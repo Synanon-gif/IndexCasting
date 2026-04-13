@@ -67,10 +67,20 @@ export const ModelAgencyProvider: React.FC<{ children: React.ReactNode }> = ({ c
     void load();
   }, [load]);
 
-  const switchAgency = useCallback((agencyId: string) => {
-    setActiveAgencyId(agencyId);
-    void AsyncStorage.setItem(STORAGE_KEY, agencyId);
-  }, []);
+  const switchAgency = useCallback(
+    (agencyId: string) => {
+      setActiveAgencyId((prev) => {
+        const valid = agencies.some((a) => a.agencyId === agencyId);
+        if (!valid) {
+          console.warn('[ModelAgencyContext] switchAgency called with unknown agencyId:', agencyId);
+          return prev;
+        }
+        void AsyncStorage.setItem(STORAGE_KEY, agencyId);
+        return agencyId;
+      });
+    },
+    [agencies],
+  );
 
   const activeRow = useMemo(
     () => agencies.find((a) => a.agencyId === activeAgencyId) ?? null,

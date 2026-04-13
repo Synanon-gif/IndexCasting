@@ -4,6 +4,7 @@ import { ModelProfileScreen } from '../screens/ModelProfileScreen';
 import { ModelApplicationsView } from './ModelApplicationsView';
 import { getModelForUserFromSupabase } from '../services/modelsSupabase';
 import { colors } from '../theme/theme';
+import { uiCopy } from '../constants/uiCopy';
 import { subscribeInviteClaimSuccess } from '../utils/inviteClaimSuccessBus';
 
 type ModelViewProps = {
@@ -42,7 +43,7 @@ export const ModelView: React.FC<ModelViewProps> = ({ onBackToRoleSelection, use
     return (
       <View style={styles.loading}>
         <ActivityIndicator size="large" color={colors.textPrimary} />
-        <Text style={styles.loadingText}>Loading…</Text>
+        <Text style={styles.loadingText}>{uiCopy.common.loading}</Text>
       </View>
     );
   }

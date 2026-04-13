@@ -9,6 +9,7 @@ import {
   Modal,
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
+import { uiCopy } from '../constants/uiCopy';
 import type { ClientAssignmentFlag } from '../services/clientAssignmentsSupabase';
 
 export type ClientOrgFilterOption = {
@@ -34,12 +35,13 @@ export const ClientOrgFilterDropdown: React.FC<Props> = ({
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<View>(null);
 
+  const copy = uiCopy.dashboard;
   const selectedLabel =
     selectedId === '__mine__'
-      ? 'My clients'
+      ? copy.orgFilterMyClients
       : selectedId === '__unassigned__'
-        ? 'Unassigned'
-        : (options.find((o) => o.id === selectedId)?.label ?? 'All clients');
+        ? copy.orgFilterUnassigned
+        : (options.find((o) => o.id === selectedId)?.label ?? copy.orgFilterAllClients);
 
   const handleSelect = useCallback(
     (id: string | null) => {
@@ -58,7 +60,9 @@ export const ClientOrgFilterDropdown: React.FC<Props> = ({
         style={[styles.item, !selectedId && styles.itemActive]}
         onPress={() => handleSelect(null)}
       >
-        <Text style={[styles.itemLabel, !selectedId && styles.itemLabelActive]}>All clients</Text>
+        <Text style={[styles.itemLabel, !selectedId && styles.itemLabelActive]}>
+          {copy.orgFilterAllClients}
+        </Text>
       </TouchableOpacity>
 
       {currentUserId && myClients.length > 0 && (
@@ -67,7 +71,7 @@ export const ClientOrgFilterDropdown: React.FC<Props> = ({
           onPress={() => handleSelect('__mine__')}
         >
           <Text style={[styles.itemLabel, selectedId === '__mine__' && styles.itemLabelActive]}>
-            My clients ({myClients.length})
+            {copy.orgFilterMyClients} ({myClients.length})
           </Text>
         </TouchableOpacity>
       )}
@@ -80,7 +84,7 @@ export const ClientOrgFilterDropdown: React.FC<Props> = ({
           <Text
             style={[styles.itemLabel, selectedId === '__unassigned__' && styles.itemLabelActive]}
           >
-            Unassigned ({unassigned.length})
+            {copy.orgFilterUnassigned} ({unassigned.length})
           </Text>
         </TouchableOpacity>
       )}
@@ -117,7 +121,9 @@ export const ClientOrgFilterDropdown: React.FC<Props> = ({
 
       {options.length === 0 && (
         <View style={styles.item}>
-          <Text style={[styles.itemLabel, { color: colors.textSecondary }]}>No clients yet</Text>
+          <Text style={[styles.itemLabel, { color: colors.textSecondary }]}>
+            {copy.orgFilterNoClients}
+          </Text>
         </View>
       )}
     </ScrollView>

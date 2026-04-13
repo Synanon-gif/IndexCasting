@@ -1061,6 +1061,7 @@ export const uiCopy = {
     deleteConfirmMessage: 'This link will be permanently removed and can no longer be opened.',
     deleteConfirmOk: 'Delete',
     deleteConfirmCancel: 'Cancel',
+    deleteFailedMessage: 'Could not delete the package. Please try again.',
     noLinksYet: 'No packages yet. Create your first package above.',
     createPackageError: 'Could not create package. Please check your connection and try again.',
     activeLabel: 'Active',
@@ -1861,6 +1862,10 @@ export const uiCopy = {
     threadContextOption: 'Option',
     threadContextCasting: 'Casting',
     threadContextBooking: 'Booking',
+    orgFilterAllClients: 'All clients',
+    orgFilterMyClients: 'My clients',
+    orgFilterUnassigned: 'Unassigned',
+    orgFilterNoClients: 'No clients yet',
     /** Option request row when model_name is null (search / lists). */
     optionRequestUnnamedModel: 'Unnamed model',
     /** Workflow badge when toDisplayStatus === Draft */

@@ -7170,7 +7170,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                         showsVerticalScrollIndicator
                         contentContainerStyle={{ paddingBottom: spacing.sm }}
                       >
-                        {b2bConversations.map((c) => (
+                        {filteredB2bConversations.map((c) => (
                           <View
                             key={c.id}
                             style={[
@@ -8013,23 +8013,19 @@ const GuestLinksTab: React.FC<{
   };
 
   const handleDeletePackage = (id: string) => {
-    Alert.alert(copy.deleteConfirmTitle, copy.deleteConfirmMessage, [
-      { text: copy.deleteConfirmCancel, style: 'cancel' },
-      {
-        text: copy.deleteConfirmOk,
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            const ok = await deleteGuestLink(id);
-            if (ok) {
-              setLinks((prev) => prev.filter((l) => l.id !== id));
-            }
-          } catch (e) {
-            console.error('handleDeletePackage error:', e);
-          }
-        },
+    showConfirmAlert(
+      copy.deleteConfirmTitle,
+      copy.deleteConfirmMessage,
+      async () => {
+        const ok = await deleteGuestLink(id);
+        if (ok) {
+          setLinks((prev) => prev.filter((l) => l.id !== id));
+        } else {
+          showAppAlert(uiCopy.common.error, uiCopy.guestLinks.deleteFailedMessage);
+        }
       },
-    ]);
+      copy.deleteConfirmOk,
+    );
   };
 
   const handleOpenSendInApp = async (link: GuestLink) => {
