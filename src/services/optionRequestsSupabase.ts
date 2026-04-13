@@ -1921,8 +1921,8 @@ export async function modelConfirmOptionRequest(id: string): Promise<boolean> {
       return false;
     }
 
-    // Agency must have accepted first (final_status transitions to option_confirmed
-    // when agency calls agencyAcceptRequest or agencyAcceptClientPrice).
+    // Agency must have confirmed availability first (final_status transitions to
+    // option_confirmed when agency calls agencyAcceptRequest — Axis 2 only).
     if (r.final_status !== 'option_confirmed') {
       console.warn('modelConfirmOptionRequest: agency has not accepted yet', {
         final_status: r.final_status,

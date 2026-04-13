@@ -1,0 +1,61 @@
+---
+description: Option requests DB triggers, model-safe SELECTs, chat stores, Realtime — anti-regression from 2026 system hardening
+alwaysApply: true
+---
+
+# Option Requests & Chat Hardening (Anti-Regression)
+
+Diese Regeln verhindern die wiederholten Fehler aus dem System-Hardening-Audit (Trigger vs. Service, Model-SELECT, Root-SQL-Drift, Phantom-Chat, fehlende Realtime).
+
+## DB: Status-Trigger und Migrationen
+
+- **`fn_validate_option_status_transition` + Trigger `trg_validate_option_status`** müssen in **`supabase/migrations/`** liegen (idempotent `CREATE OR REPLACE` + `DROP TRIGGER IF EXISTS` + `CREATE TRIGGER`). **Niemals** nur in `supabase/*.sql` außerhalb `migrations/` deployen — neue Projekte/Staging hätten sonst keine Status-State-Machine.
+- **`fn_reset_final_status_on_rejection`** (Migration `20260555`) setzt bei `status → rejected` u. a. `final_status` zurück. **`fn_validate_option_status_transition`** blockiert explizit `option_confirmed → option_pending` im selben Statement.
+- **Reihenfolge:** Beide sind `BEFORE UPDATE` auf `option_requests`; PostgreSQL feuert **alphabetisch** nach Funktionsnamen → `fn_reset_final_status_on_rejection` **vor** `fn_validate_option_status_transition`. Daraus folgt das kanonische **Model-Reject-Pattern** (siehe unten).
+
+## Service: `modelRejectOptionRequest`
+
+- **VERBOTEN:** Im `.update({ ... })` für Model-Reject **`final_status: 'option_pending'`** (oder jedes explizite Zurücksetzen von `final_status` von `option_confirmed` auf `option_pending`) mitzusenden — das triggert `fn_validate_option_status_transition` und bricht den Request.
+- **RICHTIG:** Nur `{ model_approval: 'rejected', status: 'rejected' }` senden (plus sinnvolle `.eq()`-Guards). Den Reset von `final_status` **nur** dem Trigger `fn_reset_final_status_on_rejection` überlassen.
+
+## Service: Model-facing `option_requests`-Reads
+
+- Jede Funktion, die ein Model ausführt oder deren Ergebnis im Model-Client landet (`modelConfirmOptionRequest`, Model-Inbox, Model-safe RPCs), muss **`OPTION_REQUEST_SELECT_MODEL_SAFE`** nutzen — **nie** `OPTION_REQUEST_SELECT` (Preis-/Verhandlungsfelder). Siehe auch `system-invariants.mdc` **MODEL DATA SAFETY CONTRACT** und `auto-review.mdc` Risiko 21.
+
+## Store: Option-Chat `addMessage`
+
+- **`addMessage` in `optionRequests.ts`** muss bei optimistischem Insert **Rollback** spiegeln wie `addRecruitingMessage` in `recruitingChats.ts`: `void addOptionMessage(...).then((ok) => { if (!ok) remove temp; else replace with server row })`. **VERBOTEN:** Nur Cache pushen und Service fire-and-forget ohne `.then(ok)` — sonst Phantom-Nachrichten bei RLS/Netzwerkfehler.
+
+## Store: `clientConfirmJobStore`
+
+- **Frontend-Guard:** Wenn `req.isAgencyOnly === true`, sofort `return false` (und klares Log) — Job-Finalisierung nur über `agency_confirm_job_agency_only`, nicht `client_confirm_option_job`. Siehe `.cursor/rules/agency-only-option-casting.mdc`.
+- **Notifications:** Wenn nach erfolgreichem Confirm der zweite `getOptionRequestById` **`null`** liefert, **`console.error`** loggen (Notifications übersprungen) — kein stiller Skip.
+
+## Realtime
+
+- Views mit Option-Threads (**Agency / Client Web / Model**) müssen **`subscribeToOptionMessages`** (Cleanup im `useEffect` return) verdrahten, sobald ein Thread aktiv ist — sonst kein Live-Update.
+- **Recruiting-Chat:** `BookingChatView` o. Ä. muss **`subscribeToThreadMessages`** nutzen.
+- **`realtimeChannelPool`:** Bei Eviction aktiver Kanäle **`console.warn`** mit Key/refCount — hilft bei Debugging >10 Kanäle.
+
+## Pagination & Native Attach
+
+- Services unterstützen **`beforeId`** / ältere Nachrichten — lange Threads brauchen **„Load older messages“** (Copy: `uiCopy.b2bChat.loadOlderMessages`), wo produktseitig Chat-History angezeigt wird.
+- **Native (nicht Web):** Datei-Anhang in Chat-Views über **`pickChatAttachmentNative`** (nicht nur `input.click()`). **`expo-document-picker`** muss in `package.json` bleiben, solange die Utility existiert.
+
+## Temp-IDs
+
+- Temporäre Chat-Message-IDs: **nicht** nur `` `msg-${Date.now()}` `` / `` `rec-msg-${Date.now()}` `` — Kollisionsrisiko; **`crypto.randomUUID()`** oder Suffix mit **kurzem Zufall** (`Math.random().toString(36).slice(2, 8)`).
+
+## UX-Polish (kein Security-Blocker, aber Produktkonsistenz)
+
+- **Guest-Conversations:** Kein irreführender fester Titel wie „Guest Client“, wenn ein neutralerer Kurztext (`Guest`) oder später ein echter Name möglich ist.
+- **`toLocalRequest`:** Fallbacks für fehlende Namen beschreibend (`Unknown client` / `Unknown model` oder `client_organization_name`), nicht generische Rollenlabels als Fake-Namen.
+
+## Tests (bei Änderungen in diesen Pfaden)
+
+- Unit-Tests: Update-Payload von `modelRejectOptionRequest` **ohne** `final_status`; `OPTION_REQUEST_SELECT_MODEL_SAFE` **ohne** Preis-Spalten; Store-Tests für `isAgencyOnly`-Guard und Fallback-Mapping wo sinnvoll.
+
+## Verweise
+
+- Migration Status-Trigger: `supabase/migrations/20260711_formalize_option_status_transition_trigger.sql`
+- Tests: `src/services/__tests__/optionRequestsHardening.test.ts`, `src/store/__tests__/optionRequestsHardening.test.ts`

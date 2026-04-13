@@ -7,7 +7,10 @@ import type { CalendarEntry } from '../services/calendarSupabase';
 import { CALENDAR_COLORS, calendarEntryColor } from './calendarColors';
 import { colors } from '../theme/theme';
 import type { CalendarDayEvent } from '../components/MonthCalendarView';
-import { attentionSignalsFromOptionRequestLike, deriveApprovalAttention } from './optionRequestAttention';
+import {
+  attentionSignalsFromOptionRequestLike,
+  deriveApprovalAttention,
+} from './optionRequestAttention';
 
 /** User-visible strings — pass `uiCopy.calendar.projectionBadge` from callers. */
 export type CalendarProjectionLabels = {
@@ -38,12 +41,18 @@ export type CalendarProjectionBadge = {
   textColor: string;
 };
 
-function isJobProjection(option: SupabaseOptionRequest, calendar_entry: CalendarEntry | null): boolean {
+function isJobProjection(
+  option: SupabaseOptionRequest,
+  calendar_entry: CalendarEntry | null,
+): boolean {
   if (option.final_status === 'job_confirmed') return true;
   return calendar_entry?.entry_type === 'booking';
 }
 
-function isCastingProjection(option: SupabaseOptionRequest, calendar_entry: CalendarEntry | null): boolean {
+function isCastingProjection(
+  option: SupabaseOptionRequest,
+  calendar_entry: CalendarEntry | null,
+): boolean {
   const et = calendar_entry?.entry_type;
   if (et === 'casting' || et === 'gosee') return true;
   if (option.request_type === 'casting' && !isJobProjection(option, calendar_entry)) return true;
@@ -108,12 +117,19 @@ export function getCalendarProjectionBadge(
   }
 
   if (appr === 'waiting_for_model_confirmation') {
-    const label =
-      viewerRole === 'model' ? labels.yourConfirmationNeeded : labels.awaitingModel;
+    const label = viewerRole === 'model' ? labels.yourConfirmationNeeded : labels.awaitingModel;
     return { label, backgroundColor: AWAITING_MODEL_BADGE_BG, textColor };
   }
 
   if (appr === 'waiting_for_client_to_finalize_job') {
+    return {
+      label: labels.awaitingClientJob,
+      backgroundColor: CLIENT_JOB_BADGE_BG,
+      textColor,
+    };
+  }
+
+  if (appr === 'waiting_for_agency_to_finalize_job') {
     return {
       label: labels.awaitingClientJob,
       backgroundColor: CLIENT_JOB_BADGE_BG,
@@ -202,6 +218,7 @@ export function calendarGridColorForOptionItem(item: {
   );
   if (appr === 'waiting_for_model_confirmation') return AWAITING_MODEL_BADGE_BG;
   if (appr === 'waiting_for_client_to_finalize_job') return CLIENT_JOB_BADGE_BG;
+  if (appr === 'waiting_for_agency_to_finalize_job') return CLIENT_JOB_BADGE_BG;
   const et = calendar_entry?.entry_type;
   return calendarEntryColor(et ?? 'option');
 }

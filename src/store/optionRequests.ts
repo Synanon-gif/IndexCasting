@@ -770,31 +770,35 @@ export async function agencyConfirmAvailabilityStore(threadId: string): Promise<
 export async function agencyAcceptClientPriceStore(threadId: string): Promise<boolean> {
   const req = requestsCache.find((r) => r.threadId === threadId);
   if (!req) return false;
+  if (!beginCriticalOptionAction(threadId)) return false;
+  try {
+    const priceOk = await agencyAcceptClientPrice(req.id);
+    if (!priceOk) return false;
 
-  const priceOk = await agencyAcceptClientPrice(req.id);
-  if (!priceOk) return false;
-
-  const updated = await getOptionRequestById(req.id);
-  if (updated) {
-    Object.assign(req, toLocalRequest(updated));
-    const inserted = await addOptionSystemMessage(req.id, 'agency_accepted_price');
-    if (inserted) {
-      messagesCache.push({
-        id: inserted.id,
-        threadId,
-        from: 'system',
-        text: inserted.text,
-        createdAt: new Date(inserted.created_at).getTime(),
-      });
+    const updated = await getOptionRequestById(req.id);
+    if (updated) {
+      Object.assign(req, toLocalRequest(updated));
+      const inserted = await addOptionSystemMessage(req.id, 'agency_accepted_price');
+      if (inserted) {
+        messagesCache.push({
+          id: inserted.id,
+          threadId,
+          from: 'system',
+          text: inserted.text,
+          createdAt: new Date(inserted.created_at).getTime(),
+        });
+      }
+      notify();
+    } else {
+      console.warn(
+        '[agencyAcceptClientPriceStore] RPC succeeded but post-refresh failed — local state may be stale',
+        req.id,
+      );
     }
-    notify();
-  } else {
-    console.warn(
-      '[agencyAcceptClientPriceStore] RPC succeeded but post-refresh failed — local state may be stale',
-      req.id,
-    );
+    return true;
+  } finally {
+    endCriticalOptionAction(threadId);
   }
-  return true;
 }
 
 /** Agency sends counter offer; system message + web push + persistent DB notification. */
@@ -805,97 +809,117 @@ export async function agencyCounterOfferStore(
 ): Promise<boolean> {
   const req = requestsCache.find((r) => r.threadId === threadId);
   if (!req) return false;
-  const ok = await setAgencyCounterOffer(req.id, counterPrice);
-  if (!ok) return false;
-  const refreshedAfterRpc = await getOptionRequestById(req.id);
-  if (refreshedAfterRpc) {
-    Object.assign(req, toLocalRequest(refreshedAfterRpc));
-  } else {
-    // Fallback: only Axis 1 (price) fields — never touch finalStatus (Axis 2).
-    req.agencyCounterPrice = counterPrice;
-    req.clientPriceStatus = 'pending';
-  }
-  const inserted = await addOptionSystemMessage(req.id, 'agency_counter_offer', {
-    price: counterPrice,
-    currency,
-  });
-  if (inserted) {
-    messagesCache.push({
-      id: inserted.id,
-      threadId,
-      from: 'system',
-      text: inserted.text,
-      createdAt: new Date(inserted.created_at).getTime(),
+  if (!beginCriticalOptionAction(threadId)) return false;
+  try {
+    const ok = await setAgencyCounterOffer(req.id, counterPrice);
+    if (!ok) return false;
+    const refreshedAfterRpc = await getOptionRequestById(req.id);
+    if (refreshedAfterRpc) {
+      Object.assign(req, toLocalRequest(refreshedAfterRpc));
+    } else {
+      // Fallback: only Axis 1 (price) fields — never touch finalStatus (Axis 2).
+      req.agencyCounterPrice = counterPrice;
+      req.clientPriceStatus = 'pending';
+    }
+    const inserted = await addOptionSystemMessage(req.id, 'agency_counter_offer', {
+      price: counterPrice,
+      currency,
     });
+    if (inserted) {
+      messagesCache.push({
+        id: inserted.id,
+        threadId,
+        from: 'system',
+        text: inserted.text,
+        createdAt: new Date(inserted.created_at).getTime(),
+      });
+    }
+
+    // Web push (browser Notification API)
+    const agency = req.agencyId ? await getAgencyById(req.agencyId) : null;
+    notifyClientAgencyCounterOffer(agency?.name ?? 'Agency');
+
+    // Persistent DB notification so the client sees it in the notification bell.
+    const full = refreshedAfterRpc ?? (await getOptionRequestById(req.id));
+    if (full?.client_id) {
+      void createNotification({
+        user_id: full.client_id,
+        type: 'agency_counter_offer',
+        title: uiCopy.notifications.agencyCounterOffer.title,
+        message: uiCopy.notifications.agencyCounterOffer.message,
+        metadata: { option_request_id: req.id, counter_price: counterPrice, currency },
+      });
+    }
+
+    notify();
+    return true;
+  } finally {
+    endCriticalOptionAction(threadId);
   }
-
-  // Web push (browser Notification API)
-  const agency = req.agencyId ? await getAgencyById(req.agencyId) : null;
-  notifyClientAgencyCounterOffer(agency?.name ?? 'Agency');
-
-  // Persistent DB notification so the client sees it in the notification bell.
-  const full = refreshedAfterRpc ?? (await getOptionRequestById(req.id));
-  if (full?.client_id) {
-    void createNotification({
-      user_id: full.client_id,
-      type: 'agency_counter_offer',
-      title: uiCopy.notifications.agencyCounterOffer.title,
-      message: uiCopy.notifications.agencyCounterOffer.message,
-      metadata: { option_request_id: req.id, counter_price: counterPrice, currency },
-    });
-  }
-
-  notify();
-  return true;
 }
 
 /** Agency rejects the client's proposed fee (counter-offer step follows). */
 export async function agencyRejectClientPriceStore(threadId: string): Promise<boolean> {
   const req = requestsCache.find((r) => r.threadId === threadId);
   if (!req) return false;
-  const ok = await agencyRejectClientPriceDb(req.id);
-  if (!ok) return false;
-  req.clientPriceStatus = 'rejected';
-  const inserted = await addOptionSystemMessage(req.id, 'agency_declined_price');
-  if (inserted) {
-    messagesCache.push({
-      id: inserted.id,
-      threadId,
-      from: 'system',
-      text: inserted.text,
-      createdAt: new Date(inserted.created_at).getTime(),
-    });
+  if (!beginCriticalOptionAction(threadId)) return false;
+  try {
+    const ok = await agencyRejectClientPriceDb(req.id);
+    if (!ok) return false;
+    const refreshed = await getOptionRequestById(req.id);
+    if (refreshed) {
+      Object.assign(req, toLocalRequest(refreshed));
+    } else {
+      req.clientPriceStatus = 'rejected';
+    }
+    const inserted = await addOptionSystemMessage(req.id, 'agency_declined_price');
+    if (inserted) {
+      messagesCache.push({
+        id: inserted.id,
+        threadId,
+        from: 'system',
+        text: inserted.text,
+        createdAt: new Date(inserted.created_at).getTime(),
+      });
+    }
+    notify();
+    return true;
+  } finally {
+    endCriticalOptionAction(threadId);
   }
-  notify();
-  return true;
 }
 
 /** Client accepts agency counter → price accepted (Axis 1 only); system message. */
 export async function clientAcceptCounterStore(threadId: string): Promise<boolean> {
   const req = requestsCache.find((r) => r.threadId === threadId);
   if (!req) return false;
-  const ok = await clientAcceptCounterPrice(req.id);
-  if (!ok) return false;
-  const updated = await getOptionRequestById(req.id);
-  if (updated) {
-    Object.assign(req, toLocalRequest(updated));
+  if (!beginCriticalOptionAction(threadId)) return false;
+  try {
+    const ok = await clientAcceptCounterPrice(req.id);
+    if (!ok) return false;
+    const updated = await getOptionRequestById(req.id);
+    if (updated) {
+      Object.assign(req, toLocalRequest(updated));
+    }
+    // System message for client-accepted-counter is always emitted regardless of
+    // final_status. Price acceptance (Axis 1) is independent of availability (Axis 2).
+    // The old guard `if (final_status === 'option_confirmed')` suppressed the message
+    // when availability was not yet confirmed — breaking cross-role visibility.
+    const inserted = await addOptionSystemMessage(req.id, 'client_accepted_counter');
+    if (inserted) {
+      messagesCache.push({
+        id: inserted.id,
+        threadId,
+        from: 'system',
+        text: inserted.text,
+        createdAt: new Date(inserted.created_at).getTime(),
+      });
+    }
+    notify();
+    return true;
+  } finally {
+    endCriticalOptionAction(threadId);
   }
-  // System message for client-accepted-counter is always emitted regardless of
-  // final_status. Price acceptance (Axis 1) is independent of availability (Axis 2).
-  // The old guard `if (final_status === 'option_confirmed')` suppressed the message
-  // when availability was not yet confirmed — breaking cross-role visibility.
-  const inserted = await addOptionSystemMessage(req.id, 'client_accepted_counter');
-  if (inserted) {
-    messagesCache.push({
-      id: inserted.id,
-      threadId,
-      from: 'system',
-      text: inserted.text,
-      createdAt: new Date(inserted.created_at).getTime(),
-    });
-  }
-  notify();
-  return true;
 }
 
 /** Clear all cached data and reset hydration state (call on sign-out). */
@@ -935,7 +959,17 @@ export async function clientConfirmJobStore(threadId: string): Promise<boolean> 
       req.finalStatus = 'job_confirmed';
       req.status = 'confirmed';
     }
-    await updateCalendarEntryToJob(req.id);
+    // Calendar upgrade with retry — DB truth (job_confirmed) is already set;
+    // calendar entry must follow. Retry once after brief delay on failure.
+    const calOk = await updateCalendarEntryToJob(req.id);
+    if (!calOk) {
+      console.warn('[clientConfirmJobStore] calendar upgrade failed — retrying once');
+      await new Promise((r) => setTimeout(r, 200));
+      const retryOk = await updateCalendarEntryToJob(req.id);
+      if (!retryOk) {
+        console.error('[clientConfirmJobStore] calendar upgrade retry failed — entry may be stale');
+      }
+    }
     const inserted = await addOptionSystemMessage(req.id, 'job_confirmed_by_client');
     if (inserted) {
       messagesCache.push({
@@ -1012,54 +1046,59 @@ export async function clientConfirmJobStore(threadId: string): Promise<boolean> 
 export async function clientRejectCounterStore(threadId: string): Promise<boolean> {
   const req = requestsCache.find((r) => r.threadId === threadId);
   if (!req) return false;
-  const ok = await clientRejectCounterOfferOnSupabase(req.id);
-  if (!ok) return false;
-  const refreshed = await getOptionRequestById(req.id);
-  if (refreshed) {
-    Object.assign(req, toLocalRequest(refreshed));
-  } else {
-    req.clientPriceStatus = 'rejected';
-    /** Keep negotiation open in UI — do not set ChatStatus to rejected (hides agency actions). */
-    req.status = 'in_negotiation';
-  }
-  const inserted = await addOptionSystemMessage(req.id, 'client_rejected_counter');
-  if (inserted) {
-    messagesCache.push({
-      id: inserted.id,
-      threadId,
-      from: 'system',
-      text: inserted.text,
-      createdAt: new Date(inserted.created_at).getTime(),
-    });
-  }
-
-  // Notify agency org about the rejection.
-  // full.organization_id is the CLIENT org — resolve agency org explicitly.
-  const full = await getOptionRequestById(req.id);
-  if (full) {
-    const agencyOrgId = await resolveAgencyOrgIdForOptionNotification(
-      full.agency_id,
-      full.agency_organization_id,
-    );
-    if (!agencyOrgId) {
-      console.error(
-        '[notifications] clientRejectCounterStore: agency org not found for agency_id',
-        full.agency_id,
-        '— notification skipped.',
-      );
+  if (!beginCriticalOptionAction(threadId)) return false;
+  try {
+    const ok = await clientRejectCounterOfferOnSupabase(req.id);
+    if (!ok) return false;
+    const refreshed = await getOptionRequestById(req.id);
+    if (refreshed) {
+      Object.assign(req, toLocalRequest(refreshed));
     } else {
-      void createNotification({
-        organization_id: agencyOrgId,
-        type: 'client_rejected_counter',
-        title: uiCopy.notifications.clientRejectedCounter.title,
-        message: uiCopy.notifications.clientRejectedCounter.message,
-        metadata: { option_request_id: req.id },
+      req.clientPriceStatus = 'rejected';
+      /** Keep negotiation open in UI — do not set ChatStatus to rejected (hides agency actions). */
+      req.status = 'in_negotiation';
+    }
+    const inserted = await addOptionSystemMessage(req.id, 'client_rejected_counter');
+    if (inserted) {
+      messagesCache.push({
+        id: inserted.id,
+        threadId,
+        from: 'system',
+        text: inserted.text,
+        createdAt: new Date(inserted.created_at).getTime(),
       });
     }
-  }
 
-  notify();
-  return true;
+    // Notify agency org about the rejection.
+    // full.organization_id is the CLIENT org — resolve agency org explicitly.
+    const full = await getOptionRequestById(req.id);
+    if (full) {
+      const agencyOrgId = await resolveAgencyOrgIdForOptionNotification(
+        full.agency_id,
+        full.agency_organization_id,
+      );
+      if (!agencyOrgId) {
+        console.error(
+          '[notifications] clientRejectCounterStore: agency org not found for agency_id',
+          full.agency_id,
+          '— notification skipped.',
+        );
+      } else {
+        void createNotification({
+          organization_id: agencyOrgId,
+          type: 'client_rejected_counter',
+          title: uiCopy.notifications.clientRejectedCounter.title,
+          message: uiCopy.notifications.clientRejectedCounter.message,
+          metadata: { option_request_id: req.id },
+        });
+      }
+    }
+
+    notify();
+    return true;
+  } finally {
+    endCriticalOptionAction(threadId);
+  }
 }
 
 /**
@@ -1101,7 +1140,19 @@ export async function agencyConfirmJobAgencyOnlyStore(threadId: string): Promise
       req.finalStatus = 'job_confirmed';
       req.status = 'confirmed';
     }
-    await updateCalendarEntryToJob(req.id);
+    // Calendar upgrade with retry — DB truth (job_confirmed) is already set;
+    // calendar entry must follow. Retry once after brief delay on failure.
+    const calOk = await updateCalendarEntryToJob(req.id);
+    if (!calOk) {
+      console.warn('[agencyConfirmJobAgencyOnlyStore] calendar upgrade failed — retrying once');
+      await new Promise((r) => setTimeout(r, 200));
+      const retryOk = await updateCalendarEntryToJob(req.id);
+      if (!retryOk) {
+        console.error(
+          '[agencyConfirmJobAgencyOnlyStore] calendar upgrade retry failed — entry may be stale',
+        );
+      }
+    }
 
     // Notify model about job confirmation (agency triggered — no agency notification needed).
     const full = await getOptionRequestById(req.id);

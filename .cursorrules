@@ -125,6 +125,18 @@ Vollständige Invarianten: [.cursor/rules/system-invariants.mdc](.cursor/rules/s
 - **Counter-Offer:** Wenn `client_price_status === 'pending'` und `proposedPrice` gesetzt, muss ein **sichtbarer** Counter-Block (Betrag, Send, Cancel) existieren — nicht nur Toggle ohne Eingabe; Label „Make counter offer“ / Primary-Button über bestehende `colors` (`NegotiationThreadFooter`).
 - **Bestätigung:** Kein stiller Delete/Reject — `ConfirmDestructiveModal` für zerstörerische Schritte (Agency Remove, Client Decline agency proposal, Model Accept/Decline availability); Texte in `uiCopy`, nicht hardcoden.
 
+### 4c.4 Option requests, Trigger-Kette & Chat (Hardening — Pflicht)
+
+Vollständige englische/kanonische Regeln: [.cursor/rules/option-requests-chat-hardening.mdc](.cursor/rules/option-requests-chat-hardening.mdc).
+
+- **C1 — Model-Reject vs. `fn_validate_option_status_transition`:** `modelRejectOptionRequest` darf **`final_status` nicht im UPDATE mitsenden** (kein `option_confirmed → option_pending` im Client-Payload). Reset über **`fn_reset_final_status_on_rejection`** (läuft alphabetisch **vor** `fn_validate_*`). Sonst blockiert die DB den Reject.
+- **C3 — Trigger in Migrationen:** `fn_validate_option_status_transition` + `trg_validate_option_status` nur über **`supabase/migrations/`** deployen — nie Security-kritische Trigger nur in Root-`supabase/*.sql` lassen.
+- **C2 — Model-SELECT:** Model-facing Reads (`modelConfirmOptionRequest`, Model-Inbox) → **`OPTION_REQUEST_SELECT_MODEL_SAFE`**, nie voller `OPTION_REQUEST_SELECT`.
+- **C4 — Option-Chat:** `addMessage` im Option-Store: optimistisches Rollback wie bei Recruiting (`.then(ok)` → Temp entfernen / Server-Row ersetzen).
+- **H1 — Realtime:** Option-Thread-Views → `subscribeToOptionMessages`; Recruiting → `subscribeToThreadMessages` (Cleanup nicht vergessen).
+- **H2/H4/H5 — Store/UX:** `clientConfirmJobStore`: bei fehlendem Post-Fetch **`console.error`**; lange Threads: Pagination (`beforeId`); Native: **`pickChatAttachmentNative`** + `expo-document-picker` in Dependencies.
+- **Agency-only:** `clientConfirmJobStore` bei `isAgencyOnly` sofort abbrechen — siehe `agency-only-option-casting.mdc`.
+
 ## 4b. UI-Sprache & Copy (verbindlich)
 - **Die gesamte Nutzeroberfläche ist Englisch (English-only):** alle sichtbaren Texte für Agency, Client und Model — Buttons, Labels, Alerts, Placeholder, leere Zustände, Fehlermeldungen aus dem Produkt.
 - **Zentrale Quelle:** Nutzer-Texte kommen aus `src/constants/uiCopy.ts` (`uiCopy`). Keine neuen deutschsprachigen UI-Strings; keine Hardcodes derselben Phrase an vielen Stellen — lieber ein Key in `uiCopy` erweitern.

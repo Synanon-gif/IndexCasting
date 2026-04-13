@@ -137,11 +137,7 @@ export function deriveApprovalAttention(input: AttentionSignalInput): ApprovalAt
       return priceSettled ? jobFinalizeState : 'fully_cleared';
     }
 
-    if (
-      modelAccountLinked &&
-      modelApproval === 'pending' &&
-      input.status === 'in_negotiation'
-    ) {
+    if (modelAccountLinked && modelApproval === 'pending' && input.status === 'in_negotiation') {
       return 'waiting_for_model_confirmation';
     }
 
@@ -191,7 +187,10 @@ export function deriveSmartAttentionState(input: AttentionSignalInput): SmartAtt
   const n = deriveNegotiationAttention(input);
 
   // D2 action states (agency/client must act on availability)
-  if (appr === 'waiting_for_client_to_finalize_job' || appr === 'waiting_for_agency_to_finalize_job') {
+  if (
+    appr === 'waiting_for_client_to_finalize_job' ||
+    appr === 'waiting_for_agency_to_finalize_job'
+  ) {
     return 'job_confirmation_pending';
   }
   if (appr === 'waiting_for_agency_confirmation') {
@@ -233,6 +232,7 @@ export function optionRequestNeedsMessagesTabAttention(r: {
   proposedPrice?: number | null;
   modelApproval?: 'pending' | 'approved' | 'rejected' | null;
   modelAccountLinked?: boolean | null;
+  isAgencyOnly?: boolean;
 }): boolean {
   const input: AttentionSignalInput = {
     status: r.status,
@@ -242,6 +242,7 @@ export function optionRequestNeedsMessagesTabAttention(r: {
     modelAccountLinked: r.modelAccountLinked,
     agencyCounterPrice: r.agencyCounterPrice ?? null,
     proposedPrice: r.proposedPrice ?? null,
+    isAgencyOnly: r.isAgencyOnly ?? false,
   };
 
   // D2: approval attention visible for client — mirrors attentionHeaderLabelFromSignals D2 branch
@@ -297,9 +298,14 @@ export function modelInboxSortPriority(input: {
   return 2;
 }
 
-export function smartAttentionVisibleForRole(state: SmartAttentionState, role: SmartAttentionRole, isAgencyOnly?: boolean): boolean {
+export function smartAttentionVisibleForRole(
+  state: SmartAttentionState,
+  role: SmartAttentionRole,
+  isAgencyOnly?: boolean,
+): boolean {
   if (state === 'no_attention') return false;
-  if (state === 'job_confirmation_pending') return isAgencyOnly ? role === 'agency' : role === 'client';
+  if (state === 'job_confirmation_pending')
+    return isAgencyOnly ? role === 'agency' : role === 'client';
   if (state === 'waiting_for_model') return role !== 'model';
   if (state === 'waiting_for_agency' || state === 'counter_pending' || state === 'conflict_risk') {
     return role === 'agency' || role === 'client';
@@ -309,8 +315,12 @@ export function smartAttentionVisibleForRole(state: SmartAttentionState, role: S
 }
 
 /** Header / summary: approval-only copy (Dimension 2). */
-export function approvalAttentionVisibleForRole(state: ApprovalAttentionState, role: SmartAttentionRole): boolean {
-  if (state === 'approval_inactive' || state === 'fully_cleared' || state === 'job_completed') return false;
+export function approvalAttentionVisibleForRole(
+  state: ApprovalAttentionState,
+  role: SmartAttentionRole,
+): boolean {
+  if (state === 'approval_inactive' || state === 'fully_cleared' || state === 'job_completed')
+    return false;
   if (state === 'waiting_for_agency_confirmation') return role === 'client' || role === 'agency';
   if (state === 'waiting_for_model_confirmation') return role !== 'model';
   if (state === 'waiting_for_client_to_finalize_job') return role === 'client';
@@ -319,7 +329,10 @@ export function approvalAttentionVisibleForRole(state: ApprovalAttentionState, r
 }
 
 /** Thread / negotiation footer: Dimension 1 visibility */
-export function negotiationAttentionVisibleForRole(n: NegotiationAttentionState, role: SmartAttentionRole): boolean {
+export function negotiationAttentionVisibleForRole(
+  n: NegotiationAttentionState,
+  role: SmartAttentionRole,
+): boolean {
   if (n === 'negotiation_terminal' || n === 'price_agreed') return false;
   if (n === 'waiting_for_client_response') return role === 'client';
   if (n === 'waiting_for_agency_response' || n === 'counter_rejected' || n === 'negotiation_open') {

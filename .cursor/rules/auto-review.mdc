@@ -76,6 +76,13 @@ vollständig durchlaufen werden, **bevor** Code committed oder weitergeschrieben
 - **Sichtbare Produkt-Maße (Chest):** Englische UI-Copy für dieses Maß MUSS **Chest** bzw. **Chest (cm)** verwenden — nicht „Bust“ oder „Chest / Bust“. Legacy-Spalte `bust` in DB/API ist erlaubt; Anzeige nutzt `chest ?? bust` ohne das Wort „Bust“ sichtbar zu machen. **Verboten:** Client-Detail-UI, die Messobjekt-**Keys** (`bust`, `waist`, …) direkt als Label rendert — bei `uppercase`-Typo wird „bust“ zu „BUST“; stattdessen **`uiCopy`** + explizite Felder (`chest`, nicht `bust` als Key).
 - **model_account_linked Fallback (Risiko 20):** Neuer Code nutzt `model_account_linked ?? true` — kanonischer Fallback ist `?? false` (null = kein Account). `?? true` erzeugt falsches `waiting_for_model`-Signal.
 - **Model-facing Option-Select (Risiko 21):** Neue Model-facing Abfragen auf `option_requests` müssen `OPTION_REQUEST_SELECT_MODEL_SAFE` nutzen; `OPTION_REQUEST_SELECT` für Model-Kontext ist verboten (kommerzielle Felder exposed).
+- **`modelRejectOptionRequest` / Model-Reject-UPDATE:** `final_status` (insb. `option_pending`) **nicht** im `.update()` mitsenden, wenn `fn_reset_final_status_on_rejection` den Reset übernimmt — sonst Konflikt mit `fn_validate_option_status_transition` (Reject bricht). Siehe `.cursor/rules/option-requests-chat-hardening.mdc`.
+- **Kritische `option_requests`-Trigger:** `fn_validate_option_status_transition` und zugehöriger Trigger **müssen** in `supabase/migrations/` versioniert sein, nicht nur Root-SQL — Blocker für neue Deployments/Staging.
+- **Option-Chat `addMessage`:** Optimistischer Send **ohne** `.then(ok)`-Rollback bei fehlgeschlagenem `addOptionMessage`? → Blocker (Phantom-Nachrichten) — gleiches Muster wie `recruitingChats.addRecruitingMessage`.
+- **Realtime für aktive Threads:** Neue Screens mit Option-Negotiation-Chat ohne `subscribeToOptionMessages` (bzw. Recruiting ohne `subscribeToThreadMessages`)? → Blocker — „WhatsApp-Speed“-Anforderung aus `.cursorrules`.
+- **`clientConfirmJobStore` ohne `isAgencyOnly`-Guard** oder ohne Log wenn Post-Confirm-Fetch null? → Review-Blocker für Agency-only-Invariante bzw. stilles Notification-Skip.
+- **Chat-Pagination:** Lange Threads ohne „Load older“ / `beforeId`, obwohl der Service es unterstützt? → Review-Flag (UX/Compliance in Verhandlungskontext).
+- **Native Chat-Attach:** Nur Web-`<input type="file">` ohne `pickChatAttachmentNative` auf iOS/Android? → Blocker wenn Feature „Datei senden“ verspricht.
 - **Calendar Shared-Note auf cancelled Rows (Risiko 22):** `appendSharedBookingNote` / `updateBookingDetails` müssen nur die aktive (nicht-cancelled) `calendar_entries`-Zeile pro `option_request_id` schreiben.
 - **Messages-Tab-Dot Divergenz (Risiko 23):** Tab-Dot-Heuristik muss aus derselben kanonischen Attention-Logik ableiten wie `attentionHeaderLabelFromSignals` — keine zweite parallele Heuristik.
 - **GuestChatView link_id Pflicht (Risiko 24):** `link_id` ist Pflicht für Guest-Thread-Resolution; kein `LIMIT 1`-Fallback auf `guest_user_id` allein.
@@ -197,6 +204,9 @@ Q11: Koppelt diese Änderung Preis (Axis 1) und Availability (Axis 2) in einem e
 Q12: Erlaubt diese Änderung dem Model eine Bestätigung BEVOR die Agency availability bestätigt hat (final_status = 'option_confirmed')? Model darf NUR nach Agency-Availability-Bestätigung handeln.
 Q13: Verändert eine Axis-1 (Preis) Aktion in dieser Änderung Axis-2 Felder (final_status, model_approval) oder umgekehrt? (Ausnahme: client_confirm_option_job als terminaler Schritt)
 Q14: Nutzt diese Änderung eine eigene Attention-/Urgency-Heuristik statt der kanonischen Pipeline (attentionHeaderLabelFromSignals / deriveApprovalAttention / deriveNegotiationAttention)?
+Q15: Fehlt einer neuen Option-Store-Mutation der beginCriticalOptionAction/endCriticalOptionAction Inflight-Guard?
+Q16: Fehlt einem attentionSignalsFromOptionRequestLike-Aufruf das isAgencyOnly-Feld?
+Q17: Schreibt updateBookingDetails oder eine neue calendar_entries-Write-Funktion auf gecancelte Rows?
 ```
 
 → Wenn **eine** Antwort unklar oder „möglicherweise ja" ist:
@@ -247,6 +257,15 @@ Q14: Nutzt diese Änderung eine eigene Attention-/Urgency-Heuristik statt der ka
 - **Model-Inbox mit Agency/Client-Copy:** Model sieht "Waiting for model approval" (agency/client-Perspektive) statt "Action required" (model-Perspektive) — Warnung. Tag-Text muss model-zentrisch sein.
 - **Model-facing Fehlertext erwähnt Preis:** Alert-Text für Model enthält "price" oder andere Preis-bezogene Begriffe — Warnung (Model darf keine Preis-Informationen sehen).
 - **`toDisplayStatus` für Model MIT priceSignals:** Model-Inbox oder Model-View ruft `toDisplayStatus(status, finalStatus, { clientPriceStatus, ... })` mit Preis-Signalen auf — Blocker (Model-Ansicht darf keine preis-basierten Display-Status zeigen wie "Price agreed").
+- **`modelRejectOptionRequest` (oder gleichwertiger Model-Reject) setzt `final_status` im Client-UPDATE explizit auf `option_pending`:** Blocker — widerspricht `fn_validate_option_status_transition`; korrekt: nur Status/Model-Approval setzen, Reset via `fn_reset_final_status_on_rejection`. Details: `option-requests-chat-hardening.mdc`.
+- **Neue Security-/Integritäts-Trigger nur in `supabase/*.sql` Root, nicht in `supabase/migrations/`:** Blocker (Staging/Neuprojekte ohne Guards) — siehe `system-invariants.mdc` **LIVE-DB SOURCE OF TRUTH**.
+- **Option-Store `addMessage` ohne Rollback bei `addOptionMessage` → false/null:** Blocker — Phantom-Nachrichten; Pattern wie Recruiting-Chat.
+- **Neuer Option-Thread-Screen ohne Realtime-Subscription (`subscribeToOptionMessages`) bei geöffnetem Thread:** Blocker — inkonsistent mit Produktanforderung Live-Chat.
+- **Preis-Store-Funktion ohne `beginCriticalOptionAction`/`endCriticalOptionAction`-Guard:** Blocker (Risiko 31) — Doppelklick erzeugt doppelte System-Messages, Notifications und potenziell inkonsistenten Preisstatus. Alle Option-Store-Mutationen (Axis 1 Preis UND Axis 2 Availability) MÜSSEN den Inflight-Guard nutzen. Siehe `system-invariants.mdc` **### L**.
+- **`updateCalendarEntryToJob` ohne Retry bei Fehlschlag:** Blocker (Risiko 32) — Job-RPC ist bereits committed, Kalender driftet zu `tentative`/`option`. Pflicht: einmal Retry nach 200ms, `console.error` bei erneutem Fehlschlag. Siehe `system-invariants.mdc` **### M**.
+- **`updateBookingDetails` SELECT ohne `status`-Filter (cancelled Rows inkludiert):** Blocker (Risiko 33) — Schreibt `booking_details` auf gecancelte Kalenderzeilen; Audit-Trail-Inkonsistenz. Pflicht: `activeRows.filter(r => r.status !== 'cancelled')` wie `appendSharedBookingNote`. Siehe `system-invariants.mdc` **### N**.
+- **`attentionSignalsFromOptionRequestLike`-Aufruf ohne `isAgencyOnly`:** Blocker (Risiko 34) — Agency-only-Events werden als client-driven behandelt → falscher Preis-Status, falsche Job-Finalisierungszuordnung, falscher Kalender-Next-Step. Siehe `system-invariants.mdc` **### O**.
+- **`calendarProjectionBadge`/`calendarGridColorForOptionItem` ohne Branch für `waiting_for_agency_to_finalize_job`:** Blocker (Risiko 35) — Agency-only-Badge fällt auf `optionNegotiating` (blau) statt Job-Pending (braun) → Badge ↔ Thread-Header Inkonsistenz. Siehe `system-invariants.mdc` **### P**.
 
 ---
 

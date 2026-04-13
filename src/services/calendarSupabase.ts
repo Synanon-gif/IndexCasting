@@ -41,12 +41,7 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
   return chunks;
 }
 
-export type CalendarEntryType =
-  | 'personal'
-  | 'gosee'
-  | 'booking'
-  | 'option'
-  | 'casting';
+export type CalendarEntryType = 'personal' | 'gosee' | 'booking' | 'option' | 'casting';
 
 /** Visible to client, agency, and model on the same booking (GDPR: party role + timestamp only, no extra PII). */
 export type SharedBookingNote = {
@@ -114,7 +109,7 @@ export async function getCalendarForModel(
     defaultEnd.setDate(defaultEnd.getDate() + 365);
 
     const startDate = opts?.startDate ?? defaultStart.toISOString().slice(0, 10);
-    const endDate   = opts?.endDate   ?? defaultEnd.toISOString().slice(0, 10);
+    const endDate = opts?.endDate ?? defaultEnd.toISOString().slice(0, 10);
 
     const { data, error } = await supabase
       .from('calendar_entries')
@@ -123,7 +118,10 @@ export async function getCalendarForModel(
       .gte('date', startDate)
       .lte('date', endDate)
       .order('date', { ascending: true });
-    if (error) { console.error('getCalendarForModel error:', error); return []; }
+    if (error) {
+      console.error('getCalendarForModel error:', error);
+      return [];
+    }
     return (data ?? []) as CalendarEntry[];
   } catch (e) {
     console.error('getCalendarForModel exception:', e);
@@ -134,7 +132,7 @@ export async function getCalendarForModel(
 export async function getCalendarRange(
   modelId: string,
   startDate: string,
-  endDate: string
+  endDate: string,
 ): Promise<CalendarEntry[]> {
   try {
     const { data, error } = await supabase
@@ -144,7 +142,10 @@ export async function getCalendarRange(
       .gte('date', startDate)
       .lte('date', endDate)
       .order('date', { ascending: true });
-    if (error) { console.error('getCalendarRange error:', error); return []; }
+    if (error) {
+      console.error('getCalendarRange error:', error);
+      return [];
+    }
     return (data ?? []) as CalendarEntry[];
   } catch (e) {
     console.error('getCalendarRange exception:', e);
@@ -167,7 +168,7 @@ export async function upsertCalendarEntry(
     client_name?: string;
     booking_details?: BookingDetails;
     note?: string;
-  }
+  },
 ): Promise<boolean> {
   const rowPayload = {
     model_id: modelId,
@@ -195,7 +196,10 @@ export async function upsertCalendarEntry(
         return false;
       }
       if (existing?.id) {
-        const { error } = await supabase.from('calendar_entries').update(rowPayload).eq('id', existing.id);
+        const { error } = await supabase
+          .from('calendar_entries')
+          .update(rowPayload)
+          .eq('id', existing.id);
         if (error) {
           console.error('upsertCalendarEntry update option row error:', error);
           return false;
@@ -217,7 +221,10 @@ export async function upsertCalendarEntry(
         return false;
       }
       if (existing?.id) {
-        const { error } = await supabase.from('calendar_entries').update(rowPayload).eq('id', existing.id);
+        const { error } = await supabase
+          .from('calendar_entries')
+          .update(rowPayload)
+          .eq('id', existing.id);
         if (error) {
           console.error('upsertCalendarEntry update personal error:', error);
           return false;
@@ -250,7 +257,7 @@ export async function insertCalendarEntry(
     option_request_id?: string;
     client_name?: string;
     booking_details?: BookingDetails;
-  }
+  },
 ): Promise<CalendarEntry | null> {
   try {
     const { data, error } = await supabase
@@ -271,7 +278,10 @@ export async function insertCalendarEntry(
       })
       .select()
       .single();
-    if (error) { console.error('insertCalendarEntry error:', error); return null; }
+    if (error) {
+      console.error('insertCalendarEntry error:', error);
+      return null;
+    }
     return data as CalendarEntry;
   } catch (e) {
     console.error('insertCalendarEntry exception:', e);
@@ -306,7 +316,10 @@ export async function deleteCalendarEntry(modelId: string, date: string): Promis
       .order('created_at', { ascending: true })
       .limit(1)
       .maybeSingle();
-    if (error) { console.error('deleteCalendarEntry select error:', error); return false; }
+    if (error) {
+      console.error('deleteCalendarEntry select error:', error);
+      return false;
+    }
     if (!data?.id) return true;
     return deleteCalendarEntryById(data.id);
   } catch (e) {
@@ -319,7 +332,7 @@ export async function updateCalendarEntryById(
   entryId: string,
   updates: Partial<
     Pick<CalendarEntry, 'date' | 'start_time' | 'end_time' | 'title' | 'note' | 'status'>
-  >
+  >,
 ): Promise<boolean> {
   if (!isUuid(entryId)) {
     console.error('updateCalendarEntryById: entryId must be a valid UUID');
@@ -367,7 +380,10 @@ export async function updateCalendarEntryToJob(optionRequestId: string): Promise
       .from('calendar_entries')
       .select('id, client_name')
       .eq('option_request_id', optionRequestId);
-    if (selErr) { console.error('updateCalendarEntryToJob select error:', selErr); return false; }
+    if (selErr) {
+      console.error('updateCalendarEntryToJob select error:', selErr);
+      return false;
+    }
     if (!rows?.length) return true;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const clientName = (rows[0] as any).client_name || 'Client';
@@ -377,7 +393,10 @@ export async function updateCalendarEntryToJob(optionRequestId: string): Promise
       .from('calendar_entries')
       .update({ entry_type: 'booking', status: 'booked', title: `Job – ${clientName}` })
       .in('id', ids);
-    if (updErr) { console.error('updateCalendarEntryToJob update error:', updErr); return false; }
+    if (updErr) {
+      console.error('updateCalendarEntryToJob update error:', updErr);
+      return false;
+    }
     return true;
   } catch (e) {
     console.error('updateCalendarEntryToJob exception:', e);
@@ -434,7 +453,8 @@ export async function getCalendarEntriesForClient(clientId: string): Promise<Cli
 
     return optionList.map((opt) => {
       const matching = entryList.filter((e) => e.option_request_id === opt.id);
-      const active = matching.find((e) => e.status !== 'cancelled') ?? matching[matching.length - 1] ?? null;
+      const active =
+        matching.find((e) => e.status !== 'cancelled') ?? matching[matching.length - 1] ?? null;
       return { option: opt, calendar_entry: active };
     });
   } catch (e) {
@@ -468,7 +488,8 @@ export async function getCalendarEntriesForAgency(agencyId: string): Promise<Age
 
     return optionList.map((opt) => {
       const matching = entryList.filter((e) => e.option_request_id === opt.id);
-      const active = matching.find((e) => e.status !== 'cancelled') ?? matching[matching.length - 1] ?? null;
+      const active =
+        matching.find((e) => e.status !== 'cancelled') ?? matching[matching.length - 1] ?? null;
       return { option: opt, calendar_entry: active };
     });
   } catch (e) {
@@ -488,7 +509,7 @@ export async function getCalendarEntriesForAgency(agencyId: string): Promise<Age
 export async function appendSharedBookingNote(
   optionRequestId: string,
   role: 'client' | 'agency' | 'model',
-  text: string
+  text: string,
 ): Promise<boolean> {
   const normalized = normalizeInput(text);
   if (!normalized) return false;
@@ -516,7 +537,12 @@ export async function appendSharedBookingNote(
       console.error('appendSharedBookingNote select error:', error);
       return false;
     }
-    const allRows = data as { id: string; booking_details: BookingDetails | null; updated_at: string; status: string }[];
+    const allRows = data as {
+      id: string;
+      booking_details: BookingDetails | null;
+      updated_at: string;
+      status: string;
+    }[];
     if (!allRows.length) return false;
 
     // Only write to the active (non-cancelled) canonical row.
@@ -544,7 +570,10 @@ export async function appendSharedBookingNote(
         console.error('appendSharedBookingNote update error:', updError);
         allUpdated = false;
       } else if (!updated?.id) {
-        console.warn('appendSharedBookingNote: optimistic lock miss — concurrent write detected, will retry', row.id);
+        console.warn(
+          'appendSharedBookingNote: optimistic lock miss — concurrent write detected, will retry',
+          row.id,
+        );
         allUpdated = false;
       }
     }
@@ -628,7 +657,7 @@ export async function getBookingEventsAsCalendarEntriesInRange(params: {
 export async function updateBookingDetails(
   optionRequestId: string,
   partialDetails: Partial<BookingDetails>,
-  _role: 'client' | 'agency' | 'model'
+  _role: 'client' | 'agency' | 'model',
 ): Promise<boolean> {
   // _role is informational; DB enforces UPDATE via RLS (agency, model-self, client scoped
   // on option_request_id — migration 20260502_calendar_entries_rls_canonical_client_update).
@@ -642,15 +671,24 @@ export async function updateBookingDetails(
     try {
       const { data, error } = await supabase
         .from('calendar_entries')
-        .select('id, booking_details, updated_at')
+        .select('id, booking_details, updated_at, status')
         .eq('option_request_id', optionRequestId);
       if (error) {
         console.error('updateBookingDetails select error:', error);
         return false;
       }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const rows = data as { id: string; booking_details: any; updated_at: string }[];
-      if (!rows.length) return true;
+      const allRows = data as {
+        id: string;
+        booking_details: any;
+        updated_at: string;
+        status: string;
+      }[];
+      if (!allRows.length) return true;
+
+      // Only write to active (non-cancelled) rows — same pattern as appendSharedBookingNote.
+      const activeRows = allRows.filter((r) => r.status !== 'cancelled');
+      const rows = activeRows.length > 0 ? activeRows : [allRows[allRows.length - 1]];
 
       let allUpdated = true;
       for (const row of rows) {
@@ -743,4 +781,3 @@ export async function checkCalendarConflict(
     return { has_conflict: false, conflicting_entries: [] };
   }
 }
-

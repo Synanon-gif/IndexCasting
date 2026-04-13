@@ -42,11 +42,15 @@ function nextStepFromSignals(
 
   // ─── Action-priority: this role must act (D2 action > D1 action) ───
   if (appr === 'waiting_for_agency_confirmation' && role === 'agency') return c.nextStepNegotiating;
-  if (appr === 'waiting_for_client_to_finalize_job' && role === 'client') return c.nextStepJobConfirm;
-  if (appr === 'waiting_for_agency_to_finalize_job' && role === 'agency') return c.nextStepJobConfirm;
+  if (appr === 'waiting_for_client_to_finalize_job' && role === 'client')
+    return c.nextStepJobConfirm;
+  if (appr === 'waiting_for_agency_to_finalize_job' && role === 'agency')
+    return c.nextStepJobConfirm;
 
   const agencyMustActOnPrice =
-    neg === 'waiting_for_agency_response' || neg === 'negotiation_open' || neg === 'counter_rejected';
+    neg === 'waiting_for_agency_response' ||
+    neg === 'negotiation_open' ||
+    neg === 'counter_rejected';
   if (role === 'agency' && agencyMustActOnPrice) return c.nextStepNegotiating;
   if (role === 'client' && neg === 'waiting_for_client_response') return c.nextStepNegotiating;
 
@@ -64,7 +68,11 @@ function nextStepFromSignals(
   if (neg === 'waiting_for_client_response') {
     return role === 'agency' ? c.nextStepAwaitingClient : c.nextStepNegotiating;
   }
-  if (neg === 'waiting_for_agency_response' || neg === 'negotiation_open' || neg === 'counter_rejected') {
+  if (
+    neg === 'waiting_for_agency_response' ||
+    neg === 'negotiation_open' ||
+    neg === 'counter_rejected'
+  ) {
     return role === 'client' ? c.nextStepAwaitingAgency : c.nextStepNegotiating;
   }
 
@@ -107,6 +115,7 @@ export function getCalendarDetailNextStepForModelLocalOption(
     agencyCounterPrice: opt.agencyCounterPrice ?? null,
     proposedPrice: opt.proposedPrice ?? null,
     hasConflictWarning,
+    isAgencyOnly: opt.isAgencyOnly ?? false,
   });
   return nextStepFromSignals(sig, 'model', c);
 }

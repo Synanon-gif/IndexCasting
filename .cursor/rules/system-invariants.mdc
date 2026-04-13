@@ -1141,3 +1141,90 @@ const hasAccount = request.modelAccountLinked ?? true;
 toDisplayStatus(status, finalStatus, { clientPriceStatus, agencyCounterPrice, proposedPrice })
 // → Model-Inbox: toDisplayStatus(status, finalStatus) — OHNE priceSignals
 ```
+
+---
+
+## OPTION/CASTING WORKFLOW HARDENING INVARIANTS (Deep Audit 2026-04-13)
+
+Diese Invarianten ergänzen die bestehenden Regeln. Bei Widerspruch gilt die **restriktivere** Anforderung.
+
+### L. INFLIGHT-GUARD FÜR ALLE KRITISCHEN OPTION-STORE-MUTATIONEN (unveränderlich)
+
+**JEDE** Store-Funktion die `option_requests` oder Preis-Felder mutiert MUSS den `beginCriticalOptionAction`/`endCriticalOptionAction` Guard verwenden.
+
+**Geschützt (vollständig):**
+- `approveOptionAsModel`, `rejectOptionAsModel` (Model-Aktionen)
+- `agencyConfirmAvailabilityStore` (Axis 2)
+- `agencyAcceptClientPriceStore`, `agencyCounterOfferStore`, `agencyRejectClientPriceStore` (Axis 1 — Agency)
+- `clientAcceptCounterStore`, `clientRejectCounterStore` (Axis 1 — Client)
+- `clientConfirmJobStore`, `agencyConfirmJobAgencyOnlyStore` (Terminal)
+
+**Verboten:**
+```typescript
+// ❌ NIEMALS: Preis-Aktion ohne Inflight-Guard
+export async function agencyAcceptClientPriceStore(threadId: string): Promise<boolean> {
+  const req = requestsCache.find((r) => r.threadId === threadId);
+  if (!req) return false;
+  const priceOk = await agencyAcceptClientPrice(req.id); // ← Race bei Doppelklick
+}
+
+// ✅ PFLICHT: Immer beginCriticalOptionAction/endCriticalOptionAction
+export async function agencyAcceptClientPriceStore(threadId: string): Promise<boolean> {
+  const req = requestsCache.find((r) => r.threadId === threadId);
+  if (!req) return false;
+  if (!beginCriticalOptionAction(threadId)) return false;
+  try { /* ... */ } finally { endCriticalOptionAction(threadId); }
+}
+```
+
+**Warum:** Ohne Guard → Doppelklick → doppelte System-Messages, doppelte Notifications, potenziell inkonsistenter Preisstatus.
+
+### M. CALENDAR JOB UPGRADE — RETRY-PFLICHT (unveränderlich)
+
+`updateCalendarEntryToJob` ist ein **separater Frontend-Call** nach dem Job-RPC. Wenn es fehlschlägt, driftet `calendar_entries` (noch `tentative`/`option`) von `option_requests.final_status` (`job_confirmed`).
+
+**Pflicht:** Jeder Aufrufer von `updateCalendarEntryToJob` MUSS bei Fehlschlag **einmal** nach kurzer Verzögerung (200ms) erneut versuchen und bei erneutem Fehlschlag einen `console.error` loggen.
+
+**Gilt für:** `clientConfirmJobStore`, `agencyConfirmJobAgencyOnlyStore`.
+
+```typescript
+// ✅ PFLICHT-Pattern:
+const calOk = await updateCalendarEntryToJob(req.id);
+if (!calOk) {
+  await new Promise((r) => setTimeout(r, 200));
+  const retryOk = await updateCalendarEntryToJob(req.id);
+  if (!retryOk) console.error('[...] calendar upgrade retry failed — entry may be stale');
+}
+```
+
+### N. updateBookingDetails — NUR AKTIVE ROWS (unveränderlich)
+
+`updateBookingDetails` MUSS gecancelte `calendar_entries` **ausfiltern** (gleich wie `appendSharedBookingNote`).
+
+**Pattern:**
+```typescript
+const activeRows = allRows.filter((r) => r.status !== 'cancelled');
+const rows = activeRows.length > 0 ? activeRows : [allRows[allRows.length - 1]];
+```
+
+**Verboten:** `SELECT ... WHERE option_request_id = X` ohne Status-Filter auf `calendar_entries` in Write-Funktionen.
+
+### O. isAgencyOnly IN ALLEN ATTENTION-PFADEN (unveränderlich)
+
+`isAgencyOnly` MUSS in **jedem** `attentionSignalsFromOptionRequestLike`-Aufruf gesetzt werden, wo die Option-Row `is_agency_only` trägt. Ohne dieses Flag behandelt die Attention-Pipeline Agency-only-Events als client-getriebene Requests → falsche Preis-Signale, falscher Job-Finalisierungs-Zustand.
+
+**Betroffene Funktionen (gefixt 2026-04-13):**
+- `getCalendarDetailNextStepForModelLocalOption` — fehlte `isAgencyOnly` → falscher Next-Step im Model-Kalender
+- `optionRequestNeedsMessagesTabAttention` — fehlte `isAgencyOnly` → fragile Tab-Dot-Architektur
+
+**Prüfpflicht:** Jeder neue Aufruf von `attentionSignalsFromOptionRequestLike` MUSS `isAgencyOnly: r.isAgencyOnly ?? false` enthalten. Fehlt es → STOP.
+
+### P. KALENDER-BADGE/GRID — AGENCY-ONLY JOB PENDING (unveränderlich)
+
+`getCalendarProjectionBadge` und `calendarGridColorForOptionItem` MÜSSEN **beide** Job-Finalisierungs-Zustände behandeln:
+- `waiting_for_client_to_finalize_job` (Client-driven)
+- `waiting_for_agency_to_finalize_job` (Agency-only)
+
+Ohne den Agency-only-Branch fällt die Logik auf `optionNegotiating` (blau) statt `awaitingClientJob`-äquivalent (braun) → **Badge ↔ Thread-Header Inkonsistenz**.
+
+**Gefixt (2026-04-13):** Beide Funktionen behandeln jetzt `waiting_for_agency_to_finalize_job` mit derselben Badge/Farbe wie `waiting_for_client_to_finalize_job`.
