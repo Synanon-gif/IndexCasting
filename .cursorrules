@@ -644,7 +644,7 @@ Ergänzt und schärft die obigen Regeln **ohne** sie zu ersetzen. Bei Widerspruc
 
 ### 27.10 Änderungs-Guardrail (Pflicht-Check bei Touch)
 
-Bei Änderungen an **Discovery**, **Invite-/Claim-Flows**, **Storage/Fotos**, **Filtern**, **RLS/Policies** immer prüfen: **Verletzt das §27.1–27.9?**
+Bei Änderungen an **Discovery**, **Territory-/Near-Me-Routing** (§27.15), **Invite-/Claim-Flows**, **Storage/Fotos**, **Filtern**, **RLS/Policies** immer prüfen: **Verletzt das §27.1–27.9** bzw. bei Routing **§27.15?**
 
 - Wenn **ja** → Änderung **stoppen** oder **explizit** als bewusste Ausnahme mit Begründung und Risiko dokumentieren (kein stiller Verstoß).
 
@@ -680,6 +680,30 @@ Bei Änderungen an **Discovery**, **Invite-/Claim-Flows**, **Storage/Fotos**, **
 - **RPC calls:** Any RPC or service path that touches **`client_projects`** or **`client_project_models`** SHOULD pass an **explicit `organization_id`** when the API supports it (e.g. `p_organization_id` / `clientOrgId` from `profile.organization_id` or the active team).
 - **Implicit org resolution** inside the RPC (e.g. `LIMIT 1` on membership) is allowed only as a **fallback** when the caller truly cannot supply org context — not as the preferred default.
 - **Goal:** **deterministic org binding** for users who belong to multiple organizations.
+
+### 27.15 Territory routing, Discovery, Near Me & client option requests (2026 — NIEMALS regressieren)
+
+**Single source of truth for “which agency represents this model in which country”:** `public.model_agency_territories` (MAT). **`UNIQUE(model_id, country_code)`** — at most one agency per territory. Do **not** use `model_assignments` for client option-request agency resolution; `resolveAgencyForModelAndCountry` in `territoriesSupabase.ts` MUST query MAT only.
+
+**Ranked client discovery (`get_discovery_models`):** Joins MAT with **`mat.country_code = p_iso`**. Without a MAT row for the selected ISO, the model does **not** appear in that country’s discovery set. Do not replace with a broad query that bypasses MAT without explicit product/security review.
+
+**Near Me (`get_models_near_location`):**
+- MUST dedupe MAT per model (e.g. `first_territory` CTE with `DISTINCT ON (model_id)`). Never LEFT JOIN raw MAT without dedupe — duplicates rows and breaks LIMIT/pagination (see `system-invariants.mdc` **### U** / **### Y**).
+- Prefer the MAT row whose `country_code` matches the resolved physical **`location_country_code`** (from `model_locations`); fallback: deterministic tie-break (e.g. alphabetical `country_code`).
+- MUST apply the same **visibility** guard as discovery where intended (e.g. `is_visible_fashion OR is_visible_commercial`) — Near Me is not a backdoor for non-discoverable models unless product explicitly allows.
+- **Near Me does not replace territory context for routing:** it may refine **which cards** appear; **`countryCode` passed into `addOptionRequest`** must remain coherent (see mapper rule below).
+
+**Client Web — Near Me `ModelSummary` mapping (`ClientWebApp.tsx` nearby list):**  
+`countryCode` SHOULD be **`location_country_code ?? territory_country_code`** so routing always has a country when either physical location or territory is known. **`agencyId`** SHOULD be **`territory_agency_id ?? agency_id`**. Do not drop territory fallback when `location_country_code` is null.
+
+**`addOptionRequest` (client option/casting) — mandatory behaviour:**
+1. If the user supplies a **country** (filter or card) and **`resolveAgencyForModelAndCountry`** returns an agency → set **`countryCodeUsedForBooking`** to that country and call **`resolve_agency_organization_id_for_option_request`** with it — MAT + org validation path.
+2. If MAT lookup returns **null** for that country (e.g. model physically in FR but only represented in GB) → **fallback** to **`models.agency_id`** and set **`countryCodeUsedForBooking = null`**. The RPC then validates via the **no-country** branch (`models.agency_id = p_agency_id`). This avoids **false-positive blocks** when physical location and sole MAT territory disagree.
+3. **Fail-closed block** (alert + rollback optimistic cache) only when **`countryCodeUsedForBooking` is set** (MAT confirmed routing country) **and** **`agencyId` is set** **and** **`resolve_agency_organization_id_for_option_request` returns null** — indicates inconsistent DB (MAT/org mismatch), not a silent wrong route.
+
+**RPC `resolve_agency_organization_id_for_option_request`:** With non-empty `p_country_code`, requires a MAT row for `(model_id, agency_id, country)`; with empty/null country, requires `models.agency_id = p_agency_id`. Do not weaken without security review.
+
+**Regression checklist** before changing any of the above: ranked discovery + Near Me + swipe + package option entry + `addOptionRequest` + MAT-less legacy models (warn log + home-agency fallback). **English-only** user-facing copy stays in `uiCopy` (`noTerritoryForCountry`, `missingCountryCode`, etc.).
 
 ---
 
