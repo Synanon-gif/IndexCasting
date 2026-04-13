@@ -244,6 +244,27 @@ export const uiCopy = {
     selectedDayPrefix: 'Day:',
     /** No events on the picked day (quick list). */
     noEntriesThisDay: 'No entries on this day.',
+    /** Agency — “Add event” opens this menu first; then the detailed form (models, date, …). */
+    agencyAddEventMenuTitle: 'Add to calendar',
+    agencyAddEventMenuSubtitle:
+      'Create an option or casting with models from your roster, or add a private agency-only block.',
+    addOptionEvent: 'Add option',
+    addCastingEvent: 'Add casting',
+    addPrivateCalendarEvent: 'Private event',
+    /** Shown above quick-add chips on agency calendar (mobile + desktop). */
+    agencyQuickAddHint: 'Create',
+    /** Primary control in the calendar header — opens the add menu. */
+    addEventOpenMenu: '+ Add event',
+    /** Form section — event category (same choices as the add menu). */
+    agencyEventTypeLabel: 'Event type',
+    /** Short label for private block (distinct from “Private event” in the add menu). */
+    agencyEventTypePrivateShort: 'Private',
+    agencySelectModelsLabel: 'Select models',
+    agencyModelsSelected: (n: number) =>
+      `${n} model${n === 1 ? '' : 's'} selected`,
+    agencyAddingEvent: 'Adding…',
+    agencyAddEventFormTitle: 'Add event',
+    agencyAddEventSubmit: 'Add',
     /** Month/list badges — calendar projection (existing DB fields only). */
     projectionBadge: {
       rejected: 'Rejected',
@@ -535,14 +556,17 @@ export const uiCopy = {
       'Matches your account name (profile) and cannot be changed here. Two words = first and last name; one word = first name only.',
   },
   model: {
-    agencyLabel: 'Agency',
+    /** Avoid as visible title — prefer organization name; last resort only. */
+    agencyLabel: 'Chat partner',
     chatsSubtitle: 'Chats with agencies that responded to your application.',
     noAgencyMessages: 'No messages from agencies yet.',
     openChat: 'Open chat',
     applicationDefaultsSubtitle: 'Default details for your applications.',
     noApplicationsYet: 'No applications yet. Create an application first to edit defaults.',
-    agencyChatSectionLabel: 'Agency chat',
-    agencyChatSectionSubtitle: 'Direct chat with your agency',
+    agencyChatSectionLabel: 'Organization chat',
+    agencyChatSectionSubtitle: 'Direct chat with your representation',
+    /** Small label above recruiting thread title in chat list (not the org name). */
+    recruitingChatRowKicker: 'Recruiting',
     directMessagesSectionLabel: 'Direct messages',
     directMessagesSectionSubtitle: 'Messages sent directly by your agency',
     composerPlaceholder: 'Message…',
@@ -644,8 +668,10 @@ export const uiCopy = {
     clientWorkspaceLoading: 'Loading workspace…',
     /** Last resort when org name cannot be resolved (network/RPC missing); never use as primary label */
     chatPartnerFallback: 'Chat partner',
-    agencyFallback: 'Agency',
-    clientFallback: 'Client',
+    /** @deprecated Prefer chatPartnerFallback — never use as a visible org title. */
+    agencyFallback: 'Chat partner',
+    /** @deprecated Prefer chatPartnerFallback */
+    clientFallback: 'Chat partner',
     openConversation: 'Open chat',
     /** Accessibility label for blue unread dot on B2B thread rows */
     unreadMessagesIndicatorA11y: 'Unread messages',
@@ -1169,7 +1195,7 @@ export const uiCopy = {
     submitRequestAgencyFallback: 'the agency',
     packageTypePolaroidLabel: 'Polaroid Package',
     packageTypePortfolioLabel: 'Portfolio Package',
-    browseHeaderAgencyFallback: 'Agency',
+    browseHeaderAgencyFallback: 'Organization',
     modelsCountInHeader: '{count} models',
     sexFemale: 'Female',
     sexMale: 'Male',
@@ -1185,7 +1211,7 @@ export const uiCopy = {
       'Create a free client account to unlock model discovery, projects, and team management.',
     selectedModels: 'Selected models',
     noModelsSelected: 'No models selected.',
-    agencyLabel: 'Agency',
+    agencyLabel: 'Chat partner',
     guestClientLabel: 'Guest Client',
     loadingChat: 'Loading chat…',
     chatError: 'Could not load chat. Please try again.',

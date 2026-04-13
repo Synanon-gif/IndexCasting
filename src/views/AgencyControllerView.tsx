@@ -324,6 +324,8 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   const [selectedCalendarItem, setSelectedCalendarItem] = useState<AgencyCalendarItem | null>(null);
   const [selectedManualEvent, setSelectedManualEvent] = useState<UserCalendarEvent | null>(null);
   const [showAddManualEvent, setShowAddManualEvent] = useState(false);
+  /** First step: choose option / casting / private before the full add-event form. */
+  const [showAgencyAddEventMenu, setShowAgencyAddEventMenu] = useState(false);
   const [newEventForm, setNewEventForm] = useState({
     date: '',
     start_time: '09:00',
@@ -448,6 +450,16 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
     if (tab !== 'messages' || !currentAgencyId) return;
     void loadOptionRequestsForAgency(currentAgencyId, agencyOrganizationId);
   }, [tab, currentAgencyId, agencyOrganizationId]);
+
+  const startAgencyCalendarEvent = useCallback((kind: 'option' | 'casting' | 'private') => {
+    setShowAgencyAddEventMenu(false);
+    setNewEventForm((f) => ({
+      ...f,
+      eventCategory: kind,
+      selectedModelIds: kind === 'private' ? [] : f.selectedModelIds,
+    }));
+    setShowAddManualEvent(true);
+  }, []);
 
   const loadAgencyTeam = async () => {
     if (!currentAgencyId) return;
@@ -632,6 +644,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         setSelectedCalendarItem(null);
         setSelectedManualEvent(null);
         setShowAddManualEvent(false);
+        setShowAgencyAddEventMenu(false);
         setAgencyNotesDraft('');
         setAgencySharedNoteDraft('');
         break;
@@ -813,7 +826,8 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
               `${uiCopy.calendar.date}: ${be.date}\n${uiCopy.calendar.status}: ${be.status ?? '—'}${be.entry_type ? `\nType: ${be.entry_type}` : ''}\n\n${uiCopy.calendar.bookingEntryDetailFallback}`,
             );
           }}
-          onAddEvent={() => setShowAddManualEvent(true)}
+          onAddEvent={() => setShowAgencyAddEventMenu(true)}
+          onQuickAdd={startAgencyCalendarEvent}
         />
       )}
 
@@ -1383,15 +1397,73 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         </View>
       )}
 
+      {showAgencyAddEventMenu && (
+        <View
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              backgroundColor: 'rgba(0,0,0,0.08)',
+              justifyContent: 'center',
+              alignItems: 'center',
+              padding: agencyIsMobile ? spacing.xs : spacing.lg,
+              zIndex: 50,
+            },
+          ]}
+        >
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setShowAgencyAddEventMenu(false)}
+          />
+          <View
+            style={{
+              width: '100%',
+              maxWidth: 400,
+              borderRadius: 18,
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: colors.surface,
+              padding: agencyIsMobile ? spacing.md : spacing.lg,
+            }}
+          >
+            <Text style={s.sectionLabel}>{uiCopy.calendar.agencyAddEventMenuTitle}</Text>
+            <Text style={{ ...typography.body, fontSize: 13, color: colors.textSecondary, marginBottom: spacing.md }}>
+              {uiCopy.calendar.agencyAddEventMenuSubtitle}
+            </Text>
+            {(
+              [
+                { kind: 'option' as const, label: uiCopy.calendar.addOptionEvent },
+                { kind: 'casting' as const, label: uiCopy.calendar.addCastingEvent },
+                { kind: 'private' as const, label: uiCopy.calendar.addPrivateCalendarEvent },
+              ]
+            ).map(({ kind, label }) => (
+              <TouchableOpacity
+                key={kind}
+                onPress={() => startAgencyCalendarEvent(kind)}
+                style={[s.filterPill, { marginBottom: spacing.sm, alignSelf: 'stretch', paddingVertical: spacing.sm }]}
+              >
+                <Text style={[s.filterPillLabel, { fontSize: 15 }]}>{label}</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity
+              style={[s.filterPill, { alignSelf: 'stretch', marginTop: spacing.xs }]}
+              onPress={() => setShowAgencyAddEventMenu(false)}
+            >
+              <Text style={s.filterPillLabel}>{uiCopy.common.cancel}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
       {showAddManualEvent && (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.08)', justifyContent: 'center', alignItems: 'center', padding: agencyIsMobile ? spacing.xs : spacing.lg }]}>
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.08)', justifyContent: 'center', alignItems: 'center', padding: agencyIsMobile ? spacing.xs : spacing.lg, zIndex: 51 }]}>
           <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setShowAddManualEvent(false)} />
           <View style={{ width: '100%', maxWidth: 440, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, padding: agencyIsMobile ? spacing.md : spacing.lg, maxHeight: '90%' }}>
             <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-            <Text style={s.sectionLabel}>Add event</Text>
+            <Text style={s.sectionLabel}>{uiCopy.calendar.agencyAddEventFormTitle}</Text>
 
             {/* Event type pills */}
-            <Text style={{ ...typography.label, marginBottom: 4 }}>Event type</Text>
+            <Text style={{ ...typography.label, marginBottom: 4 }}>{uiCopy.calendar.agencyEventTypeLabel}</Text>
             <View style={{ flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.sm }}>
               {(['option', 'casting', 'private'] as const).map((et) => (
                 <TouchableOpacity
@@ -1400,7 +1472,11 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                   style={[s.filterPill, newEventForm.eventCategory === et && { backgroundColor: colors.accent }]}
                 >
                   <Text style={[s.filterPillLabel, newEventForm.eventCategory === et && { color: '#fff' }]}>
-                    {et === 'option' ? 'Option' : et === 'casting' ? 'Casting' : 'Private'}
+                    {et === 'option'
+                      ? uiCopy.calendar.typeFilterOption
+                      : et === 'casting'
+                        ? uiCopy.calendar.typeFilterCasting
+                        : uiCopy.calendar.agencyEventTypePrivateShort}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -1411,7 +1487,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
             {/* Model picker for Option / Casting */}
             {newEventForm.eventCategory !== 'private' && (
               <>
-                <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>Select models</Text>
+                <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>{uiCopy.calendar.agencySelectModelsLabel}</Text>
                 <ScrollView style={{ maxHeight: 150 }} nestedScrollEnabled showsVerticalScrollIndicator>
                   {fullModels.map((m) => {
                     const sel = newEventForm.selectedModelIds.includes(m.id);
@@ -1436,7 +1512,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                 </ScrollView>
                 {newEventForm.selectedModelIds.length > 0 && (
                   <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary, marginTop: 4 }}>
-                    {newEventForm.selectedModelIds.length} model{newEventForm.selectedModelIds.length !== 1 ? 's' : ''} selected
+                    {uiCopy.calendar.agencyModelsSelected(newEventForm.selectedModelIds.length)}
                   </Text>
                 )}
               </>
@@ -1474,7 +1550,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
             )}
             <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg }}>
               <TouchableOpacity style={[s.filterPill, { flex: 1 }]} onPress={() => setShowAddManualEvent(false)}>
-                <Text style={s.filterPillLabel}>Cancel</Text>
+                <Text style={s.filterPillLabel}>{uiCopy.common.cancel}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[s.saveBtn, { flex: 1 }]}
@@ -1571,7 +1647,9 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                   }
                 }}
               >
-                <Text style={s.saveBtnLabel}>{savingManualEvent ? 'Adding…' : 'Add'}</Text>
+                <Text style={s.saveBtnLabel}>
+                  {savingManualEvent ? uiCopy.calendar.agencyAddingEvent : uiCopy.calendar.agencyAddEventSubmit}
+                </Text>
               </TouchableOpacity>
             </View>
             </ScrollView>
@@ -1825,7 +1903,10 @@ type AgencyCalendarTabProps = {
   onOpenDetails: (item: AgencyCalendarItem) => void;
   onOpenManualEvent: (ev: UserCalendarEvent) => void;
   onOpenBookingEntry?: (entry: CalendarEntry) => void;
+  /** Opens the add-event type menu (+ Add event). */
   onAddEvent: () => void;
+  /** Skip menu — open the full form for option / casting / private (quick-add chips). */
+  onQuickAdd: (kind: 'option' | 'casting' | 'private') => void;
 };
 
 const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
@@ -1843,6 +1924,7 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
   onOpenManualEvent,
   onOpenBookingEntry,
   onAddEvent,
+  onQuickAdd,
 }) => {
   const [modelQuery, setModelQuery] = useState('');
   const [fromDate, setFromDate] = useState('');
@@ -1936,27 +2018,54 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
     if (onOpenBookingEntry) onOpenBookingEntry(row.entry);
   };
 
+  const quickAddPill = (kind: 'option' | 'casting' | 'private', label: string) => (
+    <TouchableOpacity
+      key={kind}
+      onPress={() => onQuickAdd(kind)}
+      style={[s.filterPill, { flexShrink: 0 }]}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <Text style={s.filterPillLabel}>{label}</Text>
+    </TouchableOpacity>
+  );
+
   return (
     <ScreenScrollView>
       <View
         style={{
           flexDirection: 'row',
+          flexWrap: 'wrap',
           justifyContent: 'space-between',
           alignItems: 'center',
+          gap: spacing.sm,
           marginBottom: spacing.sm,
         }}
       >
-        <Text style={s.sectionLabel}>Calendar</Text>
-        <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-          <TouchableOpacity style={s.filterPill} onPress={onAddEvent}>
-            <Text style={s.filterPillLabel}>+ Add event</Text>
+        <Text style={[s.sectionLabel, { flexShrink: 0 }]}>Calendar</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, justifyContent: 'flex-end', flex: 1, minWidth: 0 }}>
+          <TouchableOpacity style={s.filterPill} onPress={onAddEvent} accessibilityRole="button" accessibilityLabel={uiCopy.calendar.addEventOpenMenu}>
+            <Text style={s.filterPillLabel}>{uiCopy.calendar.addEventOpenMenu}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={s.filterPill} onPress={onRefresh}>
             <Text style={s.filterPillLabel}>
-              {loading ? 'Loading…' : 'Refresh'}
+              {loading ? uiCopy.common.loading : 'Refresh'}
             </Text>
           </TouchableOpacity>
         </View>
+      </View>
+
+      <View style={{ marginBottom: spacing.md }}>
+        <Text style={[s.metaText, { marginBottom: spacing.xs }]}>{uiCopy.calendar.agencyQuickAddHint}</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ flexDirection: 'row', gap: spacing.xs, alignItems: 'center', paddingVertical: 2 }}
+        >
+          {quickAddPill('option', uiCopy.calendar.addOptionEvent)}
+          {quickAddPill('casting', uiCopy.calendar.addCastingEvent)}
+          {quickAddPill('private', uiCopy.calendar.addPrivateCalendarEvent)}
+        </ScrollView>
       </View>
 
       <View
