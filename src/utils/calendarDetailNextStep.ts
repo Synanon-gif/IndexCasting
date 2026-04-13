@@ -96,6 +96,7 @@ export function getCalendarDetailNextStepText(
     proposedPrice: option.proposed_price,
     hasConflictWarning,
     isAgencyOnly: option.is_agency_only ?? false,
+    requestType: option.request_type ?? null,
   });
   return nextStepFromSignals(sig, role, c);
 }
@@ -116,6 +117,7 @@ export function getCalendarDetailNextStepForModelLocalOption(
     proposedPrice: opt.proposedPrice ?? null,
     hasConflictWarning,
     isAgencyOnly: opt.isAgencyOnly ?? false,
+    requestType: opt.requestType ?? null,
   });
   return nextStepFromSignals(sig, 'model', c);
 }

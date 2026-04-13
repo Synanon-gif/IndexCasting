@@ -652,7 +652,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     const ok = await modelConfirmOptionRequest(id);
     setConfirmingBookingId(null);
     if (ok && profile) {
-      await refreshOptionRequestInCache(id);
+      await refreshOptionRequestInCache(id, { modelSafe: true });
       await loadPendingConfirmations(profile.id);
       await loadCalendar(profile.id);
     } else if (!ok) {
@@ -668,9 +668,14 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     const ok = await modelRejectOptionRequest(id);
     setRejectingBookingId(null);
     if (ok && profile) {
-      await refreshOptionRequestInCache(id);
+      await refreshOptionRequestInCache(id, { modelSafe: true });
       await loadPendingConfirmations(profile.id);
       await loadCalendar(profile.id);
+    } else if (!ok) {
+      Alert.alert(
+        uiCopy.common.error ?? 'Error',
+        'Could not decline the request. Please try again later.',
+      );
     }
   };
 
@@ -713,7 +718,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     if (!req) return;
     const unsub = subscribeToOptionMessages(req.id, () => {
       loadMessagesForThread(selectedOptionThread!, { viewerRole: 'model' });
-      refreshOptionRequestInCache(selectedOptionThread!);
+      refreshOptionRequestInCache(selectedOptionThread!, { modelSafe: true });
     });
     return unsub;
   }, [selectedOptionThread]);

@@ -397,6 +397,13 @@ export async function updateCalendarEntryToJob(optionRequestId: string): Promise
       console.error('updateCalendarEntryToJob update error:', updErr);
       return false;
     }
+    const { error: uceErr } = await supabase
+      .from('user_calendar_events')
+      .update({ title: `Job – ${clientName}`, color: '#2E7D32' })
+      .eq('source_option_request_id', optionRequestId);
+    if (uceErr) {
+      console.warn('updateCalendarEntryToJob user_calendar_events update error:', uceErr);
+    }
     return true;
   } catch (e) {
     console.error('updateCalendarEntryToJob exception:', e);
@@ -677,7 +684,7 @@ export async function updateBookingDetails(
         console.error('updateBookingDetails select error:', error);
         return false;
       }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       const allRows = data as {
         id: string;
         booking_details: any;

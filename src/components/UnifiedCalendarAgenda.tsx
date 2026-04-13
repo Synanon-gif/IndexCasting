@@ -108,7 +108,11 @@ export const UnifiedCalendarAgenda: React.FC<UnifiedCalendarAgendaProps> = ({
         <View style={styles.header}>
           <TouchableOpacity
             onPress={() =>
-              setCalendarMonth((m) => (m.month === 0 ? { year: m.year - 1, month: 11 } : { year: m.year, month: m.month - 1 }))
+              setCalendarMonth((m) =>
+                m.month === 0
+                  ? { year: m.year - 1, month: 11 }
+                  : { year: m.year, month: m.month - 1 },
+              )
             }
             hitSlop={12}
             style={styles.navBtn}
@@ -120,7 +124,11 @@ export const UnifiedCalendarAgenda: React.FC<UnifiedCalendarAgendaProps> = ({
           </Text>
           <TouchableOpacity
             onPress={() =>
-              setCalendarMonth((m) => (m.month === 11 ? { year: m.year + 1, month: 0 } : { year: m.year, month: m.month + 1 }))
+              setCalendarMonth((m) =>
+                m.month === 11
+                  ? { year: m.year + 1, month: 0 }
+                  : { year: m.year, month: m.month + 1 },
+              )
             }
             hitSlop={12}
             style={styles.navBtn}
@@ -150,7 +158,12 @@ export const UnifiedCalendarAgenda: React.FC<UnifiedCalendarAgendaProps> = ({
                 if (row.kind === 'manual') {
                   const ev = row.ev;
                   return (
-                    <TouchableOpacity key={row.id} style={styles.card} onPress={() => onOpenUnifiedRow(row)} activeOpacity={0.75}>
+                    <TouchableOpacity
+                      key={row.id}
+                      style={styles.card}
+                      onPress={() => onOpenUnifiedRow(row)}
+                      activeOpacity={0.75}
+                    >
                       <View style={styles.cardTop}>
                         <Text style={styles.cardTitle}>{ev.title}</Text>
                         <View style={[styles.dot, { backgroundColor: ev.color || '#888' }]} />
@@ -166,7 +179,12 @@ export const UnifiedCalendarAgenda: React.FC<UnifiedCalendarAgendaProps> = ({
                 if (row.kind === 'booking') {
                   const be = row.entry;
                   return (
-                    <TouchableOpacity key={row.id} style={styles.card} onPress={() => onOpenUnifiedRow(row)} activeOpacity={0.75}>
+                    <TouchableOpacity
+                      key={row.id}
+                      style={styles.card}
+                      onPress={() => onOpenUnifiedRow(row)}
+                      activeOpacity={0.75}
+                    >
                       <View style={styles.cardRow}>
                         <View style={styles.cardBody}>
                           <Text style={styles.cardTitle}>
@@ -194,9 +212,11 @@ export const UnifiedCalendarAgenda: React.FC<UnifiedCalendarAgendaProps> = ({
                   proposedPrice: option.proposed_price,
                   hasConflictWarning: false,
                   isAgencyOnly: option.is_agency_only ?? false,
+                  requestType: option.request_type ?? null,
                 });
                 const clientAttention =
-                  viewerRole === 'client' && attentionHeaderLabelFromSignals(calSig, 'client') !== null;
+                  viewerRole === 'client' &&
+                  attentionHeaderLabelFromSignals(calSig, 'client') !== null;
                 return (
                   <TouchableOpacity
                     key={option.id}
@@ -208,7 +228,10 @@ export const UnifiedCalendarAgenda: React.FC<UnifiedCalendarAgendaProps> = ({
                       <View style={styles.cardBody}>
                         <View style={styles.titleRow}>
                           {clientAttention ? (
-                            <View style={styles.attentionDot} accessibilityLabel={uiCopy.calendar.actionRequiredA11y} />
+                            <View
+                              style={styles.attentionDot}
+                              accessibilityLabel={uiCopy.calendar.actionRequiredA11y}
+                            />
                           ) : null}
                           <View style={{ flex: 1 }}>
                             <Text style={styles.cardTitle}>
@@ -225,7 +248,8 @@ export const UnifiedCalendarAgenda: React.FC<UnifiedCalendarAgendaProps> = ({
                             assignmentByClientOrgId[option.client_organization_id] ? (
                               <Text style={styles.cardMeta}>
                                 {assignmentByClientOrgId[option.client_organization_id].label}
-                                {assignmentByClientOrgId[option.client_organization_id].assignedMemberName
+                                {assignmentByClientOrgId[option.client_organization_id]
+                                  .assignedMemberName
                                   ? ` · ${assignmentByClientOrgId[option.client_organization_id].assignedMemberName}`
                                   : ''}
                               </Text>
@@ -235,7 +259,8 @@ export const UnifiedCalendarAgenda: React.FC<UnifiedCalendarAgendaProps> = ({
                             assignmentByClientOrgId[option.client_organization_id] ? (
                               <Text style={styles.cardMeta}>
                                 {assignmentByClientOrgId[option.client_organization_id].label}
-                                {assignmentByClientOrgId[option.client_organization_id].assignedMemberName
+                                {assignmentByClientOrgId[option.client_organization_id]
+                                  .assignedMemberName
                                   ? ` · ${assignmentByClientOrgId[option.client_organization_id].assignedMemberName}`
                                   : ''}
                               </Text>
@@ -244,9 +269,12 @@ export const UnifiedCalendarAgenda: React.FC<UnifiedCalendarAgendaProps> = ({
                         </View>
                         {calendar_entry?.booking_details && viewerRole === 'client' && (
                           <Text style={styles.notePreview} numberOfLines={2}>
-                            {(calendar_entry.booking_details as { client_notes?: string }).client_notes ??
-                              (calendar_entry.booking_details as { agency_notes?: string }).agency_notes ??
-                              (calendar_entry.booking_details as { model_notes?: string }).model_notes ??
+                            {(calendar_entry.booking_details as { client_notes?: string })
+                              .client_notes ??
+                              (calendar_entry.booking_details as { agency_notes?: string })
+                                .agency_notes ??
+                              (calendar_entry.booking_details as { model_notes?: string })
+                                .model_notes ??
                               ''}
                           </Text>
                         )}
@@ -314,8 +342,18 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     backgroundColor: '#fff',
   },
-  cardRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.sm },
-  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  cardRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  cardTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
   cardTitle: { ...typography.body, fontSize: 14, fontWeight: '600', color: colors.textPrimary },
   cardMeta: { ...typography.body, fontSize: 12, color: colors.textSecondary, marginTop: 2 },
   cardBody: { flex: 1 },

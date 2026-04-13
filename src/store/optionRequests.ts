@@ -8,6 +8,7 @@
 import { formatParenTimeRange } from '../utils/formatTimeForUi';
 import {
   getOptionRequestById,
+  getOptionRequestByIdModelSafe,
   insertOptionRequest,
   resolveAgencyOrganizationIdForOptionRequest,
   modelConfirmOptionRequest,
@@ -750,10 +751,14 @@ export async function loadOlderMessagesForThread(
   return newMessages.length;
 }
 
-export async function refreshOptionRequestInCache(threadId: string): Promise<void> {
+export async function refreshOptionRequestInCache(
+  threadId: string,
+  opts?: { modelSafe?: boolean },
+): Promise<void> {
   const req = requestsCache.find((r) => r.threadId === threadId);
   if (!req) return;
-  const updated = await getOptionRequestById(req.id);
+  const fetcher = opts?.modelSafe ? getOptionRequestByIdModelSafe : getOptionRequestById;
+  const updated = await fetcher(req.id);
   if (updated) {
     const idx = requestsCache.findIndex((r) => r.threadId === threadId);
     if (idx >= 0) requestsCache[idx] = toLocalRequest(updated);
@@ -1144,13 +1149,18 @@ export async function clientRejectCounterStore(threadId: string): Promise<boolea
 export async function agencyRejectNegotiationStore(threadId: string): Promise<boolean> {
   const req = requestsCache.find((r) => r.threadId === threadId);
   if (!req) return false;
-  const ok = await deleteOptionRequestFull(req.id, {
-    auditActor: 'agency',
-    auditOrganizationId: req.agencyOrganizationId,
-  });
-  if (!ok) return false;
-  purgeOptionThreadFromStore(threadId);
-  return true;
+  if (!beginCriticalOptionAction(threadId)) return false;
+  try {
+    const ok = await deleteOptionRequestFull(req.id, {
+      auditActor: 'agency',
+      auditOrganizationId: req.agencyOrganizationId,
+    });
+    if (!ok) return false;
+    purgeOptionThreadFromStore(threadId);
+    return true;
+  } finally {
+    endCriticalOptionAction(threadId);
+  }
 }
 
 // ---------------------------------------------------------------------------

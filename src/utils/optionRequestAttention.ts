@@ -49,6 +49,8 @@ export type AttentionSignalInput = {
   proposedPrice?: number | null;
   /** Agency-only manual event: job confirmation is agency responsibility, not client. */
   isAgencyOnly?: boolean;
+  /** 'option' | 'casting' — castings cannot become jobs. */
+  requestType?: string | null;
 };
 
 /**
@@ -66,7 +68,9 @@ export function deriveNegotiationAttention(input: AttentionSignalInput): Negotia
   if (input.finalStatus === 'job_confirmed' || input.status === 'rejected') {
     return 'negotiation_terminal';
   }
-  // Align D1 "deal closed" with footer lock — not raw `client_price_status` alone.
+  if (input.isAgencyOnly === true) {
+    return 'price_agreed';
+  }
   if (priceCommerciallySettledForUi(input)) {
     return 'price_agreed';
   }
@@ -126,13 +130,13 @@ export function deriveApprovalAttention(input: AttentionSignalInput): ApprovalAt
   const priceSettled = isAgencyOnly || priceCommerciallySettledForUi(input);
 
   if (agencyConfirmed) {
-    const jobFinalizeState: ApprovalAttentionState = isAgencyOnly
-      ? 'waiting_for_agency_to_finalize_job'
-      : 'waiting_for_client_to_finalize_job';
+    const isCasting = input.requestType === 'casting';
+    const jobFinalizeState: ApprovalAttentionState = isCasting
+      ? 'fully_cleared'
+      : isAgencyOnly
+        ? 'waiting_for_agency_to_finalize_job'
+        : 'waiting_for_client_to_finalize_job';
 
-    // Defense-in-depth: if status is already 'confirmed' (fully settled),
-    // model approval cannot be retroactively required regardless of current
-    // model_approval field value. The lifecycle is terminal.
     if (input.status === 'confirmed') {
       return priceSettled ? jobFinalizeState : 'fully_cleared';
     }
@@ -352,6 +356,7 @@ export function attentionSignalsFromOptionRequestLike(r: {
   proposedPrice?: number | null;
   hasConflictWarning?: boolean;
   isAgencyOnly?: boolean;
+  requestType?: string | null;
 }): AttentionSignalInput {
   return {
     status: r.status,
@@ -363,6 +368,7 @@ export function attentionSignalsFromOptionRequestLike(r: {
     proposedPrice: r.proposedPrice ?? null,
     hasConflictWarning: r.hasConflictWarning ?? false,
     isAgencyOnly: r.isAgencyOnly ?? false,
+    requestType: r.requestType ?? null,
   };
 }
 

@@ -103,6 +103,7 @@ export function needsAgencyActionForOption(item: AgencyCalendarItem): boolean {
     proposedPrice: opt.proposed_price,
     hasConflictWarning: false,
     isAgencyOnly: opt.is_agency_only ?? false,
+    requestType: opt.request_type ?? null,
   });
   return attentionHeaderLabelFromSignals(sig, 'agency') !== null;
 }
@@ -123,12 +124,10 @@ export function buildUnifiedAgencyCalendarRows(
   assignmentByClientOrgId: Record<string, ClientAssignmentFlag>,
   itemByOptionId: Map<string, AgencyCalendarItem>,
 ): UnifiedAgencyCalendarRow[] {
-  const coveredOptionIds = new Set<string>(
-    [
-      ...items.map((i) => i.calendar_entry?.option_request_id).filter(Boolean) as string[],
-      ...items.map((i) => i.option?.id).filter(Boolean) as string[],
-    ],
-  );
+  const coveredOptionIds = new Set<string>([
+    ...(items.map((i) => i.calendar_entry?.option_request_id).filter(Boolean) as string[]),
+    ...(items.map((i) => i.option?.id).filter(Boolean) as string[]),
+  ]);
 
   const optionRows: UnifiedAgencyCalendarRow[] = items.map((item) => {
     const date = item.calendar_entry?.date ?? item.option.requested_date ?? '';
@@ -200,7 +199,10 @@ export function buildUnifiedAgencyCalendarRows(
       for (const optName of coveredDateModelNames) {
         if (!optName.startsWith(`${beDate}|`)) continue;
         const justName = optName.slice(beDate.length + 1);
-        if (justName && beName.includes(justName)) { nameMatched = true; break; }
+        if (justName && beName.includes(justName)) {
+          nameMatched = true;
+          break;
+        }
       }
       if (nameMatched) continue;
     }
@@ -212,7 +214,10 @@ export function buildUnifiedAgencyCalendarRows(
         for (const optName of coveredDateModelNames) {
           if (!optName.startsWith(`${beDate}|`)) continue;
           const justName = optName.slice(beDate.length + 1);
-          if (justName && justName.includes(stripped)) { reverseMatch = true; break; }
+          if (justName && justName.includes(stripped)) {
+            reverseMatch = true;
+            break;
+          }
         }
         if (reverseMatch) continue;
       }
@@ -338,15 +343,37 @@ export function filterUnifiedAgencyCalendarRows(
 function stripLifecycleAffixes(raw: string): string {
   let t = raw;
   const prefixes = [
-    'option \u2013 ', 'casting \u2013 ', 'job \u2013 ', 'booking \u2013 ',
-    'option - ', 'casting - ', 'job - ', 'booking - ',
+    'option \u2013 ',
+    'casting \u2013 ',
+    'job \u2013 ',
+    'booking \u2013 ',
+    'option - ',
+    'casting - ',
+    'job - ',
+    'booking - ',
   ];
   const suffixes = [
-    ' \u2013 option', ' \u2013 casting', ' \u2013 job', ' \u2013 booking',
-    ' - option', ' - casting', ' - job', ' - booking',
+    ' \u2013 option',
+    ' \u2013 casting',
+    ' \u2013 job',
+    ' \u2013 booking',
+    ' - option',
+    ' - casting',
+    ' - job',
+    ' - booking',
   ];
-  for (const p of prefixes) { if (t.startsWith(p)) { t = t.slice(p.length); break; } }
-  for (const s of suffixes) { if (t.endsWith(s)) { t = t.slice(0, -s.length); break; } }
+  for (const p of prefixes) {
+    if (t.startsWith(p)) {
+      t = t.slice(p.length);
+      break;
+    }
+  }
+  for (const s of suffixes) {
+    if (t.endsWith(s)) {
+      t = t.slice(0, -s.length);
+      break;
+    }
+  }
   return t.trim();
 }
 
@@ -456,11 +483,23 @@ export function buildEventsByDateFromUnifiedRows(
   rows: UnifiedAgencyCalendarRow[],
 ): Record<
   string,
-  Array<{ id: string; color: string; title: string; kind?: string; optionRequestId?: string | null }>
+  Array<{
+    id: string;
+    color: string;
+    title: string;
+    kind?: string;
+    optionRequestId?: string | null;
+  }>
 > {
   const map: Record<
     string,
-    Array<{ id: string; color: string; title: string; kind?: string; optionRequestId?: string | null }>
+    Array<{
+      id: string;
+      color: string;
+      title: string;
+      kind?: string;
+      optionRequestId?: string | null;
+    }>
   > = {};
   for (const row of rows) {
     const date = row.date;
@@ -492,7 +531,8 @@ export function buildEventsByDateFromUnifiedRows(
     }
     let color = '#1565C0';
     if (row.entry.entry_type === 'booking') color = colors.buttonSkipRed;
-    else if (row.entry.entry_type === 'casting' || row.entry.entry_type === 'gosee') color = colors.textSecondary;
+    else if (row.entry.entry_type === 'casting' || row.entry.entry_type === 'gosee')
+      color = colors.textSecondary;
     map[date].push({
       id: row.id,
       color,

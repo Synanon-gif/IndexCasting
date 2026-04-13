@@ -5142,6 +5142,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
         agencyCounterPrice: r.agencyCounterPrice ?? null,
         proposedPrice: r.proposedPrice ?? null,
         isAgencyOnly: r.isAgencyOnly ?? false,
+        requestType: r.requestType ?? null,
       });
       if (!attentionHeaderLabelFromSignals(sig, 'client')) return false;
     }
@@ -5173,6 +5174,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
           agencyCounterPrice: request.agencyCounterPrice ?? null,
           proposedPrice: request.proposedPrice ?? null,
           isAgencyOnly: request.isAgencyOnly ?? false,
+          requestType: request.requestType ?? null,
         }),
         isAgency ? 'agency' : 'client',
       )
@@ -5709,6 +5711,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                         agencyCounterPrice: r.agencyCounterPrice ?? null,
                         proposedPrice: r.proposedPrice ?? null,
                         isAgencyOnly: r.isAgencyOnly ?? false,
+                        requestType: r.requestType ?? null,
                       }),
                       'client',
                     );

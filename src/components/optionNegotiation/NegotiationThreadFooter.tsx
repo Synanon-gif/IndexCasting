@@ -122,6 +122,7 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
     agencyCounterPrice: agencyCounterPrice ?? null,
     proposedPrice: request.proposedPrice ?? null,
     isAgencyOnly: request.isAgencyOnly ?? false,
+    requestType: request.requestType ?? null,
   });
   const isAgencyOnlyRequest = request.isAgencyOnly === true;
   const priceLocked = isAgencyOnlyRequest || priceCommerciallySettledForUi(signals);

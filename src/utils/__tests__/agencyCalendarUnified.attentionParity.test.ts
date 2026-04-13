@@ -88,6 +88,7 @@ describe('needsAgencyActionForOption — parity with attentionHeaderLabelFromSig
         proposedPrice: opt.proposed_price,
         hasConflictWarning: false,
         isAgencyOnly: opt.is_agency_only ?? false,
+        requestType: opt.request_type ?? null,
       });
       const expected = attentionHeaderLabelFromSignals(sig, 'agency') !== null;
       expect(needsAgencyActionForOption(item)).toBe(expected);

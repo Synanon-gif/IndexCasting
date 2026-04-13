@@ -114,6 +114,7 @@ export type SystemOptionMessageKind =
   | 'client_accepted_counter'
   | 'client_rejected_counter'
   | 'job_confirmed_by_client'
+  | 'job_confirmed_by_agency'
   | 'model_approved_booking';
 
 export type SupabaseOptionDocument = {
@@ -188,6 +189,21 @@ export async function getOptionRequestById(id: string): Promise<SupabaseOptionRe
     .maybeSingle();
   if (error) {
     console.error('getOptionRequestById error:', error);
+    return null;
+  }
+  return data as SupabaseOptionRequest | null;
+}
+
+export async function getOptionRequestByIdModelSafe(
+  id: string,
+): Promise<SupabaseOptionRequest | null> {
+  const { data, error } = await supabase
+    .from('option_requests')
+    .select(OPTION_REQUEST_SELECT_MODEL_SAFE)
+    .eq('id', id)
+    .maybeSingle();
+  if (error) {
+    console.error('getOptionRequestByIdModelSafe error:', error);
     return null;
   }
   return data as SupabaseOptionRequest | null;
