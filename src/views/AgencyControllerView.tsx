@@ -357,6 +357,8 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   const [selectedCalendarItem, setSelectedCalendarItem] = useState<AgencyCalendarItem | null>(null);
   const [selectedManualEvent, setSelectedManualEvent] = useState<UserCalendarEvent | null>(null);
   const [showAddManualEvent, setShowAddManualEvent] = useState(false);
+  /** Roster search in “Add option/casting” — no full list until user searches (min 2 chars). */
+  const [agencyAddEventModelSearch, setAgencyAddEventModelSearch] = useState('');
   /** First step: choose option / casting / private before the full add-event form. */
   const [showAgencyAddEventMenu, setShowAgencyAddEventMenu] = useState(false);
   const [newEventForm, setNewEventForm] = useState({
@@ -490,6 +492,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
 
   const startAgencyCalendarEvent = useCallback((kind: 'option' | 'casting' | 'private') => {
     setShowAgencyAddEventMenu(false);
+    setAgencyAddEventModelSearch('');
     setNewEventForm((f) => ({
       ...f,
       eventCategory: kind,
@@ -497,6 +500,20 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
     }));
     setShowAddManualEvent(true);
   }, []);
+
+  const agencyAddEventSearchResults = useMemo(() => {
+    const q = agencyAddEventModelSearch.trim().toLowerCase();
+    if (q.length < 2) return [];
+    return fullModels.filter((m) => {
+      const name = (m.name || '').toLowerCase();
+      const email = (m.email || '').toLowerCase();
+      return name.includes(q) || email.includes(q);
+    });
+  }, [fullModels, agencyAddEventModelSearch]);
+
+  useEffect(() => {
+    if (!showAddManualEvent) setAgencyAddEventModelSearch('');
+  }, [showAddManualEvent]);
 
   const loadAgencyTeam = async () => {
     if (!currentAgencyId) return;
@@ -1734,62 +1751,151 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                 style={s.editInput}
               />
 
-              {/* Model picker for Option / Casting */}
+              {/* Model picker for Option / Casting — search roster; no full list until user searches */}
               {newEventForm.eventCategory !== 'private' && (
                 <>
                   <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>
                     {uiCopy.calendar.agencySelectModelsLabel}
                   </Text>
-                  <ScrollView
-                    style={{ maxHeight: 150 }}
-                    nestedScrollEnabled
-                    showsVerticalScrollIndicator
-                  >
-                    {fullModels.map((m) => {
-                      const sel = newEventForm.selectedModelIds.includes(m.id);
-                      return (
-                        <TouchableOpacity
-                          key={m.id}
-                          onPress={() =>
-                            setNewEventForm((f) => ({
-                              ...f,
-                              selectedModelIds: sel
-                                ? f.selectedModelIds.filter((id) => id !== m.id)
-                                : [...f.selectedModelIds, m.id],
-                            }))
-                          }
-                          style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            paddingVertical: 6,
-                            gap: 8,
-                          }}
-                        >
-                          <View
+                  {newEventForm.selectedModelIds.length > 0 ? (
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        flexWrap: 'wrap',
+                        gap: 6,
+                        marginBottom: spacing.sm,
+                      }}
+                    >
+                      {newEventForm.selectedModelIds.map((id) => {
+                        const m = fullModels.find((x) => x.id === id);
+                        const label = (m?.name || '').trim() || 'Model';
+                        return (
+                          <TouchableOpacity
+                            key={id}
+                            onPress={() =>
+                              setNewEventForm((f) => ({
+                                ...f,
+                                selectedModelIds: f.selectedModelIds.filter((x) => x !== id),
+                              }))
+                            }
                             style={{
-                              width: 20,
-                              height: 20,
-                              borderRadius: 4,
-                              borderWidth: 1.5,
-                              borderColor: sel ? colors.accent : colors.border,
-                              backgroundColor: sel ? colors.accent : 'transparent',
+                              flexDirection: 'row',
                               alignItems: 'center',
-                              justifyContent: 'center',
+                              gap: 6,
+                              paddingVertical: 4,
+                              paddingHorizontal: 10,
+                              borderRadius: 999,
+                              borderWidth: 1,
+                              borderColor: colors.border,
+                              backgroundColor: colors.surface,
                             }}
                           >
-                            {sel && (
-                              <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>
-                                ✓
+                            <Text
+                              style={{
+                                ...typography.label,
+                                fontSize: 12,
+                                color: colors.textPrimary,
+                              }}
+                              numberOfLines={1}
+                            >
+                              {label}
+                            </Text>
+                            <Text style={{ fontSize: 14, color: colors.textSecondary }}>×</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  ) : null}
+                  <TextInput
+                    placeholder={uiCopy.calendar.agencySearchModelsPlaceholder}
+                    value={agencyAddEventModelSearch}
+                    onChangeText={setAgencyAddEventModelSearch}
+                    placeholderTextColor={colors.textSecondary}
+                    style={s.editInput}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                  {agencyAddEventModelSearch.trim().length < 2 ? (
+                    <Text
+                      style={{
+                        ...typography.body,
+                        fontSize: 11,
+                        color: colors.textSecondary,
+                        marginTop: 4,
+                        marginBottom: spacing.xs,
+                      }}
+                    >
+                      {agencyAddEventModelSearch.trim().length === 0
+                        ? uiCopy.calendar.agencySearchModelsHintTypeToSearch
+                        : uiCopy.calendar.agencySearchModelsHintMinChars}
+                    </Text>
+                  ) : null}
+                  {agencyAddEventModelSearch.trim().length >= 2 ? (
+                    <ScrollView
+                      style={{ maxHeight: 160 }}
+                      nestedScrollEnabled
+                      showsVerticalScrollIndicator
+                      keyboardShouldPersistTaps="handled"
+                    >
+                      {agencyAddEventSearchResults.length === 0 ? (
+                        <Text
+                          style={{
+                            ...typography.body,
+                            fontSize: 13,
+                            color: colors.textSecondary,
+                            paddingVertical: spacing.sm,
+                          }}
+                        >
+                          {uiCopy.calendar.agencySearchModelsNoMatches}
+                        </Text>
+                      ) : (
+                        agencyAddEventSearchResults.map((m) => {
+                          const sel = newEventForm.selectedModelIds.includes(m.id);
+                          return (
+                            <TouchableOpacity
+                              key={m.id}
+                              onPress={() =>
+                                setNewEventForm((f) => ({
+                                  ...f,
+                                  selectedModelIds: sel
+                                    ? f.selectedModelIds.filter((id) => id !== m.id)
+                                    : [...f.selectedModelIds, m.id],
+                                }))
+                              }
+                              style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                paddingVertical: 6,
+                                gap: 8,
+                              }}
+                            >
+                              <View
+                                style={{
+                                  width: 20,
+                                  height: 20,
+                                  borderRadius: 4,
+                                  borderWidth: 1.5,
+                                  borderColor: sel ? colors.accent : colors.border,
+                                  backgroundColor: sel ? colors.accent : 'transparent',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                {sel && (
+                                  <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>
+                                    ✓
+                                  </Text>
+                                )}
+                              </View>
+                              <Text style={{ ...typography.label, color: colors.textPrimary }}>
+                                {m.name || 'Model'}
                               </Text>
-                            )}
-                          </View>
-                          <Text style={{ ...typography.label, color: colors.textPrimary }}>
-                            {m.name || 'Model'}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </ScrollView>
+                            </TouchableOpacity>
+                          );
+                        })
+                      )}
+                    </ScrollView>
+                  ) : null}
                   {newEventForm.selectedModelIds.length > 0 && (
                     <Text
                       style={{

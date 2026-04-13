@@ -260,6 +260,14 @@ export const uiCopy = {
     /** Short label for private block (distinct from “Private event” in the add menu). */
     agencyEventTypePrivateShort: 'Private',
     agencySelectModelsLabel: 'Select models',
+    /** Placeholder for roster search in agency “Add option/casting” calendar form. */
+    agencySearchModelsPlaceholder: 'Search models by name',
+    /** Shown until the user types enough characters — avoids rendering the full roster. */
+    agencySearchModelsHintTypeToSearch:
+      'Type at least 2 characters to search models you represent. Selected models appear below.',
+    /** When the query is one character only. */
+    agencySearchModelsHintMinChars: 'Enter one more character to search.',
+    agencySearchModelsNoMatches: 'No models match your search.',
     agencyModelsSelected: (n: number) => `${n} model${n === 1 ? '' : 's'} selected`,
     agencyAddingEvent: 'Adding…',
     agencyAddEventFormTitle: 'Add event',
