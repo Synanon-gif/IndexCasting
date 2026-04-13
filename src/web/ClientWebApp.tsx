@@ -5356,7 +5356,14 @@ const MessagesView: React.FC<MessagesViewProps> = ({
     const threadId = request.threadId;
     setRejectCounterModalVisible(false);
     void (async () => {
-      await clientRejectCounterStore(threadId);
+      const ok = await clientRejectCounterStore(threadId);
+      if (!ok) {
+        showAppAlert(
+          uiCopy.optionNegotiationChat.rejectCounterOfferFailedTitle,
+          uiCopy.optionNegotiationChat.rejectCounterOfferFailedMessage,
+        );
+        return;
+      }
       setRequests(getOptionRequests());
       showNegotiationCalendarHint();
     })();

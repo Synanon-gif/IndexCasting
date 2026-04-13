@@ -1452,6 +1452,9 @@ export const uiCopy = {
     rejectCounterOffer: 'Decline agency proposal',
     rejectCounterOfferTitle: 'Decline this proposal?',
     rejectCounterOfferMessage: 'The request will be closed. You can start a new request if needed.',
+    rejectCounterOfferFailedTitle: 'Could not decline proposal',
+    rejectCounterOfferFailedMessage:
+      'The proposal may have already changed. Please reload and try again.',
     confirmJob: 'Confirm job',
     /** Model inbox: tap opens Profile → Options for this request. */
     modelInboxOpenInProfileHint: 'Open in Profile → Options',
