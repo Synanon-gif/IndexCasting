@@ -6189,7 +6189,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
       }
       setMessagesSection('clientRequests');
       setActiveConnectionChatId(result.conversationId);
-      setActiveConnectionChatTitle(request.clientName || uiCopy.b2bChat.chatPartnerFallback);
+      setActiveConnectionChatTitle(request.clientName || uiCopy.b2bChat.conversationFallback);
     } finally {
       setOpenOrgChatBusy(false);
     }
@@ -6427,6 +6427,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
             conversationId={activeConnectionChatId}
             headerTitle={activeConnectionChatTitle}
             viewerUserId={currentUserId}
+            b2bViewerRole="agency"
             threadContext={{ type: uiCopy.b2bChat.contextOrgChat }}
             agencyId={agencyId}
             guestLinks={guestLinksForChat}
@@ -6838,7 +6839,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                     ]}
                   >
                     <Text style={[s.modelName, { flex: 1 }]}>
-                      {b2bTitles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback}
+                      {b2bTitles[c.id] ?? uiCopy.b2bChat.conversationFallback}
                     </Text>
                     <TouchableOpacity
                       style={[s.filterPill, s.filterPillActive]}
@@ -6847,7 +6848,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                         setMessagesSection('clientRequests');
                         setActiveConnectionChatId(c.id);
                         setActiveConnectionChatTitle(
-                          b2bTitles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback,
+                          b2bTitles[c.id] ?? uiCopy.b2bChat.conversationFallback,
                         );
                       }}
                     >
@@ -7013,7 +7014,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                               >
                                 <View style={{ flex: 1, minWidth: 160 }}>
                                   <Text style={s.modelName}>
-                                    {b2bTitles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback}
+                                    {b2bTitles[c.id] ?? uiCopy.b2bChat.conversationFallback}
                                   </Text>
                                   <Text style={s.metaText}>
                                     {new Date(c.updated_at).toLocaleString()}
@@ -7024,7 +7025,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                                   onPress={() => {
                                     setActiveConnectionChatId(c.id);
                                     setActiveConnectionChatTitle(
-                                      b2bTitles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback,
+                                      b2bTitles[c.id] ?? uiCopy.b2bChat.conversationFallback,
                                     );
                                   }}
                                 >
@@ -7055,6 +7056,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                               conversationId={activeConnectionChatId}
                               headerTitle={activeConnectionChatTitle}
                               viewerUserId={currentUserId}
+                              b2bViewerRole="agency"
                               threadContext={{ type: uiCopy.b2bChat.contextOrgChat }}
                               agencyId={agencyId}
                               guestLinks={guestLinksForChat}
@@ -7089,6 +7091,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                           conversationId={activeConnectionChatId}
                           headerTitle={activeConnectionChatTitle}
                           viewerUserId={currentUserId}
+                          b2bViewerRole="agency"
                           threadContext={{ type: uiCopy.b2bChat.contextOrgChat }}
                           agencyId={agencyId}
                           guestLinks={guestLinksForChat}
@@ -7146,7 +7149,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                           >
                             <View style={{ flex: 1, minWidth: 160 }}>
                               <Text style={s.modelName}>
-                                {b2bTitles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback}
+                                {b2bTitles[c.id] ?? uiCopy.b2bChat.conversationFallback}
                               </Text>
                               <Text style={s.metaText}>
                                 {new Date(c.updated_at).toLocaleString()}
@@ -7157,7 +7160,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                               onPress={() => {
                                 setActiveConnectionChatId(c.id);
                                 setActiveConnectionChatTitle(
-                                  b2bTitles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback,
+                                  b2bTitles[c.id] ?? uiCopy.b2bChat.conversationFallback,
                                 );
                               }}
                             >
@@ -8641,7 +8644,7 @@ const GuestLinksTab: React.FC<{
                     {!searchLoading && searchRows.length > 0 && (
                       <>
                         {searchRows.map((row) => {
-                          const label = row.name?.trim() || uiCopy.b2bChat.chatPartnerFallback;
+                          const label = row.name?.trim() || uiCopy.b2bChat.conversationFallback;
                           const isSending = startingChatForOrg === row.id;
                           return (
                             <TouchableOpacity
@@ -8732,7 +8735,7 @@ const GuestLinksTab: React.FC<{
                               }}
                               numberOfLines={1}
                             >
-                              {convTitles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback}
+                              {convTitles[c.id] ?? uiCopy.b2bChat.conversationFallback}
                             </Text>
                             <Text
                               style={{

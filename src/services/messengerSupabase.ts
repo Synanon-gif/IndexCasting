@@ -502,7 +502,7 @@ export async function getMessagesWithSenderInfo(
 
     return messages.map((m) => {
       const p = profiles[m.sender_id];
-      const name = p?.display_name?.trim() || uiCopy.b2bChat.chatPartnerFallback;
+      const name = p?.display_name?.trim() || uiCopy.b2bChat.conversationFallback;
       let ctx = contexts[m.sender_id] ?? { organizationId: null, membershipLabel: null };
       if (
         !ctx.organizationId &&

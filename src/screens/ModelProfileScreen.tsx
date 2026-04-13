@@ -1544,7 +1544,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                   {bookingThreadIds.map((id) => {
                     const t = getRecruitingThread(id);
                     if (!t) return null;
-                    const agencyLabel = bookingAgencyByThread[id] ?? uiCopy.model.agencyLabel;
+                    const agencyLabel = bookingAgencyByThread[id] ?? uiCopy.b2bChat.conversationFallback;
                     return (
                       <TouchableOpacity
                         key={id}
@@ -1552,7 +1552,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                         onPress={() => setOpenBookingThreadId(id)}
                       >
                         <View style={{ flex: 1 }}>
-                          <Text style={st.chatRowKicker}>{uiCopy.model.agencyLabel}</Text>
+                          <Text style={st.chatRowKicker}>{uiCopy.model.agencyChatRowKicker}</Text>
                           <Text style={st.chatRowLabel}>{agencyLabel}</Text>
                         </View>
                         <Text style={st.chatRowOpen}>Open</Text>
@@ -1568,7 +1568,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                       <View style={{ flex: 1 }}>
                         <Text style={st.chatRowKicker}>Direct</Text>
                         <Text style={st.chatRowLabel}>
-                          {conv.title ?? uiCopy.model.agencyLabel}
+                          {conv.title ?? uiCopy.b2bChat.conversationFallback}
                         </Text>
                       </View>
                       <Text style={st.chatRowOpen}>Open</Text>
@@ -1871,7 +1871,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
           >
             <Text style={{ ...typography.label, fontSize: 13, color: colors.textSecondary }}>
               {agencyDirectConvs.find((c) => c.id === openDirectConvId)?.title ??
-                uiCopy.model.agencyLabel}
+                uiCopy.b2bChat.conversationFallback}
             </Text>
             <TouchableOpacity onPress={() => setOpenDirectConvId(null)}>
               <Text style={{ ...typography.label, color: colors.textPrimary }}>Close</Text>
@@ -1881,9 +1881,10 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
             conversationId={openDirectConvId}
             headerTitle={
               agencyDirectConvs.find((c) => c.id === openDirectConvId)?.title ??
-              uiCopy.model.agencyLabel
+              uiCopy.b2bChat.conversationFallback
             }
             viewerUserId={userId ?? null}
+            b2bViewerRole="model"
             composerBottomInsetOverride={0}
           />
         </View>

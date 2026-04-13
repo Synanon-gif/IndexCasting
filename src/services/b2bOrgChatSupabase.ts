@@ -350,7 +350,7 @@ export async function getB2BConversationTitleForViewer(params: {
   if (!clientOrg || !agencyOrg) {
     const t = c.title?.trim();
     if (t && !GENERIC_B2B_CONVERSATION_TITLE.test(t)) return t;
-    return uiCopy.b2bChat.chatPartnerFallback;
+    return uiCopy.b2bChat.conversationFallback;
   }
 
   try {
@@ -390,7 +390,7 @@ export async function getB2BConversationTitleForViewer(params: {
     return fallbackTitle;
   }
 
-  return uiCopy.b2bChat.chatPartnerFallback;
+  return uiCopy.b2bChat.conversationFallback;
 }
 
 /**

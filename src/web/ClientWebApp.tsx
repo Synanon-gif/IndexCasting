@@ -4809,7 +4809,7 @@ const ClientB2BChatsPanel: React.FC<{
   const activeConversationId = selectedRow?.id ?? selectedId ?? null;
   const messengerTitle =
     (activeConversationId && (titles[activeConversationId] ?? optimisticThreadTitle ?? null)) ??
-    uiCopy.b2bChat.chatPartnerFallback;
+    uiCopy.b2bChat.conversationFallback;
 
   const filteredRows = searchQuery.trim()
     ? rows.filter((c) =>
@@ -4837,7 +4837,7 @@ const ClientB2BChatsPanel: React.FC<{
           >
             <View style={styles.threadRowLeft}>
               <Text style={styles.threadTitle}>
-                {titles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback}
+                {titles[c.id] ?? uiCopy.b2bChat.conversationFallback}
               </Text>
               <Text style={styles.metaText}>{new Date(c.updated_at).toLocaleString()}</Text>
             </View>
@@ -4861,6 +4861,7 @@ const ClientB2BChatsPanel: React.FC<{
       conversationId={activeConversationId}
       headerTitle={messengerTitle}
       viewerUserId={auth.profile?.id ?? null}
+      b2bViewerRole="client"
       threadContext={{ type: uiCopy.b2bChat.contextOrgChat }}
       composerBottomInsetOverride={0}
       containerStyle={
@@ -5281,7 +5282,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
       setClientMsgTab('b2bChats');
       setLocalPendingB2BChat({
         conversationId: result.conversationId,
-        title: request.clientName || uiCopy.b2bChat.chatPartnerFallback,
+        title: request.clientName || uiCopy.b2bChat.conversationFallback,
       });
     } finally {
       setOpenOrgChatBusy(false);

@@ -576,8 +576,10 @@ export const uiCopy = {
       'Matches your account name (profile) and cannot be changed here. Two words = first and last name; one word = first name only.',
   },
   model: {
-    /** Avoid as visible title — prefer organization name; last resort only. */
-    agencyLabel: 'Chat partner',
+    /** Small kicker above agency name rows in chat lists (not the org name itself). */
+    agencyChatRowKicker: 'Agency',
+    /** @deprecated Prefer agencyChatRowKicker or b2bChat.conversationFallback */
+    agencyLabel: 'Agency',
     chatsSubtitle: 'Chats with agencies that responded to your application.',
     noAgencyMessages: 'No messages from agencies yet.',
     openChat: 'Open chat',
@@ -702,12 +704,14 @@ export const uiCopy = {
     noClientWorkspaceForB2B:
       'Could not load your client workspace. Sign in with a client account or accept a team invitation.',
     clientWorkspaceLoading: 'Loading workspace…',
-    /** Last resort when org name cannot be resolved (network/RPC missing); never use as primary label */
-    chatPartnerFallback: 'Chat partner',
-    /** @deprecated Prefer chatPartnerFallback — never use as a visible org title. */
-    agencyFallback: 'Chat partner',
-    /** @deprecated Prefer chatPartnerFallback */
-    clientFallback: 'Chat partner',
+    /** Last resort when no meaningful title is available (B2B threads, messenger labels). */
+    conversationFallback: 'Conversation',
+    /** @deprecated Use conversationFallback — kept for legacy string references */
+    chatPartnerFallback: 'Conversation',
+    /** @deprecated Use conversationFallback */
+    agencyFallback: 'Conversation',
+    /** @deprecated Use conversationFallback */
+    clientFallback: 'Conversation',
     openConversation: 'Open chat',
     /** Accessibility label for blue unread dot on B2B thread rows */
     unreadMessagesIndicatorA11y: 'Unread messages',
@@ -1260,7 +1264,7 @@ export const uiCopy = {
       'Create a free client account to unlock model discovery, projects, and team management.',
     selectedModels: 'Selected models',
     noModelsSelected: 'No models selected.',
-    agencyLabel: 'Chat partner',
+    agencyLabel: 'Agency',
     guestClientLabel: 'Guest Client',
     loadingChat: 'Loading chat…',
     chatError: 'Could not load chat. Please try again.',

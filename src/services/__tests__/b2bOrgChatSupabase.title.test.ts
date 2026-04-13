@@ -63,7 +63,7 @@ describe('getB2BConversationTitleForViewer', () => {
     expect(t).toBe('Direct Org');
   });
 
-  it('uses chatPartnerFallback when nothing else is available', async () => {
+  it('uses conversationFallback when nothing else is available', async () => {
     rpc.mockResolvedValue({ data: null, error: null });
     maybeSingle.mockResolvedValue({ data: null, error: null });
     const c = {
@@ -76,6 +76,6 @@ describe('getB2BConversationTitleForViewer', () => {
       conversation: c,
       viewerOrganizationId: 'c1',
     });
-    expect(t).toBe(uiCopy.b2bChat.chatPartnerFallback);
+    expect(t).toBe(uiCopy.b2bChat.conversationFallback);
   });
 });

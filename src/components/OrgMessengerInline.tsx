@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -40,6 +40,7 @@ import { supabase } from '../../lib/supabase';
 import { confirmImageRights } from '../services/gdprComplianceSupabase';
 import { getModelByIdFromSupabase } from '../services/modelsSupabase';
 import { normalizeDocumentspicturesModelImageRef } from '../utils/normalizeModelPortfolioUrl';
+import { formatB2bClientHeaderPrimary } from '../utils/b2bMessengerHeaderTitle';
 import { openLinkWithFeedback } from '../utils/openLinkWithFeedback';
 import { buildGuestUrl, type GuestLink } from '../services/guestLinksSupabase';
 import {
@@ -126,6 +127,11 @@ export type OrgMessengerInlineProps = {
    */
   onBack?: () => void;
   backLabel?: string;
+  /**
+   * B2B org chat: shapes the main header line — client sees "Model — Agency" when a booking
+   * model name is available from loaded messages; agency sees client org title; model sees agency title.
+   */
+  b2bViewerRole?: 'client' | 'agency' | 'model';
 };
 
 function payloadType(m: MessageWithSender): MessagePayloadType {
@@ -164,6 +170,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   composerBottomInsetOverride,
   onBack,
   backLabel,
+  b2bViewerRole,
 }) => {
   const [msgs, setMsgs] = useState<MessageWithSender[]>([]);
   const [input, setInput] = useState('');
@@ -266,6 +273,28 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
       }),
     );
   }, [msgs]);
+
+  const latestBookingModelName = useMemo(() => {
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const m = msgs[i];
+      if ((m as { message_type?: string }).message_type !== 'booking') continue;
+      const mid = (m as { metadata?: Record<string, unknown> }).metadata?.['model_id'];
+      if (typeof mid !== 'string' || !mid.trim()) continue;
+      const name = bookingModelNames[mid];
+      if (name?.trim()) return name.trim();
+    }
+    return null;
+  }, [msgs, bookingModelNames]);
+
+  const displayHeaderTitle = useMemo(() => {
+    const fb = uiCopy.b2bChat.conversationFallback;
+    const base = headerTitle?.trim() ?? '';
+    if (b2bViewerRole === 'client') {
+      return formatB2bClientHeaderPrimary(base || fb, latestBookingModelName);
+    }
+    if (!base) return fb;
+    return base;
+  }, [headerTitle, b2bViewerRole, latestBookingModelName]);
 
   // Resolve model preview photos for package cards.
   // Uses fetchedPackagePhotoIds ref to avoid refetching when a model has no photo.
@@ -535,14 +564,14 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
               compactAgencyShareHeader && styles.chatPanelTitleCompact,
             ]}
           >
-            {headerTitle}
+            {displayHeaderTitle}
           </Text>
         </TouchableOpacity>
       ) : (
         <Text
           style={[styles.chatPanelTitle, compactAgencyShareHeader && styles.chatPanelTitleCompact]}
         >
-          {headerTitle}
+          {displayHeaderTitle}
         </Text>
       )}
       {threadContextLabel ? (
