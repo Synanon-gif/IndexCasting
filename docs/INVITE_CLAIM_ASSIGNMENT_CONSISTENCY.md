@@ -42,3 +42,21 @@
 - [`src/storage/inviteToken.ts`](../src/storage/inviteToken.ts), [`src/storage/modelClaimToken.ts`](../src/storage/modelClaimToken.ts)
 - [`supabase/migrations/20260408_invite_claim_idempotent_finalization.sql`](../supabase/migrations/20260408_invite_claim_idempotent_finalization.sql) — idempotent RPCs.
 - [`supabase/functions/send-invite`](../supabase/functions/send-invite/index.ts)
+
+## Roadmap: Removing `link_model_by_email` (after token coverage)
+
+**Goal:** Retire the deprecated email-based model↔user binding (`link_model_by_email` RPC + `linkModelByEmail()` in [`AuthContext.tsx`](../src/context/AuthContext.tsx) Step 2). Canonical binding remains [`claim_model_by_token`](../supabase/migrations/20260413_fix_c_model_claim_tokens.sql) / `finalizePendingInviteOrClaim` — see Risiko 9 in [rls-security-patterns.mdc](../.cursor/rules/rls-security-patterns.mdc).
+
+**Preconditions (product / ops)**
+
+1. **Coverage:** All agencies that relied on implicit post-login linking have adopted **model claim tokens** (invite mail + in-app claim link) for new models; support backlog for edge cases (duplicate email, legacy rows) is understood.
+2. **Metrics:** Monitor RPC usage / logs for `link_model_by_email` until near-zero before removal.
+
+** Implementation sequence (when approved)**
+
+1. **Client:** Remove isolated `linkModelByEmail()` calls from `signIn` / `signUp` / bootstrap Step 2 in `AuthContext.tsx` (keep Step 1 `bootstrapThenLoadProfile` isolation per [admin-security.mdc](../.cursor/rules/admin-security.mdc)).
+2. **DB:** New migration: restrict or drop `public.link_model_by_email()` (e.g. `RAISE EXCEPTION` with clear message, or `REVOKE EXECUTE` from `authenticated`) after a deprecation window; verify no critical path still calls it.
+3. **Tests:** Update any tests that assumed email-linking; extend claim-token tests if needed.
+4. **Docs:** Remove references from onboarding docs that still mention email-only linking.
+
+**Do not** remove before token-based flows are verified for the affected user populations — otherwise legacy models without a successful claim path could lose automatic linking.

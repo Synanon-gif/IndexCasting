@@ -1,34 +1,16 @@
 {
-  "generated": "2026-04-07T19:12:05.522Z",
+  "generated": "2026-04-13T18:16:23.166Z",
   "project_ref": "ispkfdqzjrfrilosoklu",
   "token_used": true,
   "confirmed_critical": [],
-  "confirmed_high": [
-    {
-      "id": "profiles-in-policy",
-      "area": "policy",
-      "severity": "high",
-      "confirmed": true,
-      "evidence": "3 policies match heuristic",
-      "affected_objects": [
-        "agency_invitations.Agents can read own agency invitations",
-        "agency_invitations.Agents can update own agency invitations",
-        "model_photos.Clients see visible model photos"
-      ],
-      "login_risk": "medium",
-      "admin_risk": "high",
-      "rls_risk": "high",
-      "org_isolation_risk": "medium",
-      "note": "manual review"
-    }
-  ],
+  "confirmed_high": [],
   "heuristic_or_needs_review": [
     {
       "id": "secdef-proconfig",
       "area": "secdef",
       "severity": "medium",
       "confirmed": true,
-      "evidence": "109 functions",
+      "evidence": "95 functions",
       "affected_objects": [
         "accept_guest_link_tos",
         "admin_get_org_storage_usage",
@@ -54,7 +36,6 @@
         "admin_update_org_details",
         "admin_update_profile",
         "admin_update_profile_full",
-        "agency_confirm_client_price",
         "agency_link_model_to_user",
         "agency_remove_model",
         "agency_start_recruiting_chat",
@@ -64,7 +45,8 @@
         "auto_create_agency_storage_usage",
         "auto_create_agency_usage_limit",
         "auto_create_org_subscription",
-        "cancel_account_deletion"
+        "cancel_account_deletion",
+        "check_anon_rate_limit"
       ],
       "login_risk": "low",
       "admin_risk": "low",
@@ -101,6 +83,19 @@
       "note": "heuristic string match only"
     },
     {
+      "id": "profiles-policy",
+      "area": "policy",
+      "severity": "info",
+      "confirmed": true,
+      "evidence": "B zero rows",
+      "affected_objects": [],
+      "login_risk": "low",
+      "admin_risk": "low",
+      "rls_risk": "low",
+      "org_isolation_risk": "low",
+      "note": ""
+    },
+    {
       "id": "storage",
       "area": "storage",
       "severity": "info",
@@ -122,8 +117,8 @@
       "confirmed": true,
       "evidence": "2 rows",
       "affected_objects": [
-        "ensure_agency_for_current_agent(2)",
-        "ensure_client_organization(2)"
+        "enforce_guest_link_rate_limit(2)",
+        "get_discovery_models(2)"
       ],
       "login_risk": "low",
       "admin_risk": "low",
@@ -142,12 +137,12 @@
     {
       "id": "A2",
       "verdict": "NEEDS_REVIEW",
-      "rows": 23
+      "rows": 26
     },
     {
       "id": "B",
-      "verdict": "NEEDS_REVIEW",
-      "rows": 3
+      "verdict": "PASS",
+      "rows": 0
     },
     {
       "id": "C",
@@ -162,12 +157,12 @@
     {
       "id": "E1",
       "verdict": "NEEDS_REVIEW",
-      "rows": 174
+      "rows": 205
     },
     {
       "id": "E2",
       "verdict": "NEEDS_REVIEW",
-      "rows": 109
+      "rows": 95
     },
     {
       "id": "F",
@@ -192,17 +187,17 @@
     {
       "id": "I",
       "verdict": "PASS",
-      "rows": 6
+      "rows": 15
     },
     {
       "id": "J",
       "verdict": "NEEDS_REVIEW",
-      "rows": 38
+      "rows": 46
     },
     {
       "id": "K",
       "verdict": "NEEDS_REVIEW",
-      "rows": 178
+      "rows": 213
     },
     {
       "id": "L",
@@ -218,7 +213,7 @@
   "severity_summary": {
     "blocker_confirmed": 0,
     "critical_confirmed": 0,
-    "high_confirmed": 1,
+    "high_confirmed": 0,
     "heuristic_count": 1,
     "verification_incomplete": false
   }
