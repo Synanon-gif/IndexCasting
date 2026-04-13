@@ -1,15 +1,5 @@
--- Fix agency_create_option_request: uuid type mismatches + missing start_time/end_time in INSERT.
---
--- Root causes:
---   1) p_agency_id was text but bookers.agency_id, option_requests.agency_id, models.agency_id are all uuid
---      → "operator does not exist: uuid = text" (42883) at runtime
---   2) v_caller_id::text inserted into option_requests.client_id (uuid) — wrong direction of cast
---   3) start_time / end_time parameters were accepted but never inserted into option_requests
---
--- Fix: change p_agency_id to uuid, fix client_id insert, add start_time/end_time to INSERT.
-
--- Drop old function with text parameter signature (cannot CREATE OR REPLACE with different param types)
-DROP FUNCTION IF EXISTS public.agency_create_option_request(uuid, text, date, text, text, text, text, text, uuid, uuid);
+-- Fix agency_create_option_request: models table has 'name' column, not 'first_name'/'last_name'.
+-- Error: 42703 "column m.first_name does not exist"
 
 CREATE OR REPLACE FUNCTION public.agency_create_option_request(
   p_model_id uuid,
@@ -71,7 +61,7 @@ BEGIN
     RAISE EXCEPTION 'model_not_in_agency';
   END IF;
 
-  -- Resolve model name and account status
+  -- Resolve model name and account status (models has single 'name' column, no first_name/last_name)
   SELECT
     COALESCE(m.name, 'Model'),
     (m.user_id IS NOT NULL)
