@@ -1838,6 +1838,7 @@ export const uiCopy = {
     nearbyNeedsLocation:
       'Near me is on, but location is unavailable. Allow location access or set your city in filters to sort by distance.',
     nearbyLoadFailed: 'Could not load nearby models. Check your connection and try again.',
+    nearbyOverridesCountry: 'Near me searches globally by radius — country filter is not applied.',
     discoveryLoadMoreFailed:
       'Could not load more results. Scroll up and try again, or adjust filters.',
     optionChecklistDate: 'Date is required',

@@ -1228,3 +1228,91 @@ const rows = activeRows.length > 0 ? activeRows : [allRows[allRows.length - 1]];
 Ohne den Agency-only-Branch fällt die Logik auf `optionNegotiating` (blau) statt `awaitingClientJob`-äquivalent (braun) → **Badge ↔ Thread-Header Inkonsistenz**.
 
 **Gefixt (2026-04-13):** Beide Funktionen behandeln jetzt `waiting_for_agency_to_finalize_job` mit derselben Badge/Farbe wie `waiting_for_client_to_finalize_job`.
+
+### Q. MODEL APPROVE/REJECT — DB-REFRESH PFLICHT (unveränderlich)
+
+`approveOptionAsModel` und `rejectOptionAsModel` in `src/store/optionRequests.ts` MÜSSEN nach erfolgreichem RPC einen `getOptionRequestById`-Refresh durchführen und den lokalen Cache via `Object.assign(req, toLocalRequest(refreshed))` aktualisieren.
+
+**Warum:** DB-Trigger können Felder verändern, die der optimistische Client-State nicht kennt (z. B. `fn_reset_final_status_on_rejection` setzt `final_status` bei Rejection zurück). Ohne Refresh driftet der lokale Zustand von der DB-Wahrheit ab → Smart Attention, Kalender-Badges und Thread-Header zeigen stale Werte.
+
+**Pattern:**
+```typescript
+const ok = await modelConfirmOptionRequest(req.id);
+if (!ok) { /* rollback */ return false; }
+const refreshed = await getOptionRequestById(req.id);
+if (refreshed) { Object.assign(req, toLocalRequest(refreshed)); }
+// ... system message, notify ...
+```
+
+**Verboten:**
+```typescript
+// NIEMALS: Optimistisches Update ohne DB-Refresh nach erfolgreichem RPC
+req.modelApproval = 'approved';
+const ok = await modelConfirmOptionRequest(req.id);
+if (ok) return true; // ← DB-Trigger-Felder fehlen im Cache
+```
+
+**Gefixt (2026-04-13):** Beide Funktionen refreshen jetzt nach RPC.
+
+### R. AGENCY-ONLY FLOWS — KEIN PREIS-UI (unveränderlich)
+
+Wenn `request.isAgencyOnly === true`, ist die Preis-Verhandlung **by definition settled** (kein Client, keine Verhandlung). In allen UI-Komponenten die Preisaktionen rendern (insb. `NegotiationThreadFooter`) MUSS `priceLocked` für Agency-only-Requests **immer `true`** sein.
+
+**Pattern:**
+```typescript
+const isAgencyOnlyRequest = request.isAgencyOnly === true;
+const priceLocked = isAgencyOnlyRequest || priceCommerciallySettledForUi(signals);
+```
+
+**Verboten:**
+```typescript
+// NIEMALS: priceLocked ohne Agency-only-Sonderfall
+const priceLocked = priceCommerciallySettledForUi(signals);
+// → Bei agency-only: pending/null Preis → priceLocked=false → Preis-UI erscheint fälschlich
+```
+
+**Konsequenz für Buttons:**
+- Agency-only: kein „Accept proposed fee", kein „Make counter offer", kein „Propose initial fee"
+- Agency-only: kein `agencyAwaitingClientOnCounter` (zusätzlicher Guard `!isAgencyOnlyRequest`)
+- Client-Preis-Buttons (`!isAgency`): nicht relevant, da Client bei agency-only nie den Thread sieht
+
+**Gefixt (2026-04-13):** `NegotiationThreadFooter` — `priceLocked` und `agencyAwaitingClientOnCounter` berücksichtigen jetzt `isAgencyOnlyRequest`.
+
+### S. STORE-FUNKTIONEN — VOLLSTÄNDIGER DB-REFRESH NACH JEDER RPC-MUTATION (unveränderlich)
+
+Jede Store-Funktion in `src/store/optionRequests.ts` die eine RPC-Mutation durchführt MUSS nach **erfolgreichem** RPC-Aufruf einen `getOptionRequestById`-Refresh ausführen und den lokalen Cache aktualisieren.
+
+**Erlaubter Fallback:** Wenn der Refresh fehlschlägt (`null`), darf die Funktion:
+1. Minimale Felder direkt im Cache setzen (z. B. `clientPriceStatus = 'rejected'`)
+2. Trotzdem `true` zurückgeben (RPC war erfolgreich; Cache ist „best effort" konsistent)
+3. `console.warn` loggen
+
+**Verboten:**
+```typescript
+// NIEMALS: RPC aufrufen und lokalen Cache nur optimistisch setzen, ohne DB-Refresh-Versuch
+req.status = 'confirmed';
+const ok = await rpcCall(req.id);
+return ok; // ← kein getOptionRequestById nach Erfolg
+```
+
+**Gefixt (2026-04-13):** `approveOptionAsModel`, `rejectOptionAsModel` nachgerüstet.
+**Bereits korrekt:** `agencyConfirmAvailabilityStore`, `agencyAcceptClientPriceStore`, `agencyCounterOfferStore`, `agencyRejectClientPriceStore`, `clientAcceptCounterStore`, `clientConfirmJobStore`, `clientRejectCounterStore`, `agencyConfirmJobAgencyOnlyStore`.
+
+### T. attentionSignalsFromOptionRequestLike — LÜCKENLOSE isAgencyOnly-ABDECKUNG (unveränderlich)
+
+**ALLE** Call-Sites von `attentionSignalsFromOptionRequestLike` müssen `isAgencyOnly` setzen — auch in Client-Web-Kontexten (Attention-Filter, Header-Label, Listen-Labels), Agency-Views, Kalender, Tests.
+
+**Gefixt (2026-04-13, zweite Welle):** 3 Call-Sites in `ClientWebApp.tsx` (Attention-Filter, Header-Label, Listen-Label) und 1 Call-Site in `agencyCalendarUnified.attentionParity.test.ts` nachgerüstet.
+
+**Vollständige Liste aller Call-Sites mit `isAgencyOnly` (Stand 2026-04-13):**
+- `UnifiedCalendarAgenda.tsx` ✅
+- `calendarProjectionLabel.ts` (2× Badge + Grid) ✅
+- `calendarDetailNextStep.ts` (2× Agency + Model) ✅
+- `agencyCalendarUnified.ts` ✅
+- `NegotiationThreadFooter.tsx` ✅
+- `AgencyControllerView.tsx` (3× Filter + Header + Liste) ✅
+- `ClientWebApp.tsx` (3× Filter + Header + Liste) ✅
+- `optionRequestAttention.ts` (Definition + `optionRequestNeedsMessagesTabAttention`) ✅
+- `agencyCalendarUnified.attentionParity.test.ts` ✅
+
+**Prüfpflicht:** Bei jedem neuen `attentionSignalsFromOptionRequestLike`-Aufruf: STOP wenn `isAgencyOnly` fehlt.

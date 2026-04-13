@@ -24,10 +24,10 @@ import type { ClientMeasurementFilters } from './modelsSupabase';
  * get_discovery_models RPC. Update both when tuning.
  */
 export const DISCOVERY_WEIGHTS = {
-  neverSeen:       50,
-  sameCity:        30,
-  recentActive:    20,
-  seenPenalty:    -10,
+  neverSeen: 50,
+  sameCity: 30,
+  recentActive: 20,
+  seenPenalty: -10,
   rejectedPenalty: -40,
 } as const;
 
@@ -71,6 +71,8 @@ export type DiscoveryFilters = ClientMeasurementFilters & {
   countryCode: string;
   /** Resolved city for the +30 location boost (approximate, privacy-safe). */
   clientCity?: string | null;
+  /** Hard city filter — case-insensitive substring match on effective_city. */
+  city?: string | null;
   category?: string | null;
   sportsWinter?: boolean;
   sportsSummer?: boolean;
@@ -92,10 +94,7 @@ export const DISCOVERY_PAGE_SIZE = 50;
  * Uses linear back-off (300 ms * attempt). Does NOT retry on application-level
  * errors (e.g. Supabase RPC returning { error }); those are handled by callers.
  */
-async function withRetry<T>(
-  fn: () => Promise<T>,
-  maxRetries: number = 2,
-): Promise<T> {
+async function withRetry<T>(fn: () => Promise<T>, maxRetries: number = 2): Promise<T> {
   let lastError: unknown;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
@@ -170,11 +169,7 @@ export function applyDiversityShuffle(models: DiscoveryModel[]): DiscoveryModel[
   const tier2 = models.filter((m) => m.discovery_score >= 0 && m.discovery_score < threshold);
   const tier3 = models.filter((m) => m.discovery_score < 0);
 
-  return [
-    ...fisherYates(tier1),
-    ...fisherYates(tier2),
-    ...fisherYates(tier3),
-  ];
+  return [...fisherYates(tier1), ...fisherYates(tier2), ...fisherYates(tier3)];
 }
 
 function fisherYates<T>(arr: T[]): T[] {
@@ -215,10 +210,7 @@ async function assertPlatformAccess(): Promise<void> {
  * client organisation. Retries up to 2 times on network failure.
  * Never throws — failures are logged but do not block the UI.
  */
-export async function recordInteraction(
-  modelId: string,
-  action: InteractionAction,
-): Promise<void> {
+export async function recordInteraction(modelId: string, action: InteractionAction): Promise<void> {
   try {
     await withRetry(async () => {
       const { error } = await supabase.rpc('record_client_interaction', {
@@ -280,7 +272,7 @@ export async function getDiscoveryModels(
   // Frontend paywall check (belt-and-suspenders; the RPC enforces it server-side too).
   try {
     await assertPlatformAccess();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (e: any) {
     if (e?.code === 'platform_access_denied') {
       return { models: [], nextCursor: null };
@@ -292,42 +284,44 @@ export async function getDiscoveryModels(
 
   try {
     const { data, error } = await supabase.rpc('get_discovery_models', {
-      p_client_org_id:   clientOrgId,
-      p_iso:             filters.countryCode.trim().toUpperCase(),
-      p_client_type:     'all',
+      p_client_org_id: clientOrgId,
+      p_iso: filters.countryCode.trim().toUpperCase(),
+      p_client_type: 'all',
       // Legacy OFFSET params — used when cursor is null.
-      p_from:            0,
-      p_to:              DISCOVERY_PAGE_SIZE - 1,
+      p_from: 0,
+      p_to: DISCOVERY_PAGE_SIZE - 1,
       // Location
-      p_client_city:     filters.clientCity?.trim() ?? null,
+      p_client_city: filters.clientCity?.trim() ?? null,
       // Category
-      p_category:        filters.category ?? null,
+      p_category: filters.category ?? null,
       // Sports
-      p_sports_winter:   filters.sportsWinter ?? false,
-      p_sports_summer:   filters.sportsSummer ?? false,
+      p_sports_winter: filters.sportsWinter ?? false,
+      p_sports_summer: filters.sportsSummer ?? false,
       // Measurements
-      p_height_min:      filters.heightMin      ?? null,
-      p_height_max:      filters.heightMax      ?? null,
-      p_hair_color:      filters.hairColor      ?? null,
-      p_hips_min:        filters.hipsMin        ?? null,
-      p_hips_max:        filters.hipsMax        ?? null,
-      p_waist_min:       filters.waistMin       ?? null,
-      p_waist_max:       filters.waistMax       ?? null,
-      p_chest_min:       filters.chestMin       ?? null,
-      p_chest_max:       filters.chestMax       ?? null,
-      p_legs_inseam_min: filters.legsInseamMin  ?? null,
-      p_legs_inseam_max: filters.legsInseamMax  ?? null,
-      p_sex:             filters.sex            ?? null,
-      p_ethnicities:     filters.ethnicities?.length ? filters.ethnicities : null,
+      p_height_min: filters.heightMin ?? null,
+      p_height_max: filters.heightMax ?? null,
+      p_hair_color: filters.hairColor ?? null,
+      p_hips_min: filters.hipsMin ?? null,
+      p_hips_max: filters.hipsMax ?? null,
+      p_waist_min: filters.waistMin ?? null,
+      p_waist_max: filters.waistMax ?? null,
+      p_chest_min: filters.chestMin ?? null,
+      p_chest_max: filters.chestMax ?? null,
+      p_legs_inseam_min: filters.legsInseamMin ?? null,
+      p_legs_inseam_max: filters.legsInseamMax ?? null,
+      p_sex: filters.sex ?? null,
+      p_ethnicities: filters.ethnicities?.length ? filters.ethnicities : null,
+      // Hard city filter (case-insensitive substring on effective_city)
+      p_city: filters.city?.trim() || null,
       // Session dedup
-      p_exclude_ids:     excludeIds.length ? excludeIds : null,
+      p_exclude_ids: excludeIds.length ? excludeIds : null,
       // Cooldown
-      p_reject_hours:    rejectHours,
-      p_book_days:       bookDays,
+      p_reject_hours: rejectHours,
+      p_book_days: bookDays,
       // Cursor pagination (overrides OFFSET when non-null)
-      p_cursor_score:    cursor?.score    ?? null,
-      p_cursor_model_id: cursor?.modelId  ?? null,
-      p_limit:           DISCOVERY_PAGE_SIZE,
+      p_cursor_score: cursor?.score ?? null,
+      p_cursor_model_id: cursor?.modelId ?? null,
+      p_limit: DISCOVERY_PAGE_SIZE,
     });
 
     if (error) {

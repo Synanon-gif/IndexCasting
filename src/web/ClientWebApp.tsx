@@ -1002,6 +1002,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         const discoveryFilters = {
           countryCode: countryIso,
           clientCity: userCity ?? null,
+          city: filters.city.trim() || null,
           category: effectiveCategory ?? null,
           sportsWinter: filters.sportsWinter || false,
           sportsSummer: filters.sportsSummer || false,
@@ -1345,6 +1346,9 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     if (filters.nearby && userLat == null && userLng == null && !cityTrim) {
       out.push({ kind: 'warning', text: uiCopy.dashboard.nearbyNeedsLocation });
     }
+    if (filters.nearby && filters.countryCode) {
+      out.push({ kind: 'warning', text: uiCopy.dashboard.nearbyOverridesCountry });
+    }
     if (nearbyLoadFailed && filters.nearby) {
       out.push({ kind: 'error', text: uiCopy.dashboard.nearbyLoadFailed });
     }
@@ -1356,6 +1360,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     isPackageMode,
     isSharedMode,
     filters.nearby,
+    filters.countryCode,
     userLat,
     userLng,
     userCity,
@@ -5135,6 +5140,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
         modelAccountLinked: r.modelAccountLinked ?? false,
         agencyCounterPrice: r.agencyCounterPrice ?? null,
         proposedPrice: r.proposedPrice ?? null,
+        isAgencyOnly: r.isAgencyOnly ?? false,
       });
       if (!attentionHeaderLabelFromSignals(sig, 'client')) return false;
     }
@@ -5165,6 +5171,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
           modelAccountLinked: request.modelAccountLinked ?? false,
           agencyCounterPrice: request.agencyCounterPrice ?? null,
           proposedPrice: request.proposedPrice ?? null,
+          isAgencyOnly: request.isAgencyOnly ?? false,
         }),
         isAgency ? 'agency' : 'client',
       )
@@ -5690,6 +5697,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                         modelAccountLinked: r.modelAccountLinked ?? false,
                         agencyCounterPrice: r.agencyCounterPrice ?? null,
                         proposedPrice: r.proposedPrice ?? null,
+                        isAgencyOnly: r.isAgencyOnly ?? false,
                       }),
                       'client',
                     );

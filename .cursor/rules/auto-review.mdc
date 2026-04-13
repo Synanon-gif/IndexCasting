@@ -207,6 +207,9 @@ Q14: Nutzt diese Änderung eine eigene Attention-/Urgency-Heuristik statt der ka
 Q15: Fehlt einer neuen Option-Store-Mutation der beginCriticalOptionAction/endCriticalOptionAction Inflight-Guard?
 Q16: Fehlt einem attentionSignalsFromOptionRequestLike-Aufruf das isAgencyOnly-Feld?
 Q17: Schreibt updateBookingDetails oder eine neue calendar_entries-Write-Funktion auf gecancelte Rows?
+Q18: Fehlt einer neuen Store-Funktion nach erfolgreichem RPC der DB-Refresh via getOptionRequestById + Object.assign?
+Q19: Zeigt eine UI-Komponente Preis-Verhandlungs-UI (Accept fee, Counter offer, Propose fee) bei Agency-only-Flows (isAgencyOnly === true)?
+Q20: Gibt eine Store-Funktion nach erfolgreichem RPC `true` zurück OHNE DB-Refresh-Versuch (getOptionRequestById)?
 ```
 
 → Wenn **eine** Antwort unklar oder „möglicherweise ja" ist:
@@ -266,6 +269,10 @@ Q17: Schreibt updateBookingDetails oder eine neue calendar_entries-Write-Funktio
 - **`updateBookingDetails` SELECT ohne `status`-Filter (cancelled Rows inkludiert):** Blocker (Risiko 33) — Schreibt `booking_details` auf gecancelte Kalenderzeilen; Audit-Trail-Inkonsistenz. Pflicht: `activeRows.filter(r => r.status !== 'cancelled')` wie `appendSharedBookingNote`. Siehe `system-invariants.mdc` **### N**.
 - **`attentionSignalsFromOptionRequestLike`-Aufruf ohne `isAgencyOnly`:** Blocker (Risiko 34) — Agency-only-Events werden als client-driven behandelt → falscher Preis-Status, falsche Job-Finalisierungszuordnung, falscher Kalender-Next-Step. Siehe `system-invariants.mdc` **### O**.
 - **`calendarProjectionBadge`/`calendarGridColorForOptionItem` ohne Branch für `waiting_for_agency_to_finalize_job`:** Blocker (Risiko 35) — Agency-only-Badge fällt auf `optionNegotiating` (blau) statt Job-Pending (braun) → Badge ↔ Thread-Header Inkonsistenz. Siehe `system-invariants.mdc` **### P**.
+- **Model Approve/Reject Store-Funktion ohne DB-Refresh nach RPC:** Blocker (Risiko 36) — DB-Trigger (z. B. `fn_reset_final_status_on_rejection`) verändern Felder die der optimistische Client-State nicht kennt → Smart Attention, Kalender-Badges, Thread-Header zeigen stale Werte. Pflicht: `getOptionRequestById` + `Object.assign(req, toLocalRequest(refreshed))` nach erfolgreichem RPC. Siehe `system-invariants.mdc` **### Q**.
+- **Agency-only Flow mit sichtbarer Preis-UI:** Blocker (Risiko 37) — `priceLocked` in `NegotiationThreadFooter` (oder äquivalenten UI-Komponenten) berücksichtigt `isAgencyOnly` nicht → Preis-Buttons (Accept fee, Counter offer, Propose fee) erscheinen bei Agency-only-Events obwohl keine Client-Preisverhandlung existiert. Pflicht: `priceLocked = isAgencyOnlyRequest || priceCommerciallySettledForUi(signals)`. Siehe `system-invariants.mdc` **### R**.
+- **Neue Store-Funktion mit RPC-Mutation ohne DB-Refresh nach Erfolg:** Blocker (Risiko 38) — Lokaler Cache driftet von DB-Wahrheit ab; Trigger-Side-Effects fehlen im Frontend → Attention/Kalender/Header inkonsistent. Jede Store-Mutation MUSS nach erfolgreichem RPC `getOptionRequestById` aufrufen. Siehe `system-invariants.mdc` **### S**.
+- **Neuer `attentionSignalsFromOptionRequestLike`-Aufruf ohne `isAgencyOnly` (auch in Client-Web/Test):** Blocker (Risiko 39) — Erweitert Risiko 34 auf ALLE Call-Sites; 3 ClientWebApp-Stellen und 1 Test waren bis 2026-04-13 ungepatcht. Vollständige Liste in `system-invariants.mdc` **### T**.
 
 ---
 
@@ -278,3 +285,4 @@ Q17: Schreibt updateBookingDetails oder eine neue calendar_entries-Write-Funktio
 - RLS-Konsistenz (keine 42P17-Fehler)
 - **Connectionless Discover / First-contact:** keine Connect-first-Pflicht; Downstream-Parität zu Discover; Packages/Guest/Projekte/Requests/Kalender/Attention wie in `system-invariants.mdc` (**FIRST-CONTACT…** **### 1**–**### 12**) und Checkliste **§2d**
 - **Smart Attention Konsistenz:** Alle Oberflächen (Header, Listen, Tab-Dots, Kalender) leiten aus derselben kanonischen Pipeline ab; keine parallelen Heuristiken; Achsen bleiben unabhängig
+- **Option/Casting/Job Lifecycle Integrität:** Kalender-Badges, Attention-States, System-Messages und Thread-Header bleiben über Client-, Agency- und Agency-only-Flows hinweg konsistent; kein Drift zwischen lokalem Cache und DB-Wahrheit nach RPC-Mutationen; Inflight-Guards verhindern Doppelsubmissions

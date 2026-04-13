@@ -68,7 +68,12 @@ describe('needsAgencyActionForOption — parity with attentionHeaderLabelFromSig
         status: 'in_negotiation',
         model_approval: 'approved',
       },
-      { client_price_status: 'accepted', final_status: 'option_confirmed', status: 'confirmed', model_approval: 'approved' },
+      {
+        client_price_status: 'accepted',
+        final_status: 'option_confirmed',
+        status: 'confirmed',
+        model_approval: 'approved',
+      },
     ];
     for (const c of cases) {
       const item = calendarItem(c);
@@ -82,6 +87,7 @@ describe('needsAgencyActionForOption — parity with attentionHeaderLabelFromSig
         agencyCounterPrice: opt.agency_counter_price,
         proposedPrice: opt.proposed_price,
         hasConflictWarning: false,
+        isAgencyOnly: opt.is_agency_only ?? false,
       });
       const expected = attentionHeaderLabelFromSignals(sig, 'agency') !== null;
       expect(needsAgencyActionForOption(item)).toBe(expected);
@@ -95,7 +101,13 @@ describe('buildUnifiedAgencyCalendarRows — option row needsAgencyAction', () =
       client_price_status: 'pending',
       final_status: 'option_pending',
     });
-    const rows = buildUnifiedAgencyCalendarRows([item], [], [], {}, new Map([[item.option.id, item]]));
+    const rows = buildUnifiedAgencyCalendarRows(
+      [item],
+      [],
+      [],
+      {},
+      new Map([[item.option.id, item]]),
+    );
     const optRow = rows.find((r) => r.kind === 'option');
     expect(optRow).toBeDefined();
     expect(optRow?.kind === 'option' && optRow.needsAgencyAction).toBe(

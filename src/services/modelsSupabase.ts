@@ -70,10 +70,7 @@ export type SupabaseModel = {
 
 export async function getModelsFromSupabase(): Promise<SupabaseModel[]> {
   try {
-    const { data, error } = await supabase
-      .from('models')
-      .select(MODEL_DETAIL_SELECT)
-      .order('name');
+    const { data, error } = await supabase.from('models').select(MODEL_DETAIL_SELECT).order('name');
 
     if (error) {
       console.error('getModelsFromSupabase error:', error);
@@ -121,15 +118,15 @@ export async function getModelsPagedFromSupabase(
       .range(offset, offset + limit - 1);
 
     if (filters?.city && filters.city !== 'all') {
-      query = query.eq('city', filters.city);
+      query = query.ilike('city', `%${filters.city}%`);
     }
     if (filters?.hairColor && filters.hairColor !== 'all') {
       query = query.eq('hair_color', filters.hairColor);
     }
     if (filters?.height && filters.height !== 'all') {
-      if (filters.height === 'short')  query = query.lt('height', 175);
+      if (filters.height === 'short') query = query.lt('height', 175);
       if (filters.height === 'medium') query = query.gte('height', 175).lte('height', 182);
-      if (filters.height === 'tall')   query = query.gt('height', 182);
+      if (filters.height === 'tall') query = query.gt('height', 182);
     }
 
     const { data, error } = await query;
@@ -327,7 +324,9 @@ export async function getModelsForClientFromSupabase(
       .from('models')
       .select(MODEL_LIST_SELECT)
       .eq('is_active', true)
-      .or('agency_relationship_status.is.null,agency_relationship_status.eq.active,agency_relationship_status.eq.pending_link')
+      .or(
+        'agency_relationship_status.is.null,agency_relationship_status.eq.active,agency_relationship_status.eq.pending_link',
+      )
       .order('name')
       .range(from, to);
     if (clientType === 'fashion') q = q.eq('is_visible_fashion', true);
@@ -340,9 +339,7 @@ export async function getModelsForClientFromSupabase(
     const { data, error } = await q;
     return { data: data as SupabaseModel[] | null, error };
   });
-  return measurementFilters
-    ? filterModelsByChestCoalesce(rows, measurementFilters)
-    : rows;
+  return measurementFilters ? filterModelsByChestCoalesce(rows, measurementFilters) : rows;
 }
 
 export async function getModelsForClientFromSupabaseByTerritory(
@@ -369,7 +366,9 @@ export async function getModelsForClientFromSupabaseByTerritory(
       .select(MODEL_LIST_SELECT + ', territory_country_code, agency_name, territory_agency_id')
       .eq('territory_country_code', iso)
       .eq('is_active', true)
-      .or('agency_relationship_status.is.null,agency_relationship_status.eq.active,agency_relationship_status.eq.pending_link')
+      .or(
+        'agency_relationship_status.is.null,agency_relationship_status.eq.active,agency_relationship_status.eq.pending_link',
+      )
       .order('name')
       .range(from, to);
     if (clientType === 'fashion') q = q.eq('is_visible_fashion', true);
@@ -381,21 +380,17 @@ export async function getModelsForClientFromSupabaseByTerritory(
     if (measurementFilters) q = applyMeasurementFilters(q, measurementFilters);
     const { data, error } = await q;
     return {
-      data: data as
-        | Array<
-            SupabaseModel & {
-              territory_country_code: string;
-              agency_name: string;
-              territory_agency_id?: string | null;
-            }
-          >
-        | null,
+      data: data as Array<
+        SupabaseModel & {
+          territory_country_code: string;
+          agency_name: string;
+          territory_agency_id?: string | null;
+        }
+      > | null,
       error,
     };
   });
-  return measurementFilters
-    ? filterModelsByChestCoalesce(rows, measurementFilters)
-    : rows;
+  return measurementFilters ? filterModelsByChestCoalesce(rows, measurementFilters) : rows;
 }
 
 export type HybridLocationModel = SupabaseModel & {
@@ -432,27 +427,27 @@ export async function getModelsForClientFromSupabaseHybridLocation(
 
   return fetchAllSupabasePages(async (from, to) => {
     const { data, error } = await supabase.rpc('get_models_by_location', {
-      p_iso:              iso,
-      p_client_type:      clientType,
-      p_from:             from,
-      p_to:               to,
-      p_city:             city?.trim() ?? null,
-      p_category:         category ?? null,
-      p_sports_winter:    sportsWinter ?? false,
-      p_sports_summer:    sportsSummer ?? false,
-      p_height_min:       f.heightMin      ?? null,
-      p_height_max:       f.heightMax      ?? null,
-      p_hair_color:       f.hairColor      ?? null,
-      p_hips_min:         f.hipsMin        ?? null,
-      p_hips_max:         f.hipsMax        ?? null,
-      p_waist_min:        f.waistMin       ?? null,
-      p_waist_max:        f.waistMax       ?? null,
-      p_chest_min:        f.chestMin       ?? null,
-      p_chest_max:        f.chestMax       ?? null,
-      p_legs_inseam_min:  f.legsInseamMin  ?? null,
-      p_legs_inseam_max:  f.legsInseamMax  ?? null,
-      p_sex:              f.sex            ?? null,
-      p_ethnicities:      f.ethnicities?.length ? f.ethnicities : null,
+      p_iso: iso,
+      p_client_type: clientType,
+      p_from: from,
+      p_to: to,
+      p_city: city?.trim() ?? null,
+      p_category: category ?? null,
+      p_sports_winter: sportsWinter ?? false,
+      p_sports_summer: sportsSummer ?? false,
+      p_height_min: f.heightMin ?? null,
+      p_height_max: f.heightMax ?? null,
+      p_hair_color: f.hairColor ?? null,
+      p_hips_min: f.hipsMin ?? null,
+      p_hips_max: f.hipsMax ?? null,
+      p_waist_min: f.waistMin ?? null,
+      p_waist_max: f.waistMax ?? null,
+      p_chest_min: f.chestMin ?? null,
+      p_chest_max: f.chestMax ?? null,
+      p_legs_inseam_min: f.legsInseamMin ?? null,
+      p_legs_inseam_max: f.legsInseamMax ?? null,
+      p_sex: f.sex ?? null,
+      p_ethnicities: f.ethnicities?.length ? f.ethnicities : null,
     });
     return { data: data as HybridLocationModel[] | null, error };
   });
@@ -464,7 +459,9 @@ export async function getModelsForAgencyFromSupabase(agencyId: string): Promise<
       .from('models')
       .select(MODEL_DETAIL_SELECT)
       .eq('agency_id', agencyId)
-      .or('agency_relationship_status.is.null,agency_relationship_status.eq.active,agency_relationship_status.eq.pending_link')
+      .or(
+        'agency_relationship_status.is.null,agency_relationship_status.eq.active,agency_relationship_status.eq.pending_link',
+      )
       .order('name')
       .range(from, to);
     return { data: data as SupabaseModel[] | null, error };
@@ -476,7 +473,9 @@ export async function getModelsForAgencyFromSupabase(agencyId: string): Promise<
  * Gibt alle Models zurück, für die die Organization mindestens einen model_assignments-Eintrag hat.
  * Verwendet RLS — der Caller muss Mitglied der Organisation sein.
  */
-export async function getModelsForOrganizationFromSupabase(organizationId: string): Promise<SupabaseModel[]> {
+export async function getModelsForOrganizationFromSupabase(
+  organizationId: string,
+): Promise<SupabaseModel[]> {
   try {
     const { data, error } = await supabase
       .from('model_assignments')
@@ -496,7 +495,9 @@ export async function getModelsForOrganizationFromSupabase(organizationId: strin
         .from('models')
         .select(MODEL_DETAIL_SELECT)
         .in('id', modelIds)
-        .or('agency_relationship_status.is.null,agency_relationship_status.eq.active,agency_relationship_status.eq.pending_link')
+        .or(
+          'agency_relationship_status.is.null,agency_relationship_status.eq.active,agency_relationship_status.eq.pending_link',
+        )
         .order('name')
         .range(from, to);
       return { data: models as SupabaseModel[] | null, error: mErr };
@@ -509,7 +510,7 @@ export async function getModelsForOrganizationFromSupabase(organizationId: strin
 
 export async function updateModelVisibilityInSupabase(
   id: string,
-  payload: { is_visible_commercial?: boolean; is_visible_fashion?: boolean }
+  payload: { is_visible_commercial?: boolean; is_visible_fashion?: boolean },
 ): Promise<boolean> {
   try {
     const { error } = await supabase.rpc('agency_update_model_full', {
@@ -658,11 +659,11 @@ export async function getMyModelAgencies(): Promise<ModelAgencyContext[]> {
     }
     if (!data || !Array.isArray(data)) return [];
     return data.map((row: Record<string, unknown>) => ({
-      modelId:        row.model_id        as string,
-      agencyId:       row.agency_id       as string,
-      agencyName:     row.agency_name     as string,
+      modelId: row.model_id as string,
+      agencyId: row.agency_id as string,
+      agencyName: row.agency_name as string,
       organizationId: (row.organization_id as string) ?? null,
-      territory:      row.territory       as string,
+      territory: row.territory as string,
     }));
   } catch (e) {
     console.error('getMyModelAgencies exception:', e);
@@ -690,7 +691,7 @@ export async function removeModelFromAgency(modelId: string, agencyId: string): 
 export async function agencyLinkModelToUser(
   modelId: string,
   agencyId: string,
-  email: string
+  email: string,
 ): Promise<boolean> {
   const { data, error } = await supabase.rpc('agency_link_model_to_user', {
     p_model_id: modelId,

@@ -9,7 +9,10 @@ import {
 } from '../../utils/optionRequestAttention';
 import { optionConfirmedBannerLabel } from '../../utils/modelAccountNegotiationCopy';
 import type { OptionRequest, ChatStatus } from '../../store/optionRequests';
-import type { ClientAssignmentFlag, AssignmentFlagColor } from '../../services/clientAssignmentsSupabase';
+import type {
+  ClientAssignmentFlag,
+  AssignmentFlagColor,
+} from '../../services/clientAssignmentsSupabase';
 
 export type NegotiationThreadFooterProps = {
   request: OptionRequest;
@@ -120,10 +123,12 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
     proposedPrice: request.proposedPrice ?? null,
     isAgencyOnly: request.isAgencyOnly ?? false,
   });
-  const priceLocked = priceCommerciallySettledForUi(signals);
+  const isAgencyOnlyRequest = request.isAgencyOnly === true;
+  const priceLocked = isAgencyOnlyRequest || priceCommerciallySettledForUi(signals);
   const isMobileNative = Platform.OS !== 'web';
   const agencyAwaitingClientOnCounter =
     isAgency &&
+    !isAgencyOnlyRequest &&
     !priceLocked &&
     agencyCounterPrice != null &&
     clientPriceStatus === 'pending' &&
@@ -142,12 +147,34 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
   const agencyActionsContent = (
     <>
       {/* ── Org chat row ── */}
-      <View style={[
-        { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.xs, marginBottom: isMobileNative ? spacing.xs : spacing.sm },
-        isMobileNative && { opacity: 0.8 },
-      ]}>
-        <View style={[styles.statusPill, { backgroundColor: '#e0e7ff' }, isMobileNative && styles.statusPillMobile]}>
-          <Text style={[styles.statusPillLabel, { color: '#3730a3' }, isMobileNative && styles.statusPillLabelMobile]}>{contextThreadLabel}</Text>
+      <View
+        style={[
+          {
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: spacing.xs,
+            marginBottom: isMobileNative ? spacing.xs : spacing.sm,
+          },
+          isMobileNative && { opacity: 0.8 },
+        ]}
+      >
+        <View
+          style={[
+            styles.statusPill,
+            { backgroundColor: '#e0e7ff' },
+            isMobileNative && styles.statusPillMobile,
+          ]}
+        >
+          <Text
+            style={[
+              styles.statusPillLabel,
+              { color: '#3730a3' },
+              isMobileNative && styles.statusPillLabelMobile,
+            ]}
+          >
+            {contextThreadLabel}
+          </Text>
         </View>
         <TouchableOpacity
           style={[
@@ -175,10 +202,10 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
         modelPending &&
         finalStatus === 'option_confirmed' &&
         status === 'in_negotiation' && (
-        <Text style={styles.compactHint}>
-          {uiCopy.optionNegotiationChat.agencyWaitingForModelAfterAvailability}
-        </Text>
-      )}
+          <Text style={styles.compactHint}>
+            {uiCopy.optionNegotiationChat.agencyWaitingForModelAfterAvailability}
+          </Text>
+        )}
 
       {/* ── Collapsible details toggle ── */}
       {isAgency && !isTerminal && (
@@ -198,9 +225,22 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
       {detailsExpanded && (
         <>
           {!suppressDuplicateMeta && showAgencyExtras && request.proposedPrice != null && (
-            <Text style={{ ...typography.label, fontSize: 10, color: colors.accentBrown, marginBottom: spacing.xs }}>
+            <Text
+              style={{
+                ...typography.label,
+                fontSize: 10,
+                color: colors.accentBrown,
+                marginBottom: spacing.xs,
+              }}
+            >
               {uiCopy.optionNegotiationChat.proposedPriceLabel}:{' '}
-              {currency === 'USD' ? '$' : currency === 'GBP' ? '£' : currency === 'CHF' ? 'CHF ' : '€'}
+              {currency === 'USD'
+                ? '$'
+                : currency === 'GBP'
+                  ? '£'
+                  : currency === 'CHF'
+                    ? 'CHF '
+                    : '€'}
               {request.proposedPrice}
             </Text>
           )}
@@ -246,8 +286,18 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
                     : { backgroundColor: 'rgba(120,120,0,0.12)' },
               ]}
             >
-              <Text style={{ ...typography.label, fontSize: 11, color: colors.textPrimary, flexShrink: 1 }}>
-                {request.requestType === 'casting' ? uiCopy.dashboard.threadContextCasting : uiCopy.dashboard.threadContextOption} -{' '}
+              <Text
+                style={{
+                  ...typography.label,
+                  fontSize: 11,
+                  color: colors.textPrimary,
+                  flexShrink: 1,
+                }}
+              >
+                {request.requestType === 'casting'
+                  ? uiCopy.dashboard.threadContextCasting
+                  : uiCopy.dashboard.threadContextOption}{' '}
+                -{' '}
                 {optionConfirmedBannerLabel({
                   finalStatus,
                   modelAccountLinked: request.modelAccountLinked,
@@ -261,19 +311,36 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
 
       {/* ── Axis 2: Confirm availability ── */}
       {isAgency && !isTerminal && availabilityNotYetConfirmed && (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm }}>
+        <View
+          style={{
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            gap: spacing.sm,
+            marginBottom: spacing.sm,
+          }}
+        >
           <TouchableOpacity
-            style={[styles.filterPill, { backgroundColor: colors.buttonOptionGreen }, busy && { opacity: 0.5 }]}
+            style={[
+              styles.filterPill,
+              { backgroundColor: colors.buttonOptionGreen },
+              busy && { opacity: 0.5 },
+            ]}
             disabled={busy}
-            onPress={() => { void onAgencyConfirmAvailability(); }}
+            onPress={() => {
+              void onAgencyConfirmAvailability();
+            }}
           >
-            <Text style={[styles.filterPillLabel, { color: '#fff' }]}>{uiCopy.optionNegotiationChat.confirmOption}</Text>
+            <Text style={[styles.filterPillLabel, { color: '#fff' }]}>
+              {uiCopy.optionNegotiationChat.confirmOption}
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.filterPill, { borderWidth: 1, borderColor: colors.buttonSkipRed }]}
             onPress={onRejectNegotiation}
           >
-            <Text style={[styles.filterPillLabel, { color: colors.buttonSkipRed }]}>{uiCopy.optionNegotiationChat.rejectOption}</Text>
+            <Text style={[styles.filterPillLabel, { color: colors.buttonSkipRed }]}>
+              {uiCopy.optionNegotiationChat.rejectOption}
+            </Text>
           </TouchableOpacity>
         </View>
       )}
@@ -284,9 +351,20 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
           <Text style={styles.compactHint}>
             {uiCopy.optionNegotiationChat.agencyCounterAwaitingClientResponse}
           </Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm }}>
+          <View
+            style={{
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              gap: spacing.sm,
+              marginBottom: spacing.sm,
+            }}
+          >
             <TouchableOpacity
-              style={[styles.filterPill, { borderWidth: 1, borderColor: colors.buttonSkipRed }, busy && { opacity: 0.5 }]}
+              style={[
+                styles.filterPill,
+                { borderWidth: 1, borderColor: colors.buttonSkipRed },
+                busy && { opacity: 0.5 },
+              ]}
               disabled={busy}
               onPress={onRejectNegotiation}
             >
@@ -299,21 +377,33 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
       )}
 
       {/* ── Axis 1: Price actions (Accept + inline counter) ── */}
-      {isAgency &&
-        !priceLocked &&
-        !agencyAwaitingClientOnCounter &&
-        !isTerminal && (
+      {isAgency && !priceLocked && !agencyAwaitingClientOnCounter && !isTerminal && (
         <>
           {request.proposedPrice != null &&
           clientPriceStatus === 'pending' &&
           agencyCounterPrice == null ? (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm }}>
+            <View
+              style={{
+                flexDirection: 'row',
+                flexWrap: 'wrap',
+                gap: spacing.sm,
+                marginBottom: spacing.sm,
+              }}
+            >
               <TouchableOpacity
-                style={[styles.filterPill, { backgroundColor: colors.accentBrown }, busy && { opacity: 0.5 }]}
+                style={[
+                  styles.filterPill,
+                  { backgroundColor: colors.accentBrown },
+                  busy && { opacity: 0.5 },
+                ]}
                 disabled={busy}
-                onPress={() => { void onAgencyAcceptClientPrice(); }}
+                onPress={() => {
+                  void onAgencyAcceptClientPrice();
+                }}
               >
-                <Text style={[styles.filterPillLabel, { color: '#fff' }]}>{uiCopy.optionNegotiationChat.acceptProposedFee}</Text>
+                <Text style={[styles.filterPillLabel, { color: '#fff' }]}>
+                  {uiCopy.optionNegotiationChat.acceptProposedFee}
+                </Text>
               </TouchableOpacity>
             </View>
           ) : null}
@@ -328,7 +418,14 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
         agencyCounterPrice == null &&
         !isTerminal && (
           <View style={styles.counterBox}>
-            <Text style={{ ...typography.label, fontSize: 11, color: colors.textPrimary, marginBottom: spacing.xs }}>
+            <Text
+              style={{
+                ...typography.label,
+                fontSize: 11,
+                color: colors.textPrimary,
+                marginBottom: spacing.xs,
+              }}
+            >
               {uiCopy.optionNegotiationChat.counterOfferPendingHint}
             </Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
@@ -341,7 +438,11 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
                 style={[styles.chatInput, { flex: 1, minWidth: 120 }]}
               />
               <TouchableOpacity
-                style={[styles.filterPill, { paddingHorizontal: spacing.sm, backgroundColor: colors.textPrimary }, busy && { opacity: 0.5 }]}
+                style={[
+                  styles.filterPill,
+                  { paddingHorizontal: spacing.sm, backgroundColor: colors.textPrimary },
+                  busy && { opacity: 0.5 },
+                ]}
                 disabled={busy}
                 onPress={() => {
                   const num = parseFloat(agencyCounterInput.trim());
@@ -349,7 +450,9 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
                   void onAgencyCounterOffer(num);
                 }}
               >
-                <Text style={[styles.filterPillLabel, { color: '#fff' }]}>{uiCopy.optionNegotiationChat.sendCounter}</Text>
+                <Text style={[styles.filterPillLabel, { color: '#fff' }]}>
+                  {uiCopy.optionNegotiationChat.sendCounter}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.filterPill}
@@ -371,10 +474,24 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
         clientPriceStatus === 'rejected' &&
         !isTerminal && (
           <View style={styles.counterBox}>
-            <Text style={{ ...typography.label, fontSize: 11, color: colors.textPrimary, marginBottom: spacing.xs }}>
+            <Text
+              style={{
+                ...typography.label,
+                fontSize: 11,
+                color: colors.textPrimary,
+                marginBottom: spacing.xs,
+              }}
+            >
               {uiCopy.optionNegotiationChat.agencyNegotiationAfterClientDecline}
             </Text>
-            <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary, marginBottom: spacing.xs }}>
+            <Text
+              style={{
+                ...typography.label,
+                fontSize: 10,
+                color: colors.textSecondary,
+                marginBottom: spacing.xs,
+              }}
+            >
               {uiCopy.optionNegotiationChat.clientPriceDeclinedCounterHint}
             </Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
@@ -387,7 +504,11 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
                 style={[styles.chatInput, { flex: 1, minWidth: 120 }]}
               />
               <TouchableOpacity
-                style={[styles.filterPill, { paddingHorizontal: spacing.sm, backgroundColor: colors.textPrimary }, busy && { opacity: 0.5 }]}
+                style={[
+                  styles.filterPill,
+                  { paddingHorizontal: spacing.sm, backgroundColor: colors.textPrimary },
+                  busy && { opacity: 0.5 },
+                ]}
                 disabled={busy}
                 onPress={() => {
                   const num = parseFloat(agencyCounterInput.trim());
@@ -395,7 +516,9 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
                   void onAgencyCounterOffer(num);
                 }}
               >
-                <Text style={[styles.filterPillLabel, { color: '#fff' }]}>{uiCopy.optionNegotiationChat.sendCounter}</Text>
+                <Text style={[styles.filterPillLabel, { color: '#fff' }]}>
+                  {uiCopy.optionNegotiationChat.sendCounter}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -408,8 +531,18 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
         clientPriceStatus === 'pending' &&
         !isTerminal &&
         request.proposedPrice == null && (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm, alignItems: 'center' }}>
-            <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary }}>{uiCopy.optionNegotiationChat.proposeFeeHint}</Text>
+          <View
+            style={{
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              gap: spacing.sm,
+              marginBottom: spacing.sm,
+              alignItems: 'center',
+            }}
+          >
+            <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary }}>
+              {uiCopy.optionNegotiationChat.proposeFeeHint}
+            </Text>
             <TextInput
               value={agencyCounterInput}
               onChangeText={setAgencyCounterInput}
@@ -419,7 +552,11 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
               style={[styles.chatInput, { width: 100 }]}
             />
             <TouchableOpacity
-              style={[styles.filterPill, { paddingHorizontal: spacing.sm }, busy && { opacity: 0.5 }]}
+              style={[
+                styles.filterPill,
+                { paddingHorizontal: spacing.sm },
+                busy && { opacity: 0.5 },
+              ]}
               disabled={busy}
               onPress={() => {
                 const num = parseFloat(agencyCounterInput.trim());
@@ -437,31 +574,47 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
   return (
     <>
       {/* ── Assignment (readonly or manage) ── */}
-      {assignmentMode === 'readonly' && request.clientOrganizationId && assignmentByClientOrgId[request.clientOrganizationId] ? (
+      {assignmentMode === 'readonly' &&
+      request.clientOrganizationId &&
+      assignmentByClientOrgId[request.clientOrganizationId] ? (
         <Text style={[styles.metaText, { marginBottom: spacing.xs }]}>
-          {uiCopy.optionNegotiationChat.clientAssignmentLabel}: {assignmentByClientOrgId[request.clientOrganizationId].label}
+          {uiCopy.optionNegotiationChat.clientAssignmentLabel}:{' '}
+          {assignmentByClientOrgId[request.clientOrganizationId].label}
           {assignmentByClientOrgId[request.clientOrganizationId].assignedMemberName
             ? ` · ${assignmentByClientOrgId[request.clientOrganizationId].assignedMemberName}`
             : ''}
         </Text>
       ) : null}
       {assignmentMode === 'manage' && request.clientOrganizationId && (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: isMobileNative ? spacing.xs : spacing.sm }}>
+        <View
+          style={{
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            gap: spacing.xs,
+            marginBottom: isMobileNative ? spacing.xs : spacing.sm,
+          }}
+        >
           {assignmentByClientOrgId[request.clientOrganizationId] ? (
             <Text style={styles.metaText}>
-              {uiCopy.optionNegotiationChat.clientFlagLabel}: {assignmentByClientOrgId[request.clientOrganizationId].label}
+              {uiCopy.optionNegotiationChat.clientFlagLabel}:{' '}
+              {assignmentByClientOrgId[request.clientOrganizationId].label}
               {assignmentByClientOrgId[request.clientOrganizationId].assignedMemberName
                 ? ` · ${assignmentByClientOrgId[request.clientOrganizationId].assignedMemberName}`
                 : ''}
             </Text>
           ) : (
-            <Text style={styles.metaText}>{uiCopy.optionNegotiationChat.clientFlagLabel}: {uiCopy.optionNegotiationChat.clientFlagNone}</Text>
+            <Text style={styles.metaText}>
+              {uiCopy.optionNegotiationChat.clientFlagLabel}:{' '}
+              {uiCopy.optionNegotiationChat.clientFlagNone}
+            </Text>
           )}
           {isAgency && onSaveClientAssignment && (
             <TouchableOpacity
               style={styles.filterPill}
               onPress={() =>
-                setEditingAssignmentThreadId((prev) => (prev === request.threadId ? null : request.threadId))
+                setEditingAssignmentThreadId((prev) =>
+                  prev === request.threadId ? null : request.threadId,
+                )
               }
             >
               <Text style={styles.filterPillLabel}>{uiCopy.optionNegotiationChat.editLabel}</Text>
@@ -469,44 +622,58 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
           )}
         </View>
       )}
-      {assignmentMode === 'manage' && isAgency && onSaveClientAssignment && request.clientOrganizationId && editingAssignmentThreadId === request.threadId && (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.sm }}>
-          {(['gray', 'blue', 'green', 'amber', 'purple', 'red'] as AssignmentFlagColor[]).map((color) => (
-            <TouchableOpacity
-              key={color}
-              style={styles.filterPill}
-              onPress={() => {
-                void onSaveClientAssignment(request.clientOrganizationId!, {
-                  label: color.toUpperCase(),
-                  color,
-                  assignedMemberUserId:
-                    assignmentByClientOrgId[request.clientOrganizationId!]?.assignedMemberUserId ?? null,
-                });
-                setEditingAssignmentThreadId(null);
-              }}
-            >
-              <Text style={styles.filterPillLabel}>{color}</Text>
-            </TouchableOpacity>
-          ))}
-          {assignableMembers.slice(0, 6).map((member) => (
-            <TouchableOpacity
-              key={member.userId}
-              style={styles.filterPill}
-              onPress={() => {
-                const current = assignmentByClientOrgId[request.clientOrganizationId!];
-                void onSaveClientAssignment!(request.clientOrganizationId!, {
-                  label: current?.label ?? 'BLUE',
-                  color: current?.color ?? 'blue',
-                  assignedMemberUserId: member.userId,
-                });
-                setEditingAssignmentThreadId(null);
-              }}
-            >
-              <Text style={styles.filterPillLabel}>{member.name}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      )}
+      {assignmentMode === 'manage' &&
+        isAgency &&
+        onSaveClientAssignment &&
+        request.clientOrganizationId &&
+        editingAssignmentThreadId === request.threadId && (
+          <View
+            style={{
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              gap: spacing.xs,
+              marginBottom: spacing.sm,
+            }}
+          >
+            {(['gray', 'blue', 'green', 'amber', 'purple', 'red'] as AssignmentFlagColor[]).map(
+              (color) => (
+                <TouchableOpacity
+                  key={color}
+                  style={styles.filterPill}
+                  onPress={() => {
+                    void onSaveClientAssignment(request.clientOrganizationId!, {
+                      label: color.toUpperCase(),
+                      color,
+                      assignedMemberUserId:
+                        assignmentByClientOrgId[request.clientOrganizationId!]
+                          ?.assignedMemberUserId ?? null,
+                    });
+                    setEditingAssignmentThreadId(null);
+                  }}
+                >
+                  <Text style={styles.filterPillLabel}>{color}</Text>
+                </TouchableOpacity>
+              ),
+            )}
+            {assignableMembers.slice(0, 6).map((member) => (
+              <TouchableOpacity
+                key={member.userId}
+                style={styles.filterPill}
+                onPress={() => {
+                  const current = assignmentByClientOrgId[request.clientOrganizationId!];
+                  void onSaveClientAssignment!(request.clientOrganizationId!, {
+                    label: current?.label ?? 'BLUE',
+                    color: current?.color ?? 'blue',
+                    assignedMemberUserId: member.userId,
+                  });
+                  setEditingAssignmentThreadId(null);
+                }}
+              >
+                <Text style={styles.filterPillLabel}>{member.name}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
 
       {/* ── Mobile agency: collapsible actions toggle ── */}
       {showCollapsibleToggle && (
@@ -516,9 +683,7 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
           activeOpacity={0.6}
         >
           <View style={styles.actionsToggleInner}>
-            <Text style={styles.actionsToggleArrow}>
-              {actionsExpanded ? '▾' : '▸'}
-            </Text>
+            <Text style={styles.actionsToggleArrow}>{actionsExpanded ? '▾' : '▸'}</Text>
             <Text style={styles.actionsToggleLabel}>
               {actionsExpanded ? 'Hide actions' : 'Actions'}
             </Text>
@@ -536,12 +701,34 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
 
       {/* ── Non-agency content (org chat row for client) ── */}
       {!isAgency && (
-        <View style={[
-          { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.xs, marginBottom: isMobileNative ? spacing.xs : spacing.sm },
-          isMobileNative && { opacity: 0.8 },
-        ]}>
-          <View style={[styles.statusPill, { backgroundColor: '#e0e7ff' }, isMobileNative && styles.statusPillMobile]}>
-            <Text style={[styles.statusPillLabel, { color: '#3730a3' }, isMobileNative && styles.statusPillLabelMobile]}>{contextThreadLabel}</Text>
+        <View
+          style={[
+            {
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              gap: spacing.xs,
+              marginBottom: isMobileNative ? spacing.xs : spacing.sm,
+            },
+            isMobileNative && { opacity: 0.8 },
+          ]}
+        >
+          <View
+            style={[
+              styles.statusPill,
+              { backgroundColor: '#e0e7ff' },
+              isMobileNative && styles.statusPillMobile,
+            ]}
+          >
+            <Text
+              style={[
+                styles.statusPillLabel,
+                { color: '#3730a3' },
+                isMobileNative && styles.statusPillLabelMobile,
+              ]}
+            >
+              {contextThreadLabel}
+            </Text>
           </View>
           <TouchableOpacity
             style={[
@@ -570,41 +757,59 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
         agencyCounterPrice != null &&
         clientPriceStatus === 'pending' &&
         !isTerminal && (
-        <View style={{ marginBottom: spacing.sm, gap: spacing.xs }}>
-          <TouchableOpacity
-            style={[styles.filterPill, { backgroundColor: colors.buttonOptionGreen }]}
-            onPress={() => { void onClientAcceptCounter(); }}
-          >
-            <Text style={[styles.filterPillLabel, { color: '#fff' }]}>
-              {uiCopy.optionNegotiationChat.acceptAgencyProposal} ({currency === 'USD' ? '$' : currency === 'GBP' ? '£' : currency === 'CHF' ? 'CHF ' : '€'}
-              {agencyCounterPrice})
-            </Text>
-          </TouchableOpacity>
-          {onClientRejectCounter ? (
+          <View style={{ marginBottom: spacing.sm, gap: spacing.xs }}>
             <TouchableOpacity
-              style={[styles.filterPill, { borderWidth: 1, borderColor: colors.buttonSkipRed }]}
-              onPress={() => { void onClientRejectCounter(); }}
+              style={[styles.filterPill, { backgroundColor: colors.buttonOptionGreen }]}
+              onPress={() => {
+                void onClientAcceptCounter();
+              }}
             >
-              <Text style={[styles.filterPillLabel, { color: colors.buttonSkipRed }]}>
-                {uiCopy.optionNegotiationChat.rejectCounterOffer}
+              <Text style={[styles.filterPillLabel, { color: '#fff' }]}>
+                {uiCopy.optionNegotiationChat.acceptAgencyProposal} (
+                {currency === 'USD'
+                  ? '$'
+                  : currency === 'GBP'
+                    ? '£'
+                    : currency === 'CHF'
+                      ? 'CHF '
+                      : '€'}
+                {agencyCounterPrice})
               </Text>
             </TouchableOpacity>
-          ) : null}
-        </View>
-      )}
+            {onClientRejectCounter ? (
+              <TouchableOpacity
+                style={[styles.filterPill, { borderWidth: 1, borderColor: colors.buttonSkipRed }]}
+                onPress={() => {
+                  void onClientRejectCounter();
+                }}
+              >
+                <Text style={[styles.filterPillLabel, { color: colors.buttonSkipRed }]}>
+                  {uiCopy.optionNegotiationChat.rejectCounterOffer}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        )}
 
       {/* ── Client: confirm job (requires BOTH axes settled) ── */}
       {!isAgency &&
         clientMayConfirmJobFromSignals(signals) &&
         request?.requestType === 'option' &&
         status !== 'rejected' && (
-        <TouchableOpacity
-          style={[styles.filterPill, { marginBottom: spacing.sm, backgroundColor: colors.accentBrown }]}
-          onPress={() => { void onClientConfirmJob(); }}
-        >
-          <Text style={[styles.filterPillLabel, { color: '#fff' }]}>{uiCopy.optionNegotiationChat.confirmJob}</Text>
-        </TouchableOpacity>
-      )}
+          <TouchableOpacity
+            style={[
+              styles.filterPill,
+              { marginBottom: spacing.sm, backgroundColor: colors.accentBrown },
+            ]}
+            onPress={() => {
+              void onClientConfirmJob();
+            }}
+          >
+            <Text style={[styles.filterPillLabel, { color: '#fff' }]}>
+              {uiCopy.optionNegotiationChat.confirmJob}
+            </Text>
+          </TouchableOpacity>
+        )}
 
       {/* ── Agency-only: confirm job (canonical invariant: only is_agency_only=true) ── */}
       {isAgency &&
@@ -613,14 +818,21 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
         finalStatus === 'option_confirmed' &&
         status !== 'rejected' &&
         onAgencyConfirmJobAgencyOnly && (
-        <TouchableOpacity
-          style={[styles.filterPill, { marginBottom: spacing.sm, backgroundColor: colors.accentBrown }]}
-          onPress={() => { void onAgencyConfirmJobAgencyOnly(); }}
-          disabled={busy}
-        >
-          <Text style={[styles.filterPillLabel, { color: '#fff' }]}>{uiCopy.optionNegotiationChat.confirmJob}</Text>
-        </TouchableOpacity>
-      )}
+          <TouchableOpacity
+            style={[
+              styles.filterPill,
+              { marginBottom: spacing.sm, backgroundColor: colors.accentBrown },
+            ]}
+            onPress={() => {
+              void onAgencyConfirmJobAgencyOnly();
+            }}
+            disabled={busy}
+          >
+            <Text style={[styles.filterPillLabel, { color: '#fff' }]}>
+              {uiCopy.optionNegotiationChat.confirmJob}
+            </Text>
+          </TouchableOpacity>
+        )}
 
       {/* ── Terminal state hint ── */}
       {isTerminal && (
@@ -720,7 +932,10 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
   },
-  approvalBannerApproved: { borderColor: colors.buttonOptionGreen, backgroundColor: 'rgba(76,175,80,0.08)' },
+  approvalBannerApproved: {
+    borderColor: colors.buttonOptionGreen,
+    backgroundColor: 'rgba(76,175,80,0.08)',
+  },
   approvalBannerRejected: { borderColor: '#e74c3c', backgroundColor: 'rgba(231,76,60,0.08)' },
   approvalBannerPending: { borderColor: '#B8860B', backgroundColor: 'rgba(184,134,11,0.08)' },
   approvalBannerText: { ...typography.label, fontSize: 11, color: colors.textSecondary },

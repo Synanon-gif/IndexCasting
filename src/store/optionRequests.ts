@@ -504,6 +504,10 @@ export async function approveOptionAsModel(threadId: string): Promise<boolean> {
       );
       return false;
     }
+    const refreshed = await getOptionRequestById(req.id);
+    if (refreshed) {
+      Object.assign(req, toLocalRequest(refreshed));
+    }
     const inserted = await addOptionSystemMessage(req.id, 'model_approved_booking');
     if (inserted) {
       messagesCache.push({
@@ -540,8 +544,14 @@ export async function rejectOptionAsModel(threadId: string): Promise<boolean> {
       req.finalStatus = prevFinalStatus;
       notify();
       console.error('[rejectOptionAsModel] modelRejectOptionRequest failed – rolled back', req.id);
+      return false;
     }
-    return ok;
+    const refreshed = await getOptionRequestById(req.id);
+    if (refreshed) {
+      Object.assign(req, toLocalRequest(refreshed));
+      notify();
+    }
+    return true;
   } finally {
     endCriticalOptionAction(threadId);
   }
