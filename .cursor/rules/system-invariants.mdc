@@ -1316,3 +1316,109 @@ return ok; // ← kein getOptionRequestById nach Erfolg
 - `agencyCalendarUnified.attentionParity.test.ts` ✅
 
 **Prüfpflicht:** Bei jedem neuen `attentionSignalsFromOptionRequestLike`-Aufruf: STOP wenn `isAgencyOnly` fehlt.
+
+---
+
+## DISCOVERY / FILTER / NEAR ME — KANONISCHE INVARIANTEN (Audit 2026-04-13)
+
+### U. NEAR ME — TERRITORY DEDUPE PFLICHT (unveränderlich)
+
+`get_models_near_location` joined auf `model_agency_territories` für Agency-Metadaten. Ein Model mit N Territorien erzeugt N Result-Zeilen → Duplikate in der UI, LIMIT zählt Zeilen statt einzigartige Models.
+
+**PFLICHT:** Nach dem MAT-Join MUSS eine Deduplizierung auf `model_id`-Ebene stattfinden.
+
+**Kanonisches Pattern (Migration `20260413_fix_near_location_mat_dedupe_and_discovery_city.sql`):**
+```sql
+-- CTE die pro Model ein Territory wählt (alphabetisch erstes country_code)
+first_territory AS (
+  SELECT DISTINCT ON (mat.model_id)
+    mat.model_id, mat.country_code, mat.agency_id
+  FROM public.model_agency_territories mat
+  ORDER BY mat.model_id, mat.country_code ASC
+)
+-- ... dann LEFT JOIN first_territory ft ON ft.model_id = m.id
+```
+
+**Verboten:**
+```sql
+-- NIEMALS: direkter LEFT JOIN auf model_agency_territories ohne Dedupe
+LEFT JOIN public.model_agency_territories mat ON mat.model_id = m.id
+-- → N Zeilen pro Model bei N Territorien; LIMIT/OFFSET zählt Zeilen, nicht Models
+```
+
+**Prüfpflicht bei JEDER Änderung an `get_models_near_location`:**
+1. Gibt es einen JOIN auf `model_agency_territories` ohne vorherige Deduplizierung? → STOP
+2. Zählt `LIMIT` einzigartige Models oder Zeilen? → LIMIT darf nur auf deduplizierte Ergebnisse wirken
+
+### V. DISCOVERY CITY FILTER — KONSISTENZ ÜBER ALLE PFADE (unveränderlich)
+
+City-Filter MUSS in **allen** Discovery-Pfaden **dieselbe Semantik** haben: case-insensitive Substring-Match auf **effective_city** (kanonisch: `COALESCE(model_locations.city [live>current>agency], models.city)`).
+
+**Drei Discovery-Pfade und ihre City-Behandlung:**
+
+| Pfad | RPC | City-Filter | Status |
+|------|-----|-------------|--------|
+| **Ranked Discovery** | `get_discovery_models` | `p_city` = harter Substring-Filter auf `effective_city` + `p_client_city` = Scoring-Boost | Kanonisch (Migration 20260413) |
+| **Legacy Location** | `get_models_by_location` | `p_city` = Substring auf `models.city` OR `model_locations.city` | Legacy, konsistent genug |
+| **Near Me** | `get_models_near_location` | Kein City-Filter (Radius-basiert) | By design |
+| **Swipe Legacy** | `getModelsPagedFromSupabase` | PostgREST `ilike` auf `models.city` | Legacy-Fallback |
+
+**Invariante:** `p_client_city` (Scoring-Boost) und `p_city` (harter Filter) sind in `get_discovery_models` **zwei getrennte Parameter**:
+- `p_client_city` = automatisch erkannte User-Stadt → +30 Scoring-Punkte (kein Ausschluss)
+- `p_city` = explizite User-Eingabe im Filter-Panel → harte Einschränkung der Ergebnismenge
+
+**Frontend (`ClientWebApp.tsx`):**
+```typescript
+const discoveryFilters = {
+  countryCode: countryIso,
+  clientCity: userCity ?? null,     // Scoring-Boost (automatisch erkannt)
+  city: filters.city.trim() || null, // Harter Filter (User-Eingabe)
+  // ...
+};
+```
+
+**Verboten:**
+```typescript
+// NIEMALS: filters.city nur als clientCity (Boost) übergeben — User erwartet harten Filter
+{ clientCity: filters.city }
+// NIEMALS: filters.city ignorieren im ranked Pfad
+{ clientCity: userCity } // ohne city: filters.city
+```
+
+### W. NEAR ME — COUNTRY-FILTER SEMANTIK (unveränderlich)
+
+`get_models_near_location` hat **keinen** Country-/Territory-Parameter. Near Me arbeitet **global im Radius** — das ist fachlich korrekt (ein Model 10km entfernt in einem anderen Land soll erscheinen).
+
+**Wenn `filters.nearby` aktiv ist:**
+- Country-Filter hat **keinen Effekt** auf die `nearbyModels`-Liste
+- Die UI MUSS den User darüber informieren (`uiCopy.dashboard.nearbyOverridesCountry`)
+- Discovery-Pfad-Filter (Country, City) werden in Near-Me-Modus nicht an den RPC übergeben
+
+**Verboten:**
+```typescript
+// NIEMALS: Near-Me-RPC mit Country-Filter aufrufen (Parameter existiert nicht)
+getModelsNearLocation(lat, lng, radius, clientType, { countryCode: 'DE' })
+// NIEMALS: Country-Filter still anwenden ohne User-Info
+if (filters.nearby) return nearbyModels; // ← ok, aber Country-Chip muss Info zeigen
+```
+
+### X. SWIPE LEGACY — MODELS.CITY FALLBACK (Legacy-Toleranz)
+
+`getModelsPagedFromSupabase` ist ein Legacy-Fallback der direkt auf `models` queried (PostgREST). Er hat keinen Zugriff auf `model_locations` oder `effective_city` auf DB-Ebene.
+
+**Toleriert:** `ilike('city', ...)` auf `models.city` als best-effort Substring-Match.
+**Nicht toleriert:** `.eq('city', ...)` als exakter Match (bricht bei leicht abweichenden Schreibweisen).
+**Langfristig:** Dieser Pfad wird durch den ranked Discovery-Pfad (`get_discovery_models`) ersetzt.
+
+**Anzeige-Konsistenz:** Obwohl der Filter auf `models.city` läuft, MUSS die **Anzeige** im UI `canonicalDisplayCityForModel({ effective_city, city })` verwenden (bereits implementiert in `CustomerSwipeScreen`).
+
+### Y. DISCOVERY RPCs — KEIN DIREKTER models-JOIN OHNE DEDUPE (allgemein)
+
+Jeder Discovery-/Near-Me-/Filter-RPC der auf `model_agency_territories` joined MUSS sicherstellen, dass die Ergebnismenge **pro Model dedupliziert** ist (entweder via `DISTINCT ON`, CTE mit `first_territory`, oder Territory-spezifischem `WHERE mat.country_code = p_iso`).
+
+**Dedupe bereits gewährleistet in:**
+- `get_discovery_models` — `WHERE mat.country_code = p_iso` (nur ein Territory pro Model)
+- `get_models_near_location` — `first_territory` CTE (ein Territory pro Model, alphabetisch)
+- `get_models_by_location` — Prüfpflicht bei Änderungen
+
+**Prüfpflicht:** Jede neue Funktion die `model_agency_territories` joined: `DISTINCT ON (model_id)` oder Filter auf genau ein Territory?

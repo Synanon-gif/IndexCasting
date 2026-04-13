@@ -210,6 +210,8 @@ Q17: Schreibt updateBookingDetails oder eine neue calendar_entries-Write-Funktio
 Q18: Fehlt einer neuen Store-Funktion nach erfolgreichem RPC der DB-Refresh via getOptionRequestById + Object.assign?
 Q19: Zeigt eine UI-Komponente Preis-Verhandlungs-UI (Accept fee, Counter offer, Propose fee) bei Agency-only-Flows (isAgencyOnly === true)?
 Q20: Gibt eine Store-Funktion nach erfolgreichem RPC `true` zurück OHNE DB-Refresh-Versuch (getOptionRequestById)?
+Q21: Joined ein neuer Discovery-/Near-Me-RPC auf model_agency_territories ohne Deduplizierung (DISTINCT ON / Territory-Filter)?
+Q22: Wird filters.city im ranked Discovery-Pfad nur als clientCity (Scoring-Boost) und NICHT als p_city (harter Filter) übergeben?
 ```
 
 → Wenn **eine** Antwort unklar oder „möglicherweise ja" ist:
@@ -273,6 +275,10 @@ Q20: Gibt eine Store-Funktion nach erfolgreichem RPC `true` zurück OHNE DB-Refr
 - **Agency-only Flow mit sichtbarer Preis-UI:** Blocker (Risiko 37) — `priceLocked` in `NegotiationThreadFooter` (oder äquivalenten UI-Komponenten) berücksichtigt `isAgencyOnly` nicht → Preis-Buttons (Accept fee, Counter offer, Propose fee) erscheinen bei Agency-only-Events obwohl keine Client-Preisverhandlung existiert. Pflicht: `priceLocked = isAgencyOnlyRequest || priceCommerciallySettledForUi(signals)`. Siehe `system-invariants.mdc` **### R**.
 - **Neue Store-Funktion mit RPC-Mutation ohne DB-Refresh nach Erfolg:** Blocker (Risiko 38) — Lokaler Cache driftet von DB-Wahrheit ab; Trigger-Side-Effects fehlen im Frontend → Attention/Kalender/Header inkonsistent. Jede Store-Mutation MUSS nach erfolgreichem RPC `getOptionRequestById` aufrufen. Siehe `system-invariants.mdc` **### S**.
 - **Neuer `attentionSignalsFromOptionRequestLike`-Aufruf ohne `isAgencyOnly` (auch in Client-Web/Test):** Blocker (Risiko 39) — Erweitert Risiko 34 auf ALLE Call-Sites; 3 ClientWebApp-Stellen und 1 Test waren bis 2026-04-13 ungepatcht. Vollständige Liste in `system-invariants.mdc` **### T**.
+- **Near-Me-RPC mit direktem `model_agency_territories` JOIN ohne Dedupe:** Blocker (Risiko 40) — Model mit N Territorien erscheint N-mal in Ergebnissen; LIMIT zählt Zeilen statt Models. Pflicht: `first_territory` CTE mit `DISTINCT ON (model_id)` oder territory-spezifisches `WHERE`. Siehe `system-invariants.mdc` **### U**.
+- **Discovery `p_city` als Scoring-Boost statt harten Filter:** Blocker (Risiko 41) — User-Eingabe im City-Feld MUSS als harter Filter (`p_city`) an `get_discovery_models` übergeben werden, nicht nur als `p_client_city` (Boost). Beide Parameter haben unterschiedliche Semantik. Siehe `system-invariants.mdc` **### V**.
+- **Near-Me-Ergebnisse mit Country-Filter kombiniert ohne User-Info:** Warnung (Risiko 42) — `get_models_near_location` hat keinen Country-Parameter; Country-Filter hat bei aktivem Near Me keinen Effekt. UI MUSS `uiCopy.dashboard.nearbyOverridesCountry` anzeigen wenn beide aktiv sind. Siehe `system-invariants.mdc` **### W**.
+- **Neuer Discovery-/Near-Me-RPC mit `model_agency_territories` JOIN:** Prüfpflicht — ist die Ergebnismenge pro `model_id` dedupliziert? Ohne Dedupe/Filter auf ein Territory → Doppelkarten möglich. Siehe `system-invariants.mdc` **### Y**.
 
 ---
 
