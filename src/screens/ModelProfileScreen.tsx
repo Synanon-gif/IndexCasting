@@ -87,6 +87,7 @@ import type { Conversation } from '../services/messengerSupabase';
 import { OrgMessengerInline } from '../components/OrgMessengerInline';
 import { ConfirmDestructiveModal } from '../components/ConfirmDestructiveModal';
 import { shouldShowSystemMessageForViewer } from '../components/optionNegotiation/filterSystemMessagesForViewer';
+import { modelInboxRequiresModelConfirmation } from '../utils/optionRequestAttention';
 import { formatDateWithOptionalTimeRange, stripClockSeconds } from '../utils/formatTimeForUi';
 import { bubbleColorsForSender, outgoingSelfBubbleColors } from '../theme/roleColors';
 import { CHAT_BUBBLE_MAX_WIDTH } from '../components/orgMessengerMessageLayout';
@@ -651,6 +652,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     const ok = await modelConfirmOptionRequest(id);
     setConfirmingBookingId(null);
     if (ok && profile) {
+      await refreshOptionRequestInCache(id);
       await loadPendingConfirmations(profile.id);
       await loadCalendar(profile.id);
     } else if (!ok) {
@@ -666,6 +668,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     const ok = await modelRejectOptionRequest(id);
     setRejectingBookingId(null);
     if (ok && profile) {
+      await refreshOptionRequestInCache(id);
       await loadPendingConfirmations(profile.id);
       await loadCalendar(profile.id);
     }
@@ -1544,7 +1547,8 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                   {bookingThreadIds.map((id) => {
                     const t = getRecruitingThread(id);
                     if (!t) return null;
-                    const agencyLabel = bookingAgencyByThread[id] ?? uiCopy.b2bChat.conversationFallback;
+                    const agencyLabel =
+                      bookingAgencyByThread[id] ?? uiCopy.b2bChat.conversationFallback;
                     return (
                       <TouchableOpacity
                         key={id}
@@ -2132,6 +2136,69 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                   ),
                 )}
             </ScrollView>
+            {(() => {
+              const req = selectedOptionThread
+                ? getRequestByThreadId(selectedOptionThread)
+                : undefined;
+              if (!req) return null;
+              const needsConfirm = modelInboxRequiresModelConfirmation({
+                status: req.status,
+                finalStatus: req.finalStatus ?? null,
+                modelApproval: req.modelApproval ?? null,
+                modelAccountLinked: req.modelAccountLinked ?? false,
+              });
+              if (!needsConfirm) return null;
+              return (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    gap: spacing.sm,
+                    marginBottom: spacing.sm,
+                    flexShrink: 0,
+                  }}
+                >
+                  <TouchableOpacity
+                    onPress={() => setOptionActionModal({ id: req.id, action: 'confirm' })}
+                    disabled={confirmingBookingId === req.id || rejectingBookingId === req.id}
+                    style={{
+                      flex: 1,
+                      backgroundColor: colors.buttonOptionGreen,
+                      borderRadius: 8,
+                      paddingVertical: spacing.sm + 2,
+                      alignItems: 'center',
+                      opacity:
+                        confirmingBookingId === req.id || rejectingBookingId === req.id ? 0.5 : 1,
+                    }}
+                  >
+                    <Text style={{ ...typography.label, color: '#fff' }}>
+                      {confirmingBookingId === req.id
+                        ? 'Confirming…'
+                        : uiCopy.optionNegotiationChat.modelConfirmAvailabilityTitle}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setOptionActionModal({ id: req.id, action: 'reject' })}
+                    disabled={confirmingBookingId === req.id || rejectingBookingId === req.id}
+                    style={{
+                      flex: 1,
+                      borderWidth: 1,
+                      borderColor: colors.buttonSkipRed,
+                      borderRadius: 8,
+                      paddingVertical: spacing.sm + 2,
+                      alignItems: 'center',
+                      opacity:
+                        confirmingBookingId === req.id || rejectingBookingId === req.id ? 0.5 : 1,
+                    }}
+                  >
+                    <Text style={{ ...typography.label, color: colors.buttonSkipRed }}>
+                      {rejectingBookingId === req.id
+                        ? 'Declining…'
+                        : uiCopy.optionNegotiationChat.modelDeclineAvailabilityTitle}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              );
+            })()}
             <View
               style={{
                 flexDirection: 'row',
