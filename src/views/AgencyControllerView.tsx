@@ -2006,6 +2006,15 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                       return;
                     }
 
+                    const timeRe = /^\d{2}:\d{2}$/;
+                    if (
+                      (newEventForm.start_time && !timeRe.test(newEventForm.start_time)) ||
+                      (newEventForm.end_time && !timeRe.test(newEventForm.end_time))
+                    ) {
+                      Alert.alert('Invalid time', 'Please use HH:MM format for times.');
+                      return;
+                    }
+
                     setSavingManualEvent(true);
                     try {
                       if (newEventForm.eventCategory === 'private') {

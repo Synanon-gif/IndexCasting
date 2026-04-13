@@ -1240,12 +1240,27 @@ export async function createAgencyOnlyOptionRequest(params: {
 
   const full = await getOptionRequestById(requestId);
   if (full) {
+    const local = toLocalRequest(full);
     const existing = requestsCache.find((r) => r.id === requestId);
     if (existing) {
-      Object.assign(existing, toLocalRequest(full));
+      Object.assign(existing, local);
     } else {
-      requestsCache.push(toLocalRequest(full));
+      requestsCache.push(local);
     }
+
+    if (local.modelAccountLinked === false) {
+      const sysMsg = await addOptionSystemMessage(requestId, 'no_model_account');
+      if (sysMsg) {
+        messagesCache.push({
+          id: sysMsg.id,
+          threadId: requestId,
+          from: 'system',
+          text: sysMsg.text,
+          createdAt: new Date(sysMsg.created_at).getTime(),
+        });
+      }
+    }
+
     notify();
   }
   return requestId;
