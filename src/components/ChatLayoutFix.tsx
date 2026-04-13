@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, ScrollView, StyleSheet, TouchableOpacity, Text, useWindowDimensions } from 'react-native';
+import { View, ScrollView, StyleSheet, TouchableOpacity, Text, useWindowDimensions, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, typography } from '../theme/theme';
 import { isMobileWidth } from '../theme/breakpoints';
@@ -143,6 +143,7 @@ const styles = StyleSheet.create({
   messagesScroll: {
     flex: 1,
     minHeight: 0,
+    ...(Platform.OS === 'web' ? { height: 0 } : {}),
   },
   messagesContent: {
     paddingTop: 12,

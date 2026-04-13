@@ -182,6 +182,7 @@ import {
 } from '../utils/agencyCalendarUnified';
 import { attentionSignalsFromOptionRequestLike } from '../utils/optionRequestAttention';
 import { attentionHeaderLabelFromSignals } from '../utils/negotiationAttentionLabels';
+import { extractCounterparties } from '../utils/threadFilters';
 import { toDisplayStatus } from '../utils/statusHelpers';
 import { ClientOrganizationTeamSection } from '../components/ClientOrganizationTeamSection';
 import { OrgMessengerInline } from '../components/OrgMessengerInline';
@@ -1846,6 +1847,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         ...extra,
         ...pkgExtra,
         flowSource,
+        clientOrganizationName: clientOrgName,
         onThreadReady: (dbThreadId) => {
           optionChatReturnRef.current = { kind: 'tab', tab: originTab };
           setOpenThreadIdOnMessages(dbThreadId);
@@ -4415,6 +4417,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
     assignedMemberUserId: 'all',
   });
   const [attentionFilter, setAttentionFilter] = useState<'all' | 'action_required'>('all');
+  const [counterpartyFilter, setCounterpartyFilter] = useState<string | null>(null);
   const [deletingOptionId, setDeletingOptionId] = useState<string | null>(null);
   const [deleteOptionModalVisible, setDeleteOptionModalVisible] = useState(false);
   const [rejectCounterModalVisible, setRejectCounterModalVisible] = useState(false);
@@ -4501,8 +4504,14 @@ const MessagesView: React.FC<MessagesViewProps> = ({
     });
   };
 
+  const clientCounterparties = useMemo(() => extractCounterparties(requests, 'client'), [requests]);
+
   const visibleRequests = requests.filter((r) => {
     if (msgFilter === 'archived' ? !archivedIds.has(r.threadId) : archivedIds.has(r.threadId)) return false;
+    if (counterpartyFilter) {
+      const agencyKey = r.agencyOrganizationId ?? r.agencyId ?? '';
+      if (agencyKey !== counterpartyFilter) return false;
+    }
     if (clientMsgSearch.trim()) {
       const q = clientMsgSearch.trim().toLowerCase();
       return (r.modelName ?? '').toLowerCase().includes(q) || (r.clientName ?? '').toLowerCase().includes(q);
@@ -4911,6 +4920,18 @@ const MessagesView: React.FC<MessagesViewProps> = ({
             );
           })}
         </View>
+      )}
+      {clientCounterparties.length > 1 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexShrink: 0, marginBottom: spacing.sm }} contentContainerStyle={{ gap: spacing.xs }}>
+          <TouchableOpacity style={[styles.filterPill, !counterpartyFilter && styles.filterPillActive]} onPress={() => setCounterpartyFilter(null)}>
+            <Text style={[styles.filterPillLabel, !counterpartyFilter && styles.filterPillLabelActive]}>All agencies</Text>
+          </TouchableOpacity>
+          {clientCounterparties.map((cp) => (
+            <TouchableOpacity key={cp.id} style={[styles.filterPill, counterpartyFilter === cp.id && styles.filterPillActive]} onPress={() => setCounterpartyFilter(counterpartyFilter === cp.id ? null : cp.id)}>
+              <Text style={[styles.filterPillLabel, counterpartyFilter === cp.id && styles.filterPillLabelActive]} numberOfLines={1}>{cp.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       )}
       <ScrollView
         style={[styles.threadList, webOptionThreadListScrollStyle]}

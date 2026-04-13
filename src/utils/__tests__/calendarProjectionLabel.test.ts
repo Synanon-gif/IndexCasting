@@ -48,6 +48,7 @@ function baseOption(over: Partial<SupabaseOptionRequest> = {}): SupabaseOptionRe
     organization_id: null,
     agency_organization_id: null,
     client_organization_id: null,
+    client_organization_name: null,
     created_by: null,
     agency_assignee_user_id: null,
     created_at: new Date().toISOString(),

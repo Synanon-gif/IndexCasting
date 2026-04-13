@@ -22,7 +22,7 @@ import { guardUploadSession } from './gdprComplianceSupabase';
 import { logAction } from '../utils/logAction';
 
 export const OPTION_REQUEST_SELECT =
-  'id, client_id, model_id, agency_id, requested_date, status, project_id, client_name, model_name, job_description, proposed_price, agency_counter_price, client_price_status, final_status, request_type, currency, start_time, end_time, model_approval, model_approved_at, model_account_linked, booker_id, organization_id, agency_organization_id, client_organization_id, created_by, agency_assignee_user_id, created_at, updated_at';
+  'id, client_id, model_id, agency_id, requested_date, status, project_id, client_name, model_name, job_description, proposed_price, agency_counter_price, client_price_status, final_status, request_type, currency, start_time, end_time, model_approval, model_approved_at, model_account_linked, booker_id, organization_id, agency_organization_id, client_organization_id, client_organization_name, created_by, agency_assignee_user_id, is_agency_only, agency_event_group_id, created_at, updated_at';
 
 /**
  * Atomic UPDATE guards: many mutations use `.eq('status', 'in_negotiation')` (or similar) so concurrent
@@ -32,7 +32,7 @@ export const OPTION_REQUEST_SELECT =
 
 /** Model-linked app: no price / negotiation columns (defense-in-depth vs UI-only hiding). */
 export const OPTION_REQUEST_SELECT_MODEL_SAFE =
-  'id, client_id, model_id, agency_id, requested_date, status, project_id, client_name, model_name, job_description, final_status, request_type, currency, start_time, end_time, model_approval, model_approved_at, model_account_linked, booker_id, organization_id, agency_organization_id, client_organization_id, created_by, agency_assignee_user_id, created_at, updated_at';
+  'id, client_id, model_id, agency_id, requested_date, status, project_id, client_name, model_name, job_description, final_status, request_type, currency, start_time, end_time, model_approval, model_approved_at, model_account_linked, booker_id, organization_id, agency_organization_id, client_organization_id, client_organization_name, created_by, agency_assignee_user_id, is_agency_only, agency_event_group_id, created_at, updated_at';
 
 /**
  * Option Requests + Chat (Kunde ↔ Agentur).
@@ -71,8 +71,14 @@ export type SupabaseOptionRequest = {
   agency_organization_id: string | null;
   /** Org-zentrische Client-ID (organizations.id, type='client'). Bevorzugt gegenüber organization_id. */
   client_organization_id: string | null;
+  /** Denormalized client org display name (like client_name). Safe for model-facing views. */
+  client_organization_name: string | null;
   created_by: string | null;
   agency_assignee_user_id: string | null;
+  /** true = agency-only manual event (no client party, no price negotiation). */
+  is_agency_only?: boolean;
+  /** Links to agency_event_groups.id for grouped manual events. */
+  agency_event_group_id?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -307,6 +313,8 @@ export async function insertOptionRequest(req: {
   agency_organization_id?: string | null;
   /** Org-zentrische Client-Org (organizations.id, type='client'). Sollte immer gesetzt werden. */
   client_organization_id?: string | null;
+  /** Denormalized client org display name. */
+  client_organization_name?: string | null;
   created_by?: string | null;
 }): Promise<SupabaseOptionRequest | null> {
   const orgId =
@@ -355,6 +363,7 @@ export async function insertOptionRequest(req: {
     organization_id: orgId,
     agency_organization_id: agencyOrgId,
     client_organization_id: clientOrgId,
+    client_organization_name: req.client_organization_name ? sanitizeHtml(normalizeInput(req.client_organization_name)) : null,
     created_by: req.created_by ?? null,
     model_account_linked: modelAccountLinked,
   };
@@ -2147,5 +2156,69 @@ async function notifyModelConfirmedOption(req: SupabaseOptionRequest): Promise<v
     await createNotifications(notifications);
   } catch (e) {
     console.error('notifyModelConfirmedOption exception:', e);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Agency-Only Manual Event Flows
+// ---------------------------------------------------------------------------
+
+/**
+ * Create an agency-only option/casting request via the RPC.
+ * Returns the new option_request id or null on failure.
+ */
+export async function insertAgencyOptionRequest(params: {
+  modelId: string;
+  agencyId: string;
+  requestedDate: string;
+  requestType?: 'option' | 'casting';
+  title?: string;
+  jobDescription?: string;
+  startTime?: string;
+  endTime?: string;
+  agencyEventGroupId?: string;
+  agencyOrganizationId?: string;
+}): Promise<string | null> {
+  try {
+    const { data, error } = await supabase.rpc('agency_create_option_request', {
+      p_model_id: params.modelId,
+      p_agency_id: params.agencyId,
+      p_requested_date: params.requestedDate,
+      p_request_type: params.requestType ?? 'option',
+      p_title: params.title ?? null,
+      p_job_description: params.jobDescription ?? null,
+      p_start_time: params.startTime ?? null,
+      p_end_time: params.endTime ?? null,
+      p_agency_event_group_id: params.agencyEventGroupId ?? null,
+      p_agency_organization_id: params.agencyOrganizationId ?? null,
+    });
+    if (error) {
+      console.error('[insertAgencyOptionRequest] RPC error:', error);
+      return null;
+    }
+    return data as string;
+  } catch (e) {
+    console.error('[insertAgencyOptionRequest] exception:', e);
+    return null;
+  }
+}
+
+/**
+ * Agency confirms job for an agency-only request (canonical invariant:
+ * only allowed when is_agency_only=true AND model_approval='approved').
+ */
+export async function agencyConfirmJobAgencyOnly(requestId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase.rpc('agency_confirm_job_agency_only', {
+      p_request_id: requestId,
+    });
+    if (error) {
+      console.error('[agencyConfirmJobAgencyOnly] RPC error:', error);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('[agencyConfirmJobAgencyOnly] exception:', e);
+    return false;
   }
 }

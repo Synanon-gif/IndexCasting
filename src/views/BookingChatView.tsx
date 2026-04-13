@@ -242,7 +242,7 @@ export const BookingChatView: React.FC<Props> = ({
   // In inset mode, messages expand to fill remaining space (flex:1).
   // In modal mode on native, cap height to avoid overflow.
   const messagesScrollStyle = isInset || Platform.OS === 'web'
-    ? [styles.messages, { flex: 1, minHeight: 0 }]
+    ? [styles.messages, { flex: 1, minHeight: 0, ...(Platform.OS === 'web' ? { height: 0 } : {}) }]
     : [styles.messages, { maxHeight: bookingMessagesMaxHeight }];
 
   // Resolve title and subtitle for the unified WhatsApp-like header

@@ -219,9 +219,12 @@ const ModelUnifiedInbox: React.FC<{
               {isActionRequired && (
                 <Text style={styles.actionTag}>{uiCopy.dashboard.smartAttentionLabel}</Text>
               )}
-              <Text style={styles.inboxModelName}>
-                {r.model_name?.trim() ? r.model_name : copy.optionRequestUnnamedModel}
-              </Text>
+              {r.client_name ? (
+                <Text style={styles.inboxClientOrg} numberOfLines={1}>{r.client_name}</Text>
+              ) : null}
+              {r.job_description ? (
+                <Text style={styles.inboxJobDesc} numberOfLines={2}>{r.job_description}</Text>
+              ) : null}
               <Text style={styles.inboxDate}>{r.requested_date ?? r.created_at.slice(0, 10)}</Text>
               {r.request_type ? (
                 <Text style={styles.inboxRole}>
@@ -333,6 +336,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: colors.textPrimary,
+  },
+  inboxClientOrg: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    marginBottom: 2,
+  },
+  inboxJobDesc: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: 2,
+    fontStyle: 'italic',
   },
   inboxDate: {
     fontSize: 12,

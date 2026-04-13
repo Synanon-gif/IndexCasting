@@ -27,6 +27,8 @@ import {
   clientConfirmJobOnSupabase,
   deleteOptionRequestFull,
   resolveAgencyOrgIdForOptionNotification,
+  insertAgencyOptionRequest,
+  agencyConfirmJobAgencyOnly,
   type SupabaseOptionRequest,
   type SupabaseOptionRequestModelSafe,
   type SupabaseOptionMessage,
@@ -70,6 +72,8 @@ export type OptionRequest = {
   id: string;
   clientName: string;
   clientOrganizationId?: string;
+  /** Denormalized client org display name. */
+  clientOrganizationName?: string;
   /** Optional role / shoot description set by the client. Shown to the model in their inbox. */
   jobDescription?: string;
   modelName: string;
@@ -93,6 +97,10 @@ export type OptionRequest = {
   modelAccountLinked?: boolean;
   agencyId?: string;
   agencyOrganizationId?: string;
+  /** true = agency-only manual event (no client party, no price negotiation). */
+  isAgencyOnly?: boolean;
+  /** Links to agency_event_groups for grouped manual events. */
+  agencyEventGroupId?: string;
 };
 
 export type ChatMessage = {
@@ -108,6 +116,7 @@ function toLocalRequest(r: SupabaseOptionRequest | SupabaseOptionRequestModelSaf
     id: r.id,
     clientName: r.client_name ?? 'Client',
     clientOrganizationId: r.client_organization_id ?? r.organization_id ?? undefined,
+    clientOrganizationName: r.client_organization_name ?? undefined,
     jobDescription: r.job_description ?? undefined,
     modelName: r.model_name ?? 'Model',
     modelId: r.model_id,
@@ -129,6 +138,8 @@ function toLocalRequest(r: SupabaseOptionRequest | SupabaseOptionRequestModelSaf
     modelAccountLinked: r.model_account_linked ?? false,
     agencyId: r.agency_id,
     agencyOrganizationId: r.agency_organization_id ?? undefined,
+    isAgencyOnly: r.is_agency_only ?? false,
+    agencyEventGroupId: r.agency_event_group_id ?? undefined,
   };
 }
 
@@ -201,6 +212,8 @@ export function addOptionRequest(
     onThreadReady?: (dbThreadId: string) => void;
     /** Telemetry / debugging: which client surface initiated the request. */
     flowSource?: OptionRequestFlowSource;
+    /** Denormalized client org display name — propagated to option_requests for model visibility. */
+    clientOrganizationName?: string;
   }
 ): string {
   const threadId = `thread-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -374,6 +387,7 @@ export function addOptionRequest(
       request_type: requestType,
       organization_id: organizationId,
       client_organization_id: organizationId ?? null,
+      client_organization_name: extra?.clientOrganizationName ?? null,
       agency_organization_id: agencyOrganizationId,
       created_by: user?.id ?? null,
     });
@@ -960,4 +974,66 @@ export async function agencyRejectNegotiationStore(threadId: string): Promise<bo
   if (!ok) return false;
   purgeOptionThreadFromStore(threadId);
   return true;
+}
+
+// ---------------------------------------------------------------------------
+// Agency-Only Manual Event — Job Confirmed
+// ---------------------------------------------------------------------------
+
+/**
+ * Canonical invariant: only allowed when is_agency_only=true.
+ * Confirms job for an individual model after they approved availability.
+ */
+export async function agencyConfirmJobAgencyOnlyStore(threadId: string): Promise<boolean> {
+  const req = requestsCache.find((r) => r.threadId === threadId);
+  if (!req) return false;
+  if (!req.isAgencyOnly) return false;
+  if (!beginCriticalOptionAction(threadId)) return false;
+  try {
+    const ok = await agencyConfirmJobAgencyOnly(req.id);
+    if (!ok) return false;
+    const refreshed = await getOptionRequestById(req.id);
+    if (refreshed) {
+      Object.assign(req, toLocalRequest(refreshed));
+    } else {
+      req.finalStatus = 'job_confirmed';
+      req.status = 'confirmed';
+    }
+    notify();
+    return true;
+  } finally {
+    endCriticalOptionAction(threadId);
+  }
+}
+
+/**
+ * Create an agency-only manual option/casting request.
+ * Returns the new request id or null on failure.
+ */
+export async function createAgencyOnlyOptionRequest(params: {
+  modelId: string;
+  agencyId: string;
+  requestedDate: string;
+  requestType?: 'option' | 'casting';
+  title?: string;
+  jobDescription?: string;
+  startTime?: string;
+  endTime?: string;
+  agencyEventGroupId?: string;
+  agencyOrganizationId?: string;
+}): Promise<string | null> {
+  const requestId = await insertAgencyOptionRequest(params);
+  if (!requestId) return null;
+
+  const full = await getOptionRequestById(requestId);
+  if (full) {
+    const existing = requestsCache.find((r) => r.id === requestId);
+    if (existing) {
+      Object.assign(existing, toLocalRequest(full));
+    } else {
+      requestsCache.push(toLocalRequest(full));
+    }
+    notify();
+  }
+  return requestId;
 }

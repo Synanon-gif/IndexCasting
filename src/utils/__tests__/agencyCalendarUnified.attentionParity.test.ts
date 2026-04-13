@@ -35,6 +35,7 @@ function minimalOption(overrides: Partial<SupabaseOptionRequest>): SupabaseOptio
     organization_id: 'org-client',
     agency_organization_id: 'org-agency',
     client_organization_id: 'org-client',
+    client_organization_name: null,
     created_by: null,
     agency_assignee_user_id: null,
     created_at: now,

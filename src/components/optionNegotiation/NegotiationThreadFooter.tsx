@@ -47,6 +47,8 @@ export type NegotiationThreadFooterProps = {
   /** Decline agency counter-offer (closes request) — optional; omit on agency-only surfaces. */
   onClientRejectCounter?: () => Promise<void>;
   onClientConfirmJob: () => Promise<void>;
+  /** Agency-only flow: confirm job after model approved availability. Only shown when is_agency_only=true. */
+  onAgencyConfirmJobAgencyOnly?: () => Promise<void>;
   /**
    * Agency native fullscreen: show proposed price line under org row + model-approval strip when the model is linked.
    * Client web keeps this off (prices/chips live in the header; linked-model strip was not shown there historically).
@@ -97,6 +99,7 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
   onClientAcceptCounter,
   onClientRejectCounter,
   onClientConfirmJob,
+  onAgencyConfirmJobAgencyOnly,
   showAgencyExtras = false,
   assignmentMode = 'manage',
   contextThreadLabel = uiCopy.optionNegotiationChat.negotiationContext,
@@ -599,6 +602,22 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
           onPress={() => { void onClientConfirmJob(); }}
         >
           <Text style={[styles.filterPillLabel, { color: '#fff' }]}>{uiCopy.optionNegotiationChat.confirmJob}</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* ── Agency-only: confirm job (canonical invariant: only is_agency_only=true) ── */}
+      {isAgency &&
+        request?.isAgencyOnly === true &&
+        request?.modelApproval === 'approved' &&
+        finalStatus === 'option_confirmed' &&
+        status !== 'rejected' &&
+        onAgencyConfirmJobAgencyOnly && (
+        <TouchableOpacity
+          style={[styles.filterPill, { marginBottom: spacing.sm, backgroundColor: colors.accentBrown }]}
+          onPress={() => { void onAgencyConfirmJobAgencyOnly(); }}
+          disabled={busy}
+        >
+          <Text style={[styles.filterPillLabel, { color: '#fff' }]}>Confirm job</Text>
         </TouchableOpacity>
       )}
 

@@ -48,6 +48,8 @@ import {
   agencyAcceptClientPriceStore,
   agencyCounterOfferStore,
   agencyRejectClientPriceStore,
+  agencyConfirmJobAgencyOnlyStore,
+  createAgencyOnlyOptionRequest,
   type ChatStatus,
 } from '../store/optionRequests';
 import { AgencyRecruitingView } from './AgencyRecruitingView';
@@ -228,6 +230,7 @@ import {
   type AgencyCalendarUrgencyFilter,
   type UnifiedAgencyCalendarRow,
 } from '../utils/agencyCalendarUnified';
+import { extractCounterparties } from '../utils/threadFilters';
 import { DashboardSummaryBar } from '../components/DashboardSummaryBar';
 import { OrgMetricsPanel } from '../components/OrgMetricsPanel';
 import { OwnerBillingStatusCard } from '../components/OwnerBillingStatusCard';
@@ -328,6 +331,8 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
     title: '',
     note: '',
     color: MANUAL_EVENT_COLORS[0],
+    eventCategory: 'private' as 'option' | 'casting' | 'private',
+    selectedModelIds: [] as string[],
   });
   const [agencyNotesDraft, setAgencyNotesDraft] = useState('');
   const [agencySharedNoteDraft, setAgencySharedNoteDraft] = useState('');
@@ -1381,9 +1386,62 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
       {showAddManualEvent && (
         <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.08)', justifyContent: 'center', alignItems: 'center', padding: agencyIsMobile ? spacing.xs : spacing.lg }]}>
           <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setShowAddManualEvent(false)} />
-          <View style={{ width: '100%', maxWidth: 400, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, padding: agencyIsMobile ? spacing.md : spacing.lg }}>
+          <View style={{ width: '100%', maxWidth: 440, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, padding: agencyIsMobile ? spacing.md : spacing.lg, maxHeight: '90%' }}>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             <Text style={s.sectionLabel}>Add event</Text>
+
+            {/* Event type pills */}
+            <Text style={{ ...typography.label, marginBottom: 4 }}>Event type</Text>
+            <View style={{ flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.sm }}>
+              {(['option', 'casting', 'private'] as const).map((et) => (
+                <TouchableOpacity
+                  key={et}
+                  onPress={() => setNewEventForm((f) => ({ ...f, eventCategory: et, selectedModelIds: et === 'private' ? [] : f.selectedModelIds }))}
+                  style={[s.filterPill, newEventForm.eventCategory === et && { backgroundColor: colors.accent }]}
+                >
+                  <Text style={[s.filterPillLabel, newEventForm.eventCategory === et && { color: '#fff' }]}>
+                    {et === 'option' ? 'Option' : et === 'casting' ? 'Casting' : 'Private'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
             <TextInput placeholder="Title" value={newEventForm.title} onChangeText={(t) => setNewEventForm((f) => ({ ...f, title: t }))} placeholderTextColor={colors.textSecondary} style={s.editInput} />
+
+            {/* Model picker for Option / Casting */}
+            {newEventForm.eventCategory !== 'private' && (
+              <>
+                <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>Select models</Text>
+                <ScrollView style={{ maxHeight: 150 }} nestedScrollEnabled showsVerticalScrollIndicator>
+                  {fullModels.map((m) => {
+                    const sel = newEventForm.selectedModelIds.includes(m.id);
+                    return (
+                      <TouchableOpacity
+                        key={m.id}
+                        onPress={() => setNewEventForm((f) => ({
+                          ...f,
+                          selectedModelIds: sel
+                            ? f.selectedModelIds.filter((id) => id !== m.id)
+                            : [...f.selectedModelIds, m.id],
+                        }))}
+                        style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6, gap: 8 }}
+                      >
+                        <View style={{ width: 20, height: 20, borderRadius: 4, borderWidth: 1.5, borderColor: sel ? colors.accent : colors.border, backgroundColor: sel ? colors.accent : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+                          {sel && <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>✓</Text>}
+                        </View>
+                        <Text style={{ ...typography.label, color: colors.textPrimary }}>{m.name || 'Model'}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+                {newEventForm.selectedModelIds.length > 0 && (
+                  <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary, marginTop: 4 }}>
+                    {newEventForm.selectedModelIds.length} model{newEventForm.selectedModelIds.length !== 1 ? 's' : ''} selected
+                  </Text>
+                )}
+              </>
+            )}
+
             <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>Date (YYYY-MM-DD)</Text>
             <TextInput placeholder="2025-03-15" value={newEventForm.date} onChangeText={(d) => setNewEventForm((f) => ({ ...f, date: d }))} placeholderTextColor={colors.textSecondary} style={s.editInput} />
             <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
@@ -1396,7 +1454,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                 <TextInput value={newEventForm.end_time} onChangeText={(t) => setNewEventForm((f) => ({ ...f, end_time: t }))} placeholderTextColor={colors.textSecondary} style={s.editInput} />
               </View>
             </View>
-            <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>Note (private)</Text>
+            <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>Note</Text>
             <TextInput
               value={newEventForm.note}
               onChangeText={(t) => setNewEventForm((f) => ({ ...f, note: t }))}
@@ -1404,59 +1462,109 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
               placeholderTextColor={colors.textSecondary}
               style={[s.editInput, { minHeight: 64, textAlignVertical: 'top', borderRadius: 12 }]}
             />
-            <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>Color</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              {MANUAL_EVENT_COLORS.map((c) => (
-                <TouchableOpacity key={c} onPress={() => setNewEventForm((f) => ({ ...f, color: c }))} style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: c, borderWidth: newEventForm.color === c ? 2 : 0, borderColor: colors.textPrimary }} />
-              ))}
-            </View>
+            {newEventForm.eventCategory === 'private' && (
+              <>
+                <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>Color</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  {MANUAL_EVENT_COLORS.map((c) => (
+                    <TouchableOpacity key={c} onPress={() => setNewEventForm((f) => ({ ...f, color: c }))} style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: c, borderWidth: newEventForm.color === c ? 2 : 0, borderColor: colors.textPrimary }} />
+                  ))}
+                </View>
+              </>
+            )}
             <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg }}>
               <TouchableOpacity style={[s.filterPill, { flex: 1 }]} onPress={() => setShowAddManualEvent(false)}>
                 <Text style={s.filterPillLabel}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[s.saveBtn, { flex: 1 }]}
-                disabled={!newEventForm.title.trim() || !newEventForm.date.trim() || savingManualEvent}
+                disabled={!newEventForm.title.trim() || !newEventForm.date.trim() || savingManualEvent || (newEventForm.eventCategory !== 'private' && newEventForm.selectedModelIds.length === 0)}
                 onPress={async () => {
                   if (!currentAgencyId) return;
                   setSavingManualEvent(true);
                   try {
-                    let calOrg = agencyOrganizationId;
-                    if (!calOrg) {
-                      const pe = profile?.email?.trim().toLowerCase();
-                      const ae = currentAgency?.email?.trim().toLowerCase();
-                      if (pe && ae && pe === ae) {
-                        calOrg = await ensureAgencyOrganization(currentAgencyId);
+                    if (newEventForm.eventCategory === 'private') {
+                      let calOrg = agencyOrganizationId;
+                      if (!calOrg) {
+                        const pe = profile?.email?.trim().toLowerCase();
+                        const ae = currentAgency?.email?.trim().toLowerCase();
+                        if (pe && ae && pe === ae) {
+                          calOrg = await ensureAgencyOrganization(currentAgencyId);
+                        }
+                        if (!calOrg) calOrg = await getOrganizationIdForAgency(currentAgencyId);
                       }
-                      if (!calOrg) calOrg = await getOrganizationIdForAgency(currentAgencyId);
-                    }
-                    const { data: calUser } = await supabase.auth.getUser();
-                    const result = await insertManualEvent({
-                      owner_id: currentAgencyId,
-                      owner_type: 'agency',
-                      organization_id: calOrg,
-                      created_by: calUser.user?.id ?? null,
-                      ...newEventForm,
-                    });
-                    if (result.ok) {
-                      await loadAgencyCalendar();
-                      setShowAddManualEvent(false);
-                      setNewEventForm({
-                        date: '',
-                        start_time: '09:00',
-                        end_time: '17:00',
-                        title: '',
-                        note: '',
-                        color: MANUAL_EVENT_COLORS[0],
+                      const { data: calUser } = await supabase.auth.getUser();
+                      const result = await insertManualEvent({
+                        owner_id: currentAgencyId,
+                        owner_type: 'agency',
+                        organization_id: calOrg,
+                        created_by: calUser.user?.id ?? null,
+                        date: newEventForm.date,
+                        start_time: newEventForm.start_time,
+                        end_time: newEventForm.end_time,
+                        title: newEventForm.title,
+                        note: newEventForm.note,
+                        color: newEventForm.color,
                       });
+                      if (!result.ok) {
+                        Alert.alert('Calendar', result.errorMessage || uiCopy.alerts.calendarNotSaved);
+                      }
                     } else {
-                      Alert.alert(
-                        'Calendar',
-                        result.errorMessage || uiCopy.alerts.calendarNotSaved,
-                      );
+                      // Agency-only Option / Casting: create one request per selected model
+                      let groupId: string | undefined;
+                      if (newEventForm.selectedModelIds.length > 1) {
+                        const { data: grp, error: grpErr } = await supabase
+                          .from('agency_event_groups')
+                          .insert({
+                            agency_id: currentAgencyId,
+                            agency_organization_id: agencyOrganizationId ?? null,
+                            title: newEventForm.title,
+                            event_date: newEventForm.date,
+                            start_time: newEventForm.start_time || null,
+                            end_time: newEventForm.end_time || null,
+                            event_type: newEventForm.eventCategory,
+                            note: newEventForm.note || null,
+                            created_by: session?.user?.id ?? null,
+                          })
+                          .select('id')
+                          .single();
+                        if (grpErr) console.error('agency_event_groups insert error:', grpErr);
+                        groupId = (grp as { id: string } | null)?.id;
+                      }
+                      let anyFailed = false;
+                      for (const modelId of newEventForm.selectedModelIds) {
+                        const reqId = await createAgencyOnlyOptionRequest({
+                          modelId,
+                          agencyId: currentAgencyId,
+                          requestedDate: newEventForm.date,
+                          requestType: newEventForm.eventCategory === 'casting' ? 'casting' : 'option',
+                          title: newEventForm.title,
+                          jobDescription: newEventForm.note || undefined,
+                          startTime: newEventForm.start_time || undefined,
+                          endTime: newEventForm.end_time || undefined,
+                          agencyEventGroupId: groupId,
+                          agencyOrganizationId: agencyOrganizationId ?? undefined,
+                        });
+                        if (!reqId) anyFailed = true;
+                      }
+                      if (anyFailed) {
+                        Alert.alert('Calendar', 'Some requests could not be created.');
+                      }
                     }
+                    await loadAgencyCalendar();
+                    setShowAddManualEvent(false);
+                    setNewEventForm({
+                      date: '',
+                      start_time: '09:00',
+                      end_time: '17:00',
+                      title: '',
+                      note: '',
+                      color: MANUAL_EVENT_COLORS[0],
+                      eventCategory: 'private',
+                      selectedModelIds: [],
+                    });
                   } catch (e) {
-                    console.error('insertManualEvent error:', e);
+                    console.error('addEvent error:', e);
                     Alert.alert(uiCopy.common.error, uiCopy.alerts.calendarNotSaved);
                   } finally {
                     setSavingManualEvent(false);
@@ -1466,6 +1574,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                 <Text style={s.saveBtnLabel}>{savingManualEvent ? 'Adding…' : 'Add'}</Text>
               </TouchableOpacity>
             </View>
+            </ScrollView>
           </View>
         </View>
       )}
@@ -4406,6 +4515,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   const [assignmentScope, setAssignmentScope] = useState<'all' | 'mine' | 'unassigned'>('all');
   const [assignmentFlagFilter, setAssignmentFlagFilter] = useState<string>('all');
   const [attentionFilter, setAttentionFilter] = useState<'all' | 'action_required'>('all');
+  const [counterpartyFilter, setCounterpartyFilter] = useState<string | null>(null);
   const [archivedIds, setArchivedIds] = useState<Set<string>>(() => {
     if (typeof window === 'undefined') return new Set();
     try { const raw = window.localStorage.getItem('ci_agency_archived'); return raw ? new Set(JSON.parse(raw)) : new Set(); }
@@ -4589,8 +4699,11 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
     });
   };
 
+  const counterparties = useMemo(() => extractCounterparties(requests, 'agency'), [requests]);
+
   const visible = requests.filter((r) => {
     if (msgFilter === 'archived' ? !archivedIds.has(r.threadId) : archivedIds.has(r.threadId)) return false;
+    if (counterpartyFilter && (r.clientOrganizationId ?? r.clientName ?? '') !== counterpartyFilter) return false;
     const assignment = r.clientOrganizationId ? assignmentByClientOrgId[r.clientOrganizationId] : undefined;
     if (assignmentScope === 'mine' && assignment?.assignedMemberUserId !== currentUserId) return false;
     if (assignmentScope === 'unassigned' && !!assignment?.assignedMemberUserId) return false;
@@ -4847,6 +4960,17 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
     }
   }, [request?.threadId, processingRequestId, showNegotiationCalendarHint]);
 
+  const runAgencyConfirmJobAgencyOnly = useCallback(async () => {
+    if (!request?.threadId || processingRequestId) return;
+    setProcessingRequestId(request.threadId);
+    try {
+      await agencyConfirmJobAgencyOnlyStore(request.threadId);
+      setRequests(getOptionRequests());
+    } finally {
+      setProcessingRequestId(null);
+    }
+  }, [request?.threadId, processingRequestId]);
+
   const runAgencyAcceptClientPrice = useCallback(async () => {
     if (!request?.threadId || processingRequestId) return;
     setProcessingRequestId(request.threadId);
@@ -5042,6 +5166,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                     onRejectNegotiation={openRejectNegotiationModal}
                     onClientAcceptCounter={async () => {}}
                     onClientConfirmJob={async () => {}}
+                    onAgencyConfirmJobAgencyOnly={runAgencyConfirmJobAgencyOnly}
                     showAgencyExtras
                     assignmentMode="readonly"
                     contextThreadLabel={uiCopy.b2bChat.contextNegotiationThread}
@@ -5081,6 +5206,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                 onRejectNegotiation={openRejectNegotiationModal}
                 onClientAcceptCounter={async () => {}}
                 onClientConfirmJob={async () => {}}
+                onAgencyConfirmJobAgencyOnly={runAgencyConfirmJobAgencyOnly}
                 showAgencyExtras
                 assignmentMode="readonly"
                 contextThreadLabel={uiCopy.b2bChat.contextNegotiationThread}
@@ -5627,6 +5753,18 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
           </Text>
         </TouchableOpacity>
       </View>
+      {counterparties.length > 1 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexShrink: 0, marginBottom: spacing.sm }} contentContainerStyle={{ gap: spacing.xs }}>
+          <TouchableOpacity style={[s.filterPill, !counterpartyFilter && s.filterPillActive]} onPress={() => setCounterpartyFilter(null)}>
+            <Text style={[s.filterPillLabel, !counterpartyFilter && s.filterPillLabelActive]}>All clients</Text>
+          </TouchableOpacity>
+          {counterparties.map((cp) => (
+            <TouchableOpacity key={cp.id} style={[s.filterPill, counterpartyFilter === cp.id && s.filterPillActive]} onPress={() => setCounterpartyFilter(counterpartyFilter === cp.id ? null : cp.id)}>
+              <Text style={[s.filterPillLabel, counterpartyFilter === cp.id && s.filterPillLabelActive]} numberOfLines={1}>{cp.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
 
       <ScrollView
         style={webThreadListScrollOption}
