@@ -14,6 +14,8 @@ import { LegalAcceptanceScreen } from './src/screens/LegalAcceptanceScreen';
 import { PendingActivationScreen } from './src/screens/PendingActivationScreen';
 import { ClientView } from './src/views/ClientView';
 import { ModelView } from './src/views/ModelView';
+import { ModelAgencyProvider, useModelAgency } from './src/context/ModelAgencyContext';
+import { ModelAgencySelector } from './src/screens/ModelAgencySelector';
 import { AgencyView } from './src/views/AgencyView';
 import { SharedSelectionView } from './src/views/SharedSelectionView';
 import { BookingChatView } from './src/views/BookingChatView';
@@ -216,6 +218,30 @@ function AgencyPaywallGuard({ children }: { children: React.ReactNode }) {
   }
 
   return <>{children}</>;
+}
+
+function ModelRouteGuard({
+  onBackToRoleSelection,
+  userId,
+}: {
+  onBackToRoleSelection: () => void;
+  userId?: string;
+}) {
+  const { agencies, activeAgencyId, loading } = useModelAgency();
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color={colors.accentBrown} />
+      </View>
+    );
+  }
+
+  if (agencies.length > 1 && !activeAgencyId) {
+    return <ModelAgencySelector />;
+  }
+
+  return <ModelView onBackToRoleSelection={onBackToRoleSelection} userId={userId} />;
 }
 
 function AppContent() {
@@ -901,10 +927,12 @@ function AppContent() {
           </ClientPaywallGuard>
         )}
         {effectiveRole === 'model' && (
-          <ModelView
-            onBackToRoleSelection={handleBackToRoleSelection}
-            userId={session?.user?.id}
-          />
+          <ModelAgencyProvider>
+            <ModelRouteGuard
+              onBackToRoleSelection={handleBackToRoleSelection}
+              userId={session?.user?.id}
+            />
+          </ModelAgencyProvider>
         )}
         {effectiveRole === 'agency' && (
           <AgencyPaywallGuard>

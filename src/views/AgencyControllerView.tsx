@@ -253,7 +253,12 @@ import {
   type AgencyCalendarUrgencyFilter,
   type UnifiedAgencyCalendarRow,
 } from '../utils/agencyCalendarUnified';
-import { extractCounterparties } from '../utils/threadFilters';
+import {
+  extractUnifiedClientOrgs,
+  applyUnifiedOrgFilter,
+  applyUnifiedOrgFilterToB2B,
+} from '../utils/threadFilters';
+import { ClientOrgFilterDropdown } from '../components/ClientOrgFilterDropdown';
 import { DashboardSummaryBar } from '../components/DashboardSummaryBar';
 import { OrgMetricsPanel } from '../components/OrgMetricsPanel';
 import { OwnerBillingStatusCard } from '../components/OwnerBillingStatusCard';
@@ -5875,10 +5880,8 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   const calendarHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [editingAssignmentThreadId, setEditingAssignmentThreadId] = useState<string | null>(null);
   const [msgFilter, setMsgFilter] = useState<'current' | 'archived' | 'applications'>('current');
-  const [assignmentScope, setAssignmentScope] = useState<'all' | 'mine' | 'unassigned'>('all');
-  const [assignmentFlagFilter, setAssignmentFlagFilter] = useState<string>('all');
   const [attentionFilter, setAttentionFilter] = useState<'all' | 'action_required'>('all');
-  const [counterpartyFilter, setCounterpartyFilter] = useState<string | null>(null);
+  const [unifiedOrgFilter, setUnifiedOrgFilter] = useState<string | null>(null);
   const [archivedIds, setArchivedIds] = useState<Set<string>>(() => {
     if (typeof window === 'undefined') return new Set();
     try {
@@ -6087,32 +6090,21 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
     });
   };
 
-  const counterparties = useMemo(() => extractCounterparties(requests, 'agency'), [requests]);
+  const unifiedClientOrgOptions = useMemo(
+    () => extractUnifiedClientOrgs(requests, b2bConversations, assignmentByClientOrgId),
+    [requests, b2bConversations, assignmentByClientOrgId],
+  );
 
   const visible = requests.filter((r) => {
     if (msgFilter === 'archived' ? !archivedIds.has(r.threadId) : archivedIds.has(r.threadId))
       return false;
-    if (counterpartyFilter) {
-      if (counterpartyFilter === '__agency_internal__') {
-        if (!r.isAgencyOnly) return false;
-      } else if (
-        r.isAgencyOnly ||
-        (r.clientOrganizationId ?? r.clientName ?? '') !== counterpartyFilter
-      ) {
-        return false;
-      }
-    }
-    const assignment = r.clientOrganizationId
-      ? assignmentByClientOrgId[r.clientOrganizationId]
-      : undefined;
-    if (assignmentScope === 'mine' && assignment?.assignedMemberUserId !== currentUserId)
-      return false;
-    if (assignmentScope === 'unassigned' && !!assignment?.assignedMemberUserId) return false;
-    if (
-      assignmentFlagFilter !== 'all' &&
-      (assignment?.label ?? '').toLowerCase() !== assignmentFlagFilter.toLowerCase()
-    )
-      return false;
+    const orgFiltered = applyUnifiedOrgFilter(
+      [r],
+      unifiedOrgFilter,
+      assignmentByClientOrgId,
+      currentUserId,
+    );
+    if (orgFiltered.length === 0) return false;
     if (attentionFilter === 'action_required') {
       const sig = attentionSignalsFromOptionRequestLike({
         status: r.status,
@@ -6129,6 +6121,17 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
     }
     return true;
   });
+
+  const filteredB2bConversations = useMemo(
+    () =>
+      applyUnifiedOrgFilterToB2B(
+        b2bConversations,
+        unifiedOrgFilter,
+        assignmentByClientOrgId,
+        currentUserId,
+      ),
+    [b2bConversations, unifiedOrgFilter, assignmentByClientOrgId, currentUserId],
+  );
 
   const request = selectedThreadId ? getRequestByThreadId(selectedThreadId) : null;
   const messages = selectedThreadId ? getMessages(selectedThreadId) : [];
@@ -7007,7 +7010,15 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                   <Text style={s.metaText}>{uiCopy.b2bChat.noAgencyContext}</Text>
                 ) : (
                   <>
-                    {b2bConversations.length === 0 ? (
+                    <View style={{ marginBottom: spacing.sm, zIndex: 100 }}>
+                      <ClientOrgFilterDropdown
+                        options={unifiedClientOrgOptions}
+                        selectedId={unifiedOrgFilter}
+                        onSelect={setUnifiedOrgFilter}
+                        currentUserId={currentUserId}
+                      />
+                    </View>
+                    {filteredB2bConversations.length === 0 ? (
                       <Text style={s.metaText}>{uiCopy.b2bChat.noClientChatsYetAgency}</Text>
                     ) : agencyB2bWebSplit ? (
                       <View
@@ -7024,7 +7035,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                             style={webThreadListScrollDefault}
                             contentContainerStyle={{ flexGrow: 1 }}
                           >
-                            {b2bConversations.map((c) => (
+                            {filteredB2bConversations.map((c) => (
                               <View
                                 key={c.id}
                                 style={[
@@ -7313,137 +7324,53 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                 <Text style={[s.metaText, { marginBottom: spacing.sm }]}>
                   {uiCopy.messages.archiveThreadDoesNotDeleteShort}
                 </Text>
-                {Object.keys(assignmentByClientOrgId).length > 0 && (
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      flexWrap: 'wrap',
-                      gap: spacing.xs,
-                      marginBottom: spacing.sm,
-                    }}
-                  >
-                    {(['all', 'mine', 'unassigned'] as const).map((scope) => (
-                      <TouchableOpacity
-                        key={`scope-${scope}`}
-                        style={[s.filterPill, assignmentScope === scope && s.filterPillActive]}
-                        onPress={() => setAssignmentScope(scope)}
-                      >
-                        <Text
-                          style={[
-                            s.filterPillLabel,
-                            assignmentScope === scope && s.filterPillLabelActive,
-                          ]}
-                        >
-                          {scope === 'all'
-                            ? 'All clients'
-                            : scope === 'mine'
-                              ? 'My clients'
-                              : 'Unassigned'}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                    {[
-                      'all',
-                      ...Array.from(
-                        new Set(
-                          Object.values(assignmentByClientOrgId).map((a) => a.label.toLowerCase()),
-                        ),
-                      ),
-                    ]
-                      .slice(0, 8)
-                      .map((flag) => (
-                        <TouchableOpacity
-                          key={`flag-${flag}`}
-                          style={[
-                            s.filterPill,
-                            assignmentFlagFilter === flag && s.filterPillActive,
-                          ]}
-                          onPress={() => setAssignmentFlagFilter(flag)}
-                        >
-                          <Text
-                            style={[
-                              s.filterPillLabel,
-                              assignmentFlagFilter === flag && s.filterPillLabelActive,
-                            ]}
-                          >
-                            {flag === 'all' ? 'Any flag' : `Flag ${flag}`}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                  </View>
-                )}
-                <View style={{ flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.sm }}>
-                  <TouchableOpacity
-                    style={[s.filterPill, attentionFilter === 'all' && s.filterPillActive]}
-                    onPress={() => setAttentionFilter('all')}
-                  >
-                    <Text
-                      style={[
-                        s.filterPillLabel,
-                        attentionFilter === 'all' && s.filterPillLabelActive,
-                      ]}
-                    >
-                      {_uiCopy.dashboard.smartAttentionFilterAll}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      s.filterPill,
-                      attentionFilter === 'action_required' && s.filterPillActive,
-                    ]}
-                    onPress={() => setAttentionFilter('action_required')}
-                  >
-                    <Text
-                      style={[
-                        s.filterPillLabel,
-                        attentionFilter === 'action_required' && s.filterPillLabelActive,
-                      ]}
-                    >
-                      {_uiCopy.dashboard.smartAttentionFilterActionRequired}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-                {counterparties.length > 1 && (
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      flexWrap: 'wrap',
-                      alignItems: 'center',
-                      gap: spacing.xs,
-                      marginBottom: spacing.sm,
-                    }}
-                  >
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: spacing.sm,
+                    marginBottom: spacing.sm,
+                    zIndex: 100,
+                  }}
+                >
+                  <ClientOrgFilterDropdown
+                    options={unifiedClientOrgOptions}
+                    selectedId={unifiedOrgFilter}
+                    onSelect={setUnifiedOrgFilter}
+                    currentUserId={currentUserId}
+                  />
+                  <View style={{ flexDirection: 'row', gap: spacing.xs }}>
                     <TouchableOpacity
-                      style={[s.filterPill, !counterpartyFilter && s.filterPillActive]}
-                      onPress={() => setCounterpartyFilter(null)}
+                      style={[s.filterPill, attentionFilter === 'all' && s.filterPillActive]}
+                      onPress={() => setAttentionFilter('all')}
                     >
                       <Text
-                        style={[s.filterPillLabel, !counterpartyFilter && s.filterPillLabelActive]}
+                        style={[
+                          s.filterPillLabel,
+                          attentionFilter === 'all' && s.filterPillLabelActive,
+                        ]}
                       >
-                        All clients
+                        {_uiCopy.dashboard.smartAttentionFilterAll}
                       </Text>
                     </TouchableOpacity>
-                    {counterparties.map((cp) => (
-                      <TouchableOpacity
-                        key={cp.id}
-                        style={[s.filterPill, counterpartyFilter === cp.id && s.filterPillActive]}
-                        onPress={() =>
-                          setCounterpartyFilter(counterpartyFilter === cp.id ? null : cp.id)
-                        }
+                    <TouchableOpacity
+                      style={[
+                        s.filterPill,
+                        attentionFilter === 'action_required' && s.filterPillActive,
+                      ]}
+                      onPress={() => setAttentionFilter('action_required')}
+                    >
+                      <Text
+                        style={[
+                          s.filterPillLabel,
+                          attentionFilter === 'action_required' && s.filterPillLabelActive,
+                        ]}
                       >
-                        <Text
-                          style={[
-                            s.filterPillLabel,
-                            counterpartyFilter === cp.id && s.filterPillLabelActive,
-                          ]}
-                          numberOfLines={1}
-                        >
-                          {cp.label}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
+                        {_uiCopy.dashboard.smartAttentionFilterActionRequired}
+                      </Text>
+                    </TouchableOpacity>
                   </View>
-                )}
+                </View>
 
                 <ScrollView
                   style={webThreadListScrollOption}

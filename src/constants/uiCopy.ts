@@ -578,6 +578,11 @@ export const uiCopy = {
       'Matches your account name (profile) and cannot be changed here. Two words = first and last name; one word = first name only.',
   },
   model: {
+    selectAgencyTitle: 'Select your agency profile',
+    selectAgencySubtitle:
+      'You are represented by multiple agencies. Choose which profile to start with.',
+    noAgencyProfiles: 'You are not currently represented by any agency.',
+    switchAgencyLabel: 'Switch agency',
     /** Small kicker above agency name rows in chat lists (not the org name itself). */
     agencyChatRowKicker: 'Agency',
     /** @deprecated Prefer agencyChatRowKicker or b2bChat.conversationFallback */

@@ -79,6 +79,7 @@ import { getAgencyById, type Agency } from '../services/agenciesSupabase';
 import { getAgencyNamesByThreadIds } from '../services/recruitingChatSupabase';
 import { BookingChatView } from '../views/BookingChatView';
 import { useAuth } from '../context/AuthContext';
+import { useModelAgency } from '../context/ModelAgencyContext';
 import { uiCopy } from '../constants/uiCopy';
 import { showAppAlert } from '../utils/crossPlatformAlert';
 import { exportUserData, downloadUserDataExport } from '../services/gdprComplianceSupabase';
@@ -125,7 +126,7 @@ type ModelProfile = {
   agencyId: string | null;
 };
 
-type ModelTab = 'home' | 'calendar' | 'chats' | 'settings';
+type ModelTab = 'home' | 'calendar' | 'messages' | 'settings';
 
 const HOURS = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`);
 
@@ -151,6 +152,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   // True on mobile-width viewports — option chat overlay fills the inset area instead of floating.
   const isMobileModel = modelProfileWindowWidth < 768;
   const { signOut } = useAuth();
+  const modelAgencyCtx = useModelAgency();
   const [profile, setProfile] = useState<ModelProfile | null>(null);
   const [tab, setTab] = useState<ModelTab>('home');
   const [deletingAccount, setDeletingAccount] = useState(false);
@@ -448,7 +450,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   }, []);
 
   useEffect(() => {
-    if (tab !== 'chats' || bookingThreadIds.length === 0) return;
+    if (tab !== 'messages' || bookingThreadIds.length === 0) return;
     let cancelled = false;
     // Resolves all thread→agencyName mappings in exactly 2 queries (batch),
     // replacing the previous N+1 loop (2 queries per thread).
@@ -461,7 +463,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   }, [tab, bookingThreadIds]);
 
   useEffect(() => {
-    if (tab !== 'chats' || !userId) return;
+    if (tab !== 'messages' || !userId) return;
     let cancelled = false;
     void listModelAgencyDirectConversations(userId).then((convs) => {
       if (!cancelled) setAgencyDirectConvs(convs);
@@ -814,7 +816,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
         setOpenEntry(null);
         setSelectedDate(null);
         break;
-      case 'chats':
+      case 'messages':
         setOpenBookingThreadId(null);
         setOpenDirectConvId(null);
         break;
@@ -893,6 +895,49 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
       <View style={{ flex: 1, paddingBottom: bottomTabInset }}>
         {tab === 'settings' && (
           <ScrollView style={{ flex: 1 }}>
+            {modelAgencyCtx.agencies.length > 1 && (
+              <View style={st.section}>
+                <Text style={st.sectionLabel}>{uiCopy.model.switchAgencyLabel}</Text>
+                <Text style={st.metaText}>
+                  Active:{' '}
+                  {modelAgencyCtx.agencies.find((a) => a.agencyId === modelAgencyCtx.activeAgencyId)
+                    ?.agencyName ?? '—'}
+                </Text>
+                <View style={{ gap: spacing.xs, marginTop: spacing.sm }}>
+                  {modelAgencyCtx.agencies
+                    .filter((a) => a.agencyId !== modelAgencyCtx.activeAgencyId)
+                    .map((a) => (
+                      <TouchableOpacity
+                        key={a.agencyId}
+                        style={{
+                          backgroundColor: colors.surface,
+                          borderRadius: 10,
+                          paddingVertical: spacing.sm,
+                          paddingHorizontal: spacing.md,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                        }}
+                        onPress={() => modelAgencyCtx.switchAgency(a.agencyId)}
+                      >
+                        <Text
+                          style={{ fontSize: 14, fontWeight: '600', color: colors.textPrimary }}
+                        >
+                          {a.agencyName}
+                        </Text>
+                        <Text style={{ fontSize: 11, color: colors.textSecondary }}>
+                          {a.territory}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                </View>
+              </View>
+            )}
+            {modelAgencyCtx.agencies.length === 0 && (
+              <View style={st.section}>
+                <Text style={st.sectionLabel}>Agency</Text>
+                <Text style={st.metaText}>{uiCopy.model.noAgencyProfiles}</Text>
+              </View>
+            )}
             <View style={st.section}>
               <Text style={st.sectionLabel}>About</Text>
               <Text style={st.metaText}>Base city: {profile.city || '—'}</Text>
@@ -1527,65 +1572,181 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
           </ScrollView>
         )}
 
-        {tab === 'chats' && (
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: spacing.xl }}>
-            <Text style={st.sectionLabel}>{uiCopy.model.agencyChatSectionLabel}</Text>
-            <Text style={st.metaText}>{uiCopy.model.agencyChatSectionSubtitle}</Text>
-            <View style={{ gap: spacing.xs, marginTop: spacing.md }}>
-              {bookingThreadIds.length === 0 && agencyDirectConvs.length === 0 ? (
-                <View style={{ alignItems: 'center', paddingVertical: spacing.xl }}>
-                  <Text
-                    style={{
-                      ...typography.body,
-                      fontSize: 13,
-                      color: colors.textSecondary,
-                      textAlign: 'center',
-                    }}
-                  >
-                    {profile?.agencyId
-                      ? `No messages yet.${'\n'}Your agency chat will appear here once there are conversations.`
-                      : `No conversations yet.${'\n'}Your agency will appear here once connected.`}
-                  </Text>
-                </View>
-              ) : (
-                <>
-                  {bookingThreadIds.map((id) => {
-                    const t = getRecruitingThread(id);
-                    if (!t) return null;
-                    const agencyLabel =
-                      bookingAgencyByThread[id] ?? uiCopy.b2bChat.conversationFallback;
-                    return (
-                      <TouchableOpacity
-                        key={id}
-                        style={st.chatRow}
-                        onPress={() => setOpenBookingThreadId(id)}
-                      >
-                        <View style={{ flex: 1 }}>
-                          <Text style={st.chatRowKicker}>{uiCopy.model.agencyChatRowKicker}</Text>
-                          <Text style={st.chatRowLabel}>{agencyLabel}</Text>
-                        </View>
-                        <Text style={st.chatRowOpen}>Open</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                  {agencyDirectConvs.map((conv) => (
-                    <TouchableOpacity
-                      key={conv.id}
-                      style={st.chatRow}
-                      onPress={() => setOpenDirectConvId(conv.id)}
+        {tab === 'messages' && (
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{
+              paddingBottom: spacing.xl,
+              paddingHorizontal: spacing.md,
+              paddingTop: spacing.sm,
+            }}
+          >
+            {(() => {
+              type UnifiedRow =
+                | {
+                    kind: 'option';
+                    id: string;
+                    label: string;
+                    sub: string;
+                    actionRequired: boolean;
+                    ts: number;
+                    requestType: string;
+                  }
+                | { kind: 'direct'; id: string; label: string; ts: number }
+                | { kind: 'recruiting'; id: string; label: string; ts: number };
+              const rows: UnifiedRow[] = [];
+              for (const o of options) {
+                const isAction = modelInboxRequiresModelConfirmation({
+                  status: o.status,
+                  finalStatus: o.finalStatus,
+                  modelApproval: o.modelApproval ?? 'pending',
+                  modelAccountLinked: o.modelAccountLinked ?? false,
+                });
+                rows.push({
+                  kind: 'option',
+                  id: o.threadId,
+                  label:
+                    o.agencyOrganizationName ||
+                    o.clientOrganizationName ||
+                    o.clientName ||
+                    'Option',
+                  sub: o.date ?? '',
+                  actionRequired: isAction,
+                  ts: o.createdAt ?? 0,
+                  requestType: o.requestType ?? 'option',
+                });
+              }
+              for (const conv of agencyDirectConvs) {
+                rows.push({
+                  kind: 'direct',
+                  id: conv.id,
+                  label: conv.title ?? uiCopy.b2bChat.conversationFallback,
+                  ts: conv.updated_at ? new Date(conv.updated_at).getTime() : 0,
+                });
+              }
+              for (const id of bookingThreadIds) {
+                const t = getRecruitingThread(id);
+                if (!t) continue;
+                rows.push({
+                  kind: 'recruiting',
+                  id,
+                  label: bookingAgencyByThread[id] ?? uiCopy.b2bChat.conversationFallback,
+                  ts: t.createdAt ?? 0,
+                });
+              }
+              rows.sort((a, b) => {
+                if (
+                  a.kind === 'option' &&
+                  (a as Extract<UnifiedRow, { kind: 'option' }>).actionRequired &&
+                  !(
+                    b.kind === 'option' &&
+                    (b as Extract<UnifiedRow, { kind: 'option' }>).actionRequired
+                  )
+                )
+                  return -1;
+                if (
+                  b.kind === 'option' &&
+                  (b as Extract<UnifiedRow, { kind: 'option' }>).actionRequired &&
+                  !(
+                    a.kind === 'option' &&
+                    (a as Extract<UnifiedRow, { kind: 'option' }>).actionRequired
+                  )
+                )
+                  return 1;
+                return b.ts - a.ts;
+              });
+
+              if (rows.length === 0) {
+                return (
+                  <View style={{ alignItems: 'center', paddingVertical: spacing.xl }}>
+                    <Text
+                      style={{
+                        ...typography.body,
+                        fontSize: 13,
+                        color: colors.textSecondary,
+                        textAlign: 'center',
+                      }}
                     >
-                      <View style={{ flex: 1 }}>
-                        <Text style={st.chatRowKicker}>Direct</Text>
-                        <Text style={st.chatRowLabel}>
-                          {conv.title ?? uiCopy.b2bChat.conversationFallback}
+                      {uiCopy.model.noAgencyMessages}
+                    </Text>
+                  </View>
+                );
+              }
+
+              return rows.map((row) => {
+                if (row.kind === 'option') {
+                  const o = row as Extract<UnifiedRow, { kind: 'option' }>;
+                  const typeLabel =
+                    o.requestType === 'casting'
+                      ? uiCopy.dashboard.threadContextCasting
+                      : uiCopy.dashboard.threadContextOption;
+                  return (
+                    <TouchableOpacity
+                      key={`opt-${o.id}`}
+                      style={[
+                        st.chatRow,
+                        o.actionRequired && { borderColor: '#f59e0b', backgroundColor: '#fffbeb' },
+                      ]}
+                      onPress={() => {
+                        setSelectedOptionThread(o.id);
+                        void loadMessagesForThread(o.id, { viewerRole: 'model' });
+                      }}
+                    >
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        {o.actionRequired && (
+                          <Text
+                            style={{
+                              fontSize: 9,
+                              fontWeight: '700',
+                              color: '#b45309',
+                              textTransform: 'uppercase',
+                              letterSpacing: 0.6,
+                              marginBottom: 2,
+                            }}
+                          >
+                            {uiCopy.dashboard.smartAttentionLabel}
+                          </Text>
+                        )}
+                        <Text style={st.chatRowKicker}>{typeLabel}</Text>
+                        <Text style={st.chatRowLabel} numberOfLines={1}>
+                          {o.label}
                         </Text>
+                        <Text style={{ fontSize: 11, color: colors.textSecondary }}>{o.sub}</Text>
                       </View>
                       <Text style={st.chatRowOpen}>Open</Text>
                     </TouchableOpacity>
-                  ))}
-                </>
-              )}
-            </View>
+                  );
+                }
+                if (row.kind === 'direct') {
+                  return (
+                    <TouchableOpacity
+                      key={`dir-${row.id}`}
+                      style={st.chatRow}
+                      onPress={() => setOpenDirectConvId(row.id)}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={st.chatRowKicker}>{uiCopy.model.agencyChatRowKicker}</Text>
+                        <Text style={st.chatRowLabel}>{row.label}</Text>
+                      </View>
+                      <Text style={st.chatRowOpen}>Open</Text>
+                    </TouchableOpacity>
+                  );
+                }
+                return (
+                  <TouchableOpacity
+                    key={`rec-${row.id}`}
+                    style={st.chatRow}
+                    onPress={() => setOpenBookingThreadId(row.id)}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={st.chatRowKicker}>{uiCopy.model.agencyChatRowKicker}</Text>
+                      <Text style={st.chatRowLabel}>{row.label}</Text>
+                    </View>
+                    <Text style={st.chatRowOpen}>Open</Text>
+                  </TouchableOpacity>
+                );
+              });
+            })()}
           </ScrollView>
         )}
 
@@ -1902,12 +2063,14 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
       <View style={[st.bottomTabBar, { paddingBottom: insets.bottom }]}>
         <View style={st.tabRow}>
           {[
-            {
-              key: 'home' as const,
-              label: pendingConfirmations.length ? `Home (${pendingConfirmations.length})` : 'Home',
-            },
+            { key: 'home' as const, label: 'Home' },
             { key: 'calendar' as const, label: 'Calendar' },
-            { key: 'chats' as const, label: 'Chats' },
+            {
+              key: 'messages' as const,
+              label: pendingConfirmations.length
+                ? `Messages (${pendingConfirmations.length})`
+                : 'Messages',
+            },
             { key: 'settings' as const, label: 'Settings' },
           ].map((t) => (
             <TouchableOpacity

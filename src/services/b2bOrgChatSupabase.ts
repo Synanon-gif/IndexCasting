@@ -66,7 +66,7 @@ export type ResolveB2bOrgIdsResult =
 /** When the agency picks a client *organization* (not a user). See migration_b2b_org_directory_and_pair_resolve.sql */
 export async function resolveB2bOrgPairForChat(
   agencyId: string,
-  clientOrganizationId: string
+  clientOrganizationId: string,
 ): Promise<ResolveB2bOrgIdsResult> {
   try {
     const { data, error } = await supabase.rpc('resolve_b2b_org_pair_for_chat', {
@@ -104,7 +104,7 @@ export async function resolveB2bOrgPairForChat(
 
 export async function resolveB2bChatOrganizationIds(
   clientUserId: string,
-  agencyId: string
+  agencyId: string,
 ): Promise<ResolveB2bOrgIdsResult> {
   try {
     const { data, error } = await supabase.rpc('resolve_b2b_chat_organization_ids', {
@@ -164,8 +164,7 @@ export async function createB2bOrgConversationViaRpc(params: {
   participantIds: string[];
   title: string;
 }): Promise<
-  | { ok: true; conversationId: string; created: boolean }
-  | { ok: false; reason: string }
+  { ok: true; conversationId: string; created: boolean } | { ok: false; reason: string }
 > {
   try {
     const { data, error } = await supabase.rpc('create_b2b_org_conversation', {
@@ -305,9 +304,11 @@ export async function ensureClientAgencyChat(params: {
   return { ok: true, conversationId: created.conversationId, created: created.created };
 }
 
-/** All B2B org chats visible to members of this organization (either side of the pair). */
-export async function listB2BConversationsForOrganization(organizationId: string): Promise<Conversation[]> {
-  return fetchAllSupabasePages(async (from, to) => {
+/** All B2B org chats visible to members of this organization (either side of the pair). Dedupes by context_id. */
+export async function listB2BConversationsForOrganization(
+  organizationId: string,
+): Promise<Conversation[]> {
+  const all = await fetchAllSupabasePages(async (from, to) => {
     const { data, error } = await supabase
       .from('conversations')
       .select('*')
@@ -318,11 +319,25 @@ export async function listB2BConversationsForOrganization(organizationId: string
       .range(from, to);
     return { data: data as Conversation[] | null, error };
   });
+  const seen = new Set<string>();
+  return all.filter((c) => {
+    const key = c.context_id ?? c.id;
+    if (seen.has(key)) {
+      console.warn('[listB2BConversationsForOrganization] duplicate context_id filtered:', key);
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
 }
 
 export async function getOrganizationName(orgId: string): Promise<string | null> {
   try {
-    const { data, error } = await supabase.from('organizations').select('name').eq('id', orgId).maybeSingle();
+    const { data, error } = await supabase
+      .from('organizations')
+      .select('name')
+      .eq('id', orgId)
+      .maybeSingle();
     if (error) {
       console.error('getOrganizationName error:', error);
       return null;
@@ -410,7 +425,9 @@ export async function ensureAgencyModelDirectChat(params: {
   modelName: string;
   /** Agency display name — stored as conversation title so the model can identify the agency. */
   agencyName: string;
-}): Promise<{ ok: true; conversationId: string; created: boolean } | { ok: false; reason: string }> {
+}): Promise<
+  { ok: true; conversationId: string; created: boolean } | { ok: false; reason: string }
+> {
   const { agencyId, agencyOrganizationId, modelId, modelUserId, actingUserId, agencyName } = params;
 
   const { data: authUser } = await supabase.auth.getUser();
@@ -474,7 +491,9 @@ export async function ensureAgencyModelDirectChat(params: {
  * Direct agency→model conversations visible to a specific model user.
  * The model is in participant_ids; RLS (conversation_accessible_to_me) grants access.
  */
-export async function listModelAgencyDirectConversations(modelUserId: string): Promise<Conversation[]> {
+export async function listModelAgencyDirectConversations(
+  modelUserId: string,
+): Promise<Conversation[]> {
   try {
     const { data, error } = await supabase
       .from('conversations')
@@ -494,7 +513,9 @@ export async function listModelAgencyDirectConversations(modelUserId: string): P
 }
 
 /** All agency→model direct conversations for a given agency org (visible via agency_organization_id RLS). */
-export async function listAgencyModelDirectConversations(agencyOrganizationId: string): Promise<Conversation[]> {
+export async function listAgencyModelDirectConversations(
+  agencyOrganizationId: string,
+): Promise<Conversation[]> {
   try {
     const { data, error } = await supabase
       .from('conversations')
