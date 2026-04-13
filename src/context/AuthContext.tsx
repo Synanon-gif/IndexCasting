@@ -1,4 +1,12 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { uiCopy } from '../constants/uiCopy';
 import { supabase } from '../../lib/supabase';
 import { appUrl } from '../config/env';
@@ -53,12 +61,12 @@ type AuthState = {
     role: string,
     displayName?: string,
     companyName?: string | null,
-    options?: { isInviteSignup?: boolean }
+    options?: { isInviteSignup?: boolean },
   ) => Promise<{ error: string | null }>;
   signIn: (
     email: string,
     password: string,
-    options?: { clearStaleInviteToken?: boolean }
+    options?: { clearStaleInviteToken?: boolean },
   ) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   profile: Profile | null;
@@ -91,7 +99,8 @@ const AuthContext = createContext<AuthState | null>(null);
 
 // is_admin + is_super_admin are column-level REVOKEd from authenticated.
 // They are fetched separately via get_own_admin_flags() (SECURITY DEFINER).
-const PROFILE_FIELDS = 'id, email, display_name, role, is_active, is_guest, has_completed_signup, tos_accepted, privacy_accepted, agency_model_rights_accepted, activation_documents_sent, company_name, phone, website, country, verification_email, deletion_requested_at';
+const PROFILE_FIELDS =
+  'id, email, display_name, role, is_active, is_guest, has_completed_signup, tos_accepted, privacy_accepted, agency_model_rights_accepted, activation_documents_sent, company_name, phone, website, country, verification_email, deletion_requested_at';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -112,19 +121,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session: s } }) => {
-      console.log('[Auth] getSession resolved, user:', s?.user?.id ?? 'none');
-      setSession(s);
-      if (s?.user) {
-        void bootstrapThenLoadProfile(s.user.id).finally(() => setLoading(false));
-      } else {
+    supabase.auth
+      .getSession()
+      .then(({ data: { session: s } }) => {
+        console.log('[Auth] getSession resolved, user:', s?.user?.id ?? 'none');
+        setSession(s);
+        if (s?.user) {
+          void bootstrapThenLoadProfile(s.user.id).finally(() => setLoading(false));
+        } else {
+          setLoading(false);
+        }
+      })
+      .catch(() => {
         setLoading(false);
-      }
-    }).catch(() => {
-      setLoading(false);
-    });
+      });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, s) => {
       console.log('[Auth] onAuthStateChange:', event, s?.user?.id ?? 'no-user');
       // PASSWORD_RECOVERY fires when the user clicks a reset link from Supabase.
       // Set the gate BEFORE setSession so App.tsx renders SetPasswordScreen immediately.
@@ -168,7 +182,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     return () => subscription.unsubscribe();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Nachträglich persistierte Invite/Claim-Tokens (z. B. ?invite= bei bereits geladener Session) — Mutex im Service.
@@ -186,7 +200,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [session?.user?.id, loading]);
 
   /** Returns { profile }, { deactivated: true, reason } (signs out), or null if no profile. */
-  async function loadProfile(userId: string): Promise<{ profile: Profile } | { deactivated: true; reason?: 'deactivated' | 'deletion' | 'org_deactivated' } | null> {
+  async function loadProfile(
+    userId: string,
+  ): Promise<
+    | { profile: Profile }
+    | { deactivated: true; reason?: 'deactivated' | 'deletion' | 'org_deactivated' }
+    | null
+  > {
     const { data, error: profileQueryError } = await supabase
       .from('profiles')
       .select(PROFILE_FIELDS)
@@ -203,7 +223,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     if (!data) {
       if (profileQueryError) {
-        console.warn('[Auth] loadProfile: query error but keeping existing profile (transient failure)', userId);
+        console.warn(
+          '[Auth] loadProfile: query error but keeping existing profile (transient failure)',
+          userId,
+        );
       } else {
         console.log('[Auth] loadProfile: no profile row found for', userId);
         updateProfile(null);
@@ -240,7 +263,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Secondary: boolean RPC (different code path, same UUID+email pin in DB)
     if (!isAdminFlag) {
       try {
-        const { data: isAdminBool, error: adminBoolErr } = await supabase.rpc('is_current_user_admin');
+        const { data: isAdminBool, error: adminBoolErr } =
+          await supabase.rpc('is_current_user_admin');
         if (!adminBoolErr && isAdminBool === true) {
           isAdminFlag = true;
         }
@@ -260,9 +284,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const row = Array.isArray(sf) ? sf[0] : sf;
           isSuperAdminFlag = row?.is_super_admin ?? false;
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
-    console.log('[Auth] loadProfile: admin flags resolved — is_admin:', isAdminFlag, 'is_super_admin:', isSuperAdminFlag);
+    console.log(
+      '[Auth] loadProfile: admin flags resolved — is_admin:',
+      isAdminFlag,
+      'is_super_admin:',
+      isSuperAdminFlag,
+    );
 
     const isActive = data.is_active ?? false;
     const isGuest = data.is_guest ?? false;
@@ -306,7 +337,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           break;
         } catch (e) {
           console.error(`loadProfile org active check attempt ${attempt + 1} failed:`, e);
-          if (attempt < 1) await new Promise(r => setTimeout(r, 1500));
+          if (attempt < 1) await new Promise((r) => setTimeout(r, 1500));
         }
       }
       if (!orgCheckPassed) {
@@ -356,18 +387,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           } else {
             // Org context fehlt für einen B2B-User — Partial-State nach Signup.
             // Versuche Bootstrap einmalig, dann erneuter Fetch.
-            console.error('[AuthContext] loadProfile: kein org context für role=', role, '— versuche Bootstrap-Recovery');
+            console.error(
+              '[AuthContext] loadProfile: kein org context für role=',
+              role,
+              '— versuche Bootstrap-Recovery',
+            );
             try {
               // 500ms Delay vor Retry — verhindert sofortigen Fehlschlag bei transientem DB-Fehler
               await new Promise((r) => setTimeout(r, 500));
-              const { ensurePlainSignupB2bOwnerBootstrap } = await import('../services/b2bOwnerBootstrapSupabase');
+              const { ensurePlainSignupB2bOwnerBootstrap } =
+                await import('../services/b2bOwnerBootstrapSupabase');
               const { error: bootstrapError } = await ensurePlainSignupB2bOwnerBootstrap();
               if (bootstrapError) {
-                console.error('[AuthContext] loadProfile: Bootstrap-Recovery RPC fehlgeschlagen:', bootstrapError);
+                console.error(
+                  '[AuthContext] loadProfile: Bootstrap-Recovery RPC fehlgeschlagen:',
+                  bootstrapError,
+                );
                 setOrgBootstrapFailed(true);
               } else {
                 const { data: retryCtx } = await supabase.rpc('get_my_org_context');
-                const retryRows = Array.isArray(retryCtx) ? retryCtx : (retryCtx ? [retryCtx] : []);
+                const retryRows = Array.isArray(retryCtx) ? retryCtx : retryCtx ? [retryCtx] : [];
                 const retryRow = retryRows[0] as Record<string, unknown> | undefined;
                 if (retryRow?.organization_id) {
                   orgContext = {
@@ -377,14 +416,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     agency_id: (retryRow.agency_id as string) ?? null,
                   };
                   setOrgBootstrapFailed(false);
-                  console.log('[AuthContext] loadProfile: org context erfolgreich wiederhergestellt');
+                  console.log(
+                    '[AuthContext] loadProfile: org context erfolgreich wiederhergestellt',
+                  );
                 } else {
-                  console.error('[AuthContext] loadProfile: org context fehlt auch nach Bootstrap-Recovery (role=', role, ')');
+                  console.error(
+                    '[AuthContext] loadProfile: org context fehlt auch nach Bootstrap-Recovery (role=',
+                    role,
+                    ')',
+                  );
                   setOrgBootstrapFailed(true);
                 }
               }
             } catch (bootstrapErr) {
-              console.error('[AuthContext] loadProfile: Bootstrap-Recovery fehlgeschlagen:', bootstrapErr);
+              console.error(
+                '[AuthContext] loadProfile: Bootstrap-Recovery fehlgeschlagen:',
+                bootstrapErr,
+              );
               setOrgBootstrapFailed(true);
             }
           }
@@ -396,7 +444,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const profileData: Profile = {
       ...data,
-      role,                                            // validated AppRole (not raw string)
+      role, // validated AppRole (not raw string)
       is_active: isGuest ? true : isActive,
       is_admin: isAdminFlag,
       is_super_admin: isSuperAdminFlag,
@@ -413,7 +461,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       agency_id: orgContext.agency_id,
     };
     setOrgDeactivated(false);
-    console.log('[Auth] loadProfile: success, role:', profileData.role, 'is_admin:', profileData.is_admin);
+    console.log(
+      '[Auth] loadProfile: success, role:',
+      profileData.role,
+      'is_admin:',
+      profileData.is_admin,
+    );
     updateProfile(profileData);
     return { profile: profileData };
   }
@@ -426,13 +479,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Guest detection: handle_new_user() does NOT write is_guest from raw_user_meta_data.
       // When a guest signs in via Magic Link (OTP), is_guest is only in user_metadata.
       try {
-        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        const {
+          data: { session: currentSession },
+        } = await supabase.auth.getSession();
         if (currentSession?.user?.user_metadata?.is_guest === true) {
           const { createGuestProfile } = await import('../services/guestAuthSupabase');
-          await createGuestProfile(
-            userId,
-            currentSession.user.email ?? '',
-          );
+          await createGuestProfile(userId, currentSession.user.email ?? '');
         }
       } catch (e) {
         console.error('bootstrapThenLoadProfile guest upsert error:', e);
@@ -452,25 +504,64 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (!isGuestUser) {
         try {
-          const { ensurePlainSignupB2bOwnerBootstrap } = await import('../services/b2bOwnerBootstrapSupabase');
+          const { ensurePlainSignupB2bOwnerBootstrap } =
+            await import('../services/b2bOwnerBootstrapSupabase');
           const { error } = await ensurePlainSignupB2bOwnerBootstrap();
           if (error) {
             console.error('bootstrapThenLoadProfile RPC error (attempt 1):', error);
-            // Retry once after a delay — handles transient DB write conflicts.
             await new Promise((r) => setTimeout(r, 1500));
             const { error: retryErr } = await ensurePlainSignupB2bOwnerBootstrap();
             if (retryErr) {
               console.error('bootstrapThenLoadProfile RPC error (attempt 2, giving up):', retryErr);
-              // orgBootstrapFailed wird nach loadProfile gesetzt, falls kein org context vorhanden
             }
           }
         } catch (e) {
           console.error('bootstrapThenLoadProfile exception:', e);
         }
       }
+
+      // ── PRE-LOAD INVITE FINALIZATION ────────────────────────────────────────
+      // Invited Bookers/Employees start with is_active=false (handle_new_user).
+      // accept_organization_invitation sets is_active=true — but if we call
+      // loadProfile first, it sees is_active=false and signs the user out before
+      // finalization ever runs. Fix: run finalization BEFORE loadProfile when a
+      // pending invite token exists. This way the RPC activates the profile and
+      // loadProfile sees is_active=true.
+      lastBootstrapFinalizeRef.current = EMPTY_FINALIZE;
+      let preFinalized = false;
+      if (!isGuestUser) {
+        try {
+          const { readInviteToken } = await import('../storage/inviteToken');
+          const pendingInvite = await readInviteToken();
+          if (pendingInvite) {
+            console.log(
+              '[Auth] bootstrapThenLoadProfile: pending invite token found — finalizing BEFORE loadProfile',
+            );
+            lastBootstrapFinalizeRef.current = await finalizePendingInviteOrClaim({
+              onSuccessReloadProfile: async () => {
+                // no-op here; loadProfile runs below after finalization
+              },
+            });
+            preFinalized = true;
+            if (lastBootstrapFinalizeRef.current.invite.ok) {
+              console.log(
+                '[Auth] bootstrapThenLoadProfile: invite accepted — profile should now be active',
+              );
+            }
+          }
+        } catch (e) {
+          console.error('bootstrapThenLoadProfile pre-finalize invite error:', e);
+        }
+      }
+
       const result = await loadProfile(userId);
-      // Admin-Login bleibt unberührt (is_admin Pfad)
-      if (result && 'profile' in result && result.profile && !result.profile.is_admin && result.profile.role !== 'admin') {
+      if (
+        result &&
+        'profile' in result &&
+        result.profile &&
+        !result.profile.is_admin &&
+        result.profile.role !== 'admin'
+      ) {
         const role = result.profile.role;
         if (role === 'client' || role === 'agent') {
           const hasOrg = !!(result.profile as { organization_id?: string | null }).organization_id;
@@ -478,20 +569,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      lastBootstrapFinalizeRef.current = EMPTY_FINALIZE;
+      // Run finalization for non-invite tokens (model claim) or when no pre-finalize happened
       if (result && 'profile' in result && result.profile) {
         const p = result.profile;
-        if (!p.is_admin && p.role !== 'admin' && !p.is_guest) {
+        if (!p.is_admin && p.role !== 'admin' && !p.is_guest && !preFinalized) {
           lastBootstrapFinalizeRef.current = await finalizePendingInviteOrClaim({
             onSuccessReloadProfile: async () => {
               await loadProfile(userId);
             },
           });
-          const fin = lastBootstrapFinalizeRef.current;
+        }
+        const fin = lastBootstrapFinalizeRef.current;
 
-          // Fallback: if claim was not successful and user is a model, try deprecated email-based linking.
-          // This covers the path where session is established via email-confirmation redirect
-          // (onAuthStateChange → bootstrapThenLoadProfile) and the claim token was lost.
+        if (!p.is_admin && p.role !== 'admin' && !p.is_guest) {
           if (p.role === 'model' && !fin.claim.ok) {
             try {
               const { linkModelByEmail } = await import('../services/modelsSupabase');
@@ -524,9 +614,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refreshProfile = useCallback(async () => {
     // getSession() reads from localStorage (no network round-trip) — cannot hang.
     // Semantically identical to getUser(): both yield the current user's ID.
-    const { data: { session: s } } = await supabase.auth.getSession();
+    const {
+      data: { session: s },
+    } = await supabase.auth.getSession();
     if (s?.user) await loadProfile(s.user.id);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- loadProfile is defined in the same closure and stable across renders
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadProfile is defined in the same closure and stable across renders
   }, []);
 
   const signUp = async (
@@ -535,7 +627,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     role: string,
     displayName?: string,
     companyName?: string | null,
-    options?: { isInviteSignup?: boolean }
+    options?: { isInviteSignup?: boolean },
   ) => {
     const safeRole = validateSignupRole(role);
     const trimmedCompany = companyName?.trim() || null;
@@ -552,7 +644,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (peekPendingModelClaimTokenSync()) {
           emailRedirectTo = `${appUrl}/`;
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
 
     const { data, error } = await supabase.auth.signUp({
@@ -639,11 +733,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       if (hasSession && safeRole === 'agent' && !inviteAcceptedOk && !options?.isInviteSignup) {
         try {
-          const { ensureAgencyRecordForCurrentAgent } = await import('../services/agenciesSupabase');
+          const { ensureAgencyRecordForCurrentAgent } =
+            await import('../services/agenciesSupabase');
           // Pass company name directly for the same reason as above.
           const agId = await ensureAgencyRecordForCurrentAgent(orgNameForB2b);
           if (agId) {
-            const { error: orgErr } = await supabase.rpc('ensure_agency_organization', { p_agency_id: agId });
+            const { error: orgErr } = await supabase.rpc('ensure_agency_organization', {
+              p_agency_id: agId,
+            });
             if (orgErr) console.error('ensure_agency_organization on signup', orgErr);
           }
         } catch (e) {
@@ -651,7 +748,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      const { data: { session: sess } } = await supabase.auth.getSession();
+      const {
+        data: { session: sess },
+      } = await supabase.auth.getSession();
       if (sess?.user) {
         await bootstrapThenLoadProfile(newUserId);
       } else {
@@ -673,7 +772,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = async (
     email: string,
     password: string,
-    options?: { clearStaleInviteToken?: boolean }
+    options?: { clearStaleInviteToken?: boolean },
   ) => {
     try {
       const { clearInviteTokenIfPlainSignIn } = await import('../services/authInviteTokenPolicy');
@@ -688,7 +787,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // ── Step 1: profile bootstrap (ALWAYS runs — isolated from all side-effects) ──
     // This must never be skipped or blocked by any subsequent step.
     // Admin depends on this to get is_admin=true set in profile state.
-    let deactivatedResult: { reason?: 'deactivated' | 'deletion' | 'org_deactivated' } | null = null;
+    let deactivatedResult: { reason?: 'deactivated' | 'deletion' | 'org_deactivated' } | null =
+      null;
     let bootstrapThrew = false;
     if (data?.user) {
       try {
@@ -707,7 +807,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // If bootstrap threw (network/DB crash), the session exists but profile is
     // missing. Sign out and return an error so the user can retry cleanly.
     if (bootstrapThrew) {
-      try { await supabase.auth.signOut(); } catch { /* ignore sign-out error */ }
+      try {
+        await supabase.auth.signOut();
+      } catch {
+        /* ignore sign-out error */
+      }
       return { error: uiCopy.auth.loginFailed };
     }
 
@@ -767,17 +871,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
     if (agencyRights) updates.agency_model_rights_accepted = true;
 
-    const { error } = await supabase
-      .from('profiles')
-      .update(updates)
-      .eq('id', session.user.id);
+    const { error } = await supabase.from('profiles').update(updates).eq('id', session.user.id);
     if (error) return { error: error.message };
 
-    await supabase.from('legal_acceptances').insert([
-      { user_id: session.user.id, document_type: 'terms_of_service', document_version: '1.0' },
-      { user_id: session.user.id, document_type: 'privacy_policy', document_version: '1.0' },
-      ...(agencyRights ? [{ user_id: session.user.id, document_type: 'agency_model_rights', document_version: '1.0' }] : []),
-    ]);
+    await supabase
+      .from('legal_acceptances')
+      .insert([
+        { user_id: session.user.id, document_type: 'terms_of_service', document_version: '1.0' },
+        { user_id: session.user.id, document_type: 'privacy_policy', document_version: '1.0' },
+        ...(agencyRights
+          ? [
+              {
+                user_id: session.user.id,
+                document_type: 'agency_model_rights',
+                document_version: '1.0',
+              },
+            ]
+          : []),
+      ]);
 
     // Sync to consent_log so that GDPR withdrawal flows work.
     // consent_log is the authoritative source for withdraw_consent() RPC.
@@ -867,47 +978,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const clearOrgDeactivated = useCallback(() => setOrgDeactivated(false), []);
 
   const retryOrgBootstrap = useCallback(async () => {
-    const { data: { session: s } } = await supabase.auth.getSession();
+    const {
+      data: { session: s },
+    } = await supabase.auth.getSession();
     if (!s?.user) return;
     // Admin-Login bleibt unberührt
     if (profileRef.current?.is_admin || profileRef.current?.role === 'admin') return;
     setOrgBootstrapFailed(false);
     await bootstrapThenLoadProfile(s.user.id);
-  // bootstrapThenLoadProfile ist in derselben Closure stabil
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // bootstrapThenLoadProfile ist in derselben Closure stabil
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const contextValue = useMemo(() => ({
-    session,
-    user: session?.user ?? null,
-    loading,
-    signUp,
-    signIn,
-    signOut,
-    profile,
-    refreshProfile,
-    acceptTerms,
-    markDocumentsSent,
-    updateDisplayName,
-    orgDeactivated,
-    clearOrgDeactivated,
-    orgBootstrapFailed,
-    retryOrgBootstrap,
-    isPasswordRecovery,
-    requestPasswordReset,
-    updatePassword,
-  // Functions defined inline (signUp, signIn, signOut, acceptTerms, markDocumentsSent,
-  // updateDisplayName, requestPasswordReset, updatePassword) are recreated only when their
-  // closure deps change. session, loading, profile, orgDeactivated, orgBootstrapFailed,
-  // isPasswordRecovery are the real state drivers.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [session, loading, profile, orgDeactivated, orgBootstrapFailed, isPasswordRecovery]);
-
-  return (
-    <AuthContext.Provider value={contextValue}>
-      {children}
-    </AuthContext.Provider>
+  const contextValue = useMemo(
+    () => ({
+      session,
+      user: session?.user ?? null,
+      loading,
+      signUp,
+      signIn,
+      signOut,
+      profile,
+      refreshProfile,
+      acceptTerms,
+      markDocumentsSent,
+      updateDisplayName,
+      orgDeactivated,
+      clearOrgDeactivated,
+      orgBootstrapFailed,
+      retryOrgBootstrap,
+      isPasswordRecovery,
+      requestPasswordReset,
+      updatePassword,
+      // Functions defined inline (signUp, signIn, signOut, acceptTerms, markDocumentsSent,
+      // updateDisplayName, requestPasswordReset, updatePassword) are recreated only when their
+      // closure deps change. session, loading, profile, orgDeactivated, orgBootstrapFailed,
+      // isPasswordRecovery are the real state drivers.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }),
+    [session, loading, profile, orgDeactivated, orgBootstrapFailed, isPasswordRecovery],
   );
+
+  return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth(): AuthState {
