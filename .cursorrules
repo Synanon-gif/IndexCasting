@@ -125,6 +125,19 @@ Vollständige Invarianten: [.cursor/rules/system-invariants.mdc](.cursor/rules/s
 - **Counter-Offer:** Wenn `client_price_status === 'pending'` und `proposedPrice` gesetzt, muss ein **sichtbarer** Counter-Block (Betrag, Send, Cancel) existieren — nicht nur Toggle ohne Eingabe; Label „Make counter offer“ / Primary-Button über bestehende `colors` (`NegotiationThreadFooter`).
 - **Bestätigung:** Kein stiller Delete/Reject — `ConfirmDestructiveModal` für zerstörerische Schritte (Agency Remove, Client Decline agency proposal, Model Accept/Decline availability); Texte in `uiCopy`, nicht hardcoden.
 
+### 4c.3a Agency-manuelle Option / Casting — RPC, Typen, Store, UI (Pflicht)
+
+Manuelle Agency-Events (Kalender → Option/Casting, ein oder mehrere Models) nutzen **`agency_create_option_request`** + Store **`createAgencyOnlyOptionRequest`**. Bei Änderungen **immer** Typ-Parität und End-to-End prüfen.
+
+- **RPC-Parameter-Typen:** `p_agency_id` **muss** **`uuid`** sein (nicht `text`). In der Live-DB sind `public.bookers.agency_id`, `public.models.agency_id`, `public.option_requests.agency_id` **`uuid`**. Vergleiche wie `WHERE agency_id = p_agency_id` mit `text`-Parameter führen zu PostgreSQL **42883** (`operator does not exist: uuid = text`). `organizations.agency_id` ist ebenfalls **`uuid`** — Guards ohne falsche Typ-Mischung.
+- **`option_requests.client_id`:** Spalte ist **`uuid`**. Caller-ID **`v_caller_id`** direkt einfügen — **nicht** `v_caller_id::text` (falsche Cast-Richtung).
+- **`start_time` / `end_time`:** Wenn die RPC diese Parameter annimmt, **müssen** sie in **`option_requests.start_time` / `end_time`** (`time`) geschrieben werden — sonst gehen Zeiten beim Speichern verloren.
+- **Signatur-Wechsel:** Wechsel des Parametertyps (z. B. `text` → `uuid`) erfordert **`DROP FUNCTION …`** + neue Migration in **`supabase/migrations/`** — `CREATE OR REPLACE` allein ersetzt keine andere Überladung. Referenz-Fix: Migration **`20260713_fix_agency_create_option_request_types.sql`**.
+- **UI (`AgencyControllerView` — manuelles Event):** Datum vor dem RPC auf **ISO `YYYY-MM-DD`** normalisieren (freie Eingaben wie **DD-MM-YYYY** können **22008** `date/time field value out of range` auslösen). Zeiten im Format **HH:MM** validieren, damit serverseitige `::time`-Casts nicht fehlschlagen.
+- **Store-Parität:** Nach erfolgreichem Insert: **`createAgencyOnlyOptionRequest`** — wenn **`model_account_linked === false`**, System-Message **`no_model_account`** über **`insert_option_request_system_message`** (wie Client-Pfad **`addOptionRequest`**); **`no_model_account_client_notice`** nur wo ein Client beteiligt ist — Agency-only **ohne** Client.
+
+Vollständige Produkt-Invarianten (Englisch): [.cursor/rules/agency-only-option-casting.mdc](.cursor/rules/agency-only-option-casting.mdc) (Abschnitt **Agency manual creation — RPC & store**).
+
 ### 4c.4 Option requests, Trigger-Kette & Chat (Hardening — Pflicht)
 
 Vollständige englische/kanonische Regeln: [.cursor/rules/option-requests-chat-hardening.mdc](.cursor/rules/option-requests-chat-hardening.mdc).

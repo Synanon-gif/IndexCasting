@@ -228,3 +228,30 @@ Especially:
 - calendar updates
 - attention states
 - organization naming
+
+---
+
+## 15. Agency manual creation — RPC & store (CRITICAL — 2026-07)
+
+Manual Option/Casting from the agency calendar (`agency_create_option_request` + `createAgencyOnlyOptionRequest` in `optionRequests.ts` + `AgencyControllerView.tsx`).
+
+### 15.1 RPC `agency_create_option_request` — column types MUST match
+
+- **`p_agency_id` MUST be `uuid`** in the function signature. Live columns `bookers.agency_id`, `models.agency_id`, `option_requests.agency_id`, and `organizations.agency_id` are **`uuid`**. Using `text` for `p_agency_id` and comparing to `bookers.agency_id` causes **42883** (`operator does not exist: uuid = text`).
+- **`option_requests.client_id` is `uuid`**. Insert the authenticated user as **`v_caller_id`**, not `v_caller_id::text`.
+- If the RPC accepts **`p_start_time` / `p_end_time`**, they **MUST** be written to **`option_requests.start_time` / `end_time`** (`time`). Accepting parameters but omitting them from `INSERT` is a **data-loss bug**.
+- Changing parameter types requires **`DROP FUNCTION`** of the old overload + a new migration under **`supabase/migrations/`** — `CREATE OR REPLACE` does not remove a different signature. Reference migration: **`20260713_fix_agency_create_option_request_types.sql`**.
+
+### 15.2 UI — date and time before RPC
+
+- Free-text date fields MUST be normalized to **ISO `YYYY-MM-DD`** before RPC/insert. User input like **DD-MM-YYYY** can cause **22008** (`date/time field value out of range`) with default `DateStyle`.
+- Validate times as **HH:MM** (or equivalent) so PostgreSQL `::time` casts in the RPC do not fail at runtime.
+
+### 15.3 Store parity — `no_model_account` system message
+
+- After **`createAgencyOnlyOptionRequest`** succeeds, if **`model_account_linked === false`**, emit **`no_model_account`** via **`insert_option_request_system_message`** (same product signal as client-driven `addOptionRequest`).
+- Do **not** emit **`no_model_account_client_notice`** in pure agency-only flows (no client party).
+
+### 15.4 Option vs Casting
+
+- Same code path; difference is **`request_type`** (`'option'` | `'casting'`) and labels/calendar projection — both MUST remain supported after any change.
