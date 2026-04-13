@@ -689,10 +689,14 @@ export async function logSecurityEvent(
 ): Promise<void> {
   try {
     const { data: { user } } = await supabase.auth.getUser();
+    if (!user?.id) {
+      console.warn('[gdpr] logSecurityEvent: no authenticated user — skipping DB insert', type, metadata);
+      return;
+    }
     const { error } = await supabase
       .from('security_events')
       .insert({
-        user_id:  user?.id ?? null,
+        user_id:  user.id,
         org_id:   orgId ?? null,
         type,
         metadata: metadata ?? null,

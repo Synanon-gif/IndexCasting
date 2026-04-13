@@ -1271,6 +1271,7 @@ export async function uploadOptionDocument(
   const fileValidation = validateFile(file, CHAT_ALLOWED_MIME_TYPES);
   if (!fileValidation.ok) {
     console.error('uploadOptionDocument: file validation failed', fileValidation.error);
+    void logSecurityEvent({ type: 'file_rejected', metadata: { service: 'optionRequestsSupabase', fn: 'uploadOptionDocument', reason: 'mime' } });
     return null;
   }
 

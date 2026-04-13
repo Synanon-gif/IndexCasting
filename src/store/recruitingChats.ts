@@ -386,7 +386,8 @@ export async function addRecruitingMessageWithFile(
 
   const path = await uploadRecruitingChatFile(threadId, file, fileName);
   if (!path) return { ok: false, reason: 'upload_failed' };
-  const mimeType = (file as File).type || 'application/octet-stream';
+  const isHeic = /\.(heic|heif)$/i.test(fileName) || /^image\/heic/i.test((file as File).type ?? '');
+  const mimeType = isHeic ? 'image/jpeg' : ((file as File).type || 'application/octet-stream');
   addRecruitingMessage(threadId, from, caption ?? '', path, mimeType);
   return { ok: true };
 }

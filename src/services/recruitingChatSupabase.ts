@@ -327,26 +327,38 @@ export async function addMessage(
   fileType?: string | null,
 ): Promise<SupabaseRecruitingMessage | null> {
   try {
+    const hasFile = !!fileUrl;
     // Normalize: strip invisible chars, collapse repetition, NFC
     const normalized = normalizeInput(text);
 
-    // Validate text length
-    const textCheck = validateText(normalized, { maxLength: MESSAGE_MAX_LENGTH, allowEmpty: false });
-    if (!textCheck.ok) {
-      console.warn('addMessage: text validation failed', textCheck.error);
-      void logSecurityEvent({ type: 'large_payload', metadata: { service: 'recruitingChatSupabase', field: 'text' } });
+    // Empty message without file = invalid (variant 4)
+    if (!normalized.trim() && !hasFile) {
+      console.warn('addMessage: empty message with no file attachment');
       return null;
     }
-    // Reject messages with unsafe URLs
-    const allUrls = normalized.match(/https?:\/\/[^\s]+/gi) ?? [];
-    const safeUrls = extractSafeUrls(normalized);
-    if (allUrls.length > safeUrls.length) {
-      console.warn('addMessage: message contains unsafe URLs');
-      void logSecurityEvent({ type: 'invalid_url', metadata: { service: 'recruitingChatSupabase' } });
-      return null;
+
+    let safeText = '';
+    if (normalized.trim().length > 0) {
+      // Validate text length (only when text is provided)
+      const textCheck = validateText(normalized, { maxLength: MESSAGE_MAX_LENGTH, allowEmpty: false });
+      if (!textCheck.ok) {
+        console.warn('addMessage: text validation failed', textCheck.error);
+        const { data: { user } } = await supabase.auth.getUser();
+        void logSecurityEvent({ type: 'large_payload', userId: user?.id ?? null, metadata: { service: 'recruitingChatSupabase', field: 'text' } });
+        return null;
+      }
+      // Reject messages with unsafe URLs
+      const allUrls = normalized.match(/https?:\/\/[^\s]+/gi) ?? [];
+      const safeUrls = extractSafeUrls(normalized);
+      if (allUrls.length > safeUrls.length) {
+        console.warn('addMessage: message contains unsafe URLs');
+        const { data: { user } } = await supabase.auth.getUser();
+        void logSecurityEvent({ type: 'invalid_url', userId: user?.id ?? null, metadata: { service: 'recruitingChatSupabase' } });
+        return null;
+      }
+      // Sanitize before storage
+      safeText = sanitizeHtml(normalized);
     }
-    // Sanitize before storage
-    const safeText = sanitizeHtml(normalized);
 
     const payload: Record<string, unknown> = { thread_id: threadId, from_role: fromRole, text: safeText };
     if (fileUrl != null) payload.file_url = fileUrl;

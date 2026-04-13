@@ -6,7 +6,7 @@
  * Unterstützt Realtime-Subscriptions, Datei-Upload, Read-Receipts.
  */
 import { supabase } from '../../lib/supabase';
-import { formatSenderDisplayLine } from '../utils/messengerSenderLabel';
+import { buildMessengerSenderDisplay } from '../utils/messengerSenderLabel';
 import { fetchAllSupabasePages } from './supabaseFetchAll';
 import { pooledSubscribe } from './realtimeChannelPool';
 import { createNotifications } from './notificationsSupabase';
@@ -90,6 +90,11 @@ export type Message = {
 
 /** Message with resolved sender label for UI (English). */
 export type MessageWithSender = Message & {
+  /** Organization or person — primary identity line. */
+  senderPrimaryLine: string;
+  /** User name and/or membership (Booker, …) — second line when present. */
+  senderSecondaryLine: string | null;
+  /** Legacy: newline-separated primary + secondary for single-Text consumers. */
   senderLabel: string;
 };
 
@@ -250,9 +255,18 @@ export async function sendMessage(
     metadata?: Record<string, unknown> | null;
   }
 ): Promise<Message | null> {
+  const hasFile = !!fileUrl;
+  const hasText = text != null && text.trim().length > 0;
+
+  // Reject empty messages with no file (variant 4: invalid)
+  if (!hasText && !hasFile && !opts?.metadata) {
+    console.warn('sendMessage: empty message with no file attachment');
+    return null;
+  }
+
   // Validate and sanitize text content before storage
   let safeText: string | null = null;
-  if (text != null && text.trim().length > 0) {
+  if (hasText) {
     // Normalize first: strip invisible chars, collapse repetition, NFC
     const normalized = normalizeInput(text);
 
@@ -325,7 +339,7 @@ export async function sendMessage(
   return data as Message;
 }
 
-export { formatSenderDisplayLine };
+export { buildMessengerSenderDisplay, formatSenderDisplayLine } from '../utils/messengerSenderLabel';
 
 /**
  * Creates a "new_message" notification for every conversation participant
@@ -376,12 +390,53 @@ async function fetchProfilesForSenders(
   }
 }
 
-async function fetchOrgRoleLabelsForSenders(
+type SenderOrgContext = {
+  organizationId: string | null;
+  membershipLabel: string | null;
+};
+
+/** Maps organization UUID → display name for conversation header / bubbles. */
+async function fetchOrganizationNamesMap(orgIds: string[]): Promise<Record<string, string>> {
+  const uniq = [...new Set(orgIds.filter(Boolean))];
+  if (uniq.length === 0) return {};
+  try {
+    const { data, error } = await supabase.from('organizations').select('id, name').in('id', uniq);
+    if (error) {
+      console.error('fetchOrganizationNamesMap error:', error);
+      return {};
+    }
+    const map: Record<string, string> = {};
+    for (const row of data ?? []) {
+      const r = row as { id: string; name: string | null };
+      const n = r.name?.trim();
+      if (n) map[r.id] = n;
+    }
+    return map;
+  } catch (e) {
+    console.error('fetchOrganizationNamesMap exception:', e);
+    return {};
+  }
+}
+
+const GENERIC_B2B_TITLE = /^client\s*[↔]\s*agency$/i;
+
+function conversationTitleOrgFallback(conv: Conversation | null, orgId: string | null): string | null {
+  if (!conv || !orgId) return null;
+  if (conv.client_organization_id && conv.agency_organization_id) return null;
+  const t = conv.title?.trim();
+  if (!t || GENERIC_B2B_TITLE.test(t)) return null;
+  return t;
+}
+
+async function resolveSenderOrgContexts(
   senderIds: string[],
   clientOrgId: string | null,
-  agencyOrgId: string | null
-): Promise<Record<string, string>> {
-  const result: Record<string, string> = {};
+  agencyOrgId: string | null,
+): Promise<Record<string, SenderOrgContext>> {
+  const result: Record<string, SenderOrgContext> = {};
+  for (const uid of senderIds) {
+    result[uid] = { organizationId: null, membershipLabel: null };
+  }
   const orgIds = [clientOrgId, agencyOrgId].filter(Boolean) as string[];
   if (orgIds.length === 0 || senderIds.length === 0) return result;
   try {
@@ -391,7 +446,7 @@ async function fetchOrgRoleLabelsForSenders(
       .in('user_id', senderIds)
       .in('organization_id', orgIds);
     if (error) {
-      console.error('fetchOrgRoleLabelsForSenders error:', error);
+      console.error('resolveSenderOrgContexts error:', error);
       return result;
     }
     const rows = (data ?? []) as { user_id: string; role: string; organization_id: string }[];
@@ -403,23 +458,29 @@ async function fetchOrgRoleLabelsForSenders(
     }
     for (const uid of senderIds) {
       const memb = byUser.get(uid) ?? [];
-      const clientMem = memb.find((m) => Boolean(clientOrgId && m.organization_id === clientOrgId));
-      const agencyMem = memb.find((m) => Boolean(agencyOrgId && m.organization_id === agencyOrgId));
-      let label: string | null = null;
+      const clientMem = memb.find((x) => Boolean(clientOrgId && x.organization_id === clientOrgId));
+      const agencyMem = memb.find((x) => Boolean(agencyOrgId && x.organization_id === agencyOrgId));
       if (clientMem) {
-        if (clientMem.role === 'employee') label = 'Client';
-        else if (clientMem.role === 'owner') label = 'Owner';
-        else label = clientMem.role;
+        const label =
+          clientMem.role === 'employee'
+            ? 'Employee'
+            : clientMem.role === 'owner'
+              ? 'Owner'
+              : clientMem.role;
+        result[uid] = { organizationId: clientOrgId, membershipLabel: label };
       } else if (agencyMem) {
-        if (agencyMem.role === 'booker') label = 'Booker';
-        else if (agencyMem.role === 'owner') label = 'Owner';
-        else label = agencyMem.role;
+        const label =
+          agencyMem.role === 'booker'
+            ? 'Booker'
+            : agencyMem.role === 'owner'
+              ? 'Owner'
+              : agencyMem.role;
+        result[uid] = { organizationId: agencyOrgId, membershipLabel: label };
       }
-      if (label) result[uid] = label;
     }
     return result;
   } catch (e) {
-    console.error('fetchOrgRoleLabelsForSenders exception:', e);
+    console.error('resolveSenderOrgContexts exception:', e);
     return result;
   }
 }
@@ -433,19 +494,41 @@ export async function getMessagesWithSenderInfo(
     const conv = await getConversationById(conversationId);
     const senderIds = [...new Set(messages.map((m) => m.sender_id))];
     const profiles = await fetchProfilesForSenders(senderIds);
-    const orgLabels = await fetchOrgRoleLabelsForSenders(
-      senderIds,
-      conv?.client_organization_id ?? null,
-      conv?.agency_organization_id ?? null
-    );
+    const clientOrgId = conv?.client_organization_id ?? null;
+    const agencyOrgId = conv?.agency_organization_id ?? null;
+    const orgNameIds = [clientOrgId, agencyOrgId].filter(Boolean) as string[];
+    const orgNames = await fetchOrganizationNamesMap(orgNameIds);
+    const contexts = await resolveSenderOrgContexts(senderIds, clientOrgId, agencyOrgId);
+
     return messages.map((m) => {
       const p = profiles[m.sender_id];
-      const name = p?.display_name?.trim() || 'User';
-      const orgRole = orgLabels[m.sender_id] ?? null;
-      const profileRole = p?.role ?? null;
+      const name = p?.display_name?.trim() || uiCopy.b2bChat.chatPartnerFallback;
+      let ctx = contexts[m.sender_id] ?? { organizationId: null, membershipLabel: null };
+      if (
+        !ctx.organizationId &&
+        agencyOrgId &&
+        !clientOrgId &&
+        p?.role === 'agent'
+      ) {
+        ctx = { organizationId: agencyOrgId, membershipLabel: ctx.membershipLabel };
+      }
+      let orgName: string | null = ctx.organizationId ? orgNames[ctx.organizationId] ?? null : null;
+      if (!orgName && ctx.organizationId) {
+        orgName = conversationTitleOrgFallback(conv, ctx.organizationId);
+      }
+      const display = buildMessengerSenderDisplay({
+        displayName: name,
+        organizationName: orgName,
+        membershipLabel: ctx.membershipLabel,
+      });
+      const senderLabel = display.secondaryLine
+        ? `${display.primaryLine}\n${display.secondaryLine}`
+        : display.primaryLine;
       return {
         ...m,
-        senderLabel: formatSenderDisplayLine(name, orgRole, profileRole),
+        senderPrimaryLine: display.primaryLine,
+        senderSecondaryLine: display.secondaryLine,
+        senderLabel,
       };
     });
   } catch (e) {
