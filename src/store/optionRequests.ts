@@ -307,17 +307,21 @@ export function addOptionRequest(
         : (model?.country_code ?? model?.country ?? null);
 
       if (countryCodeUsed) {
-        countryCodeUsedForBooking = countryCodeUsed;
         const resolved = await resolveAgencyForModelAndCountry(modelId, countryCodeUsed);
         if (resolved) {
           agencyId = resolved;
+          countryCodeUsedForBooking = countryCodeUsed;
         } else {
+          // No MAT entry for this country (e.g. model physically in FR but
+          // represented only in UK). Fall back to home agency and skip strict
+          // MAT+country validation — the RPC will verify models.agency_id instead.
           console.warn('[addOptionRequest] no MAT entry for territory, using fallback agency', {
             modelId,
             country: countryCodeUsed,
             fallbackAgency,
           });
           agencyId = fallbackAgency;
+          countryCodeUsedForBooking = null;
         }
 
         if (!agencyId) {
