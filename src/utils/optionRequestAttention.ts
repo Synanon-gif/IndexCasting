@@ -237,6 +237,7 @@ export function optionRequestNeedsMessagesTabAttention(r: {
   modelApproval?: 'pending' | 'approved' | 'rejected' | null;
   modelAccountLinked?: boolean | null;
   isAgencyOnly?: boolean;
+  requestType?: 'option' | 'casting' | string | null;
 }): boolean {
   const input: AttentionSignalInput = {
     status: r.status,
@@ -247,6 +248,7 @@ export function optionRequestNeedsMessagesTabAttention(r: {
     agencyCounterPrice: r.agencyCounterPrice ?? null,
     proposedPrice: r.proposedPrice ?? null,
     isAgencyOnly: r.isAgencyOnly ?? false,
+    requestType: r.requestType ?? null,
   };
 
   // D2: approval attention visible for client — mirrors attentionHeaderLabelFromSignals D2 branch

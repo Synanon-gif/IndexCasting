@@ -812,9 +812,10 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
           </TouchableOpacity>
         )}
 
-      {/* ── Agency-only: confirm job (canonical invariant: only is_agency_only=true) ── */}
+      {/* ── Agency-only: confirm job (canonical invariant: only is_agency_only=true, only options) ── */}
       {isAgency &&
         request?.isAgencyOnly === true &&
+        request?.requestType !== 'casting' &&
         request?.modelApproval === 'approved' &&
         finalStatus === 'option_confirmed' &&
         status !== 'rejected' &&

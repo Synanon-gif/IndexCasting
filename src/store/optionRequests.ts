@@ -531,7 +531,7 @@ export async function approveOptionAsModel(threadId: string): Promise<boolean> {
       );
       return false;
     }
-    const refreshed = await getOptionRequestById(req.id);
+    const refreshed = await getOptionRequestByIdModelSafe(req.id);
     if (refreshed) {
       Object.assign(req, toLocalRequest(refreshed));
     }
@@ -573,7 +573,7 @@ export async function rejectOptionAsModel(threadId: string): Promise<boolean> {
       console.error('[rejectOptionAsModel] modelRejectOptionRequest failed – rolled back', req.id);
       return false;
     }
-    const refreshed = await getOptionRequestById(req.id);
+    const refreshed = await getOptionRequestByIdModelSafe(req.id);
     if (refreshed) {
       Object.assign(req, toLocalRequest(refreshed));
       notify();
@@ -989,6 +989,10 @@ export async function clientConfirmJobStore(threadId: string): Promise<boolean> 
     );
     return false;
   }
+  if (req.requestType === 'casting') {
+    console.error('clientConfirmJobStore: blocked — castings cannot become jobs');
+    return false;
+  }
   if (!beginCriticalOptionAction(threadId)) return false;
   try {
     const ok = await clientConfirmJobOnSupabase(req.id);
@@ -1175,6 +1179,10 @@ export async function agencyConfirmJobAgencyOnlyStore(threadId: string): Promise
   const req = requestsCache.find((r) => r.threadId === threadId);
   if (!req) return false;
   if (!req.isAgencyOnly) return false;
+  if (req.requestType === 'casting') {
+    console.error('agencyConfirmJobAgencyOnlyStore: blocked — castings cannot become jobs');
+    return false;
+  }
   if (!beginCriticalOptionAction(threadId)) return false;
   try {
     const ok = await agencyConfirmJobAgencyOnly(req.id);
@@ -1198,6 +1206,20 @@ export async function agencyConfirmJobAgencyOnlyStore(threadId: string): Promise
           '[agencyConfirmJobAgencyOnlyStore] calendar upgrade retry failed — entry may be stale',
         );
       }
+    }
+
+    // The RPC already inserts the system message in DB via insert_option_request_system_message.
+    // Push a matching entry to the local cache so the message appears immediately in the UI
+    // without requiring a reload (parity with clientConfirmJobStore).
+    const sysMsg = await addOptionSystemMessage(req.id, 'job_confirmed_by_agency');
+    if (sysMsg) {
+      messagesCache.push({
+        id: sysMsg.id,
+        threadId,
+        from: 'system',
+        text: sysMsg.text,
+        createdAt: new Date(sysMsg.created_at).getTime(),
+      });
     }
 
     // Notify model about job confirmation (agency triggered — no agency notification needed).
