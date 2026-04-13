@@ -31,6 +31,17 @@ Diese Regeln verhindern die wiederholten Fehler aus dem System-Hardening-Audit (
 - **Frontend-Guard:** Wenn `req.isAgencyOnly === true`, sofort `return false` (und klares Log) — Job-Finalisierung nur über `agency_confirm_job_agency_only`, nicht `client_confirm_option_job`. Siehe `.cursor/rules/agency-only-option-casting.mdc`.
 - **Notifications:** Wenn nach erfolgreichem Confirm der zweite `getOptionRequestById` **`null`** liefert, **`console.error`** loggen (Notifications übersprungen) — kein stiller Skip.
 
+## Store + UI: Client „Decline agency proposal“ (`clientRejectCounterStore`)
+
+- **Fail-closed (Pflicht):** `clientRejectCounterStore` gibt `boolean` zurück. Jeder Bestätigungs-Handler (z. B. `confirmRejectCounterOffer` in `ClientWebApp.tsx`) **MUSS** diesen Wert auswerten — **VERBOTEN:** Rückgabewert verwerfen und trotzdem `setRequests(getOptionRequests())` / Erfolgs-Hinweise auslösen, wenn `false` (RPC lehnt ab, Cache unverändert → sonst „stiller Erfolg“, Buttons bleiben sichtbar).
+- **Bei `false`:** User-Feedback über `uiCopy.optionNegotiationChat.rejectCounterOfferFailedTitle` / `rejectCounterOfferFailedMessage` (oder gleichwertig), **kein** Success-State.
+
+## DB: `client_reject_counter_offer` (Axis 1 only)
+
+- **VERBOTEN:** In der RPC `WHERE`-Klausel für SELECT/UPDATE **`final_status = …`** zu verlangen (z. B. nur `option_pending`). Das koppelt Preis-Ablehnung an Verfügbarkeit und verletzt **Invariante K** (Axis 1 / Axis 2 Unabhängigkeit): Der Client muss ein Agency-Counter-Angebot ablehnen dürfen, **unabhängig** davon, ob die Agency die Verfügbarkeit schon bestätigt hat (`final_status = 'option_confirmed'`).
+- **RICHTIG:** Guards nur auf Axis-1-Felder: `client_price_status = 'pending'`, `agency_counter_price IS NOT NULL`; UPDATE setzt nur `client_price_status = 'rejected'`.
+- **Fix-Referenz:** `supabase/migrations/20260614_client_reject_counter_offer_axis1_fix.sql` (entfernt `final_status`-Guard aus älteren Definitionen).
+
 ## Realtime
 
 - Views mit Option-Threads (**Agency / Client Web / Model**) müssen **`subscribeToOptionMessages`** (Cleanup im `useEffect` return) verdrahten, sobald ein Thread aktiv ist — sonst kein Live-Update.
@@ -53,9 +64,9 @@ Diese Regeln verhindern die wiederholten Fehler aus dem System-Hardening-Audit (
 
 ## Tests (bei Änderungen in diesen Pfaden)
 
-- Unit-Tests: Update-Payload von `modelRejectOptionRequest` **ohne** `final_status`; `OPTION_REQUEST_SELECT_MODEL_SAFE` **ohne** Preis-Spalten; Store-Tests für `isAgencyOnly`-Guard und Fallback-Mapping wo sinnvoll.
+- Unit-Tests: Update-Payload von `modelRejectOptionRequest` **ohne** `final_status`; `OPTION_REQUEST_SELECT_MODEL_SAFE` **ohne** Preis-Spalten; Store-Tests für `isAgencyOnly`-Guard und Fallback-Mapping wo sinnvoll; **Client Decline Counter:** `src/store/__tests__/optionRequestsClientDecline.store.test.ts` (Success / RPC-false / Inflight-Guard).
 
 ## Verweise
 
 - Migration Status-Trigger: `supabase/migrations/20260711_formalize_option_status_transition_trigger.sql`
-- Tests: `src/services/__tests__/optionRequestsHardening.test.ts`, `src/store/__tests__/optionRequestsHardening.test.ts`
+- Tests: `src/services/__tests__/optionRequestsHardening.test.ts`, `src/store/__tests__/optionRequestsHardening.test.ts`, `src/store/__tests__/optionRequestsClientDecline.store.test.ts`
