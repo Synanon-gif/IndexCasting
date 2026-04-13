@@ -18,7 +18,12 @@ jest.mock('../../../lib/supabase', () => ({
   },
 }));
 
+jest.mock('../../utils/logAction', () => ({
+  logAction: jest.fn(() => true),
+}));
+
 import { supabase } from '../../../lib/supabase';
+import { logAction } from '../../utils/logAction';
 import {
   clientAcceptCounterPrice,
   setAgencyCounterOffer,
@@ -27,7 +32,7 @@ import {
 } from '../optionRequestsSupabase';
 
 const from = supabase.from as jest.Mock;
-const rpc  = supabase.rpc as jest.Mock;
+const rpc = supabase.rpc as jest.Mock;
 
 /** Builds a chainable Supabase query mock that resolves to `result` at the terminal call. */
 const makeChain = (result: unknown, terminalMethod = 'select') => {
@@ -49,7 +54,7 @@ let consoleWarnSpy: jest.SpyInstance;
 beforeEach(() => {
   jest.resetAllMocks();
   consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
-  consoleWarnSpy  = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
 });
 
 afterEach(() => {
@@ -95,7 +100,7 @@ describe('clientAcceptCounterPrice — RPC route (EXPLOIT-C1 fix)', () => {
 
   it('correctly rejects a double-accept scenario (second RPC call returns false)', async () => {
     rpc
-      .mockResolvedValueOnce({ data: true,  error: null })
+      .mockResolvedValueOnce({ data: true, error: null })
       .mockResolvedValueOnce({ data: false, error: null });
 
     const [first, second] = await Promise.all([
@@ -144,7 +149,10 @@ describe('setAgencyCounterOffer', () => {
   });
 
   it('returns false on DB error', async () => {
-    const chain = makeChain({ data: null, error: { message: 'constraint violation' } }, 'maybeSingle');
+    const chain = makeChain(
+      { data: null, error: { message: 'constraint violation' } },
+      'maybeSingle',
+    );
     from.mockReturnValue(chain);
 
     const result = await setAgencyCounterOffer('req-1', 2500);
@@ -160,9 +168,30 @@ describe('setAgencyCounterOffer', () => {
 describe('agencyAcceptClientPrice — RPC route (EXPLOIT-C1 fix)', () => {
   it('returns true when the RPC returns true (agency member, offer still pending)', async () => {
     rpc.mockResolvedValue({ data: true, error: null });
+    from.mockReturnValue(
+      makeChain(
+        {
+          data: { agency_id: 'ag-1', agency_organization_id: 'agency-org-audit' },
+          error: null,
+        },
+        'maybeSingle',
+      ),
+    );
     const result = await agencyAcceptClientPrice('req-1');
     expect(result).toBe(true);
     expect(rpc).toHaveBeenCalledWith('agency_confirm_client_price', { p_request_id: 'req-1' });
+    await new Promise<void>((resolve) => {
+      setImmediate(resolve);
+    });
+    expect(logAction).toHaveBeenCalledWith(
+      'agency-org-audit',
+      'agencyAcceptClientPrice',
+      expect.objectContaining({
+        type: 'option',
+        action: 'option_price_accepted',
+        entityId: 'req-1',
+      }),
+    );
   });
 
   it('returns false when the RPC returns false (offer already changed / not in expected state)', async () => {
@@ -176,7 +205,10 @@ describe('agencyAcceptClientPrice — RPC route (EXPLOIT-C1 fix)', () => {
   });
 
   it('returns false on RPC error (e.g. caller is not an agency member)', async () => {
-    rpc.mockResolvedValue({ data: null, error: { message: 'caller is not a member of the agency' } });
+    rpc.mockResolvedValue({
+      data: null,
+      error: { message: 'caller is not a member of the agency' },
+    });
     const result = await agencyAcceptClientPrice('req-1');
     expect(result).toBe(false);
     expect(consoleErrorSpy).toHaveBeenCalled();

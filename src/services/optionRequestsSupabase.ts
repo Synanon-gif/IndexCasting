@@ -688,17 +688,30 @@ export async function agencyAcceptClientPrice(id: string): Promise<boolean> {
       try {
         const { data: row } = await supabase
           .from('option_requests')
-          .select('organization_id')
+          .select('agency_id, agency_organization_id')
           .eq('id', id)
           .maybeSingle();
-        const orgId = (row as { organization_id: string | null } | null)?.organization_id;
-        logAction(orgId, 'agencyAcceptClientPrice', {
-          type: 'option',
-          action: 'option_price_accepted',
-          entityId: id,
-          newData: { accepted_by: 'agency' },
-          oldData: { client_price_status: 'pending' },
-        });
+        const ar = row as {
+          agency_id: string | null;
+          agency_organization_id: string | null;
+        } | null;
+        const auditOrg = ar
+          ? await resolveAgencyOrgIdForOptionNotification(
+              ar.agency_id ?? '',
+              ar.agency_organization_id,
+            )
+          : null;
+        if (auditOrg) {
+          logAction(auditOrg, 'agencyAcceptClientPrice', {
+            type: 'option',
+            action: 'option_price_accepted',
+            entityId: id,
+            newData: { accepted_by: 'agency' },
+            oldData: { client_price_status: 'pending' },
+          });
+        } else {
+          console.warn('[agencyAcceptClientPrice] could not resolve agency org for audit log', id);
+        }
       } catch {
         console.warn('[agencyAcceptClientPrice] could not resolve org for audit log');
       }
@@ -722,7 +735,7 @@ export async function agencyRejectClientPrice(id: string): Promise<boolean> {
       .eq('id', id)
       .eq('status', 'in_negotiation')
       .eq('client_price_status', 'pending')
-      .select('id, organization_id')
+      .select('id, agency_id, agency_organization_id')
       .maybeSingle();
     if (error) {
       console.error('agencyRejectClientPrice error:', error);
@@ -735,14 +748,29 @@ export async function agencyRejectClientPrice(id: string): Promise<boolean> {
       );
       return false;
     }
-    const orgIdAR = (data as { id: string; organization_id: string | null }).organization_id;
-    logAction(orgIdAR, 'agencyRejectClientPrice', {
-      type: 'option',
-      action: 'option_price_rejected',
-      entityId: id,
-      newData: { rejected_by: 'agency' },
-      oldData: { client_price_status: 'pending' },
-    });
+    const rowAR = data as {
+      id: string;
+      agency_id: string | null;
+      agency_organization_id: string | null;
+    };
+    const auditOrgAR = await resolveAgencyOrgIdForOptionNotification(
+      rowAR.agency_id ?? '',
+      rowAR.agency_organization_id,
+    );
+    if (auditOrgAR) {
+      logAction(auditOrgAR, 'agencyRejectClientPrice', {
+        type: 'option',
+        action: 'option_price_rejected',
+        entityId: id,
+        newData: { rejected_by: 'agency' },
+        oldData: { client_price_status: 'pending' },
+      });
+    } else {
+      console.warn(
+        '[agencyRejectClientPrice] could not resolve agency org — audit log skipped',
+        id,
+      );
+    }
     return true;
   } catch (e) {
     console.error('agencyRejectClientPrice exception:', e);
@@ -1526,6 +1554,9 @@ export async function uploadOptionDocument(
  * NOTE: option_requests.organization_id is the CLIENT org, NOT the agency org.
  * Always use this helper when you need to notify the agency side.
  *
+ * Also use it for `log_audit_action` (see `logAction` in src/utils/logAction.ts) when the **actor is the agency**
+ * (booker/owner): `log_audit_action` enforces `organization_members` for `p_org_id`.
+ *
  * For option-request flows, prefer {@link resolveAgencyOrgIdForOptionNotification}:
  * client sessions often cannot SELECT the agency row in `organizations` (RLS),
  * but `option_requests.agency_organization_id` is already set and readable.
@@ -1697,6 +1728,9 @@ async function createBookingEventFromRequest(req: SupabaseOptionRequest): Promis
  * - model_account_linked = true + pending → waits for model confirmation.
  *
  * Status stays 'in_negotiation' until client confirms job (via client_confirm_option_job).
+ *
+ * Audit: `log_audit_action` requires `organization_members` for `p_org_id`. The agency actor is a
+ * member of the **agency** org (`agency_organization_id`), not `organization_id` (client org).
  */
 export async function agencyAcceptRequest(
   id: string,
@@ -1714,6 +1748,10 @@ export async function agencyAcceptRequest(
     }
 
     const r = req as SupabaseOptionRequest;
+    const auditOrgIdAgency = await resolveAgencyOrgIdForOptionNotification(
+      r.agency_id ?? '',
+      r.agency_organization_id,
+    );
     const modelAccountLinked = r.model_account_linked ?? false;
 
     if (!modelAccountLinked) {
@@ -1741,12 +1779,16 @@ export async function agencyAcceptRequest(
         return null;
       }
 
-      logAction(r.organization_id, 'agencyAcceptRequest:no-account', {
-        type: 'option',
-        action: 'option_confirmed',
-        entityId: id,
-        newData: { result: 'confirmed', model_account_linked: false, agency_id: r.agency_id },
-      });
+      if (auditOrgIdAgency) {
+        logAction(auditOrgIdAgency, 'agencyAcceptRequest:no-account', {
+          type: 'option',
+          action: 'option_confirmed',
+          entityId: id,
+          newData: { result: 'confirmed', model_account_linked: false, agency_id: r.agency_id },
+        });
+      } else {
+        console.warn('[agencyAcceptRequest] could not resolve agency org — audit log skipped', id);
+      }
       return 'confirmed';
     }
 
@@ -1774,12 +1816,16 @@ export async function agencyAcceptRequest(
         return null;
       }
 
-      logAction(r.organization_id, 'agencyAcceptRequest:pre-approved', {
-        type: 'option',
-        action: 'option_confirmed',
-        entityId: id,
-        newData: { result: 'confirmed', model_approval: 'pre-approved', agency_id: r.agency_id },
-      });
+      if (auditOrgIdAgency) {
+        logAction(auditOrgIdAgency, 'agencyAcceptRequest:pre-approved', {
+          type: 'option',
+          action: 'option_confirmed',
+          entityId: id,
+          newData: { result: 'confirmed', model_approval: 'pre-approved', agency_id: r.agency_id },
+        });
+      } else {
+        console.warn('[agencyAcceptRequest] could not resolve agency org — audit log skipped', id);
+      }
       return 'confirmed';
     }
 
@@ -1806,16 +1852,20 @@ export async function agencyAcceptRequest(
       return null;
     }
 
-    logAction(r.organization_id, 'agencyAcceptRequest:awaiting-model', {
-      type: 'option',
-      action: 'option_confirmed',
-      entityId: id,
-      newData: {
-        result: 'awaiting_model_confirmation',
-        model_account_linked: true,
-        agency_id: r.agency_id,
-      },
-    });
+    if (auditOrgIdAgency) {
+      logAction(auditOrgIdAgency, 'agencyAcceptRequest:awaiting-model', {
+        type: 'option',
+        action: 'option_confirmed',
+        entityId: id,
+        newData: {
+          result: 'awaiting_model_confirmation',
+          model_account_linked: true,
+          agency_id: r.agency_id,
+        },
+      });
+    } else {
+      console.warn('[agencyAcceptRequest] could not resolve agency org — audit log skipped', id);
+    }
 
     void notifyModelAwaitingConfirmation(r.model_id, id);
 
@@ -1853,7 +1903,7 @@ export async function agencyRejectRequest(id: string): Promise<boolean> {
       })
       .eq('id', id)
       .eq('status', 'in_negotiation') // VULN-H2: verhindert Reject nach Confirm
-      .select('id, client_id, organization_id')
+      .select('id, client_id, organization_id, agency_id, agency_organization_id')
       .maybeSingle();
 
     if (error) {
@@ -1869,13 +1919,27 @@ export async function agencyRejectRequest(id: string): Promise<boolean> {
     }
 
     // Notify the client about the rejection (fire-and-forget).
-    const row = data as { id: string; client_id: string | null; organization_id: string | null };
-    logAction(row.organization_id, 'agencyRejectRequest', {
-      type: 'option',
-      action: 'option_rejected',
-      entityId: id,
-      newData: { rejected_by: 'agency' },
-    });
+    const row = data as {
+      id: string;
+      client_id: string | null;
+      organization_id: string | null;
+      agency_id: string | null;
+      agency_organization_id: string | null;
+    };
+    const auditOrgReject = await resolveAgencyOrgIdForOptionNotification(
+      row.agency_id ?? '',
+      row.agency_organization_id,
+    );
+    if (auditOrgReject) {
+      logAction(auditOrgReject, 'agencyRejectRequest', {
+        type: 'option',
+        action: 'option_rejected',
+        entityId: id,
+        newData: { rejected_by: 'agency' },
+      });
+    } else {
+      console.warn('[agencyRejectRequest] could not resolve agency org — audit log skipped', id);
+    }
     if (row.client_id) {
       void createNotification({
         user_id: row.client_id,

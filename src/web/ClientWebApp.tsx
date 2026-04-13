@@ -5629,20 +5629,13 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                 </View>
               )}
               {clientCounterparties.length > 1 && (
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
+                <View
                   style={{
-                    flexShrink: 0,
-                    flexGrow: 0,
-                    alignSelf: 'stretch',
-                    marginBottom: spacing.sm,
-                  }}
-                  contentContainerStyle={{
                     flexDirection: 'row',
+                    flexWrap: 'wrap',
                     alignItems: 'center',
-                    flexGrow: 0,
                     gap: spacing.xs,
+                    marginBottom: spacing.sm,
                   }}
                 >
                   <TouchableOpacity
@@ -5680,7 +5673,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                       </Text>
                     </TouchableOpacity>
                   ))}
-                </ScrollView>
+                </View>
               )}
               <ScrollView
                 style={[styles.threadList, webOptionThreadListScrollStyle]}
