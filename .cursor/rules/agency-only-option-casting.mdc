@@ -255,3 +255,58 @@ Manual Option/Casting from the agency calendar (`agency_create_option_request` +
 ### 15.4 Option vs Casting
 
 - Same code path; difference is **`request_type`** (`'option'` | `'casting'`) and labels/calendar projection — both MUST remain supported after any change.
+
+### 15.5 Schema validation — MUST verify live columns before referencing (CRITICAL)
+
+- Every column referenced in `SELECT`, `INSERT`, or `UPDATE` inside the RPC **MUST** exist on the live table. Before writing a new RPC migration: `SELECT column_name FROM information_schema.columns WHERE table_name = '<table>'` to verify.
+- **`public.models`** has a single **`name`** column — **no** `first_name` / `last_name`. Using `m.first_name` causes **42703** (`column m.first_name does not exist`).
+- Reference fix: `20260714_fix_agency_create_option_model_name.sql`.
+- **Rule:** Never assume column naming conventions from other systems. Always check the live schema.
+
+### 15.6 Agency creation = agency availability confirmation (CRITICAL)
+
+- `final_status` MUST be `'option_confirmed'` at the end of the RPC — **not** `'option_pending'`.
+- **Rationale:** The agency creating the event IS the agency confirming availability. Setting `option_pending` means the model cannot confirm (gate requires `final_status = 'option_confirmed'`), no calendar entry is created (trigger requires UPDATE from `option_pending` to `option_confirmed`), and Smart Attention shows wrong state.
+
+**INSERT+UPDATE pattern (MANDATORY):**
+
+```sql
+-- STEP 1: INSERT with option_pending (initial state for trigger compatibility)
+INSERT INTO option_requests (..., final_status, ...) VALUES (..., 'option_pending', ...)
+RETURNING id INTO v_request_id;
+
+-- STEP 2: UPDATE to fire AFTER UPDATE triggers
+UPDATE option_requests SET final_status = 'option_confirmed' WHERE id = v_request_id;
+
+-- STEP 3: Mark calendar entry as agency-created
+UPDATE calendar_entries SET created_by_agency = true WHERE option_request_id = v_request_id;
+```
+
+**Why not direct INSERT with `option_confirmed`?** The calendar trigger `fn_ensure_calendar_on_option_confirmed` is `AFTER UPDATE` — it checks `OLD.final_status IS DISTINCT FROM 'option_confirmed' AND NEW.final_status = 'option_confirmed'`. A direct INSERT never fires this trigger → no `calendar_entries` row → model sees nothing in calendar.
+
+### 15.7 `model_approval` — correct initial value (CRITICAL)
+
+- **Model has app account** (`user_id IS NOT NULL`): `model_approval = 'pending'` → model must confirm availability via inbox.
+- **Model has NO app account** (`user_id IS NULL`): `model_approval = 'approved'` → auto-confirmed per no-account rule.
+- **FORBIDDEN:** Relying on DB default (`'pending'`) when `model_account_linked = false` — this creates a phantom `waiting_for_model` signal for a model that cannot act.
+
+```sql
+v_model_approval := CASE WHEN v_model_has_account THEN 'pending' ELSE 'approved' END;
+```
+
+### 15.8 Calendar entries — trigger chain for all participants
+
+After a successful agency manual creation, the following MUST exist:
+
+| Table | Created by | Content |
+|---|---|---|
+| `calendar_entries` | Trigger `fn_ensure_calendar_on_option_confirmed` | Model calendar: "Option – Agency Name" / "Casting – Agency Name", `status='tentative'`, `created_by_agency=true` |
+| `user_calendar_events` (agency) | Trigger `sync_user_calendars_on_option_confirmed` | Agency calendar: "Option – Agency Name" / "Casting – Agency Name" |
+| `user_calendar_events` (caller) | Trigger `sync_user_calendars_on_option_confirmed` | Caller (client_id = agency user) calendar entry |
+
+**Verification after any change to this RPC:**
+```sql
+-- Must return rows for the new option_request:
+SELECT id, model_id, status, created_by_agency FROM calendar_entries WHERE option_request_id = '<new_id>';
+SELECT owner_id, owner_type, title FROM user_calendar_events WHERE source_option_request_id = '<new_id>';
+```
