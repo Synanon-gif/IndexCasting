@@ -4,29 +4,44 @@ import {
   getMyModelAgencies,
   type ModelAgencyContext as ModelAgencyRow,
 } from '../services/modelsSupabase';
+import {
+  makeModelAgencyKey,
+  resolveStoredRepresentationKey,
+  findRowByKey,
+} from '../utils/modelAgencyKey';
 
 const STORAGE_KEY = 'active_model_agency';
 
 type ModelAgencyState = {
   /** All agency representations for this model user (from model_agency_territories). */
   agencies: ModelAgencyRow[];
-  /** Currently active agency id. null = not yet selected or no agencies. */
+  /**
+   * Active representation: `agencyId:territory` (one MAT row). null = not selected or none.
+   */
+  activeRepresentationKey: string | null;
+  /** @deprecated Use activeRepresentationKey — kept for quick agency id access */
   activeAgencyId: string | null;
+  /** Resolved active MAT row (agency + territory), or null. */
+  activeRow: ModelAgencyRow | null;
   activeOrganizationId: string | null;
   /** Model id (same across all agencies — single models row per user). */
   modelId: string | null;
   loading: boolean;
-  switchAgency: (agencyId: string) => void;
+  switchRepresentation: (row: ModelAgencyRow) => void;
   reload: () => Promise<void>;
 };
 
 const ModelAgencyCtx = createContext<ModelAgencyState>({
   agencies: [],
+  activeRepresentationKey: null,
   activeAgencyId: null,
+  activeRow: null,
   activeOrganizationId: null,
   modelId: null,
   loading: true,
-  switchAgency: () => {},
+  switchRepresentation: () => {
+    /* noop */
+  },
   reload: async () => {},
 });
 
@@ -34,7 +49,7 @@ export const useModelAgency = () => useContext(ModelAgencyCtx);
 
 export const ModelAgencyProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [agencies, setAgencies] = useState<ModelAgencyRow[]>([]);
-  const [activeAgencyId, setActiveAgencyId] = useState<string | null>(null);
+  const [activeRepresentationKey, setActiveRepresentationKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
@@ -43,17 +58,19 @@ export const ModelAgencyProvider: React.FC<{ children: React.ReactNode }> = ({ c
       const rows = await getMyModelAgencies();
       setAgencies(rows);
       const stored = await AsyncStorage.getItem(STORAGE_KEY);
-      if (stored && rows.some((r) => r.agencyId === stored)) {
-        setActiveAgencyId(stored);
+      const resolved = resolveStoredRepresentationKey(stored, rows);
+
+      if (resolved && findRowByKey(rows, resolved)) {
+        setActiveRepresentationKey(resolved);
+        if (stored !== resolved) {
+          await AsyncStorage.setItem(STORAGE_KEY, resolved);
+        }
       } else if (rows.length === 1) {
-        setActiveAgencyId(rows[0].agencyId);
-        await AsyncStorage.setItem(STORAGE_KEY, rows[0].agencyId);
-      } else if (rows.length > 1) {
-        // Stored agency was removed; fallback to first available
-        setActiveAgencyId(null);
-        await AsyncStorage.removeItem(STORAGE_KEY);
+        const k = makeModelAgencyKey(rows[0].agencyId, rows[0].territory);
+        setActiveRepresentationKey(k);
+        await AsyncStorage.setItem(STORAGE_KEY, k);
       } else {
-        setActiveAgencyId(null);
+        setActiveRepresentationKey(null);
         await AsyncStorage.removeItem(STORAGE_KEY);
       }
     } catch (e) {
@@ -67,37 +84,38 @@ export const ModelAgencyProvider: React.FC<{ children: React.ReactNode }> = ({ c
     void load();
   }, [load]);
 
-  const switchAgency = useCallback(
-    (agencyId: string) => {
-      setActiveAgencyId((prev) => {
-        const valid = agencies.some((a) => a.agencyId === agencyId);
-        if (!valid) {
-          console.warn('[ModelAgencyContext] switchAgency called with unknown agencyId:', agencyId);
-          return prev;
-        }
-        void AsyncStorage.setItem(STORAGE_KEY, agencyId);
-        return agencyId;
-      });
+  const switchRepresentation = useCallback(
+    (row: ModelAgencyRow) => {
+      const key = makeModelAgencyKey(row.agencyId, row.territory);
+      const valid = agencies.some((a) => makeModelAgencyKey(a.agencyId, a.territory) === key);
+      if (!valid) {
+        console.warn('[ModelAgencyContext] switchRepresentation: unknown row', key);
+        return;
+      }
+      setActiveRepresentationKey(key);
+      void AsyncStorage.setItem(STORAGE_KEY, key);
     },
     [agencies],
   );
 
   const activeRow = useMemo(
-    () => agencies.find((a) => a.agencyId === activeAgencyId) ?? null,
-    [agencies, activeAgencyId],
+    () => findRowByKey(agencies, activeRepresentationKey),
+    [agencies, activeRepresentationKey],
   );
 
   const value = useMemo<ModelAgencyState>(
     () => ({
       agencies,
-      activeAgencyId,
+      activeRepresentationKey,
+      activeAgencyId: activeRow?.agencyId ?? null,
+      activeRow,
       activeOrganizationId: activeRow?.organizationId ?? null,
       modelId: agencies[0]?.modelId ?? null,
       loading,
-      switchAgency,
+      switchRepresentation,
       reload: load,
     }),
-    [agencies, activeAgencyId, activeRow, loading, switchAgency, load],
+    [agencies, activeRepresentationKey, activeRow, loading, switchRepresentation, load],
   );
 
   return <ModelAgencyCtx.Provider value={value}>{children}</ModelAgencyCtx.Provider>;

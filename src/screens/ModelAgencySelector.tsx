@@ -10,9 +10,10 @@ import {
 import { colors, spacing, typography } from '../theme/theme';
 import { useModelAgency } from '../context/ModelAgencyContext';
 import { uiCopy } from '../constants/uiCopy';
+import { makeModelAgencyKey } from '../utils/modelAgencyKey';
 
 export const ModelAgencySelector: React.FC = () => {
-  const { agencies, switchAgency, loading } = useModelAgency();
+  const { agencies, switchRepresentation, loading } = useModelAgency();
 
   if (loading) {
     return (
@@ -28,7 +29,7 @@ export const ModelAgencySelector: React.FC = () => {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.brand}>{uiCopy.login?.brandTitle ?? 'INDEX CASTING'}</Text>
+        <Text style={styles.brand}>{uiCopy.login.brandTitle}</Text>
         <Text style={styles.title}>{uiCopy.model.selectAgencyTitle}</Text>
         <Text style={styles.subtitle}>
           {agencies.length > 0 ? uiCopy.model.selectAgencySubtitle : uiCopy.model.noAgencyProfiles}
@@ -41,11 +42,11 @@ export const ModelAgencySelector: React.FC = () => {
       >
         {agencies.map((a) => (
           <TouchableOpacity
-            key={a.agencyId}
+            key={makeModelAgencyKey(a.agencyId, a.territory)}
             style={styles.card}
-            onPress={() => switchAgency(a.agencyId)}
+            onPress={() => switchRepresentation(a)}
             accessibilityRole="button"
-            accessibilityLabel={`Select ${a.agencyName}`}
+            accessibilityLabel={`Select ${a.agencyName} ${a.territory}`}
           >
             <Text style={styles.agencyName}>{a.agencyName}</Text>
             <Text style={styles.territory}>{a.territory}</Text>

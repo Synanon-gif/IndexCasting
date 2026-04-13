@@ -599,6 +599,8 @@ export const uiCopy = {
     directMessagesSectionLabel: 'Direct messages',
     directMessagesSectionSubtitle: 'Messages sent directly by your agency',
     composerPlaceholder: 'Message…',
+    /** Label above job_description in option/casting thread header (model). */
+    optionThreadRoleDetails: 'Role / details',
   },
   login: {
     /** Role-picker entry (e.g. dev / secondary entry) — not a full auth product path. */

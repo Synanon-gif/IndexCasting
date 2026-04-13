@@ -80,6 +80,11 @@ import { getAgencyNamesByThreadIds } from '../services/recruitingChatSupabase';
 import { BookingChatView } from '../views/BookingChatView';
 import { useAuth } from '../context/AuthContext';
 import { useModelAgency } from '../context/ModelAgencyContext';
+import { makeModelAgencyKey } from '../utils/modelAgencyKey';
+import {
+  primaryCounterpartyLabelForModel,
+  secondarySubtitleForModel,
+} from '../utils/modelOptionDisplay';
 import { uiCopy } from '../constants/uiCopy';
 import { showAppAlert } from '../utils/crossPlatformAlert';
 import { exportUserData, downloadUserDataExport } from '../services/gdprComplianceSupabase';
@@ -900,15 +905,20 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                 <Text style={st.sectionLabel}>{uiCopy.model.switchAgencyLabel}</Text>
                 <Text style={st.metaText}>
                   Active:{' '}
-                  {modelAgencyCtx.agencies.find((a) => a.agencyId === modelAgencyCtx.activeAgencyId)
-                    ?.agencyName ?? '—'}
+                  {modelAgencyCtx.activeRow
+                    ? `${modelAgencyCtx.activeRow.agencyName} · ${modelAgencyCtx.activeRow.territory}`
+                    : '—'}
                 </Text>
                 <View style={{ gap: spacing.xs, marginTop: spacing.sm }}>
                   {modelAgencyCtx.agencies
-                    .filter((a) => a.agencyId !== modelAgencyCtx.activeAgencyId)
+                    .filter(
+                      (a) =>
+                        makeModelAgencyKey(a.agencyId, a.territory) !==
+                        modelAgencyCtx.activeRepresentationKey,
+                    )
                     .map((a) => (
                       <TouchableOpacity
-                        key={a.agencyId}
+                        key={makeModelAgencyKey(a.agencyId, a.territory)}
                         style={{
                           backgroundColor: colors.surface,
                           borderRadius: 10,
@@ -917,7 +927,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                           borderWidth: 1,
                           borderColor: colors.border,
                         }}
-                        onPress={() => modelAgencyCtx.switchAgency(a.agencyId)}
+                        onPress={() => modelAgencyCtx.switchRepresentation(a)}
                       >
                         <Text
                           style={{ fontSize: 14, fontWeight: '600', color: colors.textPrimary }}
@@ -1605,12 +1615,8 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                 rows.push({
                   kind: 'option',
                   id: o.threadId,
-                  label:
-                    o.agencyOrganizationName ||
-                    o.clientOrganizationName ||
-                    o.clientName ||
-                    'Option',
-                  sub: o.date ?? '',
+                  label: primaryCounterpartyLabelForModel(o),
+                  sub: secondarySubtitleForModel(o),
                   actionRequired: isAction,
                   ts: o.createdAt ?? 0,
                   requestType: o.requestType ?? 'option',
@@ -2145,16 +2151,17 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                   ) : null}
                   <View>
                     <Text style={{ ...typography.label, fontSize: 9, color: colors.textSecondary }}>
-                      Agency
+                      {uiCopy.model.agencyChatRowKicker}
                     </Text>
                     <Text style={{ ...typography.label, color: colors.textPrimary }}>
-                      {optionChatAgency?.name ?? 'Agency'}
+                      {optionChatAgency?.name ?? uiCopy.model.agencyChatRowKicker}
                     </Text>
                   </View>
                 </View>
                 {(() => {
                   const r = getRequestByThreadId(selectedOptionThread!);
                   if (!r) return null;
+                  const titleLine = primaryCounterpartyLabelForModel(r);
                   return (
                     <View
                       style={{
@@ -2163,21 +2170,17 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                         paddingTop: 6,
                       }}
                     >
-                      {(r.agencyOrganizationName ?? r.clientOrganizationName ?? r.clientName) &&
-                      (r.agencyOrganizationName ?? r.clientOrganizationName ?? r.clientName) !==
-                        'Client' ? (
-                        <Text
-                          style={{
-                            ...typography.body,
-                            fontSize: 11,
-                            color: colors.textPrimary,
-                            fontWeight: '600',
-                          }}
-                          numberOfLines={1}
-                        >
-                          {r.agencyOrganizationName ?? r.clientOrganizationName ?? r.clientName}
-                        </Text>
-                      ) : null}
+                      <Text
+                        style={{
+                          ...typography.body,
+                          fontSize: 11,
+                          color: colors.textPrimary,
+                          fontWeight: '600',
+                        }}
+                        numberOfLines={2}
+                      >
+                        {titleLine}
+                      </Text>
                       <Text
                         style={{ ...typography.body, fontSize: 11, color: colors.textSecondary }}
                       >
@@ -2188,18 +2191,27 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                         {formatDateWithOptionalTimeRange(r.date, r.startTime, r.endTime)}
                       </Text>
                       {r.jobDescription ? (
-                        <Text
-                          style={{
-                            ...typography.body,
-                            fontSize: 11,
-                            color: colors.textSecondary,
-                            fontStyle: 'italic',
-                            marginTop: 2,
-                          }}
-                          numberOfLines={2}
-                        >
-                          {r.jobDescription}
-                        </Text>
+                        <View style={{ marginTop: 4 }}>
+                          <Text
+                            style={{
+                              ...typography.label,
+                              fontSize: 9,
+                              color: colors.textSecondary,
+                              marginBottom: 2,
+                            }}
+                          >
+                            {uiCopy.model.optionThreadRoleDetails}
+                          </Text>
+                          <Text
+                            style={{
+                              ...typography.body,
+                              fontSize: 11,
+                              color: colors.textSecondary,
+                            }}
+                          >
+                            {r.jobDescription}
+                          </Text>
+                        </View>
                       ) : null}
                     </View>
                   );

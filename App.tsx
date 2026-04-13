@@ -227,7 +227,7 @@ function ModelRouteGuard({
   onBackToRoleSelection: () => void;
   userId?: string;
 }) {
-  const { agencies, activeAgencyId, loading } = useModelAgency();
+  const { agencies, activeRepresentationKey, loading } = useModelAgency();
 
   if (loading) {
     return (
@@ -237,7 +237,7 @@ function ModelRouteGuard({
     );
   }
 
-  if (agencies.length > 1 && !activeAgencyId) {
+  if (agencies.length > 1 && !activeRepresentationKey) {
     return <ModelAgencySelector />;
   }
 
