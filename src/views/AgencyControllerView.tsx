@@ -29,7 +29,7 @@ import {
   flexFillScrollWebWithMinHeight,
   shouldUseB2BWebSplit,
 } from '../theme/chatLayout';
-import { showAppAlert } from '../utils/crossPlatformAlert';
+import { showAppAlert, showConfirmAlert } from '../utils/crossPlatformAlert';
 import { useAuth } from '../context/AuthContext';
 import { getAgencyModels } from '../services/apiService';
 import {
@@ -7643,30 +7643,25 @@ const OrganizationTeamTab: React.FC<{
 
   const handleRemoveMember = (targetUserId: string, displayName: string) => {
     if (!organizationId) return;
-    Alert.alert(
+    const orgId = organizationId;
+    showConfirmAlert(
       'Remove Member',
       `Remove ${displayName} from the organization? Their session will be invalidated immediately.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
-            setRemovingUserId(targetUserId);
-            const result = await removeOrganizationMember(targetUserId, organizationId);
-            setRemovingUserId(null);
-            if (result.ok) {
-              onRefresh();
-              Alert.alert(
-                'Member Removed',
-                'The member has been removed and their session invalidated.',
-              );
-            } else {
-              Alert.alert(uiCopy.common.error, result.error ?? 'Failed to remove member.');
-            }
-          },
-        },
-      ],
+      async () => {
+        setRemovingUserId(targetUserId);
+        const result = await removeOrganizationMember(targetUserId, orgId);
+        setRemovingUserId(null);
+        if (result.ok) {
+          onRefresh();
+          showAppAlert(
+            'Member Removed',
+            'The member has been removed and their session invalidated.',
+          );
+        } else {
+          showAppAlert(uiCopy.common.error, result.error ?? 'Failed to remove member.');
+        }
+      },
+      'Remove',
     );
   };
 
@@ -7727,7 +7722,7 @@ const OrganizationTeamTab: React.FC<{
 
       setInviteEmail('');
       onRefresh();
-      Alert.alert(
+      showAppAlert(
         uiCopy.alerts.invitationCreated,
         emailOk
           ? uiCopy.alerts.invitationCreatedBody
@@ -7737,15 +7732,15 @@ const OrganizationTeamTab: React.FC<{
             ),
       );
     } else if (result.error === 'agency_member_limit_reached') {
-      Alert.alert(uiCopy.common.error, uiCopy.team.agencyPlanMemberLimitReached);
+      showAppAlert(uiCopy.common.error, uiCopy.team.agencyPlanMemberLimitReached);
     } else if (result.error === 'already_invited') {
-      Alert.alert(uiCopy.common.error, uiCopy.alerts.invitationAlreadyInvited);
+      showAppAlert(uiCopy.common.error, uiCopy.alerts.invitationAlreadyInvited);
     } else if (result.error === 'already_member') {
-      Alert.alert(uiCopy.common.error, uiCopy.alerts.invitationAlreadyMember);
+      showAppAlert(uiCopy.common.error, uiCopy.alerts.invitationAlreadyMember);
     } else if (result.error === 'owner_only') {
-      Alert.alert(uiCopy.common.error, uiCopy.alerts.invitationOwnerOnly);
+      showAppAlert(uiCopy.common.error, uiCopy.alerts.invitationOwnerOnly);
     } else {
-      Alert.alert(uiCopy.common.error, uiCopy.alerts.invitationFailed);
+      showAppAlert(uiCopy.common.error, uiCopy.alerts.invitationFailed);
     }
     setBusy(false);
   };
@@ -7756,9 +7751,9 @@ const OrganizationTeamTab: React.FC<{
     const { error } = await updateDisplayName(nameInput);
     setNameBusy(false);
     if (error) {
-      Alert.alert(uiCopy.common.error, uiCopy.team.ownerDisplayNameError);
+      showAppAlert(uiCopy.common.error, uiCopy.team.ownerDisplayNameError);
     } else {
-      Alert.alert(uiCopy.team.ownerDisplayNameLabel, uiCopy.team.ownerDisplayNameSaved);
+      showAppAlert(uiCopy.team.ownerDisplayNameLabel, uiCopy.team.ownerDisplayNameSaved);
       onRefresh();
     }
   };
@@ -7795,11 +7790,11 @@ const OrganizationTeamTab: React.FC<{
     setResendingInvitationId(null);
     setResendInvitationCooldownUntil((prev) => ({ ...prev, [invitation.id]: Date.now() + 4000 }));
     if (result.ok) {
-      Alert.alert(uiCopy.common.success, uiCopy.inviteResend.success);
+      showAppAlert(uiCopy.common.success, uiCopy.inviteResend.success);
       return;
     }
     const fallbackLink = buildOrganizationInviteUrl(invitation.token);
-    Alert.alert(
+    showAppAlert(
       uiCopy.common.error,
       `${uiCopy.inviteResend.error}: ${result.error}\n\n${uiCopy.alerts.invitationLink}: ${fallbackLink}\n\n${uiCopy.inviteResend.checkSpamHint}`,
     );
@@ -7942,7 +7937,7 @@ const OrganizationTeamTab: React.FC<{
           {lastLink && (
             <TouchableOpacity
               onPress={() => {
-                Alert.alert(uiCopy.alerts.invitationLink, lastLink);
+                showAppAlert(uiCopy.alerts.invitationLink, lastLink);
               }}
             >
               <Text style={[s.metaText, { textDecorationLine: 'underline' }]}>

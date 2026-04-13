@@ -3,7 +3,7 @@
  * English UI; organization members can manage team settings based on role policy.
  */
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import {
   ensureClientOrganization,
@@ -19,6 +19,7 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { describeSendInviteFailure, resendInviteEmail } from '../services/inviteDelivery';
 import { isClientOperationalMember, isOrganizationOwner } from '../services/orgRoleTypes';
+import { showAppAlert, showConfirmAlert } from '../utils/crossPlatformAlert';
 
 const inputStyle = {
   borderWidth: 1,
@@ -84,7 +85,7 @@ export const ClientOrganizationTeamSection: React.FC<{
       }
     } catch (e) {
       console.error('ClientOrganizationTeamSection loadTeam error:', e);
-      Alert.alert(uiCopy.common.error, uiCopy.team.loadTeamError ?? 'Could not load team data.');
+      showAppAlert(uiCopy.common.error, uiCopy.team.loadTeamError ?? 'Could not load team data.');
     } finally {
       setLoading(false);
     }
@@ -100,9 +101,9 @@ export const ClientOrganizationTeamSection: React.FC<{
     const { error } = await updateDisplayName(nameInput);
     setNameBusy(false);
     if (error) {
-      Alert.alert(uiCopy.common.error, uiCopy.team.ownerDisplayNameError);
+      showAppAlert(uiCopy.common.error, uiCopy.team.ownerDisplayNameError);
     } else {
-      Alert.alert(uiCopy.team.ownerDisplayNameLabel, uiCopy.team.ownerDisplayNameSaved);
+      showAppAlert(uiCopy.team.ownerDisplayNameLabel, uiCopy.team.ownerDisplayNameSaved);
       void loadTeam();
     }
   };
@@ -110,7 +111,7 @@ export const ClientOrganizationTeamSection: React.FC<{
   const handleInvite = async () => {
     if (!organizationId || !inviteEmail.trim()) return;
     if (!isOrganizationOwner(profile?.org_member_role)) {
-      Alert.alert(uiCopy.team.permissionAlertTitle, uiCopy.team.permissionAlertOwnerOnly);
+      showAppAlert(uiCopy.team.permissionAlertTitle, uiCopy.team.permissionAlertOwnerOnly);
       return;
     }
     setInviteBusy(true);
@@ -153,7 +154,7 @@ export const ClientOrganizationTeamSection: React.FC<{
         }
 
         setInviteEmail('');
-        Alert.alert(
+        showAppAlert(
           uiCopy.alerts.invitationCreated,
           emailOk
             ? uiCopy.alerts.invitationCreatedBody
@@ -161,19 +162,19 @@ export const ClientOrganizationTeamSection: React.FC<{
         );
         void loadTeam();
       } else if (!result.ok && result.error === 'agency_member_limit_reached') {
-        Alert.alert(uiCopy.common.error, uiCopy.team.agencyPlanMemberLimitReached);
+        showAppAlert(uiCopy.common.error, uiCopy.team.agencyPlanMemberLimitReached);
       } else if (!result.ok && result.error === 'already_invited') {
-        Alert.alert(uiCopy.common.error, uiCopy.alerts.invitationAlreadyInvited);
+        showAppAlert(uiCopy.common.error, uiCopy.alerts.invitationAlreadyInvited);
       } else if (!result.ok && result.error === 'already_member') {
-        Alert.alert(uiCopy.common.error, uiCopy.alerts.invitationAlreadyMember);
+        showAppAlert(uiCopy.common.error, uiCopy.alerts.invitationAlreadyMember);
       } else if (!result.ok && result.error === 'owner_only') {
-        Alert.alert(uiCopy.common.error, uiCopy.alerts.invitationOwnerOnly);
+        showAppAlert(uiCopy.common.error, uiCopy.alerts.invitationOwnerOnly);
       } else {
-        Alert.alert(uiCopy.common.error, uiCopy.team.invitationErrorBody);
+        showAppAlert(uiCopy.common.error, uiCopy.team.invitationErrorBody);
       }
     } catch (e) {
       console.error('ClientOrganizationTeamSection handleInvite error:', e);
-      Alert.alert(uiCopy.common.error, uiCopy.team.invitationErrorBody);
+      showAppAlert(uiCopy.common.error, uiCopy.team.invitationErrorBody);
     } finally {
       setInviteBusy(false);
     }
@@ -181,33 +182,28 @@ export const ClientOrganizationTeamSection: React.FC<{
 
   const handleRemoveMember = (targetUserId: string, displayName: string) => {
     if (!organizationId) return;
-    Alert.alert(
+    const orgId = organizationId;
+    showConfirmAlert(
       'Remove Member',
       `Remove ${displayName} from the organization? Their session will be invalidated immediately.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
-            setRemovingUserId(targetUserId);
-            try {
-              const result = await removeOrganizationMember(targetUserId, organizationId);
-              if (result.ok) {
-                setTeamMembers((prev) => prev.filter((m) => m.user_id !== targetUserId));
-                Alert.alert('Member Removed', 'The member has been removed and their session has been invalidated.');
-              } else {
-                Alert.alert(uiCopy.common.error, result.error ?? 'Failed to remove member.');
-              }
-            } catch (e) {
-              console.error('handleRemoveMember error:', e);
-              Alert.alert(uiCopy.common.error, 'An unexpected error occurred.');
-            } finally {
-              setRemovingUserId(null);
-            }
-          },
-        },
-      ],
+      async () => {
+        setRemovingUserId(targetUserId);
+        try {
+          const result = await removeOrganizationMember(targetUserId, orgId);
+          if (result.ok) {
+            setTeamMembers((prev) => prev.filter((m) => m.user_id !== targetUserId));
+            showAppAlert('Member Removed', 'The member has been removed and their session has been invalidated.');
+          } else {
+            showAppAlert(uiCopy.common.error, result.error ?? 'Failed to remove member.');
+          }
+        } catch (e) {
+          console.error('handleRemoveMember error:', e);
+          showAppAlert(uiCopy.common.error, 'An unexpected error occurred.');
+        } finally {
+          setRemovingUserId(null);
+        }
+      },
+      'Remove',
     );
   };
 
@@ -228,11 +224,11 @@ export const ClientOrganizationTeamSection: React.FC<{
     setResendingInvitationId(null);
     setResendInvitationCooldownUntil((prev) => ({ ...prev, [invitation.id]: Date.now() + 4000 }));
     if (result.ok) {
-      Alert.alert(uiCopy.common.success, uiCopy.inviteResend.success);
+      showAppAlert(uiCopy.common.success, uiCopy.inviteResend.success);
       return;
     }
     const fallbackLink = buildOrganizationInviteUrl(invitation.token);
-    Alert.alert(
+    showAppAlert(
       uiCopy.common.error,
       `${uiCopy.inviteResend.error}: ${result.error}\n\n${uiCopy.alerts.invitationLink}: ${fallbackLink}\n\n${uiCopy.inviteResend.checkSpamHint}`,
     );

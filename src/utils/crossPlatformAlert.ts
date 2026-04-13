@@ -9,3 +9,21 @@ export function showAppAlert(title: string, message?: string): void {
   }
   Alert.alert(title, message);
 }
+
+/** Web: window.confirm; Native: Alert with Cancel + destructive button. */
+export function showConfirmAlert(
+  title: string,
+  message: string,
+  onConfirm: () => void,
+  confirmLabel = 'Confirm',
+): void {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    const body = message.trim() ? `${title}\n\n${message}` : title;
+    if (window.confirm(body)) onConfirm();
+    return;
+  }
+  Alert.alert(title, message, [
+    { text: 'Cancel', style: 'cancel' },
+    { text: confirmLabel, style: 'destructive', onPress: onConfirm },
+  ]);
+}
