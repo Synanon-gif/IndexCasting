@@ -121,7 +121,11 @@ export async function getConversationsForUser(userId: string): Promise<Conversat
 
 export async function getConversationById(conversationId: string): Promise<Conversation | null> {
   try {
-    const { data, error } = await supabase.from('conversations').select(CONVERSATION_SELECT).eq('id', conversationId).maybeSingle();
+    const { data, error } = await supabase
+      .from('conversations')
+      .select(CONVERSATION_SELECT)
+      .eq('id', conversationId)
+      .maybeSingle();
     if (error) {
       console.error('getConversationById error:', error);
       return null;
@@ -142,8 +146,17 @@ export async function getOrCreateConversation(
   participantIds: string[],
   contextId?: string,
   title?: string,
-  meta?: ConversationCreateMeta
+  meta?: ConversationCreateMeta,
 ): Promise<GetOrCreateConversationResult> {
+  if (contextId?.startsWith('b2b:')) {
+    console.error(
+      'getOrCreateConversation: b2b: conversations must use ensureClientAgencyChat / create_b2b_org_conversation RPC',
+    );
+    return {
+      ok: false,
+      errorMessage: 'B2B conversations must use the canonical org-pair RPC path',
+    };
+  }
   if (contextId) {
     const { data: existing } = await supabase
       .from('conversations')
@@ -172,9 +185,7 @@ export async function getOrCreateConversation(
   if (error) {
     const code = (error as { code?: string }).code;
     const msg = error.message || '';
-    const isDup =
-      code === '23505' ||
-      /duplicate key|unique constraint/i.test(msg);
+    const isDup = code === '23505' || /duplicate key|unique constraint/i.test(msg);
     if (contextId && isDup) {
       const { data: again } = await supabase
         .from('conversations')
@@ -235,7 +246,10 @@ export async function getMessages(
     }
 
     const { data, error } = await q;
-    if (error) { console.error('getMessages error:', error); return []; }
+    if (error) {
+      console.error('getMessages error:', error);
+      return [];
+    }
     // Reverse DESC result back to ascending order for rendering
     return ((data ?? []) as Message[]).reverse();
   } catch (e) {
@@ -253,7 +267,7 @@ export async function sendMessage(
   opts?: {
     messageType?: MessagePayloadType;
     metadata?: Record<string, unknown> | null;
-  }
+  },
 ): Promise<Message | null> {
   const hasFile = !!fileUrl;
   const hasText = text != null && text.trim().length > 0;
@@ -270,10 +284,17 @@ export async function sendMessage(
     // Normalize first: strip invisible chars, collapse repetition, NFC
     const normalized = normalizeInput(text);
 
-    const textCheck = validateText(normalized, { maxLength: MESSAGE_MAX_LENGTH, allowEmpty: false });
+    const textCheck = validateText(normalized, {
+      maxLength: MESSAGE_MAX_LENGTH,
+      allowEmpty: false,
+    });
     if (!textCheck.ok) {
       console.warn('sendMessage: text validation failed', textCheck.error);
-      void logSecurityEvent({ type: 'large_payload', userId: senderId, metadata: { service: 'messengerSupabase', field: 'text' } });
+      void logSecurityEvent({
+        type: 'large_payload',
+        userId: senderId,
+        metadata: { service: 'messengerSupabase', field: 'text' },
+      });
       return null;
     }
     // Sanitize to strip any injected HTML/scripts; content stored as safe plain text
@@ -284,7 +305,11 @@ export async function sendMessage(
     const allUrlsInText = normalized.match(/https?:\/\/[^\s]+/gi) ?? [];
     if (allUrlsInText.length > urls.length) {
       console.warn('sendMessage: message contains unsafe URLs');
-      void logSecurityEvent({ type: 'invalid_url', userId: senderId, metadata: { service: 'messengerSupabase' } });
+      void logSecurityEvent({
+        type: 'invalid_url',
+        userId: senderId,
+        metadata: { service: 'messengerSupabase' },
+      });
       return null;
     }
     // Explicit link metadata URL also validated
@@ -293,7 +318,11 @@ export async function sendMessage(
       const urlCheck = validateUrl(metaUrl);
       if (!urlCheck.ok) {
         console.warn('sendMessage: metadata URL failed validation', urlCheck.error);
-        void logSecurityEvent({ type: 'invalid_url', userId: senderId, metadata: { service: 'messengerSupabase', field: 'metadata.url' } });
+        void logSecurityEvent({
+          type: 'invalid_url',
+          userId: senderId,
+          metadata: { service: 'messengerSupabase', field: 'metadata.url' },
+        });
         return null;
       }
     }
@@ -329,9 +358,15 @@ export async function sendMessage(
   if (opts?.metadata !== undefined) insertRow.metadata = opts.metadata;
 
   const { data, error } = await supabase.from('messages').insert(insertRow).select().single();
-  if (error) { console.error('sendMessage error:', error); return null; }
+  if (error) {
+    console.error('sendMessage error:', error);
+    return null;
+  }
 
-  await supabase.from('conversations').update({ updated_at: new Date().toISOString() }).eq('id', conversationId);
+  await supabase
+    .from('conversations')
+    .update({ updated_at: new Date().toISOString() })
+    .eq('id', conversationId);
 
   // Notify all participants except the sender
   void notifyConversationParticipants(conversationId, senderId);
@@ -339,7 +374,10 @@ export async function sendMessage(
   return data as Message;
 }
 
-export { buildMessengerSenderDisplay, formatSenderDisplayLine } from '../utils/messengerSenderLabel';
+export {
+  buildMessengerSenderDisplay,
+  formatSenderDisplayLine,
+} from '../utils/messengerSenderLabel';
 
 /**
  * Creates a "new_message" notification for every conversation participant
@@ -369,11 +407,14 @@ async function notifyConversationParticipants(
 }
 
 async function fetchProfilesForSenders(
-  ids: string[]
+  ids: string[],
 ): Promise<Record<string, { display_name: string | null; role: string | null }>> {
   if (ids.length === 0) return {};
   try {
-    const { data, error } = await supabase.from('profiles').select('id, display_name, role').in('id', ids);
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, display_name, role')
+      .in('id', ids);
     if (error) {
       console.error('fetchProfilesForSenders error:', error);
       return {};
@@ -420,7 +461,10 @@ async function fetchOrganizationNamesMap(orgIds: string[]): Promise<Record<strin
 
 const GENERIC_B2B_TITLE = /^client\s*[↔]\s*agency$/i;
 
-function conversationTitleOrgFallback(conv: Conversation | null, orgId: string | null): string | null {
+function conversationTitleOrgFallback(
+  conv: Conversation | null,
+  orgId: string | null,
+): string | null {
   if (!conv || !orgId) return null;
   if (conv.client_organization_id && conv.agency_organization_id) return null;
   const t = conv.title?.trim();
@@ -504,15 +548,12 @@ export async function getMessagesWithSenderInfo(
       const p = profiles[m.sender_id];
       const name = p?.display_name?.trim() || uiCopy.b2bChat.conversationFallback;
       let ctx = contexts[m.sender_id] ?? { organizationId: null, membershipLabel: null };
-      if (
-        !ctx.organizationId &&
-        agencyOrgId &&
-        !clientOrgId &&
-        p?.role === 'agent'
-      ) {
+      if (!ctx.organizationId && agencyOrgId && !clientOrgId && p?.role === 'agent') {
         ctx = { organizationId: agencyOrgId, membershipLabel: ctx.membershipLabel };
       }
-      let orgName: string | null = ctx.organizationId ? orgNames[ctx.organizationId] ?? null : null;
+      let orgName: string | null = ctx.organizationId
+        ? (orgNames[ctx.organizationId] ?? null)
+        : null;
       if (!orgName && ctx.organizationId) {
         orgName = conversationTitleOrgFallback(conv, ctx.organizationId);
       }
@@ -543,7 +584,10 @@ export async function markAsRead(messageId: string): Promise<boolean> {
     .update({ read_at: new Date().toISOString() })
     .eq('id', messageId)
     .is('read_at', null);
-  if (error) { console.error('markAsRead error:', error); return false; }
+  if (error) {
+    console.error('markAsRead error:', error);
+    return false;
+  }
   return true;
 }
 
@@ -624,7 +668,7 @@ export function subscribeToConversation(
 export async function uploadChatFile(
   conversationId: string,
   file: File | Blob,
-  fileName: string
+  fileName: string,
 ): Promise<string | null> {
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) {
@@ -643,7 +687,11 @@ export async function uploadChatFile(
     console.warn('uploadChatFile: HEIC/HEIF conversion failed');
     void logSecurityEvent({
       type: 'file_rejected',
-      metadata: { service: 'messengerSupabase', fn: 'uploadChatFile', reason: 'heic_conversion_failed' },
+      metadata: {
+        service: 'messengerSupabase',
+        fn: 'uploadChatFile',
+        reason: 'heic_conversion_failed',
+      },
     });
     return null;
   }
@@ -653,7 +701,10 @@ export async function uploadChatFile(
   const mimeCheck = validateFile(file, CHAT_ALLOWED_MIME_TYPES);
   if (!mimeCheck.ok) {
     console.warn('uploadChatFile: file validation failed', mimeCheck.error);
-    void logSecurityEvent({ type: 'file_rejected', metadata: { service: 'messengerSupabase', reason: 'mime' } });
+    void logSecurityEvent({
+      type: 'file_rejected',
+      metadata: { service: 'messengerSupabase', reason: 'mime' },
+    });
     return null;
   }
   // Magic byte check — prevents renamed executables
@@ -667,7 +718,10 @@ export async function uploadChatFile(
   const extCheck = checkExtensionConsistency(file);
   if (!extCheck.ok) {
     console.warn('uploadChatFile: extension consistency check failed', extCheck.error);
-    void logSecurityEvent({ type: 'extension_mismatch', metadata: { service: 'messengerSupabase' } });
+    void logSecurityEvent({
+      type: 'extension_mismatch',
+      metadata: { service: 'messengerSupabase' },
+    });
     return null;
   }
 
@@ -682,12 +736,10 @@ export async function uploadChatFile(
   const safeBaseName =
     file instanceof File ? sanitizeUploadBaseName(file.name) : sanitizeUploadBaseName(fileName);
   const path = `chat/${conversationId}/${Date.now()}_${safeBaseName}`;
-  const { error } = await supabase.storage
-    .from('chat-files')
-    .upload(path, file, {
-      contentType: file.type || 'application/octet-stream',
-      upsert: false,
-    });
+  const { error } = await supabase.storage.from('chat-files').upload(path, file, {
+    contentType: file.type || 'application/octet-stream',
+    upsert: false,
+  });
   if (error) {
     console.error('uploadChatFile error:', error);
     await decrementStorage(claimedSize);
@@ -696,12 +748,15 @@ export async function uploadChatFile(
 
   // BUG 3 FIX: read actual size from storage.objects post-upload and reconcile
   // any drift between the client-reported size and what was actually stored.
-  const actualSize = await getActualChatFileSize('chat-files', path) ?? claimedSize;
+  const actualSize = (await getActualChatFileSize('chat-files', path)) ?? claimedSize;
   if (actualSize !== claimedSize) {
     if (actualSize > claimedSize) {
       const driftResult = await checkAndIncrementStorage(actualSize - claimedSize);
       if (!driftResult.allowed) {
-        console.warn('[storage] uploadChatFile: post-upload size drift exceeded limit — counter undercounted', { actualSize, claimedSize });
+        console.warn(
+          '[storage] uploadChatFile: post-upload size drift exceeded limit — counter undercounted',
+          { actualSize, claimedSize },
+        );
       }
     } else {
       await decrementStorage(claimedSize - actualSize);
@@ -719,7 +774,7 @@ export async function uploadChatFile(
  */
 export async function getSignedChatFileUrl(
   pathOrLegacyUrl: string,
-  expiresInSeconds = 3600
+  expiresInSeconds = 3600,
 ): Promise<string | null> {
   if (!pathOrLegacyUrl) return null;
 
@@ -732,7 +787,10 @@ export async function getSignedChatFileUrl(
     const { data, error } = await supabase.storage
       .from('chat-files')
       .createSignedUrl(storagePath, expiresInSeconds);
-    if (error) { console.error('getSignedChatFileUrl error:', error); return null; }
+    if (error) {
+      console.error('getSignedChatFileUrl error:', error);
+      return null;
+    }
     return data.signedUrl;
   } catch (e) {
     console.error('getSignedChatFileUrl exception:', e);

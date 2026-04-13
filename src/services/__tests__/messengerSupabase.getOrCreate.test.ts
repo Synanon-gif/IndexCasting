@@ -22,11 +22,11 @@ jest.mock('../../../lib/supabase', () => ({
   },
 }));
 
-describe('getOrCreateConversation duplicate insert', () => {
+describe('getOrCreateConversation', () => {
   const existing = {
     id: 'conv-1',
     type: 'direct',
-    context_id: 'b2b:ctx',
+    context_id: 'agency-model:ctx',
     participant_ids: ['a'],
     title: null,
     created_at: '',
@@ -38,6 +38,14 @@ describe('getOrCreateConversation duplicate insert', () => {
     insertSingle.mockReset();
   });
 
+  it('rejects b2b: context_id (must use canonical RPC)', async () => {
+    const r = await getOrCreateConversation('direct', ['a'], 'b2b:org1:org2', 't');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errorMessage).toMatch(/canonical org-pair RPC/i);
+    expect(maybeSingle).not.toHaveBeenCalled();
+    expect(insertSingle).not.toHaveBeenCalled();
+  });
+
   it('returns existing row after unique violation on insert', async () => {
     maybeSingle
       .mockResolvedValueOnce({ data: null, error: null })
@@ -47,7 +55,7 @@ describe('getOrCreateConversation duplicate insert', () => {
       error: { code: '23505', message: 'duplicate key value violates unique constraint' },
     });
 
-    const r = await getOrCreateConversation('direct', ['a'], 'b2b:ctx', 't');
+    const r = await getOrCreateConversation('direct', ['a'], 'agency-model:ctx', 't');
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.conversation.id).toBe('conv-1');
     expect(maybeSingle).toHaveBeenCalledTimes(2);
