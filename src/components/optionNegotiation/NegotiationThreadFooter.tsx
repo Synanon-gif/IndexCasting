@@ -118,6 +118,7 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
     modelAccountLinked: request.modelAccountLinked,
     agencyCounterPrice: agencyCounterPrice ?? null,
     proposedPrice: request.proposedPrice ?? null,
+    isAgencyOnly: request.isAgencyOnly ?? false,
   });
   const priceLocked = priceCommerciallySettledForUi(signals);
   const isMobileNative = Platform.OS !== 'web';
@@ -617,7 +618,7 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
           onPress={() => { void onAgencyConfirmJobAgencyOnly(); }}
           disabled={busy}
         >
-          <Text style={[styles.filterPillLabel, { color: '#fff' }]}>Confirm job</Text>
+          <Text style={[styles.filterPillLabel, { color: '#fff' }]}>{uiCopy.optionNegotiationChat.confirmJob}</Text>
         </TouchableOpacity>
       )}
 

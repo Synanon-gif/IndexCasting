@@ -193,6 +193,7 @@ export const UnifiedCalendarAgenda: React.FC<UnifiedCalendarAgendaProps> = ({
                   agencyCounterPrice: option.agency_counter_price,
                   proposedPrice: option.proposed_price,
                   hasConflictWarning: false,
+                  isAgencyOnly: option.is_agency_only ?? false,
                 });
                 const clientAttention =
                   viewerRole === 'client' && attentionHeaderLabelFromSignals(calSig, 'client') !== null;

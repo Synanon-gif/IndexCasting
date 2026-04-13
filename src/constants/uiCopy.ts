@@ -1302,6 +1302,7 @@ export const uiCopy = {
     clientRejectedCounter:
       'Client declined the counter offer. The agency can send a new counter offer.',
     jobConfirmedByClient: 'Job confirmed by client.',
+    jobConfirmedByAgency: 'Job confirmed by agency.',
     /** Agency-facing kind `no_model_account` in SQL RPC — persisted as from_role=system only. */
     noModelAccount:
       'No model app account on file — you can negotiate and confirm with the client without waiting for model approval. The booking will appear in client and agency calendars when confirmed.',

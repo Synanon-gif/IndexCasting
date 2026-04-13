@@ -43,6 +43,7 @@ function nextStepFromSignals(
   // ─── Action-priority: this role must act (D2 action > D1 action) ───
   if (appr === 'waiting_for_agency_confirmation' && role === 'agency') return c.nextStepNegotiating;
   if (appr === 'waiting_for_client_to_finalize_job' && role === 'client') return c.nextStepJobConfirm;
+  if (appr === 'waiting_for_agency_to_finalize_job' && role === 'agency') return c.nextStepJobConfirm;
 
   const agencyMustActOnPrice =
     neg === 'waiting_for_agency_response' || neg === 'negotiation_open' || neg === 'counter_rejected';
@@ -54,6 +55,7 @@ function nextStepFromSignals(
     if (appr === 'waiting_for_agency_confirmation') return c.nextStepAwaitingAgency;
     if (appr === 'waiting_for_model_confirmation') return c.nextStepAwaitingModel;
     if (appr === 'waiting_for_client_to_finalize_job') return c.nextStepJobConfirm;
+    if (appr === 'waiting_for_agency_to_finalize_job') return c.nextStepJobConfirm;
     return c.nextStepNegotiating;
   }
 
@@ -85,6 +87,7 @@ export function getCalendarDetailNextStepText(
     agencyCounterPrice: option.agency_counter_price,
     proposedPrice: option.proposed_price,
     hasConflictWarning,
+    isAgencyOnly: option.is_agency_only ?? false,
   });
   return nextStepFromSignals(sig, role, c);
 }

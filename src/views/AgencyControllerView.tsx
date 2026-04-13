@@ -4703,7 +4703,13 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
 
   const visible = requests.filter((r) => {
     if (msgFilter === 'archived' ? !archivedIds.has(r.threadId) : archivedIds.has(r.threadId)) return false;
-    if (counterpartyFilter && (r.clientOrganizationId ?? r.clientName ?? '') !== counterpartyFilter) return false;
+    if (counterpartyFilter) {
+      if (counterpartyFilter === '__agency_internal__') {
+        if (!r.isAgencyOnly) return false;
+      } else if (r.isAgencyOnly || (r.clientOrganizationId ?? r.clientName ?? '') !== counterpartyFilter) {
+        return false;
+      }
+    }
     const assignment = r.clientOrganizationId ? assignmentByClientOrgId[r.clientOrganizationId] : undefined;
     if (assignmentScope === 'mine' && assignment?.assignedMemberUserId !== currentUserId) return false;
     if (assignmentScope === 'unassigned' && !!assignment?.assignedMemberUserId) return false;
@@ -4717,6 +4723,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
         modelAccountLinked: r.modelAccountLinked ?? false,
         agencyCounterPrice: r.agencyCounterPrice ?? null,
         proposedPrice: r.proposedPrice ?? null,
+        isAgencyOnly: r.isAgencyOnly ?? false,
       });
       if (!attentionHeaderLabelFromSignals(sig, 'agency')) return false;
     }
@@ -4748,6 +4755,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
           modelAccountLinked: request.modelAccountLinked ?? false,
           agencyCounterPrice: request.agencyCounterPrice ?? null,
           proposedPrice: request.proposedPrice ?? null,
+          isAgencyOnly: request.isAgencyOnly ?? false,
         }),
         'agency',
       )
@@ -5787,6 +5795,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                 modelAccountLinked: r.modelAccountLinked ?? false,
                 agencyCounterPrice: r.agencyCounterPrice ?? null,
                 proposedPrice: r.proposedPrice ?? null,
+                isAgencyOnly: r.isAgencyOnly ?? false,
               }),
               'agency',
             );

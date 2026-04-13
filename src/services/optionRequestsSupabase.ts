@@ -22,7 +22,7 @@ import { guardUploadSession } from './gdprComplianceSupabase';
 import { logAction } from '../utils/logAction';
 
 export const OPTION_REQUEST_SELECT =
-  'id, client_id, model_id, agency_id, requested_date, status, project_id, client_name, model_name, job_description, proposed_price, agency_counter_price, client_price_status, final_status, request_type, currency, start_time, end_time, model_approval, model_approved_at, model_account_linked, booker_id, organization_id, agency_organization_id, client_organization_id, client_organization_name, created_by, agency_assignee_user_id, is_agency_only, agency_event_group_id, created_at, updated_at';
+  'id, client_id, model_id, agency_id, requested_date, status, project_id, client_name, model_name, job_description, proposed_price, agency_counter_price, client_price_status, final_status, request_type, currency, start_time, end_time, model_approval, model_approved_at, model_account_linked, booker_id, organization_id, agency_organization_id, client_organization_id, client_organization_name, agency_organization_name, created_by, agency_assignee_user_id, is_agency_only, agency_event_group_id, created_at, updated_at';
 
 /**
  * Atomic UPDATE guards: many mutations use `.eq('status', 'in_negotiation')` (or similar) so concurrent
@@ -32,7 +32,7 @@ export const OPTION_REQUEST_SELECT =
 
 /** Model-linked app: no price / negotiation columns (defense-in-depth vs UI-only hiding). */
 export const OPTION_REQUEST_SELECT_MODEL_SAFE =
-  'id, client_id, model_id, agency_id, requested_date, status, project_id, client_name, model_name, job_description, final_status, request_type, currency, start_time, end_time, model_approval, model_approved_at, model_account_linked, booker_id, organization_id, agency_organization_id, client_organization_id, client_organization_name, created_by, agency_assignee_user_id, is_agency_only, agency_event_group_id, created_at, updated_at';
+  'id, client_id, model_id, agency_id, requested_date, status, project_id, client_name, model_name, job_description, final_status, request_type, currency, start_time, end_time, model_approval, model_approved_at, model_account_linked, booker_id, organization_id, agency_organization_id, client_organization_id, client_organization_name, agency_organization_name, created_by, agency_assignee_user_id, is_agency_only, agency_event_group_id, created_at, updated_at';
 
 /**
  * Option Requests + Chat (Kunde ↔ Agentur).
@@ -73,6 +73,8 @@ export type SupabaseOptionRequest = {
   client_organization_id: string | null;
   /** Denormalized client org display name (like client_name). Safe for model-facing views. */
   client_organization_name: string | null;
+  /** Denormalized agency org display name. Set on agency-only requests for model visibility. */
+  agency_organization_name: string | null;
   created_by: string | null;
   agency_assignee_user_id: string | null;
   /** true = agency-only manual event (no client party, no price negotiation). */

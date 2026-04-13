@@ -97,6 +97,8 @@ export type OptionRequest = {
   modelAccountLinked?: boolean;
   agencyId?: string;
   agencyOrganizationId?: string;
+  /** Denormalized agency org display name. Set on agency-only requests for model visibility. */
+  agencyOrganizationName?: string;
   /** true = agency-only manual event (no client party, no price negotiation). */
   isAgencyOnly?: boolean;
   /** Links to agency_event_groups for grouped manual events. */
@@ -138,6 +140,7 @@ function toLocalRequest(r: SupabaseOptionRequest | SupabaseOptionRequestModelSaf
     modelAccountLinked: r.model_account_linked ?? false,
     agencyId: r.agency_id,
     agencyOrganizationId: r.agency_organization_id ?? undefined,
+    agencyOrganizationName: r.agency_organization_name ?? undefined,
     isAgencyOnly: r.is_agency_only ?? false,
     agencyEventGroupId: r.agency_event_group_id ?? undefined,
   };
@@ -999,6 +1002,30 @@ export async function agencyConfirmJobAgencyOnlyStore(threadId: string): Promise
       req.finalStatus = 'job_confirmed';
       req.status = 'confirmed';
     }
+    await updateCalendarEntryToJob(req.id);
+
+    // Notify model about job confirmation (agency triggered — no agency notification needed).
+    const full = await getOptionRequestById(req.id);
+    if (full && full.model_account_linked) {
+      const { data: modelRow } = await supabase
+        .from('models')
+        .select('user_id')
+        .eq('id', full.model_id)
+        .maybeSingle();
+      const modelUserId = (modelRow as { user_id?: string | null } | null)?.user_id;
+      if (modelUserId) {
+        void createNotifications([
+          {
+            user_id: modelUserId,
+            type: 'job_confirmed',
+            title: uiCopy.notifications.jobConfirmed.title,
+            message: uiCopy.notifications.jobConfirmed.message,
+            metadata: { option_request_id: full.id },
+          },
+        ]);
+      }
+    }
+
     notify();
     return true;
   } finally {

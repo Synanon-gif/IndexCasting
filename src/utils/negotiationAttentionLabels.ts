@@ -25,6 +25,7 @@ export function attentionHeaderLabelFromSignals(
   // ─── Tier 1: D2 action — this role must act on availability ───
   if (appr === 'waiting_for_agency_confirmation' && role === 'agency') return action;
   if (appr === 'waiting_for_client_to_finalize_job' && role === 'client') return action;
+  if (appr === 'waiting_for_agency_to_finalize_job' && role === 'agency') return action;
 
   // ─── Tier 2: D1 action — this role must act on price ───
   const agencyMustActOnPrice =
@@ -41,6 +42,9 @@ export function attentionHeaderLabelFromSignals(
       return uiCopy.dashboard.smartAttentionWaitingForModel;
     }
     if (appr === 'waiting_for_client_to_finalize_job') {
+      return uiCopy.dashboard.smartAttentionJobConfirmationPending;
+    }
+    if (appr === 'waiting_for_agency_to_finalize_job') {
       return uiCopy.dashboard.smartAttentionJobConfirmationPending;
     }
   }

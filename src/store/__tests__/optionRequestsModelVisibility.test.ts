@@ -61,6 +61,7 @@ describe('OptionRequest field mapping', () => {
       agency_organization_id: 'org-agency-1',
       client_organization_id: 'org-client-1',
       client_organization_name: 'Fashion Corp',
+      agency_organization_name: null,
       created_by: null,
       agency_assignee_user_id: null,
       is_agency_only: false,

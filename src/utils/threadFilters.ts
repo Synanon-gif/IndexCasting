@@ -5,9 +5,13 @@ export type ThreadCounterparty = {
   label: string;
 };
 
+const INTERNAL_EVENTS_KEY = '__agency_internal__';
+const INTERNAL_EVENTS_LABEL = 'Internal events';
+
 /**
  * Extract unique counterparties from option requests for the filter UI.
- * Agency view: groups by client org / client name.
+ * Agency view: groups by client org / client name. Agency-only requests
+ * are grouped under a single "Internal events" bucket.
  * Client view: groups by agency org / agency id.
  */
 export function extractCounterparties(
@@ -17,6 +21,12 @@ export function extractCounterparties(
   const map = new Map<string, string>();
   for (const r of requests) {
     if (role === 'agency') {
+      if (r.isAgencyOnly) {
+        if (!map.has(INTERNAL_EVENTS_KEY)) {
+          map.set(INTERNAL_EVENTS_KEY, INTERNAL_EVENTS_LABEL);
+        }
+        continue;
+      }
       const key = r.clientOrganizationId ?? r.clientName ?? '';
       if (key && !map.has(key)) {
         map.set(key, r.clientOrganizationName ?? r.clientName ?? 'Client');

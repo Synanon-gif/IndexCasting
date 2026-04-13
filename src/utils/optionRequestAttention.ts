@@ -33,6 +33,7 @@ export type ApprovalAttentionState =
   | 'waiting_for_agency_confirmation'
   | 'waiting_for_model_confirmation'
   | 'waiting_for_client_to_finalize_job'
+  | 'waiting_for_agency_to_finalize_job'
   | 'fully_cleared'
   | 'job_completed';
 
@@ -46,6 +47,8 @@ export type AttentionSignalInput = {
   /** When set, distinguishes agency counter pending client response vs agency must act on client proposal */
   agencyCounterPrice?: number | null;
   proposedPrice?: number | null;
+  /** Agency-only manual event: job confirmation is agency responsibility, not client. */
+  isAgencyOnly?: boolean;
 };
 
 /**
@@ -118,14 +121,20 @@ export function deriveApprovalAttention(input: AttentionSignalInput): ApprovalAt
   const agencyConfirmed = input.finalStatus === 'option_confirmed';
   const modelAccountLinked = input.modelAccountLinked === true;
   const modelApproval = input.modelApproval ?? null;
-  const priceSettled = priceCommerciallySettledForUi(input);
+  const isAgencyOnly = input.isAgencyOnly === true;
+  // Agency-only: price is settled by definition (no client, no negotiation)
+  const priceSettled = isAgencyOnly || priceCommerciallySettledForUi(input);
 
   if (agencyConfirmed) {
+    const jobFinalizeState: ApprovalAttentionState = isAgencyOnly
+      ? 'waiting_for_agency_to_finalize_job'
+      : 'waiting_for_client_to_finalize_job';
+
     // Defense-in-depth: if status is already 'confirmed' (fully settled),
     // model approval cannot be retroactively required regardless of current
     // model_approval field value. The lifecycle is terminal.
     if (input.status === 'confirmed') {
-      return priceSettled ? 'waiting_for_client_to_finalize_job' : 'fully_cleared';
+      return priceSettled ? jobFinalizeState : 'fully_cleared';
     }
 
     if (
@@ -139,7 +148,7 @@ export function deriveApprovalAttention(input: AttentionSignalInput): ApprovalAt
     const availabilityCleared = !modelAccountLinked || modelApproval === 'approved';
 
     if (availabilityCleared && priceSettled) {
-      return 'waiting_for_client_to_finalize_job';
+      return jobFinalizeState;
     }
 
     if (availabilityCleared) {
@@ -182,7 +191,7 @@ export function deriveSmartAttentionState(input: AttentionSignalInput): SmartAtt
   const n = deriveNegotiationAttention(input);
 
   // D2 action states (agency/client must act on availability)
-  if (appr === 'waiting_for_client_to_finalize_job') {
+  if (appr === 'waiting_for_client_to_finalize_job' || appr === 'waiting_for_agency_to_finalize_job') {
     return 'job_confirmation_pending';
   }
   if (appr === 'waiting_for_agency_confirmation') {
@@ -288,9 +297,9 @@ export function modelInboxSortPriority(input: {
   return 2;
 }
 
-export function smartAttentionVisibleForRole(state: SmartAttentionState, role: SmartAttentionRole): boolean {
+export function smartAttentionVisibleForRole(state: SmartAttentionState, role: SmartAttentionRole, isAgencyOnly?: boolean): boolean {
   if (state === 'no_attention') return false;
-  if (state === 'job_confirmation_pending') return role === 'client';
+  if (state === 'job_confirmation_pending') return isAgencyOnly ? role === 'agency' : role === 'client';
   if (state === 'waiting_for_model') return role !== 'model';
   if (state === 'waiting_for_agency' || state === 'counter_pending' || state === 'conflict_risk') {
     return role === 'agency' || role === 'client';
@@ -305,6 +314,7 @@ export function approvalAttentionVisibleForRole(state: ApprovalAttentionState, r
   if (state === 'waiting_for_agency_confirmation') return role === 'client' || role === 'agency';
   if (state === 'waiting_for_model_confirmation') return role !== 'model';
   if (state === 'waiting_for_client_to_finalize_job') return role === 'client';
+  if (state === 'waiting_for_agency_to_finalize_job') return role === 'agency';
   return false;
 }
 
@@ -328,6 +338,7 @@ export function attentionSignalsFromOptionRequestLike(r: {
   agencyCounterPrice?: number | null;
   proposedPrice?: number | null;
   hasConflictWarning?: boolean;
+  isAgencyOnly?: boolean;
 }): AttentionSignalInput {
   return {
     status: r.status,
@@ -338,6 +349,7 @@ export function attentionSignalsFromOptionRequestLike(r: {
     agencyCounterPrice: r.agencyCounterPrice ?? null,
     proposedPrice: r.proposedPrice ?? null,
     hasConflictWarning: r.hasConflictWarning ?? false,
+    isAgencyOnly: r.isAgencyOnly ?? false,
   };
 }
 

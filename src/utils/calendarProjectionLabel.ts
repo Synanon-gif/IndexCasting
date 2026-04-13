@@ -95,6 +95,7 @@ export function getCalendarProjectionBadge(
       modelAccountLinked: option.model_account_linked,
       agencyCounterPrice: option.agency_counter_price,
       proposedPrice: option.proposed_price,
+      isAgencyOnly: option.is_agency_only ?? false,
     }),
   );
 
@@ -196,6 +197,7 @@ export function calendarGridColorForOptionItem(item: {
       modelAccountLinked: option.model_account_linked,
       agencyCounterPrice: option.agency_counter_price,
       proposedPrice: option.proposed_price,
+      isAgencyOnly: option.is_agency_only ?? false,
     }),
   );
   if (appr === 'waiting_for_model_confirmation') return AWAITING_MODEL_BADGE_BG;

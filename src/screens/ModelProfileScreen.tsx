@@ -1211,9 +1211,9 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                   <Text style={{ ...typography.label, color: '#BF360C', marginBottom: 2 }}>
                     {req.request_type === 'casting' ? uiCopy.dashboard.threadContextCasting : uiCopy.dashboard.threadContextOption}
                   </Text>
-                  {req.client_name ? (
+                  {(req.agency_organization_name ?? req.client_organization_name ?? req.client_name) ? (
                     <Text style={{ ...typography.body, fontSize: 12, color: colors.textPrimary, fontWeight: '600', marginBottom: 2 }}>
-                      {req.client_name}
+                      {req.agency_organization_name ?? req.client_organization_name ?? req.client_name}
                     </Text>
                   ) : null}
                   <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: req.job_description ? 2 : spacing.sm }}>
@@ -1283,7 +1283,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                     {o.requestType === 'casting' ? uiCopy.dashboard.threadContextCasting : uiCopy.dashboard.threadContextOption} · {o.finalStatus === 'job_confirmed' ? uiCopy.dashboard.optionRequestStatusJobConfirmed : uiCopy.dashboard.optionRequestStatusConfirmed}
                   </Text>
                   <Text style={{ ...typography.body, fontSize: 12, color: colors.textPrimary, fontWeight: '600', marginBottom: 1 }}>
-                    {o.clientName}
+                    {o.agencyOrganizationName ?? o.clientOrganizationName ?? o.clientName}
                   </Text>
                   <Text style={st.metaText}>
                     {formatDateWithOptionalTimeRange(o.date, o.startTime, o.endTime)}
@@ -1320,7 +1320,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                   <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary }}>
                     {o.requestType === 'casting' ? uiCopy.dashboard.threadContextCasting : uiCopy.dashboard.threadContextOption}
                   </Text>
-                  <Text style={{ ...typography.body, color: colors.textPrimary, fontWeight: '600' }}>{o.clientName}</Text>
+                  <Text style={{ ...typography.body, color: colors.textPrimary, fontWeight: '600' }}>{o.agencyOrganizationName ?? o.clientOrganizationName ?? o.clientName}</Text>
                   <Text style={st.metaText}>{formatDateWithOptionalTimeRange(o.date, o.startTime, o.endTime)}</Text>
                   {o.jobDescription ? (
                     <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, fontStyle: 'italic', marginTop: 2 }} numberOfLines={2}>
@@ -1432,9 +1432,9 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                   if (!r) return null;
                   return (
                     <View style={{ borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, paddingTop: 6 }}>
-                      {r.clientName && r.clientName !== 'Client' ? (
+                      {(r.agencyOrganizationName ?? r.clientOrganizationName ?? r.clientName) && (r.agencyOrganizationName ?? r.clientOrganizationName ?? r.clientName) !== 'Client' ? (
                         <Text style={{ ...typography.body, fontSize: 11, color: colors.textPrimary, fontWeight: '600' }} numberOfLines={1}>
-                          {r.clientName}
+                          {r.agencyOrganizationName ?? r.clientOrganizationName ?? r.clientName}
                         </Text>
                       ) : null}
                       <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary }}>

@@ -102,6 +102,7 @@ export function needsAgencyActionForOption(item: AgencyCalendarItem): boolean {
     agencyCounterPrice: opt.agency_counter_price,
     proposedPrice: opt.proposed_price,
     hasConflictWarning: false,
+    isAgencyOnly: opt.is_agency_only ?? false,
   });
   return attentionHeaderLabelFromSignals(sig, 'agency') !== null;
 }
