@@ -28,6 +28,8 @@ export type CalendarProjectionLabels = {
   awaitingModel: string;
   /** Client must confirm job promotion (approval attention B). */
   awaitingClientJob: string;
+  /** Agency-only flow: agency must confirm job (no client party). */
+  awaitingAgencyJob?: string;
   yourConfirmationNeeded: string;
 };
 
@@ -132,7 +134,7 @@ export function getCalendarProjectionBadge(
 
   if (appr === 'waiting_for_agency_to_finalize_job') {
     return {
-      label: labels.awaitingClientJob,
+      label: labels.awaitingAgencyJob ?? labels.awaitingClientJob,
       backgroundColor: CLIENT_JOB_BADGE_BG,
       textColor,
     };

@@ -1208,9 +1208,8 @@ export async function agencyConfirmJobAgencyOnlyStore(threadId: string): Promise
       }
     }
 
-    // The RPC already inserts the system message in DB via insert_option_request_system_message.
-    // Push a matching entry to the local cache so the message appears immediately in the UI
-    // without requiring a reload (parity with clientConfirmJobStore).
+    // System message emitted from the store (parity with clientConfirmJobStore).
+    // The RPC handles only the UPDATE; message creation is the store's responsibility.
     const sysMsg = await addOptionSystemMessage(req.id, 'job_confirmed_by_agency');
     if (sysMsg) {
       messagesCache.push({

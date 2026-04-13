@@ -287,6 +287,8 @@ export const uiCopy = {
       awaitingModel: 'Awaiting model',
       /** Client must confirm job (approval phase; not raw price state). */
       awaitingClientJob: 'Job (client confirm)',
+      /** Agency-only flow: agency must confirm job (no client party). */
+      awaitingAgencyJob: 'Job (agency confirm)',
       /** Model-facing grid/list — same state, different copy. */
       yourConfirmationNeeded: 'Your confirmation needed',
     },
