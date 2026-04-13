@@ -16,7 +16,10 @@ import {
   agencyStartRecruitingChatRpc,
   formatRecruitingChatRpcError,
 } from '../services/recruitingChatSupabase';
-import { updateApplicationRecruitingThread, fetchApplicationById } from '../services/applicationsSupabase';
+import {
+  updateApplicationRecruitingThread,
+  fetchApplicationById,
+} from '../services/applicationsSupabase';
 import { supabase } from '../../lib/supabase';
 import { guardUploadSession } from '../services/gdprComplianceSupabase';
 import {
@@ -57,9 +60,7 @@ function notify() {
 async function ensureHydrated() {
   if (hydrated) return;
   hydrated = true;
-  const threads = storeAgencyId
-    ? await fetchThreadsForAgency(storeAgencyId)
-    : await fetchThreads();
+  const threads = storeAgencyId ? await fetchThreadsForAgency(storeAgencyId) : await fetchThreads();
   threadsCache = threads.map((t) => ({
     id: t.id,
     applicationId: t.application_id,
@@ -116,7 +117,10 @@ export function createRecruitingThread(applicationId: string, modelName: string)
       // Service returned null (DB error / permissions). Inverse-operation rollback:
       // remove the optimistically-added temp entry so the UI stays consistent.
       threadsCache = threadsCache.filter((t) => t.id !== tempId);
-      console.error('createRecruitingThread: createThreadInDb returned null — rolled back temp entry', tempId);
+      console.error(
+        'createRecruitingThread: createThreadInDb returned null — rolled back temp entry',
+        tempId,
+      );
       notify();
     }
   });
@@ -133,9 +137,11 @@ export type TryStartRecruitingChatResult =
 export async function tryStartRecruitingChat(
   applicationId: string,
   modelName: string,
-  agencyId?: string | null
+  agencyId?: string | null,
 ): Promise<TryStartRecruitingChatResult> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user?.id) {
     console.error('tryStartRecruitingChat: no authenticated user');
     return { ok: false, message: 'Please sign in to start the chat.' };
@@ -171,7 +177,11 @@ export async function tryStartRecruitingChat(
 
   const row = await fetchApplicationById(applicationId);
   if (!row || row.status !== 'pending') {
-    console.error('tryStartRecruitingChat: application missing or not pending', applicationId, row?.status);
+    console.error(
+      'tryStartRecruitingChat: application missing or not pending',
+      applicationId,
+      row?.status,
+    );
     if (!row) {
       return {
         ok: false,
@@ -220,7 +230,11 @@ export async function tryStartRecruitingChat(
       }
       return { ok: true, threadId: orphanId };
     }
-    console.error('tryStartRecruitingChat: could not link orphan thread to application', applicationId, orphanId);
+    console.error(
+      'tryStartRecruitingChat: could not link orphan thread to application',
+      applicationId,
+      orphanId,
+    );
   }
 
   if (agencyId) {
@@ -248,7 +262,7 @@ export async function tryStartRecruitingChat(
     console.error(
       'tryStartRecruitingChat: updateApplicationRecruitingThread failed after insert',
       applicationId,
-      realId
+      realId,
     );
     return {
       ok: false,
@@ -270,7 +284,7 @@ export async function tryStartRecruitingChat(
 export async function startRecruitingChat(
   applicationId: string,
   modelName: string,
-  agencyId?: string | null
+  agencyId?: string | null,
 ): Promise<string | null> {
   const r = await tryStartRecruitingChat(applicationId, modelName, agencyId);
   return r.ok ? r.threadId : null;
@@ -279,7 +293,7 @@ export async function startRecruitingChat(
 /** Threads für eine Agentur (Booking Chats) – aus Supabase. */
 export async function getRecruitingThreadsForAgency(
   agencyId: string,
-  options?: { createdByUserId?: string | null }
+  options?: { createdByUserId?: string | null },
 ): Promise<RecruitingThread[]> {
   const threads = await fetchThreadsForAgency(agencyId, options);
   return threads.map((t) => ({
@@ -292,7 +306,9 @@ export async function getRecruitingThreadsForAgency(
 }
 
 export function getRecruitingMessages(threadId: string): RecruitingMessage[] {
-  return messagesCache.filter((m) => m.threadId === threadId).sort((a, b) => a.createdAt - b.createdAt);
+  return messagesCache
+    .filter((m) => m.threadId === threadId)
+    .sort((a, b) => a.createdAt - b.createdAt);
 }
 
 export async function loadMessagesForThread(threadId: string): Promise<RecruitingMessage[]> {
@@ -320,7 +336,7 @@ export function addRecruitingMessage(
   fileType?: string | null,
 ): void {
   const tempMsg: RecruitingMessage = {
-    id: `rec-msg-${Date.now()}`,
+    id: `rec-msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     threadId,
     from,
     text,
@@ -350,7 +366,10 @@ export function addRecruitingMessage(
       // Service returned null (DB error / permissions). Inverse-operation rollback:
       // remove the optimistically-added temp message so the UI stays consistent.
       messagesCache = messagesCache.filter((m) => m.id !== tempMsg.id);
-      console.error('addRecruitingMessage: addMessageInDb returned null — rolled back temp message', tempMsg.id);
+      console.error(
+        'addRecruitingMessage: addMessageInDb returned null — rolled back temp message',
+        tempMsg.id,
+      );
       notify();
     }
   });
@@ -380,14 +399,18 @@ export async function addRecruitingMessageWithFile(
   const sessionKey = `recruiting-chat:${threadId}`;
   const guard = await guardUploadSession(auth.user.id, sessionKey);
   if (!guard.ok) {
-    console.warn('addRecruitingMessageWithFile: image rights confirmation required before upload', sessionKey);
+    console.warn(
+      'addRecruitingMessageWithFile: image rights confirmation required before upload',
+      sessionKey,
+    );
     return { ok: false, reason: 'image_rights_not_confirmed' };
   }
 
   const path = await uploadRecruitingChatFile(threadId, file, fileName);
   if (!path) return { ok: false, reason: 'upload_failed' };
-  const isHeic = /\.(heic|heif)$/i.test(fileName) || /^image\/heic/i.test((file as File).type ?? '');
-  const mimeType = isHeic ? 'image/jpeg' : ((file as File).type || 'application/octet-stream');
+  const isHeic =
+    /\.(heic|heif)$/i.test(fileName) || /^image\/heic/i.test((file as File).type ?? '');
+  const mimeType = isHeic ? 'image/jpeg' : (file as File).type || 'application/octet-stream';
   addRecruitingMessage(threadId, from, caption ?? '', path, mimeType);
   return { ok: true };
 }
@@ -399,13 +422,18 @@ function loadModelThreadIds(): string[] {
   try {
     const raw = window.localStorage.getItem(STORAGE_MODEL_THREAD_IDS);
     return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 
 function saveModelThreadIds(ids: string[]) {
   if (typeof window !== 'undefined') {
-    try { window.localStorage.setItem(STORAGE_MODEL_THREAD_IDS, JSON.stringify(ids)); }
-    catch { /* ignore */ }
+    try {
+      window.localStorage.setItem(STORAGE_MODEL_THREAD_IDS, JSON.stringify(ids));
+    } catch {
+      /* ignore */
+    }
   }
 }
 
@@ -426,7 +454,11 @@ export function resetRecruitingChatsStore(): void {
   messagesCache = [];
   hydrated = false;
   if (typeof window !== 'undefined') {
-    try { window.localStorage.removeItem(STORAGE_MODEL_THREAD_IDS); } catch { /* ignore */ }
+    try {
+      window.localStorage.removeItem(STORAGE_MODEL_THREAD_IDS);
+    } catch {
+      /* ignore */
+    }
   }
   notify();
 }

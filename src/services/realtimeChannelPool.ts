@@ -86,9 +86,16 @@ function evictOne(): void {
   // Notify active subscribers so they can react (re-subscribe, show UI indicator).
   // Only fired when the evicted channel still has active listeners (refCount > 0).
   if (entry.refCount > 0) {
+    console.warn(
+      `[realtimeChannelPool] evicting active channel "${target}" (refCount=${entry.refCount}) — subscribers should re-subscribe`,
+    );
     const evictedPayload: ChannelEvictedPayload = { type: 'CHANNEL_EVICTED', key: target };
     for (const cb of entry.callbacks) {
-      try { cb(evictedPayload); } catch { /* subscriber errors must not break eviction */ }
+      try {
+        cb(evictedPayload);
+      } catch {
+        /* subscriber errors must not break eviction */
+      }
     }
   }
 

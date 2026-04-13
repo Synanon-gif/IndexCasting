@@ -129,6 +129,7 @@ import {
   purgeOptionThreadFromStore,
   refreshOptionRequestInCache,
   loadMessagesForThread,
+  loadOlderMessagesForThread,
   agencyConfirmAvailabilityStore,
   agencyAcceptClientPriceStore,
   agencyCounterOfferStore,
@@ -137,6 +138,7 @@ import {
   clientConfirmJobStore,
   type ChatStatus,
 } from '../store/optionRequests';
+import { subscribeToOptionMessages } from '../services/optionRequestsSupabase';
 import {
   ensureClientAgencyChat,
   listB2BConversationsForOrganization,
@@ -5046,6 +5048,16 @@ const MessagesView: React.FC<MessagesViewProps> = ({
     }
   }, [selectedThreadId]);
 
+  useEffect(() => {
+    const req = selectedThreadId ? getRequestByThreadId(selectedThreadId) : undefined;
+    if (!req) return;
+    const unsub = subscribeToOptionMessages(req.id, () => {
+      loadMessagesForThread(selectedThreadId!);
+      refreshOptionRequestInCache(selectedThreadId!);
+    });
+    return unsub;
+  }, [selectedThreadId]);
+
   // Resolve agency display name for the open option thread (client side only).
   // isAgency is always false here (MessagesView is only used by clients in ClientWebApp).
   useEffect(() => {
@@ -6003,6 +6015,16 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                     ) : null}
                   </>
                 ) : null}
+                {filteredMessages.length >= 50 && selectedThreadId && (
+                  <TouchableOpacity
+                    onPress={() => void loadOlderMessagesForThread(selectedThreadId)}
+                    style={{ alignSelf: 'center', paddingVertical: spacing.xs }}
+                  >
+                    <Text style={{ color: colors.accentBrown, fontSize: 13 }}>
+                      {uiCopy.b2bChat.loadOlderMessages}
+                    </Text>
+                  </TouchableOpacity>
+                )}
                 {filteredMessages.map((msg, i) => {
                   const prev = i > 0 ? filteredMessages[i - 1] : null;
                   const compact = !!(prev && prev.from === msg.from && msg.from !== 'system');

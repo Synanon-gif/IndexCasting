@@ -156,7 +156,9 @@ export async function getOptionRequests(
     return [];
   }
   if (orgId === undefined) {
-    console.warn('[getOptionRequests] called without orgId — relying on RLS only (no defense-in-depth org filter)');
+    console.warn(
+      '[getOptionRequests] called without orgId — relying on RLS only (no defense-in-depth org filter)',
+    );
   }
   try {
     let q = supabase
@@ -167,7 +169,10 @@ export async function getOptionRequests(
     if (orgId) q = q.eq('organization_id', orgId);
     if (opts?.afterCreatedAt) q = q.lt('created_at', opts.afterCreatedAt);
     const { data, error } = await q;
-    if (error) { console.error('getOptionRequests error:', error); return []; }
+    if (error) {
+      console.error('getOptionRequests error:', error);
+      return [];
+    }
     return (data ?? []) as SupabaseOptionRequest[];
   } catch (e) {
     console.error('getOptionRequests exception:', e);
@@ -181,7 +186,10 @@ export async function getOptionRequestById(id: string): Promise<SupabaseOptionRe
     .select(OPTION_REQUEST_SELECT)
     .eq('id', id)
     .maybeSingle();
-  if (error) { console.error('getOptionRequestById error:', error); return null; }
+  if (error) {
+    console.error('getOptionRequestById error:', error);
+    return null;
+  }
   return data as SupabaseOptionRequest | null;
 }
 
@@ -198,7 +206,10 @@ export async function getOptionRequestsByProject(
       .limit(opts?.limit ?? 100);
     if (opts?.afterCreatedAt) q = q.lt('created_at', opts.afterCreatedAt);
     const { data, error } = await q;
-    if (error) { console.error('getOptionRequestsByProject error:', error); return []; }
+    if (error) {
+      console.error('getOptionRequestsByProject error:', error);
+      return [];
+    }
     return (data ?? []) as SupabaseOptionRequest[];
   } catch (e) {
     console.error('getOptionRequestsByProject exception:', e);
@@ -222,7 +233,10 @@ export async function getOptionRequestsForCurrentClient(
     }
     if (opts?.afterCreatedAt) q = q.lt('created_at', opts.afterCreatedAt);
     const { data, error } = await q;
-    if (error) { console.error('getOptionRequestsForCurrentClient error:', error); return []; }
+    if (error) {
+      console.error('getOptionRequestsForCurrentClient error:', error);
+      return [];
+    }
     return (data ?? []) as SupabaseOptionRequest[];
   } catch (e) {
     console.error('getOptionRequestsForCurrentClient exception:', e);
@@ -231,7 +245,9 @@ export async function getOptionRequestsForCurrentClient(
 }
 
 /** @deprecated Parameter wird ignoriert; nutzt RLS wie getOptionRequestsForCurrentClient. */
-export async function getOptionRequestsForClient(_clientId: string): Promise<SupabaseOptionRequest[]> {
+export async function getOptionRequestsForClient(
+  _clientId: string,
+): Promise<SupabaseOptionRequest[]> {
   return getOptionRequestsForCurrentClient();
 }
 
@@ -256,7 +272,10 @@ export async function getOptionRequestsForAgency(
 
     if (opts?.afterCreatedAt) q = q.lt('created_at', opts.afterCreatedAt);
     const { data, error } = await q;
-    if (error) { console.error('getOptionRequestsForAgency error:', error); return []; }
+    if (error) {
+      console.error('getOptionRequestsForAgency error:', error);
+      return [];
+    }
     return (data ?? []) as SupabaseOptionRequest[];
   } catch (e) {
     console.error('getOptionRequestsForAgency exception:', e);
@@ -271,11 +290,14 @@ export async function resolveAgencyOrganizationIdForOptionRequest(
 ): Promise<string | null> {
   if (!modelId?.trim() || !agencyId?.trim()) return null;
   try {
-    const { data, error } = await supabase.rpc('resolve_agency_organization_id_for_option_request', {
-      p_model_id: modelId.trim(),
-      p_agency_id: agencyId.trim(),
-      p_country_code: countryCode?.trim() ? countryCode.trim() : null,
-    });
+    const { data, error } = await supabase.rpc(
+      'resolve_agency_organization_id_for_option_request',
+      {
+        p_model_id: modelId.trim(),
+        p_agency_id: agencyId.trim(),
+        p_country_code: countryCode?.trim() ? countryCode.trim() : null,
+      },
+    );
     if (error) {
       const e = error as { code?: string; message?: string; details?: string; hint?: string };
       console.error('[resolveAgencyOrganizationIdForOptionRequest]', {
@@ -365,7 +387,9 @@ export async function insertOptionRequest(req: {
     organization_id: orgId,
     agency_organization_id: agencyOrgId,
     client_organization_id: clientOrgId,
-    client_organization_name: req.client_organization_name ? sanitizeHtml(normalizeInput(req.client_organization_name)) : null,
+    client_organization_name: req.client_organization_name
+      ? sanitizeHtml(normalizeInput(req.client_organization_name))
+      : null,
     created_by: req.created_by ?? null,
     model_account_linked: modelAccountLinked,
   };
@@ -374,7 +398,10 @@ export async function insertOptionRequest(req: {
     insertKeys: Object.keys(insertRow).sort(),
     sendsModelApproval: Object.prototype.hasOwnProperty.call(insertRow, 'model_approval'),
     sendsModelApprovedAt: Object.prototype.hasOwnProperty.call(insertRow, 'model_approved_at'),
-    sendsModelAccountLinked: Object.prototype.hasOwnProperty.call(insertRow, 'model_account_linked'),
+    sendsModelAccountLinked: Object.prototype.hasOwnProperty.call(
+      insertRow,
+      'model_account_linked',
+    ),
     sendsStatus: Object.prototype.hasOwnProperty.call(insertRow, 'status'),
     sendsFinalStatus: Object.prototype.hasOwnProperty.call(insertRow, 'final_status'),
     sendsClientPriceStatus: Object.prototype.hasOwnProperty.call(insertRow, 'client_price_status'),
@@ -443,7 +470,11 @@ export async function insertOptionRequest(req: {
       inserted.agency_organization_id,
     );
     if (!agencyOrgId) {
-      console.error('[notifications] insertOptionRequest: agency org not found for agency_id', inserted.agency_id, '— notification skipped.');
+      console.error(
+        '[notifications] insertOptionRequest: agency org not found for agency_id',
+        inserted.agency_id,
+        '— notification skipped.',
+      );
       return;
     }
     await createNotification({
@@ -461,13 +492,10 @@ export async function insertOptionRequest(req: {
 export async function updateOptionRequestStatus(
   id: string,
   status: 'in_negotiation' | 'confirmed' | 'rejected',
-  fromStatus?: 'pending' | 'in_negotiation' | 'confirmed' | 'rejected'
+  fromStatus?: 'pending' | 'in_negotiation' | 'confirmed' | 'rejected',
 ): Promise<boolean> {
   try {
-    let q = supabase
-      .from('option_requests')
-      .update({ status })
-      .eq('id', id);
+    let q = supabase.from('option_requests').update({ status }).eq('id', id);
     if (fromStatus) {
       // Optimistic concurrency guard: the update only succeeds if the row is
       // still in the expected prior state, preventing invalid state skips
@@ -480,13 +508,19 @@ export async function updateOptionRequestStatus(
       return false;
     }
     if (!data?.id) {
-      console.warn('updateOptionRequestStatus: no row updated — concurrent state change or wrong fromStatus', { id, fromStatus, targetStatus: status });
+      console.warn(
+        'updateOptionRequestStatus: no row updated — concurrent state change or wrong fromStatus',
+        { id, fromStatus, targetStatus: status },
+      );
       return false;
     }
     const orgId = (data as { id: string; organization_id: string | null }).organization_id;
-    const auditAction = status === 'confirmed' ? 'option_confirmed'
-      : status === 'rejected' ? 'option_rejected'
-      : 'option_price_proposed';
+    const auditAction =
+      status === 'confirmed'
+        ? 'option_confirmed'
+        : status === 'rejected'
+          ? 'option_rejected'
+          : 'option_price_proposed';
     logAction(orgId, 'updateOptionRequestStatus', {
       type: 'option',
       action: auditAction,
@@ -513,7 +547,7 @@ export async function updateOptionRequestStatus(
  */
 export async function updateOptionRequestSchedule(
   id: string,
-  fields: { requested_date: string; start_time?: string | null; end_time?: string | null }
+  fields: { requested_date: string; start_time?: string | null; end_time?: string | null },
 ): Promise<boolean> {
   try {
     const dateNorm = fields.requested_date.trim();
@@ -522,10 +556,10 @@ export async function updateOptionRequestSchedule(
       return false;
     }
     const { data, error } = await supabase.rpc('agency_update_option_schedule', {
-      p_option_id:  id,
-      p_date:       dateNorm,
+      p_option_id: id,
+      p_date: dateNorm,
       p_start_time: fields.start_time ?? null,
-      p_end_time:   fields.end_time ?? null,
+      p_end_time: fields.end_time ?? null,
     });
     if (error) {
       console.error('updateOptionRequestSchedule RPC error:', error);
@@ -546,7 +580,7 @@ export async function modelUpdateOptionSchedule(
   optionId: string,
   date: string,
   startTime?: string | null,
-  endTime?: string | null
+  endTime?: string | null,
 ): Promise<boolean> {
   try {
     const d = date.trim();
@@ -561,7 +595,10 @@ export async function modelUpdateOptionSchedule(
       console.error('modelUpdateOptionSchedule error:', error);
       return false;
     }
-    console.warn('[modelUpdateOptionSchedule] org context unavailable — audit log skipped for', optionId);
+    console.warn(
+      '[modelUpdateOptionSchedule] org context unavailable — audit log skipped for',
+      optionId,
+    );
     return true;
   } catch (e) {
     console.error('modelUpdateOptionSchedule exception:', e);
@@ -574,10 +611,7 @@ export async function modelUpdateOptionSchedule(
  * Guard: only allowed while still in_negotiation — prevents counter-offers on
  * already-confirmed or rejected requests (e.g. from a stale UI screen).
  */
-export async function setAgencyCounterOffer(
-  id: string,
-  counterPrice: number
-): Promise<boolean> {
+export async function setAgencyCounterOffer(id: string, counterPrice: number): Promise<boolean> {
   try {
     // Axis 1 only: counter-offer is a PRICE action.
     // final_status (Axis 2 — availability) MUST NOT be touched here.
@@ -593,13 +627,19 @@ export async function setAgencyCounterOffer(
       .eq('status', 'in_negotiation')
       .select('id, agency_id, agency_organization_id')
       .maybeSingle();
-    if (error) { console.error('setAgencyCounterOffer error:', error); return false; }
+    if (error) {
+      console.error('setAgencyCounterOffer error:', error);
+      return false;
+    }
     if (!data?.id) {
       console.warn('setAgencyCounterOffer: no row updated — request not in_negotiation', id);
       return false;
     }
     const row = data as { agency_id: string; agency_organization_id: string | null };
-    const auditOrgId = await resolveAgencyOrgIdForOptionNotification(row.agency_id, row.agency_organization_id);
+    const auditOrgId = await resolveAgencyOrgIdForOptionNotification(
+      row.agency_id,
+      row.agency_organization_id,
+    );
     if (auditOrgId) {
       logAction(auditOrgId, 'setAgencyCounterOffer', {
         type: 'option',
@@ -633,14 +673,24 @@ export async function agencyAcceptClientPrice(id: string): Promise<boolean> {
     const { data, error } = await supabase.rpc('agency_confirm_client_price', {
       p_request_id: id,
     });
-    if (error) { console.error('agencyAcceptClientPrice RPC error:', error); return false; }
+    if (error) {
+      console.error('agencyAcceptClientPrice RPC error:', error);
+      return false;
+    }
     if (!data) {
-      console.warn('agencyAcceptClientPrice: RPC returned false — request not in expected state or caller not agency member', id);
+      console.warn(
+        'agencyAcceptClientPrice: RPC returned false — request not in expected state or caller not agency member',
+        id,
+      );
       return false;
     }
     void (async () => {
       try {
-        const { data: row } = await supabase.from('option_requests').select('organization_id').eq('id', id).maybeSingle();
+        const { data: row } = await supabase
+          .from('option_requests')
+          .select('organization_id')
+          .eq('id', id)
+          .maybeSingle();
         const orgId = (row as { organization_id: string | null } | null)?.organization_id;
         logAction(orgId, 'agencyAcceptClientPrice', {
           type: 'option',
@@ -674,9 +724,15 @@ export async function agencyRejectClientPrice(id: string): Promise<boolean> {
       .eq('client_price_status', 'pending')
       .select('id, organization_id')
       .maybeSingle();
-    if (error) { console.error('agencyRejectClientPrice error:', error); return false; }
+    if (error) {
+      console.error('agencyRejectClientPrice error:', error);
+      return false;
+    }
     if (!data?.id) {
-      console.warn('agencyRejectClientPrice: no row updated — offer not pending or request not in_negotiation', id);
+      console.warn(
+        'agencyRejectClientPrice: no row updated — offer not pending or request not in_negotiation',
+        id,
+      );
       return false;
     }
     const orgIdAR = (data as { id: string; organization_id: string | null }).organization_id;
@@ -710,14 +766,24 @@ export async function clientAcceptCounterPrice(id: string): Promise<boolean> {
     const { data, error } = await supabase.rpc('client_accept_counter_offer', {
       p_request_id: id,
     });
-    if (error) { console.error('clientAcceptCounterPrice RPC error:', error); return false; }
+    if (error) {
+      console.error('clientAcceptCounterPrice RPC error:', error);
+      return false;
+    }
     if (!data) {
-      console.warn('clientAcceptCounterPrice: RPC returned false — counter-offer no longer pending or caller not client', id);
+      console.warn(
+        'clientAcceptCounterPrice: RPC returned false — counter-offer no longer pending or caller not client',
+        id,
+      );
       return false;
     }
     void (async () => {
       try {
-        const { data: row } = await supabase.from('option_requests').select('organization_id').eq('id', id).maybeSingle();
+        const { data: row } = await supabase
+          .from('option_requests')
+          .select('organization_id')
+          .eq('id', id)
+          .maybeSingle();
         const orgId = (row as { organization_id: string | null } | null)?.organization_id;
         logAction(orgId, 'clientAcceptCounterPrice', {
           type: 'option',
@@ -766,7 +832,10 @@ export async function clientRejectCounterOfferOnSupabase(id: string): Promise<bo
           .select('organization_id, client_organization_id')
           .eq('id', id)
           .maybeSingle();
-        const r = row as { organization_id: string | null; client_organization_id: string | null } | null;
+        const r = row as {
+          organization_id: string | null;
+          client_organization_id: string | null;
+        } | null;
         const orgIdRC = r?.client_organization_id ?? r?.organization_id ?? null;
         logAction(orgIdRC, 'clientRejectCounterOfferOnSupabase', {
           type: 'option',
@@ -831,7 +900,12 @@ export async function clientConfirmJobOnSupabase(id: string): Promise<boolean> {
       type: 'option',
       action: 'option_confirmed',
       entityId: id,
-      newData: { phase: 'job_confirmed', final_status: 'job_confirmed', agency_id: up.agency_id, model_id: up.model_id },
+      newData: {
+        phase: 'job_confirmed',
+        final_status: 'job_confirmed',
+        agency_id: up.agency_id,
+        model_id: up.model_id,
+      },
       oldData: { final_status: 'option_confirmed' },
     });
 
@@ -888,7 +962,10 @@ export async function getOptionMessages(
     }
 
     const { data, error } = await q;
-    if (error) { console.error('getOptionMessages error:', error); return []; }
+    if (error) {
+      console.error('getOptionMessages error:', error);
+      return [];
+    }
     return ((data ?? []) as SupabaseOptionMessage[]).reverse();
   } catch (e) {
     console.error('getOptionMessages exception:', e);
@@ -899,17 +976,26 @@ export async function getOptionMessages(
 export async function addOptionMessage(
   requestId: string,
   fromRole: 'client' | 'agency' | 'model',
-  text: string
+  text: string,
 ): Promise<SupabaseOptionMessage | null> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
     // Normalize, validate, and sanitize text — same pipeline as messengerSupabase.sendMessage
     const normalized = normalizeInput(text);
-    const textCheck = validateText(normalized, { maxLength: MESSAGE_MAX_LENGTH, allowEmpty: false });
+    const textCheck = validateText(normalized, {
+      maxLength: MESSAGE_MAX_LENGTH,
+      allowEmpty: false,
+    });
     if (!textCheck.ok) {
       console.warn('addOptionMessage: text validation failed', textCheck.error);
-      void logSecurityEvent({ type: 'large_payload', userId: user?.id ?? null, metadata: { service: 'optionRequestsSupabase', field: 'text' } });
+      void logSecurityEvent({
+        type: 'large_payload',
+        userId: user?.id ?? null,
+        metadata: { service: 'optionRequestsSupabase', field: 'text' },
+      });
       return null;
     }
     // Reject messages containing unsafe URLs (mirrors messengerSupabase.sendMessage)
@@ -917,7 +1003,11 @@ export async function addOptionMessage(
     const safeUrls = extractSafeUrls(normalized);
     if (allUrls.length > safeUrls.length) {
       console.warn('addOptionMessage: message contains unsafe URLs');
-      void logSecurityEvent({ type: 'invalid_url', userId: user?.id ?? null, metadata: { service: 'optionRequestsSupabase' } });
+      void logSecurityEvent({
+        type: 'invalid_url',
+        userId: user?.id ?? null,
+        metadata: { service: 'optionRequestsSupabase' },
+      });
       return null;
     }
     const safeText = sanitizeHtml(normalized);
@@ -967,7 +1057,11 @@ export async function addOptionMessage(
           req.agency_organization_id,
         );
         if (!agencyOrgId) {
-          console.error('[notifications] addOptionMessage: agency org not found for agency_id', req.agency_id, '— notification skipped.');
+          console.error(
+            '[notifications] addOptionMessage: agency org not found for agency_id',
+            req.agency_id,
+            '— notification skipped.',
+          );
         } else {
           await createNotification({
             organization_id: agencyOrgId,
@@ -1002,12 +1096,15 @@ export async function addOptionSystemMessage(
       return null;
     }
 
-    const { data: newId, error: rpcErr } = await supabase.rpc('insert_option_request_system_message', {
-      p_option_request_id: requestId,
-      p_kind: kind,
-      p_price: kind === 'agency_counter_offer' ? opts?.price ?? null : null,
-      p_currency: kind === 'agency_counter_offer' ? opts?.currency?.trim() ?? null : null,
-    });
+    const { data: newId, error: rpcErr } = await supabase.rpc(
+      'insert_option_request_system_message',
+      {
+        p_option_request_id: requestId,
+        p_kind: kind,
+        p_price: kind === 'agency_counter_offer' ? (opts?.price ?? null) : null,
+        p_currency: kind === 'agency_counter_offer' ? (opts?.currency?.trim() ?? null) : null,
+      },
+    );
 
     if (rpcErr) {
       console.error('addOptionSystemMessage RPC error:', rpcErr);
@@ -1090,12 +1187,15 @@ export async function addOptionSystemMessage(
 
 export async function updateModelApproval(
   id: string,
-  approval: 'approved' | 'rejected'
+  approval: 'approved' | 'rejected',
 ): Promise<boolean> {
   try {
     // Auth-Guard: only the model linked to this request may approve/reject.
     // Fetch the request and verify the current user is the model's linked user.
-    const { data: { user }, error: authErr } = await supabase.auth.getUser();
+    const {
+      data: { user },
+      error: authErr,
+    } = await supabase.auth.getUser();
     if (authErr || !user) {
       console.error('updateModelApproval: no authenticated user', authErr);
       return false;
@@ -1144,9 +1244,15 @@ export async function updateModelApproval(
       .eq('model_approval', 'pending')
       .select('id, organization_id');
 
-    if (error) { console.error('updateModelApproval error:', error); return false; }
+    if (error) {
+      console.error('updateModelApproval error:', error);
+      return false;
+    }
     if (!updatedRows || updatedRows.length === 0) {
-      console.warn('updateModelApproval: no row updated — already approved/rejected or concurrent request', { id, approval });
+      console.warn(
+        'updateModelApproval: no row updated — already approved/rejected or concurrent request',
+        { id, approval },
+      );
       return false;
     }
     const row = updatedRows[0] as { id: string; organization_id: string | null };
@@ -1175,7 +1281,10 @@ export async function getOptionRequestsForModel(
       .eq('model_id', modelId)
       .order('created_at', { ascending: false })
       .limit(limit);
-    if (error) { console.error('getOptionRequestsForModel error:', error); return []; }
+    if (error) {
+      console.error('getOptionRequestsForModel error:', error);
+      return [];
+    }
     return (data ?? []) as SupabaseOptionRequestModelSafe[];
   } catch (e) {
     console.error('getOptionRequestsForModel exception:', e);
@@ -1191,7 +1300,10 @@ export async function getOptionDocuments(requestId: string): Promise<SupabaseOpt
       .eq('option_request_id', requestId)
       .order('created_at', { ascending: true })
       .limit(100);
-    if (error) { console.error('getOptionDocuments error:', error); return []; }
+    if (error) {
+      console.error('getOptionDocuments error:', error);
+      return [];
+    }
     return (data ?? []) as SupabaseOptionDocument[];
   } catch (e) {
     console.error('getOptionDocuments exception:', e);
@@ -1209,7 +1321,9 @@ export async function getOptionDocuments(requestId: string): Promise<SupabaseOpt
  * Backward-compatible: if file_url is already a full https:// URL (legacy rows
  * created before the fix), it is returned as-is.
  */
-export async function resolveOptionDocumentUrl(doc: SupabaseOptionDocument): Promise<string | null> {
+export async function resolveOptionDocumentUrl(
+  doc: SupabaseOptionDocument,
+): Promise<string | null> {
   try {
     if (doc.file_url.startsWith('http://') || doc.file_url.startsWith('https://')) {
       return doc.file_url;
@@ -1245,127 +1359,155 @@ export async function uploadOptionDocument(
   requestId: string,
   uploadedBy: string,
   file: File | Blob,
-  fileName: string
+  fileName: string,
 ): Promise<SupabaseOptionDocument | null> {
   try {
-  const { data: authUser } = await supabase.auth.getUser();
-  if (!authUser.user) {
-    console.error('uploadOptionDocument: not authenticated');
-    return null;
-  }
-  const sessionKey = `${OPTION_DOCUMENT_SESSION_KEY_PREFIX}${requestId}`;
-  const rights = await guardUploadSession(authUser.user.id, sessionKey);
-  if (!rights.ok) {
-    console.warn('uploadOptionDocument: image rights confirmation missing — call confirmImageRights first', sessionKey);
-    return null;
-  }
+    const { data: authUser } = await supabase.auth.getUser();
+    if (!authUser.user) {
+      console.error('uploadOptionDocument: not authenticated');
+      return null;
+    }
+    const sessionKey = `${OPTION_DOCUMENT_SESSION_KEY_PREFIX}${requestId}`;
+    const rights = await guardUploadSession(authUser.user.id, sessionKey);
+    if (!rights.ok) {
+      console.warn(
+        'uploadOptionDocument: image rights confirmation missing — call confirmImageRights first',
+        sessionKey,
+      );
+      return null;
+    }
 
-  const { file: prepared, conversionFailed } = await convertHeicToJpegWithStatus(file);
-  if (conversionFailed) {
-    console.warn('uploadOptionDocument: HEIC/HEIF conversion failed');
-    void logSecurityEvent({ type: 'file_rejected', metadata: { service: 'optionRequestsSupabase', fn: 'uploadOptionDocument', reason: 'heic_conversion_failed' } });
-    return null;
-  }
-  file = prepared;
+    const { file: prepared, conversionFailed } = await convertHeicToJpegWithStatus(file);
+    if (conversionFailed) {
+      console.warn('uploadOptionDocument: HEIC/HEIF conversion failed');
+      void logSecurityEvent({
+        type: 'file_rejected',
+        metadata: {
+          service: 'optionRequestsSupabase',
+          fn: 'uploadOptionDocument',
+          reason: 'heic_conversion_failed',
+        },
+      });
+      return null;
+    }
+    file = prepared;
 
-  const fileValidation = validateFile(file, CHAT_ALLOWED_MIME_TYPES);
-  if (!fileValidation.ok) {
-    console.error('uploadOptionDocument: file validation failed', fileValidation.error);
-    void logSecurityEvent({ type: 'file_rejected', metadata: { service: 'optionRequestsSupabase', fn: 'uploadOptionDocument', reason: 'mime' } });
-    return null;
-  }
+    const fileValidation = validateFile(file, CHAT_ALLOWED_MIME_TYPES);
+    if (!fileValidation.ok) {
+      console.error('uploadOptionDocument: file validation failed', fileValidation.error);
+      void logSecurityEvent({
+        type: 'file_rejected',
+        metadata: { service: 'optionRequestsSupabase', fn: 'uploadOptionDocument', reason: 'mime' },
+      });
+      return null;
+    }
 
-  const magicCheck = await checkMagicBytes(file);
-  if (!magicCheck.ok) {
-    console.error('uploadOptionDocument: magic bytes check failed', magicCheck.error);
-    void logSecurityEvent({ type: 'magic_bytes_fail', metadata: { service: 'optionRequestsSupabase', fn: 'uploadOptionDocument' } });
-    return null;
-  }
+    const magicCheck = await checkMagicBytes(file);
+    if (!magicCheck.ok) {
+      console.error('uploadOptionDocument: magic bytes check failed', magicCheck.error);
+      void logSecurityEvent({
+        type: 'magic_bytes_fail',
+        metadata: { service: 'optionRequestsSupabase', fn: 'uploadOptionDocument' },
+      });
+      return null;
+    }
 
-  const extCheck = checkExtensionConsistency(file);
-  if (!extCheck.ok) {
-    console.error('uploadOptionDocument: extension consistency check failed', extCheck.error);
-    void logSecurityEvent({ type: 'extension_mismatch', metadata: { service: 'optionRequestsSupabase', fn: 'uploadOptionDocument' } });
-    return null;
-  }
+    const extCheck = checkExtensionConsistency(file);
+    if (!extCheck.ok) {
+      console.error('uploadOptionDocument: extension consistency check failed', extCheck.error);
+      void logSecurityEvent({
+        type: 'extension_mismatch',
+        metadata: { service: 'optionRequestsSupabase', fn: 'uploadOptionDocument' },
+      });
+      return null;
+    }
 
-  const safeBaseName =
-    file instanceof File ? sanitizeUploadBaseName(file.name) : sanitizeUploadBaseName(fileName);
+    const safeBaseName =
+      file instanceof File ? sanitizeUploadBaseName(file.name) : sanitizeUploadBaseName(fileName);
 
-  const claimedSize = file instanceof File ? file.size : (file as Blob).size;
+    const claimedSize = file instanceof File ? file.size : (file as Blob).size;
 
-  // Agency storage limit check — non-agency users pass through automatically.
-  const storageCheck = await checkAndIncrementStorage(claimedSize);
-  if (!storageCheck.allowed) {
-    console.warn('uploadOptionDocument: storage limit reached', storageCheck);
-    return null;
-  }
+    // Agency storage limit check — non-agency users pass through automatically.
+    const storageCheck = await checkAndIncrementStorage(claimedSize);
+    if (!storageCheck.allowed) {
+      console.warn('uploadOptionDocument: storage limit reached', storageCheck);
+      return null;
+    }
 
-  const path = `options/${requestId}/${Date.now()}_${safeBaseName}`;
-  const { error: uploadError } = await supabase.storage
-    .from('chat-files')
-    .upload(path, file, {
+    const path = `options/${requestId}/${Date.now()}_${safeBaseName}`;
+    const { error: uploadError } = await supabase.storage.from('chat-files').upload(path, file, {
       contentType: file.type || 'application/octet-stream',
       upsert: false,
     });
-  if (uploadError) {
-    console.error('uploadOptionDocument storage error:', uploadError);
-    await decrementStorage(claimedSize);
-    return null;
-  }
+    if (uploadError) {
+      console.error('uploadOptionDocument storage error:', uploadError);
+      await decrementStorage(claimedSize);
+      return null;
+    }
 
-  // VULN-M3 fix: store the storage PATH (not a pre-generated signed URL) in
-  // file_url. Signed URLs expire after 1 hour, making persisted URLs useless.
-  // Use resolveOptionDocumentUrl() at display time to get a fresh signed URL.
-  const { data, error } = await supabase
-    .from('option_documents')
-    .insert({
-      option_request_id: requestId,
-      uploaded_by: uploadedBy,
-      file_name: safeBaseName,
-      file_url: path,
-      file_type: safeBaseName.split('.').pop() || null,
-    })
-    .select()
-    .single();
-  if (error) { console.error('uploadOptionDocument error:', error); return null; }
-  const doc = data as SupabaseOptionDocument;
-  const { data: reqRow, error: reqError } = await supabase
-    .from('option_requests')
-    .select('client_organization_id, organization_id, agency_organization_id')
-    .eq('id', requestId)
-    .maybeSingle();
-  if (reqError) {
-    console.error('uploadOptionDocument: failed to load option_request org context', reqError);
-  }
-
-  const reqOrg = (reqRow as {
-    client_organization_id?: string | null;
-    organization_id?: string | null;
-    agency_organization_id?: string | null;
-  } | null);
-  const auditOrgId =
-    reqOrg?.client_organization_id
-    ?? reqOrg?.organization_id
-    ?? reqOrg?.agency_organization_id
-    ?? null;
-
-  if (auditOrgId) {
-    logAction(auditOrgId, 'uploadOptionDocument', {
-      type: 'option',
-      action: 'option_document_uploaded',
-      entityId: requestId,
-      newData: {
-        document_id: doc.id,
+    // VULN-M3 fix: store the storage PATH (not a pre-generated signed URL) in
+    // file_url. Signed URLs expire after 1 hour, making persisted URLs useless.
+    // Use resolveOptionDocumentUrl() at display time to get a fresh signed URL.
+    const { data, error } = await supabase
+      .from('option_documents')
+      .insert({
+        option_request_id: requestId,
+        uploaded_by: uploadedBy,
         file_name: safeBaseName,
         file_url: path,
-        uploaded_by: uploadedBy,
-      },
-    }, { source: 'api' });
-  } else {
-    console.warn('[uploadOptionDocument] org context unavailable — audit log skipped for', requestId);
-  }
-  return doc;
+        file_type: safeBaseName.split('.').pop() || null,
+      })
+      .select()
+      .single();
+    if (error) {
+      console.error('uploadOptionDocument error:', error);
+      return null;
+    }
+    const doc = data as SupabaseOptionDocument;
+    const { data: reqRow, error: reqError } = await supabase
+      .from('option_requests')
+      .select('client_organization_id, organization_id, agency_organization_id')
+      .eq('id', requestId)
+      .maybeSingle();
+    if (reqError) {
+      console.error('uploadOptionDocument: failed to load option_request org context', reqError);
+    }
+
+    const reqOrg = reqRow as {
+      client_organization_id?: string | null;
+      organization_id?: string | null;
+      agency_organization_id?: string | null;
+    } | null;
+    const auditOrgId =
+      reqOrg?.client_organization_id ??
+      reqOrg?.organization_id ??
+      reqOrg?.agency_organization_id ??
+      null;
+
+    if (auditOrgId) {
+      logAction(
+        auditOrgId,
+        'uploadOptionDocument',
+        {
+          type: 'option',
+          action: 'option_document_uploaded',
+          entityId: requestId,
+          newData: {
+            document_id: doc.id,
+            file_name: safeBaseName,
+            file_url: path,
+            uploaded_by: uploadedBy,
+          },
+        },
+        { source: 'api' },
+      );
+    } else {
+      console.warn(
+        '[uploadOptionDocument] org context unavailable — audit log skipped for',
+        requestId,
+      );
+    }
+    return doc;
   } catch (e) {
     console.error('uploadOptionDocument exception:', e);
     return null;
@@ -1403,7 +1545,9 @@ async function fetchAgencyOrgId(agencyId: string): Promise<string | null> {
 }
 
 /** Non-empty trimmed UUID from option_requests.agency_organization_id, or null. */
-function agencyOrgIdFromOptionRequestRow(agencyOrganizationId: string | null | undefined): string | null {
+function agencyOrgIdFromOptionRequestRow(
+  agencyOrganizationId: string | null | undefined,
+): string | null {
   const s = agencyOrganizationId != null ? String(agencyOrganizationId).trim() : '';
   return s !== '' ? s : null;
 }
@@ -1430,9 +1574,11 @@ export async function resolveAgencyOrgIdForOptionNotification(
 async function createBookingEventFromRequest(req: SupabaseOptionRequest): Promise<void> {
   try {
     const eventType: BookingEventType =
-      req.request_type === 'casting' ? 'casting'
-      : req.final_status === 'job_confirmed' ? 'job'
-      : 'option';
+      req.request_type === 'casting'
+        ? 'casting'
+        : req.final_status === 'job_confirmed'
+          ? 'job'
+          : 'option';
 
     const agencyOrgIdResolved = await resolveAgencyOrgIdForOptionNotification(
       req.agency_id,
@@ -1478,14 +1624,12 @@ async function createBookingEventFromRequest(req: SupabaseOptionRequest): Promis
     }
 
     const { data: user } = await supabase.auth.getUser();
-    const { error } = await supabase
-      .from('booking_events')
-      .insert({
-        ...rowPayload,
-        status: 'pending' as const,
-        note: null,
-        created_by: user.user?.id ?? null,
-      });
+    const { error } = await supabase.from('booking_events').insert({
+      ...rowPayload,
+      status: 'pending' as const,
+      note: null,
+      created_by: user.user?.id ?? null,
+    });
 
     if (!error) {
       const bookingOrgId = agencyOrgIdResolved ?? req.organization_id;
@@ -1514,7 +1658,10 @@ async function createBookingEventFromRequest(req: SupabaseOptionRequest): Promis
       .maybeSingle();
 
     const clashRow = clash as { id: string; source_option_request_id: string | null } | null;
-    if (clashRow?.id && (clashRow.source_option_request_id === req.id || clashRow.source_option_request_id == null)) {
+    if (
+      clashRow?.id &&
+      (clashRow.source_option_request_id === req.id || clashRow.source_option_request_id == null)
+    ) {
       const { error: up2 } = await supabase
         .from('booking_events')
         .update({
@@ -1587,7 +1734,10 @@ export async function agencyAcceptRequest(
         return null;
       }
       if (!updateData?.id) {
-        console.warn('agencyAcceptRequest: no row updated — already accepted or concurrent call', id);
+        console.warn(
+          'agencyAcceptRequest: no row updated — already accepted or concurrent call',
+          id,
+        );
         return null;
       }
 
@@ -1617,7 +1767,10 @@ export async function agencyAcceptRequest(
         return null;
       }
       if (!updateData?.id) {
-        console.warn('agencyAcceptRequest: no row updated — already processed or concurrent call', id);
+        console.warn(
+          'agencyAcceptRequest: no row updated — already processed or concurrent call',
+          id,
+        );
         return null;
       }
 
@@ -1646,7 +1799,10 @@ export async function agencyAcceptRequest(
       return null;
     }
     if (!updateData?.id) {
-      console.warn('agencyAcceptRequest: no row updated — already processed or concurrent call', id);
+      console.warn(
+        'agencyAcceptRequest: no row updated — already processed or concurrent call',
+        id,
+      );
       return null;
     }
 
@@ -1654,7 +1810,11 @@ export async function agencyAcceptRequest(
       type: 'option',
       action: 'option_confirmed',
       entityId: id,
-      newData: { result: 'awaiting_model_confirmation', model_account_linked: true, agency_id: r.agency_id },
+      newData: {
+        result: 'awaiting_model_confirmation',
+        model_account_linked: true,
+        agency_id: r.agency_id,
+      },
     });
 
     void notifyModelAwaitingConfirmation(r.model_id, id);
@@ -1677,6 +1837,10 @@ export async function agencyAcceptRequest(
  *
  * Bewusste Entscheidung: final_status=null statt 'option_pending',
  * weil 'option_pending' eine AKTIVE Verhandlung signalisiert.
+ *
+ * @deprecated Use `deleteOptionRequestFull` via `agencyRejectNegotiationStore` for
+ * the canonical agency "remove request" product path. This UPDATE-only function
+ * remains for existing tests and legacy callers.
  */
 export async function agencyRejectRequest(id: string): Promise<boolean> {
   try {
@@ -1697,7 +1861,10 @@ export async function agencyRejectRequest(id: string): Promise<boolean> {
       return false;
     }
     if (!data?.id) {
-      console.warn('agencyRejectRequest: no row updated — request not in_negotiation or already rejected', id);
+      console.warn(
+        'agencyRejectRequest: no row updated — request not in_negotiation or already rejected',
+        id,
+      );
       return false;
     }
 
@@ -1735,7 +1902,7 @@ export async function modelConfirmOptionRequest(id: string): Promise<boolean> {
   try {
     const { data: req, error: fetchErr } = await supabase
       .from('option_requests')
-      .select(OPTION_REQUEST_SELECT)
+      .select(OPTION_REQUEST_SELECT_MODEL_SAFE)
       .eq('id', id)
       .maybeSingle();
 
@@ -1744,17 +1911,22 @@ export async function modelConfirmOptionRequest(id: string): Promise<boolean> {
       return false;
     }
 
-    const r = req as SupabaseOptionRequest;
+    const r = req as SupabaseOptionRequestModelSafe;
 
     if (r.model_approval !== 'pending' || !r.model_account_linked) {
-      console.warn('modelConfirmOptionRequest: invalid state', { model_approval: r.model_approval, model_account_linked: r.model_account_linked });
+      console.warn('modelConfirmOptionRequest: invalid state', {
+        model_approval: r.model_approval,
+        model_account_linked: r.model_account_linked,
+      });
       return false;
     }
 
     // Agency must have accepted first (final_status transitions to option_confirmed
     // when agency calls agencyAcceptRequest or agencyAcceptClientPrice).
     if (r.final_status !== 'option_confirmed') {
-      console.warn('modelConfirmOptionRequest: agency has not accepted yet', { final_status: r.final_status });
+      console.warn('modelConfirmOptionRequest: agency has not accepted yet', {
+        final_status: r.final_status,
+      });
       return false;
     }
 
@@ -1812,12 +1984,16 @@ export async function modelConfirmOptionRequest(id: string): Promise<boolean> {
  */
 export async function modelRejectOptionRequest(id: string): Promise<boolean> {
   try {
+    // Do NOT send final_status here. The DB trigger tr_reset_final_status_on_rejection
+    // (20260555) resets final_status from option_confirmed → option_pending automatically
+    // when status → rejected. Sending final_status: 'option_pending' explicitly would
+    // violate fn_validate_option_status_transition which blocks option_confirmed → option_pending.
+    // Trigger firing order (alphabetical BEFORE UPDATE): fn_reset… < fn_validate… — safe.
     const { data: rejectData, error } = await supabase
       .from('option_requests')
       .update({
         model_approval: 'rejected',
         status: 'rejected',
-        final_status: 'option_pending',
       })
       .eq('id', id)
       .eq('model_approval', 'pending')
@@ -1867,7 +2043,11 @@ export async function modelRejectOptionRequest(id: string): Promise<boolean> {
             row.agency_organization_id,
           );
           if (!agencyOrgId) {
-            console.error('[notifications] modelRejectOptionRequest: agency org not found for agency_id', row.agency_id, '— agency notification skipped.');
+            console.error(
+              '[notifications] modelRejectOptionRequest: agency org not found for agency_id',
+              row.agency_id,
+              '— agency notification skipped.',
+            );
           } else {
             notifications.push({
               organization_id: agencyOrgId,
@@ -1976,7 +2156,10 @@ async function resolveAuditOrganizationIdForOptionDelete(
  * Atomically deletes an option_request and dependent rows (messages, calendar, booking_events, etc.).
  * Server enforces participant access and blocks when final_status = job_confirmed.
  */
-export async function deleteOptionRequestFull(id: string, opts: DeleteOptionRequestFullOpts): Promise<boolean> {
+export async function deleteOptionRequestFull(
+  id: string,
+  opts: DeleteOptionRequestFullOpts,
+): Promise<boolean> {
   try {
     const row = await getOptionRequestById(id);
     if (!row) {
@@ -2007,7 +2190,10 @@ export async function deleteOptionRequestFull(id: string, opts: DeleteOptionRequ
         entityId: id,
       });
     } else {
-      console.warn('[deleteOptionRequestFull] could not resolve audit org — audit log skipped', { id, auditActor: opts.auditActor });
+      console.warn('[deleteOptionRequestFull] could not resolve audit org — audit log skipped', {
+        id,
+        auditActor: opts.auditActor,
+      });
     }
 
     if (storagePaths.length > 0) {
@@ -2051,7 +2237,11 @@ async function cleanupOptionDocStorage(paths: string[]): Promise<void> {
   }
 }
 
-export async function sendAgencyInvitation(agencyName: string, email: string, invitedBy?: string): Promise<string | null> {
+export async function sendAgencyInvitation(
+  agencyName: string,
+  email: string,
+  invitedBy?: string,
+): Promise<string | null> {
   // Legacy flow (agency_invitations): kept for backward compatibility.
   // Canonical invite invariant for team/member onboarding is implemented via:
   // invitations + send-invite edge + finalizePendingInviteOrClaim.
@@ -2066,7 +2256,10 @@ export async function sendAgencyInvitation(agencyName: string, email: string, in
       })
       .select('token')
       .single();
-    if (error) { console.error('sendAgencyInvitation error:', error); return null; }
+    if (error) {
+      console.error('sendAgencyInvitation error:', error);
+      return null;
+    }
     return data?.token ?? null;
   } catch (e) {
     console.error('sendAgencyInvitation exception:', e);
@@ -2105,7 +2298,10 @@ export function subscribeToOptionMessages(
 // ── Notification helpers ──────────────────────────────────────────────────────
 
 /** Notify a model's linked user that they need to confirm an option request. */
-async function notifyModelAwaitingConfirmation(modelId: string, optionRequestId: string): Promise<void> {
+async function notifyModelAwaitingConfirmation(
+  modelId: string,
+  optionRequestId: string,
+): Promise<void> {
   try {
     const { data: modelRow } = await supabase
       .from('models')
@@ -2127,16 +2323,25 @@ async function notifyModelAwaitingConfirmation(modelId: string, optionRequestId:
 }
 
 /** Notify agency org + client user when a model confirms an option request. */
-async function notifyModelConfirmedOption(req: SupabaseOptionRequest): Promise<void> {
+async function notifyModelConfirmedOption(
+  req: SupabaseOptionRequest | SupabaseOptionRequestModelSafe,
+): Promise<void> {
   try {
     const notifications = [];
 
     // IMPORTANT: req.organization_id is the CLIENT org, not the agency org.
     // Prefer req.agency_organization_id (RLS-safe for clients) over organizations lookup.
-    const agencyOrgId = await resolveAgencyOrgIdForOptionNotification(req.agency_id, req.agency_organization_id);
+    const agencyOrgId = await resolveAgencyOrgIdForOptionNotification(
+      req.agency_id,
+      req.agency_organization_id,
+    );
 
     if (!agencyOrgId) {
-      console.error('[notifications] notifyModelConfirmedOption: agency org not found for agency_id', req.agency_id, '— agency notification skipped.');
+      console.error(
+        '[notifications] notifyModelConfirmedOption: agency org not found for agency_id',
+        req.agency_id,
+        '— agency notification skipped.',
+      );
     } else {
       notifications.push({
         organization_id: agencyOrgId,

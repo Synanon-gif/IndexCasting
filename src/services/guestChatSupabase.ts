@@ -30,10 +30,7 @@ export type CreateGuestConversationResult =
  * Builds a stable context_id for a guest ↔ agency conversation.
  * Sorting ensures the same ID regardless of parameter order.
  */
-export function buildGuestChatContextId(
-  guestUserId: string,
-  agencyOrgId: string,
-): string {
+export function buildGuestChatContextId(guestUserId: string, agencyOrgId: string): string {
   return `guest:${guestUserId}:${agencyOrgId}`;
 }
 
@@ -77,7 +74,7 @@ export async function createGuestConversation(
         type: 'direct',
         context_id: contextId,
         participant_ids: participantIds,
-        title: 'Guest Client',
+        title: 'Guest',
         agency_organization_id: agencyOrgId,
         guest_user_id: guestUserId,
       })
@@ -123,19 +120,18 @@ export async function sendGuestBookingRequest(
   try {
     // Server-side validation of selected model IDs against the guest link.
     if (payload.guest_link_id && payload.selected_models.length > 0) {
-      const { data: valid, error: validErr } = await supabase.rpc(
-        'validate_guest_booking_models',
-        {
-          p_link_id:   payload.guest_link_id,
-          p_model_ids: payload.selected_models,
-        },
-      );
+      const { data: valid, error: validErr } = await supabase.rpc('validate_guest_booking_models', {
+        p_link_id: payload.guest_link_id,
+        p_model_ids: payload.selected_models,
+      });
       if (validErr) {
         console.error('sendGuestBookingRequest: model validation RPC error', validErr);
         return null;
       }
       if (!valid) {
-        console.warn('sendGuestBookingRequest: one or more selected_models are not in the guest link — blocked');
+        console.warn(
+          'sendGuestBookingRequest: one or more selected_models are not in the guest link — blocked',
+        );
         return null;
       }
     }
@@ -144,22 +140,15 @@ export async function sendGuestBookingRequest(
       payload.message.trim() ||
       `Booking request for ${payload.selected_models.length} model(s)${payload.requested_date ? ` on ${payload.requested_date}` : ''}.`;
 
-    const message = await sendMessage(
-      conversationId,
-      guestUserId,
-      summary,
-      undefined,
-      undefined,
-      {
-        messageType: 'booking_request' as 'booking',
-        metadata: {
-          selected_models: payload.selected_models,
-          requested_date: payload.requested_date ?? null,
-          message: payload.message,
-          guest_link_id: payload.guest_link_id ?? null,
-        },
+    const message = await sendMessage(conversationId, guestUserId, summary, undefined, undefined, {
+      messageType: 'booking_request' as 'booking',
+      metadata: {
+        selected_models: payload.selected_models,
+        requested_date: payload.requested_date ?? null,
+        message: payload.message,
+        guest_link_id: payload.guest_link_id ?? null,
       },
-    );
+    });
 
     if (!message) {
       console.error('sendGuestBookingRequest: sendMessage returned null');

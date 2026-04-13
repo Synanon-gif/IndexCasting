@@ -446,8 +446,14 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   };
 
   /** Open file picker directly; consent row appears only after a file is selected. */
-  const handleAttachPress = () => {
-    openFileInput();
+  const handleAttachPress = async () => {
+    if (Platform.OS === 'web') {
+      openFileInput();
+    } else {
+      const { pickChatAttachmentNative } = await import('../utils/pickChatAttachmentNative');
+      const picked = await pickChatAttachmentNative();
+      if (picked) handleFileInputChange(picked.file as File);
+    }
   };
 
   /** When user checks the consent box after selecting a file, start the upload. */
@@ -596,6 +602,20 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
       ) : null}
     </>
   );
+
+  const loadOlderMessages = async () => {
+    if (msgs.length === 0) return;
+    const oldestMsg = msgs[0];
+    const older = await getMessagesWithSenderInfo(conversationId, {
+      beforeId: oldestMsg.id,
+      limit: 50,
+    });
+    if (older.length > 0) {
+      const existingIds = new Set(msgs.map((m) => m.id));
+      const newMsgs = older.filter((m) => !existingIds.has(m.id));
+      if (newMsgs.length > 0) setMsgs((prev) => [...newMsgs, ...prev]);
+    }
+  };
 
   const incomingOrgTextBubble = bubbleColorsForSender('client');
 
@@ -1019,7 +1039,21 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
     >
       <ChatLayoutFix
         header={messengerHeader}
-        messageList={messageNodes}
+        messageList={
+          <>
+            {msgs.length >= 50 && (
+              <TouchableOpacity
+                onPress={() => void loadOlderMessages()}
+                style={{ alignSelf: 'center', paddingVertical: spacing.xs }}
+              >
+                <Text style={{ color: colors.accentBrown, fontSize: 13 }}>
+                  {uiCopy.b2bChat.loadOlderMessages}
+                </Text>
+              </TouchableOpacity>
+            )}
+            {messageNodes}
+          </>
+        }
         composer={messengerComposer}
         edgePadding={0}
         bottomTabInset={composerBottomInsetOverride}

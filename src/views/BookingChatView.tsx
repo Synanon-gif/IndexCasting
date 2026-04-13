@@ -35,7 +35,10 @@ import {
   loadMessagesForThread,
   addModelBookingThreadId,
 } from '../store/recruitingChats';
-import { getSignedRecruitingChatFileUrl } from '../services/recruitingChatSupabase';
+import {
+  getSignedRecruitingChatFileUrl,
+  subscribeToThreadMessages,
+} from '../services/recruitingChatSupabase';
 import { getApplicationById } from '../store/applicationsStore';
 import { getThread } from '../services/recruitingChatSupabase';
 import { getAgencyChatDisplayById } from '../services/agenciesSupabase';
@@ -108,8 +111,14 @@ export const BookingChatView: React.FC<Props> = ({
   useEffect(() => {
     const refresh = () => setMessages(getRecruitingMessages(threadId));
     loadMessagesForThread(threadId).then(() => refresh());
-    const unsub = subscribeRecruitingChats(refresh);
-    return unsub;
+    const unsubStore = subscribeRecruitingChats(refresh);
+    const unsubRealtime = subscribeToThreadMessages(threadId, () => {
+      loadMessagesForThread(threadId).then(() => refresh());
+    });
+    return () => {
+      unsubStore();
+      unsubRealtime();
+    };
   }, [threadId]);
 
   useEffect(() => {
@@ -211,8 +220,14 @@ export const BookingChatView: React.FC<Props> = ({
   };
 
   /** Open file picker directly; consent row appears only after a file is selected. */
-  const handleAttachPress = () => {
-    openFileInput();
+  const handleAttachPress = async () => {
+    if (Platform.OS === 'web') {
+      openFileInput();
+    } else {
+      const { pickChatAttachmentNative } = await import('../utils/pickChatAttachmentNative');
+      const picked = await pickChatAttachmentNative();
+      if (picked) handleFileInputChange(picked.file as File);
+    }
   };
 
   /** When user checks the consent box after selecting a file, start the upload. */

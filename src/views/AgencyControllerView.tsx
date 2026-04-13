@@ -44,6 +44,7 @@ import {
   purgeOptionThreadFromStore,
   refreshOptionRequestInCache,
   loadMessagesForThread,
+  loadOlderMessagesForThread,
   agencyConfirmAvailabilityStore,
   agencyAcceptClientPriceStore,
   agencyCounterOfferStore,
@@ -52,6 +53,7 @@ import {
   createAgencyOnlyOptionRequest,
   type ChatStatus,
 } from '../store/optionRequests';
+import { subscribeToOptionMessages } from '../services/optionRequestsSupabase';
 import { AgencyRecruitingView } from './AgencyRecruitingView';
 import {
   getModelsForAgencyFromSupabase,
@@ -89,7 +91,10 @@ import {
   rebuildPolaroidsFromModelPhotos,
 } from '../services/modelPhotosSupabase';
 import { normalizeDocumentspicturesModelImageRef } from '../utils/normalizeModelPortfolioUrl';
-import { formatDateWithOptionalTimeRange, formatOptionTimeRangeSuffix } from '../utils/formatTimeForUi';
+import {
+  formatDateWithOptionalTimeRange,
+  formatOptionTimeRangeSuffix,
+} from '../utils/formatTimeForUi';
 import { confirmImageRights, guardImageUpload } from '../services/gdprComplianceSupabase';
 import { ModelMediaSettingsPanel } from '../components/ModelMediaSettingsPanel';
 import { OptionNegotiationChatShell } from '../components/optionNegotiation/OptionNegotiationChatShell';
@@ -101,7 +106,12 @@ import { ConfirmDestructiveModal } from '../components/ConfirmDestructiveModal';
 import { useDeviceType } from '../hooks/useDeviceType';
 import { isMobileWidth } from '../theme/breakpoints';
 import { shouldShowSystemMessageForViewer } from '../components/optionNegotiation/filterSystemMessagesForViewer';
-import { getTerritoriesForModel, getTerritoriesForAgency, upsertTerritoriesForModel, bulkAddTerritoriesForModels } from '../services/territoriesSupabase';
+import {
+  getTerritoriesForModel,
+  getTerritoriesForAgency,
+  upsertTerritoriesForModel,
+  bulkAddTerritoriesForModels,
+} from '../services/territoriesSupabase';
 import {
   upsertModelLocation,
   getModelLocation,
@@ -125,7 +135,7 @@ async function geocodeCityForAgency(
       `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(city)},${encodeURIComponent(countryCode)}&format=json&limit=1`,
       { headers: { 'Accept-Language': 'en', 'User-Agent': 'IndexCasting/1.0' } },
     );
-    const results = await res.json() as Array<{ lat: string; lon: string }>;
+    const results = (await res.json()) as Array<{ lat: string; lon: string }>;
     const first = results[0];
     if (!first) return null;
     return { lat: roundCoord(parseFloat(first.lat)), lng: roundCoord(parseFloat(first.lon)) };
@@ -180,7 +190,14 @@ import {
   type ClientAssignmentFlag,
 } from '../services/clientAssignmentsSupabase';
 import { getAgencies, type Agency } from '../services/agenciesSupabase';
-import { createGuestLink, getGuestLinksForAgency, buildGuestUrl, revokeGuestAccess, deleteGuestLink, type GuestLink } from '../services/guestLinksSupabase';
+import {
+  createGuestLink,
+  getGuestLinksForAgency,
+  buildGuestUrl,
+  revokeGuestAccess,
+  deleteGuestLink,
+  type GuestLink,
+} from '../services/guestLinksSupabase';
 import {
   getCalendarEntriesForAgency,
   getBookingEventsAsCalendarEntries,
@@ -192,7 +209,10 @@ import {
   type SharedBookingNote,
 } from '../services/calendarSupabase';
 import BookingBriefEditor from '../components/BookingBriefEditor';
-import { deleteOptionRequestFull, updateOptionRequestSchedule } from '../services/optionRequestsSupabase';
+import {
+  deleteOptionRequestFull,
+  updateOptionRequestSchedule,
+} from '../services/optionRequestsSupabase';
 import {
   getManualEventsForOwner,
   getManualEventsForOrg,
@@ -211,7 +231,10 @@ import { AgencyOrgProfileScreen } from '../screens/AgencyOrgProfileScreen';
 import { OrgProfileModal } from '../components/OrgProfileModal';
 import { type ModelFilters, defaultModelFilters, filterModels } from '../utils/modelFilters';
 import ModelFiltersPanel from '../components/ModelFiltersPanel';
-import ModelEditDetailsPanel, { buildEditState, type ModelEditState } from '../components/ModelEditDetailsPanel';
+import ModelEditDetailsPanel, {
+  buildEditState,
+  type ModelEditState,
+} from '../components/ModelEditDetailsPanel';
 import { importModelAndMerge } from '../services/modelCreationFacade';
 import { runMediaslideCronSync } from '../services/mediaslideSyncService';
 import { runNetwalkCronSync } from '../services/netwalkSyncService';
@@ -235,12 +258,18 @@ import { DashboardSummaryBar } from '../components/DashboardSummaryBar';
 import { OrgMetricsPanel } from '../components/OrgMetricsPanel';
 import { OwnerBillingStatusCard } from '../components/OwnerBillingStatusCard';
 import { GlobalSearchBar } from '../components/GlobalSearchBar';
-import { getMyAgencyUsageLimits, type AgencyUsageLimits } from '../services/agencyUsageLimitsSupabase';
+import {
+  getMyAgencyUsageLimits,
+  type AgencyUsageLimits,
+} from '../services/agencyUsageLimitsSupabase';
 import { getAgencyOrganizationSeatLimit } from '../services/subscriptionSupabase';
 import { getLatestActivityLog, type ActivityLog } from '../services/activityLogsSupabase';
 import { uiCopy as _uiCopy } from '../constants/uiCopy';
 import { attentionSignalsFromOptionRequestLike } from '../utils/optionRequestAttention';
-import { getCanonicalAgreedPrice, getNegotiationDisplayPriceCandidate } from '../utils/canonicalOptionPrice';
+import {
+  getCanonicalAgreedPrice,
+  getNegotiationDisplayPriceCandidate,
+} from '../utils/canonicalOptionPrice';
 import { formatOptionMoneyAmount } from '../utils/optionMoneyFormat';
 import { attentionHeaderLabelFromSignals } from '../utils/negotiationAttentionLabels';
 import { toDisplayStatus } from '../utils/statusHelpers';
@@ -264,7 +293,9 @@ const STATUS_COLORS: Record<ChatStatus, string> = OPTION_REQUEST_CHAT_STATUS_COL
 // ISO country names for the territories multi-select.
 // Keep names in English for UI consistency.
 countries.registerLocale(enLocale as any);
-const ISO_COUNTRY_NAMES: Record<string, string> = countries.getNames('en', { select: 'official' }) as any;
+const ISO_COUNTRY_NAMES: Record<string, string> = countries.getNames('en', {
+  select: 'official',
+}) as any;
 
 type AgencyTab =
   | 'dashboard'
@@ -310,13 +341,15 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   // loadAgencyTeam may update this further (e.g. via ensureAgencyOrganization for owners
   // whose org didn't exist yet), but profile.organization_id is the primary source of truth.
   const [agencyOrganizationId, setAgencyOrganizationId] = useState<string | null>(
-    profile?.organization_id ?? null
+    profile?.organization_id ?? null,
   );
   const [teamMembers, setTeamMembers] = useState<
     Awaited<ReturnType<typeof listOrganizationMembers>>
   >([]);
   const [pendingInvites, setPendingInvites] = useState<InvitationRow[]>([]);
-  const [assignmentByClientOrgId, setAssignmentByClientOrgId] = useState<Record<string, ClientAssignmentFlag>>({});
+  const [assignmentByClientOrgId, setAssignmentByClientOrgId] = useState<
+    Record<string, ClientAssignmentFlag>
+  >({});
   const [calendarItems, setCalendarItems] = useState<AgencyCalendarItem[]>([]);
   const [manualCalendarEvents, setManualCalendarEvents] = useState<UserCalendarEvent[]>([]);
   const [bookingEventEntries, setBookingEventEntries] = useState<CalendarEntry[]>([]);
@@ -363,7 +396,10 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   const [swipeLimits, setSwipeLimits] = useState<AgencyUsageLimits | null>(null);
   const [latestActivity, setLatestActivity] = useState<ActivityLog | null>(null);
   /** After starting a chat from Clients, open Messages with this thread. */
-  const [pendingB2BChat, setPendingB2BChat] = useState<{ conversationId: string; title: string } | null>(null);
+  const [pendingB2BChat, setPendingB2BChat] = useState<{
+    conversationId: string;
+    title: string;
+  } | null>(null);
   /** Deep-link targets from GlobalSearch result clicks. */
   const [searchModelId, setSearchModelId] = useState<string | null>(null);
   const [searchOptionId, setSearchOptionId] = useState<string | null>(null);
@@ -403,9 +439,10 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
       setModels(mapAgencyModelsToState(light));
 
       const candidates = full
-        .filter((m) =>
-          (m.portfolio_images ?? []).length === 0 &&
-          !portfolioMirrorRebuildAttemptedRef.current.has(m.id),
+        .filter(
+          (m) =>
+            (m.portfolio_images ?? []).length === 0 &&
+            !portfolioMirrorRebuildAttemptedRef.current.has(m.id),
         )
         .map((m) => m.id);
 
@@ -481,7 +518,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
 
   useEffect(() => {
     if (currentAgencyId) void loadAgencyTeam();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentAgencyId, profile?.email]);
 
   useEffect(() => {
@@ -492,21 +529,24 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
     void getClientAssignmentMapForAgency(agencyOrganizationId).then(setAssignmentByClientOrgId);
   }, [agencyOrganizationId]);
 
-  const handleUpsertClientAssignment = useCallback(async (
-    clientOrganizationId: string,
-    patch: { label: string; color: AssignmentFlagColor; assignedMemberUserId?: string | null },
-  ): Promise<void> => {
-    if (!agencyOrganizationId) return;
-    const saved = await upsertClientAssignmentFlag({
-      agencyOrganizationId,
-      clientOrganizationId,
-      label: patch.label,
-      color: patch.color,
-      assignedMemberUserId: patch.assignedMemberUserId ?? null,
-    });
-    if (!saved) return;
-    setAssignmentByClientOrgId((prev) => ({ ...prev, [clientOrganizationId]: saved }));
-  }, [agencyOrganizationId]);
+  const handleUpsertClientAssignment = useCallback(
+    async (
+      clientOrganizationId: string,
+      patch: { label: string; color: AssignmentFlagColor; assignedMemberUserId?: string | null },
+    ): Promise<void> => {
+      if (!agencyOrganizationId) return;
+      const saved = await upsertClientAssignmentFlag({
+        agencyOrganizationId,
+        clientOrganizationId,
+        label: patch.label,
+        color: patch.color,
+        assignedMemberUserId: patch.assignedMemberUserId ?? null,
+      });
+      if (!saved) return;
+      setAssignmentByClientOrgId((prev) => ({ ...prev, [clientOrganizationId]: saved }));
+    },
+    [agencyOrganizationId],
+  );
 
   /** Re-load roster when opening My Models (e.g. after accepting an application in Recruiting). */
   useEffect(() => {
@@ -534,9 +574,15 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
       const seen = new Set<string>();
       const manual: UserCalendarEvent[] = [];
       for (const ev of [...orgEvents, ...ownerEvents]) {
-        if (!seen.has(ev.id)) { seen.add(ev.id); manual.push(ev); }
+        if (!seen.has(ev.id)) {
+          seen.add(ev.id);
+          manual.push(ev);
+        }
       }
-      manual.sort((a, b) => a.date.localeCompare(b.date) || (a.start_time ?? '').localeCompare(b.start_time ?? ''));
+      manual.sort(
+        (a, b) =>
+          a.date.localeCompare(b.date) || (a.start_time ?? '').localeCompare(b.start_time ?? ''),
+      );
       setCalendarItems(items);
       setManualCalendarEvents(manual);
       setBookingEventEntries(beEntries);
@@ -549,7 +595,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
     if (tab === 'calendar' && currentAgencyId) {
       loadAgencyCalendar();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, currentAgencyId]);
 
   useEffect(() => {
@@ -562,7 +608,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
       start_time: (ce?.start_time ?? o.start_time ?? '09:00').toString().slice(0, 5),
       end_time: (ce?.end_time ?? o.end_time ?? '17:00').toString().slice(0, 5),
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCalendarItem?.option.id]);
 
   useEffect(() => {
@@ -589,7 +635,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
       note: selectedManualEvent.note ?? '',
       color: selectedManualEvent.color,
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedManualEvent?.id]);
 
   /** Recruiting threads for Messages → Recruiting chats (Supabase).
@@ -605,24 +651,21 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
     }
   }, [tab, currentAgencyId, refreshBookingThreads]);
 
-  const agencyBottomTabs = useMemo(
-    () => {
-      const all: { key: AgencyTab; label: string }[] = [
-        { key: 'dashboard', label: 'Dashboard' },
-        { key: 'myModels', label: 'My Models' },
-        { key: 'clients', label: 'Clients' },
-        { key: 'messages', label: 'Messages' },
-        { key: 'calendar', label: 'Calendar' },
-        { key: 'recruiting', label: 'Recruiting' },
-        { key: 'bookers', label: 'Team' },
-        { key: 'guestLinks', label: uiCopy.guestLinks.tabTitle },
-        { key: 'settings', label: uiCopy.agencySettings.tabLabel },
-        { key: 'profile', label: 'Profile' },
-      ];
-      return all;
-    },
-    [],
-  );
+  const agencyBottomTabs = useMemo(() => {
+    const all: { key: AgencyTab; label: string }[] = [
+      { key: 'dashboard', label: 'Dashboard' },
+      { key: 'myModels', label: 'My Models' },
+      { key: 'clients', label: 'Clients' },
+      { key: 'messages', label: 'Messages' },
+      { key: 'calendar', label: 'Calendar' },
+      { key: 'recruiting', label: 'Recruiting' },
+      { key: 'bookers', label: 'Team' },
+      { key: 'guestLinks', label: uiCopy.guestLinks.tabTitle },
+      { key: 'settings', label: uiCopy.agencySettings.tabLabel },
+      { key: 'profile', label: 'Profile' },
+    ];
+    return all;
+  }, []);
 
   const openAgencyBookingChat = (threadId: string) => {
     refreshBookingThreads();
@@ -666,7 +709,15 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   );
 
   return (
-    <View style={[s.container, { paddingTop: Math.max(spacing.xs, insets.top + 2), paddingHorizontal: agencyShellPaddingH }]}>
+    <View
+      style={[
+        s.container,
+        {
+          paddingTop: Math.max(spacing.xs, insets.top + 2),
+          paddingHorizontal: agencyShellPaddingH,
+        },
+      ]}
+    >
       <View style={s.topShell}>
         <Text style={s.brand}>INDEX CASTING</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
@@ -677,159 +728,188 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
               Linking.openURL(`mailto:admin@castingindex.com?subject=${subject}&body=${body}`);
             }}
           >
-            <Text style={{ ...typography.headingCompact, fontSize: 11, color: colors.textSecondary }}>Help</Text>
+            <Text
+              style={{ ...typography.headingCompact, fontSize: 11, color: colors.textSecondary }}
+            >
+              Help
+            </Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={onBackToRoleSelection} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <Text style={{ ...typography.headingCompact, fontSize: 11, color: colors.textSecondary }}>Logout</Text>
+          <TouchableOpacity
+            onPress={onBackToRoleSelection}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Text
+              style={{ ...typography.headingCompact, fontSize: 11, color: colors.textSecondary }}
+            >
+              Logout
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      <View style={{ flex: 1, minHeight: 0, paddingBottom: agencyChatFullscreen ? 0 : bottomTabInset }}>
-      {tab === 'dashboard' && (
-        <View style={{ flex: 1 }}>
-          {agencyOrganizationId && (
-            <View style={{ paddingHorizontal: spacing.sm, paddingTop: spacing.xs, paddingBottom: spacing.xs, zIndex: 200 }}>
-              <GlobalSearchBar
+      <View
+        style={{ flex: 1, minHeight: 0, paddingBottom: agencyChatFullscreen ? 0 : bottomTabInset }}
+      >
+        {tab === 'dashboard' && (
+          <View style={{ flex: 1 }}>
+            {agencyOrganizationId && (
+              <View
+                style={{
+                  paddingHorizontal: spacing.sm,
+                  paddingTop: spacing.xs,
+                  paddingBottom: spacing.xs,
+                  zIndex: 200,
+                }}
+              >
+                <GlobalSearchBar
+                  orgId={agencyOrganizationId}
+                  onSelectModel={(id) => {
+                    setSearchModelId(id);
+                    setTab('myModels');
+                  }}
+                  onSelectConversation={(id) => {
+                    setPendingB2BChat({ conversationId: id, title: '' });
+                    setTab('messages');
+                  }}
+                  onSelectOption={(id) => {
+                    setSearchOptionId(id);
+                    setTab('messages');
+                  }}
+                />
+              </View>
+            )}
+            {agencyOrganizationId && session?.user?.id && (
+              <DashboardSummaryBar
                 orgId={agencyOrganizationId}
-                onSelectModel={(id) => { setSearchModelId(id); setTab('myModels'); }}
-                onSelectConversation={(id) => { setPendingB2BChat({ conversationId: id, title: '' }); setTab('messages'); }}
-                onSelectOption={(id) => { setSearchOptionId(id); setTab('messages'); }}
+                userId={session.user.id}
+                onPressRequests={() => setTab('messages')}
+                onPressMessages={() => setTab('messages')}
+                onPressCalendar={() => setTab('calendar')}
               />
-            </View>
-          )}
-          {agencyOrganizationId && session?.user?.id && (
-            <DashboardSummaryBar
-              orgId={agencyOrganizationId}
-              userId={session.user.id}
-              onPressRequests={() => setTab('messages')}
-              onPressMessages={() => setTab('messages')}
-              onPressCalendar={() => setTab('calendar')}
-            />
-          )}
-          {swipeLimits && (
-            <SwipeLimitBanner
-              used={swipeLimits.swipes_used_today}
-              limit={swipeLimits.daily_swipe_limit}
-            />
-          )}
-          <DashboardTab models={models} />
-          {latestActivity && (
-            <ActivityLogFooter log={latestActivity} />
-          )}
-        </View>
-      )}
+            )}
+            {swipeLimits && (
+              <SwipeLimitBanner
+                used={swipeLimits.swipes_used_today}
+                limit={swipeLimits.daily_swipe_limit}
+              />
+            )}
+            <DashboardTab models={models} />
+            {latestActivity && <ActivityLogFooter log={latestActivity} />}
+          </View>
+        )}
 
-      {tab === 'recruiting' && (
-        currentAgencyId ? (
-          <AgencyRecruitingView
-            onBack={() => setTab('dashboard')}
+        {tab === 'recruiting' &&
+          (currentAgencyId ? (
+            <AgencyRecruitingView
+              onBack={() => setTab('dashboard')}
+              agencyId={currentAgencyId}
+              onOpenBookingChat={openAgencyBookingChat}
+            />
+          ) : (
+            <Text style={[s.metaText, { marginTop: spacing.md }]}>No agency assigned.</Text>
+          ))}
+
+        {tab === 'myModels' && (
+          <MyModelsTab
+            models={fullModels}
             agencyId={currentAgencyId}
-            onOpenBookingChat={openAgencyBookingChat}
+            agencyName={currentAgency?.name ?? null}
+            inviteOrganizationId={agencyOrganizationId ?? profile?.organization_id ?? null}
+            onRefresh={refreshAgencyModelLists}
+            focusModelId={searchModelId}
+            onFocusConsumed={() => setSearchModelId(null)}
           />
-        ) : (
-          <Text style={[s.metaText, { marginTop: spacing.md }]}>No agency assigned.</Text>
-        )
-      )}
+        )}
 
-      {tab === 'myModels' && (
-        <MyModelsTab
-          models={fullModels}
-          agencyId={currentAgencyId}
-          agencyName={currentAgency?.name ?? null}
-          inviteOrganizationId={agencyOrganizationId ?? profile?.organization_id ?? null}
-          onRefresh={refreshAgencyModelLists}
-          focusModelId={searchModelId}
-          onFocusConsumed={() => setSearchModelId(null)}
-        />
-      )}
-
-      {tab === 'clients' && currentAgencyId ? (
-        <AgencyClientsTab
-          agencyId={currentAgencyId}
-          agencyOrganizationId={agencyOrganizationId}
-          currentUserId={session?.user?.id ?? null}
-          teamMembers={teamMembers}
-          assignmentByClientOrgId={assignmentByClientOrgId}
-          onUpsertClientAssignment={handleUpsertClientAssignment}
-          onChatStarted={(conversationId, title) => {
-            setPendingB2BChat({ conversationId, title });
-            setTab('messages');
-          }}
-        />
-      ) : tab === 'clients' ? (
-        <Text style={[s.metaText, { marginTop: spacing.md }]}>No agency assigned.</Text>
-      ) : null}
-
-      {tab === 'messages' && (
-        <View style={flexFillColumn}>
-        <AgencyMessagesTab
-          recruitingThreads={bookingChatThreads}
-          onRefreshRecruitingThreads={refreshBookingThreads}
-          onOpenRecruitingThread={(threadId) => {
-            refreshBookingThreads();
-            setOpenBookingThreadId(threadId);
-          }}
-          agencyId={currentAgencyId || null}
-          agencyName={currentAgency?.name ?? null}
-          agencyOrganizationId={agencyOrganizationId}
-          agencyModels={fullModels}
-          currentUserId={session?.user?.id ?? null}
-          pendingOpenB2BChat={pendingB2BChat}
-          onPendingB2BChatConsumed={clearPendingB2BChat}
-          onBookingCardPress={() => setTab('calendar')}
-          pendingOptionRequestId={searchOptionId}
-          onPendingOptionRequestConsumed={() => setSearchOptionId(null)}
-          assignmentByClientOrgId={assignmentByClientOrgId}
-          onOptionRequestDeleted={() => { void loadAgencyCalendar(); }}
-          onOptionProjectionChanged={() => { void loadAgencyCalendar(); }}
-          onChatFullscreenChange={(active) => setAgencyChatFullscreen(active && agencyIsMobile)}
-        />
-        </View>
-      )}
-
-      {tab === 'calendar' && (
-        <AgencyCalendarTab
-          items={calendarItems}
-          assignmentByClientOrgId={assignmentByClientOrgId}
-          manualEvents={manualCalendarEvents}
-          bookingEventEntries={bookingEventEntries}
-          teamMembers={teamMembers}
-          currentUserId={session?.user?.id ?? null}
-          loading={calendarLoading}
-          isMobileLayout={agencyIsMobile}
-          onRefresh={loadAgencyCalendar}
-          onOpenDetails={(item) => {
-            setSelectedCalendarItem(item);
-            setSelectedManualEvent(null);
-            setAgencySharedNoteDraft('');
-            const existing =
-              (item.calendar_entry?.booking_details as any)?.agency_notes ?? '';
-            setAgencyNotesDraft(existing);
-          }}
-          onOpenManualEvent={(ev) => {
-            setSelectedManualEvent(ev);
-            setSelectedCalendarItem(null);
-          }}
-          onOpenBookingEntry={(be) => {
-            const oid = resolveCanonicalOptionRequestIdFromBookingCalendarEntry(be);
-            if (oid) {
-              setSearchOptionId(oid);
+        {tab === 'clients' && currentAgencyId ? (
+          <AgencyClientsTab
+            agencyId={currentAgencyId}
+            agencyOrganizationId={agencyOrganizationId}
+            currentUserId={session?.user?.id ?? null}
+            teamMembers={teamMembers}
+            assignmentByClientOrgId={assignmentByClientOrgId}
+            onUpsertClientAssignment={handleUpsertClientAssignment}
+            onChatStarted={(conversationId, title) => {
+              setPendingB2BChat({ conversationId, title });
               setTab('messages');
-              setSelectedCalendarItem(null);
-              setAgencyNotesDraft('');
+            }}
+          />
+        ) : tab === 'clients' ? (
+          <Text style={[s.metaText, { marginTop: spacing.md }]}>No agency assigned.</Text>
+        ) : null}
+
+        {tab === 'messages' && (
+          <View style={flexFillColumn}>
+            <AgencyMessagesTab
+              recruitingThreads={bookingChatThreads}
+              onRefreshRecruitingThreads={refreshBookingThreads}
+              onOpenRecruitingThread={(threadId) => {
+                refreshBookingThreads();
+                setOpenBookingThreadId(threadId);
+              }}
+              agencyId={currentAgencyId || null}
+              agencyName={currentAgency?.name ?? null}
+              agencyOrganizationId={agencyOrganizationId}
+              agencyModels={fullModels}
+              currentUserId={session?.user?.id ?? null}
+              pendingOpenB2BChat={pendingB2BChat}
+              onPendingB2BChatConsumed={clearPendingB2BChat}
+              onBookingCardPress={() => setTab('calendar')}
+              pendingOptionRequestId={searchOptionId}
+              onPendingOptionRequestConsumed={() => setSearchOptionId(null)}
+              assignmentByClientOrgId={assignmentByClientOrgId}
+              onOptionRequestDeleted={() => {
+                void loadAgencyCalendar();
+              }}
+              onOptionProjectionChanged={() => {
+                void loadAgencyCalendar();
+              }}
+              onChatFullscreenChange={(active) => setAgencyChatFullscreen(active && agencyIsMobile)}
+            />
+          </View>
+        )}
+
+        {tab === 'calendar' && (
+          <AgencyCalendarTab
+            items={calendarItems}
+            assignmentByClientOrgId={assignmentByClientOrgId}
+            manualEvents={manualCalendarEvents}
+            bookingEventEntries={bookingEventEntries}
+            teamMembers={teamMembers}
+            currentUserId={session?.user?.id ?? null}
+            loading={calendarLoading}
+            isMobileLayout={agencyIsMobile}
+            onRefresh={loadAgencyCalendar}
+            onOpenDetails={(item) => {
+              setSelectedCalendarItem(item);
+              setSelectedManualEvent(null);
               setAgencySharedNoteDraft('');
-              return;
-            }
-            Alert.alert(
-              be.title ?? uiCopy.calendar.bookingEvent,
-              `${uiCopy.calendar.date}: ${be.date}\n${uiCopy.calendar.status}: ${be.status ?? '—'}${be.entry_type ? `\nType: ${be.entry_type}` : ''}\n\n${uiCopy.calendar.bookingEntryDetailFallback}`,
-            );
-          }}
-          onAddEvent={() => setShowAgencyAddEventMenu(true)}
-          onQuickAdd={startAgencyCalendarEvent}
-        />
-      )}
+              const existing = (item.calendar_entry?.booking_details as any)?.agency_notes ?? '';
+              setAgencyNotesDraft(existing);
+            }}
+            onOpenManualEvent={(ev) => {
+              setSelectedManualEvent(ev);
+              setSelectedCalendarItem(null);
+            }}
+            onOpenBookingEntry={(be) => {
+              const oid = resolveCanonicalOptionRequestIdFromBookingCalendarEntry(be);
+              if (oid) {
+                setSearchOptionId(oid);
+                setTab('messages');
+                setSelectedCalendarItem(null);
+                setAgencyNotesDraft('');
+                setAgencySharedNoteDraft('');
+                return;
+              }
+              Alert.alert(
+                be.title ?? uiCopy.calendar.bookingEvent,
+                `${uiCopy.calendar.date}: ${be.date}\n${uiCopy.calendar.status}: ${be.status ?? '—'}${be.entry_type ? `\nType: ${be.entry_type}` : ''}\n\n${uiCopy.calendar.bookingEntryDetailFallback}`,
+              );
+            }}
+            onAddEvent={() => setShowAgencyAddEventMenu(true)}
+            onQuickAdd={startAgencyCalendarEvent}
+          />
+        )}
 
         {tab === 'bookers' && (
           <OrganizationTeamTab
@@ -853,29 +933,38 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
           />
         )}
 
-      {tab === 'settings' && isOrganizationOwner(profile?.org_member_role) && (
-        <ScreenScrollView>
-          <OwnerBillingStatusCard variant="agency" />
-          {agencyOrganizationId && (
-            <OrgMetricsPanel
-              orgId={agencyOrganizationId}
-              userRole={profile?.org_member_role ?? 'owner'}
+        {tab === 'settings' && isOrganizationOwner(profile?.org_member_role) && (
+          <ScreenScrollView>
+            <OwnerBillingStatusCard variant="agency" />
+            {agencyOrganizationId && (
+              <OrgMetricsPanel
+                orgId={agencyOrganizationId}
+                userRole={profile?.org_member_role ?? 'owner'}
+              />
+            )}
+            <AgencySettingsTab
+              variant="embedded"
+              agency={currentAgency}
+              organizationId={agencyOrganizationId}
+              onSaved={() => {
+                void getAgencies().then(setAgencies);
+              }}
             />
-          )}
-          <AgencySettingsTab
-            variant="embedded"
-            agency={currentAgency}
-            organizationId={agencyOrganizationId}
-            onSaved={() => {
-              void getAgencies().then(setAgencies);
-            }}
-          />
             <View style={{ marginTop: spacing.md, marginBottom: spacing.lg }}>
               {/* Dissolve organization — owners only */}
               {agencyOrganizationId && !orgDissolved && (
-                <View style={{ marginBottom: spacing.lg, paddingBottom: spacing.lg, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                <View
+                  style={{
+                    marginBottom: spacing.lg,
+                    paddingBottom: spacing.lg,
+                    borderBottomWidth: 1,
+                    borderBottomColor: colors.border,
+                  }}
+                >
                   <Text style={s.sectionLabel}>{uiCopy.accountDeletion.dissolveOrgTitle}</Text>
-                  <Text style={[s.metaText, { marginBottom: spacing.sm }]}>{uiCopy.accountDeletion.dissolveOrgDescription}</Text>
+                  <Text style={[s.metaText, { marginBottom: spacing.sm }]}>
+                    {uiCopy.accountDeletion.dissolveOrgDescription}
+                  </Text>
                   <TouchableOpacity
                     onPress={() => {
                       Alert.alert(
@@ -894,38 +983,67 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                                   setOrgDissolved(true);
                                   void refreshProfile();
                                   void getAgencies().then(setAgencies);
-                                  Alert.alert(uiCopy.accountDeletion.dissolveOrgTitle, uiCopy.accountDeletion.dissolveOrgSuccess);
+                                  Alert.alert(
+                                    uiCopy.accountDeletion.dissolveOrgTitle,
+                                    uiCopy.accountDeletion.dissolveOrgSuccess,
+                                  );
                                 } else {
-                                  Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.dissolveOrgFailed);
+                                  Alert.alert(
+                                    uiCopy.common.error,
+                                    uiCopy.accountDeletion.dissolveOrgFailed,
+                                  );
                                 }
                               } catch (e) {
                                 console.error('dissolveOrganization error:', e);
-                                Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.dissolveOrgFailed);
+                                Alert.alert(
+                                  uiCopy.common.error,
+                                  uiCopy.accountDeletion.dissolveOrgFailed,
+                                );
                               } finally {
                                 setDissolvingOrg(false);
                               }
                             },
                           },
-                        ]
+                        ],
                       );
                     }}
                     disabled={dissolvingOrg}
-                    style={{ borderRadius: 999, borderWidth: 1, borderColor: '#e74c3c', paddingVertical: spacing.sm, alignItems: 'center', opacity: dissolvingOrg ? 0.6 : 1 }}
+                    style={{
+                      borderRadius: 999,
+                      borderWidth: 1,
+                      borderColor: '#e74c3c',
+                      paddingVertical: spacing.sm,
+                      alignItems: 'center',
+                      opacity: dissolvingOrg ? 0.6 : 1,
+                    }}
                   >
                     <Text style={{ ...typography.label, fontSize: 12, color: '#e74c3c' }}>
-                      {dissolvingOrg ? uiCopy.accountDeletion.dissolveOrgWorking : uiCopy.accountDeletion.dissolveOrgButton}
+                      {dissolvingOrg
+                        ? uiCopy.accountDeletion.dissolveOrgWorking
+                        : uiCopy.accountDeletion.dissolveOrgButton}
                     </Text>
                   </TouchableOpacity>
                 </View>
               )}
               {orgDissolved && (
-                <View style={{ marginBottom: spacing.md, padding: spacing.sm, backgroundColor: 'rgba(0,120,0,0.08)', borderRadius: 8 }}>
-                  <Text style={{ ...typography.label, fontSize: 12, color: colors.textPrimary }}>{uiCopy.accountDeletion.dissolveOrgSuccess}</Text>
+                <View
+                  style={{
+                    marginBottom: spacing.md,
+                    padding: spacing.sm,
+                    backgroundColor: 'rgba(0,120,0,0.08)',
+                    borderRadius: 8,
+                  }}
+                >
+                  <Text style={{ ...typography.label, fontSize: 12, color: colors.textPrimary }}>
+                    {uiCopy.accountDeletion.dissolveOrgSuccess}
+                  </Text>
                 </View>
               )}
               {/* Delete personal account */}
               <Text style={s.sectionLabel}>{uiCopy.accountDeletion.sectionTitle}</Text>
-              <Text style={[s.metaText, { marginBottom: spacing.sm }]}>{uiCopy.accountDeletion.description}</Text>
+              <Text style={[s.metaText, { marginBottom: spacing.sm }]}>
+                {uiCopy.accountDeletion.description}
+              </Text>
               <TouchableOpacity
                 onPress={() => {
                   Alert.alert(
@@ -939,7 +1057,8 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                         onPress: async () => {
                           setDeletingAccount(true);
                           try {
-                            const { requestAccountDeletion } = await import('../services/accountSupabase');
+                            const { requestAccountDeletion } =
+                              await import('../services/accountSupabase');
                             const res = await requestAccountDeletion();
                             if (res.ok) {
                               await signOut();
@@ -958,76 +1077,95 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                           }
                         },
                       },
-                    ]
+                    ],
                   );
                 }}
                 disabled={deletingAccount}
-                style={{ borderRadius: 999, borderWidth: 1, borderColor: '#e74c3c', paddingVertical: spacing.sm, alignItems: 'center' }}
+                style={{
+                  borderRadius: 999,
+                  borderWidth: 1,
+                  borderColor: '#e74c3c',
+                  paddingVertical: spacing.sm,
+                  alignItems: 'center',
+                }}
               >
                 <Text style={{ ...typography.label, fontSize: 12, color: '#e74c3c' }}>
-                  {deletingAccount ? uiCopy.accountDeletion.buttonWorking : uiCopy.accountDeletion.button}
+                  {deletingAccount
+                    ? uiCopy.accountDeletion.buttonWorking
+                    : uiCopy.accountDeletion.button}
                 </Text>
               </TouchableOpacity>
             </View>
-        </ScreenScrollView>
-      )}
+          </ScreenScrollView>
+        )}
 
-      {tab === 'settings' && !isOrganizationOwner(profile?.org_member_role) && (
-        <ScreenScrollView>
-          <OwnerBillingStatusCard variant="agency" />
-          <View style={{ marginTop: spacing.md, marginBottom: spacing.lg }}>
-            <Text style={s.sectionLabel}>{uiCopy.accountDeletion.sectionTitle}</Text>
-            <Text style={[s.metaText, { marginBottom: spacing.sm }]}>{uiCopy.accountDeletion.personalDeleteDescription}</Text>
-            <TouchableOpacity
-              onPress={() => {
-                Alert.alert(
-                  uiCopy.accountDeletion.personalDeleteConfirmTitle,
-                  uiCopy.accountDeletion.personalDeleteConfirmMessage,
-                  [
-                    { text: uiCopy.common.cancel, style: 'cancel' },
-                    {
-                      text: uiCopy.accountDeletion.button,
-                      style: 'destructive',
-                      onPress: async () => {
-                        setDeletingAccount(true);
-                        try {
-                          const { requestPersonalAccountDeletion } = await import('../services/accountSupabase');
-                          const res = await requestPersonalAccountDeletion();
-                          if (res.ok) {
-                            await signOut();
-                            return;
-                          }
-                          Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.failed);
-                        } catch (e) {
-                          console.error('requestPersonalAccountDeletion error:', e);
-                          Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.failed);
-                        } finally {
-                          setDeletingAccount(false);
-                        }
-                      },
-                    },
-                  ]
-                );
-              }}
-              disabled={deletingAccount}
-              style={{ borderRadius: 999, borderWidth: 1, borderColor: '#e74c3c', paddingVertical: spacing.sm, alignItems: 'center' }}
-            >
-              <Text style={{ ...typography.label, fontSize: 12, color: '#e74c3c' }}>
-                {deletingAccount ? uiCopy.accountDeletion.buttonWorking : uiCopy.accountDeletion.button}
+        {tab === 'settings' && !isOrganizationOwner(profile?.org_member_role) && (
+          <ScreenScrollView>
+            <OwnerBillingStatusCard variant="agency" />
+            <View style={{ marginTop: spacing.md, marginBottom: spacing.lg }}>
+              <Text style={s.sectionLabel}>{uiCopy.accountDeletion.sectionTitle}</Text>
+              <Text style={[s.metaText, { marginBottom: spacing.sm }]}>
+                {uiCopy.accountDeletion.personalDeleteDescription}
               </Text>
-            </TouchableOpacity>
-          </View>
-        </ScreenScrollView>
-      )}
+              <TouchableOpacity
+                onPress={() => {
+                  Alert.alert(
+                    uiCopy.accountDeletion.personalDeleteConfirmTitle,
+                    uiCopy.accountDeletion.personalDeleteConfirmMessage,
+                    [
+                      { text: uiCopy.common.cancel, style: 'cancel' },
+                      {
+                        text: uiCopy.accountDeletion.button,
+                        style: 'destructive',
+                        onPress: async () => {
+                          setDeletingAccount(true);
+                          try {
+                            const { requestPersonalAccountDeletion } =
+                              await import('../services/accountSupabase');
+                            const res = await requestPersonalAccountDeletion();
+                            if (res.ok) {
+                              await signOut();
+                              return;
+                            }
+                            Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.failed);
+                          } catch (e) {
+                            console.error('requestPersonalAccountDeletion error:', e);
+                            Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.failed);
+                          } finally {
+                            setDeletingAccount(false);
+                          }
+                        },
+                      },
+                    ],
+                  );
+                }}
+                disabled={deletingAccount}
+                style={{
+                  borderRadius: 999,
+                  borderWidth: 1,
+                  borderColor: '#e74c3c',
+                  paddingVertical: spacing.sm,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ ...typography.label, fontSize: 12, color: '#e74c3c' }}>
+                  {deletingAccount
+                    ? uiCopy.accountDeletion.buttonWorking
+                    : uiCopy.accountDeletion.button}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </ScreenScrollView>
+        )}
 
-      {tab === 'profile' && (
-        <AgencyOrgProfileScreen
-          organizationId={agencyOrganizationId ?? null}
-          agencyId={currentAgencyId ?? null}
-          orgName={profile?.company_name ?? null}
-          orgMemberRole={profile?.org_member_role ?? null}
-        />
-      )}
+        {tab === 'profile' && (
+          <AgencyOrgProfileScreen
+            organizationId={agencyOrganizationId ?? null}
+            agencyId={currentAgencyId ?? null}
+            orgName={profile?.company_name ?? null}
+            orgMemberRole={profile?.org_member_role ?? null}
+          />
+        )}
       </View>
 
       {openBookingThreadId != null && (
@@ -1041,26 +1179,30 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
       )}
 
       {!agencyChatFullscreen && (
-      <View
-        style={[
-          s.bottomBar,
-          { paddingBottom: insets.bottom },
-          Platform.OS === 'web' ? ({ position: 'fixed' } as unknown as ViewStyle) : null,
-        ]}
-      >
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={s.tabRow}
+        <View
+          style={[
+            s.bottomBar,
+            { paddingBottom: insets.bottom },
+            Platform.OS === 'web' ? ({ position: 'fixed' } as unknown as ViewStyle) : null,
+          ]}
         >
-          {agencyBottomTabs.map((t) => (
-            <TouchableOpacity key={t.key} onPress={() => handleAgencyTabPress(t.key)} style={s.tabItem}>
-              <Text style={[s.tabLabel, tab === t.key && s.tabLabelActive]}>{t.label}</Text>
-              {tab === t.key && <View style={s.tabUnderline} />}
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={s.tabRow}
+          >
+            {agencyBottomTabs.map((t) => (
+              <TouchableOpacity
+                key={t.key}
+                onPress={() => handleAgencyTabPress(t.key)}
+                style={s.tabItem}
+              >
+                <Text style={[s.tabLabel, tab === t.key && s.tabLabelActive]}>{t.label}</Text>
+                {tab === t.key && <View style={s.tabUnderline} />}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
       )}
 
       {selectedCalendarItem && (
@@ -1113,285 +1255,337 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
               contentContainerStyle={{ paddingBottom: spacing.xl }}
               keyboardShouldPersistTaps="handled"
             >
-            {selectedCalendarItem && (() => {
-              const { option, calendar_entry } = selectedCalendarItem;
-              const entryType = calendar_entry?.entry_type;
-              let kind: 'Option' | 'Job' | 'Casting' = 'Option';
-              if (entryType === 'booking') kind = 'Job';
-              if (entryType === 'casting' || entryType === 'gosee') kind = 'Casting';
-              const date = calendar_entry?.date ?? option.requested_date;
-              const start =
-                calendar_entry?.start_time ?? option.start_time ?? undefined;
-              const end =
-                calendar_entry?.end_time ?? option.end_time ?? undefined;
-              return (
-                <View style={{ marginBottom: spacing.md }}>
-                  <Text style={s.modelName}>
-                    {kind} · {option.model_name ?? 'Model'}
-                  </Text>
-                  <Text style={s.metaText}>
-                    {option.client_name ?? 'Client'}
-                  </Text>
-                  <Text style={s.metaText}>
-                    {date}
-                    {start ? ` · ${start}${end ? `–${end}` : ''}` : ''}
-                  </Text>
-                  <Text style={[s.metaText, { marginTop: spacing.sm }]}>
-                    <Text style={{ fontWeight: '600' }}>{uiCopy.calendar.nextStepLabel}: </Text>
-                    {getCalendarDetailNextStepText(option, calendar_entry, 'agency', {
-                      nextStepAwaitingModel: uiCopy.calendar.nextStepAwaitingModel,
-                      nextStepAwaitingAgency: uiCopy.calendar.nextStepAwaitingAgency,
-                      nextStepAwaitingClient: uiCopy.calendar.nextStepAwaitingClient,
-                      nextStepJobConfirm: uiCopy.calendar.nextStepJobConfirm,
-                      nextStepNegotiating: uiCopy.calendar.nextStepNegotiating,
-                      nextStepNoAction: uiCopy.calendar.nextStepNoAction,
-                      nextStepYourConfirm: uiCopy.calendar.nextStepYourConfirm,
-                    })}
-                  </Text>
-                  <TouchableOpacity
-                    style={[s.saveBtn, { marginTop: spacing.sm, alignSelf: 'stretch', backgroundColor: colors.textPrimary }]}
-                    onPress={() => {
-                      const threadId = resolveCanonicalOptionRequestIdForCalendarItem({ option, calendar_entry });
-                      if (!threadId) {
-                        showAppAlert(uiCopy.common.error, uiCopy.calendar.threadNavigationUnavailable);
-                        return;
-                      }
-                      setSearchOptionId(threadId);
-                      setTab('messages');
-                      setSelectedCalendarItem(null);
-                      setAgencyNotesDraft('');
-                      setAgencySharedNoteDraft('');
-                    }}
-                  >
-                    <Text style={[s.saveBtnLabel, { color: colors.surface }]}>
-                      {uiCopy.calendar.openNegotiationThread}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              );
-            })()}
-            <View style={{ marginBottom: spacing.md }}>
-              <Text style={s.sectionLabel}>{uiCopy.calendar.reschedule}</Text>
-              <Text style={[s.metaText, { marginBottom: spacing.sm }]}>
-                {uiCopy.calendar.rescheduleHelpAgency}
-              </Text>
-              <Text style={{ ...typography.label, marginBottom: 4 }}>Date (YYYY-MM-DD)</Text>
-              <TextInput
-                value={bookingScheduleDraft.date}
-                onChangeText={(t) => setBookingScheduleDraft((p) => ({ ...p, date: t }))}
-                placeholderTextColor={colors.textSecondary}
-                style={s.editInput}
-              />
-              <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ ...typography.label, marginBottom: 4 }}>From</Text>
-                  <TextInput
-                    value={bookingScheduleDraft.start_time}
-                    onChangeText={(t) => setBookingScheduleDraft((p) => ({ ...p, start_time: t }))}
-                    placeholderTextColor={colors.textSecondary}
-                    style={s.editInput}
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ ...typography.label, marginBottom: 4 }}>To</Text>
-                  <TextInput
-                    value={bookingScheduleDraft.end_time}
-                    onChangeText={(t) => setBookingScheduleDraft((p) => ({ ...p, end_time: t }))}
-                    placeholderTextColor={colors.textSecondary}
-                    style={s.editInput}
-                  />
-                </View>
-              </View>
-              <TouchableOpacity
-                onPress={async () => {
-                  if (!selectedCalendarItem || !currentAgencyId || !bookingScheduleDraft.date.trim()) return;
-                  setSavingBookingSchedule(true);
-                  try {
-                    const ok = await updateOptionRequestSchedule(selectedCalendarItem.option.id, {
-                      requested_date: bookingScheduleDraft.date.trim(),
-                      start_time: bookingScheduleDraft.start_time.trim() || null,
-                      end_time: bookingScheduleDraft.end_time.trim() || null,
-                    });
-                    if (ok) {
-                      await loadAgencyCalendar();
-                      void loadOptionRequestsForAgency(currentAgencyId, agencyOrganizationId);
-                      const items = await getCalendarEntriesForAgency(currentAgencyId);
-                      const next = items.find((x) => x.option.id === selectedCalendarItem.option.id);
-                      if (next) setSelectedCalendarItem(next);
-                      Alert.alert(uiCopy.common.success, uiCopy.alerts.scheduleUpdated);
-                    } else {
-                      Alert.alert(uiCopy.common.error, uiCopy.alerts.scheduleSaveFailed);
-                    }
-                  } finally {
-                    setSavingBookingSchedule(false);
-                  }
-                }}
-                style={[
-                  s.saveBtn,
-                  { marginTop: spacing.sm, alignSelf: 'flex-end', opacity: savingBookingSchedule ? 0.6 : 1 },
-                ]}
-                disabled={savingBookingSchedule}
-              >
-                <Text style={s.saveBtnLabel}>{savingBookingSchedule ? uiCopy.common.saving : uiCopy.calendar.saveSchedule}</Text>
-              </TouchableOpacity>
-            </View>
-            {selectedCalendarItem.calendar_entry?.option_request_id && currentAgencyId ? (
-              <BookingBriefEditor
-                role="agency"
-                optionRequestId={selectedCalendarItem.option.id}
-                bookingBriefRaw={
-                  (selectedCalendarItem.calendar_entry.booking_details as BookingDetails | null)?.booking_brief
-                }
-                onAfterSave={async () => {
-                  await loadAgencyCalendar();
-                  const items = await getCalendarEntriesForAgency(currentAgencyId);
-                  const next = items.find((x) => x.option.id === selectedCalendarItem.option.id);
-                  if (next) setSelectedCalendarItem(next);
-                }}
-              />
-            ) : null}
-            {selectedCalendarItem.calendar_entry ? (
-              <View style={{ marginBottom: spacing.md }}>
-                <Text style={s.sectionLabel}>{uiCopy.calendar.sharedNotesTitle}</Text>
-                <Text style={[s.metaText, { marginBottom: spacing.sm }]}>
-                  {uiCopy.calendar.sharedNotesHelpAgency}
-                </Text>
-                <ScrollView style={{ maxHeight: 120, marginBottom: spacing.sm }}>
-                  {(
-                    (selectedCalendarItem.calendar_entry?.booking_details as { shared_notes?: SharedBookingNote[] } | null)
-                      ?.shared_notes ?? []
-                  ).map((n, i) => (
-                    <View
-                      key={`${n.at}-${i}`}
-                      style={{
-                        marginBottom: spacing.xs,
-                        padding: spacing.sm,
-                        backgroundColor: colors.border,
-                        borderRadius: 8,
-                      }}
-                    >
-                      <Text style={{ ...typography.label, fontSize: 9, color: colors.textSecondary }}>
-                        {n.role} · {new Date(n.at).toLocaleString('en-GB')}
+              {selectedCalendarItem &&
+                (() => {
+                  const { option, calendar_entry } = selectedCalendarItem;
+                  const entryType = calendar_entry?.entry_type;
+                  let kind: 'Option' | 'Job' | 'Casting' = 'Option';
+                  if (entryType === 'booking') kind = 'Job';
+                  if (entryType === 'casting' || entryType === 'gosee') kind = 'Casting';
+                  const date = calendar_entry?.date ?? option.requested_date;
+                  const start = calendar_entry?.start_time ?? option.start_time ?? undefined;
+                  const end = calendar_entry?.end_time ?? option.end_time ?? undefined;
+                  return (
+                    <View style={{ marginBottom: spacing.md }}>
+                      <Text style={s.modelName}>
+                        {kind} · {option.model_name ?? 'Model'}
                       </Text>
-                      <Text style={{ ...typography.body, fontSize: 12, color: colors.textPrimary }}>{n.text}</Text>
+                      <Text style={s.metaText}>{option.client_name ?? 'Client'}</Text>
+                      <Text style={s.metaText}>
+                        {date}
+                        {start ? ` · ${start}${end ? `–${end}` : ''}` : ''}
+                      </Text>
+                      <Text style={[s.metaText, { marginTop: spacing.sm }]}>
+                        <Text style={{ fontWeight: '600' }}>{uiCopy.calendar.nextStepLabel}: </Text>
+                        {getCalendarDetailNextStepText(option, calendar_entry, 'agency', {
+                          nextStepAwaitingModel: uiCopy.calendar.nextStepAwaitingModel,
+                          nextStepAwaitingAgency: uiCopy.calendar.nextStepAwaitingAgency,
+                          nextStepAwaitingClient: uiCopy.calendar.nextStepAwaitingClient,
+                          nextStepJobConfirm: uiCopy.calendar.nextStepJobConfirm,
+                          nextStepNegotiating: uiCopy.calendar.nextStepNegotiating,
+                          nextStepNoAction: uiCopy.calendar.nextStepNoAction,
+                          nextStepYourConfirm: uiCopy.calendar.nextStepYourConfirm,
+                        })}
+                      </Text>
+                      <TouchableOpacity
+                        style={[
+                          s.saveBtn,
+                          {
+                            marginTop: spacing.sm,
+                            alignSelf: 'stretch',
+                            backgroundColor: colors.textPrimary,
+                          },
+                        ]}
+                        onPress={() => {
+                          const threadId = resolveCanonicalOptionRequestIdForCalendarItem({
+                            option,
+                            calendar_entry,
+                          });
+                          if (!threadId) {
+                            showAppAlert(
+                              uiCopy.common.error,
+                              uiCopy.calendar.threadNavigationUnavailable,
+                            );
+                            return;
+                          }
+                          setSearchOptionId(threadId);
+                          setTab('messages');
+                          setSelectedCalendarItem(null);
+                          setAgencyNotesDraft('');
+                          setAgencySharedNoteDraft('');
+                        }}
+                      >
+                        <Text style={[s.saveBtnLabel, { color: colors.surface }]}>
+                          {uiCopy.calendar.openNegotiationThread}
+                        </Text>
+                      </TouchableOpacity>
                     </View>
-                  ))}
-                </ScrollView>
+                  );
+                })()}
+              <View style={{ marginBottom: spacing.md }}>
+                <Text style={s.sectionLabel}>{uiCopy.calendar.reschedule}</Text>
+                <Text style={[s.metaText, { marginBottom: spacing.sm }]}>
+                  {uiCopy.calendar.rescheduleHelpAgency}
+                </Text>
+                <Text style={{ ...typography.label, marginBottom: 4 }}>Date (YYYY-MM-DD)</Text>
                 <TextInput
-                  value={agencySharedNoteDraft}
-                  onChangeText={setAgencySharedNoteDraft}
-                  multiline
-                  placeholder={uiCopy.calendar.sharedNotePlaceholder}
+                  value={bookingScheduleDraft.date}
+                  onChangeText={(t) => setBookingScheduleDraft((p) => ({ ...p, date: t }))}
                   placeholderTextColor={colors.textSecondary}
-                  style={[s.editInput, { minHeight: 72, textAlignVertical: 'top', borderRadius: 12 }]}
+                  style={s.editInput}
                 />
+                <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ ...typography.label, marginBottom: 4 }}>From</Text>
+                    <TextInput
+                      value={bookingScheduleDraft.start_time}
+                      onChangeText={(t) =>
+                        setBookingScheduleDraft((p) => ({ ...p, start_time: t }))
+                      }
+                      placeholderTextColor={colors.textSecondary}
+                      style={s.editInput}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ ...typography.label, marginBottom: 4 }}>To</Text>
+                    <TextInput
+                      value={bookingScheduleDraft.end_time}
+                      onChangeText={(t) => setBookingScheduleDraft((p) => ({ ...p, end_time: t }))}
+                      placeholderTextColor={colors.textSecondary}
+                      style={s.editInput}
+                    />
+                  </View>
+                </View>
                 <TouchableOpacity
                   onPress={async () => {
-                    if (!selectedCalendarItem || !agencySharedNoteDraft.trim() || !currentAgencyId) return;
-                    const now = Date.now();
-                    if (now - lastAppendSharedNoteAtRef.current < UI_DOUBLE_SUBMIT_DEBOUNCE_MS) return;
-                    lastAppendSharedNoteAtRef.current = now;
-                    setSavingAgencySharedNote(true);
+                    if (
+                      !selectedCalendarItem ||
+                      !currentAgencyId ||
+                      !bookingScheduleDraft.date.trim()
+                    )
+                      return;
+                    setSavingBookingSchedule(true);
                     try {
-                      const ok = await appendSharedBookingNote(
-                        selectedCalendarItem.option.id,
-                        'agency',
-                        agencySharedNoteDraft,
-                      );
+                      const ok = await updateOptionRequestSchedule(selectedCalendarItem.option.id, {
+                        requested_date: bookingScheduleDraft.date.trim(),
+                        start_time: bookingScheduleDraft.start_time.trim() || null,
+                        end_time: bookingScheduleDraft.end_time.trim() || null,
+                      });
                       if (ok) {
-                        setAgencySharedNoteDraft('');
                         await loadAgencyCalendar();
+                        void loadOptionRequestsForAgency(currentAgencyId, agencyOrganizationId);
                         const items = await getCalendarEntriesForAgency(currentAgencyId);
-                        const next = items.find((x) => x.option.id === selectedCalendarItem.option.id);
+                        const next = items.find(
+                          (x) => x.option.id === selectedCalendarItem.option.id,
+                        );
                         if (next) setSelectedCalendarItem(next);
+                        Alert.alert(uiCopy.common.success, uiCopy.alerts.scheduleUpdated);
                       } else {
-                        showAppAlert(uiCopy.common.error, uiCopy.alerts.calendarNotSaved);
+                        Alert.alert(uiCopy.common.error, uiCopy.alerts.scheduleSaveFailed);
                       }
                     } finally {
-                      setSavingAgencySharedNote(false);
+                      setSavingBookingSchedule(false);
                     }
                   }}
                   style={[
                     s.saveBtn,
-                    { marginTop: spacing.sm, alignSelf: 'flex-end', opacity: savingAgencySharedNote ? 0.6 : 1 },
+                    {
+                      marginTop: spacing.sm,
+                      alignSelf: 'flex-end',
+                      opacity: savingBookingSchedule ? 0.6 : 1,
+                    },
                   ]}
-                  disabled={savingAgencySharedNote}
+                  disabled={savingBookingSchedule}
                 >
                   <Text style={s.saveBtnLabel}>
-                    {savingAgencySharedNote ? uiCopy.calendar.postingSharedNote : uiCopy.calendar.postSharedNote}
+                    {savingBookingSchedule ? uiCopy.common.saving : uiCopy.calendar.saveSchedule}
                   </Text>
                 </TouchableOpacity>
               </View>
-            ) : null}
-            <Text style={s.sectionLabel}>{uiCopy.calendar.agencyNotesTitle}</Text>
-            <TextInput
-              value={agencyNotesDraft}
-              onChangeText={setAgencyNotesDraft}
-              multiline
-              placeholder={uiCopy.calendar.agencyNotesPlaceholder}
-              placeholderTextColor={colors.textSecondary}
-              style={[
-                s.editInput,
-                {
-                  height: 120,
-                  textAlignVertical: 'top',
-                  borderRadius: 12,
-                },
-              ]}
-            />
-            <View
-              style={{
-                flexDirection: 'row',
-                justifyContent: 'flex-end',
-                gap: spacing.sm,
-                marginTop: spacing.lg,
-              }}
-            >
-              <TouchableOpacity
-                onPress={() => {
-                  setSelectedCalendarItem(null);
-                  setAgencyNotesDraft('');
-                  setAgencySharedNoteDraft('');
-                }}
-                style={[s.filterPill, { paddingHorizontal: spacing.md }]}
-              >
-                <Text style={s.filterPillLabel}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={async () => {
-                  if (!selectedCalendarItem) return;
-                  setSavingNotes(true);
-                  try {
-                    await updateBookingDetails(
-                      selectedCalendarItem.option.id,
-                      { agency_notes: agencyNotesDraft },
-                      'agency',
-                    );
-                    await loadAgencyCalendar();
-                    setSelectedCalendarItem(null);
-                    setAgencyNotesDraft('');
-                  } catch (e) {
-                    console.error('updateBookingDetails error:', e);
-                    showAppAlert(uiCopy.common.error, uiCopy.alerts.calendarNotSaved);
-                  } finally {
-                    setSavingNotes(false);
+              {selectedCalendarItem.calendar_entry?.option_request_id && currentAgencyId ? (
+                <BookingBriefEditor
+                  role="agency"
+                  optionRequestId={selectedCalendarItem.option.id}
+                  bookingBriefRaw={
+                    (selectedCalendarItem.calendar_entry.booking_details as BookingDetails | null)
+                      ?.booking_brief
                   }
-                }}
+                  onAfterSave={async () => {
+                    await loadAgencyCalendar();
+                    const items = await getCalendarEntriesForAgency(currentAgencyId);
+                    const next = items.find((x) => x.option.id === selectedCalendarItem.option.id);
+                    if (next) setSelectedCalendarItem(next);
+                  }}
+                />
+              ) : null}
+              {selectedCalendarItem.calendar_entry ? (
+                <View style={{ marginBottom: spacing.md }}>
+                  <Text style={s.sectionLabel}>{uiCopy.calendar.sharedNotesTitle}</Text>
+                  <Text style={[s.metaText, { marginBottom: spacing.sm }]}>
+                    {uiCopy.calendar.sharedNotesHelpAgency}
+                  </Text>
+                  <ScrollView style={{ maxHeight: 120, marginBottom: spacing.sm }}>
+                    {(
+                      (
+                        selectedCalendarItem.calendar_entry?.booking_details as {
+                          shared_notes?: SharedBookingNote[];
+                        } | null
+                      )?.shared_notes ?? []
+                    ).map((n, i) => (
+                      <View
+                        key={`${n.at}-${i}`}
+                        style={{
+                          marginBottom: spacing.xs,
+                          padding: spacing.sm,
+                          backgroundColor: colors.border,
+                          borderRadius: 8,
+                        }}
+                      >
+                        <Text
+                          style={{ ...typography.label, fontSize: 9, color: colors.textSecondary }}
+                        >
+                          {n.role} · {new Date(n.at).toLocaleString('en-GB')}
+                        </Text>
+                        <Text
+                          style={{ ...typography.body, fontSize: 12, color: colors.textPrimary }}
+                        >
+                          {n.text}
+                        </Text>
+                      </View>
+                    ))}
+                  </ScrollView>
+                  <TextInput
+                    value={agencySharedNoteDraft}
+                    onChangeText={setAgencySharedNoteDraft}
+                    multiline
+                    placeholder={uiCopy.calendar.sharedNotePlaceholder}
+                    placeholderTextColor={colors.textSecondary}
+                    style={[
+                      s.editInput,
+                      { minHeight: 72, textAlignVertical: 'top', borderRadius: 12 },
+                    ]}
+                  />
+                  <TouchableOpacity
+                    onPress={async () => {
+                      if (
+                        !selectedCalendarItem ||
+                        !agencySharedNoteDraft.trim() ||
+                        !currentAgencyId
+                      )
+                        return;
+                      const now = Date.now();
+                      if (now - lastAppendSharedNoteAtRef.current < UI_DOUBLE_SUBMIT_DEBOUNCE_MS)
+                        return;
+                      lastAppendSharedNoteAtRef.current = now;
+                      setSavingAgencySharedNote(true);
+                      try {
+                        const ok = await appendSharedBookingNote(
+                          selectedCalendarItem.option.id,
+                          'agency',
+                          agencySharedNoteDraft,
+                        );
+                        if (ok) {
+                          setAgencySharedNoteDraft('');
+                          await loadAgencyCalendar();
+                          const items = await getCalendarEntriesForAgency(currentAgencyId);
+                          const next = items.find(
+                            (x) => x.option.id === selectedCalendarItem.option.id,
+                          );
+                          if (next) setSelectedCalendarItem(next);
+                        } else {
+                          showAppAlert(uiCopy.common.error, uiCopy.alerts.calendarNotSaved);
+                        }
+                      } finally {
+                        setSavingAgencySharedNote(false);
+                      }
+                    }}
+                    style={[
+                      s.saveBtn,
+                      {
+                        marginTop: spacing.sm,
+                        alignSelf: 'flex-end',
+                        opacity: savingAgencySharedNote ? 0.6 : 1,
+                      },
+                    ]}
+                    disabled={savingAgencySharedNote}
+                  >
+                    <Text style={s.saveBtnLabel}>
+                      {savingAgencySharedNote
+                        ? uiCopy.calendar.postingSharedNote
+                        : uiCopy.calendar.postSharedNote}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+              <Text style={s.sectionLabel}>{uiCopy.calendar.agencyNotesTitle}</Text>
+              <TextInput
+                value={agencyNotesDraft}
+                onChangeText={setAgencyNotesDraft}
+                multiline
+                placeholder={uiCopy.calendar.agencyNotesPlaceholder}
+                placeholderTextColor={colors.textSecondary}
                 style={[
-                  s.saveBtn,
+                  s.editInput,
                   {
-                    paddingHorizontal: spacing.lg,
-                    alignSelf: 'auto',
-                    opacity: savingNotes ? 0.6 : 1,
+                    height: 120,
+                    textAlignVertical: 'top',
+                    borderRadius: 12,
                   },
                 ]}
-                disabled={savingNotes}
+              />
+              <View
+                style={{
+                  flexDirection: 'row',
+                  justifyContent: 'flex-end',
+                  gap: spacing.sm,
+                  marginTop: spacing.lg,
+                }}
               >
-                <Text style={s.saveBtnLabel}>
-                  {savingNotes ? uiCopy.calendar.savingNotes : uiCopy.calendar.saveNotes}
-                </Text>
-              </TouchableOpacity>
-            </View>
+                <TouchableOpacity
+                  onPress={() => {
+                    setSelectedCalendarItem(null);
+                    setAgencyNotesDraft('');
+                    setAgencySharedNoteDraft('');
+                  }}
+                  style={[s.filterPill, { paddingHorizontal: spacing.md }]}
+                >
+                  <Text style={s.filterPillLabel}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={async () => {
+                    if (!selectedCalendarItem) return;
+                    setSavingNotes(true);
+                    try {
+                      await updateBookingDetails(
+                        selectedCalendarItem.option.id,
+                        { agency_notes: agencyNotesDraft },
+                        'agency',
+                      );
+                      await loadAgencyCalendar();
+                      setSelectedCalendarItem(null);
+                      setAgencyNotesDraft('');
+                    } catch (e) {
+                      console.error('updateBookingDetails error:', e);
+                      showAppAlert(uiCopy.common.error, uiCopy.alerts.calendarNotSaved);
+                    } finally {
+                      setSavingNotes(false);
+                    }
+                  }}
+                  style={[
+                    s.saveBtn,
+                    {
+                      paddingHorizontal: spacing.lg,
+                      alignSelf: 'auto',
+                      opacity: savingNotes ? 0.6 : 1,
+                    },
+                  ]}
+                  disabled={savingNotes}
+                >
+                  <Text style={s.saveBtnLabel}>
+                    {savingNotes ? uiCopy.calendar.savingNotes : uiCopy.calendar.saveNotes}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </ScrollView>
           </View>
         </View>
@@ -1427,20 +1621,28 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
             }}
           >
             <Text style={s.sectionLabel}>{uiCopy.calendar.agencyAddEventMenuTitle}</Text>
-            <Text style={{ ...typography.body, fontSize: 13, color: colors.textSecondary, marginBottom: spacing.md }}>
+            <Text
+              style={{
+                ...typography.body,
+                fontSize: 13,
+                color: colors.textSecondary,
+                marginBottom: spacing.md,
+              }}
+            >
               {uiCopy.calendar.agencyAddEventMenuSubtitle}
             </Text>
-            {(
-              [
-                { kind: 'option' as const, label: uiCopy.calendar.addOptionEvent },
-                { kind: 'casting' as const, label: uiCopy.calendar.addCastingEvent },
-                { kind: 'private' as const, label: uiCopy.calendar.addPrivateCalendarEvent },
-              ]
-            ).map(({ kind, label }) => (
+            {[
+              { kind: 'option' as const, label: uiCopy.calendar.addOptionEvent },
+              { kind: 'casting' as const, label: uiCopy.calendar.addCastingEvent },
+              { kind: 'private' as const, label: uiCopy.calendar.addPrivateCalendarEvent },
+            ].map(({ kind, label }) => (
               <TouchableOpacity
                 key={kind}
                 onPress={() => startAgencyCalendarEvent(kind)}
-                style={[s.filterPill, { marginBottom: spacing.sm, alignSelf: 'stretch', paddingVertical: spacing.sm }]}
+                style={[
+                  s.filterPill,
+                  { marginBottom: spacing.sm, alignSelf: 'stretch', paddingVertical: spacing.sm },
+                ]}
               >
                 <Text style={[s.filterPillLabel, { fontSize: 15 }]}>{label}</Text>
               </TouchableOpacity>
@@ -1456,220 +1658,381 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
       )}
 
       {showAddManualEvent && (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.08)', justifyContent: 'center', alignItems: 'center', padding: agencyIsMobile ? spacing.xs : spacing.lg, zIndex: 51 }]}>
-          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setShowAddManualEvent(false)} />
-          <View style={{ width: '100%', maxWidth: 440, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, padding: agencyIsMobile ? spacing.md : spacing.lg, maxHeight: '90%' }}>
+        <View
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              backgroundColor: 'rgba(0,0,0,0.08)',
+              justifyContent: 'center',
+              alignItems: 'center',
+              padding: agencyIsMobile ? spacing.xs : spacing.lg,
+              zIndex: 51,
+            },
+          ]}
+        >
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setShowAddManualEvent(false)}
+          />
+          <View
+            style={{
+              width: '100%',
+              maxWidth: 440,
+              borderRadius: 18,
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: colors.surface,
+              padding: agencyIsMobile ? spacing.md : spacing.lg,
+              maxHeight: '90%',
+            }}
+          >
             <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-            <Text style={s.sectionLabel}>{uiCopy.calendar.agencyAddEventFormTitle}</Text>
+              <Text style={s.sectionLabel}>{uiCopy.calendar.agencyAddEventFormTitle}</Text>
 
-            {/* Event type pills */}
-            <Text style={{ ...typography.label, marginBottom: 4 }}>{uiCopy.calendar.agencyEventTypeLabel}</Text>
-            <View style={{ flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.sm }}>
-              {(['option', 'casting', 'private'] as const).map((et) => (
+              {/* Event type pills */}
+              <Text style={{ ...typography.label, marginBottom: 4 }}>
+                {uiCopy.calendar.agencyEventTypeLabel}
+              </Text>
+              <View style={{ flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.sm }}>
+                {(['option', 'casting', 'private'] as const).map((et) => (
+                  <TouchableOpacity
+                    key={et}
+                    onPress={() =>
+                      setNewEventForm((f) => ({
+                        ...f,
+                        eventCategory: et,
+                        selectedModelIds: et === 'private' ? [] : f.selectedModelIds,
+                      }))
+                    }
+                    style={[
+                      s.filterPill,
+                      newEventForm.eventCategory === et && { backgroundColor: colors.accent },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        s.filterPillLabel,
+                        newEventForm.eventCategory === et && { color: '#fff' },
+                      ]}
+                    >
+                      {et === 'option'
+                        ? uiCopy.calendar.typeFilterOption
+                        : et === 'casting'
+                          ? uiCopy.calendar.typeFilterCasting
+                          : uiCopy.calendar.agencyEventTypePrivateShort}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <TextInput
+                placeholder="Title"
+                value={newEventForm.title}
+                onChangeText={(t) => setNewEventForm((f) => ({ ...f, title: t }))}
+                placeholderTextColor={colors.textSecondary}
+                style={s.editInput}
+              />
+
+              {/* Model picker for Option / Casting */}
+              {newEventForm.eventCategory !== 'private' && (
+                <>
+                  <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>
+                    {uiCopy.calendar.agencySelectModelsLabel}
+                  </Text>
+                  <ScrollView
+                    style={{ maxHeight: 150 }}
+                    nestedScrollEnabled
+                    showsVerticalScrollIndicator
+                  >
+                    {fullModels.map((m) => {
+                      const sel = newEventForm.selectedModelIds.includes(m.id);
+                      return (
+                        <TouchableOpacity
+                          key={m.id}
+                          onPress={() =>
+                            setNewEventForm((f) => ({
+                              ...f,
+                              selectedModelIds: sel
+                                ? f.selectedModelIds.filter((id) => id !== m.id)
+                                : [...f.selectedModelIds, m.id],
+                            }))
+                          }
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            paddingVertical: 6,
+                            gap: 8,
+                          }}
+                        >
+                          <View
+                            style={{
+                              width: 20,
+                              height: 20,
+                              borderRadius: 4,
+                              borderWidth: 1.5,
+                              borderColor: sel ? colors.accent : colors.border,
+                              backgroundColor: sel ? colors.accent : 'transparent',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            {sel && (
+                              <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>
+                                ✓
+                              </Text>
+                            )}
+                          </View>
+                          <Text style={{ ...typography.label, color: colors.textPrimary }}>
+                            {m.name || 'Model'}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                  {newEventForm.selectedModelIds.length > 0 && (
+                    <Text
+                      style={{
+                        ...typography.label,
+                        fontSize: 11,
+                        color: colors.textSecondary,
+                        marginTop: 4,
+                      }}
+                    >
+                      {uiCopy.calendar.agencyModelsSelected(newEventForm.selectedModelIds.length)}
+                    </Text>
+                  )}
+                </>
+              )}
+
+              <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>
+                Date (YYYY-MM-DD)
+              </Text>
+              <TextInput
+                placeholder="2025-03-15"
+                value={newEventForm.date}
+                onChangeText={(d) => setNewEventForm((f) => ({ ...f, date: d }))}
+                placeholderTextColor={colors.textSecondary}
+                style={s.editInput}
+              />
+              <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ ...typography.label, marginBottom: 4 }}>From</Text>
+                  <TextInput
+                    value={newEventForm.start_time}
+                    onChangeText={(t) => setNewEventForm((f) => ({ ...f, start_time: t }))}
+                    placeholderTextColor={colors.textSecondary}
+                    style={s.editInput}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ ...typography.label, marginBottom: 4 }}>To</Text>
+                  <TextInput
+                    value={newEventForm.end_time}
+                    onChangeText={(t) => setNewEventForm((f) => ({ ...f, end_time: t }))}
+                    placeholderTextColor={colors.textSecondary}
+                    style={s.editInput}
+                  />
+                </View>
+              </View>
+              <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>
+                Note
+              </Text>
+              <TextInput
+                value={newEventForm.note}
+                onChangeText={(t) => setNewEventForm((f) => ({ ...f, note: t }))}
+                multiline
+                placeholderTextColor={colors.textSecondary}
+                style={[s.editInput, { minHeight: 64, textAlignVertical: 'top', borderRadius: 12 }]}
+              />
+              {newEventForm.eventCategory === 'private' && (
+                <>
+                  <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>
+                    Color
+                  </Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    {MANUAL_EVENT_COLORS.map((c) => (
+                      <TouchableOpacity
+                        key={c}
+                        onPress={() => setNewEventForm((f) => ({ ...f, color: c }))}
+                        style={{
+                          width: 28,
+                          height: 28,
+                          borderRadius: 14,
+                          backgroundColor: c,
+                          borderWidth: newEventForm.color === c ? 2 : 0,
+                          borderColor: colors.textPrimary,
+                        }}
+                      />
+                    ))}
+                  </View>
+                </>
+              )}
+              <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg }}>
                 <TouchableOpacity
-                  key={et}
-                  onPress={() => setNewEventForm((f) => ({ ...f, eventCategory: et, selectedModelIds: et === 'private' ? [] : f.selectedModelIds }))}
-                  style={[s.filterPill, newEventForm.eventCategory === et && { backgroundColor: colors.accent }]}
+                  style={[s.filterPill, { flex: 1 }]}
+                  onPress={() => setShowAddManualEvent(false)}
                 >
-                  <Text style={[s.filterPillLabel, newEventForm.eventCategory === et && { color: '#fff' }]}>
-                    {et === 'option'
-                      ? uiCopy.calendar.typeFilterOption
-                      : et === 'casting'
-                        ? uiCopy.calendar.typeFilterCasting
-                        : uiCopy.calendar.agencyEventTypePrivateShort}
+                  <Text style={s.filterPillLabel}>{uiCopy.common.cancel}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.saveBtn, { flex: 1 }]}
+                  disabled={
+                    !newEventForm.title.trim() ||
+                    !newEventForm.date.trim() ||
+                    savingManualEvent ||
+                    (newEventForm.eventCategory !== 'private' &&
+                      newEventForm.selectedModelIds.length === 0)
+                  }
+                  onPress={async () => {
+                    if (!currentAgencyId) return;
+                    setSavingManualEvent(true);
+                    try {
+                      if (newEventForm.eventCategory === 'private') {
+                        let calOrg = agencyOrganizationId;
+                        if (!calOrg) {
+                          const pe = profile?.email?.trim().toLowerCase();
+                          const ae = currentAgency?.email?.trim().toLowerCase();
+                          if (pe && ae && pe === ae) {
+                            calOrg = await ensureAgencyOrganization(currentAgencyId);
+                          }
+                          if (!calOrg) calOrg = await getOrganizationIdForAgency(currentAgencyId);
+                        }
+                        const { data: calUser } = await supabase.auth.getUser();
+                        const result = await insertManualEvent({
+                          owner_id: currentAgencyId,
+                          owner_type: 'agency',
+                          organization_id: calOrg,
+                          created_by: calUser.user?.id ?? null,
+                          date: newEventForm.date,
+                          start_time: newEventForm.start_time,
+                          end_time: newEventForm.end_time,
+                          title: newEventForm.title,
+                          note: newEventForm.note,
+                          color: newEventForm.color,
+                        });
+                        if (!result.ok) {
+                          Alert.alert(
+                            'Calendar',
+                            result.errorMessage || uiCopy.alerts.calendarNotSaved,
+                          );
+                        }
+                      } else {
+                        // Agency-only Option / Casting: create one request per selected model
+                        let groupId: string | undefined;
+                        if (newEventForm.selectedModelIds.length > 1) {
+                          const { data: grp, error: grpErr } = await supabase
+                            .from('agency_event_groups')
+                            .insert({
+                              agency_id: currentAgencyId,
+                              agency_organization_id: agencyOrganizationId ?? null,
+                              title: newEventForm.title,
+                              event_date: newEventForm.date,
+                              start_time: newEventForm.start_time || null,
+                              end_time: newEventForm.end_time || null,
+                              event_type: newEventForm.eventCategory,
+                              note: newEventForm.note || null,
+                              created_by: session?.user?.id ?? null,
+                            })
+                            .select('id')
+                            .single();
+                          if (grpErr) console.error('agency_event_groups insert error:', grpErr);
+                          groupId = (grp as { id: string } | null)?.id;
+                        }
+                        let anyFailed = false;
+                        for (const modelId of newEventForm.selectedModelIds) {
+                          const reqId = await createAgencyOnlyOptionRequest({
+                            modelId,
+                            agencyId: currentAgencyId,
+                            requestedDate: newEventForm.date,
+                            requestType:
+                              newEventForm.eventCategory === 'casting' ? 'casting' : 'option',
+                            title: newEventForm.title,
+                            jobDescription: newEventForm.note || undefined,
+                            startTime: newEventForm.start_time || undefined,
+                            endTime: newEventForm.end_time || undefined,
+                            agencyEventGroupId: groupId,
+                            agencyOrganizationId: agencyOrganizationId ?? undefined,
+                          });
+                          if (!reqId) anyFailed = true;
+                        }
+                        if (anyFailed) {
+                          Alert.alert('Calendar', 'Some requests could not be created.');
+                        }
+                      }
+                      await loadAgencyCalendar();
+                      setShowAddManualEvent(false);
+                      setNewEventForm({
+                        date: '',
+                        start_time: '09:00',
+                        end_time: '17:00',
+                        title: '',
+                        note: '',
+                        color: MANUAL_EVENT_COLORS[0],
+                        eventCategory: 'private',
+                        selectedModelIds: [],
+                      });
+                    } catch (e) {
+                      console.error('addEvent error:', e);
+                      Alert.alert(uiCopy.common.error, uiCopy.alerts.calendarNotSaved);
+                    } finally {
+                      setSavingManualEvent(false);
+                    }
+                  }}
+                >
+                  <Text style={s.saveBtnLabel}>
+                    {savingManualEvent
+                      ? uiCopy.calendar.agencyAddingEvent
+                      : uiCopy.calendar.agencyAddEventSubmit}
                   </Text>
                 </TouchableOpacity>
-              ))}
-            </View>
-
-            <TextInput placeholder="Title" value={newEventForm.title} onChangeText={(t) => setNewEventForm((f) => ({ ...f, title: t }))} placeholderTextColor={colors.textSecondary} style={s.editInput} />
-
-            {/* Model picker for Option / Casting */}
-            {newEventForm.eventCategory !== 'private' && (
-              <>
-                <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>{uiCopy.calendar.agencySelectModelsLabel}</Text>
-                <ScrollView style={{ maxHeight: 150 }} nestedScrollEnabled showsVerticalScrollIndicator>
-                  {fullModels.map((m) => {
-                    const sel = newEventForm.selectedModelIds.includes(m.id);
-                    return (
-                      <TouchableOpacity
-                        key={m.id}
-                        onPress={() => setNewEventForm((f) => ({
-                          ...f,
-                          selectedModelIds: sel
-                            ? f.selectedModelIds.filter((id) => id !== m.id)
-                            : [...f.selectedModelIds, m.id],
-                        }))}
-                        style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6, gap: 8 }}
-                      >
-                        <View style={{ width: 20, height: 20, borderRadius: 4, borderWidth: 1.5, borderColor: sel ? colors.accent : colors.border, backgroundColor: sel ? colors.accent : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
-                          {sel && <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>✓</Text>}
-                        </View>
-                        <Text style={{ ...typography.label, color: colors.textPrimary }}>{m.name || 'Model'}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
-                {newEventForm.selectedModelIds.length > 0 && (
-                  <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary, marginTop: 4 }}>
-                    {uiCopy.calendar.agencyModelsSelected(newEventForm.selectedModelIds.length)}
-                  </Text>
-                )}
-              </>
-            )}
-
-            <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>Date (YYYY-MM-DD)</Text>
-            <TextInput placeholder="2025-03-15" value={newEventForm.date} onChangeText={(d) => setNewEventForm((f) => ({ ...f, date: d }))} placeholderTextColor={colors.textSecondary} style={s.editInput} />
-            <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
-              <View style={{ flex: 1 }}>
-                <Text style={{ ...typography.label, marginBottom: 4 }}>From</Text>
-                <TextInput value={newEventForm.start_time} onChangeText={(t) => setNewEventForm((f) => ({ ...f, start_time: t }))} placeholderTextColor={colors.textSecondary} style={s.editInput} />
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ ...typography.label, marginBottom: 4 }}>To</Text>
-                <TextInput value={newEventForm.end_time} onChangeText={(t) => setNewEventForm((f) => ({ ...f, end_time: t }))} placeholderTextColor={colors.textSecondary} style={s.editInput} />
-              </View>
-            </View>
-            <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>Note</Text>
-            <TextInput
-              value={newEventForm.note}
-              onChangeText={(t) => setNewEventForm((f) => ({ ...f, note: t }))}
-              multiline
-              placeholderTextColor={colors.textSecondary}
-              style={[s.editInput, { minHeight: 64, textAlignVertical: 'top', borderRadius: 12 }]}
-            />
-            {newEventForm.eventCategory === 'private' && (
-              <>
-                <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>Color</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                  {MANUAL_EVENT_COLORS.map((c) => (
-                    <TouchableOpacity key={c} onPress={() => setNewEventForm((f) => ({ ...f, color: c }))} style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: c, borderWidth: newEventForm.color === c ? 2 : 0, borderColor: colors.textPrimary }} />
-                  ))}
-                </View>
-              </>
-            )}
-            <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg }}>
-              <TouchableOpacity style={[s.filterPill, { flex: 1 }]} onPress={() => setShowAddManualEvent(false)}>
-                <Text style={s.filterPillLabel}>{uiCopy.common.cancel}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[s.saveBtn, { flex: 1 }]}
-                disabled={!newEventForm.title.trim() || !newEventForm.date.trim() || savingManualEvent || (newEventForm.eventCategory !== 'private' && newEventForm.selectedModelIds.length === 0)}
-                onPress={async () => {
-                  if (!currentAgencyId) return;
-                  setSavingManualEvent(true);
-                  try {
-                    if (newEventForm.eventCategory === 'private') {
-                      let calOrg = agencyOrganizationId;
-                      if (!calOrg) {
-                        const pe = profile?.email?.trim().toLowerCase();
-                        const ae = currentAgency?.email?.trim().toLowerCase();
-                        if (pe && ae && pe === ae) {
-                          calOrg = await ensureAgencyOrganization(currentAgencyId);
-                        }
-                        if (!calOrg) calOrg = await getOrganizationIdForAgency(currentAgencyId);
-                      }
-                      const { data: calUser } = await supabase.auth.getUser();
-                      const result = await insertManualEvent({
-                        owner_id: currentAgencyId,
-                        owner_type: 'agency',
-                        organization_id: calOrg,
-                        created_by: calUser.user?.id ?? null,
-                        date: newEventForm.date,
-                        start_time: newEventForm.start_time,
-                        end_time: newEventForm.end_time,
-                        title: newEventForm.title,
-                        note: newEventForm.note,
-                        color: newEventForm.color,
-                      });
-                      if (!result.ok) {
-                        Alert.alert('Calendar', result.errorMessage || uiCopy.alerts.calendarNotSaved);
-                      }
-                    } else {
-                      // Agency-only Option / Casting: create one request per selected model
-                      let groupId: string | undefined;
-                      if (newEventForm.selectedModelIds.length > 1) {
-                        const { data: grp, error: grpErr } = await supabase
-                          .from('agency_event_groups')
-                          .insert({
-                            agency_id: currentAgencyId,
-                            agency_organization_id: agencyOrganizationId ?? null,
-                            title: newEventForm.title,
-                            event_date: newEventForm.date,
-                            start_time: newEventForm.start_time || null,
-                            end_time: newEventForm.end_time || null,
-                            event_type: newEventForm.eventCategory,
-                            note: newEventForm.note || null,
-                            created_by: session?.user?.id ?? null,
-                          })
-                          .select('id')
-                          .single();
-                        if (grpErr) console.error('agency_event_groups insert error:', grpErr);
-                        groupId = (grp as { id: string } | null)?.id;
-                      }
-                      let anyFailed = false;
-                      for (const modelId of newEventForm.selectedModelIds) {
-                        const reqId = await createAgencyOnlyOptionRequest({
-                          modelId,
-                          agencyId: currentAgencyId,
-                          requestedDate: newEventForm.date,
-                          requestType: newEventForm.eventCategory === 'casting' ? 'casting' : 'option',
-                          title: newEventForm.title,
-                          jobDescription: newEventForm.note || undefined,
-                          startTime: newEventForm.start_time || undefined,
-                          endTime: newEventForm.end_time || undefined,
-                          agencyEventGroupId: groupId,
-                          agencyOrganizationId: agencyOrganizationId ?? undefined,
-                        });
-                        if (!reqId) anyFailed = true;
-                      }
-                      if (anyFailed) {
-                        Alert.alert('Calendar', 'Some requests could not be created.');
-                      }
-                    }
-                    await loadAgencyCalendar();
-                    setShowAddManualEvent(false);
-                    setNewEventForm({
-                      date: '',
-                      start_time: '09:00',
-                      end_time: '17:00',
-                      title: '',
-                      note: '',
-                      color: MANUAL_EVENT_COLORS[0],
-                      eventCategory: 'private',
-                      selectedModelIds: [],
-                    });
-                  } catch (e) {
-                    console.error('addEvent error:', e);
-                    Alert.alert(uiCopy.common.error, uiCopy.alerts.calendarNotSaved);
-                  } finally {
-                    setSavingManualEvent(false);
-                  }
-                }}
-              >
-                <Text style={s.saveBtnLabel}>
-                  {savingManualEvent ? uiCopy.calendar.agencyAddingEvent : uiCopy.calendar.agencyAddEventSubmit}
-                </Text>
-              </TouchableOpacity>
-            </View>
             </ScrollView>
           </View>
         </View>
       )}
 
       {selectedManualEvent && (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.08)', justifyContent: 'center', alignItems: 'center', padding: agencyIsMobile ? spacing.xs : spacing.lg }]}>
-          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setSelectedManualEvent(null)} />
-          <View style={{ width: '100%', maxWidth: 400, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, padding: agencyIsMobile ? spacing.md : spacing.lg }}>
+        <View
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              backgroundColor: 'rgba(0,0,0,0.08)',
+              justifyContent: 'center',
+              alignItems: 'center',
+              padding: agencyIsMobile ? spacing.xs : spacing.lg,
+            },
+          ]}
+        >
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setSelectedManualEvent(null)}
+          />
+          <View
+            style={{
+              width: '100%',
+              maxWidth: 400,
+              borderRadius: 18,
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: colors.surface,
+              padding: agencyIsMobile ? spacing.md : spacing.lg,
+            }}
+          >
             <Text style={s.sectionLabel}>{uiCopy.clientWeb.editEvent}</Text>
-            <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>Title</Text>
+            <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>
+              Title
+            </Text>
             <TextInput
               value={manualEventEditDraft.title}
               onChangeText={(t) => setManualEventEditDraft((p) => ({ ...p, title: t }))}
               placeholderTextColor={colors.textSecondary}
               style={s.editInput}
             />
-            <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>Date (YYYY-MM-DD)</Text>
+            <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>
+              Date (YYYY-MM-DD)
+            </Text>
             <TextInput
               value={manualEventEditDraft.date}
               onChangeText={(t) => setManualEventEditDraft((p) => ({ ...p, date: t }))}
@@ -1696,7 +2059,9 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                 />
               </View>
             </View>
-            <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>Note (private)</Text>
+            <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>
+              Note (private)
+            </Text>
             <TextInput
               value={manualEventEditDraft.note}
               onChangeText={(t) => setManualEventEditDraft((p) => ({ ...p, note: t }))}
@@ -1704,7 +2069,9 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
               placeholderTextColor={colors.textSecondary}
               style={[s.editInput, { minHeight: 72, textAlignVertical: 'top', borderRadius: 12 }]}
             />
-            <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>Color</Text>
+            <Text style={{ ...typography.label, marginTop: spacing.sm, marginBottom: 4 }}>
+              Color
+            </Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {MANUAL_EVENT_COLORS.map((c) => (
                 <TouchableOpacity
@@ -1721,9 +2088,19 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                 />
               ))}
             </View>
-            <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg, flexWrap: 'wrap' }}>
+            <View
+              style={{
+                flexDirection: 'row',
+                gap: spacing.sm,
+                marginTop: spacing.lg,
+                flexWrap: 'wrap',
+              }}
+            >
               <TouchableOpacity
-                style={[s.saveBtn, { flex: 1, minWidth: 120, opacity: savingManualEventEdit ? 0.6 : 1 }]}
+                style={[
+                  s.saveBtn,
+                  { flex: 1, minWidth: 120, opacity: savingManualEventEdit ? 0.6 : 1 },
+                ]}
                 disabled={savingManualEventEdit || !manualEventEditDraft.title.trim()}
                 onPress={async () => {
                   if (!selectedManualEvent) return;
@@ -1752,44 +2129,46 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                 <Text style={s.saveBtnLabel}>{savingManualEventEdit ? '…' : 'Save'}</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[s.filterPill, { flex: 1, minWidth: 100, opacity: deletingManualEvent ? 0.5 : 1 }]}
+                style={[
+                  s.filterPill,
+                  { flex: 1, minWidth: 100, opacity: deletingManualEvent ? 0.5 : 1 },
+                ]}
                 disabled={deletingManualEvent}
                 onPress={() => {
                   if (!selectedManualEvent || deletingManualEvent) return;
-                  Alert.alert(
-                    uiCopy.common.confirm,
-                    uiCopy.alerts.deleteEventConfirm,
-                    [
-                      { text: uiCopy.common.cancel, style: 'cancel' },
-                      {
-                        text: uiCopy.common.delete,
-                        style: 'destructive',
-                        onPress: async () => {
-                          setDeletingManualEvent(true);
-                          try {
-                            if (await deleteManualEvent(selectedManualEvent.id)) {
-                              await loadAgencyCalendar();
-                              setSelectedManualEvent(null);
-                            } else {
-                              Alert.alert(uiCopy.common.error, uiCopy.alerts.calendarNotSaved);
-                            }
-                          } catch (e) {
-                            console.error('deleteManualEvent error:', e);
+                  Alert.alert(uiCopy.common.confirm, uiCopy.alerts.deleteEventConfirm, [
+                    { text: uiCopy.common.cancel, style: 'cancel' },
+                    {
+                      text: uiCopy.common.delete,
+                      style: 'destructive',
+                      onPress: async () => {
+                        setDeletingManualEvent(true);
+                        try {
+                          if (await deleteManualEvent(selectedManualEvent.id)) {
+                            await loadAgencyCalendar();
+                            setSelectedManualEvent(null);
+                          } else {
                             Alert.alert(uiCopy.common.error, uiCopy.alerts.calendarNotSaved);
-                          } finally {
-                            setDeletingManualEvent(false);
                           }
-                        },
+                        } catch (e) {
+                          console.error('deleteManualEvent error:', e);
+                          Alert.alert(uiCopy.common.error, uiCopy.alerts.calendarNotSaved);
+                        } finally {
+                          setDeletingManualEvent(false);
+                        }
                       },
-                    ],
-                  );
+                    },
+                  ]);
                 }}
               >
                 <Text style={[s.filterPillLabel, { color: colors.buttonSkipRed }]}>
                   {deletingManualEvent ? '…' : 'Delete'}
                 </Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[s.filterPill, { flex: 1, minWidth: 100 }]} onPress={() => setSelectedManualEvent(null)}>
+              <TouchableOpacity
+                style={[s.filterPill, { flex: 1, minWidth: 100 }]}
+                onPress={() => setSelectedManualEvent(null)}
+              >
                 <Text style={s.filterPillLabel}>Close</Text>
               </TouchableOpacity>
             </View>
@@ -1853,7 +2232,8 @@ const ActivityLogFooter: React.FC<{ log: ActivityLog }> = ({ log }) => {
   return (
     <View style={activityFooterStyles.container}>
       <Text style={activityFooterStyles.text}>
-        {copy.lastActionPrefix} {label} {copy.lastActionBy} {log.actor_name} • {timeAgo(log.created_at)}
+        {copy.lastActionPrefix} {label} {copy.lastActionBy} {log.actor_name} •{' '}
+        {timeAgo(log.created_at)}
       </Text>
     </View>
   );
@@ -1935,7 +2315,10 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
   const [urgency, setUrgency] = useState<AgencyCalendarUrgencyFilter>('all');
   const [calendarViewMode, setCalendarViewMode] = useState<CalendarViewMode>('month');
   const now = new Date();
-  const [calendarMonth, setCalendarMonth] = useState({ year: now.getFullYear(), month: now.getMonth() });
+  const [calendarMonth, setCalendarMonth] = useState({
+    year: now.getFullYear(),
+    month: now.getMonth(),
+  });
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   const itemByOptionId = useMemo(() => {
@@ -2043,24 +2426,43 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
         }}
       >
         <Text style={[s.sectionLabel, { flexShrink: 0 }]}>Calendar</Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, justifyContent: 'flex-end', flex: 1, minWidth: 0 }}>
-          <TouchableOpacity style={s.filterPill} onPress={onAddEvent} accessibilityRole="button" accessibilityLabel={uiCopy.calendar.addEventOpenMenu}>
+        <View
+          style={{
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            gap: spacing.sm,
+            justifyContent: 'flex-end',
+            flex: 1,
+            minWidth: 0,
+          }}
+        >
+          <TouchableOpacity
+            style={s.filterPill}
+            onPress={onAddEvent}
+            accessibilityRole="button"
+            accessibilityLabel={uiCopy.calendar.addEventOpenMenu}
+          >
             <Text style={s.filterPillLabel}>{uiCopy.calendar.addEventOpenMenu}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={s.filterPill} onPress={onRefresh}>
-            <Text style={s.filterPillLabel}>
-              {loading ? uiCopy.common.loading : 'Refresh'}
-            </Text>
+            <Text style={s.filterPillLabel}>{loading ? uiCopy.common.loading : 'Refresh'}</Text>
           </TouchableOpacity>
         </View>
       </View>
 
       <View style={{ marginBottom: spacing.md }}>
-        <Text style={[s.metaText, { marginBottom: spacing.xs }]}>{uiCopy.calendar.agencyQuickAddHint}</Text>
+        <Text style={[s.metaText, { marginBottom: spacing.xs }]}>
+          {uiCopy.calendar.agencyQuickAddHint}
+        </Text>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ flexDirection: 'row', gap: spacing.xs, alignItems: 'center', paddingVertical: 2 }}
+          contentContainerStyle={{
+            flexDirection: 'row',
+            gap: spacing.xs,
+            alignItems: 'center',
+            paddingVertical: 2,
+          }}
         >
           {quickAddPill('option', uiCopy.calendar.addOptionEvent)}
           {quickAddPill('casting', uiCopy.calendar.addCastingEvent)}
@@ -2109,7 +2511,14 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
       </View>
 
       <Text style={[s.metaText, { marginBottom: spacing.xs }]}>Entry type</Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.sm }}>
+      <View
+        style={{
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          gap: spacing.xs,
+          marginBottom: spacing.sm,
+        }}
+      >
         {filterPill('All', typeFilter === 'all', () => setTypeFilter('all'))}
         {filterPill('Option', typeFilter === 'option', () => setTypeFilter('option'))}
         {filterPill('Casting', typeFilter === 'casting', () => setTypeFilter('casting'))}
@@ -2117,9 +2526,18 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
       </View>
 
       <Text style={[s.metaText, { marginBottom: spacing.xs }]}>Assignee</Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.sm }}>
+      <View
+        style={{
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          gap: spacing.xs,
+          marginBottom: spacing.sm,
+        }}
+      >
         {filterPill('All', assigneeFilter === 'all', () => setAssigneeFilter('all'))}
-        {filterPill('Unassigned', assigneeFilter === 'unassigned', () => setAssigneeFilter('unassigned'))}
+        {filterPill('Unassigned', assigneeFilter === 'unassigned', () =>
+          setAssigneeFilter('unassigned'),
+        )}
         {filterPill('Mine', assigneeFilter === 'mine', () => setAssigneeFilter('mine'))}
         {teamMembers.map((m) => (
           <View key={m.user_id}>
@@ -2133,14 +2551,30 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
       </View>
 
       <Text style={[s.metaText, { marginBottom: spacing.xs }]}>Client assignment (label)</Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.sm }}>
+      <View
+        style={{
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          gap: spacing.xs,
+          marginBottom: spacing.sm,
+        }}
+      >
         {filterPill('All clients', clientScope === 'all', () => setClientScope('all'))}
         {filterPill('My assigned clients', clientScope === 'mine', () => setClientScope('mine'))}
-        {filterPill('Unassigned clients', clientScope === 'unassigned', () => setClientScope('unassigned'))}
+        {filterPill('Unassigned clients', clientScope === 'unassigned', () =>
+          setClientScope('unassigned'),
+        )}
       </View>
 
       <Text style={[s.metaText, { marginBottom: spacing.xs }]}>Attention</Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.md }}>
+      <View
+        style={{
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          gap: spacing.xs,
+          marginBottom: spacing.md,
+        }}
+      >
         {filterPill('All', urgency === 'all', () => setUrgency('all'))}
         {filterPill('Action needed', urgency === 'action', () => setUrgency('action'))}
         {filterPill('No action', urgency === 'clear', () => setUrgency('clear'))}
@@ -2175,7 +2609,15 @@ const MyModelsTab: React.FC<{
   onRefresh: () => void;
   focusModelId?: string | null;
   onFocusConsumed?: () => void;
-}> = ({ models, agencyId, agencyName, inviteOrganizationId, onRefresh, focusModelId, onFocusConsumed }) => {
+}> = ({
+  models,
+  agencyId,
+  agencyName,
+  inviteOrganizationId,
+  onRefresh,
+  focusModelId,
+  onFocusConsumed,
+}) => {
   const { width: _myModelsWidth } = useWindowDimensions();
   const agencyIsMobile = isMobileWidth(_myModelsWidth);
   const [selectedModel, setSelectedModel] = useState<SupabaseModel | null>(null);
@@ -2185,7 +2627,9 @@ const MyModelsTab: React.FC<{
   const [editState, setEditState] = useState<ModelEditState>(buildEditState({ name: '' }));
 
   const [showAddForm, setShowAddForm] = useState(false);
-  const [addModelEditState, setAddModelEditState] = useState<ModelEditState>(buildEditState({ name: '' }));
+  const [addModelEditState, setAddModelEditState] = useState<ModelEditState>(
+    buildEditState({ name: '' }),
+  );
   const [addTerritories, setAddTerritories] = useState<string[]>([]);
   const [addTerritorySearch, setAddTerritorySearch] = useState('');
   const [addLoading, setAddLoading] = useState(false);
@@ -2204,10 +2648,15 @@ const MyModelsTab: React.FC<{
   // Import from Link state
   const [importLinkUrl, setImportLinkUrl] = useState('');
   const [importLinkLoading, setImportLinkLoading] = useState(false);
-  const [importLinkFeedback, setImportLinkFeedback] = useState<{ ok: boolean; message: string } | null>(null);
+  const [importLinkFeedback, setImportLinkFeedback] = useState<{
+    ok: boolean;
+    message: string;
+  } | null>(null);
 
   // Profile completeness state for the selected model
-  const [completenessIssues, setCompletenessIssues] = useState<ReturnType<typeof checkModelCompleteness>>([]);
+  const [completenessIssues, setCompletenessIssues] = useState<
+    ReturnType<typeof checkModelCompleteness>
+  >([]);
   const [saveFeedback, setSaveFeedback] = useState<'saving' | 'success' | 'error' | null>(null);
   const saveFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const syncFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2223,9 +2672,7 @@ const MyModelsTab: React.FC<{
       return;
     }
     void getPhotosForModel(selectedModel.id, 'portfolio').then((rows) => {
-      setHasVisibleClientPortfolio(
-        rows.some((p) => Boolean(p.is_visible_to_clients ?? p.visible)),
-      );
+      setHasVisibleClientPortfolio(rows.some((p) => Boolean(p.is_visible_to_clients ?? p.visible)));
     });
   }, [selectedModel?.id]);
 
@@ -2236,8 +2683,9 @@ const MyModelsTab: React.FC<{
   const [territoryCountryCodes, setTerritoryCountryCodes] = useState<string[]>([]);
   const [territorySearch, setTerritorySearch] = useState('');
   const [territorySaving, setTerritorySaving] = useState(false);
-  const [territorySaveFeedback, setTerritorySaveFeedback] = useState<'saved' | 'error' | null>(null);
-
+  const [territorySaveFeedback, setTerritorySaveFeedback] = useState<'saved' | 'error' | null>(
+    null,
+  );
 
   /** model_id → sorted country codes for territory badges in the roster list */
   const [rosterTerritoriesMap, setRosterTerritoriesMap] = useState<Record<string, string[]>>({});
@@ -2269,24 +2717,28 @@ const MyModelsTab: React.FC<{
     void getModelLocation(selectedModel.id).then((loc) => {
       if (!cancelled) setSelectedModelLocation(loc);
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [selectedModel?.id]);
 
   // Load API keys from DB (org-wide) on mount — kept in memory only, never in localStorage.
   useEffect(() => {
     if (!agencyId) return;
-    getAgencyApiKeys(agencyId).then((keys) => {
-      if (!keys) return;
-      if (keys.mediaslide_api_key) setMediaslideKey(keys.mediaslide_api_key);
-      if (keys.netwalk_api_key) setNetwalkKey(keys.netwalk_api_key);
-    }).catch((e) => console.error('Failed to load agency API keys:', e));
+    getAgencyApiKeys(agencyId)
+      .then((keys) => {
+        if (!keys) return;
+        if (keys.mediaslide_api_key) setMediaslideKey(keys.mediaslide_api_key);
+        if (keys.netwalk_api_key) setNetwalkKey(keys.netwalk_api_key);
+      })
+      .catch((e) => console.error('Failed to load agency API keys:', e));
   }, [agencyId]);
 
   useEffect(() => {
     if (selectedModel) {
       setEditState(buildEditState(selectedModel));
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedModel?.id, selectedModel?.updated_at]);
 
   // RC-5: models prop is already fullModels (full SupabaseModel from MODEL_DETAIL_SELECT,
@@ -2310,7 +2762,7 @@ const MyModelsTab: React.FC<{
       hasVisiblePhoto: hasVisibleClientPortfolio,
     };
     setCompletenessIssues(checkModelCompleteness(selectedModel, ctx));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedModel?.id, territoryCountryCodes, hasVisibleClientPortfolio]);
 
   // Bulk selection state
@@ -2321,7 +2773,9 @@ const MyModelsTab: React.FC<{
   const [bulkAssigning, setBulkAssigning] = useState(false);
   const [bulkFeedback, setBulkFeedback] = useState<string | null>(null);
   const [resendingModelId, setResendingModelId] = useState<string | null>(null);
-  const [resendModelCooldownUntil, setResendModelCooldownUntil] = useState<Record<string, number>>({});
+  const [resendModelCooldownUntil, setResendModelCooldownUntil] = useState<Record<string, number>>(
+    {},
+  );
 
   const isoCountryList = useMemo(() => {
     const list = Object.entries(ISO_COUNTRY_NAMES)
@@ -2381,7 +2835,10 @@ const MyModelsTab: React.FC<{
         .maybeSingle();
       if (tokenErr) {
         console.error('handleResendModelClaimInvite token lookup error:', tokenErr);
-        Alert.alert(uiCopy.common.error, `${uiCopy.inviteResend.error}: ${tokenErr.message}\n\n${uiCopy.inviteResend.checkSpamHint}`);
+        Alert.alert(
+          uiCopy.common.error,
+          `${uiCopy.inviteResend.error}: ${tokenErr.message}\n\n${uiCopy.inviteResend.checkSpamHint}`,
+        );
         return;
       }
       let token = (tokenRow as { token?: string } | null)?.token ?? null;
@@ -2424,7 +2881,10 @@ const MyModelsTab: React.FC<{
   const handleSaveTerritoriesOnly = async () => {
     if (!selectedModel) return;
     if (territoryCountryCodes.length === 0) {
-      showAppAlert(uiCopy.modelRoster.territoriesRequiredTitle, uiCopy.modelRoster.territoriesRequiredBody);
+      showAppAlert(
+        uiCopy.modelRoster.territoriesRequiredTitle,
+        uiCopy.modelRoster.territoriesRequiredBody,
+      );
       return;
     }
     setTerritorySaving(true);
@@ -2440,8 +2900,12 @@ const MyModelsTab: React.FC<{
       showAppAlert(uiCopy.modelRoster.territoriesSaveFailedTitle, msg);
     } finally {
       setTerritorySaving(false);
-      if (territorySaveFeedbackTimerRef.current) clearTimeout(territorySaveFeedbackTimerRef.current);
-      territorySaveFeedbackTimerRef.current = setTimeout(() => setTerritorySaveFeedback(null), 3000);
+      if (territorySaveFeedbackTimerRef.current)
+        clearTimeout(territorySaveFeedbackTimerRef.current);
+      territorySaveFeedbackTimerRef.current = setTimeout(
+        () => setTerritorySaveFeedback(null),
+        3000,
+      );
     }
   };
 
@@ -2469,7 +2933,7 @@ const MyModelsTab: React.FC<{
     void getTerritoriesForModel(selectedModel.id, agencyId).then((rows) => {
       setTerritoryCountryCodes(rows.map((r) => r.country_code.toUpperCase()));
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedModel?.id]);
 
   const handleAddModel = async () => {
@@ -2484,7 +2948,9 @@ const MyModelsTab: React.FC<{
     };
 
     // Derive visibility flags from categories (same logic as the full edit save).
-    const hasFashion = addModelEditState.categories.some((c) => c === 'Fashion' || c === 'High Fashion');
+    const hasFashion = addModelEditState.categories.some(
+      (c) => c === 'Fashion' || c === 'High Fashion',
+    );
     const hasCommercial = addModelEditState.categories.includes('Commercial');
     const noCategory = addModelEditState.categories.length === 0;
     const isVisibleFashion = noCategory || hasFashion;
@@ -2520,27 +2986,27 @@ const MyModelsTab: React.FC<{
       };
 
       const mergeResult = await importModelAndMerge({
-        agency_id:        agencyId,
+        agency_id: agencyId,
         name,
-        email:            emailTrim,
-        height:           heightForInsert,
-        chest:            toNullableInt(addModelEditState.chest),
-        waist:            toNullableInt(addModelEditState.waist),
-        hips:             toNullableInt(addModelEditState.hips),
-        shoe_size:        toNullableFloat(addModelEditState.shoe_size),
-        legs_inseam:      toNullableInt(addModelEditState.legs_inseam),
-        city:             addModelEditState.city || null,
-        country_code:     addModelEditState.country_code || null,
-        hair_color:       addModelEditState.hair_color || null,
-        eye_color:        addModelEditState.eye_color || null,
-        ethnicity:        addModelEditState.ethnicity || null,
-        sex:              addModelEditState.sex,
-        categories:       addModelEditState.categories.length > 0 ? addModelEditState.categories : null,
+        email: emailTrim,
+        height: heightForInsert,
+        chest: toNullableInt(addModelEditState.chest),
+        waist: toNullableInt(addModelEditState.waist),
+        hips: toNullableInt(addModelEditState.hips),
+        shoe_size: toNullableFloat(addModelEditState.shoe_size),
+        legs_inseam: toNullableInt(addModelEditState.legs_inseam),
+        city: addModelEditState.city || null,
+        country_code: addModelEditState.country_code || null,
+        hair_color: addModelEditState.hair_color || null,
+        eye_color: addModelEditState.eye_color || null,
+        ethnicity: addModelEditState.ethnicity || null,
+        sex: addModelEditState.sex,
+        categories: addModelEditState.categories.length > 0 ? addModelEditState.categories : null,
         is_sports_winter: addModelEditState.is_sports_winter,
         is_sports_summer: addModelEditState.is_sports_summer,
-        is_visible_fashion:    isVisibleFashion,
+        is_visible_fashion: isVisibleFashion,
         is_visible_commercial: isVisibleCommercial,
-        territories:      territoriesInput.length > 0 ? territoriesInput : null,
+        territories: territoriesInput.length > 0 ? territoriesInput : null,
       });
 
       if (!mergeResult) {
@@ -2554,10 +3020,10 @@ const MyModelsTab: React.FC<{
 
         // Try claiming unowned model first (agency_id IS NULL).
         const { error: claimError } = await supabase.rpc('agency_claim_unowned_model', {
-          p_model_id:                   mergeResult.model_id,
+          p_model_id: mergeResult.model_id,
           p_agency_relationship_status: relationshipStatus,
-          p_is_visible_fashion:         isVisibleFashion,
-          p_is_visible_commercial:      isVisibleCommercial,
+          p_is_visible_fashion: isVisibleFashion,
+          p_is_visible_commercial: isVisibleCommercial,
         });
 
         if (claimError) {
@@ -2567,13 +3033,16 @@ const MyModelsTab: React.FC<{
           // Note: agency_relationship_ended_at cannot be cleared through the COALESCE
           // pattern — acceptable because status='active' controls roster visibility.
           const { error: reactivateErr } = await supabase.rpc('agency_update_model_full', {
-            p_model_id:                   mergeResult.model_id,
+            p_model_id: mergeResult.model_id,
             p_agency_relationship_status: relationshipStatus,
-            p_is_visible_fashion:         isVisibleFashion,
-            p_is_visible_commercial:      isVisibleCommercial,
+            p_is_visible_fashion: isVisibleFashion,
+            p_is_visible_commercial: isVisibleCommercial,
           });
           if (reactivateErr) {
-            console.error('handleAddModel: agency_update_model_full after merge failed:', reactivateErr);
+            console.error(
+              'handleAddModel: agency_update_model_full after merge failed:',
+              reactivateErr,
+            );
             throw new Error(
               reactivateErr.message || 'Could not update merged model (relationship / visibility).',
             );
@@ -2582,12 +3051,12 @@ const MyModelsTab: React.FC<{
       } else {
         // Newly created: set relationship + sports flags not covered by importModelAndMerge insert.
         const { error: updateErr } = await supabase.rpc('agency_update_model_full', {
-          p_model_id:                  mergeResult.model_id,
+          p_model_id: mergeResult.model_id,
           p_agency_relationship_status: emailTrim ? 'pending_link' : 'active',
-          p_is_visible_fashion:         isVisibleFashion,
-          p_is_visible_commercial:      isVisibleCommercial,
-          p_is_sports_winter:           addModelEditState.is_sports_winter,
-          p_is_sports_summer:           addModelEditState.is_sports_summer,
+          p_is_visible_fashion: isVisibleFashion,
+          p_is_visible_commercial: isVisibleCommercial,
+          p_is_sports_winter: addModelEditState.is_sports_winter,
+          p_is_sports_summer: addModelEditState.is_sports_summer,
         });
         if (updateErr) {
           console.error('handleAddModel: agency_update_model_full (create) failed:', updateErr);
@@ -2613,10 +3082,15 @@ const MyModelsTab: React.FC<{
           if (latestModel?.user_id) {
             inviteSkippedReason = uiCopy.modelRoster.modelInviteSkippedAlreadyLinkedNote;
           } else {
-            const claimRes = await generateModelClaimToken(createdModelId, inviteOrganizationId ?? undefined);
+            const claimRes = await generateModelClaimToken(
+              createdModelId,
+              inviteOrganizationId ?? undefined,
+            );
             if (claimRes.ok) {
               claimTokenForManualLink = claimRes.data.token;
-              const { data: { session: currentSession } } = await supabase.auth.getSession();
+              const {
+                data: { session: currentSession },
+              } = await supabase.auth.getSession();
               const invokeRes = await supabase.functions.invoke('send-invite', {
                 body: {
                   type: 'model_claim',
@@ -2630,7 +3104,11 @@ const MyModelsTab: React.FC<{
                   ? { Authorization: `Bearer ${currentSession.access_token}` }
                   : undefined,
               });
-              const body = invokeRes.data as { ok?: boolean; error?: string; detail?: string } | null;
+              const body = invokeRes.data as {
+                ok?: boolean;
+                error?: string;
+                detail?: string;
+              } | null;
               if (!invokeRes.error && body?.ok === true) {
                 emailSentOk = true;
               } else {
@@ -2668,7 +3146,9 @@ const MyModelsTab: React.FC<{
         );
         if (!locOk) {
           locationPersistFailed = true;
-          console.warn('handleAddModel: upsertModelLocation(agency) failed — location may not appear in Near-Me until next save');
+          console.warn(
+            'handleAddModel: upsertModelLocation(agency) failed — location may not appear in Near-Me until next save',
+          );
           Alert.alert(
             uiCopy.modelMedia.agencyLocationPersistFailedTitle,
             uiCopy.modelMedia.agencyLocationPersistFailedBody,
@@ -2693,7 +3173,9 @@ const MyModelsTab: React.FC<{
             uiCopy.modelMedia.addModelConfirmImageRightsFeedback,
           );
         } else {
-          const { data: { user: currentUser } } = await supabase.auth.getUser();
+          const {
+            data: { user: currentUser },
+          } = await supabase.auth.getUser();
           if (!currentUser) {
             Alert.alert(
               uiCopy.modelMedia.imageRightsRequiredTitle,
@@ -2729,7 +3211,9 @@ const MyModelsTab: React.FC<{
           if (filesToUpload.length > 0) {
             const uploadedItems: { url: string; fileSizeBytes: number }[] = [];
             for (const file of filesToUpload) {
-              const result = await uploadModelPhoto(createdModelId, file, { skipConsentCheck: true });
+              const result = await uploadModelPhoto(createdModelId, file, {
+                skipConsentCheck: true,
+              });
               if (result) {
                 uploadedItems.push(result);
               } else {
@@ -2756,7 +3240,8 @@ const MyModelsTab: React.FC<{
               );
               const verifyPort = await getPhotosForModel(createdModelId, 'portfolio');
               const persistOk =
-                inserted.length === uploadedItems.length && verifyPort.length >= uploadedItems.length;
+                inserted.length === uploadedItems.length &&
+                verifyPort.length >= uploadedItems.length;
               if (!persistOk) {
                 Alert.alert(
                   uiCopy.modelMedia.photoPersistFailedTitle,
@@ -2767,10 +3252,7 @@ const MyModelsTab: React.FC<{
               }
             }
             if (uploadedItems.length === 0) {
-              Alert.alert(
-                uiCopy.common.error,
-                uiCopy.modelMedia.addModelNoPortfolioUploadedBody,
-              );
+              Alert.alert(uiCopy.common.error, uiCopy.modelMedia.addModelNoPortfolioUploadedBody);
             }
           }
 
@@ -2778,7 +3260,9 @@ const MyModelsTab: React.FC<{
           if (polaroidFilesToUpload.length > 0) {
             const uploadedPolaroidItems: { url: string; fileSizeBytes: number }[] = [];
             for (const file of polaroidFilesToUpload) {
-              const result = await uploadModelPhoto(createdModelId, file, { skipConsentCheck: true });
+              const result = await uploadModelPhoto(createdModelId, file, {
+                skipConsentCheck: true,
+              });
               if (result) {
                 uploadedPolaroidItems.push(result);
               } else {
@@ -2805,8 +3289,8 @@ const MyModelsTab: React.FC<{
               );
               const verifyPol = await getPhotosForModel(createdModelId, 'polaroid');
               const persistPolOk =
-                insertedPol.length === uploadedPolaroidItems.length
-                && verifyPol.length >= uploadedPolaroidItems.length;
+                insertedPol.length === uploadedPolaroidItems.length &&
+                verifyPol.length >= uploadedPolaroidItems.length;
               if (!persistPolOk) {
                 Alert.alert(
                   uiCopy.modelMedia.photoPersistFailedTitle,
@@ -2858,9 +3342,9 @@ const MyModelsTab: React.FC<{
         ? uiCopy.modelRoster.externalSyncIdsPersistWarning
         : '';
       const persistenceSuffix =
-        locationPersistFailed
-        || (portfolioRowsExpected > 0 && !portfolioPersisted)
-        || (polaroidRowsExpected > 0 && !polaroidPersisted)
+        locationPersistFailed ||
+        (portfolioRowsExpected > 0 && !portfolioPersisted) ||
+        (polaroidRowsExpected > 0 && !polaroidPersisted)
           ? uiCopy.modelMedia.addModelPersistenceWarningSuffix
           : '';
       if (fresh) {
@@ -2903,8 +3387,13 @@ const MyModelsTab: React.FC<{
   const saveApiKey = async (provider: 'mediaslide' | 'netwalk', key: string) => {
     // Update in-memory state immediately for instant UI feedback.
     // Keys are never written to localStorage — DB is the single source of truth.
-    if (provider === 'mediaslide') { setMediaslideKey(key); setShowMediaslideInput(false); }
-    else { setNetwalkKey(key); setShowNetwalkInput(false); }
+    if (provider === 'mediaslide') {
+      setMediaslideKey(key);
+      setShowMediaslideInput(false);
+    } else {
+      setNetwalkKey(key);
+      setShowNetwalkInput(false);
+    }
     // Persist org-wide to DB (best-effort; failure does not block local usage).
     if (agencyId) {
       const result = await saveAgencyApiConnection(agencyId, provider, key || null);
@@ -2917,12 +3406,14 @@ const MyModelsTab: React.FC<{
   const handleSync = async () => {
     if (syncLoading) return;
     setSyncLoading(true);
-    const providers = [mediaslideKey && 'Mediaslide', netwalkKey && 'Netwalk'].filter(Boolean).join(' & ');
+    const providers = [mediaslideKey && 'Mediaslide', netwalkKey && 'Netwalk']
+      .filter(Boolean)
+      .join(' & ');
     setSyncFeedback(`Syncing models from ${providers || 'connected providers'}…`);
     try {
       await Promise.all([
         mediaslideKey ? runMediaslideCronSync(mediaslideKey) : Promise.resolve(),
-        netwalkKey    ? runNetwalkCronSync(netwalkKey)        : Promise.resolve(),
+        netwalkKey ? runNetwalkCronSync(netwalkKey) : Promise.resolve(),
       ]);
       await Promise.resolve(onRefresh());
       // Re-fetch the light model list to compute incomplete count from fresh data
@@ -2930,8 +3421,7 @@ const MyModelsTab: React.FC<{
       const freshList = agencyId ? await getAgencyModels(agencyId) : [];
       const incompleteAfterSync = freshList.filter(
         (m: any) =>
-          (m.portfolio_images ?? []).length === 0 ||
-          !(rosterTerritoriesMap[m.id] ?? []).length,
+          (m.portfolio_images ?? []).length === 0 || !(rosterTerritoriesMap[m.id] ?? []).length,
       ).length;
       setSyncFeedback(
         incompleteAfterSync > 0
@@ -2996,18 +3486,25 @@ const MyModelsTab: React.FC<{
       const name = typeof data.name === 'string' ? data.name.trim() : '';
       // name is mandatory — height is recommended only (completeness banner flags it).
       if (!name) {
-        setImportLinkFeedback({ ok: false, message: 'Invalid payload: "name" (string) is required.' });
+        setImportLinkFeedback({
+          ok: false,
+          message: 'Invalid payload: "name" (string) is required.',
+        });
         return;
       }
 
-      const toNum = (v: unknown) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : null; };
-      const toStr = (v: unknown) => typeof v === 'string' && v.trim() ? v.trim() : null;
-      const toArr = (v: unknown): string[] => Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [];
+      const toNum = (v: unknown) => {
+        const n = Number(v);
+        return Number.isFinite(n) && n > 0 ? n : null;
+      };
+      const toStr = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+      const toArr = (v: unknown): string[] =>
+        Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [];
 
-      const portfolioImages  = toArr(data.portfolio_images);
-      const territoryCodes   = toArr(data.territories ?? data.territory_codes);
+      const portfolioImages = toArr(data.portfolio_images);
+      const territoryCodes = toArr(data.territories ?? data.territory_codes);
       const mediaslideSyncId = toStr(data.mediaslide_sync_id);
-      const netwalkModelId   = toStr(data.netwalk_model_id ?? data.netwalk_id);
+      const netwalkModelId = toStr(data.netwalk_model_id ?? data.netwalk_id);
 
       // Convert flat country-code strings to the ModelMergeTerritoryInput shape
       // (each territory must also carry the current agency_id for DB upsert).
@@ -3018,26 +3515,26 @@ const MyModelsTab: React.FC<{
       const result = await importModelAndMerge({
         agency_id: agencyId,
         mediaslide_sync_id: mediaslideSyncId,
-        netwalk_model_id:   netwalkModelId,
-        email:        toStr(data.email),
+        netwalk_model_id: netwalkModelId,
+        email: toStr(data.email),
         name,
-        height:       toNum(data.height) ?? 0,
-        bust:         toNum(data.bust),
-        waist:        toNum(data.waist),
-        hips:         toNum(data.hips),
-        chest:        toNum(data.chest),
-        legs_inseam:  toNum(data.legs_inseam),
-        shoe_size:    toNum(data.shoe_size),
-        city:         toStr(data.city),
+        height: toNum(data.height) ?? 0,
+        bust: toNum(data.bust),
+        waist: toNum(data.waist),
+        hips: toNum(data.hips),
+        chest: toNum(data.chest),
+        legs_inseam: toNum(data.legs_inseam),
+        shoe_size: toNum(data.shoe_size),
+        city: toStr(data.city),
         country_code: toStr(data.country_code),
-        hair_color:   toStr(data.hair_color),
-        eye_color:    toStr(data.eye_color),
-        ethnicity:    toStr(data.ethnicity),
-        sex:          (data.sex === 'male' || data.sex === 'female') ? data.sex : null,
-        categories:   toArr(data.categories).length > 0 ? toArr(data.categories) : null,
+        hair_color: toStr(data.hair_color),
+        eye_color: toStr(data.eye_color),
+        ethnicity: toStr(data.ethnicity),
+        sex: data.sex === 'male' || data.sex === 'female' ? data.sex : null,
+        categories: toArr(data.categories).length > 0 ? toArr(data.categories) : null,
         portfolio_images: portfolioImages,
-        polaroids:    toArr(data.polaroids),
-        territories:  territoriesInput.length > 0 ? territoriesInput : undefined,
+        polaroids: toArr(data.polaroids),
+        territories: territoriesInput.length > 0 ? territoriesInput : undefined,
         forceUpdateMeasurements: Boolean(mediaslideSyncId || netwalkModelId),
       });
 
@@ -3049,16 +3546,19 @@ const MyModelsTab: React.FC<{
       // Check which mandatory fields are missing in the imported payload so the
       // agency immediately knows what to fix — even before opening the model.
       const missingRequired: string[] = [];
-      if (portfolioImages.length === 0)  missingRequired.push('Photos');
-      if (territoryCodes.length === 0)   missingRequired.push('Territory');
+      if (portfolioImages.length === 0) missingRequired.push('Photos');
+      if (territoryCodes.length === 0) missingRequired.push('Territory');
       const baseMsg = result.created
         ? `Model "${name}" added to My Models.`
         : `Model "${name}" merged with existing profile.`;
 
-      const warningMsg = missingRequired.length > 0
-        ? ` Missing required fields: ${missingRequired.join(', ')} — model will not appear to clients until resolved.`
+      const warningMsg =
+        missingRequired.length > 0
+          ? ` Missing required fields: ${missingRequired.join(', ')} — model will not appear to clients until resolved.`
+          : '';
+      const syncWarn = result.externalSyncIdsPersistFailed
+        ? uiCopy.modelRoster.externalSyncIdsPersistWarning
         : '';
-      const syncWarn = result.externalSyncIdsPersistFailed ? uiCopy.modelRoster.externalSyncIdsPersistWarning : '';
 
       setImportLinkFeedback({ ok: true, message: baseMsg + warningMsg + syncWarn });
       setImportLinkUrl('');
@@ -3105,35 +3605,50 @@ const MyModelsTab: React.FC<{
     // ── STEP 2: Portfolio alert (non-blocking) — completeness banner already
     //   shows a warning; photos are managed independently by ModelMediaSettingsPanel.
     if (!hasVisibleClientPortfolio) {
-      Alert.alert(uiCopy.modelRoster.portfolioRequiredTitle, uiCopy.modelRoster.portfolioRequiredBody);
+      Alert.alert(
+        uiCopy.modelRoster.portfolioRequiredTitle,
+        uiCopy.modelRoster.portfolioRequiredBody,
+      );
     }
 
     // ── STEP 3: Save model fields + photos ──
     let step3Succeeded = false;
     try {
-      const pInt = (v: string) => { const n = parseInt(v, 10); return isNaN(n) ? null : n; };
+      const pInt = (v: string) => {
+        const n = parseInt(v, 10);
+        return isNaN(n) ? null : n;
+      };
       const updates: any = {};
       updates.name = normalizeInput(String(editState.name ?? '')).slice(0, MODEL_NAME_MAX_LENGTH);
       updates.email = editState.email.trim() || null;
       updates.height = pInt(editState.height) ?? selectedModel.height;
       // Save to both chest and bust for backwards compatibility.
       const chestVal = pInt(editState.chest);
-      if (chestVal !== null) { updates.chest = chestVal; updates.bust = chestVal; }
+      if (chestVal !== null) {
+        updates.chest = chestVal;
+        updates.bust = chestVal;
+      }
       updates.waist = pInt(editState.waist);
       updates.hips = pInt(editState.hips);
       updates.legs_inseam = pInt(editState.legs_inseam);
       updates.shoe_size = pInt(editState.shoe_size);
       updates.hair_color =
-        normalizeInput(String(editState.hair_color ?? '')).slice(0, MODEL_SHORT_TEXT_MAX_LENGTH) || null;
+        normalizeInput(String(editState.hair_color ?? '')).slice(0, MODEL_SHORT_TEXT_MAX_LENGTH) ||
+        null;
       updates.eye_color =
-        normalizeInput(String(editState.eye_color ?? '')).slice(0, MODEL_SHORT_TEXT_MAX_LENGTH) || null;
+        normalizeInput(String(editState.eye_color ?? '')).slice(0, MODEL_SHORT_TEXT_MAX_LENGTH) ||
+        null;
       updates.ethnicity =
-        normalizeInput(String(editState.ethnicity ?? '')).slice(0, MODEL_SHORT_TEXT_MAX_LENGTH) || null;
+        normalizeInput(String(editState.ethnicity ?? '')).slice(0, MODEL_SHORT_TEXT_MAX_LENGTH) ||
+        null;
       updates.city =
         normalizeInput(String(editState.city ?? '')).slice(0, MODEL_CITY_MAX_LENGTH) || null;
       updates.country_code = editState.country_code || null;
       updates.current_location =
-        normalizeInput(String(editState.current_location ?? '')).slice(0, MODEL_SHORT_TEXT_MAX_LENGTH) || null;
+        normalizeInput(String(editState.current_location ?? '')).slice(
+          0,
+          MODEL_SHORT_TEXT_MAX_LENGTH,
+        ) || null;
       // Derive visibility flags from categories — no separate Visibility toggle.
       const hasFashion = editState.categories.some((c) => c === 'Fashion' || c === 'High Fashion');
       const hasCommercial = editState.categories.includes('Commercial');
@@ -3145,35 +3660,32 @@ const MyModelsTab: React.FC<{
       updates.is_sports_winter = editState.is_sports_winter;
       updates.is_sports_summer = editState.is_sports_summer;
       // DB CHECK (sex IN ('male','female')) — only send valid values or null (no change).
-      updates.sex =
-        editState.sex === 'male' || editState.sex === 'female' ? editState.sex : null;
+      updates.sex = editState.sex === 'male' || editState.sex === 'female' ? editState.sex : null;
 
       const { error: modelUpdateError } = await supabase.rpc('agency_update_model_full', {
-        p_model_id:             selectedModel.id,
-        p_name:                 updates.name              ?? null,
-        p_email:                updates.email             ?? null,
-        p_city:                 updates.city              ?? null,
-        p_country_code:         (updates as any).country_code      ?? null,
-        p_current_location:     (updates as any).current_location  ?? null,
-        p_height:               updates.height            ?? null,
-        p_bust:                 updates.bust              ?? null,
-        p_waist:                updates.waist             ?? null,
-        p_hips:                 updates.hips              ?? null,
-        p_chest:                updates.chest             ?? null,
-        p_legs_inseam:          updates.legs_inseam       ?? null,
-        p_shoe_size:            (updates as any).shoe_size         ?? null,
-        p_hair_color:           updates.hair_color        ?? null,
-        p_eye_color:            updates.eye_color         ?? null,
-        p_sex:                  (updates as any).sex               ?? null,
-        p_ethnicity:            (updates as any).ethnicity         ?? null,
+        p_model_id: selectedModel.id,
+        p_name: updates.name ?? null,
+        p_email: updates.email ?? null,
+        p_city: updates.city ?? null,
+        p_country_code: (updates as any).country_code ?? null,
+        p_current_location: (updates as any).current_location ?? null,
+        p_height: updates.height ?? null,
+        p_bust: updates.bust ?? null,
+        p_waist: updates.waist ?? null,
+        p_hips: updates.hips ?? null,
+        p_chest: updates.chest ?? null,
+        p_legs_inseam: updates.legs_inseam ?? null,
+        p_shoe_size: (updates as any).shoe_size ?? null,
+        p_hair_color: updates.hair_color ?? null,
+        p_eye_color: updates.eye_color ?? null,
+        p_sex: (updates as any).sex ?? null,
+        p_ethnicity: (updates as any).ethnicity ?? null,
         // Leeres Array = Kategorien löschen; null = keine Änderung
-        p_categories:           updates.categories !== undefined
-                                  ? (updates.categories ?? [])
-                                  : null,
-        p_is_visible_fashion:   updates.is_visible_fashion   ?? null,
+        p_categories: updates.categories !== undefined ? (updates.categories ?? []) : null,
+        p_is_visible_fashion: updates.is_visible_fashion ?? null,
         p_is_visible_commercial: updates.is_visible_commercial ?? null,
-        p_is_sports_winter:     (updates as any).is_sports_winter  ?? null,
-        p_is_sports_summer:     (updates as any).is_sports_summer  ?? null,
+        p_is_sports_winter: (updates as any).is_sports_winter ?? null,
+        p_is_sports_summer: (updates as any).is_sports_summer ?? null,
       });
       if (modelUpdateError) {
         console.error('handleSaveModel agency_update_model_full:', {
@@ -3207,7 +3719,9 @@ const MyModelsTab: React.FC<{
           'agency',
         );
         if (!locOk) {
-          console.warn('handleSaveModel: upsertModelLocation(agency) failed — location may be stale');
+          console.warn(
+            'handleSaveModel: upsertModelLocation(agency) failed — location may be stale',
+          );
           Alert.alert(
             uiCopy.modelMedia.agencyLocationPersistFailedTitle,
             uiCopy.modelMedia.agencyLocationPersistFailedBody,
@@ -3226,7 +3740,11 @@ const MyModelsTab: React.FC<{
     // ── STEP 4: Only refresh + close panel on success ──
     if (!step3Succeeded) return;
     // RC-8 fix: await so subsequent completeness checks read fresh data.
-    try { await Promise.resolve(onRefresh()); } catch (e) { console.error('handleSaveModel refresh error:', e); }
+    try {
+      await Promise.resolve(onRefresh());
+    } catch (e) {
+      console.error('handleSaveModel refresh error:', e);
+    }
     // Refresh completeness after save (model fields may have changed).
     if (selectedModel) {
       const freshModel = await getModelByIdFromSupabase(selectedModel.id).catch(() => null);
@@ -3272,23 +3790,41 @@ const MyModelsTab: React.FC<{
     const needsAccountLink = !selectedModel.user_id;
     return (
       <ScreenScrollView>
-        <TouchableOpacity onPress={() => { setSelectedModel(null); setEditState(buildEditState({ name: '' })); }} style={{ marginBottom: spacing.md }}>
+        <TouchableOpacity
+          onPress={() => {
+            setSelectedModel(null);
+            setEditState(buildEditState({ name: '' }));
+          }}
+          style={{ marginBottom: spacing.md }}
+        >
           <Text style={s.backLabel}>← Back to models</Text>
         </TouchableOpacity>
         <Text style={s.heading}>{selectedModel.name}</Text>
 
         {/* Location source awareness badge — shown when model owns their location */}
         {selectedModelLocation && selectedModelLocation.source !== 'agency' && (
-          <View style={{
-            backgroundColor: selectedModelLocation.source === 'live' ? '#e8f5e9' : '#e3f2fd',
-            borderRadius: 8, padding: spacing.sm, marginBottom: spacing.md,
-            borderLeftWidth: 3,
-            borderLeftColor: selectedModelLocation.source === 'live' ? '#2e7d32' : '#1565c0',
-          }}>
-            <Text style={{ fontWeight: '700', fontSize: 12,
-              color: selectedModelLocation.source === 'live' ? '#2e7d32' : '#1565c0', marginBottom: 2 }}>
+          <View
+            style={{
+              backgroundColor: selectedModelLocation.source === 'live' ? '#e8f5e9' : '#e3f2fd',
+              borderRadius: 8,
+              padding: spacing.sm,
+              marginBottom: spacing.md,
+              borderLeftWidth: 3,
+              borderLeftColor: selectedModelLocation.source === 'live' ? '#2e7d32' : '#1565c0',
+            }}
+          >
+            <Text
+              style={{
+                fontWeight: '700',
+                fontSize: 12,
+                color: selectedModelLocation.source === 'live' ? '#2e7d32' : '#1565c0',
+                marginBottom: 2,
+              }}
+            >
               {locationSourceLabel(selectedModelLocation.source)} active
-              {selectedModelLocation.city ? ` · ${selectedModelLocation.city}, ${selectedModelLocation.country_code}` : ''}
+              {selectedModelLocation.city
+                ? ` · ${selectedModelLocation.city}, ${selectedModelLocation.country_code}`
+                : ''}
             </Text>
             <Text style={{ fontSize: 11, color: '#555' }}>
               This model manages their own location. Your city/country changes will be saved to
@@ -3314,149 +3850,201 @@ const MyModelsTab: React.FC<{
         </View>
 
         {/* Territories of Representation */}
-        <View style={{
-          marginTop: spacing.lg,
-          borderTopWidth: 1,
-          borderTopColor: territoryCountryCodes.length === 0 ? (colors.buttonSkipRed ?? '#c0392b') : colors.border,
-          paddingTop: spacing.md,
-        }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.xs }}>
-              <Text style={s.sectionLabel}>{uiCopy.modelRoster.territoriesTitle}</Text>
-              <View style={{
-                paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4,
+        <View
+          style={{
+            marginTop: spacing.lg,
+            borderTopWidth: 1,
+            borderTopColor:
+              territoryCountryCodes.length === 0
+                ? (colors.buttonSkipRed ?? '#c0392b')
+                : colors.border,
+            paddingTop: spacing.md,
+          }}
+        >
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: spacing.xs,
+              marginBottom: spacing.xs,
+            }}
+          >
+            <Text style={s.sectionLabel}>{uiCopy.modelRoster.territoriesTitle}</Text>
+            <View
+              style={{
+                paddingHorizontal: 6,
+                paddingVertical: 1,
+                borderRadius: 4,
                 backgroundColor: colors.buttonSkipRed ?? '#c0392b',
-              }}>
-                <Text style={{ ...typography.label, fontSize: 8, color: '#fff', letterSpacing: 0.5 }}>REQUIRED</Text>
-              </View>
-            </View>
-            {territoryCountryCodes.length > 0 ? (
-              <Text style={{ ...typography.label, fontSize: 10, color: colors.accentGreen ?? colors.textSecondary, marginBottom: spacing.xs, letterSpacing: 0.5 }}>
-                {territoryCountryCodes.slice().sort().join(' · ')}
+              }}
+            >
+              <Text style={{ ...typography.label, fontSize: 8, color: '#fff', letterSpacing: 0.5 }}>
+                REQUIRED
               </Text>
-            ) : (
-              <View style={{
+            </View>
+          </View>
+          {territoryCountryCodes.length > 0 ? (
+            <Text
+              style={{
+                ...typography.label,
+                fontSize: 10,
+                color: colors.accentGreen ?? colors.textSecondary,
+                marginBottom: spacing.xs,
+                letterSpacing: 0.5,
+              }}
+            >
+              {territoryCountryCodes.slice().sort().join(' · ')}
+            </Text>
+          ) : (
+            <View
+              style={{
                 borderWidth: 1,
                 borderColor: colors.buttonSkipRed ?? '#c0392b',
                 borderRadius: 8,
                 padding: spacing.sm,
                 marginBottom: spacing.sm,
                 backgroundColor: 'rgba(192,57,43,0.05)',
-              }}>
-                <Text style={{ ...typography.body, fontSize: 11, color: colors.buttonSkipRed ?? '#c0392b' }}>
-                  {uiCopy.modelRoster.territoriesRequiredInline}
-                </Text>
-              </View>
-            )}
-
-            <TextInput
-              value={territorySearch}
-              onChangeText={setTerritorySearch}
-              placeholder={uiCopy.modelRoster.territoriesSearchPlaceholder}
-              placeholderTextColor={colors.textSecondary}
-              style={[s.editInput, { height: 36, marginBottom: spacing.sm }]}
-              autoCapitalize="characters"
-            />
-
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm }}>
-              {territoryCountryCodes.length === 0 ? (
-                <Text style={s.metaText}>{uiCopy.modelRoster.noTerritoriesSelected}</Text>
-              ) : (
-                territoryCountryCodes.map((code) => (
-                  <TouchableOpacity
-                    key={code}
-                    onPress={() => setTerritoryCountryCodes((prev) => prev.filter((c) => c !== code))}
-                    style={[
-                      s.filterPill,
-                      {
-                        backgroundColor: colors.buttonOptionGreen,
-                        opacity: 0.9,
-                        borderWidth: 1,
-                        borderColor: colors.buttonOptionGreen,
-                      },
-                    ]}
-                  >
-                    <Text style={[s.filterPillLabel, { fontSize: 10, color: '#fff' }]}>{code}</Text>
-                  </TouchableOpacity>
-                ))
-              )}
-            </View>
-
-            <ScrollView style={{ maxHeight: 200 }}>
-              {visibleIsoCountries.map((c) => {
-                const active = territoryCountryCodes.includes(c.code);
-                return (
-                  <TouchableOpacity
-                    key={c.code}
-                    onPress={() => {
-                      setTerritoryCountryCodes((prev) => {
-                        if (prev.includes(c.code)) return prev.filter((x) => x !== c.code);
-                        return [...prev, c.code];
-                      });
-                    }}
-                    style={[
-                      s.filterPill,
-                      {
-                        backgroundColor: active ? colors.buttonOptionGreen : colors.surface,
-                        opacity: 1,
-                        borderWidth: 1,
-                        borderColor: active ? colors.buttonOptionGreen : colors.border,
-                      },
-                    ]}
-                    activeOpacity={0.85}
-                  >
-                    <Text
-                      style={[
-                        s.filterPillLabel,
-                        {
-                          fontSize: 10,
-                          color: active ? '#fff' : colors.textPrimary,
-                        },
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {c.name} ({c.code})
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-
-            {/* Dedicated Save Territories button — saves territories independently */}
-            <TouchableOpacity
-              onPress={handleSaveTerritoriesOnly}
-              disabled={territorySaving || territoryCountryCodes.length === 0}
-              style={{
-                marginTop: spacing.sm,
-                borderRadius: 999,
-                paddingVertical: spacing.sm,
-                paddingHorizontal: spacing.md,
-                alignItems: 'center',
-                backgroundColor:
-                  territorySaveFeedback === 'saved'
-                    ? (colors.accentGreen ?? '#2e7d32')
-                    : territorySaveFeedback === 'error'
-                    ? (colors.buttonSkipRed ?? '#c0392b')
-                    : (colors.buttonOptionGreen ?? '#2e7d32'),
-                opacity: territorySaving || territoryCountryCodes.length === 0 ? 0.5 : 1,
               }}
             >
-              <Text style={{ ...typography.label, fontSize: 11, color: '#fff', letterSpacing: 0.5 }}>
-                {territorySaving
-                  ? 'Saving territories…'
-                  : territorySaveFeedback === 'saved'
-                  ? '✓ Territories saved'
-                  : territorySaveFeedback === 'error'
-                  ? 'Save failed — tap to retry'
-                  : `Save territories (${territoryCountryCodes.length})`}
+              <Text
+                style={{
+                  ...typography.body,
+                  fontSize: 11,
+                  color: colors.buttonSkipRed ?? '#c0392b',
+                }}
+              >
+                {uiCopy.modelRoster.territoriesRequiredInline}
               </Text>
-            </TouchableOpacity>
+            </View>
+          )}
+
+          <TextInput
+            value={territorySearch}
+            onChangeText={setTerritorySearch}
+            placeholder={uiCopy.modelRoster.territoriesSearchPlaceholder}
+            placeholderTextColor={colors.textSecondary}
+            style={[s.editInput, { height: 36, marginBottom: spacing.sm }]}
+            autoCapitalize="characters"
+          />
+
+          <View
+            style={{
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              gap: spacing.sm,
+              marginBottom: spacing.sm,
+            }}
+          >
+            {territoryCountryCodes.length === 0 ? (
+              <Text style={s.metaText}>{uiCopy.modelRoster.noTerritoriesSelected}</Text>
+            ) : (
+              territoryCountryCodes.map((code) => (
+                <TouchableOpacity
+                  key={code}
+                  onPress={() => setTerritoryCountryCodes((prev) => prev.filter((c) => c !== code))}
+                  style={[
+                    s.filterPill,
+                    {
+                      backgroundColor: colors.buttonOptionGreen,
+                      opacity: 0.9,
+                      borderWidth: 1,
+                      borderColor: colors.buttonOptionGreen,
+                    },
+                  ]}
+                >
+                  <Text style={[s.filterPillLabel, { fontSize: 10, color: '#fff' }]}>{code}</Text>
+                </TouchableOpacity>
+              ))
+            )}
           </View>
 
+          <ScrollView style={{ maxHeight: 200 }}>
+            {visibleIsoCountries.map((c) => {
+              const active = territoryCountryCodes.includes(c.code);
+              return (
+                <TouchableOpacity
+                  key={c.code}
+                  onPress={() => {
+                    setTerritoryCountryCodes((prev) => {
+                      if (prev.includes(c.code)) return prev.filter((x) => x !== c.code);
+                      return [...prev, c.code];
+                    });
+                  }}
+                  style={[
+                    s.filterPill,
+                    {
+                      backgroundColor: active ? colors.buttonOptionGreen : colors.surface,
+                      opacity: 1,
+                      borderWidth: 1,
+                      borderColor: active ? colors.buttonOptionGreen : colors.border,
+                    },
+                  ]}
+                  activeOpacity={0.85}
+                >
+                  <Text
+                    style={[
+                      s.filterPillLabel,
+                      {
+                        fontSize: 10,
+                        color: active ? '#fff' : colors.textPrimary,
+                      },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {c.name} ({c.code})
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          {/* Dedicated Save Territories button — saves territories independently */}
+          <TouchableOpacity
+            onPress={handleSaveTerritoriesOnly}
+            disabled={territorySaving || territoryCountryCodes.length === 0}
+            style={{
+              marginTop: spacing.sm,
+              borderRadius: 999,
+              paddingVertical: spacing.sm,
+              paddingHorizontal: spacing.md,
+              alignItems: 'center',
+              backgroundColor:
+                territorySaveFeedback === 'saved'
+                  ? (colors.accentGreen ?? '#2e7d32')
+                  : territorySaveFeedback === 'error'
+                    ? (colors.buttonSkipRed ?? '#c0392b')
+                    : (colors.buttonOptionGreen ?? '#2e7d32'),
+              opacity: territorySaving || territoryCountryCodes.length === 0 ? 0.5 : 1,
+            }}
+          >
+            <Text style={{ ...typography.label, fontSize: 11, color: '#fff', letterSpacing: 0.5 }}>
+              {territorySaving
+                ? 'Saving territories…'
+                : territorySaveFeedback === 'saved'
+                  ? '✓ Territories saved'
+                  : territorySaveFeedback === 'error'
+                    ? 'Save failed — tap to retry'
+                    : `Save territories (${territoryCountryCodes.length})`}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         {needsAccountLink && (
-          <View style={{ marginTop: spacing.lg, padding: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: 12, backgroundColor: colors.surface }}>
+          <View
+            style={{
+              marginTop: spacing.lg,
+              padding: spacing.md,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 12,
+              backgroundColor: colors.surface,
+            }}
+          >
             <Text style={s.sectionLabel}>Link app account</Text>
             <Text style={[s.metaText, { marginBottom: spacing.sm }]}>
-              If this profile was created via Mediaslide/Netwalk or manually, connect the model’s registered Casting Index email so they get the full model dashboard (calendar, options, chats).
+              If this profile was created via Mediaslide/Netwalk or manually, connect the model’s
+              registered Casting Index email so they get the full model dashboard (calendar,
+              options, chats).
             </Text>
             <TextInput
               value={linkAccountEmail}
@@ -3504,26 +4092,70 @@ const MyModelsTab: React.FC<{
 
         {/* ── Profile Completeness Banner ───────────────────────────────── */}
         {completenessIssues.length > 0 && (
-          <View style={{
-            borderRadius: 10,
-            borderWidth: 1,
-            borderColor: completenessIssues.some((i) => i.severity === 'critical') ? '#c0392b' : colors.border,
-            backgroundColor: completenessIssues.some((i) => i.severity === 'critical') ? '#fff5f5' : '#fffbf2',
-            padding: spacing.md,
-            marginBottom: spacing.md,
-          }}>
-            <Text style={{ ...typography.label, fontSize: 12, color: completenessIssues.some((i) => i.severity === 'critical') ? '#c0392b' : '#b7740a', marginBottom: spacing.xs }}>
+          <View
+            style={{
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: completenessIssues.some((i) => i.severity === 'critical')
+                ? '#c0392b'
+                : colors.border,
+              backgroundColor: completenessIssues.some((i) => i.severity === 'critical')
+                ? '#fff5f5'
+                : '#fffbf2',
+              padding: spacing.md,
+              marginBottom: spacing.md,
+            }}
+          >
+            <Text
+              style={{
+                ...typography.label,
+                fontSize: 12,
+                color: completenessIssues.some((i) => i.severity === 'critical')
+                  ? '#c0392b'
+                  : '#b7740a',
+                marginBottom: spacing.xs,
+              }}
+            >
               {uiCopy.modelCompleteness.bannerTitle}
             </Text>
-            <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm }}>
+            <Text
+              style={{
+                ...typography.body,
+                fontSize: 11,
+                color: colors.textSecondary,
+                marginBottom: spacing.sm,
+              }}
+            >
               {uiCopy.modelCompleteness.bannerSubtitle}
             </Text>
             {completenessIssues.map((issue) => (
-              <View key={issue.field} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: spacing.xs, marginBottom: 4 }}>
-                <Text style={{ fontSize: 11, color: issue.severity === 'critical' ? '#c0392b' : '#b7740a', lineHeight: 16 }}>
+              <View
+                key={issue.field}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'flex-start',
+                  gap: spacing.xs,
+                  marginBottom: 4,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 11,
+                    color: issue.severity === 'critical' ? '#c0392b' : '#b7740a',
+                    lineHeight: 16,
+                  }}
+                >
                   {issue.severity === 'critical' ? '●' : '○'}
                 </Text>
-                <Text style={{ ...typography.body, fontSize: 11, color: issue.severity === 'critical' ? '#c0392b' : colors.textSecondary, flex: 1, lineHeight: 16 }}>
+                <Text
+                  style={{
+                    ...typography.body,
+                    fontSize: 11,
+                    color: issue.severity === 'critical' ? '#c0392b' : colors.textSecondary,
+                    flex: 1,
+                    lineHeight: 16,
+                  }}
+                >
                   {issue.label}
                 </Text>
               </View>
@@ -3532,13 +4164,35 @@ const MyModelsTab: React.FC<{
         )}
 
         {saveFeedback === 'success' && (
-          <View style={{ backgroundColor: '#1a7a4a', borderRadius: 8, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, marginBottom: spacing.sm, alignItems: 'center' }}>
-            <Text style={{ ...typography.label, fontSize: 13, color: '#fff' }}>{uiCopy.modelRoster.modelSaveSuccess}</Text>
+          <View
+            style={{
+              backgroundColor: '#1a7a4a',
+              borderRadius: 8,
+              paddingVertical: spacing.sm,
+              paddingHorizontal: spacing.md,
+              marginBottom: spacing.sm,
+              alignItems: 'center',
+            }}
+          >
+            <Text style={{ ...typography.label, fontSize: 13, color: '#fff' }}>
+              {uiCopy.modelRoster.modelSaveSuccess}
+            </Text>
           </View>
         )}
         {saveFeedback === 'error' && (
-          <View style={{ backgroundColor: '#b91c1c', borderRadius: 8, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, marginBottom: spacing.sm, alignItems: 'center' }}>
-            <Text style={{ ...typography.label, fontSize: 13, color: '#fff' }}>{uiCopy.modelRoster.modelSaveFailed}</Text>
+          <View
+            style={{
+              backgroundColor: '#b91c1c',
+              borderRadius: 8,
+              paddingVertical: spacing.sm,
+              paddingHorizontal: spacing.md,
+              marginBottom: spacing.sm,
+              alignItems: 'center',
+            }}
+          >
+            <Text style={{ ...typography.label, fontSize: 13, color: '#fff' }}>
+              {uiCopy.modelRoster.modelSaveFailed}
+            </Text>
           </View>
         )}
         <TouchableOpacity
@@ -3546,11 +4200,20 @@ const MyModelsTab: React.FC<{
           style={[s.saveBtn, saveFeedback === 'saving' && { opacity: 0.6 }]}
           disabled={saveFeedback === 'saving'}
         >
-          <Text style={s.saveBtnLabel}>{saveFeedback === 'saving' ? uiCopy.common.saving : uiCopy.modelRoster.modelSaveButton}</Text>
+          <Text style={s.saveBtnLabel}>
+            {saveFeedback === 'saving' ? uiCopy.common.saving : uiCopy.modelRoster.modelSaveButton}
+          </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={{ marginTop: spacing.xl, paddingVertical: spacing.sm, borderRadius: 8, borderWidth: 1, borderColor: '#e74c3c', alignItems: 'center' }}
+          style={{
+            marginTop: spacing.xl,
+            paddingVertical: spacing.sm,
+            borderRadius: 8,
+            borderWidth: 1,
+            borderColor: '#e74c3c',
+            alignItems: 'center',
+          }}
           onPress={() => {
             Alert.alert(
               'End representation',
@@ -3569,11 +4232,13 @@ const MyModelsTab: React.FC<{
                     }
                   },
                 },
-              ]
+              ],
             );
           }}
         >
-          <Text style={{ ...typography.label, fontSize: 12, color: '#e74c3c' }}>End representation (soft-remove)</Text>
+          <Text style={{ ...typography.label, fontSize: 12, color: '#e74c3c' }}>
+            End representation (soft-remove)
+          </Text>
         </TouchableOpacity>
       </ScreenScrollView>
     );
@@ -3595,11 +4260,20 @@ const MyModelsTab: React.FC<{
           </TouchableOpacity>
         </View>
         <View style={{ flexDirection: 'row', gap: spacing.md, marginBottom: spacing.sm }}>
-          <Text style={s.metaText}>Mediaslide: {mediaslideKey ? 'Connected' : 'Not connected'}</Text>
+          <Text style={s.metaText}>
+            Mediaslide: {mediaslideKey ? 'Connected' : 'Not connected'}
+          </Text>
           <Text style={s.metaText}>Netwalk: {netwalkKey ? 'Connected' : 'Not connected'}</Text>
         </View>
         {showMediaslideInput && (
-          <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm, alignItems: 'center' }}>
+          <View
+            style={{
+              flexDirection: 'row',
+              gap: spacing.sm,
+              marginBottom: spacing.sm,
+              alignItems: 'center',
+            }}
+          >
             <TextInput
               value={mediaslideKey}
               onChangeText={setMediaslideKey}
@@ -3607,13 +4281,23 @@ const MyModelsTab: React.FC<{
               placeholderTextColor={colors.textSecondary}
               style={[s.editInput, { flex: 1 }]}
             />
-            <TouchableOpacity style={s.apiConnectBtn} onPress={() => saveApiKey('mediaslide', mediaslideKey)}>
+            <TouchableOpacity
+              style={s.apiConnectBtn}
+              onPress={() => saveApiKey('mediaslide', mediaslideKey)}
+            >
               <Text style={s.saveBtnLabel}>Connect</Text>
             </TouchableOpacity>
           </View>
         )}
         {showNetwalkInput && (
-          <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm, alignItems: 'center' }}>
+          <View
+            style={{
+              flexDirection: 'row',
+              gap: spacing.sm,
+              marginBottom: spacing.sm,
+              alignItems: 'center',
+            }}
+          >
             <TextInput
               value={netwalkKey}
               onChangeText={setNetwalkKey}
@@ -3621,14 +4305,21 @@ const MyModelsTab: React.FC<{
               placeholderTextColor={colors.textSecondary}
               style={[s.editInput, { flex: 1 }]}
             />
-            <TouchableOpacity style={s.apiConnectBtn} onPress={() => saveApiKey('netwalk', netwalkKey)}>
+            <TouchableOpacity
+              style={s.apiConnectBtn}
+              onPress={() => saveApiKey('netwalk', netwalkKey)}
+            >
               <Text style={s.saveBtnLabel}>Connect</Text>
             </TouchableOpacity>
           </View>
         )}
         {(mediaslideKey || netwalkKey) && (
           <TouchableOpacity
-            style={[s.saveBtn, { alignSelf: 'flex-start', paddingHorizontal: spacing.lg }, syncLoading && { opacity: 0.6 }]}
+            style={[
+              s.saveBtn,
+              { alignSelf: 'flex-start', paddingHorizontal: spacing.lg },
+              syncLoading && { opacity: 0.6 },
+            ]}
             onPress={handleSync}
             disabled={syncLoading}
           >
@@ -3636,7 +4327,14 @@ const MyModelsTab: React.FC<{
           </TouchableOpacity>
         )}
         {syncFeedback && (
-          <Text style={{ ...typography.body, fontSize: 12, color: colors.accentGreen, marginTop: spacing.xs }}>
+          <Text
+            style={{
+              ...typography.body,
+              fontSize: 12,
+              color: colors.accentGreen,
+              marginTop: spacing.xs,
+            }}
+          >
             {syncFeedback}
           </Text>
         )}
@@ -3645,9 +4343,16 @@ const MyModelsTab: React.FC<{
       {/* ── Import from Link ─────────────────────────────────────────────── */}
       <View style={s.apiSection}>
         <Text style={s.sectionLabel}>Import from Link</Text>
-        <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.sm }}>
-          Paste a URL that returns a JSON model profile (name, height, measurements, photos).
-          If a profile with the same email or Mediaslide ID already exists it will be merged.
+        <Text
+          style={{
+            ...typography.body,
+            fontSize: 12,
+            color: colors.textSecondary,
+            marginBottom: spacing.sm,
+          }}
+        >
+          Paste a URL that returns a JSON model profile (name, height, measurements, photos). If a
+          profile with the same email or Mediaslide ID already exists it will be merged.
         </Text>
         <View style={{ flexDirection: 'row', gap: spacing.sm, alignItems: 'center' }}>
           <TextInput
@@ -3661,28 +4366,44 @@ const MyModelsTab: React.FC<{
             style={[s.editInput, { flex: 1 }]}
           />
           <TouchableOpacity
-            style={[s.apiConnectBtn, (!importLinkUrl.trim() || importLinkLoading) && { opacity: 0.5 }]}
+            style={[
+              s.apiConnectBtn,
+              (!importLinkUrl.trim() || importLinkLoading) && { opacity: 0.5 },
+            ]}
             onPress={handleImportByLink}
             disabled={!importLinkUrl.trim() || importLinkLoading}
           >
-            <Text style={s.saveBtnLabel}>{importLinkLoading ? 'Importing…' : 'Import & Merge'}</Text>
+            <Text style={s.saveBtnLabel}>
+              {importLinkLoading ? 'Importing…' : 'Import & Merge'}
+            </Text>
           </TouchableOpacity>
         </View>
         {importLinkFeedback && (
-          <Text style={{
-            ...typography.body,
-            fontSize: 12,
-            color: importLinkFeedback.ok ? colors.accentGreen : '#e74c3c',
-            marginTop: spacing.xs,
-          }}>
+          <Text
+            style={{
+              ...typography.body,
+              fontSize: 12,
+              color: importLinkFeedback.ok ? colors.accentGreen : '#e74c3c',
+              marginTop: spacing.xs,
+            }}
+          >
             {importLinkFeedback.message}
           </Text>
         )}
       </View>
 
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.xs }}>
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: spacing.xs,
+        }}
+      >
         <Text style={s.sectionLabel}>My Models</Text>
-        <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary }}>{filtered.length} model{filtered.length === 1 ? '' : 's'}</Text>
+        <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary }}>
+          {filtered.length} model{filtered.length === 1 ? '' : 's'}
+        </Text>
       </View>
       <TextInput
         value={rosterNameSearch}
@@ -3691,13 +4412,13 @@ const MyModelsTab: React.FC<{
         placeholderTextColor={colors.textSecondary}
         style={[s.editInput, { marginBottom: spacing.sm, width: '100%' }]}
       />
-      <ModelFiltersPanel
-        filters={filters}
-        onChangeFilters={setFilters}
-      />
+      <ModelFiltersPanel filters={filters} onChangeFilters={setFilters} />
 
       {/* Add Model Manually */}
-      <TouchableOpacity style={[s.apiBtn, { alignSelf: 'flex-start', marginBottom: spacing.md }]} onPress={() => setShowAddForm((v) => !v)}>
+      <TouchableOpacity
+        style={[s.apiBtn, { alignSelf: 'flex-start', marginBottom: spacing.md }]}
+        onPress={() => setShowAddForm((v) => !v)}
+      >
         <Text style={s.apiBtnLabel}>{showAddForm ? 'Cancel' : '+ Add Model Manually'}</Text>
       </TouchableOpacity>
       {showAddForm && (
@@ -3712,15 +4433,28 @@ const MyModelsTab: React.FC<{
             <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary }}>
               Representation territories *
             </Text>
-            <Text style={{ ...typography.body, fontSize: 10, color: colors.textSecondary, marginBottom: spacing.xs }}>
+            <Text
+              style={{
+                ...typography.body,
+                fontSize: 10,
+                color: colors.textSecondary,
+                marginBottom: spacing.xs,
+              }}
+            >
               Select countries where this model is represented. Required for client visibility.
             </Text>
             {addTerritories.length > 0 && (
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: spacing.xs }}>
+              <View
+                style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: spacing.xs }}
+              >
                 {addTerritories.map((code) => (
                   <TouchableOpacity
                     key={code}
-                    style={[s.visPill, s.visPillActive, { flexDirection: 'row', alignItems: 'center', gap: 4 }]}
+                    style={[
+                      s.visPill,
+                      s.visPillActive,
+                      { flexDirection: 'row', alignItems: 'center', gap: 4 },
+                    ]}
                     onPress={() => setAddTerritories((prev) => prev.filter((c) => c !== code))}
                   >
                     <Text style={[s.visPillLabel, s.visPillLabelActive]}>
@@ -3739,7 +4473,15 @@ const MyModelsTab: React.FC<{
               style={[s.editInput, { marginBottom: spacing.xs }]}
             />
             {addTerritorySearch.trim().length > 0 && (
-              <View style={{ maxHeight: 160, borderWidth: 1, borderColor: colors.border, borderRadius: 6, overflow: 'hidden' }}>
+              <View
+                style={{
+                  maxHeight: 160,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 6,
+                  overflow: 'hidden',
+                }}
+              >
                 {isoCountryList
                   .filter((c) => {
                     const q = addTerritorySearch.trim().toLowerCase();
@@ -3769,7 +4511,11 @@ const MyModelsTab: React.FC<{
                         }}
                       >
                         <Text style={{ ...typography.body, fontSize: 13 }}>{c.name}</Text>
-                        <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary }}>{c.code}</Text>
+                        <Text
+                          style={{ ...typography.label, fontSize: 11, color: colors.textSecondary }}
+                        >
+                          {c.code}
+                        </Text>
                       </TouchableOpacity>
                     );
                   })}
@@ -3778,8 +4524,17 @@ const MyModelsTab: React.FC<{
           </View>
 
           <View style={{ marginBottom: spacing.sm }}>
-            <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary }}>Portfolio photos</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs }}>
+            <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary }}>
+              Portfolio photos
+            </Text>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: spacing.sm,
+                marginTop: spacing.xs,
+              }}
+            >
               <TouchableOpacity
                 style={s.filterPill}
                 onPress={() => {
@@ -3795,31 +4550,74 @@ const MyModelsTab: React.FC<{
                   onPress={() => setAddModelImageFiles([])}
                   style={[s.filterPill, { borderColor: colors.textSecondary }]}
                 >
-                  <Text style={[s.filterPillLabel, { color: colors.textSecondary }]}>Clear all</Text>
+                  <Text style={[s.filterPillLabel, { color: colors.textSecondary }]}>
+                    Clear all
+                  </Text>
                 </TouchableOpacity>
               )}
             </View>
             {addModelImageFiles.length > 0 && (
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: spacing.sm }}>
+              <View
+                style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: spacing.sm }}
+              >
                 {addModelImageFiles.map((f, i) => {
                   const objUrl = typeof URL !== 'undefined' ? URL.createObjectURL(f) : '';
                   return (
                     <View key={`${f.name}-${i}`} style={{ position: 'relative' }}>
                       <Image
                         source={{ uri: objUrl }}
-                        style={{ width: 60, height: 80, borderRadius: 4, borderWidth: i === 0 ? 2 : 1, borderColor: i === 0 ? colors.textPrimary : colors.border }}
+                        style={{
+                          width: 60,
+                          height: 80,
+                          borderRadius: 4,
+                          borderWidth: i === 0 ? 2 : 1,
+                          borderColor: i === 0 ? colors.textPrimary : colors.border,
+                        }}
                         resizeMode="contain"
                       />
                       {i === 0 && (
-                        <View style={{ position: 'absolute', bottom: 2, left: 2, right: 2, backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 2, paddingVertical: 1 }}>
-                          <Text style={{ color: '#fff', fontSize: 8, textAlign: 'center' }}>Cover</Text>
+                        <View
+                          style={{
+                            position: 'absolute',
+                            bottom: 2,
+                            left: 2,
+                            right: 2,
+                            backgroundColor: 'rgba(0,0,0,0.55)',
+                            borderRadius: 2,
+                            paddingVertical: 1,
+                          }}
+                        >
+                          <Text style={{ color: '#fff', fontSize: 8, textAlign: 'center' }}>
+                            Cover
+                          </Text>
                         </View>
                       )}
                       <TouchableOpacity
-                        style={{ position: 'absolute', top: -4, right: -4, width: 16, height: 16, borderRadius: 8, backgroundColor: colors.textPrimary, justifyContent: 'center', alignItems: 'center' }}
-                        onPress={() => setAddModelImageFiles((prev) => prev.filter((_, idx) => idx !== i))}
+                        style={{
+                          position: 'absolute',
+                          top: -4,
+                          right: -4,
+                          width: 16,
+                          height: 16,
+                          borderRadius: 8,
+                          backgroundColor: colors.textPrimary,
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                        }}
+                        onPress={() =>
+                          setAddModelImageFiles((prev) => prev.filter((_, idx) => idx !== i))
+                        }
                       >
-                        <Text style={{ color: colors.surface, fontSize: 10, lineHeight: 14, textAlign: 'center' }}>×</Text>
+                        <Text
+                          style={{
+                            color: colors.surface,
+                            fontSize: 10,
+                            lineHeight: 14,
+                            textAlign: 'center',
+                          }}
+                        >
+                          ×
+                        </Text>
                       </TouchableOpacity>
                     </View>
                   );
@@ -3827,7 +4625,9 @@ const MyModelsTab: React.FC<{
               </View>
             )}
             {addModelImageFiles.length === 0 && (
-              <Text style={[s.metaText, { marginTop: 4 }]}>First image will be used as cover photo.</Text>
+              <Text style={[s.metaText, { marginTop: 4 }]}>
+                First image will be used as cover photo.
+              </Text>
             )}
             {Platform.OS === 'web' && (
               <input
@@ -3843,11 +4643,28 @@ const MyModelsTab: React.FC<{
 
           {/* Polaroid photos */}
           <View style={{ marginBottom: spacing.sm }}>
-            <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary }}>Polaroid photos</Text>
-            <Text style={{ ...typography.body, fontSize: 10, color: colors.textSecondary, marginBottom: spacing.xs }}>
-              Optional. Agency-only by default; visible to clients only when included in a polaroid package.
+            <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary }}>
+              Polaroid photos
             </Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs }}>
+            <Text
+              style={{
+                ...typography.body,
+                fontSize: 10,
+                color: colors.textSecondary,
+                marginBottom: spacing.xs,
+              }}
+            >
+              Optional. Agency-only by default; visible to clients only when included in a polaroid
+              package.
+            </Text>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: spacing.sm,
+                marginTop: spacing.xs,
+              }}
+            >
               <TouchableOpacity
                 style={s.filterPill}
                 onPress={() => {
@@ -3863,29 +4680,72 @@ const MyModelsTab: React.FC<{
                   onPress={() => setAddModelPolaroidFiles([])}
                   style={[s.filterPill, { borderColor: colors.textSecondary }]}
                 >
-                  <Text style={[s.filterPillLabel, { color: colors.textSecondary }]}>Clear all</Text>
+                  <Text style={[s.filterPillLabel, { color: colors.textSecondary }]}>
+                    Clear all
+                  </Text>
                 </TouchableOpacity>
               )}
             </View>
             {addModelPolaroidFiles.length > 0 && (
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: spacing.sm }}>
+              <View
+                style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: spacing.sm }}
+              >
                 {addModelPolaroidFiles.map((f, i) => {
                   const objUrl = typeof URL !== 'undefined' ? URL.createObjectURL(f) : '';
                   return (
                     <View key={`pol-${f.name}-${i}`} style={{ position: 'relative' }}>
                       <Image
                         source={{ uri: objUrl }}
-                        style={{ width: 60, height: 80, borderRadius: 4, borderWidth: 1, borderColor: colors.border }}
+                        style={{
+                          width: 60,
+                          height: 80,
+                          borderRadius: 4,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                        }}
                         resizeMode="contain"
                       />
-                      <View style={{ position: 'absolute', bottom: 2, left: 2, right: 2, backgroundColor: 'rgba(255,152,0,0.75)', borderRadius: 2, paddingVertical: 1 }}>
-                        <Text style={{ color: '#fff', fontSize: 7, textAlign: 'center' }}>POLAROID</Text>
+                      <View
+                        style={{
+                          position: 'absolute',
+                          bottom: 2,
+                          left: 2,
+                          right: 2,
+                          backgroundColor: 'rgba(255,152,0,0.75)',
+                          borderRadius: 2,
+                          paddingVertical: 1,
+                        }}
+                      >
+                        <Text style={{ color: '#fff', fontSize: 7, textAlign: 'center' }}>
+                          POLAROID
+                        </Text>
                       </View>
                       <TouchableOpacity
-                        style={{ position: 'absolute', top: -4, right: -4, width: 16, height: 16, borderRadius: 8, backgroundColor: colors.textPrimary, justifyContent: 'center', alignItems: 'center' }}
-                        onPress={() => setAddModelPolaroidFiles((prev) => prev.filter((_, idx) => idx !== i))}
+                        style={{
+                          position: 'absolute',
+                          top: -4,
+                          right: -4,
+                          width: 16,
+                          height: 16,
+                          borderRadius: 8,
+                          backgroundColor: colors.textPrimary,
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                        }}
+                        onPress={() =>
+                          setAddModelPolaroidFiles((prev) => prev.filter((_, idx) => idx !== i))
+                        }
                       >
-                        <Text style={{ color: colors.surface, fontSize: 10, lineHeight: 14, textAlign: 'center' }}>×</Text>
+                        <Text
+                          style={{
+                            color: colors.surface,
+                            fontSize: 10,
+                            lineHeight: 14,
+                            textAlign: 'center',
+                          }}
+                        >
+                          ×
+                        </Text>
                       </TouchableOpacity>
                     </View>
                   );
@@ -3906,24 +4766,48 @@ const MyModelsTab: React.FC<{
 
           {(addModelImageFiles.length > 0 || addModelPolaroidFiles.length > 0) && (
             <TouchableOpacity
-              style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 10, marginTop: 4 }}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'flex-start',
+                marginBottom: 10,
+                marginTop: 4,
+              }}
               onPress={() => setAddModelImageRightsConfirmed(!addModelImageRightsConfirmed)}
             >
-              <View style={{
-                width: 18, height: 18, borderRadius: 3, borderWidth: 1.5,
-                borderColor: addModelImageRightsConfirmed ? colors.accentGreen : colors.textSecondary,
-                backgroundColor: addModelImageRightsConfirmed ? colors.accentGreen : 'transparent',
-                marginRight: 8, marginTop: 2, alignItems: 'center', justifyContent: 'center',
-              }}>
-                {addModelImageRightsConfirmed && <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>✓</Text>}
+              <View
+                style={{
+                  width: 18,
+                  height: 18,
+                  borderRadius: 3,
+                  borderWidth: 1.5,
+                  borderColor: addModelImageRightsConfirmed
+                    ? colors.accentGreen
+                    : colors.textSecondary,
+                  backgroundColor: addModelImageRightsConfirmed
+                    ? colors.accentGreen
+                    : 'transparent',
+                  marginRight: 8,
+                  marginTop: 2,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {addModelImageRightsConfirmed && (
+                  <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>✓</Text>
+                )}
               </View>
-              <Text style={[s.metaText, { flex: 1 }]}>
-                {uiCopy.legal.chatFileRightsCheckbox}
-              </Text>
+              <Text style={[s.metaText, { flex: 1 }]}>{uiCopy.legal.chatFileRightsCheckbox}</Text>
             </TouchableOpacity>
           )}
           {(addModelImageFiles.length > 0 || addModelPolaroidFiles.length > 0) && (
-            <Text style={{ fontSize: 10, color: colors.textSecondary, marginBottom: spacing.sm, lineHeight: 14 }}>
+            <Text
+              style={{
+                fontSize: 10,
+                color: colors.textSecondary,
+                marginBottom: spacing.sm,
+                lineHeight: 14,
+              }}
+            >
               {uiCopy.modelMedia.imageRightsCheckboxSessionHint}
             </Text>
           )}
@@ -3935,7 +4819,14 @@ const MyModelsTab: React.FC<{
             <Text style={s.saveBtnLabel}>{addLoading ? 'Adding...' : 'Add Model'}</Text>
           </TouchableOpacity>
           {addModelFeedback && (
-            <Text style={{ ...typography.body, fontSize: 12, marginTop: spacing.xs, color: colors.accentGreen }}>
+            <Text
+              style={{
+                ...typography.body,
+                fontSize: 12,
+                marginTop: spacing.xs,
+                color: colors.accentGreen,
+              }}
+            >
               {addModelFeedback}
             </Text>
           )}
@@ -3943,7 +4834,14 @@ const MyModelsTab: React.FC<{
       )}
 
       {/* Bulk selection header */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.xs }}>
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: spacing.xs,
+        }}
+      >
         <TouchableOpacity
           onPress={() => {
             if (selectedModelIds.size === filtered.length && filtered.length > 0) {
@@ -3977,20 +4875,24 @@ const MyModelsTab: React.FC<{
         ).length;
         if (incompleteCount === 0) return null;
         return (
-          <View style={{
-            borderRadius: 8,
-            borderWidth: 1,
-            borderColor: '#c0392b',
-            backgroundColor: 'rgba(192,57,43,0.06)',
-            padding: spacing.md,
-            marginBottom: spacing.md,
-            flexDirection: 'row',
-            alignItems: 'flex-start',
-            gap: spacing.sm,
-          }}>
+          <View
+            style={{
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: '#c0392b',
+              backgroundColor: 'rgba(192,57,43,0.06)',
+              padding: spacing.md,
+              marginBottom: spacing.md,
+              flexDirection: 'row',
+              alignItems: 'flex-start',
+              gap: spacing.sm,
+            }}
+          >
             <Text style={{ fontSize: 14, color: '#c0392b', lineHeight: 20 }}>⚠</Text>
             <View style={{ flex: 1 }}>
-              <Text style={{ ...typography.label, fontSize: 12, color: '#c0392b', marginBottom: 2 }}>
+              <Text
+                style={{ ...typography.label, fontSize: 12, color: '#c0392b', marginBottom: 2 }}
+              >
                 {uiCopy.modelRoster.incompleteModelsBanner(incompleteCount)}
               </Text>
               <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary }}>
@@ -4016,36 +4918,63 @@ const MyModelsTab: React.FC<{
                 })
               }
             >
-              <View style={{
-                width: 20, height: 20, borderRadius: 4,
-                borderWidth: 1.5,
-                borderColor: isChecked ? colors.textPrimary : colors.border,
-                backgroundColor: isChecked ? colors.textPrimary : 'transparent',
-                alignItems: 'center', justifyContent: 'center',
-              }}>
-                {isChecked && <Text style={{ color: colors.surface, fontSize: 12, lineHeight: 16 }}>✓</Text>}
+              <View
+                style={{
+                  width: 20,
+                  height: 20,
+                  borderRadius: 4,
+                  borderWidth: 1.5,
+                  borderColor: isChecked ? colors.textPrimary : colors.border,
+                  backgroundColor: isChecked ? colors.textPrimary : 'transparent',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {isChecked && (
+                  <Text style={{ color: colors.surface, fontSize: 12, lineHeight: 16 }}>✓</Text>
+                )}
               </View>
             </TouchableOpacity>
-            <TouchableOpacity style={[s.modelRow, { flex: 1, marginLeft: spacing.xs }]} onPress={() => setSelectedModel(m)}>
+            <TouchableOpacity
+              style={[s.modelRow, { flex: 1, marginLeft: spacing.xs }]}
+              onPress={() => setSelectedModel(m)}
+            >
               {(() => {
                 const raw = (m.portfolio_images ?? [])[0];
                 const coverUri = raw ? normalizeDocumentspicturesModelImageRef(raw, m.id) : '';
                 return coverUri ? (
-                <StorageImage
-                  uri={coverUri}
-                  style={{ width: 44, height: 44, borderRadius: 6, marginRight: spacing.sm, backgroundColor: colors.border }}
-                  resizeMode="cover"
-                />
-              ) : (
-                <View style={{ width: 44, height: 44, borderRadius: 6, marginRight: spacing.sm, backgroundColor: colors.border, alignItems: 'center', justifyContent: 'center' }}>
-                  <Text style={{ fontSize: 18, color: colors.textSecondary }}>◻</Text>
-                </View>
-              );
+                  <StorageImage
+                    uri={coverUri}
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 6,
+                      marginRight: spacing.sm,
+                      backgroundColor: colors.border,
+                    }}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 6,
+                      marginRight: spacing.sm,
+                      backgroundColor: colors.border,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Text style={{ fontSize: 18, color: colors.textSecondary }}>◻</Text>
+                  </View>
+                );
               })()}
               <View style={{ flex: 1 }}>
                 <Text style={s.modelName}>{m.name}</Text>
                 <Text style={s.metaText}>
-                  {m.city ?? '—'} · H{m.height} C{(m as SupabaseModel).chest ?? m.bust ?? '—'} W{m.waist ?? '—'} H{m.hips ?? '—'}
+                  {m.city ?? '—'} · H{m.height} C{(m as SupabaseModel).chest ?? m.bust ?? '—'} W
+                  {m.waist ?? '—'} H{m.hips ?? '—'}
                 </Text>
                 {(rosterTerritoriesMap[m.id] ?? []).length > 0 ? (
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 2, marginTop: 3 }}>
@@ -4061,60 +4990,120 @@ const MyModelsTab: React.FC<{
                           backgroundColor: 'transparent',
                         }}
                       >
-                        <Text style={{ ...typography.label, fontSize: 8, color: colors.accentGreen ?? '#2e7d32', letterSpacing: 0.3 }}>
+                        <Text
+                          style={{
+                            ...typography.label,
+                            fontSize: 8,
+                            color: colors.accentGreen ?? '#2e7d32',
+                            letterSpacing: 0.3,
+                          }}
+                        >
                           {code}
                         </Text>
                       </View>
                     ))}
                     {(rosterTerritoriesMap[m.id] ?? []).length > 6 && (
-                      <View style={{ paddingHorizontal: 4, paddingVertical: 1, borderRadius: 3, borderWidth: 1, borderColor: colors.border }}>
-                        <Text style={{ ...typography.label, fontSize: 8, color: colors.textSecondary }}>
+                      <View
+                        style={{
+                          paddingHorizontal: 4,
+                          paddingVertical: 1,
+                          borderRadius: 3,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                        }}
+                      >
+                        <Text
+                          style={{ ...typography.label, fontSize: 8, color: colors.textSecondary }}
+                        >
                           +{(rosterTerritoriesMap[m.id] ?? []).length - 6}
                         </Text>
                       </View>
                     )}
                   </View>
                 ) : (
-                  <View style={{
-                    flexDirection: 'row', alignItems: 'center', marginTop: 3,
-                    paddingHorizontal: 5, paddingVertical: 1,
-                    borderRadius: 3, borderWidth: 1,
-                    borderColor: '#B8860B',
-                    backgroundColor: 'rgba(184,134,11,0.08)',
-                    alignSelf: 'flex-start',
-                  }}>
-                    <Text style={{ ...typography.label, fontSize: 8, color: '#B8860B', letterSpacing: 0.3 }}>
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      marginTop: 3,
+                      paddingHorizontal: 5,
+                      paddingVertical: 1,
+                      borderRadius: 3,
+                      borderWidth: 1,
+                      borderColor: '#B8860B',
+                      backgroundColor: 'rgba(184,134,11,0.08)',
+                      alignSelf: 'flex-start',
+                    }}
+                  >
+                    <Text
+                      style={{
+                        ...typography.label,
+                        fontSize: 8,
+                        color: '#B8860B',
+                        letterSpacing: 0.3,
+                      }}
+                    >
                       {uiCopy.modelRoster.territoriesMissingBadge}
                     </Text>
                   </View>
                 )}
                 {(m.portfolio_images ?? []).length === 0 && (
-                  <View style={{
-                    flexDirection: 'row', alignItems: 'center', marginTop: 3,
-                    paddingHorizontal: 5, paddingVertical: 1,
-                    borderRadius: 3, borderWidth: 1,
-                    borderColor: '#c0392b',
-                    backgroundColor: 'rgba(192,57,43,0.07)',
-                    alignSelf: 'flex-start',
-                  }}>
-                    <Text style={{ ...typography.label, fontSize: 8, color: '#c0392b', letterSpacing: 0.3 }}>
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      marginTop: 3,
+                      paddingHorizontal: 5,
+                      paddingVertical: 1,
+                      borderRadius: 3,
+                      borderWidth: 1,
+                      borderColor: '#c0392b',
+                      backgroundColor: 'rgba(192,57,43,0.07)',
+                      alignSelf: 'flex-start',
+                    }}
+                  >
+                    <Text
+                      style={{
+                        ...typography.label,
+                        fontSize: 8,
+                        color: '#c0392b',
+                        letterSpacing: 0.3,
+                      }}
+                    >
                       {uiCopy.modelRoster.photosMissingBadge}
                     </Text>
                   </View>
                 )}
                 {(m.agency_relationship_status === 'pending_link' || (!m.user_id && m.email)) && (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: 2 }}>
-                    <Text style={{ ...typography.label, fontSize: 9, color: '#B8860B' }}>Pending app account link</Text>
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: spacing.xs,
+                      marginTop: 2,
+                    }}
+                  >
+                    <Text style={{ ...typography.label, fontSize: 9, color: '#B8860B' }}>
+                      Pending app account link
+                    </Text>
                     {m.email && !m.user_id && (
                       <TouchableOpacity
-                        style={[s.saveBtn, { marginTop: 0, paddingHorizontal: spacing.sm, paddingVertical: 4 }]}
+                        style={[
+                          s.saveBtn,
+                          { marginTop: 0, paddingHorizontal: spacing.sm, paddingVertical: 4 },
+                        ]}
                         onPress={() => {
                           void handleResendModelClaimInvite(m);
                         }}
-                        disabled={resendingModelId === m.id || Date.now() < (resendModelCooldownUntil[m.id] ?? 0)}
+                        disabled={
+                          resendingModelId === m.id ||
+                          Date.now() < (resendModelCooldownUntil[m.id] ?? 0)
+                        }
                       >
                         <Text style={[s.saveBtnLabel, { fontSize: 10 }]}>
-                      {resendingModelId === m.id ? uiCopy.inviteResend.loading : uiCopy.inviteResend.cta}
+                          {resendingModelId === m.id
+                            ? uiCopy.inviteResend.loading
+                            : uiCopy.inviteResend.cta}
                         </Text>
                       </TouchableOpacity>
                     )}
@@ -4130,8 +5119,19 @@ const MyModelsTab: React.FC<{
                   (m.categories ?? []).map((cat: string) => {
                     const isFashion = cat === 'Fashion' || cat === 'High Fashion';
                     return (
-                      <View key={cat} style={[s.visTag, { borderColor: isFashion ? colors.accentBrown : colors.border }]}>
-                        <Text style={[s.visTagLabel, { color: isFashion ? colors.accentBrown : colors.textSecondary }]}>
+                      <View
+                        key={cat}
+                        style={[
+                          s.visTag,
+                          { borderColor: isFashion ? colors.accentBrown : colors.border },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            s.visTagLabel,
+                            { color: isFashion ? colors.accentBrown : colors.textSecondary },
+                          ]}
+                        >
                           {cat === 'High Fashion' ? 'HF' : cat.charAt(0)}
                         </Text>
                       </View>
@@ -4139,27 +5139,42 @@ const MyModelsTab: React.FC<{
                   })
                 )}
               </View>
-              <Text style={{ fontSize: 14, color: colors.textSecondary, marginLeft: spacing.sm }}>›</Text>
+              <Text style={{ fontSize: 14, color: colors.textSecondary, marginLeft: spacing.sm }}>
+                ›
+              </Text>
             </TouchableOpacity>
           </View>
         );
       })}
       {filtered.length === 0 && <Text style={s.metaText}>No models found.</Text>}
       {bulkFeedback && (
-        <Text style={{ ...typography.label, fontSize: 12, color: colors.accentGreen, marginTop: spacing.sm }}>
+        <Text
+          style={{
+            ...typography.label,
+            fontSize: 12,
+            color: colors.accentGreen,
+            marginTop: spacing.sm,
+          }}
+        >
           {bulkFeedback}
         </Text>
       )}
 
       {/* Bulk action sticky footer */}
       {selectedModelIds.size > 0 && (
-        <View style={{
-          position: 'absolute', bottom: 0, left: 0, right: 0,
-          backgroundColor: colors.surface,
-          borderTopWidth: 1, borderTopColor: colors.border,
-          padding: spacing.md,
-          gap: spacing.sm,
-        }}>
+        <View
+          style={{
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            backgroundColor: colors.surface,
+            borderTopWidth: 1,
+            borderTopColor: colors.border,
+            padding: spacing.md,
+            gap: spacing.sm,
+          }}
+        >
           <Text style={{ ...typography.label, fontSize: 12, color: colors.textPrimary }}>
             {uiCopy.bulkActions.selectedCount.replace('{count}', String(selectedModelIds.size))}
           </Text>
@@ -4190,18 +5205,37 @@ const MyModelsTab: React.FC<{
         animationType="slide"
         onRequestClose={() => setShowBulkTerritoryModal(false)}
       >
-        <View style={{
-          flex: 1, backgroundColor: 'rgba(0,0,0,0.25)',
-          justifyContent: 'center', alignItems: 'center', padding: agencyIsMobile ? spacing.xs : spacing.lg,
-        }}>
-          <View style={{
-            width: '100%', maxWidth: 480,
-            backgroundColor: colors.surface,
-            borderRadius: 18, borderWidth: 1, borderColor: colors.border,
-            padding: spacing.md, maxHeight: '90%',
-          }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.sm }}>
-              <Text style={{ ...typography.heading, fontSize: 15, color: colors.textPrimary, flex: 1 }}>
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.25)',
+            justifyContent: 'center',
+            alignItems: 'center',
+            padding: agencyIsMobile ? spacing.xs : spacing.lg,
+          }}
+        >
+          <View
+            style={{
+              width: '100%',
+              maxWidth: 480,
+              backgroundColor: colors.surface,
+              borderRadius: 18,
+              borderWidth: 1,
+              borderColor: colors.border,
+              padding: spacing.md,
+              maxHeight: '90%',
+            }}
+          >
+            <View
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                marginBottom: spacing.sm,
+              }}
+            >
+              <Text
+                style={{ ...typography.heading, fontSize: 15, color: colors.textPrimary, flex: 1 }}
+              >
                 {uiCopy.territoryModal.title}
               </Text>
               <TouchableOpacity onPress={() => setShowBulkTerritoryModal(false)}>
@@ -4210,19 +5244,36 @@ const MyModelsTab: React.FC<{
                 </Text>
               </TouchableOpacity>
             </View>
-            <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: 2 }}>
+            <Text
+              style={{
+                ...typography.body,
+                fontSize: 12,
+                color: colors.textSecondary,
+                marginBottom: 2,
+              }}
+            >
               {uiCopy.bulkActions.selectedCount.replace('{count}', String(selectedModelIds.size))}
             </Text>
-            <View style={{
-              flexDirection: 'row', alignItems: 'center', gap: 4,
-              marginBottom: spacing.sm,
-              backgroundColor: 'rgba(46,125,50,0.08)',
-              borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4,
-            }}>
-              <Text style={{ ...typography.label, fontSize: 9, color: colors.accentGreen ?? '#2e7d32' }}>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 4,
+                marginBottom: spacing.sm,
+                backgroundColor: 'rgba(46,125,50,0.08)',
+                borderRadius: 6,
+                paddingHorizontal: 8,
+                paddingVertical: 4,
+              }}
+            >
+              <Text
+                style={{ ...typography.label, fontSize: 9, color: colors.accentGreen ?? '#2e7d32' }}
+              >
                 + ADDITIVE
               </Text>
-              <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, flex: 1 }}>
+              <Text
+                style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, flex: 1 }}
+              >
                 {uiCopy.territoryModal.bulkAdditiveNote}
               </Text>
             </View>
@@ -4233,23 +5284,34 @@ const MyModelsTab: React.FC<{
               placeholder={uiCopy.territoryModal.searchPlaceholder}
               placeholderTextColor={colors.textSecondary}
               style={{
-                borderWidth: 1, borderColor: colors.border, borderRadius: 999,
-                paddingHorizontal: spacing.md, paddingVertical: spacing.xs,
-                ...typography.body, fontSize: 12, color: colors.textPrimary,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 999,
+                paddingHorizontal: spacing.md,
+                paddingVertical: spacing.xs,
+                ...typography.body,
+                fontSize: 12,
+                color: colors.textPrimary,
                 marginBottom: spacing.sm,
               }}
             />
 
             {bulkSelectedCountries.length > 0 && (
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: spacing.sm }}>
+              <View
+                style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: spacing.sm }}
+              >
                 {bulkSelectedCountries.map((code) => (
                   <TouchableOpacity
                     key={code}
                     style={{
-                      paddingHorizontal: spacing.sm, paddingVertical: 2,
-                      borderRadius: 999, backgroundColor: colors.textPrimary,
+                      paddingHorizontal: spacing.sm,
+                      paddingVertical: 2,
+                      borderRadius: 999,
+                      backgroundColor: colors.textPrimary,
                     }}
-                    onPress={() => setBulkSelectedCountries((prev) => prev.filter((c) => c !== code))}
+                    onPress={() =>
+                      setBulkSelectedCountries((prev) => prev.filter((c) => c !== code))
+                    }
                   >
                     <Text style={{ ...typography.label, fontSize: 10, color: colors.surface }}>
                       {ISO_COUNTRY_NAMES[code] ?? code} ✕
@@ -4266,8 +5328,10 @@ const MyModelsTab: React.FC<{
                   <TouchableOpacity
                     key={c.code}
                     style={{
-                      paddingHorizontal: spacing.sm, paddingVertical: spacing.xs,
-                      borderRadius: 8, marginBottom: 2,
+                      paddingHorizontal: spacing.sm,
+                      paddingVertical: spacing.xs,
+                      borderRadius: 8,
+                      marginBottom: 2,
                       backgroundColor: active ? colors.textPrimary : 'transparent',
                     }}
                     onPress={() =>
@@ -4276,7 +5340,13 @@ const MyModelsTab: React.FC<{
                       )
                     }
                   >
-                    <Text style={{ ...typography.label, fontSize: 11, color: active ? colors.surface : colors.textSecondary }}>
+                    <Text
+                      style={{
+                        ...typography.label,
+                        fontSize: 11,
+                        color: active ? colors.surface : colors.textSecondary,
+                      }}
+                    >
                       {c.name} ({c.code})
                     </Text>
                   </TouchableOpacity>
@@ -4285,7 +5355,14 @@ const MyModelsTab: React.FC<{
             </ScrollView>
 
             {bulkSelectedCountries.length === 0 && (
-              <Text style={{ ...typography.label, fontSize: 11, color: colors.buttonSkipRed, marginTop: spacing.sm }}>
+              <Text
+                style={{
+                  ...typography.label,
+                  fontSize: 11,
+                  color: colors.buttonSkipRed,
+                  marginTop: spacing.sm,
+                }}
+              >
                 {uiCopy.territoryModal.requiredHint}
               </Text>
             )}
@@ -4309,7 +5386,6 @@ const MyModelsTab: React.FC<{
           </View>
         </View>
       </Modal>
-
     </ScreenScrollView>
   );
 };
@@ -4347,12 +5423,16 @@ const AgencyClientsTab: React.FC<AgencyClientsTabProps> = ({
     if (!agencyId) {
       setRows([]);
       setLoading(false);
-      return () => { cancelled = true; };
+      return () => {
+        cancelled = true;
+      };
     }
     if (search.trim().length > 0 && search.trim().length < 2) {
       setRows([]);
       setLoading(false);
-      return () => { cancelled = true; };
+      return () => {
+        cancelled = true;
+      };
     }
     setLoading(true);
     const t = setTimeout(() => {
@@ -4398,7 +5478,9 @@ const AgencyClientsTab: React.FC<AgencyClientsTabProps> = ({
   return (
     <ScreenScrollView>
       <Text style={s.sectionLabel}>{uiCopy.b2bChat.clientsSectionTitle}</Text>
-      <Text style={[s.metaText, { marginBottom: spacing.sm }]}>{uiCopy.b2bChat.clientsSectionSubtitle}</Text>
+      <Text style={[s.metaText, { marginBottom: spacing.sm }]}>
+        {uiCopy.b2bChat.clientsSectionSubtitle}
+      </Text>
       <TextInput
         value={search}
         onChangeText={setSearch}
@@ -4424,7 +5506,10 @@ const AgencyClientsTab: React.FC<AgencyClientsTabProps> = ({
         return (
           <View
             key={row.id}
-            style={[s.modelRow, { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm }]}
+            style={[
+              s.modelRow,
+              { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm },
+            ]}
           >
             <View style={{ flex: 1, minWidth: 160 }}>
               <Text style={s.modelName}>{label}</Text>
@@ -4454,34 +5539,59 @@ const AgencyClientsTab: React.FC<AgencyClientsTabProps> = ({
                   style={s.filterPill}
                   onPress={() => setEditingClientOrgId((prev) => (prev === row.id ? null : row.id))}
                 >
-                  <Text style={s.filterPillLabel}>{editingClientOrgId === row.id ? 'Close' : 'Edit assignment'}</Text>
+                  <Text style={s.filterPillLabel}>
+                    {editingClientOrgId === row.id ? 'Close' : 'Edit assignment'}
+                  </Text>
                 </TouchableOpacity>
               </>
             )}
             <TouchableOpacity
-              style={[s.filterPill, { backgroundColor: colors.buttonOptionGreen, opacity: actionId === row.id ? 0.6 : 1 }]}
+              style={[
+                s.filterPill,
+                {
+                  backgroundColor: colors.buttonOptionGreen,
+                  opacity: actionId === row.id ? 0.6 : 1,
+                },
+              ]}
               disabled={actionId === row.id}
               onPress={() => void startChat(row.id, label)}
             >
               <Text style={[s.filterPillLabel, { color: '#fff' }]}>{uiCopy.b2bChat.startChat}</Text>
             </TouchableOpacity>
             {editingClientOrgId === row.id && (
-              <View style={{ width: '100%', marginTop: spacing.xs, flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs }}>
-                {(['gray', 'blue', 'green', 'amber', 'purple', 'red'] as AssignmentFlagColor[]).map((color) => (
-                  <TouchableOpacity
-                    key={`${row.id}-${color}`}
-                    style={[s.filterPill, assignment?.color === color && s.filterPillActive]}
-                    onPress={() => {
-                      void onUpsertClientAssignment(row.id, {
-                        label: assignment?.label ?? color.toUpperCase(),
-                        color,
-                        assignedMemberUserId: assignment?.assignedMemberUserId ?? null,
-                      });
-                    }}
-                  >
-                    <Text style={[s.filterPillLabel, assignment?.color === color && s.filterPillLabelActive]}>{color}</Text>
-                  </TouchableOpacity>
-                ))}
+              <View
+                style={{
+                  width: '100%',
+                  marginTop: spacing.xs,
+                  flexDirection: 'row',
+                  flexWrap: 'wrap',
+                  gap: spacing.xs,
+                }}
+              >
+                {(['gray', 'blue', 'green', 'amber', 'purple', 'red'] as AssignmentFlagColor[]).map(
+                  (color) => (
+                    <TouchableOpacity
+                      key={`${row.id}-${color}`}
+                      style={[s.filterPill, assignment?.color === color && s.filterPillActive]}
+                      onPress={() => {
+                        void onUpsertClientAssignment(row.id, {
+                          label: assignment?.label ?? color.toUpperCase(),
+                          color,
+                          assignedMemberUserId: assignment?.assignedMemberUserId ?? null,
+                        });
+                      }}
+                    >
+                      <Text
+                        style={[
+                          s.filterPillLabel,
+                          assignment?.color === color && s.filterPillLabelActive,
+                        ]}
+                      >
+                        {color}
+                      </Text>
+                    </TouchableOpacity>
+                  ),
+                )}
                 <TouchableOpacity
                   style={s.filterPill}
                   onPress={() => {
@@ -4498,7 +5608,10 @@ const AgencyClientsTab: React.FC<AgencyClientsTabProps> = ({
                 {teamMembers.slice(0, 8).map((member) => (
                   <TouchableOpacity
                     key={`${row.id}-${member.user_id}`}
-                    style={[s.filterPill, assignment?.assignedMemberUserId === member.user_id && s.filterPillActive]}
+                    style={[
+                      s.filterPill,
+                      assignment?.assignedMemberUserId === member.user_id && s.filterPillActive,
+                    ]}
                     onPress={() => {
                       void onUpsertClientAssignment(row.id, {
                         label: assignment?.label ?? 'BLUE',
@@ -4507,7 +5620,13 @@ const AgencyClientsTab: React.FC<AgencyClientsTabProps> = ({
                       });
                     }}
                   >
-                    <Text style={[s.filterPillLabel, assignment?.assignedMemberUserId === member.user_id && s.filterPillLabelActive]}>
+                    <Text
+                      style={[
+                        s.filterPillLabel,
+                        assignment?.assignedMemberUserId === member.user_id &&
+                          s.filterPillLabelActive,
+                      ]}
+                    >
                       {member.display_name ?? member.email ?? 'Member'}
                     </Text>
                   </TouchableOpacity>
@@ -4529,7 +5648,9 @@ const AgencyClientsTab: React.FC<AgencyClientsTabProps> = ({
           </View>
         );
       })}
-      {!loading && rows.length === 0 ? <Text style={s.metaText}>{uiCopy.b2bChat.clientsEmpty}</Text> : null}
+      {!loading && rows.length === 0 ? (
+        <Text style={s.metaText}>{uiCopy.b2bChat.clientsEmpty}</Text>
+      ) : null}
     </ScreenScrollView>
   );
 };
@@ -4588,7 +5709,9 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
     [agencyMsgWinH, insets.top, insets.bottom],
   );
   const agencyB2bWebSplit = Platform.OS === 'web' && shouldUseB2BWebSplit(agencyMsgWinW);
-  const [messagesSection, setMessagesSection] = useState<'optionRequests' | 'recruiting' | 'clientRequests'>('clientRequests');
+  const [messagesSection, setMessagesSection] = useState<
+    'optionRequests' | 'recruiting' | 'clientRequests'
+  >('clientRequests');
   const [messagesSearch, setMessagesSearch] = useState('');
   const [modelDirectConvs, setModelDirectConvs] = useState<Conversation[]>([]);
   const [searchChatBusy, setSearchChatBusy] = useState<string | null>(null);
@@ -4605,7 +5728,9 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   const b2bConversationsRef = useRef(b2bConversations);
   b2bConversationsRef.current = b2bConversations;
   const [viewingClientProfileOrgId, setViewingClientProfileOrgId] = useState<string | null>(null);
-  const [viewingClientProfileOrgName, setViewingClientProfileOrgName] = useState<string | null>(null);
+  const [viewingClientProfileOrgName, setViewingClientProfileOrgName] = useState<string | null>(
+    null,
+  );
   const [requests, setRequests] = useState(getOptionRequests());
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [chatInput, setChatInput] = useState('');
@@ -4627,8 +5752,12 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   const [counterpartyFilter, setCounterpartyFilter] = useState<string | null>(null);
   const [archivedIds, setArchivedIds] = useState<Set<string>>(() => {
     if (typeof window === 'undefined') return new Set();
-    try { const raw = window.localStorage.getItem('ci_agency_archived'); return raw ? new Set(JSON.parse(raw)) : new Set(); }
-    catch { return new Set(); }
+    try {
+      const raw = window.localStorage.getItem('ci_agency_archived');
+      return raw ? new Set(JSON.parse(raw)) : new Set();
+    } catch {
+      return new Set();
+    }
   });
 
   useEffect(() => {
@@ -4666,7 +5795,11 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   }, [agencyOrgIdB2b]);
 
   const b2bConversationIdsKey = useMemo(
-    () => b2bConversations.map((c) => c.id).sort().join(','),
+    () =>
+      b2bConversations
+        .map((c) => c.id)
+        .sort()
+        .join(','),
     [b2bConversations],
   );
 
@@ -4764,7 +5897,12 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
     setActiveConnectionChatTitle(pendingOpenB2BChat.title);
     onPendingB2BChatConsumed();
     refreshB2bList();
-  }, [pendingOpenB2BChat?.conversationId, onPendingB2BChatConsumed, refreshB2bList, pendingOpenB2BChat?.title]);
+  }, [
+    pendingOpenB2BChat?.conversationId,
+    onPendingB2BChatConsumed,
+    refreshB2bList,
+    pendingOpenB2BChat?.title,
+  ]);
 
   // Auto-select option request from GlobalSearch deep-link.
   useEffect(() => {
@@ -4799,11 +5937,23 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
     }
   }, [selectedThreadId]);
 
+  useEffect(() => {
+    const req = selectedThreadId ? getRequestByThreadId(selectedThreadId) : undefined;
+    if (!req) return;
+    const unsub = subscribeToOptionMessages(req.id, () => {
+      loadMessagesForThread(selectedThreadId!);
+      refreshOptionRequestInCache(selectedThreadId!);
+    });
+    return unsub;
+  }, [selectedThreadId]);
+
   const toggleArchive = (threadId: string) => {
     setArchivedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(threadId)) next.delete(threadId); else next.add(threadId);
-      if (typeof window !== 'undefined') window.localStorage.setItem('ci_agency_archived', JSON.stringify([...next]));
+      if (next.has(threadId)) next.delete(threadId);
+      else next.add(threadId);
+      if (typeof window !== 'undefined')
+        window.localStorage.setItem('ci_agency_archived', JSON.stringify([...next]));
       return next;
     });
   };
@@ -4811,18 +5961,29 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   const counterparties = useMemo(() => extractCounterparties(requests, 'agency'), [requests]);
 
   const visible = requests.filter((r) => {
-    if (msgFilter === 'archived' ? !archivedIds.has(r.threadId) : archivedIds.has(r.threadId)) return false;
+    if (msgFilter === 'archived' ? !archivedIds.has(r.threadId) : archivedIds.has(r.threadId))
+      return false;
     if (counterpartyFilter) {
       if (counterpartyFilter === '__agency_internal__') {
         if (!r.isAgencyOnly) return false;
-      } else if (r.isAgencyOnly || (r.clientOrganizationId ?? r.clientName ?? '') !== counterpartyFilter) {
+      } else if (
+        r.isAgencyOnly ||
+        (r.clientOrganizationId ?? r.clientName ?? '') !== counterpartyFilter
+      ) {
         return false;
       }
     }
-    const assignment = r.clientOrganizationId ? assignmentByClientOrgId[r.clientOrganizationId] : undefined;
-    if (assignmentScope === 'mine' && assignment?.assignedMemberUserId !== currentUserId) return false;
+    const assignment = r.clientOrganizationId
+      ? assignmentByClientOrgId[r.clientOrganizationId]
+      : undefined;
+    if (assignmentScope === 'mine' && assignment?.assignedMemberUserId !== currentUserId)
+      return false;
     if (assignmentScope === 'unassigned' && !!assignment?.assignedMemberUserId) return false;
-    if (assignmentFlagFilter !== 'all' && (assignment?.label ?? '').toLowerCase() !== assignmentFlagFilter.toLowerCase()) return false;
+    if (
+      assignmentFlagFilter !== 'all' &&
+      (assignment?.label ?? '').toLowerCase() !== assignmentFlagFilter.toLowerCase()
+    )
+      return false;
     if (attentionFilter === 'action_required') {
       const sig = attentionSignalsFromOptionRequestLike({
         status: r.status,
@@ -4842,7 +6003,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   const request = selectedThreadId ? getRequestByThreadId(selectedThreadId) : null;
   const messages = selectedThreadId ? getMessages(selectedThreadId) : [];
   const filteredMessages = messages.filter((m) => shouldShowSystemMessageForViewer(m, 'agency'));
-  const status = request ? getRequestStatus(request.threadId) ?? request.status : null;
+  const status = request ? (getRequestStatus(request.threadId) ?? request.status) : null;
   const finalStatus = request?.finalStatus;
   const clientPriceStatus = request?.clientPriceStatus;
   const agencyCounterPrice = request?.agencyCounterPrice;
@@ -4874,14 +6035,18 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
     : '';
   const negotiationFinalStatusLine =
     request && request.finalStatus
-      ? `${request.requestType === 'casting' ? _uiCopy.dashboard.threadContextCasting : _uiCopy.dashboard.threadContextOption} — ${optionConfirmedBannerLabel({
-          finalStatus: request.finalStatus,
-          modelAccountLinked: request.modelAccountLinked,
-          modelApproval: request.modelApproval,
-        })}`
+      ? `${request.requestType === 'casting' ? _uiCopy.dashboard.threadContextCasting : _uiCopy.dashboard.threadContextOption} — ${optionConfirmedBannerLabel(
+          {
+            finalStatus: request.finalStatus,
+            modelAccountLinked: request.modelAccountLinked,
+            modelApproval: request.modelApproval,
+          },
+        )}`
       : null;
   const negotiationRequestTypeLabel =
-    request?.requestType === 'casting' ? _uiCopy.dashboard.threadContextCasting : _uiCopy.dashboard.threadContextOption;
+    request?.requestType === 'casting'
+      ? _uiCopy.dashboard.threadContextCasting
+      : _uiCopy.dashboard.threadContextOption;
   const negotiationConfirmationSummaryLine = request
     ? agencyNegotiationThreadSummaryHint({
         modelAccountLinked: request.modelAccountLinked,
@@ -4910,7 +6075,10 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
         actingUserId: currentUserId,
       });
       if (!result.ok) {
-        showAppAlert(uiCopy.b2bChat.chatFailedTitle, result.reason || uiCopy.b2bChat.chatFailedGeneric);
+        showAppAlert(
+          uiCopy.b2bChat.chatFailedTitle,
+          result.reason || uiCopy.b2bChat.chatFailedGeneric,
+        );
         return;
       }
       setMessagesSection('clientRequests');
@@ -5002,10 +6170,12 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
     [recruitingThreads, messagesSearch],
   );
   const searchedOptionRequests = useMemo(
-    () => requests.filter((r) =>
-      (r.modelName ?? '').toLowerCase().includes(searchQ) ||
-      (r.clientName ?? '').toLowerCase().includes(searchQ),
-    ),
+    () =>
+      requests.filter(
+        (r) =>
+          (r.modelName ?? '').toLowerCase().includes(searchQ) ||
+          (r.clientName ?? '').toLowerCase().includes(searchQ),
+      ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [requests, messagesSearch],
   );
@@ -5202,13 +6372,21 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
         <View style={{ flex: 1, minHeight: 0, alignSelf: 'stretch' }}>
           <OptionNegotiationChatShell
             title={`${request.clientName} · ${request.modelName}`}
-            subtitle={formatDateWithOptionalTimeRange(request.date, request.startTime, request.endTime)}
+            subtitle={formatDateWithOptionalTimeRange(
+              request.date,
+              request.startTime,
+              request.endTime,
+            )}
             onBack={handleBackOptionChat}
             backLabel={uiCopy.optionNegotiationChat.back}
-            onTitlePress={request.clientOrganizationId ? () => {
-              setViewingClientProfileOrgId(request.clientOrganizationId!);
-              setViewingClientProfileOrgName(request.clientName);
-            } : undefined}
+            onTitlePress={
+              request.clientOrganizationId
+                ? () => {
+                    setViewingClientProfileOrgId(request.clientOrganizationId!);
+                    setViewingClientProfileOrgName(request.clientName);
+                  }
+                : undefined
+            }
             statusLabel={status ? STATUS_LABELS[status] : '—'}
             statusBackgroundColor={status ? STATUS_COLORS[status] : colors.border}
             headerBelowTitle={
@@ -5228,18 +6406,33 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                 <TouchableOpacity
                   onPress={openDeleteOptionModal}
                   disabled={!!deletingOptionId}
-                  style={{ opacity: deletingOptionId ? 0.5 : 1, paddingHorizontal: spacing.xs, paddingVertical: 4 }}
+                  style={{
+                    opacity: deletingOptionId ? 0.5 : 1,
+                    paddingHorizontal: spacing.xs,
+                    paddingVertical: 4,
+                  }}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   accessibilityLabel={uiCopy.common.delete}
                 >
-                  <Text style={{ ...typography.label, fontSize: 12, color: colors.buttonSkipRed ?? '#c0392b' }}>{uiCopy.common.delete}</Text>
+                  <Text
+                    style={{
+                      ...typography.label,
+                      fontSize: 12,
+                      color: colors.buttonSkipRed ?? '#c0392b',
+                    }}
+                  >
+                    {uiCopy.common.delete}
+                  </Text>
                 </TouchableOpacity>
               ) : null
             }
             deviceType={deviceType}
             rightPanel={
               deviceType === 'desktop' ? (
-                <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: spacing.md, paddingBottom: spacing.lg }}>
+                <ScrollView
+                  style={{ flex: 1 }}
+                  contentContainerStyle={{ padding: spacing.md, paddingBottom: spacing.lg }}
+                >
                   <NegotiationSummaryCard
                     modelName={request.modelName}
                     clientName={request.clientName}
@@ -5296,49 +6489,59 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
             bottomInset={insets.bottom}
             footerTop={
               showDesktopNegotiationRail ? null : (
-              <NegotiationThreadFooter
-                request={request}
-                isAgency
-                status={status}
-                finalStatus={finalStatus}
-                clientPriceStatus={clientPriceStatus}
-                currency={currency}
-                agencyCounterPrice={agencyCounterPrice}
-                negotiationCounterExpanded={negotiationCounterExpanded}
-                setNegotiationCounterExpanded={setNegotiationCounterExpanded}
-                agencyCounterInput={agencyCounterInput}
-                setAgencyCounterInput={setAgencyCounterInput}
-                actionBusy={processingRequestId === request.threadId}
-                assignmentByClientOrgId={assignmentByClientOrgId}
-                assignableMembers={[]}
-                editingAssignmentThreadId={editingAssignmentThreadId}
-                setEditingAssignmentThreadId={setEditingAssignmentThreadId}
-                openOrgChatBusy={openOrgChatBusy}
-                openOrgChatFromRequest={openOrgChatFromRequest}
-                onAgencyConfirmAvailability={runAgencyConfirmAvailability}
-                onAgencyAcceptClientPrice={runAgencyAcceptClientPrice}
-                onAgencyRejectClientPrice={runAgencyRejectClientPrice}
-                onAgencyCounterOffer={runAgencyCounterOffer}
-                onAgencyProposeInitialFee={runAgencyCounterOffer}
-                onRejectNegotiation={openRejectNegotiationModal}
-                onClientAcceptCounter={async () => {}}
-                onClientConfirmJob={async () => {}}
-                onAgencyConfirmJobAgencyOnly={runAgencyConfirmJobAgencyOnly}
-                showAgencyExtras
-                assignmentMode="readonly"
-                contextThreadLabel={uiCopy.b2bChat.contextNegotiationThread}
-                requireAgencyIdForOrgChat={false}
-                suppressDuplicateMeta
-              />
+                <NegotiationThreadFooter
+                  request={request}
+                  isAgency
+                  status={status}
+                  finalStatus={finalStatus}
+                  clientPriceStatus={clientPriceStatus}
+                  currency={currency}
+                  agencyCounterPrice={agencyCounterPrice}
+                  negotiationCounterExpanded={negotiationCounterExpanded}
+                  setNegotiationCounterExpanded={setNegotiationCounterExpanded}
+                  agencyCounterInput={agencyCounterInput}
+                  setAgencyCounterInput={setAgencyCounterInput}
+                  actionBusy={processingRequestId === request.threadId}
+                  assignmentByClientOrgId={assignmentByClientOrgId}
+                  assignableMembers={[]}
+                  editingAssignmentThreadId={editingAssignmentThreadId}
+                  setEditingAssignmentThreadId={setEditingAssignmentThreadId}
+                  openOrgChatBusy={openOrgChatBusy}
+                  openOrgChatFromRequest={openOrgChatFromRequest}
+                  onAgencyConfirmAvailability={runAgencyConfirmAvailability}
+                  onAgencyAcceptClientPrice={runAgencyAcceptClientPrice}
+                  onAgencyRejectClientPrice={runAgencyRejectClientPrice}
+                  onAgencyCounterOffer={runAgencyCounterOffer}
+                  onAgencyProposeInitialFee={runAgencyCounterOffer}
+                  onRejectNegotiation={openRejectNegotiationModal}
+                  onClientAcceptCounter={async () => {}}
+                  onClientConfirmJob={async () => {}}
+                  onAgencyConfirmJobAgencyOnly={runAgencyConfirmJobAgencyOnly}
+                  showAgencyExtras
+                  assignmentMode="readonly"
+                  contextThreadLabel={uiCopy.b2bChat.contextNegotiationThread}
+                  requireAgencyIdForOrgChat={false}
+                  suppressDuplicateMeta
+                />
               )
             }
             composerTopBanner={
               calendarHint ? (
-                <Text style={{ ...typography.label, fontSize: 12, color: colors.textPrimary }}>{calendarHint}</Text>
+                <Text style={{ ...typography.label, fontSize: 12, color: colors.textPrimary }}>
+                  {calendarHint}
+                </Text>
               ) : null
             }
             composer={
-              <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm, width: '100%', minWidth: 0 }}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'flex-end',
+                  gap: spacing.sm,
+                  width: '100%',
+                  minWidth: 0,
+                }}
+              >
                 <TextInput
                   value={chatInput}
                   onChangeText={setChatInput}
@@ -5357,23 +6560,33 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
           >
             <>
               {!showDesktopNegotiationRail ? (
-              <NegotiationSummaryCard
-                modelName={request.modelName}
-                clientName={request.clientName}
-                isAgency
-                dateLine={negotiationDateLine}
-                displayStatus={displayStatus}
-                attentionLabel={headerAttentionLabel}
-                proposedPrice={request.proposedPrice}
-                agencyCounterPrice={request.agencyCounterPrice}
-                clientPriceStatus={clientPriceStatus}
-                finalStatus={finalStatus}
-                currency={currency}
-                requestTypeLabel={negotiationRequestTypeLabel}
-                finalStatusLine={negotiationFinalStatusLine}
-                confirmationSummaryLine={negotiationConfirmationSummaryLine}
-              />
+                <NegotiationSummaryCard
+                  modelName={request.modelName}
+                  clientName={request.clientName}
+                  isAgency
+                  dateLine={negotiationDateLine}
+                  displayStatus={displayStatus}
+                  attentionLabel={headerAttentionLabel}
+                  proposedPrice={request.proposedPrice}
+                  agencyCounterPrice={request.agencyCounterPrice}
+                  clientPriceStatus={clientPriceStatus}
+                  finalStatus={finalStatus}
+                  currency={currency}
+                  requestTypeLabel={negotiationRequestTypeLabel}
+                  finalStatusLine={negotiationFinalStatusLine}
+                  confirmationSummaryLine={negotiationConfirmationSummaryLine}
+                />
               ) : null}
+              {filteredMessages.length >= 50 && selectedThreadId && (
+                <TouchableOpacity
+                  onPress={() => void loadOlderMessagesForThread(selectedThreadId)}
+                  style={{ alignSelf: 'center', paddingVertical: spacing.xs }}
+                >
+                  <Text style={{ color: colors.accentBrown, fontSize: 13 }}>
+                    {uiCopy.b2bChat.loadOlderMessages}
+                  </Text>
+                </TouchableOpacity>
+              )}
               {filteredMessages.map((msg, i) => {
                 const prev = i > 0 ? filteredMessages[i - 1] : null;
                 const compact = !!(prev && prev.from === msg.from && msg.from !== 'system');
@@ -5409,7 +6622,11 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
           onConfirm={confirmDeleteOptionRequest}
           onCancel={() => setDeleteOptionModalVisible(false)}
           detailLine1={request.modelName}
-          detailLine2={formatDateWithOptionalTimeRange(request.date, request.startTime, request.endTime)}
+          detailLine2={formatDateWithOptionalTimeRange(
+            request.date,
+            request.startTime,
+            request.endTime,
+          )}
         />
         <ConfirmDestructiveModal
           visible={rejectNegotiationModalVisible}
@@ -5421,7 +6638,11 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
           onConfirm={confirmRejectNegotiationRequest}
           onCancel={() => setRejectNegotiationModalVisible(false)}
           detailLine1={request.modelName}
-          detailLine2={formatDateWithOptionalTimeRange(request.date, request.startTime, request.endTime)}
+          detailLine2={formatDateWithOptionalTimeRange(
+            request.date,
+            request.startTime,
+            request.endTime,
+          )}
         />
       </>
     );
@@ -5431,586 +6652,833 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   // The early return for b2bChatFullscreenActive already skips this header, but this
   // guard also covers the case where the code falls through to the main return.
   const hideMsgsFixedTop =
-    !agencyB2bWebSplit &&
-    messagesSection === 'clientRequests' &&
-    !!activeConnectionChatId;
+    !agencyB2bWebSplit && messagesSection === 'clientRequests' && !!activeConnectionChatId;
 
   return (
     <View style={flexFillColumn}>
       {/* Compact fixed header: search + horizontal section tabs — hidden when inside a mobile chat */}
       {!hideMsgsFixedTop && (
-      <View style={s.msgsFixedTop}>
-        <View style={[s.messagesSearchRow, { marginBottom: spacing.xs }]}>
-          <TextInput
-            value={messagesSearch}
-            onChangeText={setMessagesSearch}
-            placeholder={uiCopy.messages.searchPlaceholder}
-            placeholderTextColor={colors.textSecondary}
-            style={s.messagesSearchBar}
-            clearButtonMode="while-editing"
-            multiline={false}
-            numberOfLines={1}
-            returnKeyType="search"
-          />
-          {messagesSearch.length > 0 && (
-            <TouchableOpacity
-              onPress={() => setMessagesSearch('')}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              style={s.messagesSearchClear}
-            >
-              <Text style={s.messagesSearchClearText}>✕</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-        {!searchActive && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={s.msgsSectionTabsScroll}
-            contentContainerStyle={s.msgsSectionTabsContent}
-          >
-            {(['clientRequests', 'recruiting', 'optionRequests'] as const).map((key) => (
-              <TouchableOpacity
-                key={key}
-                style={[s.filterPill, messagesSection === key && s.filterPillActive]}
-                onPress={() => setMessagesSection(key)}
-              >
-                <Text style={[s.filterPillLabel, messagesSection === key && s.filterPillLabelActive]}>
-                  {key === 'optionRequests'
-                    ? uiCopy.b2bChat.tabOptionRequests
-                    : key === 'recruiting'
-                      ? uiCopy.b2bChat.tabRecruiting
-                      : uiCopy.b2bChat.tabB2BChatsAgencyView}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        )}
-      </View>
-      )}
-    <View style={flexFillColumn}>
-      {searchActive ? (
-        <ScrollView
-          style={webThreadListScrollDefault}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator
-          contentContainerStyle={{ paddingBottom: spacing.lg }}
-        >
-          {/* Client chats */}
-          {searchedB2b.length > 0 && (
-            <View style={{ marginBottom: spacing.md }}>
-              <Text style={[s.metaText, { fontWeight: '600', marginBottom: spacing.xs }]}>{uiCopy.messages.searchSectionClientChats}</Text>
-              {searchedB2b.map((c) => (
-                <View key={c.id} style={[s.modelRow, { flexDirection: 'row', alignItems: 'center', gap: spacing.sm }]}>
-                  <Text style={[s.modelName, { flex: 1 }]}>{b2bTitles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback}</Text>
-                  <TouchableOpacity
-                    style={[s.filterPill, s.filterPillActive]}
-                    onPress={() => {
-                      setMessagesSearch('');
-                      setMessagesSection('clientRequests');
-                      setActiveConnectionChatId(c.id);
-                      setActiveConnectionChatTitle(b2bTitles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback);
-                    }}
-                  >
-                    <Text style={[s.filterPillLabel, s.filterPillLabelActive]}>{uiCopy.messages.openChat}</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </View>
-          )}
-
-          {/* Recruiting chats */}
-          {searchedRecruiting.length > 0 && (
-            <View style={{ marginBottom: spacing.md }}>
-              <Text style={[s.metaText, { fontWeight: '600', marginBottom: spacing.xs }]}>{uiCopy.messages.searchSectionRecruiting}</Text>
-              {searchedRecruiting.map((t) => (
-                <TouchableOpacity
-                  key={t.id}
-                  style={s.modelRow}
-                  onPress={() => {
-                    setMessagesSearch('');
-                    onOpenRecruitingThread(t.id);
-                  }}
-                >
-                  <Text style={s.modelName}>{t.modelName}</Text>
-                  <Text style={s.backLabel}>Chat</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-
-          {/* Option requests */}
-          {searchedOptionRequests.length > 0 && (
-            <View style={{ marginBottom: spacing.md }}>
-              <Text style={[s.metaText, { fontWeight: '600', marginBottom: spacing.xs }]}>{uiCopy.messages.searchSectionOptionRequests}</Text>
-              {searchedOptionRequests.map((r) => (
-                <TouchableOpacity
-                  key={r.threadId}
-                  style={s.modelRow}
-                  onPress={() => {
-                    setMessagesSearch('');
-                    setMessagesSection('optionRequests');
-                    setSelectedThreadId(r.threadId);
-                  }}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.modelName}>{r.modelName} · {r.date}</Text>
-                    <Text style={s.metaText}>{r.clientName}</Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-
-          {/* Models — start new or open existing */}
-          {searchedModels.length > 0 && (
-            <View style={{ marginBottom: spacing.md }}>
-              <Text style={[s.metaText, { fontWeight: '600', marginBottom: spacing.xs }]}>{uiCopy.messages.searchSectionModels}</Text>
-              {searchedModels.map((m) => {
-                const existingConvId = getModelDirectConvId(m.id);
-                const hasAccount = !!m.user_id;
-                const busy = searchChatBusy === m.id;
-                return (
-                  <View key={m.id} style={[s.modelRow, { flexDirection: 'row', alignItems: 'center', gap: spacing.sm }]}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={s.modelName}>{m.name}</Text>
-                      {!hasAccount && (
-                        <Text style={[s.metaText, { color: colors.textSecondary }]}>{uiCopy.messages.modelNoAccount}</Text>
-                      )}
-                    </View>
-                    {existingConvId ? (
-                      <TouchableOpacity
-                        style={[s.filterPill, s.filterPillActive]}
-                        onPress={() => {
-                          setMessagesSearch('');
-                          setMessagesSection('clientRequests');
-                          setActiveConnectionChatId(existingConvId);
-                          setActiveConnectionChatTitle(m.name);
-                        }}
-                      >
-                        <Text style={[s.filterPillLabel, s.filterPillLabelActive]}>{uiCopy.messages.openChat}</Text>
-                      </TouchableOpacity>
-                    ) : (
-                      <TouchableOpacity
-                        style={[s.filterPill, (!hasAccount || busy) && { opacity: 0.5 }]}
-                        disabled={!hasAccount || busy}
-                        onPress={() => handleStartModelChat(m)}
-                      >
-                        <Text style={s.filterPillLabel}>{busy ? uiCopy.common.loading : uiCopy.messages.startChat}</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                );
-              })}
-            </View>
-          )}
-
-          {searchedB2b.length === 0 && searchedRecruiting.length === 0 &&
-           searchedOptionRequests.length === 0 && searchedModels.length === 0 && (
-            <Text style={s.metaText}>{uiCopy.messages.searchNoResults}</Text>
-          )}
-        </ScrollView>
-      ) : (
-        <View style={flexFillColumn}>
-      {messagesSection === 'clientRequests' ? (
-        <View style={flexFillColumn}>
-          {!agencyId ? (
-            <Text style={s.metaText}>{uiCopy.b2bChat.noAgencyContext}</Text>
-          ) : (
-            <>
-              {b2bConversations.length === 0 ? (
-                <Text style={s.metaText}>{uiCopy.b2bChat.noClientChatsYetAgency}</Text>
-              ) : agencyB2bWebSplit ? (
-                <View style={{ flexDirection: 'row', alignItems: 'stretch', gap: spacing.md, flex: 1, minHeight: 0 }}>
-                  <View style={{ flex: CHAT_THREAD_LIST_FLEX, minWidth: 0, minHeight: 0 }}>
-                    <ScrollView style={webThreadListScrollDefault} contentContainerStyle={{ flexGrow: 1 }}>
-                      {b2bConversations.map((c) => (
-                        <View
-                          key={c.id}
-                          style={[s.modelRow, { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm }]}
-                        >
-                          <View style={{ flex: 1, minWidth: 160 }}>
-                            <Text style={s.modelName}>{b2bTitles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback}</Text>
-                            <Text style={s.metaText}>{new Date(c.updated_at).toLocaleString()}</Text>
-                          </View>
-                          <TouchableOpacity
-                            style={[s.filterPill, s.filterPillActive]}
-                            onPress={() => {
-                              setActiveConnectionChatId(c.id);
-                              setActiveConnectionChatTitle(b2bTitles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback);
-                            }}
-                          >
-                            <Text style={[s.filterPillLabel, s.filterPillLabelActive]}>{uiCopy.b2bChat.openConversation}</Text>
-                          </TouchableOpacity>
-                          {currentUserId &&
-                          (b2bUnreadById[c.id] ?? false) &&
-                          activeConnectionChatId !== c.id ? (
-                            <View
-                              style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#2563EB' }}
-                              accessibilityLabel={uiCopy.b2bChat.unreadMessagesIndicatorA11y}
-                            />
-                          ) : null}
-                        </View>
-                      ))}
-                    </ScrollView>
-                  </View>
-                  <View style={{ flex: CHAT_MESSENGER_FLEX, minWidth: 0, minHeight: 0 }}>
-                    {activeConnectionChatId ? (
-                      <OrgMessengerInline
-                        conversationId={activeConnectionChatId}
-                        headerTitle={activeConnectionChatTitle}
-                        viewerUserId={currentUserId}
-                        threadContext={{ type: uiCopy.b2bChat.contextOrgChat }}
-                        agencyId={agencyId}
-                        guestLinks={guestLinksForChat}
-                        modelsForShare={modelsForShare}
-                        composerBottomInsetOverride={0}
-                        onOpenRelatedRequest={(optionRequestId) => {
-                          setMessagesSection('optionRequests');
-                          setSelectedThreadId(optionRequestId);
-                        }}
-                        onBookingCardPress={onBookingCardPress}
-                        viewerRole="agency"
-                        onBookingStatusUpdated={() => onBookingCardPress?.()}
-                        containerStyle={{ marginTop: 0, flex: 1 }}
-                        onOrgPress={() => {
-                          const conv = b2bConversations.find((c) => c.id === activeConnectionChatId);
-                          const orgId = conv?.client_organization_id ?? null;
-                          if (!orgId) return;
-                          setViewingClientProfileOrgId(orgId);
-                          setViewingClientProfileOrgName(activeConnectionChatTitle);
-                        }}
-                      />
-                    ) : null}
-                  </View>
-                </View>
-              ) : activeConnectionChatId ? (
-                // Fallback: early return (b2bChatFullscreenActive) normally catches this,
-                // but if it somehow didn't fire, render the messenger fullscreen here too.
-                <View style={{ flex: 1, minHeight: 0 }}>
-                  <OrgMessengerInline
-                    conversationId={activeConnectionChatId}
-                    headerTitle={activeConnectionChatTitle}
-                    viewerUserId={currentUserId}
-                    threadContext={{ type: uiCopy.b2bChat.contextOrgChat }}
-                    agencyId={agencyId}
-                    guestLinks={guestLinksForChat}
-                    modelsForShare={modelsForShare}
-                    composerBottomInsetOverride={0}
-                    onOpenRelatedRequest={(optionRequestId) => {
-                      setActiveConnectionChatId(null);
-                      setMessagesSection('optionRequests');
-                      setSelectedThreadId(optionRequestId);
-                    }}
-                    onBookingCardPress={onBookingCardPress}
-                    viewerRole="agency"
-                    onBookingStatusUpdated={() => onBookingCardPress?.()}
-                    containerStyle={{
-                      marginTop: 0,
-                      padding: 0,
-                      borderWidth: 0,
-                      borderRadius: 0,
-                      flex: 1,
-                      minHeight: 0,
-                    }}
-                    onOrgPress={() => {
-                      const conv = b2bConversations.find((c) => c.id === activeConnectionChatId);
-                      const orgId = conv?.client_organization_id ?? null;
-                      if (!orgId) return;
-                      setViewingClientProfileOrgId(orgId);
-                      setViewingClientProfileOrgName(activeConnectionChatTitle);
-                    }}
-                    onBack={() => setActiveConnectionChatId(null)}
-                    backLabel={uiCopy.messages.backToChats}
-                  />
-                </View>
-              ) : (
-                // Mobile (non-split): list only — chat opens fullscreen via b2bChatFullscreenActive early return
-                <ScrollView
-                  style={webThreadListScrollDefault}
-                  keyboardShouldPersistTaps="handled"
-                  showsVerticalScrollIndicator
-                  contentContainerStyle={{ paddingBottom: spacing.sm }}
-                >
-                  {b2bConversations.map((c) => (
-                    <View
-                      key={c.id}
-                      style={[s.modelRow, { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm }]}
-                    >
-                      <View style={{ flex: 1, minWidth: 160 }}>
-                        <Text style={s.modelName}>{b2bTitles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback}</Text>
-                        <Text style={s.metaText}>{new Date(c.updated_at).toLocaleString()}</Text>
-                      </View>
-                      <TouchableOpacity
-                        style={[s.filterPill, s.filterPillActive]}
-                        onPress={() => {
-                          setActiveConnectionChatId(c.id);
-                          setActiveConnectionChatTitle(b2bTitles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback);
-                        }}
-                      >
-                        <Text style={[s.filterPillLabel, s.filterPillLabelActive]}>{uiCopy.b2bChat.openConversation}</Text>
-                      </TouchableOpacity>
-                      {currentUserId &&
-                      (b2bUnreadById[c.id] ?? false) &&
-                      activeConnectionChatId !== c.id ? (
-                        <View
-                          style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#2563EB' }}
-                          accessibilityLabel={uiCopy.b2bChat.unreadMessagesIndicatorA11y}
-                        />
-                      ) : null}
-                    </View>
-                  ))}
-                </ScrollView>
-              )}
-            </>
-          )}
-          {viewingClientProfileOrgId && (
-            <OrgProfileModal
-              visible
-              onClose={() => setViewingClientProfileOrgId(null)}
-              orgType="client"
-              organizationId={viewingClientProfileOrgId}
-              agencyId={null}
-              orgName={viewingClientProfileOrgName}
+        <View style={s.msgsFixedTop}>
+          <View style={[s.messagesSearchRow, { marginBottom: spacing.xs }]}>
+            <TextInput
+              value={messagesSearch}
+              onChangeText={setMessagesSearch}
+              placeholder={uiCopy.messages.searchPlaceholder}
+              placeholderTextColor={colors.textSecondary}
+              style={s.messagesSearchBar}
+              clearButtonMode="while-editing"
+              multiline={false}
+              numberOfLines={1}
+              returnKeyType="search"
             />
-          )}
-        </View>
-      ) : messagesSection === 'recruiting' ? (
-        <View style={flexFillColumn}>
-          <Text style={[s.metaText, { marginBottom: spacing.sm }]}>
-            When you start a chat or accept an application from Recruiting, the thread appears here (and leaves the pending swipe queue). Same candidates are listed under Recruiting → My list until accepted.
-          </Text>
-          {recruitingThreads.length === 0 ? (
-            <Text style={s.metaText}>No recruiting chats yet. Start a chat from Recruiting or accept an application.</Text>
-          ) : (
+            {messagesSearch.length > 0 && (
+              <TouchableOpacity
+                onPress={() => setMessagesSearch('')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={s.messagesSearchClear}
+              >
+                <Text style={s.messagesSearchClearText}>✕</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          {!searchActive && (
             <ScrollView
-              style={webThreadListScrollDefault}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator
-              contentContainerStyle={{ paddingBottom: spacing.sm }}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={s.msgsSectionTabsScroll}
+              contentContainerStyle={s.msgsSectionTabsContent}
             >
-              {recruitingThreads.map((thread) => {
-                const application = getApplicationById(thread.applicationId);
-                const thumbUri = application?.images?.closeUp || application?.images?.profile || application?.images?.fullBody;
-                return (
-                  <TouchableOpacity
-                    key={thread.id}
-                    style={s.bookingChatRow}
-                    onPress={() => onOpenRecruitingThread(thread.id)}
+              {(['clientRequests', 'recruiting', 'optionRequests'] as const).map((key) => (
+                <TouchableOpacity
+                  key={key}
+                  style={[s.filterPill, messagesSection === key && s.filterPillActive]}
+                  onPress={() => setMessagesSection(key)}
+                >
+                  <Text
+                    style={[s.filterPillLabel, messagesSection === key && s.filterPillLabelActive]}
                   >
-                    <View style={s.bookingChatThumbWrap}>
-                      {thumbUri ? (
-                        <StorageImage uri={thumbUri} style={s.bookingChatThumb} resizeMode="contain" />
-                      ) : (
-                        <View style={[s.bookingChatThumb, s.bookingChatThumbPlaceholder]}>
-                          <Text style={s.bookingChatThumbPlaceholderText} numberOfLines={1}>{thread.modelName}</Text>
-                        </View>
-                      )}
-                    </View>
-                    <Text style={[s.modelName, { flex: 1, marginLeft: spacing.sm }]} numberOfLines={1}>{thread.modelName}</Text>
-                    <Text style={s.backLabel}>Chat</Text>
-                  </TouchableOpacity>
-                );
-              })}
+                    {key === 'optionRequests'
+                      ? uiCopy.b2bChat.tabOptionRequests
+                      : key === 'recruiting'
+                        ? uiCopy.b2bChat.tabRecruiting
+                        : uiCopy.b2bChat.tabB2BChatsAgencyView}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </ScrollView>
           )}
         </View>
-      ) : messagesSection === 'optionRequests' ? (
-        <View style={flexFillColumn}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm }}>
-        <Text style={[s.sectionLabel, { fontSize: 14 }]}>Option request threads</Text>
-        <View style={{ flexDirection: 'row', gap: 4 }}>
-          {(['current', 'archived'] as const).map((f) => (
-            <TouchableOpacity key={f} style={[s.filterPill, msgFilter === f && s.filterPillActive]} onPress={() => setMsgFilter(f)}>
-              <Text style={[s.filterPillLabel, msgFilter === f && s.filterPillLabelActive]}>
-                {f === 'current' ? uiCopy.messages.optionRequestListFilterCurrent : uiCopy.messages.optionRequestListFilterArchived}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-      <Text style={[s.metaText, { marginBottom: spacing.sm }]}>{uiCopy.messages.archiveThreadDoesNotDeleteShort}</Text>
-      {Object.keys(assignmentByClientOrgId).length > 0 && (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.sm }}>
-          {(['all', 'mine', 'unassigned'] as const).map((scope) => (
-            <TouchableOpacity
-              key={`scope-${scope}`}
-              style={[s.filterPill, assignmentScope === scope && s.filterPillActive]}
-              onPress={() => setAssignmentScope(scope)}
-            >
-              <Text style={[s.filterPillLabel, assignmentScope === scope && s.filterPillLabelActive]}>
-                {scope === 'all' ? 'All clients' : scope === 'mine' ? 'My clients' : 'Unassigned'}
-              </Text>
-            </TouchableOpacity>
-          ))}
-          {['all', ...Array.from(new Set(Object.values(assignmentByClientOrgId).map((a) => a.label.toLowerCase())))]
-            .slice(0, 8)
-            .map((flag) => (
-              <TouchableOpacity
-                key={`flag-${flag}`}
-                style={[s.filterPill, assignmentFlagFilter === flag && s.filterPillActive]}
-                onPress={() => setAssignmentFlagFilter(flag)}
-              >
-                <Text style={[s.filterPillLabel, assignmentFlagFilter === flag && s.filterPillLabelActive]}>
-                  {flag === 'all' ? 'Any flag' : `Flag ${flag}`}
+      )}
+      <View style={flexFillColumn}>
+        {searchActive ? (
+          <ScrollView
+            style={webThreadListScrollDefault}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator
+            contentContainerStyle={{ paddingBottom: spacing.lg }}
+          >
+            {/* Client chats */}
+            {searchedB2b.length > 0 && (
+              <View style={{ marginBottom: spacing.md }}>
+                <Text style={[s.metaText, { fontWeight: '600', marginBottom: spacing.xs }]}>
+                  {uiCopy.messages.searchSectionClientChats}
                 </Text>
-              </TouchableOpacity>
-            ))}
-        </View>
-      )}
-      <View style={{ flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.sm }}>
-        <TouchableOpacity style={[s.filterPill, attentionFilter === 'all' && s.filterPillActive]} onPress={() => setAttentionFilter('all')}>
-          <Text style={[s.filterPillLabel, attentionFilter === 'all' && s.filterPillLabelActive]}>
-            {_uiCopy.dashboard.smartAttentionFilterAll}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[s.filterPill, attentionFilter === 'action_required' && s.filterPillActive]} onPress={() => setAttentionFilter('action_required')}>
-          <Text style={[s.filterPillLabel, attentionFilter === 'action_required' && s.filterPillLabelActive]}>
-            {_uiCopy.dashboard.smartAttentionFilterActionRequired}
-          </Text>
-        </TouchableOpacity>
-      </View>
-      {counterparties.length > 1 && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexShrink: 0, marginBottom: spacing.sm }} contentContainerStyle={{ gap: spacing.xs }}>
-          <TouchableOpacity style={[s.filterPill, !counterpartyFilter && s.filterPillActive]} onPress={() => setCounterpartyFilter(null)}>
-            <Text style={[s.filterPillLabel, !counterpartyFilter && s.filterPillLabelActive]}>All clients</Text>
-          </TouchableOpacity>
-          {counterparties.map((cp) => (
-            <TouchableOpacity key={cp.id} style={[s.filterPill, counterpartyFilter === cp.id && s.filterPillActive]} onPress={() => setCounterpartyFilter(counterpartyFilter === cp.id ? null : cp.id)}>
-              <Text style={[s.filterPillLabel, counterpartyFilter === cp.id && s.filterPillLabelActive]} numberOfLines={1}>{cp.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      )}
-
-      <ScrollView
-        style={webThreadListScrollOption}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator
-        contentContainerStyle={{ flexGrow: 1, paddingBottom: spacing.sm }}
-      >
-        {visible.length === 0 ? (
-          <Text style={s.metaText}>No messages.</Text>
-        ) : (
-          visible.map((r) => {
-            const reqStatus = getRequestStatus(r.threadId) ?? r.status;
-            const assignment = r.clientOrganizationId ? assignmentByClientOrgId[r.clientOrganizationId] : undefined;
-            const listAttentionLabel = attentionHeaderLabelFromSignals(
-              attentionSignalsFromOptionRequestLike({
-                status: r.status,
-                finalStatus: r.finalStatus ?? null,
-                clientPriceStatus: r.clientPriceStatus ?? null,
-                modelApproval: r.modelApproval,
-                modelAccountLinked: r.modelAccountLinked ?? false,
-                agencyCounterPrice: r.agencyCounterPrice ?? null,
-                proposedPrice: r.proposedPrice ?? null,
-                isAgencyOnly: r.isAgencyOnly ?? false,
-              }),
-              'agency',
-            );
-            const listFee =
-              getCanonicalAgreedPrice({
-                proposed_price: r.proposedPrice ?? null,
-                agency_counter_price: r.agencyCounterPrice ?? null,
-                client_price_status: r.clientPriceStatus ?? null,
-                final_status: r.finalStatus ?? null,
-              }) ??
-              getNegotiationDisplayPriceCandidate({
-                proposed_price: r.proposedPrice ?? null,
-                agency_counter_price: r.agencyCounterPrice ?? null,
-                client_price_status: r.clientPriceStatus ?? null,
-                final_status: r.finalStatus ?? null,
-              });
-            return (
-              <View
-                key={r.threadId}
-                style={[s.threadRow, s.threadRowOptionRequestList, selectedThreadId === r.threadId && s.threadRowActive]}
-              >
-                <TouchableOpacity
-                  style={s.optionRequestThreadNamesColumn}
-                  onPress={() => setSelectedThreadId(r.threadId)}
-                  accessibilityRole="button"
-                >
-                  <Text style={s.modelName} numberOfLines={1} ellipsizeMode="tail">
-                    {r.modelName} · {r.date}
-                  </Text>
-                  <Text style={s.metaText} numberOfLines={1} ellipsizeMode="tail">
-                    {r.clientName}
-                    {formatOptionTimeRangeSuffix(r.startTime, r.endTime)}
-                  </Text>
-                  {assignment ? (
-                    <Text style={s.metaText} numberOfLines={1} ellipsizeMode="tail">
-                      {assignment.label}
-                      {assignment.assignedMemberName ? ` · ${assignment.assignedMemberName}` : ''}
-                    </Text>
-                  ) : null}
-                </TouchableOpacity>
-                <ScrollView
-                  horizontal
-                  nestedScrollEnabled
-                  showsHorizontalScrollIndicator
-                  keyboardShouldPersistTaps="handled"
-                  style={s.optionRequestThreadAttentionScroll}
-                  contentContainerStyle={s.optionRequestThreadAttentionScrollContent}
-                >
-                  {listAttentionLabel ? (
-                    <View style={[s.statusPill, { backgroundColor: '#dbeafe' }]}>
-                      <Text style={[s.statusPillLabel, { color: '#1d4ed8' }]} numberOfLines={1}>{listAttentionLabel}</Text>
-                    </View>
-                  ) : null}
-                  {listFee != null && (
-                    <Text style={{ ...typography.label, fontSize: 9, color: colors.accentBrown }}>
-                      {formatOptionMoneyAmount(listFee, r.currency)}
-                    </Text>
-                  )}
-                  <View style={[
-                    s.approvalBadge,
-                    r.modelAccountLinked === false && { backgroundColor: 'rgba(120,120,120,0.2)' },
-                    r.modelAccountLinked !== false && r.modelApproval === 'approved' && s.approvalBadgeApproved,
-                    r.modelAccountLinked !== false && r.modelApproval === 'rejected' && s.approvalBadgeRejected,
-                    r.modelAccountLinked !== false && r.modelApproval === 'pending' && s.approvalBadgePending,
-                  ]}>
-                    <Text style={[
-                      s.approvalBadgeLabel,
-                      r.modelAccountLinked === false && { color: colors.textSecondary },
-                      r.modelAccountLinked !== false && r.modelApproval === 'approved' && s.approvalBadgeLabelApproved,
-                      r.modelAccountLinked !== false && r.modelApproval === 'rejected' && s.approvalBadgeLabelRejected,
-                      r.modelAccountLinked !== false && r.modelApproval === 'pending' && s.approvalBadgeLabelPending,
-                    ]}>
-                      {r.modelAccountLinked === false
-                        ? uiCopy.dashboard.optionRequestModelApprovalNoApp
-                        : r.modelApproval === 'approved'
-                          ? uiCopy.dashboard.optionRequestModelApprovalApproved
-                          : r.modelApproval === 'rejected'
-                            ? uiCopy.dashboard.optionRequestModelApprovalRejected
-                            : uiCopy.dashboard.optionRequestModelApprovalPending}
-                    </Text>
-                  </View>
-                  <View style={[s.statusPill, { backgroundColor: STATUS_COLORS[reqStatus] }]}>
-                    <Text style={s.statusPillLabel} numberOfLines={1}>{STATUS_LABELS[reqStatus]}</Text>
-                  </View>
-                  <TouchableOpacity
-                    onPress={() => toggleArchive(r.threadId)}
-                    accessibilityRole="button"
-                    accessibilityLabel={
-                      archivedIds.has(r.threadId)
-                        ? uiCopy.messages.unarchiveThreadInListAccessibility
-                        : uiCopy.messages.archiveThreadInListAccessibility
-                    }
+                {searchedB2b.map((c) => (
+                  <View
+                    key={c.id}
+                    style={[
+                      s.modelRow,
+                      { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+                    ]}
                   >
-                    <Text style={{ fontSize: 12, color: colors.textSecondary }}>{archivedIds.has(r.threadId) ? '↩' : '📦'}</Text>
+                    <Text style={[s.modelName, { flex: 1 }]}>
+                      {b2bTitles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback}
+                    </Text>
+                    <TouchableOpacity
+                      style={[s.filterPill, s.filterPillActive]}
+                      onPress={() => {
+                        setMessagesSearch('');
+                        setMessagesSection('clientRequests');
+                        setActiveConnectionChatId(c.id);
+                        setActiveConnectionChatTitle(
+                          b2bTitles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback,
+                        );
+                      }}
+                    >
+                      <Text style={[s.filterPillLabel, s.filterPillLabelActive]}>
+                        {uiCopy.messages.openChat}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* Recruiting chats */}
+            {searchedRecruiting.length > 0 && (
+              <View style={{ marginBottom: spacing.md }}>
+                <Text style={[s.metaText, { fontWeight: '600', marginBottom: spacing.xs }]}>
+                  {uiCopy.messages.searchSectionRecruiting}
+                </Text>
+                {searchedRecruiting.map((t) => (
+                  <TouchableOpacity
+                    key={t.id}
+                    style={s.modelRow}
+                    onPress={() => {
+                      setMessagesSearch('');
+                      onOpenRecruitingThread(t.id);
+                    }}
+                  >
+                    <Text style={s.modelName}>{t.modelName}</Text>
+                    <Text style={s.backLabel}>Chat</Text>
                   </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {/* Option requests */}
+            {searchedOptionRequests.length > 0 && (
+              <View style={{ marginBottom: spacing.md }}>
+                <Text style={[s.metaText, { fontWeight: '600', marginBottom: spacing.xs }]}>
+                  {uiCopy.messages.searchSectionOptionRequests}
+                </Text>
+                {searchedOptionRequests.map((r) => (
+                  <TouchableOpacity
+                    key={r.threadId}
+                    style={s.modelRow}
+                    onPress={() => {
+                      setMessagesSearch('');
+                      setMessagesSection('optionRequests');
+                      setSelectedThreadId(r.threadId);
+                    }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.modelName}>
+                        {r.modelName} · {r.date}
+                      </Text>
+                      <Text style={s.metaText}>{r.clientName}</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {/* Models — start new or open existing */}
+            {searchedModels.length > 0 && (
+              <View style={{ marginBottom: spacing.md }}>
+                <Text style={[s.metaText, { fontWeight: '600', marginBottom: spacing.xs }]}>
+                  {uiCopy.messages.searchSectionModels}
+                </Text>
+                {searchedModels.map((m) => {
+                  const existingConvId = getModelDirectConvId(m.id);
+                  const hasAccount = !!m.user_id;
+                  const busy = searchChatBusy === m.id;
+                  return (
+                    <View
+                      key={m.id}
+                      style={[
+                        s.modelRow,
+                        { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+                      ]}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.modelName}>{m.name}</Text>
+                        {!hasAccount && (
+                          <Text style={[s.metaText, { color: colors.textSecondary }]}>
+                            {uiCopy.messages.modelNoAccount}
+                          </Text>
+                        )}
+                      </View>
+                      {existingConvId ? (
+                        <TouchableOpacity
+                          style={[s.filterPill, s.filterPillActive]}
+                          onPress={() => {
+                            setMessagesSearch('');
+                            setMessagesSection('clientRequests');
+                            setActiveConnectionChatId(existingConvId);
+                            setActiveConnectionChatTitle(m.name);
+                          }}
+                        >
+                          <Text style={[s.filterPillLabel, s.filterPillLabelActive]}>
+                            {uiCopy.messages.openChat}
+                          </Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity
+                          style={[s.filterPill, (!hasAccount || busy) && { opacity: 0.5 }]}
+                          disabled={!hasAccount || busy}
+                          onPress={() => handleStartModelChat(m)}
+                        >
+                          <Text style={s.filterPillLabel}>
+                            {busy ? uiCopy.common.loading : uiCopy.messages.startChat}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+
+            {searchedB2b.length === 0 &&
+              searchedRecruiting.length === 0 &&
+              searchedOptionRequests.length === 0 &&
+              searchedModels.length === 0 && (
+                <Text style={s.metaText}>{uiCopy.messages.searchNoResults}</Text>
+              )}
+          </ScrollView>
+        ) : (
+          <View style={flexFillColumn}>
+            {messagesSection === 'clientRequests' ? (
+              <View style={flexFillColumn}>
+                {!agencyId ? (
+                  <Text style={s.metaText}>{uiCopy.b2bChat.noAgencyContext}</Text>
+                ) : (
+                  <>
+                    {b2bConversations.length === 0 ? (
+                      <Text style={s.metaText}>{uiCopy.b2bChat.noClientChatsYetAgency}</Text>
+                    ) : agencyB2bWebSplit ? (
+                      <View
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'stretch',
+                          gap: spacing.md,
+                          flex: 1,
+                          minHeight: 0,
+                        }}
+                      >
+                        <View style={{ flex: CHAT_THREAD_LIST_FLEX, minWidth: 0, minHeight: 0 }}>
+                          <ScrollView
+                            style={webThreadListScrollDefault}
+                            contentContainerStyle={{ flexGrow: 1 }}
+                          >
+                            {b2bConversations.map((c) => (
+                              <View
+                                key={c.id}
+                                style={[
+                                  s.modelRow,
+                                  {
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    flexWrap: 'wrap',
+                                    gap: spacing.sm,
+                                  },
+                                ]}
+                              >
+                                <View style={{ flex: 1, minWidth: 160 }}>
+                                  <Text style={s.modelName}>
+                                    {b2bTitles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback}
+                                  </Text>
+                                  <Text style={s.metaText}>
+                                    {new Date(c.updated_at).toLocaleString()}
+                                  </Text>
+                                </View>
+                                <TouchableOpacity
+                                  style={[s.filterPill, s.filterPillActive]}
+                                  onPress={() => {
+                                    setActiveConnectionChatId(c.id);
+                                    setActiveConnectionChatTitle(
+                                      b2bTitles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback,
+                                    );
+                                  }}
+                                >
+                                  <Text style={[s.filterPillLabel, s.filterPillLabelActive]}>
+                                    {uiCopy.b2bChat.openConversation}
+                                  </Text>
+                                </TouchableOpacity>
+                                {currentUserId &&
+                                (b2bUnreadById[c.id] ?? false) &&
+                                activeConnectionChatId !== c.id ? (
+                                  <View
+                                    style={{
+                                      width: 8,
+                                      height: 8,
+                                      borderRadius: 4,
+                                      backgroundColor: '#2563EB',
+                                    }}
+                                    accessibilityLabel={uiCopy.b2bChat.unreadMessagesIndicatorA11y}
+                                  />
+                                ) : null}
+                              </View>
+                            ))}
+                          </ScrollView>
+                        </View>
+                        <View style={{ flex: CHAT_MESSENGER_FLEX, minWidth: 0, minHeight: 0 }}>
+                          {activeConnectionChatId ? (
+                            <OrgMessengerInline
+                              conversationId={activeConnectionChatId}
+                              headerTitle={activeConnectionChatTitle}
+                              viewerUserId={currentUserId}
+                              threadContext={{ type: uiCopy.b2bChat.contextOrgChat }}
+                              agencyId={agencyId}
+                              guestLinks={guestLinksForChat}
+                              modelsForShare={modelsForShare}
+                              composerBottomInsetOverride={0}
+                              onOpenRelatedRequest={(optionRequestId) => {
+                                setMessagesSection('optionRequests');
+                                setSelectedThreadId(optionRequestId);
+                              }}
+                              onBookingCardPress={onBookingCardPress}
+                              viewerRole="agency"
+                              onBookingStatusUpdated={() => onBookingCardPress?.()}
+                              containerStyle={{ marginTop: 0, flex: 1 }}
+                              onOrgPress={() => {
+                                const conv = b2bConversations.find(
+                                  (c) => c.id === activeConnectionChatId,
+                                );
+                                const orgId = conv?.client_organization_id ?? null;
+                                if (!orgId) return;
+                                setViewingClientProfileOrgId(orgId);
+                                setViewingClientProfileOrgName(activeConnectionChatTitle);
+                              }}
+                            />
+                          ) : null}
+                        </View>
+                      </View>
+                    ) : activeConnectionChatId ? (
+                      // Fallback: early return (b2bChatFullscreenActive) normally catches this,
+                      // but if it somehow didn't fire, render the messenger fullscreen here too.
+                      <View style={{ flex: 1, minHeight: 0 }}>
+                        <OrgMessengerInline
+                          conversationId={activeConnectionChatId}
+                          headerTitle={activeConnectionChatTitle}
+                          viewerUserId={currentUserId}
+                          threadContext={{ type: uiCopy.b2bChat.contextOrgChat }}
+                          agencyId={agencyId}
+                          guestLinks={guestLinksForChat}
+                          modelsForShare={modelsForShare}
+                          composerBottomInsetOverride={0}
+                          onOpenRelatedRequest={(optionRequestId) => {
+                            setActiveConnectionChatId(null);
+                            setMessagesSection('optionRequests');
+                            setSelectedThreadId(optionRequestId);
+                          }}
+                          onBookingCardPress={onBookingCardPress}
+                          viewerRole="agency"
+                          onBookingStatusUpdated={() => onBookingCardPress?.()}
+                          containerStyle={{
+                            marginTop: 0,
+                            padding: 0,
+                            borderWidth: 0,
+                            borderRadius: 0,
+                            flex: 1,
+                            minHeight: 0,
+                          }}
+                          onOrgPress={() => {
+                            const conv = b2bConversations.find(
+                              (c) => c.id === activeConnectionChatId,
+                            );
+                            const orgId = conv?.client_organization_id ?? null;
+                            if (!orgId) return;
+                            setViewingClientProfileOrgId(orgId);
+                            setViewingClientProfileOrgName(activeConnectionChatTitle);
+                          }}
+                          onBack={() => setActiveConnectionChatId(null)}
+                          backLabel={uiCopy.messages.backToChats}
+                        />
+                      </View>
+                    ) : (
+                      // Mobile (non-split): list only — chat opens fullscreen via b2bChatFullscreenActive early return
+                      <ScrollView
+                        style={webThreadListScrollDefault}
+                        keyboardShouldPersistTaps="handled"
+                        showsVerticalScrollIndicator
+                        contentContainerStyle={{ paddingBottom: spacing.sm }}
+                      >
+                        {b2bConversations.map((c) => (
+                          <View
+                            key={c.id}
+                            style={[
+                              s.modelRow,
+                              {
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                flexWrap: 'wrap',
+                                gap: spacing.sm,
+                              },
+                            ]}
+                          >
+                            <View style={{ flex: 1, minWidth: 160 }}>
+                              <Text style={s.modelName}>
+                                {b2bTitles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback}
+                              </Text>
+                              <Text style={s.metaText}>
+                                {new Date(c.updated_at).toLocaleString()}
+                              </Text>
+                            </View>
+                            <TouchableOpacity
+                              style={[s.filterPill, s.filterPillActive]}
+                              onPress={() => {
+                                setActiveConnectionChatId(c.id);
+                                setActiveConnectionChatTitle(
+                                  b2bTitles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback,
+                                );
+                              }}
+                            >
+                              <Text style={[s.filterPillLabel, s.filterPillLabelActive]}>
+                                {uiCopy.b2bChat.openConversation}
+                              </Text>
+                            </TouchableOpacity>
+                            {currentUserId &&
+                            (b2bUnreadById[c.id] ?? false) &&
+                            activeConnectionChatId !== c.id ? (
+                              <View
+                                style={{
+                                  width: 8,
+                                  height: 8,
+                                  borderRadius: 4,
+                                  backgroundColor: '#2563EB',
+                                }}
+                                accessibilityLabel={uiCopy.b2bChat.unreadMessagesIndicatorA11y}
+                              />
+                            ) : null}
+                          </View>
+                        ))}
+                      </ScrollView>
+                    )}
+                  </>
+                )}
+                {viewingClientProfileOrgId && (
+                  <OrgProfileModal
+                    visible
+                    onClose={() => setViewingClientProfileOrgId(null)}
+                    orgType="client"
+                    organizationId={viewingClientProfileOrgId}
+                    agencyId={null}
+                    orgName={viewingClientProfileOrgName}
+                  />
+                )}
+              </View>
+            ) : messagesSection === 'recruiting' ? (
+              <View style={flexFillColumn}>
+                <Text style={[s.metaText, { marginBottom: spacing.sm }]}>
+                  When you start a chat or accept an application from Recruiting, the thread appears
+                  here (and leaves the pending swipe queue). Same candidates are listed under
+                  Recruiting → My list until accepted.
+                </Text>
+                {recruitingThreads.length === 0 ? (
+                  <Text style={s.metaText}>
+                    No recruiting chats yet. Start a chat from Recruiting or accept an application.
+                  </Text>
+                ) : (
+                  <ScrollView
+                    style={webThreadListScrollDefault}
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator
+                    contentContainerStyle={{ paddingBottom: spacing.sm }}
+                  >
+                    {recruitingThreads.map((thread) => {
+                      const application = getApplicationById(thread.applicationId);
+                      const thumbUri =
+                        application?.images?.closeUp ||
+                        application?.images?.profile ||
+                        application?.images?.fullBody;
+                      return (
+                        <TouchableOpacity
+                          key={thread.id}
+                          style={s.bookingChatRow}
+                          onPress={() => onOpenRecruitingThread(thread.id)}
+                        >
+                          <View style={s.bookingChatThumbWrap}>
+                            {thumbUri ? (
+                              <StorageImage
+                                uri={thumbUri}
+                                style={s.bookingChatThumb}
+                                resizeMode="contain"
+                              />
+                            ) : (
+                              <View style={[s.bookingChatThumb, s.bookingChatThumbPlaceholder]}>
+                                <Text style={s.bookingChatThumbPlaceholderText} numberOfLines={1}>
+                                  {thread.modelName}
+                                </Text>
+                              </View>
+                            )}
+                          </View>
+                          <Text
+                            style={[s.modelName, { flex: 1, marginLeft: spacing.sm }]}
+                            numberOfLines={1}
+                          >
+                            {thread.modelName}
+                          </Text>
+                          <Text style={s.backLabel}>Chat</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                )}
+              </View>
+            ) : messagesSection === 'optionRequests' ? (
+              <View style={flexFillColumn}>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: spacing.sm,
+                  }}
+                >
+                  <Text style={[s.sectionLabel, { fontSize: 14 }]}>Option request threads</Text>
+                  <View style={{ flexDirection: 'row', gap: 4 }}>
+                    {(['current', 'archived'] as const).map((f) => (
+                      <TouchableOpacity
+                        key={f}
+                        style={[s.filterPill, msgFilter === f && s.filterPillActive]}
+                        onPress={() => setMsgFilter(f)}
+                      >
+                        <Text
+                          style={[s.filterPillLabel, msgFilter === f && s.filterPillLabelActive]}
+                        >
+                          {f === 'current'
+                            ? uiCopy.messages.optionRequestListFilterCurrent
+                            : uiCopy.messages.optionRequestListFilterArchived}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+                <Text style={[s.metaText, { marginBottom: spacing.sm }]}>
+                  {uiCopy.messages.archiveThreadDoesNotDeleteShort}
+                </Text>
+                {Object.keys(assignmentByClientOrgId).length > 0 && (
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      flexWrap: 'wrap',
+                      gap: spacing.xs,
+                      marginBottom: spacing.sm,
+                    }}
+                  >
+                    {(['all', 'mine', 'unassigned'] as const).map((scope) => (
+                      <TouchableOpacity
+                        key={`scope-${scope}`}
+                        style={[s.filterPill, assignmentScope === scope && s.filterPillActive]}
+                        onPress={() => setAssignmentScope(scope)}
+                      >
+                        <Text
+                          style={[
+                            s.filterPillLabel,
+                            assignmentScope === scope && s.filterPillLabelActive,
+                          ]}
+                        >
+                          {scope === 'all'
+                            ? 'All clients'
+                            : scope === 'mine'
+                              ? 'My clients'
+                              : 'Unassigned'}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                    {[
+                      'all',
+                      ...Array.from(
+                        new Set(
+                          Object.values(assignmentByClientOrgId).map((a) => a.label.toLowerCase()),
+                        ),
+                      ),
+                    ]
+                      .slice(0, 8)
+                      .map((flag) => (
+                        <TouchableOpacity
+                          key={`flag-${flag}`}
+                          style={[
+                            s.filterPill,
+                            assignmentFlagFilter === flag && s.filterPillActive,
+                          ]}
+                          onPress={() => setAssignmentFlagFilter(flag)}
+                        >
+                          <Text
+                            style={[
+                              s.filterPillLabel,
+                              assignmentFlagFilter === flag && s.filterPillLabelActive,
+                            ]}
+                          >
+                            {flag === 'all' ? 'Any flag' : `Flag ${flag}`}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                  </View>
+                )}
+                <View style={{ flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.sm }}>
+                  <TouchableOpacity
+                    style={[s.filterPill, attentionFilter === 'all' && s.filterPillActive]}
+                    onPress={() => setAttentionFilter('all')}
+                  >
+                    <Text
+                      style={[
+                        s.filterPillLabel,
+                        attentionFilter === 'all' && s.filterPillLabelActive,
+                      ]}
+                    >
+                      {_uiCopy.dashboard.smartAttentionFilterAll}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      s.filterPill,
+                      attentionFilter === 'action_required' && s.filterPillActive,
+                    ]}
+                    onPress={() => setAttentionFilter('action_required')}
+                  >
+                    <Text
+                      style={[
+                        s.filterPillLabel,
+                        attentionFilter === 'action_required' && s.filterPillLabelActive,
+                      ]}
+                    >
+                      {_uiCopy.dashboard.smartAttentionFilterActionRequired}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                {counterparties.length > 1 && (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={{ flexShrink: 0, marginBottom: spacing.sm }}
+                    contentContainerStyle={{ gap: spacing.xs }}
+                  >
+                    <TouchableOpacity
+                      style={[s.filterPill, !counterpartyFilter && s.filterPillActive]}
+                      onPress={() => setCounterpartyFilter(null)}
+                    >
+                      <Text
+                        style={[s.filterPillLabel, !counterpartyFilter && s.filterPillLabelActive]}
+                      >
+                        All clients
+                      </Text>
+                    </TouchableOpacity>
+                    {counterparties.map((cp) => (
+                      <TouchableOpacity
+                        key={cp.id}
+                        style={[s.filterPill, counterpartyFilter === cp.id && s.filterPillActive]}
+                        onPress={() =>
+                          setCounterpartyFilter(counterpartyFilter === cp.id ? null : cp.id)
+                        }
+                      >
+                        <Text
+                          style={[
+                            s.filterPillLabel,
+                            counterpartyFilter === cp.id && s.filterPillLabelActive,
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {cp.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                )}
+
+                <ScrollView
+                  style={webThreadListScrollOption}
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator
+                  contentContainerStyle={{ flexGrow: 1, paddingBottom: spacing.sm }}
+                >
+                  {visible.length === 0 ? (
+                    <Text style={s.metaText}>No messages.</Text>
+                  ) : (
+                    visible.map((r) => {
+                      const reqStatus = getRequestStatus(r.threadId) ?? r.status;
+                      const assignment = r.clientOrganizationId
+                        ? assignmentByClientOrgId[r.clientOrganizationId]
+                        : undefined;
+                      const listAttentionLabel = attentionHeaderLabelFromSignals(
+                        attentionSignalsFromOptionRequestLike({
+                          status: r.status,
+                          finalStatus: r.finalStatus ?? null,
+                          clientPriceStatus: r.clientPriceStatus ?? null,
+                          modelApproval: r.modelApproval,
+                          modelAccountLinked: r.modelAccountLinked ?? false,
+                          agencyCounterPrice: r.agencyCounterPrice ?? null,
+                          proposedPrice: r.proposedPrice ?? null,
+                          isAgencyOnly: r.isAgencyOnly ?? false,
+                        }),
+                        'agency',
+                      );
+                      const listFee =
+                        getCanonicalAgreedPrice({
+                          proposed_price: r.proposedPrice ?? null,
+                          agency_counter_price: r.agencyCounterPrice ?? null,
+                          client_price_status: r.clientPriceStatus ?? null,
+                          final_status: r.finalStatus ?? null,
+                        }) ??
+                        getNegotiationDisplayPriceCandidate({
+                          proposed_price: r.proposedPrice ?? null,
+                          agency_counter_price: r.agencyCounterPrice ?? null,
+                          client_price_status: r.clientPriceStatus ?? null,
+                          final_status: r.finalStatus ?? null,
+                        });
+                      return (
+                        <View
+                          key={r.threadId}
+                          style={[
+                            s.threadRow,
+                            s.threadRowOptionRequestList,
+                            selectedThreadId === r.threadId && s.threadRowActive,
+                          ]}
+                        >
+                          <TouchableOpacity
+                            style={s.optionRequestThreadNamesColumn}
+                            onPress={() => setSelectedThreadId(r.threadId)}
+                            accessibilityRole="button"
+                          >
+                            <Text style={s.modelName} numberOfLines={1} ellipsizeMode="tail">
+                              {r.modelName} · {r.date}
+                            </Text>
+                            <Text style={s.metaText} numberOfLines={1} ellipsizeMode="tail">
+                              {r.clientName}
+                              {formatOptionTimeRangeSuffix(r.startTime, r.endTime)}
+                            </Text>
+                            {assignment ? (
+                              <Text style={s.metaText} numberOfLines={1} ellipsizeMode="tail">
+                                {assignment.label}
+                                {assignment.assignedMemberName
+                                  ? ` · ${assignment.assignedMemberName}`
+                                  : ''}
+                              </Text>
+                            ) : null}
+                          </TouchableOpacity>
+                          <ScrollView
+                            horizontal
+                            nestedScrollEnabled
+                            showsHorizontalScrollIndicator
+                            keyboardShouldPersistTaps="handled"
+                            style={s.optionRequestThreadAttentionScroll}
+                            contentContainerStyle={s.optionRequestThreadAttentionScrollContent}
+                          >
+                            {listAttentionLabel ? (
+                              <View style={[s.statusPill, { backgroundColor: '#dbeafe' }]}>
+                                <Text
+                                  style={[s.statusPillLabel, { color: '#1d4ed8' }]}
+                                  numberOfLines={1}
+                                >
+                                  {listAttentionLabel}
+                                </Text>
+                              </View>
+                            ) : null}
+                            {listFee != null && (
+                              <Text
+                                style={{
+                                  ...typography.label,
+                                  fontSize: 9,
+                                  color: colors.accentBrown,
+                                }}
+                              >
+                                {formatOptionMoneyAmount(listFee, r.currency)}
+                              </Text>
+                            )}
+                            <View
+                              style={[
+                                s.approvalBadge,
+                                r.modelAccountLinked === false && {
+                                  backgroundColor: 'rgba(120,120,120,0.2)',
+                                },
+                                r.modelAccountLinked !== false &&
+                                  r.modelApproval === 'approved' &&
+                                  s.approvalBadgeApproved,
+                                r.modelAccountLinked !== false &&
+                                  r.modelApproval === 'rejected' &&
+                                  s.approvalBadgeRejected,
+                                r.modelAccountLinked !== false &&
+                                  r.modelApproval === 'pending' &&
+                                  s.approvalBadgePending,
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  s.approvalBadgeLabel,
+                                  r.modelAccountLinked === false && { color: colors.textSecondary },
+                                  r.modelAccountLinked !== false &&
+                                    r.modelApproval === 'approved' &&
+                                    s.approvalBadgeLabelApproved,
+                                  r.modelAccountLinked !== false &&
+                                    r.modelApproval === 'rejected' &&
+                                    s.approvalBadgeLabelRejected,
+                                  r.modelAccountLinked !== false &&
+                                    r.modelApproval === 'pending' &&
+                                    s.approvalBadgeLabelPending,
+                                ]}
+                              >
+                                {r.modelAccountLinked === false
+                                  ? uiCopy.dashboard.optionRequestModelApprovalNoApp
+                                  : r.modelApproval === 'approved'
+                                    ? uiCopy.dashboard.optionRequestModelApprovalApproved
+                                    : r.modelApproval === 'rejected'
+                                      ? uiCopy.dashboard.optionRequestModelApprovalRejected
+                                      : uiCopy.dashboard.optionRequestModelApprovalPending}
+                              </Text>
+                            </View>
+                            <View
+                              style={[s.statusPill, { backgroundColor: STATUS_COLORS[reqStatus] }]}
+                            >
+                              <Text style={s.statusPillLabel} numberOfLines={1}>
+                                {STATUS_LABELS[reqStatus]}
+                              </Text>
+                            </View>
+                            <TouchableOpacity
+                              onPress={() => toggleArchive(r.threadId)}
+                              accessibilityRole="button"
+                              accessibilityLabel={
+                                archivedIds.has(r.threadId)
+                                  ? uiCopy.messages.unarchiveThreadInListAccessibility
+                                  : uiCopy.messages.archiveThreadInListAccessibility
+                              }
+                            >
+                              <Text style={{ fontSize: 12, color: colors.textSecondary }}>
+                                {archivedIds.has(r.threadId) ? '↩' : '📦'}
+                              </Text>
+                            </TouchableOpacity>
+                          </ScrollView>
+                        </View>
+                      );
+                    })
+                  )}
                 </ScrollView>
               </View>
-            );
-          })
+            ) : null}
+          </View>
         )}
-      </ScrollView>
-        </View>
-      ) : null}
       </View>
-      )}
-    </View>
     </View>
   );
 };
@@ -6034,7 +7502,9 @@ const OrganizationTeamTab: React.FC<{
   const [nameBusy, setNameBusy] = useState(false);
   const [removingUserId, setRemovingUserId] = useState<string | null>(null);
   const [resendingInvitationId, setResendingInvitationId] = useState<string | null>(null);
-  const [resendInvitationCooldownUntil, setResendInvitationCooldownUntil] = useState<Record<string, number>>({});
+  const [resendInvitationCooldownUntil, setResendInvitationCooldownUntil] = useState<
+    Record<string, number>
+  >({});
 
   const handleRemoveMember = (targetUserId: string, displayName: string) => {
     if (!organizationId) return;
@@ -6052,7 +7522,10 @@ const OrganizationTeamTab: React.FC<{
             setRemovingUserId(null);
             if (result.ok) {
               onRefresh();
-              Alert.alert('Member Removed', 'The member has been removed and their session invalidated.');
+              Alert.alert(
+                'Member Removed',
+                'The member has been removed and their session invalidated.',
+              );
             } else {
               Alert.alert(uiCopy.common.error, result.error ?? 'Failed to remove member.');
             }
@@ -6091,7 +7564,9 @@ const OrganizationTeamTab: React.FC<{
       let emailOk = false;
       let emailFailureReason = '';
       try {
-        const { data: { session: s } } = await supabase.auth.getSession();
+        const {
+          data: { session: s },
+        } = await supabase.auth.getSession();
         const res = await supabase.functions.invoke('send-invite', {
           body: {
             type: 'org_invitation',
@@ -6121,7 +7596,10 @@ const OrganizationTeamTab: React.FC<{
         uiCopy.alerts.invitationCreated,
         emailOk
           ? uiCopy.alerts.invitationCreatedBody
-          : uiCopy.inviteDelivery.invitationCreatedEmailFailedWithLink(emailFailureReason || 'unknown_error', link),
+          : uiCopy.inviteDelivery.invitationCreatedEmailFailedWithLink(
+              emailFailureReason || 'unknown_error',
+              link,
+            ),
       );
     } else if (result.error === 'agency_member_limit_reached') {
       Alert.alert(uiCopy.common.error, uiCopy.team.agencyPlanMemberLimitReached);
@@ -6160,7 +7638,13 @@ const OrganizationTeamTab: React.FC<{
           : r;
 
   const handleResendInvitation = async (invitation: InvitationRow) => {
-    if (!organizationId || !invitation.email || !invitation.token || invitation.status !== 'pending') return;
+    if (
+      !organizationId ||
+      !invitation.email ||
+      !invitation.token ||
+      invitation.status !== 'pending'
+    )
+      return;
     const cooldownUntil = resendInvitationCooldownUntil[invitation.id] ?? 0;
     if (Date.now() < cooldownUntil) return;
     setResendingInvitationId(invitation.id);
@@ -6189,16 +7673,12 @@ const OrganizationTeamTab: React.FC<{
   return (
     <ScreenScrollView>
       <Text style={s.sectionLabel}>{uiCopy.team.section}</Text>
-      <Text style={s.metaText}>
-        {uiCopy.team.leadAgency}
-      </Text>
+      <Text style={s.metaText}>{uiCopy.team.leadAgency}</Text>
       <Text style={[s.metaText, { marginTop: spacing.sm }]}>
         {uiCopy.team.ownerRoleExplainerAgency}
       </Text>
       {!organizationId && (
-        <Text style={[s.metaText, { marginTop: spacing.md }]}>
-          {uiCopy.team.noOrganizationYet}
-        </Text>
+        <Text style={[s.metaText, { marginTop: spacing.md }]}>{uiCopy.team.noOrganizationYet}</Text>
       )}
 
       {canInvite && (
@@ -6249,7 +7729,13 @@ const OrganizationTeamTab: React.FC<{
                   <TouchableOpacity
                     onPress={() => handleRemoveMember(m.user_id, displayName)}
                     disabled={removingUserId === m.user_id}
-                    style={{ paddingHorizontal: spacing.sm, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: '#C0392B' }}
+                    style={{
+                      paddingHorizontal: spacing.sm,
+                      paddingVertical: 4,
+                      borderRadius: 6,
+                      borderWidth: 1,
+                      borderColor: '#C0392B',
+                    }}
                   >
                     <Text style={{ ...typography.label, fontSize: 11, color: '#C0392B' }}>
                       {removingUserId === m.user_id ? '…' : 'Remove'}
@@ -6273,7 +7759,8 @@ const OrganizationTeamTab: React.FC<{
                 <View style={{ flex: 1 }}>
                   <Text style={s.modelName}>{i.email}</Text>
                   <Text style={s.metaText}>
-                    {roleLabel(i.role)} · {uiCopy.team.inviteExpiresLabel} {new Date(i.expires_at).toLocaleDateString()}
+                    {roleLabel(i.role)} · {uiCopy.team.inviteExpiresLabel}{' '}
+                    {new Date(i.expires_at).toLocaleDateString()}
                   </Text>
                 </View>
                 {canInvite && i.email && i.token && (
@@ -6282,10 +7769,15 @@ const OrganizationTeamTab: React.FC<{
                     onPress={() => {
                       void handleResendInvitation(i);
                     }}
-                    disabled={resendingInvitationId === i.id || Date.now() < (resendInvitationCooldownUntil[i.id] ?? 0)}
+                    disabled={
+                      resendingInvitationId === i.id ||
+                      Date.now() < (resendInvitationCooldownUntil[i.id] ?? 0)
+                    }
                   >
                     <Text style={s.saveBtnLabel}>
-                      {resendingInvitationId === i.id ? uiCopy.inviteResend.loading : uiCopy.inviteResend.cta}
+                      {resendingInvitationId === i.id
+                        ? uiCopy.inviteResend.loading
+                        : uiCopy.inviteResend.cta}
                     </Text>
                   </TouchableOpacity>
                 )}
@@ -6305,7 +7797,11 @@ const OrganizationTeamTab: React.FC<{
             autoCapitalize="none"
             keyboardType="email-address"
           />
-          <TouchableOpacity style={s.saveBtn} onPress={handleInvite} disabled={busy || !inviteEmail.trim()}>
+          <TouchableOpacity
+            style={s.saveBtn}
+            onPress={handleInvite}
+            disabled={busy || !inviteEmail.trim()}
+          >
             <Text style={s.saveBtnLabel}>{busy ? '…' : uiCopy.team.inviteSendLink}</Text>
           </TouchableOpacity>
           {lastLink && (
@@ -6314,7 +7810,9 @@ const OrganizationTeamTab: React.FC<{
                 Alert.alert(uiCopy.alerts.invitationLink, lastLink);
               }}
             >
-              <Text style={[s.metaText, { textDecorationLine: 'underline' }]}>{uiCopy.alerts.showLastLink}</Text>
+              <Text style={[s.metaText, { textDecorationLine: 'underline' }]}>
+                {uiCopy.alerts.showLastLink}
+              </Text>
             </TouchableOpacity>
           )}
         </View>
@@ -6355,7 +7853,9 @@ const GuestLinksTab: React.FC<{
   const [agencyOrgId, setAgencyOrgId] = useState<string | null>(null);
   const [b2bConversations, setB2bConversations] = useState<Conversation[]>([]);
   const [convTitles, setConvTitles] = useState<Record<string, string>>({});
-  const [sendInAppStatus, setSendInAppStatus] = useState<'idle' | 'loading' | 'sending' | 'success' | 'error'>('idle');
+  const [sendInAppStatus, setSendInAppStatus] = useState<
+    'idle' | 'loading' | 'sending' | 'success' | 'error'
+  >('idle');
   // Client discovery inside the modal
   const [sendSearch, setSendSearch] = useState('');
   const [searchRows, setSearchRows] = useState<ClientOrganizationDirectoryRow[]>([]);
@@ -6368,28 +7868,45 @@ const GuestLinksTab: React.FC<{
 
   // Debounced client-directory search – only runs while the send modal is open.
   useEffect(() => {
-    if (!sendInAppTarget || !agencyId) { setSearchRows([]); return; }
+    if (!sendInAppTarget || !agencyId) {
+      setSearchRows([]);
+      return;
+    }
     let cancelled = false;
     setSearchLoading(true);
     const t = setTimeout(() => {
       void listClientOrganizationsForAgencyDirectory(agencyId, sendSearch)
-        .then((list) => { if (!cancelled) setSearchRows(list); })
-        .finally(() => { if (!cancelled) setSearchLoading(false); });
+        .then((list) => {
+          if (!cancelled) setSearchRows(list);
+        })
+        .finally(() => {
+          if (!cancelled) setSearchLoading(false);
+        });
     }, 200);
-    return () => { cancelled = true; clearTimeout(t); };
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
   }, [sendSearch, agencyId, sendInAppTarget]);
 
   const toggleModel = (id: string) => {
     setSelectedModelIds((prev) => {
       const n = new Set(prev);
-      if (n.has(id)) n.delete(id); else n.add(id);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
       return n;
     });
   };
 
   const handleCreatePackage = async () => {
-    if (!label.trim()) { setCreateError(copy.packageNameRequired); return; }
-    if (selectedModelIds.size === 0) { setCreateError(copy.noModelsSelected); return; }
+    if (!label.trim()) {
+      setCreateError(copy.packageNameRequired);
+      return;
+    }
+    if (selectedModelIds.size === 0) {
+      setCreateError(copy.noModelsSelected);
+      return;
+    }
     setCreateError(null);
     setCreating(true);
     try {
@@ -6432,31 +7949,27 @@ const GuestLinksTab: React.FC<{
 
   const handleDeactivate = async (id: string) => {
     const ok = await revokeGuestAccess(id);
-    if (ok) setLinks((prev) => prev.map((l) => l.id === id ? { ...l, is_active: false } : l));
+    if (ok) setLinks((prev) => prev.map((l) => (l.id === id ? { ...l, is_active: false } : l)));
   };
 
   const handleDeletePackage = (id: string) => {
-    Alert.alert(
-      copy.deleteConfirmTitle,
-      copy.deleteConfirmMessage,
-      [
-        { text: copy.deleteConfirmCancel, style: 'cancel' },
-        {
-          text: copy.deleteConfirmOk,
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const ok = await deleteGuestLink(id);
-              if (ok) {
-                setLinks((prev) => prev.filter((l) => l.id !== id));
-              }
-            } catch (e) {
-              console.error('handleDeletePackage error:', e);
+    Alert.alert(copy.deleteConfirmTitle, copy.deleteConfirmMessage, [
+      { text: copy.deleteConfirmCancel, style: 'cancel' },
+      {
+        text: copy.deleteConfirmOk,
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            const ok = await deleteGuestLink(id);
+            if (ok) {
+              setLinks((prev) => prev.filter((l) => l.id !== id));
             }
-          },
+          } catch (e) {
+            console.error('handleDeletePackage error:', e);
+          }
         },
-      ],
-    );
+      },
+    ]);
   };
 
   const handleOpenSendInApp = async (link: GuestLink) => {
@@ -6469,13 +7982,19 @@ const GuestLinksTab: React.FC<{
         if (!oid) oid = await getOrganizationIdForAgency(agencyId);
         if (oid) setAgencyOrgId(oid);
       }
-      if (!oid) { setSendInAppStatus('error'); return; }
+      if (!oid) {
+        setSendInAppStatus('error');
+        return;
+      }
       const convs = await listB2BConversationsForOrganization(oid);
       setB2bConversations(convs);
       const titles: Record<string, string> = {};
       await Promise.all(
         convs.map(async (c) => {
-          const t = await getB2BConversationTitleForViewer({ conversation: c, viewerOrganizationId: oid! });
+          const t = await getB2BConversationTitleForViewer({
+            conversation: c,
+            viewerOrganizationId: oid!,
+          });
           titles[c.id] = t;
         }),
       );
@@ -6510,7 +8029,10 @@ const GuestLinksTab: React.FC<{
       );
       if (result) {
         setSendInAppStatus('success');
-        setTimeout(() => { setSendInAppTarget(null); setSendInAppStatus('idle'); }, 1500);
+        setTimeout(() => {
+          setSendInAppTarget(null);
+          setSendInAppStatus('idle');
+        }, 1500);
       } else {
         setSendInAppStatus('error');
       }
@@ -6551,8 +8073,12 @@ const GuestLinksTab: React.FC<{
 
   return (
     <>
-      <ScreenScrollView contentStyle={{ paddingHorizontal: agencyIsMobile ? spacing.sm : spacing.lg, paddingTop: spacing.md }}>
-
+      <ScreenScrollView
+        contentStyle={{
+          paddingHorizontal: agencyIsMobile ? spacing.sm : spacing.lg,
+          paddingTop: spacing.md,
+        }}
+      >
         {/* ── Create Package ─────────────────────────────────────────────── */}
         <Text style={s.sectionLabel}>{copy.createSection}</Text>
 
@@ -6561,18 +8087,25 @@ const GuestLinksTab: React.FC<{
           placeholder={copy.packageNamePlaceholder}
           placeholderTextColor={colors.textSecondary}
           value={label}
-          onChangeText={(t) => { setLabel(t); setCreateError(null); }}
+          onChangeText={(t) => {
+            setLabel(t);
+            setCreateError(null);
+          }}
         />
 
-        <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.xs }}>
+        <Text
+          style={{
+            ...typography.body,
+            fontSize: 11,
+            color: colors.textSecondary,
+            marginBottom: spacing.xs,
+          }}
+        >
           {copy.selectModelsHint}
         </Text>
 
         {/* Attribute filters – same panel as My Models */}
-        <ModelFiltersPanel
-          filters={packageModelFilters}
-          onChangeFilters={setPackageModelFilters}
-        />
+        <ModelFiltersPanel filters={packageModelFilters} onChangeFilters={setPackageModelFilters} />
 
         {/* Model name search */}
         <TextInput
@@ -6585,16 +8118,31 @@ const GuestLinksTab: React.FC<{
 
         {/* Selected count hint */}
         {selectedModelIds.size > 0 && (
-          <Text style={{ ...typography.body, fontSize: 11, color: colors.buttonOptionGreen, marginBottom: spacing.xs }}>
+          <Text
+            style={{
+              ...typography.body,
+              fontSize: 11,
+              color: colors.buttonOptionGreen,
+              marginBottom: spacing.xs,
+            }}
+          >
             {selectedModelIds.size} model{selectedModelIds.size === 1 ? '' : 's'} selected
           </Text>
         )}
 
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.md }}>
+        <View
+          style={{
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            gap: spacing.xs,
+            marginBottom: spacing.md,
+          }}
+        >
           {filteredPackageModels
-            .filter((m) =>
-              modelSearch.trim() === '' ||
-              m.name.toLowerCase().includes(modelSearch.trim().toLowerCase()),
+            .filter(
+              (m) =>
+                modelSearch.trim() === '' ||
+                m.name.toLowerCase().includes(modelSearch.trim().toLowerCase()),
             )
             .map((m) => (
               <TouchableOpacity
@@ -6602,12 +8150,17 @@ const GuestLinksTab: React.FC<{
                 style={[s.filterPill, selectedModelIds.has(m.id) && s.filterPillActive]}
                 onPress={() => toggleModel(m.id)}
               >
-                <Text style={[s.filterPillLabel, selectedModelIds.has(m.id) && s.filterPillLabelActive]}>{m.name}</Text>
+                <Text
+                  style={[s.filterPillLabel, selectedModelIds.has(m.id) && s.filterPillLabelActive]}
+                >
+                  {m.name}
+                </Text>
               </TouchableOpacity>
             ))}
-          {filteredPackageModels.filter((m) =>
-            modelSearch.trim() === '' ||
-            m.name.toLowerCase().includes(modelSearch.trim().toLowerCase()),
+          {filteredPackageModels.filter(
+            (m) =>
+              modelSearch.trim() === '' ||
+              m.name.toLowerCase().includes(modelSearch.trim().toLowerCase()),
           ).length === 0 && (
             <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary }}>
               {modelSearch.trim() !== ''
@@ -6618,7 +8171,14 @@ const GuestLinksTab: React.FC<{
         </View>
 
         {/* Package Type Selector */}
-        <Text style={{ ...typography.label, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.xs }}>
+        <Text
+          style={{
+            ...typography.label,
+            fontSize: 11,
+            color: colors.textSecondary,
+            marginBottom: spacing.xs,
+          }}
+        >
           {copy.packageTypeLabel}
         </Text>
         <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.xs }}>
@@ -6626,7 +8186,9 @@ const GuestLinksTab: React.FC<{
             style={[s.filterPill, packageType === 'portfolio' && s.filterPillActive]}
             onPress={() => setPackageType('portfolio')}
           >
-            <Text style={[s.filterPillLabel, packageType === 'portfolio' && s.filterPillLabelActive]}>
+            <Text
+              style={[s.filterPillLabel, packageType === 'portfolio' && s.filterPillLabelActive]}
+            >
               {copy.packageTypePortfolio}
             </Text>
           </TouchableOpacity>
@@ -6634,17 +8196,32 @@ const GuestLinksTab: React.FC<{
             style={[s.filterPill, packageType === 'polaroid' && s.filterPillActive]}
             onPress={() => setPackageType('polaroid')}
           >
-            <Text style={[s.filterPillLabel, packageType === 'polaroid' && s.filterPillLabelActive]}>
+            <Text
+              style={[s.filterPillLabel, packageType === 'polaroid' && s.filterPillLabelActive]}
+            >
               {copy.packageTypePolaroid}
             </Text>
           </TouchableOpacity>
         </View>
-        <Text style={{ ...typography.body, fontSize: 10, color: colors.textSecondary, marginBottom: spacing.sm }}>
-          {packageType === 'polaroid' ? copy.packageTypePolaroidHint : copy.packageTypePortfolioHint}
+        <Text
+          style={{
+            ...typography.body,
+            fontSize: 10,
+            color: colors.textSecondary,
+            marginBottom: spacing.sm,
+          }}
+        >
+          {packageType === 'polaroid'
+            ? copy.packageTypePolaroidHint
+            : copy.packageTypePortfolioHint}
         </Text>
 
         {createError !== null && (
-          <Text style={{ ...typography.body, fontSize: 11, color: '#e74c3c', marginBottom: spacing.xs }}>{createError}</Text>
+          <Text
+            style={{ ...typography.body, fontSize: 11, color: '#e74c3c', marginBottom: spacing.xs }}
+          >
+            {createError}
+          </Text>
         )}
 
         <TouchableOpacity
@@ -6663,52 +8240,113 @@ const GuestLinksTab: React.FC<{
               <View
                 key={l.id}
                 style={{
-                  borderWidth: 1, borderColor: colors.border, borderRadius: 12,
-                  padding: spacing.md, marginBottom: spacing.sm, backgroundColor: colors.surface,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 12,
+                  padding: spacing.md,
+                  marginBottom: spacing.sm,
+                  backgroundColor: colors.surface,
                 }}
               >
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
-                  <Text style={{ ...typography.label, fontSize: 13, color: colors.textPrimary, flex: 1 }} numberOfLines={1}>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    marginBottom: 4,
+                  }}
+                >
+                  <Text
+                    style={{
+                      ...typography.label,
+                      fontSize: 13,
+                      color: colors.textPrimary,
+                      flex: 1,
+                    }}
+                    numberOfLines={1}
+                  >
                     {l.label ?? 'Package'}
                   </Text>
                   <View style={{ flexDirection: 'row', gap: 4, alignItems: 'center' }}>
                     {/* Package type badge */}
-                    <View style={{
-                      borderRadius: 999, paddingHorizontal: 6, paddingVertical: 2,
-                      backgroundColor: l.type === 'polaroid' ? 'rgba(255,152,0,0.1)' : 'rgba(33,150,243,0.1)',
-                      borderWidth: 1,
-                      borderColor: l.type === 'polaroid' ? '#FF9800' : '#2196F3',
-                    }}>
-                      <Text style={{ ...typography.label, fontSize: 9, color: l.type === 'polaroid' ? '#FF9800' : '#2196F3' }}>
-                        {l.type === 'polaroid' ? copy.packageTypePolaroid : copy.packageTypePortfolio}
+                    <View
+                      style={{
+                        borderRadius: 999,
+                        paddingHorizontal: 6,
+                        paddingVertical: 2,
+                        backgroundColor:
+                          l.type === 'polaroid' ? 'rgba(255,152,0,0.1)' : 'rgba(33,150,243,0.1)',
+                        borderWidth: 1,
+                        borderColor: l.type === 'polaroid' ? '#FF9800' : '#2196F3',
+                      }}
+                    >
+                      <Text
+                        style={{
+                          ...typography.label,
+                          fontSize: 9,
+                          color: l.type === 'polaroid' ? '#FF9800' : '#2196F3',
+                        }}
+                      >
+                        {l.type === 'polaroid'
+                          ? copy.packageTypePolaroid
+                          : copy.packageTypePortfolio}
                       </Text>
                     </View>
                     {/* Active / Inactive badge */}
-                    <View style={[
-                      { borderRadius: 999, paddingHorizontal: 6, paddingVertical: 2 },
-                      l.is_active
-                        ? { backgroundColor: 'rgba(76,175,80,0.12)', borderWidth: 1, borderColor: colors.buttonOptionGreen }
-                        : { backgroundColor: colors.border },
-                    ]}>
-                      <Text style={{ ...typography.label, fontSize: 9, color: l.is_active ? colors.buttonOptionGreen : colors.textSecondary }}>
+                    <View
+                      style={[
+                        { borderRadius: 999, paddingHorizontal: 6, paddingVertical: 2 },
+                        l.is_active
+                          ? {
+                              backgroundColor: 'rgba(76,175,80,0.12)',
+                              borderWidth: 1,
+                              borderColor: colors.buttonOptionGreen,
+                            }
+                          : { backgroundColor: colors.border },
+                      ]}
+                    >
+                      <Text
+                        style={{
+                          ...typography.label,
+                          fontSize: 9,
+                          color: l.is_active ? colors.buttonOptionGreen : colors.textSecondary,
+                        }}
+                      >
                         {l.is_active ? copy.activeLabel : copy.inactiveLabel}
                       </Text>
                     </View>
                   </View>
                 </View>
 
-                <Text style={{ ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm }}>
-                  {copy.modelsCount(l.model_ids.length)} · {new Date(l.created_at).toLocaleDateString()}
+                <Text
+                  style={{
+                    ...typography.body,
+                    fontSize: 11,
+                    color: colors.textSecondary,
+                    marginBottom: spacing.sm,
+                  }}
+                >
+                  {copy.modelsCount(l.model_ids.length)} ·{' '}
+                  {new Date(l.created_at).toLocaleDateString()}
                 </Text>
 
                 {l.is_active && (
                   <>
-                    <View style={{ flexDirection: 'row', gap: spacing.xs, flexWrap: 'wrap', marginBottom: 6 }}>
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        gap: spacing.xs,
+                        flexWrap: 'wrap',
+                        marginBottom: 6,
+                      }}
+                    >
                       <TouchableOpacity
                         style={[s.filterPill, { borderColor: colors.textSecondary }]}
                         onPress={() => handleCopyGuestLink(l)}
                       >
-                        <Text style={{ ...typography.label, fontSize: 10, color: colors.textSecondary }}>
+                        <Text
+                          style={{ ...typography.label, fontSize: 10, color: colors.textSecondary }}
+                        >
                           {copiedLinkId === l.id ? copy.copiedButton : copy.copyGuestLinkButton}
                         </Text>
                       </TouchableOpacity>
@@ -6717,7 +8355,13 @@ const GuestLinksTab: React.FC<{
                         style={[s.filterPill, { borderColor: colors.buttonOptionGreen }]}
                         onPress={() => handleOpenSendInApp(l)}
                       >
-                        <Text style={{ ...typography.label, fontSize: 10, color: colors.buttonOptionGreen }}>
+                        <Text
+                          style={{
+                            ...typography.label,
+                            fontSize: 10,
+                            color: colors.buttonOptionGreen,
+                          }}
+                        >
                           {copy.sendInAppButton}
                         </Text>
                       </TouchableOpacity>
@@ -6726,15 +8370,31 @@ const GuestLinksTab: React.FC<{
                         style={[s.filterPill, { borderColor: '#e74c3c' }]}
                         onPress={() => handleDeactivate(l.id)}
                       >
-                        <Text style={{ ...typography.label, fontSize: 10, color: '#e74c3c' }}>{copy.deactivateButton}</Text>
+                        <Text style={{ ...typography.label, fontSize: 10, color: '#e74c3c' }}>
+                          {copy.deactivateButton}
+                        </Text>
                       </TouchableOpacity>
                     </View>
 
                     <View style={{ flexDirection: 'row', gap: spacing.lg }}>
-                      <Text style={{ ...typography.body, fontSize: 9, color: colors.textSecondary, flex: 1 }}>
+                      <Text
+                        style={{
+                          ...typography.body,
+                          fontSize: 9,
+                          color: colors.textSecondary,
+                          flex: 1,
+                        }}
+                      >
                         {copy.guestLinkHint}
                       </Text>
-                      <Text style={{ ...typography.body, fontSize: 9, color: colors.buttonOptionGreen, flex: 1 }}>
+                      <Text
+                        style={{
+                          ...typography.body,
+                          fontSize: 9,
+                          color: colors.buttonOptionGreen,
+                          flex: 1,
+                        }}
+                      >
                         {copy.inAppHint}
                       </Text>
                     </View>
@@ -6742,16 +8402,29 @@ const GuestLinksTab: React.FC<{
                 )}
 
                 <TouchableOpacity
-                  style={[s.filterPill, { borderColor: '#c0392b', marginTop: spacing.xs, alignSelf: 'flex-start' }]}
+                  style={[
+                    s.filterPill,
+                    { borderColor: '#c0392b', marginTop: spacing.xs, alignSelf: 'flex-start' },
+                  ]}
                   onPress={() => handleDeletePackage(l.id)}
                 >
-                  <Text style={{ ...typography.label, fontSize: 10, color: '#c0392b' }}>{copy.deleteButton}</Text>
+                  <Text style={{ ...typography.label, fontSize: 10, color: '#c0392b' }}>
+                    {copy.deleteButton}
+                  </Text>
                 </TouchableOpacity>
               </View>
             ))}
           </>
         ) : (
-          <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginTop: spacing.lg, textAlign: 'center' }}>
+          <Text
+            style={{
+              ...typography.body,
+              fontSize: 12,
+              color: colors.textSecondary,
+              marginTop: spacing.lg,
+              textAlign: 'center',
+            }}
+          >
             {copy.noLinksYet}
           </Text>
         )}
@@ -6760,16 +8433,36 @@ const GuestLinksTab: React.FC<{
       {/* ── Send in App Modal ──────────────────────────────────────────── */}
       {sendInAppTarget !== null && (
         <Modal transparent animationType="fade" visible>
-          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' }}>
-            <View style={{
-              backgroundColor: colors.background,
-              borderTopLeftRadius: 20, borderTopRightRadius: 20,
-              padding: agencyIsMobile ? spacing.md : spacing.lg, maxHeight: '80%',
-            }}>
-              <Text style={{ ...typography.heading, fontSize: 16, color: colors.textPrimary, marginBottom: 4 }}>
+          <View
+            style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' }}
+          >
+            <View
+              style={{
+                backgroundColor: colors.background,
+                borderTopLeftRadius: 20,
+                borderTopRightRadius: 20,
+                padding: agencyIsMobile ? spacing.md : spacing.lg,
+                maxHeight: '80%',
+              }}
+            >
+              <Text
+                style={{
+                  ...typography.heading,
+                  fontSize: 16,
+                  color: colors.textPrimary,
+                  marginBottom: 4,
+                }}
+              >
                 {copy.sendInAppModalTitle}
               </Text>
-              <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.md }}>
+              <Text
+                style={{
+                  ...typography.body,
+                  fontSize: 12,
+                  color: colors.textSecondary,
+                  marginBottom: spacing.md,
+                }}
+              >
                 {sendInAppTarget.label
                   ? `"${sendInAppTarget.label}" — ${copy.sendInAppModalHint}`
                   : copy.sendInAppModalHint}
@@ -6778,20 +8471,42 @@ const GuestLinksTab: React.FC<{
               {(sendInAppStatus === 'loading' || sendInAppStatus === 'sending') && (
                 <View style={{ alignItems: 'center', paddingVertical: spacing.lg }}>
                   <ActivityIndicator color={colors.accentGreen} />
-                  <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginTop: spacing.xs }}>
+                  <Text
+                    style={{
+                      ...typography.body,
+                      fontSize: 12,
+                      color: colors.textSecondary,
+                      marginTop: spacing.xs,
+                    }}
+                  >
                     {sendInAppStatus === 'loading' ? copy.sendInAppLoading : copy.sendInAppSending}
                   </Text>
                 </View>
               )}
 
               {sendInAppStatus === 'success' && (
-                <Text style={{ ...typography.label, fontSize: 14, color: colors.buttonOptionGreen, textAlign: 'center', paddingVertical: spacing.lg }}>
+                <Text
+                  style={{
+                    ...typography.label,
+                    fontSize: 14,
+                    color: colors.buttonOptionGreen,
+                    textAlign: 'center',
+                    paddingVertical: spacing.lg,
+                  }}
+                >
                   {copy.sendInAppSuccess}
                 </Text>
               )}
 
               {sendInAppStatus === 'error' && (
-                <Text style={{ ...typography.body, fontSize: 12, color: '#e74c3c', marginBottom: spacing.sm }}>
+                <Text
+                  style={{
+                    ...typography.body,
+                    fontSize: 12,
+                    color: '#e74c3c',
+                    marginBottom: spacing.sm,
+                  }}
+                >
                   {copy.sendInAppError}
                 </Text>
               )}
@@ -6799,7 +8514,6 @@ const GuestLinksTab: React.FC<{
               {(sendInAppStatus === 'idle' || sendInAppStatus === 'error') && (
                 <>
                   <ScrollView style={{ maxHeight: 420 }} keyboardShouldPersistTaps="handled">
-
                     {/* ── Client search ─────────────────────────────────── */}
                     <TextInput
                       style={[s.editInput, { marginBottom: spacing.sm }]}
@@ -6811,7 +8525,11 @@ const GuestLinksTab: React.FC<{
                     />
 
                     {searchLoading && (
-                      <ActivityIndicator size="small" color={colors.accentGreen} style={{ marginBottom: spacing.sm }} />
+                      <ActivityIndicator
+                        size="small"
+                        color={colors.accentGreen}
+                        style={{ marginBottom: spacing.sm }}
+                      />
                     )}
 
                     {!searchLoading && searchRows.length > 0 && (
@@ -6823,21 +8541,44 @@ const GuestLinksTab: React.FC<{
                             <TouchableOpacity
                               key={row.id}
                               style={{
-                                paddingVertical: spacing.sm, paddingHorizontal: spacing.sm,
-                                borderBottomWidth: 1, borderBottomColor: colors.border,
-                                flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                                paddingVertical: spacing.sm,
+                                paddingHorizontal: spacing.sm,
+                                borderBottomWidth: 1,
+                                borderBottomColor: colors.border,
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
                                 opacity: isSending ? 0.5 : 1,
                               }}
-                              onPress={() => { if (!isSending) void handleSendToNewClient(row.id); }}
+                              onPress={() => {
+                                if (!isSending) void handleSendToNewClient(row.id);
+                              }}
                               disabled={isSending}
                             >
-                              <Text style={{ ...typography.label, fontSize: 13, color: colors.textPrimary, flex: 1 }} numberOfLines={1}>
+                              <Text
+                                style={{
+                                  ...typography.label,
+                                  fontSize: 13,
+                                  color: colors.textPrimary,
+                                  flex: 1,
+                                }}
+                                numberOfLines={1}
+                              >
                                 {label}
                               </Text>
-                              {isSending
-                                ? <ActivityIndicator size="small" color={colors.accentGreen} />
-                                : <Text style={{ ...typography.label, fontSize: 11, color: colors.buttonOptionGreen }}>{copy.sendInAppButton} →</Text>
-                              }
+                              {isSending ? (
+                                <ActivityIndicator size="small" color={colors.accentGreen} />
+                              ) : (
+                                <Text
+                                  style={{
+                                    ...typography.label,
+                                    fontSize: 11,
+                                    color: colors.buttonOptionGreen,
+                                  }}
+                                >
+                                  {copy.sendInAppButton} →
+                                </Text>
+                              )}
                             </TouchableOpacity>
                           );
                         })}
@@ -6845,7 +8586,14 @@ const GuestLinksTab: React.FC<{
                     )}
 
                     {!searchLoading && sendSearch.trim() !== '' && searchRows.length === 0 && (
-                      <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.sm }}>
+                      <Text
+                        style={{
+                          ...typography.body,
+                          fontSize: 12,
+                          color: colors.textSecondary,
+                          marginBottom: spacing.sm,
+                        }}
+                      >
                         No clients found for "{sendSearch}"
                       </Text>
                     )}
@@ -6853,21 +8601,40 @@ const GuestLinksTab: React.FC<{
                     {/* ── Recent chats ──────────────────────────────────── */}
                     {b2bConversations.length > 0 && (
                       <>
-                        <Text style={[s.sectionLabel, { marginTop: spacing.md }]}>Recent chats</Text>
+                        <Text style={[s.sectionLabel, { marginTop: spacing.md }]}>
+                          Recent chats
+                        </Text>
                         {b2bConversations.map((c) => (
                           <TouchableOpacity
                             key={c.id}
                             style={{
-                              paddingVertical: spacing.sm, paddingHorizontal: spacing.sm,
-                              borderBottomWidth: 1, borderBottomColor: colors.border,
-                              flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                              paddingVertical: spacing.sm,
+                              paddingHorizontal: spacing.sm,
+                              borderBottomWidth: 1,
+                              borderBottomColor: colors.border,
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
                             }}
                             onPress={() => handleSendToConversation(c.id)}
                           >
-                            <Text style={{ ...typography.label, fontSize: 13, color: colors.textPrimary }} numberOfLines={1}>
+                            <Text
+                              style={{
+                                ...typography.label,
+                                fontSize: 13,
+                                color: colors.textPrimary,
+                              }}
+                              numberOfLines={1}
+                            >
                               {convTitles[c.id] ?? uiCopy.b2bChat.chatPartnerFallback}
                             </Text>
-                            <Text style={{ ...typography.label, fontSize: 11, color: colors.buttonOptionGreen }}>
+                            <Text
+                              style={{
+                                ...typography.label,
+                                fontSize: 11,
+                                color: colors.buttonOptionGreen,
+                              }}
+                            >
                               {copy.sendInAppButton} →
                             </Text>
                           </TouchableOpacity>
@@ -6875,18 +8642,42 @@ const GuestLinksTab: React.FC<{
                       </>
                     )}
 
-                    {b2bConversations.length === 0 && sendSearch.trim() === '' && !searchLoading && (
-                      <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.sm }}>
-                        Search for a client above or start a chat in the Clients tab first.
-                      </Text>
-                    )}
+                    {b2bConversations.length === 0 &&
+                      sendSearch.trim() === '' &&
+                      !searchLoading && (
+                        <Text
+                          style={{
+                            ...typography.body,
+                            fontSize: 12,
+                            color: colors.textSecondary,
+                            marginBottom: spacing.sm,
+                          }}
+                        >
+                          Search for a client above or start a chat in the Clients tab first.
+                        </Text>
+                      )}
                   </ScrollView>
 
                   <TouchableOpacity
-                    style={[s.saveBtn, { marginTop: spacing.md, backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.border }]}
-                    onPress={() => { setSendInAppTarget(null); setSendInAppStatus('idle'); setSendSearch(''); setSearchRows([]); }}
+                    style={[
+                      s.saveBtn,
+                      {
+                        marginTop: spacing.md,
+                        backgroundColor: 'transparent',
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                      },
+                    ]}
+                    onPress={() => {
+                      setSendInAppTarget(null);
+                      setSendInAppStatus('idle');
+                      setSendSearch('');
+                      setSearchRows([]);
+                    }}
                   >
-                    <Text style={{ ...typography.label, color: colors.textPrimary }}>{copy.sendInAppCancelButton}</Text>
+                    <Text style={{ ...typography.label, color: colors.textPrimary }}>
+                      {copy.sendInAppCancelButton}
+                    </Text>
                   </TouchableOpacity>
                 </>
               )}
@@ -6916,11 +8707,21 @@ const s = StyleSheet.create({
     paddingBottom: spacing.xs,
     marginBottom: spacing.xs,
   },
-  backRow: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm, gap: spacing.xs },
+  backRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+    gap: spacing.xs,
+  },
   backArrow: { fontSize: 22, color: colors.textPrimary },
   backLabel: { ...typography.label, fontSize: 11, color: colors.textSecondary },
   brand: { ...typography.headingCompact, color: colors.textPrimary, marginBottom: 0 },
-  heading: { ...typography.heading, fontSize: 18, color: colors.textPrimary, marginBottom: spacing.md },
+  heading: {
+    ...typography.heading,
+    fontSize: 18,
+    color: colors.textPrimary,
+    marginBottom: spacing.md,
+  },
   tabRow: {
     flexDirection: 'row',
     gap: spacing.sm,
@@ -6941,19 +8742,36 @@ const s = StyleSheet.create({
   tabItem: { alignItems: 'center', paddingHorizontal: spacing.xs, flexShrink: 0 },
   tabLabel: { ...typography.label, fontSize: 11, color: colors.textSecondary },
   tabLabelActive: { color: colors.accentGreen },
-  tabUnderline: { marginTop: 4, height: 2, width: 24, backgroundColor: colors.accentGreen, borderRadius: 1 },
+  tabUnderline: {
+    marginTop: 4,
+    height: 2,
+    width: 24,
+    backgroundColor: colors.accentGreen,
+    borderRadius: 1,
+  },
   sectionLabel: { ...typography.label, color: colors.textSecondary, marginBottom: spacing.xs },
   metaText: { ...typography.body, fontSize: 12, color: colors.textSecondary },
   modelName: { ...typography.body, color: colors.textPrimary },
   tractionRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   modelRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingVertical: spacing.xs, paddingHorizontal: spacing.sm,
-    borderWidth: 1, borderColor: colors.border, borderRadius: 12, marginBottom: spacing.xs,
-    minWidth: 0, overflow: 'hidden',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    marginBottom: spacing.xs,
+    minWidth: 0,
+    overflow: 'hidden',
   },
   bookingChatRow: {
     flexDirection: 'row',
@@ -6989,38 +8807,57 @@ const s = StyleSheet.create({
     textAlign: 'center',
   },
   visTag: {
-    borderRadius: 4, borderWidth: 1, borderColor: colors.accentGreen,
-    paddingHorizontal: 6, paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: colors.accentGreen,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
   },
   visTagLabel: { ...typography.label, fontSize: 9, color: colors.accentGreen },
   editInput: {
-    borderWidth: 1, borderColor: colors.border, borderRadius: 12,
-    paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
-    ...typography.body, color: colors.textPrimary,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    ...typography.body,
+    color: colors.textPrimary,
   },
   visPill: {
-    borderRadius: 999, borderWidth: 1, borderColor: colors.border,
-    paddingHorizontal: spacing.sm, paddingVertical: spacing.xs,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
   },
   visPillActive: { borderColor: colors.accentGreen, backgroundColor: colors.accentGreen },
   visPillLabel: { ...typography.label, fontSize: 10, color: colors.textSecondary },
   visPillLabelActive: { color: colors.surface },
   saveBtn: {
-    borderRadius: 999, backgroundColor: colors.accentGreen,
-    paddingVertical: spacing.sm, alignItems: 'center',
+    borderRadius: 999,
+    backgroundColor: colors.accentGreen,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
   },
   saveBtnLabel: { ...typography.label, color: colors.surface },
   filterPill: {
-    borderRadius: 999, borderWidth: 1, borderColor: colors.border,
-    paddingHorizontal: spacing.sm, paddingVertical: spacing.xs,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
   },
   filterPillActive: { borderColor: colors.textPrimary, backgroundColor: colors.textPrimary },
   filterPillLabel: { ...typography.label, fontSize: 10, color: colors.textSecondary },
   filterPillLabelActive: { color: colors.surface },
   threadRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
-    paddingVertical: spacing.xs, paddingHorizontal: spacing.sm,
-    borderBottomWidth: 1, borderBottomColor: colors.border,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
     minWidth: 0,
     overflow: 'hidden',
   },
@@ -7061,15 +8898,33 @@ const s = StyleSheet.create({
   statusPill: { borderRadius: 999, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   statusPillLabel: { ...typography.label, fontSize: 10, color: colors.surface },
   chatPanel: {
-    marginTop: spacing.md, borderWidth: 1, borderColor: colors.border,
-    borderRadius: 12, padding: spacing.md, backgroundColor: colors.surface,
+    marginTop: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    padding: spacing.md,
+    backgroundColor: colors.surface,
   },
   chatTitle: { ...typography.label, color: colors.textPrimary },
-  chatBubble: { alignSelf: 'flex-start', maxWidth: '85%', paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: 12, marginBottom: spacing.xs, backgroundColor: '#F0EEEA' },
+  chatBubble: {
+    alignSelf: 'flex-start',
+    maxWidth: '85%',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: 12,
+    marginBottom: spacing.xs,
+    backgroundColor: '#F0EEEA',
+  },
   chatBubbleAgency: { alignSelf: 'flex-end', backgroundColor: colors.buttonOptionGreen },
   chatBubbleClient: { backgroundColor: '#E2E0DB' },
   chatBubbleSystem: { alignSelf: 'center' as const, maxWidth: '92%', backgroundColor: '#E8E6E3' },
-  chatBubbleSystemLabel: { ...typography.label, fontSize: 10, color: colors.textSecondary, marginBottom: 2, textAlign: 'center' as const },
+  chatBubbleSystemLabel: {
+    ...typography.label,
+    fontSize: 10,
+    color: colors.textSecondary,
+    marginBottom: 2,
+    textAlign: 'center' as const,
+  },
   chatBubbleSystemText: { textAlign: 'center' as const },
   chatBubbleText: { ...typography.body, fontSize: 12, color: colors.textPrimary },
   chatBubbleTextAgency: { color: colors.surface },
@@ -7135,31 +8990,53 @@ const s = StyleSheet.create({
     minHeight: 36,
     maxHeight: 120,
   },
-  chatSend: { borderRadius: 999, backgroundColor: colors.buttonOptionGreen, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, justifyContent: 'center' },
+  chatSend: {
+    borderRadius: 999,
+    backgroundColor: colors.buttonOptionGreen,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    justifyContent: 'center',
+  },
   chatSendLabel: { ...typography.label, fontSize: 11, color: colors.surface },
   apiSection: {
-    marginBottom: spacing.lg, paddingBottom: spacing.md,
-    borderBottomWidth: 1, borderBottomColor: colors.border,
+    marginBottom: spacing.lg,
+    paddingBottom: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   apiBtn: {
-    borderRadius: 999, borderWidth: 1, borderColor: colors.accentGreen,
-    paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.accentGreen,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
   apiBtnLabel: { ...typography.label, fontSize: 11, color: colors.accentGreen },
   apiConnectBtn: {
-    borderRadius: 999, backgroundColor: colors.accentGreen,
-    paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
+    borderRadius: 999,
+    backgroundColor: colors.accentGreen,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
   addFormContainer: {
-    marginBottom: spacing.lg, padding: spacing.md,
-    borderWidth: 1, borderColor: colors.border, borderRadius: 12,
+    marginBottom: spacing.lg,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
     backgroundColor: colors.surface,
   },
   approvalBadge: {
-    borderRadius: 999, borderWidth: 1, paddingHorizontal: 6, paddingVertical: 2,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
     borderColor: colors.border,
   },
-  approvalBadgeApproved: { borderColor: colors.buttonOptionGreen, backgroundColor: 'rgba(76,175,80,0.1)' },
+  approvalBadgeApproved: {
+    borderColor: colors.buttonOptionGreen,
+    backgroundColor: 'rgba(76,175,80,0.1)',
+  },
   approvalBadgeRejected: { borderColor: '#e74c3c', backgroundColor: 'rgba(231,76,60,0.1)' },
   approvalBadgePending: { borderColor: '#B8860B', backgroundColor: 'rgba(184,134,11,0.1)' },
   approvalBadgeLabel: { ...typography.label, fontSize: 9, color: colors.textSecondary },
@@ -7167,10 +9044,17 @@ const s = StyleSheet.create({
   approvalBadgeLabelRejected: { color: '#e74c3c' },
   approvalBadgeLabelPending: { color: '#B8860B' },
   approvalBanner: {
-    borderRadius: 8, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs,
-    marginBottom: spacing.sm, borderWidth: 1, borderColor: colors.border,
+    borderRadius: 8,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  approvalBannerApproved: { borderColor: colors.buttonOptionGreen, backgroundColor: 'rgba(76,175,80,0.08)' },
+  approvalBannerApproved: {
+    borderColor: colors.buttonOptionGreen,
+    backgroundColor: 'rgba(76,175,80,0.08)',
+  },
   approvalBannerRejected: { borderColor: '#e74c3c', backgroundColor: 'rgba(231,76,60,0.08)' },
   approvalBannerPending: { borderColor: '#B8860B', backgroundColor: 'rgba(184,134,11,0.08)' },
   approvalBannerText: { ...typography.label, fontSize: 11, color: colors.textSecondary },

@@ -116,11 +116,11 @@ export type ChatMessage = {
 function toLocalRequest(r: SupabaseOptionRequest | SupabaseOptionRequestModelSafe): OptionRequest {
   return {
     id: r.id,
-    clientName: r.client_name ?? 'Client',
+    clientName: r.client_name || r.client_organization_name || 'Unknown client',
     clientOrganizationId: r.client_organization_id ?? r.organization_id ?? undefined,
     clientOrganizationName: r.client_organization_name ?? undefined,
     jobDescription: r.job_description ?? undefined,
-    modelName: r.model_name ?? 'Model',
+    modelName: r.model_name || 'Unknown model',
     modelId: r.model_id,
     date: r.requested_date,
     createdAt: new Date(r.created_at).getTime(),
@@ -128,8 +128,10 @@ function toLocalRequest(r: SupabaseOptionRequest | SupabaseOptionRequestModelSaf
     status: r.status,
     projectId: r.project_id ?? undefined,
     proposedPrice: 'proposed_price' in r ? (r.proposed_price ?? undefined) : undefined,
-    agencyCounterPrice: 'agency_counter_price' in r ? (r.agency_counter_price ?? undefined) : undefined,
-    clientPriceStatus: 'client_price_status' in r ? (r.client_price_status ?? undefined) : undefined,
+    agencyCounterPrice:
+      'agency_counter_price' in r ? (r.agency_counter_price ?? undefined) : undefined,
+    clientPriceStatus:
+      'client_price_status' in r ? (r.client_price_status ?? undefined) : undefined,
     finalStatus: r.final_status ?? undefined,
     requestType: r.request_type ?? 'option',
     currency: r.currency ?? undefined,
@@ -217,7 +219,7 @@ export function addOptionRequest(
     flowSource?: OptionRequestFlowSource;
     /** Denormalized client org display name — propagated to option_requests for model visibility. */
     clientOrganizationName?: string;
-  }
+  },
 ): string {
   const threadId = `thread-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const requestType = extra?.requestType ?? 'option';
@@ -245,9 +247,10 @@ export function addOptionRequest(
     clientPriceStatus: 'pending',
   };
   requestsCache.unshift(req);
-  const autoText = requestType === 'casting'
-    ? `Casting request for ${date}${timeStr}.`
-    : `Option request for ${date}${timeStr}.`;
+  const autoText =
+    requestType === 'casting'
+      ? `Casting request for ${date}${timeStr}.`
+      : `Option request for ${date}${timeStr}.`;
   const autoMessage: ChatMessage = {
     id: `msg-${Date.now()}`,
     threadId,
@@ -259,7 +262,9 @@ export function addOptionRequest(
   notify();
 
   (async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user?.id) {
       requestsCache = requestsCache.filter((x) => x.id !== req.id);
       messagesCache = messagesCache.filter((m) => m.id !== autoMessage.id);
@@ -274,7 +279,8 @@ export function addOptionRequest(
       try {
         // Employees must resolve their employer's org; owners fall back to
         // creating their own org. getMyClientMemberRole covers both cases.
-        const { getMyClientMemberRole, ensureClientOrganization } = await import('../services/organizationsInvitationsSupabase');
+        const { getMyClientMemberRole, ensureClientOrganization } =
+          await import('../services/organizationsInvitationsSupabase');
         const roleData = await getMyClientMemberRole();
         if (roleData?.organization_id) {
           organizationId = roleData.organization_id;
@@ -298,7 +304,7 @@ export function addOptionRequest(
 
       const countryCodeUsed = extra?.countryCode?.trim()
         ? extra?.countryCode
-        : model?.country_code ?? model?.country ?? null;
+        : (model?.country_code ?? model?.country ?? null);
 
       if (countryCodeUsed) {
         countryCodeUsedForBooking = countryCodeUsed;
@@ -358,19 +364,17 @@ export function addOptionRequest(
     // Calendar conflict check — informational only (fail-open).
     // Warns the user when the model already has a confirmed booking on the
     // requested date so they can decide whether to proceed.
-    const conflictResult = await checkCalendarConflict(
-      modelId,
-      date,
-      normStart,
-      normEnd,
-    );
+    const conflictResult = await checkCalendarConflict(modelId, date, normStart, normEnd);
     if (conflictResult.has_conflict) {
       const conflictTitles = conflictResult.conflicting_entries
         .map((e) => e.title ?? e.entry_type)
         .join(', ');
       showAppAlert(
         uiCopy.calendarValidation.conflictWarningTitle ?? 'Schedule Conflict',
-        (uiCopy.calendarValidation.conflictWarningMessage ?? 'This model already has a booking on this date: {{entries}}. You can still submit the request.').replace('{{entries}}', conflictTitles),
+        (
+          uiCopy.calendarValidation.conflictWarningMessage ??
+          'This model already has a booking on this date: {{entries}}. You can still submit the request.'
+        ).replace('{{entries}}', conflictTitles),
       );
     }
 
@@ -399,16 +403,19 @@ export function addOptionRequest(
       requestsCache = requestsCache.filter((x) => x.id !== req.id);
       messagesCache = messagesCache.filter((m) => m.id !== autoMessage.id);
       notify();
-      console.error('[addOptionRequest] insertOptionRequest returned null – optimistic entry rolled back', {
-        flowSource,
-        actingUserId: clientId,
-        clientOrganizationId: organizationId,
-        modelId,
-        requestType,
-        countryCode: countryCodeUsedForBooking,
-        resolvedAgencyId: agencyId,
-        resolvedAgencyOrganizationId: agencyOrganizationId,
-      });
+      console.error(
+        '[addOptionRequest] insertOptionRequest returned null – optimistic entry rolled back',
+        {
+          flowSource,
+          actingUserId: clientId,
+          clientOrganizationId: organizationId,
+          modelId,
+          requestType,
+          countryCode: countryCodeUsedForBooking,
+          resolvedAgencyId: agencyId,
+          resolvedAgencyOrganizationId: agencyOrganizationId,
+        },
+      );
       return;
     }
     if (result) {
@@ -491,7 +498,10 @@ export async function approveOptionAsModel(threadId: string): Promise<boolean> {
       req.modelApprovedAt = prevApprovedAt;
       req.status = prevStatus;
       notify();
-      console.error('[approveOptionAsModel] modelConfirmOptionRequest failed – rolled back', req.id);
+      console.error(
+        '[approveOptionAsModel] modelConfirmOptionRequest failed – rolled back',
+        req.id,
+      );
       return false;
     }
     const inserted = await addOptionSystemMessage(req.id, 'model_approved_booking');
@@ -539,7 +549,7 @@ export async function rejectOptionAsModel(threadId: string): Promise<boolean> {
 
 export function getOutstandingOptionsForModel(modelId: string): OptionRequest[] {
   return requestsCache.filter(
-    (r) => r.modelId === modelId && r.modelApproval === 'pending' && r.status === 'in_negotiation'
+    (r) => r.modelId === modelId && r.modelApproval === 'pending' && r.status === 'in_negotiation',
   );
 }
 
@@ -557,10 +567,14 @@ export async function loadOptionsForModel(modelId: string): Promise<void> {
       }
       notify();
     }
-  } catch { /* keep cache */ }
+  } catch {
+    /* keep cache */
+  }
 }
 
-export async function loadOptionRequestsForClient(clientOrganizationId?: string | null): Promise<void> {
+export async function loadOptionRequestsForClient(
+  clientOrganizationId?: string | null,
+): Promise<void> {
   try {
     const remote = await fetchRequestsForCurrentClient(
       clientOrganizationId != null && String(clientOrganizationId).trim() !== ''
@@ -604,9 +618,14 @@ export function getMessages(threadId: string): ChatMessage[] {
   return messagesCache.filter((m) => m.threadId === threadId);
 }
 
-export function addMessage(threadId: string, from: 'client' | 'agency' | 'model', text: string): void {
+export function addMessage(
+  threadId: string,
+  from: 'client' | 'agency' | 'model',
+  text: string,
+): void {
+  const tempId = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const msg: ChatMessage = {
-    id: `msg-${Date.now()}`,
+    id: tempId,
     threadId,
     from,
     text,
@@ -619,7 +638,18 @@ export function addMessage(threadId: string, from: 'client' | 'agency' | 'model'
   if (req) {
     const supabaseRole: 'client' | 'agency' | 'model' =
       from === 'client' ? 'client' : from === 'model' ? 'model' : 'agency';
-    addOptionMessage(req.id, supabaseRole, text);
+    void addOptionMessage(req.id, supabaseRole, text).then((result) => {
+      if (!result) {
+        messagesCache = messagesCache.filter((m) => m.id !== tempId);
+        notify();
+      } else {
+        const idx = messagesCache.findIndex((m) => m.id === tempId);
+        if (idx >= 0) {
+          messagesCache[idx] = toLocalMessage(result);
+          notify();
+        }
+      }
+    });
   }
 }
 
@@ -637,12 +667,51 @@ export async function loadMessagesForThread(
 ): Promise<ChatMessage[]> {
   const req = requestsCache.find((r) => r.threadId === threadId);
   if (!req) return [];
-  const remote = await fetchMessages(req.id, opts?.viewerRole ? { viewerRole: opts.viewerRole } : undefined);
+  const remote = await fetchMessages(
+    req.id,
+    opts?.viewerRole ? { viewerRole: opts.viewerRole } : undefined,
+  );
   const mapped = remote.map(toLocalMessage);
   messagesCache = messagesCache.filter((m) => m.threadId !== threadId);
   messagesCache.push(...mapped);
   notify();
   return mapped;
+}
+
+/**
+ * Loads older messages for an option thread using cursor-based pagination.
+ * Prepends them to the existing messages cache without removing newer ones.
+ * Returns the number of messages loaded (0 means no more older messages).
+ */
+export async function loadOlderMessagesForThread(
+  threadId: string,
+  opts?: { viewerRole?: 'client' | 'agency' | 'model' },
+): Promise<number> {
+  const req = requestsCache.find((r) => r.threadId === threadId);
+  if (!req) return 0;
+
+  const existing = messagesCache.filter((m) => m.threadId === threadId);
+  const oldest =
+    existing.length > 0
+      ? existing.reduce((a, b) => (a.createdAt < b.createdAt ? a : b))
+      : undefined;
+
+  if (!oldest) return 0;
+
+  const remote = await fetchMessages(req.id, {
+    beforeId: oldest.id,
+    limit: 50,
+    ...(opts?.viewerRole ? { viewerRole: opts.viewerRole } : {}),
+  });
+
+  if (remote.length === 0) return 0;
+
+  const mapped = remote.map(toLocalMessage);
+  const existingIds = new Set(messagesCache.map((m) => m.id));
+  const newMessages = mapped.filter((m) => !existingIds.has(m.id));
+  messagesCache.push(...newMessages);
+  notify();
+  return newMessages.length;
 }
 
 export async function refreshOptionRequestInCache(threadId: string): Promise<void> {
@@ -683,7 +752,10 @@ export async function agencyConfirmAvailabilityStore(threadId: string): Promise<
       }
       notify();
     } else {
-      console.warn('[agencyConfirmAvailabilityStore] RPC succeeded but post-refresh failed — local state may be stale', req.id);
+      console.warn(
+        '[agencyConfirmAvailabilityStore] RPC succeeded but post-refresh failed — local state may be stale',
+        req.id,
+      );
     }
     return true;
   } finally {
@@ -717,13 +789,20 @@ export async function agencyAcceptClientPriceStore(threadId: string): Promise<bo
     }
     notify();
   } else {
-    console.warn('[agencyAcceptClientPriceStore] RPC succeeded but post-refresh failed — local state may be stale', req.id);
+    console.warn(
+      '[agencyAcceptClientPriceStore] RPC succeeded but post-refresh failed — local state may be stale',
+      req.id,
+    );
   }
   return true;
 }
 
 /** Agency sends counter offer; system message + web push + persistent DB notification. */
-export async function agencyCounterOfferStore(threadId: string, counterPrice: number, currency: string): Promise<boolean> {
+export async function agencyCounterOfferStore(
+  threadId: string,
+  counterPrice: number,
+  currency: string,
+): Promise<boolean> {
   const req = requestsCache.find((r) => r.threadId === threadId);
   if (!req) return false;
   const ok = await setAgencyCounterOffer(req.id, counterPrice);
@@ -839,6 +918,12 @@ export function purgeOptionThreadFromStore(threadId: string): void {
 export async function clientConfirmJobStore(threadId: string): Promise<boolean> {
   const req = requestsCache.find((r) => r.threadId === threadId);
   if (!req) return false;
+  if (req.isAgencyOnly) {
+    console.error(
+      'clientConfirmJobStore: blocked — agency-only requests must use agency_confirm_job_agency_only',
+    );
+    return false;
+  }
   if (!beginCriticalOptionAction(threadId)) return false;
   try {
     const ok = await clientConfirmJobOnSupabase(req.id);
@@ -866,6 +951,12 @@ export async function clientConfirmJobStore(threadId: string): Promise<boolean> 
     // full.organization_id is the CLIENT org — do NOT notify it here (client triggered this action).
     // Resolve the agency org the same way createBookingEventFromRequest does.
     const full = await getOptionRequestById(req.id);
+    if (!full) {
+      console.error(
+        'clientConfirmJobStore: post-confirm fetch returned null — agency/model notifications skipped',
+        req.id,
+      );
+    }
     if (full) {
       const notifications: Parameters<typeof createNotifications>[0] = [];
 
@@ -875,7 +966,11 @@ export async function clientConfirmJobStore(threadId: string): Promise<boolean> 
       );
 
       if (!agencyOrgId) {
-        console.error('[notifications] clientConfirmJobStore: agency org not found for agency_id', full.agency_id, '— agency notification skipped.');
+        console.error(
+          '[notifications] clientConfirmJobStore: agency org not found for agency_id',
+          full.agency_id,
+          '— agency notification skipped.',
+        );
       } else {
         notifications.push({
           organization_id: agencyOrgId,
@@ -947,7 +1042,11 @@ export async function clientRejectCounterStore(threadId: string): Promise<boolea
       full.agency_organization_id,
     );
     if (!agencyOrgId) {
-      console.error('[notifications] clientRejectCounterStore: agency org not found for agency_id', full.agency_id, '— notification skipped.');
+      console.error(
+        '[notifications] clientRejectCounterStore: agency org not found for agency_id',
+        full.agency_id,
+        '— notification skipped.',
+      );
     } else {
       void createNotification({
         organization_id: agencyOrgId,

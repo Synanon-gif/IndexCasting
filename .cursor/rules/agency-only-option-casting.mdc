@@ -1,0 +1,230 @@
+---
+description: Agency-only option/casting flows — job finalization, calendar, attention, org naming, threading, tests
+alwaysApply: true
+---
+
+# Agency-Only Option / Casting Flow — Canonical Invariants
+
+## Scope
+
+This rule governs all agency-only option / casting flows where:
+
+- NO client is involved
+- the agency creates events manually
+- one or more models are selected
+- each model receives an individual availability request
+- the agency may confirm jobs per model
+
+---
+
+## 1. Core Invariant (CRITICAL)
+
+If `option_requests.is_agency_only = true`:
+
+- job finalization **MUST NOT** go through any client-based RPC or logic
+- `client_confirm_option_job` **MUST reject** these rows
+- only `agency_confirm_job_agency_only` is allowed for job finalization
+- this **must be enforced in the backend** (NOT UI only)
+
+Violation of this breaks data integrity.
+
+---
+
+## 2. Agency Confirmation Logic
+
+**Agency-only flows:**
+
+- agency can confirm job **ONLY after** the model confirmed availability
+- confirmation is **per-model** (NOT a global event)
+- pending / declined models **MUST NOT** be confirmable
+- **no price negotiation** exists in this flow
+
+**Client-driven flows:**
+
+- agency **MUST NEVER** be able to confirm job
+- only the client finalizes
+
+---
+
+## 3. Calendar Invariant
+
+After job confirmation (agency-only):
+
+- calendar entry **MUST** upgrade from:
+  - `"option"` / `"tentative"`
+  → `"job"` / `"booked"`
+- **no stale states** allowed
+
+All calendar-triggering DB functions **MUST** ensure:
+
+- `SECURITY DEFINER` is used correctly
+- `SET row_security TO off` is **explicitly** defined where required (see `system-invariants.mdc`, RLS/SECDEF patterns)
+
+---
+
+## 4. Smart Attention System
+
+The system **MUST** distinguish:
+
+- `waiting_for_client_to_finalize_job`
+- `waiting_for_agency_to_finalize_job`
+
+**Rules:**
+
+- agency-only flow **MUST NEVER** emit client-based attention states
+- client flow **MUST NEVER** emit agency-only states
+- agency-only assumes **"price settled"** by definition
+
+---
+
+## 5. Notifications
+
+After the agency confirms a job:
+
+- the model **MUST** receive a notification:
+  - type: `job_confirmed`
+- notification **MUST** mirror client-flow behavior (but without client context)
+
+---
+
+## 6. Organization Identity (VERY IMPORTANT)
+
+Across **ALL** UI surfaces:
+
+- **ALWAYS** display resolved names, e.g.:
+  - `agency_organization_name`
+  - `client_organization_name`
+- **NEVER** show generic placeholders like:
+  - `"Agency"`
+  - `"Client"`
+
+Applies to:
+
+- chat headers
+- notifications
+- calendar entries
+- request views
+- recruiting chats
+
+This is a **HARD UI invariant** (use `uiCopy` for any fixed chrome; real org names from data).
+
+---
+
+## 7. Event Structure (Agency-Only Creation)
+
+When the agency creates an event manually:
+
+- can choose:
+  - Option
+  - Casting
+  - Private Event
+- can select **MULTIPLE** models
+
+**System behavior:**
+
+- **ONE** grouped event at agency level
+- **EACH** model gets:
+  - individual notification
+  - individual availability decision
+  - individual chat thread
+
+---
+
+## 8. Chat + Threading
+
+- each model **MUST** have its own thread
+- Smart Attention **MUST** work **per model**
+- **NO** shared confirmation state across models
+
+---
+
+## 9. Shared Notes
+
+Shared notes **MUST**:
+
+- be visible to all participants
+- sync across:
+  - agency
+  - model(s)
+  - (client if applicable)
+
+Applies to:
+
+- options
+- castings
+- jobs
+- manual agency events
+
+(Align with `docs/BOOKING_BRIEF_SYSTEM.md` / calendar trust model where relevant.)
+
+---
+
+## 10. Filtering (Messages UI)
+
+Messaging **MUST** support:
+
+- filter by organization (client list)
+- collapsible filter UI
+- correct backend filtering
+
+**Agency-specific:**
+
+- agency-only events **MUST** appear under:
+  - **Internal Events**
+  - key: `__agency_internal__`
+- **NOT** under client buckets
+
+---
+
+## 11. Security (RLS / RPC)
+
+For **new or changed** RPCs in `supabase/migrations/`:
+
+- prefer explicit privileges: `REVOKE ALL … FROM PUBLIC` / `GRANT EXECUTE … TO authenticated` (or project-standard equivalents), documented in the migration
+- all sensitive tables **MUST** enforce RLS correctly
+- fallback logic only if **explicitly** intended (e.g. documented booker/legacy paths)
+
+Do not weaken existing `SECURITY DEFINER` + internal-guard patterns; see `rls-security-patterns.mdc` and `system-invariants.mdc`.
+
+---
+
+## 12. Non-Negotiable Rule
+
+**DO NOT:**
+
+- rebuild architecture
+- duplicate logic
+- create parallel systems
+
+**ALWAYS:**
+
+- extend existing flows
+- reuse working systems
+- preserve invariants
+
+---
+
+## 13. Regression Rule
+
+**ANY** change **MUST NOT** break:
+
+- client-driven option flow
+- negotiation system
+- booking lifecycle
+- existing Smart Attention behavior
+
+---
+
+## 14. Test Requirement
+
+All agency-only behavior **MUST** be covered by:
+
+- unit tests (Jest)
+- flow tests (where applicable)
+
+Especially:
+
+- confirmation logic
+- calendar updates
+- attention states
+- organization naming
