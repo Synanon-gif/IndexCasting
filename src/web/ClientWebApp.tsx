@@ -5632,8 +5632,18 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
-                  style={{ flexShrink: 0, marginBottom: spacing.sm }}
-                  contentContainerStyle={{ gap: spacing.xs }}
+                  style={{
+                    flexShrink: 0,
+                    flexGrow: 0,
+                    alignSelf: 'stretch',
+                    marginBottom: spacing.sm,
+                  }}
+                  contentContainerStyle={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    flexGrow: 0,
+                    gap: spacing.xs,
+                  }}
                 >
                   <TouchableOpacity
                     style={[styles.filterPill, !counterpartyFilter && styles.filterPillActive]}

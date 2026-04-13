@@ -1992,6 +1992,20 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                   }
                   onPress={async () => {
                     if (!currentAgencyId) return;
+
+                    // Normalize date to ISO YYYY-MM-DD (handles DD-MM-YYYY, DD.MM.YYYY, etc.)
+                    const rawDate = newEventForm.date.trim();
+                    let isoDate = rawDate;
+                    const ddMmYyyy = rawDate.match(/^(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})$/);
+                    if (ddMmYyyy) {
+                      const [, dd, mm, yyyy] = ddMmYyyy;
+                      isoDate = `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
+                    }
+                    if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate) || isNaN(Date.parse(isoDate))) {
+                      Alert.alert('Invalid date', 'Please enter a valid date (YYYY-MM-DD).');
+                      return;
+                    }
+
                     setSavingManualEvent(true);
                     try {
                       if (newEventForm.eventCategory === 'private') {
@@ -2010,7 +2024,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                           owner_type: 'agency',
                           organization_id: calOrg,
                           created_by: calUser.user?.id ?? null,
-                          date: newEventForm.date,
+                          date: isoDate,
                           start_time: newEventForm.start_time,
                           end_time: newEventForm.end_time,
                           title: newEventForm.title,
@@ -2033,7 +2047,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                               agency_id: currentAgencyId,
                               agency_organization_id: agencyOrganizationId ?? null,
                               title: newEventForm.title,
-                              event_date: newEventForm.date,
+                              event_date: isoDate,
                               start_time: newEventForm.start_time || null,
                               end_time: newEventForm.end_time || null,
                               event_type: newEventForm.eventCategory,
@@ -2050,7 +2064,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                           const reqId = await createAgencyOnlyOptionRequest({
                             modelId,
                             agencyId: currentAgencyId,
-                            requestedDate: newEventForm.date,
+                            requestedDate: isoDate,
                             requestType:
                               newEventForm.eventCategory === 'casting' ? 'casting' : 'option',
                             title: newEventForm.title,
@@ -7382,8 +7396,18 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                   <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={false}
-                    style={{ flexShrink: 0, marginBottom: spacing.sm }}
-                    contentContainerStyle={{ gap: spacing.xs }}
+                    style={{
+                      flexShrink: 0,
+                      flexGrow: 0,
+                      alignSelf: 'stretch',
+                      marginBottom: spacing.sm,
+                    }}
+                    contentContainerStyle={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      flexGrow: 0,
+                      gap: spacing.xs,
+                    }}
                   >
                     <TouchableOpacity
                       style={[s.filterPill, !counterpartyFilter && s.filterPillActive]}
