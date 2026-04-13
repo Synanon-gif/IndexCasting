@@ -22,9 +22,7 @@ export type ModelTerritory = {
  * Returns a map: model_id → sorted country codes[].
  * Uses SECURITY DEFINER RPC (returns r_model_id, r_country_code).
  */
-export async function getTerritoriesForAgency(
-  agencyId: string,
-): Promise<Record<string, string[]>> {
+export async function getTerritoriesForAgency(agencyId: string): Promise<Record<string, string[]>> {
   try {
     const { data, error } = await supabase.rpc('get_territories_for_agency_roster', {
       p_agency_id: agencyId,
@@ -40,13 +38,19 @@ export async function getTerritoriesForAgency(
           .eq('agency_id', agencyId)
           .eq('type', 'agency')
           .maybeSingle();
-        if (orgErr || !orgRow) { console.error('getTerritoriesForAgency fallback org lookup error:', orgErr); return {}; }
+        if (orgErr || !orgRow) {
+          console.error('getTerritoriesForAgency fallback org lookup error:', orgErr);
+          return {};
+        }
         const { data: fb, error: fbErr } = await supabase
           .from('model_assignments')
           .select('model_id, territory')
           .eq('organization_id', orgRow.id)
           .order('territory');
-        if (fbErr) { console.error('getTerritoriesForAgency fallback error:', fbErr); return {}; }
+        if (fbErr) {
+          console.error('getTerritoriesForAgency fallback error:', fbErr);
+          return {};
+        }
         return buildAgencyMap(fb ?? [], 'model_id', 'territory');
       } catch (fbEx) {
         console.error('getTerritoriesForAgency fallback exception:', fbEx);
@@ -116,9 +120,20 @@ export async function getTerritoriesForModel(
           .order('territory');
         if (orgId) q = q.eq('organization_id', orgId);
         const { data: fb, error: fbErr } = await q;
-        if (fbErr) { console.error('getTerritoriesForModel fallback error:', fbErr); return []; }
+        if (fbErr) {
+          console.error('getTerritoriesForModel fallback error:', fbErr);
+          return [];
+        }
         // Map model_assignments shape → ModelTerritory shape (agency_id bleibt leer, da wir org-zentrisch sind)
-        return ((fb ?? []) as Array<{ id: string; model_id: string; organization_id: string; territory: string; created_at?: string }>).map((r) => ({
+        return (
+          (fb ?? []) as Array<{
+            id: string;
+            model_id: string;
+            organization_id: string;
+            territory: string;
+            created_at?: string;
+          }>
+        ).map((r) => ({
           id: r.id,
           model_id: r.model_id,
           agency_id: agencyId ?? '',
@@ -132,10 +147,15 @@ export async function getTerritoriesForModel(
     }
 
     // Map r_* columns back to ModelTerritory shape
-    return ((data as Array<{
-      r_id: string; r_model_id: string; r_agency_id: string;
-      r_country_code: string; r_created_at?: string;
-    }>) ?? []).map((r) => ({
+    return (
+      (data as Array<{
+        r_id: string;
+        r_model_id: string;
+        r_agency_id: string;
+        r_country_code: string;
+        r_created_at?: string;
+      }>) ?? []
+    ).map((r) => ({
       id: r.r_id,
       model_id: r.r_model_id,
       agency_id: r.r_agency_id,
@@ -274,8 +294,8 @@ export async function bulkAddTerritoriesForModels(
 
   try {
     const { error } = await supabase.rpc('bulk_add_model_territories', {
-      p_model_ids:     modelIds,
-      p_agency_id:     agencyId,
+      p_model_ids: modelIds,
+      p_agency_id: agencyId,
       p_country_codes: countryCodes,
     });
 
@@ -284,7 +304,10 @@ export async function bulkAddTerritoriesForModels(
     }
 
     // RPC not yet deployed — fall back to serial per-model calls
-    console.warn('bulkAddTerritoriesForModels: bulk RPC unavailable, falling back to serial', error);
+    console.warn(
+      'bulkAddTerritoriesForModels: bulk RPC unavailable, falling back to serial',
+      error,
+    );
   } catch (e) {
     console.warn('bulkAddTerritoriesForModels: bulk RPC threw, falling back to serial', e);
   }
@@ -319,8 +342,8 @@ export async function bulkUpsertTerritoriesForModels(
 
   try {
     const { error } = await supabase.rpc('bulk_save_model_territories', {
-      p_model_ids:     modelIds,
-      p_agency_id:     agencyId,
+      p_model_ids: modelIds,
+      p_agency_id: agencyId,
       p_country_codes: countryCodes,
     });
 
@@ -328,7 +351,10 @@ export async function bulkUpsertTerritoriesForModels(
       return { succeededIds: [...modelIds], failedIds: [] };
     }
 
-    console.warn('bulkUpsertTerritoriesForModels: bulk RPC unavailable, falling back to serial', error);
+    console.warn(
+      'bulkUpsertTerritoriesForModels: bulk RPC unavailable, falling back to serial',
+      error,
+    );
   } catch (e) {
     console.warn('bulkUpsertTerritoriesForModels: bulk RPC threw, falling back to serial', e);
   }
@@ -349,8 +375,8 @@ export async function bulkUpsertTerritoriesForModels(
 
 /**
  * Booking routing helper: returns the agency_id responsible for a model in a country.
- * @deprecated Nutze resolveOrganizationForModelAndCountry für den org-zentrischen Pfad.
- * Intern: liest jetzt ausschließlich aus model_assignments (via organizations.agency_id).
+ * Reads directly from model_agency_territories (canonical table per system invariants).
+ * UNIQUE(model_id, country_code) guarantees at most one agency per territory.
  */
 export async function resolveAgencyForModelAndCountry(
   modelId: string,
@@ -360,17 +386,18 @@ export async function resolveAgencyForModelAndCountry(
   if (!code) return null;
 
   try {
-    const orgId = await resolveOrganizationForModelAndCountry(modelId, code);
-    if (!orgId) return null;
-
     const { data, error } = await supabase
-      .from('organizations')
+      .from('model_agency_territories')
       .select('agency_id')
-      .eq('id', orgId)
+      .eq('model_id', modelId)
+      .eq('country_code', code)
       .maybeSingle();
 
-    if (error) { console.error('resolveAgencyForModelAndCountry org lookup error:', error); return null; }
-    return (data as { agency_id: string | null } | null)?.agency_id ?? null;
+    if (error) {
+      console.error('resolveAgencyForModelAndCountry MAT lookup error:', error);
+      return null;
+    }
+    return (data as { agency_id: string } | null)?.agency_id ?? null;
   } catch (e) {
     console.error('resolveAgencyForModelAndCountry exception:', e);
     return null;
@@ -396,7 +423,10 @@ export async function resolveOrganizationForModelAndCountry(
       .eq('territory', code)
       .maybeSingle();
 
-    if (error) { console.error('resolveOrganizationForModelAndCountry error:', error); return null; }
+    if (error) {
+      console.error('resolveOrganizationForModelAndCountry error:', error);
+      return null;
+    }
     return (data as { organization_id: string } | null)?.organization_id ?? null;
   } catch (e) {
     console.error('resolveOrganizationForModelAndCountry exception:', e);
@@ -423,7 +453,7 @@ export async function getAssignmentsForAgency(
     }
 
     const map: Record<string, string[]> = {};
-    for (const row of (data as Array<{ r_model_id: string; r_territory: string }> ?? [])) {
+    for (const row of (data as Array<{ r_model_id: string; r_territory: string }>) ?? []) {
       if (!row.r_model_id) continue;
       if (!map[row.r_model_id]) map[row.r_model_id] = [];
       map[row.r_model_id].push(row.r_territory.toUpperCase());
@@ -463,10 +493,16 @@ export async function getAssignmentsForModel(
       return [];
     }
 
-    return ((data as Array<{
-      r_id: string; r_model_id: string; r_organization_id: string;
-      r_territory: string; r_role: string; r_created_at?: string;
-    }>) ?? []).map((r) => ({
+    return (
+      (data as Array<{
+        r_id: string;
+        r_model_id: string;
+        r_organization_id: string;
+        r_territory: string;
+        r_role: string;
+        r_created_at?: string;
+      }>) ?? []
+    ).map((r) => ({
       id: r.r_id,
       model_id: r.r_model_id,
       organization_id: r.r_organization_id,

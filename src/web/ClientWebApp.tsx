@@ -1255,7 +1255,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
           coverUrl: normalizeDocumentspicturesModelImageRef(m.portfolio_images?.[0] ?? '', m.id),
           agencyId: m.territory_agency_id ?? m.agency_id ?? null,
           agencyName: m.agency_name ?? null,
-          countryCode: m.location_country_code ?? null,
+          countryCode: m.location_country_code ?? m.territory_country_code ?? null,
           hasRealLocation: true,
           isSportsWinter: m.is_sports_winter ?? false,
           isSportsSummer: m.is_sports_summer ?? false,

@@ -13,41 +13,37 @@ describe('resolveAgencyForModelAndCountry', () => {
     fromMock.mockReset();
   });
 
-  it('returns null when no assignment row exists', async () => {
-    // Step 1: model_assignments → null
-    const assignmentChain = {
+  it('returns null when no MAT row exists', async () => {
+    const matChain = {
       select: jest.fn().mockReturnThis(),
       eq: jest.fn().mockReturnThis(),
       maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
     };
-    fromMock.mockReturnValueOnce(assignmentChain);
+    fromMock.mockReturnValueOnce(matChain);
 
     const r = await resolveAgencyForModelAndCountry('model-1', 'de');
     expect(r).toBeNull();
+    expect(fromMock).toHaveBeenCalledWith('model_agency_territories');
   });
 
-  it('normalizes country_code to uppercase and resolves agency_id via organizations', async () => {
-    // Step 1: model_assignments → organization_id
-    const assignmentEq = jest.fn().mockReturnThis();
-    const assignmentChain = {
+  it('normalizes country_code to uppercase and resolves agency_id from MAT', async () => {
+    const matEq = jest.fn().mockReturnThis();
+    const matChain = {
       select: jest.fn().mockReturnThis(),
-      eq: assignmentEq,
-      maybeSingle: jest.fn().mockResolvedValue({ data: { organization_id: 'org-1' }, error: null }),
-    };
-    // Step 2: organizations → agency_id
-    const orgChain = {
-      select: jest.fn().mockReturnThis(),
-      eq: jest.fn().mockReturnThis(),
+      eq: matEq,
       maybeSingle: jest.fn().mockResolvedValue({ data: { agency_id: 'agency-1' }, error: null }),
     };
-    fromMock
-      .mockReturnValueOnce(assignmentChain)  // model_assignments query
-      .mockReturnValueOnce(orgChain);         // organizations query
+    fromMock.mockReturnValueOnce(matChain);
 
     const r = await resolveAgencyForModelAndCountry('model-1', ' de ');
     expect(r).toBe('agency-1');
+    expect(fromMock).toHaveBeenCalledWith('model_agency_territories');
+    expect(matEq).toHaveBeenCalledWith('country_code', 'DE');
+  });
 
-    // territory='DE' (uppercase) should be used in model_assignments query
-    expect(assignmentEq).toHaveBeenCalledWith('territory', 'DE');
+  it('returns null on empty country code', async () => {
+    const r = await resolveAgencyForModelAndCountry('model-1', '  ');
+    expect(r).toBeNull();
+    expect(fromMock).not.toHaveBeenCalled();
   });
 });

@@ -309,19 +309,25 @@ export function addOptionRequest(
       if (countryCodeUsed) {
         countryCodeUsedForBooking = countryCodeUsed;
         const resolved = await resolveAgencyForModelAndCountry(modelId, countryCodeUsed);
-        agencyId = resolved ?? fallbackAgency;
+        if (resolved) {
+          agencyId = resolved;
+        } else {
+          console.warn('[addOptionRequest] no MAT entry for territory, using fallback agency', {
+            modelId,
+            country: countryCodeUsed,
+            fallbackAgency,
+          });
+          agencyId = fallbackAgency;
+        }
 
         if (!agencyId) {
-          // Territory missing and no default agency defined.
           showAppAlert(uiCopy.common.error, uiCopy.alerts.noTerritoryForCountry);
-          // Rollback optimistic local cache entries.
           requestsCache = requestsCache.filter((x) => x.id !== req.id);
           messagesCache = messagesCache.filter((m) => m.id !== autoMessage.id);
           notify();
           return;
         }
       } else {
-        // Missing country input: rely on fallback agency only.
         agencyId = fallbackAgency;
         if (!agencyId) {
           showAppAlert(uiCopy.common.error, uiCopy.alerts.missingCountryCode);
@@ -344,6 +350,22 @@ export function addOptionRequest(
       }
     } catch {
       agencyOrganizationId = null;
+    }
+
+    if (countryCodeUsedForBooking && agencyId && !agencyOrganizationId) {
+      console.error(
+        '[addOptionRequest] territory validation failed: MAT does not confirm agency for territory',
+        {
+          modelId,
+          agencyId,
+          countryCode: countryCodeUsedForBooking,
+        },
+      );
+      showAppAlert(uiCopy.common.error, uiCopy.alerts.noTerritoryForCountry);
+      requestsCache = requestsCache.filter((x) => x.id !== req.id);
+      messagesCache = messagesCache.filter((m) => m.id !== autoMessage.id);
+      notify();
+      return;
     }
 
     const flowSource = extra?.flowSource ?? 'other';
