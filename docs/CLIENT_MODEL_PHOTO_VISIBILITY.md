@@ -44,3 +44,7 @@ Row visibility (above) is necessary but not sufficient for UX: `models.portfolio
 - **`models.portfolio_images`** is a denormalized ordered list for discovery, swipe cover, and agency roster thumbnails; it is kept in sync via `agency_update_model_full` (`syncPortfolioToModel` / `rebuildPortfolioImagesFromModelPhotos` in `src/services/modelPhotosSupabase.ts`).
 - **Agency roster thumbnails** must normalize each `portfolio_images[]` entry with `normalizeDocumentspicturesModelImageRef` before `StorageImage`, same as client web. See **`docs/MODEL_PROFILE_PERSISTENCE_AND_VISIBILITY.md`**.
 - **Completeness parity:** agency “visible portfolio” completeness checks must use `model_photos` visibility (`photo_type='portfolio'`, `is_visible_to_clients`) as the source of truth, not `models.portfolio_images` alone.
+
+## Guest link packages (`get_guest_link_models`)
+
+Anonymous guest packages must show the same visible portfolio/polaroid URLs as discovery when the `models.*` mirror arrays are empty: RPC fills from `model_photos` (visible client rows) — see `20260523` (discovery), `20260532` (guest polaroid), `20260714` (guest portfolio). Client then signs paths in `getGuestLinkModels` (`src/services/guestLinksSupabase.ts`).

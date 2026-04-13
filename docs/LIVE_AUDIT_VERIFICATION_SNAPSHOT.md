@@ -57,3 +57,45 @@ LIMIT 25;
 
 - Project ref: `ispkfdqzjrfrilosoklu` (from workspace rules).
 - Token: `.env.supabase` — do not commit.
+
+---
+
+## 4. Deep-audit — Foto-Sichtbarkeit, Upload/Download, Guest-Packages (2026-04-13)
+
+### 4.1 Guest-Link-Pakete (`get_guest_link_models`)
+
+**Issue (behoben):** Portfolio-Pakete nutzten nur `models.portfolio_images`. Discovery (`get_discovery_models`, `20260523`) und Polaroid-Guest (`20260532`) fielen bei leerem Spiegel auf `model_photos` zurück — Guest-Portfolio nicht, → mögliche leere Pakete trotz sichtbarer Portfolio-Zeilen in `model_photos`.
+
+**Fix:** Migration [`20260714_get_guest_link_models_portfolio_model_photos_fallback.sql`](../supabase/migrations/20260714_get_guest_link_models_portfolio_model_photos_fallback.sql) — gleiche `array_agg`-Logik wie Discovery für `photo_type = 'portfolio'` + `is_visible_to_clients`. Deploy: Management-API push, Verify `get_guest_link_models` vorhanden.
+
+**Client:** [`getGuestLinkModels`](../src/services/guestLinksSupabase.ts) — `signImageUrls` + `normalizeDocumentspicturesModelImageRef` pro Model; [`GuestView`](../src/views/GuestView.tsx) nutzt nach Signierung HTTPS-URLs in `<Image>` (OK). [`getPackageDisplayImages`](../src/utils/packageDisplayMedia.ts) trennt Portfolio/Polaroid strikt.
+
+### 4.2 Client / Agency UI (Normalisierung + `StorageImage`)
+
+Verifiziert per Code-Review: [`ClientWebApp.tsx`](../src/web/ClientWebApp.tsx), [`CustomerSwipeScreen`](../src/screens/CustomerSwipeScreen.tsx), [`mapSupabaseModelToClientProjectSummary`](../src/utils/clientProjectHydration.ts), [`AgencyControllerView`](../src/views/AgencyControllerView.tsx) — `normalizeDocumentspicturesModelImageRef` wo nötig; Karten/Detail über `StorageImage` wo private Bucket-URIs vorkommen.
+
+### 4.3 Storage / RLS / Docs
+
+- **Lesen `documentspictures`:** `public.can_view_model_photo_storage(p_object_name)` — siehe [`20260501_can_view_model_photo_storage_client_row_alignment.sql`](../supabase/migrations/20260501_can_view_model_photo_storage_client_row_alignment.sql); Produktregel [`docs/CLIENT_MODEL_PHOTO_VISIBILITY.md`](./CLIENT_MODEL_PHOTO_VISIBILITY.md).
+- **`model_photos`:** Zeilen-Sichtbarkeit für Clients gekoppelt an Storage für dieselben Pfade; keine Änderung in diesem Audit nötig.
+
+### 4.4 Weitere Buckets (Kurz-Matrix)
+
+| Bereich | Bucket / Pfad | Upload-Service | Anzeige / Download |
+|--------|----------------|----------------|---------------------|
+| Bewerbung | `application-images` (o.ä. in Service-Konstante) | [`applicationsSupabase.uploadApplicationImage`](../src/services/applicationsSupabase.ts) | `resolveApplicationImageUrl` |
+| B2B-Chat / Anhänge | `chat-files` | [`messengerSupabase.uploadChatFile`](../src/services/messengerSupabase.ts), Recruiting/Option parallel | Signed-URL-Helper in jeweiligen Views |
+| Dokumente / Verifizierung | `documents` | [`documentsSupabase`](../src/services/documentsSupabase.ts), [`verificationSupabase`](../src/services/verificationSupabase.ts) | Private bucket → sign |
+| Org-Galerie / Logo | Org-Gallery-Bucket / Logo-Bucket | [`organizationGallerySupabase`](../src/services/organizationGallerySupabase.ts), [`organizationLogoSupabase`](../src/services/organizationLogoSupabase.ts) | Public URL oder project pattern |
+
+### 4.5 Manuelle QA-Matrix (Checkliste)
+
+| Rolle | Szenario | Erwartung |
+|-------|-----------|-----------|
+| Guest (anon) | Portfolio-Link, Modell mit nur `model_photos`-Portfolio | Bilder sichtbar nach Fix 20260714 |
+| Guest (anon) | Polaroid-Link, leerer `models.polaroids` | Wie bisher: Fallback aus `model_photos` |
+| Client | Discover / Projekt / Package-Mode | `StorageImage` + kanonische City |
+| Agency | Upload Portfolio/Polaroid/Privat | [`modelPhotosSupabase`](../src/services/modelPhotosSupabase.ts), Rechte-Confirm |
+| Model | Self-Media | Gleiche Pipeline wie Agency-Policy erlaubt |
+
+Regression-Tests: `src/utils/__tests__/normalizeModelPortfolioUrl.test.ts`, `src/services/__tests__/modelMedia.test.ts` nach Änderungen an URI-Logik ausführen.

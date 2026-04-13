@@ -49,7 +49,9 @@ export async function createGuestLink(params: {
   type: PackageType;
 }): Promise<GuestLink | null> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     const { data, error } = await supabase
       .from('guest_links')
       .insert({
@@ -64,7 +66,10 @@ export async function createGuestLink(params: {
       })
       .select()
       .single();
-    if (error) { console.error('createGuestLink error:', error); return null; }
+    if (error) {
+      console.error('createGuestLink error:', error);
+      return null;
+    }
     return data as GuestLink;
   } catch (e) {
     console.error('createGuestLink exception:', e);
@@ -166,7 +171,10 @@ export async function getGuestLinksForAgency(agencyId: string): Promise<GuestLin
       .eq('agency_id', agencyId)
       .is('deleted_at', null)
       .order('created_at', { ascending: false });
-    if (error) { console.error('getGuestLinksForAgency error:', error); return []; }
+    if (error) {
+      console.error('getGuestLinksForAgency error:', error);
+      return [];
+    }
     return (data ?? []) as GuestLink[];
   } catch (e) {
     console.error('getGuestLinksForAgency exception:', e);
@@ -180,7 +188,10 @@ export async function deactivateGuestLink(linkId: string): Promise<boolean> {
       .from('guest_links')
       .update({ is_active: false })
       .eq('id', linkId);
-    if (error) { console.error('deactivateGuestLink error:', error); return false; }
+    if (error) {
+      console.error('deactivateGuestLink error:', error);
+      return false;
+    }
     return true;
   } catch (e) {
     console.error('deactivateGuestLink exception:', e);
@@ -203,7 +214,10 @@ export async function deleteGuestLink(linkId: string): Promise<boolean> {
       .update({ is_active: false, deleted_at: new Date().toISOString() })
       .eq('id', linkId)
       .is('deleted_at', null);
-    if (error) { console.error('deleteGuestLink error:', error); return false; }
+    if (error) {
+      console.error('deleteGuestLink error:', error);
+      return false;
+    }
     return true;
   } catch (e) {
     console.error('deleteGuestLink exception:', e);
@@ -217,8 +231,9 @@ export async function deleteGuestLink(linkId: string): Promise<boolean> {
  * Private photos are never included. Image arrays are mutually exclusive:
  *   Portfolio package → portfolio_images populated, polaroids = []
  *   Polaroid package  → polaroids populated, portfolio_images = []
- *   Polaroid URLs may come from models.polaroids mirror or, when empty, visible
- *   polaroid rows in model_photos (get_guest_link_models RPC).
+ *   Portfolio / polaroid URLs: prefer models.* mirror; if empty/stale, RPC fills from
+ *   visible client rows in model_photos (parity with get_discovery_models — migrations
+ *   20260532 polaroid, 20260714 portfolio).
  */
 export type GuestLinkModel = {
   id: string;
@@ -277,10 +292,7 @@ function extractStoragePath(url: string, bucket: string): string | null {
  * fallback would expose the asset permanently, defeating the TTL).
  * Callers must handle null entries (e.g. hide the image or show a placeholder).
  */
-async function signImageUrls(
-  urls: string[],
-  modelId: string,
-): Promise<(string | null)[]> {
+async function signImageUrls(urls: string[], modelId: string): Promise<(string | null)[]> {
   if (urls.length === 0) return urls;
   return Promise.all(
     urls.map(async (url) => {
@@ -310,9 +322,7 @@ async function signImageUrls(
  * 20260406: TTL increased from 15 min to 7 days to match the guest-link
  * access window. GuestView auto-refreshes every 6 h for long-lived sessions.
  */
-export async function getGuestLinkModels(
-  linkId: string,
-): Promise<ServiceResult<GuestLinkModel[]>> {
+export async function getGuestLinkModels(linkId: string): Promise<ServiceResult<GuestLinkModel[]>> {
   const trimmed = linkId?.trim() ?? '';
   if (!trimmed) {
     return serviceErr(uiCopy.b2bChat.packageModelsLoadFailed);
@@ -321,7 +331,9 @@ export async function getGuestLinkModels(
 
   let hasSession = false;
   try {
-    const { data: { session } } = await supabase.auth.getSession();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
     hasSession = !!session;
   } catch {
     // non-fatal for diagnostics
@@ -335,9 +347,10 @@ export async function getGuestLinkModels(
   } catch {
     supabaseHost = '(parse-error)';
   }
-  const hasNonEmptyAnonKey =
-    typeof sc.supabaseKey === 'string' && sc.supabaseKey.trim().length > 0;
-  const looksLikePlaceholderSupabaseUrl = (sc.supabaseUrl ?? '').includes('placeholder.supabase.co');
+  const hasNonEmptyAnonKey = typeof sc.supabaseKey === 'string' && sc.supabaseKey.trim().length > 0;
+  const looksLikePlaceholderSupabaseUrl = (sc.supabaseUrl ?? '').includes(
+    'placeholder.supabase.co',
+  );
 
   const diag = () => ({
     p_link_id_prefix: idPrefix,
@@ -374,8 +387,10 @@ export async function getGuestLinkModels(
     const signed = await Promise.all(
       models.map(async (m) => ({
         ...m,
-        portfolio_images: (await signImageUrls(m.portfolio_images, m.id)).filter((u): u is string => u !== null),
-        polaroids:        (await signImageUrls(m.polaroids, m.id)).filter((u): u is string => u !== null),
+        portfolio_images: (await signImageUrls(m.portfolio_images, m.id)).filter(
+          (u): u is string => u !== null,
+        ),
+        polaroids: (await signImageUrls(m.polaroids, m.id)).filter((u): u is string => u !== null),
       })),
     );
     return serviceOkData(signed);
