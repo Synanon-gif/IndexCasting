@@ -531,7 +531,6 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     packageType: PackageType;
     rawModels: GuestLinkModel[];
   } | null>(null);
-  const [projectOverviewId, setProjectOverviewId] = useState<string | null>(null);
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const [pendingModel, setPendingModel] = useState<ModelSummary | null>(null);
   const [addingModelIds, setAddingModelIds] = useState<Set<string>>(new Set());
@@ -1399,10 +1398,27 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     discoveryLoadMoreFailed,
   ]);
 
-  const detailModelSummaryForOverlay = useMemo(
-    () => (detailId ? (filteredModels.find((m) => m.id === detailId) ?? null) : null),
-    [detailId, filteredModels],
+  /** Stays stable while detail is open if the model briefly disappears from filteredModels during refresh. */
+  const [lockedGalleryDetailSummary, setLockedGalleryDetailSummary] = useState<ModelSummary | null>(
+    null,
   );
+  useEffect(() => {
+    if (!detailId) {
+      setLockedGalleryDetailSummary(null);
+      return;
+    }
+    const next =
+      filteredModels.find((m) => m.id === detailId) ??
+      sharedProject?.models.find((m) => m.id === detailId) ??
+      packageViewState?.models.find((m) => m.id === detailId) ??
+      null;
+    setLockedGalleryDetailSummary((prev) => {
+      if (next) return next;
+      if (prev?.id === detailId) return prev;
+      return null;
+    });
+  }, [detailId, filteredModels, sharedProject, packageViewState]);
+  const detailModelSummaryForOverlay = lockedGalleryDetailSummary;
   const galleryDetailPresentation = !!(packageViewState || sharedProjectId);
   const galleryLocationLineForDetail = useMemo(() => {
     if (!galleryDetailPresentation || !detailModelSummaryForOverlay) return undefined;
@@ -1766,15 +1782,6 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     setTab('discover');
   };
 
-  /** Project container: model list (same as legacy Overview). */
-  const openProjectFolder = (projectId: string) => {
-    setActiveProjectId(projectId);
-    setProjectOverviewId(projectId);
-    setTab('projects');
-  };
-
-  const closeProjectOverview = () => setProjectOverviewId(null);
-
   const handleRemoveModelFromProject = async (projectId: string, modelId: string) => {
     const confirmed =
       typeof window !== 'undefined'
@@ -1922,7 +1929,6 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     const id = sharedProjectId;
     if (id) {
       setActiveProjectId(id);
-      setProjectOverviewId(id);
     }
     setSharedProjectId(null);
     setTab('projects');
@@ -2106,9 +2112,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     setCurrentIndex(0);
   }, []);
 
-  const resetProjectsTabRoot = useCallback(() => {
-    setProjectOverviewId(null);
-  }, []);
+  const resetProjectsTabRoot = useCallback(() => {}, []);
 
   const resetMessagesTabRoot = useCallback(() => {
     setOpenThreadIdOnMessages(null);
@@ -2349,12 +2353,10 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
               </TouchableOpacity>
             </View>
           </View>
-          {(isSharedMode || isPackageMode) && (
+          {isSharedMode && (
             <View style={styles.sharedRight}>
-              <TouchableOpacity onPress={isPackageMode ? exitPackageMode : exitSharedMode}>
-                <Text style={styles.sharedExit}>
-                  {isPackageMode ? uiCopy.b2bChat.exitPackageMode : 'Back to workspace'}
-                </Text>
+              <TouchableOpacity onPress={exitSharedMode}>
+                <Text style={styles.sharedExit}>{uiCopy.clientWeb.backToWorkspace}</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -2433,15 +2435,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
           />
         )}
 
-        {tab === 'projects' && projectOverviewId ? (
-          <ProjectOverviewView
-            project={projects.find((p) => p.id === projectOverviewId) ?? null}
-            onBack={closeProjectOverview}
-            onRemoveModel={handleRemoveModelFromProject}
-            onBrowseDiscover={openProjectDiscovery}
-            scrollBottomInset={bottomTabInset}
-          />
-        ) : tab === 'projects' ? (
+        {tab === 'projects' ? (
           <ProjectsView
             projects={projects}
             activeProjectId={activeProjectId}
@@ -2455,7 +2449,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
               !realClientId || p.ownerId == null || p.ownerId === realClientId
             }
             onOpenDetails={openDetails}
-            onOpenProject={openProjectFolder}
+            onOpenProject={openProjectDiscovery}
             onShareFolder={handleShareFolder}
             onOpenOptionChat={(threadId) => {
               optionChatReturnRef.current = { kind: 'tab', tab: 'projects' };
@@ -3515,9 +3509,12 @@ const DiscoverView: React.FC<DiscoverProps> = ({
 
   // Package + open-project: responsive gallery grid (no swipe, no Next).
   if (isPackageMode || isSharedMode) {
-    const packageTypeLabel = packageType === 'polaroid' ? 'Polaroid Package' : 'Portfolio Package';
+    const packageTypeLabel =
+      packageType === 'polaroid'
+        ? uiCopy.guestLinks.packageTypePolaroid
+        : uiCopy.guestLinks.packageTypePortfolio;
     const galleryGridPaddingBottom = Math.max(120, tabBarBottomInset + spacing.lg);
-    const colCount = discoverW >= 960 ? 4 : discoverW >= 640 ? 3 : 2;
+    const colCount = isMobileDiscover ? 2 : discoverW >= 960 ? 4 : discoverW >= 640 ? 3 : 2;
     const tileGutter = spacing.xs;
 
     const runGalleryRemove = (modelId: string) => {
@@ -3557,7 +3554,7 @@ const DiscoverView: React.FC<DiscoverProps> = ({
         ) : (
           <View style={[styles.packageBanner, { borderWidth: 0, backgroundColor: 'transparent' }]}>
             <Text style={styles.packageBannerText} numberOfLines={2}>
-              {sharedProjectName ?? 'Project'}
+              {sharedProjectName ?? uiCopy.discover.sharedProjectNameFallback}
             </Text>
           </View>
         )}
@@ -3590,7 +3587,7 @@ const DiscoverView: React.FC<DiscoverProps> = ({
                         <StorageImage
                           uri={m.coverUrl || undefined}
                           style={styles.clientGalleryImage}
-                          resizeMode={heroResizeMode}
+                          resizeMode="contain"
                           ttlSeconds={CLIENT_MODEL_IMAGE_TTL_SEC}
                           fallback={
                             <View
@@ -3642,7 +3639,9 @@ const DiscoverView: React.FC<DiscoverProps> = ({
                         disabled={addingModelIds?.has(m.id) ?? false}
                       >
                         <Text style={styles.addToSelectionLabel}>
-                          {addingModelIds?.has(m.id) ? 'Adding…' : 'Add to selection'}
+                          {addingModelIds?.has(m.id)
+                            ? uiCopy.discover.addingToSelection
+                            : uiCopy.discover.addToSelection}
                         </Text>
                       </TouchableOpacity>
                     </View>
@@ -3770,7 +3769,7 @@ const DiscoverView: React.FC<DiscoverProps> = ({
           <Text style={styles.metaText}>Active project</Text>
           <Text style={styles.activeProjectName}>
             {isSharedMode
-              ? (sharedProjectName ?? 'Project')
+              ? (sharedProjectName ?? uiCopy.discover.sharedProjectNameFallback)
               : activeProject
                 ? activeProject.name
                 : 'None'}
@@ -3859,7 +3858,9 @@ const DiscoverView: React.FC<DiscoverProps> = ({
                   disabled={addingModelIds?.has(current.id) ?? false}
                 >
                   <Text style={styles.addToSelectionLabel}>
-                    {addingModelIds?.has(current.id) ? 'Adding…' : 'Add to selection'}
+                    {addingModelIds?.has(current.id)
+                      ? uiCopy.discover.addingToSelection
+                      : uiCopy.discover.addToSelection}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -4427,126 +4428,6 @@ const ProjectsView: React.FC<ProjectsProps> = ({
             <Text style={styles.emptyCopy}>Create a project and add models from Discover.</Text>
           </View>
         )}
-      </ScrollView>
-    </View>
-  );
-};
-
-type ProjectOverviewProps = {
-  project: Project | null;
-  onBack: () => void;
-  onRemoveModel: (projectId: string, modelId: string) => Promise<void>;
-  onBrowseDiscover: (projectId: string) => void;
-  scrollBottomInset?: number;
-};
-
-const ProjectOverviewView: React.FC<ProjectOverviewProps> = ({
-  project,
-  onBack,
-  onRemoveModel,
-  onBrowseDiscover,
-  scrollBottomInset = 0,
-}) => {
-  const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
-  const [errorId, setErrorId] = useState<string | null>(null);
-
-  const handleDelete = async (modelId: string) => {
-    if (!project) return;
-    setBusyIds((prev) => new Set(prev).add(modelId));
-    setErrorId(null);
-    try {
-      await onRemoveModel(project.id, modelId);
-    } catch {
-      setErrorId(modelId);
-    } finally {
-      setBusyIds((prev) => {
-        const next = new Set(prev);
-        next.delete(modelId);
-        return next;
-      });
-    }
-  };
-
-  if (!project) return null;
-
-  return (
-    <View style={[styles.section, { flex: 1, minHeight: 0 }]}>
-      <View style={styles.overviewHeader}>
-        <TouchableOpacity
-          onPress={onBack}
-          style={styles.overviewBackBtn}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <Text style={styles.overviewBackLabel}>{uiCopy.projects.back}</Text>
-        </TouchableOpacity>
-        <Text style={styles.overviewTitle}>{project.name}</Text>
-      </View>
-
-      <TouchableOpacity
-        style={styles.overviewBrowseBtn}
-        onPress={() => onBrowseDiscover(project.id)}
-        activeOpacity={0.85}
-      >
-        <Text style={styles.overviewBrowseBtnLabel}>{uiCopy.projects.browseInDiscover}</Text>
-      </TouchableOpacity>
-
-      <ScrollView
-        style={[styles.overviewList, { flex: 1, minHeight: 0 }]}
-        contentContainerStyle={[
-          styles.overviewListContent,
-          { paddingBottom: spacing.xl + scrollBottomInset },
-        ]}
-      >
-        {project.models.length === 0 && (
-          <View style={styles.emptyProjects}>
-            <Text style={styles.emptyCopy}>{uiCopy.projects.emptyOverview}</Text>
-          </View>
-        )}
-        {project.models.map((m) => {
-          const lineCity = summaryDisplayCity(m);
-          return (
-            <View key={m.id} style={styles.overviewModelRow}>
-              <StorageImage
-                uri={m.coverUrl || undefined}
-                style={styles.overviewModelImage}
-                resizeMode="contain"
-                ttlSeconds={CLIENT_MODEL_IMAGE_TTL_SEC}
-                fallback={
-                  <View style={[styles.overviewModelImage, { backgroundColor: colors.border }]} />
-                }
-              />
-              <View style={styles.overviewModelInfo}>
-                <Text style={styles.overviewModelName}>{m.name}</Text>
-                <Text style={styles.overviewModelMeta}>
-                  {[
-                    m.height ? `${m.height} cm` : null,
-                    m.chest || m.bust ? `Chest ${m.chest || m.bust} cm` : null,
-                    m.waist ? `Waist ${m.waist} cm` : null,
-                    m.hips ? `Hips ${m.hips} cm` : null,
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')}
-                </Text>
-                {lineCity ? <Text style={styles.overviewModelCity}>{lineCity}</Text> : null}
-                {errorId === m.id && (
-                  <Text style={styles.overviewModelError}>{uiCopy.projects.removeError}</Text>
-                )}
-              </View>
-              <TouchableOpacity
-                style={[
-                  styles.overviewDeleteBtn,
-                  busyIds.has(m.id) && styles.overviewDeleteBtnBusy,
-                ]}
-                onPress={() => handleDelete(m.id)}
-                disabled={busyIds.has(m.id)}
-              >
-                <Text style={styles.overviewDeleteBtnLabel}>
-                  {busyIds.has(m.id) ? uiCopy.common.loading : uiCopy.projects.deleteFromProject}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          );
-        })}
       </ScrollView>
     </View>
   );
@@ -6910,7 +6791,7 @@ const ProjectDetailView: React.FC<DetailProps> = ({
                     disabled={addBusy}
                   >
                     <Text style={styles.addToSelectionLabel}>
-                      {addBusy ? 'Adding…' : 'Add to selection'}
+                      {addBusy ? uiCopy.discover.addingToSelection : uiCopy.discover.addToSelection}
                     </Text>
                   </TouchableOpacity>
                 ) : null}

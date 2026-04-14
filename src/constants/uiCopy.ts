@@ -25,6 +25,11 @@ export const uiCopy = {
     noAgencyContext:
       'Your account is not linked to an agency yet. Please contact your administrator.',
   },
+  /** Unauthenticated ?shared=1 selection link (SharedSelectionView). */
+  sharedSelection: {
+    title: 'Shared selection',
+    empty: 'No models in this selection.',
+  },
   /** GDPR Art. 20 / 7 — agency settings tab + client web settings (English-only). */
   privacyData: {
     sectionTitle: 'Privacy & your data (GDPR)',
@@ -440,6 +445,8 @@ export const uiCopy = {
       title: 'Workspace',
       subtitle: 'Open other areas of your organization account.',
     },
+    /** Selection gallery (shared project) — top bar exit from Discover tab. */
+    backToWorkspace: 'Back to workspace',
   },
   auth: {
     inviteLine: 'Invitation: {org} · {role}',
@@ -1125,6 +1132,11 @@ export const uiCopy = {
     toggleUnfavoriteA11y: 'Remove favorite',
     /** Section label when browsing a saved project in Discover. */
     viewingProject: 'Selection',
+    /** Gallery tile + detail — add model to a client project (same label in grid and modal). */
+    addToSelection: 'Add to selection',
+    addingToSelection: 'Adding…',
+    /** When project title is missing in selection gallery header. */
+    sharedProjectNameFallback: 'Project',
   },
   /** Client Projects tab — project management actions. */
   projects: {
