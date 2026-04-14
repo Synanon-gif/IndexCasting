@@ -199,7 +199,16 @@ export async function getNotificationsForCurrentUser(): Promise<Notification[]> 
 
 export async function markNotificationAsRead(id: string): Promise<void> {
   try {
-    const { error } = await supabase.from('notifications').update({ is_read: true }).eq('id', id);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { error } = await supabase
+      .from('notifications')
+      .update({ is_read: true })
+      .eq('id', id)
+      .or(`user_id.eq.${user.id},organization_id.not.is.null`);
     if (error) {
       console.error('markNotificationAsRead error:', error);
     }

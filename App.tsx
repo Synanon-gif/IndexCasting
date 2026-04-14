@@ -90,7 +90,7 @@ ensureWebRootHasHeight();
 /** Local alias kept for backwards compatibility — NavigationRole from src/types/roles.ts */
 type Role = NavigationRole;
 
-function getSharedParams(): { name: string; ids: string[] } | null {
+function getSharedParams(): { name: string; ids: string[]; token: string | null } | null {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
   return parseSharedSelectionParams(new URLSearchParams(window.location.search));
 }
@@ -246,7 +246,7 @@ function ModelRouteGuard({
 
 function AppContent() {
   const { session, loading, profile, signOut, refreshProfile, orgDeactivated, clearOrgDeactivated, isPasswordRecovery } = useAuth();
-  const [sharedParams] = useState<{ name: string; ids: string[] } | null>(getSharedParams);
+  const [sharedParams] = useState<{ name: string; ids: string[]; token: string | null } | null>(getSharedParams);
   const [bookingThreadId, setBookingThreadId] = useState<string | null>(getBookingThreadId);
   const [guestLinkId, setGuestLinkId] = useState<string | null>(getGuestLinkId);
   const initialRouting =
@@ -703,7 +703,7 @@ function AppContent() {
   if (sharedParams) {
     return (
       <>
-        <SharedSelectionView shareName={sharedParams.name} modelIds={sharedParams.ids} />
+        <SharedSelectionView shareName={sharedParams.name} modelIds={sharedParams.ids} token={sharedParams.token} />
         <StatusBar style="dark" />
       </>
     );

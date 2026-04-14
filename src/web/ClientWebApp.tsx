@@ -1920,7 +1920,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     setTab('discover');
   };
 
-  const getShareableLinkForProject = (project: Project): string => {
+  const getShareableLinkForProject = async (project: Project): Promise<string> => {
     const base =
       typeof window !== 'undefined' && window.location?.origin
         ? window.location.origin + (window.location.pathname || '')
@@ -1930,11 +1930,15 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     params.set('shared', '1');
     params.set('name', project.name);
     if (ids) params.set('ids', ids);
+    const { computeSharedSelectionToken } = await import('../services/sharedSelectionSupabase');
+    const modelIds = project.models.map((m) => m.id);
+    const token = await computeSharedSelectionToken(modelIds);
+    if (token) params.set('token', token);
     return `${base}?${params.toString()}`;
   };
 
   const handleShareFolder = async (project: Project) => {
-    const url = getShareableLinkForProject(project);
+    const url = await getShareableLinkForProject(project);
     const title = project.name;
     const text = `Selection: ${project.name}`;
     if (typeof navigator !== 'undefined' && navigator.share) {

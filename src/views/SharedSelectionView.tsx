@@ -44,11 +44,13 @@ type SharedModel = {
 type SharedSelectionViewProps = {
   shareName: string;
   modelIds: string[];
+  token?: string | null;
 };
 
 export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
   shareName,
   modelIds,
+  token,
 }) => {
   const { width: windowW } = useWindowDimensions();
   const isMobile = isMobileWidth(windowW);
@@ -69,7 +71,7 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
     }
     let cancelled = false;
     setLoading(true);
-    getSharedSelectionModels(modelIds)
+    getSharedSelectionModels(modelIds, token)
       .then((result) => {
         if (cancelled) return;
         if (!result.ok) {

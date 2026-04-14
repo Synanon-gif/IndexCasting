@@ -212,7 +212,12 @@ export async function getOptionRequestByIdModelSafe(
 export async function getOptionRequestsByProject(
   projectId: string,
   opts?: OptionRequestListOptions,
+  orgId?: string,
 ): Promise<SupabaseOptionRequest[]> {
+  if (orgId !== undefined && !orgId) {
+    console.error('[getOptionRequestsByProject] orgId provided but empty — call aborted');
+    return [];
+  }
   try {
     let q = supabase
       .from('option_requests')
@@ -220,6 +225,7 @@ export async function getOptionRequestsByProject(
       .eq('project_id', projectId)
       .order('created_at', { ascending: false })
       .limit(opts?.limit ?? 100);
+    if (orgId) q = q.eq('organization_id', orgId);
     if (opts?.afterCreatedAt) q = q.lt('created_at', opts.afterCreatedAt);
     const { data, error } = await q;
     if (error) {

@@ -756,12 +756,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         await loadProfile(newUserId);
       }
-      try {
-        const { linkModelByEmail } = await import('../services/modelsSupabase');
-        await linkModelByEmail();
-        await loadProfile(newUserId);
-      } catch (e) {
-        console.error('signUp linkModelByEmail error:', e);
+      // F-01 Security fix: only call deprecated linkModelByEmail for model role.
+      if (safeRole === 'model') {
+        try {
+          const { linkModelByEmail } = await import('../services/modelsSupabase');
+          await linkModelByEmail();
+          await loadProfile(newUserId);
+        } catch (e) {
+          console.error('signUp linkModelByEmail error:', e);
+        }
       }
 
       // Org invite + model claim: finalizePendingInviteOrClaim (early when hasSession + in bootstrapThenLoadProfile).
@@ -828,11 +831,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // ── Step 2: side-effects (each fully isolated, none can block Step 1) ────────
     // Invite + model claim: finalizePendingInviteOrClaim in bootstrapThenLoadProfile (+ Auth session effect).
-    try {
-      const { linkModelByEmail } = await import('../services/modelsSupabase');
-      await linkModelByEmail();
-    } catch (e) {
-      console.error('signIn linkModelByEmail error:', e);
+    // F-01 Security fix: only call deprecated linkModelByEmail for model role.
+    // Non-model callers must never auto-claim unlinked model records via email collision.
+    if (profileRef.current?.role === 'model') {
+      try {
+        const { linkModelByEmail } = await import('../services/modelsSupabase');
+        await linkModelByEmail();
+      } catch (e) {
+        console.error('signIn linkModelByEmail error:', e);
+      }
     }
 
     return { error: null };
@@ -874,21 +881,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { error } = await supabase.from('profiles').update(updates).eq('id', session.user.id);
     if (error) return { error: error.message };
 
-    await supabase
-      .from('legal_acceptances')
-      .insert([
-        { user_id: session.user.id, document_type: 'terms_of_service', document_version: '1.0' },
-        { user_id: session.user.id, document_type: 'privacy_policy', document_version: '1.0' },
-        ...(agencyRights
-          ? [
-              {
-                user_id: session.user.id,
-                document_type: 'agency_model_rights',
-                document_version: '1.0',
-              },
-            ]
-          : []),
-      ]);
+    await supabase.from('legal_acceptances').insert([
+      { user_id: session.user.id, document_type: 'terms_of_service', document_version: '1.0' },
+      { user_id: session.user.id, document_type: 'privacy_policy', document_version: '1.0' },
+      ...(agencyRights
+        ? [
+            {
+              user_id: session.user.id,
+              document_type: 'agency_model_rights',
+              document_version: '1.0',
+            },
+          ]
+        : []),
+    ]);
 
     // Sync to consent_log so that GDPR withdrawal flows work.
     // consent_log is the authoritative source for withdraw_consent() RPC.
@@ -1014,7 +1019,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // updateDisplayName, requestPasswordReset, updatePassword) are recreated only when their
       // closure deps change. session, loading, profile, orgDeactivated, orgBootstrapFailed,
       // isPasswordRecovery are the real state drivers.
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     }),
     [session, loading, profile, orgDeactivated, orgBootstrapFailed, isPasswordRecovery],
   );

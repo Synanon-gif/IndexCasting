@@ -33,10 +33,11 @@ export function clampQueryId(id: string | null | undefined): string | null {
 /**
  * Parses ?shared=1&name=&ids= for SharedSelectionView; caps size to avoid UI / URL abuse.
  */
-export function parseSharedSelectionParams(p: URLSearchParams): { name: string; ids: string[] } | null {
+export function parseSharedSelectionParams(
+  p: URLSearchParams,
+): { name: string; ids: string[]; token: string | null } | null {
   if (p.get('shared') !== '1') return null;
   const rawName = p.get('name') || 'Selection';
-  // Strip zero-width / invisible chars (do not use full normalizeInput — repetition collapse would break length caps).
   let name = stripInvisibleChars(rawName).trim() || 'Selection';
   if (name.length > SHARED_SELECTION_NAME_MAX_LEN) {
     name = name.slice(0, SHARED_SELECTION_NAME_MAX_LEN);
@@ -46,5 +47,6 @@ export function parseSharedSelectionParams(p: URLSearchParams): { name: string; 
     .slice(0, SHARED_SELECTION_IDS_MAX_COUNT)
     .map((id) => id.trim())
     .filter((id) => id.length > 0 && id.length <= QUERY_ID_MAX_LEN);
-  return { name, ids };
+  const token = p.get('token')?.trim() || null;
+  return { name, ids, token };
 }
