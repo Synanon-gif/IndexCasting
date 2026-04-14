@@ -44,6 +44,8 @@ import {
   normalizePackageType,
 } from '../utils/packageDisplayMedia';
 import { canonicalDisplayCityForModel } from '../utils/canonicalModelCity';
+import { PdfExportModal } from '../components/PdfExportModal';
+import type { PdfModelInput } from '../utils/pdfExport';
 import {
   formatDateWithOptionalTimeRange,
   formatOptionTimeRangeSuffix,
@@ -1339,6 +1341,40 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     [packageViewState, sharedProject, models],
   );
 
+  const pdfModels = useMemo((): PdfModelInput[] | undefined => {
+    if (!isPackageMode && !isSharedMode) return undefined;
+    if (isPackageMode && packageViewState) {
+      const pkgType = packageViewState.packageType;
+      return packageViewState.rawModels.map((m) => ({
+        name: m.name ?? '',
+        city: canonicalDisplayCityForModel({ effective_city: m.effective_city, city: m.city }),
+        height: m.height ?? null,
+        chest: (m as unknown as { chest?: number | null }).chest ?? m.bust ?? null,
+        waist: m.waist ?? null,
+        hips: m.hips ?? null,
+        imageUrls: getPackageDisplayImages(m, pkgType),
+      }));
+    }
+    if (isSharedMode && sharedProject) {
+      return sharedProject.models.map((m) => ({
+        name: m.name,
+        city: summaryDisplayCity(m),
+        height: m.height ?? null,
+        chest: m.chest ?? m.bust ?? null,
+        waist: m.waist ?? null,
+        hips: m.hips ?? null,
+        imageUrls: m.coverUrl ? [m.coverUrl] : [],
+      }));
+    }
+    return undefined;
+  }, [isPackageMode, isSharedMode, packageViewState, sharedProject]);
+
+  const pdfEntityName = useMemo((): string | undefined => {
+    if (isPackageMode && packageViewState) return packageViewState.name || 'Package';
+    if (isSharedMode && sharedProject) return sharedProject.name || 'Project';
+    return undefined;
+  }, [isPackageMode, isSharedMode, packageViewState, sharedProject]);
+
   const filteredModels = useMemo(() => {
     // Package and shared-project modes require strict isolation — never apply discovery filters.
     // baseModels is already scoped to packageViewState.models or sharedProject.models.
@@ -2397,6 +2433,11 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             onClose={() => setShowActiveOptions(false)}
             assignmentByClientOrgId={assignmentByClientOrgId}
             scrollBottomInset={bottomTabInset}
+            onOpenThread={(threadId) => {
+              setShowActiveOptions(false);
+              setOpenThreadIdOnMessages(threadId);
+              setTab('messages');
+            }}
           />
         )}
 
@@ -2432,6 +2473,8 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             onRemoveModelFromProject={handleRemoveModelFromProject}
             favoriteModelIds={favoriteModelIds}
             onToggleFavoriteModel={toggleFavoriteModel}
+            pdfModels={pdfModels}
+            pdfEntityName={pdfEntityName}
           />
         )}
 
@@ -3460,6 +3503,8 @@ type PackageGalleryProps = {
   favoriteModelIds: Set<string>;
   onToggleFavoriteModel: (modelId: string) => void;
   tabBarBottomInset?: number;
+  pdfModels?: PdfModelInput[];
+  pdfEntityName?: string;
 };
 
 const PackageGalleryView: React.FC<PackageGalleryProps> = ({
@@ -3481,10 +3526,13 @@ const PackageGalleryView: React.FC<PackageGalleryProps> = ({
   favoriteModelIds,
   onToggleFavoriteModel,
   tabBarBottomInset = 0,
+  pdfModels,
+  pdfEntityName,
 }) => {
   const { width: galleryW } = useWindowDimensions();
   const isMobileGallery = isMobileWidth(galleryW);
   const [removeBusyIds, setRemoveBusyIds] = useState<Set<string>>(new Set());
+  const [pdfExportOpen, setPdfExportOpen] = useState(false);
 
   const packageTypeLabel =
     packageType === 'polaroid'
@@ -3521,18 +3569,36 @@ const PackageGalleryView: React.FC<PackageGalleryProps> = ({
             <Text style={galStyles.headerBannerName} numberOfLines={1}>
               {packageName ?? uiCopy.discover.viewingPackage}
             </Text>
-            <TouchableOpacity
-              onPress={onExitPackage}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Text style={galStyles.headerBannerExit}>{uiCopy.discover.exitPackage}</Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+              {pdfModels && pdfModels.length > 0 && Platform.OS === 'web' ? (
+                <TouchableOpacity
+                  onPress={() => setPdfExportOpen(true)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={galStyles.headerBannerExit}>{uiCopy.pdfExport.buttonLabel}</Text>
+                </TouchableOpacity>
+              ) : null}
+              <TouchableOpacity
+                onPress={onExitPackage}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={galStyles.headerBannerExit}>{uiCopy.discover.exitPackage}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         ) : (
           <View style={galStyles.headerBanner}>
             <Text style={galStyles.headerBannerName} numberOfLines={1}>
               {sharedProjectName ?? uiCopy.discover.sharedProjectNameFallback}
             </Text>
+            {pdfModels && pdfModels.length > 0 && Platform.OS === 'web' ? (
+              <TouchableOpacity
+                onPress={() => setPdfExportOpen(true)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={galStyles.headerBannerExit}>{uiCopy.pdfExport.buttonLabel}</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         )}
       </View>
@@ -3599,10 +3665,12 @@ const PackageGalleryView: React.FC<PackageGalleryProps> = ({
                   {m.name}
                 </Text>
                 <Text style={galStyles.tileMeta} numberOfLines={2}>
-                  {uiCopy.discover.detailMeasurementHeight} {m.height} cm ·{' '}
-                  {uiCopy.discover.detailMeasurementChest} {m.chest || m.bust || '—'} cm ·{' '}
-                  {uiCopy.discover.detailMeasurementWaist} {m.waist || '—'} cm ·{' '}
-                  {uiCopy.discover.detailMeasurementHips} {m.hips || '—'} cm
+                  {uiCopy.discover.detailMeasurementHeight}{' '}
+                  {m.height != null ? `${m.height} cm` : '—'} ·{' '}
+                  {uiCopy.discover.detailMeasurementChest}{' '}
+                  {(m.chest ?? m.bust) != null ? `${m.chest ?? m.bust} cm` : '—'} ·{' '}
+                  {uiCopy.discover.detailMeasurementWaist} {m.waist != null ? `${m.waist} cm` : '—'}{' '}
+                  · {uiCopy.discover.detailMeasurementHips} {m.hips != null ? `${m.hips} cm` : '—'}
                   {m.legsInseam
                     ? ` · ${uiCopy.discover.detailMeasurementInseam} ${m.legsInseam} cm`
                     : ''}
@@ -3665,6 +3733,14 @@ const PackageGalleryView: React.FC<PackageGalleryProps> = ({
           </View>
         )}
       </ScrollView>
+      {pdfModels && pdfEntityName && Platform.OS === 'web' ? (
+        <PdfExportModal
+          visible={pdfExportOpen}
+          onClose={() => setPdfExportOpen(false)}
+          models={pdfModels}
+          entityName={pdfEntityName}
+        />
+      ) : null}
     </View>
   );
 };
@@ -3880,6 +3956,8 @@ type DiscoverProps = {
   onRemoveModelFromProject: (projectId: string, modelId: string) => Promise<void>;
   favoriteModelIds: Set<string>;
   onToggleFavoriteModel: (modelId: string) => void;
+  pdfModels?: PdfModelInput[];
+  pdfEntityName?: string;
 };
 
 const DiscoverView: React.FC<DiscoverProps> = ({
@@ -3913,6 +3991,8 @@ const DiscoverView: React.FC<DiscoverProps> = ({
   onRemoveModelFromProject,
   favoriteModelIds,
   onToggleFavoriteModel,
+  pdfModels,
+  pdfEntityName,
 }) => {
   const { width: discoverW, height: discoverH } = useWindowDimensions();
   const isMobileDiscover = isMobileWidth(discoverW);
@@ -3940,6 +4020,8 @@ const DiscoverView: React.FC<DiscoverProps> = ({
         favoriteModelIds={favoriteModelIds}
         onToggleFavoriteModel={onToggleFavoriteModel}
         tabBarBottomInset={tabBarBottomInset}
+        pdfModels={pdfModels}
+        pdfEntityName={pdfEntityName}
       />
     );
   }
@@ -4366,7 +4448,8 @@ const ActiveOptionsView: React.FC<{
   onClose: () => void;
   assignmentByClientOrgId?: Record<string, ClientAssignmentFlag>;
   scrollBottomInset?: number;
-}> = ({ onClose, assignmentByClientOrgId = {}, scrollBottomInset = 0 }) => {
+  onOpenThread?: (threadId: string) => void;
+}> = ({ onClose, assignmentByClientOrgId = {}, scrollBottomInset = 0, onOpenThread }) => {
   const [requests, setRequests] = React.useState(getOptionRequests());
   const copy = uiCopy.dashboard;
 
@@ -4384,8 +4467,10 @@ const ActiveOptionsView: React.FC<{
   }, [requests]);
 
   const renderRow = (r: ReturnType<typeof getOptionRequests>[0]) => (
-    <View
+    <TouchableOpacity
       key={r.threadId}
+      activeOpacity={0.7}
+      onPress={() => onOpenThread?.(r.threadId)}
       style={{
         flexDirection: 'row',
         justifyContent: 'space-between',
@@ -4441,7 +4526,7 @@ const ActiveOptionsView: React.FC<{
               : copy.optionRequestStatusRejected}
         </Text>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 
   return (

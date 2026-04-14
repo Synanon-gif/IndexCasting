@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   ScrollView,
   FlatList,
-  Image,
   ActivityIndicator,
   TextInput,
   Platform,
@@ -18,6 +17,7 @@ import {
   type ListRenderItemInfo,
 } from 'react-native';
 import { isMobileWidth } from '../theme/breakpoints';
+import { StorageImage } from '../components/StorageImage';
 
 /**
  * Semi-transparent diagonal watermark overlay — mirrors the GuestWatermark in
@@ -98,6 +98,8 @@ import {
 } from '../utils/packageDisplayMedia';
 import { TermsScreen } from '../screens/TermsScreen';
 import { PrivacyScreen } from '../screens/PrivacyScreen';
+import { PdfExportModal } from '../components/PdfExportModal';
+import type { PdfModelInput } from '../utils/pdfExport';
 
 const copy = uiCopy.guestFlow;
 
@@ -164,6 +166,9 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
       return next;
     });
   };
+
+  // PDF export
+  const [pdfExportOpen, setPdfExportOpen] = useState(false);
 
   // Request form
   const [selectedModelIds, setSelectedModelIds] = useState<Set<string>>(new Set());
@@ -292,6 +297,19 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
     const raw = getPackageCoverRawRef(m, pkgType);
     return raw || undefined;
   };
+
+  const pdfModels: PdfModelInput[] = models.map((m) => ({
+    name: m.name ?? '',
+    city: canonicalDisplayCityForModel(m),
+    height: m.height ?? null,
+    chest: getChestValue(m),
+    waist: m.waist ?? null,
+    hips: m.hips ?? null,
+    imageUrls: getGalleryImages(m),
+  }));
+
+  const pdfEntityName =
+    link?.label || (pkgType === 'polaroid' ? 'Polaroid Package' : 'Portfolio Package');
 
   const toggleModel = (id: string) => {
     setSelectedModelIds((prev) => {
@@ -459,6 +477,19 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
         <Text style={styles.subtitleSmall}>
           {copy.checkEmailSentToPrefix} <Text style={styles.emailHighlight}>{email}</Text>
         </Text>
+        <View style={styles.checkEmailActions}>
+          <TouchableOpacity
+            style={styles.checkEmailResendBtn}
+            onPress={() => {
+              void signInOrCreateGuestWithOtp(email.trim().toLowerCase());
+            }}
+          >
+            <Text style={styles.checkEmailResendLabel}>{copy.checkEmailResend}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.checkEmailBackBtn} onPress={() => setPhase('browse')}>
+            <Text style={styles.checkEmailBackLabel}>{copy.checkEmailBackToModels}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
@@ -498,8 +529,8 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
                 activeOpacity={0.8}
               >
                 {getCoverImage(m) ? (
-                  <Image
-                    source={{ uri: getCoverImage(m)! }}
+                  <StorageImage
+                    uri={getCoverImage(m)!}
                     style={styles.modelImage}
                     resizeMode="contain"
                   />
@@ -626,8 +657,8 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
             <View
               style={{ flex: 1, width: '100%', alignItems: 'center', justifyContent: 'center' }}
             >
-              <Image
-                source={{ uri: galleryImages[galleryIndex] }}
+              <StorageImage
+                uri={galleryImages[galleryIndex]}
                 style={styles.galleryImage}
                 resizeMode="contain"
               />
@@ -661,7 +692,7 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
             <View style={styles.galleryModelInfo}>
               <Text style={styles.galleryModelName}>{galleryModel.name}</Text>
               <Text style={styles.galleryModelMeta}>
-                {galleryModel.height}cm
+                {galleryModel.height != null ? `${galleryModel.height}cm` : '—'}
                 {getChestValue(galleryModel) != null
                   ? ` · Chest ${getChestValue(galleryModel)} cm`
                   : ''}
@@ -675,7 +706,34 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
 
       {/* ── Header ── */}
       <View style={styles.header}>
-        <Text style={styles.brand}>INDEX CASTING</Text>
+        <View
+          style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
+        >
+          <Text style={styles.brand}>INDEX CASTING</Text>
+          {Platform.OS === 'web' && pdfModels.length > 0 ? (
+            <TouchableOpacity
+              onPress={() => setPdfExportOpen(true)}
+              style={{
+                paddingVertical: 6,
+                paddingHorizontal: 12,
+                borderRadius: 6,
+                borderWidth: 1,
+                borderColor: colors.border,
+              }}
+            >
+              <Text
+                style={{
+                  ...typography.body,
+                  fontSize: 12,
+                  fontWeight: '600',
+                  color: colors.textPrimary,
+                }}
+              >
+                {uiCopy.pdfExport.buttonLabel}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
         <View style={styles.headerMetaRow}>
           <Text style={styles.headerSub}>
             {pkgType === 'polaroid'
@@ -720,8 +778,8 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
                 >
                   {coverImage ? (
                     <View>
-                      <Image
-                        source={{ uri: coverImage }}
+                      <StorageImage
+                        uri={coverImage}
                         style={styles.modelImageBrowse}
                         resizeMode="contain"
                       />
@@ -756,7 +814,8 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
               <View style={styles.modelInfo}>
                 <Text style={styles.modelName}>{m.name}</Text>
                 <Text style={styles.modelMeta}>
-                  {m.height}cm{getChestValue(m) != null ? ` · Chest ${getChestValue(m)} cm` : ''}
+                  {m.height != null ? `${m.height}cm` : '—'}
+                  {getChestValue(m) != null ? ` · Chest ${getChestValue(m)} cm` : ''}
                   {m.waist ? ` · Waist ${m.waist} cm` : ''}
                   {m.hips ? ` · Hips ${m.hips} cm` : ''}
                 </Text>
@@ -800,6 +859,14 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
           <Text style={styles.createAccountBtnLabel}>{copy.browseCreateAccount}</Text>
         </TouchableOpacity>
       </View>
+      {Platform.OS === 'web' ? (
+        <PdfExportModal
+          visible={pdfExportOpen}
+          onClose={() => setPdfExportOpen(false)}
+          models={pdfModels}
+          entityName={pdfEntityName}
+        />
+      ) : null}
     </View>
   );
 };
@@ -894,6 +961,32 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   emailHighlight: { color: colors.textPrimary, fontWeight: '600' },
+  checkEmailActions: {
+    marginTop: spacing.lg,
+    alignItems: 'center' as const,
+    gap: spacing.sm,
+  },
+  checkEmailResendBtn: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.textPrimary,
+    borderRadius: 6,
+  },
+  checkEmailResendLabel: {
+    ...typography.body,
+    color: colors.textPrimary,
+    fontWeight: '600' as const,
+  },
+  checkEmailBackBtn: {
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.md,
+  },
+  checkEmailBackLabel: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textDecorationLine: 'underline' as const,
+  },
   errorText: {
     ...typography.body,
     color: '#C0392B',

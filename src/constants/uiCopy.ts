@@ -36,6 +36,8 @@ export const uiCopy = {
     authGateSignUp: 'Sign up',
     authGateContinue: 'Continue browsing',
     backToGallery: '← Back to gallery',
+    footerCta: 'Sign up for full access',
+    visitSite: 'Visit IndexCasting',
   },
   /** GDPR Art. 20 / 7 — agency settings tab + client web settings (English-only). */
   privacyData: {
@@ -1297,6 +1299,8 @@ export const uiCopy = {
     sexFemale: 'Female',
     sexMale: 'Male',
     checkEmailSentToPrefix: 'We sent a link to',
+    checkEmailBackToModels: 'Back to models',
+    checkEmailResend: 'Resend email',
     submitRequest: 'Send Request',
     emailLabel: 'Your email address',
     emailPlaceholder: 'you@example.com',
@@ -1943,6 +1947,19 @@ export const uiCopy = {
     colorCastingLabel: 'Casting',
     colorOptionLabel: 'Option',
     colorPersonalLabel: 'Personal',
+  },
+  pdfExport: {
+    buttonLabel: 'Download PDF',
+    title: 'Export as PDF',
+    selectAll: 'Select all',
+    deselectAll: 'Deselect all',
+    downloadButton: 'Download',
+    cancelButton: 'Cancel',
+    generating: 'Generating PDF...',
+    success: 'PDF downloaded successfully.',
+    errorGeneric: 'PDF generation failed. Please try again.',
+    noImagesNote: 'No images available',
+    footerText: 'Generated via Index Casting',
   },
 } as const;
 

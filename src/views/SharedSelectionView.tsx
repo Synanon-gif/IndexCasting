@@ -12,23 +12,30 @@ import {
   ScrollView,
   TouchableOpacity,
   Modal,
-  Image,
   useWindowDimensions,
   Linking,
   Platform,
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
+import { StorageImage } from '../components/StorageImage';
 import {
   getSharedSelectionModels,
   type SharedSelectionModel,
 } from '../services/sharedSelectionSupabase';
 import { uiCopy } from '../constants/uiCopy';
 import { isMobileWidth } from '../theme/breakpoints';
+import { PdfExportModal } from '../components/PdfExportModal';
+import type { PdfModelInput } from '../utils/pdfExport';
 
 type SharedModel = {
   id: string;
   name: string;
-  measurements: { height: number; chest: number; waist: number; hips: number };
+  measurements: {
+    height: number | null;
+    chest: number | null;
+    waist: number | null;
+    hips: number | null;
+  };
   coverUrl: string;
   imageUrls: string[];
   cityLine: string;
@@ -71,7 +78,7 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
           return;
         }
         const list: SharedModel[] = result.data.map((m: SharedSelectionModel) => {
-          const chestVal = m.chest ?? m.bust ?? 0;
+          const chestVal = m.chest ?? m.bust ?? null;
           const cityLine =
             (typeof m.effective_city === 'string' && m.effective_city.trim()) ||
             (typeof m.city === 'string' && m.city.trim()) ||
@@ -81,10 +88,10 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
             id: m.id,
             name: m.name ?? '',
             measurements: {
-              height: m.height ?? 0,
+              height: m.height ?? null,
               chest: chestVal,
-              waist: m.waist ?? 0,
-              hips: m.hips ?? 0,
+              waist: m.waist ?? null,
+              hips: m.hips ?? null,
             },
             coverUrl: allUrls[0] ?? '',
             imageUrls: allUrls,
@@ -123,15 +130,61 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
     }
   };
 
+  const [pdfExportOpen, setPdfExportOpen] = useState(false);
+
+  const pdfModels: PdfModelInput[] = models.map((m) => ({
+    name: m.name,
+    city: m.cityLine,
+    height: m.measurements.height,
+    chest: m.measurements.chest,
+    waist: m.measurements.waist,
+    hips: m.measurements.hips,
+    imageUrls: m.imageUrls,
+  }));
+
   const detailImages = detailOpen?.imageUrls ?? [];
   const detailHasNav = detailImages.length > 1;
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.brand}>INDEX CASTING</Text>
-        <Text style={styles.title}>{uiCopy.sharedSelection.title}</Text>
-        <Text style={styles.subtitle}>{shareName}</Text>
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+          }}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={styles.brand}>INDEX CASTING</Text>
+            <Text style={styles.title}>{uiCopy.sharedSelection.title}</Text>
+            <Text style={styles.subtitle}>{shareName}</Text>
+          </View>
+          {Platform.OS === 'web' && pdfModels.length > 0 ? (
+            <TouchableOpacity
+              onPress={() => setPdfExportOpen(true)}
+              style={{
+                paddingVertical: 6,
+                paddingHorizontal: 12,
+                borderRadius: 6,
+                borderWidth: 1,
+                borderColor: colors.border,
+                marginLeft: spacing.sm,
+              }}
+            >
+              <Text
+                style={{
+                  ...typography.body,
+                  fontSize: 12,
+                  fontWeight: '600',
+                  color: colors.textPrimary,
+                }}
+              >
+                {uiCopy.pdfExport.buttonLabel}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
       </View>
 
       {loading ? (
@@ -169,8 +222,8 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
                   >
                     <View style={styles.tileImageWrap}>
                       {m.coverUrl ? (
-                        <Image
-                          source={{ uri: m.coverUrl }}
+                        <StorageImage
+                          uri={m.coverUrl}
                           style={styles.tileImage}
                           resizeMode="cover"
                         />
@@ -185,10 +238,14 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
                     {m.name}
                   </Text>
                   <Text style={styles.tileMeta} numberOfLines={2}>
-                    {uiCopy.discover.detailMeasurementHeight} {m.measurements.height} cm ·{' '}
-                    {uiCopy.discover.detailMeasurementChest} {m.measurements.chest} cm ·{' '}
-                    {uiCopy.discover.detailMeasurementWaist} {m.measurements.waist} cm ·{' '}
-                    {uiCopy.discover.detailMeasurementHips} {m.measurements.hips} cm
+                    {uiCopy.discover.detailMeasurementHeight}{' '}
+                    {m.measurements.height != null ? `${m.measurements.height} cm` : '—'} ·{' '}
+                    {uiCopy.discover.detailMeasurementChest}{' '}
+                    {m.measurements.chest != null ? `${m.measurements.chest} cm` : '—'} ·{' '}
+                    {uiCopy.discover.detailMeasurementWaist}{' '}
+                    {m.measurements.waist != null ? `${m.measurements.waist} cm` : '—'} ·{' '}
+                    {uiCopy.discover.detailMeasurementHips}{' '}
+                    {m.measurements.hips != null ? `${m.measurements.hips} cm` : '—'}
                   </Text>
                   {m.cityLine ? (
                     <Text style={styles.tileCity} numberOfLines={1}>
@@ -200,6 +257,19 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
             })}
           </View>
         </ScrollView>
+      )}
+
+      {/* Persistent CTA footer for external users */}
+      {!loading && models.length > 0 && (
+        <View style={styles.ctaFooter}>
+          <TouchableOpacity
+            style={styles.ctaFooterBtn}
+            onPress={handleSignUp}
+            accessibilityRole="button"
+          >
+            <Text style={styles.ctaFooterLabel}>{uiCopy.sharedSelection.footerCta}</Text>
+          </TouchableOpacity>
+        </View>
       )}
 
       {/* Detail modal with multi-image navigation */}
@@ -230,8 +300,8 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
               <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} bounces={false}>
                 <View style={styles.modalHeroWrap}>
                   {detailImages[detailImageIndex] || detailOpen.coverUrl ? (
-                    <Image
-                      source={{ uri: detailImages[detailImageIndex] || detailOpen.coverUrl }}
+                    <StorageImage
+                      uri={detailImages[detailImageIndex] || detailOpen.coverUrl}
                       style={styles.modalHero}
                       resizeMode="contain"
                     />
@@ -279,10 +349,22 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
                 <View style={styles.modalMetaBlock}>
                   <Text style={styles.detailName}>{detailOpen.name}</Text>
                   <Text style={styles.detailMeasurements}>
-                    {uiCopy.discover.detailMeasurementHeight} {detailOpen.measurements.height} cm ·{' '}
-                    {uiCopy.discover.detailMeasurementChest} {detailOpen.measurements.chest} cm ·{' '}
-                    {uiCopy.discover.detailMeasurementWaist} {detailOpen.measurements.waist} cm ·{' '}
-                    {uiCopy.discover.detailMeasurementHips} {detailOpen.measurements.hips} cm
+                    {uiCopy.discover.detailMeasurementHeight}{' '}
+                    {detailOpen.measurements.height != null
+                      ? `${detailOpen.measurements.height} cm`
+                      : '—'}{' '}
+                    · {uiCopy.discover.detailMeasurementChest}{' '}
+                    {detailOpen.measurements.chest != null
+                      ? `${detailOpen.measurements.chest} cm`
+                      : '—'}{' '}
+                    · {uiCopy.discover.detailMeasurementWaist}{' '}
+                    {detailOpen.measurements.waist != null
+                      ? `${detailOpen.measurements.waist} cm`
+                      : '—'}{' '}
+                    · {uiCopy.discover.detailMeasurementHips}{' '}
+                    {detailOpen.measurements.hips != null
+                      ? `${detailOpen.measurements.hips} cm`
+                      : '—'}
                   </Text>
                   {detailOpen.cityLine ? (
                     <Text style={styles.detailCity}>{detailOpen.cityLine}</Text>
@@ -332,6 +414,15 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
           </View>
         </View>
       </Modal>
+
+      {Platform.OS === 'web' ? (
+        <PdfExportModal
+          visible={pdfExportOpen}
+          onClose={() => setPdfExportOpen(false)}
+          models={pdfModels}
+          entityName={shareName || 'Shared Selection'}
+        />
+      ) : null}
     </View>
   );
 };
@@ -375,6 +466,25 @@ const styles = StyleSheet.create({
   metaText: {
     ...typography.body,
     color: colors.textSecondary,
+  },
+  ctaFooter: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    backgroundColor: colors.background,
+  },
+  ctaFooterBtn: {
+    backgroundColor: colors.textPrimary,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xl,
+    borderRadius: 6,
+  },
+  ctaFooterLabel: {
+    ...typography.body,
+    color: colors.background,
+    fontWeight: '600',
   },
   scroll: {
     flex: 1,
