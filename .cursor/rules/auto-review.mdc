@@ -15,7 +15,7 @@ vollständig durchlaufen werden, **bevor** Code committed oder weitergeschrieben
 | Bereich | Was prüfen |
 |---------|-----------|
 | **Auth** | Wird `signIn()`, `bootstrapThenLoadProfile()`, `loadProfile()` oder `supabase.auth.*` berührt? |
-| **Organizations** | Wird `org_id`, `organization_members`, `get_my_org_context()` oder Org-Routing berührt? |
+| **Organizations** | Wird `org_id`, `organization_members`, `get_my_org_context()` oder Org-Routing berührt? Admin: Client↔Agency nur `admin_convert_org_type` — siehe `admin-security.mdc` **Regel 9**; Ghost-Org-Badge nur Client-Heuristik (**Regel 10**). |
 | **RLS** | Wird eine Policy erstellt/geändert, oder eine Tabelle/Funktion im RLS-SELECT-Pfad verändert? |
 | **Assignments** | Wird `model_assignments`, `model_agency_territories`, Rollen-Mapping oder Sichtbarkeit berührt? |
 | **Discover / First-contact** | Discover, Chat-Bootstrap, Add-to-Project, Option/Casting/Booking, Packages, Guest-Links — siehe `system-invariants.mdc` **FIRST-CONTACT, REQUEST ECOSYSTEM & DOWNSTREAM PARITY** (12 Invarianten, **### 1** Connectionless) |
@@ -33,6 +33,7 @@ vollständig durchlaufen werden, **bevor** Code committed oder weitergeschrieben
   - SECURITY DEFINER ohne `SET row_security TO off`? → Blocker
 - **Broken Role Logic:** `effectiveRole` für Admin-Routing genutzt? → Blocker (Admin hat `role='admin'`, kein effectiveRole)
 - **Admin-Zugang:** `assert_is_admin()` in neuen Admin-RPCs vergessen? → Blocker
+- **Admin Org-Typ:** `ALTER TABLE … DISABLE TRIGGER` in PostgREST-RPC für Org-Konvertierung? → Blocker — kanonisch Reihenfolge `organizations.type` dann `organization_members` (`admin-security.mdc` **Regel 9**). Ghost-Badge für `type=agency`? → Blocker (**Regel 10**).
 - **profiles.role in RLS:** Direkte `profiles.role = 'client'/'model'`-Subquery in RLS-Policy? → Blocker (Risiko 8) — SECURITY DEFINER Funktion verwenden
 - **LIMIT 1 in Org-Kontext:** `LIMIT 1` zur Org-Kontext-Auflösung (wer ist der Caller?) → Blocker (Risiko 10)
   - Verboten: `SELECT … FROM organization_members WHERE user_id = auth.uid() … LIMIT 1` (implicit caller resolution)

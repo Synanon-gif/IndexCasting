@@ -175,6 +175,51 @@ haben kann. Ergänzt die Trigger und UUID/Email-Pins als zusätzliche Schicht.
 
 ---
 
+## Regel 9: `admin_convert_org_type` — Client↔Agency nur atomar (kein manuelles Mischen)
+
+**Problem:** Nur `profiles.role` oder nur `organizations.type` ändern erzeugt inkonsistente Zustände (z. B. Org noch `client`, Profil schon `agent`; falsche `organization_members`-Rollen vs. `trg_validate_org_member_role`).
+
+**Kanonischer Pfad:** RPC `public.admin_convert_org_type(p_org_id, p_new_type)` mit `PERFORM public.assert_is_admin();` als erste Zeile. Aktualisiert in einer Transaktion u. a.:
+
+- `organizations.type`
+- `organization_members.role` (`employee`↔`booker`; `owner` bleibt)
+- `profiles.role` aller Mitglieder (`client`↔`agent` wo passend)
+- bei Wechsel zu Agency: `agencies`-Zeile falls nötig, `organizations.agency_id` setzen; bei Wechsel zu Client: `organizations.agency_id` auf `NULL`
+
+**VERBOTEN in dieser RPC (PostgREST / Supabase):**
+
+```sql
+ALTER TABLE public.organization_members DISABLE TRIGGER trg_validate_org_member_role;
+```
+
+`ALTER TABLE … DISABLE TRIGGER` ist im RPC-Kontext über PostgREST **nicht zuverlässig** (Rechte / Kontext) und gehört nicht in den kanonischen Pfad.
+
+**RICHTIG — Reihenfolge ohne Trigger-Disable:**
+
+1. **`UPDATE organizations SET type = …` ZUERST** — der Validierungs-Trigger auf `organization_members` feuert nur bei Änderungen an **Mitgliedszeilen**, nicht beim bloßen Org-Typ-Update.
+2. **`UPDATE organization_members SET role = …`** danach — der Trigger sieht bereits den **neuen** Org-Typ und akzeptiert z. B. `booker` bei `type = agency` bzw. `employee` bei `type = client`.
+
+Referenz-Migrationen: `20260414_admin_convert_org_type.sql` (historisch), `20260414_admin_convert_org_type_v2.sql` (ohne `DISABLE TRIGGER`).
+
+**Frontend:** Wrapper `adminConvertOrgType` in `src/services/adminSupabase.ts`; UI in `AdminDashboard.tsx`. Bei RPC-Fehlern den **konkreten** Fehlertext loggen/anzeigen (nicht nur generisches „failed“).
+
+---
+
+## Regel 10: Admin Dashboard — „GHOST ORG“-Badge (Heuristik, keine Wahrheit)
+
+**Zweck:** Hinweis auf mögliche **Bootstrap-Zombie-Org** (ein User, Org-Name = persönlicher `display_name`), **kein** DB-Status.
+
+**Heuristik (bindend für neue Änderungen):**
+
+- Badge nur wenn **`organizations.type === 'client'`** UND `member_count <= 1` UND Org-Name (trim, case-insensitive) = `profiles.display_name` des Owners.
+- **`type === 'agency'` niemals** als Ghost markieren — sonst False Positives (z. B. Agency-Name = Owner-`display_name` „Agency 1“ nach legitimer Konvertierung).
+
+**VERBOTEN:** Ghost-Badge an `organizations.is_ghost` o. Ä. koppeln ohne explizites Schema-Produkt — aktuell reine UI-Heuristik in `AdminDashboard.tsx`.
+
+**Web:** Destruktive Bestätigungen (`Alert.alert` + `Promise`) sind auf Web unzuverlässig — für Org-Konvertierung **`window.confirm`** nutzen wo `Platform.OS === 'web'` (Pattern bereits im Convert-Handler).
+
+---
+
 ## Was NIEMALS passieren darf
 
 | Verboten | Grund |
@@ -189,6 +234,8 @@ haben kann. Ergänzt die Trigger und UUID/Email-Pins als zusätzliche Schicht.
 | ALL-Policy auf Tabelle im profiles/models-Pfad | 42P17 Rekursion → Admin ausgesperrt |
 | SECURITY DEFINER ohne `row_security TO off` in RLS-Kontext | Latente Rekursion in PG15+ |
 | Zweites Profil mit `role='admin'` | Blockiert durch `one_admin_only` Index + Trigger |
+| `ALTER TABLE … DISABLE/ENABLE TRIGGER` in per PostgREST aufgerufenen Admin-RPCs | Bricht oder ist unzuverlässig; stattdessen Regel 9 (Reihenfolge) |
+| Ghost-Org-Badge für `organizations.type = agency` | False Positive; nur Client-Bootstrap-Heuristik (Regel 10) |
 
 ---
 

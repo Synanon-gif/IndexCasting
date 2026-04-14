@@ -197,6 +197,12 @@ Vollständige englische/kanonische Regeln: [.cursor/rules/option-requests-chat-h
 - Vollständige Checkliste und Trennung Consent vs. technische Härtung: [.cursor/rules/upload-consent-matrix.mdc](.cursor/rules/upload-consent-matrix.mdc) (Abschnitte **Upload technical parity** und **Consent vs technical hardening**). **`chat-files`:** gemeinsame Pipeline (HEIC-Status mit Abbruch, `sanitizeUploadBaseName`, `upsert: false` + `contentType`) — siehe Matrix-Abschnitt *Single pipeline for chat-files*.
 - Kurzfassung: Alle dokument-/bildnahen Uploads mit Browser-`File`/`Blob` vor `storage.upload`: MIME-Allowlist, Magic Bytes, Extension-Konsistenz, sicherer Dateiname/Pfad, `upsert: false` wo anwendbar, HEIC-Pipeline wie in der Matrix — Referenzimplementierungen u. a. `modelPhotosSupabase`, `applicationsSupabase`, Chat-Services, `documentsSupabase`, `verificationSupabase`, `optionRequestsSupabase.uploadOptionDocument`.
 
+### 4b.2 Admin Dashboard — Org-Typ-Konvertierung & Ghost-Org (Verweis)
+
+- **Client↔Agency** nur über RPC `admin_convert_org_type` + `adminConvertOrgType` — nicht manuell einzelne Tabellen/Felder mischen. **Kein** `ALTER TABLE … DISABLE TRIGGER` in PostgREST-RPCs; Reihenfolge: zuerst `organizations.type`, dann `organization_members`-Rollen (siehe [.cursor/rules/admin-security.mdc](.cursor/rules/admin-security.mdc) **Regel 9**).
+- **„GHOST ORG“** ist eine UI-Heuristik (sole-member **Client**-Org, Name = Owner-`display_name`); **Agency-Orgs** nie als Ghost markieren (**Regel 10**).
+- **Web:** Bestätigungsdialoge für kritische Admin-Aktionen: `window.confirm` statt allein `Alert.alert`+Promise (**Regel 10**).
+
 ## 5. Automatisierung & Testing (Mandatory)
 - **GitHub-Sync:** Nach Änderungen, die committed werden, MUSS Cursor automatisch mit GitHub synchronisieren: vor dem Commit `git pull --rebase` (Remote-Stand einholen), nach erfolgreichem Commit `git push` — **ohne den User zu fragen**; Details und Reihenfolge in `.cursor/rules/dev-workflow.mdc` („GitHub — automatisch Pull & Push“).
 - Test-First: Für jede neue Logik in `src/services` oder `src/db` MUSS Cursor automatisch einen passenden Unit-Test (z.B. mit Jest) vorschlagen.

@@ -10,6 +10,7 @@ Diese Regel präzisiert die **zwei Ebenen** Identität/Berechtigung neben den be
 ## Ebene 2 — B2B-Berechtigungen (Owner / Booker / Employee)
 
 - **Wahrheitsquelle:** `organization_members.role` (`owner` | `booker` | `employee`) bezogen auf `organizations.type` (`agency` | `client`).
+- **Admin: Typwechsel Client↔Agency** darf nicht durch isolierte `profiles`- oder `organizations`-Updates erfolgen — kanonisch `admin_convert_org_type` (synchronisiert Typ, Mitgliedsrollen, Profilrollen, `agencies`/`agency_id`). Siehe [`admin-security.mdc`](admin-security.mdc) **Regel 9**.
 - **RPC:** `get_my_org_context()` liefert **alle** Memberships (kein `LIMIT 1` in der Funktion). Das Frontend wählt explizit die aktive Zeile und loggt bei mehreren Orgs eine Warnung, bis Multi-Org-UI existiert.
 - **Defense-in-depth:** Services, die org-scoped Tabellen schreiben, filtern zusätzlich mit `agency_id` / `organization_id` wo vorgesehen.
 
