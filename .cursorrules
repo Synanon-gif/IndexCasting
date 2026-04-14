@@ -155,6 +155,22 @@ Vollständige englische/kanonische Regeln: [.cursor/rules/option-requests-chat-h
 - **H2/H4/H5 — Store/UX:** `clientConfirmJobStore`: bei fehlendem Post-Fetch **`console.error`**; lange Threads: Pagination (`beforeId`); Native: **`pickChatAttachmentNative`** + `expo-document-picker` in Dependencies.
 - **Agency-only:** `clientConfirmJobStore` bei `isAgencyOnly` sofort abbrechen — siehe `agency-only-option-casting.mdc`.
 
+### 4c.5 Client Web — Gallery, Guest, Shared Selection & Controlled Frontend Fix Pass (kanonisch)
+
+**Konzept:** Periodischer **Full System Audit** + **Controlled Frontend Fix Pass** — Verifikation von Layout, Bildern, Navigation, CTAs, externem Gating und Detail-Stabilität; **Fixes nur** wo inkonsistent, kaputt oder UX-schädlich — **ohne** Backend-/Business-Logik, **ohne** Permission-Änderungen für reine Polish-Fixes.
+
+**Scope:** `ClientWebApp.tsx` (Discover, `PackageGalleryView`, `ProjectDetailView`, `ActiveOptionsView`), `GuestView.tsx`, `SharedSelectionView.tsx`, Root-Routing in `App.tsx`; Daten über `guestLinksSupabase` / `sharedSelectionSupabase` (signierte URLs).
+
+**Verdrahtungen (Kurz):**
+- **Bilder:** `GuestView` / `SharedSelectionView` nutzen **`import { StorageImage } from '.../StorageImage'`** (named export), keine rohen `Image`-URLs ohne diese Schicht — konsistent mit TTL/Fallback.
+- **Messwerte:** Fehlende Werte → **`—`**, nie **`0 cm`** / **`nullcm`**; Chest: **`chest ?? bust`**, numerisch **`??`** statt **`||`** (0 nicht als „leer“).
+- **Guest `check_email`:** Nach OTP — **Back to browse** + **Resend**; Texte nur **`uiCopy.guestFlow`** (`checkEmailBackToModels`, `checkEmailResend`).
+- **Shared Selection:** Persistenter Sign-up-CTA optional im Footer (`uiCopy.sharedSelection.footerCta`); externes Browsing ohne Login, kein Discovery-Fallback.
+- **Active Options (Overlay):** Zeile tappbar → **`onOpenThread(threadId)`** → `setOpenThreadIdOnMessages` + **`setTab('messages')`**, Overlay schließen.
+- **PDF Export (`Download PDF`):** Nur **Web** (`Platform.OS === 'web'`); Scope = **aktuell geöffnete** Entität (Package/Project/Shared/Guest) — siehe **§12** in [.cursor/rules/client-web-gallery-guest-shared-audit.mdc](.cursor/rules/client-web-gallery-guest-shared-audit.mdc). Kern: `PdfExportModal` + `src/utils/pdfExport.ts`; **`jspdf` dynamisch importieren** (kein Top-Level-Import in Native-Bundles); **keine Wasserzeichen** im PDF; externe Viewer: PDF **vor** Signup erlaubt, Gating nur für Chat/Option/Star o. Ä.; **keine** Backend-Erweiterung der Medienrechte nur für PDF.
+
+**Vollständige Detail-Regeln, Tabellen und Regression-Checkliste:** [.cursor/rules/client-web-gallery-guest-shared-audit.mdc](.cursor/rules/client-web-gallery-guest-shared-audit.mdc).
+
 ## 4b. UI-Sprache & Copy (verbindlich)
 - **Die gesamte Nutzeroberfläche ist Englisch (English-only):** alle sichtbaren Texte für Agency, Client und Model — Buttons, Labels, Alerts, Placeholder, leere Zustände, Fehlermeldungen aus dem Produkt.
 - **Zentrale Quelle:** Nutzer-Texte kommen aus `src/constants/uiCopy.ts` (`uiCopy`). Keine neuen deutschsprachigen UI-Strings; keine Hardcodes derselben Phrase an vielen Stellen — lieber ein Key in `uiCopy` erweitern.

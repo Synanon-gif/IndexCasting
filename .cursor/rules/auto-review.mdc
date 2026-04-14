@@ -20,6 +20,7 @@ vollständig durchlaufen werden, **bevor** Code committed oder weitergeschrieben
 | **Assignments** | Wird `model_assignments`, `model_agency_territories`, Rollen-Mapping oder Sichtbarkeit berührt? |
 | **Discover / First-contact** | Discover, Chat-Bootstrap, Add-to-Project, Option/Casting/Booking, Packages, Guest-Links — siehe `system-invariants.mdc` **FIRST-CONTACT, REQUEST ECOSYSTEM & DOWNSTREAM PARITY** (12 Invarianten, **### 1** Connectionless) |
 | **Calendar / Attention** | Kalender-Workflow, Smart Attention, Model-Bestätigung — rollenübergreifende Konsistenz |
+| **Guest / Shared / Client Web Gallery** | `GuestView`, `SharedSelectionView`, `PackageGalleryView`, `ActiveOptionsView` — Bild-Pipeline (`StorageImage`), Messwerte (`—` / `??`), externes Gating, keine Discovery-Fallbacks; **PDF Export** nur Web, nur Scope der geöffneten Entität, dynamischer `jspdf`-Import — siehe [.cursor/rules/client-web-gallery-guest-shared-audit.mdc](client-web-gallery-guest-shared-audit.mdc) **§12** |
 
 ---
 

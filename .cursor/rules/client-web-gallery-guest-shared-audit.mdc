@@ -1,0 +1,126 @@
+---
+description: Client Web Gallery, Package/Project-Modi, GuestView, SharedSelection — Audit-Konzept, Bilder, Messwerte, Navigation, Verdrahtungen (2026 Controlled Frontend Fix Pass)
+alwaysApply: false
+---
+
+# Client Web — Gallery, Guest Links, Shared Selection (kanonisch)
+
+Diese Regel dokumentiert das **Controlled Frontend Fix Pass**-Konzept (Deep Audit + gezielte UI-Fixes **ohne** Backend-/Business-Logik-Änderung) und die **technischen Verdrahtungen** der betroffenen Oberflächen. Bei Änderungen an diesen Pfaden: Regression über Guest, Shared, Package-Modus und authentifizierten Client-Web-Discover prüfen.
+
+## 1. Zweck und Scope
+
+- **Ziel:** Verifikation + Stabilisierung (Layout, Bilder, Navigation, CTAs, externes Gating, Detail-Stabilität, Responsive). **Kein** Redesign, **keine** Permission-/RLS-/RPC-Änderungen für reine UX-Polish-Fixes.
+- **Eindeckung:** Interne Projects/Packages (Portfolio & Polaroid), **externe** Package-Links (`GuestView`), **Shared Selection** (`SharedSelectionView`, URL `?shared=1&…`), **Gallery/Detail** im `ClientWebApp` (`PackageGalleryView`, `ProjectDetailView`, `DiscoverView`).
+- **Sicherheitsmodell (unverändert):** Nur RPC-/RLS-freigegebene Daten; kein Fallback auf globale Discovery für externe Views; Isolation wie in `system-invariants.mdc` **PACKAGE/PROJECT MODE ISOLATION** und **FIRST-CONTACT** beschrieben.
+
+## 2. Root-Routing (`App.tsx`)
+
+- **Guest-Package:** Wenn `guestLinkId` gesetzt und der Nutzer **nicht** als authentifizierter Nicht-Gast gilt → `GuestView` (Browsing ohne Login nach Legal-Gate).
+- **Shared Selection:** Query `shared=1` + `name` + `ids` (kommaseparierte Model-IDs) → `SharedSelectionView`; Parsing über `parseSharedSelectionParams` (robust gegen Encoding).
+- Authentifizierte Nicht-Gäste: Guest-Param wird bereinigt; kein erzwungenes Guest-Overlay für eingeloggte Client-/Agency-Nutzer auf normalem App-Pfad (bestehende Logik beibehalten).
+
+## 3. Datenquellen und Services
+
+| Kontext | Service / RPC | Bild-Pipeline |
+|--------|----------------|---------------|
+| Guest Package | `getGuestLink`, `getGuestLinkModels` (`guestLinksSupabase.ts`) | `signImageUrls`: `normalizeDocumentspicturesModelImageRef` → Storage-Pfad → `resolveStorageUrl` (Guest-TTL), externe `http(s)` durchreichen |
+| Shared Selection | `getSharedSelectionModels` (`sharedSelectionSupabase.ts`) | Gleiche `signImageUrls`-Kette wie Guest |
+| Client Web (authenticated) | Discovery, Package aus Messenger, Projekte | `StorageImage` + `normalizeDocumentspicturesModelImageRef` wo `supabase-storage://` / Dateinamen |
+
+**Wichtig:** Gast und Shared liefern **bereits signierte/normalisierte URLs** aus den Services. Trotzdem rendert die UI **`StorageImage`** (named import), damit TTL-Refresh, Fehler-Placeholder und konsistentes Verhalten mit dem restlichen Client-Web gelten.
+
+## 4. Bild-Rendering — Verdrahtung
+
+- **Import:** `import { StorageImage } from '../components/StorageImage';` — **kein** Default-Export (`StorageImage.tsx` exportiert named).
+- **GuestView:** Cover/Grid, Request-Form-Karten, Galerie-Lightbox: `StorageImage` mit `uri={...}`, `resizeMode` wie zuvor. `GuestWatermark` bleibt als Overlay über dem Bildbereich wo vorgesehen (nicht auf Platzhalter erzwingen).
+- **SharedSelectionView:** Kachel-Cover und Detail-Modal-Hero: `StorageImage` mit `uri`.
+- **ClientWebApp `PackageGalleryView`:** unverändert `StorageImage` + bestehende Normalisierung für eingeloggte Clients.
+
+## 5. Messwerte (Chest / Legacy `bust`, Höhe, Taillen, Hüften)
+
+- **Produkt-UI-Label:** „Chest“ / `uiCopy` — nie „Bust“ als sichtbares Label (siehe `.cursorrules` §27.2).
+- **Datenlogik:** Anzeige/Sortierung: `chest ?? bust` wo Brustumfang gemeint ist.
+- **Falsy-Falle:** **`||` für numerische Chest nicht verwenden** — `0` wäre falsch als „leer“. Korrekt: **`m.chest ?? m.bust ?? '—'`** bzw. pro Feld: `value != null ? \`${value} cm\` : '—'`.
+- **Fehlende Werte:** Niemals **`0 cm`** oder **`nullcm`** / rohe `null` ausgeben — **`—`** für fehlende Felder.
+- **SharedSelectionView:** `SharedModel.measurements` als `number | null` pro Feld; Mapping aus API ohne `?? 0`.
+- **GuestView:** Höhe z. B. `m.height != null ? \`${m.height}cm\` : '—'` in Grid und Lightbox; Chest über bestehende Hilfsfunktion `getChestValue(m)` wo schon genutzt.
+
+## 6. GuestView — OTP / `check_email` Phase
+
+- Nach erfolgreichem `signInOrCreateGuestWithOtp`: Phase `check_email`.
+- **UX-Pflicht:** Nutzer muss **nicht** in einer Sackgasse landen:
+  - **Resend:** erneuter Aufruf `signInOrCreateGuestWithOtp(email.trim().toLowerCase())` (fire-and-forget wie bestehende Patterns).
+  - **Back to models:** `setPhase('browse')` zurück zur Browse-Ansicht.
+- **Copy:** Alle Strings in `uiCopy.guestFlow` (z. B. `checkEmailBackToModels`, `checkEmailResend`) — keine hardcodierten englischen Sätze in der View.
+
+## 7. SharedSelectionView — externes Browsing + Gating
+
+- **Ohne Login:** Grid und Detail-Modal nur mit Daten aus `get_shared_selection_models` — keine Discovery-Queries.
+- **Auth-Gate:** Aktionen „wie eingeloggter Client“ (Chat, Option, …) nur nach Signup — bestehende Modal-Logik + `handleSignUp` (z. B. Redirect `indexcasting.com` mit `signup=1` auf Web).
+- **Persistenter CTA:** Bei geladener, nicht-leerer Liste optional Footer-Banner mit `uiCopy.sharedSelection.footerCta` — klarstellen, dass Vollzugriff über Account läuft (ergänzt Detail-„Sign up to access“).
+
+## 8. ClientWebApp — `ActiveOptionsView` (Active Options Overlay)
+
+- **Problemstellung (behoben):** Zeilen müssen in den **Negotiation-Thread** springen.
+- **Verdrahtung:** `ActiveOptionsView` erhält optional `onOpenThread?: (threadId: string) => void`.
+- **Parent:** Bei Tab `discover` + `showActiveOptions`: `onOpenThread` schließt das Overlay (`setShowActiveOptions(false)`), setzt `setOpenThreadIdOnMessages(threadId)`, `setTab('messages')` — gleiches Muster wie Kalender/Unified-Agenda → Messages.
+- **Zeile:** `TouchableOpacity` um die gesamte Zeile; `key={r.threadId}`.
+
+## 9. PackageGalleryView — Kachel-Metadaten (eingebettet in `ClientWebApp.tsx`)
+
+- Messzeile unter dem Bild: Höhe, Chest, Waist, Hips mit **`!= null`**-Checks und **`—`**, Chest-Kette **`m.chest ?? m.bust`**.
+- **Chat auf Kachel:** Im reinen Package-Modus oft kein `agencyId` auf `ModelSummary` (Isolation über Package-RPC); Chat bleibt über **Detail** mit nachgeladenem Kontext — kein „Chat“-Button auf der Kachel erzwingen, wenn das Produkt nur Detail-Pfad vorsieht.
+
+## 10. Checkliste bei Änderungen (Regression)
+
+1. Gast: Legal → Browse → Bilder sichtbar, Lightbox, Messwerte ohne `null`/0-Fake, `check_email` mit Back/Resend.
+2. Shared: Grid + Detail, Footer-CTA, Messwerte `—`, `StorageImage`.
+3. Client Web: Package-Modus + Shared-Project-Modus — `filteredModels`-Guard (`isPackageMode || isSharedMode` → kein Discovery-Filter) unangetastet lassen.
+4. Active Options: Tap auf Zeile → Messages-Tab mit geöffnetem Thread.
+5. `npm run typecheck` + `npm test` nach relevanten TS-Änderungen.
+
+## 11. Explizite Nicht-Ziele
+
+- Keine Änderung von RLS, RPCs, oder `signImageUrls`-Semantik ohne separates Security-/Backend-Review.
+- Keine neuen „Connect first“-Gates für Erstkontakt (siehe `system-invariants.mdc` **### 1**).
+- Keine deutschen UI-Strings — nur `uiCopy` (Englisch).
+
+## 12. PDF Export (Download PDF) — Kanonik (2026)
+
+**Zweck:** Ein einziger Export-Flow: Nutzer wählen Modelle aus der **aktuell geöffneten** Entität und laden ein PDF mit Name, kanonischen Maßen, Stadt/Ort und Bildern — **ohne** neues Backend, **ohne** Wasserzeichen im PDF.
+
+### 12.1 Oberflächen und Verdrahtung
+
+| Surface | Komponente | Datenquelle für `PdfModelInput[]` | Button |
+|--------|--------------|-----------------------------------|--------|
+| Internes Package (Portfolio/Polaroid) | `ClientWebApp` → `PackageGalleryView` | `packageViewState.rawModels` + `getPackageDisplayImages(m, packageType)` | Header-Banner, `Platform.OS === 'web'` |
+| Internes Project (Shared-Project-Modus) | `ClientWebApp` → `PackageGalleryView` | `sharedProject.models` → Bilder `[coverUrl]` wo vorhanden | Neben Projektnamen |
+| Externes Guest-Package | `GuestView` | Lokales `models` (`GuestLinkModel[]`) wie Grid: `getPackageDisplayImages` | Browse-Header |
+| Externe Shared Selection | `SharedSelectionView` | Lokales `models` → `imageUrls` / Messungen | Header neben Titel |
+
+- **Kein separates „externes Shared Project“** als DB-Entity: `?shared=1&ids=…` ist **SharedSelectionView** (flache ID-Liste), nicht `client_projects`.
+- **Copy:** `uiCopy.pdfExport` — alle sichtbaren Strings dort.
+
+### 12.2 Sicherheit und Scope (kanonisch)
+
+- Export enthält **nur** Daten, die der Viewer **bereits** in dieser Ansicht geladen hat (signierte URLs + Metadaten im State). **Kein** serverseitiger PDF-Endpoint; **keine** Erweiterung von Storage-RLS oder Signed-URL-Rechten.
+- **Kein** Cross-Package / Cross-Project / Cross-Org: Mapping erfolgt aus dem **aktuellen** `packageViewState` / `sharedProject` / Guest-`models` / Shared-`models` — kein Discover-Fallback, keine injizierten Model-IDs von außerhalb der Liste.
+- **Extern vor Signup:** PDF-Download darf **nicht** hinter demselben Auth-Gate wie Chat/Option/Star liegen; Gating nur für interaktive Client-Aktionen bleibt unverändert.
+
+### 12.3 Technische Pflichten (Änderungen an diesem Feature)
+
+- **`jspdf`:** dynamisch `import('jspdf')` in `generateModelsPdf` / Download-Pfad — **kein** Top-Level `import { jsPDF } from 'jspdf'` in Modulen, die von Native gebündelt werden (sonst Risiko durch Browser-Globals beim Modul-Load).
+- **`pdfExport.ts`:** nur im **Web**-Kontext ausführen (Canvas `Image`, `document.createElement`). `PdfExportModal` rendert `null` bei `Platform.OS !== 'web'`; PDF-Logik per dynamischem Import aus dem Modal triggern, damit Native nicht `jspdf`/`document` beim ersten Bundle-Eval lädt.
+- **Layout:** Entity-Titel und erster Model-Block dürfen **nicht** überlappen (eigener `headerOffset` nach Entity-Zeile).
+- **Footer:** „Generated via Index Casting“ auf **allen** PDF-Seiten (Schleife `setPage` + Footer), konsistent mit `uiCopy.pdfExport.footerText` wo im Generator genutzt.
+- **Modal-State:** Bei `visible === true` Auswahl zurücksetzen (alle Modelle selektiert), damit nach Navigations-/Listenwechsel kein stale Selection-Set bleibt.
+- **Feedback:** Erfolg vs. Fehler farblich unterscheidbar (Fehler nicht in „Success“-Grün).
+- **Wasserzeichen:** **Keine** Wasserzeichen im PDF; bestehende `GuestWatermark`-UI im Guest-Browse ist **nicht** Teil des PDF-Exports.
+
+### 12.4 Bilder und Formate
+
+- Einbindung über Canvas → JPEG (`toDataURL`) für `jspdf.addImage`; einzelne fehlgeschlagene URLs (CORS, Timeout, korrupt) → skip + `console.warn`, Gesamt-PDF läuft weiter; Modell ohne Bilder → „No images available“ (Text aus `uiCopy` / Generator).
+
+### 12.5 Regression bei Änderungen
+
+- Nach Touch: `npm run typecheck`, `npm run lint`, `npm test`; Web: Package, Shared-Project, Guest-Browse, Shared-Selection — PDF öffnet, Auswahl stimmt, Download startet.
