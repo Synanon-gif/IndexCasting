@@ -535,6 +535,37 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const [pendingModel, setPendingModel] = useState<ModelSummary | null>(null);
   const [addingModelIds, setAddingModelIds] = useState<Set<string>>(new Set());
+  /** Frontend-only favorites (gallery); persisted in sessionStorage — no backend. */
+  const GALLERY_FAVORITES_STORAGE_KEY = 'ic_client_gallery_favorite_ids';
+  const [favoriteModelIds, setFavoriteModelIds] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = sessionStorage.getItem(GALLERY_FAVORITES_STORAGE_KEY);
+      if (!raw) return;
+      const arr = JSON.parse(raw) as unknown;
+      if (Array.isArray(arr) && arr.every((x) => typeof x === 'string')) {
+        setFavoriteModelIds(new Set(arr));
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  const toggleFavoriteModel = useCallback((modelId: string) => {
+    setFavoriteModelIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(modelId)) next.delete(modelId);
+      else next.add(modelId);
+      try {
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem(GALLERY_FAVORITES_STORAGE_KEY, JSON.stringify([...next]));
+        }
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, []);
   const [optionDatePickerOpen, setOptionDatePickerOpen] = useState(false);
   const [optionDateModel, setOptionDateModel] = useState<ModelSummary | null>(null);
   const [openThreadIdOnMessages, setOpenThreadIdOnMessages] = useState<string | null>(null);
@@ -1367,6 +1398,19 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     nearbyLoadFailed,
     discoveryLoadMoreFailed,
   ]);
+
+  const detailModelSummaryForOverlay = useMemo(
+    () => (detailId ? (filteredModels.find((m) => m.id === detailId) ?? null) : null),
+    [detailId, filteredModels],
+  );
+  const galleryDetailPresentation = !!(packageViewState || sharedProjectId);
+  const galleryLocationLineForDetail = useMemo(() => {
+    if (!galleryDetailPresentation || !detailModelSummaryForOverlay) return undefined;
+    const m = detailModelSummaryForOverlay;
+    return m.hasRealLocation
+      ? `${summaryDisplayCity(m) || '—'} · ${m.countryCode || '—'}`
+      : `Represented in ${m.countryCode || '—'}${m.agencyName ? ` · ${m.agencyName}` : ''}`;
+  }, [galleryDetailPresentation, detailModelSummaryForOverlay]);
 
   useEffect(() => {
     if (detailId) {
@@ -2382,6 +2426,10 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             tabBarBottomInset={bottomTabInset}
             shellHorizontalPadding={shellPaddingH}
             discoverFilterMessages={discoverFilterMessages}
+            sharedProjectId={sharedProjectId}
+            onRemoveModelFromProject={handleRemoveModelFromProject}
+            favoriteModelIds={favoriteModelIds}
+            onToggleFavoriteModel={toggleFavoriteModel}
           />
         )}
 
@@ -2570,6 +2618,34 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
           packageViewState && detailId && packageViewState.rawModels.some((m) => m.id === detailId)
             ? packageViewState.packageType
             : undefined
+        }
+        presentation={galleryDetailPresentation ? 'galleryFocus' : 'standard'}
+        galleryLocationLine={galleryLocationLineForDetail}
+        onOpenOptionPicker={
+          galleryDetailPresentation && detailModelSummaryForOverlay
+            ? () => {
+                closeDetails();
+                openOptionDatePicker(detailModelSummaryForOverlay);
+              }
+            : undefined
+        }
+        onChatFromDetail={
+          galleryDetailPresentation && detailModelSummaryForOverlay?.agencyId
+            ? () => {
+                void handleChatWithAgency(detailModelSummaryForOverlay.agencyId!);
+              }
+            : undefined
+        }
+        onAddToSelectionFromDetail={
+          galleryDetailPresentation && detailModelSummaryForOverlay
+            ? () => {
+                openProjectPickerForModel(detailModelSummaryForOverlay);
+              }
+            : undefined
+        }
+        chatLoading={isChatWithAgencyLoading}
+        addBusy={
+          detailModelSummaryForOverlay ? addingModelIds.has(detailModelSummaryForOverlay.id) : false
         }
       />
 
@@ -3394,6 +3470,10 @@ type DiscoverProps = {
   /** Must match `appShell` horizontal padding — used to full-bleed the swipe card without lateral shift. */
   shellHorizontalPadding: number;
   discoverFilterMessages?: { kind: 'warning' | 'error'; text: string }[];
+  sharedProjectId: string | null;
+  onRemoveModelFromProject: (projectId: string, modelId: string) => Promise<void>;
+  favoriteModelIds: Set<string>;
+  onToggleFavoriteModel: (modelId: string) => void;
 };
 
 const DiscoverView: React.FC<DiscoverProps> = ({
@@ -3423,35 +3503,70 @@ const DiscoverView: React.FC<DiscoverProps> = ({
   tabBarBottomInset = 0,
   shellHorizontalPadding,
   discoverFilterMessages = [],
+  sharedProjectId,
+  onRemoveModelFromProject,
+  favoriteModelIds,
+  onToggleFavoriteModel,
 }) => {
   const { width: discoverW, height: discoverH } = useWindowDimensions();
   const isMobileDiscover = isMobileWidth(discoverW);
   const heroResizeMode = getHeroResizeMode(isMobileDiscover);
+  const [galleryRemoveBusyIds, setGalleryRemoveBusyIds] = useState<Set<string>>(new Set());
 
-  // Package mode: grid layout matching GuestView (all models visible at once, no swipe)
-  if (isPackageMode) {
+  // Package + open-project: responsive gallery grid (no swipe, no Next).
+  if (isPackageMode || isSharedMode) {
     const packageTypeLabel = packageType === 'polaroid' ? 'Polaroid Package' : 'Portfolio Package';
-    const packageGridPaddingBottom = Math.max(120, tabBarBottomInset + spacing.lg);
+    const galleryGridPaddingBottom = Math.max(120, tabBarBottomInset + spacing.lg);
+    const colCount = discoverW >= 960 ? 4 : discoverW >= 640 ? 3 : 2;
+    const tileGutter = spacing.xs;
+
+    const runGalleryRemove = (modelId: string) => {
+      if (!sharedProjectId || !isSharedMode) return;
+      setGalleryRemoveBusyIds((s) => new Set(s).add(modelId));
+      void onRemoveModelFromProject(sharedProjectId, modelId).finally(() => {
+        setGalleryRemoveBusyIds((s) => {
+          const n = new Set(s);
+          n.delete(modelId);
+          return n;
+        });
+      });
+    };
+
     return (
       <View style={[styles.section, { flex: 1 }]}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionLabel}>{packageTypeLabel}</Text>
-          <Text style={styles.metaText}>{models.length} models</Text>
-        </View>
-        <View style={styles.packageBanner}>
-          <Text style={styles.packageBannerText}>
-            {packageName ?? uiCopy.discover.viewingPackage}
+          <Text style={styles.sectionLabel}>
+            {isPackageMode ? packageTypeLabel : uiCopy.discover.viewingProject}
           </Text>
-          <TouchableOpacity
-            onPress={onExitPackage}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Text style={styles.packageBannerExit}>{uiCopy.discover.exitPackage}</Text>
-          </TouchableOpacity>
+          <Text style={styles.metaText}>
+            {models.length} {models.length === 1 ? 'model' : 'models'}
+          </Text>
         </View>
+        {isPackageMode ? (
+          <View style={styles.packageBanner}>
+            <Text style={styles.packageBannerText} numberOfLines={2}>
+              {packageName ?? uiCopy.discover.viewingPackage}
+            </Text>
+            <TouchableOpacity
+              onPress={onExitPackage}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.packageBannerExit}>{uiCopy.discover.exitPackage}</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={[styles.packageBanner, { borderWidth: 0, backgroundColor: 'transparent' }]}>
+            <Text style={styles.packageBannerText} numberOfLines={2}>
+              {sharedProjectName ?? 'Project'}
+            </Text>
+          </View>
+        )}
         <ScrollView
           style={Platform.OS === 'web' ? { flex: 1, minHeight: 0 } : undefined}
-          contentContainerStyle={[styles.packageGrid, { paddingBottom: packageGridPaddingBottom }]}
+          contentContainerStyle={[
+            styles.clientGalleryScrollContent,
+            { paddingBottom: galleryGridPaddingBottom },
+          ]}
           showsVerticalScrollIndicator={false}
         >
           {models.length === 0 ? (
@@ -3459,55 +3574,112 @@ const DiscoverView: React.FC<DiscoverProps> = ({
               <Text style={styles.emptyTitle}>{uiCopy.discover.noMoreModels}</Text>
             </View>
           ) : (
-            models.map((m) => (
-              <View key={m.id} style={styles.packageGridCard}>
-                <TouchableOpacity activeOpacity={0.9} onPress={() => onOpenDetails(m.id)}>
-                  <View style={styles.packageGridImageContainer}>
-                    <StorageImage
-                      uri={m.coverUrl || undefined}
-                      style={styles.packageGridImage}
-                      resizeMode={heroResizeMode}
-                      ttlSeconds={CLIENT_MODEL_IMAGE_TTL_SEC}
-                      fallback={
-                        <View
-                          style={[styles.packageGridImage, { backgroundColor: colors.border }]}
+            <View style={[styles.clientGalleryRow, { marginHorizontal: -tileGutter / 2 }]}>
+              {models.map((m) => (
+                <View
+                  key={m.id}
+                  style={{
+                    width: `${100 / colCount}%`,
+                    paddingHorizontal: tileGutter / 2,
+                    marginBottom: spacing.md,
+                  }}
+                >
+                  <View style={styles.clientGalleryTile}>
+                    <View style={styles.clientGalleryImageArea}>
+                      <TouchableOpacity activeOpacity={0.9} onPress={() => onOpenDetails(m.id)}>
+                        <StorageImage
+                          uri={m.coverUrl || undefined}
+                          style={styles.clientGalleryImage}
+                          resizeMode={heroResizeMode}
+                          ttlSeconds={CLIENT_MODEL_IMAGE_TTL_SEC}
+                          fallback={
+                            <View
+                              style={[
+                                styles.clientGalleryImage,
+                                { backgroundColor: colors.border },
+                              ]}
+                            />
+                          }
                         />
-                      }
-                    />
-                    <View style={styles.coverGradientOverlay} />
-                    <View style={styles.coverMeasurementsOverlay}>
-                      <Text style={styles.coverNameOnImage}>{m.name}</Text>
-                      <Text style={styles.coverMeasurementsLabel}>
-                        Height {m.height} cm · Chest {m.chest || m.bust || '—'} cm · Waist{' '}
-                        {m.waist || '—'} cm · Hips {m.hips || '—'} cm
-                        {m.legsInseam ? ` · Inseam ${m.legsInseam} cm` : ''}
-                      </Text>
-                      <Text style={styles.coverLocationLabel}>{summaryDisplayCity(m) || '—'}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.clientGalleryStarBtn}
+                        onPress={() => onToggleFavoriteModel(m.id)}
+                        accessibilityRole="button"
+                        accessibilityLabel={
+                          favoriteModelIds.has(m.id)
+                            ? uiCopy.discover.toggleUnfavoriteA11y
+                            : uiCopy.discover.toggleFavoriteA11y
+                        }
+                      >
+                        <Text style={styles.clientGalleryStarGlyph}>
+                          {favoriteModelIds.has(m.id) ? '★' : '☆'}
+                        </Text>
+                      </TouchableOpacity>
                     </View>
-                  </View>
-                </TouchableOpacity>
-                <View style={styles.cardButtonRow}>
-                  <TouchableOpacity
-                    style={styles.optionButtonOutline}
-                    onPress={() => onOpenOptionDatePicker(m)}
-                  >
-                    <Text style={styles.optionButtonOutlineLabel}>Option</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.addToSelectionButton,
-                      addingModelIds?.has(m.id) && { opacity: 0.4 },
-                    ]}
-                    onPress={() => onAddToProject(m)}
-                    disabled={addingModelIds?.has(m.id) ?? false}
-                  >
-                    <Text style={styles.addToSelectionLabel}>
-                      {addingModelIds?.has(m.id) ? 'Adding…' : 'Add to selection'}
+                    <Text style={styles.clientGalleryName}>{m.name}</Text>
+                    <Text style={styles.clientGalleryMeta}>
+                      Height {m.height} cm · Chest {m.chest || m.bust || '—'} cm · Waist{' '}
+                      {m.waist || '—'} cm · Hips {m.hips || '—'} cm
+                      {m.legsInseam ? ` · Inseam ${m.legsInseam} cm` : ''}
                     </Text>
-                  </TouchableOpacity>
+                    <Text style={styles.clientGalleryLocation}>{summaryDisplayCity(m) || '—'}</Text>
+                    <View style={styles.clientGalleryActions}>
+                      <TouchableOpacity
+                        style={styles.optionButtonOutline}
+                        onPress={() => onOpenOptionDatePicker(m)}
+                      >
+                        <Text style={styles.optionButtonOutlineLabel}>
+                          {uiCopy.discover.openOptionPicker}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.addToSelectionButton,
+                          addingModelIds?.has(m.id) && { opacity: 0.4 },
+                        ]}
+                        onPress={() => onAddToProject(m)}
+                        disabled={addingModelIds?.has(m.id) ?? false}
+                      >
+                        <Text style={styles.addToSelectionLabel}>
+                          {addingModelIds?.has(m.id) ? 'Adding…' : 'Add to selection'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                    {isSharedMode && m.agencyId ? (
+                      <TouchableOpacity
+                        style={[
+                          styles.chatWithAgencyButton,
+                          isChatWithAgencyLoading && { opacity: 0.5 },
+                          { marginTop: spacing.xs },
+                        ]}
+                        onPress={() => onChatWithAgency(m.agencyId!)}
+                        disabled={isChatWithAgencyLoading}
+                      >
+                        <Text style={styles.chatWithAgencyLabel}>
+                          {isChatWithAgencyLoading
+                            ? uiCopy.discover.chatWithAgencyLoading
+                            : uiCopy.discover.chatWithAgency}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
+                    {isSharedMode && sharedProjectId ? (
+                      <TouchableOpacity
+                        style={styles.clientGalleryDeleteBtn}
+                        onPress={() => runGalleryRemove(m.id)}
+                        disabled={galleryRemoveBusyIds.has(m.id)}
+                      >
+                        <Text style={styles.clientGalleryDeleteLabel}>
+                          {galleryRemoveBusyIds.has(m.id)
+                            ? uiCopy.common.loading
+                            : uiCopy.common.delete}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
                 </View>
-              </View>
-            ))
+              ))}
+            </View>
           )}
         </ScrollView>
       </View>
@@ -6567,6 +6739,16 @@ type DetailProps = {
   onOptionRequest?: (modelName: string, modelId: string, date: string) => void;
   /** When set, detail gallery copy/labels follow package type (authenticated package-open flow). */
   detailMediaPackageType?: PackageType;
+  /** Open project / package: slim viewer; standard Discover: full detail with inline option dates. */
+  presentation?: 'standard' | 'galleryFocus';
+  /** City / territory line under hero (from ModelSummary). */
+  galleryLocationLine?: string;
+  /** Opens the shared Option date-picker modal (no inline date pills in galleryFocus). */
+  onOpenOptionPicker?: () => void;
+  onChatFromDetail?: () => void;
+  onAddToSelectionFromDetail?: () => void;
+  chatLoading?: boolean;
+  addBusy?: boolean;
 };
 
 const ProjectDetailView: React.FC<DetailProps> = ({
@@ -6576,10 +6758,18 @@ const ProjectDetailView: React.FC<DetailProps> = ({
   onClose,
   onOptionRequest,
   detailMediaPackageType,
+  presentation = 'standard',
+  galleryLocationLine,
+  onOpenOptionPicker,
+  onChatFromDetail,
+  onAddToSelectionFromDetail,
+  chatLoading = false,
+  addBusy = false,
 }) => {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<string | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [heroImageIndex, setHeroImageIndex] = useState(0);
 
   const normalizedDisplayImageUrls = useMemo(() => {
     const id = data?.id ?? '';
@@ -6604,6 +6794,10 @@ const ProjectDetailView: React.FC<DetailProps> = ({
     }
   }, [open]);
 
+  useEffect(() => {
+    setHeroImageIndex(0);
+  }, [data?.id]);
+
   const requestOption = (date: string) => {
     setSelectedDate(date);
     setConfirmation(null);
@@ -6613,6 +6807,195 @@ const ProjectDetailView: React.FC<DetailProps> = ({
   };
 
   if (!open) return null;
+
+  const galleryHeroUrls = normalizedDisplayImageUrls;
+  const heroUrl = galleryHeroUrls[heroImageIndex] ?? galleryHeroUrls[0];
+  const hasHeroNav = galleryHeroUrls.length > 1;
+
+  if (presentation === 'galleryFocus') {
+    return (
+      <View style={styles.detailOverlay}>
+        <View style={[styles.detailCard, styles.detailCardGalleryFocus]}>
+          <View style={styles.detailGalleryTopBar}>
+            <TouchableOpacity onPress={onClose} style={styles.detailGalleryBackBtn} hitSlop={12}>
+              <Text style={styles.detailGalleryBackGlyph}>←</Text>
+              <Text style={styles.detailGalleryBackLabel}>{uiCopy.discover.backToGallery}</Text>
+            </TouchableOpacity>
+          </View>
+          {loading || !data ? (
+            <Text style={[styles.metaText, { padding: spacing.md }]}>Loading…</Text>
+          ) : (
+            <>
+              <View style={styles.detailGalleryHeroWrap}>
+                <TouchableOpacity
+                  activeOpacity={0.92}
+                  onPress={() => heroUrl && setLightboxIndex(heroImageIndex)}
+                  style={styles.detailGalleryHeroTouchable}
+                >
+                  {heroUrl ? (
+                    <StorageImage
+                      uri={heroUrl}
+                      style={styles.detailGalleryHeroImage}
+                      resizeMode="contain"
+                      ttlSeconds={CLIENT_MODEL_IMAGE_TTL_SEC}
+                      fallback={
+                        <View
+                          style={[
+                            styles.detailGalleryHeroImage,
+                            { backgroundColor: colors.border },
+                          ]}
+                        />
+                      }
+                    />
+                  ) : (
+                    <View
+                      style={[styles.detailGalleryHeroImage, { backgroundColor: colors.border }]}
+                    >
+                      <Text style={styles.metaText}>{mediaEmptyCopy}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+                {hasHeroNav && (
+                  <>
+                    <TouchableOpacity
+                      style={[styles.detailGalleryHeroArrow, styles.detailGalleryHeroArrowLeft]}
+                      onPress={() => setHeroImageIndex((i) => Math.max(0, i - 1))}
+                      disabled={heroImageIndex <= 0}
+                    >
+                      <Text style={styles.detailGalleryHeroArrowText}>‹</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.detailGalleryHeroArrow, styles.detailGalleryHeroArrowRight]}
+                      onPress={() =>
+                        setHeroImageIndex((i) => Math.min(galleryHeroUrls.length - 1, i + 1))
+                      }
+                      disabled={heroImageIndex >= galleryHeroUrls.length - 1}
+                    >
+                      <Text style={styles.detailGalleryHeroArrowText}>›</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+                {galleryHeroUrls.length > 1 ? (
+                  <View style={styles.detailGalleryHeroCounter}>
+                    <Text style={styles.lightboxCounterLabel}>
+                      {heroImageIndex + 1} / {galleryHeroUrls.length}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+              <View style={styles.detailGalleryMetaBlock}>
+                <Text style={styles.detailTitle}>{data.name}</Text>
+                <Text style={styles.clientGalleryMeta}>
+                  {uiCopy.discover.detailMeasurementHeight} {data.measurements.height} cm ·{' '}
+                  {uiCopy.discover.detailMeasurementChest} {data.measurements.chest} cm ·{' '}
+                  {uiCopy.discover.detailMeasurementWaist} {data.measurements.waist} cm ·{' '}
+                  {uiCopy.discover.detailMeasurementHips} {data.measurements.hips} cm
+                </Text>
+                {galleryLocationLine ? (
+                  <Text style={styles.clientGalleryLocation}>{galleryLocationLine}</Text>
+                ) : null}
+              </View>
+              <View style={styles.detailGalleryCtaRow}>
+                {onOpenOptionPicker ? (
+                  <TouchableOpacity style={styles.optionButtonOutline} onPress={onOpenOptionPicker}>
+                    <Text style={styles.optionButtonOutlineLabel}>
+                      {uiCopy.discover.openOptionPicker}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+                {onAddToSelectionFromDetail ? (
+                  <TouchableOpacity
+                    style={[styles.addToSelectionButton, addBusy && { opacity: 0.4 }]}
+                    onPress={onAddToSelectionFromDetail}
+                    disabled={addBusy}
+                  >
+                    <Text style={styles.addToSelectionLabel}>
+                      {addBusy ? 'Adding…' : 'Add to selection'}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+              {onChatFromDetail ? (
+                <TouchableOpacity
+                  style={[styles.chatWithAgencyButton, chatLoading && { opacity: 0.5 }]}
+                  onPress={onChatFromDetail}
+                  disabled={chatLoading}
+                >
+                  <Text style={styles.chatWithAgencyLabel}>
+                    {chatLoading
+                      ? uiCopy.discover.chatWithAgencyLoading
+                      : uiCopy.discover.chatWithAgency}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+            </>
+          )}
+        </View>
+        {(() => {
+          const images = normalizedDisplayImageUrls;
+          const currentUrl = lightboxIndex !== null ? images[lightboxIndex] : null;
+          const hasPrev = lightboxIndex !== null && lightboxIndex > 0;
+          const hasNextImg = lightboxIndex !== null && lightboxIndex < images.length - 1;
+          return (
+            <Modal
+              visible={lightboxIndex !== null}
+              transparent
+              animationType="fade"
+              onRequestClose={() => setLightboxIndex(null)}
+            >
+              <View style={styles.lightboxOverlay}>
+                <TouchableOpacity
+                  style={StyleSheet.absoluteFillObject}
+                  activeOpacity={1}
+                  onPress={() => setLightboxIndex(null)}
+                />
+                <View style={{ position: 'relative' }}>
+                  <StorageImage
+                    uri={currentUrl || undefined}
+                    style={styles.lightboxImage}
+                    resizeMode="contain"
+                    ttlSeconds={CLIENT_MODEL_IMAGE_TTL_SEC}
+                    fallback={
+                      <View style={[styles.lightboxImage, { backgroundColor: colors.border }]} />
+                    }
+                  />
+                </View>
+                {hasPrev && (
+                  <TouchableOpacity
+                    style={styles.lightboxArrowLeft}
+                    onPress={() => setLightboxIndex((i) => (i !== null ? i - 1 : null))}
+                  >
+                    <Text style={styles.lightboxArrowLabel}>‹</Text>
+                  </TouchableOpacity>
+                )}
+                {hasNextImg && (
+                  <TouchableOpacity
+                    style={styles.lightboxArrowRight}
+                    onPress={() => setLightboxIndex((i) => (i !== null ? i + 1 : null))}
+                  >
+                    <Text style={styles.lightboxArrowLabel}>›</Text>
+                  </TouchableOpacity>
+                )}
+                {images.length > 1 && lightboxIndex !== null && (
+                  <View style={styles.lightboxCounter}>
+                    <Text style={styles.lightboxCounterLabel}>
+                      {lightboxIndex + 1} / {images.length}
+                    </Text>
+                  </View>
+                )}
+                <TouchableOpacity
+                  style={styles.lightboxClose}
+                  onPress={() => setLightboxIndex(null)}
+                >
+                  <Text style={styles.lightboxCloseLabel}>✕</Text>
+                </TouchableOpacity>
+              </View>
+            </Modal>
+          );
+        })()}
+      </View>
+    );
+  }
 
   return (
     <View style={styles.detailOverlay}>
@@ -7944,6 +8327,82 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: '#D0CEC7',
   },
+  clientGalleryScrollContent: {
+    paddingTop: spacing.xs,
+    width: '100%',
+  },
+  clientGalleryRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    width: '100%',
+    alignItems: 'flex-start',
+  },
+  clientGalleryTile: {
+    width: '100%',
+  },
+  clientGalleryImageArea: {
+    position: 'relative',
+    width: '100%',
+    aspectRatio: 3 / 4,
+    maxHeight: 420,
+    backgroundColor: colors.background,
+  },
+  clientGalleryImage: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#D0CEC7',
+  },
+  clientGalleryStarBtn: {
+    position: 'absolute',
+    top: spacing.xs,
+    left: spacing.xs,
+    padding: 4,
+    borderRadius: 4,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  clientGalleryStarGlyph: {
+    fontSize: 16,
+    color: '#fff',
+    lineHeight: 18,
+  },
+  clientGalleryName: {
+    ...typography.label,
+    fontSize: 13,
+    color: colors.textPrimary,
+    marginTop: spacing.xs,
+  },
+  clientGalleryMeta: {
+    ...typography.body,
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  clientGalleryLocation: {
+    ...typography.body,
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  clientGalleryActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+    alignItems: 'center',
+  },
+  clientGalleryDeleteBtn: {
+    marginTop: spacing.sm,
+    alignSelf: 'flex-start',
+    paddingVertical: 4,
+    paddingHorizontal: 0,
+  },
+  clientGalleryDeleteLabel: {
+    ...typography.body,
+    fontSize: 12,
+    color: colors.buttonSkipRed,
+    fontWeight: '600',
+  },
   activeProjectRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -8430,6 +8889,84 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.surface,
     padding: spacing.md,
+  },
+  detailCardGalleryFocus: {
+    maxWidth: 720,
+    borderWidth: 0,
+    backgroundColor: colors.background,
+    paddingHorizontal: spacing.sm,
+    paddingBottom: spacing.lg,
+  },
+  detailGalleryTopBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  detailGalleryBackBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  detailGalleryBackGlyph: {
+    fontSize: 20,
+    color: colors.textPrimary,
+  },
+  detailGalleryBackLabel: {
+    ...typography.body,
+    fontSize: 14,
+    color: colors.accent,
+    fontWeight: '600',
+  },
+  detailGalleryHeroWrap: {
+    position: 'relative',
+    width: '100%',
+    aspectRatio: 3 / 4,
+    maxHeight: 520,
+    marginBottom: spacing.md,
+    backgroundColor: colors.background,
+  },
+  detailGalleryHeroTouchable: {
+    width: '100%',
+    height: '100%',
+  },
+  detailGalleryHeroImage: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#D0CEC7',
+  },
+  detailGalleryHeroArrow: {
+    position: 'absolute',
+    top: '42%',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    borderRadius: 8,
+  },
+  detailGalleryHeroArrowLeft: { left: 6 },
+  detailGalleryHeroArrowRight: { right: 6 },
+  detailGalleryHeroArrowText: {
+    fontSize: 26,
+    color: '#fff',
+    lineHeight: 30,
+  },
+  detailGalleryHeroCounter: {
+    position: 'absolute',
+    bottom: 8,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  detailGalleryMetaBlock: {
+    marginBottom: spacing.sm,
+  },
+  detailGalleryCtaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    alignItems: 'center',
+    marginBottom: spacing.sm,
   },
   detailHeaderRow: {
     flexDirection: 'row',

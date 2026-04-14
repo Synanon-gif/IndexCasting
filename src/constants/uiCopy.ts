@@ -1116,6 +1116,15 @@ export const uiCopy = {
     detailMediaSectionPolaroid: 'Polaroids',
     detailNoPortfolioImages: 'No portfolio images',
     detailNoPolaroidImages: 'No polaroid images',
+    /** Gallery detail viewer — back to grid */
+    backToGallery: 'Back',
+    /** Primary CTA to open the existing option date picker (no inline date pills). */
+    openOptionPicker: 'Option',
+    /** Local-only gallery favorite toggle (accessibility label). */
+    toggleFavoriteA11y: 'Mark as favorite',
+    toggleUnfavoriteA11y: 'Remove favorite',
+    /** Section label when browsing a saved project in Discover. */
+    viewingProject: 'Selection',
   },
   /** Client Projects tab — project management actions. */
   projects: {

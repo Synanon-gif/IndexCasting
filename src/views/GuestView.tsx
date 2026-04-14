@@ -1,8 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { canonicalDisplayCityForModel } from '../utils/canonicalModelCity';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, FlatList, Image,
-  ActivityIndicator, TextInput, Platform, Modal, type ViewStyle, type ListRenderItemInfo,
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  FlatList,
+  Image,
+  ActivityIndicator,
+  TextInput,
+  Platform,
+  Modal,
+  type ViewStyle,
+  type ListRenderItemInfo,
 } from 'react-native';
 
 /**
@@ -25,7 +36,10 @@ const GuestWatermark: React.FC<{ style?: ViewStyle }> = ({ style }) => (
     style={[
       {
         position: 'absolute',
-        top: 0, left: 0, right: 0, bottom: 0,
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
         overflow: 'hidden',
         zIndex: 10,
       },
@@ -58,7 +72,7 @@ const GuestWatermark: React.FC<{ style?: ViewStyle }> = ({ style }) => (
             PREVIEW · IndexCasting
           </Text>
         </View>
-      ))
+      )),
     )}
   </View>
 );
@@ -66,12 +80,19 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, typography } from '../theme/theme';
 import { supabase } from '../../lib/supabase';
 import {
-  getGuestLink, getGuestLinkModels, acceptGuestLinkTos,
-  type GuestLinkInfo, type GuestLinkModel,
+  getGuestLink,
+  getGuestLinkModels,
+  acceptGuestLinkTos,
+  type GuestLinkInfo,
+  type GuestLinkModel,
 } from '../services/guestLinksSupabase';
 import { signInOrCreateGuestWithOtp } from '../services/guestAuthSupabase';
 import { uiCopy } from '../constants/uiCopy';
-import { getPackageCoverRawRef, getPackageDisplayImages, normalizePackageType } from '../utils/packageDisplayMedia';
+import {
+  getPackageCoverRawRef,
+  getPackageDisplayImages,
+  normalizePackageType,
+} from '../utils/packageDisplayMedia';
 import { TermsScreen } from '../screens/TermsScreen';
 import { PrivacyScreen } from '../screens/PrivacyScreen';
 
@@ -81,13 +102,7 @@ type GuestViewProps = {
   linkId: string;
 };
 
-type ViewPhase =
-  | 'legal'
-  | 'browse'
-  | 'request_form'
-  | 'submitting'
-  | 'check_email'
-  | 'error';
+type ViewPhase = 'legal' | 'browse' | 'request_form' | 'submitting' | 'check_email' | 'error';
 
 const GUEST_PENDING_KEY = 'guest_pending_request';
 const getChestValue = (m: GuestLinkModel): number | null => {
@@ -113,6 +128,37 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
   // Gallery lightbox
   const [galleryModel, setGalleryModel] = useState<GuestLinkModel | null>(null);
   const [galleryIndex, setGalleryIndex] = useState(0);
+  /** Local-only favorites (sessionStorage on web) — no backend. */
+  const GUEST_FAV_KEY = 'ic_guest_gallery_favorite_ids';
+  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    try {
+      const raw = sessionStorage.getItem(GUEST_FAV_KEY);
+      if (!raw) return;
+      const arr = JSON.parse(raw) as unknown;
+      if (Array.isArray(arr) && arr.every((x) => typeof x === 'string')) {
+        setFavoriteIds(new Set(arr));
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  const toggleGuestFavorite = (id: string) => {
+    setFavoriteIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      try {
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+          sessionStorage.setItem(GUEST_FAV_KEY, JSON.stringify([...next]));
+        }
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
 
   // Request form
   const [selectedModelIds, setSelectedModelIds] = useState<Set<string>>(new Set());
@@ -158,9 +204,9 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
       .on(
         'postgres_changes',
         {
-          event:  'UPDATE',
+          event: 'UPDATE',
           schema: 'public',
-          table:  'guest_links',
+          table: 'guest_links',
           filter: `id=eq.${linkId}`,
         },
         () => {
@@ -236,8 +282,7 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
   }, [linkId]);
 
   const pkgType = normalizePackageType(link?.type);
-  const getGalleryImages = (m: GuestLinkModel): string[] =>
-    getPackageDisplayImages(m, pkgType);
+  const getGalleryImages = (m: GuestLinkModel): string[] => getPackageDisplayImages(m, pkgType);
   const getCoverImage = (m: GuestLinkModel): string | undefined => {
     const raw = getPackageCoverRawRef(m, pkgType);
     return raw || undefined;
@@ -266,11 +311,11 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
     // M-5/M-6: Persist the request payload so GuestChatView can pick it up after
     // Magic Link auth. Use sessionStorage on web, AsyncStorage on native.
     const pendingPayload = JSON.stringify({
-      link_id:         linkId,
+      link_id: linkId,
       selected_models: Array.from(selectedModelIds),
-      requested_date:  requestDate.trim() || null,
-      message:         requestMessage.trim(),
-      email:           trimmedEmail,
+      requested_date: requestDate.trim() || null,
+      message: requestMessage.trim(),
+      email: trimmedEmail,
     });
     if (Platform.OS === 'web' && typeof sessionStorage !== 'undefined') {
       sessionStorage.setItem(GUEST_PENDING_KEY, pendingPayload);
@@ -315,10 +360,20 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
   if (phase === 'legal') {
     return (
       <View style={styles.centered}>
-        <Modal visible={termsVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setTermsVisible(false)}>
+        <Modal
+          visible={termsVisible}
+          animationType="slide"
+          presentationStyle="pageSheet"
+          onRequestClose={() => setTermsVisible(false)}
+        >
           <TermsScreen onClose={() => setTermsVisible(false)} />
         </Modal>
-        <Modal visible={guestPrivacyVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setGuestPrivacyVisible(false)}>
+        <Modal
+          visible={guestPrivacyVisible}
+          animationType="slide"
+          presentationStyle="pageSheet"
+          onRequestClose={() => setGuestPrivacyVisible(false)}
+        >
           <PrivacyScreen onClose={() => setGuestPrivacyVisible(false)} />
         </Modal>
 
@@ -368,7 +423,10 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.primaryBtn, (!tosAccepted || !privacyAccepted) && styles.primaryBtnDisabled]}
+          style={[
+            styles.primaryBtn,
+            (!tosAccepted || !privacyAccepted) && styles.primaryBtnDisabled,
+          ]}
           disabled={!tosAccepted || !privacyAccepted}
           onPress={async () => {
             // Persist ToS acceptance to guest_links.tos_accepted_by_guest for the audit trail.
@@ -394,8 +452,7 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
         <Text style={styles.title}>{copy.checkEmail}</Text>
         <Text style={styles.subtitle}>{copy.checkEmailSubtitle}</Text>
         <Text style={styles.subtitleSmall}>
-          {copy.checkEmailSentToPrefix}{' '}
-          <Text style={styles.emailHighlight}>{email}</Text>
+          {copy.checkEmailSentToPrefix} <Text style={styles.emailHighlight}>{email}</Text>
         </Text>
       </View>
     );
@@ -545,9 +602,13 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
         onRequestClose={closeGallery}
       >
         <View style={styles.galleryOverlay}>
-          {/* Close */}
-          <TouchableOpacity style={styles.galleryClose} onPress={closeGallery}>
-            <Text style={styles.galleryCloseLabel}>✕</Text>
+          <TouchableOpacity
+            style={styles.galleryBack}
+            onPress={closeGallery}
+            accessibilityRole="button"
+          >
+            <Text style={styles.galleryBackGlyph}>←</Text>
+            <Text style={styles.galleryBackLabel}>{uiCopy.discover.backToGallery}</Text>
           </TouchableOpacity>
 
           {/* Counter */}
@@ -557,7 +618,9 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
 
           {/* Main image */}
           {galleryImages[galleryIndex] ? (
-            <View style={{ flex: 1, width: '100%', alignItems: 'center', justifyContent: 'center' }}>
+            <View
+              style={{ flex: 1, width: '100%', alignItems: 'center', justifyContent: 'center' }}
+            >
               <Image
                 source={{ uri: galleryImages[galleryIndex] }}
                 style={styles.galleryImage}
@@ -579,7 +642,10 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
             <TouchableOpacity
               onPress={() => setGalleryIndex((i) => Math.min(galleryImages.length - 1, i + 1))}
               disabled={galleryIndex === galleryImages.length - 1}
-              style={[styles.galleryNavBtn, galleryIndex === galleryImages.length - 1 && { opacity: 0.3 }]}
+              style={[
+                styles.galleryNavBtn,
+                galleryIndex === galleryImages.length - 1 && { opacity: 0.3 },
+              ]}
             >
               <Text style={styles.galleryNavLabel}>›</Text>
             </TouchableOpacity>
@@ -591,7 +657,9 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
               <Text style={styles.galleryModelName}>{galleryModel.name}</Text>
               <Text style={styles.galleryModelMeta}>
                 {galleryModel.height}cm
-                {getChestValue(galleryModel) != null ? ` · Chest ${getChestValue(galleryModel)} cm` : ''}
+                {getChestValue(galleryModel) != null
+                  ? ` · Chest ${getChestValue(galleryModel)} cm`
+                  : ''}
                 {galleryModel.waist ? ` · Waist ${galleryModel.waist} cm` : ''}
                 {galleryModel.hips ? ` · Hips ${galleryModel.hips} cm` : ''}
               </Text>
@@ -605,7 +673,9 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
         <Text style={styles.brand}>INDEX CASTING</Text>
         <View style={styles.headerMetaRow}>
           <Text style={styles.headerSub}>
-            {pkgType === 'polaroid' ? copy.packageTypePolaroidLabel : copy.packageTypePortfolioLabel}
+            {pkgType === 'polaroid'
+              ? copy.packageTypePolaroidLabel
+              : copy.packageTypePortfolioLabel}
             {' · '}
             {link?.agency_name || copy.browseHeaderAgencyFallback}
             {' · '}
@@ -624,6 +694,8 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
         contentContainerStyle={styles.grid}
         data={models}
         keyExtractor={(m) => m.id}
+        numColumns={2}
+        columnWrapperStyle={styles.gridRow}
         initialNumToRender={6}
         maxToRenderPerBatch={6}
         windowSize={5}
@@ -633,32 +705,48 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
           const coverImage = getCoverImage(m);
           const displayCity = canonicalDisplayCityForModel(m);
           return (
-            <View style={styles.modelCard}>
-              <TouchableOpacity
-                activeOpacity={0.85}
-                onPress={() => imageCount > 0 ? openGallery(m, 0) : undefined}
-                disabled={imageCount === 0}
-              >
-                {coverImage ? (
-                  <View>
-                    <Image
-                      source={{ uri: coverImage }}
-                      style={styles.modelImage}
-                      resizeMode="contain"
-                    />
-                    <GuestWatermark />
-                    {imageCount > 1 && (
-                      <View style={styles.imageCountBadge}>
-                        <Text style={styles.imageCountLabel}>{imageCount}</Text>
-                      </View>
-                    )}
-                  </View>
-                ) : (
-                  <View style={styles.modelImagePlaceholder}>
-                    <Text style={styles.placeholderText}>{m.name.charAt(0)}</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
+            <View style={styles.modelCardBrowse}>
+              <View style={styles.guestImageArea}>
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={() => (imageCount > 0 ? openGallery(m, 0) : undefined)}
+                  disabled={imageCount === 0}
+                >
+                  {coverImage ? (
+                    <View>
+                      <Image
+                        source={{ uri: coverImage }}
+                        style={styles.modelImageBrowse}
+                        resizeMode="contain"
+                      />
+                      <GuestWatermark />
+                      {imageCount > 1 && (
+                        <View style={styles.imageCountBadge}>
+                          <Text style={styles.imageCountLabel}>{imageCount}</Text>
+                        </View>
+                      )}
+                    </View>
+                  ) : (
+                    <View
+                      style={[styles.modelImagePlaceholder, styles.modelImageBrowsePlaceholder]}
+                    >
+                      <Text style={styles.placeholderText}>{m.name.charAt(0)}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.guestStarBtn}
+                  onPress={() => toggleGuestFavorite(m.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    favoriteIds.has(m.id)
+                      ? uiCopy.discover.toggleUnfavoriteA11y
+                      : uiCopy.discover.toggleFavoriteA11y
+                  }
+                >
+                  <Text style={styles.guestStarGlyph}>{favoriteIds.has(m.id) ? '★' : '☆'}</Text>
+                </TouchableOpacity>
+              </View>
               <View style={styles.modelInfo}>
                 <Text style={styles.modelName}>{m.name}</Text>
                 <Text style={styles.modelMeta}>
@@ -667,11 +755,7 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
                   {m.hips ? ` · Hips ${m.hips} cm` : ''}
                 </Text>
                 <Text style={styles.modelMeta}>
-                  {m.sex
-                    ? m.sex === 'female'
-                      ? copy.sexFemale
-                      : copy.sexMale
-                    : ''}
+                  {m.sex ? (m.sex === 'female' ? copy.sexFemale : copy.sexMale) : ''}
                   {m.hair_color ? `${m.sex ? ' · ' : ''}${m.hair_color}` : ''}
                   {m.eye_color ? ` · ${m.eye_color}` : ''}
                   {displayCity ? ` · ${displayCity}` : ''}
@@ -684,10 +768,7 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
 
       {/* ── Contact bar ── */}
       <View style={styles.contactBar}>
-        <TouchableOpacity
-          style={styles.contactBtn}
-          onPress={() => setPhase('request_form')}
-        >
+        <TouchableOpacity style={styles.contactBtn} onPress={() => setPhase('request_form')}>
           <Text style={styles.contactBtnLabel}>
             {copy.browseSendRequest} {link?.agency_name || copy.browseHeaderAgencyFallback}
           </Text>
@@ -696,7 +777,11 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
           style={styles.createAccountBtn}
           onPress={() => {
             if (Platform.OS === 'web' && typeof window !== 'undefined') {
-              try { localStorage.setItem('ic_pending_guest_link', linkId); } catch { /* best-effort */ }
+              try {
+                localStorage.setItem('ic_pending_guest_link', linkId);
+              } catch {
+                /* best-effort */
+              }
               const u = new URL(window.location.href);
               u.searchParams.delete('guest');
               u.searchParams.set('signup', '1');
@@ -801,7 +886,12 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   emailHighlight: { color: colors.textPrimary, fontWeight: '600' },
-  errorText: { ...typography.body, color: '#C0392B', textAlign: 'center', marginBottom: spacing.sm },
+  errorText: {
+    ...typography.body,
+    color: '#C0392B',
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+  },
   checkRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -822,7 +912,11 @@ const styles = StyleSheet.create({
   checkboxChecked: { backgroundColor: colors.textPrimary, borderColor: colors.textPrimary },
   checkmark: { color: colors.surface, fontSize: 14, fontWeight: '700' },
   checkLabel: { ...typography.body, color: colors.textPrimary },
-  legalLinkInline: { ...typography.body, color: colors.textSecondary, textDecorationLine: 'underline' },
+  legalLinkInline: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textDecorationLine: 'underline',
+  },
   primaryBtn: {
     width: '100%',
     maxWidth: 400,
@@ -845,6 +939,39 @@ const styles = StyleSheet.create({
   backLink: { ...typography.body, color: colors.textSecondary, fontSize: 13, marginTop: 4 },
   scrollArea: { flex: 1 },
   grid: { paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: 140 },
+  gridRow: {
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+    gap: spacing.sm,
+  },
+  modelCardBrowse: {
+    flex: 1,
+    minWidth: 0,
+    borderWidth: 0,
+    borderRadius: 8,
+    marginBottom: spacing.sm,
+    overflow: 'hidden',
+    backgroundColor: 'transparent',
+  },
+  guestImageArea: {
+    position: 'relative',
+    width: '100%',
+  },
+  guestStarBtn: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    zIndex: 20,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.38)',
+  },
+  guestStarGlyph: {
+    fontSize: 17,
+    color: '#fff',
+    lineHeight: 20,
+  },
   formContent: {
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.xl * 3,
@@ -894,6 +1021,7 @@ const styles = StyleSheet.create({
   },
   selectedBadgeText: { color: colors.surface, fontSize: 14, fontWeight: '700' },
   modelImage: { width: '100%', height: 200 },
+  modelImageBrowse: { width: '100%', height: 160, backgroundColor: colors.surface },
   modelImagePlaceholder: {
     width: '100%',
     height: 200,
@@ -901,8 +1029,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  modelImageBrowsePlaceholder: {
+    height: 160,
+  },
   placeholderText: { fontSize: 48, color: colors.textSecondary },
-  modelInfo: { padding: spacing.sm },
+  modelInfo: { paddingHorizontal: spacing.xs, paddingTop: spacing.xs, paddingBottom: spacing.sm },
   modelName: {
     ...typography.label,
     color: colors.textPrimary,
@@ -992,25 +1123,36 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  galleryClose: {
+  galleryBack: {
     position: 'absolute',
-    top: 48,
-    right: 24,
-    zIndex: 10,
-    padding: 8,
+    top: Platform.OS === 'ios' ? 52 : 44,
+    left: 16,
+    zIndex: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
   },
-  galleryCloseLabel: {
+  galleryBackGlyph: {
     color: '#fff',
-    fontSize: 26,
+    fontSize: 22,
+    fontWeight: '600',
+  },
+  galleryBackLabel: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
   },
   galleryCounter: {
     position: 'absolute',
-    top: 52,
+    top: Platform.OS === 'ios' ? 56 : 48,
     left: 0,
     right: 0,
     textAlign: 'center',
     color: 'rgba(255,255,255,0.7)',
     fontSize: 13,
+    zIndex: 10,
   },
   galleryImage: {
     width: '100%',
