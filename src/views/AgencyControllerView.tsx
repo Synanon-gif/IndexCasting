@@ -30,6 +30,7 @@ import {
   shouldUseB2BWebSplit,
 } from '../theme/chatLayout';
 import { showAppAlert, showConfirmAlert } from '../utils/crossPlatformAlert';
+import { isImageFile } from '../../lib/validation/file';
 import { useAuth } from '../context/AuthContext';
 
 import {
@@ -3926,14 +3927,14 @@ const MyModelsTab: React.FC<{
   const addModelPolaroidInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleAddModelPhotoFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target?.files ?? []).filter((f) => f.type?.startsWith('image/'));
+    const files = Array.from(e.target?.files ?? []).filter((f) => isImageFile(f));
     e.target.value = '';
     if (files.length === 0) return;
     setAddModelImageFiles((prev) => [...prev, ...files]);
   };
 
   const handleAddModelPolaroidFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target?.files ?? []).filter((f) => f.type?.startsWith('image/'));
+    const files = Array.from(e.target?.files ?? []).filter((f) => isImageFile(f));
     e.target.value = '';
     if (files.length === 0) return;
     setAddModelPolaroidFiles((prev) => [...prev, ...files]);
