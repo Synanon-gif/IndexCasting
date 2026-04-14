@@ -292,7 +292,7 @@ function extractStoragePath(url: string, bucket: string): string | null {
  * fallback would expose the asset permanently, defeating the TTL).
  * Callers must handle null entries (e.g. hide the image or show a placeholder).
  */
-async function signImageUrls(urls: string[], modelId: string): Promise<(string | null)[]> {
+export async function signImageUrls(urls: string[], modelId: string): Promise<(string | null)[]> {
   if (urls.length === 0) return urls;
   return Promise.all(
     urls.map(async (url) => {

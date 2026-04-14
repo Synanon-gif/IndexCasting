@@ -11,10 +11,13 @@ import {
   ActivityIndicator,
   TextInput,
   Platform,
+  Linking,
   Modal,
+  useWindowDimensions,
   type ViewStyle,
   type ListRenderItemInfo,
 } from 'react-native';
+import { isMobileWidth } from '../theme/breakpoints';
 
 /**
  * Semi-transparent diagonal watermark overlay — mirrors the GuestWatermark in
@@ -111,6 +114,8 @@ const getChestValue = (m: GuestLinkModel): number | null => {
 };
 
 export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
+  const { width: windowW } = useWindowDimensions();
+  const numCols = isMobileWidth(windowW) ? 2 : windowW >= 960 ? 4 : windowW >= 640 ? 3 : 2;
   const [link, setLink] = useState<GuestLinkInfo | null>(null);
   const [models, setModels] = useState<GuestLinkModel[]>([]);
   const [loading, setLoading] = useState(true);
@@ -471,7 +476,7 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
         <View style={styles.header}>
           <Text style={styles.brand}>INDEX CASTING</Text>
           <TouchableOpacity onPress={() => setPhase('browse')}>
-            <Text style={styles.backLink}>← Back to models</Text>
+            <Text style={styles.backLink}>{copy.backToModels}</Text>
           </TouchableOpacity>
         </View>
 
@@ -690,11 +695,12 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
 
       {/* ── Model grid (FlatList for virtualised / lazy rendering) ── */}
       <FlatList
+        key={`guest-grid-${numCols}`}
         style={styles.scrollArea}
         contentContainerStyle={styles.grid}
         data={models}
         keyExtractor={(m) => m.id}
-        numColumns={2}
+        numColumns={numCols}
         columnWrapperStyle={styles.gridRow}
         initialNumToRender={6}
         maxToRenderPerBatch={6}
@@ -786,6 +792,8 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
               u.searchParams.delete('guest');
               u.searchParams.set('signup', '1');
               window.location.href = u.toString();
+            } else {
+              Linking.openURL('https://indexcasting.com').catch(() => {});
             }
           }}
         >
@@ -932,7 +940,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingTop: spacing.lg,
     paddingBottom: spacing.md,
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
   headerSub: { ...typography.body, color: colors.textSecondary, fontSize: 12 },
@@ -947,30 +955,33 @@ const styles = StyleSheet.create({
   modelCardBrowse: {
     flex: 1,
     minWidth: 0,
-    borderWidth: 0,
-    borderRadius: 8,
     marginBottom: spacing.sm,
-    overflow: 'hidden',
     backgroundColor: 'transparent',
   },
   guestImageArea: {
     position: 'relative',
     width: '100%',
+    aspectRatio: 3 / 4,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#E8E6E0',
   },
   guestStarBtn: {
     position: 'absolute',
-    top: 6,
-    right: 6,
+    top: 8,
+    right: 8,
     zIndex: 20,
-    paddingHorizontal: 6,
-    paddingVertical: 4,
+    width: 28,
+    height: 28,
     borderRadius: 14,
-    backgroundColor: 'rgba(0,0,0,0.38)',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   guestStarGlyph: {
-    fontSize: 17,
+    fontSize: 15,
     color: '#fff',
-    lineHeight: 20,
+    lineHeight: 17,
   },
   formContent: {
     paddingHorizontal: spacing.md,
@@ -1021,7 +1032,7 @@ const styles = StyleSheet.create({
   },
   selectedBadgeText: { color: colors.surface, fontSize: 14, fontWeight: '700' },
   modelImage: { width: '100%', height: 200 },
-  modelImageBrowse: { width: '100%', height: 160, backgroundColor: colors.surface },
+  modelImageBrowse: { width: '100%', height: '100%', backgroundColor: '#E8E6E0' },
   modelImagePlaceholder: {
     width: '100%',
     height: 200,
@@ -1030,17 +1041,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   modelImageBrowsePlaceholder: {
-    height: 160,
+    height: '100%',
   },
   placeholderText: { fontSize: 48, color: colors.textSecondary },
-  modelInfo: { paddingHorizontal: spacing.xs, paddingTop: spacing.xs, paddingBottom: spacing.sm },
+  modelInfo: { paddingTop: 6, paddingBottom: spacing.sm },
   modelName: {
     ...typography.label,
     color: colors.textPrimary,
-    fontSize: 14,
+    fontSize: 13,
+    fontWeight: '600',
     marginBottom: 2,
   },
-  modelMeta: { ...typography.body, color: colors.textSecondary, fontSize: 11, marginBottom: 2 },
+  modelMeta: {
+    ...typography.body,
+    color: colors.textSecondary,
+    fontSize: 10,
+    lineHeight: 14,
+    marginBottom: 1,
+  },
   fieldLabel: {
     ...typography.label,
     color: colors.textPrimary,
@@ -1131,8 +1149,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 6,
   },
   galleryBackGlyph: {
     color: '#fff',
@@ -1141,7 +1159,7 @@ const styles = StyleSheet.create({
   },
   galleryBackLabel: {
     color: '#fff',
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
   },
   galleryCounter: {

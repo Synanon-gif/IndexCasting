@@ -29,6 +29,13 @@ export const uiCopy = {
   sharedSelection: {
     title: 'Shared selection',
     empty: 'No models in this selection.',
+    loadFailed: 'Failed to load models. Please try again later.',
+    signUpToAccess: 'Sign up to get full access',
+    authGateBody:
+      'Create an account to chat with agencies, request options, and manage your selections.',
+    authGateSignUp: 'Sign up',
+    authGateContinue: 'Continue browsing',
+    backToGallery: '← Back to gallery',
   },
   /** GDPR Art. 20 / 7 — agency settings tab + client web settings (English-only). */
   privacyData: {
@@ -1125,6 +1132,10 @@ export const uiCopy = {
     detailNoPolaroidImages: 'No polaroid images',
     /** Gallery detail viewer — back to grid */
     backToGallery: 'Back',
+    /** Empty package / project gallery grid — not the Discover "no filters" empty state */
+    galleryEmptySelection: 'No models in this selection yet.',
+    /** Compact inseam fragment on gallery tiles (optional fourth measurement). */
+    detailMeasurementInseam: 'Inseam',
     /** Primary CTA to open the existing option date picker (no inline date pills). */
     openOptionPicker: 'Option',
     /** Local-only gallery favorite toggle (accessibility label). */
@@ -1282,6 +1293,7 @@ export const uiCopy = {
     packageTypePortfolioLabel: 'Portfolio Package',
     browseHeaderAgencyFallback: 'Organization',
     modelsCountInHeader: '{count} models',
+    backToModels: '← Back to models',
     sexFemale: 'Female',
     sexMale: 'Male',
     checkEmailSentToPrefix: 'We sent a link to',

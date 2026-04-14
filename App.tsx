@@ -697,6 +697,18 @@ function AppContent() {
     }
   }
 
+  // Shared selection links are publicly browsable (no login required).
+  // Actions (Chat, Option, Add to Selection, Star) are gated — the view
+  // shows a sign-up prompt when an unauthenticated user attempts an action.
+  if (sharedParams) {
+    return (
+      <>
+        <SharedSelectionView shareName={sharedParams.name} modelIds={sharedParams.ids} />
+        <StatusBar style="dark" />
+      </>
+    );
+  }
+
   if (!session) {
     // Public legal routes (web): /terms and /privacy render full-screen without auth.
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
@@ -896,18 +908,6 @@ function AppContent() {
     }
   }
 
-  // Shared selection links require an authenticated session to protect model data.
-  // Unauthenticated users reaching ?shared=1 fall through to the auth screen above;
-  // after login they are routed to their role view (shared link is not re-shown,
-  // which is intentional — the sender should distribute via proper guest links).
-  if (sharedParams && session) {
-    return (
-      <>
-        <SharedSelectionView shareName={sharedParams.name} modelIds={sharedParams.ids} />
-        <StatusBar style="dark" />
-      </>
-    );
-  }
 
   const handleBackToRoleSelection = () => {
     signOut();
