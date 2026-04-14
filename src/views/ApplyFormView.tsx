@@ -23,6 +23,10 @@ import { splitProfileDisplayName } from '../utils/applicantNameFromProfile';
 import { uiCopy } from '../constants/uiCopy';
 import { FILTER_COUNTRIES, ETHNICITY_OPTIONS } from '../utils/modelFilters';
 import { confirmImageRights } from '../services/gdprComplianceSupabase';
+import {
+  APPLY_FORM_EMPTY_PHOTO_SLOT_HEIGHT,
+  APPLY_FORM_FILLED_PHOTO_ASPECT_RATIO,
+} from './applyFormPhotoLayout';
 
 type ImageSlot = 'closeUp' | 'fullBody' | 'profile';
 
@@ -505,7 +509,10 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             {wrapImageDropZone(
               slot,
               <TouchableOpacity
-                style={styles.imageBox}
+                style={[
+                  styles.imageBox,
+                  images[slot] ? styles.imageBoxFilled : styles.imageBoxEmpty,
+                ]}
                 onPress={() => triggerFileInput(slot)}
                 activeOpacity={0.8}
               >
@@ -714,7 +721,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   imageBox: {
-    aspectRatio: 3 / 4,
+    alignSelf: 'stretch',
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
@@ -722,6 +729,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+  },
+  /** No image yet: fixed height — do not use 3:4 × full width (huge on desktop web). */
+  imageBoxEmpty: {
+    height: APPLY_FORM_EMPTY_PHOTO_SLOT_HEIGHT,
+    borderStyle: 'dashed',
+  },
+  /** Image present: keep portrait preview ratio. */
+  imageBoxFilled: {
+    aspectRatio: APPLY_FORM_FILLED_PHOTO_ASPECT_RATIO,
   },
   previewImage: {
     width: '100%',
