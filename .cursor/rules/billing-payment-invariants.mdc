@@ -1,0 +1,57 @@
+---
+description: B2B billing prep, invoices (future), and model billing firewall — must not regress.
+alwaysApply: false
+---
+
+# Billing & Payment Invariants (I-PAY-1 … I-PAY-10)
+
+Scope: organization billing profiles/defaults, future invoice drafts, platform fees (future), and **strict separation from model-facing surfaces**.
+
+## I-PAY-1 — Canonical booking state as invoice basis
+
+When invoice or payment features exist, amounts and commercial truth **must** come from canonical DB state (`getCanonicalAgreedPrice`, `option_requests`, `booking_events`, billing tables) — **not** from stale frontend cache alone.
+
+## I-PAY-2 — Editable drafts (when invoices exist)
+
+Auto-generated invoice drafts are **suggestions**. Line items, taxes, and totals must remain **user-editable** without mutating canonical `option_requests` negotiation fields unless explicitly designed otherwise.
+
+## I-PAY-3 — Owner-scoped billing settings
+
+`organization_billing_profiles` and `organization_billing_defaults` are **owner write**; RLS uses `is_org_owner(organization_id)`. Org members may **read** per policy where needed for future invoice UI.
+
+## I-PAY-4 — Explicit add-on line items
+
+Travel, extras, and similar costs must be **explicit line items** when invoicing exists — never hidden inside agreed fee fields on `option_requests`.
+
+## I-PAY-5 — No customer-facing invoice before terminal booking state
+
+Invoice issuance (when built) must not precede the agreed **job-confirmed** (or product-defined terminal) lifecycle state for that booking.
+
+## I-PAY-6 — Currency consistency
+
+Default currency from org defaults must align with `option_requests.currency` for that booking; no silent currency switching.
+
+## I-PAY-7 — Tax defaults are informational
+
+Default tax hints in org defaults are **defaults** for drafts; final tax treatment remains user/accountant responsibility unless a dedicated tax engine is added.
+
+## I-PAY-8 — Multi-address is optional
+
+Orgs may have multiple billing identities; exactly one **default** per org where the schema requires it (partial unique index on default).
+
+## I-PAY-9 — No custodial booking funds (principle)
+
+The product does not hold client↔agency booking proceeds in custody. Subscription billing (Stripe) is separate from B2B booking money flows. Future card/Connect flows must preserve **direct settlement** semantics — no “float” as a product feature unless explicitly designed and compliant.
+
+## I-PAY-10 — MODEL BILLING FIREWALL (non-negotiable)
+
+- **Client ↔ Agency billing visibility only** for B2B billing: invoices, billing settings, platform fees, payment status, tax identifiers, bank/payment details, and client payment data.
+- **Models must not** see: billing settings UI, invoice data, platform fees, payment status, tax data, or client/agency payment details in any model-facing route, API, or realtime payload.
+- **Do not** add billing tables or invoice joins to model-safe selects (`OPTION_REQUEST_SELECT_MODEL_SAFE` and related paths stay price-agnostic per existing model safety contract).
+- **Future Agency → Model payouts** (if ever): **separate** feature — own UI, own RLS, own tables/flows — **no** mixing with client↔agency invoice views.
+
+## Regression checklist (when touching billing)
+
+- [ ] No new model-facing surface exposes billing/fee/invoice/payment fields.
+- [ ] No weakening of `OPTION_REQUEST_SELECT_MODEL_SAFE` for commercial columns.
+- [ ] Owner-only billing writes remain enforced in RLS.

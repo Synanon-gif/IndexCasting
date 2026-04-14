@@ -200,6 +200,7 @@ import { ClientOrganizationTeamSection } from '../components/ClientOrganizationT
 import { OrgMessengerInline } from '../components/OrgMessengerInline';
 import { OrgMetricsPanel } from '../components/OrgMetricsPanel';
 import { OwnerBillingStatusCard } from '../components/OwnerBillingStatusCard';
+import { BillingDetailsForm } from '../components/BillingDetailsForm';
 import { GlobalSearchBar } from '../components/GlobalSearchBar';
 import { DashboardSummaryBar } from '../components/DashboardSummaryBar';
 import { StorageImage } from '../components/StorageImage';
@@ -2657,6 +2658,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                 Team
               </Text>
               {clientOrgId && <OwnerBillingStatusCard variant="client" />}
+              <BillingDetailsForm organizationId={clientOrgId ?? null} />
               {clientOrgId && isOrganizationOwner(auth.profile?.org_member_role) && (
                 <ClientOrgMetricsPanelWrapper orgId={clientOrgId} />
               )}

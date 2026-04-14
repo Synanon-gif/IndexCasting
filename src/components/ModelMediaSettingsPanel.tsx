@@ -22,8 +22,11 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
+
+import { StorageImage } from './StorageImage';
 
 import { supabase } from '../../lib/supabase';
 import { uiCopy } from '../constants/uiCopy';
@@ -93,6 +96,9 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
   const [portfolio, setPortfolio] = useState<ResolvedPhoto[]>([]);
   const [polaroids, setPolaroids] = useState<ResolvedPhoto[]>([]);
   const [privatePhotos, setPrivatePhotos] = useState<ResolvedPhoto[]>([]);
+
+  const [mediaViewMode, setMediaViewMode] = useState<'manage' | 'gallery'>('manage');
+  const { width: _mediaPanelWidth } = useWindowDimensions();
 
   const [uploading, setUploading] = useState<'portfolio' | 'polaroid' | 'private' | null>(null);
   const [imageRightsConfirmed, setImageRightsConfirmed] = useState(false);
@@ -700,103 +706,204 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
   // Render
   // ---------------------------------------------------------------------------
 
-  return (
-    <ScrollView showsVerticalScrollIndicator={false}>
-      {/* ── IMAGE RIGHTS CONFIRMATION (required before any upload) ────── */}
-      <TouchableOpacity
-        style={{
-          flexDirection: 'row',
-          alignItems: 'flex-start',
-          marginBottom: spacing.md,
-          paddingTop: spacing.sm,
-        }}
-        onPress={() => setImageRightsConfirmed((v) => !v)}
-        activeOpacity={0.8}
-      >
-        <View
-          style={{
-            width: 18,
-            height: 18,
-            borderRadius: 3,
-            borderWidth: 1.5,
-            borderColor: imageRightsConfirmed ? colors.accentGreen : colors.textSecondary,
-            backgroundColor: imageRightsConfirmed ? colors.accentGreen : 'transparent',
-            marginRight: 8,
-            marginTop: 2,
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-          }}
-        >
-          {imageRightsConfirmed && (
-            <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>✓</Text>
-          )}
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary }}>
-            {legalCopy.chatFileRightsCheckbox}
-          </Text>
-          <Text style={{ fontSize: 10, color: colors.textSecondary, marginTop: 4, lineHeight: 14 }}>
-            {copy.imageRightsCheckboxSessionHint}
-          </Text>
-          {rightsAuditWindowActive ? (
-            <Text
+  // ---------------------------------------------------------------------------
+  // Gallery grid helper
+  // ---------------------------------------------------------------------------
+  const renderGalleryGrid = (photos: ResolvedPhoto[]) => {
+    if (photos.length === 0) {
+      return <Text style={s.emptyLabel}>{copy.noPhotos}</Text>;
+    }
+    const galColCount = _mediaPanelWidth >= 960 ? 4 : _mediaPanelWidth >= 640 ? 3 : 2;
+    const galTileW =
+      (_mediaPanelWidth - (galColCount - 1) * spacing.sm - spacing.md * 2) / galColCount;
+    return (
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
+        {photos.map((photo) => (
+          <View key={photo.id ?? photo.url} style={{ width: galTileW, marginBottom: spacing.xs }}>
+            <View
               style={{
-                fontSize: 10,
-                color: colors.accentGreen ?? colors.success,
-                marginTop: 4,
-                lineHeight: 14,
+                width: '100%',
+                aspectRatio: 3 / 4,
+                borderRadius: 8,
+                overflow: 'hidden',
+                backgroundColor: colors.surfaceAlt ?? colors.border,
               }}
             >
-              {copy.imageRightsSessionActiveHint}
+              {photo.displayUrl ? (
+                <StorageImage
+                  uri={photo.displayUrl}
+                  style={{ width: '100%', height: '100%' }}
+                  resizeMode="contain"
+                />
+              ) : (
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 22, color: colors.textSecondary }}>◻</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        ))}
+      </View>
+    );
+  };
+
+  const renderGallerySection = (title: string, hint: string, photos: ResolvedPhoto[]) => (
+    <View style={{ marginBottom: spacing.lg }}>
+      <Text style={s.sectionTitle}>{title}</Text>
+      <Text style={s.sectionHint}>{hint}</Text>
+      {renderGalleryGrid(photos)}
+    </View>
+  );
+
+  return (
+    <ScrollView showsVerticalScrollIndicator={false}>
+      {/* ── View mode toggle: Manage / Gallery ──────────────────── */}
+      <View style={{ flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.md }}>
+        {(['manage', 'gallery'] as const).map((mode) => (
+          <TouchableOpacity
+            key={mode}
+            onPress={() => setMediaViewMode(mode)}
+            style={{
+              paddingHorizontal: spacing.md,
+              paddingVertical: 6,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: mediaViewMode === mode ? colors.textPrimary : colors.border,
+              backgroundColor: mediaViewMode === mode ? colors.textPrimary : 'transparent',
+            }}
+          >
+            <Text
+              style={{
+                ...typography.label,
+                fontSize: 11,
+                color: mediaViewMode === mode ? colors.surface : colors.textSecondary,
+              }}
+            >
+              {mode === 'manage' ? copy.viewManage : copy.viewGallery}
             </Text>
-          ) : null}
-        </View>
-      </TouchableOpacity>
-
-      {/* ── PORTFOLIO ───────────────────────────────────────────────────── */}
-      <View style={s.section}>
-        <Text style={s.sectionTitle}>{copy.portfolioTitle}</Text>
-        <Text style={s.sectionHint}>{copy.portfolioHint}</Text>
-
-        {portfolio.length === 0 && <Text style={s.emptyLabel}>{copy.noPhotos}</Text>}
-        {portfolio.map((photo, idx) =>
-          renderPhotoRow(photo, idx, portfolio, 'portfolio', setPortfolio, syncPortfolio),
-        )}
-        {renderUploadRow('portfolio')}
-        {renderUrlInput('portfolio', newPortfolioUrl, setNewPortfolioUrl, () =>
-          setNewPortfolioUrl(''),
-        )}
+          </TouchableOpacity>
+        ))}
       </View>
 
-      {/* ── POLAROIDS ───────────────────────────────────────────────────── */}
-      <View style={s.section}>
-        <Text style={s.sectionTitle}>{copy.polaroidsTitle}</Text>
-        <Text style={s.sectionHint}>{copy.polaroidsHint}</Text>
+      {/* ── Gallery mode ───────────────────────────────────────── */}
+      {mediaViewMode === 'gallery' && (
+        <>
+          {renderGallerySection(copy.portfolioTitle, copy.portfolioHint, portfolio)}
+          {renderGallerySection(copy.polaroidsTitle, copy.polaroidsHint, polaroids)}
+          <View style={[s.privateSection, { marginBottom: spacing.lg }]}>
+            <View style={s.privateHeader}>
+              <Text style={[s.sectionTitle, s.privateSectionTitle]}>{copy.privateTitle}</Text>
+              <Text style={s.privateSectionSubtitle}>{copy.privateSubtitle}</Text>
+            </View>
+            {renderGalleryGrid(privatePhotos)}
+          </View>
+        </>
+      )}
 
-        {polaroids.length === 0 && <Text style={s.emptyLabel}>{copy.noPhotos}</Text>}
-        {polaroids.map((photo, idx) =>
-          renderPhotoRow(photo, idx, polaroids, 'polaroid', setPolaroids, syncPolaroids),
-        )}
-        {renderUploadRow('polaroid')}
-        {renderUrlInput('polaroid', newPolaroidUrl, setNewPolaroidUrl, () => setNewPolaroidUrl(''))}
-      </View>
+      {/* ── Manage mode (existing) ─────────────────────────────── */}
+      {mediaViewMode === 'manage' && (
+        <>
+          {/* ── IMAGE RIGHTS CONFIRMATION (required before any upload) ────── */}
+          <TouchableOpacity
+            style={{
+              flexDirection: 'row',
+              alignItems: 'flex-start',
+              marginBottom: spacing.md,
+              paddingTop: spacing.sm,
+            }}
+            onPress={() => setImageRightsConfirmed((v) => !v)}
+            activeOpacity={0.8}
+          >
+            <View
+              style={{
+                width: 18,
+                height: 18,
+                borderRadius: 3,
+                borderWidth: 1.5,
+                borderColor: imageRightsConfirmed ? colors.accentGreen : colors.textSecondary,
+                backgroundColor: imageRightsConfirmed ? colors.accentGreen : 'transparent',
+                marginRight: 8,
+                marginTop: 2,
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              {imageRightsConfirmed && (
+                <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>✓</Text>
+              )}
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary }}>
+                {legalCopy.chatFileRightsCheckbox}
+              </Text>
+              <Text
+                style={{ fontSize: 10, color: colors.textSecondary, marginTop: 4, lineHeight: 14 }}
+              >
+                {copy.imageRightsCheckboxSessionHint}
+              </Text>
+              {rightsAuditWindowActive ? (
+                <Text
+                  style={{
+                    fontSize: 10,
+                    color: colors.accentGreen ?? colors.success,
+                    marginTop: 4,
+                    lineHeight: 14,
+                  }}
+                >
+                  {copy.imageRightsSessionActiveHint}
+                </Text>
+              ) : null}
+            </View>
+          </TouchableOpacity>
 
-      {/* ── PRIVATE FOLDER ──────────────────────────────────────────────── */}
-      <View style={[s.section, s.privateSection]}>
-        <View style={s.privateHeader}>
-          <Text style={[s.sectionTitle, s.privateSectionTitle]}>{copy.privateTitle}</Text>
-          <Text style={s.privateSectionSubtitle}>{copy.privateSubtitle}</Text>
-        </View>
+          {/* ── PORTFOLIO ───────────────────────────────────────────────────── */}
+          <View style={s.section}>
+            <Text style={s.sectionTitle}>{copy.portfolioTitle}</Text>
+            <Text style={s.sectionHint}>{copy.portfolioHint}</Text>
 
-        {privatePhotos.length === 0 && (
-          <Text style={[s.emptyLabel, { color: colors.textSecondary }]}>{copy.noPhotos}</Text>
-        )}
-        {privatePhotos.map((photo, idx) =>
-          renderPhotoRow(photo, idx, privatePhotos, 'private', setPrivatePhotos),
-        )}
-        {renderUploadRow('private')}
-      </View>
+            {portfolio.length === 0 && <Text style={s.emptyLabel}>{copy.noPhotos}</Text>}
+            {portfolio.map((photo, idx) =>
+              renderPhotoRow(photo, idx, portfolio, 'portfolio', setPortfolio, syncPortfolio),
+            )}
+            {renderUploadRow('portfolio')}
+            {renderUrlInput('portfolio', newPortfolioUrl, setNewPortfolioUrl, () =>
+              setNewPortfolioUrl(''),
+            )}
+          </View>
+
+          {/* ── POLAROIDS ───────────────────────────────────────────────────── */}
+          <View style={s.section}>
+            <Text style={s.sectionTitle}>{copy.polaroidsTitle}</Text>
+            <Text style={s.sectionHint}>{copy.polaroidsHint}</Text>
+
+            {polaroids.length === 0 && <Text style={s.emptyLabel}>{copy.noPhotos}</Text>}
+            {polaroids.map((photo, idx) =>
+              renderPhotoRow(photo, idx, polaroids, 'polaroid', setPolaroids, syncPolaroids),
+            )}
+            {renderUploadRow('polaroid')}
+            {renderUrlInput('polaroid', newPolaroidUrl, setNewPolaroidUrl, () =>
+              setNewPolaroidUrl(''),
+            )}
+          </View>
+
+          {/* ── PRIVATE FOLDER ──────────────────────────────────────────────── */}
+          <View style={[s.section, s.privateSection]}>
+            <View style={s.privateHeader}>
+              <Text style={[s.sectionTitle, s.privateSectionTitle]}>{copy.privateTitle}</Text>
+              <Text style={s.privateSectionSubtitle}>{copy.privateSubtitle}</Text>
+            </View>
+
+            {privatePhotos.length === 0 && (
+              <Text style={[s.emptyLabel, { color: colors.textSecondary }]}>{copy.noPhotos}</Text>
+            )}
+            {privatePhotos.map((photo, idx) =>
+              renderPhotoRow(photo, idx, privatePhotos, 'private', setPrivatePhotos),
+            )}
+            {renderUploadRow('private')}
+          </View>
+        </>
+      )}
     </ScrollView>
   );
 };

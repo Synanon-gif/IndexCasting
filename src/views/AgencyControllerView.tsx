@@ -262,6 +262,7 @@ import { ClientOrgFilterDropdown } from '../components/ClientOrgFilterDropdown';
 import { DashboardSummaryBar } from '../components/DashboardSummaryBar';
 import { OrgMetricsPanel } from '../components/OrgMetricsPanel';
 import { OwnerBillingStatusCard } from '../components/OwnerBillingStatusCard';
+import { BillingDetailsForm } from '../components/BillingDetailsForm';
 import { GlobalSearchBar } from '../components/GlobalSearchBar';
 import {
   getMyAgencyUsageLimits,
@@ -965,6 +966,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         {tab === 'settings' && isOrganizationOwner(profile?.org_member_role) && (
           <ScreenScrollView>
             <OwnerBillingStatusCard variant="agency" />
+            <BillingDetailsForm organizationId={agencyOrganizationId ?? null} />
             {agencyOrganizationId && (
               <OrgMetricsPanel
                 orgId={agencyOrganizationId}
@@ -2768,6 +2770,7 @@ const MyModelsTab: React.FC<{
   const [selectedModelLocation, setSelectedModelLocation] = useState<ModelLocation | null>(null);
   const [filters, setFilters] = useState<ModelFilters>(defaultModelFilters);
   const [rosterNameSearch, setRosterNameSearch] = useState('');
+  const [rosterViewMode, setRosterViewMode] = useState<'list' | 'gallery'>('list');
   const [editState, setEditState] = useState<ModelEditState>(buildEditState({ name: '' }));
 
   const [showAddForm, setShowAddForm] = useState(false);
@@ -2782,6 +2785,7 @@ const MyModelsTab: React.FC<{
   const [addModelFeedback, setAddModelFeedback] = useState<string | null>(null);
   const [addModelImageRightsConfirmed, setAddModelImageRightsConfirmed] = useState(false);
 
+  const [importSectionExpanded, setImportSectionExpanded] = useState(false);
   const [showMediaslideInput, setShowMediaslideInput] = useState(false);
   const [showNetwalkInput, setShowNetwalkInput] = useState(false);
   const [mediaslideKey, setMediaslideKey] = useState('');
@@ -4396,150 +4400,7 @@ const MyModelsTab: React.FC<{
     <ScreenScrollView
       contentStyle={selectedModelIds.size > 0 ? { paddingBottom: spacing.xl * 5 } : undefined}
     >
-      {/* API Import Section */}
-      <View style={s.apiSection}>
-        <Text style={s.sectionLabel}>API Import</Text>
-        <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm }}>
-          <TouchableOpacity style={s.apiBtn} onPress={() => setShowMediaslideInput((v) => !v)}>
-            <Text style={s.apiBtnLabel}>Connect Mediaslide</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={s.apiBtn} onPress={() => setShowNetwalkInput((v) => !v)}>
-            <Text style={s.apiBtnLabel}>Connect Netwalk</Text>
-          </TouchableOpacity>
-        </View>
-        <View style={{ flexDirection: 'row', gap: spacing.md, marginBottom: spacing.sm }}>
-          <Text style={s.metaText}>
-            Mediaslide: {mediaslideKey ? 'Connected' : 'Not connected'}
-          </Text>
-          <Text style={s.metaText}>Netwalk: {netwalkKey ? 'Connected' : 'Not connected'}</Text>
-        </View>
-        {showMediaslideInput && (
-          <View
-            style={{
-              flexDirection: 'row',
-              gap: spacing.sm,
-              marginBottom: spacing.sm,
-              alignItems: 'center',
-            }}
-          >
-            <TextInput
-              value={mediaslideKey}
-              onChangeText={setMediaslideKey}
-              placeholder={uiCopy.modelRoster.mediaslideApiKeyPlaceholder}
-              placeholderTextColor={colors.textSecondary}
-              style={[s.editInput, { flex: 1 }]}
-            />
-            <TouchableOpacity
-              style={s.apiConnectBtn}
-              onPress={() => saveApiKey('mediaslide', mediaslideKey)}
-            >
-              <Text style={s.saveBtnLabel}>Connect</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-        {showNetwalkInput && (
-          <View
-            style={{
-              flexDirection: 'row',
-              gap: spacing.sm,
-              marginBottom: spacing.sm,
-              alignItems: 'center',
-            }}
-          >
-            <TextInput
-              value={netwalkKey}
-              onChangeText={setNetwalkKey}
-              placeholder={uiCopy.modelRoster.netwalkApiKeyPlaceholder}
-              placeholderTextColor={colors.textSecondary}
-              style={[s.editInput, { flex: 1 }]}
-            />
-            <TouchableOpacity
-              style={s.apiConnectBtn}
-              onPress={() => saveApiKey('netwalk', netwalkKey)}
-            >
-              <Text style={s.saveBtnLabel}>Connect</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-        {(mediaslideKey || netwalkKey) && (
-          <TouchableOpacity
-            style={[
-              s.saveBtn,
-              { alignSelf: 'flex-start', paddingHorizontal: spacing.lg },
-              syncLoading && { opacity: 0.6 },
-            ]}
-            onPress={handleSync}
-            disabled={syncLoading}
-          >
-            <Text style={s.saveBtnLabel}>{syncLoading ? 'Syncing…' : 'Sync Models'}</Text>
-          </TouchableOpacity>
-        )}
-        {syncFeedback && (
-          <Text
-            style={{
-              ...typography.body,
-              fontSize: 12,
-              color: colors.accentGreen,
-              marginTop: spacing.xs,
-            }}
-          >
-            {syncFeedback}
-          </Text>
-        )}
-      </View>
-
-      {/* ── Import from Link ─────────────────────────────────────────────── */}
-      <View style={s.apiSection}>
-        <Text style={s.sectionLabel}>Import from Link</Text>
-        <Text
-          style={{
-            ...typography.body,
-            fontSize: 12,
-            color: colors.textSecondary,
-            marginBottom: spacing.sm,
-          }}
-        >
-          Paste a URL that returns a JSON model profile (name, height, measurements, photos). If a
-          profile with the same email or Mediaslide ID already exists it will be merged.
-        </Text>
-        <View style={{ flexDirection: 'row', gap: spacing.sm, alignItems: 'center' }}>
-          <TextInput
-            value={importLinkUrl}
-            onChangeText={setImportLinkUrl}
-            placeholder={uiCopy.modelRoster.importUrlPlaceholder}
-            placeholderTextColor={colors.textSecondary}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="url"
-            style={[s.editInput, { flex: 1 }]}
-          />
-          <TouchableOpacity
-            style={[
-              s.apiConnectBtn,
-              (!importLinkUrl.trim() || importLinkLoading) && { opacity: 0.5 },
-            ]}
-            onPress={handleImportByLink}
-            disabled={!importLinkUrl.trim() || importLinkLoading}
-          >
-            <Text style={s.saveBtnLabel}>
-              {importLinkLoading ? 'Importing…' : 'Import & Merge'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-        {importLinkFeedback && (
-          <Text
-            style={{
-              ...typography.body,
-              fontSize: 12,
-              color: importLinkFeedback.ok ? colors.accentGreen : colors.error,
-              marginTop: spacing.xs,
-            }}
-          >
-            {importLinkFeedback.message}
-          </Text>
-        )}
-      </View>
-
+      {/* ── My Models (primary section) ─────────────────────────────── */}
       <View
         style={{
           flexDirection: 'row',
@@ -4561,6 +4422,34 @@ const MyModelsTab: React.FC<{
         style={[s.editInput, { marginBottom: spacing.sm, width: '100%' }]}
       />
       <ModelFiltersPanel filters={filters} onChangeFilters={setFilters} />
+
+      {/* View mode toggle: List / Gallery */}
+      <View style={{ flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.sm }}>
+        {(['list', 'gallery'] as const).map((mode) => (
+          <TouchableOpacity
+            key={mode}
+            onPress={() => setRosterViewMode(mode)}
+            style={{
+              paddingHorizontal: spacing.md,
+              paddingVertical: 6,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: rosterViewMode === mode ? colors.textPrimary : colors.border,
+              backgroundColor: rosterViewMode === mode ? colors.textPrimary : 'transparent',
+            }}
+          >
+            <Text
+              style={{
+                ...typography.label,
+                fontSize: 11,
+                color: rosterViewMode === mode ? colors.surface : colors.textSecondary,
+              }}
+            >
+              {mode === 'list' ? uiCopy.modelRoster.viewList : uiCopy.modelRoster.viewGallery}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
 
       {/* Add Model Manually */}
       <TouchableOpacity
@@ -5056,249 +4945,353 @@ const MyModelsTab: React.FC<{
         );
       })()}
 
-      {filtered.map((m) => {
-        const isChecked = selectedModelIds.has(m.id);
-        return (
-          <View key={m.id} style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <TouchableOpacity
-              style={{ padding: spacing.sm, paddingRight: 0 }}
-              onPress={() =>
-                setSelectedModelIds((prev) => {
-                  const next = new Set(prev);
-                  if (next.has(m.id)) next.delete(m.id);
-                  else next.add(m.id);
-                  return next;
-                })
-              }
-            >
-              <View
-                style={{
-                  width: 20,
-                  height: 20,
-                  borderRadius: 4,
-                  borderWidth: 1.5,
-                  borderColor: isChecked ? colors.textPrimary : colors.border,
-                  backgroundColor: isChecked ? colors.textPrimary : 'transparent',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                {isChecked && (
-                  <Text style={{ color: colors.surface, fontSize: 12, lineHeight: 16 }}>✓</Text>
-                )}
-              </View>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[s.modelRow, { flex: 1, marginLeft: spacing.xs }]}
-              onPress={() => setSelectedModel(m)}
-            >
-              {(() => {
+      {/* ── Gallery view ──────────────────────────────────────────── */}
+      {rosterViewMode === 'gallery' &&
+        (() => {
+          const galColCount = _myModelsWidth >= 960 ? 4 : _myModelsWidth >= 640 ? 3 : 2;
+          const shellPad = agencyIsMobile ? spacing.sm : spacing.lg;
+          const galTileW =
+            (_myModelsWidth - (galColCount - 1) * spacing.sm - shellPad * 2) / galColCount;
+          return (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
+              {filtered.map((m) => {
+                const isChecked = selectedModelIds.has(m.id);
                 const raw = (m.portfolio_images ?? [])[0];
                 const coverUri = raw ? normalizeDocumentspicturesModelImageRef(raw, m.id) : '';
-                return coverUri ? (
-                  <StorageImage
-                    uri={coverUri}
-                    style={{
-                      width: 44,
-                      height: 44,
-                      borderRadius: 6,
-                      marginRight: spacing.sm,
-                      backgroundColor: colors.border,
-                    }}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <View
-                    style={{
-                      width: 44,
-                      height: 44,
-                      borderRadius: 6,
-                      marginRight: spacing.sm,
-                      backgroundColor: colors.border,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
+                return (
+                  <TouchableOpacity
+                    key={m.id}
+                    style={{ width: galTileW, marginBottom: spacing.xs }}
+                    onPress={() => setSelectedModel(m)}
+                    activeOpacity={0.85}
                   >
-                    <Text style={{ fontSize: 18, color: colors.textSecondary }}>◻</Text>
-                  </View>
-                );
-              })()}
-              <View style={{ flex: 1 }}>
-                <Text style={s.modelName}>{m.name}</Text>
-                <Text style={s.metaText}>
-                  {m.city ?? '—'} · H{m.height} C{(m as SupabaseModel).chest ?? m.bust ?? '—'} W
-                  {m.waist ?? '—'} H{m.hips ?? '—'}
-                </Text>
-                {(rosterTerritoriesMap[m.id] ?? []).length > 0 ? (
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 2, marginTop: 3 }}>
-                    {(rosterTerritoriesMap[m.id] ?? []).slice(0, 6).map((code) => (
-                      <View
-                        key={code}
-                        style={{
-                          paddingHorizontal: 4,
-                          paddingVertical: 1,
-                          borderRadius: 3,
-                          borderWidth: 1,
-                          borderColor: colors.accentGreen ?? colors.success,
-                          backgroundColor: 'transparent',
-                        }}
-                      >
-                        <Text
+                    <View
+                      style={{
+                        width: '100%',
+                        aspectRatio: 3 / 4,
+                        borderRadius: 8,
+                        overflow: 'hidden',
+                        backgroundColor: colors.surfaceAlt ?? colors.border,
+                      }}
+                    >
+                      {coverUri ? (
+                        <StorageImage
+                          uri={coverUri}
+                          style={{ width: '100%', height: '100%' }}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                          <Text style={{ fontSize: 28, color: colors.textSecondary }}>◻</Text>
+                        </View>
+                      )}
+                      {selectedModelIds.size > 0 && (
+                        <TouchableOpacity
                           style={{
-                            ...typography.label,
-                            fontSize: 8,
-                            color: colors.accentGreen ?? colors.success,
-                            letterSpacing: 0.3,
+                            position: 'absolute',
+                            top: 6,
+                            left: 6,
+                            width: 22,
+                            height: 22,
+                            borderRadius: 4,
+                            borderWidth: 1.5,
+                            borderColor: isChecked ? colors.textPrimary : 'rgba(255,255,255,0.8)',
+                            backgroundColor: isChecked ? colors.textPrimary : 'rgba(0,0,0,0.25)',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                          onPress={() => {
+                            setSelectedModelIds((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(m.id)) next.delete(m.id);
+                              else next.add(m.id);
+                              return next;
+                            });
                           }}
                         >
-                          {code}
-                        </Text>
-                      </View>
-                    ))}
-                    {(rosterTerritoriesMap[m.id] ?? []).length > 6 && (
-                      <View
-                        style={{
-                          paddingHorizontal: 4,
-                          paddingVertical: 1,
-                          borderRadius: 3,
-                          borderWidth: 1,
-                          borderColor: colors.border,
-                        }}
-                      >
-                        <Text
-                          style={{ ...typography.label, fontSize: 8, color: colors.textSecondary }}
+                          {isChecked && (
+                            <Text style={{ color: colors.surface, fontSize: 11, lineHeight: 14 }}>
+                              ✓
+                            </Text>
+                          )}
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                    <Text
+                      style={{
+                        ...typography.body,
+                        fontSize: 13,
+                        fontWeight: '600',
+                        color: colors.textPrimary,
+                        marginTop: 4,
+                      }}
+                      numberOfLines={1}
+                    >
+                      {m.name}
+                    </Text>
+                    <Text
+                      style={{ ...typography.body, fontSize: 11, color: colors.textSecondary }}
+                      numberOfLines={1}
+                    >
+                      {m.city ?? '—'}
+                      {m.height ? ` · ${m.height} cm` : ''}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          );
+        })()}
+
+      {/* ── List view (existing) ─────────────────────────────────── */}
+      {rosterViewMode === 'list' &&
+        filtered.map((m) => {
+          const isChecked = selectedModelIds.has(m.id);
+          return (
+            <View key={m.id} style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <TouchableOpacity
+                style={{ padding: spacing.sm, paddingRight: 0 }}
+                onPress={() =>
+                  setSelectedModelIds((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(m.id)) next.delete(m.id);
+                    else next.add(m.id);
+                    return next;
+                  })
+                }
+              >
+                <View
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: 4,
+                    borderWidth: 1.5,
+                    borderColor: isChecked ? colors.textPrimary : colors.border,
+                    backgroundColor: isChecked ? colors.textPrimary : 'transparent',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  {isChecked && (
+                    <Text style={{ color: colors.surface, fontSize: 12, lineHeight: 16 }}>✓</Text>
+                  )}
+                </View>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.modelRow, { flex: 1, marginLeft: spacing.xs }]}
+                onPress={() => setSelectedModel(m)}
+              >
+                {(() => {
+                  const raw = (m.portfolio_images ?? [])[0];
+                  const coverUri = raw ? normalizeDocumentspicturesModelImageRef(raw, m.id) : '';
+                  return coverUri ? (
+                    <StorageImage
+                      uri={coverUri}
+                      style={{
+                        width: 44,
+                        height: 44,
+                        borderRadius: 6,
+                        marginRight: spacing.sm,
+                        backgroundColor: colors.border,
+                      }}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View
+                      style={{
+                        width: 44,
+                        height: 44,
+                        borderRadius: 6,
+                        marginRight: spacing.sm,
+                        backgroundColor: colors.border,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Text style={{ fontSize: 18, color: colors.textSecondary }}>◻</Text>
+                    </View>
+                  );
+                })()}
+                <View style={{ flex: 1 }}>
+                  <Text style={s.modelName}>{m.name}</Text>
+                  <Text style={s.metaText}>
+                    {m.city ?? '—'} · H{m.height} C{(m as SupabaseModel).chest ?? m.bust ?? '—'} W
+                    {m.waist ?? '—'} H{m.hips ?? '—'}
+                  </Text>
+                  {(rosterTerritoriesMap[m.id] ?? []).length > 0 ? (
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 2, marginTop: 3 }}>
+                      {(rosterTerritoriesMap[m.id] ?? []).slice(0, 6).map((code) => (
+                        <View
+                          key={code}
+                          style={{
+                            paddingHorizontal: 4,
+                            paddingVertical: 1,
+                            borderRadius: 3,
+                            borderWidth: 1,
+                            borderColor: colors.accentGreen ?? colors.success,
+                            backgroundColor: 'transparent',
+                          }}
                         >
-                          +{(rosterTerritoriesMap[m.id] ?? []).length - 6}
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                ) : (
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      marginTop: 3,
-                      paddingHorizontal: 5,
-                      paddingVertical: 1,
-                      borderRadius: 3,
-                      borderWidth: 1,
-                      borderColor: colors.warning,
-                      backgroundColor: 'rgba(184,134,11,0.08)',
-                      alignSelf: 'flex-start',
-                    }}
-                  >
-                    <Text
+                          <Text
+                            style={{
+                              ...typography.label,
+                              fontSize: 8,
+                              color: colors.accentGreen ?? colors.success,
+                              letterSpacing: 0.3,
+                            }}
+                          >
+                            {code}
+                          </Text>
+                        </View>
+                      ))}
+                      {(rosterTerritoriesMap[m.id] ?? []).length > 6 && (
+                        <View
+                          style={{
+                            paddingHorizontal: 4,
+                            paddingVertical: 1,
+                            borderRadius: 3,
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              ...typography.label,
+                              fontSize: 8,
+                              color: colors.textSecondary,
+                            }}
+                          >
+                            +{(rosterTerritoriesMap[m.id] ?? []).length - 6}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  ) : (
+                    <View
                       style={{
-                        ...typography.label,
-                        fontSize: 8,
-                        color: colors.warning,
-                        letterSpacing: 0.3,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        marginTop: 3,
+                        paddingHorizontal: 5,
+                        paddingVertical: 1,
+                        borderRadius: 3,
+                        borderWidth: 1,
+                        borderColor: colors.warning,
+                        backgroundColor: 'rgba(184,134,11,0.08)',
+                        alignSelf: 'flex-start',
                       }}
                     >
-                      {uiCopy.modelRoster.territoriesMissingBadge}
-                    </Text>
-                  </View>
-                )}
-                {(m.portfolio_images ?? []).length === 0 && (
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      marginTop: 3,
-                      paddingHorizontal: 5,
-                      paddingVertical: 1,
-                      borderRadius: 3,
-                      borderWidth: 1,
-                      borderColor: colors.errorDark,
-                      backgroundColor: 'rgba(192,57,43,0.07)',
-                      alignSelf: 'flex-start',
-                    }}
-                  >
-                    <Text
-                      style={{
-                        ...typography.label,
-                        fontSize: 8,
-                        color: colors.errorDark,
-                        letterSpacing: 0.3,
-                      }}
-                    >
-                      {uiCopy.modelRoster.photosMissingBadge}
-                    </Text>
-                  </View>
-                )}
-                {(m.agency_relationship_status === 'pending_link' || (!m.user_id && m.email)) && (
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: spacing.xs,
-                      marginTop: 2,
-                    }}
-                  >
-                    <Text style={{ ...typography.label, fontSize: 9, color: colors.warning }}>
-                      Pending app account link
-                    </Text>
-                    {m.email && !m.user_id && (
-                      <TouchableOpacity
-                        style={[
-                          s.saveBtn,
-                          { marginTop: 0, paddingHorizontal: spacing.sm, paddingVertical: 4 },
-                        ]}
-                        onPress={() => {
-                          void handleResendModelClaimInvite(m);
+                      <Text
+                        style={{
+                          ...typography.label,
+                          fontSize: 8,
+                          color: colors.warning,
+                          letterSpacing: 0.3,
                         }}
-                        disabled={
-                          resendingModelId === m.id ||
-                          Date.now() < (resendModelCooldownUntil[m.id] ?? 0)
-                        }
                       >
-                        <Text style={[s.saveBtnLabel, { fontSize: 10 }]}>
-                          {resendingModelId === m.id
-                            ? uiCopy.inviteResend.loading
-                            : uiCopy.inviteResend.cta}
-                        </Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                )}
-              </View>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, maxWidth: 80 }}>
-                {(m.categories ?? []).length === 0 ? (
-                  <View style={[s.visTag, { borderColor: colors.border }]}>
-                    <Text style={[s.visTagLabel, { color: colors.textSecondary }]}>All</Text>
-                  </View>
-                ) : (
-                  (m.categories ?? []).map((cat: string) => {
-                    const isFashion = cat === 'Fashion' || cat === 'High Fashion';
-                    return (
-                      <View
-                        key={cat}
-                        style={[
-                          s.visTag,
-                          { borderColor: isFashion ? colors.accentBrown : colors.border },
-                        ]}
+                        {uiCopy.modelRoster.territoriesMissingBadge}
+                      </Text>
+                    </View>
+                  )}
+                  {(m.portfolio_images ?? []).length === 0 && (
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        marginTop: 3,
+                        paddingHorizontal: 5,
+                        paddingVertical: 1,
+                        borderRadius: 3,
+                        borderWidth: 1,
+                        borderColor: colors.errorDark,
+                        backgroundColor: 'rgba(192,57,43,0.07)',
+                        alignSelf: 'flex-start',
+                      }}
+                    >
+                      <Text
+                        style={{
+                          ...typography.label,
+                          fontSize: 8,
+                          color: colors.errorDark,
+                          letterSpacing: 0.3,
+                        }}
                       >
-                        <Text
+                        {uiCopy.modelRoster.photosMissingBadge}
+                      </Text>
+                    </View>
+                  )}
+                  {(m.agency_relationship_status === 'pending_link' || (!m.user_id && m.email)) && (
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: spacing.xs,
+                        marginTop: 2,
+                      }}
+                    >
+                      <Text style={{ ...typography.label, fontSize: 9, color: colors.warning }}>
+                        Pending app account link
+                      </Text>
+                      {m.email && !m.user_id && (
+                        <TouchableOpacity
                           style={[
-                            s.visTagLabel,
-                            { color: isFashion ? colors.accentBrown : colors.textSecondary },
+                            s.saveBtn,
+                            { marginTop: 0, paddingHorizontal: spacing.sm, paddingVertical: 4 },
+                          ]}
+                          onPress={() => {
+                            void handleResendModelClaimInvite(m);
+                          }}
+                          disabled={
+                            resendingModelId === m.id ||
+                            Date.now() < (resendModelCooldownUntil[m.id] ?? 0)
+                          }
+                        >
+                          <Text style={[s.saveBtnLabel, { fontSize: 10 }]}>
+                            {resendingModelId === m.id
+                              ? uiCopy.inviteResend.loading
+                              : uiCopy.inviteResend.cta}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  )}
+                </View>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, maxWidth: 80 }}>
+                  {(m.categories ?? []).length === 0 ? (
+                    <View style={[s.visTag, { borderColor: colors.border }]}>
+                      <Text style={[s.visTagLabel, { color: colors.textSecondary }]}>All</Text>
+                    </View>
+                  ) : (
+                    (m.categories ?? []).map((cat: string) => {
+                      const isFashion = cat === 'Fashion' || cat === 'High Fashion';
+                      return (
+                        <View
+                          key={cat}
+                          style={[
+                            s.visTag,
+                            { borderColor: isFashion ? colors.accentBrown : colors.border },
                           ]}
                         >
-                          {cat === 'High Fashion' ? 'HF' : cat.charAt(0)}
-                        </Text>
-                      </View>
-                    );
-                  })
-                )}
-              </View>
-              <Text style={{ fontSize: 14, color: colors.textSecondary, marginLeft: spacing.sm }}>
-                ›
-              </Text>
-            </TouchableOpacity>
-          </View>
-        );
-      })}
+                          <Text
+                            style={[
+                              s.visTagLabel,
+                              { color: isFashion ? colors.accentBrown : colors.textSecondary },
+                            ]}
+                          >
+                            {cat === 'High Fashion' ? 'HF' : cat.charAt(0)}
+                          </Text>
+                        </View>
+                      );
+                    })
+                  )}
+                </View>
+                <Text style={{ fontSize: 14, color: colors.textSecondary, marginLeft: spacing.sm }}>
+                  ›
+                </Text>
+              </TouchableOpacity>
+            </View>
+          );
+        })}
       {filtered.length === 0 && <Text style={s.metaText}>No models found.</Text>}
       {bulkFeedback && (
         <Text
@@ -5311,6 +5304,173 @@ const MyModelsTab: React.FC<{
         >
           {bulkFeedback}
         </Text>
+      )}
+
+      {/* ── Import (collapsible) ─────────────────────────────────────── */}
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={() => setImportSectionExpanded((v) => !v)}
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingVertical: spacing.sm,
+          paddingHorizontal: spacing.xs,
+          marginTop: spacing.lg,
+          borderTopWidth: 1,
+          borderTopColor: colors.border,
+        }}
+      >
+        <Text style={{ ...typography.label, fontSize: 13, color: colors.textSecondary }}>
+          Import
+        </Text>
+        <Text style={{ fontSize: 12, color: colors.textSecondary }}>
+          {importSectionExpanded ? '▲' : '▼'}
+        </Text>
+      </TouchableOpacity>
+      {importSectionExpanded && (
+        <View style={{ paddingBottom: spacing.md }}>
+          <View style={s.apiSection}>
+            <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm }}>
+              <TouchableOpacity style={s.apiBtn} onPress={() => setShowMediaslideInput((v) => !v)}>
+                <Text style={s.apiBtnLabel}>Connect Mediaslide</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.apiBtn} onPress={() => setShowNetwalkInput((v) => !v)}>
+                <Text style={s.apiBtnLabel}>Connect Netwalk</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={{ flexDirection: 'row', gap: spacing.md, marginBottom: spacing.sm }}>
+              <Text style={s.metaText}>
+                Mediaslide: {mediaslideKey ? 'Connected' : 'Not connected'}
+              </Text>
+              <Text style={s.metaText}>Netwalk: {netwalkKey ? 'Connected' : 'Not connected'}</Text>
+            </View>
+            {showMediaslideInput && (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  gap: spacing.sm,
+                  marginBottom: spacing.sm,
+                  alignItems: 'center',
+                }}
+              >
+                <TextInput
+                  value={mediaslideKey}
+                  onChangeText={setMediaslideKey}
+                  placeholder={uiCopy.modelRoster.mediaslideApiKeyPlaceholder}
+                  placeholderTextColor={colors.textSecondary}
+                  style={[s.editInput, { flex: 1 }]}
+                />
+                <TouchableOpacity
+                  style={s.apiConnectBtn}
+                  onPress={() => saveApiKey('mediaslide', mediaslideKey)}
+                >
+                  <Text style={s.saveBtnLabel}>Connect</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            {showNetwalkInput && (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  gap: spacing.sm,
+                  marginBottom: spacing.sm,
+                  alignItems: 'center',
+                }}
+              >
+                <TextInput
+                  value={netwalkKey}
+                  onChangeText={setNetwalkKey}
+                  placeholder={uiCopy.modelRoster.netwalkApiKeyPlaceholder}
+                  placeholderTextColor={colors.textSecondary}
+                  style={[s.editInput, { flex: 1 }]}
+                />
+                <TouchableOpacity
+                  style={s.apiConnectBtn}
+                  onPress={() => saveApiKey('netwalk', netwalkKey)}
+                >
+                  <Text style={s.saveBtnLabel}>Connect</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            {(mediaslideKey || netwalkKey) && (
+              <TouchableOpacity
+                style={[
+                  s.saveBtn,
+                  { alignSelf: 'flex-start', paddingHorizontal: spacing.lg },
+                  syncLoading && { opacity: 0.6 },
+                ]}
+                onPress={handleSync}
+                disabled={syncLoading}
+              >
+                <Text style={s.saveBtnLabel}>{syncLoading ? 'Syncing…' : 'Sync Models'}</Text>
+              </TouchableOpacity>
+            )}
+            {syncFeedback && (
+              <Text
+                style={{
+                  ...typography.body,
+                  fontSize: 12,
+                  color: colors.accentGreen,
+                  marginTop: spacing.xs,
+                }}
+              >
+                {syncFeedback}
+              </Text>
+            )}
+          </View>
+
+          <View style={s.apiSection}>
+            <Text style={s.sectionLabel}>Import from Link</Text>
+            <Text
+              style={{
+                ...typography.body,
+                fontSize: 12,
+                color: colors.textSecondary,
+                marginBottom: spacing.sm,
+              }}
+            >
+              Paste a URL that returns a JSON model profile (name, height, measurements, photos). If
+              a profile with the same email or Mediaslide ID already exists it will be merged.
+            </Text>
+            <View style={{ flexDirection: 'row', gap: spacing.sm, alignItems: 'center' }}>
+              <TextInput
+                value={importLinkUrl}
+                onChangeText={setImportLinkUrl}
+                placeholder={uiCopy.modelRoster.importUrlPlaceholder}
+                placeholderTextColor={colors.textSecondary}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+                style={[s.editInput, { flex: 1 }]}
+              />
+              <TouchableOpacity
+                style={[
+                  s.apiConnectBtn,
+                  (!importLinkUrl.trim() || importLinkLoading) && { opacity: 0.5 },
+                ]}
+                onPress={handleImportByLink}
+                disabled={!importLinkUrl.trim() || importLinkLoading}
+              >
+                <Text style={s.saveBtnLabel}>
+                  {importLinkLoading ? 'Importing…' : 'Import & Merge'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            {importLinkFeedback && (
+              <Text
+                style={{
+                  ...typography.body,
+                  fontSize: 12,
+                  color: importLinkFeedback.ok ? colors.accentGreen : colors.error,
+                  marginTop: spacing.xs,
+                }}
+              >
+                {importLinkFeedback.message}
+              </Text>
+            )}
+          </View>
+        </View>
       )}
 
       {/* Bulk action sticky footer */}
