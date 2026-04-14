@@ -17,7 +17,10 @@
  */
 
 import { supabase } from '../../lib/supabase';
-import { formatExportPayload, downloadUserData as downloadUserDataFromService } from './dataExportService';
+import {
+  formatExportPayload,
+  downloadUserData as downloadUserDataFromService,
+} from './dataExportService';
 import type { GdprExportResult } from './dataExportService';
 
 export type { GdprExportResult } from './dataExportService';
@@ -29,9 +32,7 @@ export type { GdprExportResult } from './dataExportService';
 /** Unified `{ ok, error }` shape for new Account/Org/GDPR call sites. */
 export type { ServiceResult } from '../types/serviceResult';
 
-export type ComplianceResult<T = void> =
-  | { ok: true; data: T }
-  | { ok: false; reason: string };
+export type ComplianceResult<T = void> = { ok: true; data: T } | { ok: false; reason: string };
 
 export interface ImageRightsConfirmation {
   userId: string;
@@ -54,36 +55,73 @@ export interface MinorConsentRecord {
 }
 
 export type AuditActionType =
-  | 'user_deleted' | 'user_deletion_requested' | 'user_deletion_cancelled'
-  | 'org_deleted' | 'data_exported'
-  | 'booking_created' | 'booking_confirmed' | 'booking_cancelled'
-  | 'booking_agency_accepted' | 'booking_model_confirmed' | 'booking_completed'
-  | 'option_sent' | 'option_price_proposed' | 'option_price_countered'
-  | 'option_price_accepted' | 'option_price_rejected'
-  | 'option_confirmed' | 'option_rejected'
-  | 'option_schedule_updated' | 'option_document_uploaded'
+  | 'user_deleted'
+  | 'user_deletion_requested'
+  | 'user_deletion_cancelled'
+  | 'org_deleted'
+  | 'data_exported'
+  | 'booking_created'
+  | 'booking_confirmed'
+  | 'booking_cancelled'
+  | 'booking_agency_accepted'
+  | 'booking_model_confirmed'
+  | 'booking_completed'
+  | 'option_sent'
+  | 'option_price_proposed'
+  | 'option_price_countered'
+  | 'option_price_accepted'
+  | 'option_price_rejected'
+  | 'option_confirmed'
+  | 'option_rejected'
+  | 'option_schedule_updated'
+  | 'option_document_uploaded'
   | 'option_request_deleted'
-  | 'application_accepted' | 'application_rejected'
-  | 'profile_updated' | 'model_created' | 'model_updated' | 'model_removed'
+  | 'application_accepted'
+  | 'application_rejected'
+  | 'profile_updated'
+  | 'model_created'
+  | 'model_updated'
+  | 'model_removed'
   | 'model_visibility_changed'
-  | 'image_rights_confirmed' | 'image_uploaded' | 'image_deleted'
-  | 'minor_flagged' | 'minor_guardian_consent' | 'minor_agency_confirmed'
-  | 'member_invited' | 'member_removed' | 'member_role_changed'
-  | 'admin_override' | 'admin_profile_updated' | 'admin_subscription_changed'
-  | 'login_failed' | 'permission_denied' | 'suspicious_activity';
+  | 'image_rights_confirmed'
+  | 'image_uploaded'
+  | 'image_deleted'
+  | 'minor_flagged'
+  | 'minor_guardian_consent'
+  | 'minor_agency_confirmed'
+  | 'member_invited'
+  | 'member_removed'
+  | 'member_role_changed'
+  | 'admin_override'
+  | 'admin_profile_updated'
+  | 'admin_subscription_changed'
+  | 'login_failed'
+  | 'permission_denied'
+  | 'suspicious_activity';
 
 export type SecurityEventType =
-  | 'xss_attempt' | 'invalid_url' | 'file_rejected' | 'mime_mismatch'
-  | 'extension_mismatch' | 'rate_limit' | 'large_payload'
-  | 'magic_bytes_fail' | 'unsafe_content'
-  | 'brute_force' | 'anomalous_access' | 'cross_org_attempt'
-  | 'privilege_escalation_attempt' | 'suspicious_export'
-  | 'unauthorized_deletion_attempt' | 'admin_anomaly' | 'guest_link_abuse';
+  | 'xss_attempt'
+  | 'invalid_url'
+  | 'file_rejected'
+  | 'mime_mismatch'
+  | 'extension_mismatch'
+  | 'rate_limit'
+  | 'large_payload'
+  | 'magic_bytes_fail'
+  | 'unsafe_content'
+  | 'brute_force'
+  | 'anomalous_access'
+  | 'cross_org_attempt'
+  | 'privilege_escalation_attempt'
+  | 'suspicious_export'
+  | 'unauthorized_deletion_attempt'
+  | 'admin_anomaly'
+  | 'guest_link_abuse';
 
 export type AuditSource = 'api' | 'rpc' | 'system' | 'trigger';
 
 export interface AuditLogParams {
-  orgId: string;
+  orgId: string | null;
   actionType: AuditActionType;
   entityType?: string;
   entityId?: string;
@@ -106,7 +144,6 @@ export interface AuditLogParams {
  */
 export const IMAGE_RIGHTS_WINDOW_MINUTES = 60;
 
-
 // ─────────────────────────────────────────────────────────────────────────────
 // PART 1 — Organization deletion
 // ─────────────────────────────────────────────────────────────────────────────
@@ -120,9 +157,7 @@ export const IMAGE_RIGHTS_WINDOW_MINUTES = 60;
  * deletes DB rows, then removes files from the documentspictures bucket
  * afterwards. Best-effort — storage failures do not block the RPC result.
  */
-export async function deleteOrganizationData(
-  orgId: string,
-): Promise<ComplianceResult> {
+export async function deleteOrganizationData(orgId: string): Promise<ComplianceResult> {
   try {
     // Pre-collect storage paths before the RPC deletes DB rows.
     const storagePathsToDelete = await collectOrgStoragePaths(orgId);
@@ -167,10 +202,9 @@ async function collectOrgStoragePaths(orgId: string): Promise<string[]> {
     const { data: photos } = await supabase
       .from('model_photos')
       .select('storage_path, model_id')
-      .in('model_id', supabase
-        .from('models')
-        .select('id')
-        .eq('agency_id', org.agency_id) as unknown as string[],
+      .in(
+        'model_id',
+        supabase.from('models').select('id').eq('agency_id', org.agency_id) as unknown as string[],
       );
 
     if (!photos?.length) {
@@ -225,7 +259,6 @@ async function cleanupStoragePaths(bucket: string, paths: string[]): Promise<voi
   }
 }
 
-
 // ─────────────────────────────────────────────────────────────────────────────
 // PART 3 — Image rights confirmation (required before every upload)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -252,9 +285,17 @@ export async function confirmImageRights(
     // Step 1 — Check if a recent confirmation already exists (60 min window).
     // This avoids an unnecessary INSERT on repeated uploads in the same session.
     const alreadyConfirmed = params.modelId
-      ? await hasRecentImageRightsConfirmation(params.userId, params.modelId, IMAGE_RIGHTS_WINDOW_MINUTES)
+      ? await hasRecentImageRightsConfirmation(
+          params.userId,
+          params.modelId,
+          IMAGE_RIGHTS_WINDOW_MINUTES,
+        )
       : params.sessionKey
-        ? await hasRecentImageRightsForSessionKey(params.userId, params.sessionKey, IMAGE_RIGHTS_WINDOW_MINUTES)
+        ? await hasRecentImageRightsForSessionKey(
+            params.userId,
+            params.sessionKey,
+            IMAGE_RIGHTS_WINDOW_MINUTES,
+          )
         : false;
 
     if (alreadyConfirmed) {
@@ -266,16 +307,14 @@ export async function confirmImageRights(
     // the current user to SELECT the newly-written row, PostgREST returns a 409
     // even when the INSERT succeeded. We generate the id client-side instead.
     const localId = crypto.randomUUID();
-    const { error } = await supabase
-      .from('image_rights_confirmations')
-      .insert({
-        user_id:     params.userId,
-        model_id:    params.modelId ?? null,
-        org_id:      params.orgId ?? null,
-        session_key: params.sessionKey ?? null,
-        ip_address:  params.ipAddress ?? null,
-        user_agent:  params.userAgent ?? null,
-      });
+    const { error } = await supabase.from('image_rights_confirmations').insert({
+      user_id: params.userId,
+      model_id: params.modelId ?? null,
+      org_id: params.orgId ?? null,
+      session_key: params.sessionKey ?? null,
+      ip_address: params.ipAddress ?? null,
+      user_agent: params.userAgent ?? null,
+    });
 
     if (error) {
       // Step 3 — Unique constraint violation (23505): a prior confirmation exists.
@@ -307,11 +346,11 @@ export async function confirmImageRights(
         params.orgId ?? undefined,
         'confirmImageRights',
         {
-          type:       'audit',
-          action:     'image_rights_confirmed',
+          type: 'audit',
+          action: 'image_rights_confirmed',
           entityType: 'model',
-          entityId:   params.modelId ?? undefined,
-          newData:    { confirmation_id: localId, model_id: params.modelId },
+          entityId: params.modelId ?? undefined,
+          newData: { confirmation_id: localId, model_id: params.modelId },
         },
         { allowEmptyOrg: true },
       );
@@ -393,15 +432,14 @@ export async function guardUploadSession(
   );
   if (!confirmed) {
     void logSecurityEvent('file_rejected', {
-      reason:   'image_rights_not_confirmed',
-      user_id:  userId,
+      reason: 'image_rights_not_confirmed',
+      user_id: userId,
       session_key: sessionKey,
     });
     return { ok: false, reason: 'image_rights_not_confirmed' };
   }
   return { ok: true, data: undefined };
 }
-
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PART 4 — Minors safety
@@ -433,15 +471,16 @@ export async function flagModelAsMinor(
       return { ok: false, reason: modelError.message };
     }
 
-    const { error: consentError } = await supabase
-      .from('model_minor_consent')
-      .upsert({
-        model_id:       modelId,
-        guardian_name:  guardianName ?? null,
+    const { error: consentError } = await supabase.from('model_minor_consent').upsert(
+      {
+        model_id: modelId,
+        guardian_name: guardianName ?? null,
         guardian_email: guardianEmail ?? null,
-        is_minor:       true,
-        updated_at:     new Date().toISOString(),
-      }, { onConflict: 'model_id' });
+        is_minor: true,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'model_id' },
+    );
 
     if (consentError) {
       console.error('[gdpr] flagModelAsMinor consent upsert error:', consentError);
@@ -449,11 +488,11 @@ export async function flagModelAsMinor(
     }
 
     void logAuditAction({
-      orgId:      orgId ?? '',
+      orgId: orgId ?? null,
       actionType: 'minor_flagged',
       entityType: 'model',
-      entityId:   modelId,
-      newData:    { is_minor: true, guardian_email: guardianEmail },
+      entityId: modelId,
+      newData: { is_minor: true, guardian_email: guardianEmail },
     });
 
     return { ok: true, data: undefined };
@@ -476,8 +515,8 @@ export async function recordGuardianConsent(
       .from('model_minor_consent')
       .update({
         guardian_consent_confirmed: confirmed,
-        guardian_consent_at:        confirmed ? new Date().toISOString() : null,
-        updated_at:                 new Date().toISOString(),
+        guardian_consent_at: confirmed ? new Date().toISOString() : null,
+        updated_at: new Date().toISOString(),
       })
       .eq('model_id', modelId);
 
@@ -487,11 +526,11 @@ export async function recordGuardianConsent(
     }
 
     void logAuditAction({
-      orgId:      orgId ?? '',
+      orgId: orgId ?? null,
       actionType: 'minor_guardian_consent',
       entityType: 'model',
-      entityId:   modelId,
-      newData:    { guardian_consent_confirmed: confirmed },
+      entityId: modelId,
+      newData: { guardian_consent_confirmed: confirmed },
     });
 
     return { ok: true, data: undefined };
@@ -514,10 +553,10 @@ export async function confirmMinorConsentByAgency(
     const { error } = await supabase
       .from('model_minor_consent')
       .update({
-        agency_confirmed:     true,
-        agency_confirmed_by:  confirmedByUserId,
-        agency_confirmed_at:  new Date().toISOString(),
-        updated_at:           new Date().toISOString(),
+        agency_confirmed: true,
+        agency_confirmed_by: confirmedByUserId,
+        agency_confirmed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       })
       .eq('model_id', modelId);
 
@@ -527,11 +566,11 @@ export async function confirmMinorConsentByAgency(
     }
 
     void logAuditAction({
-      orgId:      orgId ?? '',
+      orgId: orgId ?? null,
       actionType: 'minor_agency_confirmed',
       entityType: 'model',
-      entityId:   modelId,
-      newData:    { agency_confirmed_by: confirmedByUserId },
+      entityId: modelId,
+      newData: { agency_confirmed_by: confirmedByUserId },
     });
 
     return { ok: true, data: undefined };
@@ -558,7 +597,6 @@ export async function isMinorFullyConsented(modelId: string): Promise<boolean> {
   }
 }
 
-
 // ─────────────────────────────────────────────────────────────────────────────
 // PART 5 — Audit trail (extended)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -571,14 +609,14 @@ export async function isMinorFullyConsented(modelId: string): Promise<boolean> {
 export async function logAuditAction(params: AuditLogParams): Promise<void> {
   try {
     const { error } = await supabase.rpc('log_audit_action', {
-      p_org_id:      params.orgId || null,
+      p_org_id: params.orgId || null,
       p_action_type: params.actionType,
       p_entity_type: params.entityType ?? null,
-      p_entity_id:   params.entityId ?? null,
-      p_old_data:    params.oldData ? JSON.stringify(params.oldData) : null,
-      p_new_data:    params.newData ? JSON.stringify(params.newData) : null,
-      p_ip_address:  params.ipAddress ?? null,
-      p_source:      params.source ?? 'api',
+      p_entity_id: params.entityId ?? null,
+      p_old_data: params.oldData ? JSON.stringify(params.oldData) : null,
+      p_new_data: params.newData ? JSON.stringify(params.newData) : null,
+      p_ip_address: params.ipAddress ?? null,
+      p_source: params.source ?? 'api',
     });
     if (error) {
       console.error('[gdpr] logAuditAction error:', error);
@@ -595,8 +633,13 @@ export async function logAuditAction(params: AuditLogParams): Promise<void> {
  */
 export async function logBookingAction(
   orgId: string,
-  action: 'booking_created' | 'booking_confirmed' | 'booking_cancelled'
-        | 'booking_agency_accepted' | 'booking_model_confirmed' | 'booking_completed',
+  action:
+    | 'booking_created'
+    | 'booking_confirmed'
+    | 'booking_cancelled'
+    | 'booking_agency_accepted'
+    | 'booking_model_confirmed'
+    | 'booking_completed',
   bookingId: string,
   details?: Record<string, unknown>,
   oldState?: Record<string, unknown>,
@@ -605,9 +648,9 @@ export async function logBookingAction(
     orgId,
     actionType: action,
     entityType: 'booking',
-    entityId:   bookingId,
-    oldData:    oldState,
-    newData:    details,
+    entityId: bookingId,
+    oldData: oldState,
+    newData: details,
   });
 }
 
@@ -618,10 +661,16 @@ export async function logBookingAction(
  */
 export async function logOptionAction(
   orgId: string,
-  action: 'option_sent' | 'option_price_proposed' | 'option_price_countered'
-        | 'option_price_accepted' | 'option_price_rejected'
-        | 'option_confirmed' | 'option_rejected'
-        | 'option_schedule_updated' | 'option_document_uploaded',
+  action:
+    | 'option_sent'
+    | 'option_price_proposed'
+    | 'option_price_countered'
+    | 'option_price_accepted'
+    | 'option_price_rejected'
+    | 'option_confirmed'
+    | 'option_rejected'
+    | 'option_schedule_updated'
+    | 'option_document_uploaded',
   optionId: string,
   details?: Record<string, unknown>,
   oldState?: Record<string, unknown>,
@@ -630,9 +679,9 @@ export async function logOptionAction(
     orgId,
     actionType: action,
     entityType: 'option_request',
-    entityId:   optionId,
-    oldData:    oldState,
-    newData:    details,
+    entityId: optionId,
+    oldData: oldState,
+    newData: details,
   });
 }
 
@@ -648,8 +697,8 @@ export async function logImageUpload(
     orgId,
     actionType: 'image_uploaded',
     entityType: 'model',
-    entityId:   modelId,
-    newData:    details,
+    entityId: modelId,
+    newData: details,
   });
 }
 
@@ -673,7 +722,6 @@ export async function logProfileEdit(
   });
 }
 
-
 // ─────────────────────────────────────────────────────────────────────────────
 // PART 6 — Security event logging (extended types)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -688,19 +736,23 @@ export async function logSecurityEvent(
   orgId?: string,
 ): Promise<void> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user?.id) {
-      console.warn('[gdpr] logSecurityEvent: no authenticated user — skipping DB insert', type, metadata);
+      console.warn(
+        '[gdpr] logSecurityEvent: no authenticated user — skipping DB insert',
+        type,
+        metadata,
+      );
       return;
     }
-    const { error } = await supabase
-      .from('security_events')
-      .insert({
-        user_id:  user.id,
-        org_id:   orgId ?? null,
-        type,
-        metadata: metadata ?? null,
-      });
+    const { error } = await supabase.from('security_events').insert({
+      user_id: user.id,
+      org_id: orgId ?? null,
+      type,
+      metadata: metadata ?? null,
+    });
     if (error) {
       console.error('[gdpr] logSecurityEvent error:', error);
     }
@@ -708,7 +760,6 @@ export async function logSecurityEvent(
     console.error('[gdpr] logSecurityEvent exception:', e);
   }
 }
-
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PART 8 — GDPR Data Export (Art. 20)
@@ -719,9 +770,7 @@ export async function logSecurityEvent(
  * Callable only by the user themselves or a super_admin.
  * The export is logged in audit_trail automatically (server-side RPC).
  */
-export async function exportUserData(
-  userId: string,
-): Promise<ComplianceResult<GdprExportResult>> {
+export async function exportUserData(userId: string): Promise<ComplianceResult<GdprExportResult>> {
   try {
     const { data, error } = await supabase.rpc('export_user_data', {
       p_user_id: userId,
@@ -756,7 +805,6 @@ export async function downloadUserDataExport(userId: string): Promise<boolean> {
   return true;
 }
 
-
 // ─────────────────────────────────────────────────────────────────────────────
 // PART 9 — Security guards (application-layer helpers)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -770,10 +818,7 @@ export async function downloadUserDataExport(userId: string): Promise<boolean> {
  *   if (!guard.ok) { showError('You must confirm image rights first.'); return; }
  *   // proceed with upload...
  */
-export async function guardImageUpload(
-  userId: string,
-  modelId: string,
-): Promise<ComplianceResult> {
+export async function guardImageUpload(userId: string, modelId: string): Promise<ComplianceResult> {
   const confirmed = await hasRecentImageRightsConfirmation(
     userId,
     modelId,
@@ -781,8 +826,8 @@ export async function guardImageUpload(
   );
   if (!confirmed) {
     void logSecurityEvent('file_rejected', {
-      reason:   'image_rights_not_confirmed',
-      user_id:  userId,
+      reason: 'image_rights_not_confirmed',
+      user_id: userId,
       model_id: modelId,
     });
     return { ok: false, reason: 'image_rights_not_confirmed' };
@@ -803,11 +848,11 @@ export async function guardMinorVisibility(
   const consented = await isMinorFullyConsented(modelId);
   if (!consented) {
     void logSecurityEvent('unauthorized_deletion_attempt', {
-      reason:   'minor_consent_missing_before_visibility_change',
+      reason: 'minor_consent_missing_before_visibility_change',
       model_id: modelId,
     });
     return {
-      ok:     false,
+      ok: false,
       reason: 'minor_consent_required: both guardian and agency must confirm',
     };
   }

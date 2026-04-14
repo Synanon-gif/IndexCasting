@@ -25,6 +25,8 @@ export type NegotiationSummaryCardProps = {
   confirmationSummaryLine?: string | null;
   /** Role-based visibility gate: hide commercial data from models. Defaults to 'client'. */
   viewerRole?: 'client' | 'agency' | 'model';
+  /** When true, suppress price display (agency-only flows have no client price negotiation). */
+  isAgencyOnly?: boolean;
 };
 
 export const NegotiationSummaryCard: React.FC<NegotiationSummaryCardProps> = ({
@@ -43,8 +45,9 @@ export const NegotiationSummaryCard: React.FC<NegotiationSummaryCardProps> = ({
   finalStatusLine,
   confirmationSummaryLine,
   viewerRole = 'client',
+  isAgencyOnly,
 }) => {
-  const showPrices = viewerRole !== 'model';
+  const showPrices = viewerRole !== 'model' && !isAgencyOnly;
   const agreed = getCanonicalAgreedPrice({
     proposed_price: proposedPrice ?? null,
     agency_counter_price: agencyCounterPrice ?? null,
@@ -52,38 +55,43 @@ export const NegotiationSummaryCard: React.FC<NegotiationSummaryCardProps> = ({
     final_status: finalStatus ?? null,
   });
   return (
-  <View style={styles.card}>
-    <Text style={styles.title} numberOfLines={2}>
-      {isAgency && clientName ? `${clientName} · ${modelName}` : modelName}
-    </Text>
-    <Text style={styles.meta}>{dateLine}</Text>
-    <View style={styles.row}>
-      <Text style={styles.badge}>{workflowLabelFromDisplayStatus(displayStatus)}</Text>
-      {attentionLabel ? <Text style={styles.attention}>{attentionLabel}</Text> : null}
-    </View>
-    {finalStatusLine ? <Text style={styles.final}>{finalStatusLine}</Text> : null}
-    {confirmationSummaryLine ? <Text style={styles.confirmationHint}>{confirmationSummaryLine}</Text> : null}
-    {showPrices ? (
-      <View style={styles.priceBlock}>
-        {agreed != null ? (
-          <Text style={styles.priceAgreed}>
-            {uiCopy.optionNegotiationChat.agreedPriceLabel}: {formatOptionMoneyAmount(agreed, currency)}
-          </Text>
-        ) : null}
-        {proposedPrice != null ? (
-          <Text style={styles.price}>
-            {uiCopy.optionNegotiationChat.proposedPriceLabel}: {formatOptionMoneyAmount(proposedPrice, currency)}
-          </Text>
-        ) : null}
-        {agencyCounterPrice != null ? (
-          <Text style={styles.price}>
-            {uiCopy.optionNegotiationChat.counterPriceLabel}: {formatOptionMoneyAmount(agencyCounterPrice, currency)}
-          </Text>
-        ) : null}
+    <View style={styles.card}>
+      <Text style={styles.title} numberOfLines={2}>
+        {isAgency && clientName ? `${clientName} · ${modelName}` : modelName}
+      </Text>
+      <Text style={styles.meta}>{dateLine}</Text>
+      <View style={styles.row}>
+        <Text style={styles.badge}>{workflowLabelFromDisplayStatus(displayStatus)}</Text>
+        {attentionLabel ? <Text style={styles.attention}>{attentionLabel}</Text> : null}
       </View>
-    ) : null}
-    <Text style={styles.type}>{requestTypeLabel}</Text>
-  </View>
+      {finalStatusLine ? <Text style={styles.final}>{finalStatusLine}</Text> : null}
+      {confirmationSummaryLine ? (
+        <Text style={styles.confirmationHint}>{confirmationSummaryLine}</Text>
+      ) : null}
+      {showPrices ? (
+        <View style={styles.priceBlock}>
+          {agreed != null ? (
+            <Text style={styles.priceAgreed}>
+              {uiCopy.optionNegotiationChat.agreedPriceLabel}:{' '}
+              {formatOptionMoneyAmount(agreed, currency)}
+            </Text>
+          ) : null}
+          {proposedPrice != null ? (
+            <Text style={styles.price}>
+              {uiCopy.optionNegotiationChat.proposedPriceLabel}:{' '}
+              {formatOptionMoneyAmount(proposedPrice, currency)}
+            </Text>
+          ) : null}
+          {agencyCounterPrice != null ? (
+            <Text style={styles.price}>
+              {uiCopy.optionNegotiationChat.counterPriceLabel}:{' '}
+              {formatOptionMoneyAmount(agencyCounterPrice, currency)}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+      <Text style={styles.type}>{requestTypeLabel}</Text>
+    </View>
   );
 };
 

@@ -284,7 +284,7 @@ export function modelInboxRequiresModelConfirmation(input: {
   modelApproval?: string | null;
   modelAccountLinked?: boolean | null;
 }): boolean {
-  if (input.modelAccountLinked === false || input.modelAccountLinked === null) return false;
+  if (input.modelAccountLinked !== true) return false;
   if (input.modelApproval !== 'pending') return false;
   if (input.finalStatus !== 'option_confirmed') return false;
   if (input.status !== 'in_negotiation') return false;

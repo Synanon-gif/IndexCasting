@@ -6583,6 +6583,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                     requestTypeLabel={negotiationRequestTypeLabel}
                     finalStatusLine={negotiationFinalStatusLine}
                     confirmationSummaryLine={negotiationConfirmationSummaryLine}
+                    isAgencyOnly={request.isAgencyOnly}
                   />
                   <NegotiationThreadFooter
                     request={request}
@@ -6710,6 +6711,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                   requestTypeLabel={negotiationRequestTypeLabel}
                   finalStatusLine={negotiationFinalStatusLine}
                   confirmationSummaryLine={negotiationConfirmationSummaryLine}
+                  isAgencyOnly={request.isAgencyOnly}
                 />
               ) : null}
               {filteredMessages.length >= 50 && selectedThreadId && (
@@ -7461,7 +7463,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                                 </Text>
                               </View>
                             ) : null}
-                            {listFee != null && (
+                            {listFee != null && !r.isAgencyOnly && (
                               <Text
                                 style={{
                                   ...typography.label,

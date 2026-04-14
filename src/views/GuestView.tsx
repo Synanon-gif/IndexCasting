@@ -547,7 +547,8 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
                 <View style={styles.modelInfo}>
                   <Text style={styles.modelName}>{m.name}</Text>
                   <Text style={styles.modelMeta}>
-                    {m.height}cm{getChestValue(m) != null ? ` · Chest ${getChestValue(m)} cm` : ''}
+                    {m.height != null ? `${m.height}cm` : '—'}
+                    {getChestValue(m) != null ? ` · Chest ${getChestValue(m)} cm` : ''}
                   </Text>
                 </View>
               </TouchableOpacity>

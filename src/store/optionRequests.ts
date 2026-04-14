@@ -227,7 +227,7 @@ export function addOptionRequest(
   const timeStr = formatParenTimeRange(extra?.startTime, extra?.endTime);
   const _label = requestType === 'casting' ? 'Casting' : 'Option';
   const req: OptionRequest = {
-    id: `req-${Date.now()}`,
+    id: `req-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     clientName,
     modelName,
     modelId,
@@ -253,7 +253,7 @@ export function addOptionRequest(
       ? `Casting request for ${date}${timeStr}.`
       : `Option request for ${date}${timeStr}.`;
   const autoMessage: ChatMessage = {
-    id: `msg-${Date.now()}`,
+    id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     threadId,
     from: 'client',
     text: autoText,

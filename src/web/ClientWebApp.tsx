@@ -138,6 +138,7 @@ import {
   agencyRejectClientPriceStore,
   clientAcceptCounterStore,
   clientConfirmJobStore,
+  agencyConfirmJobAgencyOnlyStore,
   type ChatStatus,
 } from '../store/optionRequests';
 import { subscribeToOptionMessages } from '../services/optionRequestsSupabase';
@@ -5399,6 +5400,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
   const [deletingOptionId, setDeletingOptionId] = useState<string | null>(null);
   const [deleteOptionModalVisible, setDeleteOptionModalVisible] = useState(false);
   const [rejectCounterModalVisible, setRejectCounterModalVisible] = useState(false);
+  const [rejectNegotiationModalVisible, setRejectNegotiationModalVisible] = useState(false);
   const [editingAssignmentThreadId, setEditingAssignmentThreadId] = useState<string | null>(null);
   const [archivedIds, setArchivedIds] = useState<Set<string>>(() => {
     // Seed from localStorage for instant display before the server load completes.
@@ -5745,6 +5747,13 @@ const MessagesView: React.FC<MessagesViewProps> = ({
     showNegotiationCalendarHint();
   }, [request?.threadId, showNegotiationCalendarHint]);
 
+  const runAgencyConfirmJobAgencyOnly = useCallback(async () => {
+    if (!request?.threadId) return;
+    await agencyConfirmJobAgencyOnlyStore(request.threadId);
+    setRequests(getOptionRequests());
+    showNegotiationCalendarHint();
+  }, [request?.threadId, showNegotiationCalendarHint]);
+
   const openRejectCounterModal = useCallback(async () => {
     if (!request?.threadId) return;
     setRejectCounterModalVisible(true);
@@ -5770,28 +5779,19 @@ const MessagesView: React.FC<MessagesViewProps> = ({
 
   const handleRejectOptionNegotiation = useCallback(() => {
     if (!request?.threadId || !isAgency) return;
+    setRejectNegotiationModalVisible(true);
+  }, [request?.threadId, isAgency]);
+
+  const confirmRejectNegotiation = useCallback(() => {
+    if (!request?.threadId) return;
     const threadId = request.threadId;
-    const run = () => {
-      void (async () => {
-        await agencyRejectNegotiationStore(threadId);
-        setRequests(getOptionRequests());
-        showNegotiationCalendarHint();
-      })();
-    };
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      const msg = `${uiCopy.optionNegotiationChat.rejectOptionTitle}\n\n${uiCopy.optionNegotiationChat.rejectOptionMessage}`;
-      if (window.confirm(msg)) run();
-      return;
-    }
-    Alert.alert(
-      uiCopy.optionNegotiationChat.rejectOptionTitle,
-      uiCopy.optionNegotiationChat.rejectOptionMessage,
-      [
-        { text: uiCopy.common.cancel, style: 'cancel' },
-        { text: uiCopy.optionNegotiationChat.rejectOption, style: 'destructive', onPress: run },
-      ],
-    );
-  }, [request?.threadId, isAgency, showNegotiationCalendarHint]);
+    setRejectNegotiationModalVisible(false);
+    void (async () => {
+      await agencyRejectNegotiationStore(threadId);
+      setRequests(getOptionRequests());
+      showNegotiationCalendarHint();
+    })();
+  }, [request?.threadId, showNegotiationCalendarHint]);
 
   const showClientMessagesTabs = !isAgency && !!clientUserId;
 
@@ -6297,6 +6297,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                       requestTypeLabel={negotiationRequestTypeLabel}
                       finalStatusLine={negotiationFinalStatusLine}
                       confirmationSummaryLine={negotiationConfirmationSummaryLine}
+                      isAgencyOnly={request.isAgencyOnly}
                     />
                     <NegotiationThreadFooter
                       request={request}
@@ -6326,6 +6327,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                       onClientAcceptCounter={runClientAcceptCounter}
                       onClientRejectCounter={openRejectCounterModal}
                       onClientConfirmJob={runClientConfirmJob}
+                      onAgencyConfirmJobAgencyOnly={runAgencyConfirmJobAgencyOnly}
                       showAgencyExtras={false}
                       suppressDuplicateMeta
                     />
@@ -6363,6 +6365,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                     onClientAcceptCounter={runClientAcceptCounter}
                     onClientRejectCounter={openRejectCounterModal}
                     onClientConfirmJob={runClientConfirmJob}
+                    onAgencyConfirmJobAgencyOnly={runAgencyConfirmJobAgencyOnly}
                     showAgencyExtras={false}
                     suppressDuplicateMeta
                   />
@@ -6430,6 +6433,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                         requestTypeLabel={negotiationRequestTypeLabel}
                         finalStatusLine={negotiationFinalStatusLine}
                         confirmationSummaryLine={negotiationConfirmationSummaryLine}
+                        isAgencyOnly={request.isAgencyOnly}
                       />
                     ) : null}
                   </>
@@ -6494,6 +6498,21 @@ const MessagesView: React.FC<MessagesViewProps> = ({
             cancelLabel={uiCopy.common.cancel}
             onConfirm={confirmRejectCounterOffer}
             onCancel={() => setRejectCounterModalVisible(false)}
+            detailLine1={request?.modelName}
+            detailLine2={
+              request
+                ? formatDateWithOptionalTimeRange(request.date, request.startTime, request.endTime)
+                : undefined
+            }
+          />
+          <ConfirmDestructiveModal
+            visible={rejectNegotiationModalVisible}
+            title={uiCopy.optionNegotiationChat.rejectOptionTitle}
+            message={uiCopy.optionNegotiationChat.rejectOptionMessage}
+            confirmLabel={uiCopy.optionNegotiationChat.rejectOption}
+            cancelLabel={uiCopy.common.cancel}
+            onConfirm={confirmRejectNegotiation}
+            onCancel={() => setRejectNegotiationModalVisible(false)}
             detailLine1={request?.modelName}
             detailLine2={
               request
