@@ -623,6 +623,9 @@ export const uiCopy = {
     nameRequired: 'Please enter first and last name.',
     nameLockedHint:
       'Matches your account name (profile) and cannot be changed here. Two words = first and last name; one word = first name only.',
+    /** Web: HEIC conversion is not bundled reliably; apply form blocks early with visible copy. */
+    heicNotSupportedWeb:
+      'HEIC images are not supported in web upload yet. Please use JPG or PNG.',
   },
   model: {
     selectAgencyTitle: 'Select your agency profile',

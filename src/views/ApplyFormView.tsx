@@ -17,7 +17,7 @@ import {
 import { colors, spacing, typography } from '../theme/theme';
 import { addApplication } from '../store/applicationsStore';
 import { uploadApplicationImage, APPLICATION_UPLOAD_SESSION_KEY } from '../services/applicationsSupabase';
-import { convertHeicToJpegIfNeeded } from '../services/imageUtils';
+import { convertHeicToJpegWithStatus } from '../services/imageUtils';
 import { useAuth } from '../context/AuthContext';
 import { splitProfileDisplayName } from '../utils/applicantNameFromProfile';
 import { uiCopy } from '../constants/uiCopy';
@@ -72,6 +72,8 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Photo pick failures (e.g. HEIC on web) — kept separate from submit validation `error`. */
+  const [photoError, setPhotoError] = useState<string | null>(null);
   const [imageRightsConfirmed, setImageRightsConfirmed] = useState(false);
   const fileInputRefs = useRef<Record<ImageSlot, HTMLInputElement | null>>({
     closeUp: null,
@@ -89,9 +91,22 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   }, [nameLocked, profile?.display_name]);
 
   const assignImageFile = async (slot: ImageSlot, file: File) => {
-    if (!file.type.startsWith('image/')) return;
-    const converted = await convertHeicToJpegIfNeeded(file);
-    const asFile = converted instanceof File ? converted : new File([converted], file.name.replace(/\.hei[cf]$/i, '.jpg'), { type: converted.type });
+    const looksLikeImage =
+      file.type.startsWith('image/') ||
+      /\.(jpe?g|png|gif|webp|heic|heif)$/i.test(file.name);
+    if (!looksLikeImage) return;
+
+    const { file: prepared, conversionFailed } = await convertHeicToJpegWithStatus(file);
+    if (conversionFailed) {
+      setPhotoError(uiCopy.apply.heicNotSupportedWeb);
+      return;
+    }
+    setPhotoError(null);
+
+    const asFile =
+      prepared instanceof File
+        ? prepared
+        : new File([prepared], file.name.replace(/\.hei[cf]$/i, '.jpg'), { type: prepared.type });
     fileRefs.current[slot] = asFile;
     if (Platform.OS === 'web') {
       const objectUrl = URL.createObjectURL(asFile);
@@ -525,6 +540,8 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             )}
           </View>
         ))}
+
+        {photoError ? <Text style={styles.errorText}>{photoError}</Text> : null}
 
         <TouchableOpacity
           style={styles.rightsCheckRow}

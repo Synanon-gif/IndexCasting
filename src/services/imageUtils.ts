@@ -2,6 +2,7 @@
  * Shared image utilities for pre-upload processing.
  */
 
+import { Platform } from 'react-native';
 import imageCompression from 'browser-image-compression';
 
 /**
@@ -35,14 +36,31 @@ export type HeicConvertResult = {
   conversionFailed: boolean;
 };
 
+/** True if the file is HEIC/HEIF by MIME or by filename (some browsers omit type). */
+export function isHeicOrHeifFile(file: File | Blob): boolean {
+  const mime = (file.type ?? '').toLowerCase();
+  if (mime === 'image/heic' || mime === 'image/heif') return true;
+  if (file instanceof File) {
+    const n = file.name.toLowerCase();
+    return n.endsWith('.heic') || n.endsWith('.heif');
+  }
+  return false;
+}
+
 /**
  * Converts HEIC/HEIF to JPEG. Non-HEIC files are returned with conversionFailed: false.
  * Callers can show UX when conversionFailed is true (browser cannot process this file).
+ *
+ * **Web:** `heic2any` is not bundled reliably (dynamic import can fail). HEIC/HEIF returns
+ * `conversionFailed: true` without attempting conversion — callers must show explicit UX.
  */
 export async function convertHeicToJpegWithStatus(file: File | Blob): Promise<HeicConvertResult> {
-  const mime = (file.type ?? '').toLowerCase();
-  if (mime !== 'image/heic' && mime !== 'image/heif') {
+  if (!isHeicOrHeifFile(file)) {
     return { file, conversionFailed: false };
+  }
+
+  if (Platform.OS === 'web') {
+    return { file, conversionFailed: true };
   }
 
   try {
