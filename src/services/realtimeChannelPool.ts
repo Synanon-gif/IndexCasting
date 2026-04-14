@@ -120,33 +120,46 @@ export function pooledSubscribe(
   setup: (channel: RealtimeChannel, dispatch: DispatchFn) => RealtimeChannel,
   callback: DispatchFn,
 ): () => void {
-  let entry = pool.get(key);
-
-  if (!entry) {
-    if (pool.size >= MAX_CHANNELS) evictOne();
-
-    const callbacks = new Set<DispatchFn>();
-    // dispatch is the single handler passed to supabase .on() —
-    // it fans out to all currently registered callbacks.
-    const dispatch: DispatchFn = (payload) => {
-      for (const cb of callbacks) cb(payload);
-    };
-    const channel = setup(supabase.channel(key), dispatch);
-    entry = { channel, callbacks, refCount: 0, idleTimer: null, createdAt: Date.now() };
-    pool.set(key, entry);
-  } else if (entry.idleTimer !== null) {
-    // Channel was idle (waiting to be evicted) — cancel eviction, reuse it.
-    clearTimeout(entry.idleTimer);
-    entry.idleTimer = null;
-  }
-
-  entry.callbacks.add(callback);
-  entry.refCount++;
-
-  // Guard against double-invocation (React Strict Mode, accidental double-unmount).
   let cleaned = false;
+  let cleanupFn: (() => void) | null = null;
 
-  return () => {
+  const subscribe = (): void => {
+    let entry = pool.get(key);
+
+    if (!entry) {
+      if (pool.size >= MAX_CHANNELS) evictOne();
+
+      const callbacks = new Set<DispatchFn>();
+      const dispatch: DispatchFn = (payload) => {
+        // Detect eviction and auto-re-subscribe active listeners
+        if (
+          payload != null &&
+          typeof payload === 'object' &&
+          (payload as ChannelEvictedPayload).type === 'CHANNEL_EVICTED'
+        ) {
+          console.warn(`[realtimeChannelPool] auto-re-subscribing evicted channel "${key}"`);
+          setTimeout(() => {
+            if (!cleaned) subscribe();
+          }, 500);
+          return;
+        }
+        for (const cb of callbacks) cb(payload);
+      };
+      const channel = setup(supabase.channel(key), dispatch);
+      entry = { channel, callbacks, refCount: 0, idleTimer: null, createdAt: Date.now() };
+      pool.set(key, entry);
+    } else if (entry.idleTimer !== null) {
+      clearTimeout(entry.idleTimer);
+      entry.idleTimer = null;
+    }
+
+    entry.callbacks.add(callback);
+    entry.refCount++;
+  };
+
+  subscribe();
+
+  cleanupFn = () => {
     if (cleaned) return;
     cleaned = true;
 
@@ -156,16 +169,15 @@ export function pooledSubscribe(
     e.refCount = Math.max(0, e.refCount - 1);
 
     if (e.refCount === 0) {
-      // Clear any existing idle timer before setting a new one to prevent
-      // multiple concurrent timers for the same channel.
       if (e.idleTimer !== null) clearTimeout(e.idleTimer);
-      // Keep channel open briefly — user might navigate back.
       e.idleTimer = setTimeout(() => {
         supabase.removeChannel(e.channel);
         pool.delete(key);
       }, IDLE_EVICT_MS);
     }
   };
+
+  return () => cleanupFn?.();
 }
 
 // ---------------------------------------------------------------------------

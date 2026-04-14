@@ -37,7 +37,7 @@ function isUuid(value: string): boolean {
 
 export async function getManualEventsForOwner(
   ownerId: string,
-  ownerType: 'client' | 'agency'
+  ownerType: 'client' | 'agency',
 ): Promise<UserCalendarEvent[]> {
   if (!isUuid(ownerId)) {
     console.warn('getManualEventsForOwner: ownerId must be a UUID (use auth user id / agency id)');
@@ -49,7 +49,8 @@ export async function getManualEventsForOwner(
     .eq('owner_id', ownerId)
     .eq('owner_type', ownerType)
     .order('date', { ascending: true })
-    .order('start_time', { ascending: true });
+    .order('start_time', { ascending: true })
+    .limit(500);
   if (error) {
     console.error('getManualEventsForOwner error:', error);
     return [];
@@ -66,7 +67,7 @@ export async function getManualEventsForOwner(
  */
 export async function getManualEventsForOrg(
   orgId: string,
-  ownerType: 'client' | 'agency'
+  ownerType: 'client' | 'agency',
 ): Promise<UserCalendarEvent[]> {
   if (!isUuid(orgId)) {
     console.warn('getManualEventsForOrg: orgId must be a valid UUID');
@@ -79,7 +80,8 @@ export async function getManualEventsForOrg(
       .eq('organization_id', orgId)
       .eq('owner_type', ownerType)
       .order('date', { ascending: true })
-      .order('start_time', { ascending: true });
+      .order('start_time', { ascending: true })
+      .limit(500);
     if (error) {
       console.error('getManualEventsForOrg error:', error);
       return [];
@@ -134,10 +136,16 @@ export async function insertManualEvent(event: {
     if (dupErr) {
       console.warn('insertManualEvent duplicate check error:', dupErr);
     } else if (existing?.id) {
-      console.warn('insertManualEvent: duplicate event detected (pre-check)', dateNorm, event.title);
+      console.warn(
+        'insertManualEvent: duplicate event detected (pre-check)',
+        dateNorm,
+        event.title,
+      );
       return {
         ok: false,
-        errorMessage: uiCopy.calendarValidation.duplicateEvent ?? 'An event with the same title already exists on this date.',
+        errorMessage:
+          uiCopy.calendarValidation.duplicateEvent ??
+          'An event with the same title already exists on this date.',
         isDuplicate: true,
       };
     }
@@ -159,7 +167,7 @@ export async function insertManualEvent(event: {
         updated_at: new Date().toISOString(),
       })
       .select(
-        'id, owner_id, owner_type, date, start_time, end_time, title, color, note, organization_id, created_by, reminder_at, created_at, updated_at'
+        'id, owner_id, owner_type, date, start_time, end_time, title, color, note, organization_id, created_by, reminder_at, created_at, updated_at',
       )
       .single();
     if (error) {
@@ -167,10 +175,16 @@ export async function insertManualEvent(event: {
       // concurrent duplicate that slipped past the pre-check above (TOCTOU closed).
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if ((error as any).code === '23505') {
-        console.warn('insertManualEvent: duplicate caught by DB unique constraint', dateNorm, event.title);
+        console.warn(
+          'insertManualEvent: duplicate caught by DB unique constraint',
+          dateNorm,
+          event.title,
+        );
         return {
           ok: false,
-          errorMessage: uiCopy.calendarValidation.duplicateEvent ?? 'An event with the same title already exists on this date.',
+          errorMessage:
+            uiCopy.calendarValidation.duplicateEvent ??
+            'An event with the same title already exists on this date.',
           isDuplicate: true,
         };
       }
@@ -180,13 +194,21 @@ export async function insertManualEvent(event: {
     return { ok: true, event: data as UserCalendarEvent };
   } catch (e) {
     console.error('insertManualEvent exception:', e);
-    return { ok: false, errorMessage: e instanceof Error ? e.message : uiCopy.calendarValidation.insertFailed };
+    return {
+      ok: false,
+      errorMessage: e instanceof Error ? e.message : uiCopy.calendarValidation.insertFailed,
+    };
   }
 }
 
 export async function updateManualEvent(
   id: string,
-  updates: Partial<Pick<UserCalendarEvent, 'date' | 'start_time' | 'end_time' | 'title' | 'color' | 'note' | 'reminder_at'>>
+  updates: Partial<
+    Pick<
+      UserCalendarEvent,
+      'date' | 'start_time' | 'end_time' | 'title' | 'color' | 'note' | 'reminder_at'
+    >
+  >,
 ): Promise<boolean> {
   if (!isUuid(id)) {
     console.error('updateManualEvent: id must be a valid UUID');

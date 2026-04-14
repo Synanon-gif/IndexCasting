@@ -63,6 +63,11 @@ const ALLOWED_NOTIFICATION_TYPES = new Set([
   'booking_accepted',
   'booking_confirmed',
   'booking_cancelled',
+  // Recruiting / Applications
+  'application_received',
+  'application_model_confirmed',
+  'application_accepted',
+  'application_rejected',
   // System / Admin
   'verification_approved',
   'verification_rejected',

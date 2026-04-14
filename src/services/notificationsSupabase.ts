@@ -17,16 +17,36 @@ const NOTIFICATION_SELECT =
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type NotificationType =
+  // Core messaging
   | 'new_message'
-  | 'booking_accepted'
-  | 'model_confirmed'
-  | 'new_option_request'
   | 'new_option_message'
+  | 'new_recruiting_message'
+  // Option / Casting / Job request lifecycle
+  | 'new_option_request'
+  | 'option_request'
+  | 'option_update'
   | 'awaiting_model_confirmation'
   | 'agency_counter_offer'
-  | 'job_confirmed'
   | 'client_rejected_counter'
-  | 'new_recruiting_message';
+  | 'job_confirmed'
+  | 'request_rejected_by_agency'
+  | 'request_rejected_by_model'
+  | 'model_confirmed'
+  // Booking lifecycle
+  | 'booking_request'
+  | 'booking_accepted'
+  | 'booking_confirmed'
+  | 'booking_cancelled'
+  // Recruiting / Applications
+  | 'application_received'
+  | 'application_model_confirmed'
+  | 'application_accepted'
+  | 'application_rejected'
+  // System / Admin
+  | 'verification_approved'
+  | 'verification_rejected'
+  | 'invitation'
+  | 'system';
 
 export type Notification = {
   id: string;

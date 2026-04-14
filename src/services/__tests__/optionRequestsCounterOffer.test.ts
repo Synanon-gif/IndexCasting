@@ -114,69 +114,51 @@ describe('clientAcceptCounterPrice — RPC route (EXPLOIT-C1 fix)', () => {
 });
 
 // ─── setAgencyCounterOffer ────────────────────────────────────────────────────
+// Now uses atomic RPC agency_set_counter_offer (lock + update in one transaction).
 
 describe('setAgencyCounterOffer', () => {
-  const mockLockSuccess = () => {
-    rpc.mockImplementation((name: string) => {
-      if (name === 'acquire_option_request_lock') {
-        return { throwOnError: () => Promise.resolve({ data: null, error: null }) };
-      }
-      return Promise.resolve({ data: null, error: null });
+  it('returns true when RPC succeeds (atomic lock + update)', async () => {
+    rpc.mockResolvedValue({
+      data: { ok: true, agency_id: 'agency-row-1', agency_organization_id: 'agency-org-uuid' },
+      error: null,
     });
-  };
-
-  it('returns true when request is in_negotiation (1 row updated)', async () => {
-    mockLockSuccess();
-    const chain = makeChain(
-      {
-        data: {
-          id: 'req-1',
-          agency_id: 'agency-row-1',
-          agency_organization_id: 'agency-org-uuid',
-        },
-        error: null,
-      },
-      'maybeSingle',
-    );
-    from.mockReturnValue(chain);
 
     const result = await setAgencyCounterOffer('req-1', 2500);
     expect(result).toBe(true);
+    expect(rpc).toHaveBeenCalledWith('agency_set_counter_offer', {
+      p_request_id: 'req-1',
+      p_counter_price: 2500,
+    });
   });
 
-  it('returns false when request is already confirmed (0 rows — status guard fires)', async () => {
-    mockLockSuccess();
-    const chain = makeChain({ data: null, error: null }, 'maybeSingle');
-    from.mockReturnValue(chain);
+  it('returns false when request is not in_negotiation', async () => {
+    rpc.mockResolvedValue({
+      data: { ok: false, reason: 'not_in_negotiation' },
+      error: null,
+    });
 
     const result = await setAgencyCounterOffer('req-1', 2500);
     expect(result).toBe(false);
     expect(consoleWarnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('not in_negotiation'),
+      expect.stringContaining('not ok'),
+      'not_in_negotiation',
       'req-1',
     );
   });
 
-  it('returns false on DB error', async () => {
-    mockLockSuccess();
-    const chain = makeChain(
-      { data: null, error: { message: 'constraint violation' } },
-      'maybeSingle',
-    );
-    from.mockReturnValue(chain);
+  it('returns false on RPC error', async () => {
+    rpc.mockResolvedValue({
+      data: null,
+      error: { message: 'access_denied' },
+    });
 
     const result = await setAgencyCounterOffer('req-1', 2500);
     expect(result).toBe(false);
     expect(consoleErrorSpy).toHaveBeenCalled();
   });
 
-  it('returns false when advisory lock fails', async () => {
-    rpc.mockImplementation((name: string) => {
-      if (name === 'acquire_option_request_lock') {
-        return { throwOnError: () => Promise.reject(new Error('lock timeout')) };
-      }
-      return Promise.resolve({ data: null, error: null });
-    });
+  it('returns false on exception', async () => {
+    rpc.mockRejectedValue(new Error('network error'));
 
     const result = await setAgencyCounterOffer('req-1', 2500);
     expect(result).toBe(false);

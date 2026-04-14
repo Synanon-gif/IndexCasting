@@ -68,9 +68,14 @@ export type SupabaseModel = {
   effective_city?: string | null;
 };
 
-export async function getModelsFromSupabase(): Promise<SupabaseModel[]> {
+export async function getModelsFromSupabase(opts?: { limit?: number }): Promise<SupabaseModel[]> {
   try {
-    const { data, error } = await supabase.from('models').select(MODEL_DETAIL_SELECT).order('name');
+    const limit = opts?.limit ?? 200;
+    const { data, error } = await supabase
+      .from('models')
+      .select(MODEL_DETAIL_SELECT)
+      .order('name')
+      .limit(limit);
 
     if (error) {
       console.error('getModelsFromSupabase error:', error);

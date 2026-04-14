@@ -183,11 +183,15 @@ export async function updateBookingEventStatus(
     const bk = current as BookingEvent;
     const auditOrgId = bk.agency_org_id ?? bk.client_org_id;
     const auditAction =
-      newStatus === 'cancelled'       ? 'booking_cancelled'      :
-      newStatus === 'agency_accepted' ? 'booking_agency_accepted' :
-      newStatus === 'model_confirmed' ? 'booking_model_confirmed' :
-      newStatus === 'completed'       ? 'booking_completed'       :
-      'booking_confirmed';
+      newStatus === 'cancelled'
+        ? 'booking_cancelled'
+        : newStatus === 'agency_accepted'
+          ? 'booking_agency_accepted'
+          : newStatus === 'model_confirmed'
+            ? 'booking_model_confirmed'
+            : newStatus === 'completed'
+              ? 'booking_completed'
+              : 'booking_confirmed';
     logAction(auditOrgId, 'updateBookingEventStatus', {
       type: 'booking',
       action: auditAction,
@@ -222,8 +226,10 @@ export async function getBookingEventsForModel(
 ): Promise<BookingEvent[]> {
   try {
     const today = new Date();
-    const start = opts?.startDate ?? new Date(today.getTime() - 90 * 86400000).toISOString().slice(0, 10);
-    const end   = opts?.endDate   ?? new Date(today.getTime() + 365 * 86400000).toISOString().slice(0, 10);
+    const start =
+      opts?.startDate ?? new Date(today.getTime() - 90 * 86400000).toISOString().slice(0, 10);
+    const end =
+      opts?.endDate ?? new Date(today.getTime() + 365 * 86400000).toISOString().slice(0, 10);
 
     const { data, error } = await supabase
       .from('booking_events')
@@ -256,8 +262,10 @@ export async function getBookingEventsForOrg(
 ): Promise<BookingEvent[]> {
   try {
     const today = new Date();
-    const start = opts?.startDate ?? new Date(today.getTime() - 90 * 86400000).toISOString().slice(0, 10);
-    const end   = opts?.endDate   ?? new Date(today.getTime() + 365 * 86400000).toISOString().slice(0, 10);
+    const start =
+      opts?.startDate ?? new Date(today.getTime() - 90 * 86400000).toISOString().slice(0, 10);
+    const end =
+      opts?.endDate ?? new Date(today.getTime() + 365 * 86400000).toISOString().slice(0, 10);
     const column = role === 'agency' ? 'agency_org_id' : 'client_org_id';
 
     const { data, error } = await supabase
@@ -315,7 +323,8 @@ export async function getBookingEventsInRange(params: {
       .eq(column, params.orgId)
       .gte('date', params.startDate)
       .lte('date', params.endDate)
-      .order('date', { ascending: true });
+      .order('date', { ascending: true })
+      .limit(500);
 
     if (error) {
       console.error('getBookingEventsInRange error:', error);
@@ -341,14 +350,13 @@ export async function createConfirmedBookingEvent(
 ): Promise<BookingEvent | null> {
   const { modelAccountLinked, modelApproval, ...eventParams } = params;
 
-  const isConfirmed =
-    !modelAccountLinked || modelApproval === 'approved';
+  const isConfirmed = !modelAccountLinked || modelApproval === 'approved';
 
   if (!isConfirmed) {
-    console.info(
-      'createConfirmedBookingEvent: skipped – awaiting model confirmation',
-      { modelAccountLinked, modelApproval },
-    );
+    console.info('createConfirmedBookingEvent: skipped – awaiting model confirmation', {
+      modelAccountLinked,
+      modelApproval,
+    });
     return null;
   }
 

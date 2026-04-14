@@ -8,7 +8,9 @@ import * as ExpoNotifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import { registerPushToken, deregisterPushToken } from './notificationsSupabase';
 
-export async function requestNotificationPermissionIfWeb(): Promise<NotificationPermission | 'unsupported'> {
+export async function requestNotificationPermissionIfWeb(): Promise<
+  NotificationPermission | 'unsupported'
+> {
   if (typeof window === 'undefined' || typeof Notification === 'undefined') return 'unsupported';
   if (Notification.permission === 'granted') return 'granted';
   if (Notification.permission === 'denied') return 'denied';
@@ -38,9 +40,7 @@ export async function initializePushNotifications(): Promise<void> {
   try {
     // Check if running in an Expo Go / physical device context with a valid project ID
     const projectId =
-      Constants.expoConfig?.extra?.eas?.projectId ??
-      Constants.easConfig?.projectId ??
-      null;
+      Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId ?? null;
 
     if (!projectId) {
       // Running in a bare-React-Native or dev environment without EAS — skip gracefully.
@@ -82,9 +82,7 @@ export async function teardownPushNotifications(): Promise<void> {
 
   try {
     const projectId =
-      Constants.expoConfig?.extra?.eas?.projectId ??
-      Constants.easConfig?.projectId ??
-      null;
+      Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId ?? null;
     if (!projectId) return;
 
     const tokenData = await ExpoNotifications.getExpoPushTokenAsync({ projectId });
@@ -94,11 +92,91 @@ export async function teardownPushNotifications(): Promise<void> {
   }
 }
 
+/**
+ * Notification response handler type — called when user taps a push notification.
+ * The handler receives the notification type and metadata for navigation.
+ */
+export type PushTapHandler = (data: {
+  type: string;
+  option_request_id?: string;
+  thread_id?: string;
+  notification_id?: string;
+  [key: string]: unknown;
+}) => void;
+
+let pushTapHandler: PushTapHandler | null = null;
+let responseSubscription: ExpoNotifications.Subscription | null = null;
+let tokenRefreshSubscription: ExpoNotifications.Subscription | null = null;
+
+/**
+ * Register a handler that is called when the user taps a push notification.
+ * The handler should navigate to the relevant screen based on `data.type`.
+ * Call this once from App.tsx after navigation is ready.
+ */
+export function setPushTapHandler(handler: PushTapHandler): () => void {
+  pushTapHandler = handler;
+
+  if (Platform.OS === 'web')
+    return () => {
+      pushTapHandler = null;
+    };
+
+  responseSubscription?.remove();
+  responseSubscription = ExpoNotifications.addNotificationResponseReceivedListener((response) => {
+    const data = response.notification.request.content.data as Record<string, unknown> | undefined;
+    if (data && pushTapHandler) {
+      pushTapHandler({
+        type: (data.type as string) ?? '',
+        option_request_id: data.option_request_id as string | undefined,
+        thread_id: data.thread_id as string | undefined,
+        notification_id: data.notification_id as string | undefined,
+        ...data,
+      });
+    }
+  });
+
+  return () => {
+    pushTapHandler = null;
+    responseSubscription?.remove();
+    responseSubscription = null;
+  };
+}
+
+/**
+ * Start listening for Expo push token changes (OS can rotate tokens).
+ * When a new token is received, re-register it in the DB.
+ * Call once after initializePushNotifications succeeds.
+ */
+export function startTokenRefreshListener(): () => void {
+  if (Platform.OS === 'web') return () => {};
+
+  tokenRefreshSubscription?.remove();
+  tokenRefreshSubscription = ExpoNotifications.addPushTokenListener(async (tokenEvent) => {
+    try {
+      const token = tokenEvent.data;
+      const platform = Platform.OS === 'ios' ? 'ios' : 'android';
+      await registerPushToken(token, platform);
+      console.info('[pushNotifications] Token refreshed and re-registered.');
+    } catch (e) {
+      console.warn('[pushNotifications] Token refresh registration failed:', e);
+    }
+  });
+
+  return () => {
+    tokenRefreshSubscription?.remove();
+    tokenRefreshSubscription = null;
+  };
+}
+
 /** Called when the agency sends a counter-offer so the client can open Messages. */
 export function notifyClientAgencyCounterOffer(agencyDisplayName: string): void {
   const title = `${agencyDisplayName} proposed a new price`;
   const body = 'Open Messages to review the counter-offer.';
-  if (typeof window !== 'undefined' && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+  if (
+    typeof window !== 'undefined' &&
+    typeof Notification !== 'undefined' &&
+    Notification.permission === 'granted'
+  ) {
     try {
       new Notification(title, { body });
     } catch {

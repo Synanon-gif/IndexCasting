@@ -506,7 +506,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
         })
         .catch((e) => console.error('[ModelProfileScreen] getModelForUser error:', e));
     } else {
-      getModelsFromSupabase()
+      getModelsFromSupabase({ limit: 1 })
         .then((list) => {
           const m = list[0];
           if (m) applyModel(m);

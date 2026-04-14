@@ -74,7 +74,8 @@ export async function isCurrentUserSuperAdmin(): Promise<boolean> {
     // Secondary: boolean RPC for super-admin.
     const { data: isSuperBool, error: boolErr } = await supabase.rpc('is_current_user_super_admin');
     if (!boolErr && isSuperBool === true) return true;
-    if (boolErr) console.error('isCurrentUserSuperAdmin is_current_user_super_admin error:', boolErr);
+    if (boolErr)
+      console.error('isCurrentUserSuperAdmin is_current_user_super_admin error:', boolErr);
 
     return false;
   } catch (e) {
@@ -90,16 +91,19 @@ export async function getAllProfiles(filter?: {
 }): Promise<AdminProfile[]> {
   try {
     const { data, error } = await supabase.rpc('admin_get_profiles', {
-      p_active_only:   filter?.activeOnly   ?? null,
+      p_active_only: filter?.activeOnly ?? null,
       p_inactive_only: filter?.inactiveOnly ?? null,
-      p_role:          filter?.role         ?? null,
+      p_role: filter?.role ?? null,
     });
     if (!error) return (data ?? []) as AdminProfile[];
 
     // RPC failed — fall back to a direct table query only when the caller is a
     // confirmed admin. Without this guard, any authenticated user could trigger
     // the fallback and enumerate all profile IDs and roles.
-    console.warn('[Admin] admin_get_profiles RPC failed, checking admin status before fallback:', error.message);
+    console.warn(
+      '[Admin] admin_get_profiles RPC failed, checking admin status before fallback:',
+      error.message,
+    );
     const isAdmin = await isCurrentUserAdmin();
     if (!isAdmin) {
       console.error('[Admin] getAllProfiles: non-admin fallback attempt blocked.');
@@ -124,12 +128,19 @@ async function _getAllProfilesDirect(filter?: {
   role?: string;
 }): Promise<AdminProfile[]> {
   try {
-    let q = supabase.from('profiles').select('*').order('created_at', { ascending: false });
-    if (filter?.activeOnly)   q = q.eq('is_active', true);
+    let q = supabase
+      .from('profiles')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(1000);
+    if (filter?.activeOnly) q = q.eq('is_active', true);
     if (filter?.inactiveOnly) q = q.eq('is_active', false);
-    if (filter?.role)         q = q.eq('role', filter.role);
+    if (filter?.role) q = q.eq('role', filter.role);
     const { data, error } = await q;
-    if (error) { console.error('[Admin] _getAllProfilesDirect error:', error); return []; }
+    if (error) {
+      console.error('[Admin] _getAllProfilesDirect error:', error);
+      return [];
+    }
     return (data ?? []) as AdminProfile[];
   } catch (e) {
     console.error('[Admin] _getAllProfilesDirect exception:', e);
@@ -143,7 +154,10 @@ export async function activateAccount(userId: string): Promise<boolean> {
       target_id: userId,
       active: true,
     });
-    if (error) { console.error('activateAccount error:', error); return false; }
+    if (error) {
+      console.error('activateAccount error:', error);
+      return false;
+    }
     return true;
   } catch (e) {
     console.error('activateAccount exception:', e);
@@ -158,7 +172,10 @@ export async function deactivateAccount(userId: string, reason?: string): Promis
       active: false,
       reason: reason || null,
     });
-    if (error) { console.error('deactivateAccount error:', error); return false; }
+    if (error) {
+      console.error('deactivateAccount error:', error);
+      return false;
+    }
     return true;
   } catch (e) {
     console.error('deactivateAccount exception:', e);
@@ -169,7 +186,7 @@ export async function deactivateAccount(userId: string, reason?: string): Promis
 export async function adminUpdateProfileField(
   userId: string,
   fieldName: string,
-  fieldValue: string
+  fieldValue: string,
 ): Promise<boolean> {
   try {
     const { error } = await supabase.rpc('admin_update_profile', {
@@ -177,7 +194,10 @@ export async function adminUpdateProfileField(
       field_name: fieldName,
       field_value: fieldValue,
     });
-    if (error) { console.error('adminUpdateProfileField error:', error); return false; }
+    if (error) {
+      console.error('adminUpdateProfileField error:', error);
+      return false;
+    }
     return true;
   } catch (e) {
     console.error('adminUpdateProfileField exception:', e);
@@ -187,7 +207,7 @@ export async function adminUpdateProfileField(
 
 /** Admin: Purge all public data for a user (profile + CASCADE). Call auth.admin.deleteUser(id) via Edge Function/Dashboard to complete. */
 export async function adminPurgeUserData(
-  targetUserId: string
+  targetUserId: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
     const { error } = await supabase.rpc('admin_purge_user_data', { target_id: targetUserId });
@@ -214,7 +234,7 @@ export async function adminUpdateProfileFull(
     country?: string | null;
     role?: string | null;
     is_active?: boolean;
-  }
+  },
 ): Promise<boolean> {
   try {
     const { error } = await supabase.rpc('admin_update_profile_full', {
@@ -254,7 +274,10 @@ export async function getAdminLogs(limit = 100, offset = 0): Promise<AdminLogEnt
       .select('*')
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
-    if (error) { console.error('getAdminLogs error:', error); return []; }
+    if (error) {
+      console.error('getAdminLogs error:', error);
+      return [];
+    }
     return (data ?? []) as AdminLogEntry[];
   } catch (e) {
     console.error('getAdminLogs exception:', e);
@@ -287,7 +310,10 @@ export async function adminListOrgMemberships(targetUserId: string): Promise<Adm
         }));
     }
     // Fallback: direct join query — admin check required before proceeding.
-    console.warn('[Admin] admin_list_org_memberships RPC failed, checking admin status:', error.message);
+    console.warn(
+      '[Admin] admin_list_org_memberships RPC failed, checking admin status:',
+      error.message,
+    );
     const isAdminFallback = await isCurrentUserAdmin();
     if (!isAdminFallback) {
       console.error('[Admin] adminListOrgMemberships: non-admin fallback attempt blocked.');
@@ -297,7 +323,10 @@ export async function adminListOrgMemberships(targetUserId: string): Promise<Adm
       .from('organization_members')
       .select('organization_id, role, organizations(id, name, type)')
       .eq('user_id', targetUserId);
-    if (dErr) { console.error('[Admin] direct org memberships error:', dErr); return []; }
+    if (dErr) {
+      console.error('[Admin] direct org memberships error:', dErr);
+      return [];
+    }
     return ((direct ?? []) as Array<Record<string, unknown>>)
       .filter((r) => r?.organization_id)
       .map((r) => {
@@ -318,7 +347,7 @@ export async function adminListOrgMemberships(targetUserId: string): Promise<Adm
 export async function adminSetOrganizationMemberRole(
   targetUserId: string,
   organizationId: string,
-  role: 'owner' | 'booker' | 'employee'
+  role: 'owner' | 'booker' | 'employee',
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
     const { error } = await supabase.rpc('admin_set_organization_member_role', {
@@ -348,7 +377,9 @@ export async function writeAdminLog(
   // required for SELECT), so they cannot learn what is logged or craft entries
   // to obscure specific existing records.
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) return;
     const { error } = await supabase.from('admin_logs').insert({
       admin_id: user.id,
@@ -358,10 +389,20 @@ export async function writeAdminLog(
       details: details || {},
     });
     if (error) {
-      console.error('writeAdminLog: failed to persist audit entry', { action, targetUserId, orgId, error });
+      console.error('writeAdminLog: failed to persist audit entry', {
+        action,
+        targetUserId,
+        orgId,
+        error,
+      });
     }
   } catch (e) {
-    console.error('writeAdminLog exception — audit trail entry lost:', { action, targetUserId, orgId, e });
+    console.error('writeAdminLog exception — audit trail entry lost:', {
+      action,
+      targetUserId,
+      orgId,
+      e,
+    });
   }
 }
 
@@ -384,7 +425,10 @@ export type AdminOrganization = {
  * Falls back to reconstructing orgs from existing profile+membership RPCs
  * when migration_admin_org_model_control.sql has not yet been run.
  */
-export async function adminListOrganizations(): Promise<{ data: AdminOrganization[]; migrationApplied: boolean }> {
+export async function adminListOrganizations(): Promise<{
+  data: AdminOrganization[];
+  migrationApplied: boolean;
+}> {
   try {
     const { data, error } = await supabase.rpc('admin_list_organizations');
     if (!error) {
@@ -479,8 +523,10 @@ async function _adminListOrgsFallback(): Promise<AdminOrganization[]> {
               if (m.member_role === 'owner') existing.owner_id = profile.id;
             }
           }
-        } catch { /* ignore per-profile errors */ }
-      })
+        } catch {
+          /* ignore per-profile errors */
+        }
+      }),
     );
     return Array.from(orgMap.values()).sort((a, b) => a.name.localeCompare(b.name));
   } catch (e) {
@@ -495,7 +541,10 @@ export async function adminSetOrgActive(orgId: string, active: boolean): Promise
       p_org_id: orgId,
       p_active: active,
     });
-    if (error) { console.error('adminSetOrgActive error:', error); return false; }
+    if (error) {
+      console.error('adminSetOrgActive error:', error);
+      return false;
+    }
     return true;
   } catch (e) {
     console.error('adminSetOrgActive exception:', e);
@@ -510,17 +559,20 @@ export async function adminUpdateOrgDetails(
     newOwnerId?: string | null;
     adminNotes?: string | null;
     clearNotes?: boolean;
-  }
+  },
 ): Promise<boolean> {
   try {
     const { error } = await supabase.rpc('admin_update_org_details', {
-      p_org_id:       orgId,
-      p_name:         fields.name         ?? null,
-      p_new_owner_id: fields.newOwnerId   ?? null,
-      p_admin_notes:  fields.adminNotes   ?? null,
-      p_clear_notes:  fields.clearNotes   ?? false,
+      p_org_id: orgId,
+      p_name: fields.name ?? null,
+      p_new_owner_id: fields.newOwnerId ?? null,
+      p_admin_notes: fields.adminNotes ?? null,
+      p_clear_notes: fields.clearNotes ?? false,
     });
-    if (error) { console.error('adminUpdateOrgDetails error:', error); return false; }
+    if (error) {
+      console.error('adminUpdateOrgDetails error:', error);
+      return false;
+    }
     return true;
   } catch (e) {
     console.error('adminUpdateOrgDetails exception:', e);
@@ -548,7 +600,10 @@ export type AdminModel = {
  * Models have a broad SELECT RLS policy (needed for discovery), so
  * the direct query works for the admin without additional migration.
  */
-export async function adminListAllModels(): Promise<{ data: AdminModel[]; migrationApplied: boolean }> {
+export async function adminListAllModels(): Promise<{
+  data: AdminModel[];
+  migrationApplied: boolean;
+}> {
   try {
     const { data, error } = await supabase.rpc('admin_list_all_models');
     if (!error) {
@@ -583,7 +638,10 @@ async function _adminListModelsFallback(): Promise<AdminModel[]> {
       .from('models')
       .select('id, name, email, agency_id, user_id, created_at')
       .order('name');
-    if (error) { console.error('_adminListModelsFallback error:', error); return []; }
+    if (error) {
+      console.error('_adminListModelsFallback error:', error);
+      return [];
+    }
     return ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
       id: String(r.id),
       name: String(r.name ?? ''),
@@ -604,9 +662,12 @@ export async function adminSetModelActive(modelId: string, active: boolean): Pro
   try {
     const { error } = await supabase.rpc('admin_set_model_active', {
       p_model_id: modelId,
-      p_active:   active,
+      p_active: active,
     });
-    if (error) { console.error('adminSetModelActive error:', error); return false; }
+    if (error) {
+      console.error('adminSetModelActive error:', error);
+      return false;
+    }
     return true;
   } catch (e) {
     console.error('adminSetModelActive exception:', e);
@@ -614,13 +675,19 @@ export async function adminSetModelActive(modelId: string, active: boolean): Pro
   }
 }
 
-export async function adminUpdateModelNotes(modelId: string, notes: string | null): Promise<boolean> {
+export async function adminUpdateModelNotes(
+  modelId: string,
+  notes: string | null,
+): Promise<boolean> {
   try {
     const { error } = await supabase.rpc('admin_update_model_notes', {
-      p_model_id:    modelId,
+      p_model_id: modelId,
       p_admin_notes: notes,
     });
-    if (error) { console.error('adminUpdateModelNotes error:', error); return false; }
+    if (error) {
+      console.error('adminUpdateModelNotes error:', error);
+      return false;
+    }
     return true;
   } catch (e) {
     console.error('adminUpdateModelNotes exception:', e);
@@ -670,10 +737,15 @@ export async function adminSetAgencySwipeLimit(
   try {
     const { error } = await supabase.rpc('admin_set_agency_swipe_limit', {
       p_organization_id: organizationId,
-      p_limit:           limit,
+      p_limit: limit,
     });
     if (error) throw error;
-    await writeAdminLog(`Set daily swipe limit to ${limit} for org ${organizationId}`, undefined, { limit }, organizationId);
+    await writeAdminLog(
+      `Set daily swipe limit to ${limit} for org ${organizationId}`,
+      undefined,
+      { limit },
+      organizationId,
+    );
     return true;
   } catch (e) {
     console.error('adminSetAgencySwipeLimit error:', e);
@@ -691,7 +763,12 @@ export async function adminResetAgencySwipeCount(organizationId: string): Promis
       p_organization_id: organizationId,
     });
     if (error) throw error;
-    await writeAdminLog(`Reset swipe count for org ${organizationId}`, undefined, undefined, organizationId);
+    await writeAdminLog(
+      `Reset swipe count for org ${organizationId}`,
+      undefined,
+      undefined,
+      organizationId,
+    );
     return true;
   } catch (e) {
     console.error('adminResetAgencySwipeCount error:', e);
@@ -726,11 +803,12 @@ export async function adminGetOrgStorageUsage(
     if (!data || (data as { error?: string }).error) return null;
     const raw = data as Record<string, unknown>;
     return {
-      organization_id:       String(raw.organization_id),
-      used_bytes:            Number(raw.used_bytes ?? 0),
-      storage_limit_bytes:   raw.storage_limit_bytes != null ? Number(raw.storage_limit_bytes) : null,
-      is_unlimited:          Boolean(raw.is_unlimited),
-      effective_limit_bytes: raw.effective_limit_bytes != null ? Number(raw.effective_limit_bytes) : null,
+      organization_id: String(raw.organization_id),
+      used_bytes: Number(raw.used_bytes ?? 0),
+      storage_limit_bytes: raw.storage_limit_bytes != null ? Number(raw.storage_limit_bytes) : null,
+      is_unlimited: Boolean(raw.is_unlimited),
+      effective_limit_bytes:
+        raw.effective_limit_bytes != null ? Number(raw.effective_limit_bytes) : null,
     };
   } catch (e) {
     console.error('adminGetOrgStorageUsage error:', e);
@@ -749,7 +827,7 @@ export async function adminSetStorageLimit(
   try {
     const { error } = await supabase.rpc('admin_set_storage_limit', {
       p_organization_id: organizationId,
-      p_new_limit_bytes:  limitBytes,
+      p_new_limit_bytes: limitBytes,
     });
     if (error) throw error;
     await writeAdminLog(
@@ -774,7 +852,12 @@ export async function adminSetUnlimitedStorage(organizationId: string): Promise<
       p_organization_id: organizationId,
     });
     if (error) throw error;
-    await writeAdminLog(`Set unlimited storage for org ${organizationId}`, undefined, undefined, organizationId);
+    await writeAdminLog(
+      `Set unlimited storage for org ${organizationId}`,
+      undefined,
+      undefined,
+      organizationId,
+    );
     return true;
   } catch (e) {
     console.error('adminSetUnlimitedStorage error:', e);
@@ -792,7 +875,12 @@ export async function adminResetToDefaultStorageLimit(organizationId: string): P
       p_organization_id: organizationId,
     });
     if (error) throw error;
-    await writeAdminLog(`Reset storage limit to default for org ${organizationId}`, undefined, undefined, organizationId);
+    await writeAdminLog(
+      `Reset storage limit to default for org ${organizationId}`,
+      undefined,
+      undefined,
+      organizationId,
+    );
     return true;
   } catch (e) {
     console.error('adminResetToDefaultStorageLimit error:', e);
@@ -836,8 +924,8 @@ export async function adminGetBillingStatus(
     if (error) throw error;
     const raw = data as Record<string, unknown>;
     return {
-      subscription:    (raw.subscription    as AdminOrgSubscription | null) ?? null,
-      admin_override:  (raw.admin_override  as AdminBillingStatus['admin_override']) ?? null,
+      subscription: (raw.subscription as AdminOrgSubscription | null) ?? null,
+      admin_override: (raw.admin_override as AdminBillingStatus['admin_override']) ?? null,
     };
   } catch (e) {
     console.error('adminGetBillingStatus error:', e);
@@ -857,8 +945,8 @@ export async function adminSetBypassPaywall(
 ): Promise<boolean> {
   try {
     const { error } = await supabase.rpc('admin_set_bypass_paywall', {
-      p_org_id:      organizationId,
-      p_bypass:      bypass,
+      p_org_id: organizationId,
+      p_bypass: bypass,
       p_custom_plan: customPlan ?? null,
     });
     if (error) throw error;
@@ -887,11 +975,16 @@ export async function adminSetOrgPlan(
   try {
     const { error } = await supabase.rpc('admin_set_org_plan', {
       p_org_id: organizationId,
-      p_plan:   plan,
+      p_plan: plan,
       p_status: status,
     });
     if (error) throw error;
-    await writeAdminLog(`Set plan '${plan}' (${status}) for org ${organizationId}`, undefined, { plan, status }, organizationId);
+    await writeAdminLog(
+      `Set plan '${plan}' (${status}) for org ${organizationId}`,
+      undefined,
+      { plan, status },
+      organizationId,
+    );
     return true;
   } catch (e) {
     console.error('adminSetOrgPlan error:', e);
@@ -900,9 +993,15 @@ export async function adminSetOrgPlan(
 }
 
 /** Admin dashboard: full profiles row for edit form (service layer — keeps UI off direct PostgREST). */
-export async function adminGetProfileRowById(profileId: string): Promise<Record<string, unknown> | null> {
+export async function adminGetProfileRowById(
+  profileId: string,
+): Promise<Record<string, unknown> | null> {
   try {
-    const { data, error } = await supabase.from('profiles').select('*').eq('id', profileId).maybeSingle();
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', profileId)
+      .maybeSingle();
     if (error) {
       console.error('adminGetProfileRowById error:', error);
       return null;
@@ -914,9 +1013,15 @@ export async function adminGetProfileRowById(profileId: string): Promise<Record<
   }
 }
 
-export async function adminGetModelRowByUserId(userId: string): Promise<Record<string, unknown> | null> {
+export async function adminGetModelRowByUserId(
+  userId: string,
+): Promise<Record<string, unknown> | null> {
   try {
-    const { data, error } = await supabase.from('models').select('*').eq('user_id', userId).maybeSingle();
+    const { data, error } = await supabase
+      .from('models')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
     if (error) {
       console.error('adminGetModelRowByUserId error:', error);
       return null;
@@ -928,9 +1033,15 @@ export async function adminGetModelRowByUserId(userId: string): Promise<Record<s
   }
 }
 
-export async function adminGetAgencyRowById(agencyId: string): Promise<Record<string, unknown> | null> {
+export async function adminGetAgencyRowById(
+  agencyId: string,
+): Promise<Record<string, unknown> | null> {
   try {
-    const { data, error } = await supabase.from('agencies').select('*').eq('id', agencyId).maybeSingle();
+    const { data, error } = await supabase
+      .from('agencies')
+      .select('*')
+      .eq('id', agencyId)
+      .maybeSingle();
     if (error) {
       console.error('adminGetAgencyRowById error:', error);
       return null;
@@ -980,7 +1091,11 @@ export async function adminGetOrganizationMemberUserRows(
   }
 }
 
-export type AdminProfileIdEmailDisplay = { id: string; display_name: string | null; email: string | null };
+export type AdminProfileIdEmailDisplay = {
+  id: string;
+  display_name: string | null;
+  email: string | null;
+};
 
 export async function adminGetProfilesIdDisplayEmail(
   userIds: string[],

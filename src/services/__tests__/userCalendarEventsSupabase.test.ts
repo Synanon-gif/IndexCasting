@@ -17,7 +17,7 @@ import {
 // Supabase mock
 // ---------------------------------------------------------------------------
 
-const _eqMock   = jest.fn();
+const _eqMock = jest.fn();
 const _orderMock = jest.fn();
 const _selectMock = jest.fn();
 const _insertMock = jest.fn();
@@ -25,24 +25,35 @@ const _updateMock = jest.fn();
 const _deleteMock = jest.fn();
 const _singleMock = jest.fn();
 
-/** Build a chainable mock that resolves at the terminal call with `result`. */
+/** Build a chainable mock that resolves at the terminal call with `result`.
+ *  The chain is thenable so `await chain` resolves to `result`. */
 function makeChain(result: unknown) {
-  const chain: Record<string, jest.Mock> = {};
-  const methods = ['select', 'insert', 'update', 'delete', 'eq', 'neq', 'not', 'is', 'order', 'single', 'maybeSingle', 'upsert', 'limit'];
+  const chain: Record<string, jest.Mock> & { then?: (typeof Promise.prototype)['then'] } = {};
+  const methods = [
+    'select',
+    'insert',
+    'update',
+    'delete',
+    'eq',
+    'neq',
+    'not',
+    'is',
+    'order',
+    'upsert',
+    'limit',
+  ];
   methods.forEach((m) => {
-    chain[m] = jest.fn(() => {
-      if (m === 'single' || m === 'maybeSingle') return Promise.resolve(result);
-      return chain;
-    });
+    chain[m] = jest.fn(() => chain);
   });
-  // Terminal .order() – the last call in getManualEventsForOwner/Org chains.
-  // We make the second .order() call resolve the promise.
-  let orderCallCount = 0;
-  chain['order'] = jest.fn(() => {
-    orderCallCount += 1;
-    if (orderCallCount >= 2) return Promise.resolve(result);
-    return chain;
-  });
+  // Terminal methods resolve the promise immediately.
+  chain['single'] = jest.fn(() => Promise.resolve(result));
+  chain['maybeSingle'] = jest.fn(() => Promise.resolve(result));
+  // Make the chain itself thenable so `await ...limit()` works without a terminal call.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (chain as any).then = (
+    resolve?: ((v: unknown) => unknown) | null,
+    reject?: ((e: unknown) => unknown) | null,
+  ) => Promise.resolve(result).then(resolve ?? undefined, reject ?? undefined);
   return chain;
 }
 
@@ -61,8 +72,8 @@ const { supabase } = require('../../../lib/supabase') as {
   };
 };
 
-const VALID_UUID    = '00000000-0000-0000-0000-000000000001';
-const VALID_ORG_ID  = '00000000-0000-0000-0000-000000000002';
+const VALID_UUID = '00000000-0000-0000-0000-000000000001';
+const VALID_ORG_ID = '00000000-0000-0000-0000-000000000002';
 const VALID_USER_ID = '00000000-0000-0000-0000-000000000003';
 
 const SAMPLE_EVENT: UserCalendarEvent = {
@@ -110,7 +121,9 @@ describe('getManualEventsForOrg', () => {
     // The chain's eq() should have been called with organization_id and agency
     const eqCalls = (chain['eq'] as jest.Mock).mock.calls;
     expect(eqCalls.some(([col]: [string]) => col === 'organization_id')).toBe(true);
-    expect(eqCalls.some(([col, val]: [string, string]) => col === 'owner_type' && val === 'agency')).toBe(true);
+    expect(
+      eqCalls.some(([col, val]: [string, string]) => col === 'owner_type' && val === 'agency'),
+    ).toBe(true);
   });
 
   it('returns empty array when supabase returns an error', async () => {
@@ -128,7 +141,9 @@ describe('getManualEventsForOrg', () => {
   });
 
   it('returns empty array on thrown exception', async () => {
-    supabase.from.mockImplementation(() => { throw new Error('network'); });
+    supabase.from.mockImplementation(() => {
+      throw new Error('network');
+    });
     const result = await getManualEventsForOrg(VALID_ORG_ID, 'client');
     expect(result).toEqual([]);
   });
@@ -166,9 +181,7 @@ describe('insertManualEvent', () => {
     const dupCheckChain = makeChain({ data: null, error: null });
     // Second supabase.from call is the actual insert (single → SAMPLE_EVENT).
     const insertChain = makeChain({ data: SAMPLE_EVENT, error: null });
-    supabase.from
-      .mockReturnValueOnce(dupCheckChain)
-      .mockReturnValueOnce(insertChain);
+    supabase.from.mockReturnValueOnce(dupCheckChain).mockReturnValueOnce(insertChain);
 
     const res = await insertManualEvent({
       owner_id: VALID_USER_ID,
@@ -220,9 +233,7 @@ describe('insertManualEvent', () => {
     // Dup check passes (no existing event), insert fails.
     const dupCheckChain = makeChain({ data: null, error: null });
     const insertChain = makeChain({ data: null, error: { message: 'insert error' } });
-    supabase.from
-      .mockReturnValueOnce(dupCheckChain)
-      .mockReturnValueOnce(insertChain);
+    supabase.from.mockReturnValueOnce(dupCheckChain).mockReturnValueOnce(insertChain);
 
     const res = await insertManualEvent({
       owner_id: VALID_USER_ID,
@@ -242,7 +253,7 @@ describe('updateManualEvent', () => {
   it('returns true on successful update', async () => {
     const chain: Record<string, jest.Mock> = {};
     chain['update'] = jest.fn(() => chain);
-    chain['eq']     = jest.fn(() => Promise.resolve({ error: null }));
+    chain['eq'] = jest.fn(() => Promise.resolve({ error: null }));
     supabase.from.mockReturnValue(chain);
 
     const ok = await updateManualEvent(VALID_UUID, { title: 'Updated' });
@@ -252,7 +263,7 @@ describe('updateManualEvent', () => {
   it('returns false on supabase error', async () => {
     const chain: Record<string, jest.Mock> = {};
     chain['update'] = jest.fn(() => chain);
-    chain['eq']     = jest.fn(() => Promise.resolve({ error: { message: 'fail' } }));
+    chain['eq'] = jest.fn(() => Promise.resolve({ error: { message: 'fail' } }));
     supabase.from.mockReturnValue(chain);
 
     const ok = await updateManualEvent(VALID_UUID, { title: 'Updated' });
@@ -268,7 +279,7 @@ describe('deleteManualEvent', () => {
   it('returns true on successful delete', async () => {
     const chain: Record<string, jest.Mock> = {};
     chain['delete'] = jest.fn(() => chain);
-    chain['eq']     = jest.fn(() => Promise.resolve({ error: null }));
+    chain['eq'] = jest.fn(() => Promise.resolve({ error: null }));
     supabase.from.mockReturnValue(chain);
 
     const ok = await deleteManualEvent(VALID_UUID);
@@ -278,7 +289,7 @@ describe('deleteManualEvent', () => {
   it('returns false on error', async () => {
     const chain: Record<string, jest.Mock> = {};
     chain['delete'] = jest.fn(() => chain);
-    chain['eq']     = jest.fn(() => Promise.resolve({ error: { message: 'fail' } }));
+    chain['eq'] = jest.fn(() => Promise.resolve({ error: { message: 'fail' } }));
     supabase.from.mockReturnValue(chain);
 
     const ok = await deleteManualEvent(VALID_UUID);

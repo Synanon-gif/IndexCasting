@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase';
+import { pooledSubscribe } from './realtimeChannelPool';
 import { OPTION_REQUEST_SELECT } from './optionRequestsSupabase';
 import type { SupabaseOptionRequest } from './optionRequestsSupabase';
 
@@ -787,4 +788,29 @@ export async function checkCalendarConflict(
     });
     return { has_conflict: false, conflicting_entries: [] };
   }
+}
+
+/**
+ * Subscribe to calendar_entries changes for a specific model.
+ * Fires on INSERT, UPDATE, DELETE — caller should reload their calendar data.
+ * Uses the shared channel pool. Returns a cleanup function.
+ */
+export function subscribeToCalendarChanges(modelId: string, onChange: () => void): () => void {
+  return pooledSubscribe(
+    `calendar-${modelId}`,
+    (channel, dispatch) =>
+      channel
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'calendar_entries',
+            filter: `model_id=eq.${modelId}`,
+          },
+          dispatch,
+        )
+        .subscribe(),
+    () => onChange(),
+  );
 }

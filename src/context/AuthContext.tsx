@@ -691,12 +691,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       let inviteAcceptedOk = false;
       let inviteError: string | undefined;
       if (hasSession) {
-        await loadProfile(newUserId);
+        // Finalize invite/claim BEFORE loadProfile — loadProfile may sign out
+        // inactive B2B users whose membership hasn't been created yet.
         const finEarly = await finalizePendingInviteOrClaim({
           onSuccessReloadProfile: async () => {
             await loadProfile(newUserId);
           },
         });
+        await loadProfile(newUserId);
         lastBootstrapFinalizeRef.current = finEarly;
         inviteAcceptedOk = finEarly.invite.ok;
         inviteError = finEarly.invite.error;

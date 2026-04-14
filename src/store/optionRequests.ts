@@ -33,6 +33,7 @@ import {
   type SupabaseOptionRequest,
   type SupabaseOptionRequestModelSafe,
   type SupabaseOptionMessage,
+  subscribeToOptionRequestChanges,
 } from '../services/optionRequestsSupabase';
 import { createNotification, createNotifications } from '../services/notificationsSupabase';
 import { supabase } from '../../lib/supabase';
@@ -789,6 +790,22 @@ export async function refreshOptionRequestInCache(
 }
 
 /**
+ * Subscribe to realtime row-level updates on a specific option_request.
+ * When the DB row changes (status, final_status, price fields, etc.)
+ * the local cache is refreshed from the server. Returns cleanup function.
+ */
+export function subscribeToOptionRequestRowChanges(
+  requestId: string,
+  opts?: { modelSafe?: boolean },
+): () => void {
+  const threadId = requestsCache.find((r) => r.id === requestId)?.threadId;
+  return subscribeToOptionRequestChanges(requestId, async () => {
+    if (!threadId) return;
+    await refreshOptionRequestInCache(threadId, opts);
+  });
+}
+
+/**
  * Agency confirms AVAILABILITY only (Axis 2: final_status → option_confirmed).
  * Does NOT touch price. Price and availability are independent axes.
  */
@@ -902,11 +919,12 @@ export async function agencyCounterOfferStore(
     const agency = req.agencyId ? await getAgencyById(req.agencyId) : null;
     notifyClientAgencyCounterOffer(agency?.name ?? 'Agency');
 
-    // Persistent DB notification so the client sees it in the notification bell.
+    // Persistent DB notification — send to client org so all org members see it.
     const full = refreshedAfterRpc ?? (await getOptionRequestById(req.id));
     if (full?.client_id) {
       void createNotification({
         user_id: full.client_id,
+        organization_id: full.organization_id ?? full.client_organization_id ?? undefined,
         type: 'agency_counter_offer',
         title: uiCopy.notifications.agencyCounterOffer.title,
         message: uiCopy.notifications.agencyCounterOffer.message,

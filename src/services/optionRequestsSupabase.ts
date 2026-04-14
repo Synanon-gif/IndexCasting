@@ -630,35 +630,34 @@ export async function modelUpdateOptionSchedule(
 
 /**
  * Agency sets a counter-offer price.
- * Guard: only allowed while still in_negotiation — prevents counter-offers on
- * already-confirmed or rejected requests (e.g. from a stale UI screen).
+ * Uses atomic RPC agency_set_counter_offer which acquires an advisory lock AND
+ * performs the update within a single DB transaction — prevents concurrent
+ * bookers from racing (the old two-roundtrip pattern was unsafe).
+ * Guard: only allowed while still in_negotiation.
  */
 export async function setAgencyCounterOffer(id: string, counterPrice: number): Promise<boolean> {
   try {
-    await supabase.rpc('acquire_option_request_lock', { p_request_id: id }).throwOnError();
-
-    const { data, error } = await supabase
-      .from('option_requests')
-      .update({
-        agency_counter_price: counterPrice,
-        client_price_status: 'pending',
-      })
-      .eq('id', id)
-      .eq('status', 'in_negotiation')
-      .select('id, agency_id, agency_organization_id')
-      .maybeSingle();
+    const { data, error } = await supabase.rpc('agency_set_counter_offer', {
+      p_request_id: id,
+      p_counter_price: counterPrice,
+    });
     if (error) {
-      console.error('setAgencyCounterOffer error:', error);
+      console.error('setAgencyCounterOffer RPC error:', error);
       return false;
     }
-    if (!data?.id) {
-      console.warn('setAgencyCounterOffer: no row updated — request not in_negotiation', id);
+    const result = data as {
+      ok: boolean;
+      reason?: string;
+      agency_id?: string;
+      agency_organization_id?: string | null;
+    } | null;
+    if (!result?.ok) {
+      console.warn('setAgencyCounterOffer: RPC returned not ok —', result?.reason ?? 'unknown', id);
       return false;
     }
-    const row = data as { agency_id: string; agency_organization_id: string | null };
     const auditOrgId = await resolveAgencyOrgIdForOptionNotification(
-      row.agency_id,
-      row.agency_organization_id,
+      result.agency_id ?? '',
+      result.agency_organization_id ?? null,
     );
     if (auditOrgId) {
       logAction(auditOrgId, 'setAgencyCounterOffer', {
@@ -2379,6 +2378,34 @@ export function subscribeToOptionMessages(
         )
         .subscribe(),
     (payload) => onMessage((payload as { new: SupabaseOptionMessage }).new),
+  );
+}
+
+/**
+ * Subscribe to row-level updates on a single option_request.
+ * Fires on UPDATE events (status, final_status, client_price_status, etc.).
+ * Uses the shared channel pool. Returns a cleanup function.
+ */
+export function subscribeToOptionRequestChanges(
+  requestId: string,
+  onUpdate: (updated: SupabaseOptionRequest) => void,
+): () => void {
+  return pooledSubscribe(
+    `option-row-${requestId}`,
+    (channel, dispatch) =>
+      channel
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'option_requests',
+            filter: `id=eq.${requestId}`,
+          },
+          dispatch,
+        )
+        .subscribe(),
+    (payload) => onUpdate((payload as { new: SupabaseOptionRequest }).new),
   );
 }
 
