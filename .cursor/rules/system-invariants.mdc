@@ -21,6 +21,61 @@ Wenn eine Änderung eine dieser Regeln gefährdet → STOP und refaktorieren.
 - Org-Kontext muss via `get_my_org_context()` auflösbar sein — ohne Fehler
 - Kein View darf Org als existent voraussetzen ohne Fallback
 
+## INVITE-BEFORE-BOOTSTRAP INVARIANT (unveränderlich, Fix 20260818)
+
+Eingeladene Booker/Employees dürfen NIEMALS eine eigene Zombie-Organisation erhalten.
+Wenn ein Owner einen Booker/Employee einlädt, MUSS der eingeladene User der **bestehenden**
+Organisation des Owners hinzugefügt werden — es darf KEINE separate Org erstellt werden.
+
+### Reihenfolge in `bootstrapThenLoadProfile` (UNVERÄNDERLICH)
+
+```
+1. Invite-Token prüfen (readInviteToken)
+2. Wenn Token vorhanden → finalizePendingInviteOrClaim() ZUERST
+3. Wenn Invite erfolgreich → ensurePlainSignupB2bOwnerBootstrap ÜBERSPRINGEN
+4. Nur wenn KEIN Invite-Token oder Invite GESCHEITERT → Owner-Bootstrap ausführen
+```
+
+**VERBOTEN:** `ensurePlainSignupB2bOwnerBootstrap` VOR `finalizePendingInviteOrClaim` ausführen.
+Das war die Root Cause des Zombie-Org-Bugs: Bootstrap sah 0 Memberships → erstellte eigene Org
+→ `accept_organization_invitation` scheiterte mit `already_member_of_another_org`.
+
+### Drei-Schichten-Schutz (Defense-in-Depth)
+
+| Layer | Mechanismus | Schutzwirkung |
+|---|---|---|
+| **Layer 1 — Frontend** | `bootstrapThenLoadProfile`: Invite-Finalisierung VOR Owner-Bootstrap; bei Erfolg Bootstrap überspringen | Primärer Fix — korrekte Reihenfolge |
+| **Layer 2 — Backend RPC** | `ensure_plain_signup_b2b_owner_bootstrap`: prüft `invitations`-Tabelle auf pending Invite für die User-Email; wenn vorhanden → `skipped: has_pending_invite` | Verhindert Zombie auch wenn Frontend-Reihenfolge versagt |
+| **Layer 3 — Backend RPC** | `accept_organization_invitation`: erkennt Zombie-Orgs (sole member, keine Conversations/Option-Requests/fremde Invites) und räumt sie auf statt `already_member_of_another_org` zu werfen | Selbstheilung wenn Layer 1+2 versagen |
+
+### Zombie-Org-Definition (für Layer 3)
+
+Eine Organisation gilt als "Zombie" wenn **alle** Bedingungen erfüllt sind:
+- User ist **einziges** Mitglied (`organization_members` count = 1)
+- Keine `conversations` mit der Org als Client- oder Agency-Org
+- Keine `option_requests` mit der Org
+- Keine Invitations die von **anderen** Usern ausgestellt wurden
+
+Nur Zombie-Orgs werden automatisch gelöscht; echte Orgs mit Daten oder mehreren Mitgliedern
+lösen weiterhin `already_member_of_another_org` aus.
+
+### Gilt für BEIDE Org-Typen (Client + Agency)
+
+- **Client-Org:** Owner lädt Employee ein → Employee wird `employee` in Owner's Org
+- **Agency-Org:** Owner lädt Booker ein → Booker wird `booker` in Owner's Org
+- `accept_organization_invitation` korrigiert `profiles.role` automatisch (`client`↔`agent`)
+
+### STOP-Bedingung
+
+Jede Änderung an `bootstrapThenLoadProfile`, `signUp`, `ensurePlainSignupB2bOwnerBootstrap`,
+oder `accept_organization_invitation` MUSS explizit verifizieren:
+1. Wird die Invite-Finalisierung VOR dem Owner-Bootstrap aufgerufen?
+2. Wird der Owner-Bootstrap bei erfolgreichem Invite übersprungen?
+3. Hat die Bootstrap-RPC den pending-invite-Check?
+4. Kann `accept_organization_invitation` Zombie-Orgs aufräumen?
+
+→ Wenn eine Antwort „nein" oder „unklar" ist: STOP — nicht committen.
+
 ## PAYWALL & ORG-WIDE ACCESS (B2B)
 
 - **Org-weit, nicht user-lokal:** Platform-Zugang für Client/Agency richtet sich nach `can_access_platform()` / `organization_subscriptions` + `admin_overrides` für die **aufgelöste Organisation** (älteste `organization_members`-Zeile im Paywall-RPC — siehe Migrationen und `docs/PAYWALL_SECURITY_SUMMARY.md`).

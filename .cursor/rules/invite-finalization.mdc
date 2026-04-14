@@ -37,7 +37,26 @@ When URL query params are absent but a **persisted** org-invite or model-claim t
 
 Deep-link query params and persisted tokens are merged **once** at unauthenticated bootstrap via `resolveInviteAndClaimTokensForRouting` (see `App.tsx`). **Do not** add `popstate`/SPA navigation handlers or other effects that re-read the URL in isolation and **replace** routing state or rewrite storage — that would let a later URL (e.g. stripped query after redirect) clobber a still-valid pending token. **Finalization** remains driven by **storage** (`readInviteToken` / `readModelClaimToken`). The URL is an **optional co-source only for that initial merge**, not a live authority that overwrites storage after bootstrap.
 
+## 8. INVITE-BEFORE-BOOTSTRAP invariant (Fix 20260818, CRITICAL)
+
+In `bootstrapThenLoadProfile`, invite finalization (`finalizePendingInviteOrClaim`) MUST run **BEFORE** `ensurePlainSignupB2bOwnerBootstrap`. If the invite is successfully accepted, the owner bootstrap MUST be **skipped** entirely.
+
+**Root cause of zombie-org bug:** `ensurePlainSignupB2bOwnerBootstrap` sees 0 memberships for a newly signed-up invited user → creates a zombie org where they become Owner → `accept_organization_invitation` then fails with `already_member_of_another_org`.
+
+**Three-layer defense (all MUST be maintained):**
+
+| Layer | Where | Mechanism |
+|-------|-------|-----------|
+| Layer 1 — Frontend | `AuthContext.tsx` `bootstrapThenLoadProfile` | Read invite token first → finalize → if accepted, skip bootstrap |
+| Layer 2 — Backend | `ensure_plain_signup_b2b_owner_bootstrap` RPC | Check `invitations` table for pending invite by user email → if found, return `skipped: has_pending_invite` |
+| Layer 3 — Backend | `accept_organization_invitation` RPC | Detect zombie orgs (sole member, no conversations/option_requests/foreign invites) → clean up instead of rejecting |
+
+**Applies equally to Client-Org (Employee invite) and Agency-Org (Booker invite).**
+
+**FORBIDDEN:** Any change that executes `ensurePlainSignupB2bOwnerBootstrap` before `finalizePendingInviteOrClaim` in any code path.
+
 ## References
 
 - Implementation: `src/services/finalizePendingInviteOrClaim.ts`, `src/context/AuthContext.tsx` (`bootstrapThenLoadProfile` tail + session `useEffect`), `App.tsx` (URL + `peekPending*TokenSync` / native `read*Token` + `resolveInviteAndClaimTokensForRouting`).
 - Product table: `docs/INVITE_CLAIM_ASSIGNMENT_CONSISTENCY.md`
+- Zombie-org fix: `supabase/migrations/20260818_fix_invite_zombie_org.sql`

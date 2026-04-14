@@ -653,6 +653,7 @@ Ergänzt und schärft die obigen Regeln **ohne** sie zu ersetzen. Bei Widerspruc
 - **Reihenfolge:** **Invite zuerst**; **Claim danach**, wenn der Invite-Pfad erfolgreich abgeschlossen ist (siehe `docs/INVITE_CLAIM_ASSIGNMENT_CONSISTENCY.md`).
 - **Tokens** bleiben erhalten bis **Erfolg** oder **fataler Fehler** (kein verfrühes Löschen, das Recovery bricht).
 - Ergänzt §4b / §6 Model-Claim-Token: technische Finalisierung ist **kanonisch**, nicht UI-gekoppelt.
+- **INVITE-BEFORE-BOOTSTRAP (Fix 20260818, KRITISCH):** In `bootstrapThenLoadProfile` MUSS `finalizePendingInviteOrClaim` **VOR** `ensurePlainSignupB2bOwnerBootstrap` laufen. Wenn der Invite erfolgreich akzeptiert wurde, wird der Owner-Bootstrap **übersprungen**. Andernfalls erzeugt der Bootstrap eine Zombie-Org für den eingeladenen User. Drei-Schichten-Schutz: (1) Frontend-Reihenfolge, (2) pending-invite-Check in Bootstrap-RPC, (3) Zombie-Cleanup in `accept_organization_invitation`. Gilt für **Client-Org (Employee)** und **Agency-Org (Booker)** gleichermaßen. Siehe `system-invariants.mdc` **INVITE-BEFORE-BOOTSTRAP INVARIANT**.
 
 ### 27.6 Invite-Kontext — UI-Invariante
 
