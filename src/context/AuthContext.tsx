@@ -502,7 +502,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Ignore — fall through to full bootstrap
       }
 
+      // ── PRE-LOAD INVITE FINALIZATION (MUST run BEFORE owner bootstrap) ────
+      // Invited Bookers/Employees start with is_active=false (handle_new_user).
+      // accept_organization_invitation sets is_active=true and adds them to the
+      // EXISTING org. If we run ensurePlainSignupB2bOwnerBootstrap first, it sees
+      // 0 memberships and creates a ZOMBIE org where the invited user becomes
+      // Owner — then accept_organization_invitation fails with
+      // "already_member_of_another_org". Fix: finalize invite FIRST; only run
+      // owner bootstrap when NO invite was successfully consumed.
+      lastBootstrapFinalizeRef.current = EMPTY_FINALIZE;
+      let preFinalized = false;
+      let inviteAcceptedInBootstrap = false;
       if (!isGuestUser) {
+        try {
+          const { readInviteToken } = await import('../storage/inviteToken');
+          const pendingInvite = await readInviteToken();
+          if (pendingInvite) {
+            console.log(
+              '[Auth] bootstrapThenLoadProfile: pending invite token found — finalizing BEFORE owner bootstrap',
+            );
+            lastBootstrapFinalizeRef.current = await finalizePendingInviteOrClaim({
+              onSuccessReloadProfile: async () => {
+                // no-op here; loadProfile runs below after finalization
+              },
+            });
+            preFinalized = true;
+            inviteAcceptedInBootstrap = lastBootstrapFinalizeRef.current.invite.ok;
+            if (inviteAcceptedInBootstrap) {
+              console.log(
+                '[Auth] bootstrapThenLoadProfile: invite accepted — skipping owner bootstrap (user joined existing org)',
+              );
+            }
+          }
+        } catch (e) {
+          console.error('bootstrapThenLoadProfile pre-finalize invite error:', e);
+        }
+      }
+
+      if (!isGuestUser && !inviteAcceptedInBootstrap) {
         try {
           const { ensurePlainSignupB2bOwnerBootstrap } =
             await import('../services/b2bOwnerBootstrapSupabase');
@@ -517,40 +554,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         } catch (e) {
           console.error('bootstrapThenLoadProfile exception:', e);
-        }
-      }
-
-      // ── PRE-LOAD INVITE FINALIZATION ────────────────────────────────────────
-      // Invited Bookers/Employees start with is_active=false (handle_new_user).
-      // accept_organization_invitation sets is_active=true — but if we call
-      // loadProfile first, it sees is_active=false and signs the user out before
-      // finalization ever runs. Fix: run finalization BEFORE loadProfile when a
-      // pending invite token exists. This way the RPC activates the profile and
-      // loadProfile sees is_active=true.
-      lastBootstrapFinalizeRef.current = EMPTY_FINALIZE;
-      let preFinalized = false;
-      if (!isGuestUser) {
-        try {
-          const { readInviteToken } = await import('../storage/inviteToken');
-          const pendingInvite = await readInviteToken();
-          if (pendingInvite) {
-            console.log(
-              '[Auth] bootstrapThenLoadProfile: pending invite token found — finalizing BEFORE loadProfile',
-            );
-            lastBootstrapFinalizeRef.current = await finalizePendingInviteOrClaim({
-              onSuccessReloadProfile: async () => {
-                // no-op here; loadProfile runs below after finalization
-              },
-            });
-            preFinalized = true;
-            if (lastBootstrapFinalizeRef.current.invite.ok) {
-              console.log(
-                '[Auth] bootstrapThenLoadProfile: invite accepted — profile should now be active',
-              );
-            }
-          }
-        } catch (e) {
-          console.error('bootstrapThenLoadProfile pre-finalize invite error:', e);
         }
       }
 
