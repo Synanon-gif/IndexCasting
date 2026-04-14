@@ -11,6 +11,7 @@ import {
   Platform,
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
+import { isMobileWidth } from '../theme/breakpoints';
 import { uiCopy } from '../constants/uiCopy';
 import type { PdfModelInput } from '../utils/pdfExport';
 
@@ -23,7 +24,7 @@ type PdfExportModalProps = {
 
 export function PdfExportModal({ visible, onClose, models, entityName }: PdfExportModalProps) {
   const { width: winW } = useWindowDimensions();
-  const isMobile = winW < 600;
+  const isMobile = isMobileWidth(winW);
 
   const [selected, setSelected] = useState<Set<string>>(
     () => new Set(models.map((_, i) => String(i))),

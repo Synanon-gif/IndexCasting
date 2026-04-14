@@ -1,5 +1,13 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Modal } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  ActivityIndicator,
+  Modal,
+} from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { useAuth } from '../context/AuthContext';
 import { isAgency as checkIsAgency } from '../types/roles';
@@ -71,7 +79,10 @@ export const LegalAcceptanceScreen: React.FC = () => {
           </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.checkRow} onPress={() => setPrivacyChecked(!privacyChecked)}>
+        <TouchableOpacity
+          style={styles.checkRow}
+          onPress={() => setPrivacyChecked(!privacyChecked)}
+        >
           <View style={[styles.checkbox, privacyChecked && styles.checkboxChecked]}>
             {privacyChecked && <Text style={styles.checkmark}>✓</Text>}
           </View>
@@ -85,7 +96,10 @@ export const LegalAcceptanceScreen: React.FC = () => {
         </TouchableOpacity>
 
         {isAgency && (
-          <TouchableOpacity style={styles.checkRow} onPress={() => setAgencyRightsChecked(!agencyRightsChecked)}>
+          <TouchableOpacity
+            style={styles.checkRow}
+            onPress={() => setAgencyRightsChecked(!agencyRightsChecked)}
+          >
             <View style={[styles.checkbox, agencyRightsChecked && styles.checkboxChecked]}>
               {agencyRightsChecked && <Text style={styles.checkmark}>✓</Text>}
             </View>
@@ -116,24 +130,55 @@ export const LegalAcceptanceScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' },
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   content: { width: '100%', maxWidth: 440, padding: spacing.md, alignItems: 'center' },
   brand: { ...typography.heading, color: colors.textPrimary, marginBottom: spacing.sm },
-  title: { ...typography.heading, fontSize: 20, color: colors.textPrimary, marginBottom: spacing.xs },
-  subtitle: { ...typography.body, color: colors.textSecondary, textAlign: 'center', marginBottom: spacing.xl },
-  checkRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, marginBottom: spacing.md, width: '100%' },
+  title: {
+    ...typography.heading,
+    fontSize: 20,
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
+  },
+  subtitle: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: spacing.xl,
+  },
+  checkRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+    width: '100%',
+  },
   checkbox: {
-    width: 22, height: 22, borderRadius: 4, borderWidth: 2, borderColor: colors.border,
-    alignItems: 'center', justifyContent: 'center', marginTop: 1,
+    width: 22,
+    height: 22,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
   },
   checkboxChecked: { backgroundColor: colors.textPrimary, borderColor: colors.textPrimary },
   checkmark: { color: colors.surface, fontSize: 14, fontWeight: '700' },
   checkLabel: { ...typography.body, flex: 1, color: colors.textPrimary },
   link: { textDecorationLine: 'underline', color: colors.textPrimary },
-  error: { ...typography.body, fontSize: 12, color: '#C0392B', marginBottom: spacing.sm },
+  error: { ...typography.body, fontSize: 12, color: colors.errorDark, marginBottom: spacing.sm },
   acceptBtn: {
-    width: '100%', paddingVertical: spacing.md, borderRadius: 8,
-    backgroundColor: colors.textPrimary, alignItems: 'center', marginTop: spacing.lg,
+    width: '100%',
+    paddingVertical: spacing.md,
+    borderRadius: 8,
+    backgroundColor: colors.textPrimary,
+    alignItems: 'center',
+    marginTop: spacing.lg,
   },
   acceptBtnDisabled: { opacity: 0.4 },
   acceptLabel: { ...typography.label, color: colors.surface },

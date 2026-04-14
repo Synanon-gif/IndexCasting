@@ -27,7 +27,9 @@ export const AgencyDashboardScreen: React.FC<AgencyDashboardScreenProps> = ({
   const { profile } = useAuth();
   const [items, setItems] = useState<AgencyModel[]>([]);
   const [showRecruiting, setShowRecruiting] = useState(false);
-  const [openRecruitingBookingThreadId, setOpenRecruitingBookingThreadId] = useState<string | null>(null);
+  const [openRecruitingBookingThreadId, setOpenRecruitingBookingThreadId] = useState<string | null>(
+    null,
+  );
 
   // profile.agency_id is the only safe lookup — no email-match, no agencies[0] fallback.
   // It is loaded via get_my_org_context() (SECURITY DEFINER, org-scoped) on every login.
@@ -54,27 +56,10 @@ export const AgencyDashboardScreen: React.FC<AgencyDashboardScreenProps> = ({
         );
       })
       .catch((e) => console.error('[AgencyDashboard] getAgencyModels error:', e));
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [currentAgencyId]);
-
-  const toggleVisibility = (
-    id: string,
-    key: keyof AgencyModel['visibility'],
-  ) => {
-    setItems((prev) =>
-      prev.map((m) =>
-        m.id === id
-          ? {
-              ...m,
-              visibility: {
-                ...m.visibility,
-                [key]: !m.visibility[key],
-              },
-            }
-          : m,
-      ),
-    );
-  };
 
   if (!currentAgencyId) {
     return (
@@ -120,10 +105,7 @@ export const AgencyDashboardScreen: React.FC<AgencyDashboardScreenProps> = ({
       <Text style={styles.label}>Agency workspace</Text>
       <Text style={styles.heading}>Traction</Text>
 
-      <TouchableOpacity
-        style={styles.recruitingEntry}
-        onPress={() => setShowRecruiting(true)}
-      >
+      <TouchableOpacity style={styles.recruitingEntry} onPress={() => setShowRecruiting(true)}>
         <Text style={styles.recruitingEntryLabel}>Recruiting</Text>
         <Text style={styles.recruitingEntryHint}>Review model applications</Text>
       </TouchableOpacity>
@@ -135,61 +117,10 @@ export const AgencyDashboardScreen: React.FC<AgencyDashboardScreenProps> = ({
               <Text style={styles.name}>{m.name}</Text>
               <Text style={styles.traction}>{m.traction} swipes</Text>
             </View>
-            <View style={styles.rowRight}>
-              <Text style={styles.visibilityLabel}>Visibility</Text>
-              <View style={styles.toggleRow}>
-                <VisibilityToggle
-                  label="Commercial"
-                  active={m.visibility.commercial}
-                  onPress={() => toggleVisibility(m.id, 'commercial')}
-                  tone="green"
-                />
-                <VisibilityToggle
-                  label="High-Fashion"
-                  active={m.visibility.highFashion}
-                  onPress={() => toggleVisibility(m.id, 'highFashion')}
-                  tone="brown"
-                />
-              </View>
-            </View>
           </View>
         ))}
       </View>
     </View>
-  );
-};
-
-type VisibilityToggleProps = {
-  label: string;
-  active: boolean;
-  tone: 'green' | 'brown';
-  onPress: () => void;
-};
-
-const VisibilityToggle: React.FC<VisibilityToggleProps> = ({
-  label,
-  active,
-  tone,
-  onPress,
-}) => {
-  const activeColor = tone === 'green' ? colors.accentGreen : colors.accentBrown;
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      style={[
-        styles.togglePill,
-        active && { backgroundColor: activeColor, borderColor: activeColor },
-      ]}
-    >
-      <Text
-        style={[
-          styles.toggleLabel,
-          active && { color: colors.surface },
-        ]}
-      >
-        {label}
-      </Text>
-    </TouchableOpacity>
   );
 };
 
@@ -272,10 +203,6 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 2,
   },
-  rowRight: {
-    alignItems: 'flex-end',
-    gap: spacing.xs,
-  },
   name: {
     ...typography.body,
     color: colors.textPrimary,
@@ -284,26 +211,4 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.textSecondary,
   },
-  visibilityLabel: {
-    ...typography.label,
-    fontSize: 10,
-    color: colors.textSecondary,
-  },
-  toggleRow: {
-    flexDirection: 'row',
-    gap: spacing.xs,
-  },
-  togglePill: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-  },
-  toggleLabel: {
-    ...typography.label,
-    fontSize: 10,
-    color: colors.textSecondary,
-  },
 });
-

@@ -498,7 +498,7 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     marginBottom: spacing.sm,
   },
-  error: { ...typography.body, fontSize: 12, color: '#C0392B', marginBottom: spacing.sm },
+  error: { ...typography.body, fontSize: 12, color: colors.errorDark, marginBottom: spacing.sm },
   submitBtn: {
     width: '100%',
     paddingVertical: spacing.md,

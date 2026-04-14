@@ -86,7 +86,9 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
   // Organization editing
   const [expandedOrgId, setExpandedOrgId] = useState<string | null>(null);
   const [orgEditDraft, setOrgEditDraft] = useState<Record<string, string>>({});
-  const [orgMembers, setOrgMembers] = useState<Array<AdminOrgMembership & { user_id?: string; display_name?: string; email?: string }>>([]);
+  const [orgMembers, setOrgMembers] = useState<
+    Array<AdminOrgMembership & { user_id?: string; display_name?: string; email?: string }>
+  >([]);
   const [orgSavingId, setOrgSavingId] = useState<string | null>(null);
   const [orgTogglingId, setOrgTogglingId] = useState<string | null>(null);
 
@@ -99,23 +101,31 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
   const [orgOwnerNames, setOrgOwnerNames] = useState<Record<string, string>>({});
 
   // Org membership per user (keyed by user_id), loaded eagerly for Accounts tab
-  const [profileOrgMap, setProfileOrgMap] = useState<Record<string, { orgId: string; orgName: string; orgRole: string }>>({});
+  const [profileOrgMap, setProfileOrgMap] = useState<
+    Record<string, { orgId: string; orgName: string; orgRole: string }>
+  >({});
 
   // Agency swipe limit editing (per org id)
-  const [orgSwipeLimits, setOrgSwipeLimits] = useState<Record<string, AdminAgencyUsageLimits | null>>({});
+  const [orgSwipeLimits, setOrgSwipeLimits] = useState<
+    Record<string, AdminAgencyUsageLimits | null>
+  >({});
   const [orgSwipeLimitDraft, setOrgSwipeLimitDraft] = useState<Record<string, string>>({});
   const [orgSwipeSavingId, setOrgSwipeSavingId] = useState<string | null>(null);
   const [orgSwipeResettingId, setOrgSwipeResettingId] = useState<string | null>(null);
 
   // Agency storage override editing (per org id)
-  const [orgStorageData, setOrgStorageData] = useState<Record<string, AdminStorageOverride | null>>({});
+  const [orgStorageData, setOrgStorageData] = useState<Record<string, AdminStorageOverride | null>>(
+    {},
+  );
   const [orgStorageLimitDraft, setOrgStorageLimitDraft] = useState<Record<string, string>>({});
   const [orgStorageSavingId, setOrgStorageSavingId] = useState<string | null>(null);
   const [orgStorageUnlimitingId, setOrgStorageUnlimitingId] = useState<string | null>(null);
   const [orgStorageResettingId, setOrgStorageResettingId] = useState<string | null>(null);
 
   // Billing & subscription (per org id)
-  const [orgBillingData, setOrgBillingData] = useState<Record<string, AdminBillingStatus | null>>({});
+  const [orgBillingData, setOrgBillingData] = useState<Record<string, AdminBillingStatus | null>>(
+    {},
+  );
   const [orgPlanDraft, setOrgPlanDraft] = useState<Record<string, string>>({});
   const [orgCustomPlanDraft, setOrgCustomPlanDraft] = useState<Record<string, string>>({});
   const [orgBillingBusyId, setOrgBillingBusyId] = useState<string | null>(null);
@@ -125,10 +135,22 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
     try {
       // Each call has its own .catch so one failure never blocks the others.
       const [p, l, orgResult, modelResult] = await Promise.all([
-        getAllProfiles().catch((e) => { console.error('[Admin] getAllProfiles threw:', e); return [] as AdminProfile[]; }),
-        getAdminLogs(200).catch((e) => { console.error('[Admin] getAdminLogs threw:', e); return [] as AdminLogEntry[]; }),
-        adminListOrganizations().catch((e) => { console.error('[Admin] adminListOrganizations threw:', e); return { migrationApplied: false, data: [] as AdminOrganization[] }; }),
-        adminListAllModels().catch((e) => { console.error('[Admin] adminListAllModels threw:', e); return { migrationApplied: false, data: [] as AdminModel[] }; }),
+        getAllProfiles().catch((e) => {
+          console.error('[Admin] getAllProfiles threw:', e);
+          return [] as AdminProfile[];
+        }),
+        getAdminLogs(200).catch((e) => {
+          console.error('[Admin] getAdminLogs threw:', e);
+          return [] as AdminLogEntry[];
+        }),
+        adminListOrganizations().catch((e) => {
+          console.error('[Admin] adminListOrganizations threw:', e);
+          return { migrationApplied: false, data: [] as AdminOrganization[] };
+        }),
+        adminListAllModels().catch((e) => {
+          console.error('[Admin] adminListAllModels threw:', e);
+          return { migrationApplied: false, data: [] as AdminModel[] };
+        }),
       ]);
       setProfiles(p);
       setLogs(l);
@@ -144,7 +166,11 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
           for (const m of memRows) {
             const org = orgResult.data.find((o) => o.id === m.organization_id);
             if (org) {
-              orgLookup[m.user_id] = { orgId: m.organization_id, orgName: org.name, orgRole: m.role };
+              orgLookup[m.user_id] = {
+                orgId: m.organization_id,
+                orgName: org.name,
+                orgRole: m.role,
+              };
             }
           }
           setProfileOrgMap(orgLookup);
@@ -154,7 +180,9 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
         console.warn('[Admin] org_members bulk fetch failed (RLS policy may be missing):', memErr);
       }
 
-      console.log(`[Admin] loaded: ${p.length} profiles, ${orgResult.data.length} orgs (migrationApplied=${orgResult.migrationApplied}), ${modelResult.data.length} models`);
+      console.log(
+        `[Admin] loaded: ${p.length} profiles, ${orgResult.data.length} orgs (migrationApplied=${orgResult.migrationApplied}), ${modelResult.data.length} models`,
+      );
     } catch (err) {
       console.error('[Admin] loadData fatal error:', err);
     } finally {
@@ -162,7 +190,9 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
     }
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    loadData();
+  }, []);
 
   const showFeedback = (msg: string, ok = true) => setFeedback({ msg, ok });
 
@@ -190,8 +220,10 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
     setActivatingId(userId);
     try {
       const ok = await activateAccount(userId);
-      if (ok) { showFeedback('Account activated'); await loadData(); }
-      else showFeedback('Activation failed.', false);
+      if (ok) {
+        showFeedback('Account activated');
+        await loadData();
+      } else showFeedback('Activation failed.', false);
     } finally {
       setActivatingId(null);
     }
@@ -221,7 +253,10 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
       showFeedback(uiCopy.adminDashboard.purgeSuccess);
       await loadData();
     } else {
-      showFeedback(uiCopy.adminDashboard.purgeFailedWithDetails.replace('{details}', result.error), false);
+      showFeedback(
+        uiCopy.adminDashboard.purgeFailedWithDetails.replace('{details}', result.error),
+        false,
+      );
     }
   };
 
@@ -234,7 +269,11 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
     }
     Alert.alert(title, message, [
       { text: uiCopy.common.cancel, style: 'cancel' },
-      { text: uiCopy.adminDashboard.deleteData, style: 'destructive', onPress: () => void runAdminPurge(p.id) },
+      {
+        text: uiCopy.adminDashboard.deleteData,
+        style: 'destructive',
+        onPress: () => void runAdminPurge(p.id),
+      },
     ]);
   };
 
@@ -250,7 +289,8 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
       website: (fullProfile?.website as string | undefined) || '',
       country: (fullProfile?.country as string | undefined) || profile.country || '',
       role: (fullProfile?.role as string | undefined) || profile.role || '',
-      is_active: ((fullProfile?.is_active as boolean | undefined) ?? profile.is_active) ? 'true' : 'false',
+      is_active:
+        ((fullProfile?.is_active as boolean | undefined) ?? profile.is_active) ? 'true' : 'false',
     });
     setModelData(null);
     setAgencyData(null);
@@ -273,7 +313,10 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
     }
   };
 
-  const handleSetOrgRole = async (organizationId: string, role: 'owner' | 'booker' | 'employee') => {
+  const handleSetOrgRole = async (
+    organizationId: string,
+    role: 'owner' | 'booker' | 'employee',
+  ) => {
     if (!editingProfile) return;
     setOrgRoleBusyId(organizationId);
     const r = await adminSetOrganizationMemberRole(editingProfile.id, organizationId, role);
@@ -320,7 +363,10 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
   });
 
   const handleExpandOrg = async (org: AdminOrganization) => {
-    if (expandedOrgId === org.id) { setExpandedOrgId(null); return; }
+    if (expandedOrgId === org.id) {
+      setExpandedOrgId(null);
+      return;
+    }
     setExpandedOrgId(org.id);
     setOrgEditDraft({ name: org.name, admin_notes: org.admin_notes ?? '', new_owner_id: '' });
 
@@ -340,14 +386,16 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
             display_name: pr?.display_name ?? undefined,
             email: pr?.email ?? undefined,
           };
-        })
+        }),
       );
       // Extract the owner's display name for the org card header.
       const ownerMember = memberRows.find((r) => r.user_id === org.owner_id);
       if (ownerMember) {
         const ownerProfile = profileRows.find((p) => p.id === ownerMember.user_id);
         const ownerName = String(
-          ownerProfile?.display_name || ownerProfile?.email || ownerMember.user_id.slice(0, 8) + '…',
+          ownerProfile?.display_name ||
+            ownerProfile?.email ||
+            ownerMember.user_id.slice(0, 8) + '…',
         );
         setOrgOwnerNames((prev) => ({ ...prev, [org.id]: ownerName }));
       }
@@ -369,7 +417,7 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
       }));
       setOrgStorageData((prev) => ({ ...prev, [org.id]: storageData }));
       const currentGb = storageData?.storage_limit_bytes
-        ? (storageData.storage_limit_bytes / (1024 ** 3)).toFixed(1)
+        ? (storageData.storage_limit_bytes / 1024 ** 3).toFixed(1)
         : '';
       setOrgStorageLimitDraft((prev) => ({ ...prev, [org.id]: currentGb }));
       setOrgBillingData((prev) => ({ ...prev, [org.id]: billingStatus }));
@@ -395,7 +443,10 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
   };
 
   const handleToggleOrgActive = async (org: AdminOrganization) => {
-    if (!migrationApplied) { showFeedback('Apply the DB migration first to use this feature.', false); return; }
+    if (!migrationApplied) {
+      showFeedback('Apply the DB migration first to use this feature.', false);
+      return;
+    }
     setOrgTogglingId(org.id);
     const ok = await adminSetOrgActive(org.id, !org.is_active);
     if (ok) {
@@ -416,7 +467,7 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
     const ok = await adminUpdateOrgDetails(org.id, {
       name: newName !== org.name ? newName : null,
       newOwnerId,
-      adminNotes: notesChanged ? (orgEditDraft.admin_notes || null) : null,
+      adminNotes: notesChanged ? orgEditDraft.admin_notes || null : null,
       clearNotes: notesChanged && !orgEditDraft.admin_notes,
     });
     if (ok) {
@@ -496,7 +547,10 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
     }
     Alert.alert(uiCopy.storage.storageLimitTitle, uiCopy.storage.storageLimitConfirmUnlimited, [
       { text: uiCopy.common.cancel, style: 'cancel' },
-      { text: uiCopy.storage.storageLimitSetUnlimited, onPress: () => void handleSetUnlimitedStorage(org) },
+      {
+        text: uiCopy.storage.storageLimitSetUnlimited,
+        onPress: () => void handleSetUnlimitedStorage(org),
+      },
     ]);
   };
 
@@ -522,7 +576,11 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
     }
     Alert.alert(uiCopy.storage.storageLimitTitle, uiCopy.storage.storageLimitConfirmReset, [
       { text: uiCopy.common.cancel, style: 'cancel' },
-      { text: uiCopy.storage.storageLimitReset, style: 'destructive', onPress: () => void handleResetStorageLimit(org) },
+      {
+        text: uiCopy.storage.storageLimitReset,
+        style: 'destructive',
+        onPress: () => void handleResetStorageLimit(org),
+      },
     ]);
   };
 
@@ -558,7 +616,10 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
 
   const handleSetOrgPlan = async (org: AdminOrganization) => {
     const plan = orgPlanDraft[org.id]?.trim();
-    if (!plan) { showFeedback('Enter a plan name.', false); return; }
+    if (!plan) {
+      showFeedback('Enter a plan name.', false);
+      return;
+    }
     setOrgBillingBusyId(org.id);
     const ok = await adminSetOrgPlan(org.id, plan);
     if (ok) {
@@ -580,7 +641,10 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
   });
 
   const handleToggleModelActive = async (model: AdminModel) => {
-    if (!migrationApplied) { showFeedback('Apply the DB migration first to use this feature.', false); return; }
+    if (!migrationApplied) {
+      showFeedback('Apply the DB migration first to use this feature.', false);
+      return;
+    }
     setModelTogglingId(model.id);
     const ok = await adminSetModelActive(model.id, !model.is_active);
     if (ok) {
@@ -593,7 +657,10 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
   };
 
   const handleSaveModelNotes = async (model: AdminModel) => {
-    if (!migrationApplied) { showFeedback('Apply the DB migration first to use this feature.', false); return; }
+    if (!migrationApplied) {
+      showFeedback('Apply the DB migration first to use this feature.', false);
+      return;
+    }
     setModelSavingId(model.id);
     const notes = modelNotesDraft[model.id] ?? model.admin_notes ?? '';
     const ok = await adminUpdateModelNotes(model.id, notes || null);
@@ -606,9 +673,12 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
     setModelSavingId(null);
   };
 
-  const roleLabel = (r: string) => r === 'agent' ? 'Agency' : r.charAt(0).toUpperCase() + r.slice(1);
+  const roleLabel = (r: string) =>
+    r === 'agent' ? 'Agency' : r.charAt(0).toUpperCase() + r.slice(1);
 
-  const pendingCount = profiles.filter((p) => !p.is_active && (p.role === 'client' || p.role === 'agent')).length;
+  const pendingCount = profiles.filter(
+    (p) => !p.is_active && (p.role === 'client' || p.role === 'agent'),
+  ).length;
 
   return (
     <View style={styles.container}>
@@ -623,24 +693,34 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
       {/* Tab bar */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabScroll}>
         <View style={styles.tabRow}>
-          {(
-            [
-              { key: 'accounts' as AdminTab, label: 'Accounts', badge: pendingCount > 0 ? pendingCount : null },
-              { key: 'organizations' as AdminTab, label: 'Organizations', badge: organizations.length || null },
-              { key: 'models' as AdminTab, label: 'Models', badge: models.length || null },
-              { key: 'logs' as AdminTab, label: 'Audit Log', badge: null },
-              { key: 'edit' as AdminTab, label: 'Edit Profile', badge: null },
-            ]
-          ).map((t) => (
+          {[
+            {
+              key: 'accounts' as AdminTab,
+              label: 'Accounts',
+              badge: pendingCount > 0 ? pendingCount : null,
+            },
+            {
+              key: 'organizations' as AdminTab,
+              label: 'Organizations',
+              badge: organizations.length || null,
+            },
+            { key: 'models' as AdminTab, label: 'Models', badge: models.length || null },
+            { key: 'logs' as AdminTab, label: 'Audit Log', badge: null },
+            { key: 'edit' as AdminTab, label: 'Edit Profile', badge: null },
+          ].map((t) => (
             <TouchableOpacity
               key={t.key}
               style={[styles.tabBtn, tab === t.key && styles.tabBtnActive]}
               onPress={() => setTab(t.key)}
             >
-              <Text style={[styles.tabLabel, tab === t.key && styles.tabLabelActive]}>{t.label}</Text>
+              <Text style={[styles.tabLabel, tab === t.key && styles.tabLabelActive]}>
+                {t.label}
+              </Text>
               {t.badge != null && t.badge > 0 && (
                 <View style={[styles.badge, tab === t.key && styles.badgeActive]}>
-                  <Text style={[styles.badgeText, tab === t.key && styles.badgeTextActive]}>{t.badge}</Text>
+                  <Text style={[styles.badgeText, tab === t.key && styles.badgeTextActive]}>
+                    {t.badge}
+                  </Text>
                 </View>
               )}
             </TouchableOpacity>
@@ -671,7 +751,6 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
           <ActivityIndicator size="large" color={colors.textPrimary} />
         </View>
-
       ) : tab === 'accounts' ? (
         /* ── Accounts ── */
         <FlatList
@@ -679,7 +758,7 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
           keyboardShouldPersistTaps="handled"
           data={filteredProfiles}
           keyExtractor={(p) => p.id}
-          ListHeaderComponent={(
+          ListHeaderComponent={
             <>
               <TextInput
                 style={styles.searchInput}
@@ -688,13 +767,21 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
                 value={search}
                 onChangeText={setSearch}
               />
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing.md }}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={{ marginBottom: spacing.md }}
+              >
                 <View style={{ flexDirection: 'row', gap: spacing.xs }}>
                   {(['all', 'inactive', 'active', 'client', 'agent', 'model'] as const).map((f) => {
-                    const count = f === 'all' ? profiles.length
-                      : f === 'inactive' ? profiles.filter(p => !p.is_active).length
-                      : f === 'active' ? profiles.filter(p => p.is_active).length
-                      : profiles.filter(p => p.role === f).length;
+                    const count =
+                      f === 'all'
+                        ? profiles.length
+                        : f === 'inactive'
+                          ? profiles.filter((p) => !p.is_active).length
+                          : f === 'active'
+                            ? profiles.filter((p) => p.is_active).length
+                            : profiles.filter((p) => p.role === f).length;
                     return (
                       <TouchableOpacity
                         key={f}
@@ -702,7 +789,8 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
                         onPress={() => setFilter(f)}
                       >
                         <Text style={[styles.pillText, filter === f && styles.pillTextActive]}>
-                          {f === 'agent' ? 'Agency' : f.charAt(0).toUpperCase() + f.slice(1)} ({count})
+                          {f === 'agent' ? 'Agency' : f.charAt(0).toUpperCase() + f.slice(1)} (
+                          {count})
                         </Text>
                       </TouchableOpacity>
                     );
@@ -710,99 +798,153 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
                 </View>
               </ScrollView>
             </>
-          )}
-          ListEmptyComponent={<Text style={styles.emptyText}>No accounts matching the current filter.</Text>}
+          }
+          ListEmptyComponent={
+            <Text style={styles.emptyText}>No accounts matching the current filter.</Text>
+          }
           ListFooterComponent={<View style={{ height: 40 }} />}
           renderItem={({ item: p }) => {
             const membership = profileOrgMap[p.id];
-            const orgRoleLabel = membership?.orgRole === 'owner' ? 'Owner'
-              : membership?.orgRole === 'booker' ? 'Booker'
-              : membership?.orgRole === 'employee' ? 'Employee'
-              : null;
+            const orgRoleLabel =
+              membership?.orgRole === 'owner'
+                ? 'Owner'
+                : membership?.orgRole === 'booker'
+                  ? 'Booker'
+                  : membership?.orgRole === 'employee'
+                    ? 'Employee'
+                    : null;
             return (
-            <TouchableOpacity key={p.id} style={[styles.card, !membership && p.role !== 'model' ? styles.cardNoOrg : null]} onPress={() => handleEditProfile(p)}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 4 }}>
-                    <Text style={styles.cardTitle}>{p.display_name || 'No name'}</Text>
-                    <View style={[styles.roleBadge, p.role === 'agent' ? styles.roleBadgeAgency : p.role === 'client' ? styles.roleBadgeClient : styles.roleBadgeModel]}>
-                      <Text style={styles.roleBadgeText}>{roleLabel(p.role)}</Text>
-                    </View>
-                    {orgRoleLabel && (
-                      <View style={styles.roleBadgeOrgRole}>
-                        <Text style={styles.roleBadgeText}>{orgRoleLabel}</Text>
-                      </View>
-                    )}
-                    {!membership && p.role !== 'model' && (
-                      <View style={styles.roleBadgeGhost}>
-                        <Text style={styles.roleBadgeText}>⚠ NO ORG</Text>
-                      </View>
-                    )}
-                    <View style={[styles.statusDot, p.is_active ? styles.dotGreen : styles.dotOrange]} />
-                  </View>
-                  <Text style={styles.cardSub}>{p.email}</Text>
-                  {membership && (
-                    <Text style={styles.cardMeta}>{membership.orgName}</Text>
-                  )}
-                  {!membership && p.company_name && <Text style={styles.cardMeta}>{p.company_name}</Text>}
-                  {p.deactivated_reason && (
-                    <Text style={styles.cardReason}>Reason: {p.deactivated_reason}</Text>
-                  )}
-                </View>
-
-                <View style={{ alignItems: 'flex-end', gap: 4, justifyContent: 'center' }}>
-                  {!p.is_active ? (
-                    <View style={{ gap: 4 }}>
-                      <TouchableOpacity
-                        style={[styles.btnGreen, activatingId === p.id && { opacity: 0.5 }]}
-                        onPress={() => handleActivate(p.id)}
-                        disabled={activatingId !== null}
+              <TouchableOpacity
+                key={p.id}
+                style={[styles.card, !membership && p.role !== 'model' ? styles.cardNoOrg : null]}
+                onPress={() => handleEditProfile(p)}
+              >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <View style={{ flex: 1 }}>
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 6,
+                        flexWrap: 'wrap',
+                        marginBottom: 4,
+                      }}
+                    >
+                      <Text style={styles.cardTitle}>{p.display_name || 'No name'}</Text>
+                      <View
+                        style={[
+                          styles.roleBadge,
+                          p.role === 'agent'
+                            ? styles.roleBadgeAgency
+                            : p.role === 'client'
+                              ? styles.roleBadgeClient
+                              : styles.roleBadgeModel,
+                        ]}
                       >
-                        <Text style={styles.btnLabel}>{activatingId === p.id ? 'Activating…' : 'Activate'}</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={styles.btnDark} onPress={() => confirmAdminPurge(p)}>
-                        <Text style={styles.btnLabel}>Delete</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ) : (
-                    <>
-                      {actionTarget === p.id ? (
-                        <View style={{ gap: 4 }}>
-                          <TextInput
-                            style={styles.reasonInput}
-                            placeholder="Reason (optional)..."
-                            placeholderTextColor={colors.textSecondary}
-                            value={deactivateReason}
-                            onChangeText={setDeactivateReason}
-                          />
-                          <TouchableOpacity
-                            style={[styles.btnRed, deactivatingId === p.id && { opacity: 0.5 }]}
-                            onPress={() => handleDeactivate(p.id)}
-                            disabled={deactivatingId !== null}
-                          >
-                            <Text style={styles.btnLabel}>{deactivatingId === p.id ? 'Deactivating…' : 'Confirm'}</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity onPress={() => { setActionTarget(null); setDeactivateReason(''); }}>
-                            <Text style={{ fontSize: 11, color: colors.textSecondary, textAlign: 'center' }}>Cancel</Text>
-                          </TouchableOpacity>
+                        <Text style={styles.roleBadgeText}>{roleLabel(p.role)}</Text>
+                      </View>
+                      {orgRoleLabel && (
+                        <View style={styles.roleBadgeOrgRole}>
+                          <Text style={styles.roleBadgeText}>{orgRoleLabel}</Text>
                         </View>
-                      ) : (
-                        <TouchableOpacity style={styles.btnRed} onPress={() => setActionTarget(p.id)}>
-                          <Text style={styles.btnLabel}>Deactivate</Text>
-                        </TouchableOpacity>
                       )}
-                      <TouchableOpacity style={styles.btnDark} onPress={() => confirmAdminPurge(p)}>
-                        <Text style={styles.btnLabel}>Delete</Text>
-                      </TouchableOpacity>
-                    </>
-                  )}
-                </View>
-              </View>
-            </TouchableOpacity>
-          );
-        }}
-        />
+                      {!membership && p.role !== 'model' && (
+                        <View style={styles.roleBadgeGhost}>
+                          <Text style={styles.roleBadgeText}>⚠ NO ORG</Text>
+                        </View>
+                      )}
+                      <View
+                        style={[styles.statusDot, p.is_active ? styles.dotGreen : styles.dotOrange]}
+                      />
+                    </View>
+                    <Text style={styles.cardSub}>{p.email}</Text>
+                    {membership && <Text style={styles.cardMeta}>{membership.orgName}</Text>}
+                    {!membership && p.company_name && (
+                      <Text style={styles.cardMeta}>{p.company_name}</Text>
+                    )}
+                    {p.deactivated_reason && (
+                      <Text style={styles.cardReason}>Reason: {p.deactivated_reason}</Text>
+                    )}
+                  </View>
 
+                  <View style={{ alignItems: 'flex-end', gap: 4, justifyContent: 'center' }}>
+                    {!p.is_active ? (
+                      <View style={{ gap: 4 }}>
+                        <TouchableOpacity
+                          style={[styles.btnGreen, activatingId === p.id && { opacity: 0.5 }]}
+                          onPress={() => handleActivate(p.id)}
+                          disabled={activatingId !== null}
+                        >
+                          <Text style={styles.btnLabel}>
+                            {activatingId === p.id ? 'Activating…' : 'Activate'}
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.btnDark}
+                          onPress={() => confirmAdminPurge(p)}
+                        >
+                          <Text style={styles.btnLabel}>Delete</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : (
+                      <>
+                        {actionTarget === p.id ? (
+                          <View style={{ gap: 4 }}>
+                            <TextInput
+                              style={styles.reasonInput}
+                              placeholder="Reason (optional)..."
+                              placeholderTextColor={colors.textSecondary}
+                              value={deactivateReason}
+                              onChangeText={setDeactivateReason}
+                            />
+                            <TouchableOpacity
+                              style={[styles.btnRed, deactivatingId === p.id && { opacity: 0.5 }]}
+                              onPress={() => handleDeactivate(p.id)}
+                              disabled={deactivatingId !== null}
+                            >
+                              <Text style={styles.btnLabel}>
+                                {deactivatingId === p.id ? 'Deactivating…' : 'Confirm'}
+                              </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => {
+                                setActionTarget(null);
+                                setDeactivateReason('');
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  fontSize: 11,
+                                  color: colors.textSecondary,
+                                  textAlign: 'center',
+                                }}
+                              >
+                                Cancel
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        ) : (
+                          <TouchableOpacity
+                            style={styles.btnRed}
+                            onPress={() => setActionTarget(p.id)}
+                          >
+                            <Text style={styles.btnLabel}>Deactivate</Text>
+                          </TouchableOpacity>
+                        )}
+                        <TouchableOpacity
+                          style={styles.btnDark}
+                          onPress={() => confirmAdminPurge(p)}
+                        >
+                          <Text style={styles.btnLabel}>Delete</Text>
+                        </TouchableOpacity>
+                      </>
+                    )}
+                  </View>
+                </View>
+              </TouchableOpacity>
+            );
+          }}
+        />
       ) : tab === 'organizations' ? (
         /* ── Organizations ── */
         <FlatList
@@ -810,9 +952,16 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
           keyboardShouldPersistTaps="handled"
           data={filteredOrgs}
           keyExtractor={(org) => org.id}
-          ListHeaderComponent={(
+          ListHeaderComponent={
             <>
-              <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm, alignItems: 'center' }}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  gap: spacing.sm,
+                  marginBottom: spacing.sm,
+                  alignItems: 'center',
+                }}
+              >
                 <TextInput
                   style={[styles.searchInput, { flex: 1, marginBottom: 0 }]}
                   placeholder={uiCopy.adminDashboard.orgsSearchPlaceholder}
@@ -824,30 +973,37 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
                   <Text style={styles.btnLabel}>↺ Reload</Text>
                 </TouchableOpacity>
               </View>
-              <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md, flexWrap: 'wrap' }}>
-                <Text style={styles.summaryChip}>
-                  All: {organizations.length}
-                </Text>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  gap: spacing.sm,
+                  marginBottom: spacing.md,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <Text style={styles.summaryChip}>All: {organizations.length}</Text>
                 {migrationApplied && (
                   <>
-                    <Text style={[styles.summaryChip, { color: '#2ecc71' }]}>
-                      Active: {organizations.filter(o => o.is_active === true).length}
+                    <Text style={[styles.summaryChip, { color: colors.successLight }]}>
+                      Active: {organizations.filter((o) => o.is_active === true).length}
                     </Text>
-                    <Text style={[styles.summaryChip, { color: '#e74c3c' }]}>
-                      Inactive: {organizations.filter(o => o.is_active === false).length}
+                    <Text style={[styles.summaryChip, { color: colors.error }]}>
+                      Inactive: {organizations.filter((o) => o.is_active === false).length}
                     </Text>
                   </>
                 )}
                 <Text style={styles.summaryChip}>
-                  Agencies: {organizations.filter(o => o.type === 'agency').length}
+                  Agencies: {organizations.filter((o) => o.type === 'agency').length}
                 </Text>
                 <Text style={styles.summaryChip}>
-                  Clients: {organizations.filter(o => o.type === 'client').length}
+                  Clients: {organizations.filter((o) => o.type === 'client').length}
                 </Text>
               </View>
             </>
-          )}
-          ListEmptyComponent={<Text style={styles.emptyText}>{uiCopy.adminDashboard.orgsEmpty}</Text>}
+          }
+          ListEmptyComponent={
+            <Text style={styles.emptyText}>{uiCopy.adminDashboard.orgsEmpty}</Text>
+          }
           ListFooterComponent={<View style={{ height: 40 }} />}
           renderItem={({ item: org }) => {
             const isExpanded = expandedOrgId === org.id;
@@ -866,12 +1022,30 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
             return (
               <View key={org.id} style={styles.card}>
                 {/* Card header */}
-                <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }} onPress={() => void handleExpandOrg(org)}>
+                <TouchableOpacity
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                  onPress={() => void handleExpandOrg(org)}
+                >
                   <View style={{ flex: 1 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 3 }}>
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 6,
+                        flexWrap: 'wrap',
+                        marginBottom: 3,
+                      }}
+                    >
                       <Text style={styles.cardTitle}>{org.name}</Text>
-                      <View style={[styles.roleBadge, org.type === 'agency' ? styles.roleBadgeAgency : styles.roleBadgeClient]}>
-                        <Text style={styles.roleBadgeText}>{org.type === 'agency' ? 'Agency' : 'Client'}</Text>
+                      <View
+                        style={[
+                          styles.roleBadge,
+                          org.type === 'agency' ? styles.roleBadgeAgency : styles.roleBadgeClient,
+                        ]}
+                      >
+                        <Text style={styles.roleBadgeText}>
+                          {org.type === 'agency' ? 'Agency' : 'Client'}
+                        </Text>
                       </View>
                       {isGhostOrg && (
                         <View style={styles.roleBadgeGhost}>
@@ -879,7 +1053,12 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
                         </View>
                       )}
                       {org.is_active !== null && (
-                        <View style={[styles.statusDot, org.is_active ? styles.dotGreen : styles.dotRed]} />
+                        <View
+                          style={[
+                            styles.statusDot,
+                            org.is_active ? styles.dotGreen : styles.dotRed,
+                          ]}
+                        />
                       )}
                     </View>
                     <Text style={styles.cardMeta}>
@@ -896,15 +1075,20 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
                       disabled={isToggling}
                       onPress={() => handleToggleOrgActive(org)}
                     >
-                      {isToggling
-                        ? <ActivityIndicator size="small" color="#fff" />
-                        : <Text style={styles.btnLabel}>
-                            {org.is_active ? 'Deactivate' : 'Activate'}
-                          </Text>
-                      }
+                      {isToggling ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <Text style={styles.btnLabel}>
+                          {org.is_active ? 'Deactivate' : 'Activate'}
+                        </Text>
+                      )}
                     </TouchableOpacity>
                   )}
-                  <Text style={[styles.chevron, isExpanded && { transform: [{ rotate: '90deg' }] }]}>›</Text>
+                  <Text
+                    style={[styles.chevron, isExpanded && { transform: [{ rotate: '90deg' }] }]}
+                  >
+                    ›
+                  </Text>
                 </TouchableOpacity>
 
                 {/* Expanded edit section */}
@@ -932,11 +1116,20 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
                             <TouchableOpacity
                               key={uid}
                               style={[styles.memberRow, isSelected && styles.memberRowSelected]}
-                              onPress={() => setOrgEditDraft((d) => ({ ...d, new_owner_id: isSelected ? '' : uid }))}
+                              onPress={() =>
+                                setOrgEditDraft((d) => ({
+                                  ...d,
+                                  new_owner_id: isSelected ? '' : uid,
+                                }))
+                              }
                             >
                               <Text style={[styles.memberRowText, isSelected && { color: '#fff' }]}>
                                 {label}
-                                <Text style={{ fontWeight: '400', opacity: 0.7 }}>  {m.member_role}{uid === org.owner_id ? ' · current owner' : ''}</Text>
+                                <Text style={{ fontWeight: '400', opacity: 0.7 }}>
+                                  {' '}
+                                  {m.member_role}
+                                  {uid === org.owner_id ? ' · current owner' : ''}
+                                </Text>
                               </Text>
                             </TouchableOpacity>
                           );
@@ -964,167 +1157,254 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
                     )}
 
                     {/* Swipe limit controls (agency orgs only) */}
-                    {org.type === 'agency' && (() => {
-                      const limits = orgSwipeLimits[org.id];
-                      const isSavingLimit = orgSwipeSavingId === org.id;
-                      const isResetting = orgSwipeResettingId === org.id;
-                      return (
-                        <View style={styles.swipeLimitSection}>
-                          <Text style={styles.editLabel}>{uiCopy.adminDashboard.swipeLimitTitle}</Text>
-                          {limits ? (
-                            <View style={styles.swipeLimitStats}>
-                              <Text style={styles.swipeLimitStat}>
-                                {uiCopy.adminDashboard.swipeLimitUsed}: <Text style={{ fontWeight: '700' }}>{limits.swipes_used_today}</Text>
+                    {org.type === 'agency' &&
+                      (() => {
+                        const limits = orgSwipeLimits[org.id];
+                        const isSavingLimit = orgSwipeSavingId === org.id;
+                        const isResetting = orgSwipeResettingId === org.id;
+                        return (
+                          <View style={styles.swipeLimitSection}>
+                            <Text style={styles.editLabel}>
+                              {uiCopy.adminDashboard.swipeLimitTitle}
+                            </Text>
+                            {limits ? (
+                              <View style={styles.swipeLimitStats}>
+                                <Text style={styles.swipeLimitStat}>
+                                  {uiCopy.adminDashboard.swipeLimitUsed}:{' '}
+                                  <Text style={{ fontWeight: '700' }}>
+                                    {limits.swipes_used_today}
+                                  </Text>
+                                </Text>
+                                <Text style={styles.swipeLimitStat}>
+                                  {uiCopy.adminDashboard.swipeLimitMax}:{' '}
+                                  <Text style={{ fontWeight: '700' }}>
+                                    {limits.daily_swipe_limit}
+                                  </Text>
+                                </Text>
+                                <Text style={styles.swipeLimitStat}>
+                                  {uiCopy.adminDashboard.swipeLimitLastReset}:{' '}
+                                  <Text style={{ fontWeight: '700' }}>
+                                    {limits.last_reset_date}
+                                  </Text>
+                                </Text>
+                              </View>
+                            ) : (
+                              <Text style={styles.cardMeta}>
+                                No limit row yet (will be created on save).
                               </Text>
-                              <Text style={styles.swipeLimitStat}>
-                                {uiCopy.adminDashboard.swipeLimitMax}: <Text style={{ fontWeight: '700' }}>{limits.daily_swipe_limit}</Text>
-                              </Text>
-                              <Text style={styles.swipeLimitStat}>
-                                {uiCopy.adminDashboard.swipeLimitLastReset}: <Text style={{ fontWeight: '700' }}>{limits.last_reset_date}</Text>
-                              </Text>
+                            )}
+                            <View
+                              style={{
+                                flexDirection: 'row',
+                                gap: spacing.sm,
+                                alignItems: 'center',
+                                marginTop: spacing.xs,
+                              }}
+                            >
+                              <TextInput
+                                style={[styles.editInput, { flex: 1 }]}
+                                value={orgSwipeLimitDraft[org.id] ?? '10'}
+                                onChangeText={(v) =>
+                                  setOrgSwipeLimitDraft((d) => ({ ...d, [org.id]: v }))
+                                }
+                                keyboardType="number-pad"
+                                placeholderTextColor={colors.textSecondary}
+                              />
+                              <TouchableOpacity
+                                style={[
+                                  styles.btnSmall,
+                                  styles.btnGreen,
+                                  isSavingLimit && { opacity: 0.5 },
+                                ]}
+                                onPress={() => void handleSaveSwipeLimit(org)}
+                                disabled={isSavingLimit}
+                              >
+                                {isSavingLimit ? (
+                                  <ActivityIndicator size="small" color="#fff" />
+                                ) : (
+                                  <Text style={styles.btnLabel}>
+                                    {uiCopy.adminDashboard.swipeLimitSave}
+                                  </Text>
+                                )}
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={[
+                                  styles.btnSmall,
+                                  styles.btnRed,
+                                  isResetting && { opacity: 0.5 },
+                                ]}
+                                onPress={() => void handleResetSwipeCount(org)}
+                                disabled={isResetting}
+                              >
+                                {isResetting ? (
+                                  <ActivityIndicator size="small" color="#fff" />
+                                ) : (
+                                  <Text style={styles.btnLabel}>
+                                    {uiCopy.adminDashboard.swipeLimitReset}
+                                  </Text>
+                                )}
+                              </TouchableOpacity>
                             </View>
-                          ) : (
-                            <Text style={styles.cardMeta}>No limit row yet (will be created on save).</Text>
-                          )}
-                          <View style={{ flexDirection: 'row', gap: spacing.sm, alignItems: 'center', marginTop: spacing.xs }}>
-                            <TextInput
-                              style={[styles.editInput, { flex: 1 }]}
-                              value={orgSwipeLimitDraft[org.id] ?? '10'}
-                              onChangeText={(v) => setOrgSwipeLimitDraft((d) => ({ ...d, [org.id]: v }))}
-                              keyboardType="number-pad"
-                              placeholderTextColor={colors.textSecondary}
-                            />
-                            <TouchableOpacity
-                              style={[styles.btnSmall, styles.btnGreen, isSavingLimit && { opacity: 0.5 }]}
-                              onPress={() => void handleSaveSwipeLimit(org)}
-                              disabled={isSavingLimit}
-                            >
-                              {isSavingLimit
-                                ? <ActivityIndicator size="small" color="#fff" />
-                                : <Text style={styles.btnLabel}>{uiCopy.adminDashboard.swipeLimitSave}</Text>
-                              }
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              style={[styles.btnSmall, styles.btnRed, isResetting && { opacity: 0.5 }]}
-                              onPress={() => void handleResetSwipeCount(org)}
-                              disabled={isResetting}
-                            >
-                              {isResetting
-                                ? <ActivityIndicator size="small" color="#fff" />
-                                : <Text style={styles.btnLabel}>{uiCopy.adminDashboard.swipeLimitReset}</Text>
-                              }
-                            </TouchableOpacity>
                           </View>
-                        </View>
-                      );
-                    })()}
+                        );
+                      })()}
 
                     {/* Storage limit controls (agency orgs only) */}
-                    {org.type === 'agency' && (() => {
-                      const sd = orgStorageData[org.id];
-                      const isSaving    = orgStorageSavingId    === org.id;
-                      const isUnlimited = orgStorageUnlimitingId === org.id;
-                      const isResetting = orgStorageResettingId  === org.id;
+                    {org.type === 'agency' &&
+                      (() => {
+                        const sd = orgStorageData[org.id];
+                        const isSaving = orgStorageSavingId === org.id;
+                        const isUnlimited = orgStorageUnlimitingId === org.id;
+                        const isResetting = orgStorageResettingId === org.id;
 
-                      const modeBadge = sd?.is_unlimited
-                        ? uiCopy.storage.storageLimitUnlimited
-                        : sd?.storage_limit_bytes != null
-                        ? uiCopy.storage.storageLimitCustom
-                        : uiCopy.storage.storageLimitDefault;
+                        const modeBadge = sd?.is_unlimited
+                          ? uiCopy.storage.storageLimitUnlimited
+                          : sd?.storage_limit_bytes != null
+                            ? uiCopy.storage.storageLimitCustom
+                            : uiCopy.storage.storageLimitDefault;
 
-                      return (
-                        <View style={styles.storageLimitSection}>
-                          <Text style={styles.editLabel}>{uiCopy.storage.storageLimitTitle}</Text>
-                          {sd ? (
-                            <View style={styles.swipeLimitStats}>
-                              <Text style={styles.swipeLimitStat}>
-                                {uiCopy.storage.storageLimitUsed}:{' '}
-                                <Text style={{ fontWeight: '700' }}>{formatStorageBytes(sd.used_bytes)}</Text>
-                              </Text>
-                              <Text style={styles.swipeLimitStat}>
-                                {uiCopy.storage.storageLimitEffective}:{' '}
-                                <Text style={{ fontWeight: '700' }}>
-                                  {sd.is_unlimited
-                                    ? uiCopy.storage.storageLimitUnlimited
-                                    : formatStorageBytes(sd.effective_limit_bytes ?? 5368709120)}
+                        return (
+                          <View style={styles.storageLimitSection}>
+                            <Text style={styles.editLabel}>{uiCopy.storage.storageLimitTitle}</Text>
+                            {sd ? (
+                              <View style={styles.swipeLimitStats}>
+                                <Text style={styles.swipeLimitStat}>
+                                  {uiCopy.storage.storageLimitUsed}:{' '}
+                                  <Text style={{ fontWeight: '700' }}>
+                                    {formatStorageBytes(sd.used_bytes)}
+                                  </Text>
                                 </Text>
-                              </Text>
-                              <View style={[
-                                styles.storageModeTag,
-                                sd.is_unlimited && styles.storageModeTagUnlimited,
-                                sd.storage_limit_bytes != null && !sd.is_unlimited && styles.storageModeTagCustom,
-                              ]}>
-                                <Text style={styles.storageModeTagText}>{modeBadge}</Text>
+                                <Text style={styles.swipeLimitStat}>
+                                  {uiCopy.storage.storageLimitEffective}:{' '}
+                                  <Text style={{ fontWeight: '700' }}>
+                                    {sd.is_unlimited
+                                      ? uiCopy.storage.storageLimitUnlimited
+                                      : formatStorageBytes(sd.effective_limit_bytes ?? 5368709120)}
+                                  </Text>
+                                </Text>
+                                <View
+                                  style={[
+                                    styles.storageModeTag,
+                                    sd.is_unlimited && styles.storageModeTagUnlimited,
+                                    sd.storage_limit_bytes != null &&
+                                      !sd.is_unlimited &&
+                                      styles.storageModeTagCustom,
+                                  ]}
+                                >
+                                  <Text style={styles.storageModeTagText}>{modeBadge}</Text>
+                                </View>
                               </View>
+                            ) : (
+                              <Text style={styles.cardMeta}>
+                                No storage row yet (will be created on save).
+                              </Text>
+                            )}
+
+                            {/* Custom limit input row */}
+                            <View
+                              style={{
+                                flexDirection: 'row',
+                                gap: spacing.sm,
+                                alignItems: 'center',
+                                marginTop: spacing.xs,
+                              }}
+                            >
+                              <TextInput
+                                style={[styles.editInput, { flex: 1 }]}
+                                value={orgStorageLimitDraft[org.id] ?? ''}
+                                onChangeText={(v) =>
+                                  setOrgStorageLimitDraft((d) => ({ ...d, [org.id]: v }))
+                                }
+                                keyboardType="decimal-pad"
+                                placeholder={uiCopy.storage.storageLimitInputPlaceholder}
+                                placeholderTextColor={colors.textSecondary}
+                              />
+                              <TouchableOpacity
+                                style={[
+                                  styles.btnSmall,
+                                  styles.btnGreen,
+                                  isSaving && { opacity: 0.5 },
+                                ]}
+                                onPress={() => void handleSaveStorageLimit(org)}
+                                disabled={isSaving}
+                              >
+                                {isSaving ? (
+                                  <ActivityIndicator size="small" color="#fff" />
+                                ) : (
+                                  <Text style={styles.btnLabel}>
+                                    {uiCopy.storage.storageLimitSetCustom}
+                                  </Text>
+                                )}
+                              </TouchableOpacity>
                             </View>
-                          ) : (
-                            <Text style={styles.cardMeta}>No storage row yet (will be created on save).</Text>
-                          )}
 
-                          {/* Custom limit input row */}
-                          <View style={{ flexDirection: 'row', gap: spacing.sm, alignItems: 'center', marginTop: spacing.xs }}>
-                            <TextInput
-                              style={[styles.editInput, { flex: 1 }]}
-                              value={orgStorageLimitDraft[org.id] ?? ''}
-                              onChangeText={(v) => setOrgStorageLimitDraft((d) => ({ ...d, [org.id]: v }))}
-                              keyboardType="decimal-pad"
-                              placeholder={uiCopy.storage.storageLimitInputPlaceholder}
-                              placeholderTextColor={colors.textSecondary}
-                            />
-                            <TouchableOpacity
-                              style={[styles.btnSmall, styles.btnGreen, isSaving && { opacity: 0.5 }]}
-                              onPress={() => void handleSaveStorageLimit(org)}
-                              disabled={isSaving}
+                            {/* Unlimited + Reset buttons */}
+                            <View
+                              style={{
+                                flexDirection: 'row',
+                                gap: spacing.sm,
+                                marginTop: spacing.xs,
+                              }}
                             >
-                              {isSaving
-                                ? <ActivityIndicator size="small" color="#fff" />
-                                : <Text style={styles.btnLabel}>{uiCopy.storage.storageLimitSetCustom}</Text>
-                              }
-                            </TouchableOpacity>
+                              <TouchableOpacity
+                                style={[
+                                  styles.btnSmall,
+                                  styles.btnDark,
+                                  isUnlimited && { opacity: 0.5 },
+                                ]}
+                                onPress={() => confirmSetUnlimitedStorage(org)}
+                                disabled={isUnlimited}
+                              >
+                                {isUnlimited ? (
+                                  <ActivityIndicator size="small" color="#fff" />
+                                ) : (
+                                  <Text style={styles.btnLabel}>
+                                    {uiCopy.storage.storageLimitSetUnlimited}
+                                  </Text>
+                                )}
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={[
+                                  styles.btnSmall,
+                                  styles.btnRed,
+                                  isResetting && { opacity: 0.5 },
+                                ]}
+                                onPress={() => confirmResetStorageLimit(org)}
+                                disabled={isResetting}
+                              >
+                                {isResetting ? (
+                                  <ActivityIndicator size="small" color="#fff" />
+                                ) : (
+                                  <Text style={styles.btnLabel}>
+                                    {uiCopy.storage.storageLimitReset}
+                                  </Text>
+                                )}
+                              </TouchableOpacity>
+                            </View>
                           </View>
-
-                          {/* Unlimited + Reset buttons */}
-                          <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xs }}>
-                            <TouchableOpacity
-                              style={[styles.btnSmall, styles.btnDark, isUnlimited && { opacity: 0.5 }]}
-                              onPress={() => confirmSetUnlimitedStorage(org)}
-                              disabled={isUnlimited}
-                            >
-                              {isUnlimited
-                                ? <ActivityIndicator size="small" color="#fff" />
-                                : <Text style={styles.btnLabel}>{uiCopy.storage.storageLimitSetUnlimited}</Text>
-                              }
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              style={[styles.btnSmall, styles.btnRed, isResetting && { opacity: 0.5 }]}
-                              onPress={() => confirmResetStorageLimit(org)}
-                              disabled={isResetting}
-                            >
-                              {isResetting
-                                ? <ActivityIndicator size="small" color="#fff" />
-                                : <Text style={styles.btnLabel}>{uiCopy.storage.storageLimitReset}</Text>
-                              }
-                            </TouchableOpacity>
-                          </View>
-                        </View>
-                      );
-                    })()}
+                        );
+                      })()}
 
                     {/* ── Billing & Subscription Section ───────────────────── */}
                     {(() => {
-                      const billing      = orgBillingData[org.id];
-                      const sub          = billing?.subscription ?? null;
-                      const override     = billing?.admin_override ?? null;
+                      const billing = orgBillingData[org.id];
+                      const sub = billing?.subscription ?? null;
+                      const override = billing?.admin_override ?? null;
                       const isBillingBusy = orgBillingBusyId === org.id;
-                      const bypassOn     = override?.bypass_paywall === true;
+                      const bypassOn = override?.bypass_paywall === true;
 
                       const statusLabel = (s: string | null | undefined) => {
                         switch (s) {
-                          case 'active':   return uiCopy.billing.statusActive;
-                          case 'trialing': return uiCopy.billing.statusTrialing;
-                          case 'past_due': return uiCopy.billing.statusPastDue;
-                          case 'canceled': return uiCopy.billing.statusCanceled;
-                          default:         return s ?? '—';
+                          case 'active':
+                            return uiCopy.billing.statusActive;
+                          case 'trialing':
+                            return uiCopy.billing.statusTrialing;
+                          case 'past_due':
+                            return uiCopy.billing.statusPastDue;
+                          case 'canceled':
+                            return uiCopy.billing.statusCanceled;
+                          default:
+                            return s ?? '—';
                         }
                       };
 
@@ -1154,11 +1434,20 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
                               )}
                             </View>
                           ) : (
-                            <Text style={styles.cardMeta}>{uiCopy.billing.adminNoSubscription}</Text>
+                            <Text style={styles.cardMeta}>
+                              {uiCopy.billing.adminNoSubscription}
+                            </Text>
                           )}
 
                           {/* Manual plan set */}
-                          <View style={{ flexDirection: 'row', gap: spacing.sm, alignItems: 'center', marginTop: spacing.sm }}>
+                          <View
+                            style={{
+                              flexDirection: 'row',
+                              gap: spacing.sm,
+                              alignItems: 'center',
+                              marginTop: spacing.sm,
+                            }}
+                          >
                             <TextInput
                               style={[styles.editInput, { flex: 1 }]}
                               value={orgPlanDraft[org.id] ?? ''}
@@ -1168,14 +1457,19 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
                               autoCapitalize="none"
                             />
                             <TouchableOpacity
-                              style={[styles.btnSmall, styles.btnGreen, isBillingBusy && { opacity: 0.5 }]}
+                              style={[
+                                styles.btnSmall,
+                                styles.btnGreen,
+                                isBillingBusy && { opacity: 0.5 },
+                              ]}
                               onPress={() => void handleSetOrgPlan(org)}
                               disabled={isBillingBusy}
                             >
-                              {isBillingBusy
-                                ? <ActivityIndicator size="small" color="#fff" />
-                                : <Text style={styles.btnLabel}>{uiCopy.billing.adminSetPlan}</Text>
-                              }
+                              {isBillingBusy ? (
+                                <ActivityIndicator size="small" color="#fff" />
+                              ) : (
+                                <Text style={styles.btnLabel}>{uiCopy.billing.adminSetPlan}</Text>
+                              )}
                             </TouchableOpacity>
                           </View>
 
@@ -1183,10 +1477,13 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
                           <View style={{ marginTop: spacing.sm }}>
                             <Text style={styles.swipeLimitStat}>
                               {uiCopy.billing.adminBypassPaywall}:{' '}
-                              {bypassOn
-                                ? <Text style={{ color: '#2ecc71', fontWeight: '700' }}>ON</Text>
-                                : <Text style={{ color: colors.textSecondary }}>OFF</Text>
-                              }
+                              {bypassOn ? (
+                                <Text style={{ color: colors.successLight, fontWeight: '700' }}>
+                                  ON
+                                </Text>
+                              ) : (
+                                <Text style={{ color: colors.textSecondary }}>OFF</Text>
+                              )}
                             </Text>
                             {bypassOn && override?.custom_plan && (
                               <Text style={styles.swipeLimitStat}>
@@ -1196,21 +1493,37 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
                             <TextInput
                               style={[styles.editInput, { marginTop: spacing.xs }]}
                               value={orgCustomPlanDraft[org.id] ?? ''}
-                              onChangeText={(v) => setOrgCustomPlanDraft((d) => ({ ...d, [org.id]: v }))}
+                              onChangeText={(v) =>
+                                setOrgCustomPlanDraft((d) => ({ ...d, [org.id]: v }))
+                              }
                               placeholder={`${uiCopy.billing.adminCustomPlan} (optional)`}
                               placeholderTextColor={colors.textSecondary}
                               autoCapitalize="none"
                             />
-                            <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xs }}>
+                            <View
+                              style={{
+                                flexDirection: 'row',
+                                gap: spacing.sm,
+                                marginTop: spacing.xs,
+                              }}
+                            >
                               <TouchableOpacity
-                                style={[styles.btnSmall, styles.btnGreen, isBillingBusy && { opacity: 0.5 }]}
+                                style={[
+                                  styles.btnSmall,
+                                  styles.btnGreen,
+                                  isBillingBusy && { opacity: 0.5 },
+                                ]}
                                 onPress={() => void handleSetBypassPaywall(org, true)}
                                 disabled={isBillingBusy}
                               >
                                 <Text style={styles.btnLabel}>Enable Override</Text>
                               </TouchableOpacity>
                               <TouchableOpacity
-                                style={[styles.btnSmall, styles.btnRed, isBillingBusy && { opacity: 0.5 }]}
+                                style={[
+                                  styles.btnSmall,
+                                  styles.btnRed,
+                                  isBillingBusy && { opacity: 0.5 },
+                                ]}
                                 onPress={() => void handleSetBypassPaywall(org, false)}
                                 disabled={isBillingBusy}
                               >
@@ -1227,15 +1540,16 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
                       onPress={() => handleSaveOrg(org)}
                       disabled={isSaving}
                     >
-                      <Text style={styles.saveBtnLabel}>{isSaving ? 'Saving…' : uiCopy.adminDashboard.orgSaveChanges}</Text>
+                      <Text style={styles.saveBtnLabel}>
+                        {isSaving ? 'Saving…' : uiCopy.adminDashboard.orgSaveChanges}
+                      </Text>
                     </TouchableOpacity>
                   </View>
                 )}
               </View>
             );
           }}
-          />
-
+        />
       ) : tab === 'models' ? (
         /* ── Models ── */
         <FlatList
@@ -1243,7 +1557,7 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
           keyboardShouldPersistTaps="handled"
           data={filteredModels}
           keyExtractor={(model) => model.id}
-          ListHeaderComponent={(
+          ListHeaderComponent={
             <TextInput
               style={styles.searchInput}
               placeholder={uiCopy.adminDashboard.modelsSearchPlaceholder}
@@ -1251,42 +1565,67 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
               value={modelSearch}
               onChangeText={setModelSearch}
             />
-          )}
-          ListEmptyComponent={<Text style={styles.emptyText}>{uiCopy.adminDashboard.modelsEmpty}</Text>}
-          ListFooterComponent={(
+          }
+          ListEmptyComponent={
+            <Text style={styles.emptyText}>{uiCopy.adminDashboard.modelsEmpty}</Text>
+          }
+          ListFooterComponent={
             <>
-              <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md, flexWrap: 'wrap' }}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  gap: spacing.sm,
+                  marginBottom: spacing.md,
+                  flexWrap: 'wrap',
+                }}
+              >
                 <Text style={styles.summaryChip}>All: {models.length}</Text>
                 {migrationApplied && (
                   <>
-                    <Text style={[styles.summaryChip, { color: '#2ecc71' }]}>
-                      Active: {models.filter(m => m.is_active === true).length}
+                    <Text style={[styles.summaryChip, { color: colors.successLight }]}>
+                      Active: {models.filter((m) => m.is_active === true).length}
                     </Text>
-                    <Text style={[styles.summaryChip, { color: '#e74c3c' }]}>
-                      Inactive: {models.filter(m => m.is_active === false).length}
+                    <Text style={[styles.summaryChip, { color: colors.error }]}>
+                      Inactive: {models.filter((m) => m.is_active === false).length}
                     </Text>
                   </>
                 )}
               </View>
               <View style={{ height: 40 }} />
             </>
-          )}
+          }
           renderItem={({ item: model }) => {
             const isToggling = modelTogglingId === model.id;
             const isSaving = modelSavingId === model.id;
-            const notesDraft = model.id in modelNotesDraft ? modelNotesDraft[model.id] : (model.admin_notes ?? '');
+            const notesDraft =
+              model.id in modelNotesDraft ? modelNotesDraft[model.id] : (model.admin_notes ?? '');
 
             return (
               <View style={styles.card}>
                 <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
                   <View style={{ flex: 1 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 3 }}>
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 6,
+                        flexWrap: 'wrap',
+                        marginBottom: 3,
+                      }}
+                    >
                       <Text style={styles.cardTitle}>{model.name}</Text>
                       {model.is_active !== null && (
-                        <View style={[styles.statusDot, model.is_active ? styles.dotGreen : styles.dotRed]} />
+                        <View
+                          style={[
+                            styles.statusDot,
+                            model.is_active ? styles.dotGreen : styles.dotRed,
+                          ]}
+                        />
                       )}
                       {model.is_active === false && (
-                        <Text style={{ ...typography.label, fontSize: 10, color: '#e74c3c' }}>DEACTIVATED</Text>
+                        <Text style={{ ...typography.label, fontSize: 10, color: colors.error }}>
+                          DEACTIVATED
+                        </Text>
                       )}
                     </View>
                     {model.email && <Text style={styles.cardSub}>{model.email}</Text>}
@@ -1302,10 +1641,13 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
                       disabled={isToggling}
                       onPress={() => handleToggleModelActive(model)}
                     >
-                      {isToggling
-                        ? <ActivityIndicator size="small" color="#fff" />
-                        : <Text style={styles.btnLabel}>{model.is_active ? 'Deactivate' : 'Activate'}</Text>
-                      }
+                      {isToggling ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <Text style={styles.btnLabel}>
+                          {model.is_active ? 'Deactivate' : 'Activate'}
+                        </Text>
+                      )}
                     </TouchableOpacity>
                   )}
                 </View>
@@ -1317,7 +1659,10 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
                       {uiCopy.adminDashboard.modelAdminNotesLabel}
                     </Text>
                     <TextInput
-                      style={[styles.editInput, { minHeight: 52, textAlignVertical: 'top', fontSize: 12 }]}
+                      style={[
+                        styles.editInput,
+                        { minHeight: 52, textAlignVertical: 'top', fontSize: 12 },
+                      ]}
                       multiline
                       value={notesDraft}
                       onChangeText={(v) => setModelNotesDraft((d) => ({ ...d, [model.id]: v }))}
@@ -1325,7 +1670,11 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
                       placeholderTextColor={colors.textSecondary}
                     />
                     <TouchableOpacity
-                      style={[styles.saveBtn, { marginTop: spacing.xs }, isSaving && { opacity: 0.5 }]}
+                      style={[
+                        styles.saveBtn,
+                        { marginTop: spacing.xs },
+                        isSaving && { opacity: 0.5 },
+                      ]}
                       onPress={() => handleSaveModelNotes(model)}
                       disabled={isSaving}
                     >
@@ -1336,8 +1685,7 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
               </View>
             );
           }}
-          />
-
+        />
       ) : tab === 'logs' ? (
         /* ── Audit Log ── */
         <FlatList
@@ -1349,7 +1697,8 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
               <Text style={styles.logAction}>{log.action}</Text>
               <Text style={styles.logMeta}>
                 Target: {log.target_user_id ? log.target_user_id.slice(0, 8) + '...' : 'N/A'}
-                {' · '}{new Date(log.created_at).toLocaleString()}
+                {' · '}
+                {new Date(log.created_at).toLocaleString()}
               </Text>
               {log.details && Object.keys(log.details).length > 0 && (
                 <Text style={styles.logDetails}>{JSON.stringify(log.details)}</Text>
@@ -1359,23 +1708,31 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
           ListEmptyComponent={<Text style={styles.emptyText}>No audit log entries yet.</Text>}
           ListFooterComponent={<View style={{ height: 40 }} />}
         />
-
       ) : (
         /* ── Edit Profile ── */
         <ScrollView style={styles.scrollArea} keyboardShouldPersistTaps="handled">
           {editingProfile ? (
             <>
               <View style={{ marginBottom: spacing.md }}>
-                <TouchableOpacity onPress={() => { setEditingProfile(null); setOrgMemberships([]); setTab('accounts'); }}>
+                <TouchableOpacity
+                  onPress={() => {
+                    setEditingProfile(null);
+                    setOrgMemberships([]);
+                    setTab('accounts');
+                  }}
+                >
                   <Text style={styles.backLabel}>← Back to Accounts</Text>
                 </TouchableOpacity>
                 <Text style={styles.editSectionTitle}>
-                  Editing: {editingProfile.display_name || editingProfile.email || editingProfile.id}
+                  Editing:{' '}
+                  {editingProfile.display_name || editingProfile.email || editingProfile.id}
                 </Text>
                 <Text style={styles.cardMeta}>ID: {editingProfile.id}</Text>
               </View>
 
-              {(['display_name', 'email', 'company_name', 'phone', 'website', 'country'] as const).map((field) => (
+              {(
+                ['display_name', 'email', 'company_name', 'phone', 'website', 'country'] as const
+              ).map((field) => (
                 <View key={field} style={{ marginBottom: spacing.sm }}>
                   <Text style={styles.editLabel}>
                     {field.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
@@ -1394,25 +1751,29 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
                 <Text style={styles.editLabel}>Role</Text>
                 <Text style={styles.hintText}>{uiCopy.adminDashboard.accountRoleHint}</Text>
                 <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xs }}>
-                  {([
-                    { label: 'Agency', value: 'agent'  },
-                    { label: 'Client', value: 'client' },
-                    { label: 'Model',  value: 'model'  },
-                  ] as const).map(({ label, value }) => {
+                  {(
+                    [
+                      { label: 'Agency', value: 'agent' },
+                      { label: 'Client', value: 'client' },
+                      { label: 'Model', value: 'model' },
+                    ] as const
+                  ).map(({ label, value }) => {
                     const isActive = editFields.role === value;
                     return (
                       <TouchableOpacity
                         key={value}
                         style={[
                           styles.rolePill,
-                          value === 'agent'  && styles.rolePillAgency,
+                          value === 'agent' && styles.rolePillAgency,
                           value === 'client' && styles.rolePillClient,
-                          value === 'model'  && styles.rolePillModel,
+                          value === 'model' && styles.rolePillModel,
                           isActive && styles.rolePillActive,
                         ]}
                         onPress={() => setEditFields((prev) => ({ ...prev, role: value }))}
                       >
-                        <Text style={[styles.rolePillLabel, isActive && styles.rolePillLabelActive]}>
+                        <Text
+                          style={[styles.rolePillLabel, isActive && styles.rolePillLabelActive]}
+                        >
                           {label}
                         </Text>
                       </TouchableOpacity>
@@ -1423,49 +1784,81 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
 
               {(editingProfile.role === 'agent' || editingProfile.role === 'client') && (
                 <View style={{ marginTop: spacing.md, marginBottom: spacing.sm }}>
-                  <Text style={styles.editSectionTitle}>{uiCopy.adminDashboard.organizationRolesTitle}</Text>
+                  <Text style={styles.editSectionTitle}>
+                    {uiCopy.adminDashboard.organizationRolesTitle}
+                  </Text>
                   <Text style={styles.hintText}>{uiCopy.adminDashboard.organizationRolesHint}</Text>
                   {orgMemberships.length === 0 ? (
                     <Text style={styles.cardMeta}>{uiCopy.adminDashboard.orgRoleNoneLoaded}</Text>
                   ) : (
                     orgMemberships.map((m) => (
-                      <View key={m.organization_id} style={[styles.card, { marginBottom: spacing.xs }]}>
-                        <Text style={[styles.cardTitle, { fontSize: 13, marginBottom: spacing.sm }]}>
-                          {m.org_name || '—'} · {m.org_type === 'agency' ? 'Agency' : 'Client'} · {m.member_role.charAt(0).toUpperCase() + m.member_role.slice(1)}
+                      <View
+                        key={m.organization_id}
+                        style={[styles.card, { marginBottom: spacing.xs }]}
+                      >
+                        <Text
+                          style={[styles.cardTitle, { fontSize: 13, marginBottom: spacing.sm }]}
+                        >
+                          {m.org_name || '—'} · {m.org_type === 'agency' ? 'Agency' : 'Client'} ·{' '}
+                          {m.member_role.charAt(0).toUpperCase() + m.member_role.slice(1)}
                         </Text>
                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                           {m.org_type === 'agency' ? (
                             <>
                               <TouchableOpacity
-                                style={[styles.btnSmall, styles.btnDark, orgRoleBusyId === m.organization_id && { opacity: 0.5 }]}
+                                style={[
+                                  styles.btnSmall,
+                                  styles.btnDark,
+                                  orgRoleBusyId === m.organization_id && { opacity: 0.5 },
+                                ]}
                                 disabled={orgRoleBusyId !== null}
                                 onPress={() => void handleSetOrgRole(m.organization_id, 'owner')}
                               >
-                                <Text style={styles.btnLabel}>{uiCopy.adminDashboard.orgRoleSetOwner}</Text>
+                                <Text style={styles.btnLabel}>
+                                  {uiCopy.adminDashboard.orgRoleSetOwner}
+                                </Text>
                               </TouchableOpacity>
                               <TouchableOpacity
-                                style={[styles.btnSmall, styles.btnDark, orgRoleBusyId === m.organization_id && { opacity: 0.5 }]}
+                                style={[
+                                  styles.btnSmall,
+                                  styles.btnDark,
+                                  orgRoleBusyId === m.organization_id && { opacity: 0.5 },
+                                ]}
                                 disabled={orgRoleBusyId !== null}
                                 onPress={() => void handleSetOrgRole(m.organization_id, 'booker')}
                               >
-                                <Text style={styles.btnLabel}>{uiCopy.adminDashboard.orgRoleSetBooker}</Text>
+                                <Text style={styles.btnLabel}>
+                                  {uiCopy.adminDashboard.orgRoleSetBooker}
+                                </Text>
                               </TouchableOpacity>
                             </>
                           ) : (
                             <>
                               <TouchableOpacity
-                                style={[styles.btnSmall, styles.btnDark, orgRoleBusyId === m.organization_id && { opacity: 0.5 }]}
+                                style={[
+                                  styles.btnSmall,
+                                  styles.btnDark,
+                                  orgRoleBusyId === m.organization_id && { opacity: 0.5 },
+                                ]}
                                 disabled={orgRoleBusyId !== null}
                                 onPress={() => void handleSetOrgRole(m.organization_id, 'owner')}
                               >
-                                <Text style={styles.btnLabel}>{uiCopy.adminDashboard.orgRoleSetOwner}</Text>
+                                <Text style={styles.btnLabel}>
+                                  {uiCopy.adminDashboard.orgRoleSetOwner}
+                                </Text>
                               </TouchableOpacity>
                               <TouchableOpacity
-                                style={[styles.btnSmall, styles.btnDark, orgRoleBusyId === m.organization_id && { opacity: 0.5 }]}
+                                style={[
+                                  styles.btnSmall,
+                                  styles.btnDark,
+                                  orgRoleBusyId === m.organization_id && { opacity: 0.5 },
+                                ]}
                                 disabled={orgRoleBusyId !== null}
                                 onPress={() => void handleSetOrgRole(m.organization_id, 'employee')}
                               >
-                                <Text style={styles.btnLabel}>{uiCopy.adminDashboard.orgRoleSetEmployee}</Text>
+                                <Text style={styles.btnLabel}>
+                                  {uiCopy.adminDashboard.orgRoleSetEmployee}
+                                </Text>
                               </TouchableOpacity>
                             </>
                           )}
@@ -1480,12 +1873,19 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
                 <Text style={styles.editLabel}>Active</Text>
                 <TouchableOpacity
                   style={[styles.toggleBtn, editFields.is_active === 'true' && styles.toggleBtnOn]}
-                  onPress={() => setEditFields((prev) => ({
-                    ...prev,
-                    is_active: prev.is_active === 'true' ? 'false' : 'true',
-                  }))}
+                  onPress={() =>
+                    setEditFields((prev) => ({
+                      ...prev,
+                      is_active: prev.is_active === 'true' ? 'false' : 'true',
+                    }))
+                  }
                 >
-                  <Text style={[styles.toggleBtnLabel, editFields.is_active === 'true' && styles.toggleBtnLabelOn]}>
+                  <Text
+                    style={[
+                      styles.toggleBtnLabel,
+                      editFields.is_active === 'true' && styles.toggleBtnLabelOn,
+                    ]}
+                  >
                     {editFields.is_active === 'true' ? 'Yes' : 'No'}
                   </Text>
                 </TouchableOpacity>
@@ -1506,7 +1906,9 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
                 <View style={[styles.card, { marginTop: spacing.md }]}>
                   <Text style={styles.editSectionTitle}>Agency Data</Text>
                   {Object.entries(agencyData).map(([key, val]) => (
-                    <Text key={key} style={styles.cardMeta}>{key}: {String(val ?? '—')}</Text>
+                    <Text key={key} style={styles.cardMeta}>
+                      {key}: {String(val ?? '—')}
+                    </Text>
                   ))}
                 </View>
               )}
@@ -1533,9 +1935,14 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
 
   header: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: spacing.md, paddingTop: spacing.lg, paddingBottom: spacing.md,
-    borderBottomWidth: 1, borderBottomColor: colors.border,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   brand: { ...typography.heading, fontSize: 16, color: colors.textPrimary, letterSpacing: 1 },
   logoutLabel: { ...typography.label, fontSize: 12, color: colors.textSecondary },
@@ -1543,46 +1950,78 @@ const styles = StyleSheet.create({
   tabScroll: { borderBottomWidth: 1, borderBottomColor: colors.border, maxHeight: 48 },
   tabRow: { flexDirection: 'row', paddingHorizontal: spacing.sm, paddingVertical: 8, gap: 6 },
   tabBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingVertical: 5, paddingHorizontal: 14,
-    borderRadius: 999, borderWidth: 1, borderColor: colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 5,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   tabBtnActive: { backgroundColor: colors.textPrimary, borderColor: colors.textPrimary },
   tabLabel: { ...typography.label, fontSize: 12, color: colors.textSecondary },
   tabLabelActive: { color: colors.surface },
   badge: {
-    minWidth: 18, height: 18, borderRadius: 9, backgroundColor: colors.border,
-    alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
   },
   badgeActive: { backgroundColor: 'rgba(255,255,255,0.25)' },
   badgeText: { ...typography.label, fontSize: 10, color: colors.textSecondary },
   badgeTextActive: { color: colors.surface },
 
   feedbackBanner: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    backgroundColor: '#2ecc71', paddingHorizontal: spacing.md, paddingVertical: 8,
-    marginHorizontal: spacing.lg, marginTop: 8, borderRadius: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: colors.successLight,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    marginHorizontal: spacing.lg,
+    marginTop: 8,
+    borderRadius: 8,
   },
-  feedbackBannerError: { backgroundColor: '#e74c3c' },
+  feedbackBannerError: { backgroundColor: colors.error },
   feedbackText: { ...typography.label, color: '#fff', fontSize: 13, flex: 1, marginRight: 8 },
 
   migrationBanner: {
-    backgroundColor: '#2c2c0a', borderLeftWidth: 3, borderLeftColor: '#f39c12',
-    paddingHorizontal: spacing.md, paddingVertical: 8,
-    marginHorizontal: spacing.md, marginTop: 8, borderRadius: 4,
+    backgroundColor: '#2c2c0a',
+    borderLeftWidth: 3,
+    borderLeftColor: '#f39c12',
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    marginHorizontal: spacing.md,
+    marginTop: 8,
+    borderRadius: 4,
   },
   migrationBannerText: { ...typography.body, fontSize: 11, color: '#f39c12' },
 
   scrollArea: { flex: 1, paddingHorizontal: spacing.md, paddingTop: spacing.md },
 
   searchInput: {
-    ...typography.body, color: colors.textPrimary,
-    borderWidth: 1, borderColor: colors.border, borderRadius: 8,
-    paddingHorizontal: spacing.md, paddingVertical: 9, marginBottom: spacing.sm,
+    ...typography.body,
+    color: colors.textPrimary,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 9,
+    marginBottom: spacing.sm,
   },
 
   // Filter pills
-  pill: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 999, borderWidth: 1, borderColor: colors.border },
+  pill: {
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
   pillActive: { backgroundColor: colors.textPrimary, borderColor: colors.textPrimary },
   pillText: { ...typography.label, fontSize: 11, color: colors.textSecondary },
   pillTextActive: { color: colors.surface },
@@ -1591,82 +2030,154 @@ const styles = StyleSheet.create({
 
   // Cards
   card: {
-    borderWidth: 1, borderColor: colors.border, borderRadius: 10,
-    padding: spacing.md, marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
   },
   cardTitle: { ...typography.label, fontSize: 14, color: colors.textPrimary },
   cardSub: { ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: 2 },
   cardMeta: { ...typography.body, fontSize: 11, color: colors.textSecondary },
-  cardReason: { ...typography.body, fontSize: 11, color: '#e74c3c', fontStyle: 'italic', marginTop: 2 },
+  cardReason: {
+    ...typography.body,
+    fontSize: 11,
+    color: colors.error,
+    fontStyle: 'italic',
+    marginTop: 2,
+  },
 
   // Role & status badges
   roleBadge: { paddingVertical: 1, paddingHorizontal: 5, borderRadius: 4 },
   roleBadgeAgency: { backgroundColor: '#1a1a2e' },
   roleBadgeClient: { backgroundColor: '#1c2c1c' },
   roleBadgeModel: { backgroundColor: '#1a1a3e' },
-  roleBadgeOrgRole: { paddingVertical: 1, paddingHorizontal: 5, borderRadius: 4, backgroundColor: '#2a3a2a' },
-  roleBadgeGhost: { paddingVertical: 1, paddingHorizontal: 5, borderRadius: 4, backgroundColor: '#7a3e00' },
+  roleBadgeOrgRole: {
+    paddingVertical: 1,
+    paddingHorizontal: 5,
+    borderRadius: 4,
+    backgroundColor: '#2a3a2a',
+  },
+  roleBadgeGhost: {
+    paddingVertical: 1,
+    paddingHorizontal: 5,
+    borderRadius: 4,
+    backgroundColor: '#7a3e00',
+  },
   roleBadgeText: { ...typography.label, fontSize: 9, color: '#fff' },
   cardNoOrg: { borderLeftWidth: 2, borderLeftColor: '#7a3e00' },
   statusDot: { width: 7, height: 7, borderRadius: 4 },
-  dotGreen: { backgroundColor: '#2ecc71' },
+  dotGreen: { backgroundColor: colors.successLight },
   dotOrange: { backgroundColor: '#f39c12' },
-  dotRed: { backgroundColor: '#e74c3c' },
+  dotRed: { backgroundColor: colors.error },
 
   // Buttons
-  btnGreen: { backgroundColor: '#2ecc71', paddingVertical: 5, paddingHorizontal: 12, borderRadius: 6 },
-  btnRed: { backgroundColor: '#e74c3c', paddingVertical: 5, paddingHorizontal: 12, borderRadius: 6 },
+  btnGreen: {
+    backgroundColor: colors.successLight,
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+  },
+  btnRed: {
+    backgroundColor: colors.error,
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+  },
   btnDark: { backgroundColor: '#333', paddingVertical: 5, paddingHorizontal: 12, borderRadius: 6 },
   btnSmall: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 6 },
   btnLabel: { ...typography.label, fontSize: 11, color: '#fff' },
 
   reasonInput: {
-    ...typography.body, fontSize: 11, color: colors.textPrimary,
-    borderWidth: 1, borderColor: colors.border, borderRadius: 6,
-    paddingHorizontal: 8, paddingVertical: 4, width: 130,
+    ...typography.body,
+    fontSize: 11,
+    color: colors.textPrimary,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    width: 130,
   },
 
-  emptyText: { ...typography.body, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.xl },
+  emptyText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: spacing.xl,
+  },
 
   // Log entries
   logEntry: { borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: spacing.sm },
   logAction: { ...typography.label, color: colors.textPrimary, fontSize: 13 },
   logMeta: { ...typography.body, color: colors.textSecondary, fontSize: 11 },
-  logDetails: { ...typography.body, color: colors.textSecondary, fontSize: 10, fontFamily: 'monospace', marginTop: 2 },
+  logDetails: {
+    ...typography.body,
+    color: colors.textSecondary,
+    fontSize: 10,
+    fontFamily: 'monospace',
+    marginTop: 2,
+  },
 
   // Edit profile
-  backLabel: { ...typography.label, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.sm },
-  editSectionTitle: { ...typography.heading, fontSize: 14, color: colors.textPrimary, marginBottom: 2 },
+  backLabel: {
+    ...typography.label,
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+  },
+  editSectionTitle: {
+    ...typography.heading,
+    fontSize: 14,
+    color: colors.textPrimary,
+    marginBottom: 2,
+  },
   editLabel: { ...typography.label, fontSize: 11, color: colors.textSecondary, marginBottom: 4 },
   editInput: {
-    ...typography.body, color: colors.textPrimary,
-    borderWidth: 1, borderColor: colors.border, borderRadius: 8,
-    paddingHorizontal: spacing.md, paddingVertical: 9,
+    ...typography.body,
+    color: colors.textPrimary,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 9,
   },
   hintText: { ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: 6 },
   toggleBtn: {
-    paddingVertical: 8, paddingHorizontal: spacing.md, borderRadius: 8,
-    borderWidth: 1, borderColor: colors.border, alignSelf: 'flex-start' as const,
+    paddingVertical: 8,
+    paddingHorizontal: spacing.md,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignSelf: 'flex-start' as const,
   },
-  toggleBtnOn: { backgroundColor: '#2ecc71', borderColor: '#2ecc71' },
+  toggleBtnOn: { backgroundColor: colors.successLight, borderColor: colors.successLight },
   toggleBtnLabel: { ...typography.label, fontSize: 13, color: colors.textSecondary },
   toggleBtnLabelOn: { color: '#fff' },
 
   // Save button
   saveBtn: {
-    backgroundColor: colors.textPrimary, paddingVertical: 11,
-    borderRadius: 8, alignItems: 'center' as const, marginTop: spacing.md,
+    backgroundColor: colors.textPrimary,
+    paddingVertical: 11,
+    borderRadius: 8,
+    alignItems: 'center' as const,
+    marginTop: spacing.md,
   },
   saveBtnLabel: { ...typography.label, color: colors.surface, fontSize: 13 },
 
   // Org expand
   expandBody: {
-    marginTop: spacing.md, paddingTop: spacing.md,
-    borderTopWidth: 1, borderTopColor: colors.border,
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
   },
   memberRow: {
-    paddingVertical: 7, paddingHorizontal: 10, borderRadius: 6,
-    borderWidth: 1, borderColor: colors.border,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   memberRowSelected: { backgroundColor: colors.textPrimary, borderColor: colors.textPrimary },
   memberRowText: { ...typography.label, fontSize: 12, color: colors.textPrimary },
@@ -1683,7 +2194,7 @@ const styles = StyleSheet.create({
   },
   rolePillAgency: { borderColor: '#6c5ce7' },
   rolePillClient: { borderColor: '#0984e3' },
-  rolePillModel:  { borderColor: '#00b894' },
+  rolePillModel: { borderColor: '#00b894' },
   rolePillActive: { backgroundColor: colors.textPrimary, borderColor: colors.textPrimary },
   rolePillLabel: {
     ...typography.label,

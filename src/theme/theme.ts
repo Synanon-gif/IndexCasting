@@ -10,6 +10,18 @@ export const colors = {
   // Premium buttons: high saturation, low brightness
   buttonSkipRed: '#7D2828',
   buttonOptionGreen: '#1A4A38',
+
+  // Semantic tokens — use these instead of raw hex in components
+  error: '#E74C3C',
+  errorDark: '#C0392B',
+  success: '#2E7D32',
+  successLight: '#2ECC71',
+  warning: '#B8860B',
+  warningDark: '#E65100',
+  borderLight: '#D0CEC7',
+  surfaceAlt: '#E8E6E0',
+  surfaceWarm: '#F3EEE7',
+  black: '#000000',
 };
 
 export const spacing = {
@@ -52,4 +64,3 @@ export const typography = {
     textTransform: 'uppercase' as const,
   },
 };
-

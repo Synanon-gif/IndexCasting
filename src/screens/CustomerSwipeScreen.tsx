@@ -108,7 +108,8 @@ export const CustomerSwipeScreen: React.FC = () => {
   const [hasMore, setHasMore] = useState(true);
   const pageOffsetRef = useRef(0);
   /** Cursor for ranked discovery pagination (null when using legacy fallback path). */
-  const [discoveryCursor, setDiscoveryCursor] = useState<import('../services/clientDiscoverySupabase').DiscoveryCursor>(null);
+  const [discoveryCursor, setDiscoveryCursor] =
+    useState<import('../services/clientDiscoverySupabase').DiscoveryCursor>(null);
 
   /**
    * Model IDs already shown in this session — excluded from the visible queue
@@ -128,7 +129,7 @@ export const CustomerSwipeScreen: React.FC = () => {
       setClientOrgId(orgId);
       sessionSeenIds.current = loadSessionIds(orgId);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- id+role+organization_id cover all reads; full profile ref would over-fire
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- id+role+organization_id cover all reads; full profile ref would over-fire
   }, [auth?.profile?.id, auth?.profile?.role, auth?.profile?.organization_id]);
 
   const loadNextPage = useCallback(async () => {
@@ -155,10 +156,17 @@ export const CustomerSwipeScreen: React.FC = () => {
           filters,
         );
         const mapped = page.map((m) => ({
-          id: m.id, name: m.name, height: m.height,
-          chest: m.chest ?? m.bust ?? 0, waist: m.waist ?? 0, hips: m.hips ?? 0,
-          city: canonicalDisplayCityForModel({ effective_city: m.effective_city, city: m.city }), hairColor: m.hair_color ?? '',
-          gallery: (m.portfolio_images ?? []).map((u) => normalizeDocumentspicturesModelImageRef(u, m.id)),
+          id: m.id,
+          name: m.name,
+          height: m.height,
+          chest: m.chest ?? m.bust ?? 0,
+          waist: m.waist ?? 0,
+          hips: m.hips ?? 0,
+          city: canonicalDisplayCityForModel({ effective_city: m.effective_city, city: m.city }),
+          hairColor: m.hair_color ?? '',
+          gallery: (m.portfolio_images ?? []).map((u) =>
+            normalizeDocumentspicturesModelImageRef(u, m.id),
+          ),
         }));
         setModels((prev) => [...prev, ...mapped]);
         pageOffsetRef.current += mapped.length;
@@ -195,10 +203,17 @@ export const CustomerSwipeScreen: React.FC = () => {
         } else {
           const page = await getModelsPagedFromSupabase(0, SWIPE_PAGE_SIZE, filters);
           const mapped = page.map((m) => ({
-            id: m.id, name: m.name, height: m.height,
-            chest: m.chest ?? m.bust ?? 0, waist: m.waist ?? 0, hips: m.hips ?? 0,
-            city: canonicalDisplayCityForModel({ effective_city: m.effective_city, city: m.city }), hairColor: m.hair_color ?? '',
-            gallery: (m.portfolio_images ?? []).map((u) => normalizeDocumentspicturesModelImageRef(u, m.id)),
+            id: m.id,
+            name: m.name,
+            height: m.height,
+            chest: m.chest ?? m.bust ?? 0,
+            waist: m.waist ?? 0,
+            hips: m.hips ?? 0,
+            city: canonicalDisplayCityForModel({ effective_city: m.effective_city, city: m.city }),
+            hairColor: m.hair_color ?? '',
+            gallery: (m.portfolio_images ?? []).map((u) =>
+              normalizeDocumentspicturesModelImageRef(u, m.id),
+            ),
           }));
           setModels(mapped);
           pageOffsetRef.current = mapped.length;
@@ -249,7 +264,7 @@ export const CustomerSwipeScreen: React.FC = () => {
     setSessionSeenCount(sessionSeenIds.current.size);
     saveSessionId(clientOrgId, current.id);
     void recordInteraction(current.id, 'viewed');
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.id, clientOrgId]);
 
   const handleNext = () => {
@@ -270,29 +285,29 @@ export const CustomerSwipeScreen: React.FC = () => {
     setIsDatePickerOpen(true);
   };
 
-  const handleSelectDate = useCallback((date: string) => {
-    const model = detailModel ?? current;
-    if (!model) return;
-    setIsDatePickerOpen(false);
-    setIsSendingOption(true);
-    setOptionSuccess(null);
+  const handleSelectDate = useCallback(
+    (date: string) => {
+      const model = detailModel ?? current;
+      if (!model) return;
+      setIsDatePickerOpen(false);
+      setIsSendingOption(true);
+      setOptionSuccess(null);
 
-    const clientName = auth?.profile?.display_name ?? auth?.profile?.email ?? 'Client';
-    const countryFromCityFilter =
-      filters.city !== 'all' ? (CITY_TO_COUNTRY[filters.city] ?? undefined) : undefined;
-    addOptionRequest(
-      clientName,
-      model.name,
-      model.id,
-      date,
-      undefined,
-      { requestType: 'option', countryCode: countryFromCityFilter, flowSource: 'swipe' },
-    );
+      const clientName = auth?.profile?.display_name ?? auth?.profile?.email ?? 'Client';
+      const countryFromCityFilter =
+        filters.city !== 'all' ? (CITY_TO_COUNTRY[filters.city] ?? undefined) : undefined;
+      addOptionRequest(clientName, model.name, model.id, date, undefined, {
+        requestType: 'option',
+        countryCode: countryFromCityFilter,
+        flowSource: 'swipe',
+      });
 
-    setIsSendingOption(false);
-    setOptionSuccess(uiCopy.swipe.optionSuccessMessage(date));
-    setTimeout(() => setOptionSuccess(null), 2600);
-  }, [detailModel, current, auth?.profile, filters.city]);
+      setIsSendingOption(false);
+      setOptionSuccess(uiCopy.swipe.optionSuccessMessage(date));
+      setTimeout(() => setOptionSuccess(null), 2600);
+    },
+    [detailModel, current, auth?.profile, filters.city],
+  );
 
   return (
     <View style={styles.container}>
@@ -302,10 +317,7 @@ export const CustomerSwipeScreen: React.FC = () => {
           <Text style={styles.counter}>
             {filteredModels.length ? index + 1 : 0}/{filteredModels.length}
           </Text>
-          <TouchableOpacity
-            style={styles.filterPill}
-            onPress={() => setIsFilterOpen(true)}
-          >
+          <TouchableOpacity style={styles.filterPill} onPress={() => setIsFilterOpen(true)}>
             <Text style={styles.filterLabel}>{uiCopy.swipe.filterButton}</Text>
           </TouchableOpacity>
         </View>
@@ -322,11 +334,7 @@ export const CustomerSwipeScreen: React.FC = () => {
           onPress={() => handleOpenDetail(current)}
         >
           <View style={styles.imageWrapper}>
-            <StorageImage
-              uri={current.gallery[0]}
-              style={styles.image}
-              resizeMode="contain"
-            />
+            <StorageImage uri={current.gallery[0]} style={styles.image} resizeMode="contain" />
           </View>
 
           <View style={styles.metaRow}>
@@ -362,10 +370,7 @@ export const CustomerSwipeScreen: React.FC = () => {
       )}
 
       <View style={styles.actionsRow}>
-        <TouchableOpacity
-          style={[styles.actionButton, styles.skipButton]}
-          onPress={handleNext}
-        >
+        <TouchableOpacity style={[styles.actionButton, styles.skipButton]} onPress={handleNext}>
           <Text style={styles.actionLabelSecondary}>{uiCopy.swipe.skipAction}</Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -392,10 +397,7 @@ export const CustomerSwipeScreen: React.FC = () => {
         onChangeFilters={setFilters}
       />
 
-      <DetailModal
-        model={detailModel}
-        onClose={() => setDetailModel(null)}
-      />
+      <DetailModal model={detailModel} onClose={() => setDetailModel(null)} />
 
       <DatePickerModal
         visible={isDatePickerOpen}
@@ -419,11 +421,10 @@ const FilterDrawer: React.FC<FilterDrawerProps> = ({
   onClose,
   onChangeFilters,
 }) => {
-  const update = (partial: Partial<Filters>) =>
-    onChangeFilters({ ...filters, ...partial });
+  const update = (partial: Partial<Filters>) => onChangeFilters({ ...filters, ...partial });
 
   return (
-    <Modal visible={visible} transparent animationType="fade">
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
         <View style={styles.drawer}>
           <Text style={styles.drawerTitle}>{uiCopy.swipe.filterDrawerTitle}</Text>
@@ -441,9 +442,7 @@ const FilterDrawer: React.FC<FilterDrawerProps> = ({
                   key={opt.key}
                   label={opt.label}
                   active={filters.height === opt.key}
-                  onPress={() =>
-                    update({ height: opt.key as Filters['height'] })
-                  }
+                  onPress={() => update({ height: opt.key as Filters['height'] })}
                 />
               ))}
             </View>
@@ -457,9 +456,7 @@ const FilterDrawer: React.FC<FilterDrawerProps> = ({
                   key={city}
                   label={city === 'all' ? uiCopy.swipe.filterAll : city}
                   active={filters.city === city}
-                  onPress={() =>
-                    update({ city: city as Filters['city'] })
-                  }
+                  onPress={() => update({ city: city as Filters['city'] })}
                 />
               ))}
             </View>
@@ -473,9 +470,7 @@ const FilterDrawer: React.FC<FilterDrawerProps> = ({
                   key={color}
                   label={color === 'all' ? uiCopy.swipe.filterAll : color}
                   active={filters.hairColor === color}
-                  onPress={() =>
-                    update({ hairColor: color as Filters['hairColor'] })
-                  }
+                  onPress={() => update({ hairColor: color as Filters['hairColor'] })}
                 />
               ))}
             </View>
@@ -500,13 +495,8 @@ type ChipProps = {
 };
 
 const Chip: React.FC<ChipProps> = ({ label, active, onPress }) => (
-  <TouchableOpacity
-    onPress={onPress}
-    style={[styles.chip, active && styles.chipActive]}
-  >
-    <Text style={[styles.chipLabel, active && styles.chipLabelActive]}>
-      {label}
-    </Text>
+  <TouchableOpacity onPress={onPress} style={[styles.chip, active && styles.chipActive]}>
+    <Text style={[styles.chipLabel, active && styles.chipLabelActive]}>{label}</Text>
   </TouchableOpacity>
 );
 
@@ -519,7 +509,7 @@ const DetailModal: React.FC<DetailModalProps> = ({ model, onClose }) => {
   if (!model) return null;
 
   return (
-    <Modal visible transparent animationType="fade">
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.detailOverlay}>
         <View style={styles.detailCard}>
           <ScrollView contentContainerStyle={styles.detailContent}>
@@ -564,10 +554,7 @@ type DetailMeasurementProps = {
   value: number;
 };
 
-const DetailMeasurement: React.FC<DetailMeasurementProps> = ({
-  label,
-  value,
-}) => (
+const DetailMeasurement: React.FC<DetailMeasurementProps> = ({ label, value }) => (
   <View style={styles.detailMeasurement}>
     <Text style={styles.detailMeasurementLabel}>{label}</Text>
     <Text style={styles.detailMeasurementValue}>{value}</Text>
@@ -580,30 +567,17 @@ type DatePickerModalProps = {
   onSelectDate: (date: string) => void;
 };
 
-const DatePickerModal: React.FC<DatePickerModalProps> = ({
-  visible,
-  onClose,
-  onSelectDate,
-}) => {
+const DatePickerModal: React.FC<DatePickerModalProps> = ({ visible, onClose, onSelectDate }) => {
   const availableDates = useMemo(() => getUpcomingWeekdays(14), []);
   return (
-    <Modal visible={visible} transparent animationType="fade">
-      <TouchableOpacity
-        style={styles.detailOverlay}
-        activeOpacity={1}
-        onPress={onClose}
-      >
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <TouchableOpacity style={styles.detailOverlay} activeOpacity={1} onPress={onClose}>
         <View style={styles.dateCard}>
           <Text style={styles.dateTitle}>{uiCopy.swipe.sendOptionTitle}</Text>
           <Text style={styles.dateSub}>{uiCopy.swipe.sendOptionSubtitle}</Text>
           <View style={styles.chipRow}>
             {availableDates.map((d) => (
-              <Chip
-                key={d}
-                label={d}
-                active={false}
-                onPress={() => onSelectDate(d)}
-              />
+              <Chip key={d} label={d} active={false} onPress={() => onSelectDate(d)} />
             ))}
           </View>
         </View>
@@ -663,7 +637,7 @@ const styles = StyleSheet.create({
   },
   imageWrapper: {
     flex: 1,
-    backgroundColor: '#D0CEC7',
+    backgroundColor: colors.borderLight,
   },
   image: {
     width: '100%',
@@ -866,7 +840,7 @@ const styles = StyleSheet.create({
   detailHero: {
     borderRadius: 14,
     overflow: 'hidden',
-    backgroundColor: '#D0CEC7',
+    backgroundColor: colors.borderLight,
   },
   detailHeroImage: {
     width: '100%',
@@ -904,7 +878,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 120,
     borderRadius: 8,
-    backgroundColor: '#D0CEC7',
+    backgroundColor: colors.borderLight,
   },
   videoPlaceholder: {
     height: 120,
@@ -937,4 +911,3 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
 });
-

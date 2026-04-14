@@ -14,6 +14,7 @@ import {
   ActivityIndicator,
   AppState,
   type AppStateStatus,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { StorageImage } from './StorageImage';
 import ChatLayoutFix from './ChatLayoutFix';
@@ -1058,13 +1059,17 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
     </>
   );
 
+  const Wrapper = Platform.OS === 'web' ? View : KeyboardAvoidingView;
+  const wrapperExtra = Platform.OS === 'ios' ? { behavior: 'padding' as const } : {};
+
   return (
-    <View
+    <Wrapper
       style={[
         styles.chatPanel,
         { flex: 1, minHeight: 0, flexDirection: 'column' as const },
         containerStyle,
       ]}
+      {...wrapperExtra}
     >
       <ChatLayoutFix
         header={messengerHeader}
@@ -1090,7 +1095,12 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
         backLabel={backLabel}
       />
 
-      <Modal visible={shareOpen !== null} transparent animationType="fade">
+      <Modal
+        visible={shareOpen !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShareOpen(null)}
+      >
         <Pressable style={styles.modalBackdrop} onPress={() => setShareOpen(null)}>
           <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
             <Text style={styles.modalTitle}>
@@ -1147,7 +1157,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
           </Pressable>
         </Pressable>
       </Modal>
-    </View>
+    </Wrapper>
   );
 };
 

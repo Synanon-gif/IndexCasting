@@ -95,7 +95,7 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
   openOrgChatFromRequest,
   onAgencyConfirmAvailability,
   onAgencyAcceptClientPrice,
-  onAgencyRejectClientPrice: _onAgencyRejectClientPrice,
+  onAgencyRejectClientPrice,
   onAgencyCounterOffer,
   onAgencyProposeInitialFee,
   onRejectNegotiation,
@@ -406,6 +406,21 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
                   {uiCopy.optionNegotiationChat.acceptProposedFee}
                 </Text>
               </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.filterPill,
+                  { borderWidth: 1, borderColor: colors.buttonSkipRed },
+                  busy && { opacity: 0.5 },
+                ]}
+                disabled={busy}
+                onPress={() => {
+                  void onAgencyRejectClientPrice();
+                }}
+              >
+                <Text style={[styles.filterPillLabel, { color: colors.buttonSkipRed }]}>
+                  {uiCopy.optionNegotiationChat.declineProposedFee}
+                </Text>
+              </TouchableOpacity>
             </View>
           ) : null}
         </>
@@ -686,7 +701,9 @@ export const NegotiationThreadFooter: React.FC<NegotiationThreadFooterProps> = (
           <View style={styles.actionsToggleInner}>
             <Text style={styles.actionsToggleArrow}>{actionsExpanded ? '▾' : '▸'}</Text>
             <Text style={styles.actionsToggleLabel}>
-              {actionsExpanded ? 'Hide actions' : 'Actions'}
+              {actionsExpanded
+                ? uiCopy.optionNegotiationChat.hideActions
+                : uiCopy.optionNegotiationChat.showActions}
             </Text>
           </View>
           {!actionsExpanded && !isTerminal && (
@@ -938,12 +955,12 @@ const styles = StyleSheet.create({
     borderColor: colors.buttonOptionGreen,
     backgroundColor: 'rgba(76,175,80,0.08)',
   },
-  approvalBannerRejected: { borderColor: '#e74c3c', backgroundColor: 'rgba(231,76,60,0.08)' },
-  approvalBannerPending: { borderColor: '#B8860B', backgroundColor: 'rgba(184,134,11,0.08)' },
+  approvalBannerRejected: { borderColor: colors.error, backgroundColor: 'rgba(231,76,60,0.08)' },
+  approvalBannerPending: { borderColor: colors.warning, backgroundColor: 'rgba(184,134,11,0.08)' },
   approvalBannerText: { ...typography.label, fontSize: 11, color: colors.textSecondary },
   approvalBannerTextApproved: { color: colors.buttonOptionGreen },
-  approvalBannerTextRejected: { color: '#e74c3c' },
-  approvalBannerTextPending: { color: '#B8860B' },
+  approvalBannerTextRejected: { color: colors.error },
+  approvalBannerTextPending: { color: colors.warning },
   compactHint: {
     ...typography.label,
     fontSize: 11,

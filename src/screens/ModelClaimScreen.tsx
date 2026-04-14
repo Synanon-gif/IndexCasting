@@ -1,5 +1,13 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Platform, Modal } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+  Platform,
+  Modal,
+} from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { uiCopy } from '../constants/uiCopy';
 import { TermsScreen } from './TermsScreen';
@@ -19,6 +27,7 @@ type Props = {
   error: string | null;
   onContinueSignup: () => void;
   onContinueLogin: () => void;
+  onDismiss?: () => void;
 };
 
 export function ModelClaimScreen({
@@ -27,6 +36,7 @@ export function ModelClaimScreen({
   error,
   onContinueSignup,
   onContinueLogin,
+  onDismiss,
 }: Props) {
   const [copied, setCopied] = useState(false);
   const [termsVisible, setTermsVisible] = useState(false);
@@ -88,13 +98,10 @@ export function ModelClaimScreen({
           <>
             <Text style={styles.distinct}>{uiCopy.modelClaim.notOrgTeamInvite}</Text>
             <Text style={styles.body}>
-              <Text style={styles.emph}>{preview.agency_name}</Text>
-              {' '}
+              <Text style={styles.emph}>{preview.agency_name}</Text>{' '}
               {uiCopy.modelClaim.profileCreatedBy}
             </Text>
-            {preview.model_name && (
-              <Text style={styles.modelName}>{preview.model_name}</Text>
-            )}
+            {preview.model_name && <Text style={styles.modelName}>{preview.model_name}</Text>}
             <Text style={styles.hint}>{uiCopy.modelClaim.createAccountHint}</Text>
             <Text style={styles.expires}>{uiCopy.modelClaim.expiresNote}</Text>
             <Text style={styles.nextSteps}>{uiCopy.modelClaim.modelClaimNextStepsAfterSignup}</Text>
@@ -112,7 +119,10 @@ export function ModelClaimScreen({
                 <Text style={styles.primaryLabel}>{uiCopy.modelClaim.createAccount}</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity style={error && !isValid ? styles.primaryBtn : styles.secondaryBtn} onPress={onContinueLogin}>
+            <TouchableOpacity
+              style={error && !isValid ? styles.primaryBtn : styles.secondaryBtn}
+              onPress={onContinueLogin}
+            >
               <Text style={error && !isValid ? styles.primaryLabel : styles.secondaryLabel}>
                 {uiCopy.modelClaim.alreadyHaveAccount}
               </Text>
@@ -127,6 +137,11 @@ export function ModelClaimScreen({
                 <Text style={styles.linkLabel}>
                   {copied ? uiCopy.modelClaim.linkCopied : uiCopy.modelClaim.copyLink}
                 </Text>
+              </TouchableOpacity>
+            )}
+            {onDismiss && (
+              <TouchableOpacity onPress={onDismiss} style={styles.linkBtn}>
+                <Text style={styles.linkLabel}>{uiCopy.common.cancel}</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -171,7 +186,12 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.surface,
   },
-  brand: { ...typography.heading, fontSize: 14, color: colors.textSecondary, marginBottom: spacing.sm },
+  brand: {
+    ...typography.heading,
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+  },
   title: { ...typography.heading, color: colors.textPrimary, marginBottom: spacing.md },
   distinct: {
     ...typography.body,
@@ -188,10 +208,26 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     marginBottom: spacing.md,
   },
-  hint: { ...typography.body, color: colors.textSecondary, marginBottom: spacing.sm, lineHeight: 20 },
-  expires: { ...typography.label, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm },
-  nextSteps: { ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.lg, lineHeight: 18 },
-  error: { ...typography.body, fontSize: 12, color: '#C0392B', marginBottom: spacing.md },
+  hint: {
+    ...typography.body,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+    lineHeight: 20,
+  },
+  expires: {
+    ...typography.label,
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+  },
+  nextSteps: {
+    ...typography.body,
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: spacing.lg,
+    lineHeight: 18,
+  },
+  error: { ...typography.body, fontSize: 12, color: colors.errorDark, marginBottom: spacing.md },
   btnCol: { gap: spacing.sm },
   primaryBtn: {
     backgroundColor: colors.textPrimary,

@@ -93,7 +93,7 @@ export const GuestChatView: React.FC = () => {
   const insets = useSafeAreaInsets();
   const composerBottomInset = Math.max(insets.bottom, spacing.sm);
   const upgradeModalMaxW = getChatOverlayMaxWidth(guestWinW);
-  const { session, profile, refreshProfile } = useAuth();
+  const { session, profile, refreshProfile, signOut } = useAuth();
   const userId = session?.user?.id ?? null;
 
   const [conversation, setConversation] = useState<Conversation | null>(null);
@@ -283,6 +283,9 @@ export const GuestChatView: React.FC = () => {
               {displayName} · {compactSub}
             </Text>
           </View>
+          <TouchableOpacity style={styles.headerSignOut} onPress={() => void signOut()}>
+            <Text style={styles.headerSignOutLabel}>{uiCopy.common.logout}</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -372,7 +375,7 @@ const styles = StyleSheet.create({
   },
   errorText: {
     ...typography.body,
-    color: '#C0392B',
+    color: colors.errorDark,
     textAlign: 'center',
     marginBottom: spacing.md,
   },
@@ -456,6 +459,19 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
 
+  headerSignOut: {
+    paddingVertical: 4,
+    paddingHorizontal: spacing.sm,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginLeft: spacing.sm,
+  },
+  headerSignOutLabel: {
+    ...typography.label,
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
   // Chat area
   chatArea: { flex: 1, ...(Platform.OS === 'web' ? { minHeight: 0 } : {}) },
   messengerContainer: { flex: 1, ...(Platform.OS === 'web' ? { minHeight: 0 } : {}) },
@@ -498,7 +514,7 @@ const styles = StyleSheet.create({
   },
   upgradeError: {
     ...typography.body,
-    color: '#C0392B',
+    color: colors.errorDark,
     fontSize: 13,
     marginBottom: spacing.sm,
   },

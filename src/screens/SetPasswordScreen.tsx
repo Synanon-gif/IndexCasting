@@ -21,7 +21,7 @@ import { uiCopy } from '../constants/uiCopy';
  * and must log in again with the new password (clean session handoff).
  */
 export const SetPasswordScreen: React.FC = () => {
-  const { updatePassword } = useAuth();
+  const { updatePassword, signOut } = useAuth();
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -100,6 +100,10 @@ export const SetPasswordScreen: React.FC = () => {
                 <Text style={styles.submitLabel}>{uiCopy.auth.setPasswordSave}</Text>
               )}
             </TouchableOpacity>
+
+            <TouchableOpacity style={styles.cancelBtn} onPress={() => void signOut()}>
+              <Text style={styles.cancelLabel}>{uiCopy.common.cancel}</Text>
+            </TouchableOpacity>
           </>
         )}
       </View>
@@ -162,7 +166,7 @@ const styles = StyleSheet.create({
   error: {
     ...typography.body,
     fontSize: 12,
-    color: '#C0392B',
+    color: colors.errorDark,
     marginBottom: spacing.sm,
     textAlign: 'center',
   },
@@ -185,5 +189,14 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 22,
     marginTop: spacing.md,
+  },
+  cancelBtn: {
+    marginTop: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  cancelLabel: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textDecorationLine: 'underline',
   },
 });

@@ -26,7 +26,11 @@ import { uiCopy } from '../constants/uiCopy';
 import { isOrganizationOwner } from '../services/orgRoleTypes';
 import { useSubscription } from '../context/SubscriptionContext';
 import { useAuth } from '../context/AuthContext';
-import { createCheckoutSession, PLAN_LIMITS, type PlanType } from '../services/subscriptionSupabase';
+import {
+  createCheckoutSession,
+  PLAN_LIMITS,
+  type PlanType,
+} from '../services/subscriptionSupabase';
 import { colors, spacing, typography } from '../theme/theme';
 import { validateUrl } from '../../lib/validation';
 
@@ -42,8 +46,8 @@ interface PlanCard {
 
 const ALL_PLAN_CARDS: PlanCard[] = [
   {
-    id:       'agency_basic',
-    label:    uiCopy.billing.planNameAgencyBasic,
+    id: 'agency_basic',
+    label: uiCopy.billing.planNameAgencyBasic,
     audience: 'agency',
     features: [
       uiCopy.billing.swipesPerDay(10),
@@ -55,8 +59,8 @@ const ALL_PLAN_CARDS: PlanCard[] = [
     highlight: false,
   },
   {
-    id:       'agency_pro',
-    label:    uiCopy.billing.planNameAgencyPro,
+    id: 'agency_pro',
+    label: uiCopy.billing.planNameAgencyPro,
     audience: 'agency',
     features: [
       uiCopy.billing.swipesPerDay(50),
@@ -69,8 +73,8 @@ const ALL_PLAN_CARDS: PlanCard[] = [
     highlight: true,
   },
   {
-    id:       'agency_enterprise',
-    label:    uiCopy.billing.planNameAgencyEnterprise,
+    id: 'agency_enterprise',
+    label: uiCopy.billing.planNameAgencyEnterprise,
     audience: 'agency',
     features: [
       uiCopy.billing.swipesPerDay(150),
@@ -83,8 +87,8 @@ const ALL_PLAN_CARDS: PlanCard[] = [
     highlight: false,
   },
   {
-    id:       'client',
-    label:    uiCopy.billing.planNameClient,
+    id: 'client',
+    label: uiCopy.billing.planNameClient,
     audience: 'client',
     features: [
       uiCopy.billing.swipesUnlimited,
@@ -159,24 +163,25 @@ function PlanCardView({ plan, loadingPlan, onSelect }: PlanCardProps) {
 
 export default function PaywallScreen() {
   const { trialDaysLeft, accessStatus, orgType } = useSubscription();
-  const { profile } = useAuth();
+  const { profile, signOut } = useAuth();
   const [loadingPlan, setLoadingPlan] = useState<PlanType | null>(null);
 
   // Only owners may initiate a subscription purchase.
   const isOwner = isOrganizationOwner(profile?.org_member_role);
 
-  const isTrialExpired    = accessStatus?.reason === 'no_active_subscription';
+  const isTrialExpired = accessStatus?.reason === 'no_active_subscription';
   const isTrialAlreadyUsed = accessStatus?.reason === 'trial_already_used';
-  const isTrialActive     = accessStatus?.reason === 'trial_active';
+  const isTrialActive = accessStatus?.reason === 'trial_active';
 
   // Determine which plan cards to show based on org type.
   // Client orgs see only the 'client' plan. Agency orgs see only agency plans.
   // null/unknown falls back to showing all plans safely.
-  const visibleCards = orgType === 'client'
-    ? ALL_PLAN_CARDS.filter((c) => c.audience === 'client')
-    : orgType === 'agency'
-    ? ALL_PLAN_CARDS.filter((c) => c.audience === 'agency')
-    : ALL_PLAN_CARDS;
+  const visibleCards =
+    orgType === 'client'
+      ? ALL_PLAN_CARDS.filter((c) => c.audience === 'client')
+      : orgType === 'agency'
+        ? ALL_PLAN_CARDS.filter((c) => c.audience === 'agency')
+        : ALL_PLAN_CARDS;
 
   const isClientPaywall = orgType === 'client';
 
@@ -213,9 +218,7 @@ export default function PaywallScreen() {
           {isClientPaywall ? uiCopy.billing.paywallClientTitle : uiCopy.billing.paywallTitle}
         </Text>
         <Text style={styles.subtitle}>
-          {isClientPaywall
-            ? uiCopy.billing.paywallClientSubtitle
-            : uiCopy.billing.paywallSubtitle}
+          {isClientPaywall ? uiCopy.billing.paywallClientSubtitle : uiCopy.billing.paywallSubtitle}
         </Text>
       </View>
 
@@ -289,6 +292,10 @@ export default function PaywallScreen() {
           </Text>
         </Text>
       )}
+
+      <TouchableOpacity style={styles.signOutButton} onPress={() => void signOut()}>
+        <Text style={styles.signOutLabel}>{uiCopy.common.logout}</Text>
+      </TouchableOpacity>
     </ScrollView>
   );
 }
@@ -478,5 +485,18 @@ const styles = StyleSheet.create({
   footerLink: {
     color: colors.accentGreen,
     textDecorationLine: 'underline',
+  },
+  signOutButton: {
+    alignSelf: 'center',
+    marginTop: spacing.xl,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+  },
+  signOutLabel: {
+    ...typography.label,
+    color: colors.textSecondary,
   },
 });

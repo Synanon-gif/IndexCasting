@@ -16,6 +16,7 @@ import {
   Platform,
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
+import { isMobileWidth } from '../theme/breakpoints';
 import { getChatOverlayMaxWidth, getMessagesScrollMaxHeight } from '../theme/chatLayout';
 import {
   getModelsFromSupabase,
@@ -155,7 +156,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   const optionChatOverlayMaxW = getChatOverlayMaxWidth(modelProfileWindowWidth);
   const optionChatMessagesMaxH = getMessagesScrollMaxHeight(modelProfileWindowHeight);
   // True on mobile-width viewports — option chat overlay fills the inset area instead of floating.
-  const isMobileModel = modelProfileWindowWidth < 768;
+  const isMobileModel = isMobileWidth(modelProfileWindowWidth);
   const { signOut } = useAuth();
   const modelAgencyCtx = useModelAgency();
   const [profile, setProfile] = useState<ModelProfile | null>(null);
@@ -277,10 +278,13 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
         m.getModelLocation(profile.id),
       );
       setModelLocation(refreshed);
-      Alert.alert('Location Updated', `Live GPS location set to: ${cityName}`);
+      Alert.alert(uiCopy.alerts.locationUpdatedTitle, `Live GPS location set to: ${cityName}`);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
-      Alert.alert('Location Error', err?.message ?? 'Could not retrieve your location.');
+      Alert.alert(
+        uiCopy.alerts.locationErrorTitle,
+        err?.message ?? uiCopy.alerts.locationErrorFallback,
+      );
     } finally {
       setLocationLoading(false);
     }
@@ -326,7 +330,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
    */
   const handleSetCurrentCity = async () => {
     if (!profile || !currentCityInput.trim() || !currentCountryInput.trim()) {
-      Alert.alert('Missing fields', 'Please enter both a city and country code (e.g. DE, FR, US).');
+      Alert.alert(uiCopy.alerts.missingFieldsTitle, uiCopy.alerts.missingFieldsLocationBody);
       return;
     }
     setCurrentCityLoading(true);
@@ -348,7 +352,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
       // Existing location data is preserved. User must try a more specific city name.
       if (lat == null || lng == null) {
         Alert.alert(
-          'City not found',
+          uiCopy.alerts.cityNotFoundTitle,
           `Could not geocode "${city}, ${countryCode}". Please try a more specific city name.\n\nYour existing location has not been changed.`,
         );
         return;
@@ -383,15 +387,15 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
         setCurrentCityInput('');
         setCurrentCountryInput('');
         Alert.alert(
-          'Location set',
+          uiCopy.alerts.locationSetTitle,
           `Current city set to ${city}, ${countryCode}. You will appear in Near Me.`,
         );
       } else {
-        Alert.alert('Error', 'Could not save your location. Please try again.');
+        Alert.alert(uiCopy.common.error, uiCopy.alerts.couldNotSaveLocation);
       }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
-      Alert.alert('Error', err?.message ?? 'Could not save location.');
+      Alert.alert(uiCopy.common.error, err?.message ?? uiCopy.alerts.couldNotSaveLocation);
     } finally {
       setCurrentCityLoading(false);
     }
@@ -408,41 +412,34 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     if (!profile || !modelLocation) return;
     // Only model-owned sources can be removed by the model
     if (modelLocation.source === 'agency') {
-      Alert.alert(
-        'Cannot remove',
-        'This location was set by your agency. Contact your agency to update it.',
-      );
+      Alert.alert(uiCopy.alerts.cannotRemoveTitle, uiCopy.alerts.cannotRemoveAgencyBody);
       return;
     }
     const sourceLabel = modelLocation.source === 'live' ? 'Live GPS' : 'Current city';
-    Alert.alert(
-      `Remove ${sourceLabel}`,
-      `This will remove your ${sourceLabel} location. You may still appear in Near Me if another location source is set.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
-            setRemovingLocation(true);
-            const removedSource = modelLocation.source;
-            // Delete only the specific source row — other sources are preserved
-            const ok = await deleteModelLocation(profile.id, removedSource);
-            setRemovingLocation(false);
-            if (ok) {
-              // Reload to get the next effective location (fallback to current/agency)
-              const next = await import('../services/modelLocationsSupabase').then((m) =>
-                m.getModelLocation(profile.id),
-              );
-              setModelLocation(next);
-              if (!next) setProfile((prev) => (prev ? { ...prev, currentLocation: '' } : prev));
-            } else {
-              Alert.alert('Error', 'Could not remove location. Please try again.');
-            }
-          },
+    Alert.alert(`Remove ${sourceLabel}`, uiCopy.alerts.removeLocationConfirmBody, [
+      { text: uiCopy.common.cancel, style: 'cancel' },
+      {
+        text: uiCopy.common.remove,
+        style: 'destructive',
+        onPress: async () => {
+          setRemovingLocation(true);
+          const removedSource = modelLocation.source;
+          // Delete only the specific source row — other sources are preserved
+          const ok = await deleteModelLocation(profile.id, removedSource);
+          setRemovingLocation(false);
+          if (ok) {
+            // Reload to get the next effective location (fallback to current/agency)
+            const next = await import('../services/modelLocationsSupabase').then((m) =>
+              m.getModelLocation(profile.id),
+            );
+            setModelLocation(next);
+            if (!next) setProfile((prev) => (prev ? { ...prev, currentLocation: '' } : prev));
+          } else {
+            Alert.alert(uiCopy.common.error, uiCopy.alerts.couldNotRemoveLocation);
+          }
         },
-      ],
-    );
+      },
+    ]);
   };
 
   useEffect(() => {
@@ -1001,7 +998,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                       disabled={removingLocation}
                       style={{ paddingHorizontal: spacing.sm, paddingVertical: 6 }}
                     >
-                      <Text style={{ fontSize: 11, color: '#e74c3c', fontWeight: '600' }}>
+                      <Text style={{ fontSize: 11, color: colors.error, fontWeight: '600' }}>
                         {removingLocation ? '…' : '✕'}
                       </Text>
                     </TouchableOpacity>
@@ -1327,12 +1324,12 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                 style={{
                   borderRadius: 999,
                   borderWidth: 1,
-                  borderColor: '#e74c3c',
+                  borderColor: colors.error,
                   paddingVertical: spacing.sm,
                   alignItems: 'center',
                 }}
               >
-                <Text style={{ ...typography.label, fontSize: 12, color: '#e74c3c' }}>
+                <Text style={{ ...typography.label, fontSize: 12, color: colors.error }}>
                   {deletingAccount
                     ? uiCopy.accountDeletion.buttonWorking
                     : uiCopy.accountDeletion.button}
@@ -1511,7 +1508,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                           onPress={() => setNewEntryStart(t)}
                           style={{
                             padding: 4,
-                            backgroundColor: newEntryStart === t ? '#2E7D32' : 'transparent',
+                            backgroundColor: newEntryStart === t ? colors.success : 'transparent',
                           }}
                         >
                           <Text
@@ -1545,7 +1542,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                           onPress={() => setNewEntryEnd(t)}
                           style={{
                             padding: 4,
-                            backgroundColor: newEntryEnd === t ? '#2E7D32' : 'transparent',
+                            backgroundColor: newEntryEnd === t ? colors.success : 'transparent',
                           }}
                         >
                           <Text
@@ -1567,7 +1564,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                   disabled={addingEntry}
                   style={{
                     borderRadius: 999,
-                    backgroundColor: '#2E7D32',
+                    backgroundColor: colors.success,
                     paddingVertical: spacing.sm,
                     alignItems: 'center',
                     opacity: addingEntry ? 0.5 : 1,
@@ -1772,7 +1769,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                     key={req.id}
                     style={{
                       borderWidth: 1,
-                      borderColor: '#E65100',
+                      borderColor: colors.warningDark,
                       borderRadius: 12,
                       padding: spacing.md,
                       marginTop: spacing.sm,

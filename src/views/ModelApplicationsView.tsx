@@ -3,13 +3,33 @@
  * Tabs: Applications, Messages (Recruiting-Chats mit Agenturen), Settings.
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Modal, Alert, TextInput, Platform, useWindowDimensions } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  ActivityIndicator,
+  Modal,
+  Alert,
+  TextInput,
+  Platform,
+  useWindowDimensions,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, typography } from '../theme/theme';
 import { flexFillColumn, flexFillScrollWebWithMinHeight } from '../theme/chatLayout';
-import { getApplicationsForApplicant, deleteApplication, updateApplicationsProfileForApplicant } from '../services/applicationsSupabase';
+import {
+  getApplicationsForApplicant,
+  deleteApplication,
+  updateApplicationsProfileForApplicant,
+} from '../services/applicationsSupabase';
 import { FILTER_COUNTRIES, ETHNICITY_OPTIONS } from '../utils/modelFilters';
-import { refreshApplications, confirmApplicationByModel, rejectApplicationByModel } from '../store/applicationsStore';
+import {
+  refreshApplications,
+  confirmApplicationByModel,
+  rejectApplicationByModel,
+} from '../store/applicationsStore';
 import type { SupabaseApplication } from '../services/applicationsSupabase';
 import { getAgencyChatDisplayById } from '../services/agenciesSupabase';
 import { ApplyFormView } from './ApplyFormView';
@@ -34,7 +54,8 @@ type MessageRow = {
 
 function toStatusLabel(status: string): string {
   if (status === 'pending') return uiCopy.modelApplications.statusPending;
-  if (status === 'pending_model_confirmation') return uiCopy.modelApplications.statusRepresentationRequest;
+  if (status === 'pending_model_confirmation')
+    return uiCopy.modelApplications.statusRepresentationRequest;
   if (status === 'accepted') return uiCopy.modelApplications.statusAccepted;
   if (status === 'rejected') return uiCopy.modelApplications.statusDeclined;
   return status;
@@ -43,7 +64,7 @@ function toStatusLabel(status: string): string {
 function statusColor(status: string): string {
   if (status === 'accepted') return colors.accentGreen;
   if (status === 'rejected') return colors.textSecondary;
-  if (status === 'pending_model_confirmation') return '#E65100';
+  if (status === 'pending_model_confirmation') return colors.warningDark;
   return '#F9A825';
 }
 
@@ -95,6 +116,7 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
   const [messagesList, setMessagesList] = useState<MessageRow[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [agencyNames, setAgencyNames] = useState<Record<string, string>>({});
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
@@ -115,39 +137,47 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
 
   const load = (signal?: { cancelled: boolean }) => {
     setLoading(true);
-    getApplicationsForApplicant(applicantUserId).then(async (list) => {
-      if (signal?.cancelled) return;
-      setApplications(list);
-      setLoading(false);
-      const map: Record<string, string> = {};
-      for (const a of list) {
-        if (!a.agency_id) continue;
-        const n = embeddedAgencyName(a)?.trim();
-        if (n) map[a.agency_id] = n;
-      }
-      const allIds = [...new Set(list.map((x) => x.agency_id).filter(Boolean))] as string[];
-      for (const id of allIds) {
-        if (signal?.cancelled) break;
-        if (map[id]) continue;
-        try {
-          const row = await getAgencyChatDisplayById(id);
-          if (row?.name) map[id] = row.name;
-        } catch {
-          /* ignore */
+    setLoadError(false);
+    getApplicationsForApplicant(applicantUserId)
+      .then(async (list) => {
+        if (signal?.cancelled) return;
+        setApplications(list);
+        setLoading(false);
+        const map: Record<string, string> = {};
+        for (const a of list) {
+          if (!a.agency_id) continue;
+          const n = embeddedAgencyName(a)?.trim();
+          if (n) map[a.agency_id] = n;
         }
-      }
-      if (!signal?.cancelled) setAgencyNames(map);
-    }).catch((e) => {
-      console.error('ModelApplicationsView load error:', e);
-      if (!signal?.cancelled) setLoading(false);
-    });
+        const allIds = [...new Set(list.map((x) => x.agency_id).filter(Boolean))] as string[];
+        for (const id of allIds) {
+          if (signal?.cancelled) break;
+          if (map[id]) continue;
+          try {
+            const row = await getAgencyChatDisplayById(id);
+            if (row?.name) map[id] = row.name;
+          } catch {
+            /* ignore */
+          }
+        }
+        if (!signal?.cancelled) setAgencyNames(map);
+      })
+      .catch((e) => {
+        console.error('ModelApplicationsView load error:', e);
+        if (!signal?.cancelled) {
+          setLoading(false);
+          setLoadError(true);
+        }
+      });
   };
 
   useEffect(() => {
     const signal = { cancelled: false };
     load(signal);
-    return () => { signal.cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => {
+      signal.cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [applicantUserId]);
 
   useEffect(() => {
@@ -201,9 +231,9 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
     Promise.all(
       withThread.map(async (app) => {
         const agencyName =
-          embeddedAgencyName(app)?.trim()
-          || (app.agency_id ? (await getAgencyChatDisplayById(app.agency_id))?.name : undefined)
-          || 'Agency';
+          embeddedAgencyName(app)?.trim() ||
+          (app.agency_id ? (await getAgencyChatDisplayById(app.agency_id))?.name : undefined) ||
+          'Agency';
         return {
           threadId: app.recruiting_thread_id!,
           applicationId: app.id,
@@ -211,8 +241,10 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
           agencyName,
           status: app.status,
         };
-      })
-    ).then(setMessagesList).finally(() => setMessagesLoading(false));
+      }),
+    )
+      .then(setMessagesList)
+      .finally(() => setMessagesLoading(false));
   }, [tab, applications]);
 
   const runConfirmedDelete = async (app: SupabaseApplication) => {
@@ -226,7 +258,10 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
       await refreshApplications();
       load();
     } else if (Platform.OS === 'web') {
-      Alert.alert(uiCopy.modelApplications.deleteFailedTitle, uiCopy.modelApplications.deleteFailedBody);
+      Alert.alert(
+        uiCopy.modelApplications.deleteFailedTitle,
+        uiCopy.modelApplications.deleteFailedBody,
+      );
     } else {
       Alert.alert(uiCopy.alerts.deleteFailed, uiCopy.alerts.tryAgain);
     }
@@ -248,7 +283,7 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
           style: 'destructive',
           onPress: () => void runConfirmedDelete(app),
         },
-      ]
+      ],
     );
   };
 
@@ -291,8 +326,13 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
     <View style={styles.container}>
       <View style={styles.topShell}>
         <Text style={styles.brand}>INDEX CASTING</Text>
-        <TouchableOpacity onPress={onBackToRoleSelection} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-          <Text style={{ ...typography.headingCompact, fontSize: 11, color: colors.textSecondary }}>Logout</Text>
+        <TouchableOpacity
+          onPress={onBackToRoleSelection}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
+          <Text style={{ ...typography.headingCompact, fontSize: 11, color: colors.textSecondary }}>
+            Logout
+          </Text>
         </TouchableOpacity>
       </View>
 
@@ -300,47 +340,89 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
         {tab === 'applications' && (
           <>
             <Text style={styles.heading}>My Applications</Text>
-            <Text style={styles.subtitle}>Apply to agencies. When accepted, you will be linked to that agency.</Text>
+            <Text style={styles.subtitle}>
+              Apply to agencies. When accepted, you will be linked to that agency.
+            </Text>
 
             <TouchableOpacity style={styles.applyBtn} onPress={() => setShowApplyForm(true)}>
               <Text style={styles.applyBtnLabel}>+ Apply as Model</Text>
             </TouchableOpacity>
 
             {loading ? (
-              <ActivityIndicator size="small" color={colors.textPrimary} style={{ marginTop: spacing.lg }} />
+              <ActivityIndicator
+                size="small"
+                color={colors.textPrimary}
+                style={{ marginTop: spacing.lg }}
+              />
             ) : applications.length === 0 ? (
-              <Text style={styles.meta}>No applications yet. Tap „Apply as Model“ to submit one.</Text>
+              <Text style={styles.meta}>
+                {loadError
+                  ? uiCopy.modelApplications.loadErrorState
+                  : uiCopy.modelApplications.emptyState}
+              </Text>
             ) : (
               <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
                 {applications.map((app) => (
                   <View key={app.id} style={styles.card}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        justifyContent: 'space-between',
+                        alignItems: 'flex-start',
+                      }}
+                    >
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.name}>{[app.first_name, app.last_name].filter(Boolean).join(' ')}</Text>
-                        <Text style={styles.meta}>{app.height} cm · {app.city ?? '—'}</Text>
+                        <Text style={styles.name}>
+                          {[app.first_name, app.last_name].filter(Boolean).join(' ')}
+                        </Text>
+                        <Text style={styles.meta}>
+                          {app.height} cm · {app.city ?? '—'}
+                        </Text>
                         {app.agency_id && (
                           <Text style={styles.meta}>
-                            Agency: {embeddedAgencyName(app)?.trim() || agencyNames[app.agency_id] || 'Agency'}
+                            Agency:{' '}
+                            {embeddedAgencyName(app)?.trim() ||
+                              agencyNames[app.agency_id] ||
+                              'Agency'}
                           </Text>
                         )}
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
-                          <View style={[styles.badge, { backgroundColor: statusColor(app.status) }]}>
+                        <View
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 8,
+                            marginTop: 4,
+                            flexWrap: 'wrap',
+                          }}
+                        >
+                          <View
+                            style={[styles.badge, { backgroundColor: statusColor(app.status) }]}
+                          >
                             <Text style={styles.badgeLabel}>{toStatusLabel(app.status)}</Text>
                           </View>
                           {app.recruiting_thread_id && (
                             <TouchableOpacity
-                              style={{ paddingVertical: 4, paddingHorizontal: 10, borderRadius: 8, backgroundColor: colors.buttonOptionGreen }}
+                              style={{
+                                paddingVertical: 4,
+                                paddingHorizontal: 10,
+                                borderRadius: 8,
+                                backgroundColor: colors.buttonOptionGreen,
+                              }}
                               onPress={() =>
-                              setChatOpen({
-                                threadId: app.recruiting_thread_id!,
-                                agencyName:
-                                  embeddedAgencyName(app)?.trim()
-                                  || (app.agency_id ? agencyNames[app.agency_id] : undefined),
-                                applicationAgencyId: app.agency_id,
-                              })
-                            }
+                                setChatOpen({
+                                  threadId: app.recruiting_thread_id!,
+                                  agencyName:
+                                    embeddedAgencyName(app)?.trim() ||
+                                    (app.agency_id ? agencyNames[app.agency_id] : undefined),
+                                  applicationAgencyId: app.agency_id,
+                                })
+                              }
                             >
-                              <Text style={{ ...typography.label, fontSize: 11, color: colors.surface }}>Chat</Text>
+                              <Text
+                                style={{ ...typography.label, fontSize: 11, color: colors.surface }}
+                              >
+                                Chat
+                              </Text>
                             </TouchableOpacity>
                           )}
                         </View>
@@ -348,7 +430,10 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
                         {app.status === 'pending_model_confirmation' && (
                           <View style={styles.confirmationBanner}>
                             <Text style={styles.confirmationBannerTitle}>
-                              {embeddedAgencyName(app)?.trim() || (app.agency_id ? agencyNames[app.agency_id] : null) || 'An agency'} wants to represent you
+                              {embeddedAgencyName(app)?.trim() ||
+                                (app.agency_id ? agencyNames[app.agency_id] : null) ||
+                                'An agency'}{' '}
+                              wants to represent you
                             </Text>
                             <Text style={styles.confirmationBannerSubtitle}>
                               Accept to join their portfolio, or decline.
@@ -360,7 +445,9 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
                                 disabled={confirmingId === app.id || rejectingId === app.id}
                               >
                                 <Text style={styles.confirmationAcceptLabel}>
-                                  {confirmingId === app.id ? 'Confirming…' : 'Accept Representation'}
+                                  {confirmingId === app.id
+                                    ? 'Confirming…'
+                                    : 'Accept Representation'}
                                 </Text>
                               </TouchableOpacity>
                               <TouchableOpacity
@@ -382,7 +469,9 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
                           disabled={deletingId === app.id}
                           style={styles.deleteBtn}
                         >
-                          <Text style={styles.deleteBtnLabel}>{deletingId === app.id ? '…' : 'Delete'}</Text>
+                          <Text style={styles.deleteBtnLabel}>
+                            {deletingId === app.id ? '…' : 'Delete'}
+                          </Text>
                         </TouchableOpacity>
                       )}
                     </View>
@@ -396,9 +485,15 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
         {tab === 'messages' && (
           <View style={flexFillColumn}>
             <Text style={styles.heading}>Messages</Text>
-            <Text style={[styles.subtitle, { marginBottom: spacing.sm }]}>{uiCopy.model.chatsSubtitle}</Text>
+            <Text style={[styles.subtitle, { marginBottom: spacing.sm }]}>
+              {uiCopy.model.chatsSubtitle}
+            </Text>
             {messagesLoading ? (
-              <ActivityIndicator size="small" color={colors.textPrimary} style={{ marginTop: spacing.lg }} />
+              <ActivityIndicator
+                size="small"
+                color={colors.textPrimary}
+                style={{ marginTop: spacing.lg }}
+              />
             ) : messagesList.length === 0 ? (
               <Text style={styles.meta}>{uiCopy.model.noAgencyMessages}</Text>
             ) : (
@@ -422,8 +517,12 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
                     }}
                   >
                     <Text style={styles.name}>{row.agencyName}</Text>
-                    <Text style={styles.meta}>{row.modelName} · {toStatusLabel(row.status)}</Text>
-                    <Text style={[styles.meta, { marginTop: 4, color: colors.buttonOptionGreen }]}>{uiCopy.model.openChat}</Text>
+                    <Text style={styles.meta}>
+                      {row.modelName} · {toStatusLabel(row.status)}
+                    </Text>
+                    <Text style={[styles.meta, { marginTop: 4, color: colors.buttonOptionGreen }]}>
+                      {uiCopy.model.openChat}
+                    </Text>
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -441,7 +540,7 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
                   <Text style={styles.settingsLabel}>First name</Text>
                   <TextInput
                     value={profileDraft.firstName}
-                    onChangeText={(v) => setProfileDraft((p) => p ? { ...p, firstName: v } : p)}
+                    onChangeText={(v) => setProfileDraft((p) => (p ? { ...p, firstName: v } : p))}
                     style={styles.settingsInput}
                   />
                 </View>
@@ -449,7 +548,7 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
                   <Text style={styles.settingsLabel}>Last name</Text>
                   <TextInput
                     value={profileDraft.lastName}
-                    onChangeText={(v) => setProfileDraft((p) => p ? { ...p, lastName: v } : p)}
+                    onChangeText={(v) => setProfileDraft((p) => (p ? { ...p, lastName: v } : p))}
                     style={styles.settingsInput}
                   />
                 </View>
@@ -457,7 +556,7 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
                   <Text style={styles.settingsLabel}>Height (cm)</Text>
                   <TextInput
                     value={profileDraft.height}
-                    onChangeText={(v) => setProfileDraft((p) => p ? { ...p, height: v } : p)}
+                    onChangeText={(v) => setProfileDraft((p) => (p ? { ...p, height: v } : p))}
                     keyboardType="number-pad"
                     style={styles.settingsInput}
                   />
@@ -466,7 +565,7 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
                   <Text style={styles.settingsLabel}>City</Text>
                   <TextInput
                     value={profileDraft.city}
-                    onChangeText={(v) => setProfileDraft((p) => p ? { ...p, city: v } : p)}
+                    onChangeText={(v) => setProfileDraft((p) => (p ? { ...p, city: v } : p))}
                     style={styles.settingsInput}
                   />
                 </View>
@@ -478,10 +577,14 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                       <View style={styles.settingsChip}>
                         <Text style={styles.settingsChipLabel}>
-                          {FILTER_COUNTRIES.find((c) => c.code === profileDraft.countryCode)?.label ?? profileDraft.countryCode}
+                          {FILTER_COUNTRIES.find((c) => c.code === profileDraft.countryCode)
+                            ?.label ?? profileDraft.countryCode}
                         </Text>
                         <TouchableOpacity
-                          onPress={() => { setProfileDraft((p) => p ? { ...p, countryCode: '' } : p); setSettingsCountryQuery(''); }}
+                          onPress={() => {
+                            setProfileDraft((p) => (p ? { ...p, countryCode: '' } : p));
+                            setSettingsCountryQuery('');
+                          }}
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                         >
                           <Text style={styles.settingsChipRemove}>×</Text>
@@ -492,26 +595,53 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
                     <View>
                       <TextInput
                         value={settingsCountryQuery}
-                        onChangeText={(v) => { setSettingsCountryQuery(v); setSettingsCountryDropdownOpen(true); setSettingsEthnicityDropdownOpen(false); }}
-                        onFocus={() => { setSettingsCountryDropdownOpen(true); setSettingsEthnicityDropdownOpen(false); }}
+                        onChangeText={(v) => {
+                          setSettingsCountryQuery(v);
+                          setSettingsCountryDropdownOpen(true);
+                          setSettingsEthnicityDropdownOpen(false);
+                        }}
+                        onFocus={() => {
+                          setSettingsCountryDropdownOpen(true);
+                          setSettingsEthnicityDropdownOpen(false);
+                        }}
                         placeholder="Search country…"
                         placeholderTextColor={colors.textSecondary}
                         style={styles.settingsInput}
                       />
                       {settingsCountryDropdownOpen && (
                         <View style={styles.settingsDropdown}>
-                          <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled showsVerticalScrollIndicator style={{ maxHeight: 160 }}>
-                            {FILTER_COUNTRIES
-                              .filter((c) => !settingsCountryQuery.trim() || c.label.toLowerCase().includes(settingsCountryQuery.toLowerCase()) || c.code.toLowerCase().includes(settingsCountryQuery.toLowerCase()))
-                              .map((c, i, arr) => (
-                                <TouchableOpacity
-                                  key={c.code}
-                                  style={[styles.settingsDropdownItem, i < arr.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}
-                                  onPress={() => { setProfileDraft((p) => p ? { ...p, countryCode: c.code } : p); setSettingsCountryQuery(''); setSettingsCountryDropdownOpen(false); }}
-                                >
-                                  <Text style={styles.settingsDropdownItemText}>{c.label}</Text>
-                                </TouchableOpacity>
-                              ))}
+                          <ScrollView
+                            keyboardShouldPersistTaps="handled"
+                            nestedScrollEnabled
+                            showsVerticalScrollIndicator
+                            style={{ maxHeight: 160 }}
+                          >
+                            {FILTER_COUNTRIES.filter(
+                              (c) =>
+                                !settingsCountryQuery.trim() ||
+                                c.label
+                                  .toLowerCase()
+                                  .includes(settingsCountryQuery.toLowerCase()) ||
+                                c.code.toLowerCase().includes(settingsCountryQuery.toLowerCase()),
+                            ).map((c, i, arr) => (
+                              <TouchableOpacity
+                                key={c.code}
+                                style={[
+                                  styles.settingsDropdownItem,
+                                  i < arr.length - 1 && {
+                                    borderBottomWidth: 1,
+                                    borderBottomColor: colors.border,
+                                  },
+                                ]}
+                                onPress={() => {
+                                  setProfileDraft((p) => (p ? { ...p, countryCode: c.code } : p));
+                                  setSettingsCountryQuery('');
+                                  setSettingsCountryDropdownOpen(false);
+                                }}
+                              >
+                                <Text style={styles.settingsDropdownItemText}>{c.label}</Text>
+                              </TouchableOpacity>
+                            ))}
                           </ScrollView>
                         </View>
                       )}
@@ -527,7 +657,7 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
                       <View style={styles.settingsChip}>
                         <Text style={styles.settingsChipLabel}>{profileDraft.ethnicity}</Text>
                         <TouchableOpacity
-                          onPress={() => setProfileDraft((p) => p ? { ...p, ethnicity: '' } : p)}
+                          onPress={() => setProfileDraft((p) => (p ? { ...p, ethnicity: '' } : p))}
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                         >
                           <Text style={styles.settingsChipRemove}>×</Text>
@@ -538,18 +668,39 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
                     <View>
                       <TouchableOpacity
                         style={[styles.settingsInput, { justifyContent: 'center' }]}
-                        onPress={() => { setSettingsEthnicityDropdownOpen((o) => !o); setSettingsCountryDropdownOpen(false); }}
+                        onPress={() => {
+                          setSettingsEthnicityDropdownOpen((o) => !o);
+                          setSettingsCountryDropdownOpen(false);
+                        }}
                       >
-                        <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary }}>Select ethnicity…</Text>
+                        <Text
+                          style={{ ...typography.body, fontSize: 12, color: colors.textSecondary }}
+                        >
+                          Select ethnicity…
+                        </Text>
                       </TouchableOpacity>
                       {settingsEthnicityDropdownOpen && (
                         <View style={styles.settingsDropdown}>
-                          <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled showsVerticalScrollIndicator style={{ maxHeight: 160 }}>
+                          <ScrollView
+                            keyboardShouldPersistTaps="handled"
+                            nestedScrollEnabled
+                            showsVerticalScrollIndicator
+                            style={{ maxHeight: 160 }}
+                          >
                             {ETHNICITY_OPTIONS.map((eth, i) => (
                               <TouchableOpacity
                                 key={eth}
-                                style={[styles.settingsDropdownItem, i < ETHNICITY_OPTIONS.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}
-                                onPress={() => { setProfileDraft((p) => p ? { ...p, ethnicity: eth } : p); setSettingsEthnicityDropdownOpen(false); }}
+                                style={[
+                                  styles.settingsDropdownItem,
+                                  i < ETHNICITY_OPTIONS.length - 1 && {
+                                    borderBottomWidth: 1,
+                                    borderBottomColor: colors.border,
+                                  },
+                                ]}
+                                onPress={() => {
+                                  setProfileDraft((p) => (p ? { ...p, ethnicity: eth } : p));
+                                  setSettingsEthnicityDropdownOpen(false);
+                                }}
                               >
                                 <Text style={styles.settingsDropdownItemText}>{eth}</Text>
                               </TouchableOpacity>
@@ -565,7 +716,7 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
                   <Text style={styles.settingsLabel}>Hair color</Text>
                   <TextInput
                     value={profileDraft.hair}
-                    onChangeText={(v) => setProfileDraft((p) => p ? { ...p, hair: v } : p)}
+                    onChangeText={(v) => setProfileDraft((p) => (p ? { ...p, hair: v } : p))}
                     style={styles.settingsInput}
                   />
                 </View>
@@ -573,18 +724,27 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
                   <Text style={styles.settingsLabel}>Instagram</Text>
                   <TextInput
                     value={profileDraft.instagram}
-                    onChangeText={(v) => setProfileDraft((p) => p ? { ...p, instagram: v } : p)}
+                    onChangeText={(v) => setProfileDraft((p) => (p ? { ...p, instagram: v } : p))}
                     style={styles.settingsInput}
                   />
                 </View>
-                <TouchableOpacity style={styles.applyBtn} onPress={handleSaveProfile} disabled={savingProfile}>
-                  <Text style={styles.applyBtnLabel}>{savingProfile ? 'Saving…' : 'Save changes'}</Text>
+                <TouchableOpacity
+                  style={styles.applyBtn}
+                  onPress={handleSaveProfile}
+                  disabled={savingProfile}
+                >
+                  <Text style={styles.applyBtnLabel}>
+                    {savingProfile ? 'Saving…' : 'Save changes'}
+                  </Text>
                 </TouchableOpacity>
               </>
             ) : (
               <Text style={styles.meta}>{uiCopy.model.noApplicationsYet}</Text>
             )}
-            <TouchableOpacity style={[styles.applyBtn, { marginTop: spacing.lg }]} onPress={onBackToRoleSelection}>
+            <TouchableOpacity
+              style={[styles.applyBtn, { marginTop: spacing.lg }]}
+              onPress={onBackToRoleSelection}
+            >
               <Text style={styles.applyBtnLabel}>Logout</Text>
             </TouchableOpacity>
           </ScrollView>
@@ -594,13 +754,19 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom || spacing.sm }]}>
         <View style={styles.tabRow}>
           <TouchableOpacity style={styles.tabItem} onPress={() => setTab('applications')}>
-            <Text style={[styles.tabLabel, tab === 'applications' && styles.tabLabelActive]}>{uiCopy.modelApplications.tab_applications}</Text>
+            <Text style={[styles.tabLabel, tab === 'applications' && styles.tabLabelActive]}>
+              {uiCopy.modelApplications.tab_applications}
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.tabItem} onPress={() => setTab('messages')}>
-            <Text style={[styles.tabLabel, tab === 'messages' && styles.tabLabelActive]}>{uiCopy.modelApplications.tab_messages}</Text>
+            <Text style={[styles.tabLabel, tab === 'messages' && styles.tabLabelActive]}>
+              {uiCopy.modelApplications.tab_messages}
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.tabItem} onPress={() => setTab('settings')}>
-            <Text style={[styles.tabLabel, tab === 'settings' && styles.tabLabelActive]}>{uiCopy.modelApplications.tab_settings}</Text>
+            <Text style={[styles.tabLabel, tab === 'settings' && styles.tabLabelActive]}>
+              {uiCopy.modelApplications.tab_settings}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -618,13 +784,21 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
       )}
 
       {Platform.OS === 'web' && pendingDeleteApp != null && (
-        <Modal visible transparent animationType="fade" onRequestClose={() => setPendingDeleteApp(null)}>
+        <Modal
+          visible
+          transparent
+          animationType="fade"
+          onRequestClose={() => setPendingDeleteApp(null)}
+        >
           <View style={styles.confirmOverlay}>
             <View style={styles.confirmCard}>
               <Text style={styles.confirmTitle}>{uiCopy.modelApplications.deleteConfirmTitle}</Text>
               <Text style={styles.confirmBody}>{uiCopy.modelApplications.deleteConfirmBody}</Text>
               <View style={styles.confirmRow}>
-                <TouchableOpacity style={styles.confirmBtnGhost} onPress={() => setPendingDeleteApp(null)}>
+                <TouchableOpacity
+                  style={styles.confirmBtnGhost}
+                  onPress={() => setPendingDeleteApp(null)}
+                >
                   <Text style={styles.confirmBtnGhostLabel}>{uiCopy.common.cancel}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -635,7 +809,9 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
                     void runConfirmedDelete(a);
                   }}
                 >
-                  <Text style={styles.confirmBtnDangerLabel}>{uiCopy.modelApplications.deleteConfirmAction}</Text>
+                  <Text style={styles.confirmBtnDangerLabel}>
+                    {uiCopy.modelApplications.deleteConfirmAction}
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -653,13 +829,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingTop: spacing.xs,
   },
-  topShell: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: spacing.xs, marginBottom: spacing.xs },
+  topShell: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: spacing.xs,
+    marginBottom: spacing.xs,
+  },
   backRow: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm },
   backArrow: { fontSize: 24, color: colors.textPrimary, marginRight: spacing.sm },
   backLabel: { ...typography.label, color: colors.textSecondary },
   brand: { ...typography.headingCompact, color: colors.textPrimary },
-  heading: { ...typography.heading, fontSize: 20, color: colors.textPrimary, marginBottom: spacing.xs },
-  subtitle: { ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.lg },
+  heading: {
+    ...typography.heading,
+    fontSize: 20,
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
+  },
+  subtitle: {
+    ...typography.body,
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: spacing.lg,
+  },
   applyBtn: {
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
@@ -785,8 +977,18 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     width: '100%',
   },
-  confirmTitle: { ...typography.heading, fontSize: 17, color: colors.textPrimary, marginBottom: spacing.sm },
-  confirmBody: { ...typography.body, fontSize: 14, color: colors.textSecondary, marginBottom: spacing.lg },
+  confirmTitle: {
+    ...typography.heading,
+    fontSize: 17,
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+  },
+  confirmBody: {
+    ...typography.body,
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: spacing.lg,
+  },
   confirmRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
   confirmBtnGhost: {
     paddingVertical: spacing.sm,
@@ -809,7 +1011,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: '#FFF3E0',
     borderWidth: 1,
-    borderColor: '#E65100',
+    borderColor: colors.warningDark,
   },
   confirmationBannerTitle: {
     ...typography.label,
@@ -820,7 +1022,7 @@ const styles = StyleSheet.create({
   confirmationBannerSubtitle: {
     ...typography.body,
     fontSize: 11,
-    color: '#E65100',
+    color: colors.warningDark,
     marginBottom: spacing.sm,
   },
   confirmationBannerActions: {

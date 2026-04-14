@@ -59,6 +59,7 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
 
   const [models, setModels] = useState<SharedModel[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [detailOpen, setDetailOpen] = useState<SharedModel | null>(null);
   const [detailImageIndex, setDetailImageIndex] = useState(0);
   const [authGateVisible, setAuthGateVisible] = useState(false);
@@ -77,8 +78,10 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
         if (!result.ok) {
           console.error('[SharedSelectionView] load failed:', result.error);
           setModels([]);
+          setLoadError(true);
           return;
         }
+        setLoadError(false);
         const list: SharedModel[] = result.data.map((m: SharedSelectionModel) => {
           const chestVal = m.chest ?? m.bust ?? null;
           const cityLine =
@@ -104,7 +107,10 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
       })
       .catch((e) => {
         console.error('[SharedSelectionView] Failed to load models:', e);
-        if (!cancelled) setModels([]);
+        if (!cancelled) {
+          setModels([]);
+          setLoadError(true);
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -195,7 +201,9 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
         </View>
       ) : models.length === 0 ? (
         <View style={styles.centered}>
-          <Text style={styles.metaText}>{uiCopy.sharedSelection.empty}</Text>
+          <Text style={styles.metaText}>
+            {loadError ? uiCopy.sharedSelection.loadFailed : uiCopy.sharedSelection.empty}
+          </Text>
         </View>
       ) : (
         <ScrollView
@@ -506,7 +514,7 @@ const styles = StyleSheet.create({
     aspectRatio: 3 / 4,
     borderRadius: 8,
     overflow: 'hidden',
-    backgroundColor: '#E8E6E0',
+    backgroundColor: colors.surfaceAlt,
   },
   tileImage: {
     width: '100%',
@@ -587,7 +595,7 @@ const styles = StyleSheet.create({
     position: 'relative',
     width: '100%',
     aspectRatio: 3 / 4,
-    backgroundColor: '#E8E6E0',
+    backgroundColor: colors.surfaceAlt,
   },
   modalHero: {
     width: '100%',

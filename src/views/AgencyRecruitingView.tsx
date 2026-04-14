@@ -28,7 +28,10 @@ import {
   type ModelApplication,
 } from '../store/applicationsStore';
 import { tryStartRecruitingChat, initRecruitingChatsForAgency } from '../store/recruitingChats';
-import { loadAgencyShortlistIds, saveAgencyShortlistIds } from '../storage/agencyRecruitingShortlist';
+import {
+  loadAgencyShortlistIds,
+  saveAgencyShortlistIds,
+} from '../storage/agencyRecruitingShortlist';
 import { mergeAgencyRecruitingMyListIds } from '../utils/agencyRecruitingMyList';
 import {
   getMyAgencyUsageLimits,
@@ -51,7 +54,6 @@ const ISO_COUNTRY_NAMES: Record<string, string> = countries.getNames('en', {
 const ISO_COUNTRY_LIST = Object.entries(ISO_COUNTRY_NAMES)
   .map(([code, name]) => ({ code, name }))
   .sort((a, b) => a.name.localeCompare(b.name));
-
 
 export const AgencyRecruitingView: React.FC<{
   onBack: () => void;
@@ -99,7 +101,7 @@ export const AgencyRecruitingView: React.FC<{
   /** Pending swipe queue excludes shortlist so those models only appear under My list. */
   const pendingNotShortlisted = React.useMemo(
     () => allSwipeQueue.filter((a) => !shortlistSet.has(a.id)),
-    [allSwipeQueue, shortlistSet]
+    [allSwipeQueue, shortlistSet],
   );
 
   const applications = filterApplicationsByModelFilters(pendingNotShortlisted, filters);
@@ -116,9 +118,9 @@ export const AgencyRecruitingView: React.FC<{
     () =>
       mergeAgencyRecruitingMyListIds(
         shortlistIds,
-        pendingWithChatApps.map((a) => a.id)
+        pendingWithChatApps.map((a) => a.id),
       ),
-    [shortlistIds, pendingWithChatApps]
+    [shortlistIds, pendingWithChatApps],
   );
 
   const shortlistApps = mergedMyListIds
@@ -127,7 +129,7 @@ export const AgencyRecruitingView: React.FC<{
   const refreshSwipeQueue = () => {
     setAllSwipeQueue(getPendingSwipeQueueApplications());
     setPendingWithChatApps(
-      getApplications().filter((a) => a.status === 'pending' && !!a.chatThreadId)
+      getApplications().filter((a) => a.status === 'pending' && !!a.chatThreadId),
     );
   };
 
@@ -175,7 +177,9 @@ export const AgencyRecruitingView: React.FC<{
     try {
       const result = await incrementMyAgencySwipeCount();
       setUsageLimits((prev) =>
-        prev ? { ...prev, swipes_used_today: result.swipes_used, daily_swipe_limit: result.limit } : prev,
+        prev
+          ? { ...prev, swipes_used_today: result.swipes_used, daily_swipe_limit: result.limit }
+          : prev,
       );
       if (!result.allowed) {
         showFeedback(uiCopy.recruiting.limitReachedMessage);
@@ -228,7 +232,9 @@ export const AgencyRecruitingView: React.FC<{
     try {
       const result = await incrementMyAgencySwipeCount();
       setUsageLimits((prev) =>
-        prev ? { ...prev, swipes_used_today: result.swipes_used, daily_swipe_limit: result.limit } : prev,
+        prev
+          ? { ...prev, swipes_used_today: result.swipes_used, daily_swipe_limit: result.limit }
+          : prev,
       );
       if (!result.allowed) {
         showFeedback(uiCopy.recruiting.limitReachedMessage);
@@ -262,7 +268,9 @@ export const AgencyRecruitingView: React.FC<{
     try {
       const result = await incrementMyAgencySwipeCount();
       setUsageLimits((prev) =>
-        prev ? { ...prev, swipes_used_today: result.swipes_used, daily_swipe_limit: result.limit } : prev,
+        prev
+          ? { ...prev, swipes_used_today: result.swipes_used, daily_swipe_limit: result.limit }
+          : prev,
       );
       if (!result.allowed) {
         showFeedback(uiCopy.recruiting.limitReachedMessage);
@@ -334,13 +342,22 @@ export const AgencyRecruitingView: React.FC<{
         <TouchableOpacity onPress={onBack} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
           <Text style={styles.backArrow}>←</Text>
         </TouchableOpacity>
-        <Text style={styles.brand}>Recruiting</Text>
+        <Text style={styles.brand}>{uiCopy.recruiting.title}</Text>
         <Text style={styles.counter}>
           {applications.length ? `${index + 1} / ${applications.length}` : '0 / 0'}
         </Text>
       </View>
 
-      <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: spacing.sm, paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+      <View
+        style={{
+          flexDirection: 'row',
+          gap: 8,
+          paddingHorizontal: spacing.sm,
+          paddingVertical: spacing.sm,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+        }}
+      >
         {(['pending', 'shortlist', 'accepted'] as const).map((t) => (
           <TouchableOpacity
             key={t}
@@ -362,38 +379,52 @@ export const AgencyRecruitingView: React.FC<{
         <ScrollView style={{ flex: 1, paddingHorizontal: spacing.sm, paddingTop: spacing.md }}>
           {acceptedList.length === 0 ? (
             <View style={styles.empty}>
-              <Text style={styles.emptyTitle}>No accepted applications</Text>
+              <Text style={styles.emptyTitle}>{uiCopy.recruiting.noAcceptedApplications}</Text>
               <Text style={styles.emptyCopy}>Accepted models will appear here.</Text>
             </View>
           ) : (
             acceptedList.map((app) => (
               <View key={app.id} style={styles.bookingChatRow}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.bookingChatName}>{app.firstName} {app.lastName}</Text>
+                  <Text style={styles.bookingChatName}>
+                    {app.firstName} {app.lastName}
+                  </Text>
                   {app.status === 'pending_model_confirmation' && (
-                    <Text style={styles.awaitingConfirmationLabel}>Awaiting model confirmation</Text>
+                    <Text style={styles.awaitingConfirmationLabel}>
+                      {uiCopy.recruiting.awaitingModelConfirmation}
+                    </Text>
                   )}
                 </View>
-                <TouchableOpacity style={styles.bookingChatOpen} onPress={() => app.chatThreadId && onOpenBookingChat(app.chatThreadId)}>
-                  <Text style={styles.bookingChatOpenLabel}>Chat</Text>
+                <TouchableOpacity
+                  style={styles.bookingChatOpen}
+                  onPress={() => app.chatThreadId && onOpenBookingChat(app.chatThreadId)}
+                >
+                  <Text style={styles.bookingChatOpenLabel}>{uiCopy.recruiting.chat}</Text>
                 </TouchableOpacity>
               </View>
             ))
           )}
         </ScrollView>
       ) : recruitTab === 'shortlist' ? (
-        <ScrollView style={{ flex: 1, paddingHorizontal: spacing.sm, paddingTop: spacing.md }} contentContainerStyle={{ paddingBottom: spacing.xl }}>
+        <ScrollView
+          style={{ flex: 1, paddingHorizontal: spacing.sm, paddingTop: spacing.md }}
+          contentContainerStyle={{ paddingBottom: spacing.xl }}
+        >
           <Text style={[styles.filterLabel, { marginBottom: spacing.sm }]}>
-            Includes everyone you saved and everyone with an active recruiting chat (same as Messages → Recruiting chats, before acceptance).
+            Includes everyone you saved and everyone with an active recruiting chat (same as
+            Messages → Recruiting chats, before acceptance).
           </Text>
           {mergedMyListIds.length === 0 ? (
             <View style={styles.empty}>
-              <Text style={styles.emptyTitle}>Your list is empty</Text>
-              <Text style={styles.emptyCopy}>Under Pending, tap Add to list, or start a chat — candidates stay here until accepted.</Text>
+              <Text style={styles.emptyTitle}>{uiCopy.recruiting.yourListIsEmpty}</Text>
+              <Text style={styles.emptyCopy}>
+                Under Pending, tap Add to list, or start a chat — candidates stay here until
+                accepted.
+              </Text>
             </View>
           ) : shortlistApps.length === 0 ? (
             <View style={styles.empty}>
-              <Text style={styles.emptyTitle}>No entries left</Text>
+              <Text style={styles.emptyTitle}>{uiCopy.recruiting.noEntriesLeft}</Text>
               <Text style={styles.emptyCopy}>Applications were archived or removed.</Text>
             </View>
           ) : (
@@ -401,9 +432,17 @@ export const AgencyRecruitingView: React.FC<{
               const thumbUri = app.images?.closeUp || app.images?.profile || app.images?.fullBody;
               return (
                 <View key={app.id} style={styles.bookingChatRow}>
-                  <TouchableOpacity style={styles.bookingChatThumbWrap} onPress={() => openApplicationDetails(app)} activeOpacity={0.85}>
+                  <TouchableOpacity
+                    style={styles.bookingChatThumbWrap}
+                    onPress={() => openApplicationDetails(app)}
+                    activeOpacity={0.85}
+                  >
                     {thumbUri ? (
-                      <StorageImage uri={thumbUri} style={styles.bookingChatThumb} resizeMode="cover" />
+                      <StorageImage
+                        uri={thumbUri}
+                        style={styles.bookingChatThumb}
+                        resizeMode="cover"
+                      />
                     ) : (
                       <View style={[styles.bookingChatThumb, styles.bookingChatThumbPlaceholder]}>
                         <Text style={styles.bookingChatThumbPlaceholderText} numberOfLines={1}>
@@ -416,17 +455,25 @@ export const AgencyRecruitingView: React.FC<{
                     <Text style={styles.bookingChatName}>
                       {app.firstName} {app.lastName}
                     </Text>
-                    <Text style={styles.shortlistRowSub}>{app.city || '—'} · {app.height} cm</Text>
+                    <Text style={styles.shortlistRowSub}>
+                      {app.city || '—'} · {app.height} cm
+                    </Text>
                   </View>
                   <TouchableOpacity
-                    style={[styles.filterPill, { paddingHorizontal: spacing.sm, paddingVertical: spacing.xs }]}
+                    style={[
+                      styles.filterPill,
+                      { paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
+                    ]}
                     onPress={() => openApplicationDetails(app)}
                   >
-                    <Text style={styles.filterPillText}>Details</Text>
+                    <Text style={styles.filterPillText}>{uiCopy.recruiting.details}</Text>
                   </TouchableOpacity>
                   {app.chatThreadId ? (
-                    <TouchableOpacity style={styles.bookingChatOpen} onPress={() => onOpenBookingChat(app.chatThreadId!)}>
-                      <Text style={styles.bookingChatOpenLabel}>Chat</Text>
+                    <TouchableOpacity
+                      style={styles.bookingChatOpen}
+                      onPress={() => onOpenBookingChat(app.chatThreadId!)}
+                    >
+                      <Text style={styles.bookingChatOpenLabel}>{uiCopy.recruiting.chat}</Text>
                     </TouchableOpacity>
                   ) : app.status === 'pending' ? (
                     <TouchableOpacity
@@ -434,18 +481,25 @@ export const AgencyRecruitingView: React.FC<{
                       onPress={() => void handleStartChatForApp(app)}
                       disabled={startingChat}
                     >
-                      <Text style={styles.bookingChatOpenLabel}>{startingChat ? '…' : 'Start chat'}</Text>
+                      <Text style={styles.bookingChatOpenLabel}>
+                        {startingChat ? '…' : 'Start chat'}
+                      </Text>
                     </TouchableOpacity>
                   ) : null}
                   {shortlistIds.includes(app.id) ? (
                     <TouchableOpacity
-                      style={[styles.buttonNo, { marginLeft: spacing.xs, paddingHorizontal: spacing.sm }]}
+                      style={[
+                        styles.buttonNo,
+                        { marginLeft: spacing.xs, paddingHorizontal: spacing.sm },
+                      ]}
                       onPress={() => handleRemoveFromShortlist(app.id)}
                     >
-                      <Text style={styles.buttonNoLabel}>Remove</Text>
+                      <Text style={styles.buttonNoLabel}>{uiCopy.common.remove}</Text>
                     </TouchableOpacity>
                   ) : (
-                    <Text style={[styles.shortlistRowSub, { marginLeft: spacing.xs }]}>In chat</Text>
+                    <Text style={[styles.shortlistRowSub, { marginLeft: spacing.xs }]}>
+                      {uiCopy.recruiting.inChat}
+                    </Text>
                   )}
                 </View>
               );
@@ -453,96 +507,117 @@ export const AgencyRecruitingView: React.FC<{
           )}
         </ScrollView>
       ) : (
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: spacing.xl }} showsVerticalScrollIndicator={false}>
-      <View style={{ paddingHorizontal: spacing.sm, paddingTop: spacing.sm }}>
-        <ModelFiltersPanel filters={filters} onChangeFilters={setFilters} />
-      </View>
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingBottom: spacing.xl }}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={{ paddingHorizontal: spacing.sm, paddingTop: spacing.sm }}>
+            <ModelFiltersPanel filters={filters} onChangeFilters={setFilters} />
+          </View>
 
-      <View style={{ height: 8 }} />
+          <View style={{ height: 8 }} />
 
-      {usageLimits && (
-        <View style={styles.swipeCounterRow}>
-          <Text style={styles.swipeCounterText}>
-            {uiCopy.recruiting.dailySwipeCounter(
-              usageLimits.swipes_used_today,
-              usageLimits.daily_swipe_limit,
-            )}
-          </Text>
-        </View>
-      )}
+          {usageLimits && (
+            <View style={styles.swipeCounterRow}>
+              <Text style={styles.swipeCounterText}>
+                {uiCopy.recruiting.dailySwipeCounter(
+                  usageLimits.swipes_used_today,
+                  usageLimits.daily_swipe_limit,
+                )}
+              </Text>
+            </View>
+          )}
 
-      {isLimitReached && (
-        <View style={styles.limitBanner}>
-          <Text style={styles.limitBannerText}>{uiCopy.recruiting.limitReachedMessage}</Text>
-          <Text style={styles.limitBannerCTA}>{uiCopy.recruiting.upgradeCTA}</Text>
-        </View>
-      )}
+          {isLimitReached && (
+            <View style={styles.limitBanner}>
+              <Text style={styles.limitBannerText}>{uiCopy.recruiting.limitReachedMessage}</Text>
+              <Text style={styles.limitBannerCTA}>{uiCopy.recruiting.upgradeCTA}</Text>
+            </View>
+          )}
 
-      {current ? (
-        <View style={styles.cardWrap}>
-          <View style={styles.card}>
-            <TouchableOpacity
-              style={styles.cardImageWrap}
-              activeOpacity={1}
-              onPress={() => current && openApplicationDetails(current)}
-            >
-              {(current.images?.closeUp || current.images?.fullBody || current.images?.profile) ? (
-                <StorageImage
-                  uri={current.images.closeUp || current.images.fullBody || current.images.profile}
-                  style={styles.cardImage}
-                  resizeMode="contain"
-                />
-              ) : (
-                <View style={styles.cardImagePlaceholder}>
-                  <Text style={styles.cardImagePlaceholderText}>{current.firstName} {current.lastName}</Text>
+          {current ? (
+            <View style={styles.cardWrap}>
+              <View style={styles.card}>
+                <TouchableOpacity
+                  style={styles.cardImageWrap}
+                  activeOpacity={1}
+                  onPress={() => current && openApplicationDetails(current)}
+                >
+                  {current.images?.closeUp ||
+                  current.images?.fullBody ||
+                  current.images?.profile ? (
+                    <StorageImage
+                      uri={
+                        current.images.closeUp || current.images.fullBody || current.images.profile
+                      }
+                      style={styles.cardImage}
+                      resizeMode="contain"
+                    />
+                  ) : (
+                    <View style={styles.cardImagePlaceholder}>
+                      <Text style={styles.cardImagePlaceholderText}>
+                        {current.firstName} {current.lastName}
+                      </Text>
+                    </View>
+                  )}
+                  <View style={styles.cardOverlay}>
+                    <Text style={styles.cardName}>
+                      {current.firstName} {current.lastName}
+                    </Text>
+                    <Text style={styles.cardMeta}>
+                      {current.age} · {current.height} cm · {current.city || '—'}
+                    </Text>
+                    {current.instagramLink ? (
+                      <Text style={styles.cardMeta} numberOfLines={1}>
+                        {current.instagramLink}
+                      </Text>
+                    ) : null}
+                    <Text style={[styles.cardMeta, { marginTop: 4, fontSize: 11, opacity: 0.9 }]}>
+                      {uiCopy.recruiting.tapForDetails}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                <View style={styles.cardActions}>
+                  <View style={styles.cardActionsRowCentered}>
+                    <TouchableOpacity
+                      style={[
+                        styles.buttonAccept,
+                        (isLimitReached || isActing) && styles.buttonDisabled,
+                      ]}
+                      onPress={() => void handleYes()}
+                      disabled={isLimitReached || isActing}
+                    >
+                      <Text style={styles.buttonAcceptLabel}>
+                        {isActing ? 'Working…' : 'Accept application'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={styles.cardActionsRow}>
+                    <TouchableOpacity
+                      style={[
+                        styles.buttonNo,
+                        (isLimitReached || isActing) && styles.buttonDisabled,
+                      ]}
+                      onPress={() => void handleNo()}
+                      disabled={isLimitReached || isActing}
+                    >
+                      <Text style={styles.buttonNoLabel}>No</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.buttonSecondary} onPress={handleAddToList}>
+                      <Text style={styles.buttonSecondaryLabel}>{uiCopy.recruiting.addToList}</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              )}
-              <View style={styles.cardOverlay}>
-                <Text style={styles.cardName}>
-                  {current.firstName} {current.lastName}
-                </Text>
-                <Text style={styles.cardMeta}>
-                  {current.age} · {current.height} cm · {current.city || '—'}
-                </Text>
-                {current.instagramLink ? (
-                  <Text style={styles.cardMeta} numberOfLines={1}>{current.instagramLink}</Text>
-                ) : null}
-                <Text style={[styles.cardMeta, { marginTop: 4, fontSize: 11, opacity: 0.9 }]}>Tap for application details</Text>
-              </View>
-            </TouchableOpacity>
-            <View style={styles.cardActions}>
-              <View style={styles.cardActionsRowCentered}>
-                <TouchableOpacity
-                  style={[styles.buttonAccept, (isLimitReached || isActing) && styles.buttonDisabled]}
-                  onPress={() => void handleYes()}
-                  disabled={isLimitReached || isActing}
-                >
-                  <Text style={styles.buttonAcceptLabel}>{isActing ? 'Working…' : 'Accept application'}</Text>
-                </TouchableOpacity>
-              </View>
-              <View style={styles.cardActionsRow}>
-                <TouchableOpacity
-                  style={[styles.buttonNo, (isLimitReached || isActing) && styles.buttonDisabled]}
-                  onPress={() => void handleNo()}
-                  disabled={isLimitReached || isActing}
-                >
-                  <Text style={styles.buttonNoLabel}>No</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.buttonSecondary} onPress={handleAddToList}>
-                  <Text style={styles.buttonSecondaryLabel}>Add to List</Text>
-                </TouchableOpacity>
               </View>
             </View>
-          </View>
-        </View>
-      ) : (
-        <View style={styles.empty}>
-          <Text style={styles.emptyTitle}>No pending applications</Text>
-          <Text style={styles.emptyCopy}>New applications will appear here.</Text>
-        </View>
-      )}
-
-      </ScrollView>
+          ) : (
+            <View style={styles.empty}>
+              <Text style={styles.emptyTitle}>{uiCopy.recruiting.noPendingApplications}</Text>
+              <Text style={styles.emptyCopy}>New applications will appear here.</Text>
+            </View>
+          )}
+        </ScrollView>
       )}
 
       {feedback && (
@@ -551,24 +626,33 @@ export const AgencyRecruitingView: React.FC<{
         </View>
       )}
 
-      <Modal visible={!!detailApplication} transparent animationType="fade" onRequestClose={() => setDetailApplication(null)}>
+      <Modal
+        visible={!!detailApplication}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDetailApplication(null)}
+      >
         <View style={styles.chatOverlay}>
           <View style={[styles.chatCard, { maxHeight: '90%' }]}>
             <View style={styles.chatHeader}>
               <Text style={styles.chatTitle}>
-                {detailApplication ? `${detailApplication.firstName} ${detailApplication.lastName}` : 'Details'}
+                {detailApplication
+                  ? `${detailApplication.firstName} ${detailApplication.lastName}`
+                  : 'Details'}
               </Text>
               <TouchableOpacity onPress={() => setDetailApplication(null)}>
-                <Text style={styles.closeLabel}>Close</Text>
+                <Text style={styles.closeLabel}>{uiCopy.common.close}</Text>
               </TouchableOpacity>
             </View>
             <ScrollView style={{ maxHeight: 400 }}>
               {detailApplication && (
                 <>
-                  <Text style={styles.detailSectionLabel}>Photos</Text>
+                  <Text style={styles.detailSectionLabel}>{uiCopy.recruiting.photos}</Text>
                   {(() => {
                     const d = detailApplication;
-                    const uris = [d.images?.closeUp, d.images?.fullBody, d.images?.profile].filter(Boolean) as string[];
+                    const uris = [d.images?.closeUp, d.images?.fullBody, d.images?.profile].filter(
+                      Boolean,
+                    ) as string[];
                     const idx = Math.min(photoIndex, Math.max(0, uris.length - 1));
                     const uri = uris[idx];
                     return (
@@ -579,7 +663,14 @@ export const AgencyRecruitingView: React.FC<{
                             onPress={() => setPhotoIndex((i) => Math.max(0, i - 1))}
                             disabled={idx <= 0}
                           >
-                            <Text style={[styles.photoSwipeArrowText, idx <= 0 && styles.photoSwipeArrowDisabled]}>◀</Text>
+                            <Text
+                              style={[
+                                styles.photoSwipeArrowText,
+                                idx <= 0 && styles.photoSwipeArrowDisabled,
+                              ]}
+                            >
+                              ◀
+                            </Text>
                           </TouchableOpacity>
                         )}
                         <TouchableOpacity
@@ -588,10 +679,16 @@ export const AgencyRecruitingView: React.FC<{
                           activeOpacity={1}
                         >
                           {uri ? (
-                            <StorageImage uri={uri} style={styles.photoSwipeImage} resizeMode="contain" />
+                            <StorageImage
+                              uri={uri}
+                              style={styles.photoSwipeImage}
+                              resizeMode="contain"
+                            />
                           ) : (
                             <View style={[styles.photoSwipeImage, styles.detailPhotoPlaceholder]}>
-                              <Text style={styles.detailBodyMuted}>No photo</Text>
+                              <Text style={styles.detailBodyMuted}>
+                                {uiCopy.recruiting.noPhoto}
+                              </Text>
                             </View>
                           )}
                         </TouchableOpacity>
@@ -601,55 +698,89 @@ export const AgencyRecruitingView: React.FC<{
                             onPress={() => setPhotoIndex((i) => Math.min(uris.length - 1, i + 1))}
                             disabled={idx >= uris.length - 1}
                           >
-                            <Text style={[styles.photoSwipeArrowText, idx >= uris.length - 1 && styles.photoSwipeArrowDisabled]}>▶</Text>
+                            <Text
+                              style={[
+                                styles.photoSwipeArrowText,
+                                idx >= uris.length - 1 && styles.photoSwipeArrowDisabled,
+                              ]}
+                            >
+                              ▶
+                            </Text>
                           </TouchableOpacity>
                         )}
                       </View>
                     );
                   })()}
-                  <Text style={styles.detailHint}>Tap image to enlarge · Use arrows to browse photos</Text>
-                  <Text style={styles.detailSectionLabel}>Application details</Text>
+                  <Text style={styles.detailHint}>{uiCopy.recruiting.tapToEnlarge}</Text>
+                  <Text style={styles.detailSectionLabel}>
+                    {uiCopy.recruiting.applicationDetails}
+                  </Text>
                   <Text style={styles.detailBody}>Age: {detailApplication.age}</Text>
                   <Text style={styles.detailBody}>Height: {detailApplication.height} cm</Text>
                   <Text style={styles.detailBody}>Gender: {detailApplication.gender || '—'}</Text>
-                  <Text style={styles.detailBody}>Hair color: {detailApplication.hairColor || '—'}</Text>
                   <Text style={styles.detailBody}>
-                    Country: {detailApplication.countryCode
-                      ? (FILTER_COUNTRIES.find((c) => c.code === detailApplication.countryCode)?.label ?? detailApplication.countryCode)
+                    Hair color: {detailApplication.hairColor || '—'}
+                  </Text>
+                  <Text style={styles.detailBody}>
+                    Country:{' '}
+                    {detailApplication.countryCode
+                      ? (FILTER_COUNTRIES.find((c) => c.code === detailApplication.countryCode)
+                          ?.label ?? detailApplication.countryCode)
                       : '—'}
                   </Text>
-                  <Text style={styles.detailBody}>Ethnicity: {detailApplication.ethnicity || '—'}</Text>
+                  <Text style={styles.detailBody}>
+                    Ethnicity: {detailApplication.ethnicity || '—'}
+                  </Text>
                   <Text style={styles.detailBody}>City: {detailApplication.city || '—'}</Text>
-                  <Text style={styles.detailBody}>Instagram: {detailApplication.instagramLink || '—'}</Text>
+                  <Text style={styles.detailBody}>
+                    Instagram: {detailApplication.instagramLink || '—'}
+                  </Text>
                 </>
               )}
             </ScrollView>
             {detailApplication && (
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: spacing.md }}>
+              <View
+                style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: spacing.md }}
+              >
                 {!detailApplication.chatThreadId && detailApplication.status === 'pending' && (
                   <TouchableOpacity
-                    style={[styles.filterPill, { paddingHorizontal: spacing.md, paddingVertical: spacing.sm }]}
+                    style={[
+                      styles.filterPill,
+                      { paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+                    ]}
                     onPress={() => void handleStartChatForApp(detailApplication)}
                     disabled={startingChat}
                   >
-                    <Text style={styles.filterPillText}>{startingChat ? 'Starting…' : 'Start chat'}</Text>
+                    <Text style={styles.filterPillText}>
+                      {startingChat ? 'Starting…' : 'Start chat'}
+                    </Text>
                   </TouchableOpacity>
                 )}
                 {detailApplication.status === 'pending' && (
                   <>
                     <TouchableOpacity
-                      style={[styles.buttonYes, { flex: 1, minWidth: 120 }, (isLimitReached || isActing) && styles.buttonDisabled]}
+                      style={[
+                        styles.buttonYes,
+                        { flex: 1, minWidth: 120 },
+                        (isLimitReached || isActing) && styles.buttonDisabled,
+                      ]}
                       onPress={() => void handleAcceptViaModal(detailApplication)}
                       disabled={isLimitReached || isActing}
                     >
-                      <Text style={styles.buttonYesLabel}>{isActing ? 'Working…' : 'Accept application'}</Text>
+                      <Text style={styles.buttonYesLabel}>
+                        {isActing ? 'Working…' : 'Accept application'}
+                      </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[styles.buttonNo, { flex: 1, minWidth: 100 }, isActing && styles.buttonDisabled]}
+                      style={[
+                        styles.buttonNo,
+                        { flex: 1, minWidth: 100 },
+                        isActing && styles.buttonDisabled,
+                      ]}
                       onPress={() => void handleDeclineForApp(detailApplication)}
                       disabled={isActing}
                     >
-                      <Text style={styles.buttonNoLabel}>Decline</Text>
+                      <Text style={styles.buttonNoLabel}>{uiCopy.recruiting.decline}</Text>
                     </TouchableOpacity>
                   </>
                 )}
@@ -659,14 +790,30 @@ export const AgencyRecruitingView: React.FC<{
         </View>
       </Modal>
 
-      <Modal visible={showPhotoFullscreen && !!detailApplication} transparent animationType="fade" onRequestClose={() => setShowPhotoFullscreen(false)}>
-        <TouchableOpacity style={styles.fullscreenPhotoOverlay} activeOpacity={1} onPress={() => setShowPhotoFullscreen(false)}>
-          {detailApplication && (() => {
-            const uris = [detailApplication.images?.closeUp, detailApplication.images?.fullBody, detailApplication.images?.profile].filter(Boolean) as string[];
-            const uri = uris[Math.min(photoIndex, Math.max(0, uris.length - 1))];
-            return uri ? <StorageImage uri={uri} style={styles.fullscreenPhoto} resizeMode="contain" /> : null;
-          })()}
-          <Text style={styles.fullscreenPhotoHint}>Tap to close</Text>
+      <Modal
+        visible={showPhotoFullscreen && !!detailApplication}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowPhotoFullscreen(false)}
+      >
+        <TouchableOpacity
+          style={styles.fullscreenPhotoOverlay}
+          activeOpacity={1}
+          onPress={() => setShowPhotoFullscreen(false)}
+        >
+          {detailApplication &&
+            (() => {
+              const uris = [
+                detailApplication.images?.closeUp,
+                detailApplication.images?.fullBody,
+                detailApplication.images?.profile,
+              ].filter(Boolean) as string[];
+              const uri = uris[Math.min(photoIndex, Math.max(0, uris.length - 1))];
+              return uri ? (
+                <StorageImage uri={uri} style={styles.fullscreenPhoto} resizeMode="contain" />
+              ) : null;
+            })()}
+          <Text style={styles.fullscreenPhotoHint}>{uiCopy.recruiting.tapToClose}</Text>
         </TouchableOpacity>
       </Modal>
 
@@ -688,7 +835,8 @@ export const AgencyRecruitingView: React.FC<{
 
             {pendingAcceptApp && (
               <Text style={[styles.filterLabel, { marginBottom: spacing.sm }]}>
-                {pendingAcceptApp.firstName} {pendingAcceptApp.lastName} · {uiCopy.territoryModal.subtitle}
+                {pendingAcceptApp.firstName} {pendingAcceptApp.lastName} ·{' '}
+                {uiCopy.territoryModal.subtitle}
               </Text>
             )}
 
@@ -701,7 +849,9 @@ export const AgencyRecruitingView: React.FC<{
             />
 
             {selectedCountryCodes.length > 0 && (
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: spacing.sm }}>
+              <View
+                style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: spacing.sm }}
+              >
                 {selectedCountryCodes.map((code) => (
                   <TouchableOpacity
                     key={code}
@@ -744,7 +894,9 @@ export const AgencyRecruitingView: React.FC<{
             </ScrollView>
 
             {selectedCountryCodes.length === 0 && (
-              <Text style={[styles.filterLabel, { marginTop: spacing.sm, color: colors.buttonSkipRed }]}>
+              <Text
+                style={[styles.filterLabel, { marginTop: spacing.sm, color: colors.buttonSkipRed }]}
+              >
                 {uiCopy.territoryModal.requiredHint}
               </Text>
             )}
@@ -765,7 +917,6 @@ export const AgencyRecruitingView: React.FC<{
           </View>
         </View>
       </Modal>
-
     </View>
   );
 };
@@ -1186,8 +1337,7 @@ const styles = StyleSheet.create({
   awaitingConfirmationLabel: {
     ...typography.body,
     fontSize: 11,
-    color: '#E65100',
+    color: colors.warningDark,
     marginTop: 2,
   },
 });
-

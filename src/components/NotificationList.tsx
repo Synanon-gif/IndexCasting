@@ -4,14 +4,7 @@
  * Real-time updates flow via notificationsStore.
  */
 import React, { useEffect, useState } from 'react';
-import {
-  FlatList,
-  Pressable,
-  SafeAreaView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { FlatList, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import {
   subscribeNotifications,
   getNotificationsState,
@@ -70,9 +63,7 @@ export function NotificationList({ onClose }: Props) {
         contentContainerStyle={
           state.notifications.length === 0 ? styles.emptyContainer : styles.listContent
         }
-        renderItem={({ item }) => (
-          <NotificationItem item={item} onMarkRead={handleMarkRead} />
-        )}
+        renderItem={({ item }) => <NotificationItem item={item} onMarkRead={handleMarkRead} />}
         ListEmptyComponent={
           <View style={styles.emptyView}>
             <Text style={styles.emptyText}>{uiCopy.notifications.empty}</Text>
@@ -100,9 +91,7 @@ function NotificationItem({ item, onMarkRead }: ItemProps) {
     >
       {!item.is_read && <View style={styles.unreadDot} />}
       <View style={styles.itemContent}>
-        <Text style={[styles.itemTitle, item.is_read && styles.itemTitleRead]}>
-          {item.title}
-        </Text>
+        <Text style={[styles.itemTitle, item.is_read && styles.itemTitleRead]}>{item.title}</Text>
         <Text style={styles.itemMessage}>{item.message}</Text>
         <Text style={styles.itemTime}>{formatRelativeTime(item.created_at)}</Text>
       </View>
@@ -204,7 +193,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#C0392B',
+    backgroundColor: colors.errorDark,
     marginTop: 5,
     marginRight: spacing.sm,
     flexShrink: 0,

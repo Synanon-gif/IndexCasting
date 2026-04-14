@@ -4,13 +4,7 @@
  * Subscribes to notificationsStore; hydrates on mount using the current session user.
  */
 import React, { useEffect, useRef, useState } from 'react';
-import {
-  Modal,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import {
   subscribeNotifications,
@@ -19,6 +13,7 @@ import {
   type NotificationsState,
 } from '../store/notificationsStore';
 import { NotificationList } from './NotificationList';
+import { colors } from '../theme/theme';
 
 export function NotificationBell() {
   const [state, setState] = useState<NotificationsState>({
@@ -90,7 +85,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -4,
     right: -6,
-    backgroundColor: '#C0392B',
+    backgroundColor: colors.errorDark,
     borderRadius: 8,
     minWidth: 16,
     height: 16,

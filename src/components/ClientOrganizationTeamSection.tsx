@@ -44,7 +44,9 @@ export const ClientOrganizationTeamSection: React.FC<{
 }> = ({ realClientId }) => {
   const { profile, updateDisplayName } = useAuth();
   const [organizationId, setOrganizationId] = useState<string | null>(null);
-  const [teamMembers, setTeamMembers] = useState<Awaited<ReturnType<typeof listOrganizationMembers>>>([]);
+  const [teamMembers, setTeamMembers] = useState<
+    Awaited<ReturnType<typeof listOrganizationMembers>>
+  >([]);
   const [invitations, setInvitations] = useState<InvitationRow[]>([]);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<'employee'>('employee');
@@ -53,7 +55,9 @@ export const ClientOrganizationTeamSection: React.FC<{
   const [nameInput, setNameInput] = useState(profile?.display_name ?? '');
   const [removingUserId, setRemovingUserId] = useState<string | null>(null);
   const [resendingInvitationId, setResendingInvitationId] = useState<string | null>(null);
-  const [resendInvitationCooldownUntil, setResendInvitationCooldownUntil] = useState<Record<string, number>>({});
+  const [resendInvitationCooldownUntil, setResendInvitationCooldownUntil] = useState<
+    Record<string, number>
+  >({});
 
   useEffect(() => {
     setNameInput(profile?.display_name ?? '');
@@ -129,7 +133,9 @@ export const ClientOrganizationTeamSection: React.FC<{
         let emailOk = false;
         let emailFailureReason = '';
         try {
-          const { data: { session: s } } = await supabase.auth.getSession();
+          const {
+            data: { session: s },
+          } = await supabase.auth.getSession();
           const res = await supabase.functions.invoke('send-invite', {
             body: {
               type: 'org_invitation',
@@ -146,7 +152,11 @@ export const ClientOrganizationTeamSection: React.FC<{
           emailOk = !res.error && body?.ok === true;
           if (!emailOk) {
             emailFailureReason = describeSendInviteFailure(res.data, res.error);
-            console.error('ClientOrganizationTeamSection send-invite error:', emailFailureReason, res);
+            console.error(
+              'ClientOrganizationTeamSection send-invite error:',
+              emailFailureReason,
+              res,
+            );
           }
         } catch (e) {
           emailFailureReason = e instanceof Error ? e.message : String(e);
@@ -158,7 +168,10 @@ export const ClientOrganizationTeamSection: React.FC<{
           uiCopy.alerts.invitationCreated,
           emailOk
             ? uiCopy.alerts.invitationCreatedBody
-            : uiCopy.inviteDelivery.invitationCreatedEmailFailedWithLink(emailFailureReason || 'unknown_error', link),
+            : uiCopy.inviteDelivery.invitationCreatedEmailFailedWithLink(
+                emailFailureReason || 'unknown_error',
+                link,
+              ),
         );
         void loadTeam();
       } else if (!result.ok && result.error === 'agency_member_limit_reached') {
@@ -192,7 +205,10 @@ export const ClientOrganizationTeamSection: React.FC<{
           const result = await removeOrganizationMember(targetUserId, orgId);
           if (result.ok) {
             setTeamMembers((prev) => prev.filter((m) => m.user_id !== targetUserId));
-            showAppAlert('Member Removed', 'The member has been removed and their session has been invalidated.');
+            showAppAlert(
+              'Member Removed',
+              'The member has been removed and their session has been invalidated.',
+            );
           } else {
             showAppAlert(uiCopy.common.error, result.error ?? 'Failed to remove member.');
           }
@@ -208,7 +224,13 @@ export const ClientOrganizationTeamSection: React.FC<{
   };
 
   const handleResendInvitation = async (invitation: InvitationRow) => {
-    if (!organizationId || !invitation.email || !invitation.token || invitation.status !== 'pending') return;
+    if (
+      !organizationId ||
+      !invitation.email ||
+      !invitation.token ||
+      invitation.status !== 'pending'
+    )
+      return;
     const cooldownUntil = resendInvitationCooldownUntil[invitation.id] ?? 0;
     if (Date.now() < cooldownUntil) return;
     setResendingInvitationId(invitation.id);
@@ -235,11 +257,7 @@ export const ClientOrganizationTeamSection: React.FC<{
   };
 
   if (!realClientId) {
-    return (
-      <Text style={styles.muted}>
-        {uiCopy.team.noClientSignIn}
-      </Text>
-    );
+    return <Text style={styles.muted}>{uiCopy.team.noClientSignIn}</Text>;
   }
 
   if (loading) {
@@ -275,11 +293,16 @@ export const ClientOrganizationTeamSection: React.FC<{
             style={[inputStyle, { marginBottom: spacing.sm }]}
           />
           <TouchableOpacity
-            style={[styles.primaryBtn, (!nameInput.trim() || nameBusy) && styles.primaryBtnDisabled]}
+            style={[
+              styles.primaryBtn,
+              (!nameInput.trim() || nameBusy) && styles.primaryBtnDisabled,
+            ]}
             onPress={() => void handleSaveName()}
             disabled={nameBusy || !nameInput.trim()}
           >
-            <Text style={styles.primaryBtnLabel}>{nameBusy ? '…' : uiCopy.team.ownerDisplayNameSave}</Text>
+            <Text style={styles.primaryBtnLabel}>
+              {nameBusy ? '…' : uiCopy.team.ownerDisplayNameSave}
+            </Text>
           </TouchableOpacity>
         </View>
       )}
@@ -315,7 +338,9 @@ export const ClientOrganizationTeamSection: React.FC<{
         })
       )}
 
-      <Text style={[styles.sectionTitle, styles.sectionSpacer]}>{uiCopy.team.pendingInvitations}</Text>
+      <Text style={[styles.sectionTitle, styles.sectionSpacer]}>
+        {uiCopy.team.pendingInvitations}
+      </Text>
       {invitationListHiddenForMember ? (
         <Text style={styles.muted}>{uiCopy.team.invitationsHiddenForMember}</Text>
       ) : pendingInv.length === 0 ? (
@@ -327,18 +352,28 @@ export const ClientOrganizationTeamSection: React.FC<{
               <Text style={styles.rowTitle}>
                 {i.email} · {roleLabel(i.role)}
               </Text>
-              <Text style={styles.mutedSmall}>{uiCopy.team.inviteExpiresLabel} {new Date(i.expires_at).toLocaleDateString()}</Text>
+              <Text style={styles.mutedSmall}>
+                {uiCopy.team.inviteExpiresLabel} {new Date(i.expires_at).toLocaleDateString()}
+              </Text>
             </View>
             {canInvite && i.email && i.token && (
               <TouchableOpacity
-                style={[styles.primaryBtn, { marginTop: 0, marginLeft: spacing.sm, paddingHorizontal: spacing.md }]}
+                style={[
+                  styles.primaryBtn,
+                  { marginTop: 0, marginLeft: spacing.sm, paddingHorizontal: spacing.md },
+                ]}
                 onPress={() => {
                   void handleResendInvitation(i);
                 }}
-                disabled={resendingInvitationId === i.id || Date.now() < (resendInvitationCooldownUntil[i.id] ?? 0)}
+                disabled={
+                  resendingInvitationId === i.id ||
+                  Date.now() < (resendInvitationCooldownUntil[i.id] ?? 0)
+                }
               >
                 <Text style={styles.primaryBtnLabel}>
-                  {resendingInvitationId === i.id ? uiCopy.inviteResend.loading : uiCopy.inviteResend.cta}
+                  {resendingInvitationId === i.id
+                    ? uiCopy.inviteResend.loading
+                    : uiCopy.inviteResend.cta}
                 </Text>
               </TouchableOpacity>
             )}
@@ -346,7 +381,9 @@ export const ClientOrganizationTeamSection: React.FC<{
         ))
       )}
 
-      <Text style={[styles.sectionTitle, styles.sectionSpacer]}>{uiCopy.team.acceptedInvitations}</Text>
+      <Text style={[styles.sectionTitle, styles.sectionSpacer]}>
+        {uiCopy.team.acceptedInvitations}
+      </Text>
       {invitationListHiddenForMember ? (
         <Text style={styles.muted}>{uiCopy.team.invitationsHiddenForMember}</Text>
       ) : acceptedInv.length === 0 ? (
@@ -357,7 +394,9 @@ export const ClientOrganizationTeamSection: React.FC<{
             <Text style={styles.rowTitle}>
               {i.email} · {roleLabel(i.role)}
             </Text>
-            <Text style={styles.mutedSmall}>{uiCopy.team.inviteAcceptedLabel} {new Date(i.created_at).toLocaleDateString()}</Text>
+            <Text style={styles.mutedSmall}>
+              {uiCopy.team.inviteAcceptedLabel} {new Date(i.created_at).toLocaleDateString()}
+            </Text>
           </View>
         ))
       )}
@@ -383,12 +422,17 @@ export const ClientOrganizationTeamSection: React.FC<{
                 style={[styles.rolePill, inviteRole === r && styles.rolePillActive]}
                 onPress={() => setInviteRole(r)}
               >
-                <Text style={[styles.rolePillText, inviteRole === r && styles.rolePillTextActive]}>{uiCopy.team.inviteRoleEmployee}</Text>
+                <Text style={[styles.rolePillText, inviteRole === r && styles.rolePillTextActive]}>
+                  {uiCopy.team.inviteRoleEmployee}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
           <TouchableOpacity
-            style={[styles.primaryBtn, (!inviteEmail.trim() || inviteBusy) && styles.primaryBtnDisabled]}
+            style={[
+              styles.primaryBtn,
+              (!inviteEmail.trim() || inviteBusy) && styles.primaryBtnDisabled,
+            ]}
             onPress={() => void handleInvite()}
             disabled={inviteBusy || !inviteEmail.trim()}
           >
@@ -402,9 +446,7 @@ export const ClientOrganizationTeamSection: React.FC<{
           {uiCopy.team.ownerOnlyInviteNote}
         </Text>
       ) : (
-        <Text style={[styles.muted, { marginTop: spacing.md }]}>
-          {uiCopy.team.orgNotLoaded}
-        </Text>
+        <Text style={[styles.muted, { marginTop: spacing.md }]}>{uiCopy.team.orgNotLoaded}</Text>
       )}
     </ScrollView>
   );
@@ -448,13 +490,13 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: '#C0392B',
+    borderColor: colors.errorDark,
     marginLeft: spacing.sm,
   },
   removeBtnLabel: {
     ...typography.label,
     fontSize: 11,
-    color: '#C0392B',
+    color: colors.errorDark,
   },
   rowTitle: {
     ...typography.label,

@@ -9,11 +9,13 @@ import {
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { useModelAgency } from '../context/ModelAgencyContext';
+import { useAuth } from '../context/AuthContext';
 import { uiCopy } from '../constants/uiCopy';
 import { makeModelAgencyKey } from '../utils/modelAgencyKey';
 
 export const ModelAgencySelector: React.FC = () => {
   const { agencies, switchRepresentation, loading } = useModelAgency();
+  const { signOut } = useAuth();
 
   if (loading) {
     return (
@@ -53,6 +55,11 @@ export const ModelAgencySelector: React.FC = () => {
           </TouchableOpacity>
         ))}
       </ScrollView>
+      <View style={styles.footer}>
+        <TouchableOpacity style={styles.signOutBtn} onPress={() => void signOut()}>
+          <Text style={styles.signOutLabel}>{uiCopy.common.logout}</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 };
@@ -108,6 +115,22 @@ const styles = StyleSheet.create({
   },
   territory: {
     fontSize: 13,
+    color: colors.textSecondary,
+  },
+  footer: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xl,
+    alignItems: 'center',
+  },
+  signOutBtn: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+  },
+  signOutLabel: {
+    ...typography.label,
     color: colors.textSecondary,
   },
 });

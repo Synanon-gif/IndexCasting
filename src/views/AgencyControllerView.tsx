@@ -1040,13 +1040,13 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                     style={{
                       borderRadius: 999,
                       borderWidth: 1,
-                      borderColor: '#e74c3c',
+                      borderColor: colors.error,
                       paddingVertical: spacing.sm,
                       alignItems: 'center',
                       opacity: dissolvingOrg ? 0.6 : 1,
                     }}
                   >
-                    <Text style={{ ...typography.label, fontSize: 12, color: '#e74c3c' }}>
+                    <Text style={{ ...typography.label, fontSize: 12, color: colors.error }}>
                       {dissolvingOrg
                         ? uiCopy.accountDeletion.dissolveOrgWorking
                         : uiCopy.accountDeletion.dissolveOrgButton}
@@ -1113,12 +1113,12 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                 style={{
                   borderRadius: 999,
                   borderWidth: 1,
-                  borderColor: '#e74c3c',
+                  borderColor: colors.error,
                   paddingVertical: spacing.sm,
                   alignItems: 'center',
                 }}
               >
-                <Text style={{ ...typography.label, fontSize: 12, color: '#e74c3c' }}>
+                <Text style={{ ...typography.label, fontSize: 12, color: colors.error }}>
                   {deletingAccount
                     ? uiCopy.accountDeletion.buttonWorking
                     : uiCopy.accountDeletion.button}
@@ -1172,12 +1172,12 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                 style={{
                   borderRadius: 999,
                   borderWidth: 1,
-                  borderColor: '#e74c3c',
+                  borderColor: colors.error,
                   paddingVertical: spacing.sm,
                   alignItems: 'center',
                 }}
               >
-                <Text style={{ ...typography.label, fontSize: 12, color: '#e74c3c' }}>
+                <Text style={{ ...typography.label, fontSize: 12, color: colors.error }}>
                   {deletingAccount
                     ? uiCopy.accountDeletion.buttonWorking
                     : uiCopy.accountDeletion.button}
@@ -1756,7 +1756,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
               </View>
 
               <TextInput
-                placeholder="Title"
+                placeholder={uiCopy.calendar.eventTitlePlaceholder}
                 value={newEventForm.title}
                 onChangeText={(t) => setNewEventForm((f) => ({ ...f, title: t }))}
                 placeholderTextColor={colors.textSecondary}
@@ -1927,7 +1927,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                 Date (YYYY-MM-DD)
               </Text>
               <TextInput
-                placeholder="2025-03-15"
+                placeholder={uiCopy.calendar.dateExamplePlaceholder}
                 value={newEventForm.date}
                 onChangeText={(d) => setNewEventForm((f) => ({ ...f, date: d }))}
                 placeholderTextColor={colors.textSecondary}
@@ -2014,7 +2014,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                       isoDate = `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
                     }
                     if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate) || isNaN(Date.parse(isoDate))) {
-                      Alert.alert('Invalid date', 'Please enter a valid date (YYYY-MM-DD).');
+                      Alert.alert(uiCopy.alerts.invalidDateTitle, uiCopy.alerts.invalidDateBody);
                       return;
                     }
 
@@ -2023,7 +2023,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                       (newEventForm.start_time && !timeRe.test(newEventForm.start_time)) ||
                       (newEventForm.end_time && !timeRe.test(newEventForm.end_time))
                     ) {
-                      Alert.alert('Invalid time', 'Please use HH:MM format for times.');
+                      Alert.alert(uiCopy.alerts.invalidTimeTitle, uiCopy.alerts.invalidTimeBody);
                       return;
                     }
 
@@ -2098,7 +2098,10 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                           if (!reqId) anyFailed = true;
                         }
                         if (anyFailed) {
-                          Alert.alert('Calendar', 'Some requests could not be created.');
+                          Alert.alert(
+                            uiCopy.calendar.agencyAddEventFormTitle,
+                            uiCopy.alerts.someRequestsNotCreated,
+                          );
                         }
                       }
                       await loadAgencyCalendar();
@@ -2624,7 +2627,7 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
           <TextInput
             value={modelQuery}
             onChangeText={setModelQuery}
-            placeholder="Model name…"
+            placeholder={uiCopy.modelRoster.modelNamePlaceholder}
             placeholderTextColor={colors.textSecondary}
             style={s.editInput}
           />
@@ -2634,7 +2637,7 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
           <TextInput
             value={fromDate}
             onChangeText={setFromDate}
-            placeholder="YYYY-MM-DD"
+            placeholder={uiCopy.calendar.datePlaceholder}
             placeholderTextColor={colors.textSecondary}
             style={s.editInput}
           />
@@ -2644,7 +2647,7 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
           <TextInput
             value={toDate}
             onChangeText={setToDate}
-            placeholder="YYYY-MM-DD"
+            placeholder={uiCopy.calendar.datePlaceholder}
             placeholderTextColor={colors.textSecondary}
             style={s.editInput}
           />
@@ -3519,7 +3522,7 @@ const MyModelsTab: React.FC<{
         ? 'RLS blocks model insert. Run supabase/migration_models_insert_agency_org_members.sql and retry.'
         : message;
       setAddModelFeedback(`Could not add model: ${userMessage}`);
-      Alert.alert('Could not add model', userMessage);
+      Alert.alert(uiCopy.alerts.couldNotAddModel, userMessage);
     } finally {
       setAddLoading(false);
     }
@@ -3956,14 +3959,14 @@ const MyModelsTab: React.FC<{
               padding: spacing.sm,
               marginBottom: spacing.md,
               borderLeftWidth: 3,
-              borderLeftColor: selectedModelLocation.source === 'live' ? '#2e7d32' : '#1565c0',
+              borderLeftColor: selectedModelLocation.source === 'live' ? colors.success : '#1565c0',
             }}
           >
             <Text
               style={{
                 fontWeight: '700',
                 fontSize: 12,
-                color: selectedModelLocation.source === 'live' ? '#2e7d32' : '#1565c0',
+                color: selectedModelLocation.source === 'live' ? colors.success : '#1565c0',
                 marginBottom: 2,
               }}
             >
@@ -4002,7 +4005,7 @@ const MyModelsTab: React.FC<{
             borderTopWidth: 1,
             borderTopColor:
               territoryCountryCodes.length === 0
-                ? (colors.buttonSkipRed ?? '#c0392b')
+                ? (colors.buttonSkipRed ?? colors.errorDark)
                 : colors.border,
             paddingTop: spacing.md,
           }}
@@ -4021,7 +4024,7 @@ const MyModelsTab: React.FC<{
                 paddingHorizontal: 6,
                 paddingVertical: 1,
                 borderRadius: 4,
-                backgroundColor: colors.buttonSkipRed ?? '#c0392b',
+                backgroundColor: colors.buttonSkipRed ?? colors.errorDark,
               }}
             >
               <Text style={{ ...typography.label, fontSize: 8, color: '#fff', letterSpacing: 0.5 }}>
@@ -4045,7 +4048,7 @@ const MyModelsTab: React.FC<{
             <View
               style={{
                 borderWidth: 1,
-                borderColor: colors.buttonSkipRed ?? '#c0392b',
+                borderColor: colors.buttonSkipRed ?? colors.errorDark,
                 borderRadius: 8,
                 padding: spacing.sm,
                 marginBottom: spacing.sm,
@@ -4056,7 +4059,7 @@ const MyModelsTab: React.FC<{
                 style={{
                   ...typography.body,
                   fontSize: 11,
-                  color: colors.buttonSkipRed ?? '#c0392b',
+                  color: colors.buttonSkipRed ?? colors.errorDark,
                 }}
               >
                 {uiCopy.modelRoster.territoriesRequiredInline}
@@ -4156,10 +4159,10 @@ const MyModelsTab: React.FC<{
               alignItems: 'center',
               backgroundColor:
                 territorySaveFeedback === 'saved'
-                  ? (colors.accentGreen ?? '#2e7d32')
+                  ? (colors.accentGreen ?? colors.success)
                   : territorySaveFeedback === 'error'
-                    ? (colors.buttonSkipRed ?? '#c0392b')
-                    : (colors.buttonOptionGreen ?? '#2e7d32'),
+                    ? (colors.buttonSkipRed ?? colors.errorDark)
+                    : (colors.buttonOptionGreen ?? colors.success),
               opacity: territorySaving || territoryCountryCodes.length === 0 ? 0.5 : 1,
             }}
           >
@@ -4195,7 +4198,7 @@ const MyModelsTab: React.FC<{
             <TextInput
               value={linkAccountEmail}
               onChangeText={setLinkAccountEmail}
-              placeholder="Model signup email (same as profile)"
+              placeholder={uiCopy.modelRoster.modelSignupEmailPlaceholder}
               placeholderTextColor={colors.textSecondary}
               autoCapitalize="none"
               keyboardType="email-address"
@@ -4207,7 +4210,10 @@ const MyModelsTab: React.FC<{
               onPress={async () => {
                 const em = linkAccountEmail.trim();
                 if (!em) {
-                  Alert.alert('Email required', 'Enter the email the model used to register.');
+                  Alert.alert(
+                    uiCopy.alerts.emailRequiredTitle,
+                    uiCopy.alerts.emailRequiredForLinkBody,
+                  );
                   return;
                 }
                 setLinkAccountLoading(true);
@@ -4215,15 +4221,15 @@ const MyModelsTab: React.FC<{
                   const ok = await agencyLinkModelToUser(selectedModel.id, agencyId, em);
                   if (ok) {
                     setLinkAccountEmail('');
-                    Alert.alert('Linked', 'The model account is now connected to this profile.');
+                    Alert.alert(uiCopy.alerts.linkedTitle, uiCopy.alerts.linkedBody);
                     onRefresh();
                     const refreshed = await getModelsForAgencyFromSupabase(agencyId);
                     const m = refreshed.find((x) => x.id === selectedModel.id);
                     if (m) setSelectedModel(m);
                   } else {
                     Alert.alert(
-                      'Could not link',
-                      'No model-role user with that email was found, or the email does not match. The model must sign up first; you can also rely on automatic link when their profile email matches this roster email.',
+                      uiCopy.alerts.couldNotLinkTitle,
+                      'No model-role user with that email was found, or the email does not match. The model must sign up first.',
                     );
                   }
                 } finally {
@@ -4243,7 +4249,7 @@ const MyModelsTab: React.FC<{
               borderRadius: 10,
               borderWidth: 1,
               borderColor: completenessIssues.some((i) => i.severity === 'critical')
-                ? '#c0392b'
+                ? colors.errorDark
                 : colors.border,
               backgroundColor: completenessIssues.some((i) => i.severity === 'critical')
                 ? '#fff5f5'
@@ -4257,7 +4263,7 @@ const MyModelsTab: React.FC<{
                 ...typography.label,
                 fontSize: 12,
                 color: completenessIssues.some((i) => i.severity === 'critical')
-                  ? '#c0392b'
+                  ? colors.errorDark
                   : '#b7740a',
                 marginBottom: spacing.xs,
               }}
@@ -4287,7 +4293,7 @@ const MyModelsTab: React.FC<{
                 <Text
                   style={{
                     fontSize: 11,
-                    color: issue.severity === 'critical' ? '#c0392b' : '#b7740a',
+                    color: issue.severity === 'critical' ? colors.errorDark : '#b7740a',
                     lineHeight: 16,
                   }}
                 >
@@ -4297,7 +4303,7 @@ const MyModelsTab: React.FC<{
                   style={{
                     ...typography.body,
                     fontSize: 11,
-                    color: issue.severity === 'critical' ? '#c0392b' : colors.textSecondary,
+                    color: issue.severity === 'critical' ? colors.errorDark : colors.textSecondary,
                     flex: 1,
                     lineHeight: 16,
                   }}
@@ -4357,32 +4363,28 @@ const MyModelsTab: React.FC<{
             paddingVertical: spacing.sm,
             borderRadius: 8,
             borderWidth: 1,
-            borderColor: '#e74c3c',
+            borderColor: colors.error,
             alignItems: 'center',
           }}
           onPress={() => {
-            Alert.alert(
-              'End representation',
-              'Soft-remove: the model disappears from My Models and client discovery. Past options, jobs and billing history stay in the system. Territories for this model are cleared. Continue?',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                  text: 'End representation',
-                  style: 'destructive',
-                  onPress: async () => {
-                    const ok = await removeModelFromAgency(selectedModel.id, agencyId);
-                    if (ok) {
-                      setSelectedModel(null);
-                      setEditState(buildEditState({ name: '' }));
-                      onRefresh();
-                    }
-                  },
+            Alert.alert(uiCopy.alerts.endRepresentationTitle, uiCopy.alerts.endRepresentationBody, [
+              { text: uiCopy.common.cancel, style: 'cancel' },
+              {
+                text: uiCopy.alerts.endRepresentationConfirm,
+                style: 'destructive',
+                onPress: async () => {
+                  const ok = await removeModelFromAgency(selectedModel.id, agencyId);
+                  if (ok) {
+                    setSelectedModel(null);
+                    setEditState(buildEditState({ name: '' }));
+                    onRefresh();
+                  }
                 },
-              ],
-            );
+              },
+            ]);
           }}
         >
-          <Text style={{ ...typography.label, fontSize: 12, color: '#e74c3c' }}>
+          <Text style={{ ...typography.label, fontSize: 12, color: colors.error }}>
             End representation (soft-remove)
           </Text>
         </TouchableOpacity>
@@ -4423,7 +4425,7 @@ const MyModelsTab: React.FC<{
             <TextInput
               value={mediaslideKey}
               onChangeText={setMediaslideKey}
-              placeholder="Mediaslide API Key"
+              placeholder={uiCopy.modelRoster.mediaslideApiKeyPlaceholder}
               placeholderTextColor={colors.textSecondary}
               style={[s.editInput, { flex: 1 }]}
             />
@@ -4447,7 +4449,7 @@ const MyModelsTab: React.FC<{
             <TextInput
               value={netwalkKey}
               onChangeText={setNetwalkKey}
-              placeholder="Netwalk API Key"
+              placeholder={uiCopy.modelRoster.netwalkApiKeyPlaceholder}
               placeholderTextColor={colors.textSecondary}
               style={[s.editInput, { flex: 1 }]}
             />
@@ -4504,7 +4506,7 @@ const MyModelsTab: React.FC<{
           <TextInput
             value={importLinkUrl}
             onChangeText={setImportLinkUrl}
-            placeholder="https://…/model.json"
+            placeholder={uiCopy.modelRoster.importUrlPlaceholder}
             placeholderTextColor={colors.textSecondary}
             autoCapitalize="none"
             autoCorrect={false}
@@ -4529,7 +4531,7 @@ const MyModelsTab: React.FC<{
             style={{
               ...typography.body,
               fontSize: 12,
-              color: importLinkFeedback.ok ? colors.accentGreen : '#e74c3c',
+              color: importLinkFeedback.ok ? colors.accentGreen : colors.error,
               marginTop: spacing.xs,
             }}
           >
@@ -4554,7 +4556,7 @@ const MyModelsTab: React.FC<{
       <TextInput
         value={rosterNameSearch}
         onChangeText={setRosterNameSearch}
-        placeholder="Search by name…"
+        placeholder={uiCopy.modelRoster.searchByNamePlaceholder}
         placeholderTextColor={colors.textSecondary}
         style={[s.editInput, { marginBottom: spacing.sm, width: '100%' }]}
       />
@@ -4614,7 +4616,7 @@ const MyModelsTab: React.FC<{
             <TextInput
               value={addTerritorySearch}
               onChangeText={setAddTerritorySearch}
-              placeholder="Search country…"
+              placeholder={uiCopy.modelRoster.searchCountryPlaceholder}
               placeholderTextColor={colors.textSecondary}
               style={[s.editInput, { marginBottom: spacing.xs }]}
             />
@@ -5025,7 +5027,7 @@ const MyModelsTab: React.FC<{
             style={{
               borderRadius: 8,
               borderWidth: 1,
-              borderColor: '#c0392b',
+              borderColor: colors.errorDark,
               backgroundColor: 'rgba(192,57,43,0.06)',
               padding: spacing.md,
               marginBottom: spacing.md,
@@ -5034,10 +5036,15 @@ const MyModelsTab: React.FC<{
               gap: spacing.sm,
             }}
           >
-            <Text style={{ fontSize: 14, color: '#c0392b', lineHeight: 20 }}>⚠</Text>
+            <Text style={{ fontSize: 14, color: colors.errorDark, lineHeight: 20 }}>⚠</Text>
             <View style={{ flex: 1 }}>
               <Text
-                style={{ ...typography.label, fontSize: 12, color: '#c0392b', marginBottom: 2 }}
+                style={{
+                  ...typography.label,
+                  fontSize: 12,
+                  color: colors.errorDark,
+                  marginBottom: 2,
+                }}
               >
                 {uiCopy.modelRoster.incompleteModelsBanner(incompleteCount)}
               </Text>
@@ -5132,7 +5139,7 @@ const MyModelsTab: React.FC<{
                           paddingVertical: 1,
                           borderRadius: 3,
                           borderWidth: 1,
-                          borderColor: colors.accentGreen ?? '#2e7d32',
+                          borderColor: colors.accentGreen ?? colors.success,
                           backgroundColor: 'transparent',
                         }}
                       >
@@ -5140,7 +5147,7 @@ const MyModelsTab: React.FC<{
                           style={{
                             ...typography.label,
                             fontSize: 8,
-                            color: colors.accentGreen ?? '#2e7d32',
+                            color: colors.accentGreen ?? colors.success,
                             letterSpacing: 0.3,
                           }}
                         >
@@ -5176,7 +5183,7 @@ const MyModelsTab: React.FC<{
                       paddingVertical: 1,
                       borderRadius: 3,
                       borderWidth: 1,
-                      borderColor: '#B8860B',
+                      borderColor: colors.warning,
                       backgroundColor: 'rgba(184,134,11,0.08)',
                       alignSelf: 'flex-start',
                     }}
@@ -5185,7 +5192,7 @@ const MyModelsTab: React.FC<{
                       style={{
                         ...typography.label,
                         fontSize: 8,
-                        color: '#B8860B',
+                        color: colors.warning,
                         letterSpacing: 0.3,
                       }}
                     >
@@ -5203,7 +5210,7 @@ const MyModelsTab: React.FC<{
                       paddingVertical: 1,
                       borderRadius: 3,
                       borderWidth: 1,
-                      borderColor: '#c0392b',
+                      borderColor: colors.errorDark,
                       backgroundColor: 'rgba(192,57,43,0.07)',
                       alignSelf: 'flex-start',
                     }}
@@ -5212,7 +5219,7 @@ const MyModelsTab: React.FC<{
                       style={{
                         ...typography.label,
                         fontSize: 8,
-                        color: '#c0392b',
+                        color: colors.errorDark,
                         letterSpacing: 0.3,
                       }}
                     >
@@ -5229,7 +5236,7 @@ const MyModelsTab: React.FC<{
                       marginTop: 2,
                     }}
                   >
-                    <Text style={{ ...typography.label, fontSize: 9, color: '#B8860B' }}>
+                    <Text style={{ ...typography.label, fontSize: 9, color: colors.warning }}>
                       Pending app account link
                     </Text>
                     {m.email && !m.user_id && (
@@ -5413,7 +5420,11 @@ const MyModelsTab: React.FC<{
               }}
             >
               <Text
-                style={{ ...typography.label, fontSize: 9, color: colors.accentGreen ?? '#2e7d32' }}
+                style={{
+                  ...typography.label,
+                  fontSize: 9,
+                  color: colors.accentGreen ?? colors.success,
+                }}
               >
                 + ADDITIVE
               </Text>
@@ -6565,7 +6576,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                     style={{
                       ...typography.label,
                       fontSize: 12,
-                      color: colors.buttonSkipRed ?? '#c0392b',
+                      color: colors.buttonSkipRed ?? colors.errorDark,
                     }}
                   >
                     {uiCopy.common.delete}
@@ -7808,10 +7819,10 @@ const OrganizationTeamTab: React.FC<{
                       paddingVertical: 4,
                       borderRadius: 6,
                       borderWidth: 1,
-                      borderColor: '#C0392B',
+                      borderColor: colors.errorDark,
                     }}
                   >
-                    <Text style={{ ...typography.label, fontSize: 11, color: '#C0392B' }}>
+                    <Text style={{ ...typography.label, fontSize: 11, color: colors.errorDark }}>
                       {removingUserId === m.user_id ? '…' : 'Remove'}
                     </Text>
                   </TouchableOpacity>
@@ -7865,7 +7876,7 @@ const OrganizationTeamTab: React.FC<{
           <TextInput
             value={inviteEmail}
             onChangeText={setInviteEmail}
-            placeholder="Email"
+            placeholder={uiCopy.modelRoster.emailPlaceholder}
             placeholderTextColor={colors.textSecondary}
             style={s.editInput}
             autoCapitalize="none"
@@ -8180,7 +8191,7 @@ const GuestLinksTab: React.FC<{
         {/* Model name search */}
         <TextInput
           style={[s.editInput, { marginBottom: spacing.sm, fontSize: 12 }]}
-          placeholder="Search models…"
+          placeholder={uiCopy.modelRoster.searchModelsPlaceholder}
           placeholderTextColor={colors.textSecondary}
           value={modelSearch}
           onChangeText={setModelSearch}
@@ -8288,7 +8299,12 @@ const GuestLinksTab: React.FC<{
 
         {createError !== null && (
           <Text
-            style={{ ...typography.body, fontSize: 11, color: '#e74c3c', marginBottom: spacing.xs }}
+            style={{
+              ...typography.body,
+              fontSize: 11,
+              color: colors.error,
+              marginBottom: spacing.xs,
+            }}
           >
             {createError}
           </Text>
@@ -8437,10 +8453,10 @@ const GuestLinksTab: React.FC<{
                       </TouchableOpacity>
 
                       <TouchableOpacity
-                        style={[s.filterPill, { borderColor: '#e74c3c' }]}
+                        style={[s.filterPill, { borderColor: colors.error }]}
                         onPress={() => handleDeactivate(l.id)}
                       >
-                        <Text style={{ ...typography.label, fontSize: 10, color: '#e74c3c' }}>
+                        <Text style={{ ...typography.label, fontSize: 10, color: colors.error }}>
                           {copy.deactivateButton}
                         </Text>
                       </TouchableOpacity>
@@ -8474,11 +8490,15 @@ const GuestLinksTab: React.FC<{
                 <TouchableOpacity
                   style={[
                     s.filterPill,
-                    { borderColor: '#c0392b', marginTop: spacing.xs, alignSelf: 'flex-start' },
+                    {
+                      borderColor: colors.errorDark,
+                      marginTop: spacing.xs,
+                      alignSelf: 'flex-start',
+                    },
                   ]}
                   onPress={() => handleDeletePackage(l.id)}
                 >
-                  <Text style={{ ...typography.label, fontSize: 10, color: '#c0392b' }}>
+                  <Text style={{ ...typography.label, fontSize: 10, color: colors.errorDark }}>
                     {copy.deleteButton}
                   </Text>
                 </TouchableOpacity>
@@ -8502,7 +8522,12 @@ const GuestLinksTab: React.FC<{
 
       {/* ── Send in App Modal ──────────────────────────────────────────── */}
       {sendInAppTarget !== null && (
-        <Modal transparent animationType="fade" visible>
+        <Modal
+          transparent
+          animationType="fade"
+          visible
+          onRequestClose={() => setSendInAppTarget(null)}
+        >
           <View
             style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' }}
           >
@@ -8573,7 +8598,7 @@ const GuestLinksTab: React.FC<{
                   style={{
                     ...typography.body,
                     fontSize: 12,
-                    color: '#e74c3c',
+                    color: colors.error,
                     marginBottom: spacing.sm,
                   }}
                 >
@@ -8587,7 +8612,7 @@ const GuestLinksTab: React.FC<{
                     {/* ── Client search ─────────────────────────────────── */}
                     <TextInput
                       style={[s.editInput, { marginBottom: spacing.sm }]}
-                      placeholder="Search clients..."
+                      placeholder={uiCopy.modelRoster.searchClientsPlaceholder}
                       placeholderTextColor={colors.textSecondary}
                       value={sendSearch}
                       onChangeText={setSendSearch}
@@ -9107,12 +9132,12 @@ const s = StyleSheet.create({
     borderColor: colors.buttonOptionGreen,
     backgroundColor: 'rgba(76,175,80,0.1)',
   },
-  approvalBadgeRejected: { borderColor: '#e74c3c', backgroundColor: 'rgba(231,76,60,0.1)' },
-  approvalBadgePending: { borderColor: '#B8860B', backgroundColor: 'rgba(184,134,11,0.1)' },
+  approvalBadgeRejected: { borderColor: colors.error, backgroundColor: 'rgba(231,76,60,0.1)' },
+  approvalBadgePending: { borderColor: colors.warning, backgroundColor: 'rgba(184,134,11,0.1)' },
   approvalBadgeLabel: { ...typography.label, fontSize: 9, color: colors.textSecondary },
   approvalBadgeLabelApproved: { color: colors.buttonOptionGreen },
-  approvalBadgeLabelRejected: { color: '#e74c3c' },
-  approvalBadgeLabelPending: { color: '#B8860B' },
+  approvalBadgeLabelRejected: { color: colors.error },
+  approvalBadgeLabelPending: { color: colors.warning },
   approvalBanner: {
     borderRadius: 8,
     paddingHorizontal: spacing.sm,
@@ -9125,10 +9150,10 @@ const s = StyleSheet.create({
     borderColor: colors.buttonOptionGreen,
     backgroundColor: 'rgba(76,175,80,0.08)',
   },
-  approvalBannerRejected: { borderColor: '#e74c3c', backgroundColor: 'rgba(231,76,60,0.08)' },
-  approvalBannerPending: { borderColor: '#B8860B', backgroundColor: 'rgba(184,134,11,0.08)' },
+  approvalBannerRejected: { borderColor: colors.error, backgroundColor: 'rgba(231,76,60,0.08)' },
+  approvalBannerPending: { borderColor: colors.warning, backgroundColor: 'rgba(184,134,11,0.08)' },
   approvalBannerText: { ...typography.label, fontSize: 11, color: colors.textSecondary },
   approvalBannerTextApproved: { color: colors.buttonOptionGreen },
-  approvalBannerTextRejected: { color: '#e74c3c' },
-  approvalBannerTextPending: { color: '#B8860B' },
+  approvalBannerTextRejected: { color: colors.error },
+  approvalBannerTextPending: { color: colors.warning },
 });

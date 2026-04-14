@@ -769,6 +769,10 @@ function AppContent() {
               setModelClaimAuthMode('login');
               setModelClaimAuthPhase('auth');
             }}
+            onDismiss={() => {
+              setModelInviteTokenState(null);
+              setModelClaimAuthPhase('gate');
+            }}
           />
           <StatusBar style="dark" />
         </>
@@ -790,6 +794,10 @@ function AppContent() {
             onContinueLogin={() => {
               setInviteAuthMode('login');
               setInviteAuthPhase('auth');
+            }}
+            onDismiss={() => {
+              setInviteTokenState(null);
+              setInviteAuthPhase('gate');
             }}
           />
           <StatusBar style="dark" />

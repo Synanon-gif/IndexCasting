@@ -1,5 +1,13 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Platform, Modal } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+  Platform,
+  Modal,
+} from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import type { InvitationPreview } from '../services/organizationsInvitationsSupabase';
 import { uiCopy } from '../constants/uiCopy';
@@ -13,6 +21,7 @@ type Props = {
   error: string | null;
   onContinueLogin: () => void;
   onContinueSignup: () => void;
+  onDismiss?: () => void;
 };
 
 export function InviteAcceptanceScreen({
@@ -21,6 +30,7 @@ export function InviteAcceptanceScreen({
   error,
   onContinueLogin,
   onContinueSignup,
+  onDismiss,
 }: Props) {
   const [copied, setCopied] = useState(false);
   const [termsVisible, setTermsVisible] = useState(false);
@@ -46,17 +56,33 @@ export function InviteAcceptanceScreen({
 
   return (
     <View style={styles.container}>
-      <Modal visible={termsVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setTermsVisible(false)}>
+      <Modal
+        visible={termsVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setTermsVisible(false)}
+      >
         <TermsScreen onClose={() => setTermsVisible(false)} />
       </Modal>
-      <Modal visible={privacyVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setPrivacyVisible(false)}>
+      <Modal
+        visible={privacyVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setPrivacyVisible(false)}
+      >
         <PrivacyScreen onClose={() => setPrivacyVisible(false)} />
       </Modal>
       <View style={styles.card}>
         <Text style={styles.brand}>INDEX CASTING</Text>
         <Text style={styles.title}>{uiCopy.invite.pageTitle}</Text>
 
-        {loading && <ActivityIndicator size="large" color={colors.textPrimary} style={{ marginVertical: spacing.lg }} />}
+        {loading && (
+          <ActivityIndicator
+            size="large"
+            color={colors.textPrimary}
+            style={{ marginVertical: spacing.lg }}
+          />
+        )}
 
         {error && (
           <Text style={styles.error}>
@@ -99,7 +125,10 @@ export function InviteAcceptanceScreen({
                 <Text style={styles.primaryLabel}>{uiCopy.invite.signUpToAccept}</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity style={error && !preview ? styles.primaryBtn : styles.secondaryBtn} onPress={onContinueLogin}>
+            <TouchableOpacity
+              style={error && !preview ? styles.primaryBtn : styles.secondaryBtn}
+              onPress={onContinueLogin}
+            >
               <Text style={error && !preview ? styles.primaryLabel : styles.secondaryLabel}>
                 {uiCopy.invite.alreadyHaveAccount}
               </Text>
@@ -111,7 +140,14 @@ export function InviteAcceptanceScreen({
             )}
             {Platform.OS === 'web' && (
               <TouchableOpacity onPress={copyHint} style={styles.linkBtn}>
-                <Text style={styles.linkLabel}>{copied ? uiCopy.invite.linkCopied : uiCopy.invite.copyLink}</Text>
+                <Text style={styles.linkLabel}>
+                  {copied ? uiCopy.invite.linkCopied : uiCopy.invite.copyLink}
+                </Text>
+              </TouchableOpacity>
+            )}
+            {onDismiss && (
+              <TouchableOpacity onPress={onDismiss} style={styles.linkBtn}>
+                <Text style={styles.linkLabel}>{uiCopy.common.cancel}</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -156,7 +192,12 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.surface,
   },
-  brand: { ...typography.heading, fontSize: 14, color: colors.textSecondary, marginBottom: spacing.sm },
+  brand: {
+    ...typography.heading,
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+  },
   title: { ...typography.heading, color: colors.textPrimary, marginBottom: spacing.md },
   body: { ...typography.body, color: colors.textPrimary, marginBottom: spacing.sm, lineHeight: 22 },
   notSelfService: {
@@ -167,12 +208,36 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   emph: { fontWeight: '700' },
-  meta: { ...typography.label, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.md, lineHeight: 18 },
-  emailHint: { ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.sm, lineHeight: 18 },
+  meta: {
+    ...typography.label,
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: spacing.md,
+    lineHeight: 18,
+  },
+  emailHint: {
+    ...typography.body,
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+    lineHeight: 18,
+  },
   emailHintValue: { fontWeight: '700', color: colors.textPrimary },
-  hint: { ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.sm, lineHeight: 18 },
-  nextSteps: { ...typography.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.lg, lineHeight: 18 },
-  error: { ...typography.body, fontSize: 12, color: '#C0392B', marginBottom: spacing.md },
+  hint: {
+    ...typography.body,
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+    lineHeight: 18,
+  },
+  nextSteps: {
+    ...typography.body,
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: spacing.lg,
+    lineHeight: 18,
+  },
+  error: { ...typography.body, fontSize: 12, color: colors.errorDark, marginBottom: spacing.md },
   btnCol: { gap: spacing.sm },
   primaryBtn: {
     backgroundColor: colors.textPrimary,

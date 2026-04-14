@@ -8,14 +8,7 @@
  * here is always consistent with what Clients can filter on.
  */
 import React, { useMemo, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  TextInput,
-  ScrollView,
-} from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { uiCopy } from '../constants/uiCopy';
 import { AGENCY_SEGMENT_TYPES } from '../constants/agencyTypes';
@@ -125,7 +118,6 @@ const ModelEditDetailsPanel: React.FC<Props> = ({ state, onChange }) => {
 
   return (
     <View style={styles.container}>
-
       {/* ── Identity ── */}
       <Text style={styles.sectionHeader}>{uiCopy.modelEdit.sectionIdentity}</Text>
 
@@ -156,11 +148,13 @@ const ModelEditDetailsPanel: React.FC<Props> = ({ state, onChange }) => {
       {/* ── Sex ── */}
       <Text style={styles.sectionHeader}>{uiCopy.modelEdit.sectionSex}</Text>
       <View style={[styles.group, styles.pills]}>
-        {([
-          { key: null,     label: uiCopy.modelEdit.sexNotSpecified },
-          { key: 'female', label: uiCopy.modelEdit.sexFemale },
-          { key: 'male',   label: uiCopy.modelEdit.sexMale },
-        ] as const).map((opt) => {
+        {(
+          [
+            { key: null, label: uiCopy.modelEdit.sexNotSpecified },
+            { key: 'female', label: uiCopy.modelEdit.sexFemale },
+            { key: 'male', label: uiCopy.modelEdit.sexMale },
+          ] as const
+        ).map((opt) => {
           const active = state.sex === opt.key;
           return (
             <TouchableOpacity
@@ -168,9 +162,7 @@ const ModelEditDetailsPanel: React.FC<Props> = ({ state, onChange }) => {
               style={[styles.pill, active && styles.pillActive]}
               onPress={() => set({ sex: opt.key })}
             >
-              <Text style={[styles.pillLabel, active && styles.pillLabelActive]}>
-                {opt.label}
-              </Text>
+              <Text style={[styles.pillLabel, active && styles.pillLabelActive]}>{opt.label}</Text>
             </TouchableOpacity>
           );
         })}
@@ -304,11 +296,15 @@ const ModelEditDetailsPanel: React.FC<Props> = ({ state, onChange }) => {
 
       <View style={styles.group}>
         {state.ethnicity && (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.xs }}>
-            <TouchableOpacity
-              style={styles.chip}
-              onPress={() => set({ ethnicity: null })}
-            >
+          <View
+            style={{
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              gap: spacing.xs,
+              marginBottom: spacing.xs,
+            }}
+          >
+            <TouchableOpacity style={styles.chip} onPress={() => set({ ethnicity: null })}>
               <Text style={styles.chipLabel}>{state.ethnicity}</Text>
               <Text style={styles.chipRemove}>×</Text>
             </TouchableOpacity>
@@ -330,7 +326,11 @@ const ModelEditDetailsPanel: React.FC<Props> = ({ state, onChange }) => {
 
           {ethnicityDropdownOpen && (
             <View style={styles.dropdown}>
-              <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled showsVerticalScrollIndicator>
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                nestedScrollEnabled
+                showsVerticalScrollIndicator
+              >
                 {ETHNICITY_OPTIONS.map((eth, i) => {
                   const selected = state.ethnicity === eth;
                   return (
@@ -346,7 +346,12 @@ const ModelEditDetailsPanel: React.FC<Props> = ({ state, onChange }) => {
                         setEthnicityDropdownOpen(false);
                       }}
                     >
-                      <Text style={[styles.dropdownItemText, selected && styles.dropdownItemTextSelected]}>
+                      <Text
+                        style={[
+                          styles.dropdownItemText,
+                          selected && styles.dropdownItemTextSelected,
+                        ]}
+                      >
                         {eth}
                       </Text>
                       {selected && <Text style={styles.checkmark}>✓</Text>}
@@ -361,7 +366,14 @@ const ModelEditDetailsPanel: React.FC<Props> = ({ state, onChange }) => {
 
       {/* ── Location ── */}
       <Text style={styles.sectionHeader}>{uiCopy.modelEdit.sectionLocation}</Text>
-      <Text style={{ fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm, lineHeight: 15 }}>
+      <Text
+        style={{
+          fontSize: 11,
+          color: colors.textSecondary,
+          marginBottom: spacing.sm,
+          lineHeight: 15,
+        }}
+      >
         {uiCopy.modelEdit.countryNearMeHint}
       </Text>
 
@@ -405,7 +417,11 @@ const ModelEditDetailsPanel: React.FC<Props> = ({ state, onChange }) => {
 
             {countryDropdownOpen && filteredCountryOptions.length > 0 && (
               <View style={styles.dropdown}>
-                <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled showsVerticalScrollIndicator>
+                <ScrollView
+                  keyboardShouldPersistTaps="handled"
+                  nestedScrollEnabled
+                  showsVerticalScrollIndicator
+                >
                   {filteredCountryOptions.map((c, i) => (
                     <TouchableOpacity
                       key={c.code}
@@ -496,7 +512,6 @@ const ModelEditDetailsPanel: React.FC<Props> = ({ state, onChange }) => {
           </TouchableOpacity>
         </View>
       </View>
-
     </View>
   );
 };
@@ -544,7 +559,7 @@ const styles = StyleSheet.create({
   },
   pillActive: {
     borderColor: colors.accentBrown,
-    backgroundColor: '#F3EEE7',
+    backgroundColor: colors.surfaceWarm,
   },
   pillLabel: {
     ...typography.label,
@@ -617,7 +632,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   dropdownItemSelected: {
-    backgroundColor: '#F3EEE7',
+    backgroundColor: colors.surfaceWarm,
   },
   dropdownItemText: {
     ...typography.body,

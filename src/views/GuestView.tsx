@@ -764,6 +764,13 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
         initialNumToRender={6}
         maxToRenderPerBatch={6}
         windowSize={5}
+        ListEmptyComponent={
+          <View style={{ padding: spacing.lg, alignItems: 'center' }}>
+            <Text style={{ ...typography.body, color: colors.textSecondary }}>
+              {uiCopy.guestFlow.noModelsInPackage}
+            </Text>
+          </View>
+        }
         renderItem={({ item: m }: ListRenderItemInfo<GuestLinkModel>) => {
           const allImages = getGalleryImages(m);
           const imageCount = allImages.length;
@@ -990,7 +997,7 @@ const styles = StyleSheet.create({
   },
   errorText: {
     ...typography.body,
-    color: '#C0392B',
+    color: colors.errorDark,
     textAlign: 'center',
     marginBottom: spacing.sm,
   },
@@ -1058,7 +1065,7 @@ const styles = StyleSheet.create({
     aspectRatio: 3 / 4,
     borderRadius: 8,
     overflow: 'hidden',
-    backgroundColor: '#E8E6E0',
+    backgroundColor: colors.surfaceAlt,
   },
   guestStarBtn: {
     position: 'absolute',
@@ -1126,7 +1133,7 @@ const styles = StyleSheet.create({
   },
   selectedBadgeText: { color: colors.surface, fontSize: 14, fontWeight: '700' },
   modelImage: { width: '100%', height: 200 },
-  modelImageBrowse: { width: '100%', height: '100%', backgroundColor: '#E8E6E0' },
+  modelImageBrowse: { width: '100%', height: '100%', backgroundColor: colors.surfaceAlt },
   modelImagePlaceholder: {
     width: '100%',
     height: 200,

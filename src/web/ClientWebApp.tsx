@@ -302,6 +302,7 @@ const CLIENT_PRIMARY_BOTTOM_TABS: TopTab[] = [
   'calendar',
   'agencies',
   'projects',
+  'team',
   'profile',
 ];
 
@@ -3822,7 +3823,7 @@ const galStyles = StyleSheet.create({
     aspectRatio: 3 / 4,
     borderRadius: 8,
     overflow: 'hidden',
-    backgroundColor: '#E8E6E0',
+    backgroundColor: colors.surfaceAlt,
   },
   tileImage: {
     width: '100%',
@@ -6273,9 +6274,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     accessibilityLabel={uiCopy.common.delete}
                   >
-                    <Text style={{ fontSize: 18, color: colors.buttonSkipRed ?? '#c0392b' }}>
-                      🗑️
-                    </Text>
+                    <Text style={{ fontSize: 18, color: colors.buttonSkipRed }}>🗑️</Text>
                   </TouchableOpacity>
                 ) : null
               }
@@ -7971,13 +7970,13 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
                           style={{
                             borderRadius: 999,
                             borderWidth: 1,
-                            borderColor: '#e74c3c',
+                            borderColor: colors.error,
                             paddingVertical: spacing.sm,
                             alignItems: 'center',
                             opacity: dissolvingOrg ? 0.6 : 1,
                           }}
                         >
-                          <Text style={{ ...typography.label, fontSize: 12, color: '#e74c3c' }}>
+                          <Text style={{ ...typography.label, fontSize: 12, color: colors.error }}>
                             {dissolvingOrg
                               ? uiCopy.accountDeletion.dissolveOrgWorking
                               : uiCopy.accountDeletion.dissolveOrgButton}
@@ -8028,12 +8027,12 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
                       style={{
                         borderRadius: 999,
                         borderWidth: 1,
-                        borderColor: '#e74c3c',
+                        borderColor: colors.error,
                         paddingVertical: spacing.sm,
                         alignItems: 'center',
                       }}
                     >
-                      <Text style={{ ...typography.label, fontSize: 12, color: '#e74c3c' }}>
+                      <Text style={{ ...typography.label, fontSize: 12, color: colors.error }}>
                         {deleting
                           ? uiCopy.accountDeletion.buttonWorking
                           : uiCopy.accountDeletion.button}
@@ -8069,12 +8068,12 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
                       style={{
                         borderRadius: 999,
                         borderWidth: 1,
-                        borderColor: '#e74c3c',
+                        borderColor: colors.error,
                         paddingVertical: spacing.sm,
                         alignItems: 'center',
                       }}
                     >
-                      <Text style={{ ...typography.label, fontSize: 12, color: '#e74c3c' }}>
+                      <Text style={{ ...typography.label, fontSize: 12, color: colors.error }}>
                         {deleting
                           ? uiCopy.accountDeletion.buttonWorking
                           : uiCopy.accountDeletion.button}
@@ -8322,7 +8321,7 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#E74C3C',
+    backgroundColor: colors.error,
   },
   bottomTabUnderline: {
     marginTop: 4,
@@ -8573,7 +8572,7 @@ const styles = StyleSheet.create({
   packageGridImage: {
     width: '100%',
     height: '100%',
-    backgroundColor: '#D0CEC7',
+    backgroundColor: colors.borderLight,
   },
   clientGalleryScrollContent: {
     paddingTop: spacing.xs,
@@ -8598,7 +8597,7 @@ const styles = StyleSheet.create({
   clientGalleryImage: {
     width: '100%',
     height: '100%',
-    backgroundColor: '#D0CEC7',
+    backgroundColor: colors.borderLight,
   },
   clientGalleryStarBtn: {
     position: 'absolute',
@@ -8692,7 +8691,7 @@ const styles = StyleSheet.create({
   coverImage: {
     width: '100%',
     height: '100%',
-    backgroundColor: '#D0CEC7',
+    backgroundColor: colors.borderLight,
   },
   coverGradientOverlay: {
     position: 'absolute',
@@ -8761,7 +8760,7 @@ const styles = StyleSheet.create({
   } as any,
   coverImageShell: {
     height: 360,
-    backgroundColor: '#D0CEC7',
+    backgroundColor: colors.borderLight,
   },
   coverImagePlaceholder: {
     flex: 1,
@@ -9176,7 +9175,7 @@ const styles = StyleSheet.create({
     aspectRatio: 3 / 4,
     maxHeight: 560,
     marginBottom: spacing.md,
-    backgroundColor: '#E8E6E0',
+    backgroundColor: colors.surfaceAlt,
     borderRadius: 10,
     overflow: 'hidden',
   },
@@ -9187,7 +9186,7 @@ const styles = StyleSheet.create({
   detailGalleryHeroImage: {
     width: '100%',
     height: '100%',
-    backgroundColor: '#D0CEC7',
+    backgroundColor: colors.borderLight,
   },
   detailGalleryHeroArrow: {
     position: 'absolute',
@@ -9282,7 +9281,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     marginRight: spacing.xs,
-    backgroundColor: '#D0CEC7',
+    backgroundColor: colors.borderLight,
   },
   calendarRow: {
     flexDirection: 'row',
@@ -9296,7 +9295,7 @@ const styles = StyleSheet.create({
     borderColor: colors.accentBrown,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
-    backgroundColor: '#F3EEE7',
+    backgroundColor: colors.surfaceWarm,
   },
   blockedPillLabel: {
     ...typography.label,
@@ -9365,7 +9364,7 @@ const styles = StyleSheet.create({
   deleteProjectLabel: {
     ...typography.label,
     fontSize: 11,
-    color: '#e74c3c',
+    color: colors.error,
   },
   projectCard: {
     borderRadius: 16,
@@ -9503,7 +9502,7 @@ const styles = StyleSheet.create({
   overviewModelError: {
     ...typography.label,
     fontSize: 11,
-    color: '#e74c3c',
+    color: colors.error,
     marginTop: 2,
   },
   overviewDeleteBtn: {
@@ -9511,7 +9510,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#e74c3c',
+    borderColor: colors.error,
     alignItems: 'center',
   },
   overviewDeleteBtnBusy: {
@@ -9520,7 +9519,7 @@ const styles = StyleSheet.create({
   overviewDeleteBtnLabel: {
     ...typography.label,
     fontSize: 11,
-    color: '#e74c3c',
+    color: colors.error,
     fontWeight: '600',
   },
   filterGroup: {
@@ -9547,7 +9546,7 @@ const styles = StyleSheet.create({
   },
   filterPillActive: {
     borderColor: colors.accentBrown,
-    backgroundColor: '#F3EEE7',
+    backgroundColor: colors.surfaceWarm,
   },
   filterPillLabel: {
     ...typography.label,
