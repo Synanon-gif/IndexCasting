@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { uiCopy } from '../constants/uiCopy';
-import { generateModelsPdf, downloadBlob, type PdfModelInput } from '../utils/pdfExport';
+import type { PdfModelInput } from '../utils/pdfExport';
 
 type PdfExportModalProps = {
   visible: boolean;
@@ -30,6 +30,16 @@ export function PdfExportModal({ visible, onClose, models, entityName }: PdfExpo
   );
   const [generating, setGenerating] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [isError, setIsError] = useState(false);
+
+  useEffect(() => {
+    if (visible) {
+      setSelected(new Set(models.map((_, i) => String(i))));
+      setFeedback(null);
+      setIsError(false);
+      setGenerating(false);
+    }
+  }, [visible, models]);
 
   const allSelected = selected.size === models.length;
 
@@ -62,11 +72,14 @@ export function PdfExportModal({ visible, onClose, models, entityName }: PdfExpo
     if (selectedModels.length === 0) return;
     setGenerating(true);
     setFeedback(null);
+    setIsError(false);
     try {
+      const { generateModelsPdf, downloadBlob } = await import('../utils/pdfExport');
       const blob = await generateModelsPdf(selectedModels, entityName);
       const safeName = entityName.replace(/[^a-zA-Z0-9_\- ]/g, '').trim() || 'Export';
       downloadBlob(blob, `IndexCasting-${safeName}.pdf`);
       setFeedback(copy.success);
+      setIsError(false);
       setTimeout(() => {
         setFeedback(null);
         onClose();
@@ -74,6 +87,7 @@ export function PdfExportModal({ visible, onClose, models, entityName }: PdfExpo
     } catch (e) {
       console.error('[PdfExportModal] generation failed:', e);
       setFeedback(copy.errorGeneric);
+      setIsError(true);
     } finally {
       setGenerating(false);
     }
@@ -125,7 +139,9 @@ export function PdfExportModal({ visible, onClose, models, entityName }: PdfExpo
             })}
           </ScrollView>
 
-          {feedback ? <Text style={styles.feedback}>{feedback}</Text> : null}
+          {feedback ? (
+            <Text style={[styles.feedback, isError && styles.feedbackError]}>{feedback}</Text>
+          ) : null}
 
           <View style={styles.actions}>
             <TouchableOpacity style={styles.cancelBtn} onPress={onClose} disabled={generating}>
@@ -255,6 +271,9 @@ const styles = StyleSheet.create({
     color: colors.accentGreen,
     textAlign: 'center',
     marginTop: spacing.sm,
+  },
+  feedbackError: {
+    color: colors.buttonSkipRed,
   },
   actions: {
     flexDirection: 'row',

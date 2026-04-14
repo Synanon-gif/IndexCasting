@@ -1,5 +1,3 @@
-import { jsPDF } from 'jspdf';
-
 export type PdfModelInput = {
   name: string;
   city: string;
@@ -14,7 +12,9 @@ const PAGE_W = 210;
 const PAGE_H = 297;
 const MARGIN = 15;
 const CONTENT_W = PAGE_W - 2 * MARGIN;
-const IMAGE_TIMEOUT_MS = 10_000;
+const IMAGE_TIMEOUT_MS = 12_000;
+const FOOTER_Y = PAGE_H - 8;
+const FOOTER_TEXT = 'Generated via Index Casting';
 
 /**
  * Load a remote image and convert it to a JPEG data-URL via an off-screen
@@ -72,12 +72,21 @@ function formatMeasurement(value: number | null): string {
   return value != null ? `${value} cm` : '—';
 }
 
-/**
- * Add an image to the PDF, scaling it to fit within `maxW` x `maxH` (mm) while
- * preserving the aspect ratio. Returns the actual height consumed.
- */
+type JsPDFInstance = {
+  setProperties: (props: { title?: string }) => void;
+  setFont: (name: string, style: string) => void;
+  setFontSize: (size: number) => void;
+  setTextColor: (r: number, g: number, b: number) => void;
+  text: (text: string, x: number, y: number) => void;
+  addImage: (data: string, format: string, x: number, y: number, w: number, h: number) => void;
+  addPage: () => void;
+  output: (type: 'blob') => Blob;
+  internal: { getNumberOfPages: () => number; pages: unknown[] };
+  setPage: (page: number) => void;
+};
+
 function addScaledImage(
-  doc: jsPDF,
+  doc: JsPDFInstance,
   dataUrl: string,
   imgW: number,
   imgH: number,
@@ -98,8 +107,16 @@ function addScaledImage(
   return drawH;
 }
 
-function ensureSpace(doc: jsPDF, cursorY: number, needed: number): number {
-  if (cursorY + needed > PAGE_H - MARGIN) {
+function addFooter(doc: JsPDFInstance): void {
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(150, 150, 150);
+  doc.text(FOOTER_TEXT, MARGIN, FOOTER_Y);
+  doc.setTextColor(0, 0, 0);
+}
+
+function ensureSpace(doc: JsPDFInstance, cursorY: number, needed: number): number {
+  if (cursorY + needed > PAGE_H - MARGIN - 10) {
     doc.addPage();
     return MARGIN;
   }
@@ -110,28 +127,32 @@ export async function generateModelsPdf(
   models: PdfModelInput[],
   entityName: string,
 ): Promise<Blob> {
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const jspdfModule = await import('jspdf');
+  const JsPDFClass = jspdfModule.jsPDF;
+  const doc: JsPDFInstance = new JsPDFClass({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+  }) as unknown as JsPDFInstance;
 
   doc.setProperties({ title: entityName });
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(18);
-  doc.text(entityName, MARGIN, MARGIN + 6);
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.setTextColor(150, 150, 150);
-  doc.text('Generated via Index Casting', MARGIN, PAGE_H - 8);
-  doc.setTextColor(0, 0, 0);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(20);
+  doc.text(entityName, MARGIN, MARGIN + 8);
+
+  let headerOffset = MARGIN + 16;
 
   let isFirstModel = true;
 
   for (const model of models) {
     if (!isFirstModel) {
       doc.addPage();
+      headerOffset = MARGIN;
     }
     isFirstModel = false;
 
-    let y = MARGIN;
+    let y = headerOffset;
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(16);
@@ -175,7 +196,7 @@ export async function generateModelsPdf(
     }
 
     const cover = images[0];
-    const maxCoverH = PAGE_H - MARGIN - y - 5;
+    const maxCoverH = FOOTER_Y - 12 - y;
     const coverH = addScaledImage(
       doc,
       cover.dataUrl,
@@ -228,6 +249,16 @@ export async function generateModelsPdf(
     }
   }
 
+  const totalPages =
+    typeof doc.internal.getNumberOfPages === 'function'
+      ? doc.internal.getNumberOfPages()
+      : (doc.internal.pages?.length ?? 1) - 1;
+
+  for (let p = 1; p <= totalPages; p++) {
+    doc.setPage(p);
+    addFooter(doc);
+  }
+
   return doc.output('blob');
 }
 
@@ -239,5 +270,5 @@ export function downloadBlob(blob: Blob, filename: string): void {
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
