@@ -489,12 +489,17 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
         ? uiCopy.adminDashboard.orgConvertToAgencyConfirm
         : uiCopy.adminDashboard.orgConvertToClientConfirm;
 
-    const proceed = await new Promise<boolean>((resolve) => {
-      Alert.alert(uiCopy.adminDashboard.orgConvertConfirmTitle, confirmMsg, [
-        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-        { text: 'Convert', style: 'destructive', onPress: () => resolve(true) },
-      ]);
-    });
+    let proceed = false;
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      proceed = window.confirm(`${uiCopy.adminDashboard.orgConvertConfirmTitle}\n\n${confirmMsg}`);
+    } else {
+      proceed = await new Promise<boolean>((resolve) => {
+        Alert.alert(uiCopy.adminDashboard.orgConvertConfirmTitle, confirmMsg, [
+          { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+          { text: 'Convert', style: 'destructive', onPress: () => resolve(true) },
+        ]);
+      });
+    }
     if (!proceed) return;
 
     setOrgConvertingId(org.id);
@@ -504,7 +509,10 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
       setExpandedOrgId(null);
       await loadData();
     } else {
-      showFeedback(uiCopy.adminDashboard.orgConvertFailed, false);
+      showFeedback(
+        `${uiCopy.adminDashboard.orgConvertFailed} ${!result.ok ? result.error : ''}`,
+        false,
+      );
     }
     setOrgConvertingId(null);
   };
