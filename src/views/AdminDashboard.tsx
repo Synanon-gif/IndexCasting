@@ -1048,10 +1048,12 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
             const isToggling = orgTogglingId === org.id;
             const ownerName = orgOwnerNames[org.id];
 
-            // Ghost-org heuristic: sole member AND org name matches owner's
-            // personal display_name — likely auto-created bootstrap org.
+            // Ghost-org heuristic: sole-member CLIENT org whose name matches the
+            // owner's personal display_name — likely auto-created bootstrap org.
+            // Agencies are never ghost: bootstrap creates agency orgs intentionally.
             const ownerProfile = profiles.find((p) => p.id === org.owner_id);
             const isGhostOrg = !!(
+              org.type === 'client' &&
               ownerProfile?.display_name &&
               org.member_count <= 1 &&
               org.name.trim().toLowerCase() === ownerProfile.display_name.trim().toLowerCase()
