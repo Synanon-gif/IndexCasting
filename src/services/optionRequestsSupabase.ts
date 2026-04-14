@@ -16,7 +16,7 @@ import {
   checkExtensionConsistency,
   CHAT_ALLOWED_MIME_TYPES,
 } from '../../lib/validation';
-import { convertHeicToJpegWithStatus } from './imageUtils';
+import { convertHeicToJpegWithStatus, stripExifAndCompress } from './imageUtils';
 import { checkAndIncrementStorage, decrementStorage } from './agencyStorageSupabase';
 import { guardUploadSession } from './gdprComplianceSupabase';
 import { logAction } from '../utils/logAction';
@@ -1470,6 +1470,9 @@ export async function uploadOptionDocument(
       return null;
     }
 
+    if ((file.type ?? '').startsWith('image/')) {
+      file = await stripExifAndCompress(file);
+    }
     const safeBaseName =
       file instanceof File ? sanitizeUploadBaseName(file.name) : sanitizeUploadBaseName(fileName);
 

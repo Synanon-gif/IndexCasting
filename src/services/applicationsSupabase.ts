@@ -1,6 +1,11 @@
 import { supabase } from '../../lib/supabase';
 import { splitProfileDisplayName } from '../utils/applicantNameFromProfile';
-import { validateFile, checkMagicBytes, checkExtensionConsistency } from '../../lib/validation';
+import {
+  validateFile,
+  checkMagicBytes,
+  checkExtensionConsistency,
+  sanitizeUploadBaseName,
+} from '../../lib/validation';
 import { convertHeicToJpegWithStatus } from './imageUtils';
 import { toStorageUri, resolveStorageUrl } from '../storage/storageUrl';
 import {
@@ -84,8 +89,9 @@ export async function uploadApplicationImage(
     }
   }
 
-  const ext = file instanceof File ? (file.name.split('.').pop() || 'jpg') : 'jpg';
-  const path = `${APPLICATION_IMAGES_PREFIX}/${Date.now()}-${slot}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const ext = file instanceof File ? file.name.split('.').pop() || 'jpg' : 'jpg';
+  const rawBase = `${Date.now()}-${slot}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const path = `${APPLICATION_IMAGES_PREFIX}/${sanitizeUploadBaseName(rawBase)}`;
   const { error } = await supabase.storage.from(APPLICATION_IMAGES_BUCKET).upload(path, file, {
     contentType: file.type || 'image/jpeg',
     upsert: false,
@@ -165,7 +171,9 @@ export async function getApplications(
     return [];
   }
   if (agencyId === undefined) {
-    console.warn('[getApplications] called without agencyId — relying on RLS only (no defense-in-depth org filter)');
+    console.warn(
+      '[getApplications] called without agencyId — relying on RLS only (no defense-in-depth org filter)',
+    );
   }
   try {
     let q = supabase
@@ -181,7 +189,10 @@ export async function getApplications(
     }
     if (opts?.afterCreatedAt) q = q.lt('created_at', opts.afterCreatedAt);
     const { data, error } = await q;
-    if (error) { console.error('getApplications error:', error); return []; }
+    if (error) {
+      console.error('getApplications error:', error);
+      return [];
+    }
     return (data ?? []) as SupabaseApplication[];
   } catch (e) {
     console.error('getApplications exception:', e);
@@ -190,7 +201,9 @@ export async function getApplications(
 }
 
 /** Single application row (RLS: agency or applicant). */
-export async function fetchApplicationById(applicationId: string): Promise<SupabaseApplication | null> {
+export async function fetchApplicationById(
+  applicationId: string,
+): Promise<SupabaseApplication | null> {
   try {
     const { data, error } = await supabase
       .from('model_applications')
@@ -218,7 +231,9 @@ export async function getApplicationsByStatus(
     return [];
   }
   if (agencyId === undefined) {
-    console.warn('[getApplicationsByStatus] called without agencyId — relying on RLS only (no defense-in-depth org filter)');
+    console.warn(
+      '[getApplicationsByStatus] called without agencyId — relying on RLS only (no defense-in-depth org filter)',
+    );
   }
   try {
     let q = supabase
@@ -232,7 +247,10 @@ export async function getApplicationsByStatus(
     }
     if (opts?.afterCreatedAt) q = q.lt('created_at', opts.afterCreatedAt);
     const { data, error } = await q;
-    if (error) { console.error('getApplicationsByStatus error:', error); return []; }
+    if (error) {
+      console.error('getApplicationsByStatus error:', error);
+      return [];
+    }
     return (data ?? []) as SupabaseApplication[];
   } catch (e) {
     console.error('getApplicationsByStatus exception:', e);
@@ -246,7 +264,9 @@ export async function getApplicationsByStatus(
  * correct agency name regardless of whether the application was targeted
  * (agency_id set) or submitted globally (agency_id NULL, accepted_by_agency_id set).
  */
-export async function getApplicationsForApplicant(applicantUserId: string): Promise<SupabaseApplication[]> {
+export async function getApplicationsForApplicant(
+  applicantUserId: string,
+): Promise<SupabaseApplication[]> {
   try {
     const { data, error } = await supabase
       .from('model_applications')
@@ -303,7 +323,7 @@ export async function insertApplication(app: {
     }
 
     const { firstName: fn, lastName: ln } = splitProfileDisplayName(
-      (prof as { display_name?: string | null } | null)?.display_name
+      (prof as { display_name?: string | null } | null)?.display_name,
     );
     if (!fn.trim()) {
       console.error('insertApplication: profile display_name empty');
@@ -388,7 +408,7 @@ export async function insertApplication(app: {
 export async function updateApplicationStatus(
   id: string,
   status: ApplicationStatus,
-  extra?: { recruiting_thread_id?: string; accepted_by_agency_id?: string }
+  extra?: { recruiting_thread_id?: string; accepted_by_agency_id?: string },
 ): Promise<boolean> {
   const priorStatusMap: Record<ApplicationStatus, ApplicationStatus> = {
     pending_model_confirmation: 'pending',
@@ -429,7 +449,7 @@ export async function updateApplicationStatus(
 /** Set recruiting thread on a pending application (so agency can chat before accepting). */
 export async function updateApplicationRecruitingThread(
   applicationId: string,
-  recruitingThreadId: string
+  recruitingThreadId: string,
 ): Promise<boolean> {
   try {
     const { data, error } = await supabase
@@ -445,7 +465,10 @@ export async function updateApplicationRecruitingThread(
       return false;
     }
     if (!data?.id) {
-      console.error('updateApplicationRecruitingThread: no row updated (not pending or wrong id)', applicationId);
+      console.error(
+        'updateApplicationRecruitingThread: no row updated (not pending or wrong id)',
+        applicationId,
+      );
       return false;
     }
     return true;
@@ -456,7 +479,10 @@ export async function updateApplicationRecruitingThread(
 }
 
 /** Bewerbung löschen (nur für Applicant, nur pending/rejected). RLS muss DELETE für eigene Zeilen erlauben. */
-export async function deleteApplication(applicationId: string, applicantUserId: string): Promise<boolean> {
+export async function deleteApplication(
+  applicationId: string,
+  applicantUserId: string,
+): Promise<boolean> {
   try {
     const { error } = await supabase
       .from('model_applications')
@@ -532,7 +558,10 @@ export async function confirmApplicationByModel(
       return null;
     }
     if (!data?.id) {
-      console.warn('confirmApplicationByModel: no row updated (wrong id / status / RLS)', applicationId);
+      console.warn(
+        'confirmApplicationByModel: no row updated (wrong id / status / RLS)',
+        applicationId,
+      );
       return null;
     }
 
@@ -568,7 +597,10 @@ export async function rejectApplicationByModel(
       return false;
     }
     if (!data?.id) {
-      console.warn('rejectApplicationByModel: no row updated (wrong id / status / RLS)', applicationId);
+      console.warn(
+        'rejectApplicationByModel: no row updated (wrong id / status / RLS)',
+        applicationId,
+      );
       return false;
     }
     return true;
@@ -597,7 +629,8 @@ export async function notifyAgencyOfModelConfirmation(
       void createNotification({
         organization_id: org.id,
         type: 'application_model_confirmed',
-        title: uiCopy.notifications.applicationModelConfirmed?.title ?? 'Model confirmed representation',
+        title:
+          uiCopy.notifications.applicationModelConfirmed?.title ?? 'Model confirmed representation',
         message:
           uiCopy.notifications.applicationModelConfirmed?.message ??
           'The model accepted your representation offer.',

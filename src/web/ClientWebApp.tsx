@@ -54,6 +54,7 @@ import {
 import { getHeroResizeMode } from '../utils/discoverImageMode';
 import { useAuth } from '../context/AuthContext';
 import { getModelsForClient, getModelData } from '../services/apiService';
+import { getModelsByIdsForClientFromSupabase } from '../services/modelsSupabase';
 import {
   recordInteraction,
   getDiscoveryModels,
@@ -1343,6 +1344,32 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     [packageViewState, sharedProject, models],
   );
 
+  const [sharedProjectPortfolio, setSharedProjectPortfolio] = useState<Map<string, string[]>>(
+    new Map(),
+  );
+
+  useEffect(() => {
+    if (!isSharedMode || !sharedProject) {
+      setSharedProjectPortfolio(new Map());
+      return;
+    }
+    const ids = sharedProject.models.map((m) => m.id);
+    if (!ids.length) return;
+    let cancelled = false;
+    void getModelsByIdsForClientFromSupabase(ids).then((byId) => {
+      if (cancelled) return;
+      const map = new Map<string, string[]>();
+      for (const [id, model] of byId) {
+        const imgs = (model as { portfolio_images?: string[] }).portfolio_images ?? [];
+        if (imgs.length) map.set(id, imgs);
+      }
+      setSharedProjectPortfolio(map);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isSharedMode, sharedProject]);
+
   const pdfModels = useMemo((): PdfModelInput[] | undefined => {
     if (!isPackageMode && !isSharedMode) return undefined;
     if (isPackageMode && packageViewState) {
@@ -1358,18 +1385,21 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       }));
     }
     if (isSharedMode && sharedProject) {
-      return sharedProject.models.map((m) => ({
-        name: m.name,
-        city: summaryDisplayCity(m),
-        height: m.height ?? null,
-        chest: m.chest ?? m.bust ?? null,
-        waist: m.waist ?? null,
-        hips: m.hips ?? null,
-        imageUrls: m.coverUrl ? [m.coverUrl] : [],
-      }));
+      return sharedProject.models.map((m) => {
+        const portfolioImgs = sharedProjectPortfolio.get(m.id);
+        return {
+          name: m.name,
+          city: summaryDisplayCity(m),
+          height: m.height ?? null,
+          chest: m.chest ?? m.bust ?? null,
+          waist: m.waist ?? null,
+          hips: m.hips ?? null,
+          imageUrls: portfolioImgs?.length ? portfolioImgs : m.coverUrl ? [m.coverUrl] : [],
+        };
+      });
     }
     return undefined;
-  }, [isPackageMode, isSharedMode, packageViewState, sharedProject]);
+  }, [isPackageMode, isSharedMode, packageViewState, sharedProject, sharedProjectPortfolio]);
 
   const pdfEntityName = useMemo((): string | undefined => {
     if (isPackageMode && packageViewState) return packageViewState.name || 'Package';

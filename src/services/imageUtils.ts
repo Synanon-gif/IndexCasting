@@ -2,6 +2,33 @@
  * Shared image utilities for pre-upload processing.
  */
 
+import imageCompression from 'browser-image-compression';
+
+/**
+ * Strips EXIF metadata (including GPS coordinates) from an image by
+ * re-encoding it through the Canvas API via browser-image-compression.
+ * Works in browsers and Capacitor WKWebView (iOS/Android).
+ * Returns the original file if compression fails (graceful degradation).
+ * Only processes File objects — Blobs without a type are returned unchanged.
+ */
+export async function stripExifAndCompress(file: File | Blob): Promise<File | Blob> {
+  if (!(file instanceof File)) return file;
+  const mime = (file.type ?? '').toLowerCase();
+  if (!mime.startsWith('image/')) return file;
+  try {
+    const compressed = await imageCompression(file, {
+      maxSizeMB: 15,
+      useWebWorker: true,
+      maxWidthOrHeight: 4096,
+      fileType: file.type as 'image/jpeg' | 'image/png' | 'image/webp',
+    });
+    return compressed;
+  } catch (e) {
+    console.warn('stripExifAndCompress: compression failed, using original', e);
+    return file;
+  }
+}
+
 export type HeicConvertResult = {
   file: File | Blob;
   /** True when input was HEIC/HEIF but conversion failed; `file` is still HEIC/HEIF. */

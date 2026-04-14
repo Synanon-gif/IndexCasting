@@ -11,8 +11,7 @@ import {
   IMAGE_RIGHTS_WINDOW_MINUTES,
 } from './gdprComplianceSupabase';
 import { logAction } from '../utils/logAction';
-import imageCompression from 'browser-image-compression';
-import { convertHeicToJpegWithStatus } from './imageUtils';
+import { convertHeicToJpegWithStatus, stripExifAndCompress } from './imageUtils';
 import { checkAndIncrementStorage, decrementStorage } from './agencyStorageSupabase';
 import { uiCopy } from '../constants/uiCopy';
 import {
@@ -48,29 +47,6 @@ async function resolveOrgIdForModel(modelId: string): Promise<string | null> {
     return orgRow?.id ?? null;
   } catch {
     return null;
-  }
-}
-
-/**
- * Strips EXIF metadata (including GPS coordinates) from an image by
- * re-encoding it through the Canvas API via browser-image-compression.
- * Works in browsers and Capacitor WKWebView (iOS/Android).
- * Returns the original file if compression fails (graceful degradation).
- */
-async function stripExifAndCompress(file: File | Blob): Promise<File | Blob> {
-  if (!(file instanceof File)) return file;
-  try {
-    const compressed = await imageCompression(file, {
-      maxSizeMB: 15,
-      useWebWorker: true,
-      // Setting these ensures Canvas re-encoding, which strips EXIF
-      maxWidthOrHeight: 4096,
-      fileType: file.type as 'image/jpeg' | 'image/png' | 'image/webp',
-    });
-    return compressed;
-  } catch (e) {
-    console.warn('stripExifAndCompress: compression failed, using original', e);
-    return file;
   }
 }
 

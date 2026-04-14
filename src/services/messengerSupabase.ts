@@ -26,7 +26,7 @@ import {
   sanitizeUploadBaseName,
 } from '../../lib/validation';
 import { checkAndIncrementStorage, decrementStorage } from './agencyStorageSupabase';
-import { convertHeicToJpegWithStatus } from './imageUtils';
+import { convertHeicToJpegWithStatus, stripExifAndCompress } from './imageUtils';
 import { guardUploadSession } from './gdprComplianceSupabase';
 
 /** Session key prefix for B2B messenger file uploads — pair with `confirmImageRights`. */
@@ -732,12 +732,13 @@ export async function uploadChatFile(
     return null;
   }
 
-  const claimedSize = file instanceof File ? file.size : (file as Blob).size;
+  const safeFile = (file.type ?? '').startsWith('image/') ? await stripExifAndCompress(file) : file;
+  const claimedSize = safeFile instanceof File ? safeFile.size : (safeFile as Blob).size;
   const safeBaseName =
     file instanceof File ? sanitizeUploadBaseName(file.name) : sanitizeUploadBaseName(fileName);
   const path = `chat/${conversationId}/${Date.now()}_${safeBaseName}`;
-  const { error } = await supabase.storage.from('chat-files').upload(path, file, {
-    contentType: file.type || 'application/octet-stream',
+  const { error } = await supabase.storage.from('chat-files').upload(path, safeFile, {
+    contentType: safeFile.type || 'application/octet-stream',
     upsert: false,
   });
   if (error) {

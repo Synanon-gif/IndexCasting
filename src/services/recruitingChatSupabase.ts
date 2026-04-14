@@ -16,7 +16,7 @@ import {
   sanitizeUploadBaseName,
 } from '../../lib/validation';
 import { checkAndIncrementStorage, decrementStorage } from './agencyStorageSupabase';
-import { convertHeicToJpegWithStatus } from './imageUtils';
+import { convertHeicToJpegWithStatus, stripExifAndCompress } from './imageUtils';
 
 /** Reads the actual stored size of a recruiting chat file from storage.objects metadata. Best-effort — returns null on failure. */
 async function getActualChatFileSize(bucket: string, path: string): Promise<number | null> {
@@ -80,7 +80,9 @@ export async function getThreads(
     return [];
   }
   if (agencyId === undefined) {
-    console.warn('[getThreads] called without agencyId — relying on RLS only (no defense-in-depth org filter)');
+    console.warn(
+      '[getThreads] called without agencyId — relying on RLS only (no defense-in-depth org filter)',
+    );
   }
   try {
     let q = supabase
@@ -91,7 +93,10 @@ export async function getThreads(
     if (agencyId) q = q.eq('agency_id', agencyId);
     if (opts?.afterCreatedAt) q = q.lt('created_at', opts.afterCreatedAt);
     const { data, error } = await q;
-    if (error) { console.error('getThreads error:', error); return []; }
+    if (error) {
+      console.error('getThreads error:', error);
+      return [];
+    }
     return (data ?? []) as SupabaseRecruitingThread[];
   } catch (e) {
     console.error('getThreads exception:', e);
@@ -106,7 +111,10 @@ export async function getThread(threadId: string): Promise<SupabaseRecruitingThr
       .select('*')
       .eq('id', threadId)
       .maybeSingle();
-    if (error) { console.error('getThread error:', error); return null; }
+    if (error) {
+      console.error('getThread error:', error);
+      return null;
+    }
     return data as SupabaseRecruitingThread | null;
   } catch (e) {
     console.error('getThread exception:', e);
@@ -137,9 +145,13 @@ export async function getAgencyNamesByThreadIds(
       return {};
     }
 
-    const agencyIds = [...new Set(
-      threads.map((t: { id: string; agency_id: string | null }) => t.agency_id).filter(Boolean) as string[],
-    )];
+    const agencyIds = [
+      ...new Set(
+        threads
+          .map((t: { id: string; agency_id: string | null }) => t.agency_id)
+          .filter(Boolean) as string[],
+      ),
+    ];
 
     if (!agencyIds.length) return {};
 
@@ -171,7 +183,9 @@ export async function getAgencyNamesByThreadIds(
 }
 
 /** Latest thread for an application (heals orphaned threads if the app row was never linked). */
-export async function findLatestThreadIdForApplication(applicationId: string): Promise<string | null> {
+export async function findLatestThreadIdForApplication(
+  applicationId: string,
+): Promise<string | null> {
   try {
     const { data, error } = await supabase
       .from('recruiting_chat_threads')
@@ -195,10 +209,13 @@ export async function createThread(
   applicationId: string,
   modelName: string,
   agencyId?: string | null,
-  meta?: { organizationId?: string | null; createdBy?: string | null }
+  meta?: { organizationId?: string | null; createdBy?: string | null },
 ): Promise<string | null> {
   try {
-    const payload: Record<string, unknown> = { application_id: applicationId, model_name: modelName };
+    const payload: Record<string, unknown> = {
+      application_id: applicationId,
+      model_name: modelName,
+    };
     if (agencyId != null) payload.agency_id = agencyId;
     if (meta?.organizationId != null) payload.organization_id = meta.organizationId;
     if (meta?.createdBy != null) payload.created_by = meta.createdBy;
@@ -207,7 +224,10 @@ export async function createThread(
       .insert(payload)
       .select('id')
       .single();
-    if (error) { console.error('createThread error:', error); return null; }
+    if (error) {
+      console.error('createThread error:', error);
+      return null;
+    }
     return data?.id ?? null;
   } catch (e) {
     console.error('createThread exception:', e);
@@ -230,7 +250,10 @@ export async function getThreadsForAgency(
     if (options?.createdByUserId) q = q.eq('created_by', options.createdByUserId);
     if (options?.afterCreatedAt) q = q.lt('created_at', options.afterCreatedAt);
     const { data, error } = await q;
-    if (error) { console.error('getThreadsForAgency error:', error); return []; }
+    if (error) {
+      console.error('getThreadsForAgency error:', error);
+      return [];
+    }
     return (data ?? []) as SupabaseRecruitingThread[];
   } catch (e) {
     console.error('getThreadsForAgency exception:', e);
@@ -244,7 +267,10 @@ export async function updateThreadAgency(threadId: string, agencyId: string): Pr
     .from('recruiting_chat_threads')
     .update({ agency_id: agencyId })
     .eq('id', threadId);
-  if (error) { console.error('updateThreadAgency error:', error); return false; }
+  if (error) {
+    console.error('updateThreadAgency error:', error);
+    return false;
+  }
   return true;
 }
 
@@ -311,7 +337,10 @@ export async function getMessages(
     }
 
     const { data, error } = await q;
-    if (error) { console.error('getMessages error:', error); return []; }
+    if (error) {
+      console.error('getMessages error:', error);
+      return [];
+    }
     return ((data ?? []) as SupabaseRecruitingMessage[]).reverse();
   } catch (e) {
     console.error('getMessages exception:', e);
@@ -340,11 +369,20 @@ export async function addMessage(
     let safeText = '';
     if (normalized.trim().length > 0) {
       // Validate text length (only when text is provided)
-      const textCheck = validateText(normalized, { maxLength: MESSAGE_MAX_LENGTH, allowEmpty: false });
+      const textCheck = validateText(normalized, {
+        maxLength: MESSAGE_MAX_LENGTH,
+        allowEmpty: false,
+      });
       if (!textCheck.ok) {
         console.warn('addMessage: text validation failed', textCheck.error);
-        const { data: { user } } = await supabase.auth.getUser();
-        void logSecurityEvent({ type: 'large_payload', userId: user?.id ?? null, metadata: { service: 'recruitingChatSupabase', field: 'text' } });
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        void logSecurityEvent({
+          type: 'large_payload',
+          userId: user?.id ?? null,
+          metadata: { service: 'recruitingChatSupabase', field: 'text' },
+        });
         return null;
       }
       // Reject messages with unsafe URLs
@@ -352,15 +390,25 @@ export async function addMessage(
       const safeUrls = extractSafeUrls(normalized);
       if (allUrls.length > safeUrls.length) {
         console.warn('addMessage: message contains unsafe URLs');
-        const { data: { user } } = await supabase.auth.getUser();
-        void logSecurityEvent({ type: 'invalid_url', userId: user?.id ?? null, metadata: { service: 'recruitingChatSupabase' } });
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        void logSecurityEvent({
+          type: 'invalid_url',
+          userId: user?.id ?? null,
+          metadata: { service: 'recruitingChatSupabase' },
+        });
         return null;
       }
       // Sanitize before storage
       safeText = sanitizeHtml(normalized);
     }
 
-    const payload: Record<string, unknown> = { thread_id: threadId, from_role: fromRole, text: safeText };
+    const payload: Record<string, unknown> = {
+      thread_id: threadId,
+      from_role: fromRole,
+      text: safeText,
+    };
     if (fileUrl != null) payload.file_url = fileUrl;
     if (fileType != null) payload.file_type = fileType;
     const { data, error } = await supabase
@@ -368,7 +416,10 @@ export async function addMessage(
       .insert(payload)
       .select()
       .single();
-    if (error) { console.error('addMessage error:', error); return null; }
+    if (error) {
+      console.error('addMessage error:', error);
+      return null;
+    }
 
     // Fire-and-forget: notify the opposing party about the new recruiting message.
     void (async () => {
@@ -428,7 +479,11 @@ export async function uploadRecruitingChatFile(
     console.warn('uploadRecruitingChatFile: HEIC/HEIF conversion failed');
     void logSecurityEvent({
       type: 'file_rejected',
-      metadata: { service: 'recruitingChatSupabase', fn: 'uploadRecruitingChatFile', reason: 'heic_conversion_failed' },
+      metadata: {
+        service: 'recruitingChatSupabase',
+        fn: 'uploadRecruitingChatFile',
+        reason: 'heic_conversion_failed',
+      },
     });
     return null;
   }
@@ -438,21 +493,30 @@ export async function uploadRecruitingChatFile(
   const mimeCheck = validateFile(file, CHAT_ALLOWED_MIME_TYPES);
   if (!mimeCheck.ok) {
     console.warn('uploadRecruitingChatFile: file validation failed', mimeCheck.error);
-    void logSecurityEvent({ type: 'file_rejected', metadata: { service: 'recruitingChatSupabase', reason: 'mime' } });
+    void logSecurityEvent({
+      type: 'file_rejected',
+      metadata: { service: 'recruitingChatSupabase', reason: 'mime' },
+    });
     return null;
   }
   // Magic byte check — prevents renamed executables
   const magicCheck = await checkMagicBytes(file);
   if (!magicCheck.ok) {
     console.warn('uploadRecruitingChatFile: magic bytes check failed', magicCheck.error);
-    void logSecurityEvent({ type: 'magic_bytes_fail', metadata: { service: 'recruitingChatSupabase' } });
+    void logSecurityEvent({
+      type: 'magic_bytes_fail',
+      metadata: { service: 'recruitingChatSupabase' },
+    });
     return null;
   }
   // Extension consistency check
   const extCheck = checkExtensionConsistency(file);
   if (!extCheck.ok) {
     console.warn('uploadRecruitingChatFile: extension consistency check failed', extCheck.error);
-    void logSecurityEvent({ type: 'extension_mismatch', metadata: { service: 'recruitingChatSupabase' } });
+    void logSecurityEvent({
+      type: 'extension_mismatch',
+      metadata: { service: 'recruitingChatSupabase' },
+    });
     return null;
   }
 
@@ -466,11 +530,12 @@ export async function uploadRecruitingChatFile(
   // guardImageUpload() is intentionally not called here: recruiting chat attachments are
   // ephemeral communication documents shared between org members, not model portfolio photos.
   // The image_rights_confirmations audit applies only to model photo uploads (ModelMediaSettingsPanel).
-  const claimedSize = file instanceof File ? file.size : (file as Blob).size;
+  const safeFile = (file.type ?? '').startsWith('image/') ? await stripExifAndCompress(file) : file;
+  const claimedSize = safeFile instanceof File ? safeFile.size : (safeFile as Blob).size;
   const safeBaseName =
     file instanceof File ? sanitizeUploadBaseName(file.name) : sanitizeUploadBaseName(fileName);
   const path = `recruiting/${threadId}/${Date.now()}_${safeBaseName}`;
-  const { error } = await supabase.storage.from('chat-files').upload(path, file, {
+  const { error } = await supabase.storage.from('chat-files').upload(path, safeFile, {
     contentType: file.type || 'application/octet-stream',
     upsert: false,
   });
@@ -482,12 +547,15 @@ export async function uploadRecruitingChatFile(
 
   // BUG 3 FIX: read actual size from storage.objects post-upload and reconcile
   // any drift between the client-reported size and what was actually stored.
-  const actualSize = await getActualChatFileSize('chat-files', path) ?? claimedSize;
+  const actualSize = (await getActualChatFileSize('chat-files', path)) ?? claimedSize;
   if (actualSize !== claimedSize) {
     if (actualSize > claimedSize) {
       const driftResult = await checkAndIncrementStorage(actualSize - claimedSize);
       if (!driftResult.allowed) {
-        console.warn('[storage] uploadRecruitingChatFile: post-upload size drift exceeded limit — counter undercounted', { actualSize, claimedSize });
+        console.warn(
+          '[storage] uploadRecruitingChatFile: post-upload size drift exceeded limit — counter undercounted',
+          { actualSize, claimedSize },
+        );
       }
     } else {
       await decrementStorage(claimedSize - actualSize);
@@ -514,7 +582,10 @@ export async function getSignedRecruitingChatFileUrl(
     const { data, error } = await supabase.storage
       .from('chat-files')
       .createSignedUrl(storagePath, expiresInSeconds);
-    if (error) { console.error('getSignedRecruitingChatFileUrl error:', error); return null; }
+    if (error) {
+      console.error('getSignedRecruitingChatFileUrl error:', error);
+      return null;
+    }
     return data.signedUrl;
   } catch (e) {
     console.error('getSignedRecruitingChatFileUrl exception:', e);
@@ -564,9 +635,7 @@ export function isAgencyRecruitingChatRpcMissingError(err: unknown): boolean {
     msg.includes('public.agency_start_recruiting_chat');
   if (!namesThisRpc) return false;
   return (
-    msg.includes('schema cache') ||
-    msg.includes('could not find') ||
-    msg.includes('does not exist')
+    msg.includes('schema cache') || msg.includes('could not find') || msg.includes('does not exist')
   );
 }
 
@@ -608,9 +677,7 @@ export function normalizeAgencyRecruitingChatRpcUuid(data: unknown): string | nu
   if (data == null) return null;
   if (typeof data === 'string') {
     const t = data.trim();
-    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(t)
-      ? t
-      : null;
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(t) ? t : null;
   }
   if (Array.isArray(data)) {
     for (const item of data) {
@@ -684,7 +751,7 @@ export type AgencyStartRecruitingChatRpcResult =
 export async function agencyStartRecruitingChatRpc(
   applicationId: string,
   agencyId: string,
-  modelName: string
+  modelName: string,
 ): Promise<AgencyStartRecruitingChatRpcResult> {
   try {
     const { data, error } = await supabase.rpc('agency_start_recruiting_chat', {

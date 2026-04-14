@@ -109,10 +109,18 @@ export function StorageImage({
     resolveStorageUrl(uri, ttlSeconds).then((resolved) => {
       if (mountedRef.current && lastUriRef.current === uri) {
         setResolvedUri(resolved);
-        if (!resolved) setResolutionFailed(true);
+        if (!resolved) {
+          setResolutionFailed(true);
+          console.warn('[StorageImage] resolution failed', { uri });
+        }
       }
     });
   }, [uri, ttlSeconds]);
+
+  const handleError = React.useCallback(() => {
+    console.warn('[StorageImage] image load error', { uri, resolvedUri });
+    onError?.();
+  }, [uri, resolvedUri, onError]);
 
   if (!resolvedUri) {
     if (resolutionFailed || !uri) {
@@ -127,7 +135,7 @@ export function StorageImage({
       style={style}
       resizeMode={resizeMode}
       onLoad={onLoad}
-      onError={onError}
+      onError={handleError}
     />
   );
 }
