@@ -8,6 +8,7 @@
  */
 import { supabase } from '../../lib/supabase';
 import { pooledSubscribe } from './realtimeChannelPool';
+import { enqueueNotification } from '../utils/notificationBatcher';
 
 /** Spezifische Felder für notifications — kein SELECT * mehr. */
 const NOTIFICATION_SELECT =
@@ -55,11 +56,11 @@ export type CreateNotificationParams = {
 /**
  * Inserts one notification row. Silently logs errors — callers must not throw.
  */
-export async function createNotification(
-  params: CreateNotificationParams,
-): Promise<void> {
+export async function createNotification(params: CreateNotificationParams): Promise<void> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     const callerId = user?.id ?? null;
     const targetUserId = params.user_id ?? null;
 
@@ -67,17 +68,15 @@ export async function createNotification(
     // Use the SECURITY DEFINER RPC that validates the sender↔target relationship.
     // This prevents spam/phishing across unrelated organizations.
     const isCrossParty =
-      targetUserId !== null &&
-      targetUserId !== callerId &&
-      !params.organization_id;
+      targetUserId !== null && targetUserId !== callerId && !params.organization_id;
 
     if (isCrossParty) {
       const { error: rpcError } = await supabase.rpc('send_notification', {
         p_target_user_id: targetUserId,
-        p_type:           params.type,
-        p_title:          params.title,
-        p_message:        params.message,
-        p_metadata:       params.metadata ?? {},
+        p_type: params.type,
+        p_title: params.title,
+        p_message: params.message,
+        p_metadata: params.metadata ?? {},
       });
       if (rpcError) {
         console.error('createNotification (cross-party RPC) error:', rpcError);
@@ -141,17 +140,15 @@ export async function createNotification(
     }
 
     // Self-targeting, org member org-wide, or legacy paths without option/thread metadata.
-    const { error } = await supabase.from('notifications').insert({
-      user_id:         targetUserId,
+    // Batched: rows are collected and flushed as a single bulk INSERT within ~80ms.
+    enqueueNotification({
+      user_id: targetUserId,
       organization_id: orgId,
-      type:            params.type,
-      title:           params.title,
-      message:         params.message,
-      metadata:        meta,
+      type: params.type,
+      title: params.title,
+      message: params.message,
+      metadata: meta,
     });
-    if (error) {
-      console.error('createNotification error:', error);
-    }
   } catch (e) {
     console.error('createNotification exception:', e);
   }
@@ -176,7 +173,9 @@ export async function createNotifications(
  */
 export async function getNotificationsForCurrentUser(): Promise<Notification[]> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) return [];
 
     const { data, error } = await supabase
@@ -200,10 +199,7 @@ export async function getNotificationsForCurrentUser(): Promise<Notification[]> 
 
 export async function markNotificationAsRead(id: string): Promise<void> {
   try {
-    const { error } = await supabase
-      .from('notifications')
-      .update({ is_read: true })
-      .eq('id', id);
+    const { error } = await supabase.from('notifications').update({ is_read: true }).eq('id', id);
     if (error) {
       console.error('markNotificationAsRead error:', error);
     }
@@ -214,7 +210,9 @@ export async function markNotificationAsRead(id: string): Promise<void> {
 
 export async function markAllNotificationsAsRead(): Promise<void> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) return;
 
     const orgIds = await getUserOrganizationIds(user.id);
@@ -307,12 +305,11 @@ export type PushTokenPlatform = 'ios' | 'android' | 'web';
  * Idempotent: Bei erneutem Aufruf mit demselben Token wird nur `is_active = true`
  * gesetzt (ON CONFLICT DO UPDATE).
  */
-export async function registerPushToken(
-  token: string,
-  platform: PushTokenPlatform,
-): Promise<void> {
+export async function registerPushToken(token: string, platform: PushTokenPlatform): Promise<void> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) return;
 
     const { error } = await supabase
@@ -336,7 +333,9 @@ export async function registerPushToken(
  */
 export async function deregisterPushToken(token: string): Promise<void> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) return;
 
     const { error } = await supabase
@@ -366,9 +365,7 @@ async function getUserOrganizationIds(userId: string): Promise<string> {
       .select('organization_id')
       .eq('user_id', userId);
     if (error || !data) return '';
-    return (data as { organization_id: string }[])
-      .map((r) => r.organization_id)
-      .join(',');
+    return (data as { organization_id: string }[]).map((r) => r.organization_id).join(',');
   } catch {
     return '';
   }

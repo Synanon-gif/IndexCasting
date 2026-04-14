@@ -629,10 +629,8 @@ export async function modelUpdateOptionSchedule(
  */
 export async function setAgencyCounterOffer(id: string, counterPrice: number): Promise<boolean> {
   try {
-    // Axis 1 only: counter-offer is a PRICE action.
-    // final_status (Axis 2 — availability) MUST NOT be touched here.
-    // Resetting final_status to 'option_pending' would destroy a previously
-    // confirmed availability — violating the two-axis independence invariant.
+    await supabase.rpc('acquire_option_request_lock', { p_request_id: id }).throwOnError();
+
     const { data, error } = await supabase
       .from('option_requests')
       .update({

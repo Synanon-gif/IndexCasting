@@ -27,7 +27,7 @@ import { supabase } from '../../lib/supabase';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-export const STORAGE_BUCKET_IMAGES  = 'documentspictures';
+export const STORAGE_BUCKET_IMAGES = 'documentspictures';
 export const STORAGE_BUCKET_PRIVATE = 'documents';
 
 /** Default signed-URL TTL for authenticated app users (1 hour). */
@@ -41,12 +41,27 @@ const NEGATIVE_CACHE_TTL_SECONDS = 300;
 
 // ─── In-memory signed URL cache ───────────────────────────────────────────────
 // Key: canonical raw URI  →  Value: { signedUrl, expiresAt (unix seconds) }
+// LRU-bounded: evicts oldest entries when exceeding MAX_URL_CACHE_SIZE.
+
+const MAX_URL_CACHE_SIZE = 5_000;
+const MAX_BROKEN_CACHE_SIZE = 2_000;
 
 const urlCache = new Map<string, { signedUrl: string; expiresAt: number }>();
 
 // Negative cache: URLs whose objects don't exist in storage.
 // Value = unix-seconds timestamp when the entry expires.
 const brokenUrlCache = new Map<string, number>();
+
+function trimMap<V>(map: Map<string, V>, maxSize: number): void {
+  if (map.size <= maxSize) return;
+  const excess = map.size - maxSize;
+  const iter = map.keys();
+  for (let i = 0; i < excess; i++) {
+    const { value, done } = iter.next();
+    if (done) break;
+    map.delete(value);
+  }
+}
 
 // In-flight dedup: pending sign requests keyed by raw URL.
 const inflightRequests = new Map<string, Promise<string | null>>();
@@ -69,9 +84,7 @@ export function toStorageUri(bucket: string, path: string): string {
  * Extracts { bucket, path } from any supported URL / URI format.
  * Returns null for non-storage URLs.
  */
-export function extractBucketAndPath(
-  url: string,
-): { bucket: string; path: string } | null {
+export function extractBucketAndPath(url: string): { bucket: string; path: string } | null {
   if (!url) return null;
 
   // supabase-storage://bucket/path
@@ -92,9 +105,7 @@ export function extractBucketAndPath(
 
   // Full Supabase Storage URL — public or signed
   // Strips query string (?token=…) from signed URLs.
-  const match = url.match(
-    /\/storage\/v1\/object\/(?:public|sign)\/([^/]+)\/(.+?)(?:\?|$)/,
-  );
+  const match = url.match(/\/storage\/v1\/object\/(?:public|sign)\/([^/]+)\/(.+?)(?:\?|$)/);
   if (match?.[1] && match?.[2]) {
     return {
       bucket: match[1],
@@ -194,12 +205,14 @@ export async function resolveStorageUrl(
 
       if (error || !data?.signedUrl) {
         const errMsg = (error as { message?: string })?.message ?? '';
-        const isNotFound = errMsg.includes('Object not found') ||
+        const isNotFound =
+          errMsg.includes('Object not found') ||
           errMsg.includes('not found') ||
           (error as { statusCode?: string | number })?.statusCode === '404';
 
         if (isNotFound) {
           brokenUrlCache.set(url, Date.now() / 1_000 + NEGATIVE_CACHE_TTL_SECONDS);
+          trimMap(brokenUrlCache, MAX_BROKEN_CACHE_SIZE);
         }
 
         if (!loggedUrls.has(url)) {
@@ -218,6 +231,7 @@ export async function resolveStorageUrl(
         signedUrl: data.signedUrl,
         expiresAt: Date.now() / 1_000 + ttlSeconds,
       });
+      trimMap(urlCache, MAX_URL_CACHE_SIZE);
 
       return data.signedUrl;
     } catch (e) {

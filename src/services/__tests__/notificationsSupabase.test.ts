@@ -1,7 +1,7 @@
 jest.mock('../../../lib/supabase', () => ({
   supabase: {
     from: jest.fn(),
-    rpc:  jest.fn(),
+    rpc: jest.fn(),
     auth: {
       getUser: jest.fn().mockResolvedValue({ data: { user: { id: 'user-1' } } }),
     },
@@ -11,6 +11,12 @@ jest.mock('../../../lib/supabase', () => ({
 // Pool is not needed in unit tests — stub it out
 jest.mock('../realtimeChannelPool', () => ({
   pooledSubscribe: jest.fn(() => () => {}),
+}));
+
+// Capture batched notifications instead of firing them
+const enqueuedRows: unknown[] = [];
+jest.mock('../../utils/notificationBatcher', () => ({
+  enqueueNotification: jest.fn((row: unknown) => enqueuedRows.push(row)),
 }));
 
 import { supabase } from '../../../lib/supabase';
@@ -27,6 +33,7 @@ describe('notificationsSupabase', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    enqueuedRows.length = 0;
     consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
   });
 
@@ -34,12 +41,9 @@ describe('notificationsSupabase', () => {
     consoleErrorSpy.mockRestore();
   });
 
-  // ── Test 1a: createNotification (self) goes through direct INSERT ──────────
-  it('createNotification (self-target) inserts a row with the correct fields', async () => {
-    const insertMock = jest.fn().mockResolvedValue({ error: null });
-    from.mockReturnValue({ insert: insertMock });
-
-    // user_id = 'user-1' matches the mocked auth.uid() → self-notification → direct INSERT
+  // ── Test 1a: createNotification (self) is batched via enqueueNotification ──
+  it('createNotification (self-target) enqueues a row with the correct fields', async () => {
+    // user_id = 'user-1' matches the mocked auth.uid() → self-notification → batched enqueue
     await createNotification({
       user_id: 'user-1',
       type: 'new_message',
@@ -47,8 +51,8 @@ describe('notificationsSupabase', () => {
       message: 'You have a new message.',
     });
 
-    expect(from).toHaveBeenCalledWith('notifications');
-    expect(insertMock).toHaveBeenCalledWith(
+    expect(enqueuedRows).toHaveLength(1);
+    expect(enqueuedRows[0]).toEqual(
       expect.objectContaining({
         user_id: 'user-1',
         type: 'new_message',
@@ -56,6 +60,7 @@ describe('notificationsSupabase', () => {
         message: 'You have a new message.',
       }),
     );
+    expect(from).not.toHaveBeenCalled();
   });
 
   // ── Test 1b-org: org broadcast with option_request_id → DEFINER RPC ─────────
@@ -115,18 +120,41 @@ describe('notificationsSupabase', () => {
       message: 'Your booking has been accepted.',
     });
 
-    expect(supabase.rpc).toHaveBeenCalledWith('send_notification', expect.objectContaining({
-      p_target_user_id: 'other-user',
-      p_type:           'booking_accepted',
-    }));
+    expect(supabase.rpc).toHaveBeenCalledWith(
+      'send_notification',
+      expect.objectContaining({
+        p_target_user_id: 'other-user',
+        p_type: 'booking_accepted',
+      }),
+    );
     expect(from).not.toHaveBeenCalled();
   });
 
   // ── Test 2: getNotificationsForCurrentUser returns only owned rows ─────────
   it('getNotificationsForCurrentUser returns rows when RLS allows', async () => {
     const mockRows = [
-      { id: 'n-1', user_id: 'user-1', organization_id: null, type: 'new_message', title: 'New message', message: 'msg', metadata: {}, is_read: false, created_at: '2026-01-01T00:00:00Z' },
-      { id: 'n-2', user_id: null, organization_id: 'org-1', type: 'booking_accepted', title: 'Booking', message: 'msg', metadata: {}, is_read: false, created_at: '2026-01-01T00:01:00Z' },
+      {
+        id: 'n-1',
+        user_id: 'user-1',
+        organization_id: null,
+        type: 'new_message',
+        title: 'New message',
+        message: 'msg',
+        metadata: {},
+        is_read: false,
+        created_at: '2026-01-01T00:00:00Z',
+      },
+      {
+        id: 'n-2',
+        user_id: null,
+        organization_id: 'org-1',
+        type: 'booking_accepted',
+        title: 'Booking',
+        message: 'msg',
+        metadata: {},
+        is_read: false,
+        created_at: '2026-01-01T00:01:00Z',
+      },
     ];
     const limitMock = jest.fn().mockResolvedValue({ data: mockRows, error: null });
     const orderMock = jest.fn().mockReturnValue({ limit: limitMock });
@@ -153,12 +181,9 @@ describe('notificationsSupabase', () => {
     expect(eqMock).toHaveBeenCalledWith('id', 'notif-123');
   });
 
-  // ── Test 4a: createNotification (self) logs error without throwing ─────────
-  it('createNotification (self-target) logs error and does not throw when Supabase fails', async () => {
-    const insertMock = jest.fn().mockResolvedValue({ error: { message: 'RLS denied' } });
-    from.mockReturnValue({ insert: insertMock });
-
-    // Self-target: user_id = caller's own id → goes through direct INSERT
+  // ── Test 4a: createNotification (self) enqueues without error ───────────────
+  it('createNotification (self-target) does not throw when batched', async () => {
+    // Self-target: now enqueued via batcher — no direct Supabase call, no error path
     await expect(
       createNotification({
         user_id: 'user-1',
@@ -168,10 +193,7 @@ describe('notificationsSupabase', () => {
       }),
     ).resolves.toBeUndefined();
 
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      'createNotification error:',
-      expect.objectContaining({ message: 'RLS denied' }),
-    );
+    expect(enqueuedRows).toHaveLength(1);
   });
 
   // ── Test 4b: createNotification (cross-party) logs RPC error without throw ─

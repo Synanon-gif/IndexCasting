@@ -173,6 +173,25 @@ let messagesCache: ChatMessage[] = [];
 let hydrated = false;
 const listeners = new Set<() => void>();
 
+const MAX_CACHED_MESSAGE_THREADS = 50;
+const recentThreadAccess: string[] = [];
+
+function trackThreadAccess(threadId: string): void {
+  const idx = recentThreadAccess.indexOf(threadId);
+  if (idx >= 0) recentThreadAccess.splice(idx, 1);
+  recentThreadAccess.push(threadId);
+}
+
+function trimMessagesCache(): void {
+  if (recentThreadAccess.length <= MAX_CACHED_MESSAGE_THREADS) return;
+  const evict = recentThreadAccess.splice(
+    0,
+    recentThreadAccess.length - MAX_CACHED_MESSAGE_THREADS,
+  );
+  const evictSet = new Set(evict);
+  messagesCache = messagesCache.filter((m) => !evictSet.has(m.threadId));
+}
+
 function notify() {
   listeners.forEach((fn) => fn());
 }
@@ -652,6 +671,7 @@ export function hasOpenOptionRequestAttention(): boolean {
 }
 
 export function getMessages(threadId: string): ChatMessage[] {
+  trackThreadAccess(threadId);
   return messagesCache.filter((m) => m.threadId === threadId);
 }
 
@@ -711,6 +731,8 @@ export async function loadMessagesForThread(
   const mapped = remote.map(toLocalMessage);
   messagesCache = messagesCache.filter((m) => m.threadId !== threadId);
   messagesCache.push(...mapped);
+  trackThreadAccess(threadId);
+  trimMessagesCache();
   notify();
   return mapped;
 }

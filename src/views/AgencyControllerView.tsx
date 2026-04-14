@@ -31,7 +31,7 @@ import {
 } from '../theme/chatLayout';
 import { showAppAlert, showConfirmAlert } from '../utils/crossPlatformAlert';
 import { useAuth } from '../context/AuthContext';
-import { getAgencyModels } from '../services/apiService';
+
 import {
   getOptionRequests,
   subscribe,
@@ -438,12 +438,19 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   const refreshAgencyModelLists = useCallback(async () => {
     if (!currentAgencyId) return;
     try {
-      const [full, light] = await Promise.all([
-        getModelsForAgencyFromSupabase(currentAgencyId),
-        getAgencyModels(currentAgencyId),
-      ]);
+      const full = await getModelsForAgencyFromSupabase(currentAgencyId);
       setFullModels(full);
-      setModels(mapAgencyModelsToState(light));
+      setModels(
+        mapAgencyModelsToState(
+          full.map((m) => ({
+            id: m.id,
+            name: m.name,
+            traction: 0,
+            isVisibleCommercial: m.is_visible_commercial,
+            isVisibleFashion: m.is_visible_fashion,
+          })),
+        ),
+      );
 
       const candidates = full
         .filter(
@@ -3552,7 +3559,12 @@ const MyModelsTab: React.FC<{
       await Promise.resolve(onRefresh());
       // Re-fetch the light model list to compute incomplete count from fresh data
       // instead of relying on stale closure `models`.
-      const freshList = agencyId ? await getAgencyModels(agencyId) : [];
+      const freshFull = agencyId ? await getModelsForAgencyFromSupabase(agencyId) : [];
+      const freshList = freshFull.map((m: any) => ({
+        id: m.id,
+        name: m.name,
+        portfolio_images: m.portfolio_images,
+      }));
       const incompleteAfterSync = freshList.filter(
         (m: any) =>
           (m.portfolio_images ?? []).length === 0 || !(rosterTerritoriesMap[m.id] ?? []).length,

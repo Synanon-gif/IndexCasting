@@ -51,6 +51,25 @@ let messagesCache: RecruitingMessage[] = [];
 let hydrated = false;
 let storeAgencyId: string | undefined;
 
+const MAX_CACHED_REC_THREADS = 50;
+const recentRecThreadAccess: string[] = [];
+
+function trackRecThreadAccess(threadId: string): void {
+  const idx = recentRecThreadAccess.indexOf(threadId);
+  if (idx >= 0) recentRecThreadAccess.splice(idx, 1);
+  recentRecThreadAccess.push(threadId);
+}
+
+function trimRecMessagesCache(): void {
+  if (recentRecThreadAccess.length <= MAX_CACHED_REC_THREADS) return;
+  const evict = recentRecThreadAccess.splice(
+    0,
+    recentRecThreadAccess.length - MAX_CACHED_REC_THREADS,
+  );
+  const evictSet = new Set(evict);
+  messagesCache = messagesCache.filter((m) => !evictSet.has(m.threadId));
+}
+
 const listeners = new Set<() => void>();
 
 function notify() {
@@ -306,6 +325,7 @@ export async function getRecruitingThreadsForAgency(
 }
 
 export function getRecruitingMessages(threadId: string): RecruitingMessage[] {
+  trackRecThreadAccess(threadId);
   return messagesCache
     .filter((m) => m.threadId === threadId)
     .sort((a, b) => a.createdAt - b.createdAt);
@@ -324,6 +344,8 @@ export async function loadMessagesForThread(threadId: string): Promise<Recruitin
   }));
   messagesCache = messagesCache.filter((m) => m.threadId !== threadId);
   messagesCache.push(...mapped);
+  trackRecThreadAccess(threadId);
+  trimRecMessagesCache();
   notify();
   return mapped;
 }

@@ -193,3 +193,16 @@ export function flushIdleChannels(): void {
     }
   }
 }
+
+/**
+ * Auto-flush idle channels when the tab loses visibility.
+ * Reduces WebSocket connections when the user backgrounds the tab —
+ * critical at scale with thousands of concurrent sessions.
+ */
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      flushIdleChannels();
+    }
+  });
+}

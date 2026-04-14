@@ -116,9 +116,17 @@ describe('clientAcceptCounterPrice — RPC route (EXPLOIT-C1 fix)', () => {
 // ─── setAgencyCounterOffer ────────────────────────────────────────────────────
 
 describe('setAgencyCounterOffer', () => {
+  const mockLockSuccess = () => {
+    rpc.mockImplementation((name: string) => {
+      if (name === 'acquire_option_request_lock') {
+        return { throwOnError: () => Promise.resolve({ data: null, error: null }) };
+      }
+      return Promise.resolve({ data: null, error: null });
+    });
+  };
+
   it('returns true when request is in_negotiation (1 row updated)', async () => {
-    // Chains: .update().eq(id).eq(status,'in_negotiation').select().maybeSingle()
-    // maybeSingle is the terminal call → use makeChain with 'maybeSingle'
+    mockLockSuccess();
     const chain = makeChain(
       {
         data: {
@@ -137,6 +145,7 @@ describe('setAgencyCounterOffer', () => {
   });
 
   it('returns false when request is already confirmed (0 rows — status guard fires)', async () => {
+    mockLockSuccess();
     const chain = makeChain({ data: null, error: null }, 'maybeSingle');
     from.mockReturnValue(chain);
 
@@ -149,11 +158,25 @@ describe('setAgencyCounterOffer', () => {
   });
 
   it('returns false on DB error', async () => {
+    mockLockSuccess();
     const chain = makeChain(
       { data: null, error: { message: 'constraint violation' } },
       'maybeSingle',
     );
     from.mockReturnValue(chain);
+
+    const result = await setAgencyCounterOffer('req-1', 2500);
+    expect(result).toBe(false);
+    expect(consoleErrorSpy).toHaveBeenCalled();
+  });
+
+  it('returns false when advisory lock fails', async () => {
+    rpc.mockImplementation((name: string) => {
+      if (name === 'acquire_option_request_lock') {
+        return { throwOnError: () => Promise.reject(new Error('lock timeout')) };
+      }
+      return Promise.resolve({ data: null, error: null });
+    });
 
     const result = await setAgencyCounterOffer('req-1', 2500);
     expect(result).toBe(false);

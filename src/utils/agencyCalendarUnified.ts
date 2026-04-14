@@ -177,6 +177,21 @@ export function buildUnifiedAgencyCalendarRows(
     }
   }
 
+  // Pre-index names by date for O(1) lookup in L5/L6 (avoids O(n*m) linear scan)
+  const namesByDate = new Map<string, string[]>();
+  for (const key of coveredDateModelNames) {
+    const sep = key.indexOf('|');
+    if (sep < 0) continue;
+    const d = key.slice(0, sep);
+    const n = key.slice(sep + 1);
+    let arr = namesByDate.get(d);
+    if (!arr) {
+      arr = [];
+      namesByDate.set(d, arr);
+    }
+    arr.push(n);
+  }
+
   const bookingRows: UnifiedAgencyCalendarRow[] = [];
   for (const be of bookingEventEntries) {
     const beDate = be.date ?? '';
@@ -195,31 +210,15 @@ export function buildUnifiedAgencyCalendarRows(
     }
     // L5: check if any option row's model_name appears inside the booking title
     if (beName && beDate && datesWithOptions.has(beDate)) {
-      let nameMatched = false;
-      for (const optName of coveredDateModelNames) {
-        if (!optName.startsWith(`${beDate}|`)) continue;
-        const justName = optName.slice(beDate.length + 1);
-        if (justName && beName.includes(justName)) {
-          nameMatched = true;
-          break;
-        }
-      }
-      if (nameMatched) continue;
+      const dateNames = namesByDate.get(beDate);
+      if (dateNames?.some((n) => n && beName.includes(n))) continue;
     }
     // L6: stripped booking name is substring of any option model_name (reverse)
     if (beName && beDate && datesWithOptions.has(beDate)) {
       const stripped = stripLifecycleAffixes(beName);
       if (stripped) {
-        let reverseMatch = false;
-        for (const optName of coveredDateModelNames) {
-          if (!optName.startsWith(`${beDate}|`)) continue;
-          const justName = optName.slice(beDate.length + 1);
-          if (justName && justName.includes(stripped)) {
-            reverseMatch = true;
-            break;
-          }
-        }
-        if (reverseMatch) continue;
+        const dateNames = namesByDate.get(beDate);
+        if (dateNames?.some((n) => n && n.includes(stripped))) continue;
       }
     }
 
@@ -479,9 +478,7 @@ export function dedupeUnifiedRowsByOptionRequest(
 }
 
 /** Month grid dots — must match list filtering (same ids as unified rows). */
-export function buildEventsByDateFromUnifiedRows(
-  rows: UnifiedAgencyCalendarRow[],
-): Record<
+export function buildEventsByDateFromUnifiedRows(rows: UnifiedAgencyCalendarRow[]): Record<
   string,
   Array<{
     id: string;

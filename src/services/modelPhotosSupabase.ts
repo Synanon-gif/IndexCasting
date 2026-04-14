@@ -21,6 +21,7 @@ import {
   invalidateStorageUrlCache,
   extractBucketAndPath,
 } from '../storage/storageUrl';
+import { storageUploadQueue } from '../utils/uploadQueue';
 
 /** Allowed MIME types for model photos (images only — no PDFs in portfolio). */
 const PHOTO_ALLOWED_TYPES = ALLOWED_MIME_TYPES.filter((t) => t.startsWith('image/'));
@@ -112,10 +113,7 @@ export async function getPhotosForModel(
   type?: ModelPhotoType,
 ): Promise<ModelPhoto[]> {
   try {
-    let query = supabase
-      .from('model_photos')
-      .select('*')
-      .eq('model_id', modelId);
+    let query = supabase.from('model_photos').select('*').eq('model_id', modelId);
 
     if (type) {
       query = query.eq('photo_type', type);
@@ -150,7 +148,9 @@ export async function getPhotosForModel(
  * `rebuildPortfolioImagesFromModelPhotos` and `get_discovery_models` mirror fallback (§27.1).
  * Use when `models.portfolio_images` is empty but visible portfolio rows exist.
  */
-export async function getClientVisiblePortfolioUrlsFromModelPhotos(modelId: string): Promise<string[]> {
+export async function getClientVisiblePortfolioUrlsFromModelPhotos(
+  modelId: string,
+): Promise<string[]> {
   const photos = await getPhotosForModel(modelId, 'portfolio');
   return photos
     .filter((p) => Boolean(p.is_visible_to_clients ?? p.visible))
@@ -313,21 +313,21 @@ export async function deletePhoto(photoId: string, url: string): Promise<boolean
       .select('file_size_bytes')
       .eq('id', photoId)
       .maybeSingle();
-    const freedBytes: number = (photoRow as { file_size_bytes?: number } | null)?.file_size_bytes ?? 0;
+    const freedBytes: number =
+      (photoRow as { file_size_bytes?: number } | null)?.file_size_bytes ?? 0;
 
     const extracted = extractBucketAndPath(url);
     if (extracted) {
-      const { error: storageError } = await supabase.storage.from(extracted.bucket).remove([extracted.path]);
+      const { error: storageError } = await supabase.storage
+        .from(extracted.bucket)
+        .remove([extracted.path]);
       if (storageError) {
         console.error('deletePhoto storage error:', storageError);
         // Continue to delete DB row even if storage deletion fails (avoids orphaned DB rows).
       }
     }
 
-    const { error: dbError } = await supabase
-      .from('model_photos')
-      .delete()
-      .eq('id', photoId);
+    const { error: dbError } = await supabase.from('model_photos').delete().eq('id', photoId);
 
     if (dbError) {
       console.error('deletePhoto db error:', dbError);
@@ -349,7 +349,6 @@ export async function deletePhoto(photoId: string, url: string): Promise<boolean
   }
 }
 
-
 export async function updatePhoto(
   photoId: string,
   fields: Partial<
@@ -367,18 +366,23 @@ export async function updatePhoto(
 ): Promise<boolean> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const payload: any = { ...fields };
-  if ('visible' in fields && fields.visible !== undefined && payload.is_visible_to_clients === undefined) {
+  if (
+    'visible' in fields &&
+    fields.visible !== undefined &&
+    payload.is_visible_to_clients === undefined
+  ) {
     payload.is_visible_to_clients = fields.visible;
   }
-  if ('is_visible_to_clients' in fields && fields.is_visible_to_clients !== undefined && payload.visible === undefined) {
+  if (
+    'is_visible_to_clients' in fields &&
+    fields.is_visible_to_clients !== undefined &&
+    payload.visible === undefined
+  ) {
     payload.visible = fields.is_visible_to_clients;
   }
 
   try {
-    const { error } = await supabase
-      .from('model_photos')
-      .update(payload)
-      .eq('id', photoId);
+    const { error } = await supabase.from('model_photos').update(payload).eq('id', photoId);
 
     if (error) {
       console.error('updatePhoto error:', error);
@@ -391,10 +395,7 @@ export async function updatePhoto(
   }
 }
 
-export async function reorderPhotos(
-  modelId: string,
-  orderedIds: string[],
-): Promise<boolean> {
+export async function reorderPhotos(modelId: string, orderedIds: string[]): Promise<boolean> {
   if (!orderedIds.length) return true;
   try {
     const updates = orderedIds.map((id, index) => ({
@@ -403,9 +404,7 @@ export async function reorderPhotos(
       sort_order: index,
     }));
 
-    const { error } = await supabase
-      .from('model_photos')
-      .upsert(updates, { onConflict: 'id' });
+    const { error } = await supabase.from('model_photos').upsert(updates, { onConflict: 'id' });
 
     if (error) {
       console.error('reorderPhotos error:', error);
@@ -468,7 +467,9 @@ export async function uploadModelPhoto(
   // When the caller already ran confirmImageRights + guardImageUpload immediately before
   // (e.g. handleAddModel batch-upload), skipConsentCheck avoids a redundant DB round-trip
   // that can race with the just-inserted audit row and silently reject the upload.
-  const { data: { user: uploadUser } } = await supabase.auth.getUser();
+  const {
+    data: { user: uploadUser },
+  } = await supabase.auth.getUser();
   if (!uploadUser) {
     console.warn('uploadModelPhoto: unauthenticated call rejected');
     return null;
@@ -481,7 +482,15 @@ export async function uploadModelPhoto(
     );
     if (!hasConsent) {
       console.warn('uploadModelPhoto: image rights not confirmed for model', modelId);
-      void logSecurityEvent({ type: 'file_rejected', metadata: { service: 'modelPhotosSupabase', fn: 'uploadModelPhoto', reason: 'image_rights_not_confirmed', model_id: modelId } });
+      void logSecurityEvent({
+        type: 'file_rejected',
+        metadata: {
+          service: 'modelPhotosSupabase',
+          fn: 'uploadModelPhoto',
+          reason: 'image_rights_not_confirmed',
+          model_id: modelId,
+        },
+      });
       return null;
     }
   }
@@ -491,7 +500,15 @@ export async function uploadModelPhoto(
     const { file: prepared, conversionFailed } = await convertHeicToJpegWithStatus(file);
     if (conversionFailed) {
       console.warn('uploadModelPhoto: HEIC/HEIF conversion failed');
-      void logSecurityEvent({ type: 'file_rejected', metadata: { service: 'modelPhotosSupabase', fn: 'uploadModelPhoto', reason: 'heic_conversion_failed', model_id: modelId } });
+      void logSecurityEvent({
+        type: 'file_rejected',
+        metadata: {
+          service: 'modelPhotosSupabase',
+          fn: 'uploadModelPhoto',
+          reason: 'heic_conversion_failed',
+          model_id: modelId,
+        },
+      });
       return null;
     }
     file = prepared;
@@ -500,21 +517,30 @@ export async function uploadModelPhoto(
   const mimeCheck = validateFile(file, PHOTO_ALLOWED_TYPES);
   if (!mimeCheck.ok) {
     console.warn('uploadModelPhoto: file validation failed', mimeCheck.error);
-    void logSecurityEvent({ type: 'file_rejected', metadata: { service: 'modelPhotosSupabase', fn: 'uploadModelPhoto', reason: 'mime' } });
+    void logSecurityEvent({
+      type: 'file_rejected',
+      metadata: { service: 'modelPhotosSupabase', fn: 'uploadModelPhoto', reason: 'mime' },
+    });
     return null;
   }
   // Magic byte check — prevents renamed executables
   const magicCheck = await checkMagicBytes(file);
   if (!magicCheck.ok) {
     console.warn('uploadModelPhoto: magic bytes check failed', magicCheck.error);
-    void logSecurityEvent({ type: 'magic_bytes_fail', metadata: { service: 'modelPhotosSupabase', fn: 'uploadModelPhoto' } });
+    void logSecurityEvent({
+      type: 'magic_bytes_fail',
+      metadata: { service: 'modelPhotosSupabase', fn: 'uploadModelPhoto' },
+    });
     return null;
   }
   // Extension consistency check
   const extCheck = checkExtensionConsistency(file);
   if (!extCheck.ok) {
     console.warn('uploadModelPhoto: extension consistency check failed', extCheck.error);
-    void logSecurityEvent({ type: 'extension_mismatch', metadata: { service: 'modelPhotosSupabase', fn: 'uploadModelPhoto' } });
+    void logSecurityEvent({
+      type: 'extension_mismatch',
+      metadata: { service: 'modelPhotosSupabase', fn: 'uploadModelPhoto' },
+    });
     return null;
   }
   // Strip EXIF metadata (GPS, camera info) via Canvas re-encoding
@@ -528,13 +554,15 @@ export async function uploadModelPhoto(
     return null;
   }
 
-  const ext = safeFile instanceof File ? (safeFile.name.split('.').pop() || 'jpg') : 'jpg';
+  const ext = safeFile instanceof File ? safeFile.name.split('.').pop() || 'jpg' : 'jpg';
   const path = `${MODEL_PHOTOS_PREFIX}/${modelId}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
   try {
-    const { error } = await supabase.storage.from(PUBLIC_IMAGES_BUCKET).upload(path, safeFile, {
-      contentType: safeFile.type || 'image/jpeg',
-      upsert: false,
-    });
+    const { error } = await storageUploadQueue.enqueue(() =>
+      supabase.storage.from(PUBLIC_IMAGES_BUCKET).upload(path, safeFile, {
+        contentType: safeFile.type || 'image/jpeg',
+        upsert: false,
+      }),
+    );
     if (error) {
       console.error('uploadModelPhoto error:', error);
       await decrementStorage(claimedSize);
@@ -543,12 +571,15 @@ export async function uploadModelPhoto(
 
     // BUG 3 FIX: read actual file size from storage.objects metadata post-upload.
     // This corrects any drift between the frontend-provided size and what was stored.
-    const actualSize = await getActualStorageSize(PUBLIC_IMAGES_BUCKET, path) ?? claimedSize;
+    const actualSize = (await getActualStorageSize(PUBLIC_IMAGES_BUCKET, path)) ?? claimedSize;
     if (actualSize !== claimedSize) {
       if (actualSize > claimedSize) {
         const driftResult = await checkAndIncrementStorage(actualSize - claimedSize);
         if (!driftResult.allowed) {
-          console.warn('[storage] uploadModelPhoto: post-upload size drift exceeded limit — counter undercounted', { actualSize, claimedSize });
+          console.warn(
+            '[storage] uploadModelPhoto: post-upload size drift exceeded limit — counter undercounted',
+            { actualSize, claimedSize },
+          );
         }
       } else {
         await decrementStorage(claimedSize - actualSize);
@@ -595,7 +626,9 @@ export async function uploadPrivateModelPhoto(
   file: Blob | File,
 ): Promise<UploadPhotoResult | null> {
   // Enforce image rights confirmation before any upload (GDPR / workspace rule §14).
-  const { data: { user: uploadUser } } = await supabase.auth.getUser();
+  const {
+    data: { user: uploadUser },
+  } = await supabase.auth.getUser();
   if (!uploadUser) {
     console.warn('uploadPrivateModelPhoto: unauthenticated call rejected');
     return null;
@@ -607,7 +640,15 @@ export async function uploadPrivateModelPhoto(
   );
   if (!hasConsent) {
     console.warn('uploadPrivateModelPhoto: image rights not confirmed for model', modelId);
-    void logSecurityEvent({ type: 'file_rejected', metadata: { service: 'modelPhotosSupabase', fn: 'uploadPrivateModelPhoto', reason: 'image_rights_not_confirmed', model_id: modelId } });
+    void logSecurityEvent({
+      type: 'file_rejected',
+      metadata: {
+        service: 'modelPhotosSupabase',
+        fn: 'uploadPrivateModelPhoto',
+        reason: 'image_rights_not_confirmed',
+        model_id: modelId,
+      },
+    });
     return null;
   }
 
@@ -615,7 +656,15 @@ export async function uploadPrivateModelPhoto(
     const { file: prepared, conversionFailed } = await convertHeicToJpegWithStatus(file);
     if (conversionFailed) {
       console.warn('uploadPrivateModelPhoto: HEIC/HEIF conversion failed');
-      void logSecurityEvent({ type: 'file_rejected', metadata: { service: 'modelPhotosSupabase', fn: 'uploadPrivateModelPhoto', reason: 'heic_conversion_failed', model_id: modelId } });
+      void logSecurityEvent({
+        type: 'file_rejected',
+        metadata: {
+          service: 'modelPhotosSupabase',
+          fn: 'uploadPrivateModelPhoto',
+          reason: 'heic_conversion_failed',
+          model_id: modelId,
+        },
+      });
       return null;
     }
     file = prepared;
@@ -624,21 +673,30 @@ export async function uploadPrivateModelPhoto(
   const mimeCheck = validateFile(file, PHOTO_ALLOWED_TYPES);
   if (!mimeCheck.ok) {
     console.warn('uploadPrivateModelPhoto: file validation failed', mimeCheck.error);
-    void logSecurityEvent({ type: 'file_rejected', metadata: { service: 'modelPhotosSupabase', fn: 'uploadPrivateModelPhoto', reason: 'mime' } });
+    void logSecurityEvent({
+      type: 'file_rejected',
+      metadata: { service: 'modelPhotosSupabase', fn: 'uploadPrivateModelPhoto', reason: 'mime' },
+    });
     return null;
   }
   // Magic byte check — prevents renamed executables
   const magicCheck = await checkMagicBytes(file);
   if (!magicCheck.ok) {
     console.warn('uploadPrivateModelPhoto: magic bytes check failed', magicCheck.error);
-    void logSecurityEvent({ type: 'magic_bytes_fail', metadata: { service: 'modelPhotosSupabase', fn: 'uploadPrivateModelPhoto' } });
+    void logSecurityEvent({
+      type: 'magic_bytes_fail',
+      metadata: { service: 'modelPhotosSupabase', fn: 'uploadPrivateModelPhoto' },
+    });
     return null;
   }
   // Extension consistency check
   const extCheck = checkExtensionConsistency(file);
   if (!extCheck.ok) {
     console.warn('uploadPrivateModelPhoto: extension consistency check failed', extCheck.error);
-    void logSecurityEvent({ type: 'extension_mismatch', metadata: { service: 'modelPhotosSupabase', fn: 'uploadPrivateModelPhoto' } });
+    void logSecurityEvent({
+      type: 'extension_mismatch',
+      metadata: { service: 'modelPhotosSupabase', fn: 'uploadPrivateModelPhoto' },
+    });
     return null;
   }
   // Strip EXIF metadata (GPS, camera info) via Canvas re-encoding
@@ -651,13 +709,15 @@ export async function uploadPrivateModelPhoto(
     return null;
   }
 
-  const ext = safeFile instanceof File ? (safeFile.name.split('.').pop() || 'jpg') : 'jpg';
+  const ext = safeFile instanceof File ? safeFile.name.split('.').pop() || 'jpg' : 'jpg';
   const path = `${PRIVATE_PHOTOS_PREFIX}/${modelId}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
   try {
-    const { error: uploadError } = await supabase.storage.from(PRIVATE_BUCKET).upload(path, safeFile, {
-      contentType: safeFile.type || 'image/jpeg',
-      upsert: false,
-    });
+    const { error: uploadError } = await storageUploadQueue.enqueue(() =>
+      supabase.storage.from(PRIVATE_BUCKET).upload(path, safeFile, {
+        contentType: safeFile.type || 'image/jpeg',
+        upsert: false,
+      }),
+    );
     if (uploadError) {
       console.error('uploadPrivateModelPhoto upload error:', uploadError);
       await decrementStorage(claimedSize);
@@ -665,12 +725,15 @@ export async function uploadPrivateModelPhoto(
     }
 
     // BUG 3 FIX: read actual size from storage.objects and reconcile.
-    const actualSize = await getActualStorageSize(PRIVATE_BUCKET, path) ?? claimedSize;
+    const actualSize = (await getActualStorageSize(PRIVATE_BUCKET, path)) ?? claimedSize;
     if (actualSize !== claimedSize) {
       if (actualSize > claimedSize) {
         const driftResult = await checkAndIncrementStorage(actualSize - claimedSize);
         if (!driftResult.allowed) {
-          console.warn('[storage] uploadPrivateModelPhoto: post-upload size drift exceeded limit — counter undercounted', { actualSize, claimedSize });
+          console.warn(
+            '[storage] uploadPrivateModelPhoto: post-upload size drift exceeded limit — counter undercounted',
+            { actualSize, claimedSize },
+          );
         }
       } else {
         await decrementStorage(claimedSize - actualSize);
@@ -761,4 +824,3 @@ export async function rebuildPolaroidsFromModelPhotos(modelId: string): Promise<
     .map((p) => p.url);
   return syncPolaroidsToModel(modelId, visibleUrls);
 }
-
