@@ -492,7 +492,7 @@ export const BookingChatView: React.FC<Props> = ({
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt"
+            accept="image/*,.heic,.heif,application/pdf,.doc,.docx,.xls,.xlsx,.txt"
             style={{ display: 'none' }}
             onChange={(e) => {
               const file = e.target.files?.[0];

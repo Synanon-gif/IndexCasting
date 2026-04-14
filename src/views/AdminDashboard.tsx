@@ -44,6 +44,7 @@ import {
   adminListAllOrganizationMembersBulk,
   adminGetOrganizationMemberUserRows,
   adminGetProfilesIdDisplayEmail,
+  adminConvertOrgType,
   type AdminProfile,
   type AdminLogEntry,
   type AdminOrgMembership,
@@ -91,6 +92,7 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
   >([]);
   const [orgSavingId, setOrgSavingId] = useState<string | null>(null);
   const [orgTogglingId, setOrgTogglingId] = useState<string | null>(null);
+  const [orgConvertingId, setOrgConvertingId] = useState<string | null>(null);
 
   // Model editing
   const [modelNotesDraft, setModelNotesDraft] = useState<Record<string, string>>({});
@@ -478,6 +480,33 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
       showFeedback(uiCopy.adminDashboard.orgSaveFailed, false);
     }
     setOrgSavingId(null);
+  };
+
+  const handleConvertOrgType = async (org: AdminOrganization) => {
+    const targetType = org.type === 'agency' ? 'client' : 'agency';
+    const confirmMsg =
+      targetType === 'agency'
+        ? uiCopy.adminDashboard.orgConvertToAgencyConfirm
+        : uiCopy.adminDashboard.orgConvertToClientConfirm;
+
+    const proceed = await new Promise<boolean>((resolve) => {
+      Alert.alert(uiCopy.adminDashboard.orgConvertConfirmTitle, confirmMsg, [
+        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+        { text: 'Convert', style: 'destructive', onPress: () => resolve(true) },
+      ]);
+    });
+    if (!proceed) return;
+
+    setOrgConvertingId(org.id);
+    const result = await adminConvertOrgType(org.id, targetType);
+    if (result.ok) {
+      showFeedback(uiCopy.adminDashboard.orgConvertSuccess);
+      setExpandedOrgId(null);
+      await loadData();
+    } else {
+      showFeedback(uiCopy.adminDashboard.orgConvertFailed, false);
+    }
+    setOrgConvertingId(null);
   };
 
   const handleSaveSwipeLimit = async (org: AdminOrganization) => {
@@ -1011,11 +1040,12 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
             const isToggling = orgTogglingId === org.id;
             const ownerName = orgOwnerNames[org.id];
 
-            // Ghost-org detection: org name matches owner's personal display_name.
-            // Uses the eagerly-loaded profiles list — no extra query needed.
+            // Ghost-org heuristic: sole member AND org name matches owner's
+            // personal display_name — likely auto-created bootstrap org.
             const ownerProfile = profiles.find((p) => p.id === org.owner_id);
             const isGhostOrg = !!(
               ownerProfile?.display_name &&
+              org.member_count <= 1 &&
               org.name.trim().toLowerCase() === ownerProfile.display_name.trim().toLowerCase()
             );
 
@@ -1155,6 +1185,41 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
                         />
                       </>
                     )}
+
+                    {/* Convert organization type */}
+                    <View
+                      style={{
+                        marginTop: spacing.md,
+                        paddingTop: spacing.sm,
+                        borderTopWidth: 1,
+                        borderTopColor: colors.border,
+                      }}
+                    >
+                      <Text style={styles.editLabel}>Organization Type</Text>
+                      <Text style={[styles.cardMeta, { marginBottom: spacing.xs }]}>
+                        Currently: {org.type === 'agency' ? 'Agency' : 'Client'}. Convert to change
+                        member roles and profile types atomically.
+                      </Text>
+                      <TouchableOpacity
+                        style={[
+                          styles.btnSmall,
+                          org.type === 'agency' ? styles.btnRed : styles.btnGreen,
+                          orgConvertingId === org.id && { opacity: 0.5 },
+                        ]}
+                        disabled={orgConvertingId === org.id}
+                        onPress={() => void handleConvertOrgType(org)}
+                      >
+                        {orgConvertingId === org.id ? (
+                          <ActivityIndicator size="small" color="#fff" />
+                        ) : (
+                          <Text style={styles.btnLabel}>
+                            {org.type === 'agency'
+                              ? uiCopy.adminDashboard.orgConvertToClient
+                              : uiCopy.adminDashboard.orgConvertToAgency}
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
 
                     {/* Swipe limit controls (agency orgs only) */}
                     {org.type === 'agency' &&

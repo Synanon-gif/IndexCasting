@@ -580,6 +580,38 @@ export async function adminUpdateOrgDetails(
   }
 }
 
+export async function adminConvertOrgType(
+  orgId: string,
+  newType: 'agency' | 'client',
+): Promise<
+  | { ok: true; fromType: string; toType: string; membersConverted: number }
+  | { ok: false; error: string }
+> {
+  try {
+    const { data, error } = await supabase.rpc('admin_convert_org_type', {
+      p_org_id: orgId,
+      p_new_type: newType,
+    });
+    if (error) {
+      console.error('adminConvertOrgType error:', error);
+      return { ok: false, error: error.message };
+    }
+    const result = data as Record<string, unknown> | null;
+    if (!result || result.ok !== true) {
+      return { ok: false, error: String(result?.reason ?? 'unknown') };
+    }
+    return {
+      ok: true,
+      fromType: String(result.from_type ?? ''),
+      toType: String(result.to_type ?? ''),
+      membersConverted: Number(result.members_converted ?? 0),
+    };
+  } catch (e) {
+    console.error('adminConvertOrgType exception:', e);
+    return { ok: false, error: String(e) };
+  }
+}
+
 // ─── Model admin types & functions ───────────────────────────────────────────
 
 export type AdminModel = {

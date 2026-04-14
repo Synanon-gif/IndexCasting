@@ -26,21 +26,15 @@ export const ALLOWED_MIME_TYPES = [
 export type AllowedMimeType = (typeof ALLOWED_MIME_TYPES)[number];
 
 /** Allowed MIME types for chat file attachments (superset: also allows common docs). */
-export const CHAT_ALLOWED_MIME_TYPES: readonly string[] = [
-  ...ALLOWED_MIME_TYPES,
-];
+export const CHAT_ALLOWED_MIME_TYPES: readonly string[] = [...ALLOWED_MIME_TYPES];
 
 /**
  * Known magic byte signatures for allowed file types.
  * Each entry maps a MIME type to one or more valid byte sequences at offset 0.
  */
 const MAGIC_BYTES: Record<string, number[][]> = {
-  'image/jpeg': [
-    [0xff, 0xd8, 0xff],
-  ],
-  'image/png': [
-    [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
-  ],
+  'image/jpeg': [[0xff, 0xd8, 0xff]],
+  'image/png': [[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]],
   'image/webp': [
     // WebP: "RIFF" at bytes 0-3, "WEBP" at bytes 8-11
     // We check RIFF + WEBP in the 12-byte slice
@@ -99,12 +93,24 @@ export async function checkMagicBytes(file: File | Blob): Promise<ValidationResu
       heicHeader[4] === 0x66 && // 'f'
       heicHeader[5] === 0x74 && // 't'
       heicHeader[6] === 0x79 && // 'y'
-      heicHeader[7] === 0x70;   // 'p'
+      heicHeader[7] === 0x70; // 'p'
     if (!isFtyp) {
       return { ok: false, error: 'File content does not match the declared type (HEIC/HEIF).' };
     }
     const brand = String.fromCharCode(heicHeader[8], heicHeader[9], heicHeader[10], heicHeader[11]);
-    const validBrands = ['heic', 'heix', 'hevc', 'hevx', 'mif1', 'msf1', 'heif', 'heim', 'heis', 'hevm', 'hevs'];
+    const validBrands = [
+      'heic',
+      'heix',
+      'hevc',
+      'hevx',
+      'mif1',
+      'msf1',
+      'heif',
+      'heim',
+      'heis',
+      'hevm',
+      'hevs',
+    ];
     if (!validBrands.includes(brand)) {
       return { ok: false, error: 'File content does not match the declared type (HEIC/HEIF).' };
     }
@@ -114,29 +120,22 @@ export async function checkMagicBytes(file: File | Blob): Promise<ValidationResu
   // WebP special case: check RIFF at [0-3] AND WEBP at [8-11]
   if (mimeType === 'image/webp') {
     const isRiff =
-      header[0] === 0x52 &&
-      header[1] === 0x49 &&
-      header[2] === 0x46 &&
-      header[3] === 0x46;
+      header[0] === 0x52 && header[1] === 0x49 && header[2] === 0x46 && header[3] === 0x46;
     const isWebp =
-      header[8] === 0x57 &&
-      header[9] === 0x45 &&
-      header[10] === 0x42 &&
-      header[11] === 0x50;
+      header[8] === 0x57 && header[9] === 0x45 && header[10] === 0x42 && header[11] === 0x50;
     if (!isRiff || !isWebp) {
       return { ok: false, error: 'File content does not match the declared type (WebP).' };
     }
     return { ok: true };
   }
 
-  const matched = signatures.some((sig) =>
-    sig.every((byte, i) => header[i] === byte),
-  );
+  const matched = signatures.some((sig) => sig.every((byte, i) => header[i] === byte));
 
   if (!matched) {
     return {
       ok: false,
-      error: 'File content does not match the declared type. Renamed executable files are not allowed.',
+      error:
+        'File content does not match the declared type. Renamed executable files are not allowed.',
     };
   }
 
@@ -188,7 +187,7 @@ export function validateFile(
  */
 const MIME_TO_EXTENSIONS: Record<string, string[]> = {
   'image/jpeg': ['jpg', 'jpeg'],
-  'image/png':  ['png'],
+  'image/png': ['png'],
   'image/webp': ['webp'],
   'image/heic': ['heic', 'heif'],
   'image/heif': ['heif', 'heic'],
@@ -234,6 +233,28 @@ export function checkExtensionConsistency(file: File | Blob): ValidationResult {
   }
 
   return { ok: true };
+}
+
+/**
+ * Returns true when the file looks like an image — including HEIC/HEIF files
+ * whose browser-reported `file.type` may be empty on Windows/Linux.
+ * Use this instead of `file.type.startsWith('image/')` anywhere a pre-conversion
+ * image gate is needed.
+ */
+export function isImageFile(file: File | Blob): boolean {
+  const mime = (file.type ?? '').toLowerCase();
+  if (mime.startsWith('image/')) return true;
+  if (file instanceof File) {
+    const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+    if (
+      ['heic', 'heif', 'jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'tiff', 'tif', 'avif'].includes(
+        ext,
+      )
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** Max length for storage path basename segments (matches services default). */

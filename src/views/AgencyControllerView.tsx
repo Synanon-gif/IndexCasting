@@ -4670,7 +4670,7 @@ const MyModelsTab: React.FC<{
               <input
                 ref={addModelFileInputRef as any}
                 type="file"
-                accept="image/*"
+                accept="image/*,.heic,.heif"
                 multiple
                 style={{ display: 'none' }}
                 onChange={handleAddModelPhotoFiles}
@@ -4793,7 +4793,7 @@ const MyModelsTab: React.FC<{
               <input
                 ref={addModelPolaroidInputRef as any}
                 type="file"
-                accept="image/*"
+                accept="image/*,.heic,.heif"
                 multiple
                 style={{ display: 'none' }}
                 onChange={handleAddModelPolaroidFiles}

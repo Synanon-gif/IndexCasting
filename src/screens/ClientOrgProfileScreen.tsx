@@ -45,11 +45,7 @@ import {
   uploadClientGalleryImage,
   deleteClientGalleryImage,
 } from '../services/organizationGallerySupabase';
-import {
-  validateSlug,
-  publicClientUrl,
-  publicClientHref,
-} from '../utils/orgProfilePublicSettings';
+import { validateSlug, publicClientUrl, publicClientHref } from '../utils/orgProfilePublicSettings';
 import { isOrganizationOwner } from '../services/orgRoleTypes';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -196,7 +192,7 @@ export function ClientOrgProfileScreen({
           Alert.alert(
             failCount === total ? 'Upload failed' : 'Some uploads failed',
             failCount === total
-              ? lastError ?? 'Could not upload images. Please try again.'
+              ? (lastError ?? 'Could not upload images. Please try again.')
               : `${failCount} of ${total} image(s) could not be uploaded. Others were added.`,
           );
         }
@@ -285,9 +281,8 @@ export function ClientOrgProfileScreen({
   // ── Phase 3B.3: share link handlers (owner-only) ──
 
   // Derived: truthy only for owners with a live public profile
-  const shareUrl = isOwner && orgProfile?.is_public && orgProfile?.slug
-    ? publicClientHref(orgProfile.slug)
-    : null;
+  const shareUrl =
+    isOwner && orgProfile?.is_public && orgProfile?.slug ? publicClientHref(orgProfile.slug) : null;
 
   const handleCopyShareLink = useCallback(() => {
     if (!shareUrl) return;
@@ -334,7 +329,7 @@ export function ClientOrgProfileScreen({
           <input
             ref={galleryInputRef}
             type="file"
-            accept="image/*"
+            accept="image/*,.heic,.heif"
             multiple
             style={{ display: 'none' }}
             onChange={handleGalleryFileChange}
@@ -345,52 +340,51 @@ export function ClientOrgProfileScreen({
         {media.length === 0 && (
           <View style={s.emptyState}>
             <Text style={s.emptyTitle}>No gallery content yet</Text>
-            {isOwner && (
-              <Text style={s.emptyHint}>Tap '+' to add your first gallery image.</Text>
-            )}
+            {isOwner && <Text style={s.emptyHint}>Tap '+' to add your first gallery image.</Text>}
           </View>
         )}
 
         {/* ── 3-column grid ── */}
-        {media.length > 0 && (() => {
-          const rows: OrganizationProfileMedia[][] = [];
-          for (let i = 0; i < media.length; i += 3) {
-            rows.push(media.slice(i, i + 3));
-          }
-          return rows.map((row, rIdx) => (
-            <View key={rIdx} style={s.galleryRow}>
-              {row.map((item) => (
-                <View
-                  key={item.id}
-                  style={[s.galleryCell, { width: cellWidth, height: cellHeight }]}
-                >
-                  <StorageImage
-                    uri={item.image_url}
-                    style={{ width: cellWidth, height: cellHeight, borderRadius: 4 }}
-                    resizeMode="contain"
-                  />
-                  {/* Delete overlay for owner */}
-                  {isOwner && !isDeleting(item.id) && (
-                    <TouchableOpacity
-                      style={s.galleryDeleteBtn}
-                      onPress={() => handleDeleteGalleryImage(item)}
-                      accessibilityLabel="Remove image"
-                      accessibilityRole="button"
-                    >
-                      <Text style={s.galleryDeleteBtnText}>×</Text>
-                    </TouchableOpacity>
-                  )}
-                  {/* Deleting spinner overlay */}
-                  {isDeleting(item.id) && (
-                    <View style={s.galleryCellOverlay}>
-                      <ActivityIndicator color="#fff" />
-                    </View>
-                  )}
-                </View>
-              ))}
-            </View>
-          ));
-        })()}
+        {media.length > 0 &&
+          (() => {
+            const rows: OrganizationProfileMedia[][] = [];
+            for (let i = 0; i < media.length; i += 3) {
+              rows.push(media.slice(i, i + 3));
+            }
+            return rows.map((row, rIdx) => (
+              <View key={rIdx} style={s.galleryRow}>
+                {row.map((item) => (
+                  <View
+                    key={item.id}
+                    style={[s.galleryCell, { width: cellWidth, height: cellHeight }]}
+                  >
+                    <StorageImage
+                      uri={item.image_url}
+                      style={{ width: cellWidth, height: cellHeight, borderRadius: 4 }}
+                      resizeMode="contain"
+                    />
+                    {/* Delete overlay for owner */}
+                    {isOwner && !isDeleting(item.id) && (
+                      <TouchableOpacity
+                        style={s.galleryDeleteBtn}
+                        onPress={() => handleDeleteGalleryImage(item)}
+                        accessibilityLabel="Remove image"
+                        accessibilityRole="button"
+                      >
+                        <Text style={s.galleryDeleteBtnText}>×</Text>
+                      </TouchableOpacity>
+                    )}
+                    {/* Deleting spinner overlay */}
+                    {isDeleting(item.id) && (
+                      <View style={s.galleryCellOverlay}>
+                        <ActivityIndicator color="#fff" />
+                      </View>
+                    )}
+                  </View>
+                ))}
+              </View>
+            ));
+          })()}
       </View>
     );
   }, [
@@ -419,233 +413,225 @@ export function ClientOrgProfileScreen({
 
   return (
     <View style={{ flex: 1 }}>
-    <ScrollView
-      style={{ flex: 1, backgroundColor: colors.background }}
-      contentContainerStyle={[
-        s.scrollContent,
-        scrollBottomInset > 0
-          ? { paddingBottom: Math.max(120, scrollBottomInset + spacing.lg) }
-          : null,
-      ]}
-      showsVerticalScrollIndicator={false}
-    >
-      {/* ── Profile header ── */}
-      <View style={s.headerSection}>
-        {/* Logo — tappable for owner to upload/replace */}
-        <TouchableOpacity
-          style={s.logoWrap}
-          onPress={handleLogoPress}
-          onLongPress={isOwner && orgProfile?.logo_url ? handleLogoDelete : undefined}
-          disabled={!isOwner || logoUploading}
-          accessibilityLabel={isOwner ? 'Change logo' : undefined}
-          accessibilityRole={isOwner ? 'button' : 'image'}
-          activeOpacity={isOwner ? 0.7 : 1}
-        >
-          {orgProfile?.logo_url ? (
-            <StorageImage uri={orgProfile.logo_url} style={s.logo} resizeMode="cover" />
-          ) : (
-            <View style={[s.logo, s.logoPlaceholder]}>
-              {logoUploading ? (
-                <ActivityIndicator color={colors.textSecondary} />
-              ) : (
-                <Text style={s.logoInitial}>
-                  {(orgName ?? '?').charAt(0).toUpperCase()}
-                </Text>
-              )}
-            </View>
-          )}
-          {isOwner && !logoUploading && (
-            <View style={s.logoEditBadge}>
-              <Text style={s.logoEditBadgeText}>✎</Text>
-            </View>
-          )}
-          {logoUploading && orgProfile?.logo_url ? (
-            <View style={s.logoUploadingOverlay}>
-              <ActivityIndicator color="#fff" />
-            </View>
-          ) : null}
-        </TouchableOpacity>
-        {/* Hidden file input for web */}
-        {isOwner && (
-          // @ts-ignore — input element only exists on web; ignored on native
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            style={{ display: 'none' }}
-            onChange={handleLogoFileChange}
-          />
-        )}
-
-        <Text style={s.orgName}>{orgName ?? '—'}</Text>
-
-        {/* Owner-only Edit CTA (Phase 2C.1) */}
-        {isOwner && (
+      <ScrollView
+        style={{ flex: 1, backgroundColor: colors.background }}
+        contentContainerStyle={[
+          s.scrollContent,
+          scrollBottomInset > 0
+            ? { paddingBottom: Math.max(120, scrollBottomInset + spacing.lg) }
+            : null,
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ── Profile header ── */}
+        <View style={s.headerSection}>
+          {/* Logo — tappable for owner to upload/replace */}
           <TouchableOpacity
-            style={s.editCta}
-            onPress={() => setEditOpen(true)}
-            accessibilityLabel="Edit profile"
-            accessibilityRole="button"
+            style={s.logoWrap}
+            onPress={handleLogoPress}
+            onLongPress={isOwner && orgProfile?.logo_url ? handleLogoDelete : undefined}
+            disabled={!isOwner || logoUploading}
+            accessibilityLabel={isOwner ? 'Change logo' : undefined}
+            accessibilityRole={isOwner ? 'button' : 'image'}
+            activeOpacity={isOwner ? 0.7 : 1}
           >
-            <Text style={s.editCtaText}>Edit Profile</Text>
-          </TouchableOpacity>
-        )}
-
-        {orgProfile?.description ? (
-          <Text style={s.description}>{orgProfile.description}</Text>
-        ) : null}
-
-        {addr ? <Text style={s.meta}>{addr}</Text> : null}
-        {orgProfile?.website_url ? (
-          <Text style={s.meta}>{orgProfile.website_url}</Text>
-        ) : null}
-        {orgProfile?.contact_email ? (
-          <Text style={s.meta}>{orgProfile.contact_email}</Text>
-        ) : null}
-        {orgProfile?.contact_phone ? (
-          <Text style={s.meta}>{orgProfile.contact_phone}</Text>
-        ) : null}
-
-        {/* Empty profile hint for owner */}
-        {isOwner && !orgProfile?.description && !addr && !orgProfile?.website_url && (
-          <Text style={s.emptyHint}>
-            Add a description, address and contact info to complete your profile.
-          </Text>
-        )}
-
-        {/* ── Phase 3B.2: Public Profile settings (owner-only) ── */}
-        {isOwner && (
-          <View style={s.publicSection}>
-            <Text style={s.publicSectionTitle}>Public Profile</Text>
-
-            {/* is_public toggle */}
-            <View style={s.publicRow}>
-              <Text style={s.publicLabel}>
-                {orgProfile?.is_public ? 'Public' : 'Private'}
-              </Text>
-              <Switch
-                value={orgProfile?.is_public ?? false}
-                onValueChange={handleToggleIsPublic}
-                trackColor={{ false: colors.border, true: colors.accent }}
-                thumbColor="#fff"
-                accessibilityLabel="Make profile public"
-              />
-            </View>
-
-            {/* Slug input — shown when public or when there's a slug draft */}
-            {(orgProfile?.is_public || slugDraft.length > 0) && (
-              <>
-                <Text style={s.publicInputLabel}>Public URL slug</Text>
-                <TextInput
-                  style={s.publicInput}
-                  value={slugDraft}
-                  onChangeText={(v) => {
-                    setSlugDraft(v);
-                    setPublicFeedback(null);
-                  }}
-                  placeholder="e.g. my-client"
-                  placeholderTextColor={colors.textSecondary}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  accessibilityLabel="Public URL slug"
-                />
-                {/* Live URL preview */}
-                {slugDraft.trim().length > 0 && (
-                  <Text style={s.publicPreviewUrl} numberOfLines={1}>
-                    {publicClientUrl(slugDraft) ?? ''}
-                  </Text>
+            {orgProfile?.logo_url ? (
+              <StorageImage uri={orgProfile.logo_url} style={s.logo} resizeMode="cover" />
+            ) : (
+              <View style={[s.logo, s.logoPlaceholder]}>
+                {logoUploading ? (
+                  <ActivityIndicator color={colors.textSecondary} />
+                ) : (
+                  <Text style={s.logoInitial}>{(orgName ?? '?').charAt(0).toUpperCase()}</Text>
                 )}
-              </>
+              </View>
             )}
-
-            {/* Feedback text */}
-            {publicFeedback ? (
-              <Text
-                style={[
-                  s.publicFeedbackText,
-                  publicFeedbackIsError ? s.publicFeedbackError : s.publicFeedbackSuccess,
-                ]}
-              >
-                {publicFeedback}
-              </Text>
+            {isOwner && !logoUploading && (
+              <View style={s.logoEditBadge}>
+                <Text style={s.logoEditBadgeText}>✎</Text>
+              </View>
+            )}
+            {logoUploading && orgProfile?.logo_url ? (
+              <View style={s.logoUploadingOverlay}>
+                <ActivityIndicator color="#fff" />
+              </View>
             ) : null}
+          </TouchableOpacity>
+          {/* Hidden file input for web */}
+          {isOwner && (
+            // @ts-ignore — input element only exists on web; ignored on native
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,.heic,.heif"
+              style={{ display: 'none' }}
+              onChange={handleLogoFileChange}
+            />
+          )}
 
-            {/* Save button */}
+          <Text style={s.orgName}>{orgName ?? '—'}</Text>
+
+          {/* Owner-only Edit CTA (Phase 2C.1) */}
+          {isOwner && (
             <TouchableOpacity
-              style={[
-                s.publicSaveBtn,
-                (publicSaving || (orgProfile?.is_public && !slugDraft.trim())) &&
-                  s.publicSaveBtnDisabled,
-              ]}
-              onPress={() => void handleSavePublicSettings()}
-              disabled={publicSaving || (orgProfile?.is_public && !slugDraft.trim())}
-              accessibilityLabel="Save public settings"
+              style={s.editCta}
+              onPress={() => setEditOpen(true)}
+              accessibilityLabel="Edit profile"
               accessibilityRole="button"
             >
-              {publicSaving ? (
-                <ActivityIndicator color={colors.textSecondary} />
-              ) : (
-                <Text style={s.publicSaveBtnText}>Save</Text>
-              )}
+              <Text style={s.editCtaText}>Edit Profile</Text>
             </TouchableOpacity>
-          </View>
-        )}
+          )}
 
-        {/* ── Phase 3B.3: Share live public profile (owner-only, visible when live) ── */}
-        {shareUrl && isOwner && (
-          <View style={s.shareSection}>
-            <Text style={s.shareSectionTitle}>Share your profile</Text>
-            <Text style={s.shareUrl} numberOfLines={1}>
-              {publicClientUrl(orgProfile?.slug)}
+          {orgProfile?.description ? (
+            <Text style={s.description}>{orgProfile.description}</Text>
+          ) : null}
+
+          {addr ? <Text style={s.meta}>{addr}</Text> : null}
+          {orgProfile?.website_url ? <Text style={s.meta}>{orgProfile.website_url}</Text> : null}
+          {orgProfile?.contact_email ? (
+            <Text style={s.meta}>{orgProfile.contact_email}</Text>
+          ) : null}
+          {orgProfile?.contact_phone ? (
+            <Text style={s.meta}>{orgProfile.contact_phone}</Text>
+          ) : null}
+
+          {/* Empty profile hint for owner */}
+          {isOwner && !orgProfile?.description && !addr && !orgProfile?.website_url && (
+            <Text style={s.emptyHint}>
+              Add a description, address and contact info to complete your profile.
             </Text>
-            <View style={s.shareRow}>
+          )}
+
+          {/* ── Phase 3B.2: Public Profile settings (owner-only) ── */}
+          {isOwner && (
+            <View style={s.publicSection}>
+              <Text style={s.publicSectionTitle}>Public Profile</Text>
+
+              {/* is_public toggle */}
+              <View style={s.publicRow}>
+                <Text style={s.publicLabel}>{orgProfile?.is_public ? 'Public' : 'Private'}</Text>
+                <Switch
+                  value={orgProfile?.is_public ?? false}
+                  onValueChange={handleToggleIsPublic}
+                  trackColor={{ false: colors.border, true: colors.accent }}
+                  thumbColor="#fff"
+                  accessibilityLabel="Make profile public"
+                />
+              </View>
+
+              {/* Slug input — shown when public or when there's a slug draft */}
+              {(orgProfile?.is_public || slugDraft.length > 0) && (
+                <>
+                  <Text style={s.publicInputLabel}>Public URL slug</Text>
+                  <TextInput
+                    style={s.publicInput}
+                    value={slugDraft}
+                    onChangeText={(v) => {
+                      setSlugDraft(v);
+                      setPublicFeedback(null);
+                    }}
+                    placeholder="e.g. my-client"
+                    placeholderTextColor={colors.textSecondary}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    accessibilityLabel="Public URL slug"
+                  />
+                  {/* Live URL preview */}
+                  {slugDraft.trim().length > 0 && (
+                    <Text style={s.publicPreviewUrl} numberOfLines={1}>
+                      {publicClientUrl(slugDraft) ?? ''}
+                    </Text>
+                  )}
+                </>
+              )}
+
+              {/* Feedback text */}
+              {publicFeedback ? (
+                <Text
+                  style={[
+                    s.publicFeedbackText,
+                    publicFeedbackIsError ? s.publicFeedbackError : s.publicFeedbackSuccess,
+                  ]}
+                >
+                  {publicFeedback}
+                </Text>
+              ) : null}
+
+              {/* Save button */}
               <TouchableOpacity
-                style={s.shareBtn}
-                onPress={handleCopyShareLink}
-                accessibilityLabel="Copy link"
+                style={[
+                  s.publicSaveBtn,
+                  (publicSaving || (orgProfile?.is_public && !slugDraft.trim())) &&
+                    s.publicSaveBtnDisabled,
+                ]}
+                onPress={() => void handleSavePublicSettings()}
+                disabled={publicSaving || (orgProfile?.is_public && !slugDraft.trim())}
+                accessibilityLabel="Save public settings"
                 accessibilityRole="button"
               >
-                <Text style={s.shareBtnText}>
-                  {shareCopied ? 'Copied!' : 'Copy link'}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[s.shareBtn, s.shareBtnSecondary]}
-                onPress={handleOpenShareLink}
-                accessibilityLabel="Open profile in browser"
-                accessibilityRole="link"
-              >
-                <Text style={[s.shareBtnText, s.shareBtnTextSecondary]}>Open ↗</Text>
+                {publicSaving ? (
+                  <ActivityIndicator color={colors.textSecondary} />
+                ) : (
+                  <Text style={s.publicSaveBtnText}>Save</Text>
+                )}
               </TouchableOpacity>
             </View>
-          </View>
-        )}
-      </View>
+          )}
 
-      {/* ── Gallery ── */}
-      {renderGallery()}
-    </ScrollView>
-    {isOwner && organizationId && editOpen && (
-      <OrgProfileEditModal
-        visible
-        onClose={() => setEditOpen(false)}
-        organizationId={organizationId}
-        initialValues={{
-          description: orgProfile?.description ?? null,
-          address_line_1: orgProfile?.address_line_1 ?? null,
-          city: orgProfile?.city ?? null,
-          postal_code: orgProfile?.postal_code ?? null,
-          country: orgProfile?.country ?? null,
-          website_url: orgProfile?.website_url ?? null,
-          contact_email: orgProfile?.contact_email ?? null,
-          contact_phone: orgProfile?.contact_phone ?? null,
-        }}
-        onSaved={(updated) => {
-          setOrgProfile((prev) => (prev ? { ...prev, ...updated } : prev));
-          setEditOpen(false);
-        }}
-      />
-    )}
+          {/* ── Phase 3B.3: Share live public profile (owner-only, visible when live) ── */}
+          {shareUrl && isOwner && (
+            <View style={s.shareSection}>
+              <Text style={s.shareSectionTitle}>Share your profile</Text>
+              <Text style={s.shareUrl} numberOfLines={1}>
+                {publicClientUrl(orgProfile?.slug)}
+              </Text>
+              <View style={s.shareRow}>
+                <TouchableOpacity
+                  style={s.shareBtn}
+                  onPress={handleCopyShareLink}
+                  accessibilityLabel="Copy link"
+                  accessibilityRole="button"
+                >
+                  <Text style={s.shareBtnText}>{shareCopied ? 'Copied!' : 'Copy link'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.shareBtn, s.shareBtnSecondary]}
+                  onPress={handleOpenShareLink}
+                  accessibilityLabel="Open profile in browser"
+                  accessibilityRole="link"
+                >
+                  <Text style={[s.shareBtnText, s.shareBtnTextSecondary]}>Open ↗</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </View>
+
+        {/* ── Gallery ── */}
+        {renderGallery()}
+      </ScrollView>
+      {isOwner && organizationId && editOpen && (
+        <OrgProfileEditModal
+          visible
+          onClose={() => setEditOpen(false)}
+          organizationId={organizationId}
+          initialValues={{
+            description: orgProfile?.description ?? null,
+            address_line_1: orgProfile?.address_line_1 ?? null,
+            city: orgProfile?.city ?? null,
+            postal_code: orgProfile?.postal_code ?? null,
+            country: orgProfile?.country ?? null,
+            website_url: orgProfile?.website_url ?? null,
+            contact_email: orgProfile?.contact_email ?? null,
+            contact_phone: orgProfile?.contact_phone ?? null,
+          }}
+          onSaved={(updated) => {
+            setOrgProfile((prev) => (prev ? { ...prev, ...updated } : prev));
+            setEditOpen(false);
+          }}
+        />
+      )}
     </View>
   );
 }

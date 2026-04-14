@@ -16,8 +16,12 @@ import {
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { addApplication } from '../store/applicationsStore';
-import { uploadApplicationImage, APPLICATION_UPLOAD_SESSION_KEY } from '../services/applicationsSupabase';
+import {
+  uploadApplicationImage,
+  APPLICATION_UPLOAD_SESSION_KEY,
+} from '../services/applicationsSupabase';
 import { convertHeicToJpegWithStatus } from '../services/imageUtils';
+import { isImageFile } from '../../lib/validation/file';
 import { useAuth } from '../context/AuthContext';
 import { splitProfileDisplayName } from '../utils/applicantNameFromProfile';
 import { uiCopy } from '../constants/uiCopy';
@@ -81,7 +85,11 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     profile: null,
   });
 
-  const fileRefs = useRef<Record<ImageSlot, File | null>>({ closeUp: null, fullBody: null, profile: null });
+  const fileRefs = useRef<Record<ImageSlot, File | null>>({
+    closeUp: null,
+    fullBody: null,
+    profile: null,
+  });
 
   useEffect(() => {
     if (!nameLocked || !profile?.display_name) return;
@@ -91,10 +99,7 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   }, [nameLocked, profile?.display_name]);
 
   const assignImageFile = async (slot: ImageSlot, file: File) => {
-    const looksLikeImage =
-      file.type.startsWith('image/') ||
-      /\.(jpe?g|png|gif|webp|heic|heif)$/i.test(file.name);
-    if (!looksLikeImage) return;
+    if (!isImageFile(file)) return;
 
     const { file: prepared, conversionFailed } = await convertHeicToJpegWithStatus(file);
     if (conversionFailed) {
@@ -135,9 +140,11 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const renderFileInput = (slot: ImageSlot) => {
     if (Platform.OS !== 'web') return null;
     return createElement('input', {
-      ref: (el: HTMLInputElement | null) => { fileInputRefs.current[slot] = el; },
+      ref: (el: HTMLInputElement | null) => {
+        fileInputRefs.current[slot] = el;
+      },
       type: 'file',
-      accept: 'image/*',
+      accept: 'image/*,.heic,.heif',
       style: { display: 'none' },
       onChange: handleFileChange(slot),
     });
@@ -171,9 +178,7 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     const ageNum = parseInt(age, 10);
     const heightNum = parseInt(height, 10);
     if (!firstName.trim()) {
-      setError(
-        nameLocked ? uiCopy.apply.displayNameMissing : uiCopy.apply.firstNameRequired,
-      );
+      setError(nameLocked ? uiCopy.apply.displayNameMissing : uiCopy.apply.firstNameRequired);
       return;
     }
     if (!nameLocked && !lastName.trim()) {
@@ -204,10 +209,13 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       setError('Please log in as a model to submit an application.');
       return;
     }
-    const hasImages = Object.values(fileRefs.current).some(Boolean) ||
+    const hasImages =
+      Object.values(fileRefs.current).some(Boolean) ||
       Object.values(images).some((u) => u.startsWith('data:image'));
     if (hasImages && !imageRightsConfirmed) {
-      setError('Please confirm you have all necessary rights and consents to share the uploaded photos.');
+      setError(
+        'Please confirm you have all necessary rights and consents to share the uploaded photos.',
+      );
       return;
     }
 
@@ -217,8 +225,8 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       const imageUrls: Record<string, string> = {};
       if (hasImages && applicantUserId) {
         const rights = await confirmImageRights({
-          userId:     applicantUserId,
-          modelId:    null,
+          userId: applicantUserId,
+          modelId: null,
           sessionKey: APPLICATION_UPLOAD_SESSION_KEY,
         });
         if (!rights.ok) {
@@ -227,7 +235,7 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         }
       }
       const uploadFailures: ImageSlot[] = [];
-      for (const slot of (Object.keys(SLOT_LABELS) as ImageSlot[])) {
+      for (const slot of Object.keys(SLOT_LABELS) as ImageSlot[]) {
         const file = fileRefs.current[slot];
         const dataUrl = images[slot];
         if (file) {
@@ -254,7 +262,11 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         lastName: lastName.trim(),
         age: ageNum,
         height: heightNum,
-        gender: (gender === 'female' || gender === 'male' ? gender : '') as 'female' | 'male' | 'diverse' | '',
+        gender: (gender === 'female' || gender === 'male' ? gender : '') as
+          | 'female'
+          | 'male'
+          | 'diverse'
+          | '',
         hairColor: hairColor.trim(),
         city: city.trim(),
         countryCode: countryCode || undefined,
@@ -286,9 +298,7 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         </View>
         <View style={styles.centered}>
           <Text style={styles.successTitle}>Application submitted</Text>
-          <Text style={styles.successCopy}>
-            Thank you. We will get back to you.
-          </Text>
+          <Text style={styles.successCopy}>Thank you. We will get back to you.</Text>
         </View>
       </View>
     );
@@ -386,7 +396,9 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         </View>
         {/* Sex — Female / Male only (mandatory, matches filter logic) */}
         <View style={styles.field}>
-          <Text style={styles.label}>Sex <Text style={{ color: colors.buttonSkipRed }}>*</Text></Text>
+          <Text style={styles.label}>
+            Sex <Text style={{ color: colors.buttonSkipRed }}>*</Text>
+          </Text>
           <View style={styles.row}>
             {(['female', 'male'] as const).map((g) => (
               <TouchableOpacity
@@ -394,7 +406,9 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 style={[styles.genderPill, gender === g && styles.genderPillActive]}
                 onPress={() => setGender(g)}
               >
-                <Text style={[styles.genderPillLabel, gender === g && styles.genderPillLabelActive]}>
+                <Text
+                  style={[styles.genderPillLabel, gender === g && styles.genderPillLabelActive]}
+                >
                   {g === 'female' ? 'Female' : 'Male'}
                 </Text>
               </TouchableOpacity>
@@ -404,7 +418,9 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
         {/* Country — mandatory, searchable dropdown matching FILTER_COUNTRIES */}
         <View style={styles.field}>
-          <Text style={styles.label}>Country <Text style={{ color: colors.buttonSkipRed }}>*</Text></Text>
+          <Text style={styles.label}>
+            Country <Text style={{ color: colors.buttonSkipRed }}>*</Text>
+          </Text>
           {countryCode ? (
             <View style={styles.row}>
               <View style={styles.chip}>
@@ -412,7 +428,10 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                   {FILTER_COUNTRIES.find((c) => c.code === countryCode)?.label ?? countryCode}
                 </Text>
                 <TouchableOpacity
-                  onPress={() => { setCountryCode(''); setCountryQuery(''); }}
+                  onPress={() => {
+                    setCountryCode('');
+                    setCountryQuery('');
+                  }}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   <Text style={styles.chipRemove}>×</Text>
@@ -423,26 +442,48 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             <View>
               <TextInput
                 value={countryQuery}
-                onChangeText={(v) => { setCountryQuery(v); setCountryDropdownOpen(true); setEthnicityDropdownOpen(false); }}
-                onFocus={() => { setCountryDropdownOpen(true); setEthnicityDropdownOpen(false); }}
+                onChangeText={(v) => {
+                  setCountryQuery(v);
+                  setCountryDropdownOpen(true);
+                  setEthnicityDropdownOpen(false);
+                }}
+                onFocus={() => {
+                  setCountryDropdownOpen(true);
+                  setEthnicityDropdownOpen(false);
+                }}
                 placeholder="Search country…"
                 placeholderTextColor={colors.textSecondary}
                 style={styles.input}
               />
               {countryDropdownOpen && (
                 <View style={styles.dropdown}>
-                  <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled showsVerticalScrollIndicator style={{ maxHeight: 180 }}>
-                    {FILTER_COUNTRIES
-                      .filter((c) => !countryQuery.trim() || c.label.toLowerCase().includes(countryQuery.toLowerCase()) || c.code.toLowerCase().includes(countryQuery.toLowerCase()))
-                      .map((c, i, arr) => (
-                        <TouchableOpacity
-                          key={c.code}
-                          style={[styles.dropdownItem, i < arr.length - 1 && styles.dropdownItemBorder]}
-                          onPress={() => { setCountryCode(c.code); setCountryQuery(''); setCountryDropdownOpen(false); }}
-                        >
-                          <Text style={styles.dropdownItemText}>{c.label}</Text>
-                        </TouchableOpacity>
-                      ))}
+                  <ScrollView
+                    keyboardShouldPersistTaps="handled"
+                    nestedScrollEnabled
+                    showsVerticalScrollIndicator
+                    style={{ maxHeight: 180 }}
+                  >
+                    {FILTER_COUNTRIES.filter(
+                      (c) =>
+                        !countryQuery.trim() ||
+                        c.label.toLowerCase().includes(countryQuery.toLowerCase()) ||
+                        c.code.toLowerCase().includes(countryQuery.toLowerCase()),
+                    ).map((c, i, arr) => (
+                      <TouchableOpacity
+                        key={c.code}
+                        style={[
+                          styles.dropdownItem,
+                          i < arr.length - 1 && styles.dropdownItemBorder,
+                        ]}
+                        onPress={() => {
+                          setCountryCode(c.code);
+                          setCountryQuery('');
+                          setCountryDropdownOpen(false);
+                        }}
+                      >
+                        <Text style={styles.dropdownItemText}>{c.label}</Text>
+                      </TouchableOpacity>
+                    ))}
                   </ScrollView>
                 </View>
               )}
@@ -452,7 +493,10 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
         {/* Ethnicity — optional, single-select dropdown matching ETHNICITY_OPTIONS */}
         <View style={styles.field}>
-          <Text style={styles.label}>Ethnicity <Text style={{ ...typography.label, color: colors.textSecondary }}>(optional)</Text></Text>
+          <Text style={styles.label}>
+            Ethnicity{' '}
+            <Text style={{ ...typography.label, color: colors.textSecondary }}>(optional)</Text>
+          </Text>
           {ethnicity ? (
             <View style={styles.row}>
               <View style={styles.chip}>
@@ -469,18 +513,34 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             <View>
               <TouchableOpacity
                 style={[styles.input, { justifyContent: 'center' }]}
-                onPress={() => { setEthnicityDropdownOpen((o) => !o); setCountryDropdownOpen(false); }}
+                onPress={() => {
+                  setEthnicityDropdownOpen((o) => !o);
+                  setCountryDropdownOpen(false);
+                }}
               >
-                <Text style={{ ...typography.body, color: colors.textSecondary }}>Select ethnicity…</Text>
+                <Text style={{ ...typography.body, color: colors.textSecondary }}>
+                  Select ethnicity…
+                </Text>
               </TouchableOpacity>
               {ethnicityDropdownOpen && (
                 <View style={styles.dropdown}>
-                  <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled showsVerticalScrollIndicator style={{ maxHeight: 180 }}>
+                  <ScrollView
+                    keyboardShouldPersistTaps="handled"
+                    nestedScrollEnabled
+                    showsVerticalScrollIndicator
+                    style={{ maxHeight: 180 }}
+                  >
                     {ETHNICITY_OPTIONS.map((eth, i) => (
                       <TouchableOpacity
                         key={eth}
-                        style={[styles.dropdownItem, i < ETHNICITY_OPTIONS.length - 1 && styles.dropdownItemBorder]}
-                        onPress={() => { setEthnicity(eth); setEthnicityDropdownOpen(false); }}
+                        style={[
+                          styles.dropdownItem,
+                          i < ETHNICITY_OPTIONS.length - 1 && styles.dropdownItemBorder,
+                        ]}
+                        onPress={() => {
+                          setEthnicity(eth);
+                          setEthnicityDropdownOpen(false);
+                        }}
                       >
                         <Text style={styles.dropdownItemText}>{eth}</Text>
                       </TouchableOpacity>
@@ -532,7 +592,11 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 activeOpacity={0.8}
               >
                 {images[slot] ? (
-                  <Image source={{ uri: images[slot] }} style={styles.previewImage} resizeMode="contain" />
+                  <Image
+                    source={{ uri: images[slot] }}
+                    style={styles.previewImage}
+                    resizeMode="contain"
+                  />
                 ) : (
                   <Text style={styles.imagePlaceholder}>+ Photo</Text>
                 )}
@@ -548,11 +612,14 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           onPress={() => setImageRightsConfirmed((v) => !v)}
           accessibilityRole="checkbox"
         >
-          <View style={[styles.rightsCheckbox, imageRightsConfirmed && styles.rightsCheckboxChecked]}>
+          <View
+            style={[styles.rightsCheckbox, imageRightsConfirmed && styles.rightsCheckboxChecked]}
+          >
             {imageRightsConfirmed && <Text style={styles.rightsCheckmark}>✓</Text>}
           </View>
           <Text style={styles.rightsCheckLabel}>
-            I confirm I have all necessary rights and consents to share these photos as part of my application.
+            I confirm I have all necessary rights and consents to share these photos as part of my
+            application.
           </Text>
         </TouchableOpacity>
 

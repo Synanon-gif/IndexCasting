@@ -40,21 +40,11 @@ import {
   uploadOrganizationLogo,
   deleteOrganizationLogo,
 } from '../services/organizationLogoSupabase';
-import {
-  getModelsForAgencyFromSupabase,
-  type SupabaseModel,
-} from '../services/modelsSupabase';
+import { getModelsForAgencyFromSupabase, type SupabaseModel } from '../services/modelsSupabase';
 import { isOrganizationOwner } from '../services/orgRoleTypes';
-import {
-  filterAndSortModelsBySegment,
-  type ModelSegment,
-} from '../utils/orgProfileHelpers';
+import { filterAndSortModelsBySegment, type ModelSegment } from '../utils/orgProfileHelpers';
 import { normalizeDocumentspicturesModelImageRef } from '../utils/normalizeModelPortfolioUrl';
-import {
-  validateSlug,
-  publicAgencyUrl,
-  publicAgencyHref,
-} from '../utils/orgProfilePublicSettings';
+import { validateSlug, publicAgencyUrl, publicAgencyHref } from '../utils/orgProfilePublicSettings';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -187,9 +177,8 @@ export function AgencyOrgProfileScreen({
   // ── Phase 3A.3: share link handlers (owner-only) ──
 
   // Derived: truthy only for owners with a live public profile
-  const shareUrl = isOwner && orgProfile?.is_public && orgProfile?.slug
-    ? publicAgencyHref(orgProfile.slug)
-    : null;
+  const shareUrl =
+    isOwner && orgProfile?.is_public && orgProfile?.slug ? publicAgencyHref(orgProfile.slug) : null;
 
   const handleCopyShareLink = useCallback(() => {
     if (!shareUrl) return;
@@ -265,12 +254,7 @@ export function AgencyOrgProfileScreen({
               resizeMode="contain"
             />
           ) : (
-            <View
-              style={[
-                s.cellPlaceholder,
-                { width: cellWidth, height: imgH, borderRadius: 4 },
-              ]}
-            >
+            <View style={[s.cellPlaceholder, { width: cellWidth, height: imgH, borderRadius: 4 }]}>
               <Text style={s.cellInitial}>{item.name.charAt(0).toUpperCase()}</Text>
             </View>
           )}
@@ -309,9 +293,7 @@ export function AgencyOrgProfileScreen({
                 {logoUploading ? (
                   <ActivityIndicator color={colors.textSecondary} />
                 ) : (
-                  <Text style={s.logoInitial}>
-                    {(orgName ?? '?').charAt(0).toUpperCase()}
-                  </Text>
+                  <Text style={s.logoInitial}>{(orgName ?? '?').charAt(0).toUpperCase()}</Text>
                 )}
               </View>
             )}
@@ -333,7 +315,7 @@ export function AgencyOrgProfileScreen({
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
+              accept="image/*,.heic,.heif"
               style={{ display: 'none' }}
               onChange={handleLogoFileChange}
             />
@@ -358,9 +340,7 @@ export function AgencyOrgProfileScreen({
           ) : null}
 
           {addr ? <Text style={s.meta}>{addr}</Text> : null}
-          {orgProfile?.website_url ? (
-            <Text style={s.meta}>{orgProfile.website_url}</Text>
-          ) : null}
+          {orgProfile?.website_url ? <Text style={s.meta}>{orgProfile.website_url}</Text> : null}
           {orgProfile?.contact_email ? (
             <Text style={s.meta}>{orgProfile.contact_email}</Text>
           ) : null}
@@ -389,9 +369,7 @@ export function AgencyOrgProfileScreen({
                   accessibilityLabel="Copy link"
                   accessibilityRole="button"
                 >
-                  <Text style={s.shareBtnText}>
-                    {shareCopied ? 'Copied!' : 'Copy link'}
-                  </Text>
+                  <Text style={s.shareBtnText}>{shareCopied ? 'Copied!' : 'Copy link'}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[s.shareBtn, s.shareBtnSecondary]}
@@ -412,9 +390,7 @@ export function AgencyOrgProfileScreen({
 
               {/* is_public toggle */}
               <View style={s.publicRow}>
-                <Text style={s.publicLabel}>
-                  {orgProfile?.is_public ? 'Public' : 'Private'}
-                </Text>
+                <Text style={s.publicLabel}>{orgProfile?.is_public ? 'Public' : 'Private'}</Text>
                 <Switch
                   value={orgProfile?.is_public ?? false}
                   onValueChange={handleToggleIsPublic}
@@ -487,14 +463,8 @@ export function AgencyOrgProfileScreen({
         {/* ── Segment bar ── */}
         <View style={s.segmentBar}>
           {(['women', 'men'] as Segment[]).map((seg) => (
-            <TouchableOpacity
-              key={seg}
-              onPress={() => setSegment(seg)}
-              style={s.segmentItem}
-            >
-              <Text
-                style={[s.segmentLabel, segment === seg && s.segmentLabelActive]}
-              >
+            <TouchableOpacity key={seg} onPress={() => setSegment(seg)} style={s.segmentItem}>
+              <Text style={[s.segmentLabel, segment === seg && s.segmentLabelActive]}>
                 {seg === 'women' ? 'Women' : 'Men'}
               </Text>
               {segment === seg && <View style={s.segmentUnderline} />}

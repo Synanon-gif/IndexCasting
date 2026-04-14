@@ -624,8 +624,7 @@ export const uiCopy = {
     nameLockedHint:
       'Matches your account name (profile) and cannot be changed here. Two words = first and last name; one word = first name only.',
     /** Web: HEIC conversion is not bundled reliably; apply form blocks early with visible copy. */
-    heicNotSupportedWeb:
-      'HEIC images are not supported in web upload yet. Please use JPG or PNG.',
+    heicNotSupportedWeb: 'HEIC images are not supported in web upload yet. Please use JPG or PNG.',
   },
   model: {
     selectAgencyTitle: 'Select your agency profile',
@@ -1066,6 +1065,15 @@ export const uiCopy = {
     swipeLimitResetSuccess: 'Usage reset.',
     swipeLimitSaveFailed: 'Could not save limit.',
     swipeLimitResetFailed: 'Could not reset usage.',
+    orgConvertToAgency: 'Convert to Agency',
+    orgConvertToClient: 'Convert to Client',
+    orgConvertConfirmTitle: 'Convert organization type',
+    orgConvertToAgencyConfirm:
+      'This will convert this Client organization to an Agency. All Employees will become Bookers and member profiles will be updated to Agent. Continue?',
+    orgConvertToClientConfirm:
+      'This will convert this Agency organization to a Client. All Bookers will become Employees and member profiles will be updated to Client. Continue?',
+    orgConvertSuccess: 'Organization type converted successfully.',
+    orgConvertFailed: 'Could not convert organization type. Check console.',
   },
   /** Agency — model profile edit panel (My Models detail view). */
   modelEdit: {

@@ -29,6 +29,7 @@ import {
 import { StorageImage } from './StorageImage';
 
 import { supabase } from '../../lib/supabase';
+import { isImageFile } from '../../lib/validation/file';
 import { uiCopy } from '../constants/uiCopy';
 import {
   confirmImageRights,
@@ -324,7 +325,7 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
     e: React.ChangeEvent<HTMLInputElement>,
     section: 'portfolio' | 'polaroid' | 'private',
   ) => {
-    const files = Array.from(e.target?.files ?? []).filter((f) => f.type.startsWith('image/'));
+    const files = Array.from(e.target?.files ?? []).filter((f) => isImageFile(f));
     e.target.value = '';
     if (files.length) void handleUploadFiles(files, section);
   };
@@ -658,7 +659,7 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
             {/* Hidden native file input for web */}
             <input
               type="file"
-              accept="image/*"
+              accept="image/*,.heic,.heif"
               multiple
               ref={ref as React.RefObject<HTMLInputElement>}
               onChange={(e) => handleWebFileInput(e, section)}
