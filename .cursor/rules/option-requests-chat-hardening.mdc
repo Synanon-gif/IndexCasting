@@ -39,9 +39,9 @@ Diese Regeln verhindern die wiederholten Fehler aus dem System-Hardening-Audit (
 - **Frontend-Guard:** Wenn `req.isAgencyOnly === true`, sofort `return false` (und klares Log) — Job-Finalisierung nur über `agency_confirm_job_agency_only`, nicht `client_confirm_option_job`. Siehe `.cursor/rules/agency-only-option-casting.mdc`.
 - **Notifications:** Wenn nach erfolgreichem Confirm der zweite `getOptionRequestById` **`null`** liefert, **`console.error`** loggen (Notifications übersprungen) — kein stiller Skip.
 
-## Store + UI: Client „Decline agency proposal“ (`clientRejectCounterStore`)
+## Store + UI: Client „Decline agency proposal" (`clientRejectCounterStore`)
 
-- **Fail-closed (Pflicht):** `clientRejectCounterStore` gibt `boolean` zurück. Jeder Bestätigungs-Handler (z. B. `confirmRejectCounterOffer` in `ClientWebApp.tsx`) **MUSS** diesen Wert auswerten — **VERBOTEN:** Rückgabewert verwerfen und trotzdem `setRequests(getOptionRequests())` / Erfolgs-Hinweise auslösen, wenn `false` (RPC lehnt ab, Cache unverändert → sonst „stiller Erfolg“, Buttons bleiben sichtbar).
+- **Fail-closed (Pflicht):** `clientRejectCounterStore` gibt `boolean` zurück. Jeder Bestätigungs-Handler (z. B. `confirmRejectCounterOffer` in `ClientWebApp.tsx`) **MUSS** diesen Wert auswerten — **VERBOTEN:** Rückgabewert verwerfen und trotzdem `setRequests(getOptionRequests())` / Erfolgs-Hinweise auslösen, wenn `false` (RPC lehnt ab, Cache unverändert → sonst „stiller Erfolg", Buttons bleiben sichtbar).
 - **Bei `false`:** User-Feedback über `uiCopy.optionNegotiationChat.rejectCounterOfferFailedTitle` / `rejectCounterOfferFailedMessage` (oder gleichwertig), **kein** Success-State.
 
 ## DB: `client_reject_counter_offer` (Axis 1 only)
@@ -54,11 +54,12 @@ Diese Regeln verhindern die wiederholten Fehler aus dem System-Hardening-Audit (
 
 - Views mit Option-Threads (**Agency / Client Web / Model**) müssen **`subscribeToOptionMessages`** (Cleanup im `useEffect` return) verdrahten, sobald ein Thread aktiv ist — sonst kein Live-Update.
 - **Recruiting-Chat:** `BookingChatView` o. Ä. muss **`subscribeToThreadMessages`** nutzen.
+- **B2B-Org-Chat (Conversations):** `subscribeToConversation` muss **sowohl `INSERT` als auch `UPDATE`** Events auf der `messages`-Tabelle abonnieren. Ohne `UPDATE`-Subscription reflektiert die UI Metadata-Änderungen (z. B. `status: 'pending' → 'deleted'` / `'rejected'`) nicht in Echtzeit — der Client sieht weiterhin „Open related request" obwohl der Request bereits gelöscht/abgelehnt wurde. Siehe `messengerSupabase.ts`.
 - **`realtimeChannelPool`:** Bei Eviction aktiver Kanäle **`console.warn`** mit Key/refCount — hilft bei Debugging >10 Kanäle.
 
 ## Pagination & Native Attach
 
-- Services unterstützen **`beforeId`** / ältere Nachrichten — lange Threads brauchen **„Load older messages“** (Copy: `uiCopy.b2bChat.loadOlderMessages`), wo produktseitig Chat-History angezeigt wird.
+- Services unterstützen **`beforeId`** / ältere Nachrichten — lange Threads brauchen **„Load older messages"** (Copy: `uiCopy.b2bChat.loadOlderMessages`), wo produktseitig Chat-History angezeigt wird.
 - **Native (nicht Web):** Datei-Anhang in Chat-Views über **`pickChatAttachmentNative`** (nicht nur `input.click()`). **`expo-document-picker`** muss in `package.json` bleiben, solange die Utility existiert.
 
 ## Temp-IDs
@@ -67,8 +68,36 @@ Diese Regeln verhindern die wiederholten Fehler aus dem System-Hardening-Audit (
 
 ## UX-Polish (kein Security-Blocker, aber Produktkonsistenz)
 
-- **Guest-Conversations:** Kein irreführender fester Titel wie „Guest Client“, wenn ein neutralerer Kurztext (`Guest`) oder später ein echter Name möglich ist.
+- **Guest-Conversations:** Kein irreführender fester Titel wie „Guest Client", wenn ein neutralerer Kurztext (`Guest`) oder später ein echter Name möglich ist.
 - **`toLocalRequest`:** Fallbacks für fehlende Namen beschreibend (`Unknown client` / `Unknown model` oder `client_organization_name`), nicht generische Rollenlabels als Fake-Namen.
+
+## Delete / Reject → Kalender, B2B-Booking-Karten, booking_events, Model-Cache (kanonisch, 20260820 + 20260821)
+
+**Ziel:** Nach **vollständigem Löschen** (`delete_option_request_full`) oder **Ablehnung** (`option_requests.status → rejected` via Trigger) dürfen B2B-Chats keine „pending"-Booking-Karten mit „Open related request" mehr zeigen; Kalender darf keine stornierten Termine als aktiv rendern; `booking_events` dürfen nicht aktiv bleiben; Model-Home darf keinen „Accept" auf bereits entfernte Requests zeigen.
+
+**Defense-in-Depth — gilt für alle Varianten** (Agency-Remove/Trash, `delete_option_request_full`, Reject ohne Row-Delete):
+
+1. **DB `delete_option_request_full`:** Vor Deletes **`UPDATE public.messages`** — `metadata.status = 'deleted'` (jsonb_set auf `metadata.option_request_id` = gelöschte Option). Referenz: `supabase/migrations/20260820_delete_option_request_full_update_b2b_messages.sql`.
+
+2. **DB `fn_cancel_calendar_on_option_rejected` + Trigger `tr_cancel_calendar_on_option_rejected`:** Bei `status → rejected`: `calendar_entries` und **`user_calendar_events`** auf **`cancelled`**; **`booking_events`** auf **`cancelled`** (Migration `20260821_reject_cancels_booking_events.sql`); zusätzlich **`UPDATE messages`** mit `metadata.status = 'rejected'` für verknüpfte Booking-Karten.
+
+3. **`user_calendar_events.status`:** Spalte **muss** existieren (`ALTER TABLE … ADD COLUMN IF NOT EXISTS`), sonst kann der Spiegel-Kalender bei Reject nicht zuverlässig als cancelled markiert werden.
+
+4. **Kalender-Services:** Reads auf `calendar_entries` / `user_calendar_events` müssen **`cancelled`** ausblenden (z. B. `.neq('status', 'cancelled')` bzw. clientseitiger Filter wo PostgREST-Mocks kein `.or()` erlauben) — siehe `calendarSupabase.ts`, `userCalendarEventsSupabase.ts`.
+
+5. **booking_events-Services:** Alle Fetch-Funktionen (`getBookingEventsForModel`, `getBookingEventsForOrg`, `getBookingEventsInRange`) müssen **`.neq('status', 'cancelled')`** filtern — cancelled `booking_events` dürfen nie im Kalender oder anderswo als aktiv gerendert werden. Ohne diesen Filter erscheinen abgelehnte/gelöschte Events als Duplikate neben dem eigentlichen Kalender-Eintrag. Siehe `bookingEventsSupabase.ts`.
+
+6. **Store `loadOptionsForModel`:** Nach Remote-Fetch **Cache-Zeilen entfernen**, deren `id` nicht mehr in der DB-Liste ist (verhindert stale „Accept" nach Delete).
+
+7. **Model Home:** `pendingConfirmations` / `getPendingModelConfirmations` bei **relevantem Tab-Wechsel** (z. B. `tab === 'home'`) neu laden — Pattern `ModelProfileScreen` (`useEffect` auf `[profile?.id, tab]`).
+
+8. **UI `OrgMessengerInline`:** `metadata.status === 'deleted'` / `'rejected'` → Terminal-Copy („Removed" / „Declined"), **kein** „Open related request". **Kartentitel dynamisch:** `metadata.request_type` lesen (`'option'` | `'casting'`) und entsprechend `uiCopy.b2bChat.optionCardTitle` / `castingCardTitle` anzeigen; Fallback: `uiCopy.b2bChat.bookingCardTitle`. **`createBookingMessageInClientAgencyChat`** muss `requestType` in der Metadata speichern, damit die Karte den richtigen Typ anzeigt.
+
+9. **B2B-Chat Realtime (Conversations):** `subscribeToConversation` muss **`INSERT` und `UPDATE`** abonnieren (nicht nur `INSERT`). Ohne `UPDATE`-Subscription werden Metadata-Änderungen (`metadata.status: 'pending' → 'deleted'`) nicht in Echtzeit reflektiert — der Client sieht veraltete Booking-Karten.
+
+**VERBOTEN:** Neue Kalender-/booking_events-Queries ohne Filter auf `status !== 'cancelled'`; neue B2B-Booking-Karten ohne klare Terminal-Metadaten wenn der verknüpfte Request gelöscht/abgelehnt wird; `subscribeToConversation` nur mit `INSERT` ohne `UPDATE`; B2B-Booking-Karten mit fixem „Booking"-Label statt dynamischem `request_type`-Label.
+
+**Realitätscheck:** Keine absolute „niemals"-Garantie ohne Regressionstests und Einhaltung dieser Liste bei jedem Touch der Pfade.
 
 ## Tests (bei Änderungen in diesen Pfaden)
 
@@ -77,4 +106,6 @@ Diese Regeln verhindern die wiederholten Fehler aus dem System-Hardening-Audit (
 ## Verweise
 
 - Migration Status-Trigger: `supabase/migrations/20260711_formalize_option_status_transition_trigger.sql`
+- Delete/Reject/B2B/Kalender-Konsistenz: `supabase/migrations/20260820_delete_option_request_full_update_b2b_messages.sql`
+- booking_events-Reject-Konsistenz: `supabase/migrations/20260821_reject_cancels_booking_events.sql`
 - Tests: `src/services/__tests__/optionRequestsHardening.test.ts`, `src/store/__tests__/optionRequestsHardening.test.ts`, `src/store/__tests__/optionRequestsClientDecline.store.test.ts`

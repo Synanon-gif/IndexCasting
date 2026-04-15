@@ -493,6 +493,7 @@ export function addOptionRequest(
           countryCode: bookingCountryCode,
           date,
           optionRequestId: result.id,
+          requestType: requestType === 'casting' ? 'casting' : 'option',
           source: extra?.source,
           packageId: extra?.packageId,
         });

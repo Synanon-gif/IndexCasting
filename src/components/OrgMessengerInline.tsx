@@ -867,7 +867,13 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
               }}
             >
               <View style={styles.card}>
-                <Text style={styles.cardTitle}>{uiCopy.b2bChat.bookingCardTitle}</Text>
+                <Text style={styles.cardTitle}>
+                  {metaString(m, 'request_type') === 'casting'
+                    ? uiCopy.b2bChat.castingCardTitle
+                    : metaString(m, 'request_type') === 'option'
+                      ? uiCopy.b2bChat.optionCardTitle
+                      : uiCopy.b2bChat.bookingCardTitle}
+                </Text>
                 <Text style={styles.chatBubbleText} numberOfLines={2}>
                   {uiCopy.b2bChat.bookingModelLabel}:{' '}
                   {(() => {

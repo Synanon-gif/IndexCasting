@@ -227,6 +227,9 @@ Q27: Ändert diese Änderung die Reihenfolge in bootstrapThenLoadProfile so dass
 Q28: Entfernt diese Änderung den pending-invite-Check aus ensure_plain_signup_b2b_owner_bootstrap oder die Zombie-Cleanup aus accept_organization_invitation?
 Q29: Fügt diese Änderung einen neuen BEFORE UPDATE Validate-Trigger auf option_requests hinzu, ohne die Änderungen aller bestehenden Reset-Trigger (insb. tr_reset_final_status_on_rejection) am NEW-Record zu berücksichtigen? (Trigger-Chain-Konflikt → Model-Decline bricht)
 Q30: Benennt diese Änderung einen der Trigger tr_reset_final_status_on_rejection oder trg_validate_option_status um? (Alphabetische Reihenfolge ist kritisch für korrekte Trigger-Chain)
+Q31: Fehlt einer neuen booking_events-Fetch-Funktion der .neq('status', 'cancelled')-Filter? (Ohne Filter erscheinen abgelehnte/gelöschte Events als Kalender-Duplikate)
+Q32: Abonniert subscribeToConversation nur INSERT ohne UPDATE auf messages? (Metadata-Änderungen wie status:'deleted' werden nicht live reflektiert)
+Q33: Zeigt eine B2B-Booking-Karte ein festes "Booking"-Label statt dynamisches request_type ('option'/'casting')? (Produkt-Inkonsistenz)
 ```
 
 → Wenn **eine** Antwort unklar oder „möglicherweise ja" ist:
@@ -301,6 +304,9 @@ Q30: Benennt diese Änderung einen der Trigger tr_reset_final_status_on_rejectio
 - **Owner-Bootstrap VOR Invite-Finalisierung (Risiko 46):** Änderung an `bootstrapThenLoadProfile` die `ensurePlainSignupB2bOwnerBootstrap` VOR `finalizePendingInviteOrClaim` ausführt → Blocker — erzeugt Zombie-Org für eingeladene Booker/Employees. **Pflicht:** Invite-Finalisierung IMMER zuerst; Bootstrap NUR wenn kein Invite erfolgreich. Siehe `system-invariants.mdc` **INVITE-BEFORE-BOOTSTRAP INVARIANT**.
 - **Pending-invite-Check aus Bootstrap-RPC entfernt (Risiko 47):** `ensure_plain_signup_b2b_owner_bootstrap` ohne Check auf `invitations`-Tabelle → Blocker — Layer-2-Schutz gegen Zombie-Orgs fehlt. **Pflicht:** `invitations`-Check mit `status='pending' AND expires_at > now()` VOR Org-Erstellung.
 - **Zombie-Cleanup aus `accept_organization_invitation` entfernt (Risiko 48):** `accept_organization_invitation` gibt nur `already_member_of_another_org` zurück ohne Zombie-Erkennung → Blocker — Layer-3-Selbstheilung fehlt. **Pflicht:** Zombie-Orgs (sole member, no data) automatisch aufräumen.
+- **booking_events ohne cancelled-Filter (Risiko 50):** Neue oder geänderte `booking_events`-Fetch-Funktionen ohne `.neq('status', 'cancelled')` → Blocker — cancelled booking_events (nach Reject/Delete) erscheinen als Duplikate im Kalender neben dem eigentlichen calendar_entries-Eintrag. Pflicht: alle `getBookingEventsFor*`/`getBookingEventsInRange` filtern cancelled aus. Siehe `option-requests-chat-hardening.mdc` Punkt 5.
+- **B2B-Chat `subscribeToConversation` nur mit INSERT (Risiko 51):** Realtime-Subscription auf `messages` ohne `UPDATE`-Event → Blocker — Metadata-Änderungen (`status: 'pending' → 'deleted'`/`'rejected'`) werden nicht live reflektiert; Client sieht veraltete Booking-Karten. Pflicht: sowohl `INSERT` als auch `UPDATE` abonnieren. Siehe `option-requests-chat-hardening.mdc` und `messengerSupabase.ts`.
+- **B2B-Booking-Karte mit fixem „Booking"-Label (Risiko 52):** `OrgMessengerInline` zeigt festes „Booking" statt dynamisches Label basierend auf `metadata.request_type` (`'option'` | `'casting'`) → Blocker für Produktkonsistenz. Pflicht: `request_type` aus Metadata lesen; `createBookingMessageInClientAgencyChat` muss `requestType` in Metadata speichern. Siehe `uiCopy.b2bChat.optionCardTitle` / `castingCardTitle`.
 
 ---
 

@@ -28,7 +28,20 @@ const getUserMock = jest.fn();
 
 const makeChain = (finalResult: unknown) => {
   const chain: Record<string, jest.Mock> = {};
-  const methods = ['select', 'insert', 'update', 'eq', 'order', 'maybeSingle', 'single', 'gte', 'lte', 'in', 'not'];
+  const methods = [
+    'select',
+    'insert',
+    'update',
+    'eq',
+    'neq',
+    'order',
+    'maybeSingle',
+    'single',
+    'gte',
+    'lte',
+    'in',
+    'not',
+  ];
   methods.forEach((m) => {
     chain[m] = jest.fn(() => {
       if (m === 'maybeSingle' || m === 'single') return Promise.resolve(finalResult);
@@ -223,10 +236,10 @@ describe('updateBookingEventStatus', () => {
    * resolving to { data, error }.
    */
   const makeUpdateChain = (result: { data: unknown; error: unknown }) => {
-    const selectFn   = jest.fn().mockResolvedValue(result);
-    const eq2Fn      = jest.fn().mockReturnValue({ select: selectFn });
-    const eq1Fn      = jest.fn().mockReturnValue({ eq: eq2Fn });
-    const updateFn   = jest.fn().mockReturnValue({ eq: eq1Fn });
+    const selectFn = jest.fn().mockResolvedValue(result);
+    const eq2Fn = jest.fn().mockReturnValue({ select: selectFn });
+    const eq1Fn = jest.fn().mockReturnValue({ eq: eq2Fn });
+    const updateFn = jest.fn().mockReturnValue({ eq: eq1Fn });
     return { update: updateFn };
   };
 
@@ -238,9 +251,7 @@ describe('updateBookingEventStatus', () => {
     // Second from() call: optimistic-lock update returning 1 row
     const updateMock = makeUpdateChain({ data: [{ id: 'evt-1' }], error: null });
 
-    (supabase.from as jest.Mock)
-      .mockReturnValueOnce(fetchChain)
-      .mockReturnValueOnce(updateMock);
+    (supabase.from as jest.Mock).mockReturnValueOnce(fetchChain).mockReturnValueOnce(updateMock);
 
     const result = await updateBookingEventStatus('evt-1', 'agency_accepted');
     expect(result.ok).toBe(true);
@@ -253,9 +264,7 @@ describe('updateBookingEventStatus', () => {
     // 0 rows updated → another caller changed the status first
     const updateMock = makeUpdateChain({ data: [], error: null });
 
-    (supabase.from as jest.Mock)
-      .mockReturnValueOnce(fetchChain)
-      .mockReturnValueOnce(updateMock);
+    (supabase.from as jest.Mock).mockReturnValueOnce(fetchChain).mockReturnValueOnce(updateMock);
 
     const result = await updateBookingEventStatus('evt-1', 'agency_accepted');
     expect(result.ok).toBe(false);

@@ -9,6 +9,8 @@ export type BookingChatMetadata = {
   status: 'pending';
   /** Related option request thread id for contextual jump back. */
   option_request_id?: string;
+  /** 'option' | 'casting' — drives the B2B card label. */
+  request_type?: string;
   /** Set when the booking was initiated from a shared package. */
   source?: 'package';
   /** ID of the guest_links row the booking originated from. */
@@ -23,6 +25,7 @@ export async function createBookingMessageInClientAgencyChat(params: {
   countryCode: string;
   date: string;
   optionRequestId?: string;
+  requestType?: 'option' | 'casting';
   source?: 'package';
   packageId?: string;
 }): Promise<boolean> {
@@ -34,6 +37,7 @@ export async function createBookingMessageInClientAgencyChat(params: {
     countryCode,
     date,
     optionRequestId,
+    requestType,
     source,
     packageId,
   } = params;
@@ -58,16 +62,24 @@ export async function createBookingMessageInClientAgencyChat(params: {
       date,
       status: 'pending',
       ...(optionRequestId ? { option_request_id: optionRequestId } : {}),
+      ...(requestType ? { request_type: requestType } : {}),
       ...(source ? { source } : {}),
       ...(packageId ? { package_id: packageId } : {}),
     };
 
     const messageType: MessagePayloadType = 'booking';
 
+    const cardTitle =
+      requestType === 'casting'
+        ? uiCopy.b2bChat.castingCardTitle
+        : requestType === 'option'
+          ? uiCopy.b2bChat.optionCardTitle
+          : uiCopy.b2bChat.bookingCardTitle;
+
     const msg = await sendMessengerMessage(
       ensured.conversationId,
       actingUserId,
-      uiCopy.b2bChat.bookingCardTitle,
+      cardTitle,
       undefined,
       undefined,
       {

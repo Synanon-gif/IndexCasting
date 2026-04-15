@@ -651,6 +651,16 @@ export function subscribeToConversation(
           },
           dispatch,
         )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'messages',
+            filter: `conversation_id=eq.${conversationId}`,
+          },
+          dispatch,
+        )
         .subscribe(),
     (payload) => onMessage((payload as { new: Message }).new),
   );

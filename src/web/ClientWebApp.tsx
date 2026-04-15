@@ -5535,7 +5535,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
     };
   }, [selectedThreadId, requests]);
 
-  const toggleArchive = (threadId: string) => {
+  const _toggleArchive = (threadId: string) => {
     setArchivedIds((prev) => {
       const next = new Set(prev);
       const nowArchived = !next.has(threadId);
@@ -6149,7 +6149,7 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                 ) : (
                   visibleRequests.map((r) => {
                     const reqStatus = getRequestStatus(r.threadId) ?? r.status;
-                    const isArchived = archivedIds.has(r.threadId);
+                    const _isArchived = archivedIds.has(r.threadId);
                     const assignment = r.clientOrganizationId
                       ? assignmentByClientOrgId[r.clientOrganizationId]
                       : undefined;
@@ -6251,20 +6251,6 @@ const MessagesView: React.FC<MessagesViewProps> = ({
                               {STATUS_LABELS[reqStatus]}
                             </Text>
                           </View>
-                          <TouchableOpacity
-                            onPress={() => toggleArchive(r.threadId)}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                            accessibilityRole="button"
-                            accessibilityLabel={
-                              isArchived
-                                ? uiCopy.messages.unarchiveThreadInListAccessibility
-                                : uiCopy.messages.archiveThreadInListAccessibility
-                            }
-                          >
-                            <Text style={{ fontSize: 12, color: colors.textSecondary }}>
-                              {isArchived ? '↩' : '📦'}
-                            </Text>
-                          </TouchableOpacity>
                         </ScrollView>
                       </View>
                     );

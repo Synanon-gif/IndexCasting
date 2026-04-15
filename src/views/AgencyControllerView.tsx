@@ -6263,7 +6263,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
     return unsub;
   }, [selectedThreadId]);
 
-  const toggleArchive = (threadId: string) => {
+  const _toggleArchive = (threadId: string) => {
     setArchivedIds((prev) => {
       const next = new Set(prev);
       if (next.has(threadId)) next.delete(threadId);
@@ -7706,19 +7706,6 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                                 {STATUS_LABELS[reqStatus]}
                               </Text>
                             </View>
-                            <TouchableOpacity
-                              onPress={() => toggleArchive(r.threadId)}
-                              accessibilityRole="button"
-                              accessibilityLabel={
-                                archivedIds.has(r.threadId)
-                                  ? uiCopy.messages.unarchiveThreadInListAccessibility
-                                  : uiCopy.messages.archiveThreadInListAccessibility
-                              }
-                            >
-                              <Text style={{ fontSize: 12, color: colors.textSecondary }}>
-                                {archivedIds.has(r.threadId) ? '↩' : '📦'}
-                              </Text>
-                            </TouchableOpacity>
                           </ScrollView>
                         </View>
                       );

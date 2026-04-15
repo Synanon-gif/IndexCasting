@@ -811,6 +811,8 @@ export const uiCopy = {
     sharedModelBodyPrefix: 'Shared model:',
     modelsCount: 'models',
     bookingCardTitle: 'Booking',
+    optionCardTitle: 'Option',
+    castingCardTitle: 'Casting',
     bookingModelLabel: 'Model',
     bookingDateLabel: 'Date',
     bookingStatusLabel: 'Status',
