@@ -115,7 +115,8 @@ export type SystemOptionMessageKind =
   | 'client_rejected_counter'
   | 'job_confirmed_by_client'
   | 'job_confirmed_by_agency'
-  | 'model_approved_booking';
+  | 'model_approved_booking'
+  | 'model_declined_availability';
 
 export type SupabaseOptionDocument = {
   id: string;

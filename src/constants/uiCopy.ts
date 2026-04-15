@@ -1514,6 +1514,7 @@ export const uiCopy = {
     noModelAccountClientNotice:
       'No model app account on file. The agency can negotiate and confirm with you without waiting for model approval. When confirmed, the booking appears in both calendars.',
     modelApprovedBooking: '✓ Approved by Model',
+    modelDeclinedAvailability: 'Model declined the availability request.',
   },
   /** Option/casting negotiation thread — fullscreen chat chrome (client + agency). */
   optionNegotiationChat: {

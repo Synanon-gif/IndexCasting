@@ -958,9 +958,28 @@ Ein abgelehnter Request muss auf **allen** Ebenen konsistent terminal sein:
 
 - `status = 'rejected'` setzt `final_status` über Trigger auf `option_pending` zurück (kein stale `option_confirmed` bei rejected)
 - Trigger `fn_reset_final_status_on_rejection` (Migration `20260555`) ist kanonisch — niemals umgehen
+- `fn_validate_option_status_transition` (Migration `20260815`) erlaubt `option_confirmed → option_pending` **NUR** bei gleichzeitigem `status → rejected` — alle anderen Pfade bleiben blockiert. **KRITISCH:** Ohne diese Ausnahme blockiert der Validate-Trigger den Reset-Trigger → kein Model-Decline möglich (Root Cause Bug 20260815: Trigger-Chain-Konflikt).
+- **System-Message `model_declined_availability`:** Nach erfolgreicher Model-Ablehnung **MUSS** diese System-Message emittiert werden — in **beiden** Codepfaden (Store `rejectOptionAsModel` + `ModelProfileScreen.handleRejectBooking`).
 - UI: Keine Action-Buttons auf abgelehnten Requests
 - Notifications/Calendar: Bereinigung durch `delete_option_request_full` oder `fn_cancel_calendar_on_option_rejected`
 - Stale `final_status = 'option_confirmed'` bei `status = 'rejected'` = **Release-Blocker**
+
+### F.1 TRIGGER-CHAIN-INVARIANTE (unveränderlich, Fix 20260815)
+
+Wenn mehrere `BEFORE UPDATE`-Trigger auf derselben Tabelle liegen, feuert PostgreSQL sie **alphabetisch nach Trigger-Name**. Der **zweite** Trigger sieht die Änderungen des ersten am `NEW`-Record.
+
+**Pflicht:** Jeder Validate-Trigger der Übergänge blockiert, muss die Änderungen aller vorherigen Reset-Trigger auf derselben Tabelle kennen und erlaubte Ausnahmen explizit kodieren.
+
+**Konkret für `option_requests`:**
+
+| Trigger-Name | Typ | Funktion | Feuert |
+|---|---|---|---|
+| `tr_reset_final_status_on_rejection` | BEFORE UPDATE OF status | `fn_reset_final_status_on_rejection` | **Erster** (alphabetisch) |
+| `trg_validate_option_status` | BEFORE UPDATE OF status, final_status, model_approval | `fn_validate_option_status_transition` | **Zweiter** (alphabetisch) |
+
+**Verboten:** Neuer Validate-Trigger auf `option_requests` der Übergänge blockiert, ohne die Änderungen von `tr_reset_final_status_on_rejection` zu berücksichtigen.
+
+**Verboten:** Umbenennung von `tr_reset_final_status_on_rejection` zu einem Namen der alphabetisch **nach** `trg_validate_option_status` sortiert — das würde die Trigger-Reihenfolge umkehren und den Fix brechen.
 
 ### G. CALENDAR AS PROJECTION — SINGLE CANONICAL EVENT (unveränderlich)
 

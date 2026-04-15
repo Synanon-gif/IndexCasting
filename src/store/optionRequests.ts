@@ -598,8 +598,18 @@ export async function rejectOptionAsModel(threadId: string): Promise<boolean> {
     const refreshed = await getOptionRequestByIdModelSafe(req.id);
     if (refreshed) {
       Object.assign(req, toLocalRequest(refreshed));
-      notify();
     }
+    const inserted = await addOptionSystemMessage(req.id, 'model_declined_availability');
+    if (inserted) {
+      messagesCache.push({
+        id: inserted.id,
+        threadId,
+        from: 'system',
+        text: inserted.text,
+        createdAt: new Date(inserted.created_at).getTime(),
+      });
+    }
+    notify();
     return true;
   } finally {
     endCriticalOptionAction(threadId);

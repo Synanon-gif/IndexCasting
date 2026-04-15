@@ -156,3 +156,29 @@ describe('C2: modelConfirmOptionRequest uses MODEL_SAFE select', () => {
     expect(selectCalls[0]).toBe(OPTION_REQUEST_SELECT_MODEL_SAFE);
   });
 });
+
+describe('SystemOptionMessageKind includes model_declined_availability', () => {
+  it('model_declined_availability must be a valid kind accepted by addOptionSystemMessage', async () => {
+    const { supabase } = require('../../../lib/supabase');
+    supabase.rpc.mockResolvedValue({ data: 'msg-uuid-1', error: null });
+    supabase.from.mockImplementation(() => ({
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      maybeSingle: jest.fn().mockResolvedValue({
+        data: { id: 'req-1', agency_id: 'a1', client_id: null },
+        error: null,
+      }),
+    }));
+
+    const { addOptionSystemMessage } = require('../optionRequestsSupabase');
+    const result = await addOptionSystemMessage('req-1', 'model_declined_availability');
+
+    expect(supabase.rpc).toHaveBeenCalledWith('insert_option_request_system_message', {
+      p_option_request_id: 'req-1',
+      p_kind: 'model_declined_availability',
+      p_price: null,
+      p_currency: null,
+    });
+    expect(result).not.toBeNull();
+  });
+});

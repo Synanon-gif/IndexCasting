@@ -10,13 +10,21 @@ Diese Regeln verhindern die wiederholten Fehler aus dem System-Hardening-Audit (
 ## DB: Status-Trigger und Migrationen
 
 - **`fn_validate_option_status_transition` + Trigger `trg_validate_option_status`** müssen in **`supabase/migrations/`** liegen (idempotent `CREATE OR REPLACE` + `DROP TRIGGER IF EXISTS` + `CREATE TRIGGER`). **Niemals** nur in `supabase/*.sql` außerhalb `migrations/` deployen — neue Projekte/Staging hätten sonst keine Status-State-Machine.
-- **`fn_reset_final_status_on_rejection`** (Migration `20260555`) setzt bei `status → rejected` u. a. `final_status` zurück. **`fn_validate_option_status_transition`** blockiert explizit `option_confirmed → option_pending` im selben Statement.
-- **Reihenfolge:** Beide sind `BEFORE UPDATE` auf `option_requests`; PostgreSQL feuert **alphabetisch** nach Funktionsnamen → `fn_reset_final_status_on_rejection` **vor** `fn_validate_option_status_transition`. Daraus folgt das kanonische **Model-Reject-Pattern** (siehe unten).
+- **`fn_reset_final_status_on_rejection`** (Migration `20260555`) setzt bei `status → rejected` u. a. `final_status` zurück.
+- **`fn_validate_option_status_transition`** (Migration `20260815`) erlaubt `option_confirmed → option_pending` **NUR** wenn gleichzeitig `status → rejected` (Model-Decline). Alle anderen `option_confirmed → option_pending` Übergänge bleiben blockiert.
+- **Reihenfolge:** Beide sind `BEFORE UPDATE` auf `option_requests`; PostgreSQL feuert **alphabetisch** nach **Trigger-Name** → `tr_reset_final_status_on_rejection` **vor** `trg_validate_option_status`. Der Reset-Trigger setzt `NEW.final_status := 'option_pending'`, der Validate-Trigger sieht diese Änderung — deshalb **muss** der Validate-Trigger die Exception für `status → rejected` kennen.
+- **KRITISCH (Root Cause Bug 20260815):** PostgreSQL-Trigger feuern alphabetisch nach **Trigger-Name** (nicht Funktionsname). Wenn zwei `BEFORE UPDATE`-Trigger auf derselben Tabelle liegen, sieht der zweite die Änderungen des ersten am `NEW`-Record. Ohne die Rejection-Ausnahme in `fn_validate_option_status_transition` blockierte der Validate-Trigger den Reset des Reset-Triggers → **kein Model-Decline möglich**.
 
 ## Service: `modelRejectOptionRequest`
 
-- **VERBOTEN:** Im `.update({ ... })` für Model-Reject **`final_status: 'option_pending'`** (oder jedes explizite Zurücksetzen von `final_status` von `option_confirmed` auf `option_pending`) mitzusenden — das triggert `fn_validate_option_status_transition` und bricht den Request.
+- **VERBOTEN:** Im `.update({ ... })` für Model-Reject **`final_status: 'option_pending'`** (oder jedes explizite Zurücksetzen von `final_status` von `option_confirmed` auf `option_pending`) mitzusenden — `fn_validate_option_status_transition` blockiert das und bricht den Request.
 - **RICHTIG:** Nur `{ model_approval: 'rejected', status: 'rejected' }` senden (plus sinnvolle `.eq()`-Guards). Den Reset von `final_status` **nur** dem Trigger `fn_reset_final_status_on_rejection` überlassen.
+
+## System-Message bei Model-Ablehnung
+
+- Nach erfolgreicher Model-Ablehnung MUSS eine System-Message `model_declined_availability` emittiert werden (Kind: `model_declined_availability` in `insert_option_request_system_message`).
+- Gilt für **beide** Codepfade: Store (`rejectOptionAsModel`) UND `ModelProfileScreen` (`handleRejectBooking`).
+- Ebenso: `model_approved_booking` bei Bestätigung in **beiden** Codepfaden.
 
 ## Service: Model-facing `option_requests`-Reads
 
