@@ -3,6 +3,11 @@ import {
   parseModelAgencyKey,
   resolveStoredRepresentationKey,
   findRowByKey,
+  countUniqueAgencyIds,
+  canonicalMatRowForAgency,
+  uniqueAgencyRowsForSwitcher,
+  needsAgencySelectionUi,
+  computeInitialRepresentationKey,
 } from '../modelAgencyKey';
 import type { ModelAgencyContext as ModelAgencyRow } from '../../services/modelsSupabase';
 
@@ -70,5 +75,69 @@ describe('findRowByKey', () => {
 
   it('returns null for unknown key', () => {
     expect(findRowByKey([row(A1, 'DE')], makeModelAgencyKey(A2, 'DE'))).toBeNull();
+  });
+});
+
+describe('countUniqueAgencyIds / canonicalMatRowForAgency / uniqueAgencyRowsForSwitcher', () => {
+  it('counts distinct agencies only', () => {
+    expect(countUniqueAgencyIds([row(A1, 'DE'), row(A1, 'AT')])).toBe(1);
+    expect(countUniqueAgencyIds([row(A1, 'DE'), row(A2, 'DE')])).toBe(2);
+  });
+
+  it('picks lexicographically first territory for canonical row', () => {
+    const rows = [row(A1, 'DE'), row(A1, 'AT')];
+    expect(canonicalMatRowForAgency(rows, A1)?.territory).toBe('AT');
+  });
+
+  it('dedupes switcher list to one row per agency', () => {
+    const rows = [row(A1, 'DE', 'Poetry'), row(A1, 'AT', 'Poetry'), row(A2, 'GB', 'Other')];
+    const u = uniqueAgencyRowsForSwitcher(rows);
+    expect(u).toHaveLength(2);
+    expect(u.map((r) => r.agencyId).sort()).toEqual([A1, A2].sort());
+  });
+});
+
+describe('needsAgencySelectionUi', () => {
+  it('is false for one agency with multiple territories', () => {
+    expect(needsAgencySelectionUi([row(A1, 'DE'), row(A1, 'AT')])).toBe(false);
+  });
+
+  it('is true for two distinct agencies', () => {
+    expect(needsAgencySelectionUi([row(A1, 'DE'), row(A2, 'DE')])).toBe(true);
+  });
+});
+
+describe('computeInitialRepresentationKey', () => {
+  it('returns null for empty rows', () => {
+    expect(computeInitialRepresentationKey(null, [])).toBeNull();
+  });
+
+  it('auto-picks canonical MAT when exactly one agency', () => {
+    const rows = [row(A1, 'DE'), row(A1, 'AT')];
+    expect(computeInitialRepresentationKey(null, rows)).toBe(makeModelAgencyKey(A1, 'AT'));
+  });
+
+  it('returns null when multiple agencies and no valid stored key', () => {
+    const rows = [row(A1, 'DE'), row(A2, 'FR')];
+    expect(computeInitialRepresentationKey(null, rows)).toBeNull();
+  });
+
+  it('respects valid stored composite key', () => {
+    const rows = [row(A1, 'DE'), row(A1, 'AT')];
+    const stored = makeModelAgencyKey(A1, 'DE');
+    expect(computeInitialRepresentationKey(stored, rows)).toBe(stored);
+  });
+
+  it('matches routing gate: multi-agency null until user selects', () => {
+    const rows = [row(A1, 'DE'), row(A2, 'FR')];
+    const key = computeInitialRepresentationKey(null, rows);
+    expect(key).toBeNull();
+    expect(needsAgencySelectionUi(rows)).toBe(true);
+  });
+
+  it('matches routing gate: single-agency multi-territory never needs picker', () => {
+    const rows = [row(A1, 'DE'), row(A1, 'AT')];
+    expect(needsAgencySelectionUi(rows)).toBe(false);
+    expect(computeInitialRepresentationKey(null, rows)).not.toBeNull();
   });
 });

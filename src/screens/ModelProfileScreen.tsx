@@ -74,6 +74,7 @@ import {
   getPendingModelConfirmations,
   modelConfirmOptionRequest,
   modelRejectOptionRequest,
+  addOptionSystemMessage,
   type SupabaseOptionRequestModelSafe,
 } from '../services/optionRequestsSupabase';
 import { getAgencyById, type Agency } from '../services/agenciesSupabase';
@@ -81,7 +82,7 @@ import { getAgencyNamesByThreadIds } from '../services/recruitingChatSupabase';
 import { BookingChatView } from '../views/BookingChatView';
 import { useAuth } from '../context/AuthContext';
 import { useModelAgency } from '../context/ModelAgencyContext';
-import { makeModelAgencyKey } from '../utils/modelAgencyKey';
+import { needsAgencySelectionUi, uniqueAgencyRowsForSwitcher } from '../utils/modelAgencyKey';
 import {
   primaryCounterpartyLabelForModel,
   primaryCounterpartyLabelForModelFromDbRow,
@@ -657,6 +658,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     const ok = await modelConfirmOptionRequest(id);
     setConfirmingBookingId(null);
     if (ok && profile) {
+      void addOptionSystemMessage(id, 'model_approved_booking');
       await refreshOptionRequestInCache(id, { modelSafe: true });
       await loadPendingConfirmations(profile.id);
       await loadCalendar(profile.id);
@@ -673,6 +675,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     const ok = await modelRejectOptionRequest(id);
     setRejectingBookingId(null);
     if (ok && profile) {
+      void addOptionSystemMessage(id, 'model_declined_availability');
       await refreshOptionRequestInCache(id, { modelSafe: true });
       await loadPendingConfirmations(profile.id);
       await loadCalendar(profile.id);
@@ -898,25 +901,18 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
       <View style={{ flex: 1, paddingBottom: bottomTabInset }}>
         {tab === 'settings' && (
           <ScrollView style={{ flex: 1 }}>
-            {modelAgencyCtx.agencies.length > 1 && (
+            {needsAgencySelectionUi(modelAgencyCtx.agencies) && (
               <View style={st.section}>
                 <Text style={st.sectionLabel}>{uiCopy.model.switchAgencyLabel}</Text>
                 <Text style={st.metaText}>
-                  Active:{' '}
-                  {modelAgencyCtx.activeRow
-                    ? `${modelAgencyCtx.activeRow.agencyName} · ${modelAgencyCtx.activeRow.territory}`
-                    : '—'}
+                  Active: {modelAgencyCtx.activeRow ? modelAgencyCtx.activeRow.agencyName : '—'}
                 </Text>
                 <View style={{ gap: spacing.xs, marginTop: spacing.sm }}>
-                  {modelAgencyCtx.agencies
-                    .filter(
-                      (a) =>
-                        makeModelAgencyKey(a.agencyId, a.territory) !==
-                        modelAgencyCtx.activeRepresentationKey,
-                    )
+                  {uniqueAgencyRowsForSwitcher(modelAgencyCtx.agencies)
+                    .filter((a) => a.agencyId !== modelAgencyCtx.activeRow?.agencyId)
                     .map((a) => (
                       <TouchableOpacity
-                        key={makeModelAgencyKey(a.agencyId, a.territory)}
+                        key={a.agencyId}
                         style={{
                           backgroundColor: colors.surface,
                           borderRadius: 10,
@@ -931,9 +927,6 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                           style={{ fontSize: 14, fontWeight: '600', color: colors.textPrimary }}
                         >
                           {a.agencyName}
-                        </Text>
-                        <Text style={{ fontSize: 11, color: colors.textSecondary }}>
-                          {a.territory}
                         </Text>
                       </TouchableOpacity>
                     ))}

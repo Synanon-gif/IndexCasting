@@ -15,6 +15,7 @@ import { PendingActivationScreen } from './src/screens/PendingActivationScreen';
 import { ClientView } from './src/views/ClientView';
 import { ModelView } from './src/views/ModelView';
 import { ModelAgencyProvider, useModelAgency } from './src/context/ModelAgencyContext';
+import { needsAgencySelectionUi } from './src/utils/modelAgencyKey';
 import { ModelAgencySelector } from './src/screens/ModelAgencySelector';
 import { AgencyView } from './src/views/AgencyView';
 import { SharedSelectionView } from './src/views/SharedSelectionView';
@@ -237,7 +238,7 @@ function ModelRouteGuard({
     );
   }
 
-  if (agencies.length > 1 && !activeRepresentationKey) {
+  if (needsAgencySelectionUi(agencies) && !activeRepresentationKey) {
     return <ModelAgencySelector />;
   }
 

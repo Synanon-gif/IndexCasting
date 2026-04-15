@@ -6,8 +6,8 @@ import {
 } from '../services/modelsSupabase';
 import {
   makeModelAgencyKey,
-  resolveStoredRepresentationKey,
   findRowByKey,
+  computeInitialRepresentationKey,
 } from '../utils/modelAgencyKey';
 
 const STORAGE_KEY = 'active_model_agency';
@@ -58,19 +58,13 @@ export const ModelAgencyProvider: React.FC<{ children: React.ReactNode }> = ({ c
       const rows = await getMyModelAgencies();
       setAgencies(rows);
       const stored = await AsyncStorage.getItem(STORAGE_KEY);
-      const resolved = resolveStoredRepresentationKey(stored, rows);
-
-      if (resolved && findRowByKey(rows, resolved)) {
-        setActiveRepresentationKey(resolved);
-        if (stored !== resolved) {
-          await AsyncStorage.setItem(STORAGE_KEY, resolved);
+      const nextKey = computeInitialRepresentationKey(stored, rows);
+      setActiveRepresentationKey(nextKey);
+      if (nextKey) {
+        if (stored !== nextKey) {
+          await AsyncStorage.setItem(STORAGE_KEY, nextKey);
         }
-      } else if (rows.length === 1) {
-        const k = makeModelAgencyKey(rows[0].agencyId, rows[0].territory);
-        setActiveRepresentationKey(k);
-        await AsyncStorage.setItem(STORAGE_KEY, k);
       } else {
-        setActiveRepresentationKey(null);
         await AsyncStorage.removeItem(STORAGE_KEY);
       }
     } catch (e) {

@@ -11,7 +11,7 @@ import { colors, spacing, typography } from '../theme/theme';
 import { useModelAgency } from '../context/ModelAgencyContext';
 import { useAuth } from '../context/AuthContext';
 import { uiCopy } from '../constants/uiCopy';
-import { makeModelAgencyKey } from '../utils/modelAgencyKey';
+import { uniqueAgencyRowsForSwitcher } from '../utils/modelAgencyKey';
 
 export const ModelAgencySelector: React.FC = () => {
   const { agencies, switchRepresentation, loading } = useModelAgency();
@@ -42,16 +42,15 @@ export const ModelAgencySelector: React.FC = () => {
         contentContainerStyle={styles.listContent}
         keyboardShouldPersistTaps="handled"
       >
-        {agencies.map((a) => (
+        {uniqueAgencyRowsForSwitcher(agencies).map((a) => (
           <TouchableOpacity
-            key={makeModelAgencyKey(a.agencyId, a.territory)}
+            key={a.agencyId}
             style={styles.card}
             onPress={() => switchRepresentation(a)}
             accessibilityRole="button"
-            accessibilityLabel={`Select ${a.agencyName} ${a.territory}`}
+            accessibilityLabel={`Select ${a.agencyName}`}
           >
             <Text style={styles.agencyName}>{a.agencyName}</Text>
-            <Text style={styles.territory}>{a.territory}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -111,11 +110,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: colors.textPrimary,
-    marginBottom: spacing.xs,
-  },
-  territory: {
-    fontSize: 13,
-    color: colors.textSecondary,
   },
   footer: {
     paddingHorizontal: spacing.lg,
