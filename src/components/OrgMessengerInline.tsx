@@ -884,8 +884,15 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
                   const bookingId =
                     metaString(m, 'booking_event_id') ?? metaString(m, 'booking_id');
                   const relatedOptionRequestId = metaString(m, 'option_request_id');
-                  const label = bookingStatusLabel(rawStatus as BookingEventStatus);
-                  const isCancelled = rawStatus === 'cancelled';
+                  const isDeleted = rawStatus === 'deleted';
+                  const isRejected = rawStatus === 'rejected';
+                  const isTerminal = isDeleted || isRejected;
+                  const label = isDeleted
+                    ? 'Removed'
+                    : isRejected
+                      ? 'Declined'
+                      : bookingStatusLabel(rawStatus as BookingEventStatus);
+                  const isCancelled = rawStatus === 'cancelled' || isTerminal;
                   const isConfirmed = rawStatus === 'model_confirmed' || rawStatus === 'completed';
                   const isActionLoading = (key: string) =>
                     bookingActionLoading === bookingId + ':' + key;
@@ -959,7 +966,7 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
                           )}
                         </View>
                       )}
-                      {onOpenRelatedRequest && relatedOptionRequestId && (
+                      {onOpenRelatedRequest && relatedOptionRequestId && !isTerminal && (
                         <View style={{ marginTop: 8 }}>
                           <TouchableOpacity
                             onPress={(e) => {

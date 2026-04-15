@@ -116,6 +116,7 @@ export async function getCalendarForModel(
       .from('calendar_entries')
       .select(CALENDAR_ENTRY_SELECT)
       .eq('model_id', modelId)
+      .neq('status', 'cancelled')
       .gte('date', startDate)
       .lte('date', endDate)
       .order('date', { ascending: true });
@@ -140,6 +141,7 @@ export async function getCalendarRange(
       .from('calendar_entries')
       .select(CALENDAR_ENTRY_SELECT)
       .eq('model_id', modelId)
+      .neq('status', 'cancelled')
       .gte('date', startDate)
       .lte('date', endDate)
       .order('date', { ascending: true });

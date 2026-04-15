@@ -3,7 +3,7 @@ import { uiCopy } from '../constants/uiCopy';
 
 /** Explizite Feldliste — kein SELECT * mehr (verhindert ungewollten Datenabfluss bei neuen Spalten). */
 const USER_CALENDAR_EVENT_SELECT =
-  'id, owner_id, owner_type, date, start_time, end_time, title, color, note, organization_id, created_by, source_option_request_id, reminder_at, created_at, updated_at' as const;
+  'id, owner_id, owner_type, date, start_time, end_time, title, color, note, organization_id, created_by, source_option_request_id, reminder_at, status, created_at, updated_at' as const;
 
 /**
  * Manuelle Kalender-Ereignisse – pro Partei (Kunde/Agentur) in Supabase gespeichert.
@@ -25,6 +25,8 @@ export type UserCalendarEvent = {
   source_option_request_id: string | null;
   /** Optional in-app reminder timestamp. NULL = no reminder. */
   reminder_at?: string | null;
+  /** Status of the calendar event. cancelled = linked option_request was rejected/deleted. */
+  status?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -55,7 +57,7 @@ export async function getManualEventsForOwner(
     console.error('getManualEventsForOwner error:', error);
     return [];
   }
-  return (data ?? []) as UserCalendarEvent[];
+  return ((data ?? []) as UserCalendarEvent[]).filter((e) => e.status !== 'cancelled');
 }
 
 /**
@@ -86,7 +88,7 @@ export async function getManualEventsForOrg(
       console.error('getManualEventsForOrg error:', error);
       return [];
     }
-    return (data ?? []) as UserCalendarEvent[];
+    return ((data ?? []) as UserCalendarEvent[]).filter((e) => e.status !== 'cancelled');
   } catch (e) {
     console.error('getManualEventsForOrg exception:', e);
     return [];

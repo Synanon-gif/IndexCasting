@@ -625,17 +625,20 @@ export function getOutstandingOptionsForModel(modelId: string): OptionRequest[] 
 export async function loadOptionsForModel(modelId: string): Promise<void> {
   try {
     const remote = await getOptionRequestsForModel(modelId);
-    if (remote.length > 0) {
-      for (const r of remote) {
-        const existing = requestsCache.find((x) => x.id === r.id);
-        if (existing) {
-          Object.assign(existing, toLocalRequest(r));
-        } else {
-          requestsCache.push(toLocalRequest(r));
-        }
+    const remoteIds = new Set(remote.map((r) => r.id));
+
+    // Remove stale cache entries that no longer exist in DB (deleted/rejected)
+    requestsCache = requestsCache.filter((c) => c.modelId !== modelId || remoteIds.has(c.id));
+
+    for (const r of remote) {
+      const existing = requestsCache.find((x) => x.id === r.id);
+      if (existing) {
+        Object.assign(existing, toLocalRequest(r));
+      } else {
+        requestsCache.push(toLocalRequest(r));
       }
-      notify();
     }
+    notify();
   } catch {
     /* keep cache */
   }

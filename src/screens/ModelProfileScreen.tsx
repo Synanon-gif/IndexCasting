@@ -648,10 +648,10 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   };
 
   useEffect(() => {
-    if (profile?.id) {
+    if (profile?.id && tab === 'home') {
       void loadPendingConfirmations(profile.id);
     }
-  }, [profile?.id]);
+  }, [profile?.id, tab]);
 
   const handleConfirmBooking = async (id: string) => {
     setConfirmingBookingId(id);
