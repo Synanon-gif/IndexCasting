@@ -268,6 +268,8 @@ export const uiCopy = {
     typeFilterOption: 'Option',
     typeFilterCasting: 'Casting',
     typeFilterBooking: 'Job',
+    /** Model calendar — booking detail line for the client organization (not a generic “Client” placeholder). */
+    modelEntryClientOrgLabel: 'Client organization',
     /** Multi-view calendar (Agency / Client web / Model). */
     dayViewLabel: 'Day',
     /** Visible heading above Month / Week / Day controls. */

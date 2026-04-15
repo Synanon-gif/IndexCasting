@@ -642,6 +642,10 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   const [savingManualEventEdit, setSavingManualEventEdit] = useState(false);
   /** UUID of the client organisation this user belongs to (owner or employee). */
   const [clientOrgId, setClientOrgId] = useState<string | null>(null);
+  /** Canonical `organizations.name` for option_request denormalization (models/agencies must see real org, not "Client"). */
+  const [resolvedClientOrgDisplayName, setResolvedClientOrgDisplayName] = useState<string | null>(
+    null,
+  );
   const [assignmentByClientOrgId, setAssignmentByClientOrgId] = useState<
     Record<string, ClientAssignmentFlag>
   >({});
@@ -875,6 +879,16 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       }
     })();
   }, [realClientId, auth.profile?.organization_id]);
+
+  useEffect(() => {
+    if (!clientOrgId) {
+      setResolvedClientOrgDisplayName(null);
+      return;
+    }
+    void getOrganizationById(clientOrgId).then((org) => {
+      setResolvedClientOrgDisplayName(org?.name?.trim() || null);
+    });
+  }, [clientOrgId]);
 
   // Save filters to Supabase (explicit user action via "Save Filters" button).
   const handleSaveFilters = useCallback(async () => {
@@ -2110,7 +2124,11 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         : resolvedProjectId
           ? ('project' as const)
           : ('discover' as const);
-    const clientOrgName = auth.profile?.company_name ?? auth.profile?.display_name ?? 'Client';
+    const clientOrgName =
+      resolvedClientOrgDisplayName?.trim() ||
+      auth.profile?.company_name?.trim() ||
+      auth.profile?.display_name?.trim() ||
+      'Client';
     addOptionRequest(clientOrgName, modelName, modelId, date, resolvedProjectId, {
       ...extra,
       ...pkgExtra,

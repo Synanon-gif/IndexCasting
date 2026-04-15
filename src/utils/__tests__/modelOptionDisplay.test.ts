@@ -1,5 +1,9 @@
 import type { OptionRequest } from '../../store/optionRequests';
-import { primaryCounterpartyLabelForModel, secondarySubtitleForModel } from '../modelOptionDisplay';
+import {
+  primaryCounterpartyLabelForModel,
+  primaryCounterpartyLabelForModelFromDbRow,
+  secondarySubtitleForModel,
+} from '../modelOptionDisplay';
 
 function base(over: Partial<OptionRequest> = {}): OptionRequest {
   return {
@@ -39,6 +43,17 @@ describe('primaryCounterpartyLabelForModel', () => {
         }),
       ),
     ).toBe('Studio X');
+  });
+
+  it('prefers client org from DB row over generic client_name', () => {
+    expect(
+      primaryCounterpartyLabelForModelFromDbRow({
+        is_agency_only: false,
+        client_name: 'Client',
+        client_organization_name: 'CLIENT 1',
+        agency_organization_name: 'Poetry Of People',
+      }),
+    ).toBe('CLIENT 1');
   });
 });
 

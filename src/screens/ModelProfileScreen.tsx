@@ -84,6 +84,7 @@ import { useModelAgency } from '../context/ModelAgencyContext';
 import { makeModelAgencyKey } from '../utils/modelAgencyKey';
 import {
   primaryCounterpartyLabelForModel,
+  primaryCounterpartyLabelForModelFromDbRow,
   secondarySubtitleForModel,
 } from '../utils/modelOptionDisplay';
 import { uiCopy } from '../constants/uiCopy';
@@ -1781,23 +1782,17 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                         ? uiCopy.dashboard.threadContextCasting
                         : uiCopy.dashboard.threadContextOption}
                     </Text>
-                    {(req.agency_organization_name ??
-                    req.client_organization_name ??
-                    req.client_name) ? (
-                      <Text
-                        style={{
-                          ...typography.body,
-                          fontSize: 12,
-                          color: colors.textPrimary,
-                          fontWeight: '600',
-                          marginBottom: 2,
-                        }}
-                      >
-                        {req.agency_organization_name ??
-                          req.client_organization_name ??
-                          req.client_name}
-                      </Text>
-                    ) : null}
+                    <Text
+                      style={{
+                        ...typography.body,
+                        fontSize: 12,
+                        color: colors.textPrimary,
+                        fontWeight: '600',
+                        marginBottom: 2,
+                      }}
+                    >
+                      {primaryCounterpartyLabelForModelFromDbRow(req)}
+                    </Text>
                     <Text
                       style={{
                         ...typography.body,
@@ -1909,7 +1904,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                         marginBottom: 1,
                       }}
                     >
-                      {o.agencyOrganizationName ?? o.clientOrganizationName ?? o.clientName}
+                      {primaryCounterpartyLabelForModel(o)}
                     </Text>
                     <Text style={st.metaText}>
                       {formatDateWithOptionalTimeRange(o.date, o.startTime, o.endTime)}
@@ -1965,7 +1960,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                     <Text
                       style={{ ...typography.body, color: colors.textPrimary, fontWeight: '600' }}
                     >
-                      {o.agencyOrganizationName ?? o.clientOrganizationName ?? o.clientName}
+                      {primaryCounterpartyLabelForModel(o)}
                     </Text>
                     <Text style={st.metaText}>
                       {formatDateWithOptionalTimeRange(o.date, o.startTime, o.endTime)}
@@ -2496,9 +2491,19 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                       {date}
                       {start ? ` · ${start}${end ? `–${end}` : ''}` : ''}
                     </Text>
-                    {entry.client_name && (
-                      <Text style={st.metaText}>Client: {entry.client_name}</Text>
-                    )}
+                    {(() => {
+                      const linkedReq = openEntry.option_request_id
+                        ? getRequestByThreadId(openEntry.option_request_id)
+                        : undefined;
+                      const orgLine = linkedReq
+                        ? primaryCounterpartyLabelForModel(linkedReq)
+                        : entry.client_name?.trim() || '';
+                      return orgLine ? (
+                        <Text style={st.metaText}>
+                          {uiCopy.calendar.modelEntryClientOrgLabel}: {orgLine}
+                        </Text>
+                      ) : null;
+                    })()}
                     {openEntry.option_request_id ? (
                       <>
                         <Text style={[st.metaText, { marginTop: spacing.sm }]}>
@@ -2958,9 +2963,10 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
         onCancel={() => setOptionActionModal(null)}
         detailLine1={
           optionActionModal
-            ? ((pendingConfirmations.find((r) => r.id === optionActionModal.id)?.client_name as
-                | string
-                | undefined) ?? undefined)
+            ? (() => {
+                const row = pendingConfirmations.find((r) => r.id === optionActionModal.id);
+                return row ? primaryCounterpartyLabelForModelFromDbRow(row) : undefined;
+              })()
             : undefined
         }
         detailLine2={

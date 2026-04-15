@@ -238,7 +238,9 @@ export const UnifiedCalendarAgenda: React.FC<UnifiedCalendarAgendaProps> = ({
                               {option.model_name ?? 'Model'} · {dateStr}
                             </Text>
                             <Text style={styles.cardMeta}>
-                              {option.client_name ?? 'Client'}
+                              {option.client_organization_name?.trim() ||
+                                option.client_name?.trim() ||
+                                'Client'}
                               {start
                                 ? ` · ${stripClockSeconds(start)}${end ? `–${stripClockSeconds(end)}` : ''}`
                                 : ''}

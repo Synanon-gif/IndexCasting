@@ -23,6 +23,7 @@ import { useAuth } from '../context/AuthContext';
 import { isClient } from '../types/roles';
 import { uiCopy } from '../constants/uiCopy';
 import { addOptionRequest } from '../store/optionRequests';
+import { getOrganizationById } from '../services/organizationsInvitationsSupabase';
 import { normalizeDocumentspicturesModelImageRef } from '../utils/normalizeModelPortfolioUrl';
 import { canonicalDisplayCityForModel } from '../utils/canonicalModelCity';
 
@@ -95,6 +96,9 @@ function getUpcomingWeekdays(count = 14): string[] {
 export const CustomerSwipeScreen: React.FC = () => {
   const auth = useAuth();
   const [clientOrgId, setClientOrgId] = useState<string | null>(null);
+  const [resolvedClientOrgDisplayName, setResolvedClientOrgDisplayName] = useState<string | null>(
+    null,
+  );
 
   const [models, setModels] = useState<ClientModel[]>([]);
   const [index, setIndex] = useState(0);
@@ -131,6 +135,16 @@ export const CustomerSwipeScreen: React.FC = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- id+role+organization_id cover all reads; full profile ref would over-fire
   }, [auth?.profile?.id, auth?.profile?.role, auth?.profile?.organization_id]);
+
+  useEffect(() => {
+    if (!clientOrgId) {
+      setResolvedClientOrgDisplayName(null);
+      return;
+    }
+    void getOrganizationById(clientOrgId).then((org) => {
+      setResolvedClientOrgDisplayName(org?.name?.trim() || null);
+    });
+  }, [clientOrgId]);
 
   const loadNextPage = useCallback(async () => {
     if (loadingMore || !hasMore) return;
@@ -293,20 +307,26 @@ export const CustomerSwipeScreen: React.FC = () => {
       setIsSendingOption(true);
       setOptionSuccess(null);
 
-      const clientName = auth?.profile?.display_name ?? auth?.profile?.email ?? 'Client';
+      const clientOrgLabel =
+        resolvedClientOrgDisplayName?.trim() ||
+        auth?.profile?.company_name?.trim() ||
+        auth?.profile?.display_name?.trim() ||
+        auth?.profile?.email?.trim() ||
+        'Client';
       const countryFromCityFilter =
         filters.city !== 'all' ? (CITY_TO_COUNTRY[filters.city] ?? undefined) : undefined;
-      addOptionRequest(clientName, model.name, model.id, date, undefined, {
+      addOptionRequest(clientOrgLabel, model.name, model.id, date, undefined, {
         requestType: 'option',
         countryCode: countryFromCityFilter,
         flowSource: 'swipe',
+        clientOrganizationName: clientOrgLabel,
       });
 
       setIsSendingOption(false);
       setOptionSuccess(uiCopy.swipe.optionSuccessMessage(date));
       setTimeout(() => setOptionSuccess(null), 2600);
     },
-    [detailModel, current, auth?.profile, filters.city],
+    [detailModel, current, auth?.profile, filters.city, resolvedClientOrgDisplayName],
   );
 
   return (

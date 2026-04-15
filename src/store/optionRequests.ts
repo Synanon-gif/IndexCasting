@@ -118,7 +118,8 @@ export type ChatMessage = {
 function toLocalRequest(r: SupabaseOptionRequest | SupabaseOptionRequestModelSafe): OptionRequest {
   return {
     id: r.id,
-    clientName: r.client_name || r.client_organization_name || 'Unknown client',
+    /** Prefer denormalized org name so models/agencies never see a person placeholder when org is known. */
+    clientName: r.client_organization_name || r.client_name || 'Unknown client',
     clientOrganizationId: r.client_organization_id ?? r.organization_id ?? undefined,
     clientOrganizationName: r.client_organization_name ?? undefined,
     jobDescription: r.job_description ?? undefined,
@@ -249,6 +250,7 @@ export function addOptionRequest(
   const req: OptionRequest = {
     id: `req-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     clientName,
+    clientOrganizationName: extra?.clientOrganizationName,
     modelName,
     modelId,
     date,

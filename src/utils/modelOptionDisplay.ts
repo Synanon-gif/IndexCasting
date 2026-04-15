@@ -2,11 +2,15 @@ import type { OptionRequest } from '../store/optionRequests';
 
 const MAX_JOB_SNIPPET = 140;
 
-/**
- * Primary title for model-facing option/casting rows and thread headers.
- * Client org / client name first for client-driven flows; agency org for agency-only.
- */
-export function primaryCounterpartyLabelForModel(req: OptionRequest): string {
+/** Minimal fields for counterparty title (DB rows or store entities). */
+export type ModelCounterpartyLabelInput = {
+  isAgencyOnly?: boolean;
+  agencyOrganizationName?: string | null;
+  clientOrganizationName?: string | null;
+  clientName?: string | null;
+};
+
+function counterpartyLabelFromFields(req: ModelCounterpartyLabelInput): string {
   if (req.isAgencyOnly) {
     const t =
       req.agencyOrganizationName?.trim() ||
@@ -19,6 +23,29 @@ export function primaryCounterpartyLabelForModel(req: OptionRequest): string {
     req.clientName?.trim() ||
     req.agencyOrganizationName?.trim();
   return t || 'Request';
+}
+
+/**
+ * Primary title for model-facing option/casting rows and thread headers.
+ * Client org / client name first for client-driven flows; agency org for agency-only.
+ */
+export function primaryCounterpartyLabelForModel(req: OptionRequest): string {
+  return counterpartyLabelFromFields(req);
+}
+
+/** Same as {@link primaryCounterpartyLabelForModel} for raw `option_requests` / model-safe SELECT rows. */
+export function primaryCounterpartyLabelForModelFromDbRow(r: {
+  is_agency_only?: boolean | null;
+  agency_organization_name?: string | null;
+  client_organization_name?: string | null;
+  client_name?: string | null;
+}): string {
+  return counterpartyLabelFromFields({
+    isAgencyOnly: r.is_agency_only ?? false,
+    agencyOrganizationName: r.agency_organization_name ?? undefined,
+    clientOrganizationName: r.client_organization_name ?? undefined,
+    clientName: r.client_name ?? undefined,
+  });
 }
 
 /**

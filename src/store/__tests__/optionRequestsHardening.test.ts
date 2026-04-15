@@ -137,6 +137,24 @@ describe('isAgencyOnly: clientConfirmJobStore guard', () => {
 describe('Fallback names in toLocalRequest', () => {
   beforeEach(() => jest.clearAllMocks());
 
+  it('should prefer client_organization_name over client_name when both are set', async () => {
+    const row = makeRow({
+      id: 'req-org-first',
+      client_name: 'Employee display',
+      client_organization_name: 'Fashion Corp',
+    });
+    currentFromResult = { data: [row], error: null };
+
+    const { loadOptionRequestsForClient, getOptionRequests } = require('../optionRequests');
+
+    await loadOptionRequestsForClient('org-c1');
+    const reqs = getOptionRequests();
+    const req = reqs.find((r: any) => r.id === 'req-org-first');
+    expect(req).toBeDefined();
+    expect(req.clientName).toBe('Fashion Corp');
+    expect(req.clientOrganizationName).toBe('Fashion Corp');
+  });
+
   it('should use client_organization_name when client_name is null', async () => {
     const row = makeRow({
       id: 'req-fallback',
