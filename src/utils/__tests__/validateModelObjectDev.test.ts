@@ -30,6 +30,21 @@ describe('devAssertAgencyRosterMatchesEligibility', () => {
     );
   });
 
+  it('logs when a linked model is not in the MAT set', () => {
+    process.env.NODE_ENV = 'development';
+    const spy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    devAssertAgencyRosterMatchesEligibility(
+      [{ id: 'linked-no-mat', user_id: 'u1' }],
+      new Set(['other']),
+      'ag-1',
+      true,
+    );
+    expect(spy).toHaveBeenCalledWith(
+      '[dev] agency roster row violates modelEligibleForAgencyRoster',
+      expect.objectContaining({ agencyId: 'ag-1', modelId: 'linked-no-mat' }),
+    );
+  });
+
   it('no-ops in production', () => {
     process.env.NODE_ENV = 'production';
     const spy = jest.spyOn(console, 'error').mockImplementation(() => {});

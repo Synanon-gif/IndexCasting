@@ -3,9 +3,9 @@
  * Pro Partei: agency_id; Bilder-URLs und Maße persistent; parteiübergreifend sichtbar je nach RLS.
  *
  * ─── Canonical vs technical `.from('models')` (shadow-path guardrail) ─────────
- * **Agency roster (canonical):** `getModelsForAgencyFromSupabase` applies
- * `modelEligibleForAgencyRoster` (linked `user_id` OR `model_agency_territories` for this agency).
- * Use this for My Models / agency lists; do not duplicate list logic elsewhere.
+ * **Agency roster (canonical):** `getModelsForAgencyFromSupabase` loads model ids from
+ * `model_agency_territories` for the agency, then fetches those models only; eligibility is
+ * MAT membership (`modelEligibleForAgencyRoster`). Use for My Models; do not duplicate roster logic.
  *
  * **Other exports in this file** (single-row, client discovery hybrids, org assignments): intentional
  * technical paths — not roster substitutes. Examples: `getModelByIdFromSupabase`,
@@ -537,7 +537,42 @@ export async function getModelsForClientFromSupabaseHybridLocation(
 
 export { modelEligibleForAgencyRoster } from '../utils/modelRosterEligibility';
 
+/** PostgREST `.in()` — keep chunks conservative for URL/query limits. */
+const AGENCY_ROSTER_ID_IN_CHUNK = 100;
+
+const AGENCY_ROSTER_RELATIONSHIP_OR =
+  'agency_relationship_status.is.null,agency_relationship_status.eq.active,agency_relationship_status.eq.pending_link';
+
+async function fetchAgencyRosterModelsByMatIds(modelIds: string[]): Promise<SupabaseModel[]> {
+  const unique = [...new Set(modelIds.map((id) => id?.trim()).filter(Boolean))] as string[];
+  if (unique.length === 0) return [];
+
+  const parts: SupabaseModel[] = [];
+  for (let i = 0; i < unique.length; i += AGENCY_ROSTER_ID_IN_CHUNK) {
+    const chunk = unique.slice(i, i + AGENCY_ROSTER_ID_IN_CHUNK);
+    const rows = await fetchAllSupabasePages(async (from, to) => {
+      const { data, error } = await supabase
+        .from('models')
+        .select(MODEL_DETAIL_SELECT)
+        .in('id', chunk)
+        .or(AGENCY_ROSTER_RELATIONSHIP_OR)
+        .order('name')
+        .range(from, to);
+      return { data: data as SupabaseModel[] | null, error };
+    });
+    parts.push(...rows);
+  }
+
+  parts.sort((a, b) =>
+    (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }),
+  );
+  return parts;
+}
+
 export async function getModelsForAgencyFromSupabase(agencyId: string): Promise<SupabaseModel[]> {
+  const aid = agencyId?.trim();
+  if (!aid) return [];
+
   let matModelIds = new Set<string>();
   let matLookupOk = false;
   try {
@@ -545,7 +580,7 @@ export async function getModelsForAgencyFromSupabase(agencyId: string): Promise<
       const { data, error } = await supabase
         .from('model_agency_territories')
         .select('model_id')
-        .eq('agency_id', agencyId)
+        .eq('agency_id', aid)
         .order('model_id')
         .range(from, to);
       return { data, error };
@@ -554,27 +589,41 @@ export async function getModelsForAgencyFromSupabase(agencyId: string): Promise<
     matLookupOk = true;
   } catch (e) {
     console.error(
-      'getModelsForAgencyFromSupabase: model_agency_territories fetch failed — roster MAT filter skipped',
+      'getModelsForAgencyFromSupabase: model_agency_territories fetch failed — empty roster (fail-closed)',
       e,
     );
+    return [];
   }
 
-  const models = await fetchAllSupabasePages(async (from, to) => {
-    const { data, error } = await supabase
-      .from('models')
-      .select(MODEL_DETAIL_SELECT)
-      .eq('agency_id', agencyId)
-      .or(
-        'agency_relationship_status.is.null,agency_relationship_status.eq.active,agency_relationship_status.eq.pending_link',
-      )
-      .order('name')
-      .range(from, to);
-    return { data: data as SupabaseModel[] | null, error };
-  });
+  if (matModelIds.size === 0) {
+    return [];
+  }
 
-  if (!matLookupOk) return models;
+  const models = await fetchAgencyRosterModelsByMatIds([...matModelIds]);
   const roster = models.filter((m) => modelEligibleForAgencyRoster(m, matModelIds));
-  devAssertAgencyRosterMatchesEligibility(roster, matModelIds, agencyId, matLookupOk);
+
+  if (typeof __DEV__ !== 'undefined' && __DEV__) {
+    for (const m of roster) {
+      if (!matModelIds.has(m.id)) {
+        console.warn('[getModelsForAgencyFromSupabase] roster row not in MAT set (unexpected)', {
+          readPath: 'mat_ids_chunked',
+          agencyId: aid,
+          modelId: m.id,
+        });
+      }
+    }
+    const matNotLoaded = [...matModelIds].filter((id) => !roster.some((r) => r.id === id));
+    if (matNotLoaded.length > 0) {
+      console.warn('[getModelsForAgencyFromSupabase] MAT ids missing from models query', {
+        readPath: 'mat_ids_chunked',
+        agencyId: aid,
+        modelIds: matNotLoaded.slice(0, 24),
+        totalMissing: matNotLoaded.length,
+      });
+    }
+  }
+
+  devAssertAgencyRosterMatchesEligibility(roster, matModelIds, aid, matLookupOk);
   return roster;
 }
 

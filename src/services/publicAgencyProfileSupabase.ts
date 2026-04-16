@@ -100,8 +100,9 @@ export async function getPublicAgencyProfile(slug: string): Promise<PublicAgency
  * Server-side filter (migration `20260904_shadow_paths_canonical_guards.sql`): rows with
  * `agency_relationship_status = 'active'` only, and either `user_id IS NOT NULL` or an
  * existing `model_agency_territories` row for `(model_id, agency_id)`. Stricter than the
- * internal agency roster (`getModelsForAgencyFromSupabase`), which may include
- * `pending_link` / null relationship before MAT+eligibility filtering.
+ * internal agency roster (`getModelsForAgencyFromSupabase`): public is `active` only + gate;
+ * internal roster is MAT-driven and may include `pending_link` / null relationship for models
+ * still represented in MAT.
  *
  * The `get_public_agency_models` RPC also participates in the public profile gate: no rows
  * unless the org is type `agency` with `organization_profiles.is_public = true` (see RPC definition).
