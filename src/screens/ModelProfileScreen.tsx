@@ -106,6 +106,8 @@ import {
   ensureAgencyModelDirectConversationWithRetry,
   listModelAgencyDirectConversations,
 } from '../services/b2bOrgChatSupabase';
+import { parseAgencyModelContextId } from '../utils/parseAgencyModelContextId';
+import { hasMatForModelAgency } from '../services/recruitingFlowGuards';
 import type { Conversation } from '../services/messengerSupabase';
 import { OrgMessengerInline } from '../components/OrgMessengerInline';
 import { ConfirmDestructiveModal } from '../components/ConfirmDestructiveModal';
@@ -219,6 +221,8 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   const [bookingAgencyByThread, setBookingAgencyByThread] = useState<Record<string, string>>({});
   const [agencyDirectConvs, setAgencyDirectConvs] = useState<Conversation[]>([]);
   const [openDirectConvId, setOpenDirectConvId] = useState<string | null>(null);
+  /** false = representation with this agency ended (read-only history); null = unknown */
+  const [agencyDirectChatMatActive, setAgencyDirectChatMatActive] = useState<boolean | null>(null);
   const [agencyChatOpening, setAgencyChatOpening] = useState(false);
   const agencyChatBusyRef = useRef(false);
   const [pendingConfirmations, setPendingConfirmations] = useState<
@@ -575,6 +579,26 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
       cancelled = true;
     };
   }, [tab, userId]);
+
+  useEffect(() => {
+    if (!openDirectConvId || !profile?.id) {
+      setAgencyDirectChatMatActive(null);
+      return;
+    }
+    const conv = agencyDirectConvs.find((c) => c.id === openDirectConvId);
+    const parsed = parseAgencyModelContextId(conv?.context_id);
+    if (!parsed || parsed.modelId !== profile.id) {
+      setAgencyDirectChatMatActive(null);
+      return;
+    }
+    let cancelled = false;
+    void hasMatForModelAgency(parsed.modelId, parsed.agencyId).then((ok) => {
+      if (!cancelled) setAgencyDirectChatMatActive(ok);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [openDirectConvId, profile?.id, agencyDirectConvs]);
 
   const handleOpenAgencyDirectChat = useCallback(async () => {
     const agencyId = modelAgencyCtx.activeRow?.agencyId;
@@ -2273,16 +2297,30 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
             style={{
               flexDirection: 'row',
               justifyContent: 'space-between',
-              alignItems: 'center',
+              alignItems: 'flex-start',
               padding: spacing.md,
               borderBottomWidth: 1,
               borderBottomColor: colors.border,
             }}
           >
-            <Text style={{ ...typography.label, fontSize: 13, color: colors.textSecondary }}>
-              {agencyDirectConvs.find((c) => c.id === openDirectConvId)?.title ??
-                uiCopy.b2bChat.conversationFallback}
-            </Text>
+            <View style={{ flex: 1, minWidth: 0, paddingRight: spacing.sm }}>
+              <Text style={{ ...typography.label, fontSize: 13, color: colors.textSecondary }}>
+                {agencyDirectConvs.find((c) => c.id === openDirectConvId)?.title ??
+                  uiCopy.b2bChat.conversationFallback}
+              </Text>
+              {agencyDirectChatMatActive === false ? (
+                <Text
+                  style={{
+                    ...typography.body,
+                    fontSize: 11,
+                    color: colors.textSecondary,
+                    marginTop: 4,
+                  }}
+                >
+                  {uiCopy.model.agencyDirectChatRepresentationEnded}
+                </Text>
+              ) : null}
+            </View>
             <TouchableOpacity onPress={() => setOpenDirectConvId(null)}>
               <Text style={{ ...typography.label, color: colors.textPrimary }}>Close</Text>
             </TouchableOpacity>

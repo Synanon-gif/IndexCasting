@@ -54,7 +54,7 @@ This document classifies tables included in **`public.export_user_data`** (JSON 
 | Mechanism | Contents |
 |-----------|----------|
 | **`export_user_data` v4 (JSON)** | `calendar_events` (`user_calendar_events`), `calendar_entries`, **`booking_events`**, plus all other subject-scoped keys in the RPC. |
-| **`.ics` download + webcal feed** | Same merged event set as internal `calendar_export_events_json`: **`user_calendar_events` ∪ `calendar_entries`** only. Does **not** add **`booking_events`** to the sync surface (by design — avoids duplicate / divergent lifecycle in external calendars). |
+| **`.ics` download + webcal feed** | Same merged event set as internal `calendar_export_events_json`: **`booking_events` ∪ `user_calendar_events` ∪ `calendar_entries`**, deduped (see `20260901_calendar_export_events_json_include_booking_events.sql` + `calendarSourcePriority.ts`). |
 
 **User-facing:** Calendar sync is optional and **narrower** than the JSON export; full portable copy = **Download my data**. See [GDPR_CALENDAR_COMPLIANCE.md](./GDPR_CALENDAR_COMPLIANCE.md) and [CALENDAR_INTEROP_AUDIT_REPORT.md](./CALENDAR_INTEROP_AUDIT_REPORT.md).
 

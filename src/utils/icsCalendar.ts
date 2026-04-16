@@ -181,8 +181,11 @@ type ParsedExportRow = {
   endTime: string | null;
 };
 
+/** When sourcePriority ties (should be rare after SQL ROW_NUMBER), prefer booking_events over calendar_entries. */
 function kindTiePriority(kind: string): number {
-  return kind === 'calendar_entries' ? 0 : 1;
+  if (kind === 'booking_events') return -1;
+  if (kind === 'calendar_entries') return 0;
+  return 1;
 }
 
 /** Fallback when RPC omits sourcePriority — must sort after all known layers (see calendarSourcePriority). */

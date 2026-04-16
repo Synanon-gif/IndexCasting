@@ -7,7 +7,7 @@
 | Channel | Scope |
 |--------|--------|
 | **`export_user_data` (v4, JSON)** | Portable structured export: includes `calendar_events` (from `user_calendar_events`), `calendar_entries`, **`booking_events`**, and other subject-scoped tables. See [GDPR_EXPORT_TABLE_MAP.md](./GDPR_EXPORT_TABLE_MAP.md). |
-| **`.ics` download + webcal/HTTPS feed** | Same merged payload as `calendar_export_events_json`: **`user_calendar_events` ∪ `calendar_entries`** only. **`booking_events` are not included** in ICS/feed. |
+| **`.ics` download + webcal/HTTPS feed** | Same merged payload as `calendar_export_events_json`: **`booking_events` ∪ `user_calendar_events` ∪ `calendar_entries`** (subject-visible rows; deduped by `option_request_id` where present). Priorities align with `src/constants/calendarSourcePriority.ts`. |
 
 Users should understand that **ICS and the subscription link are a convenience sync of that merged subset**, not a replacement for the full JSON export. In-app copy: `uiCopy.privacyData.calendarSyncVsFullExportNotice`.
 

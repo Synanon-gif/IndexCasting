@@ -517,6 +517,8 @@ export async function ensureAgencyModelDirectConversation(
   }
 }
 
+export { parseAgencyModelContextId } from '../utils/parseAgencyModelContextId';
+
 /**
  * Same as {@link ensureAgencyModelDirectConversation} with a short retry after transient RPC/RLS lag.
  * Idempotent via server RPC — safe to call multiple times.

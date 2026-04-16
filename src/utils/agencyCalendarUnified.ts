@@ -321,6 +321,7 @@ export function preferJobBookingOverOptionRows(
   });
 }
 
+/** UI filters only — agency **active representation** (MAT + relationship) is applied when loading in `calendarSupabase` / `AgencyControllerView`. */
 export function filterUnifiedAgencyCalendarRows(
   rows: UnifiedAgencyCalendarRow[],
   params: {

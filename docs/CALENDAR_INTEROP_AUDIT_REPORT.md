@@ -6,7 +6,7 @@ This document records the **end-to-end audit** of private ICS export, subscripti
 
 | Layer | Path / name |
 |-------|-------------|
-| **Migration (canonical)** | `supabase/migrations/20260823_calendar_feed_token_and_anonymize_fix.sql` — `profiles.calendar_feed_token_hash`, `rotate_calendar_feed_token`, `revoke_calendar_feed_token`, `calendar_export_events_json`, `get_calendar_export_payload_for_me`, `get_calendar_feed_payload`, `anonymize_user_data` (token clear) |
+| **Migration (canonical)** | `supabase/migrations/20260823_calendar_feed_token_and_anonymize_fix.sql` — token + export RPCs; **`20260901_calendar_export_events_json_include_booking_events.sql`** — `calendar_export_events_json` merges **`booking_events`** with dedupe parity to `src/constants/calendarSourcePriority.ts` |
 | **Related schema / export** | `supabase/migrations/20260822_gdpr_export_user_data_fix_user_calendar_events.sql` (column precheck for `user_calendar_events`) |
 | **Edge** | `supabase/functions/calendar-feed/index.ts`, `supabase/functions/calendar-feed/ics.ts` |
 | **Client service** | `src/services/calendarFeedSupabase.ts` |
@@ -25,10 +25,11 @@ This document records the **end-to-end audit** of private ICS export, subscripti
 
 **Source tables in `calendar_export_events_json`:**
 
+- **`booking_events`:** non-cancelled rows visible to the subject (creator, linked model user, member of `client_org_id` or `agency_org_id` org) — same visibility intent as GDPR export subset.
 - `user_calendar_events`: rows where `owner_id = p_user_id` OR `created_by = p_user_id` OR (`organization_id` set and user is in `organization_members`). **Multi-org:** all orgs the user belongs to contribute events (org-wide manual/mirrored events).
 - `calendar_entries`: non-cancelled rows where the user is the linked model **or** appears on `option_requests` as `client_id`, `created_by`, `booker_id`, `agency_assignee_user_id`, or linked model user.
 
-**Parity note (UI vs export):** In-app unified views may also merge **`booking_events`** (see `getBookingEventsAsCalendarEntries*` in `calendarSupabase.ts`). **`calendar_export_events_json` does not include `booking_events`.** ICS/feed therefore may omit entries that exist only as booking_events in the UI. Treat as **known product scope gap** (severity S3 — documentation / future enhancement), not a regression in the feed token pipeline.
+**Parity note (UI vs export):** Dedupe partition `opt:<option_request_id>` + numeric `sourcePriority` (0 = `booking_events` … 4 = manual `user_calendar_events`) matches `src/constants/calendarSourcePriority.ts` and `icsEventsFromExportPayload` tie-breaks. In-app unified agency calendar still applies **active representation** filters in `calendarSupabase.ts` / `modelRepresentationGuards.ts` where the export is user-scoped only.
 
 ## 3. Security assessment
 

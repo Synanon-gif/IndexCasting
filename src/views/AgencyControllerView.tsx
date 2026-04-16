@@ -31,6 +31,7 @@ import {
 } from '../theme/chatLayout';
 import { showAppAlert, showConfirmAlert } from '../utils/crossPlatformAlert';
 import { messageForDissolveOrganizationError } from '../utils/accountDeletionFeedback';
+import { clearAgencyWorkspaceCachesAfterDissolve } from '../utils/clearAgencyWorkspaceCachesAfterDissolve';
 import { isImageFile } from '../../lib/validation/file';
 import { useAuth } from '../context/AuthContext';
 
@@ -1024,6 +1025,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                             const result = await dissolveOrganization(agencyOrganizationId);
                             if (result.ok) {
                               setOrgDissolved(true);
+                              clearAgencyWorkspaceCachesAfterDissolve();
                               void refreshProfile();
                               void getAgencies().then(setAgencies);
                               showAppAlert(

@@ -1,6 +1,10 @@
 /**
  * Client-side guards and verification for application → represented model flow.
  * DB remains source of truth; these calls add observability and post-RPC checks (RLS-safe reads).
+ *
+ * Reactivation after **ended** representation: `create_model_from_accepted_application` (migration
+ * `20260828_recruiting_model_conversion_and_direct_conversation.sql`) sets `agency_relationship_status`
+ * back to `active` and merges MAT; use `hasMatForModelAgency` after confirm for defense-in-depth.
  */
 import { supabase } from '../../lib/supabase';
 

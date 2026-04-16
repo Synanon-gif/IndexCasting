@@ -21,7 +21,6 @@ export async function getActivelyRepresentedModelIdsForAgency(
     const { data: models, error: mErr } = await supabase
       .from('models')
       .select('id')
-      .eq('agency_id', agencyId)
       .in('id', unique)
       .or(
         'agency_relationship_status.is.null,agency_relationship_status.eq.active,agency_relationship_status.eq.pending_link',
