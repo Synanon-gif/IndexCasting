@@ -14,6 +14,7 @@ jest.mock('../../../lib/supabase', () => ({
 
 const getModelByIdFromSupabaseMock = jest.fn();
 jest.mock('../modelsSupabase', () => ({
+  ...jest.requireActual<typeof import('../modelsSupabase')>('../modelsSupabase'),
   getModelByIdFromSupabase: (...args: unknown[]) => getModelByIdFromSupabaseMock(...args),
 }));
 
@@ -75,12 +76,18 @@ function setupSupabaseMock({
     if (table === 'models') {
       return {
         update: () => ({ eq: () => Promise.resolve({ error: updateError }) }),
-        select: () => ({ eq: () => ({ limit: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }) }) }),
+        select: () => ({
+          eq: () => ({
+            limit: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }),
+          }),
+        }),
       };
     }
     if (table === 'model_assignments') {
       return {
-        select: () => ({ eq: () => ({ limit: () => Promise.resolve({ data: terrData, error: null }) }) }),
+        select: () => ({
+          eq: () => ({ limit: () => Promise.resolve({ data: terrData, error: null }) }),
+        }),
       };
     }
     if (table === 'mediaslide_sync_logs') {
@@ -146,7 +153,8 @@ describe('syncSingleModelFromMediaslide', () => {
     getModelFromMediaslideMock.mockResolvedValue(makeRemoteModel());
     // Konfiguriere rpcMock so dass agency_update_model_full einen Fehler zurückgibt
     rpcMock.mockImplementation((name: string) => {
-      if (name === 'agency_update_model_full') return Promise.resolve({ error: { message: 'DB error' } });
+      if (name === 'agency_update_model_full')
+        return Promise.resolve({ error: { message: 'DB error' } });
       return Promise.resolve({ error: null });
     });
 
@@ -185,9 +193,7 @@ describe('syncSingleModelFromMediaslide', () => {
       updated_at: '2024-06-01T10:00:00Z',
       // No name, city, measurements, etc. — nothing to update
     };
-    getModelByIdFromSupabaseMock
-      .mockResolvedValueOnce(local)
-      .mockResolvedValueOnce(local);
+    getModelByIdFromSupabaseMock.mockResolvedValueOnce(local).mockResolvedValueOnce(local);
     getModelFromMediaslideMock.mockResolvedValue(remote);
     const updateSpy = jest.fn().mockReturnValue({
       eq: () => Promise.resolve({ error: null }),
@@ -195,7 +201,11 @@ describe('syncSingleModelFromMediaslide', () => {
     fromMock.mockImplementation((table: string) => {
       if (table === 'models') return { update: updateSpy };
       if (table === 'model_assignments') {
-        return { select: () => ({ eq: () => ({ limit: () => Promise.resolve({ data: [{ id: 't1' }], error: null }) }) }) };
+        return {
+          select: () => ({
+            eq: () => ({ limit: () => Promise.resolve({ data: [{ id: 't1' }], error: null }) }),
+          }),
+        };
       }
       return { insert: () => Promise.resolve({ error: null }) };
     });
@@ -217,9 +227,7 @@ describe('syncSingleModelFromMediaslide', () => {
       updated_at: sameTs,
       measurements: { height: 190 }, // would overwrite if remote were newer
     });
-    getModelByIdFromSupabaseMock
-      .mockResolvedValueOnce(local)
-      .mockResolvedValueOnce(local);
+    getModelByIdFromSupabaseMock.mockResolvedValueOnce(local).mockResolvedValueOnce(local);
     getModelFromMediaslideMock.mockResolvedValue(remote);
     const updateSpy = jest.fn().mockReturnValue({
       eq: () => Promise.resolve({ error: null }),
@@ -227,7 +235,11 @@ describe('syncSingleModelFromMediaslide', () => {
     fromMock.mockImplementation((table: string) => {
       if (table === 'models') return { update: updateSpy };
       if (table === 'model_assignments') {
-        return { select: () => ({ eq: () => ({ limit: () => Promise.resolve({ data: [{ id: 't1' }], error: null }) }) }) };
+        return {
+          select: () => ({
+            eq: () => ({ limit: () => Promise.resolve({ data: [{ id: 't1' }], error: null }) }),
+          }),
+        };
       }
       return { insert: () => Promise.resolve({ error: null }) };
     });

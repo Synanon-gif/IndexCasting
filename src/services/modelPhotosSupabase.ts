@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase';
+import { agencyUpdateModelFullRpc } from './modelsSupabase';
 import {
   validateFile,
   checkMagicBytes,
@@ -752,7 +753,7 @@ export async function getSignedPrivatePhotoUrl(url: string): Promise<string | nu
 
 /** Update models.portfolio_images from ordered URLs (first = cover for client swipe). */
 export async function syncPortfolioToModel(modelId: string, urls: string[]): Promise<boolean> {
-  const { error } = await supabase.rpc('agency_update_model_full', {
+  const { error } = await agencyUpdateModelFullRpc({
     p_model_id: modelId,
     p_portfolio_images: urls,
   });
@@ -765,7 +766,7 @@ export async function syncPortfolioToModel(modelId: string, urls: string[]): Pro
 
 /** Legacy `models.polaroids` array — keep in sync with visible polaroid rows for clients / swipe. */
 export async function syncPolaroidsToModel(modelId: string, urls: string[]): Promise<boolean> {
-  const { error } = await supabase.rpc('agency_update_model_full', {
+  const { error } = await agencyUpdateModelFullRpc({
     p_model_id: modelId,
     p_polaroids: urls,
   });

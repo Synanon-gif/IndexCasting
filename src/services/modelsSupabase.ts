@@ -14,6 +14,7 @@
  * **Not in this file** (also legitimate `models` queries): adminSupabase, gdprComplianceSupabase,
  * optionRequestsSupabase (resolvers), modelPhotosSupabase, modelsImportSupabase, connectors, store fallbacks.
  */
+import type { PostgrestError } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
 import { logAction } from '../utils/logAction';
 import { filterModelsByChestCoalesce } from '../utils/filterModelsByChestCoalesce';
@@ -21,6 +22,60 @@ import { serviceErr, serviceOkData, type ServiceResult } from '../types/serviceR
 import { fetchAllSupabasePages } from './supabaseFetchAll';
 import { modelEligibleForAgencyRoster } from '../utils/modelRosterEligibility';
 import { devAssertAgencyRosterMatchesEligibility } from '../utils/validateModelObjectDev';
+
+function isAgencyUpdateModelDevGuardOn(): boolean {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const g = globalThis as any;
+    return typeof g.__DEV__ !== 'undefined'
+      ? Boolean(g.__DEV__)
+      : process.env.NODE_ENV !== 'production';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * DEV: Detect mistaken use of the profile-update RPC for roster removal or empty no-op media wipes.
+ * Production: no-op (zero overhead intent).
+ */
+export function devWarnIfAgencyUpdateModelFullMisuse(payload: Record<string, unknown>): void {
+  if (!isAgencyUpdateModelDevGuardOn()) return;
+  if (payload.p_agency_relationship_status === 'ended') {
+    console.warn(
+      '[INVALID USAGE] agency_update_model_full used for removal — use removeModelFromAgency (agency_remove_model)',
+    );
+    return;
+  }
+  const skip = new Set(['p_model_id', 'p_polaroids', 'p_portfolio_images']);
+  let anyOther = false;
+  for (const [k, v] of Object.entries(payload)) {
+    if (skip.has(k)) continue;
+    if (v !== null && v !== undefined) {
+      anyOther = true;
+      break;
+    }
+  }
+  const polarEmpty =
+    Array.isArray(payload.p_polaroids) && (payload.p_polaroids as unknown[]).length === 0;
+  const portEmpty =
+    Array.isArray(payload.p_portfolio_images) &&
+    (payload.p_portfolio_images as unknown[]).length === 0;
+  if (polarEmpty && portEmpty && !anyOther) {
+    console.warn(
+      '[INVALID USAGE] agency_update_model_full used for removal (only empty polaroids + portfolio) — use agency_remove_model if ending representation',
+    );
+  }
+}
+
+/** Single choke point for `agency_update_model_full` (DEV misuse warnings + RPC). */
+export async function agencyUpdateModelFullRpc(
+  payload: Record<string, unknown>,
+): Promise<{ error: PostgrestError | null }> {
+  devWarnIfAgencyUpdateModelFullMisuse(payload);
+  const { error } = await supabase.rpc('agency_update_model_full', payload as never);
+  return { error };
+}
 
 /**
  * Alle Stammdaten-Felder — für Detail-Ansicht und vollständige Supabase-Roundtrips.
@@ -568,7 +623,7 @@ export async function updateModelVisibilityInSupabase(
   payload: { is_visible_commercial?: boolean; is_visible_fashion?: boolean },
 ): Promise<boolean> {
   try {
-    const { error } = await supabase.rpc('agency_update_model_full', {
+    const { error } = await agencyUpdateModelFullRpc({
       p_model_id: id,
       p_is_visible_commercial: payload.is_visible_commercial ?? null,
       p_is_visible_fashion: payload.is_visible_fashion ?? null,
@@ -761,41 +816,75 @@ export async function getMyModelAgencies(): Promise<ModelAgencyContext[]> {
   }
 }
 
+/** Canonical agency roster removal — resolves `agency_id` from the org row (multi-org safe). */
+export type RemoveModelFromAgencyParams = {
+  modelId: string;
+  organizationId: string;
+};
+
 /**
- * Agency ends representation (soft delete): model leaves My Models & client discovery;
- * past option_requests / calendar history stay in DB for reporting.
- * Pass `organizationId` for org-scoped audit logging when known.
+ * Agency ends representation (soft delete): MAT cleared for this agency, model leaves roster &
+ * client discovery when no territories remain; history kept in DB.
+ * Always uses RPC `agency_remove_model` — never `agency_update_model_full`.
  */
-export async function removeModelFromAgency(
-  modelId: string,
-  agencyId: string,
-  opts?: { organizationId?: string | null },
-): Promise<boolean> {
+export async function removeModelFromAgency(params: RemoveModelFromAgencyParams): Promise<boolean> {
+  const modelId = params.modelId?.trim();
+  const organizationId = params.organizationId?.trim();
+  if (!modelId || !organizationId) {
+    console.error('[agency_remove_model] failed', {
+      modelId: params.modelId,
+      error: 'missing_model_id_or_organization_id',
+    });
+    return false;
+  }
   try {
+    const { data: orgRow, error: orgErr } = await supabase
+      .from('organizations')
+      .select('agency_id, type')
+      .eq('id', organizationId)
+      .maybeSingle();
+
+    if (orgErr) {
+      console.error('[agency_remove_model] failed', { modelId, error: orgErr });
+      return false;
+    }
+
+    const resolvedAgencyId = orgRow?.agency_id as string | null | undefined;
+    if (!resolvedAgencyId || orgRow?.type !== 'agency') {
+      console.error('[agency_remove_model] failed', {
+        modelId,
+        error: 'organization_not_agency_or_missing_agency_id',
+      });
+      return false;
+    }
+
     const { data, error } = await supabase.rpc('agency_remove_model', {
       p_model_id: modelId,
-      p_agency_id: agencyId,
+      p_agency_id: resolvedAgencyId,
     });
     if (error) {
-      console.error('removeModelFromAgency error:', error);
+      console.error('[agency_remove_model] failed', { modelId, error });
       return false;
     }
     if (data !== true) {
-      console.error('removeModelFromAgency: RPC returned non-success', { modelId, agencyId, data });
+      console.error('[agency_remove_model] failed', {
+        modelId,
+        error: 'rpc_returned_non_true',
+        data,
+      });
       return false;
     }
-    if (opts?.organizationId) {
-      void logAction(opts.organizationId, 'removeModelFromAgency', {
-        type: 'audit',
-        action: 'model_removed',
-        entityType: 'model',
-        entityId: modelId,
-        newData: { agencyId, endRepresentation: true },
-      });
-    }
+
+    void logAction(organizationId, 'removeModelFromAgency', {
+      type: 'audit',
+      action: 'model_removed',
+      entityType: 'model',
+      entityId: modelId,
+      newData: { agencyId: resolvedAgencyId, endRepresentation: true },
+    });
     return true;
   } catch (e) {
-    console.error('removeModelFromAgency exception:', e);
+    console.error('[agency_remove_model] failed', { modelId, error: e });
     return false;
   }
 }

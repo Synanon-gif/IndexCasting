@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase';
+import { agencyUpdateModelFullRpc } from './modelsSupabase';
 import { upsertTerritoriesForModelCountryAgencyPairs } from './territoriesSupabase';
 
 export type ModelMergeTerritoryInput = {
@@ -76,7 +77,9 @@ function isMissing(v: unknown): boolean {
   return v === null || v === undefined;
 }
 
-export async function importModelAndMerge(params: ImportModelPayload): Promise<ImportModelAndMergeResult | null> {
+export async function importModelAndMerge(
+  params: ImportModelPayload,
+): Promise<ImportModelAndMergeResult | null> {
   try {
     const externalId = params.mediaslide_sync_id?.trim() || null;
     const netwalkId = params.netwalk_model_id?.trim() || null;
@@ -112,10 +115,14 @@ export async function importModelAndMerge(params: ImportModelPayload): Promise<I
       // row_security=off. Returns model only if same agency or unowned.
       // Uses array handling instead of .maybeSingle() because the RPC is RETURNS SETOF —
       // .maybeSingle() sends Accept: vnd.pgrst.object+json which causes 406 on 0 rows.
-      const { data: emailRows, error } = await supabase
-        .rpc('agency_find_model_by_email', { p_email: email.toLowerCase().trim() });
+      const { data: emailRows, error } = await supabase.rpc('agency_find_model_by_email', {
+        p_email: email.toLowerCase().trim(),
+      });
       if (error) console.error('importModelAndMerge: email lookup error:', error);
-      else existing = (Array.isArray(emailRows) ? (emailRows[0] ?? null) : (emailRows ?? null)) as typeof existing;
+      else
+        existing = (
+          Array.isArray(emailRows) ? (emailRows[0] ?? null) : (emailRows ?? null)
+        ) as typeof existing;
     }
 
     if (!existing && birthday) {
@@ -133,7 +140,8 @@ export async function importModelAndMerge(params: ImportModelPayload): Promise<I
     if (existing) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const updates: any = {};
-      const forceMs = params.forceUpdateMeasurements === true && (Boolean(externalId) || Boolean(netwalkId));
+      const forceMs =
+        params.forceUpdateMeasurements === true && (Boolean(externalId) || Boolean(netwalkId));
 
       const consider = (key: string, value: unknown, allowEmptyString = false) => {
         if (value === undefined || value === null) return;
@@ -162,13 +170,13 @@ export async function importModelAndMerge(params: ImportModelPayload): Promise<I
 
       // Measurements: force-overwrite when Mediaslide is authoritative, otherwise fill missing.
       const measurementFields: Array<[string, unknown]> = [
-        ['bust',        params.bust        ?? null],
-        ['waist',       params.waist       ?? null],
-        ['hips',        params.hips        ?? null],
-        ['chest',       params.chest       ?? null],
+        ['bust', params.bust ?? null],
+        ['waist', params.waist ?? null],
+        ['hips', params.hips ?? null],
+        ['chest', params.chest ?? null],
         ['legs_inseam', params.legs_inseam ?? null],
-        ['shoe_size',   params.shoe_size   ?? null],
-        ['height',      params.height],
+        ['shoe_size', params.shoe_size ?? null],
+        ['height', params.height],
       ];
       for (const [field, val] of measurementFields) {
         if (forceMs) forceSet(field, val);
@@ -189,7 +197,10 @@ export async function importModelAndMerge(params: ImportModelPayload): Promise<I
       // Merge arrays (avoid duplicates) if incoming arrays are provided.
       const incomingPortfolio = params.portfolio_images ?? null;
       if (incomingPortfolio) {
-        updates.portfolio_images = mergeUniquePreserveOrder(existing.portfolio_images ?? [], incomingPortfolio);
+        updates.portfolio_images = mergeUniquePreserveOrder(
+          existing.portfolio_images ?? [],
+          incomingPortfolio,
+        );
       }
 
       const incomingPolaroids = params.polaroids ?? null;
@@ -198,27 +209,27 @@ export async function importModelAndMerge(params: ImportModelPayload): Promise<I
       }
 
       if (Object.keys(updates).length > 0) {
-        const { error } = await supabase.rpc('agency_update_model_full', {
-          p_model_id:          existing.id,
-          p_name:              updates.name              ?? null,
-          p_email:             updates.email             ?? null,
-          p_city:              updates.city              ?? null,
-          p_country_code:      updates.country_code      ?? null,
-          p_hair_color:        updates.hair_color        ?? null,
-          p_eye_color:         updates.eye_color         ?? null,
-          p_ethnicity:         updates.ethnicity         ?? null,
-          p_current_location:  updates.current_location  ?? null,
-          p_sex:               updates.sex               ?? null,
-          p_categories:        updates.categories        ?? null,
-          p_height:            updates.height            ?? null,
-          p_bust:              updates.bust              ?? null,
-          p_waist:             updates.waist             ?? null,
-          p_hips:              updates.hips              ?? null,
-          p_chest:             updates.chest             ?? null,
-          p_legs_inseam:       updates.legs_inseam       ?? null,
-          p_shoe_size:         updates.shoe_size         ?? null,
-          p_portfolio_images:  updates.portfolio_images  ?? null,
-          p_polaroids:         updates.polaroids         ?? null,
+        const { error } = await agencyUpdateModelFullRpc({
+          p_model_id: existing.id,
+          p_name: updates.name ?? null,
+          p_email: updates.email ?? null,
+          p_city: updates.city ?? null,
+          p_country_code: updates.country_code ?? null,
+          p_hair_color: updates.hair_color ?? null,
+          p_eye_color: updates.eye_color ?? null,
+          p_ethnicity: updates.ethnicity ?? null,
+          p_current_location: updates.current_location ?? null,
+          p_sex: updates.sex ?? null,
+          p_categories: updates.categories ?? null,
+          p_height: updates.height ?? null,
+          p_bust: updates.bust ?? null,
+          p_waist: updates.waist ?? null,
+          p_hips: updates.hips ?? null,
+          p_chest: updates.chest ?? null,
+          p_legs_inseam: updates.legs_inseam ?? null,
+          p_shoe_size: updates.shoe_size ?? null,
+          p_portfolio_images: updates.portfolio_images ?? null,
+          p_polaroids: updates.polaroids ?? null,
         });
         if (error) {
           console.error('importModelAndMerge: update error:', error);
@@ -230,9 +241,9 @@ export async function importModelAndMerge(params: ImportModelPayload): Promise<I
       let externalSyncIdsPersistFailed = false;
       if (externalId || netwalkId) {
         const { error: syncError } = await supabase.rpc('update_model_sync_ids', {
-          p_model_id:         existing.id,
-          p_mediaslide_id:    externalId   ?? undefined,
-          p_netwalk_model_id: netwalkId    ?? undefined,
+          p_model_id: existing.id,
+          p_mediaslide_id: externalId ?? undefined,
+          p_netwalk_model_id: netwalkId ?? undefined,
         });
         if (syncError) {
           console.error('importModelAndMerge: sync_ids update error:', syncError);
@@ -296,9 +307,12 @@ export async function importModelAndMerge(params: ImportModelPayload): Promise<I
       // race condition, cross-agency model), retry as merge instead of dead-ending.
       if (error.code === '23505' && email && !params._mergeRetry) {
         console.warn('importModelAndMerge: 23505 on INSERT — retrying as merge');
-        const { data: conflictRows } = await supabase
-          .rpc('agency_find_model_by_email', { p_email: email.toLowerCase().trim() });
-        const conflictModel = Array.isArray(conflictRows) ? (conflictRows[0] ?? null) : (conflictRows ?? null);
+        const { data: conflictRows } = await supabase.rpc('agency_find_model_by_email', {
+          p_email: email.toLowerCase().trim(),
+        });
+        const conflictModel = Array.isArray(conflictRows)
+          ? (conflictRows[0] ?? null)
+          : (conflictRows ?? null);
         if (conflictModel) {
           return importModelAndMerge({ ...params, _mergeRetry: true } as ImportModelPayload);
         }
@@ -308,7 +322,9 @@ export async function importModelAndMerge(params: ImportModelPayload): Promise<I
     }
 
     if (!data?.id) {
-      console.error('importModelAndMerge: INSERT succeeded but row not returned by RLS — cannot proceed');
+      console.error(
+        'importModelAndMerge: INSERT succeeded but row not returned by RLS — cannot proceed',
+      );
       return null;
     }
 
@@ -322,4 +338,3 @@ export async function importModelAndMerge(params: ImportModelPayload): Promise<I
     return null;
   }
 }
-

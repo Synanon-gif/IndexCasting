@@ -62,6 +62,7 @@ import {
   getModelsForAgencyFromSupabase,
   getModelByIdFromSupabase,
   removeModelFromAgency,
+  agencyUpdateModelFullRpc,
   agencyLinkModelToUser,
   agencyModelEmailMatchesUnlinkedProfile,
   generateModelClaimToken,
@@ -452,6 +453,11 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
       isVisibleCommercial: m.isVisibleCommercial ?? false,
       isVisibleFashion: m.isVisibleFashion ?? false,
     }));
+
+  const removeModelFromLocalRoster = useCallback((modelId: string) => {
+    setFullModels((prev) => prev.filter((m) => m.id !== modelId));
+    setModels((prev) => prev.filter((m) => m.id !== modelId));
+  }, []);
 
   /** Keeps Dashboard (`models`) and My Models (`fullModels`) in sync after import/save/remove. */
   const refreshAgencyModelLists = useCallback(async () => {
@@ -870,6 +876,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
             agencyName={currentAgency?.name ?? null}
             inviteOrganizationId={agencyOrganizationId ?? profile?.organization_id ?? null}
             onRefresh={refreshAgencyModelLists}
+            onRosterRemoveLocal={removeModelFromLocalRoster}
             focusModelId={searchModelId}
             onFocusConsumed={() => setSearchModelId(null)}
           />
@@ -2768,6 +2775,8 @@ const MyModelsTab: React.FC<{
   /** Pass-through for send-invite (model_claim) — disambiguates multi-org bookers. */
   inviteOrganizationId?: string | null;
   onRefresh: () => void;
+  /** After successful `agency_remove_model`, drop from dashboard + My Models lists immediately. */
+  onRosterRemoveLocal?: (modelId: string) => void;
   focusModelId?: string | null;
   onFocusConsumed?: () => void;
 }> = ({
@@ -2776,6 +2785,7 @@ const MyModelsTab: React.FC<{
   agencyName,
   inviteOrganizationId,
   onRefresh,
+  onRosterRemoveLocal,
   focusModelId,
   onFocusConsumed,
 }) => {
@@ -3294,7 +3304,7 @@ const MyModelsTab: React.FC<{
           // agency_update_model_full which validates same-agency ownership.
           // Note: agency_relationship_ended_at cannot be cleared through the COALESCE
           // pattern — acceptable because status='active' controls roster visibility.
-          const { error: reactivateErr } = await supabase.rpc('agency_update_model_full', {
+          const { error: reactivateErr } = await agencyUpdateModelFullRpc({
             p_model_id: mergeResult.model_id,
             p_agency_relationship_status: relationshipStatus,
             p_is_visible_fashion: isVisibleFashion,
@@ -3312,7 +3322,7 @@ const MyModelsTab: React.FC<{
         }
       } else {
         // Newly created: set relationship + sports flags not covered by importModelAndMerge insert.
-        const { error: updateErr } = await supabase.rpc('agency_update_model_full', {
+        const { error: updateErr } = await agencyUpdateModelFullRpc({
           p_model_id: mergeResult.model_id,
           p_agency_relationship_status: emailTrim ? 'pending_link' : 'active',
           p_is_visible_fashion: isVisibleFashion,
@@ -3953,7 +3963,7 @@ const MyModelsTab: React.FC<{
         }
       }
 
-      const { error: modelUpdateError } = await supabase.rpc('agency_update_model_full', {
+      const { error: modelUpdateError } = await agencyUpdateModelFullRpc({
         p_model_id: selectedModel.id,
         p_name: updates.name ?? null,
         p_email: updates.email ?? null,
@@ -4513,13 +4523,23 @@ const MyModelsTab: React.FC<{
               uiCopy.alerts.endRepresentationTitle,
               uiCopy.alerts.endRepresentationBody,
               async () => {
-                const ok = await removeModelFromAgency(selectedModel.id, agencyId, {
-                  organizationId: inviteOrganizationId,
+                const organizationId = inviteOrganizationId?.trim() ?? '';
+                if (!organizationId) {
+                  showAppAlert(
+                    uiCopy.alerts.removeModelMissingOrgTitle,
+                    uiCopy.alerts.removeModelMissingOrgBody,
+                  );
+                  return;
+                }
+                const ok = await removeModelFromAgency({
+                  modelId: selectedModel.id,
+                  organizationId,
                 });
                 if (ok) {
+                  onRosterRemoveLocal?.(selectedModel.id);
                   setSelectedModel(null);
                   setEditState(buildEditState({ name: '' }));
-                  onRefresh();
+                  void onRefresh();
                   showAppAlert(
                     uiCopy.alerts.endRepresentationSuccessTitle,
                     uiCopy.alerts.endRepresentationSuccessBody,

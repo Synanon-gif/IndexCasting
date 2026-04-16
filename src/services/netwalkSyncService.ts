@@ -16,7 +16,7 @@
  */
 import { supabase } from '../../lib/supabase';
 import type { SupabaseModel } from './modelsSupabase';
-import { getModelByIdFromSupabase } from './modelsSupabase';
+import { agencyUpdateModelFullRpc, getModelByIdFromSupabase } from './modelsSupabase';
 import { getModelFromNetwalk, syncModelData } from './netwalkConnector';
 import { fetchAllSupabasePages } from './supabaseFetchAll';
 import { logMediaslideError } from './mediaslideSyncService';
@@ -108,7 +108,13 @@ function resolveMeasurementsConflict(args: {
   const remoteIsNewer = remoteTs !== null && (localTs === null || remoteTs > localTs);
 
   const fields: (keyof NetwalkMeasurements & keyof SupabaseModel)[] = [
-    'height', 'bust', 'waist', 'hips', 'chest', 'legs_inseam', 'shoe_size',
+    'height',
+    'bust',
+    'waist',
+    'hips',
+    'chest',
+    'legs_inseam',
+    'shoe_size',
   ];
 
   for (const f of fields) {
@@ -171,7 +177,7 @@ export async function syncSingleModelFromNetwalk(args: {
   const updates: Partial<SupabaseModel> = {};
 
   // Timestamp resolution: only overwrite scalar fields if Remote is strictly newer.
-  const localTs  = toTimestamp(local.updated_at);
+  const localTs = toTimestamp(local.updated_at);
   const remoteTs = toTimestamp(remote.updated_at);
   const remoteScalarIsNewer = remoteTs !== null && (localTs === null || remoteTs > localTs);
 
@@ -181,7 +187,8 @@ export async function syncSingleModelFromNetwalk(args: {
     }
     if (remote.city !== undefined) updates.city = remote.city ?? null;
     if (remote.country !== undefined) updates.country = remote.country ?? null;
-    if (remote.country_code !== undefined) (updates as any).country_code = remote.country_code ?? null;
+    if (remote.country_code !== undefined)
+      (updates as any).country_code = remote.country_code ?? null;
     if (remote.hair_color !== undefined) updates.hair_color = remote.hair_color ?? null;
     if (remote.eye_color !== undefined) updates.eye_color = remote.eye_color ?? null;
     if (remote.sex !== undefined) (updates as any).sex = remote.sex ?? null;
@@ -218,26 +225,26 @@ export async function syncSingleModelFromNetwalk(args: {
   // Alle direkten Updates laufen über agency_update_model_full (SECURITY DEFINER).
   // REVOKED-Spalten (netwalk_model_id) werden separat via update_model_sync_ids gesetzt.
   const u = updates as any;
-  const { error } = await supabase.rpc('agency_update_model_full', {
-    p_model_id:              local.id,
-    p_name:                  u.name                  ?? null,
-    p_city:                  u.city                  ?? null,
-    p_country:               u.country               ?? null,
-    p_country_code:          u.country_code          ?? null,
-    p_hair_color:            u.hair_color            ?? null,
-    p_eye_color:             u.eye_color             ?? null,
-    p_sex:                   u.sex                   ?? null,
-    p_ethnicity:             u.ethnicity             ?? null,
-    p_categories:            u.categories            ?? null,
-    p_height:                u.height                ?? null,
-    p_bust:                  u.bust                  ?? null,
-    p_waist:                 u.waist                 ?? null,
-    p_hips:                  u.hips                  ?? null,
-    p_chest:                 u.chest                 ?? null,
-    p_legs_inseam:           u.legs_inseam           ?? null,
-    p_shoe_size:             u.shoe_size             ?? null,
+  const { error } = await agencyUpdateModelFullRpc({
+    p_model_id: local.id,
+    p_name: u.name ?? null,
+    p_city: u.city ?? null,
+    p_country: u.country ?? null,
+    p_country_code: u.country_code ?? null,
+    p_hair_color: u.hair_color ?? null,
+    p_eye_color: u.eye_color ?? null,
+    p_sex: u.sex ?? null,
+    p_ethnicity: u.ethnicity ?? null,
+    p_categories: u.categories ?? null,
+    p_height: u.height ?? null,
+    p_bust: u.bust ?? null,
+    p_waist: u.waist ?? null,
+    p_hips: u.hips ?? null,
+    p_chest: u.chest ?? null,
+    p_legs_inseam: u.legs_inseam ?? null,
+    p_shoe_size: u.shoe_size ?? null,
     p_is_visible_commercial: u.is_visible_commercial ?? null,
-    p_is_visible_fashion:    u.is_visible_fashion    ?? null,
+    p_is_visible_fashion: u.is_visible_fashion ?? null,
   });
 
   if (error) {
@@ -273,7 +280,10 @@ export async function syncSingleModelFromNetwalk(args: {
     try {
       await upsertTerritoriesForModelCountryAgencyPairs(
         local.id,
-        remote.territory_codes.map((cc: string) => ({ country_code: cc, agency_id: local.agency_id as string })),
+        remote.territory_codes.map((cc: string) => ({
+          country_code: cc,
+          agency_id: local.agency_id as string,
+        })),
       );
     } catch (e) {
       await logNetwalkError({
@@ -291,8 +301,8 @@ export async function syncSingleModelFromNetwalk(args: {
   const freshModel = await getModelByIdFromSupabase(localModelId);
   if (freshModel) {
     const missingRequired: string[] = [];
-    if (!freshModel.name?.trim())                          missingRequired.push('name');
-    if ((freshModel.portfolio_images ?? []).length === 0)  missingRequired.push('portfolio_images');
+    if (!freshModel.name?.trim()) missingRequired.push('name');
+    if ((freshModel.portfolio_images ?? []).length === 0) missingRequired.push('portfolio_images');
     const { data: terr } = await supabase
       .from('model_assignments')
       .select('id')
@@ -343,17 +353,19 @@ export async function runNetwalkCronSync(apiKey?: string): Promise<void> {
   let allRows: { id: string; netwalk_model_id: string }[];
 
   try {
-    allRows = (await fetchAllSupabasePages(async (from, to) => {
-      const { data, error } = await supabase
-        .from('models')
-        .select('id, netwalk_model_id')
-        .not('netwalk_model_id', 'is', null)
-        .range(from, to);
-      return {
-        data: data as { id: string; netwalk_model_id: string }[] | null,
-        error,
-      };
-    })).filter((r) => Boolean(r.netwalk_model_id));
+    allRows = (
+      await fetchAllSupabasePages(async (from, to) => {
+        const { data, error } = await supabase
+          .from('models')
+          .select('id, netwalk_model_id')
+          .not('netwalk_model_id', 'is', null)
+          .range(from, to);
+        return {
+          data: data as { id: string; netwalk_model_id: string }[] | null,
+          error,
+        };
+      })
+    ).filter((r) => Boolean(r.netwalk_model_id));
   } catch (e: any) {
     await logNetwalkError({
       operation: 'runNetwalkCronSync',

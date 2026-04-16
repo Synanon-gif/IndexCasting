@@ -156,8 +156,11 @@ export const uiCopy = {
     endRepresentationFailedTitle: 'Could not end representation',
     endRepresentationFailedBody:
       'The model was not removed from your roster. Try again or contact support if this persists.',
-    endRepresentationSuccessTitle: 'Representation ended',
-    endRepresentationSuccessBody: 'The model has been removed from your roster.',
+    endRepresentationSuccessTitle: 'Model removed from agency',
+    endRepresentationSuccessBody: 'Your roster has been updated.',
+    removeModelMissingOrgTitle: 'Cannot remove model',
+    removeModelMissingOrgBody:
+      'Organization context is missing. Reload the app and try again, or contact support.',
     locationUpdatedTitle: 'Location Updated',
     locationErrorTitle: 'Location Error',
     locationErrorFallback: 'Could not retrieve your location.',

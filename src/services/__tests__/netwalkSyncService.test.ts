@@ -14,6 +14,7 @@ jest.mock('../../../lib/supabase', () => ({
 
 const getModelByIdFromSupabaseMock = jest.fn();
 jest.mock('../modelsSupabase', () => ({
+  ...jest.requireActual<typeof import('../modelsSupabase')>('../modelsSupabase'),
   getModelByIdFromSupabase: (...args: unknown[]) => getModelByIdFromSupabaseMock(...args),
 }));
 
@@ -84,7 +85,9 @@ function setupSupabaseMock({
     }
     if (table === 'model_assignments') {
       return {
-        select: () => ({ eq: () => ({ limit: () => Promise.resolve({ data: terrData, error: null }) }) }),
+        select: () => ({
+          eq: () => ({ limit: () => Promise.resolve({ data: terrData, error: null }) }),
+        }),
       };
     }
     if (table === 'mediaslide_sync_logs') {
@@ -148,7 +151,8 @@ describe('syncSingleModelFromNetwalk', () => {
     getModelFromNetwalkMock.mockResolvedValue(makeRemoteModel());
     // Konfiguriere rpcMock so dass agency_update_model_full einen Fehler zurückgibt
     rpcMock.mockImplementation((name: string) => {
-      if (name === 'agency_update_model_full') return Promise.resolve({ error: { message: 'constraint violation' } });
+      if (name === 'agency_update_model_full')
+        return Promise.resolve({ error: { message: 'constraint violation' } });
       return Promise.resolve({ error: null });
     });
 
@@ -168,7 +172,11 @@ describe('syncSingleModelFromNetwalk', () => {
     });
     getModelByIdFromSupabaseMock
       .mockResolvedValueOnce(local)
-      .mockResolvedValueOnce({ ...local, name: 'Remote Netwalk Model', portfolio_images: ['photo.jpg'] });
+      .mockResolvedValueOnce({
+        ...local,
+        name: 'Remote Netwalk Model',
+        portfolio_images: ['photo.jpg'],
+      });
     getModelFromNetwalkMock.mockResolvedValue(remote);
 
     const result = await syncSingleModelFromNetwalk({
@@ -183,9 +191,7 @@ describe('syncSingleModelFromNetwalk', () => {
   it('returns ok=true with no DB write when remote has no differing data', async () => {
     const local = makeLocalModel();
     const remoteEmpty = { id: NETWALK_ID, updated_at: '2024-07-01T10:00:00Z' };
-    getModelByIdFromSupabaseMock
-      .mockResolvedValueOnce(local)
-      .mockResolvedValueOnce(local);
+    getModelByIdFromSupabaseMock.mockResolvedValueOnce(local).mockResolvedValueOnce(local);
     getModelFromNetwalkMock.mockResolvedValue(remoteEmpty);
     const updateSpy = jest.fn().mockReturnValue({
       eq: () => Promise.resolve({ error: null }),
@@ -193,7 +199,11 @@ describe('syncSingleModelFromNetwalk', () => {
     fromMock.mockImplementation((table: string) => {
       if (table === 'models') return { update: updateSpy };
       if (table === 'model_assignments') {
-        return { select: () => ({ eq: () => ({ limit: () => Promise.resolve({ data: [{ id: 't1' }], error: null }) }) }) };
+        return {
+          select: () => ({
+            eq: () => ({ limit: () => Promise.resolve({ data: [{ id: 't1' }], error: null }) }),
+          }),
+        };
       }
       return { insert: () => Promise.resolve({ error: null }) };
     });
@@ -214,9 +224,7 @@ describe('syncSingleModelFromNetwalk', () => {
       updated_at: sameTs,
       measurements: { height: 180 },
     });
-    getModelByIdFromSupabaseMock
-      .mockResolvedValueOnce(local)
-      .mockResolvedValueOnce(local);
+    getModelByIdFromSupabaseMock.mockResolvedValueOnce(local).mockResolvedValueOnce(local);
     getModelFromNetwalkMock.mockResolvedValue(remote);
     const updateSpy = jest.fn().mockReturnValue({
       eq: () => Promise.resolve({ error: null }),
@@ -224,7 +232,11 @@ describe('syncSingleModelFromNetwalk', () => {
     fromMock.mockImplementation((table: string) => {
       if (table === 'models') return { update: updateSpy };
       if (table === 'model_assignments') {
-        return { select: () => ({ eq: () => ({ limit: () => Promise.resolve({ data: [{ id: 't1' }], error: null }) }) }) };
+        return {
+          select: () => ({
+            eq: () => ({ limit: () => Promise.resolve({ data: [{ id: 't1' }], error: null }) }),
+          }),
+        };
       }
       return { insert: () => Promise.resolve({ error: null }) };
     });
