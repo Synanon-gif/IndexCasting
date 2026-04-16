@@ -269,14 +269,8 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
         profile.countryCode ??
         'XX';
 
-      // Update legacy current_location text field via SECURITY DEFINER RPC
-      // (blocked if model belongs to an agency — agency controls location in that case)
-      await supabase.rpc('model_update_own_profile_safe', {
-        p_current_location: cityName,
-      });
-
-      // Write privacy-safe approximate location to model_locations
-      await upsertModelLocation(
+      // Canonical write first (model_locations live); legacy models.current_location mirror second.
+      const upsertOk = await upsertModelLocation(
         profile.id,
         {
           country_code: countryCode,
@@ -287,6 +281,20 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
         },
         'live',
       );
+      if (!upsertOk) {
+        Alert.alert(uiCopy.common.error, uiCopy.alerts.couldNotSaveLocation);
+        return;
+      }
+
+      const { error: mirrorErr } = await supabase.rpc('model_update_own_profile_safe', {
+        p_current_location: cityName,
+      });
+      if (mirrorErr) {
+        console.warn(
+          '[ModelProfileScreen] model_update_own_profile_safe (legacy mirror) failed after live upsert:',
+          mirrorErr.message,
+        );
+      }
 
       setProfile((prev) => (prev ? { ...prev, currentLocation: cityName } : prev));
       // Reload to reflect the new highest-priority source (live now overrides current/agency)

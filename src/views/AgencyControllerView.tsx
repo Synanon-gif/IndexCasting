@@ -116,10 +116,12 @@ import {
 import {
   upsertModelLocation,
   getModelLocation,
+  fetchEffectiveDisplayCitiesForModels,
   locationSourceLabel,
   roundCoord,
   type ModelLocation,
 } from '../services/modelLocationsSupabase';
+import { canonicalDisplayCityForModel } from '../utils/canonicalModelCity';
 import { describeSendInviteFailure, resendInviteEmail } from '../services/inviteDelivery';
 
 /**
@@ -230,7 +232,12 @@ import { uiCopy } from '../constants/uiCopy';
 import { isOrganizationOwner } from '../services/orgRoleTypes';
 import { AgencyOrgProfileScreen } from '../screens/AgencyOrgProfileScreen';
 import { OrgProfileModal } from '../components/OrgProfileModal';
-import { type ModelFilters, defaultModelFilters, filterModels } from '../utils/modelFilters';
+import {
+  type ModelFilters,
+  type ModelWithOptionalLocation,
+  defaultModelFilters,
+  filterModels,
+} from '../utils/modelFilters';
 import ModelFiltersPanel from '../components/ModelFiltersPanel';
 import ModelEditDetailsPanel, {
   buildEditState,
@@ -2770,6 +2777,10 @@ const MyModelsTab: React.FC<{
   const [selectedModel, setSelectedModel] = useState<SupabaseModel | null>(null);
   const [selectedModelLocation, setSelectedModelLocation] = useState<ModelLocation | null>(null);
   const [filters, setFilters] = useState<ModelFilters>(defaultModelFilters);
+  /** Batched live>current>agency display city for roster filter + labels (parity with discovery). */
+  const [rosterEffectiveCityById, setRosterEffectiveCityById] = useState<Map<string, string>>(
+    () => new Map(),
+  );
   const [rosterNameSearch, setRosterNameSearch] = useState('');
   const [rosterViewMode, setRosterViewMode] = useState<'list' | 'gallery'>('list');
   const [editState, setEditState] = useState<ModelEditState>(buildEditState({ name: '' }));
@@ -2844,6 +2855,35 @@ const MyModelsTab: React.FC<{
       getTerritoriesForAgency(agencyId).then(setRosterTerritoriesMap);
     }
   }, [agencyId]);
+
+  useEffect(() => {
+    if (!models.length) {
+      setRosterEffectiveCityById(new Map());
+      return;
+    }
+    let cancelled = false;
+    void fetchEffectiveDisplayCitiesForModels(models.map((m) => m.id)).then((map) => {
+      if (!cancelled) setRosterEffectiveCityById(map);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [models]);
+
+  const modelsWithLocPin = useMemo((): ModelWithOptionalLocation[] => {
+    return models.map((m) => {
+      const eff = rosterEffectiveCityById.get(m.id);
+      if (!eff?.trim()) return m as ModelWithOptionalLocation;
+      return {
+        ...m,
+        model_location: {
+          city: eff,
+          lat_approx: null,
+          lng_approx: null,
+        },
+      } as ModelWithOptionalLocation;
+    });
+  }, [models, rosterEffectiveCityById]);
 
   // Auto-select model when arriving from GlobalSearch deep-link.
   // Depends on `models` so it retries when the roster loads after the ID is set.
@@ -3067,11 +3107,11 @@ const MyModelsTab: React.FC<{
   }, [isoCountryList, territorySearch]);
 
   const filtered = useMemo(() => {
-    const base = filterModels(models, filters);
+    const base = filterModels(modelsWithLocPin, filters);
     const q = rosterNameSearch.trim().toLowerCase();
     if (!q) return base;
     return base.filter((m) => (m.name ?? '').toLowerCase().includes(q));
-  }, [models, filters, rosterNameSearch]);
+  }, [modelsWithLocPin, filters, rosterNameSearch]);
 
   useEffect(() => {
     setSaveFeedback(null);
@@ -5034,7 +5074,10 @@ const MyModelsTab: React.FC<{
                       style={{ ...typography.body, fontSize: 11, color: colors.textSecondary }}
                       numberOfLines={1}
                     >
-                      {m.city ?? '—'}
+                      {canonicalDisplayCityForModel({
+                        effective_city: rosterEffectiveCityById.get(m.id) ?? null,
+                        city: m.city,
+                      }) || '—'}
                       {m.height ? ` · ${m.height} cm` : ''}
                     </Text>
                   </TouchableOpacity>
@@ -5116,8 +5159,12 @@ const MyModelsTab: React.FC<{
                 <View style={{ flex: 1 }}>
                   <Text style={s.modelName}>{m.name}</Text>
                   <Text style={s.metaText}>
-                    {m.city ?? '—'} · H{m.height} C{(m as SupabaseModel).chest ?? m.bust ?? '—'} W
-                    {m.waist ?? '—'} H{m.hips ?? '—'}
+                    {canonicalDisplayCityForModel({
+                      effective_city: rosterEffectiveCityById.get(m.id) ?? null,
+                      city: m.city,
+                    }) || '—'}{' '}
+                    · H{m.height} C{(m as SupabaseModel).chest ?? m.bust ?? '—'} W{m.waist ?? '—'} H
+                    {m.hips ?? '—'}
                   </Text>
                   {(rosterTerritoriesMap[m.id] ?? []).length > 0 ? (
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 2, marginTop: 3 }}>
@@ -8072,9 +8119,42 @@ const GuestLinksTab: React.FC<{
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [packageModelFilters, setPackageModelFilters] = useState<ModelFilters>(defaultModelFilters);
+  const [packageEffectiveCityById, setPackageEffectiveCityById] = useState<Map<string, string>>(
+    () => new Map(),
+  );
+
+  useEffect(() => {
+    if (!models.length) {
+      setPackageEffectiveCityById(new Map());
+      return;
+    }
+    let cancelled = false;
+    void fetchEffectiveDisplayCitiesForModels(models.map((m) => m.id)).then((map) => {
+      if (!cancelled) setPackageEffectiveCityById(map);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [models]);
+
+  const packageModelsWithLocPin = useMemo((): ModelWithOptionalLocation[] => {
+    return models.map((m) => {
+      const eff = packageEffectiveCityById.get(m.id);
+      if (!eff?.trim()) return m as ModelWithOptionalLocation;
+      return {
+        ...m,
+        model_location: {
+          city: eff,
+          lat_approx: null,
+          lng_approx: null,
+        },
+      } as ModelWithOptionalLocation;
+    });
+  }, [models, packageEffectiveCityById]);
+
   const filteredPackageModels = useMemo(
-    () => filterModels(models, packageModelFilters),
-    [models, packageModelFilters],
+    () => filterModels(packageModelsWithLocPin, packageModelFilters),
+    [packageModelsWithLocPin, packageModelFilters],
   );
 
   // Package list

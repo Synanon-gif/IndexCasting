@@ -21,7 +21,9 @@ jest.mock('../../../lib/supabase', () => ({
 
 // fetchAllSupabasePages just calls the callback once with (0, 999)
 jest.mock('../supabaseFetchAll', () => ({
-  fetchAllSupabasePages: async (fn: (from: number, to: number) => Promise<{ data: unknown; error: unknown }>) => {
+  fetchAllSupabasePages: async (
+    fn: (from: number, to: number) => Promise<{ data: unknown; error: unknown }>,
+  ) => {
     const { data, error } = await fn(0, 999);
     if (error) return [];
     return data ?? [];
@@ -56,6 +58,21 @@ describe('mergeEffectiveDisplayCitiesFromRows', () => {
     ]);
     expect(m.get('b')).toBe('Fallback');
   });
+
+  it('uses agency when it is the only row with a city', () => {
+    const m = mergeEffectiveDisplayCitiesFromRows([
+      { model_id: 'c', city: 'Innsbruck', source: 'agency' },
+    ]);
+    expect(m.get('c')).toBe('Innsbruck');
+  });
+
+  it('prefers current over agency when live is absent', () => {
+    const m = mergeEffectiveDisplayCitiesFromRows([
+      { model_id: 'd', city: 'AgencyCity', source: 'agency' },
+      { model_id: 'd', city: 'ModelTypedCity', source: 'current' },
+    ]);
+    expect(m.get('d')).toBe('ModelTypedCity');
+  });
 });
 
 // ── roundCoord ────────────────────────────────────────────────────────────────
@@ -63,8 +80,8 @@ describe('mergeEffectiveDisplayCitiesFromRows', () => {
 describe('roundCoord', () => {
   it('rounds to nearest 0.05 (~5 km precision)', () => {
     expect(roundCoord(48.1234)).toBe(48.1);
-    expect(roundCoord(48.1750)).toBe(48.2);
-    expect(roundCoord(13.0000)).toBe(13.0);
+    expect(roundCoord(48.175)).toBe(48.2);
+    expect(roundCoord(13.0)).toBe(13.0);
     expect(roundCoord(-33.8688)).toBe(-33.85);
   });
 
@@ -150,14 +167,26 @@ describe('getModelLocation', () => {
 
   it('returns highest-priority location when multiple sources exist', async () => {
     const liveRow = {
-      id: 'loc-live', model_id: 'model-1', city: 'Berlin', country_code: 'DE',
-      lat_approx: 52.5, lng_approx: 13.4, share_approximate_location: true,
-      source: 'live', updated_at: '2024-01-02T00:00:00Z',
+      id: 'loc-live',
+      model_id: 'model-1',
+      city: 'Berlin',
+      country_code: 'DE',
+      lat_approx: 52.5,
+      lng_approx: 13.4,
+      share_approximate_location: true,
+      source: 'live',
+      updated_at: '2024-01-02T00:00:00Z',
     };
     const agencyRow = {
-      id: 'loc-agency', model_id: 'model-1', city: 'Munich', country_code: 'DE',
-      lat_approx: 48.1, lng_approx: 11.6, share_approximate_location: true,
-      source: 'agency', updated_at: '2024-01-01T00:00:00Z',
+      id: 'loc-agency',
+      model_id: 'model-1',
+      city: 'Munich',
+      country_code: 'DE',
+      lat_approx: 48.1,
+      lng_approx: 11.6,
+      share_approximate_location: true,
+      source: 'agency',
+      updated_at: '2024-01-01T00:00:00Z',
     };
     // Returns both rows; live should win (priority 2 > 0)
     fromMock.mockReturnValue({
@@ -173,9 +202,15 @@ describe('getModelLocation', () => {
 
   it('returns current when live is absent', async () => {
     const currentRow = {
-      id: 'loc-current', model_id: 'model-1', city: 'Hamburg', country_code: 'DE',
-      lat_approx: 53.55, lng_approx: 10.0, share_approximate_location: true,
-      source: 'current', updated_at: '2024-01-01T00:00:00Z',
+      id: 'loc-current',
+      model_id: 'model-1',
+      city: 'Hamburg',
+      country_code: 'DE',
+      lat_approx: 53.55,
+      lng_approx: 10.0,
+      share_approximate_location: true,
+      source: 'current',
+      updated_at: '2024-01-01T00:00:00Z',
     };
     fromMock.mockReturnValue({
       select: () => ({
