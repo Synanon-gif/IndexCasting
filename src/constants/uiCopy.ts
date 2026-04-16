@@ -633,6 +633,20 @@ export const uiCopy = {
     dissolveOrgWorking: 'Deleting organization…',
     dissolveOrgSuccess: 'Organization deleted. You can now delete your personal account below.',
     dissolveOrgFailed: 'Could not delete the organization. Please try again.',
+    /** Dissolve RPC returned forbidden_not_owner (defensive; owner UI is normally gated). */
+    dissolveOrgNotOwner: 'Only the organization owner can delete the organization.',
+    /** Caller session missing — should be rare from authenticated settings. */
+    dissolveNotSignedIn: 'You must be signed in to delete the organization.',
+    /**
+     * Org row cannot be removed because related business data still references it.
+     * Operational follow-up: use full org purge RPC or support-assisted cleanup.
+     */
+    dissolveOrgFailedDependencies:
+      'The organization could not be deleted because related records still exist. Please contact support if this persists.',
+    /** After soft-delete RPC succeeds; user is signed out next. */
+    scheduledDeletionTitle: 'Deletion scheduled',
+    scheduledDeletionBody:
+      'Your account deletion has been scheduled. You will be signed out. Data is removed after the retention period.',
   },
   app: {
     crashTitle: 'Something went wrong',

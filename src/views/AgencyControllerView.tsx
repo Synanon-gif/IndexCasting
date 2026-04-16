@@ -30,6 +30,7 @@ import {
   shouldUseB2BWebSplit,
 } from '../theme/chatLayout';
 import { showAppAlert, showConfirmAlert } from '../utils/crossPlatformAlert';
+import { messageForDissolveOrganizationError } from '../utils/accountDeletionFeedback';
 import { isImageFile } from '../../lib/validation/file';
 import { useAuth } from '../context/AuthContext';
 
@@ -1010,44 +1011,38 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                   </Text>
                   <TouchableOpacity
                     onPress={() => {
-                      Alert.alert(
+                      showConfirmAlert(
                         uiCopy.accountDeletion.dissolveOrgConfirmTitle,
                         uiCopy.accountDeletion.dissolveOrgConfirmMessage,
-                        [
-                          { text: uiCopy.common.cancel, style: 'cancel' },
-                          {
-                            text: uiCopy.accountDeletion.dissolveOrgButton,
-                            style: 'destructive',
-                            onPress: async () => {
-                              setDissolvingOrg(true);
-                              try {
-                                const result = await dissolveOrganization(agencyOrganizationId);
-                                if (result.ok) {
-                                  setOrgDissolved(true);
-                                  void refreshProfile();
-                                  void getAgencies().then(setAgencies);
-                                  Alert.alert(
-                                    uiCopy.accountDeletion.dissolveOrgTitle,
-                                    uiCopy.accountDeletion.dissolveOrgSuccess,
-                                  );
-                                } else {
-                                  Alert.alert(
-                                    uiCopy.common.error,
-                                    uiCopy.accountDeletion.dissolveOrgFailed,
-                                  );
-                                }
-                              } catch (e) {
-                                console.error('dissolveOrganization error:', e);
-                                Alert.alert(
-                                  uiCopy.common.error,
-                                  uiCopy.accountDeletion.dissolveOrgFailed,
-                                );
-                              } finally {
-                                setDissolvingOrg(false);
-                              }
-                            },
-                          },
-                        ],
+                        async () => {
+                          setDissolvingOrg(true);
+                          try {
+                            const result = await dissolveOrganization(agencyOrganizationId);
+                            if (result.ok) {
+                              setOrgDissolved(true);
+                              void refreshProfile();
+                              void getAgencies().then(setAgencies);
+                              showAppAlert(
+                                uiCopy.accountDeletion.dissolveOrgTitle,
+                                uiCopy.accountDeletion.dissolveOrgSuccess,
+                              );
+                            } else {
+                              showAppAlert(
+                                uiCopy.common.error,
+                                messageForDissolveOrganizationError(result.error),
+                              );
+                            }
+                          } catch (e) {
+                            console.error('dissolveOrganization error:', e);
+                            showAppAlert(
+                              uiCopy.common.error,
+                              uiCopy.accountDeletion.dissolveOrgFailed,
+                            );
+                          } finally {
+                            setDissolvingOrg(false);
+                          }
+                        },
+                        uiCopy.accountDeletion.dissolveOrgButton,
                       );
                     }}
                     disabled={dissolvingOrg}
@@ -1089,38 +1084,36 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
               </Text>
               <TouchableOpacity
                 onPress={() => {
-                  Alert.alert(
+                  showConfirmAlert(
                     uiCopy.accountDeletion.confirmTitle,
                     uiCopy.accountDeletion.confirmMessage,
-                    [
-                      { text: uiCopy.common.cancel, style: 'cancel' },
-                      {
-                        text: uiCopy.accountDeletion.button,
-                        style: 'destructive',
-                        onPress: async () => {
-                          setDeletingAccount(true);
-                          try {
-                            const { requestAccountDeletion } =
-                              await import('../services/accountSupabase');
-                            const res = await requestAccountDeletion();
-                            if (res.ok) {
-                              await signOut();
-                              return;
-                            }
-                            if (res.reason === 'not_owner') {
-                              Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.ownerOnly);
-                            } else {
-                              Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.failed);
-                            }
-                          } catch (e) {
-                            console.error('requestAccountDeletion error:', e);
-                            Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.failed);
-                          } finally {
-                            setDeletingAccount(false);
-                          }
-                        },
-                      },
-                    ],
+                    async () => {
+                      setDeletingAccount(true);
+                      try {
+                        const { requestAccountDeletion } =
+                          await import('../services/accountSupabase');
+                        const res = await requestAccountDeletion();
+                        if (res.ok) {
+                          showAppAlert(
+                            uiCopy.accountDeletion.scheduledDeletionTitle,
+                            uiCopy.accountDeletion.scheduledDeletionBody,
+                          );
+                          await signOut();
+                          return;
+                        }
+                        if (res.reason === 'not_owner') {
+                          showAppAlert(uiCopy.common.error, uiCopy.accountDeletion.ownerOnly);
+                        } else {
+                          showAppAlert(uiCopy.common.error, uiCopy.accountDeletion.failed);
+                        }
+                      } catch (e) {
+                        console.error('requestAccountDeletion error:', e);
+                        showAppAlert(uiCopy.common.error, uiCopy.accountDeletion.failed);
+                      } finally {
+                        setDeletingAccount(false);
+                      }
+                    },
+                    uiCopy.accountDeletion.button,
                   );
                 }}
                 disabled={deletingAccount}
@@ -1152,34 +1145,32 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
               </Text>
               <TouchableOpacity
                 onPress={() => {
-                  Alert.alert(
+                  showConfirmAlert(
                     uiCopy.accountDeletion.personalDeleteConfirmTitle,
                     uiCopy.accountDeletion.personalDeleteConfirmMessage,
-                    [
-                      { text: uiCopy.common.cancel, style: 'cancel' },
-                      {
-                        text: uiCopy.accountDeletion.button,
-                        style: 'destructive',
-                        onPress: async () => {
-                          setDeletingAccount(true);
-                          try {
-                            const { requestPersonalAccountDeletion } =
-                              await import('../services/accountSupabase');
-                            const res = await requestPersonalAccountDeletion();
-                            if (res.ok) {
-                              await signOut();
-                              return;
-                            }
-                            Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.failed);
-                          } catch (e) {
-                            console.error('requestPersonalAccountDeletion error:', e);
-                            Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.failed);
-                          } finally {
-                            setDeletingAccount(false);
-                          }
-                        },
-                      },
-                    ],
+                    async () => {
+                      setDeletingAccount(true);
+                      try {
+                        const { requestPersonalAccountDeletion } =
+                          await import('../services/accountSupabase');
+                        const res = await requestPersonalAccountDeletion();
+                        if (res.ok) {
+                          showAppAlert(
+                            uiCopy.accountDeletion.scheduledDeletionTitle,
+                            uiCopy.accountDeletion.scheduledDeletionBody,
+                          );
+                          await signOut();
+                          return;
+                        }
+                        showAppAlert(uiCopy.common.error, uiCopy.accountDeletion.failed);
+                      } catch (e) {
+                        console.error('requestPersonalAccountDeletion error:', e);
+                        showAppAlert(uiCopy.common.error, uiCopy.accountDeletion.failed);
+                      } finally {
+                        setDeletingAccount(false);
+                      }
+                    },
+                    uiCopy.accountDeletion.button,
                   );
                 }}
                 disabled={deletingAccount}

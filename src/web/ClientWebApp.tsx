@@ -35,7 +35,8 @@ import {
   shouldUseB2BWebSplit,
 } from '../theme/chatLayout';
 import { UI_DOUBLE_SUBMIT_DEBOUNCE_MS } from '../../lib/validation';
-import { showAppAlert } from '../utils/crossPlatformAlert';
+import { showAppAlert, showConfirmAlert } from '../utils/crossPlatformAlert';
+import { messageForDissolveOrganizationError } from '../utils/accountDeletionFeedback';
 import { uiCopy } from '../constants/uiCopy';
 import { normalizeDocumentspicturesModelImageRef } from '../utils/normalizeModelPortfolioUrl';
 import {
@@ -7694,84 +7695,87 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
   };
 
   const handleRequestAccountDeletion = () => {
-    Alert.alert(uiCopy.accountDeletion.confirmTitle, uiCopy.accountDeletion.confirmMessage, [
-      { text: uiCopy.common.cancel, style: 'cancel' },
-      {
-        text: uiCopy.accountDeletion.button,
-        style: 'destructive',
-        onPress: async () => {
-          setDeleting(true);
+    showConfirmAlert(
+      uiCopy.accountDeletion.confirmTitle,
+      uiCopy.accountDeletion.confirmMessage,
+      async () => {
+        setDeleting(true);
+        try {
           const { requestAccountDeletion } = await import('../services/accountSupabase');
           const res = await requestAccountDeletion();
-          setDeleting(false);
           if (res.ok) {
             onClose();
+            showAppAlert(
+              uiCopy.accountDeletion.scheduledDeletionTitle,
+              uiCopy.accountDeletion.scheduledDeletionBody,
+            );
             await signOut();
             return;
           }
           if (res.reason === 'not_owner') {
-            Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.ownerOnly);
+            showAppAlert(uiCopy.common.error, uiCopy.accountDeletion.ownerOnly);
           } else {
-            Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.failed);
+            showAppAlert(uiCopy.common.error, uiCopy.accountDeletion.failed);
           }
-        },
+        } finally {
+          setDeleting(false);
+        }
       },
-    ]);
+      uiCopy.accountDeletion.button,
+    );
   };
 
   const handleRequestPersonalAccountDeletion = () => {
-    Alert.alert(
+    showConfirmAlert(
       uiCopy.accountDeletion.personalDeleteConfirmTitle,
       uiCopy.accountDeletion.personalDeleteConfirmMessage,
-      [
-        { text: uiCopy.common.cancel, style: 'cancel' },
-        {
-          text: uiCopy.accountDeletion.button,
-          style: 'destructive',
-          onPress: async () => {
-            setDeleting(true);
-            const { requestPersonalAccountDeletion } = await import('../services/accountSupabase');
-            const res = await requestPersonalAccountDeletion();
-            setDeleting(false);
-            if (res.ok) {
-              onClose();
-              await signOut();
-              return;
-            }
-            Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.failed);
-          },
-        },
-      ],
+      async () => {
+        setDeleting(true);
+        try {
+          const { requestPersonalAccountDeletion } = await import('../services/accountSupabase');
+          const res = await requestPersonalAccountDeletion();
+          if (res.ok) {
+            onClose();
+            showAppAlert(
+              uiCopy.accountDeletion.scheduledDeletionTitle,
+              uiCopy.accountDeletion.scheduledDeletionBody,
+            );
+            await signOut();
+            return;
+          }
+          showAppAlert(uiCopy.common.error, uiCopy.accountDeletion.failed);
+        } finally {
+          setDeleting(false);
+        }
+      },
+      uiCopy.accountDeletion.button,
     );
   };
 
   const handleDissolveOrganization = () => {
     if (!clientOrgId) return;
-    Alert.alert(
+    showConfirmAlert(
       uiCopy.accountDeletion.dissolveOrgConfirmTitle,
       uiCopy.accountDeletion.dissolveOrgConfirmMessage,
-      [
-        { text: uiCopy.common.cancel, style: 'cancel' },
-        {
-          text: uiCopy.accountDeletion.dissolveOrgButton,
-          style: 'destructive',
-          onPress: async () => {
-            setDissolvingOrg(true);
-            const result = await dissolveOrganization(clientOrgId);
-            setDissolvingOrg(false);
-            if (result.ok) {
-              setOrgDissolved(true);
-              void refreshProfile();
-              Alert.alert(
-                uiCopy.accountDeletion.dissolveOrgTitle,
-                uiCopy.accountDeletion.dissolveOrgSuccess,
-              );
-            } else {
-              Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.dissolveOrgFailed);
-            }
-          },
-        },
-      ],
+      async () => {
+        setDissolvingOrg(true);
+        try {
+          const result = await dissolveOrganization(clientOrgId);
+          if (result.ok) {
+            setOrgDissolved(true);
+            void refreshProfile();
+            showAppAlert(
+              uiCopy.accountDeletion.dissolveOrgTitle,
+              uiCopy.accountDeletion.dissolveOrgSuccess,
+            );
+          } else {
+            showAppAlert(uiCopy.common.error, messageForDissolveOrganizationError(result.error));
+          }
+        } finally {
+          setDissolvingOrg(false);
+        }
+      },
+      uiCopy.accountDeletion.dissolveOrgButton,
     );
   };
 

@@ -89,7 +89,7 @@ import {
   secondarySubtitleForModel,
 } from '../utils/modelOptionDisplay';
 import { uiCopy } from '../constants/uiCopy';
-import { showAppAlert } from '../utils/crossPlatformAlert';
+import { showAppAlert, showConfirmAlert } from '../utils/crossPlatformAlert';
 import {
   exportUserData,
   downloadUserDataExport,
@@ -1475,28 +1475,33 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
               </Text>
               <TouchableOpacity
                 onPress={() => {
-                  Alert.alert(
+                  showConfirmAlert(
                     uiCopy.accountDeletion.confirmTitle,
                     uiCopy.accountDeletion.confirmMessage,
-                    [
-                      { text: uiCopy.common.cancel, style: 'cancel' },
-                      {
-                        text: uiCopy.accountDeletion.button,
-                        style: 'destructive',
-                        onPress: async () => {
-                          setDeletingAccount(true);
-                          const { requestAccountDeletion } =
-                            await import('../services/accountSupabase');
-                          const res = await requestAccountDeletion();
-                          setDeletingAccount(false);
-                          if (res.ok) {
-                            await signOut();
-                            return;
-                          }
-                          Alert.alert(uiCopy.common.error, uiCopy.accountDeletion.failed);
-                        },
-                      },
-                    ],
+                    async () => {
+                      setDeletingAccount(true);
+                      try {
+                        const { requestAccountDeletion } =
+                          await import('../services/accountSupabase');
+                        const res = await requestAccountDeletion();
+                        if (res.ok) {
+                          showAppAlert(
+                            uiCopy.accountDeletion.scheduledDeletionTitle,
+                            uiCopy.accountDeletion.scheduledDeletionBody,
+                          );
+                          await signOut();
+                          return;
+                        }
+                        if (res.reason === 'not_owner') {
+                          showAppAlert(uiCopy.common.error, uiCopy.accountDeletion.ownerOnly);
+                        } else {
+                          showAppAlert(uiCopy.common.error, uiCopy.accountDeletion.failed);
+                        }
+                      } finally {
+                        setDeletingAccount(false);
+                      }
+                    },
+                    uiCopy.accountDeletion.button,
                   );
                 }}
                 disabled={deletingAccount}
