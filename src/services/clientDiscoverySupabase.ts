@@ -15,13 +15,15 @@
  */
 
 import { supabase } from '../../lib/supabase';
+import { CITY_SEARCH_RADIUS_KM_DEFAULT } from '../constants/locationDiscovery';
 import type { ClientMeasurementFilters } from './modelsSupabase';
 
 // ─── Scoring weights ──────────────────────────────────────────────────────────
 
 /**
- * Centralised scoring weights — must mirror the CASE expressions inside the
- * get_discovery_models RPC. Update both when tuning.
+ * Centralised scoring weights — must mirror the base CASE terms inside
+ * get_discovery_models (neverSeen, sameCity, recentActive, seen/rejected penalties).
+ * City-filter label/proximity tiers (+1000/+1100 and +500–+900) are SQL-only (20260826).
  */
 export const DISCOVERY_WEIGHTS = {
   neverSeen: 50,
@@ -73,6 +75,11 @@ export type DiscoveryFilters = ClientMeasurementFilters & {
   clientCity?: string | null;
   /** Hard city filter — case-insensitive substring match on effective_city. */
   city?: string | null;
+  /** Forward-geocoded centroid for optional proximity OR with `city` (get_discovery_models 20260826). */
+  searchLat?: number | null;
+  searchLng?: number | null;
+  /** Proximity radius in km when searchLat/searchLng set; defaults to CITY_SEARCH_RADIUS_KM_DEFAULT. */
+  cityRadiusKm?: number | null;
   category?: string | null;
   sportsWinter?: boolean;
   sportsSummer?: boolean;
@@ -313,6 +320,12 @@ export async function getDiscoveryModels(
       p_ethnicities: filters.ethnicities?.length ? filters.ethnicities : null,
       // Hard city filter (case-insensitive substring on effective_city)
       p_city: filters.city?.trim() || null,
+      p_search_lat: filters.searchLat ?? null,
+      p_search_lng: filters.searchLng ?? null,
+      p_city_radius_km:
+        filters.searchLat != null && filters.searchLng != null
+          ? (filters.cityRadiusKm ?? CITY_SEARCH_RADIUS_KM_DEFAULT)
+          : null,
       // Session dedup
       p_exclude_ids: excludeIds.length ? excludeIds : null,
       // Cooldown
@@ -329,7 +342,8 @@ export async function getDiscoveryModels(
       return { models: [], nextCursor: null };
     }
 
-    const models = applyDiversityShuffle((data ?? []) as DiscoveryModel[]);
+    const rawModels = (data ?? []) as DiscoveryModel[];
+    const models = filters.city?.trim() ? rawModels : applyDiversityShuffle(rawModels);
 
     const last = models.length > 0 ? models[models.length - 1] : null;
     const nextCursor: DiscoveryCursor =

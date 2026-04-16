@@ -207,6 +207,50 @@ describe('getDiscoveryModels – location city', () => {
     await getDiscoveryModels(ORG_ID, BASE_FILTERS);
     expect(mockRpc.mock.calls[0][1].p_client_city).toBeNull();
   });
+
+  it('passes p_search_lat, p_search_lng, p_city_radius_km when filters include a geocoded pin', async () => {
+    mockRpc.mockResolvedValueOnce({ data: [], error: null });
+    await getDiscoveryModels(ORG_ID, {
+      ...BASE_FILTERS,
+      city: 'Berlin',
+      searchLat: 52.5,
+      searchLng: 13.4,
+      cityRadiusKm: 50,
+    });
+    expect(mockRpc.mock.calls[0][1]).toMatchObject({
+      p_search_lat: 52.5,
+      p_search_lng: 13.4,
+      p_city_radius_km: 50,
+    });
+  });
+
+  it('passes null p_city_radius_km when search coordinates are absent', async () => {
+    mockRpc.mockResolvedValueOnce({ data: [], error: null });
+    await getDiscoveryModels(ORG_ID, BASE_FILTERS);
+    expect(mockRpc.mock.calls[0][1].p_city_radius_km).toBeNull();
+  });
+
+  it('does not apply diversity shuffle when a city filter is set (preserves RPC order)', async () => {
+    const mockRandom = jest.spyOn(Math, 'random').mockReturnValue(0.1);
+    try {
+      const sameTier = [
+        makeModel('first', { discovery_score: 60 }),
+        makeModel('second', { discovery_score: 60 }),
+      ];
+      mockRpc.mockResolvedValueOnce({ data: sameTier, error: null });
+      const { models: withCity } = await getDiscoveryModels(ORG_ID, {
+        ...BASE_FILTERS,
+        city: 'Berlin',
+      });
+      expect(withCity.map((m) => m.id)).toEqual(['first', 'second']);
+
+      mockRpc.mockResolvedValueOnce({ data: sameTier, error: null });
+      const { models: noCity } = await getDiscoveryModels(ORG_ID, BASE_FILTERS);
+      expect(noCity.map((m) => m.id)).toEqual(['second', 'first']);
+    } finally {
+      mockRandom.mockRestore();
+    }
+  });
 });
 
 // ─── Test 5: Session dedup ────────────────────────────────────────────────────

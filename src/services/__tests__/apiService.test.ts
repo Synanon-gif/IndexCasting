@@ -20,8 +20,10 @@ const mockUpdateModelVisibility = jest.fn();
 jest.mock('../modelsSupabase', () => ({
   getModelByIdFromSupabase: (...args: unknown[]) => mockGetModelById(...args),
   getModelsForClientFromSupabase: (...args: unknown[]) => mockGetModelsForClient(...args),
-  getModelsForClientFromSupabaseByTerritory: (...args: unknown[]) => mockGetModelsForClientByTerritory(...args),
-  getModelsForClientFromSupabaseHybridLocation: (...args: unknown[]) => mockGetModelsForClientHybrid(...args),
+  getModelsForClientFromSupabaseByTerritory: (...args: unknown[]) =>
+    mockGetModelsForClientByTerritory(...args),
+  getModelsForClientFromSupabaseHybridLocation: (...args: unknown[]) =>
+    mockGetModelsForClientHybrid(...args),
   getModelsForAgencyFromSupabase: (...args: unknown[]) => mockGetModelsForAgency(...args),
   getModelsFromSupabase: (...args: unknown[]) => mockGetModels(...args),
   updateModelVisibilityInSupabase: (...args: unknown[]) => mockUpdateModelVisibility(...args),
@@ -215,13 +217,28 @@ describe('getModelsForClient', () => {
   });
 
   const dbRow = {
-    id: 'm1', name: 'Lena', city: 'Berlin', hair_color: 'Brown',
-    height: 175, bust: 82, chest: null, waist: 60, hips: 88, legs_inseam: null,
+    id: 'm1',
+    name: 'Lena',
+    city: 'Berlin',
+    hair_color: 'Brown',
+    height: 175,
+    bust: 82,
+    chest: null,
+    waist: 60,
+    hips: 88,
+    legs_inseam: null,
     portfolio_images: ['https://cdn.example.com/lena.jpg'],
-    is_visible_commercial: true, is_visible_fashion: true,
-    categories: null, is_sports_winter: false, is_sports_summer: false,
-    sex: 'female', agency_id: 'agency-1', agency_name: 'Top Models',
-    has_real_location: false, country_code: null, territory_country_code: 'DE',
+    is_visible_commercial: true,
+    is_visible_fashion: true,
+    categories: null,
+    is_sports_winter: false,
+    is_sports_summer: false,
+    sex: 'female',
+    agency_id: 'agency-1',
+    agency_name: 'Top Models',
+    has_real_location: false,
+    country_code: null,
+    territory_country_code: 'DE',
     territory_agency_id: null,
   };
 
@@ -257,8 +274,47 @@ describe('getModelsForClient', () => {
   it('uses hybrid-location endpoint when countryCode provided', async () => {
     mockGetModelsForClientHybrid.mockResolvedValue([dbRow]);
     await getModelsForClient('fashion', 'DE', 'Berlin');
-    expect(mockGetModelsForClientHybrid).toHaveBeenCalled();
+    expect(mockGetModelsForClientHybrid).toHaveBeenCalledWith(
+      'fashion',
+      'DE',
+      'Berlin',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      null,
+      null,
+      null,
+    );
     expect(mockGetModelsForClient).not.toHaveBeenCalled();
+  });
+
+  it('forwards optional city search coordinates to hybrid RPC', async () => {
+    mockGetModelsForClientHybrid.mockResolvedValue([dbRow]);
+    await getModelsForClient(
+      'fashion',
+      'DE',
+      'Berlin',
+      undefined,
+      undefined,
+      undefined,
+      {},
+      52.5,
+      13.4,
+      42,
+    );
+    expect(mockGetModelsForClientHybrid).toHaveBeenCalledWith(
+      'fashion',
+      'DE',
+      'Berlin',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      52.5,
+      13.4,
+      42,
+    );
   });
 
   it('returns empty array when no models found', async () => {
@@ -277,7 +333,10 @@ describe('getAgencyModels', () => {
   });
 
   const agencyRow = {
-    id: 'model-a', name: 'Max', is_visible_commercial: true, is_visible_fashion: false,
+    id: 'model-a',
+    name: 'Max',
+    is_visible_commercial: true,
+    is_visible_fashion: false,
   };
 
   it('calls getModelsForAgencyFromSupabase when agencyId is provided', async () => {

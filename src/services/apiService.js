@@ -106,6 +106,9 @@ export async function getModelsForClient(
   sportsWinter,
   sportsSummer,
   measurementFilters = {},
+  citySearchLat = undefined,
+  citySearchLng = undefined,
+  citySearchRadiusKm = undefined,
 ) {
   const ct = clientType || 'all';
   const cat = category || undefined;
@@ -127,7 +130,18 @@ export async function getModelsForClient(
   };
   const hasMF = Object.values(mf).some(Boolean);
   const list = countryCode
-    ? await getModelsForClientFromSupabaseHybridLocation(ct, countryCode, city ?? undefined, cat, sw, ss, hasMF ? mf : undefined)
+    ? await getModelsForClientFromSupabaseHybridLocation(
+        ct,
+        countryCode,
+        city ?? undefined,
+        cat,
+        sw,
+        ss,
+        hasMF ? mf : undefined,
+        citySearchLat ?? null,
+        citySearchLng ?? null,
+        citySearchRadiusKm ?? null,
+      )
     : await getModelsForClientFromSupabase(ct, cat, sw, ss, hasMF ? mf : undefined);
   const mapped = list.map((m) => ({
     id: m.id,

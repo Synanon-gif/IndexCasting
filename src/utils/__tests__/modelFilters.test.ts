@@ -382,6 +382,57 @@ describe('filterModels', () => {
     });
   });
 
+  describe('city filter with optional proximity pin', () => {
+    const cityFilters: ModelFilters = { ...noFilter, countryCode: 'DE', city: 'Berlin' };
+    const searchLat = 52.52;
+    const searchLng = 13.405;
+
+    it('includes model within radius when display city does not match substring', () => {
+      const m: ModelWithOptionalLocation = {
+        ...makeModel({ id: 'gps', city: 'SomewhereElse', country_code: 'DE' }),
+        effective_city: 'SomewhereElse',
+        model_location: { city: 'SomewhereElse', lat_approx: 52.53, lng_approx: 13.41 },
+      };
+      const result = filterModels(
+        [m],
+        cityFilters,
+        undefined,
+        undefined,
+        undefined,
+        50,
+        searchLat,
+        searchLng,
+      );
+      expect(result.map((x) => x.id)).toEqual(['gps']);
+    });
+
+    it('excludes model outside radius when only proximity could match', () => {
+      const m: ModelWithOptionalLocation = {
+        ...makeModel({ id: 'far', city: 'Away', country_code: 'DE' }),
+        model_location: { lat_approx: 48.85, lng_approx: 2.35 },
+      };
+      const result = filterModels(
+        [m],
+        cityFilters,
+        undefined,
+        undefined,
+        undefined,
+        50,
+        searchLat,
+        searchLng,
+      );
+      expect(result).toHaveLength(0);
+    });
+
+    it('without pin uses substring only (no proximity match)', () => {
+      const m: ModelWithOptionalLocation = {
+        ...makeModel({ id: 'gps', city: 'SomewhereElse', country_code: 'DE' }),
+        model_location: { lat_approx: 52.53, lng_approx: 13.41 },
+      };
+      expect(filterModels([m], cityFilters)).toHaveLength(0);
+    });
+  });
+
   describe('canonical display city (effective_city)', () => {
     it('country+city substring uses effective_city over stale models.city', () => {
       const stale = makeModel({ id: '1', city: 'OldTown', country_code: 'DE' });

@@ -44,6 +44,11 @@ import {
   normalizePackageType,
 } from '../utils/packageDisplayMedia';
 import { canonicalDisplayCityForModel } from '../utils/canonicalModelCity';
+import { getCitySearchGeocodedPin } from '../utils/citySearchGeocodeCache';
+import {
+  NEAR_ME_RADIUS_KM_DEFAULT,
+  CITY_SEARCH_RADIUS_KM_DEFAULT,
+} from '../constants/locationDiscovery';
 import { PdfExportModal } from '../components/PdfExportModal';
 import type { PdfModelInput } from '../utils/pdfExport';
 import {
@@ -1049,14 +1054,29 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       // Ranked discovery: use get_discovery_models RPC when a client org +
       // country code are known. Falls back to the unranked legacy path otherwise.
       if (clientOrgId && countryIso) {
+        const cityTrim = filters.city.trim();
+        let searchLat: number | undefined;
+        let searchLng: number | undefined;
+        let cityRadiusKm: number | undefined;
+        if (countryIso && cityTrim) {
+          const pin = await getCitySearchGeocodedPin(countryIso, cityTrim);
+          if (pin) {
+            searchLat = pin.lat;
+            searchLng = pin.lng;
+            cityRadiusKm = CITY_SEARCH_RADIUS_KM_DEFAULT;
+          }
+        }
         const discoveryFilters = {
           countryCode: countryIso,
           clientCity: userCity ?? null,
-          city: filters.city.trim() || null,
+          city: cityTrim || null,
           category: effectiveCategory ?? null,
           sportsWinter: filters.sportsWinter || false,
           sportsSummer: filters.sportsSummer || false,
           ...measurementFilters,
+          ...(searchLat != null && searchLng != null
+            ? { searchLat, searchLng, cityRadiusKm: cityRadiusKm ?? CITY_SEARCH_RADIUS_KM_DEFAULT }
+            : {}),
         };
 
         const { models: ranked, nextCursor } = await getDiscoveryModels(
@@ -1088,6 +1108,17 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       }
 
       // Legacy unranked path (no clientOrgId resolved yet, or no country filter).
+      let legacyCityLat: number | undefined;
+      let legacyCityLng: number | undefined;
+      let legacyCityRadiusKm: number | undefined;
+      if (countryIso && cityFilter) {
+        const pin = await getCitySearchGeocodedPin(countryIso, cityFilter);
+        if (pin) {
+          legacyCityLat = pin.lat;
+          legacyCityLng = pin.lng;
+          legacyCityRadiusKm = CITY_SEARCH_RADIUS_KM_DEFAULT;
+        }
+      }
       const data: any[] = await getModelsForClient(
         effectiveClientType,
         countryIso,
@@ -1096,6 +1127,9 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         filters.sportsWinter || undefined,
         filters.sportsSummer || undefined,
         measurementFilters,
+        legacyCityLat,
+        legacyCityLng,
+        legacyCityRadiusKm,
       );
       const mapped: ModelSummary[] = data.map((m: any) => ({
         id: m.id,
@@ -1174,12 +1208,24 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
 
     void (async () => {
       try {
+        const cityTrim = filters.city.trim();
+        let searchLat: number | undefined;
+        let searchLng: number | undefined;
+        let cityRadiusKm: number | undefined;
+        if (cityTrim) {
+          const pin = await getCitySearchGeocodedPin(countryIso, cityTrim);
+          if (pin) {
+            searchLat = pin.lat;
+            searchLng = pin.lng;
+            cityRadiusKm = CITY_SEARCH_RADIUS_KM_DEFAULT;
+          }
+        }
         const { models: more, nextCursor } = await getDiscoveryModels(
           clientOrgId,
           {
             countryCode: countryIso,
             clientCity: userCity ?? null,
-            city: filters.city.trim() || null,
+            city: cityTrim || null,
             category: effectiveCategory ?? null,
             sportsWinter: filters.sportsWinter || false,
             sportsSummer: filters.sportsSummer || false,
@@ -1196,6 +1242,13 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             legsInseamMin: pInt(filters.legsInseamMin),
             legsInseamMax: pInt(filters.legsInseamMax),
             sex: (filters.sex !== 'all' ? filters.sex : undefined) as 'male' | 'female' | undefined,
+            ...(searchLat != null && searchLng != null
+              ? {
+                  searchLat,
+                  searchLng,
+                  cityRadiusKm: cityRadiusKm ?? CITY_SEARCH_RADIUS_KM_DEFAULT,
+                }
+              : {}),
           },
           discoveryCursor,
           sessionSeenIds.current,
@@ -1285,7 +1338,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         const nearby: NearbyModel[] = await getModelsNearLocation(
           userLat,
           userLng,
-          50,
+          NEAR_ME_RADIUS_KM_DEFAULT,
           effectiveClientType as 'fashion' | 'commercial' | 'all',
           measurementFilters,
           effectiveCategory,

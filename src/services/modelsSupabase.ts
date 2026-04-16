@@ -420,6 +420,9 @@ export async function getModelsForClientFromSupabaseHybridLocation(
   sportsWinter?: boolean,
   sportsSummer?: boolean,
   measurementFilters?: ClientMeasurementFilters,
+  citySearchLat?: number | null,
+  citySearchLng?: number | null,
+  citySearchRadiusKm?: number | null,
 ): Promise<HybridLocationModel[]> {
   // Defense-in-depth paywall guard (H-4 fix, Security Audit 2026-04).
   // The get_models_by_location RPC already enforces has_platform_access() server-side,
@@ -453,6 +456,10 @@ export async function getModelsForClientFromSupabaseHybridLocation(
       p_legs_inseam_max: f.legsInseamMax ?? null,
       p_sex: f.sex ?? null,
       p_ethnicities: f.ethnicities?.length ? f.ethnicities : null,
+      p_search_lat: citySearchLat ?? null,
+      p_search_lng: citySearchLng ?? null,
+      p_city_radius_km:
+        citySearchLat != null && citySearchLng != null ? (citySearchRadiusKm ?? null) : null,
     });
     return { data: data as HybridLocationModel[] | null, error };
   });

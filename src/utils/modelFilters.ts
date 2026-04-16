@@ -5,6 +5,10 @@
  */
 import type { SupabaseModel } from '../services/modelsSupabase';
 import type { ModelApplication } from '../store/applicationsStore';
+import {
+  CITY_SEARCH_RADIUS_KM_DEFAULT,
+  NEAR_ME_RADIUS_KM_DEFAULT,
+} from '../constants/locationDiscovery';
 import { canonicalDisplayCityForModel } from './canonicalModelCity';
 
 // ── Type ──────────────────────────────────────────────────────────────────────
@@ -226,7 +230,10 @@ export function haversineKm(lat1: number, lng1: number, lat2: number, lng2: numb
  * @param userCity - Detected city for "Near me" fallback (optional).
  * @param userLat  - Rounded client latitude for radius-based Near me (optional).
  * @param userLng  - Rounded client longitude for radius-based Near me (optional).
- * @param nearMeRadiusKm - Radius in km for "Near me" filter (default 50).
+ * @param nearMeRadiusKm - Radius in km for "Near me" filter.
+ * @param citySearchLat - Optional centroid for city filter proximity OR (with country+city text filter).
+ * @param citySearchLng - Optional centroid for city filter proximity OR.
+ * @param citySearchRadiusKm - Radius for city proximity inclusion (default CITY_SEARCH_RADIUS_KM_DEFAULT).
  */
 /** Optional pin from get_models_near_location / roster attach — city fallback when models.city is empty. */
 export type ModelLocationPin = {
@@ -247,7 +254,10 @@ export function filterModels(
   userCity?: string,
   userLat?: number | null,
   userLng?: number | null,
-  nearMeRadiusKm: number = 50,
+  nearMeRadiusKm: number = NEAR_ME_RADIUS_KM_DEFAULT,
+  citySearchLat?: number | null,
+  citySearchLng?: number | null,
+  citySearchRadiusKm: number = CITY_SEARCH_RADIUS_KM_DEFAULT,
 ): SupabaseModel[] {
   const pInt = (v: string) => {
     const n = parseInt(v, 10);
@@ -280,9 +290,22 @@ export function filterModels(
     }
 
     // ── City (substring) — only when a country is also selected ──
+    // Optional proximity OR when citySearchLat/Lng set (parity with get_discovery_models).
     if (filters.countryCode && filters.city.trim()) {
       const cityQ = filters.city.trim().toLowerCase();
-      if (!displayCity.toLowerCase().includes(cityQ)) return false;
+      const displayMatch = displayCity.toLowerCase().includes(cityQ);
+      let proximityMatch = false;
+      if (
+        !displayMatch &&
+        citySearchLat != null &&
+        citySearchLng != null &&
+        loc?.lat_approx != null &&
+        loc?.lng_approx != null
+      ) {
+        const dist = haversineKm(citySearchLat, citySearchLng, loc.lat_approx, loc.lng_approx);
+        proximityMatch = dist <= citySearchRadiusKm;
+      }
+      if (!displayMatch && !proximityMatch) return false;
     }
 
     // ── Nearby ──

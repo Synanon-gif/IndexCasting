@@ -23,6 +23,7 @@
  *   Never use city as a spatial predicate; use lat/lng exclusively.
  */
 import { supabase } from '../../lib/supabase';
+import { NEAR_ME_RADIUS_KM_DEFAULT } from '../constants/locationDiscovery';
 import type { ClientMeasurementFilters } from './modelsSupabase';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -382,7 +383,7 @@ const NEAR_LOCATION_LIMIT = 200;
 export async function getModelsNearLocation(
   clientLat: number,
   clientLng: number,
-  radiusKm: number = 50,
+  radiusKm: number = NEAR_ME_RADIUS_KM_DEFAULT,
   clientType: 'fashion' | 'commercial' | 'all' = 'all',
   measurementFilters?: ClientMeasurementFilters,
   category?: string,

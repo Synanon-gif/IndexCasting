@@ -124,6 +124,8 @@ import {
 } from '../services/modelLocationsSupabase';
 import { useNearMeClientLocation } from '../hooks/useNearMeClientLocation';
 import { canonicalDisplayCityForModel } from '../utils/canonicalModelCity';
+import { getCitySearchGeocodedPin } from '../utils/citySearchGeocodeCache';
+import { NEAR_ME_RADIUS_KM_DEFAULT } from '../constants/locationDiscovery';
 import { describeSendInviteFailure, resendInviteEmail } from '../services/inviteDelivery';
 
 /**
@@ -2795,6 +2797,11 @@ const MyModelsTab: React.FC<{
   const [rosterApproxCoordsById, setRosterApproxCoordsById] = useState<
     Map<string, { lat_approx: number; lng_approx: number }>
   >(() => new Map());
+  /** Forward-geocoded pin for roster city text filter proximity OR (parity with discovery). */
+  const [rosterCitySearchPin, setRosterCitySearchPin] = useState<{
+    lat: number;
+    lng: number;
+  } | null>(null);
   const [rosterNameSearch, setRosterNameSearch] = useState('');
   const [rosterViewMode, setRosterViewMode] = useState<'list' | 'gallery'>('list');
   const [editState, setEditState] = useState<ModelEditState>(buildEditState({ name: '' }));
@@ -2897,6 +2904,22 @@ const MyModelsTab: React.FC<{
       cancelled = true;
     };
   }, [filters.nearby, rosterNearLat, rosterNearLng, models]);
+
+  useEffect(() => {
+    const cc = filters.countryCode?.trim();
+    const ct = filters.city?.trim();
+    if (!cc || !ct) {
+      setRosterCitySearchPin(null);
+      return;
+    }
+    let cancelled = false;
+    void getCitySearchGeocodedPin(cc, ct).then((pin) => {
+      if (!cancelled) setRosterCitySearchPin(pin);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [filters.countryCode, filters.city]);
 
   const modelsWithLocPin = useMemo((): ModelWithOptionalLocation[] => {
     return models.map((m) => {
@@ -3143,6 +3166,9 @@ const MyModelsTab: React.FC<{
       rosterNearUserCity ?? undefined,
       rosterNearLat,
       rosterNearLng,
+      NEAR_ME_RADIUS_KM_DEFAULT,
+      rosterCitySearchPin?.lat ?? null,
+      rosterCitySearchPin?.lng ?? null,
     );
     const q = rosterNameSearch.trim().toLowerCase();
     if (!q) return base;
@@ -3154,6 +3180,7 @@ const MyModelsTab: React.FC<{
     rosterNearUserCity,
     rosterNearLat,
     rosterNearLng,
+    rosterCitySearchPin,
   ]);
 
   useEffect(() => {
@@ -8210,6 +8237,26 @@ const GuestLinksTab: React.FC<{
     };
   }, [packageModelFilters.nearby, packageNearLat, packageNearLng, models]);
 
+  const [packageCitySearchPin, setPackageCitySearchPin] = useState<{
+    lat: number;
+    lng: number;
+  } | null>(null);
+  useEffect(() => {
+    const cc = packageModelFilters.countryCode?.trim();
+    const ct = packageModelFilters.city?.trim();
+    if (!cc || !ct) {
+      setPackageCitySearchPin(null);
+      return;
+    }
+    let cancelled = false;
+    void getCitySearchGeocodedPin(cc, ct).then((pin) => {
+      if (!cancelled) setPackageCitySearchPin(pin);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [packageModelFilters.countryCode, packageModelFilters.city]);
+
   const packageModelsWithLocPin = useMemo((): ModelWithOptionalLocation[] => {
     return models.map((m) => {
       const eff = packageEffectiveCityById.get(m.id)?.trim() ?? '';
@@ -8235,6 +8282,9 @@ const GuestLinksTab: React.FC<{
         packageNearUserCity ?? undefined,
         packageNearLat,
         packageNearLng,
+        NEAR_ME_RADIUS_KM_DEFAULT,
+        packageCitySearchPin?.lat ?? null,
+        packageCitySearchPin?.lng ?? null,
       ),
     [
       packageModelsWithLocPin,
@@ -8242,6 +8292,7 @@ const GuestLinksTab: React.FC<{
       packageNearUserCity,
       packageNearLat,
       packageNearLng,
+      packageCitySearchPin,
     ],
   );
 
