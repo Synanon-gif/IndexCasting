@@ -506,7 +506,13 @@ export async function ensureAgencyModelDirectConversation(
       p_model_id: modelId,
     });
     if (error) {
-      console.error('ensure_agency_model_direct_conversation RPC error:', error);
+      console.error('ensure_agency_model_direct_conversation RPC error:', {
+        message: error.message,
+        code: (error as { code?: string }).code,
+        details: (error as { details?: string }).details,
+        agencyId,
+        modelId,
+      });
       return null;
     }
     const id = typeof data === 'string' ? data : data != null ? String(data) : '';

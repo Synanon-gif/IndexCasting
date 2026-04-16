@@ -346,10 +346,11 @@ describe('getAgencyModels', () => {
     expect(result[0].traction).toBe(0);
   });
 
-  it('calls getModelsFromSupabase when no agencyId given', async () => {
-    mockGetModels.mockResolvedValue([agencyRow]);
-    await getAgencyModels(undefined);
-    expect(mockGetModels).toHaveBeenCalled();
+  it('returns empty array when no agencyId given (no global model fetch)', async () => {
+    const result = await getAgencyModels(undefined);
+    expect(result).toEqual([]);
+    expect(mockGetModelsForAgency).not.toHaveBeenCalled();
+    expect(mockGetModels).not.toHaveBeenCalled();
   });
 
   it('maps isVisibleCommercial / isVisibleFashion correctly', async () => {

@@ -4,7 +4,6 @@
  */
 
 import {
-  getModelsFromSupabase,
   getModelByIdFromSupabase,
   getModelsForClientFromSupabase,
   getModelsForClientFromSupabaseByTerritory,
@@ -187,11 +186,14 @@ export async function getModelsForClient(
 
 /**
  * All models for agency view (traction, visibility toggles).
+ * Requires agencyId — no global model list fallback (avoids shadow bypass without org context).
  */
 export async function getAgencyModels(agencyId) {
-  const list = agencyId
-    ? await getModelsForAgencyFromSupabase(agencyId)
-    : await getModelsFromSupabase();
+  const aid = agencyId == null ? '' : String(agencyId).trim();
+  if (!aid) {
+    return [];
+  }
+  const list = await getModelsForAgencyFromSupabase(aid);
   return list.map((m) => ({
     id: m.id,
     name: m.name,

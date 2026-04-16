@@ -1,6 +1,18 @@
 /**
  * Models – alle Stammdaten, Portfolio-URLs, Polaroids in Supabase (models + model_photos).
  * Pro Partei: agency_id; Bilder-URLs und Maße persistent; parteiübergreifend sichtbar je nach RLS.
+ *
+ * ─── Canonical vs technical `.from('models')` (shadow-path guardrail) ─────────
+ * **Agency roster (canonical):** `getModelsForAgencyFromSupabase` applies
+ * `modelEligibleForAgencyRoster` (linked `user_id` OR `model_agency_territories` for this agency).
+ * Use this for My Models / agency lists; do not duplicate list logic elsewhere.
+ *
+ * **Other exports in this file** (single-row, client discovery hybrids, org assignments): intentional
+ * technical paths — not roster substitutes. Examples: `getModelByIdFromSupabase`,
+ * `getModelsPagedFromSupabase`, `getModelsForClientFromSupabase*`, `getModelsForOrganizationFromSupabase`.
+ *
+ * **Not in this file** (also legitimate `models` queries): adminSupabase, gdprComplianceSupabase,
+ * optionRequestsSupabase (resolvers), modelPhotosSupabase, modelsImportSupabase, connectors, store fallbacks.
  */
 import { supabase } from '../../lib/supabase';
 import { logAction } from '../utils/logAction';
@@ -8,6 +20,7 @@ import { filterModelsByChestCoalesce } from '../utils/filterModelsByChestCoalesc
 import { serviceErr, serviceOkData, type ServiceResult } from '../types/serviceResult';
 import { fetchAllSupabasePages } from './supabaseFetchAll';
 import { modelEligibleForAgencyRoster } from '../utils/modelRosterEligibility';
+import { devAssertAgencyRosterMatchesEligibility } from '../utils/validateModelObjectDev';
 
 /**
  * Alle Stammdaten-Felder — für Detail-Ansicht und vollständige Supabase-Roundtrips.
@@ -505,7 +518,9 @@ export async function getModelsForAgencyFromSupabase(agencyId: string): Promise<
   });
 
   if (!matLookupOk) return models;
-  return models.filter((m) => modelEligibleForAgencyRoster(m, matModelIds));
+  const roster = models.filter((m) => modelEligibleForAgencyRoster(m, matModelIds));
+  devAssertAgencyRosterMatchesEligibility(roster, matModelIds, agencyId, matLookupOk);
+  return roster;
 }
 
 /**

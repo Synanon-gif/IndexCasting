@@ -343,6 +343,18 @@ export async function getDiscoveryModels(
     }
 
     const rawModels = (data ?? []) as DiscoveryModel[];
+    for (const m of rawModels) {
+      const hasTerritoryAgency = Boolean(m.territory_agency_id?.trim());
+      const hasAgency = Boolean(m.agency_id?.trim());
+      if (!hasTerritoryAgency && !hasAgency) {
+        console.error('[discovery] invalid model visibility', {
+          id: m.id,
+          name: m.name,
+          territory_agency_id: m.territory_agency_id,
+          agency_id: m.agency_id,
+        });
+      }
+    }
     const models = filters.city?.trim() ? rawModels : applyDiversityShuffle(rawModels);
 
     const last = models.length > 0 ? models[models.length - 1] : null;

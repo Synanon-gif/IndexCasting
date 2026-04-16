@@ -29,6 +29,18 @@ describe('ensureAgencyModelDirectConversation', () => {
     await expect(ensureAgencyModelDirectConversation('a', 'm')).resolves.toBeNull();
   });
 
+  it('returns null on no_active_representation (MAT gate)', async () => {
+    rpc.mockResolvedValue({
+      data: null,
+      error: { message: 'no_active_representation', code: 'P0001' },
+    });
+    await expect(ensureAgencyModelDirectConversation('ag-1', 'model-1')).resolves.toBeNull();
+    expect(rpc).toHaveBeenCalledWith('ensure_agency_model_direct_conversation', {
+      p_agency_id: 'ag-1',
+      p_model_id: 'model-1',
+    });
+  });
+
   it('returns null and skips RPC when agency id is empty', async () => {
     await expect(ensureAgencyModelDirectConversation('', 'm')).resolves.toBeNull();
     expect(rpc).not.toHaveBeenCalled();
