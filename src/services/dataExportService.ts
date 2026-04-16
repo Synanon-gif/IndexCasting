@@ -1,5 +1,5 @@
 /**
- * GDPR data export — Art. 15 / 20
+ * GDPR data export — Art. 15 / 20 (RPC `export_user_data`, current v4)
  * Normalizes `export_user_data` RPC JSON (snake_case keys) and optional domain grouping.
  */
 

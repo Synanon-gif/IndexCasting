@@ -513,10 +513,10 @@ describe('deleteOrganizationData', () => {
 // ─── 9. exportUserData (export_user_data RPC + formatExportPayload) ─────────
 
 describe('exportUserData', () => {
-  it('returns ok:true with v3-shaped domains when RPC succeeds', async () => {
+  it('returns ok:true with v4-shaped domains when RPC succeeds', async () => {
     rpc.mockResolvedValue({
       data: {
-        export_version: 3,
+        export_version: 4,
         exported_at: '2026-04-16T00:00:00Z',
         user_id: 'u1',
         profile: { id: 'u1', email: 'a@b.com' },
@@ -536,7 +536,7 @@ describe('exportUserData', () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.data.exportVersion).toBe(3);
+      expect(result.data.exportVersion).toBe(4);
       expect(result.data.userId).toBe('u1');
       expect(result.data.optionRequests).toHaveLength(1);
       expect(result.data.modelProfile).toHaveLength(1);

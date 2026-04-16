@@ -48,9 +48,9 @@ describe('formatExportPayload', () => {
     expect(out.invitations).toEqual([]);
   });
 
-  it('maps export v3 collections and domain buckets', () => {
+  it('maps export v4 collections and domain buckets', () => {
     const raw = {
-      export_version: 3,
+      export_version: 4,
       exported_at: '2026-04-16T00:00:00Z',
       user_id: 'subj-1',
       profile: { id: 'subj-1' },
@@ -62,12 +62,13 @@ describe('formatExportPayload', () => {
       option_documents: [{ id: 'od1' }],
       model_profile: [{ id: 'm1', user_id: 'subj-1' }],
       model_photos: [{ id: 'ph1' }],
-      client_projects: [{ id: 'cp1' }],
+      client_projects: [{ id: 'cp1', owner_ref: 'self' }],
       invitations: [{ id: 'inv1', email: 'x@y.com' }],
       booking_events: [{ id: 'be1' }],
+      push_tokens: [{ id: 'pt1', platform: 'ios', has_token: true }],
     };
     const out = formatExportPayload(raw);
-    expect(out.exportVersion).toBe(3);
+    expect(out.exportVersion).toBe(4);
     expect(out.optionRequestMessages).toHaveLength(1);
     expect(out.modelProfile).toHaveLength(1);
     expect(out.modelPhotos).toHaveLength(1);
@@ -78,6 +79,8 @@ describe('formatExportPayload', () => {
     expect(out.domains.memberships).toHaveLength(2);
     expect(out.domains.business.optionRequestMessages).toHaveLength(1);
     expect(out.domains.model.photos).toHaveLength(1);
+    expect(out.pushTokens).toHaveLength(1);
+    expect(out.domains.devices.pushTokens[0]).toEqual(expect.objectContaining({ has_token: true }));
   });
 
   it('returns empty arrays for missing collections', () => {
