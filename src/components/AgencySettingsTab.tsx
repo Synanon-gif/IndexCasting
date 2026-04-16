@@ -10,8 +10,19 @@ import { ScreenScrollView } from './ScreenScrollView';
 import { AgencyStorageWidget } from './AgencyStorageWidget';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../context/AuthContext';
-import { exportUserData, downloadUserDataExport } from '../services/gdprComplianceSupabase';
+import {
+  exportUserData,
+  downloadUserDataExport,
+  userFacingExportErrorMessage,
+} from '../services/gdprComplianceSupabase';
 import { withdrawConsent } from '../services/consentSupabase';
+import {
+  downloadCalendarIcsFile,
+  rotateCalendarFeedToken,
+  revokeCalendarFeedToken,
+  calendarFeedSubscribeUrl,
+  calendarFeedWebcalUrl,
+} from '../services/calendarFeedSupabase';
 
 type Props = {
   agency: Agency | null;
@@ -21,7 +32,12 @@ type Props = {
   variant?: 'scroll' | 'embedded';
 };
 
-export const AgencySettingsTab: React.FC<Props> = ({ agency, organizationId, onSaved, variant = 'scroll' }) => {
+export const AgencySettingsTab: React.FC<Props> = ({
+  agency,
+  organizationId,
+  onSaved,
+  variant = 'scroll',
+}) => {
   const { refreshProfile } = useAuth();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -35,6 +51,9 @@ export const AgencySettingsTab: React.FC<Props> = ({ agency, organizationId, onS
   const [saving, setSaving] = useState(false);
   const [exportingData, setExportingData] = useState(false);
   const [withdrawingConsent, setWithdrawingConsent] = useState(false);
+  const [calendarIcsBusy, setCalendarIcsBusy] = useState(false);
+  const [calendarFeedBusy, setCalendarFeedBusy] = useState(false);
+  const [calendarRevokeBusy, setCalendarRevokeBusy] = useState(false);
 
   const runWithdrawConsent = async () => {
     setWithdrawingConsent(true);
@@ -46,7 +65,10 @@ export const AgencySettingsTab: React.FC<Props> = ({ agency, organizationId, onS
         return;
       }
       void refreshProfile();
-      showAppAlert(uiCopy.privacyData.consentWithdrawnTitle, uiCopy.privacyData.consentWithdrawnBody);
+      showAppAlert(
+        uiCopy.privacyData.consentWithdrawnTitle,
+        uiCopy.privacyData.consentWithdrawnBody,
+      );
     } catch (e) {
       console.error('AgencySettingsTab onWithdrawConsent error:', e);
       showAppAlert(uiCopy.common.error, uiCopy.privacyData.couldNotWithdrawConsent);
@@ -70,23 +92,28 @@ export const AgencySettingsTab: React.FC<Props> = ({ agency, organizationId, onS
   };
 
   const onExportData = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) return;
     setExportingData(true);
     try {
       if (Platform.OS === 'web') {
-        const okDl = await downloadUserDataExport(user.id);
-        if (okDl) {
-          showAppAlert(uiCopy.privacyData.downloadStartedTitle, uiCopy.privacyData.downloadStartedBody);
+        const dl = await downloadUserDataExport(user.id);
+        if (dl.ok) {
+          showAppAlert(
+            uiCopy.privacyData.downloadStartedTitle,
+            uiCopy.privacyData.downloadStartedBody,
+          );
         } else {
-          showAppAlert(uiCopy.common.error, uiCopy.privacyData.couldNotExport);
+          showAppAlert(uiCopy.common.error, userFacingExportErrorMessage(dl.reason));
         }
       } else {
         const result = await exportUserData(user.id);
         if (result.ok) {
           showAppAlert(uiCopy.privacyData.exportNativeTitle, uiCopy.privacyData.exportNativeBody);
         } else {
-          showAppAlert(uiCopy.common.error, uiCopy.privacyData.couldNotExport);
+          showAppAlert(uiCopy.common.error, userFacingExportErrorMessage(result.reason));
         }
       }
     } catch (e) {
@@ -95,6 +122,84 @@ export const AgencySettingsTab: React.FC<Props> = ({ agency, organizationId, onS
     } finally {
       setExportingData(false);
     }
+  };
+
+  const onDownloadCalendarIcs = async () => {
+    if (Platform.OS !== 'web') {
+      showAppAlert(
+        uiCopy.privacyData.calendarIcsWebOnlyTitle,
+        uiCopy.privacyData.calendarIcsWebOnlyBody,
+      );
+      return;
+    }
+    setCalendarIcsBusy(true);
+    try {
+      const r = await downloadCalendarIcsFile();
+      if (!r.ok) {
+        showAppAlert(uiCopy.common.error, uiCopy.privacyData.calendarDownloadFailed);
+      } else {
+        showAppAlert(
+          uiCopy.privacyData.calendarDownloadStartedTitle,
+          uiCopy.privacyData.calendarDownloadStartedBody,
+        );
+      }
+    } finally {
+      setCalendarIcsBusy(false);
+    }
+  };
+
+  const onCreateCalendarFeed = async () => {
+    setCalendarFeedBusy(true);
+    try {
+      const r = await rotateCalendarFeedToken();
+      if (!r.ok) {
+        showAppAlert(uiCopy.common.error, uiCopy.privacyData.calendarFeedRotateFailed);
+        return;
+      }
+      const httpsUrl = calendarFeedSubscribeUrl(r.token);
+      const webcalUrl = calendarFeedWebcalUrl(r.token);
+      const body = `${uiCopy.privacyData.calendarFeedCreatedBody}\n\nHTTPS:\n${httpsUrl}\n\nwebcal:\n${webcalUrl}`;
+      if (
+        Platform.OS === 'web' &&
+        typeof navigator !== 'undefined' &&
+        navigator.clipboard?.writeText
+      ) {
+        try {
+          await navigator.clipboard.writeText(httpsUrl);
+        } catch {
+          /* non-fatal */
+        }
+      }
+      Alert.alert(uiCopy.privacyData.calendarFeedCreatedTitle, body);
+    } finally {
+      setCalendarFeedBusy(false);
+    }
+  };
+
+  const onRevokeCalendarFeed = () => {
+    Alert.alert(uiCopy.common.confirm, uiCopy.privacyData.calendarRevokeFeedConfirm, [
+      { text: uiCopy.common.cancel, style: 'cancel' },
+      {
+        text: uiCopy.privacyData.calendarRevokeFeed,
+        style: 'destructive',
+        onPress: () => {
+          void (async () => {
+            setCalendarRevokeBusy(true);
+            try {
+              const ok = await revokeCalendarFeedToken();
+              showAppAlert(
+                ok ? uiCopy.common.success : uiCopy.common.error,
+                ok
+                  ? uiCopy.privacyData.calendarRevokeDone
+                  : uiCopy.privacyData.calendarRevokeFailed,
+              );
+            } finally {
+              setCalendarRevokeBusy(false);
+            }
+          })();
+        },
+      },
+    ]);
   };
 
   useEffect(() => {
@@ -108,7 +213,7 @@ export const AgencySettingsTab: React.FC<Props> = ({ agency, organizationId, onS
     setCity(agency.city ?? '');
     setCountry(agency.country ?? '');
     setSegments(new Set((agency.agency_types ?? []).filter(Boolean)));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agency?.id]);
 
   const toggleSegment = (s: string) => {
@@ -147,7 +252,10 @@ export const AgencySettingsTab: React.FC<Props> = ({ agency, organizationId, onS
       onSaved();
     } catch (e) {
       console.error('AgencySettingsTab onSave error:', e);
-      showAppAlert(uiCopy.common.error, uiCopy.agencySettings.saveError ?? 'Could not save settings.');
+      showAppAlert(
+        uiCopy.common.error,
+        uiCopy.agencySettings.saveError ?? 'Could not save settings.',
+      );
     } finally {
       setSaving(false);
     }
@@ -248,7 +356,9 @@ export const AgencySettingsTab: React.FC<Props> = ({ agency, organizationId, onS
             style={[styles.segmentChip, segments.has(seg) && styles.segmentChipOn]}
             onPress={() => toggleSegment(seg)}
           >
-            <Text style={[styles.segmentLabel, segments.has(seg) && styles.segmentLabelOn]}>{seg}</Text>
+            <Text style={[styles.segmentLabel, segments.has(seg) && styles.segmentLabelOn]}>
+              {seg}
+            </Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -257,8 +367,14 @@ export const AgencySettingsTab: React.FC<Props> = ({ agency, organizationId, onS
       <View style={styles.storageDivider} />
       <AgencyStorageWidget />
 
-      <TouchableOpacity style={[styles.saveBtn, saving && { opacity: 0.6 }]} disabled={saving} onPress={() => void onSave()}>
-        <Text style={styles.saveLabel}>{saving ? uiCopy.common.saving : uiCopy.agencySettings.save}</Text>
+      <TouchableOpacity
+        style={[styles.saveBtn, saving && { opacity: 0.6 }]}
+        disabled={saving}
+        onPress={() => void onSave()}
+      >
+        <Text style={styles.saveLabel}>
+          {saving ? uiCopy.common.saving : uiCopy.agencySettings.save}
+        </Text>
       </TouchableOpacity>
 
       {/* ── GDPR / Privacy ──────────────────────────────────────── */}
@@ -275,6 +391,40 @@ export const AgencySettingsTab: React.FC<Props> = ({ agency, organizationId, onS
         </Text>
       </TouchableOpacity>
 
+      <Text style={styles.hint}>{uiCopy.privacyData.calendarSectionTitle}</Text>
+      <Text style={styles.hint}>{uiCopy.privacyData.calendarSectionBody}</Text>
+      <TouchableOpacity
+        style={[styles.gdprBtn, calendarIcsBusy && { opacity: 0.6 }]}
+        disabled={calendarIcsBusy}
+        onPress={() => void onDownloadCalendarIcs()}
+      >
+        <Text style={styles.gdprBtnLabel}>
+          {calendarIcsBusy ? uiCopy.common.loading : uiCopy.privacyData.downloadCalendarIcs}
+        </Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.gdprBtn, calendarFeedBusy && { opacity: 0.6 }]}
+        disabled={calendarFeedBusy}
+        onPress={() => void onCreateCalendarFeed()}
+      >
+        <Text style={styles.gdprBtnLabel}>
+          {calendarFeedBusy ? uiCopy.common.loading : uiCopy.privacyData.rotateCalendarFeed}
+        </Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[
+          styles.gdprBtn,
+          calendarRevokeBusy && { opacity: 0.6 },
+          { borderColor: colors.error },
+        ]}
+        disabled={calendarRevokeBusy}
+        onPress={() => onRevokeCalendarFeed()}
+      >
+        <Text style={[styles.gdprBtnLabel, { color: colors.error }]}>
+          {calendarRevokeBusy ? uiCopy.common.loading : uiCopy.privacyData.calendarRevokeFeed}
+        </Text>
+      </TouchableOpacity>
+
       <Text style={styles.hint}>{uiCopy.privacyData.art7Body}</Text>
       <TouchableOpacity
         style={[styles.gdprBtn, withdrawingConsent && { opacity: 0.6 }]}
@@ -282,7 +432,9 @@ export const AgencySettingsTab: React.FC<Props> = ({ agency, organizationId, onS
         onPress={() => onWithdrawConsent()}
       >
         <Text style={styles.gdprBtnLabel}>
-          {withdrawingConsent ? uiCopy.privacyData.withdrawingConsent : uiCopy.privacyData.withdrawOptionalConsent}
+          {withdrawingConsent
+            ? uiCopy.privacyData.withdrawingConsent
+            : uiCopy.privacyData.withdrawOptionalConsent}
         </Text>
       </TouchableOpacity>
     </>
@@ -295,7 +447,12 @@ export const AgencySettingsTab: React.FC<Props> = ({ agency, organizationId, onS
 const styles = StyleSheet.create({
   heading: { ...typography.heading, marginBottom: spacing.sm, color: colors.textPrimary },
   meta: { ...typography.body, color: colors.textSecondary, marginBottom: spacing.lg },
-  section: { ...typography.label, marginTop: spacing.md, marginBottom: spacing.xs, color: colors.textPrimary },
+  section: {
+    ...typography.label,
+    marginTop: spacing.md,
+    marginBottom: spacing.xs,
+    color: colors.textPrimary,
+  },
   hint: { ...typography.body, fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm },
   label: { ...typography.label, fontSize: 11, color: colors.textSecondary, marginBottom: 4 },
   input: {

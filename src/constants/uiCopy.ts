@@ -64,6 +64,33 @@ export const uiCopy = {
     exportNativeBody:
       'Your personal data export was prepared. Please use the web version of IndexCasting to download your data as a file.',
     couldNotExport: 'Could not export your data. Please try again later.',
+    exportErrorGeneric:
+      'We could not complete your data export. Please try again in a few minutes or contact support if this keeps happening.',
+    exportErrorPermission:
+      'You do not have permission to export this data. Sign in with the correct account and try again.',
+    exportErrorSession: 'Your session expired. Sign in again, then retry the export.',
+    exportErrorServerSchema:
+      'The export service is temporarily unavailable. Please try again later — our team has been notified.',
+    calendarSectionTitle: 'Calendar sync (iCal)',
+    calendarSectionBody:
+      'Download your appointments as an .ics file or subscribe with a private link in Google Calendar, Apple Calendar, or Outlook.',
+    downloadCalendarIcs: 'Download calendar (.ics)',
+    rotateCalendarFeed: 'Create subscription link',
+    calendarFeedCreatedTitle: 'Subscription link',
+    calendarFeedCreatedBody:
+      'Copy the HTTPS or webcal URL below into your calendar app (Subscribe / From URL). Anyone with this link can see your synced appointments — store it like a password.',
+    calendarFeedRotateFailed: 'Could not create a subscription link. Please try again.',
+    calendarDownloadFailed: 'Could not build your calendar file. Please try again.',
+    calendarIcsWebOnlyTitle: 'Download on web',
+    calendarIcsWebOnlyBody:
+      'Downloading a calendar file (.ics) is available in the web app. Open IndexCasting in your browser, go to Privacy & your data, and use Download calendar (.ics). Subscription links work in the mobile app.',
+    calendarDownloadStartedTitle: 'Calendar downloaded',
+    calendarDownloadStartedBody: 'Your calendar file (.ics) has been saved.',
+    calendarRevokeFeed: 'Disable subscription link',
+    calendarRevokeFeedConfirm:
+      'Disable the calendar subscription link? Subscribed calendars will stop updating.',
+    calendarRevokeDone: 'Subscription link disabled.',
+    calendarRevokeFailed: 'Could not disable the link. Please try again.',
     couldNotWithdrawConsent: 'Could not withdraw consent. Please try again later.',
   },
   alerts: {

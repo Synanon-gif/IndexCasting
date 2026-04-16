@@ -17,6 +17,7 @@
  */
 
 import { supabase } from '../../lib/supabase';
+import { uiCopy } from '../constants/uiCopy';
 import {
   formatExportPayload,
   downloadUserData as downloadUserDataFromService,
@@ -792,17 +793,36 @@ export async function exportUserData(userId: string): Promise<ComplianceResult<G
   }
 }
 
+export type DownloadUserDataExportResult = { ok: true } | { ok: false; reason: string };
+
+/** Maps RPC / network reasons to English uiCopy (no PII). */
+export function userFacingExportErrorMessage(reason: string): string {
+  const r = (reason ?? '').toLowerCase();
+  if (r.includes('permission_denied')) {
+    return uiCopy.privacyData.exportErrorPermission;
+  }
+  if (r.includes('42703') || (r.includes('column') && r.includes('does not exist'))) {
+    return uiCopy.privacyData.exportErrorServerSchema;
+  }
+  if (r.includes('not_authenticated') || r.includes('jwt')) {
+    return uiCopy.privacyData.exportErrorSession;
+  }
+  return uiCopy.privacyData.exportErrorGeneric;
+}
+
 /**
  * Downloads the GDPR export as a JSON file in the browser.
- * Only works in a web context. Returns false if export failed.
+ * Only works in a web context.
  */
-export async function downloadUserDataExport(userId: string): Promise<boolean> {
+export async function downloadUserDataExport(
+  userId: string,
+): Promise<DownloadUserDataExportResult> {
   const result = await downloadUserDataFromService(userId);
   if (!result.ok) {
     console.error('[gdpr] downloadUserDataExport failed:', result.reason);
-    return false;
+    return { ok: false, reason: result.reason ?? 'export_failed' };
   }
-  return true;
+  return { ok: true };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

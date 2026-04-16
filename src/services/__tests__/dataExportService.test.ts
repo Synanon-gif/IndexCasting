@@ -2,21 +2,24 @@ jest.mock('../../../lib/supabase', () => ({
   supabase: { rpc: jest.fn() },
 }));
 
-import { formatExportPayload } from '../dataExportService';
+import { supabase } from '../../../lib/supabase';
+import { formatExportPayload, downloadUserData } from '../dataExportService';
+
+const rpc = supabase.rpc as jest.Mock;
 
 describe('formatExportPayload', () => {
   it('maps snake_case RPC keys to camelCase and builds domains', () => {
     const raw = {
       export_version: 2,
-      exported_at:    '2026-01-01T00:00:00Z',
-      user_id:        'u1',
-      profile:        { id: 'u1', email: 'a@b.de' },
-      consent_log:    [{ consent_type: 'privacy' }],
+      exported_at: '2026-01-01T00:00:00Z',
+      user_id: 'u1',
+      profile: { id: 'u1', email: 'a@b.de' },
+      consent_log: [{ consent_type: 'privacy' }],
       legal_acceptances: [{ document_type: 'terms' }],
-      organizations:  [{ org_id: 'o1' }],
-      messages_sent:  [{ id: 'm1' }],
+      organizations: [{ org_id: 'o1' }],
+      messages_sent: [{ id: 'm1' }],
       messages_received: [{ id: 'm2' }],
-      conversations:  [{ id: 'c1' }],
+      conversations: [{ id: 'c1' }],
       recruiting_chat_threads: [{ id: 't1' }],
       recruiting_chat_messages: [{ id: 'cm1' }],
       option_requests: [{ id: 'or1' }],
@@ -45,5 +48,39 @@ describe('formatExportPayload', () => {
     const out = formatExportPayload({ export_version: 1, exported_at: '', user_id: 'x' });
     expect(out.activityLogs).toEqual([]);
     expect(out.domains.activityLogs).toEqual([]);
+  });
+});
+
+describe('downloadUserData', () => {
+  beforeEach(() => {
+    jest.resetAllMocks();
+  });
+
+  it('calls export_user_data with p_user_id', async () => {
+    rpc.mockResolvedValue({
+      data: { export_version: 1, exported_at: 't', user_id: 'u-export' },
+      error: null,
+    });
+    const result = await downloadUserData('user-abc');
+    expect(rpc).toHaveBeenCalledWith('export_user_data', { p_user_id: 'user-abc' });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data.userId).toBe('u-export');
+  });
+
+  it('returns ok:false with reason when RPC errors (not swallowed)', async () => {
+    rpc.mockResolvedValue({
+      data: null,
+      error: { message: 'permission_denied' },
+    });
+    const result = await downloadUserData('u1');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('permission_denied');
+  });
+
+  it('returns ok:false on exception', async () => {
+    rpc.mockRejectedValue(new Error('network'));
+    const result = await downloadUserData('u1');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('exception');
   });
 });

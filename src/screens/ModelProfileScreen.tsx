@@ -90,7 +90,18 @@ import {
 } from '../utils/modelOptionDisplay';
 import { uiCopy } from '../constants/uiCopy';
 import { showAppAlert } from '../utils/crossPlatformAlert';
-import { exportUserData, downloadUserDataExport } from '../services/gdprComplianceSupabase';
+import {
+  exportUserData,
+  downloadUserDataExport,
+  userFacingExportErrorMessage,
+} from '../services/gdprComplianceSupabase';
+import {
+  downloadCalendarIcsFile,
+  rotateCalendarFeedToken,
+  revokeCalendarFeedToken,
+  calendarFeedSubscribeUrl,
+  calendarFeedWebcalUrl,
+} from '../services/calendarFeedSupabase';
 import { listModelAgencyDirectConversations } from '../services/b2bOrgChatSupabase';
 import type { Conversation } from '../services/messengerSupabase';
 import { OrgMessengerInline } from '../components/OrgMessengerInline';
@@ -165,6 +176,9 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   const [tab, setTab] = useState<ModelTab>('home');
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [exportingData, setExportingData] = useState(false);
+  const [calendarIcsBusy, setCalendarIcsBusy] = useState(false);
+  const [calendarFeedBusy, setCalendarFeedBusy] = useState(false);
+  const [calendarRevokeBusy, setCalendarRevokeBusy] = useState(false);
   const [calMonth, setCalMonth] = useState(() => {
     const n = new Date();
     return { year: n.getFullYear(), month: n.getMonth() };
@@ -300,21 +314,21 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     setExportingData(true);
     try {
       if (Platform.OS === 'web') {
-        const okDl = await downloadUserDataExport(user.id);
-        if (okDl) {
+        const dl = await downloadUserDataExport(user.id);
+        if (dl.ok) {
           showAppAlert(
             uiCopy.privacyData.downloadStartedTitle,
             uiCopy.privacyData.downloadStartedBody,
           );
         } else {
-          showAppAlert(uiCopy.common.error, uiCopy.privacyData.couldNotExport);
+          showAppAlert(uiCopy.common.error, userFacingExportErrorMessage(dl.reason));
         }
       } else {
         const result = await exportUserData(user.id);
         if (result.ok) {
           showAppAlert(uiCopy.privacyData.exportNativeTitle, uiCopy.privacyData.exportNativeBody);
         } else {
-          showAppAlert(uiCopy.common.error, uiCopy.privacyData.couldNotExport);
+          showAppAlert(uiCopy.common.error, userFacingExportErrorMessage(result.reason));
         }
       }
     } catch (e) {
@@ -323,6 +337,84 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     } finally {
       setExportingData(false);
     }
+  };
+
+  const onDownloadCalendarIcs = async () => {
+    if (Platform.OS !== 'web') {
+      showAppAlert(
+        uiCopy.privacyData.calendarIcsWebOnlyTitle,
+        uiCopy.privacyData.calendarIcsWebOnlyBody,
+      );
+      return;
+    }
+    setCalendarIcsBusy(true);
+    try {
+      const r = await downloadCalendarIcsFile();
+      if (!r.ok) {
+        showAppAlert(uiCopy.common.error, uiCopy.privacyData.calendarDownloadFailed);
+      } else {
+        showAppAlert(
+          uiCopy.privacyData.calendarDownloadStartedTitle,
+          uiCopy.privacyData.calendarDownloadStartedBody,
+        );
+      }
+    } finally {
+      setCalendarIcsBusy(false);
+    }
+  };
+
+  const onCreateCalendarFeed = async () => {
+    setCalendarFeedBusy(true);
+    try {
+      const r = await rotateCalendarFeedToken();
+      if (!r.ok) {
+        showAppAlert(uiCopy.common.error, uiCopy.privacyData.calendarFeedRotateFailed);
+        return;
+      }
+      const httpsUrl = calendarFeedSubscribeUrl(r.token);
+      const webcalUrl = calendarFeedWebcalUrl(r.token);
+      const body = `${uiCopy.privacyData.calendarFeedCreatedBody}\n\nHTTPS:\n${httpsUrl}\n\nwebcal:\n${webcalUrl}`;
+      if (
+        Platform.OS === 'web' &&
+        typeof navigator !== 'undefined' &&
+        navigator.clipboard?.writeText
+      ) {
+        try {
+          await navigator.clipboard.writeText(httpsUrl);
+        } catch {
+          /* non-fatal */
+        }
+      }
+      Alert.alert(uiCopy.privacyData.calendarFeedCreatedTitle, body);
+    } finally {
+      setCalendarFeedBusy(false);
+    }
+  };
+
+  const onRevokeCalendarFeed = () => {
+    Alert.alert(uiCopy.common.confirm, uiCopy.privacyData.calendarRevokeFeedConfirm, [
+      { text: uiCopy.common.cancel, style: 'cancel' },
+      {
+        text: uiCopy.privacyData.calendarRevokeFeed,
+        style: 'destructive',
+        onPress: () => {
+          void (async () => {
+            setCalendarRevokeBusy(true);
+            try {
+              const ok = await revokeCalendarFeedToken();
+              showAppAlert(
+                ok ? uiCopy.common.success : uiCopy.common.error,
+                ok
+                  ? uiCopy.privacyData.calendarRevokeDone
+                  : uiCopy.privacyData.calendarRevokeFailed,
+              );
+            } finally {
+              setCalendarRevokeBusy(false);
+            }
+          })();
+        },
+      },
+    ]);
   };
 
   /** Set a manual approximate city (source='current') via Nominatim forward geocoding.
@@ -1262,6 +1354,80 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                   {exportingData
                     ? uiCopy.privacyData.preparingExport
                     : uiCopy.privacyData.downloadMyData}
+                </Text>
+              </TouchableOpacity>
+
+              <Text
+                style={{
+                  ...typography.body,
+                  fontSize: 11,
+                  color: colors.textSecondary,
+                  marginBottom: spacing.sm,
+                }}
+              >
+                {uiCopy.privacyData.calendarSectionTitle}
+              </Text>
+              <Text
+                style={{
+                  ...typography.body,
+                  fontSize: 11,
+                  color: colors.textSecondary,
+                  marginBottom: spacing.sm,
+                }}
+              >
+                {uiCopy.privacyData.calendarSectionBody}
+              </Text>
+              <TouchableOpacity
+                onPress={() => void onDownloadCalendarIcs()}
+                disabled={calendarIcsBusy}
+                style={{
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 12,
+                  paddingVertical: spacing.md,
+                  alignItems: 'center',
+                  marginBottom: spacing.sm,
+                  opacity: calendarIcsBusy ? 0.6 : 1,
+                }}
+              >
+                <Text style={{ ...typography.label, color: colors.textSecondary }}>
+                  {calendarIcsBusy ? uiCopy.common.loading : uiCopy.privacyData.downloadCalendarIcs}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => void onCreateCalendarFeed()}
+                disabled={calendarFeedBusy}
+                style={{
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 12,
+                  paddingVertical: spacing.md,
+                  alignItems: 'center',
+                  marginBottom: spacing.sm,
+                  opacity: calendarFeedBusy ? 0.6 : 1,
+                }}
+              >
+                <Text style={{ ...typography.label, color: colors.textSecondary }}>
+                  {calendarFeedBusy ? uiCopy.common.loading : uiCopy.privacyData.rotateCalendarFeed}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => onRevokeCalendarFeed()}
+                disabled={calendarRevokeBusy}
+                style={{
+                  borderWidth: 1,
+                  borderColor: colors.error,
+                  borderRadius: 12,
+                  paddingVertical: spacing.sm,
+                  alignItems: 'center',
+                  marginBottom: spacing.md,
+                  opacity: calendarRevokeBusy ? 0.6 : 1,
+                }}
+              >
+                <Text style={{ ...typography.label, color: colors.error }}>
+                  {calendarRevokeBusy
+                    ? uiCopy.common.loading
+                    : uiCopy.privacyData.calendarRevokeFeed}
                 </Text>
               </TouchableOpacity>
             </View>

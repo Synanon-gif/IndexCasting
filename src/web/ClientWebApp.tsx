@@ -7569,6 +7569,9 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
   const [deleting, setDeleting] = useState(false);
   const [dissolvingOrg, setDissolvingOrg] = useState(false);
   const [orgDissolved, setOrgDissolved] = useState(false);
+  const [calendarIcsBusy, setCalendarIcsBusy] = useState(false);
+  const [calendarFeedBusy, setCalendarFeedBusy] = useState(false);
+  const [calendarRevokeBusy, setCalendarRevokeBusy] = useState(false);
   const clientIsOwner = isOrganizationOwner(profile?.org_member_role);
   const ownerRoleLoading = !!realClientId && !profile?.org_member_role;
   const clientOrgId = profile?.organization_id ?? null;
@@ -7715,6 +7718,74 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
         },
       ],
     );
+  };
+
+  const onDownloadCalendarIcs = async () => {
+    setCalendarIcsBusy(true);
+    try {
+      const { downloadCalendarIcsFile } = await import('../services/calendarFeedSupabase');
+      const r = await downloadCalendarIcsFile();
+      if (!r.ok) {
+        showAppAlert(uiCopy.common.error, uiCopy.privacyData.calendarDownloadFailed);
+      } else {
+        showAppAlert(
+          uiCopy.privacyData.calendarDownloadStartedTitle,
+          uiCopy.privacyData.calendarDownloadStartedBody,
+        );
+      }
+    } finally {
+      setCalendarIcsBusy(false);
+    }
+  };
+
+  const onCreateCalendarFeed = async () => {
+    setCalendarFeedBusy(true);
+    try {
+      const cal = await import('../services/calendarFeedSupabase');
+      const r = await cal.rotateCalendarFeedToken();
+      if (!r.ok) {
+        showAppAlert(uiCopy.common.error, uiCopy.privacyData.calendarFeedRotateFailed);
+        return;
+      }
+      const httpsUrl = cal.calendarFeedSubscribeUrl(r.token);
+      const webcalUrl = cal.calendarFeedWebcalUrl(r.token);
+      const body = `${uiCopy.privacyData.calendarFeedCreatedBody}\n\nHTTPS:\n${httpsUrl}\n\nwebcal:\n${webcalUrl}`;
+      try {
+        await navigator.clipboard?.writeText?.(httpsUrl);
+      } catch {
+        /* non-fatal */
+      }
+      Alert.alert(uiCopy.privacyData.calendarFeedCreatedTitle, body);
+    } finally {
+      setCalendarFeedBusy(false);
+    }
+  };
+
+  const onRevokeCalendarFeed = () => {
+    Alert.alert(uiCopy.common.confirm, uiCopy.privacyData.calendarRevokeFeedConfirm, [
+      { text: uiCopy.common.cancel, style: 'cancel' },
+      {
+        text: uiCopy.privacyData.calendarRevokeFeed,
+        style: 'destructive',
+        onPress: () => {
+          void (async () => {
+            setCalendarRevokeBusy(true);
+            try {
+              const { revokeCalendarFeedToken } = await import('../services/calendarFeedSupabase');
+              const ok = await revokeCalendarFeedToken();
+              showAppAlert(
+                ok ? uiCopy.common.success : uiCopy.common.error,
+                ok
+                  ? uiCopy.privacyData.calendarRevokeDone
+                  : uiCopy.privacyData.calendarRevokeFailed,
+              );
+            } finally {
+              setCalendarRevokeBusy(false);
+            }
+          })();
+        },
+      },
+    ]);
   };
 
   return (
@@ -8156,16 +8227,18 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
                           m.supabase.auth.getUser(),
                         );
                         if (!user) return;
-                        const { downloadUserDataExport } =
-                          await import('../services/gdprComplianceSupabase');
-                        const okDl = await downloadUserDataExport(user.id);
-                        if (okDl) {
+                        const gdpr = await import('../services/gdprComplianceSupabase');
+                        const dl = await gdpr.downloadUserDataExport(user.id);
+                        if (dl.ok) {
                           showAppAlert(
                             uiCopy.privacyData.downloadStartedTitle,
                             uiCopy.privacyData.downloadStartedBody,
                           );
                         } else {
-                          showAppAlert(uiCopy.common.error, uiCopy.privacyData.couldNotExport);
+                          showAppAlert(
+                            uiCopy.common.error,
+                            gdpr.userFacingExportErrorMessage(dl.reason),
+                          );
                         }
                       } catch (e) {
                         console.error('SettingsPanel download export error:', e);
@@ -8185,6 +8258,89 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
                       style={{ ...typography.label, fontSize: 12, color: colors.textSecondary }}
                     >
                       {uiCopy.privacyData.downloadMyData}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <Text
+                    style={{
+                      ...typography.body,
+                      fontSize: 11,
+                      color: colors.textSecondary,
+                      marginBottom: spacing.xs,
+                      marginTop: spacing.sm,
+                    }}
+                  >
+                    {uiCopy.privacyData.calendarSectionTitle}
+                  </Text>
+                  <Text
+                    style={{
+                      ...typography.body,
+                      fontSize: 11,
+                      color: colors.textSecondary,
+                      marginBottom: spacing.sm,
+                    }}
+                  >
+                    {uiCopy.privacyData.calendarSectionBody}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => void onDownloadCalendarIcs()}
+                    disabled={calendarIcsBusy}
+                    style={{
+                      borderRadius: 999,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      paddingVertical: spacing.sm,
+                      alignItems: 'center',
+                      marginBottom: spacing.sm,
+                      opacity: calendarIcsBusy ? 0.6 : 1,
+                    }}
+                  >
+                    <Text
+                      style={{ ...typography.label, fontSize: 12, color: colors.textSecondary }}
+                    >
+                      {calendarIcsBusy
+                        ? uiCopy.common.loading
+                        : uiCopy.privacyData.downloadCalendarIcs}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => void onCreateCalendarFeed()}
+                    disabled={calendarFeedBusy}
+                    style={{
+                      borderRadius: 999,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      paddingVertical: spacing.sm,
+                      alignItems: 'center',
+                      marginBottom: spacing.sm,
+                      opacity: calendarFeedBusy ? 0.6 : 1,
+                    }}
+                  >
+                    <Text
+                      style={{ ...typography.label, fontSize: 12, color: colors.textSecondary }}
+                    >
+                      {calendarFeedBusy
+                        ? uiCopy.common.loading
+                        : uiCopy.privacyData.rotateCalendarFeed}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => onRevokeCalendarFeed()}
+                    disabled={calendarRevokeBusy}
+                    style={{
+                      borderRadius: 999,
+                      borderWidth: 1,
+                      borderColor: colors.error,
+                      paddingVertical: spacing.sm,
+                      alignItems: 'center',
+                      marginBottom: spacing.sm,
+                      opacity: calendarRevokeBusy ? 0.6 : 1,
+                    }}
+                  >
+                    <Text style={{ ...typography.label, fontSize: 12, color: colors.error }}>
+                      {calendarRevokeBusy
+                        ? uiCopy.common.loading
+                        : uiCopy.privacyData.calendarRevokeFeed}
                     </Text>
                   </TouchableOpacity>
 
