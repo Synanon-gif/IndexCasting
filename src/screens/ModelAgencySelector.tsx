@@ -51,6 +51,11 @@ export const ModelAgencySelector: React.FC = () => {
             accessibilityLabel={`Select ${a.agencyName}`}
           >
             <Text style={styles.agencyName}>{a.agencyName}</Text>
+            {a.territories.length > 0 ? (
+              <Text style={styles.territories}>
+                {uiCopy.model.representationTerritories}: {a.territories.join(' · ')}
+              </Text>
+            ) : null}
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -110,6 +115,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: colors.textPrimary,
+  },
+  territories: {
+    marginTop: spacing.xs,
+    fontSize: 13,
+    color: colors.textSecondary,
   },
   footer: {
     paddingHorizontal: spacing.lg,

@@ -16,7 +16,7 @@ type ModelAgencyState = {
   /** All agency representations for this model user (from model_agency_territories). */
   agencies: ModelAgencyRow[];
   /**
-   * Active representation: `agencyId:territory` (one MAT row). null = not selected or none.
+   * Active representation: agency UUID (`agencies.id`). null = not selected or none.
    */
   activeRepresentationKey: string | null;
   /** @deprecated Use activeRepresentationKey — kept for quick agency id access */
@@ -80,8 +80,8 @@ export const ModelAgencyProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const switchRepresentation = useCallback(
     (row: ModelAgencyRow) => {
-      const key = makeModelAgencyKey(row.agencyId, row.territory);
-      const valid = agencies.some((a) => makeModelAgencyKey(a.agencyId, a.territory) === key);
+      const key = makeModelAgencyKey(row.agencyId);
+      const valid = agencies.some((a) => a.agencyId === row.agencyId);
       if (!valid) {
         console.warn('[ModelAgencyContext] switchRepresentation: unknown row', key);
         return;

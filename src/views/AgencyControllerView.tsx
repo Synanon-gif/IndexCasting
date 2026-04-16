@@ -612,7 +612,9 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         getManualEventsForOwner(currentAgencyId, 'agency'),
         // booking_events.agency_org_id is organizations.id, not agencies.id.
         agencyOrganizationId
-          ? getBookingEventsAsCalendarEntries(agencyOrganizationId, 'agency')
+          ? getBookingEventsAsCalendarEntries(agencyOrganizationId, 'agency', {
+              agencyEntityIdForActiveRepresentation: currentAgencyId,
+            })
           : Promise.resolve([]),
       ]);
       // Merge org-wide + personal events, deduplicating by id.

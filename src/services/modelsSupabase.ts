@@ -660,8 +660,49 @@ export type ModelAgencyContext = {
   agencyId: string;
   agencyName: string;
   organizationId: string | null;
+  /** ISO territory codes (MAT) for this agency — one profile, many territories. */
+  territories: string[];
+  /** @deprecated Prefer `territories` — first code after sort, for legacy call sites */
   territory: string;
 };
+
+function aggregateModelAgencyRpcRows(raw: Array<Record<string, unknown>>): ModelAgencyContext[] {
+  const byAgency = new Map<string, ModelAgencyContext>();
+  for (const row of raw) {
+    const modelId = row.model_id as string;
+    const agencyId = row.agency_id as string;
+    const agencyName = row.agency_name as string;
+    const organizationId = (row.organization_id as string) ?? null;
+    const code = String(row.territory ?? '')
+      .trim()
+      .toUpperCase();
+    const existing = byAgency.get(agencyId);
+    if (!existing) {
+      const territories = code ? [code] : [];
+      const territory = territories[0] ?? '';
+      byAgency.set(agencyId, {
+        modelId,
+        agencyId,
+        agencyName,
+        organizationId,
+        territories,
+        territory,
+      });
+    } else {
+      const t = new Set(existing.territories);
+      if (code) t.add(code);
+      const territories = [...t].sort();
+      byAgency.set(agencyId, {
+        ...existing,
+        territories,
+        territory: territories[0] ?? existing.territory,
+      });
+    }
+  }
+  return [...byAgency.values()].sort(
+    (a, b) => a.agencyName.localeCompare(b.agencyName) || a.agencyId.localeCompare(b.agencyId),
+  );
+}
 
 export async function getMyModelAgencies(): Promise<ModelAgencyContext[]> {
   try {
@@ -671,13 +712,7 @@ export async function getMyModelAgencies(): Promise<ModelAgencyContext[]> {
       return [];
     }
     if (!data || !Array.isArray(data)) return [];
-    return data.map((row: Record<string, unknown>) => ({
-      modelId: row.model_id as string,
-      agencyId: row.agency_id as string,
-      agencyName: row.agency_name as string,
-      organizationId: (row.organization_id as string) ?? null,
-      territory: row.territory as string,
-    }));
+    return aggregateModelAgencyRpcRows(data as Array<Record<string, unknown>>);
   } catch (e) {
     console.error('getMyModelAgencies exception:', e);
     return [];

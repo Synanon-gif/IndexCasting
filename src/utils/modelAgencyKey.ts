@@ -2,24 +2,29 @@ import type { ModelAgencyContext as ModelAgencyRow } from '../services/modelsSup
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Stable key for one MAT row: same agency may appear multiple times with different territories. */
-export function makeModelAgencyKey(agencyId: string, territory: string): string {
-  return `${agencyId}:${territory.trim()}`;
+/** One representation key per agency (`agencies.id`) — not per territory. */
+export function makeModelAgencyKey(agencyId: string): string {
+  return agencyId.trim();
 }
 
-export function parseModelAgencyKey(key: string): { agencyId: string; territory: string } | null {
-  const idx = key.indexOf(':');
-  if (idx <= 0 || idx >= key.length - 1) return null;
-  const agencyId = key.slice(0, idx);
-  const territory = key.slice(idx + 1);
+export function parseModelAgencyKey(
+  key: string,
+): { agencyId: string; territoryLegacy?: string } | null {
+  if (!key || typeof key !== 'string') return null;
+  const trimmed = key.trim();
+  if (UUID_RE.test(trimmed)) {
+    return { agencyId: trimmed };
+  }
+  const idx = trimmed.indexOf(':');
+  if (idx <= 0 || idx >= trimmed.length - 1) return null;
+  const agencyId = trimmed.slice(0, idx);
+  const territoryLegacy = trimmed.slice(idx + 1);
   if (!UUID_RE.test(agencyId)) return null;
-  if (!territory) return null;
-  return { agencyId, territory };
+  return { agencyId, territoryLegacy: territoryLegacy || undefined };
 }
 
 /**
- * Resolves AsyncStorage value: composite `agencyId:territory`, or legacy plain `agencyId` UUID
- * (only unambiguous when exactly one MAT row exists for that agency).
+ * Resolves AsyncStorage: canonical agency UUID, or legacy `agencyId:territory` (migrated to agency UUID).
  */
 export function resolveStoredRepresentationKey(
   stored: string | null,
@@ -29,18 +34,8 @@ export function resolveStoredRepresentationKey(
 
   const parsed = parseModelAgencyKey(stored);
   if (parsed) {
-    const hit = rows.find(
-      (r) => r.agencyId === parsed.agencyId && r.territory === parsed.territory,
-    );
-    return hit ? makeModelAgencyKey(hit.agencyId, hit.territory) : null;
-  }
-
-  if (UUID_RE.test(stored)) {
-    const matches = rows.filter((r) => r.agencyId === stored);
-    if (matches.length === 1) {
-      return makeModelAgencyKey(matches[0].agencyId, matches[0].territory);
-    }
-    return null;
+    const hit = rows.find((r) => r.agencyId === parsed.agencyId);
+    return hit ? makeModelAgencyKey(hit.agencyId) : null;
   }
 
   return null;
@@ -50,37 +45,28 @@ export function findRowByKey(rows: ModelAgencyRow[], key: string | null): ModelA
   if (!key) return null;
   const p = parseModelAgencyKey(key);
   if (!p) return null;
-  return rows.find((r) => r.agencyId === p.agencyId && r.territory === p.territory) ?? null;
+  return rows.find((r) => r.agencyId === p.agencyId) ?? null;
 }
 
-/** Distinct agencies (a model may have many MAT rows for the same agency). */
+/** Distinct agencies (rows are already aggregated one-per-agency from getMyModelAgencies). */
 export function countUniqueAgencyIds(rows: ModelAgencyRow[]): number {
   return new Set(rows.map((r) => r.agencyId)).size;
 }
 
-/**
- * One stable MAT row per agency for AsyncStorage / switcher (territory tie-break only).
- * Same agency in DE+AT → one canonical row (alphabetically first territory code).
- */
 export function canonicalMatRowForAgency(
   rows: ModelAgencyRow[],
   agencyId: string,
 ): ModelAgencyRow | null {
-  const matches = rows.filter((r) => r.agencyId === agencyId);
-  if (matches.length === 0) return null;
-  return matches.slice().sort((a, b) => a.territory.localeCompare(b.territory))[0];
+  return rows.find((r) => r.agencyId === agencyId) ?? null;
 }
 
-/** One canonical row per distinct agency — for "Switch agency" UI (not per territory). */
+/** One row per agency — list is pre-aggregated; sort for stable UI. */
 export function uniqueAgencyRowsForSwitcher(rows: ModelAgencyRow[]): ModelAgencyRow[] {
-  const ids = [...new Set(rows.map((r) => r.agencyId))];
-  const canonical = ids
-    .map((id) => canonicalMatRowForAgency(rows, id))
-    .filter((r): r is ModelAgencyRow => r != null);
-  canonical.sort(
-    (a, b) => a.agencyName.localeCompare(b.agencyName) || a.agencyId.localeCompare(b.agencyId),
-  );
-  return canonical;
+  return rows
+    .slice()
+    .sort(
+      (a, b) => a.agencyName.localeCompare(b.agencyName) || a.agencyId.localeCompare(b.agencyId),
+    );
 }
 
 /**
@@ -92,9 +78,8 @@ export function needsAgencySelectionUi(rows: ModelAgencyRow[]): boolean {
 }
 
 /**
- * Initial `agencyId:territory` key after load — single source of truth for `ModelAgencyProvider`.
- * Order: (1) valid stored composite / legacy resolution, (2) exactly one agency → canonical MAT row,
- * (3) multiple agencies or empty → null (caller shows picker or empty state).
+ * Initial representation key after load — agency UUID.
+ * (1) valid stored key, (2) exactly one agency → that agency, (3) multiple agencies or empty → null.
  */
 export function computeInitialRepresentationKey(
   stored: string | null,
@@ -106,7 +91,7 @@ export function computeInitialRepresentationKey(
   }
   if (rows.length > 0 && countUniqueAgencyIds(rows) === 1) {
     const canonical = canonicalMatRowForAgency(rows, rows[0].agencyId);
-    return canonical ? makeModelAgencyKey(canonical.agencyId, canonical.territory) : null;
+    return canonical ? makeModelAgencyKey(canonical.agencyId) : null;
   }
   return null;
 }

@@ -3,6 +3,7 @@
  * Uses floating local date-times (no trailing Z) when times are present so the
  * subscriber's device timezone applies; all-day uses VALUE=DATE.
  */
+import { USER_CALENDAR_EVENT_MANUAL } from '../constants/calendarSourcePriority';
 
 export type IcsCalendarEventInput = {
   /** Stable unique id (e.g. kind + uuid) */
@@ -184,6 +185,9 @@ function kindTiePriority(kind: string): number {
   return kind === 'calendar_entries' ? 0 : 1;
 }
 
+/** Fallback when RPC omits sourcePriority — must sort after all known layers (see calendarSourcePriority). */
+const UNKNOWN_EXPORT_SOURCE_PRIORITY = USER_CALENDAR_EVENT_MANUAL + 50;
+
 /** Map RPC payload items from get_calendar_export_payload_for_me / feed JSON. */
 export function icsEventsFromExportPayload(raw: unknown): IcsCalendarEventInput[] {
   if (!raw || typeof raw !== 'object') return [];
@@ -204,7 +208,7 @@ export function icsEventsFromExportPayload(raw: unknown): IcsCalendarEventInput[
     const optRaw = r.optionRequestId ?? r.option_request_id;
     const optionRequestId = optRaw != null && String(optRaw).trim() !== '' ? String(optRaw) : null;
 
-    let sourcePriority = 99;
+    let sourcePriority = UNKNOWN_EXPORT_SOURCE_PRIORITY;
     const pr = r.sourcePriority;
     if (typeof pr === 'number' && Number.isFinite(pr)) sourcePriority = pr;
 

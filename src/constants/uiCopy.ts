@@ -699,6 +699,8 @@ export const uiCopy = {
     selectAgencySubtitle:
       'You are represented by multiple agencies. Choose which profile to start with.',
     noAgencyProfiles: 'You are not currently represented by any agency.',
+    /** Shown under agency name when multiple MAT territories exist (same agency = one profile). */
+    representationTerritories: 'Territories',
     switchAgencyLabel: 'Switch agency',
     /** Small kicker above agency name rows in chat lists (not the org name itself). */
     agencyChatRowKicker: 'Agency',

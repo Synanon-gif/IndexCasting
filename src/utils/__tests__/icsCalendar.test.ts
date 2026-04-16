@@ -6,6 +6,10 @@ import {
   buildVeventLines,
   icsEventsFromExportPayload,
 } from '../icsCalendar';
+import {
+  CALENDAR_ENTRY_BOOKING,
+  USER_CALENDAR_EVENT_MIRROR,
+} from '../../constants/calendarSourcePriority';
 
 describe('escapeIcsText', () => {
   it('escapes RFC 5545 special characters', () => {
@@ -203,7 +207,7 @@ describe('icsEventsFromExportPayload', () => {
           startTime: '09:00',
           endTime: '10:00',
           optionRequestId: optId,
-          sourcePriority: 3,
+          sourcePriority: USER_CALENDAR_EVENT_MIRROR,
         },
         {
           kind: 'calendar_entries',
@@ -214,7 +218,7 @@ describe('icsEventsFromExportPayload', () => {
           startTime: '09:00',
           endTime: '10:00',
           optionRequestId: optId,
-          sourcePriority: 1,
+          sourcePriority: CALENDAR_ENTRY_BOOKING,
         },
       ],
     };

@@ -12,6 +12,10 @@ import {
   type BookingEvent,
   type BookingEventStatus,
 } from './bookingEventsSupabase';
+import {
+  getActivelyRepresentedModelIdsForAgency,
+  filterBookingEventsForAgencyActiveRepresentation,
+} from './modelRepresentationGuards';
 import type { BookingBrief } from '../utils/bookingBrief';
 import {
   normalizeInput,
@@ -493,10 +497,19 @@ export async function getCalendarEntriesForAgency(agencyId: string): Promise<Age
     const optionList = (options ?? []) as SupabaseOptionRequest[];
     if (optionList.length === 0) return [];
 
-    const optionIds = optionList.map((o) => o.id);
+    const modelIds = [...new Set(optionList.map((o) => o.model_id).filter(Boolean) as string[])];
+    const activeModelIds = await getActivelyRepresentedModelIdsForAgency(agencyId, modelIds);
+    const filteredOptions = optionList.filter((o) => {
+      const mid = o.model_id;
+      if (!mid) return false;
+      return activeModelIds.has(mid);
+    });
+    if (filteredOptions.length === 0) return [];
+
+    const optionIds = filteredOptions.map((o) => o.id);
     const entryList = await fetchCalendarEntriesByOptionIds(optionIds);
 
-    return optionList.map((opt) => {
+    return filteredOptions.map((opt) => {
       const matching = entryList.filter((e) => e.option_request_id === opt.id);
       const active =
         matching.find((e) => e.status !== 'cancelled') ?? matching[matching.length - 1] ?? null;
@@ -646,9 +659,17 @@ export function bookingEventToCalendarEntry(ev: BookingEvent): CalendarEntry {
 export async function getBookingEventsAsCalendarEntries(
   orgId: string,
   role: 'agency' | 'client',
+  opts?: { agencyEntityIdForActiveRepresentation?: string },
 ): Promise<CalendarEntry[]> {
   const events = await getBookingEventsForOrg(orgId, role);
-  return events.map(bookingEventToCalendarEntry);
+  const filtered =
+    role === 'agency' && opts?.agencyEntityIdForActiveRepresentation
+      ? await filterBookingEventsForAgencyActiveRepresentation(
+          events,
+          opts.agencyEntityIdForActiveRepresentation,
+        )
+      : events;
+  return filtered.map(bookingEventToCalendarEntry);
 }
 
 /**
@@ -659,9 +680,17 @@ export async function getBookingEventsAsCalendarEntriesInRange(params: {
   role: 'agency' | 'client';
   startDate: string;
   endDate: string;
+  agencyEntityIdForActiveRepresentation?: string;
 }): Promise<CalendarEntry[]> {
   const events = await getBookingEventsInRange(params);
-  return events.map(bookingEventToCalendarEntry);
+  const filtered =
+    params.role === 'agency' && params.agencyEntityIdForActiveRepresentation
+      ? await filterBookingEventsForAgencyActiveRepresentation(
+          events,
+          params.agencyEntityIdForActiveRepresentation,
+        )
+      : events;
+  return filtered.map(bookingEventToCalendarEntry);
 }
 
 export async function updateBookingDetails(

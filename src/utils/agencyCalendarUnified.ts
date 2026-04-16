@@ -5,14 +5,35 @@
  * Commercial terms: canonical agreed/proposed amounts live on `option_requests` (and RPC logic).
  * `calendar_entries` rows created by `fn_ensure_calendar_on_option_confirmed` carry schedule/title;
  * do not treat calendar JSON alone as the fee source of truth.
+ *
+ * Dedupe / layer precedence aligns with `src/constants/calendarSourcePriority.ts` and
+ * `calendar_export_events_json` (ICS): booking_events-derived job rows win over option tiles
+ * via `preferJobBookingOverOptionRows`; mirror `user_calendar_events` suppressed when option
+ * already in `items` (same as USER_CALENDAR_EVENT_MIRROR vs CALENDAR_ENTRY_* in SQL).
  */
 import type { AgencyCalendarItem, CalendarEntry } from '../services/calendarSupabase';
+import {
+  BOOKING_EVENT,
+  CALENDAR_ENTRY_BOOKING,
+  CALENDAR_ENTRY_OPTION,
+  USER_CALENDAR_EVENT_MIRROR,
+  USER_CALENDAR_EVENT_MANUAL,
+} from '../constants/calendarSourcePriority';
 import type { UserCalendarEvent } from '../services/userCalendarEventsSupabase';
 import type { ClientAssignmentFlag } from '../services/clientAssignmentsSupabase';
 import { colors } from '../theme/theme';
 import { calendarGridColorForOptionItem } from './calendarProjectionLabel';
 import { attentionSignalsFromOptionRequestLike } from './optionRequestAttention';
 import { attentionHeaderLabelFromSignals } from './negotiationAttentionLabels';
+
+/** Same numeric ordering as SQL `calendar_export_events_json` / ICS `sourcePriority` (lower = wins). */
+export const CALENDAR_SOURCE_PRIORITY_ORDER_FOR_AUDIT = [
+  BOOKING_EVENT,
+  CALENDAR_ENTRY_BOOKING,
+  CALENDAR_ENTRY_OPTION,
+  USER_CALENDAR_EVENT_MIRROR,
+  USER_CALENDAR_EVENT_MANUAL,
+] as const;
 
 export type AgencyCalendarCategory = 'option' | 'casting' | 'booking';
 

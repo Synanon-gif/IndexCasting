@@ -1026,6 +1026,12 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                 <Text style={st.metaText}>
                   Active: {modelAgencyCtx.activeRow ? modelAgencyCtx.activeRow.agencyName : '—'}
                 </Text>
+                {modelAgencyCtx.activeRow && modelAgencyCtx.activeRow.territories.length > 0 ? (
+                  <Text style={[st.metaText, { marginTop: 4 }]}>
+                    {uiCopy.model.representationTerritories}:{' '}
+                    {modelAgencyCtx.activeRow.territories.join(' · ')}
+                  </Text>
+                ) : null}
                 <View style={{ gap: spacing.xs, marginTop: spacing.sm }}>
                   {uniqueAgencyRowsForSwitcher(modelAgencyCtx.agencies)
                     .filter((a) => a.agencyId !== modelAgencyCtx.activeRow?.agencyId)
@@ -1816,9 +1822,12 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                     marginTop: 6,
                     textAlign: 'center',
                   }}
-                  numberOfLines={2}
+                  numberOfLines={3}
                 >
                   {modelAgencyCtx.activeRow.agencyName}
+                  {modelAgencyCtx.activeRow.territories.length > 0
+                    ? `\n${uiCopy.model.representationTerritories}: ${modelAgencyCtx.activeRow.territories.join(' · ')}`
+                    : ''}
                 </Text>
               </View>
             ) : null}
