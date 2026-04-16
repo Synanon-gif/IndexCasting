@@ -269,6 +269,32 @@ export function buildUnifiedAgencyCalendarRows(
   return [...optionRows, ...bookingRows, ...manualRows];
 }
 
+/**
+ * When a canonical **job** row from `booking_events` exists (`kind === 'booking'`,
+ * `entry_type === 'booking'`, `option_request_id` set), drop the matching option row so
+ * the unified list shows a single lifecycle entry (job wins over option + mirror).
+ * `coveredOptionIds` in `buildUnifiedAgencyCalendarRows` still uses full `items`, so
+ * mirrored `user_calendar_events` stay suppressed.
+ */
+export function preferJobBookingOverOptionRows(
+  rows: UnifiedAgencyCalendarRow[],
+): UnifiedAgencyCalendarRow[] {
+  const jobBookingOptionIds = new Set<string>();
+  for (const r of rows) {
+    if (r.kind !== 'booking') continue;
+    const e = r.entry;
+    const oid = e.option_request_id;
+    if (oid && e.entry_type === 'booking') {
+      jobBookingOptionIds.add(oid);
+    }
+  }
+  if (jobBookingOptionIds.size === 0) return rows;
+  return rows.filter((r) => {
+    if (r.kind !== 'option') return true;
+    return !jobBookingOptionIds.has(r.item.option.id);
+  });
+}
+
 export function filterUnifiedAgencyCalendarRows(
   rows: UnifiedAgencyCalendarRow[],
   params: {
