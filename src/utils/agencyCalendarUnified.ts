@@ -112,7 +112,13 @@ export function needsAgencyActionForOption(item: AgencyCalendarItem): boolean {
  * Merge calendar sources. Booking rows that duplicate an option_request already represented
  * in `items` (same option_request_id on calendar_entry) are skipped — same rule as the view.
  *
- * Multi-layer dedup ensures a single lifecycle never produces two visible calendar events:
+ * `user_calendar_events` mirrored from `option_requests` (trigger `sync_user_calendars_on_option_confirmed`,
+ * `source_option_request_id` set) are suppressed when the same option is already in `items`, so "All" does not
+ * show a second tile (model-centric option row + client-titled mirror). Pure manual events
+ * (`source_option_request_id` null) always remain; if an option is not in `items` (e.g. fetch window), the
+ * mirror row still shows.
+ *
+ * Multi-layer dedup for booking_events ensures a single lifecycle never produces two visible calendar events:
  *   L1 — option_request_id exact match
  *   L2 — date + model_id composite
  *   L3 — date + normalised model_name (catches id mismatches between data sources)
@@ -245,14 +251,20 @@ export function buildUnifiedAgencyCalendarRows(
     });
   }
 
-  const manualRows: UnifiedAgencyCalendarRow[] = manualEvents.map((ev) => ({
-    kind: 'manual',
-    sortKey: `${ev.date}\0${ev.title}\0${ev.id}`,
-    id: ev.id,
-    date: ev.date,
-    title: ev.title,
-    ev,
-  }));
+  const manualRows: UnifiedAgencyCalendarRow[] = manualEvents
+    .filter((ev) => {
+      const src = ev.source_option_request_id;
+      if (src == null || src === '') return true;
+      return !coveredOptionIds.has(src);
+    })
+    .map((ev) => ({
+      kind: 'manual' as const,
+      sortKey: `${ev.date}\0${ev.title}\0${ev.id}`,
+      id: ev.id,
+      date: ev.date,
+      title: ev.title,
+      ev,
+    }));
 
   return [...optionRows, ...bookingRows, ...manualRows];
 }
