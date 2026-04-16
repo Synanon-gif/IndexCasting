@@ -146,9 +146,9 @@ import {
   clientAcceptCounterStore,
   clientConfirmJobStore,
   agencyConfirmJobAgencyOnlyStore,
-  resetOptionRequestsStore,
   type ChatStatus,
 } from '../store/optionRequests';
+import { resetB2bCachesAfterOrgDissolve } from '../utils/clearAgencyWorkspaceCachesAfterDissolve';
 import { subscribeToOptionMessages } from '../services/optionRequestsSupabase';
 import {
   ensureClientAgencyChat,
@@ -995,7 +995,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
 
   /** Clear local client workspace state after org dissolve (avoid ghost lists; DB may retain rows). */
   const clearClientWorkspaceAfterOrgDissolved = useCallback(() => {
-    resetOptionRequestsStore();
+    resetB2bCachesAfterOrgDissolve();
     setProjects([]);
     saveClientProjects([]);
     saveClientActiveProjectId(null);

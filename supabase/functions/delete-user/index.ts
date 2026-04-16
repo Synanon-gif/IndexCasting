@@ -192,6 +192,20 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // Remove the user from B2B conversation participant arrays before auth deletion so no
+    // long-lived arrays reference this UUID (cleanup_conversation_participants only drops
+    // IDs that no longer exist in auth — that runs after delete as a second pass).
+    try {
+      const { error: stripErr } = await adminClient.rpc('remove_user_from_conversation_participants', {
+        p_user_id: targetUserId,
+      });
+      if (stripErr) {
+        console.error('delete-user: remove_user_from_conversation_participants:', stripErr.message);
+      }
+    } catch (stripEx) {
+      console.error('delete-user: remove_user_from_conversation_participants exception:', stripEx);
+    }
+
     // ── Auth deletion (triggers all DB cascades) ──────────────────────────────
     const { error: deleteError } = await adminClient.auth.admin.deleteUser(targetUserId);
 
@@ -204,7 +218,19 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Best-effort: strip deleted auth IDs from conversations.participant_ids (non-blocking).
+    let authUserStillPresent = false;
+    try {
+      const { data: postDeleteUser, error: verifyErr } =
+        await adminClient.auth.admin.getUserById(targetUserId);
+      authUserStillPresent = !verifyErr && !!postDeleteUser?.user;
+      if (verifyErr && !`${verifyErr.message ?? ''}`.toLowerCase().includes('user not found')) {
+        console.error('delete-user: post-delete getUserById:', verifyErr.message);
+      }
+    } catch (verifyEx) {
+      console.error('delete-user: post-delete verify exception:', verifyEx);
+    }
+
+    // Best-effort: strip any remaining stale auth IDs from conversations.participant_ids.
     try {
       const { error: cleanupErr } = await adminClient.rpc('cleanup_conversation_participants');
       if (cleanupErr) {
@@ -217,6 +243,7 @@ Deno.serve(async (req: Request) => {
     return new Response(
       JSON.stringify({
         ok: true,
+        verified_auth_user_removed: !authUserStillPresent,
         ...(storageCleanupErrors.length > 0 && { storage_warnings: storageCleanupErrors }),
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },

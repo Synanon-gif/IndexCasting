@@ -7,6 +7,7 @@ import { logAction } from '../utils/logAction';
 import { filterModelsByChestCoalesce } from '../utils/filterModelsByChestCoalesce';
 import { serviceErr, serviceOkData, type ServiceResult } from '../types/serviceResult';
 import { fetchAllSupabasePages } from './supabaseFetchAll';
+import { modelEligibleForAgencyRoster } from '../utils/modelRosterEligibility';
 
 /**
  * Alle Stammdaten-Felder — für Detail-Ansicht und vollständige Supabase-Roundtrips.
@@ -466,8 +467,31 @@ export async function getModelsForClientFromSupabaseHybridLocation(
   });
 }
 
+export { modelEligibleForAgencyRoster } from '../utils/modelRosterEligibility';
+
 export async function getModelsForAgencyFromSupabase(agencyId: string): Promise<SupabaseModel[]> {
-  return fetchAllSupabasePages(async (from, to) => {
+  let matModelIds = new Set<string>();
+  let matLookupOk = false;
+  try {
+    const matRows = await fetchAllSupabasePages<{ model_id: string }>(async (from, to) => {
+      const { data, error } = await supabase
+        .from('model_agency_territories')
+        .select('model_id')
+        .eq('agency_id', agencyId)
+        .order('model_id')
+        .range(from, to);
+      return { data, error };
+    });
+    matModelIds = new Set(matRows.map((r) => r.model_id));
+    matLookupOk = true;
+  } catch (e) {
+    console.error(
+      'getModelsForAgencyFromSupabase: model_agency_territories fetch failed — roster MAT filter skipped',
+      e,
+    );
+  }
+
+  const models = await fetchAllSupabasePages(async (from, to) => {
     const { data, error } = await supabase
       .from('models')
       .select(MODEL_DETAIL_SELECT)
@@ -479,6 +503,9 @@ export async function getModelsForAgencyFromSupabase(agencyId: string): Promise<
       .range(from, to);
     return { data: data as SupabaseModel[] | null, error };
   });
+
+  if (!matLookupOk) return models;
+  return models.filter((m) => modelEligibleForAgencyRoster(m, matModelIds));
 }
 
 /**
