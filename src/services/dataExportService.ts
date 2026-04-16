@@ -7,23 +7,31 @@ import { supabase } from '../../lib/supabase';
 
 /** Normalized GDPR export (camelCase) + domain grouping. */
 export interface GdprDomainExport {
-  meta:        { exportVersion: number; exportedAt: string; userId: string };
-  account:     { profile: Record<string, unknown> | null };
+  meta: { exportVersion: number; exportedAt: string; userId: string };
+  account: { profile: Record<string, unknown> | null };
   memberships: unknown[];
-  consent:     { consentLog: unknown[]; legalAcceptances: unknown[] };
-  messaging:   {
+  consent: { consentLog: unknown[]; legalAcceptances: unknown[] };
+  messaging: {
     messagesSent: unknown[];
     messagesReceived: unknown[];
     conversations: unknown[];
   };
-  recruiting:  { threads: unknown[]; messages: unknown[] };
-  calendar:    { userCalendarEvents: unknown[]; calendarEntries: unknown[] };
-  business:    { optionRequests: unknown[] };
+  recruiting: { threads: unknown[]; messages: unknown[] };
+  calendar: { userCalendarEvents: unknown[]; calendarEntries: unknown[] };
+  business: {
+    optionRequests: unknown[];
+    optionRequestMessages: unknown[];
+    optionDocuments: unknown[];
+    clientProjects: unknown[];
+    bookingEvents: unknown[];
+  };
+  model: { profileRows: unknown[]; photos: unknown[] };
+  invitations: unknown[];
   notifications: unknown[];
   activityLogs: unknown[];
   auditTrail: unknown[];
   mediaCompliance: { imageRightsConfirmations: unknown[] };
-  devices:          { pushTokens: unknown[] };
+  devices: { pushTokens: unknown[] };
 }
 
 export interface GdprExportResult {
@@ -40,6 +48,13 @@ export interface GdprExportResult {
   recruitingChatThreads: unknown[];
   recruitingChatMessages: unknown[];
   optionRequests: unknown[];
+  optionRequestMessages: unknown[];
+  optionDocuments: unknown[];
+  modelProfile: unknown[];
+  modelPhotos: unknown[];
+  clientProjects: unknown[];
+  invitations: unknown[];
+  bookingEvents: unknown[];
   calendarEvents: unknown[];
   calendarEntries: unknown[];
   notifications: unknown[];
@@ -81,6 +96,13 @@ export function formatExportPayload(raw: unknown): GdprExportResult {
   const recruitingChatThreads = asArray(r.recruiting_chat_threads);
   const recruitingChatMessages = asArray(r.recruiting_chat_messages);
   const optionRequests = asArray(r.option_requests);
+  const optionRequestMessages = asArray(r.option_request_messages);
+  const optionDocuments = asArray(r.option_documents);
+  const modelProfile = asArray(r.model_profile);
+  const modelPhotos = asArray(r.model_photos);
+  const clientProjects = asArray(r.client_projects);
+  const invitations = asArray(r.invitations);
+  const bookingEvents = asArray(r.booking_events);
   const calendarEvents = asArray(r.calendar_events);
   const calendarEntries = asArray(r.calendar_entries);
   const notifications = asArray(r.notifications);
@@ -94,19 +116,27 @@ export function formatExportPayload(raw: unknown): GdprExportResult {
   const userId = String(r.user_id ?? '');
 
   const domains = {
-    meta:        { exportVersion, exportedAt, userId },
-    account:     { profile },
+    meta: { exportVersion, exportedAt, userId },
+    account: { profile },
     memberships: organizations,
-    consent:     { consentLog, legalAcceptances },
-    messaging:   { messagesSent, messagesReceived, conversations },
-    recruiting:  { threads: recruitingChatThreads, messages: recruitingChatMessages },
-    calendar:    { userCalendarEvents: calendarEvents, calendarEntries },
-    business:    { optionRequests },
+    consent: { consentLog, legalAcceptances },
+    messaging: { messagesSent, messagesReceived, conversations },
+    recruiting: { threads: recruitingChatThreads, messages: recruitingChatMessages },
+    calendar: { userCalendarEvents: calendarEvents, calendarEntries },
+    business: {
+      optionRequests,
+      optionRequestMessages,
+      optionDocuments,
+      clientProjects,
+      bookingEvents,
+    },
+    model: { profileRows: modelProfile, photos: modelPhotos },
+    invitations,
     notifications,
     activityLogs,
     auditTrail,
     mediaCompliance: { imageRightsConfirmations },
-    devices:         { pushTokens },
+    devices: { pushTokens },
   };
 
   return {
@@ -123,6 +153,13 @@ export function formatExportPayload(raw: unknown): GdprExportResult {
     recruitingChatThreads,
     recruitingChatMessages,
     optionRequests,
+    optionRequestMessages,
+    optionDocuments,
+    modelProfile,
+    modelPhotos,
+    clientProjects,
+    invitations,
+    bookingEvents,
     calendarEvents,
     calendarEntries,
     notifications,
@@ -139,7 +176,9 @@ export function formatExportPayload(raw: unknown): GdprExportResult {
  * On native, returns ok:false with reason `native_use_export_rpc` — callers should use
  * export success messaging without file download (see AgencySettingsTab pattern).
  */
-export async function downloadUserData(userId: string): Promise<DataExportResult<GdprExportResult>> {
+export async function downloadUserData(
+  userId: string,
+): Promise<DataExportResult<GdprExportResult>> {
   try {
     const { data, error } = await supabase.rpc('export_user_data', { p_user_id: userId });
     if (error) {

@@ -42,12 +42,50 @@ describe('formatExportPayload', () => {
     expect(out.domains.messaging.messagesSent).toHaveLength(1);
     expect(out.domains.consent.legalAcceptances).toHaveLength(1);
     expect(out.domains.devices.pushTokens).toHaveLength(1);
+    expect(out.domains.business.optionRequests).toHaveLength(1);
+    expect(out.domains.business.optionRequestMessages).toEqual([]);
+    expect(out.domains.model.profileRows).toEqual([]);
+    expect(out.invitations).toEqual([]);
+  });
+
+  it('maps export v3 collections and domain buckets', () => {
+    const raw = {
+      export_version: 3,
+      exported_at: '2026-04-16T00:00:00Z',
+      user_id: 'subj-1',
+      profile: { id: 'subj-1' },
+      organizations: [
+        { org_id: 'o1', org_name: 'Acme' },
+        { org_id: 'o2', org_name: 'Beta' },
+      ],
+      option_request_messages: [{ id: 'orm1' }],
+      option_documents: [{ id: 'od1' }],
+      model_profile: [{ id: 'm1', user_id: 'subj-1' }],
+      model_photos: [{ id: 'ph1' }],
+      client_projects: [{ id: 'cp1' }],
+      invitations: [{ id: 'inv1', email: 'x@y.com' }],
+      booking_events: [{ id: 'be1' }],
+    };
+    const out = formatExportPayload(raw);
+    expect(out.exportVersion).toBe(3);
+    expect(out.optionRequestMessages).toHaveLength(1);
+    expect(out.modelProfile).toHaveLength(1);
+    expect(out.modelPhotos).toHaveLength(1);
+    expect(out.clientProjects).toHaveLength(1);
+    expect(out.invitations).toHaveLength(1);
+    expect(out.bookingEvents).toHaveLength(1);
+    expect(out.organizations).toHaveLength(2);
+    expect(out.domains.memberships).toHaveLength(2);
+    expect(out.domains.business.optionRequestMessages).toHaveLength(1);
+    expect(out.domains.model.photos).toHaveLength(1);
   });
 
   it('returns empty arrays for missing collections', () => {
     const out = formatExportPayload({ export_version: 1, exported_at: '', user_id: 'x' });
     expect(out.activityLogs).toEqual([]);
     expect(out.domains.activityLogs).toEqual([]);
+    expect(out.optionRequestMessages).toEqual([]);
+    expect(out.domains.business.clientProjects).toEqual([]);
   });
 });
 
