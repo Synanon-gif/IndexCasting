@@ -1,5 +1,5 @@
 /**
- * GDPR data export — Art. 15 / 20 (RPC `export_user_data`, current v4)
+ * GDPR data export — Art. 15 / 20 (RPC `export_user_data`, v4+; v5 adds applications/security_events + metadata minimization in RPC)
  * Normalizes `export_user_data` RPC JSON (snake_case keys) and optional domain grouping.
  */
 
@@ -16,7 +16,7 @@ export interface GdprDomainExport {
     messagesReceived: unknown[];
     conversations: unknown[];
   };
-  recruiting: { threads: unknown[]; messages: unknown[] };
+  recruiting: { threads: unknown[]; messages: unknown[]; applications: unknown[] };
   calendar: { userCalendarEvents: unknown[]; calendarEntries: unknown[] };
   business: {
     optionRequests: unknown[];
@@ -32,6 +32,7 @@ export interface GdprDomainExport {
   auditTrail: unknown[];
   mediaCompliance: { imageRightsConfirmations: unknown[] };
   devices: { pushTokens: unknown[] };
+  security: { events: unknown[] };
 }
 
 export interface GdprExportResult {
@@ -52,6 +53,7 @@ export interface GdprExportResult {
   optionDocuments: unknown[];
   modelProfile: unknown[];
   modelPhotos: unknown[];
+  modelApplications: unknown[];
   clientProjects: unknown[];
   invitations: unknown[];
   bookingEvents: unknown[];
@@ -62,6 +64,7 @@ export interface GdprExportResult {
   auditTrail: unknown[];
   imageRightsConfirmations: unknown[];
   pushTokens: unknown[];
+  securityEvents: unknown[];
   domains: GdprDomainExport;
 }
 
@@ -100,6 +103,7 @@ export function formatExportPayload(raw: unknown): GdprExportResult {
   const optionDocuments = asArray(r.option_documents);
   const modelProfile = asArray(r.model_profile);
   const modelPhotos = asArray(r.model_photos);
+  const modelApplications = asArray(r.model_applications);
   const clientProjects = asArray(r.client_projects);
   const invitations = asArray(r.invitations);
   const bookingEvents = asArray(r.booking_events);
@@ -110,6 +114,7 @@ export function formatExportPayload(raw: unknown): GdprExportResult {
   const auditTrail = asArray(r.audit_trail);
   const imageRightsConfirmations = asArray(r.image_rights_confirmations);
   const pushTokens = asArray(r.push_tokens);
+  const securityEvents = asArray(r.security_events);
 
   const exportVersion = num(r.export_version, 1);
   const exportedAt = String(r.exported_at ?? '');
@@ -121,7 +126,11 @@ export function formatExportPayload(raw: unknown): GdprExportResult {
     memberships: organizations,
     consent: { consentLog, legalAcceptances },
     messaging: { messagesSent, messagesReceived, conversations },
-    recruiting: { threads: recruitingChatThreads, messages: recruitingChatMessages },
+    recruiting: {
+      threads: recruitingChatThreads,
+      messages: recruitingChatMessages,
+      applications: modelApplications,
+    },
     calendar: { userCalendarEvents: calendarEvents, calendarEntries },
     business: {
       optionRequests,
@@ -137,6 +146,7 @@ export function formatExportPayload(raw: unknown): GdprExportResult {
     auditTrail,
     mediaCompliance: { imageRightsConfirmations },
     devices: { pushTokens },
+    security: { events: securityEvents },
   };
 
   return {
@@ -157,6 +167,7 @@ export function formatExportPayload(raw: unknown): GdprExportResult {
     optionDocuments,
     modelProfile,
     modelPhotos,
+    modelApplications,
     clientProjects,
     invitations,
     bookingEvents,
@@ -167,6 +178,7 @@ export function formatExportPayload(raw: unknown): GdprExportResult {
     auditTrail,
     imageRightsConfirmations,
     pushTokens,
+    securityEvents,
     domains,
   };
 }

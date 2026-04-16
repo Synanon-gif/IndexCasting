@@ -45,6 +45,9 @@ describe('formatExportPayload', () => {
     expect(out.domains.business.optionRequests).toHaveLength(1);
     expect(out.domains.business.optionRequestMessages).toEqual([]);
     expect(out.domains.model.profileRows).toEqual([]);
+    expect(out.domains.recruiting.applications).toEqual([]);
+    expect(out.securityEvents).toEqual([]);
+    expect(out.domains.security.events).toEqual([]);
     expect(out.invitations).toEqual([]);
   });
 
@@ -81,6 +84,26 @@ describe('formatExportPayload', () => {
     expect(out.domains.model.photos).toHaveLength(1);
     expect(out.pushTokens).toHaveLength(1);
     expect(out.domains.devices.pushTokens[0]).toEqual(expect.objectContaining({ has_token: true }));
+    expect(out.modelApplications).toEqual([]);
+    expect(out.securityEvents).toEqual([]);
+    expect(out.domains.recruiting.applications).toEqual([]);
+    expect(out.domains.security.events).toEqual([]);
+  });
+
+  it('maps export v5 model_applications and security_events', () => {
+    const raw = {
+      export_version: 5,
+      exported_at: '2026-04-16T00:00:00Z',
+      user_id: 'u1',
+      model_applications: [{ id: 'app1', first_name: 'A' }],
+      security_events: [{ id: 'se1', type: 'file_rejected', metadata: {} }],
+    };
+    const out = formatExportPayload(raw);
+    expect(out.exportVersion).toBe(5);
+    expect(out.modelApplications).toHaveLength(1);
+    expect(out.securityEvents).toHaveLength(1);
+    expect(out.domains.recruiting.applications).toHaveLength(1);
+    expect(out.domains.security.events).toHaveLength(1);
   });
 
   it('returns empty arrays for missing collections', () => {
