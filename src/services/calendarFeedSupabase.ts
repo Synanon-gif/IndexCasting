@@ -67,15 +67,16 @@ export async function downloadCalendarIcsFile(): Promise<DownloadIcsResult> {
     const events = icsEventsFromExportPayload(data as unknown);
     const ics = buildIcsCalendar(events, { calName: 'IndexCasting' });
 
-    if (typeof document !== 'undefined' && typeof Blob !== 'undefined') {
-      const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `indexcasting-calendar-${new Date().toISOString().slice(0, 10)}.ics`;
-      a.click();
-      URL.revokeObjectURL(url);
+    if (typeof document === 'undefined' || typeof Blob === 'undefined') {
+      return { ok: false, reason: 'download_not_available' };
     }
+    const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `indexcasting-calendar-${new Date().toISOString().slice(0, 10)}.ics`;
+    a.click();
+    URL.revokeObjectURL(url);
     return { ok: true };
   } catch (e) {
     console.error('[calendarFeed] downloadCalendarIcsFile exception:', e);

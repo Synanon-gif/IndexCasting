@@ -1,5 +1,6 @@
 /**
- * RFC 5545 ICS builder (Deno) — keep in sync with src/utils/icsCalendar.ts.
+ * RFC 5545 ICS builder (Deno).
+ * Logic must match src/utils/icsCalendar.ts (eventToDtStartDtEnd, escape, fold).
  */
 
 export type IcsCalendarEventInput = {

@@ -13,6 +13,8 @@
 
 ## Manual QA checklist
 
+Full interop audit, architecture notes, and expanded role checklist: [CALENDAR_INTEROP_AUDIT_REPORT.md](./CALENDAR_INTEROP_AUDIT_REPORT.md).
+
 1. **Export (web)** — Client Web settings: Download my data → JSON downloads; no generic error.
 2. **Export (web)** — Agency settings: same.
 3. **Export (model)** — Web: download works; native: message directs to web for file download.

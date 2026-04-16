@@ -55,6 +55,18 @@ describe('eventToDtStartDtEnd', () => {
     expect(dtEnd).toBe('DTEND:20260416T110000');
   });
 
+  it('accepts PostgreSQL-style HH:MM:SS strings', () => {
+    const { dtStart, dtEnd } = eventToDtStartDtEnd({
+      uid: 'x',
+      title: 'T',
+      date: '2026-04-16',
+      startTime: '09:00:00',
+      endTime: '10:30:00',
+    });
+    expect(dtStart).toBe('DTSTART:20260416T090000');
+    expect(dtEnd).toBe('DTEND:20260416T103000');
+  });
+
   it('defaults end to +1h when end time missing', () => {
     const { dtStart, dtEnd } = eventToDtStartDtEnd({
       uid: 'x',
@@ -86,6 +98,37 @@ describe('buildIcsCalendar', () => {
     expect(ics).toContain('BEGIN:VCALENDAR');
     expect(ics).toContain('X-WR-CALNAME:Test Cal');
     expect(ics).toContain('SUMMARY:Hello\\, world');
+  });
+
+  it('escapes Unicode in SUMMARY for RFC5545 TEXT', () => {
+    const ics = buildIcsCalendar(
+      [
+        {
+          uid: 'u1',
+          title: 'München — Casting',
+          date: '2026-06-01',
+          startTime: '12:00',
+          endTime: '13:00',
+        },
+      ],
+      { calName: 'Café' },
+    );
+    expect(ics).toContain('SUMMARY:München');
+    expect(ics).toContain('X-WR-CALNAME:Café');
+  });
+
+  it('emits two VEVENT blocks in payload order', () => {
+    const ics = buildIcsCalendar(
+      [
+        { uid: 'a', title: 'First', date: '2026-01-02', startTime: '10:00', endTime: '11:00' },
+        { uid: 'b', title: 'Second', date: '2026-01-03', startTime: '10:00', endTime: '11:00' },
+      ],
+      {},
+    );
+    const first = ics.indexOf('SUMMARY:First');
+    const second = ics.indexOf('SUMMARY:Second');
+    expect(first).toBeGreaterThan(-1);
+    expect(second).toBeGreaterThan(first);
   });
 });
 
@@ -126,5 +169,24 @@ describe('icsEventsFromExportPayload', () => {
     expect(icsEventsFromExportPayload(null)).toEqual([]);
     expect(icsEventsFromExportPayload({ events: [{ id: '', date: '2026-01-01' }] })).toEqual([]);
     expect(icsEventsFromExportPayload({ events: [{ id: 'x', date: 'not-a-date' }] })).toEqual([]);
+  });
+
+  it('maps null startTime/endTime to ICS inputs', () => {
+    const evs = icsEventsFromExportPayload({
+      events: [
+        {
+          kind: 'calendar_entries',
+          id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+          title: 'All day',
+          description: '',
+          date: '2026-05-01',
+          startTime: null,
+          endTime: null,
+        },
+      ],
+    });
+    expect(evs).toHaveLength(1);
+    expect(evs[0].startTime).toBeNull();
+    expect(evs[0].endTime).toBeNull();
   });
 });
