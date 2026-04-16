@@ -157,6 +157,15 @@ export async function getOrCreateConversation(
       errorMessage: 'B2B conversations must use the canonical org-pair RPC path',
     };
   }
+  if (contextId?.startsWith('agency-model:')) {
+    console.error(
+      'getOrCreateConversation: agency-model: conversations must use ensure_agency_model_direct_conversation (ensureAgencyModelDirectChat / ensureAgencyModelDirectConversation)',
+    );
+    return {
+      ok: false,
+      errorMessage: 'Agency-model direct chats must use the canonical RPC path',
+    };
+  }
   if (contextId) {
     const { data: existing } = await supabase
       .from('conversations')

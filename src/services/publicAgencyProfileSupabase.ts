@@ -55,9 +55,7 @@ export interface PublicAgencyModel {
  *
  * Safe for unauthenticated callers (anon Supabase key).
  */
-export async function getPublicAgencyProfile(
-  slug: string,
-): Promise<PublicAgencyProfile | null> {
+export async function getPublicAgencyProfile(slug: string): Promise<PublicAgencyProfile | null> {
   if (!slug) return null;
   if (!slug.trim()) return null;
 
@@ -78,15 +76,15 @@ export async function getPublicAgencyProfile(
     const row = rows[0] as Record<string, unknown>;
     return {
       organization_id: (row.organization_id as string) ?? '',
-      agency_id:       (row.agency_id as string) ?? '',
-      name:            (row.name as string) ?? '',
-      logo_url:        (row.logo_url as string | null) ?? null,
-      description:     (row.description as string | null) ?? null,
-      address_line_1:  (row.address_line_1 as string | null) ?? null,
-      city:            (row.city as string | null) ?? null,
-      postal_code:     (row.postal_code as string | null) ?? null,
-      country:         (row.country as string | null) ?? null,
-      website_url:     (row.website_url as string | null) ?? null,
+      agency_id: (row.agency_id as string) ?? '',
+      name: (row.name as string) ?? '',
+      logo_url: (row.logo_url as string | null) ?? null,
+      description: (row.description as string | null) ?? null,
+      address_line_1: (row.address_line_1 as string | null) ?? null,
+      city: (row.city as string | null) ?? null,
+      postal_code: (row.postal_code as string | null) ?? null,
+      country: (row.country as string | null) ?? null,
+      website_url: (row.website_url as string | null) ?? null,
     };
   } catch (e) {
     console.error('[getPublicAgencyProfile] exception:', e);
@@ -98,19 +96,21 @@ export async function getPublicAgencyProfile(
  * Fetches the public model roster for an agency.
  *
  * Returns only: id, name, sex, cover_url (first portfolio image).
- * Filters to active agency relationships only.
  *
- * The `get_public_agency_models` RPC enforces server-side that a matching
- * agency organization exists with type = 'agency' and organization_profiles
- * is_public = true for this agency_id; otherwise it returns no rows.
+ * Server-side filter (migration `20260904_shadow_paths_canonical_guards.sql`): rows with
+ * `agency_relationship_status = 'active'` only, and either `user_id IS NOT NULL` or an
+ * existing `model_agency_territories` row for `(model_id, agency_id)`. Stricter than the
+ * internal agency roster (`getModelsForAgencyFromSupabase`), which may include
+ * `pending_link` / null relationship before MAT+eligibility filtering.
+ *
+ * The `get_public_agency_models` RPC also participates in the public profile gate: no rows
+ * unless the org is type `agency` with `organization_profiles.is_public = true` (see RPC definition).
  *
  * The agencyId should normally be obtained from getPublicAgencyProfile.
  *
  * Safe for unauthenticated callers (anon Supabase key).
  */
-export async function getPublicAgencyModels(
-  agencyId: string,
-): Promise<PublicAgencyModel[]> {
+export async function getPublicAgencyModels(agencyId: string): Promise<PublicAgencyModel[]> {
   if (!agencyId) return [];
 
   try {
@@ -125,9 +125,9 @@ export async function getPublicAgencyModels(
 
     const rows = Array.isArray(data) ? data : data ? [data] : [];
     return rows.map((row: Record<string, unknown>) => ({
-      id:        (row.id as string) ?? '',
-      name:      (row.name as string) ?? '',
-      sex:       (row.sex as string | null) ?? null,
+      id: (row.id as string) ?? '',
+      name: (row.name as string) ?? '',
+      sex: (row.sex as string | null) ?? null,
       cover_url: (row.cover_url as string | null) ?? null,
     }));
   } catch (e) {
