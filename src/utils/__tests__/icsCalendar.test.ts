@@ -262,4 +262,49 @@ describe('icsEventsFromExportPayload', () => {
     expect(evs[0].title).toBe('Job – Client');
     expect(evs[0].uid).toBe(`opt:${optId}`);
   });
+
+  it('dedupes booking_events over calendar_entries job and user_calendar_events mirror (same optionRequestId)', () => {
+    const optId = '22222222-2222-2222-2222-222222222222';
+    const raw = {
+      events: [
+        {
+          kind: 'user_calendar_events',
+          id: '11111111-1111-1111-1111-111111111111',
+          title: 'Mirror',
+          description: '',
+          date: '2026-04-20',
+          startTime: '09:00',
+          endTime: '10:00',
+          optionRequestId: optId,
+          sourcePriority: USER_CALENDAR_EVENT_MIRROR,
+        },
+        {
+          kind: 'calendar_entries',
+          id: '33333333-3333-3333-3333-333333333333',
+          title: 'Job – Client',
+          description: '',
+          date: '2026-04-20',
+          startTime: '09:00',
+          endTime: '10:00',
+          optionRequestId: optId,
+          sourcePriority: CALENDAR_ENTRY_BOOKING,
+        },
+        {
+          kind: 'booking_events',
+          id: '55555555-5555-5555-5555-555555555555',
+          title: 'Job booking',
+          description: '',
+          date: '2026-04-20',
+          startTime: null,
+          endTime: null,
+          optionRequestId: optId,
+          sourcePriority: BOOKING_EVENT,
+        },
+      ],
+    };
+    const evs = icsEventsFromExportPayload(raw);
+    expect(evs).toHaveLength(1);
+    expect(evs[0].title).toBe('Job booking');
+    expect(evs[0].uid).toBe(`opt:${optId}`);
+  });
 });

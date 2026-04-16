@@ -7,6 +7,10 @@
  * Deploy: supabase functions deploy calendar-feed --no-verify-jwt
  *
  * Secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+ *
+ * Feed JSON is produced by get_calendar_feed_payload → calendar_export_events_json (priorities
+ * and dedupe: supabase/migrations/20260901_calendar_export_events_json_include_booking_events.sql,
+ * mirrored in src/constants/calendarSourcePriority.ts).
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';

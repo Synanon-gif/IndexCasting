@@ -3,10 +3,18 @@ import type { SupabaseOptionRequest } from '../../services/optionRequestsSupabas
 import type { UserCalendarEvent } from '../../services/userCalendarEventsSupabase';
 import {
   buildUnifiedAgencyCalendarRows,
+  CALENDAR_SOURCE_PRIORITY_ORDER_FOR_AUDIT,
   dedupeUnifiedRowsByOptionRequest,
   filterUnifiedAgencyCalendarRows,
   preferJobBookingOverOptionRows,
 } from '../agencyCalendarUnified';
+import {
+  BOOKING_EVENT,
+  CALENDAR_ENTRY_BOOKING,
+  CALENDAR_ENTRY_OPTION,
+  USER_CALENDAR_EVENT_MIRROR,
+  USER_CALENDAR_EVENT_MANUAL,
+} from '../../constants/calendarSourcePriority';
 
 function minimalOption(overrides: Partial<SupabaseOptionRequest>): SupabaseOptionRequest {
   const now = new Date().toISOString();
@@ -90,6 +98,18 @@ function manualEv(overrides: Partial<UserCalendarEvent>): UserCalendarEvent {
 function itemByOptionId(items: AgencyCalendarItem[]): Map<string, AgencyCalendarItem> {
   return new Map(items.map((i) => [i.option.id, i]));
 }
+
+describe('agencyCalendarUnified — priority parity with calendarSourcePriority', () => {
+  it('CALENDAR_SOURCE_PRIORITY_ORDER_FOR_AUDIT matches SQL/ICS ordering (lower index wins)', () => {
+    expect([...CALENDAR_SOURCE_PRIORITY_ORDER_FOR_AUDIT]).toEqual([
+      BOOKING_EVENT,
+      CALENDAR_ENTRY_BOOKING,
+      CALENDAR_ENTRY_OPTION,
+      USER_CALENDAR_EVENT_MIRROR,
+      USER_CALENDAR_EVENT_MANUAL,
+    ]);
+  });
+});
 
 describe('buildUnifiedAgencyCalendarRows — user_calendar_events mirror dedupe', () => {
   it('suppresses manual row when source_option_request_id matches a loaded option', () => {

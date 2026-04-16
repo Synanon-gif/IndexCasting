@@ -870,6 +870,11 @@ export const uiCopy = {
     /** Accessibility label for blue unread dot on B2B thread rows */
     unreadMessagesIndicatorA11y: 'Unread messages',
     contextOrgChat: 'Org chat',
+    /** Agency ↔ model direct thread (context_id agency-model:…), not a client org chat. */
+    modelDirectThreadContext: 'Direct chat with model',
+    /** Shown under thread context when the model is no longer on the agency roster. */
+    agencyModelDirectRepresentationEnded:
+      'This model is not on your roster. Representation has ended; you can still read the history.',
     contextNegotiationThread: 'Negotiation thread',
     openOrgChat: 'Open org chat',
     openRelatedRequest: 'Open related request',

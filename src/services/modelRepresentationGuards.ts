@@ -8,6 +8,7 @@
  */
 import { supabase } from '../../lib/supabase';
 import type { BookingEvent } from './bookingEventsSupabase';
+import type { UserCalendarEvent } from './userCalendarEventsSupabase';
 
 export async function getActivelyRepresentedModelIdsForAgency(
   agencyId: string,
@@ -72,4 +73,62 @@ export async function filterBookingEventsForAgencyActiveRepresentation(
   const modelIds = events.map((e) => e.model_id).filter(Boolean) as string[];
   const active = await getActivelyRepresentedModelIdsForAgency(agencyId, modelIds);
   return events.filter((e) => !e.model_id || active.has(e.model_id));
+}
+
+/**
+ * Drops mirrored `user_calendar_events` (source_option_request_id set) when the linked
+ * model is no longer actively represented for this agency — same rule as
+ * getCalendarEntriesForAgency. Pure manual rows (no source_option_request_id) are kept.
+ */
+export async function filterManualCalendarEventsForAgencyActiveRepresentation(
+  events: UserCalendarEvent[],
+  agencyEntityId: string | null | undefined,
+): Promise<UserCalendarEvent[]> {
+  if (!agencyEntityId?.trim() || events.length === 0) {
+    return events;
+  }
+  const mirrors = events.filter((e) => Boolean(e.source_option_request_id?.trim()));
+  const pureManual = events.filter((e) => !e.source_option_request_id?.trim());
+  if (mirrors.length === 0) {
+    return events;
+  }
+  const optionIds = [...new Set(mirrors.map((e) => e.source_option_request_id as string))];
+  try {
+    const { data: opts, error } = await supabase
+      .from('option_requests')
+      .select('id, model_id')
+      .eq('agency_id', agencyEntityId)
+      .in('id', optionIds);
+    if (error) {
+      console.error(
+        '[modelRepresentationGuards] filterManualCalendarEvents option_requests error:',
+        error,
+      );
+      return events;
+    }
+    const optionIdToModelId = new Map<string, string>();
+    for (const row of opts ?? []) {
+      const id = row.id as string;
+      const mid = row.model_id as string | null;
+      if (id && mid) optionIdToModelId.set(id, mid);
+    }
+    const modelIds = [...new Set([...optionIdToModelId.values()])];
+    const active = await getActivelyRepresentedModelIdsForAgency(agencyEntityId, modelIds);
+    const keptMirrors = mirrors.filter((e) => {
+      const oid = e.source_option_request_id as string;
+      const mid = optionIdToModelId.get(oid);
+      if (!mid) return false;
+      return active.has(mid);
+    });
+    return [...pureManual, ...keptMirrors].sort(
+      (a, b) =>
+        a.date.localeCompare(b.date) || (a.start_time ?? '').localeCompare(b.start_time ?? ''),
+    );
+  } catch (e) {
+    console.error(
+      '[modelRepresentationGuards] filterManualCalendarEventsForAgencyActiveRepresentation exception:',
+      e,
+    );
+    return events;
+  }
 }

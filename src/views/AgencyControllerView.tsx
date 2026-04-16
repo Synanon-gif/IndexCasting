@@ -84,7 +84,7 @@ import {
   subscribeToConversation,
 } from '../services/messengerSupabase';
 import { getApplicationById } from '../store/applicationsStore';
-import { OrgMessengerInline } from '../components/OrgMessengerInline';
+import { OrgMessengerInline, type ThreadContext } from '../components/OrgMessengerInline';
 import { AgencySettingsTab } from '../components/AgencySettingsTab';
 // Recruiting chats (BookingChatView) live under Messages → Recruiting chats.
 import {
@@ -127,6 +127,7 @@ import {
 } from '../services/modelLocationsSupabase';
 import { useNearMeClientLocation } from '../hooks/useNearMeClientLocation';
 import { canonicalDisplayCityForModel } from '../utils/canonicalModelCity';
+import { parseAgencyModelContextId } from '../utils/parseAgencyModelContextId';
 import { getCitySearchGeocodedPin } from '../utils/citySearchGeocodeCache';
 import { NEAR_ME_RADIUS_KM_DEFAULT } from '../constants/locationDiscovery';
 import { describeSendInviteFailure, resendInviteEmail } from '../services/inviteDelivery';
@@ -218,6 +219,7 @@ import {
   appendSharedBookingNote,
   type SharedBookingNote,
 } from '../services/calendarSupabase';
+import { filterManualCalendarEventsForAgencyActiveRepresentation } from '../services/modelRepresentationGuards';
 import BookingBriefEditor from '../components/BookingBriefEditor';
 import {
   deleteOptionRequestFull,
@@ -631,8 +633,12 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
         (a, b) =>
           a.date.localeCompare(b.date) || (a.start_time ?? '').localeCompare(b.start_time ?? ''),
       );
+      const manualForAgency = await filterManualCalendarEventsForAgencyActiveRepresentation(
+        manual,
+        currentAgencyId,
+      );
       setCalendarItems(items);
-      setManualCalendarEvents(manual);
+      setManualCalendarEvents(manualForAgency);
       setBookingEventEntries(beEntries);
     } finally {
       setCalendarLoading(false);
@@ -6764,6 +6770,26 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
     [request?.threadId, processingRequestId, currency, showNegotiationCalendarHint],
   );
 
+  const agencyModelDirectThreadContext = useMemo((): ThreadContext => {
+    if (!activeConnectionChatId) {
+      return { type: uiCopy.b2bChat.contextOrgChat };
+    }
+    const conv =
+      modelDirectConvs.find((c) => c.id === activeConnectionChatId) ??
+      b2bConversations.find((c) => c.id === activeConnectionChatId);
+    const parsed = parseAgencyModelContextId(conv?.context_id);
+    if (!parsed) {
+      return { type: uiCopy.b2bChat.contextOrgChat };
+    }
+    const modelStillOnRoster = agencyModels.some((m) => m.id === parsed.modelId);
+    return {
+      type: uiCopy.b2bChat.modelDirectThreadContext,
+      ...(!modelStillOnRoster
+        ? { footnote: uiCopy.b2bChat.agencyModelDirectRepresentationEnded }
+        : {}),
+    };
+  }, [activeConnectionChatId, modelDirectConvs, b2bConversations, agencyModels]);
+
   const optionFullscreenActive =
     messagesSection === 'optionRequests' && !!selectedThreadId && !!request;
 
@@ -6787,7 +6813,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
             headerTitle={activeConnectionChatTitle}
             viewerUserId={currentUserId}
             b2bViewerRole="agency"
-            threadContext={{ type: uiCopy.b2bChat.contextOrgChat }}
+            threadContext={agencyModelDirectThreadContext}
             agencyId={agencyId}
             guestLinks={guestLinksForChat}
             modelsForShare={modelsForShare}
@@ -7426,7 +7452,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                               headerTitle={activeConnectionChatTitle}
                               viewerUserId={currentUserId}
                               b2bViewerRole="agency"
-                              threadContext={{ type: uiCopy.b2bChat.contextOrgChat }}
+                              threadContext={agencyModelDirectThreadContext}
                               agencyId={agencyId}
                               guestLinks={guestLinksForChat}
                               modelsForShare={modelsForShare}
@@ -7461,7 +7487,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
                           headerTitle={activeConnectionChatTitle}
                           viewerUserId={currentUserId}
                           b2bViewerRole="agency"
-                          threadContext={{ type: uiCopy.b2bChat.contextOrgChat }}
+                          threadContext={agencyModelDirectThreadContext}
                           agencyId={agencyId}
                           guestLinks={guestLinksForChat}
                           modelsForShare={modelsForShare}

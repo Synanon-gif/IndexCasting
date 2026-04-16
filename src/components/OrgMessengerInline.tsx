@@ -70,6 +70,8 @@ export type ThreadContext = {
   clientFlagLabel?: string;
   clientFlagColor?: string;
   assignedMemberName?: string;
+  /** Optional second line below thread context (e.g. representation ended notice). */
+  footnote?: string;
 };
 
 /** Organization-scoped B2B thread (client org ↔ agency org). Not a user-to-user or "connection" chat. */
@@ -594,6 +596,17 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
         >
           <Text style={styles.assignmentPillLabel}>{threadContextAssignment}</Text>
         </View>
+      ) : null}
+      {threadContext?.footnote ? (
+        <Text
+          style={[
+            styles.threadContextSubheader,
+            compactAgencyShareHeader && styles.threadContextSubheaderCompact,
+            { fontSize: 11, marginTop: 2 },
+          ]}
+        >
+          {threadContext.footnote}
+        </Text>
       ) : null}
 
       {showShare ? (
