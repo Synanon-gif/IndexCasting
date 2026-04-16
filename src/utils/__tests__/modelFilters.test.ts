@@ -1,4 +1,9 @@
-import { filterModels, defaultModelFilters, type ModelFilters } from '../modelFilters';
+import {
+  filterModels,
+  defaultModelFilters,
+  type ModelFilters,
+  type ModelWithOptionalLocation,
+} from '../modelFilters';
 import type { SupabaseModel } from '../../services/modelsSupabase';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -78,18 +83,30 @@ describe('filterModels', () => {
     });
 
     it('boundary: heightMax=174 excludes height=175', () => {
-      expect(filterModels([makeModel({ height: 174 })], { ...noFilter, heightMax: '174' })).toHaveLength(1);
-      expect(filterModels([makeModel({ height: 175 })], { ...noFilter, heightMax: '174' })).toHaveLength(0);
+      expect(
+        filterModels([makeModel({ height: 174 })], { ...noFilter, heightMax: '174' }),
+      ).toHaveLength(1);
+      expect(
+        filterModels([makeModel({ height: 175 })], { ...noFilter, heightMax: '174' }),
+      ).toHaveLength(0);
     });
 
     it('boundary: heightMin=175 excludes height=174', () => {
-      expect(filterModels([makeModel({ height: 175 })], { ...noFilter, heightMin: '175' })).toHaveLength(1);
-      expect(filterModels([makeModel({ height: 174 })], { ...noFilter, heightMin: '175' })).toHaveLength(0);
+      expect(
+        filterModels([makeModel({ height: 175 })], { ...noFilter, heightMin: '175' }),
+      ).toHaveLength(1);
+      expect(
+        filterModels([makeModel({ height: 174 })], { ...noFilter, heightMin: '175' }),
+      ).toHaveLength(0);
     });
 
     it('boundary: heightMin=183 excludes height=182', () => {
-      expect(filterModels([makeModel({ height: 183 })], { ...noFilter, heightMin: '183' })).toHaveLength(1);
-      expect(filterModels([makeModel({ height: 182 })], { ...noFilter, heightMin: '183' })).toHaveLength(0);
+      expect(
+        filterModels([makeModel({ height: 183 })], { ...noFilter, heightMin: '183' }),
+      ).toHaveLength(1);
+      expect(
+        filterModels([makeModel({ height: 182 })], { ...noFilter, heightMin: '183' }),
+      ).toHaveLength(0);
     });
   });
 
@@ -133,7 +150,9 @@ describe('filterModels', () => {
     });
 
     it('filters by waistMin and waistMax range', () => {
-      expect(filterModels(models, { ...noFilter, waistMin: '62', waistMax: '72' }).map((m) => m.id)).toEqual(['B']);
+      expect(
+        filterModels(models, { ...noFilter, waistMin: '62', waistMax: '72' }).map((m) => m.id),
+      ).toEqual(['B']);
     });
 
     it('filters by chestMin', () => {
@@ -148,17 +167,21 @@ describe('filterModels', () => {
       const legacy = [
         makeModel({ id: 'legacy', chest: null, bust: 88, hips: 90, waist: 60, legs_inseam: 80 }),
       ];
-      expect(filterModels(legacy, { ...noFilter, chestMin: '85', chestMax: '90' }).map((m) => m.id)).toEqual([
-        'legacy',
-      ]);
+      expect(
+        filterModels(legacy, { ...noFilter, chestMin: '85', chestMax: '90' }).map((m) => m.id),
+      ).toEqual(['legacy']);
     });
 
     it('filters by legsInseamMin', () => {
-      expect(filterModels(models, { ...noFilter, legsInseamMin: '80' }).map((m) => m.id)).toEqual(['B']);
+      expect(filterModels(models, { ...noFilter, legsInseamMin: '80' }).map((m) => m.id)).toEqual([
+        'B',
+      ]);
     });
 
     it('filters by legsInseamMax', () => {
-      expect(filterModels(models, { ...noFilter, legsInseamMax: '80' }).map((m) => m.id)).toEqual(['A']);
+      expect(filterModels(models, { ...noFilter, legsInseamMax: '80' }).map((m) => m.id)).toEqual([
+        'A',
+      ]);
     });
 
     it('excludes models with null measurement when min/max filter active', () => {
@@ -168,10 +191,30 @@ describe('filterModels', () => {
   });
 
   describe('category', () => {
-    const fashionOnly = makeModel({ id: 'fashion', is_visible_fashion: true, is_visible_commercial: false, categories: ['Fashion'] });
-    const highFashion = makeModel({ id: 'highfashion', is_visible_fashion: true, is_visible_commercial: false, categories: ['High Fashion'] });
-    const commercial = makeModel({ id: 'commercial', is_visible_fashion: false, is_visible_commercial: true, categories: ['Commercial'] });
-    const both = makeModel({ id: 'both', is_visible_fashion: true, is_visible_commercial: true, categories: ['Fashion', 'Commercial'] });
+    const fashionOnly = makeModel({
+      id: 'fashion',
+      is_visible_fashion: true,
+      is_visible_commercial: false,
+      categories: ['Fashion'],
+    });
+    const highFashion = makeModel({
+      id: 'highfashion',
+      is_visible_fashion: true,
+      is_visible_commercial: false,
+      categories: ['High Fashion'],
+    });
+    const commercial = makeModel({
+      id: 'commercial',
+      is_visible_fashion: false,
+      is_visible_commercial: true,
+      categories: ['Commercial'],
+    });
+    const both = makeModel({
+      id: 'both',
+      is_visible_fashion: true,
+      is_visible_commercial: true,
+      categories: ['Fashion', 'Commercial'],
+    });
     const models = [fashionOnly, highFashion, commercial, both];
 
     it('category="" returns all models', () => {
@@ -195,8 +238,16 @@ describe('filterModels', () => {
   });
 
   describe('sports', () => {
-    const winterModel = makeModel({ id: 'winter', is_sports_winter: true, is_sports_summer: false });
-    const summerModel = makeModel({ id: 'summer', is_sports_winter: false, is_sports_summer: true });
+    const winterModel = makeModel({
+      id: 'winter',
+      is_sports_winter: true,
+      is_sports_summer: false,
+    });
+    const summerModel = makeModel({
+      id: 'summer',
+      is_sports_winter: false,
+      is_sports_summer: true,
+    });
     const bothSports = makeModel({ id: 'both', is_sports_winter: true, is_sports_summer: true });
     const noSports = makeModel({ id: 'none', is_sports_winter: false, is_sports_summer: false });
     const models = [winterModel, summerModel, bothSports, noSports];
@@ -220,10 +271,34 @@ describe('filterModels', () => {
   describe('combined filters', () => {
     it('applies multiple filters simultaneously', () => {
       const models = [
-        makeModel({ id: 'match', height: 178, hair_color: 'Brown', hips: 88, is_visible_fashion: true }),
-        makeModel({ id: 'wrong-height', height: 185, hair_color: 'Brown', hips: 88, is_visible_fashion: true }),
-        makeModel({ id: 'wrong-hair', height: 178, hair_color: 'Blonde', hips: 88, is_visible_fashion: true }),
-        makeModel({ id: 'wrong-hips', height: 178, hair_color: 'Brown', hips: 100, is_visible_fashion: true }),
+        makeModel({
+          id: 'match',
+          height: 178,
+          hair_color: 'Brown',
+          hips: 88,
+          is_visible_fashion: true,
+        }),
+        makeModel({
+          id: 'wrong-height',
+          height: 185,
+          hair_color: 'Brown',
+          hips: 88,
+          is_visible_fashion: true,
+        }),
+        makeModel({
+          id: 'wrong-hair',
+          height: 178,
+          hair_color: 'Blonde',
+          hips: 88,
+          is_visible_fashion: true,
+        }),
+        makeModel({
+          id: 'wrong-hips',
+          height: 178,
+          hair_color: 'Brown',
+          hips: 100,
+          is_visible_fashion: true,
+        }),
       ];
       const result = filterModels(models, {
         ...noFilter,
@@ -279,6 +354,49 @@ describe('filterModels', () => {
     it('nearby=true without userCity returns all models', () => {
       expect(filterModels(models, { ...noFilter, nearby: true }, undefined)).toHaveLength(2);
     });
+
+    it('nearby=true uses haversine when user and model approximate coords exist', () => {
+      const userLat = 52.52;
+      const userLng = 13.405;
+      const close = makeModel({ id: 'close', city: 'Berlin' });
+      const far = makeModel({ id: 'far', city: 'Paris' });
+      const roster: ModelWithOptionalLocation[] = [
+        {
+          ...close,
+          model_location: { city: 'Berlin', lat_approx: 52.53, lng_approx: 13.41 },
+        },
+        {
+          ...far,
+          model_location: { city: 'Paris', lat_approx: 48.85, lng_approx: 2.35 },
+        },
+      ];
+      const result = filterModels(
+        roster,
+        { ...noFilter, nearby: true },
+        undefined,
+        userLat,
+        userLng,
+        50,
+      );
+      expect(result.map((m) => m.id)).toEqual(['close']);
+    });
+  });
+
+  describe('canonical display city (effective_city)', () => {
+    it('country+city substring uses effective_city over stale models.city', () => {
+      const stale = makeModel({ id: '1', city: 'OldTown', country_code: 'DE' });
+      const pinned: ModelWithOptionalLocation = {
+        ...stale,
+        effective_city: 'Berlin',
+        model_location: { city: 'Berlin' },
+      };
+      expect(
+        filterModels([pinned], { ...noFilter, countryCode: 'DE', city: 'berlin' }).map((m) => m.id),
+      ).toEqual(['1']);
+      expect(
+        filterModels([stale], { ...noFilter, countryCode: 'DE', city: 'berlin' }),
+      ).toHaveLength(0);
+    });
   });
 
   describe('ethnicity filter', () => {
@@ -300,7 +418,10 @@ describe('filterModels', () => {
     });
 
     it('multi-select returns all matching ethnicities', () => {
-      const result = filterModels(models, { ...noFilter, ethnicities: ['East Asian', 'Black / African'] });
+      const result = filterModels(models, {
+        ...noFilter,
+        ethnicities: ['East Asian', 'Black / African'],
+      });
       expect(result.map((m) => m.id)).toEqual(['asian', 'black']);
     });
 

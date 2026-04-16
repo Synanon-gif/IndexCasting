@@ -779,6 +779,10 @@ export const uiCopy = {
     modelInviteEmailFailedNote: (reason: string) => `Invitation email was not sent: ${reason}.`,
     modelInviteManualLinkNote: 'Share this claim link with the model manually:',
     modelInviteSkippedAlreadyLinkedNote: 'Model account is already linked — invite skipped.',
+    /** Near me filter: consent before device location + Nominatim (agency roster / package builder). */
+    nearMeGeoConsentTitle: 'Location for Near me',
+    nearMeGeoConsentBody:
+      'To filter models by distance, IndexCasting needs your approximate location. Coordinates are rounded for privacy and may be sent to OpenStreetMap Nominatim to detect your city. Continue?',
   },
   /** B2B org-to-org chats (no social graph). */
   b2bChat: {

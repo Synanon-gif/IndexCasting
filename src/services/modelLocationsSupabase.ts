@@ -131,13 +131,13 @@ export async function upsertModelLocation(
     const shareLocation = data.share_approximate_location ?? false;
 
     const { error } = await supabase.rpc('upsert_model_location', {
-      p_model_id:                   modelId,
-      p_country_code:               data.country_code,
-      p_city:                       data.city ?? null,
-      p_lat_approx:                 shareLocation ? roundedLat : null,
-      p_lng_approx:                 shareLocation ? roundedLng : null,
+      p_model_id: modelId,
+      p_country_code: data.country_code,
+      p_city: data.city ?? null,
+      p_lat_approx: shareLocation ? roundedLat : null,
+      p_lng_approx: shareLocation ? roundedLng : null,
       p_share_approximate_location: shareLocation,
-      p_source:                     source,
+      p_source: source,
     });
 
     if (error) {
@@ -184,6 +184,50 @@ export async function getAllModelLocations(modelId: string): Promise<ModelLocati
 export async function getModelLocation(modelId: string): Promise<ModelLocation | null> {
   const all = await getAllModelLocations(modelId);
   return all[0] ?? null;
+}
+
+/** Winning approximate coordinates per model (live > current > agency), only when shared. */
+export type EffectiveApproxLocation = {
+  lat_approx: number;
+  lng_approx: number;
+};
+
+/**
+ * Picks highest-priority row per model that has share_approximate_location and non-null lat/lng.
+ * Exported for unit tests; matches get_models_near_location source ordering.
+ */
+export function mergeEffectiveApproxCoordsFromRows(
+  rows: ReadonlyArray<{
+    model_id: string;
+    source: string;
+    lat_approx: number | null;
+    lng_approx: number | null;
+    share_approximate_location: boolean | null;
+  }>,
+): Map<string, EffectiveApproxLocation> {
+  const eligible = rows.filter(
+    (r) =>
+      r.share_approximate_location === true &&
+      r.lat_approx != null &&
+      r.lng_approx != null &&
+      Number.isFinite(r.lat_approx) &&
+      Number.isFinite(r.lng_approx),
+  );
+  const best = new Map<string, { lat: number; lng: number; pri: number }>();
+  for (const row of eligible) {
+    const src: LocationSource =
+      row.source === 'live' || row.source === 'current' || row.source === 'agency'
+        ? row.source
+        : 'agency';
+    const pri = locationSourcePriority(src);
+    const lat = row.lat_approx as number;
+    const lng = row.lng_approx as number;
+    const cur = best.get(row.model_id);
+    if (!cur || pri > cur.pri) best.set(row.model_id, { lat, lng, pri });
+  }
+  const out = new Map<string, EffectiveApproxLocation>();
+  for (const [id, v] of best) out.set(id, { lat_approx: v.lat, lng_approx: v.lng });
+  return out;
 }
 
 /**
@@ -241,6 +285,50 @@ export async function fetchEffectiveDisplayCitiesForModels(
     return mergeEffectiveDisplayCitiesFromRows(allRows);
   } catch (e) {
     console.error('fetchEffectiveDisplayCitiesForModels exception:', e);
+    return new Map();
+  }
+}
+
+/**
+ * Batch-resolves approximate coordinates for Near Me–style filtering (agency roster).
+ * Same source priority as get_models_near_location; only rows with share_approximate_location.
+ */
+export async function fetchEffectiveApproxLocationsForModels(
+  modelIds: string[],
+): Promise<Map<string, EffectiveApproxLocation>> {
+  const unique = [...new Set(modelIds.filter((id) => id?.trim()))];
+  if (unique.length === 0) return new Map();
+  try {
+    const allRows: Array<{
+      model_id: string;
+      lat_approx: number | null;
+      lng_approx: number | null;
+      share_approximate_location: boolean | null;
+      source: string;
+    }> = [];
+    for (let i = 0; i < unique.length; i += EFFECTIVE_CITY_BATCH) {
+      const chunk = unique.slice(i, i + EFFECTIVE_CITY_BATCH);
+      const { data, error } = await supabase
+        .from('model_locations')
+        .select('model_id, lat_approx, lng_approx, share_approximate_location, source')
+        .in('model_id', chunk);
+      if (error) {
+        console.error('fetchEffectiveApproxLocationsForModels error:', error);
+        continue;
+      }
+      allRows.push(
+        ...((data ?? []) as Array<{
+          model_id: string;
+          lat_approx: number | null;
+          lng_approx: number | null;
+          share_approximate_location: boolean | null;
+          source: string;
+        }>),
+      );
+    }
+    return mergeEffectiveApproxCoordsFromRows(allRows);
+  } catch (e) {
+    console.error('fetchEffectiveApproxLocationsForModels exception:', e);
     return new Map();
   }
 }
@@ -305,28 +393,28 @@ export async function getModelsNearLocation(
 
   try {
     const { data, error } = await supabase.rpc('get_models_near_location', {
-      p_lat:             roundCoord(clientLat),
-      p_lng:             roundCoord(clientLng),
-      p_radius_km:       radiusKm,
-      p_client_type:     clientType,
-      p_from:            0,
-      p_to:              NEAR_LOCATION_LIMIT - 1,
-      p_category:        category ?? null,
-      p_sports_winter:   sportsWinter ?? false,
-      p_sports_summer:   sportsSummer ?? false,
-      p_height_min:      f.heightMin      ?? null,
-      p_height_max:      f.heightMax      ?? null,
-      p_hair_color:      f.hairColor      ?? null,
-      p_hips_min:        f.hipsMin        ?? null,
-      p_hips_max:        f.hipsMax        ?? null,
-      p_waist_min:       f.waistMin       ?? null,
-      p_waist_max:       f.waistMax       ?? null,
-      p_chest_min:       f.chestMin       ?? null,
-      p_chest_max:       f.chestMax       ?? null,
-      p_legs_inseam_min: f.legsInseamMin  ?? null,
-      p_legs_inseam_max: f.legsInseamMax  ?? null,
-      p_sex:             f.sex            ?? null,
-      p_ethnicities:     f.ethnicities?.length ? f.ethnicities : null,
+      p_lat: roundCoord(clientLat),
+      p_lng: roundCoord(clientLng),
+      p_radius_km: radiusKm,
+      p_client_type: clientType,
+      p_from: 0,
+      p_to: NEAR_LOCATION_LIMIT - 1,
+      p_category: category ?? null,
+      p_sports_winter: sportsWinter ?? false,
+      p_sports_summer: sportsSummer ?? false,
+      p_height_min: f.heightMin ?? null,
+      p_height_max: f.heightMax ?? null,
+      p_hair_color: f.hairColor ?? null,
+      p_hips_min: f.hipsMin ?? null,
+      p_hips_max: f.hipsMax ?? null,
+      p_waist_min: f.waistMin ?? null,
+      p_waist_max: f.waistMax ?? null,
+      p_chest_min: f.chestMin ?? null,
+      p_chest_max: f.chestMax ?? null,
+      p_legs_inseam_min: f.legsInseamMin ?? null,
+      p_legs_inseam_max: f.legsInseamMax ?? null,
+      p_sex: f.sex ?? null,
+      p_ethnicities: f.ethnicities?.length ? f.ethnicities : null,
     });
     if (error) {
       console.error('getModelsNearLocation RPC error:', error);

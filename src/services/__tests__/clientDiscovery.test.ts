@@ -28,9 +28,15 @@ const localStorageMock = (() => {
   let store: Record<string, string> = {};
   return {
     getItem: (k: string) => store[k] ?? null,
-    setItem: (k: string, v: string) => { store[k] = v; },
-    removeItem: (k: string) => { delete store[k]; },
-    clear: () => { store = {}; },
+    setItem: (k: string, v: string) => {
+      store[k] = v;
+    },
+    removeItem: (k: string) => {
+      delete store[k];
+    },
+    clear: () => {
+      store = {};
+    },
   };
 })();
 
@@ -153,7 +159,10 @@ describe('getDiscoveryModels – book cooldown', () => {
 describe('getDiscoveryModels – score ordering', () => {
   it('service preserves DB-returned order (diversity shuffle stays within tiers)', async () => {
     // All same score → all tier1 → shuffle within tier, all still present
-    const models = [makeModel('a', { discovery_score: 50 }), makeModel('b', { discovery_score: 50 })];
+    const models = [
+      makeModel('a', { discovery_score: 50 }),
+      makeModel('b', { discovery_score: 50 }),
+    ];
     mockRpc.mockResolvedValueOnce({ data: models, error: null });
 
     const { models: result } = await getDiscoveryModels(ORG_ID, BASE_FILTERS);
@@ -163,8 +172,14 @@ describe('getDiscoveryModels – score ordering', () => {
   });
 
   it('tier1 models (score≥50) all appear before tier3 (score<0)', async () => {
-    const tier1 = [makeModel('t1', { discovery_score: 70 }), makeModel('t2', { discovery_score: 50 })];
-    const tier3 = [makeModel('t3', { discovery_score: -40 }), makeModel('t4', { discovery_score: -10 })];
+    const tier1 = [
+      makeModel('t1', { discovery_score: 70 }),
+      makeModel('t2', { discovery_score: 50 }),
+    ];
+    const tier3 = [
+      makeModel('t3', { discovery_score: -40 }),
+      makeModel('t4', { discovery_score: -10 }),
+    ];
     mockRpc.mockResolvedValueOnce({ data: [...tier1, ...tier3], error: null });
 
     const { models: result } = await getDiscoveryModels(ORG_ID, BASE_FILTERS);
@@ -172,7 +187,7 @@ describe('getDiscoveryModels – score ordering', () => {
     const tier1Ids = new Set(tier1.map((m) => m.id));
     const tier3Ids = new Set(tier3.map((m) => m.id));
     const firstTier3Index = result.findIndex((m) => tier3Ids.has(m.id));
-    const lastTier1Index  = result.reduce((acc, m, i) => (tier1Ids.has(m.id) ? i : acc), -1);
+    const lastTier1Index = result.reduce((acc, m, i) => (tier1Ids.has(m.id) ? i : acc), -1);
 
     expect(lastTier1Index).toBeLessThan(firstTier3Index);
   });
@@ -245,19 +260,28 @@ describe('recordInteraction', () => {
   it('calls record_client_interaction with "viewed"', async () => {
     mockRpc.mockResolvedValueOnce({ error: null });
     await recordInteraction('m1', 'viewed');
-    expect(mockRpc).toHaveBeenCalledWith('record_client_interaction', { p_model_id: 'm1', p_action: 'viewed' });
+    expect(mockRpc).toHaveBeenCalledWith('record_client_interaction', {
+      p_model_id: 'm1',
+      p_action: 'viewed',
+    });
   });
 
   it('calls record_client_interaction with "rejected"', async () => {
     mockRpc.mockResolvedValueOnce({ error: null });
     await recordInteraction('m2', 'rejected');
-    expect(mockRpc).toHaveBeenCalledWith('record_client_interaction', { p_model_id: 'm2', p_action: 'rejected' });
+    expect(mockRpc).toHaveBeenCalledWith('record_client_interaction', {
+      p_model_id: 'm2',
+      p_action: 'rejected',
+    });
   });
 
   it('calls record_client_interaction with "booked"', async () => {
     mockRpc.mockResolvedValueOnce({ error: null });
     await recordInteraction('m3', 'booked');
-    expect(mockRpc).toHaveBeenCalledWith('record_client_interaction', { p_model_id: 'm3', p_action: 'booked' });
+    expect(mockRpc).toHaveBeenCalledWith('record_client_interaction', {
+      p_model_id: 'm3',
+      p_action: 'booked',
+    });
   });
 
   it('does NOT throw on RPC error (non-client caller)', async () => {
@@ -275,7 +299,7 @@ describe('recordInteraction', () => {
 
 describe('DISCOVERY_WEIGHTS', () => {
   it('exports neverSeen=50', () => expect(DISCOVERY_WEIGHTS.neverSeen).toBe(50));
-  it('exports sameCity=30',  () => expect(DISCOVERY_WEIGHTS.sameCity).toBe(30));
+  it('exports sameCity=30', () => expect(DISCOVERY_WEIGHTS.sameCity).toBe(30));
   it('exports recentActive=20', () => expect(DISCOVERY_WEIGHTS.recentActive).toBe(20));
   it('exports seenPenalty=-10', () => expect(DISCOVERY_WEIGHTS.seenPenalty).toBe(-10));
   it('exports rejectedPenalty=-40', () => expect(DISCOVERY_WEIGHTS.rejectedPenalty).toBe(-40));
@@ -285,9 +309,7 @@ describe('DISCOVERY_WEIGHTS', () => {
 
 describe('recordInteraction – retry', () => {
   it('retries up to 2 times on exception and succeeds on second attempt', async () => {
-    mockRpc
-      .mockRejectedValueOnce(new Error('timeout'))
-      .mockResolvedValueOnce({ error: null });
+    mockRpc.mockRejectedValueOnce(new Error('timeout')).mockResolvedValueOnce({ error: null });
 
     await recordInteraction('m1', 'viewed');
 
@@ -366,8 +388,14 @@ describe('applyDiversityShuffle', () => {
   });
 
   it('all tier-1 models (score≥50) appear before tier-3 (score<0)', () => {
-    const tier1 = [makeModel('t1a', { discovery_score: 80 }), makeModel('t1b', { discovery_score: 50 })];
-    const tier3 = [makeModel('t3a', { discovery_score: -5 }), makeModel('t3b', { discovery_score: -40 })];
+    const tier1 = [
+      makeModel('t1a', { discovery_score: 80 }),
+      makeModel('t1b', { discovery_score: 50 }),
+    ];
+    const tier3 = [
+      makeModel('t3a', { discovery_score: -5 }),
+      makeModel('t3b', { discovery_score: -40 }),
+    ];
     const input = [...tier3, ...tier1]; // intentionally wrong order
     const result = applyDiversityShuffle(input);
 
@@ -429,7 +457,7 @@ describe('getDiscoveryModels – cursor pagination params', () => {
     await getDiscoveryModels(ORG_ID, BASE_FILTERS, cursor);
 
     expect(mockRpc.mock.calls[0][1]).toMatchObject({
-      p_cursor_score:    30,
+      p_cursor_score: 30,
       p_cursor_model_id: 'model-xyz',
     });
   });
@@ -440,7 +468,7 @@ describe('getDiscoveryModels – cursor pagination params', () => {
     await getDiscoveryModels(ORG_ID, BASE_FILTERS, null);
 
     expect(mockRpc.mock.calls[0][1]).toMatchObject({
-      p_cursor_score:    null,
+      p_cursor_score: null,
       p_cursor_model_id: null,
     });
   });
@@ -451,5 +479,24 @@ describe('getDiscoveryModels – cursor pagination params', () => {
     await getDiscoveryModels(ORG_ID, BASE_FILTERS);
 
     expect(mockRpc.mock.calls[0][1]).toMatchObject({ p_limit: DISCOVERY_PAGE_SIZE });
+  });
+
+  it('sends p_city and p_client_city on paginated (cursor) calls — parity with first page', async () => {
+    mockRpc.mockResolvedValueOnce({ data: [], error: null });
+
+    const cursor: DiscoveryCursor = { score: 30, modelId: 'model-xyz' };
+    const filters: DiscoveryFilters = {
+      ...BASE_FILTERS,
+      city: 'Munich',
+      clientCity: 'Berlin',
+    };
+    await getDiscoveryModels(ORG_ID, filters, cursor);
+
+    expect(mockRpc.mock.calls[0][1]).toMatchObject({
+      p_city: 'Munich',
+      p_client_city: 'Berlin',
+      p_cursor_score: 30,
+      p_cursor_model_id: 'model-xyz',
+    });
   });
 });

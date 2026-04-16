@@ -16,14 +16,16 @@ export function showConfirmAlert(
   message: string,
   onConfirm: () => void,
   confirmLabel = 'Confirm',
+  onCancel?: () => void,
 ): void {
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
     const body = message.trim() ? `${title}\n\n${message}` : title;
     if (window.confirm(body)) onConfirm();
+    else onCancel?.();
     return;
   }
   Alert.alert(title, message, [
-    { text: 'Cancel', style: 'cancel' },
+    { text: 'Cancel', style: 'cancel', onPress: onCancel },
     { text: confirmLabel, style: 'destructive', onPress: onConfirm },
   ]);
 }

@@ -5,6 +5,7 @@
  */
 import type { SupabaseModel } from '../services/modelsSupabase';
 import type { ModelApplication } from '../store/applicationsStore';
+import { canonicalDisplayCityForModel } from './canonicalModelCity';
 
 // ── Type ──────────────────────────────────────────────────────────────────────
 
@@ -198,12 +199,7 @@ export const ETHNICITY_OPTIONS: string[] = [
  * For the Client Discover view the distance calculation runs server-side
  * inside the get_models_near_location RPC.
  */
-export function haversineKm(
-  lat1: number,
-  lng1: number,
-  lat2: number,
-  lng2: number,
-): number {
+export function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371; // Earth radius in km
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLng = ((lng2 - lng1) * Math.PI) / 180;
@@ -239,7 +235,11 @@ export type ModelLocationPin = {
   city?: string | null;
 } | null;
 
-export type ModelWithOptionalLocation = SupabaseModel & { model_location?: ModelLocationPin };
+export type ModelWithOptionalLocation = SupabaseModel & {
+  model_location?: ModelLocationPin;
+  /** Roster/discovery batch: live>current>agency city (optional; improves canonical display/filter). */
+  effective_city?: string | null;
+};
 
 export function filterModels(
   models: ModelWithOptionalLocation[],
@@ -249,14 +249,21 @@ export function filterModels(
   userLng?: number | null,
   nearMeRadiusKm: number = 50,
 ): SupabaseModel[] {
-  const pInt = (v: string) => { const n = parseInt(v, 10); return isNaN(n) ? undefined : n; };
+  const pInt = (v: string) => {
+    const n = parseInt(v, 10);
+    return isNaN(n) ? undefined : n;
+  };
 
   return models.filter((m) => {
     const loc = m.model_location;
-    const displayCity = (loc?.city || m.city || '').trim();
+    const displayCity = canonicalDisplayCityForModel({
+      effective_city: m.effective_city ?? null,
+      city: m.city ?? null,
+      location_city: loc?.city ?? null,
+    });
 
     // ── Sex ──
-    if (filters.sex === 'male'   && m.sex !== 'male')   return false;
+    if (filters.sex === 'male' && m.sex !== 'male') return false;
     if (filters.sex === 'female' && m.sex !== 'female') return false;
 
     // ── Height (numeric range) ──
@@ -268,7 +275,8 @@ export function filterModels(
     // ── Country (ISO-2 code) ──
     if (filters.countryCode) {
       // Only filter if model has a country_code set; older records may be null.
-      if (m.country_code && m.country_code.toUpperCase() !== filters.countryCode.toUpperCase()) return false;
+      if (m.country_code && m.country_code.toUpperCase() !== filters.countryCode.toUpperCase())
+        return false;
     }
 
     // ── City (substring) — only when a country is also selected ──
@@ -281,7 +289,12 @@ export function filterModels(
     // Priority 1: radius-based using model_location coordinates (when available)
     // Priority 2: city-substring fallback (when coordinates not available)
     if (filters.nearby) {
-      if (userLat != null && userLng != null && loc?.lat_approx != null && loc?.lng_approx != null) {
+      if (
+        userLat != null &&
+        userLng != null &&
+        loc?.lat_approx != null &&
+        loc?.lng_approx != null
+      ) {
         const dist = haversineKm(userLat, userLng, loc.lat_approx, loc.lng_approx);
         if (dist > nearMeRadiusKm) return false;
       } else if (userCity) {
@@ -291,7 +304,8 @@ export function filterModels(
 
     // ── Hair color (case-insensitive substring) ──
     if (filters.hairColor.trim()) {
-      if (!(m.hair_color || '').toLowerCase().includes(filters.hairColor.trim().toLowerCase())) return false;
+      if (!(m.hair_color || '').toLowerCase().includes(filters.hairColor.trim().toLowerCase()))
+        return false;
     }
 
     // ── Measurements ──
@@ -305,14 +319,14 @@ export function filterModels(
     const legsMax = pInt(filters.legsInseamMax);
     const chestVal = m.chest ?? m.bust;
 
-    if (hipsMin !== undefined  && (m.hips  == null || m.hips  < hipsMin))  return false;
-    if (hipsMax !== undefined  && (m.hips  == null || m.hips  > hipsMax))  return false;
+    if (hipsMin !== undefined && (m.hips == null || m.hips < hipsMin)) return false;
+    if (hipsMax !== undefined && (m.hips == null || m.hips > hipsMax)) return false;
     if (waistMin !== undefined && (m.waist == null || m.waist < waistMin)) return false;
     if (waistMax !== undefined && (m.waist == null || m.waist > waistMax)) return false;
     if (chestMin !== undefined && (chestVal == null || chestVal < chestMin)) return false;
     if (chestMax !== undefined && (chestVal == null || chestVal > chestMax)) return false;
-    if (legsMin !== undefined  && (m.legs_inseam == null || m.legs_inseam < legsMin)) return false;
-    if (legsMax !== undefined  && (m.legs_inseam == null || m.legs_inseam > legsMax)) return false;
+    if (legsMin !== undefined && (m.legs_inseam == null || m.legs_inseam < legsMin)) return false;
+    if (legsMax !== undefined && (m.legs_inseam == null || m.legs_inseam > legsMax)) return false;
 
     // ── Category ──
     if (filters.category) {
@@ -333,7 +347,8 @@ export function filterModels(
     if (filters.sportsSummer && !m.is_sports_summer) return false;
 
     // ── Ethnicity (multi-select; [] = show all) ──
-    if (filters.ethnicities.length > 0 && !filters.ethnicities.includes(m.ethnicity ?? '')) return false;
+    if (filters.ethnicities.length > 0 && !filters.ethnicities.includes(m.ethnicity ?? ''))
+      return false;
 
     return true;
   });
@@ -358,7 +373,7 @@ export function filterApplicationsByModelFilters(
 ): ModelApplication[] {
   return apps.filter((app) => {
     // ── Sex / Gender ──
-    if (filters.sex === 'male'   && app.gender !== 'male')   return false;
+    if (filters.sex === 'male' && app.gender !== 'male') return false;
     if (filters.sex === 'female' && app.gender !== 'female') return false;
 
     // ── Height (numeric range) ──
@@ -370,7 +385,8 @@ export function filterApplicationsByModelFilters(
 
     // ── Hair color (substring, case-insensitive) ──
     if (filters.hairColor.trim()) {
-      if (!(app.hairColor ?? '').toLowerCase().includes(filters.hairColor.trim().toLowerCase())) return false;
+      if (!(app.hairColor ?? '').toLowerCase().includes(filters.hairColor.trim().toLowerCase()))
+        return false;
     }
 
     // ── City (substring, case-insensitive; no countryCode dependency) ──
@@ -379,7 +395,8 @@ export function filterApplicationsByModelFilters(
     }
 
     // ── Ethnicity (multi-select; [] = show all) ──
-    if (filters.ethnicities.length > 0 && !filters.ethnicities.includes(app.ethnicity ?? '')) return false;
+    if (filters.ethnicities.length > 0 && !filters.ethnicities.includes(app.ethnicity ?? ''))
+      return false;
 
     return true;
   });

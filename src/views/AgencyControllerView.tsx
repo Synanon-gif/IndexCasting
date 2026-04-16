@@ -117,10 +117,12 @@ import {
   upsertModelLocation,
   getModelLocation,
   fetchEffectiveDisplayCitiesForModels,
+  fetchEffectiveApproxLocationsForModels,
   locationSourceLabel,
   roundCoord,
   type ModelLocation,
 } from '../services/modelLocationsSupabase';
+import { useNearMeClientLocation } from '../hooks/useNearMeClientLocation';
 import { canonicalDisplayCityForModel } from '../utils/canonicalModelCity';
 import { describeSendInviteFailure, resendInviteEmail } from '../services/inviteDelivery';
 
@@ -2777,10 +2779,22 @@ const MyModelsTab: React.FC<{
   const [selectedModel, setSelectedModel] = useState<SupabaseModel | null>(null);
   const [selectedModelLocation, setSelectedModelLocation] = useState<ModelLocation | null>(null);
   const [filters, setFilters] = useState<ModelFilters>(defaultModelFilters);
+  const declineNearby = useCallback(() => {
+    setFilters((prev) => ({ ...prev, nearby: false }));
+  }, []);
+  const {
+    userLat: rosterNearLat,
+    userLng: rosterNearLng,
+    userCity: rosterNearUserCity,
+  } = useNearMeClientLocation(filters.nearby, declineNearby);
   /** Batched live>current>agency display city for roster filter + labels (parity with discovery). */
   const [rosterEffectiveCityById, setRosterEffectiveCityById] = useState<Map<string, string>>(
     () => new Map(),
   );
+  /** Winning shared lat/lng per model when Near me + booker coords (parity with get_models_near_location). */
+  const [rosterApproxCoordsById, setRosterApproxCoordsById] = useState<
+    Map<string, { lat_approx: number; lng_approx: number }>
+  >(() => new Map());
   const [rosterNameSearch, setRosterNameSearch] = useState('');
   const [rosterViewMode, setRosterViewMode] = useState<'list' | 'gallery'>('list');
   const [editState, setEditState] = useState<ModelEditState>(buildEditState({ name: '' }));
@@ -2870,20 +2884,36 @@ const MyModelsTab: React.FC<{
     };
   }, [models]);
 
+  useEffect(() => {
+    if (!filters.nearby || rosterNearLat == null || rosterNearLng == null || !models.length) {
+      setRosterApproxCoordsById(new Map());
+      return;
+    }
+    let cancelled = false;
+    void fetchEffectiveApproxLocationsForModels(models.map((m) => m.id)).then((map) => {
+      if (!cancelled) setRosterApproxCoordsById(map);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [filters.nearby, rosterNearLat, rosterNearLng, models]);
+
   const modelsWithLocPin = useMemo((): ModelWithOptionalLocation[] => {
     return models.map((m) => {
-      const eff = rosterEffectiveCityById.get(m.id);
-      if (!eff?.trim()) return m as ModelWithOptionalLocation;
+      const eff = rosterEffectiveCityById.get(m.id)?.trim() ?? '';
+      const approx = rosterApproxCoordsById.get(m.id);
+      if (!eff && !approx) return m as ModelWithOptionalLocation;
       return {
         ...m,
+        effective_city: eff || null,
         model_location: {
-          city: eff,
-          lat_approx: null,
-          lng_approx: null,
+          city: eff || null,
+          lat_approx: approx?.lat_approx ?? null,
+          lng_approx: approx?.lng_approx ?? null,
         },
       } as ModelWithOptionalLocation;
     });
-  }, [models, rosterEffectiveCityById]);
+  }, [models, rosterEffectiveCityById, rosterApproxCoordsById]);
 
   // Auto-select model when arriving from GlobalSearch deep-link.
   // Depends on `models` so it retries when the roster loads after the ID is set.
@@ -3107,11 +3137,24 @@ const MyModelsTab: React.FC<{
   }, [isoCountryList, territorySearch]);
 
   const filtered = useMemo(() => {
-    const base = filterModels(modelsWithLocPin, filters);
+    const base = filterModels(
+      modelsWithLocPin,
+      filters,
+      rosterNearUserCity ?? undefined,
+      rosterNearLat,
+      rosterNearLng,
+    );
     const q = rosterNameSearch.trim().toLowerCase();
     if (!q) return base;
     return base.filter((m) => (m.name ?? '').toLowerCase().includes(q));
-  }, [modelsWithLocPin, filters, rosterNameSearch]);
+  }, [
+    modelsWithLocPin,
+    filters,
+    rosterNameSearch,
+    rosterNearUserCity,
+    rosterNearLat,
+    rosterNearLng,
+  ]);
 
   useEffect(() => {
     setSaveFeedback(null);
@@ -8119,9 +8162,20 @@ const GuestLinksTab: React.FC<{
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [packageModelFilters, setPackageModelFilters] = useState<ModelFilters>(defaultModelFilters);
+  const declinePackageNearby = useCallback(() => {
+    setPackageModelFilters((prev) => ({ ...prev, nearby: false }));
+  }, []);
+  const {
+    userLat: packageNearLat,
+    userLng: packageNearLng,
+    userCity: packageNearUserCity,
+  } = useNearMeClientLocation(packageModelFilters.nearby, declinePackageNearby);
   const [packageEffectiveCityById, setPackageEffectiveCityById] = useState<Map<string, string>>(
     () => new Map(),
   );
+  const [packageApproxCoordsById, setPackageApproxCoordsById] = useState<
+    Map<string, { lat_approx: number; lng_approx: number }>
+  >(() => new Map());
 
   useEffect(() => {
     if (!models.length) {
@@ -8137,24 +8191,58 @@ const GuestLinksTab: React.FC<{
     };
   }, [models]);
 
+  useEffect(() => {
+    if (
+      !packageModelFilters.nearby ||
+      packageNearLat == null ||
+      packageNearLng == null ||
+      !models.length
+    ) {
+      setPackageApproxCoordsById(new Map());
+      return;
+    }
+    let cancelled = false;
+    void fetchEffectiveApproxLocationsForModels(models.map((m) => m.id)).then((map) => {
+      if (!cancelled) setPackageApproxCoordsById(map);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [packageModelFilters.nearby, packageNearLat, packageNearLng, models]);
+
   const packageModelsWithLocPin = useMemo((): ModelWithOptionalLocation[] => {
     return models.map((m) => {
-      const eff = packageEffectiveCityById.get(m.id);
-      if (!eff?.trim()) return m as ModelWithOptionalLocation;
+      const eff = packageEffectiveCityById.get(m.id)?.trim() ?? '';
+      const approx = packageApproxCoordsById.get(m.id);
+      if (!eff && !approx) return m as ModelWithOptionalLocation;
       return {
         ...m,
+        effective_city: eff || null,
         model_location: {
-          city: eff,
-          lat_approx: null,
-          lng_approx: null,
+          city: eff || null,
+          lat_approx: approx?.lat_approx ?? null,
+          lng_approx: approx?.lng_approx ?? null,
         },
       } as ModelWithOptionalLocation;
     });
-  }, [models, packageEffectiveCityById]);
+  }, [models, packageEffectiveCityById, packageApproxCoordsById]);
 
   const filteredPackageModels = useMemo(
-    () => filterModels(packageModelsWithLocPin, packageModelFilters),
-    [packageModelsWithLocPin, packageModelFilters],
+    () =>
+      filterModels(
+        packageModelsWithLocPin,
+        packageModelFilters,
+        packageNearUserCity ?? undefined,
+        packageNearLat,
+        packageNearLng,
+      ),
+    [
+      packageModelsWithLocPin,
+      packageModelFilters,
+      packageNearUserCity,
+      packageNearLat,
+      packageNearLng,
+    ],
   );
 
   // Package list

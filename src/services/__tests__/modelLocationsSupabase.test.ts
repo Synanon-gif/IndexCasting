@@ -37,6 +37,7 @@ import {
   deleteModelLocation,
   getModelsNearLocation,
   mergeEffectiveDisplayCitiesFromRows,
+  mergeEffectiveApproxCoordsFromRows,
 } from '../modelLocationsSupabase';
 
 // ── mergeEffectiveDisplayCitiesFromRows ───────────────────────────────────────
@@ -72,6 +73,64 @@ describe('mergeEffectiveDisplayCitiesFromRows', () => {
       { model_id: 'd', city: 'ModelTypedCity', source: 'current' },
     ]);
     expect(m.get('d')).toBe('ModelTypedCity');
+  });
+});
+
+// ── mergeEffectiveApproxCoordsFromRows ────────────────────────────────────────
+
+describe('mergeEffectiveApproxCoordsFromRows', () => {
+  it('prefers live coords over current when both shared', () => {
+    const m = mergeEffectiveApproxCoordsFromRows([
+      {
+        model_id: 'a',
+        source: 'agency',
+        lat_approx: 1,
+        lng_approx: 1,
+        share_approximate_location: true,
+      },
+      {
+        model_id: 'a',
+        source: 'current',
+        lat_approx: 2,
+        lng_approx: 2,
+        share_approximate_location: true,
+      },
+      {
+        model_id: 'a',
+        source: 'live',
+        lat_approx: 3,
+        lng_approx: 3,
+        share_approximate_location: true,
+      },
+    ]);
+    expect(m.get('a')).toEqual({ lat_approx: 3, lng_approx: 3 });
+  });
+
+  it('ignores rows without share_approximate_location or missing coords', () => {
+    const m = mergeEffectiveApproxCoordsFromRows([
+      {
+        model_id: 'b',
+        source: 'live',
+        lat_approx: 10,
+        lng_approx: 10,
+        share_approximate_location: false,
+      },
+      {
+        model_id: 'b',
+        source: 'agency',
+        lat_approx: null,
+        lng_approx: 5,
+        share_approximate_location: true,
+      },
+      {
+        model_id: 'b',
+        source: 'current',
+        lat_approx: 4,
+        lng_approx: 4,
+        share_approximate_location: true,
+      },
+    ]);
+    expect(m.get('b')).toEqual({ lat_approx: 4, lng_approx: 4 });
   });
 });
 

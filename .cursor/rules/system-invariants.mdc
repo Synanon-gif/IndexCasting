@@ -1433,7 +1433,7 @@ City-Filter MUSS in **allen** Discovery-Pfaden **dieselbe Semantik** haben: case
 | Pfad | RPC | City-Filter | Status |
 |------|-----|-------------|--------|
 | **Ranked Discovery** | `get_discovery_models` | `p_city` = harter Substring-Filter auf `effective_city` + `p_client_city` = Scoring-Boost | Kanonisch (Migration 20260413) |
-| **Legacy Location** | `get_models_by_location` | `p_city` = Substring auf `models.city` OR `model_locations.city` | Legacy, konsistent genug |
+| **Legacy Location** | `get_models_by_location` | `p_city` = Substring auf **gewinnender** `model_locations.city` (live>current>agency) sonst `models.city` — Parität zu Discovery (`20260825`) | Kanonisch |
 | **Near Me** | `get_models_near_location` | Kein City-Filter (Radius-basiert) | By design |
 | **Swipe Legacy** | `getModelsPagedFromSupabase` | PostgREST `ilike` auf `models.city` | Legacy-Fallback |
 
@@ -1450,6 +1450,10 @@ const discoveryFilters = {
   // ...
 };
 ```
+
+**Ranked discovery pagination:** Jeder `getDiscoveryModels`-Aufruf inkl. Cursor/Load-more MUSS `city` und `clientCity` wie die erste Seite mitsenden — sonst verletzt Seite 2+ den City-Filter bzw. den Boost.
+
+**Agency roster Near Me:** Wenn Nearby aktiv und User-Koordinaten vorliegen, müssen pro Model die **effektiven** geteilten Approx-Koordinaten (live>current>agency, wie `get_models_near_location`) per Batch geladen und an `filterModels` übergeben werden — reine Stadt-Pins allein reichen für Haversine nicht.
 
 **Verboten:**
 ```typescript

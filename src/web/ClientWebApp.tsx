@@ -1179,6 +1179,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
           {
             countryCode: countryIso,
             clientCity: userCity ?? null,
+            city: filters.city.trim() || null,
             category: effectiveCategory ?? null,
             sportsWinter: filters.sportsWinter || false,
             sportsSummer: filters.sportsSummer || false,
@@ -1240,6 +1241,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     filters.chestMax,
     filters.legsInseamMin,
     filters.legsInseamMax,
+    filters.city,
     models.length,
   ]);
 

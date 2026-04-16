@@ -23,6 +23,7 @@ import {
   type SharedSelectionModel,
 } from '../services/sharedSelectionSupabase';
 import { uiCopy } from '../constants/uiCopy';
+import { canonicalDisplayCityForModel } from '../utils/canonicalModelCity';
 import { isMobileWidth } from '../theme/breakpoints';
 import { PdfExportModal } from '../components/PdfExportModal';
 import type { PdfModelInput } from '../utils/pdfExport';
@@ -84,10 +85,10 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
         setLoadError(false);
         const list: SharedModel[] = result.data.map((m: SharedSelectionModel) => {
           const chestVal = m.chest ?? m.bust ?? null;
-          const cityLine =
-            (typeof m.effective_city === 'string' && m.effective_city.trim()) ||
-            (typeof m.city === 'string' && m.city.trim()) ||
-            '';
+          const cityLine = canonicalDisplayCityForModel({
+            effective_city: m.effective_city,
+            city: m.city,
+          });
           const allUrls = m.portfolio_images ?? [];
           return {
             id: m.id,
