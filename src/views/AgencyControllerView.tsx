@@ -260,6 +260,7 @@ import {
   filterUnifiedAgencyCalendarRows,
   buildEventsByDateFromUnifiedRows,
   dedupeUnifiedRowsByOptionRequest,
+  preferJobBookingOverOptionRows,
   type AgencyCalendarTypeFilter,
   type AgencyCalendarAssigneeFilter,
   type AgencyCalendarClientScopeFilter,
@@ -2476,12 +2477,14 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
 
   const unifiedAll = useMemo(
     () =>
-      buildUnifiedAgencyCalendarRows(
-        items,
-        bookingEventEntries,
-        manualEvents,
-        assignmentByClientOrgId,
-        itemByOptionId,
+      preferJobBookingOverOptionRows(
+        buildUnifiedAgencyCalendarRows(
+          items,
+          bookingEventEntries,
+          manualEvents,
+          assignmentByClientOrgId,
+          itemByOptionId,
+        ),
       ),
     [items, bookingEventEntries, manualEvents, assignmentByClientOrgId, itemByOptionId],
   );

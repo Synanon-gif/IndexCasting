@@ -201,30 +201,35 @@ export function buildUnifiedAgencyCalendarRows(
   const bookingRows: UnifiedAgencyCalendarRow[] = [];
   for (const be of bookingEventEntries) {
     const beDate = be.date ?? '';
-    // L1: option_request_id exact match
-    if (be.option_request_id && coveredOptionIds.has(be.option_request_id)) continue;
-    // L2: date + model_id composite
-    if (be.model_id && beDate && coveredDateModelPairs.has(`${beDate}|${be.model_id}`)) continue;
-    // L3: date + model name (from booking title or CalendarEntry title)
-    const beName = (be.title ?? '').trim().toLowerCase();
-    if (beName && beDate && coveredDateModelNames.has(`${beDate}|${beName}`)) continue;
-    // L4: stripped name match (removes "Option – ", " – option", etc.)
-    if (beName && beDate) {
-      const stripped = stripLifecycleAffixes(beName);
-      if (stripped && coveredDateModelNames.has(`${beDate}|${stripped}`)) continue;
-      if (stripped && coveredDateStrippedNames.has(`${beDate}|${stripped}`)) continue;
-    }
-    // L5: check if any option row's model_name appears inside the booking title
-    if (beName && beDate && datesWithOptions.has(beDate)) {
-      const dateNames = namesByDate.get(beDate);
-      if (dateNames?.some((n) => n && beName.includes(n))) continue;
-    }
-    // L6: stripped booking name is substring of any option model_name (reverse)
-    if (beName && beDate && datesWithOptions.has(beDate)) {
-      const stripped = stripLifecycleAffixes(beName);
-      if (stripped) {
-        const dateNames = namesByDate.get(beDate);
-        if (dateNames?.some((n) => n && n.includes(stripped))) continue;
+    /** Job rows from `booking_events` must survive L1–L6 so `preferJobBookingOverOptionRows` can drop the option tile. */
+    const bypassLifecycleDedup = be.entry_type === 'booking' && Boolean(be.option_request_id);
+
+    if (!bypassLifecycleDedup) {
+      // L1: option_request_id exact match
+      if (be.option_request_id && coveredOptionIds.has(be.option_request_id)) continue;
+      // L2: date + model_id composite
+      if (be.model_id && beDate && coveredDateModelPairs.has(`${beDate}|${be.model_id}`)) continue;
+      // L3: date + model name (from booking title or CalendarEntry title)
+      const beName0 = (be.title ?? '').trim().toLowerCase();
+      if (beName0 && beDate && coveredDateModelNames.has(`${beDate}|${beName0}`)) continue;
+      // L4: stripped name match (removes "Option – ", " – option", etc.)
+      if (beName0 && beDate) {
+        const stripped0 = stripLifecycleAffixes(beName0);
+        if (stripped0 && coveredDateModelNames.has(`${beDate}|${stripped0}`)) continue;
+        if (stripped0 && coveredDateStrippedNames.has(`${beDate}|${stripped0}`)) continue;
+      }
+      // L5: check if any option row's model_name appears inside the booking title
+      if (beName0 && beDate && datesWithOptions.has(beDate)) {
+        const dateNames0 = namesByDate.get(beDate);
+        if (dateNames0?.some((n) => n && beName0.includes(n))) continue;
+      }
+      // L6: stripped booking name is substring of any option model_name (reverse)
+      if (beName0 && beDate && datesWithOptions.has(beDate)) {
+        const stripped0 = stripLifecycleAffixes(beName0);
+        if (stripped0) {
+          const dateNames0 = namesByDate.get(beDate);
+          if (dateNames0?.some((n) => n && n.includes(stripped0))) continue;
+        }
       }
     }
 

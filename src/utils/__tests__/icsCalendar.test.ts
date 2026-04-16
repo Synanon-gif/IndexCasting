@@ -189,4 +189,38 @@ describe('icsEventsFromExportPayload', () => {
     expect(evs[0].startTime).toBeNull();
     expect(evs[0].endTime).toBeNull();
   });
+
+  it('dedupes by optionRequestId keeping lowest sourcePriority (job over mirror)', () => {
+    const optId = '22222222-2222-2222-2222-222222222222';
+    const raw = {
+      events: [
+        {
+          kind: 'user_calendar_events',
+          id: '11111111-1111-1111-1111-111111111111',
+          title: 'Mirror option',
+          description: '',
+          date: '2026-04-20',
+          startTime: '09:00',
+          endTime: '10:00',
+          optionRequestId: optId,
+          sourcePriority: 3,
+        },
+        {
+          kind: 'calendar_entries',
+          id: '33333333-3333-3333-3333-333333333333',
+          title: 'Job – Client',
+          description: '',
+          date: '2026-04-20',
+          startTime: '09:00',
+          endTime: '10:00',
+          optionRequestId: optId,
+          sourcePriority: 1,
+        },
+      ],
+    };
+    const evs = icsEventsFromExportPayload(raw);
+    expect(evs).toHaveLength(1);
+    expect(evs[0].title).toBe('Job – Client');
+    expect(evs[0].uid).toBe(`opt:${optId}`);
+  });
 });

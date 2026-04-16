@@ -5,6 +5,7 @@ import {
   buildUnifiedAgencyCalendarRows,
   dedupeUnifiedRowsByOptionRequest,
   filterUnifiedAgencyCalendarRows,
+  preferJobBookingOverOptionRows,
 } from '../agencyCalendarUnified';
 
 function minimalOption(overrides: Partial<SupabaseOptionRequest>): SupabaseOptionRequest {
@@ -108,7 +109,7 @@ describe('buildUnifiedAgencyCalendarRows — user_calendar_events mirror dedupe'
     expect(rows.filter((r) => r.kind === 'manual')).toHaveLength(0);
   });
 
-  it('still suppresses mirror when a booking_events-derived row exists for same option', () => {
+  it('prefers job booking row over option row when booking_events-derived entry exists', () => {
     const optId = 'opt-dedupe-b';
     const opt = minimalOption({ id: optId });
     const item: AgencyCalendarItem = {
@@ -134,15 +135,11 @@ describe('buildUnifiedAgencyCalendarRows — user_calendar_events mirror dedupe'
       created_at: new Date().toISOString(),
       option_request_id: optId,
     };
-    const rows = buildUnifiedAgencyCalendarRows(
-      [item],
-      [beEntry],
-      [mirror],
-      {},
-      itemByOptionId([item]),
+    const rows = preferJobBookingOverOptionRows(
+      buildUnifiedAgencyCalendarRows([item], [beEntry], [mirror], {}, itemByOptionId([item])),
     );
-    expect(rows.filter((r) => r.kind === 'option')).toHaveLength(1);
-    expect(rows.filter((r) => r.kind === 'booking')).toHaveLength(0);
+    expect(rows.filter((r) => r.kind === 'option')).toHaveLength(0);
+    expect(rows.filter((r) => r.kind === 'booking')).toHaveLength(1);
     expect(rows.filter((r) => r.kind === 'manual')).toHaveLength(0);
   });
 

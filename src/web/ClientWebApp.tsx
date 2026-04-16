@@ -146,6 +146,7 @@ import {
   clientAcceptCounterStore,
   clientConfirmJobStore,
   agencyConfirmJobAgencyOnlyStore,
+  resetOptionRequestsStore,
   type ChatStatus,
 } from '../store/optionRequests';
 import { subscribeToOptionMessages } from '../services/optionRequestsSupabase';
@@ -195,6 +196,7 @@ import {
   filterUnifiedAgencyCalendarRows,
   buildEventsByDateFromUnifiedRows,
   dedupeUnifiedRowsByOptionRequest,
+  preferJobBookingOverOptionRows,
   type AgencyCalendarTypeFilter,
   type UnifiedAgencyCalendarRow,
 } from '../utils/agencyCalendarUnified';
@@ -990,6 +992,22 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       setCalendarLoading(false);
     }
   };
+
+  /** Clear local client workspace state after org dissolve (avoid ghost lists; DB may retain rows). */
+  const clearClientWorkspaceAfterOrgDissolved = useCallback(() => {
+    resetOptionRequestsStore();
+    setProjects([]);
+    saveClientProjects([]);
+    saveClientActiveProjectId(null);
+    setCalendarItems([]);
+    setManualCalendarEvents([]);
+    setBookingEventEntries([]);
+    setSelectedCalendarItem(null);
+    setSelectedManualEvent(null);
+    setAssignmentByClientOrgId({});
+    setResolvedClientOrgDisplayName(null);
+    setClientOrgId(null);
+  }, []);
 
   useEffect(() => {
     if (tab === 'calendar') {
@@ -3429,7 +3447,11 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       )}
 
       {settingsOpen && (
-        <SettingsPanel realClientId={realClientId} onClose={() => setSettingsOpen(false)} />
+        <SettingsPanel
+          realClientId={realClientId}
+          onClose={() => setSettingsOpen(false)}
+          onOrganizationDissolved={clearClientWorkspaceAfterOrgDissolved}
+        />
       )}
 
       {clientIsMobile ? (
@@ -4398,12 +4420,14 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
 
   const unifiedAll = useMemo(
     () =>
-      buildUnifiedAgencyCalendarRows(
-        items as AgencyCalendarItem[],
-        bookingEventEntries,
-        manualEvents,
-        assignmentByClientOrgId,
-        itemByOptionId,
+      preferJobBookingOverOptionRows(
+        buildUnifiedAgencyCalendarRows(
+          items as AgencyCalendarItem[],
+          bookingEventEntries,
+          manualEvents,
+          assignmentByClientOrgId,
+          itemByOptionId,
+        ),
       ),
     [items, bookingEventEntries, manualEvents, assignmentByClientOrgId, itemByOptionId],
   );
@@ -7608,10 +7632,11 @@ const ProjectPicker: React.FC<ProjectPickerProps> = ({
   );
 };
 
-const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void }> = ({
-  realClientId,
-  onClose,
-}) => {
+const SettingsPanel: React.FC<{
+  realClientId: string | null;
+  onClose: () => void;
+  onOrganizationDissolved?: () => void;
+}> = ({ realClientId, onClose, onOrganizationDissolved }) => {
   const { signOut, profile, updateDisplayName, refreshProfile } = useAuth();
   const [displayName, setDisplayName] = useState('');
   const [companyName, setCompanyName] = useState('');
@@ -7695,6 +7720,14 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
   };
 
   const handleRequestAccountDeletion = () => {
+    if (!profile?.id) {
+      showAppAlert(uiCopy.common.error, uiCopy.accountDeletion.failed);
+      return;
+    }
+    if (!clientIsOwner) {
+      showAppAlert(uiCopy.common.error, uiCopy.accountDeletion.ownerOnly);
+      return;
+    }
     showConfirmAlert(
       uiCopy.accountDeletion.confirmTitle,
       uiCopy.accountDeletion.confirmMessage,
@@ -7715,8 +7748,12 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
           if (res.reason === 'not_owner') {
             showAppAlert(uiCopy.common.error, uiCopy.accountDeletion.ownerOnly);
           } else {
+            console.error('[SettingsPanel] requestAccountDeletion failed', res.reason);
             showAppAlert(uiCopy.common.error, uiCopy.accountDeletion.failed);
           }
+        } catch (e) {
+          console.error('[SettingsPanel] requestAccountDeletion error:', e);
+          showAppAlert(uiCopy.common.error, uiCopy.accountDeletion.failed);
         } finally {
           setDeleting(false);
         }
@@ -7726,6 +7763,10 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
   };
 
   const handleRequestPersonalAccountDeletion = () => {
+    if (!profile?.id) {
+      showAppAlert(uiCopy.common.error, uiCopy.accountDeletion.failed);
+      return;
+    }
     showConfirmAlert(
       uiCopy.accountDeletion.personalDeleteConfirmTitle,
       uiCopy.accountDeletion.personalDeleteConfirmMessage,
@@ -7743,6 +7784,10 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
             await signOut();
             return;
           }
+          console.error('[SettingsPanel] requestPersonalAccountDeletion failed');
+          showAppAlert(uiCopy.common.error, uiCopy.accountDeletion.failed);
+        } catch (e) {
+          console.error('[SettingsPanel] requestPersonalAccountDeletion error:', e);
           showAppAlert(uiCopy.common.error, uiCopy.accountDeletion.failed);
         } finally {
           setDeleting(false);
@@ -7753,7 +7798,14 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
   };
 
   const handleDissolveOrganization = () => {
-    if (!clientOrgId) return;
+    if (!clientOrgId) {
+      showAppAlert(uiCopy.common.error, messageForDissolveOrganizationError('not_authenticated'));
+      return;
+    }
+    if (!clientIsOwner) {
+      showAppAlert(uiCopy.common.error, messageForDissolveOrganizationError('forbidden_not_owner'));
+      return;
+    }
     showConfirmAlert(
       uiCopy.accountDeletion.dissolveOrgConfirmTitle,
       uiCopy.accountDeletion.dissolveOrgConfirmMessage,
@@ -7763,14 +7815,19 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
           const result = await dissolveOrganization(clientOrgId);
           if (result.ok) {
             setOrgDissolved(true);
+            onOrganizationDissolved?.();
             void refreshProfile();
             showAppAlert(
               uiCopy.accountDeletion.dissolveOrgTitle,
               uiCopy.accountDeletion.dissolveOrgSuccess,
             );
           } else {
+            console.error('[SettingsPanel] dissolveOrganization failed:', result.error);
             showAppAlert(uiCopy.common.error, messageForDissolveOrganizationError(result.error));
           }
+        } catch (e) {
+          console.error('[SettingsPanel] dissolveOrganization error:', e);
+          showAppAlert(uiCopy.common.error, uiCopy.accountDeletion.dissolveOrgFailed);
         } finally {
           setDissolvingOrg(false);
         }

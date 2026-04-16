@@ -142,12 +142,30 @@ export function buildIcsCalendar(events: IcsCalendarEventInput[], opts?: { calNa
   return [...header, ...body, 'END:VCALENDAR'].join(CRLF);
 }
 
+type ParsedExportRow = {
+  kind: string;
+  id: string;
+  optionRequestId: string | null;
+  sourcePriority: number;
+  date: string;
+  title: string;
+  description: string;
+  startTime: string | null;
+  endTime: string | null;
+};
+
+function kindTiePriority(kind: string): number {
+  return kind === 'calendar_entries' ? 0 : 1;
+}
+
+/** Keep in sync with src/utils/icsCalendar.ts */
 export function icsEventsFromExportPayload(raw: unknown): IcsCalendarEventInput[] {
   if (!raw || typeof raw !== 'object') return [];
   const o = raw as Record<string, unknown>;
   const events = o.events;
   if (!Array.isArray(events)) return [];
-  const out: IcsCalendarEventInput[] = [];
+
+  const parsed: ParsedExportRow[] = [];
   for (const row of events) {
     if (!row || typeof row !== 'object') continue;
     const r = row as Record<string, unknown>;
@@ -156,14 +174,64 @@ export function icsEventsFromExportPayload(raw: unknown): IcsCalendarEventInput[
     if (!id) continue;
     const date = String(r.date ?? '');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
-    out.push({
-      uid: `${kind}-${id}`,
+
+    const optRaw = r.optionRequestId ?? r.option_request_id;
+    const optionRequestId =
+      optRaw != null && String(optRaw).trim() !== '' ? String(optRaw) : null;
+
+    let sourcePriority = 99;
+    const pr = r.sourcePriority;
+    if (typeof pr === 'number' && Number.isFinite(pr)) sourcePriority = pr;
+
+    parsed.push({
+      kind,
+      id,
+      optionRequestId,
+      sourcePriority,
+      date,
       title: String(r.title ?? 'Event'),
       description: String(r.description ?? ''),
-      date,
       startTime: r.startTime != null ? String(r.startTime) : null,
       endTime: r.endTime != null ? String(r.endTime) : null,
     });
   }
-  return out;
+
+  const byOption = new Map<string, ParsedExportRow>();
+  const standalone: ParsedExportRow[] = [];
+
+  for (const p of parsed) {
+    if (!p.optionRequestId) {
+      standalone.push(p);
+      continue;
+    }
+    const cur = byOption.get(p.optionRequestId);
+    if (!cur) {
+      byOption.set(p.optionRequestId, p);
+      continue;
+    }
+    if (p.sourcePriority < cur.sourcePriority) {
+      byOption.set(p.optionRequestId, p);
+    } else if (p.sourcePriority === cur.sourcePriority) {
+      const kt = kindTiePriority(p.kind) - kindTiePriority(cur.kind);
+      if (kt < 0) byOption.set(p.optionRequestId, p);
+      else if (kt === 0 && p.id > cur.id) byOption.set(p.optionRequestId, p);
+    }
+  }
+
+  const merged = [...byOption.values(), ...standalone];
+  merged.sort(
+    (a, b) =>
+      a.date.localeCompare(b.date) ||
+      a.title.localeCompare(b.title) ||
+      a.id.localeCompare(b.id),
+  );
+
+  return merged.map((p) => ({
+    uid: p.optionRequestId ? `opt:${p.optionRequestId}` : `${p.kind}-${p.id}`,
+    title: p.title,
+    description: p.description,
+    date: p.date,
+    startTime: p.startTime,
+    endTime: p.endTime,
+  }));
 }
