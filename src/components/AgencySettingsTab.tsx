@@ -393,6 +393,9 @@ export const AgencySettingsTab: React.FC<Props> = ({
 
       <Text style={styles.hint}>{uiCopy.privacyData.calendarSectionTitle}</Text>
       <Text style={styles.hint}>{uiCopy.privacyData.calendarSectionBody}</Text>
+      <Text style={[styles.hint, { fontStyle: 'italic' }]}>
+        {uiCopy.privacyData.calendarSyncVsFullExportNotice}
+      </Text>
       <TouchableOpacity
         style={[styles.gdprBtn, calendarIcsBusy && { opacity: 0.6 }]}
         disabled={calendarIcsBusy}

@@ -49,6 +49,15 @@ This document classifies tables included in **`public.export_user_data`** (JSON 
 - Raw device push tokens (v4).
 - Org billing/Stripe tables without a direct subject column in scope (not enumerated in `get_user_related_tables()`).
 
+## ICS / subscription feed vs full export (Art. 15 transparency)
+
+| Mechanism | Contents |
+|-----------|----------|
+| **`export_user_data` v4 (JSON)** | `calendar_events` (`user_calendar_events`), `calendar_entries`, **`booking_events`**, plus all other subject-scoped keys in the RPC. |
+| **`.ics` download + webcal feed** | Same merged event set as internal `calendar_export_events_json`: **`user_calendar_events` ∪ `calendar_entries`** only. Does **not** add **`booking_events`** to the sync surface (by design — avoids duplicate / divergent lifecycle in external calendars). |
+
+**User-facing:** Calendar sync is optional and **narrower** than the JSON export; full portable copy = **Download my data**. See [GDPR_CALENDAR_COMPLIANCE.md](./GDPR_CALENDAR_COMPLIANCE.md) and [CALENDAR_INTEROP_AUDIT_REPORT.md](./CALENDAR_INTEROP_AUDIT_REPORT.md).
+
 ## Related
 
 - RPC: `supabase/migrations/20260824_gdpr_export_v4_minimization_anonymize_model.sql` (v4; helpers unchanged from v3 file)

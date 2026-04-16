@@ -8282,6 +8282,17 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
                   >
                     {uiCopy.privacyData.calendarSectionBody}
                   </Text>
+                  <Text
+                    style={{
+                      ...typography.body,
+                      fontSize: 10,
+                      color: colors.textSecondary,
+                      marginBottom: spacing.sm,
+                      fontStyle: 'italic',
+                    }}
+                  >
+                    {uiCopy.privacyData.calendarSyncVsFullExportNotice}
+                  </Text>
                   <TouchableOpacity
                     onPress={() => void onDownloadCalendarIcs()}
                     disabled={calendarIcsBusy}

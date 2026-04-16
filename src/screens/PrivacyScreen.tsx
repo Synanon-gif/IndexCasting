@@ -112,6 +112,8 @@ export const PrivacyScreen: React.FC<Props> = ({ onClose }) => {
             {'\n'}• Data portability (Art. 20).{'\n'}• Object to processing (Art. 21).{'\n'}•
             Withdraw consent at any time (Art. 7(3)).{'\n'}
             To exercise any right, contact: {uiCopy.legal.legalContactEmail}
+            {'\n\n'}
+            {uiCopy.legal.privacyCalendarAccessNote}
           </Text>
         </View>
 

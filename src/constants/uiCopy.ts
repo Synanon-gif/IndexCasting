@@ -74,6 +74,9 @@ export const uiCopy = {
     calendarSectionTitle: 'Calendar sync (iCal)',
     calendarSectionBody:
       'Download your appointments as an .ics file or subscribe with a private link in Google Calendar, Apple Calendar, or Outlook.',
+    /** Art. 15 transparency: ICS/feed ⊂ full JSON export (excludes e.g. booking_events in sync). */
+    calendarSyncVsFullExportNotice:
+      'Calendar file and subscription link include the same merged subset as in-app calendar (not every table in your data export). For your complete portable copy under GDPR, use “Download my data” (JSON), which also includes booking_events.',
     downloadCalendarIcs: 'Download calendar (.ics)',
     rotateCalendarFeed: 'Create subscription link',
     calendarFeedCreatedTitle: 'Subscription link',
@@ -1775,6 +1778,9 @@ export const uiCopy = {
     legalPendingBody:
       'The full legal text for this document will be published at launch. ' +
       'Please contact us if you need the current version before then.',
+    /** In-app Privacy Policy — Art. 15 / 20: full export vs calendar sync subset. */
+    privacyCalendarAccessNote:
+      'Access and portability: your complete structured copy is available via “Download my data” (JSON). Calendar download (.ics) and subscription links sync a subset of your in-app calendar and are not a substitute for that full export.',
     /** Required checkbox before chat/recruiting file attachments (non-model portfolio). */
     chatFileRightsCheckbox: 'I confirm I have all necessary rights and consents for this upload.',
     chatFileRightsMissing:

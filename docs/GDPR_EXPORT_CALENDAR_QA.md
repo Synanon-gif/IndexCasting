@@ -1,5 +1,7 @@
 # GDPR export, account deletion, calendar interop — QA & retention notes
 
+DSGVO-focused calendar channel summary (Art. 15 / 17 / 32, not legal advice): [GDPR_CALENDAR_COMPLIANCE.md](./GDPR_CALENDAR_COMPLIANCE.md).
+
 ## Data retention & deletion (high level)
 
 | Area | Behavior |
