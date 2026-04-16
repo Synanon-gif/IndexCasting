@@ -84,7 +84,7 @@ import {
   conversationHasUnreadForViewer,
   subscribeToConversation,
 } from '../services/messengerSupabase';
-import { getApplicationById } from '../store/applicationsStore';
+import { getApplicationById, refreshApplications } from '../store/applicationsStore';
 import { OrgMessengerInline, type ThreadContext } from '../components/OrgMessengerInline';
 import { AgencySettingsTab } from '../components/AgencySettingsTab';
 // Recruiting chats (BookingChatView) live under Messages → Recruiting chats.
@@ -4540,6 +4540,7 @@ const MyModelsTab: React.FC<{
                   setSelectedModel(null);
                   setEditState(buildEditState({ name: '' }));
                   void onRefresh();
+                  void refreshApplications();
                   showAppAlert(
                     uiCopy.alerts.endRepresentationSuccessTitle,
                     uiCopy.alerts.endRepresentationSuccessBody,

@@ -159,7 +159,12 @@ describe('refreshApplications', () => {
 
 describe('getPendingApplications', () => {
   it('returns only pending applications', async () => {
-    const accepted = { ...BASE_APP, id: 'app-2', status: 'accepted' as const, recruiting_thread_id: 't-2' };
+    const accepted = {
+      ...BASE_APP,
+      id: 'app-2',
+      status: 'accepted' as const,
+      recruiting_thread_id: 't-2',
+    };
     mockFetchApps.mockResolvedValue([BASE_APP, accepted]);
     await refreshApplications();
 
@@ -177,7 +182,12 @@ describe('getPendingApplications', () => {
 
 describe('getPendingSwipeQueueApplications', () => {
   it('excludes pending applications that already have a chatThreadId', async () => {
-    const withThread = { ...BASE_APP, id: 'app-3', status: 'pending' as const, recruiting_thread_id: 'thread-x' };
+    const withThread = {
+      ...BASE_APP,
+      id: 'app-3',
+      status: 'pending' as const,
+      recruiting_thread_id: 'thread-x',
+    };
     mockFetchApps.mockResolvedValue([BASE_APP, withThread]);
     await refreshApplications();
 
@@ -191,9 +201,24 @@ describe('getPendingSwipeQueueApplications', () => {
 
 describe('getAcceptedApplications', () => {
   it('includes accepted and pending_model_confirmation applications that have a thread', async () => {
-    const accepted = { ...BASE_APP, id: 'app-a', status: 'accepted' as const, recruiting_thread_id: 't-a' };
-    const pendingConfirm = { ...BASE_APP, id: 'app-p', status: 'pending_model_confirmation' as const, recruiting_thread_id: 't-p' };
-    const noThread = { ...BASE_APP, id: 'app-n', status: 'accepted' as const, recruiting_thread_id: null };
+    const accepted = {
+      ...BASE_APP,
+      id: 'app-a',
+      status: 'accepted' as const,
+      recruiting_thread_id: 't-a',
+    };
+    const pendingConfirm = {
+      ...BASE_APP,
+      id: 'app-p',
+      status: 'pending_model_confirmation' as const,
+      recruiting_thread_id: 't-p',
+    };
+    const noThread = {
+      ...BASE_APP,
+      id: 'app-n',
+      status: 'accepted' as const,
+      recruiting_thread_id: null,
+    };
     mockFetchApps.mockResolvedValue([accepted, pendingConfirm, noThread]);
     await refreshApplications();
 
@@ -202,6 +227,19 @@ describe('getAcceptedApplications', () => {
     expect(ids).toContain('app-a');
     expect(ids).toContain('app-p');
     expect(ids).not.toContain('app-n');
+  });
+
+  it('excludes representation_ended even when a recruiting thread id exists', async () => {
+    const ended = {
+      ...BASE_APP,
+      id: 'app-e',
+      status: 'representation_ended' as const,
+      recruiting_thread_id: 't-e',
+      accepted_by_agency_id: 'ag-1',
+    };
+    mockFetchApps.mockResolvedValue([ended]);
+    await refreshApplications();
+    expect(getAcceptedApplications().map((a) => a.id)).not.toContain('app-e');
   });
 });
 
@@ -294,7 +332,12 @@ describe('acceptApplication', () => {
   });
 
   it('returns null when the application is not in pending state', async () => {
-    const nonPending = { ...BASE_APP, id: 'app-np', status: 'accepted' as const, recruiting_thread_id: 't-1' };
+    const nonPending = {
+      ...BASE_APP,
+      id: 'app-np',
+      status: 'accepted' as const,
+      recruiting_thread_id: 't-1',
+    };
     mockFetchApps.mockResolvedValue([nonPending]);
     await refreshApplications();
     const result = await acceptApplication('app-np', 'ag-1');
@@ -319,7 +362,11 @@ describe('acceptApplication', () => {
 
 describe('confirmApplicationByModel', () => {
   beforeEach(async () => {
-    const pendingConfirm = { ...BASE_APP, status: 'pending_model_confirmation' as const, recruiting_thread_id: 't-1' };
+    const pendingConfirm = {
+      ...BASE_APP,
+      status: 'pending_model_confirmation' as const,
+      recruiting_thread_id: 't-1',
+    };
     mockFetchApps.mockResolvedValue([pendingConfirm]);
     await refreshApplications();
   });

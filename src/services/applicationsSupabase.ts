@@ -122,7 +122,12 @@ export async function resolveApplicationImageUrl(uriOrUrl: string): Promise<stri
  */
 export type SupabaseApplicationAgencyEmbed = { name: string } | null;
 
-export type ApplicationStatus = 'pending' | 'pending_model_confirmation' | 'accepted' | 'rejected';
+export type ApplicationStatus =
+  | 'pending'
+  | 'pending_model_confirmation'
+  | 'accepted'
+  | 'rejected'
+  | 'representation_ended';
 
 export type SupabaseApplication = {
   id: string;
@@ -407,16 +412,19 @@ export async function insertApplication(app: {
  * race (e.g. double-tap accept), only the first wins; the second gets no-row-
  * updated and returns false without corrupting state.
  */
+/** Status transitions driven from the app client — not `representation_ended` (DB/RPC only). */
+export type ApplicationStatusClientMutable = Exclude<ApplicationStatus, 'representation_ended'>;
+
 export async function updateApplicationStatus(
   id: string,
-  status: ApplicationStatus,
+  status: ApplicationStatusClientMutable,
   extra?: {
     recruiting_thread_id?: string;
     accepted_by_agency_id?: string;
     pending_territories?: string[];
   },
 ): Promise<boolean> {
-  const priorStatusMap: Record<ApplicationStatus, ApplicationStatus> = {
+  const priorStatusMap: Record<ApplicationStatusClientMutable, ApplicationStatus> = {
     pending_model_confirmation: 'pending',
     rejected: 'pending',
     accepted: 'pending_model_confirmation',
@@ -495,7 +503,7 @@ export async function deleteApplication(
       .delete()
       .eq('id', applicationId)
       .eq('applicant_user_id', applicantUserId)
-      .in('status', ['pending', 'rejected']);
+      .in('status', ['pending', 'rejected', 'representation_ended']);
 
     if (error) {
       console.error('deleteApplication error:', error);
@@ -527,7 +535,7 @@ export async function updateApplicationsProfileForApplicant(
       .from('model_applications')
       .update(payload)
       .eq('applicant_user_id', applicantUserId)
-      .in('status', ['pending', 'rejected']);
+      .in('status', ['pending', 'rejected', 'representation_ended']);
 
     if (error) {
       console.error('updateApplicationsProfileForApplicant error:', error);

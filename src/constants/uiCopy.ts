@@ -702,6 +702,12 @@ export const uiCopy = {
     selectAgencySubtitle:
       'You are represented by multiple agencies. Choose which profile to start with.',
     noAgencyProfiles: 'You are not currently represented by any agency.',
+    /** Settings + messages: CTA when MAT empty but model account exists (after end representation). */
+    applyToAgenciesCta: 'Apply to an agency',
+    /** Model profile settings when MAT list is empty (first-time or after end representation). */
+    applyWhenNoAgencyHint: 'Submit an application to connect with an agency.',
+    representationEndedApplyHint:
+      'Representation with this agency has ended. You can apply again; past chats may still appear under Messages.',
     /** Shown under agency name when multiple MAT territories exist (same agency = one profile). */
     representationTerritories: 'Territories',
     /** Shown when opening agency direct chat but MAT no longer ties model to that agency (history only). */
@@ -1493,6 +1499,8 @@ export const uiCopy = {
     statusPending: 'Pending',
     statusRepresentationRequest: 'Representation request',
     statusAccepted: 'Accepted',
+    /** Recruiting: agency ended representation; row is not an active acceptance. */
+    statusRepresentationEnded: 'Representation ended',
     statusDeclined: 'Declined',
     deleteFailedTitle: 'Could not delete',
     deleteFailedBody: 'Please try again or check your connection.',

@@ -18,7 +18,13 @@ import { updateThreadAgency, updateThreadChatType } from '../services/recruiting
 import { createNotification } from '../services/notificationsSupabase';
 import { uiCopy } from '../constants/uiCopy';
 
-export type ApplicationStatus = 'pending' | 'pending_model_confirmation' | 'accepted' | 'rejected';
+export type ApplicationStatus =
+  | 'pending'
+  | 'pending_model_confirmation'
+  | 'accepted'
+  | 'rejected'
+  /** Agency ended representation (MAT removed); not an active acceptance — model may re-apply. */
+  | 'representation_ended';
 
 export type Gender = 'female' | 'male' | 'diverse' | '';
 
@@ -103,7 +109,9 @@ async function ensureHydrated() {
   // Guard: never fetch without an agency scope — RLS is the last line of defence,
   // not the only one. initApplicationsForAgency() must be called first.
   if (!storeAgencyId) {
-    console.warn('[applicationsStore] ensureHydrated called before agencyId was set — skipping fetch');
+    console.warn(
+      '[applicationsStore] ensureHydrated called before agencyId was set — skipping fetch',
+    );
     return;
   }
   hydrated = true;
@@ -144,7 +152,9 @@ export function getPendingSwipeQueueApplications(): ModelApplication[] {
   return cache.filter((a) => a.status === 'pending' && !a.chatThreadId);
 }
 
-export async function addApplication(data: Omit<ModelApplication, 'id' | 'createdAt' | 'status'> & { applicantUserId: string }): Promise<ModelApplication | null> {
+export async function addApplication(
+  data: Omit<ModelApplication, 'id' | 'createdAt' | 'status'> & { applicantUserId: string },
+): Promise<ModelApplication | null> {
   const result = await insertApp({
     applicant_user_id: data.applicantUserId,
     first_name: data.firstName,
@@ -219,9 +229,7 @@ export async function acceptApplication(
     // Pass the native JS array — Supabase serialises it to JSONB automatically.
     // Do NOT wrap with JSON.stringify(); the DB column has a CHECK constraint
     // enforcing jsonb_typeof = 'array'. A double-encoded string would fail the check.
-    ...(territoryCodes && territoryCodes.length > 0
-      ? { pending_territories: territoryCodes }
-      : {}),
+    ...(territoryCodes && territoryCodes.length > 0 ? { pending_territories: territoryCodes } : {}),
   });
   if (!ok) return null;
 
@@ -258,8 +266,8 @@ export async function confirmApplicationByModel(
 
   // Capture accepted_by_agency_id before the service call mutates the DB row.
   // We need this to notify the agency org after confirmation succeeds.
-  const acceptedByAgencyId = (app as ModelApplication & { acceptedByAgencyId?: string | null })
-    .acceptedByAgencyId ?? null;
+  const acceptedByAgencyId =
+    (app as ModelApplication & { acceptedByAgencyId?: string | null }).acceptedByAgencyId ?? null;
 
   const result = await confirmByModelService(applicationId, applicantUserId);
   if (!result) return null;
@@ -301,7 +309,7 @@ export async function rejectApplicationByModel(
 export async function rejectApplication(applicationId: string): Promise<void> {
   const app = cache.find((a) => a.id === applicationId);
   if (!app || app.status !== 'pending') return;
-  
+
   const ok = await updateApplicationStatus(applicationId, 'rejected');
   if (!ok) return;
 

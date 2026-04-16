@@ -58,6 +58,7 @@ function toStatusLabel(status: string): string {
   if (status === 'pending_model_confirmation')
     return uiCopy.modelApplications.statusRepresentationRequest;
   if (status === 'accepted') return uiCopy.modelApplications.statusAccepted;
+  if (status === 'representation_ended') return uiCopy.modelApplications.statusRepresentationEnded;
   if (status === 'rejected') return uiCopy.modelApplications.statusDeclined;
   return status;
 }
@@ -65,6 +66,7 @@ function toStatusLabel(status: string): string {
 function statusColor(status: string): string {
   if (status === 'accepted') return colors.accentGreen;
   if (status === 'rejected') return colors.textSecondary;
+  if (status === 'representation_ended') return colors.textSecondary;
   if (status === 'pending_model_confirmation') return colors.warningDark;
   return '#F9A825';
 }
@@ -250,7 +252,12 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
   }, [tab, applications]);
 
   const runConfirmedDelete = async (app: SupabaseApplication) => {
-    if (app.status !== 'pending' && app.status !== 'rejected') return;
+    if (
+      app.status !== 'pending' &&
+      app.status !== 'rejected' &&
+      app.status !== 'representation_ended'
+    )
+      return;
     setDeletingId(app.id);
     const ok = await deleteApplication(app.id, applicantUserId);
     setDeletingId(null);
@@ -270,7 +277,12 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
   };
 
   const handleDeleteApplication = (app: SupabaseApplication) => {
-    if (app.status !== 'pending' && app.status !== 'rejected') return;
+    if (
+      app.status !== 'pending' &&
+      app.status !== 'rejected' &&
+      app.status !== 'representation_ended'
+    )
+      return;
     if (Platform.OS === 'web') {
       setPendingDeleteApp(app);
       return;
@@ -346,6 +358,12 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
             <Text style={styles.subtitle}>
               Apply to agencies. When accepted, you will be linked to that agency.
             </Text>
+
+            {applications.some((a) => a.status === 'representation_ended') ? (
+              <Text style={[styles.meta, { marginBottom: spacing.sm }]}>
+                {uiCopy.model.representationEndedApplyHint}
+              </Text>
+            ) : null}
 
             <TouchableOpacity style={styles.applyBtn} onPress={() => setShowApplyForm(true)}>
               <Text style={styles.applyBtnLabel}>+ Apply as Model</Text>
@@ -430,6 +448,19 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
                           )}
                         </View>
 
+                        {app.status === 'representation_ended' && (
+                          <View
+                            style={[
+                              styles.confirmationBanner,
+                              { backgroundColor: colors.surface, borderColor: colors.border },
+                            ]}
+                          >
+                            <Text style={styles.confirmationBannerSubtitle}>
+                              {uiCopy.model.representationEndedApplyHint}
+                            </Text>
+                          </View>
+                        )}
+
                         {app.status === 'pending_model_confirmation' && (
                           <View style={styles.confirmationBanner}>
                             <Text style={styles.confirmationBannerTitle}>
@@ -466,7 +497,9 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
                           </View>
                         )}
                       </View>
-                      {(app.status === 'pending' || app.status === 'rejected') && (
+                      {(app.status === 'pending' ||
+                        app.status === 'rejected' ||
+                        app.status === 'representation_ended') && (
                         <TouchableOpacity
                           onPress={() => handleDeleteApplication(app)}
                           disabled={deletingId === app.id}

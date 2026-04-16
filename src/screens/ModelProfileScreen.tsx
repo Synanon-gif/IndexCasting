@@ -80,6 +80,7 @@ import {
 import { getAgencyById, type Agency } from '../services/agenciesSupabase';
 import { getAgencyNamesByThreadIds } from '../services/recruitingChatSupabase';
 import { BookingChatView } from '../views/BookingChatView';
+import { ApplyFormView } from '../views/ApplyFormView';
 import { useAuth } from '../context/AuthContext';
 import { useModelAgency } from '../context/ModelAgencyContext';
 import { needsAgencySelectionUi, uniqueAgencyRowsForSwitcher } from '../utils/modelAgencyKey';
@@ -223,6 +224,8 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   const [openDirectConvId, setOpenDirectConvId] = useState<string | null>(null);
   /** false = representation with this agency ended (read-only history); null = unknown */
   const [agencyDirectChatMatActive, setAgencyDirectChatMatActive] = useState<boolean | null>(null);
+  /** Full-screen apply flow when model has a row but no MAT (e.g. after end representation). */
+  const [showApplyForm, setShowApplyForm] = useState(false);
   const [agencyChatOpening, setAgencyChatOpening] = useState(false);
   const agencyChatBusyRef = useRef(false);
   const [pendingConfirmations, setPendingConfirmations] = useState<
@@ -999,6 +1002,17 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     );
   }
 
+  if (showApplyForm) {
+    return (
+      <ApplyFormView
+        onBack={() => {
+          setShowApplyForm(false);
+          void modelAgencyCtx.reload();
+        }}
+      />
+    );
+  }
+
   return (
     <View
       style={[
@@ -1085,7 +1099,30 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
             {modelAgencyCtx.agencies.length === 0 && (
               <View style={st.section}>
                 <Text style={st.sectionLabel}>Agency</Text>
-                <Text style={st.metaText}>{uiCopy.model.noAgencyProfiles}</Text>
+                {modelAgencyCtx.loading ? (
+                  <Text style={st.metaText}>{uiCopy.common.loading}</Text>
+                ) : (
+                  <>
+                    <Text style={st.metaText}>{uiCopy.model.noAgencyProfiles}</Text>
+                    <Text style={[st.metaText, { marginTop: spacing.sm }]}>
+                      {uiCopy.model.applyWhenNoAgencyHint}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => setShowApplyForm(true)}
+                      style={{
+                        marginTop: spacing.md,
+                        borderRadius: 999,
+                        backgroundColor: colors.accentBrown,
+                        paddingVertical: spacing.sm,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Text style={{ ...typography.label, color: '#fff' }}>
+                        {uiCopy.model.applyToAgenciesCta}
+                      </Text>
+                    </TouchableOpacity>
+                  </>
+                )}
               </View>
             )}
             <View style={st.section}>

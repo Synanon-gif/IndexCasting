@@ -125,7 +125,10 @@ export const AgencyRecruitingView: React.FC<{
 
   const shortlistApps = mergedMyListIds
     .map((id) => getApplicationById(id))
-    .filter((a): a is ModelApplication => !!a && a.status !== 'rejected');
+    .filter(
+      (a): a is ModelApplication =>
+        !!a && a.status !== 'rejected' && a.status !== 'representation_ended',
+    );
   const refreshSwipeQueue = () => {
     setAllSwipeQueue(getPendingSwipeQueueApplications());
     setPendingWithChatApps(
