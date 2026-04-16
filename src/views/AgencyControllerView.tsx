@@ -6678,7 +6678,7 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
         agencyName: agencyName ?? agencyId,
       });
       if (!result.ok) {
-        Alert.alert(uiCopy.common.error, uiCopy.messages.modelDirectChatFailed);
+        Alert.alert(uiCopy.common.error, result.reason || uiCopy.messages.modelDirectChatFailed);
         return;
       }
       refreshModelDirectConvs();

@@ -411,79 +411,57 @@ export async function getB2BConversationTitleForViewer(params: {
 /**
  * Agency → Model direct chat: one stable conversation per agency–model pair.
  * Uses context_id = 'agency-model:{agencyId}:{modelId}'.
- * INSERT is covered by the existing "conversations_insert_participant" RLS policy
- * (actingUserId is always included in participant_ids).
- * SELECT for other agency members is covered by conversation_accessible_to_me
- * via agency_organization_id; the model accesses via participant_ids.
+ * Must call `ensure_agency_model_direct_conversation` (same as model-side) so server
+ * MAT + admin rules apply — client INSERT bypassed those guards before 20260904.
  */
 export async function ensureAgencyModelDirectChat(params: {
   agencyId: string;
+  /** Kept for API stability; RPC resolves org/title server-side. */
   agencyOrganizationId: string;
   modelId: string;
   modelUserId: string | null;
   actingUserId: string;
   modelName: string;
-  /** Agency display name — stored as conversation title so the model can identify the agency. */
   agencyName: string;
 }): Promise<
   { ok: true; conversationId: string; created: boolean } | { ok: false; reason: string }
 > {
-  const { agencyId, agencyOrganizationId, modelId, modelUserId, actingUserId, agencyName } = params;
+  const { agencyId, modelId, actingUserId } = params;
 
   const { data: authUser } = await supabase.auth.getUser();
   if (!authUser.user || authUser.user.id !== actingUserId) {
     return { ok: false, reason: uiCopy.alerts.signInRequired };
   }
 
-  const contextId = `agency-model:${agencyId}:${modelId}`;
-
   try {
-    const { data: existing, error: findErr } = await supabase
-      .from('conversations')
-      .select('id')
-      .eq('context_id', contextId)
-      .maybeSingle();
-    if (findErr) {
-      console.error('ensureAgencyModelDirectChat find error:', findErr);
-    }
-    if (existing?.id) {
-      return { ok: true, conversationId: existing.id as string, created: false };
-    }
-  } catch (e) {
-    console.error('ensureAgencyModelDirectChat find exception:', e);
-  }
-
-  const participantIds = [...new Set([actingUserId, ...(modelUserId ? [modelUserId] : [])])];
-
-  try {
-    const { data, error } = await supabase
-      .from('conversations')
-      .insert({
-        type: 'direct',
-        context_id: contextId,
-        participant_ids: participantIds,
-        agency_organization_id: agencyOrganizationId,
-        title: agencyName,
-        created_by: actingUserId,
-      })
-      .select('id')
-      .single();
-
+    const { data, error } = await supabase.rpc('ensure_agency_model_direct_conversation', {
+      p_agency_id: agencyId,
+      p_model_id: modelId,
+    });
     if (error) {
-      console.error('ensureAgencyModelDirectChat insert error:', error);
-      const { data: retry } = await supabase
-        .from('conversations')
-        .select('id')
-        .eq('context_id', contextId)
-        .maybeSingle();
-      if (retry?.id) return { ok: true, conversationId: retry.id as string, created: false };
-      return { ok: false, reason: uiCopy.b2bChat.chatFailedGeneric };
+      const raw =
+        `${error.message ?? ''} ${(error as { details?: string }).details ?? ''}`.toLowerCase();
+      const isNoMat = raw.includes('no_active_representation');
+      console.error('ensureAgencyModelDirectChat RPC error:', {
+        message: error.message,
+        code: (error as { code?: string }).code,
+        details: (error as { details?: string }).details,
+        agencyId,
+        modelId,
+      });
+      if (isNoMat) {
+        return { ok: false, reason: uiCopy.messages.modelDirectChatNoRepresentation };
+      }
+      return { ok: false, reason: uiCopy.messages.modelDirectChatFailed };
     }
-
-    return { ok: true, conversationId: (data as { id: string }).id, created: true };
+    const id = typeof data === 'string' ? data : data != null ? String(data) : '';
+    if (!id) {
+      return { ok: false, reason: uiCopy.messages.modelDirectChatFailed };
+    }
+    return { ok: true, conversationId: id, created: false };
   } catch (e) {
     console.error('ensureAgencyModelDirectChat exception:', e);
-    return { ok: false, reason: uiCopy.b2bChat.chatFailedGeneric };
+    return { ok: false, reason: uiCopy.messages.modelDirectChatFailed };
   }
 }
 

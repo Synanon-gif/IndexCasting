@@ -970,6 +970,8 @@ export const uiCopy = {
     startChat: 'Start chat',
     openChat: 'Open chat',
     modelDirectChatFailed: 'Could not open chat with this model. Please try again.',
+    modelDirectChatNoRepresentation:
+      'Chat is only available when this model has an active territory of representation with your agency. Add a territory or restore the relationship, then try again.',
     deleteOptionRequestTitle: 'Delete this request?',
     deleteOptionRequestMessage:
       'This removes the option or casting request for everyone before the job is confirmed. Calendars and threads will be cleared. This cannot be undone.',
