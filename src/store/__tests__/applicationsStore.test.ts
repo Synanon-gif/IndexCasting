@@ -4,6 +4,30 @@
  * Services werden vollständig gemockt – kein Supabase-Netzwerkzugriff.
  */
 
+/* jest.mock factory is hoisted; mutable test doubles need file scope */
+/* eslint-disable no-var */
+var __applicationsStoreMatTestModels: { id: string; user_id: string }[] = [];
+var __applicationsStoreMatTestMat: { model_id: string; agency_id: string }[] = [];
+/* eslint-enable no-var */
+
+jest.mock('../../../lib/supabase', () => ({
+  supabase: {
+    from: (table: string) => ({
+      select: () => ({
+        in: () => {
+          if (table === 'models') {
+            return Promise.resolve({ data: __applicationsStoreMatTestModels, error: null });
+          }
+          if (table === 'model_agency_territories') {
+            return Promise.resolve({ data: __applicationsStoreMatTestMat, error: null });
+          }
+          return Promise.resolve({ data: [], error: null });
+        },
+      }),
+    }),
+  },
+}));
+
 jest.mock('../../services/applicationsSupabase', () => ({
   getApplications: jest.fn(),
   getApplicationsByStatus: jest.fn(),
@@ -12,6 +36,7 @@ jest.mock('../../services/applicationsSupabase', () => ({
   createModelFromApplication: jest.fn(),
   confirmApplicationByModel: jest.fn(),
   rejectApplicationByModel: jest.fn(),
+  notifyAgencyOfModelConfirmation: jest.fn(),
 }));
 
 jest.mock('../recruitingChats', () => ({
@@ -42,6 +67,7 @@ import {
   getPendingApplications,
   getPendingSwipeQueueApplications,
   getAcceptedApplications,
+  applicationQualifiesForAgencyRecruitingAcceptedBucket,
   getApplicationById,
   addApplication,
   acceptApplication,
@@ -100,6 +126,8 @@ beforeEach(() => {
   jest.clearAllMocks();
   resetApplicationsStore();
   mockFetchApps.mockResolvedValue([]);
+  __applicationsStoreMatTestModels = [{ id: 'mdl-1', user_id: 'user-1' }];
+  __applicationsStoreMatTestMat = [{ model_id: 'mdl-1', agency_id: 'ag-1' }];
 });
 
 // ─── resetApplicationsStore ───────────────────────────────────────────────────
@@ -206,18 +234,21 @@ describe('getAcceptedApplications', () => {
       id: 'app-a',
       status: 'accepted' as const,
       recruiting_thread_id: 't-a',
+      accepted_by_agency_id: 'ag-1',
     };
     const pendingConfirm = {
       ...BASE_APP,
       id: 'app-p',
       status: 'pending_model_confirmation' as const,
       recruiting_thread_id: 't-p',
+      accepted_by_agency_id: 'ag-1',
     };
     const noThread = {
       ...BASE_APP,
       id: 'app-n',
       status: 'accepted' as const,
       recruiting_thread_id: null,
+      accepted_by_agency_id: 'ag-1',
     };
     mockFetchApps.mockResolvedValue([accepted, pendingConfirm, noThread]);
     await refreshApplications();
@@ -227,6 +258,20 @@ describe('getAcceptedApplications', () => {
     expect(ids).toContain('app-a');
     expect(ids).toContain('app-p');
     expect(ids).not.toContain('app-n');
+  });
+
+  it('excludes accepted when no MAT exists for (model, accepted agency) — ghost defense', async () => {
+    __applicationsStoreMatTestMat = [];
+    const ghost = {
+      ...BASE_APP,
+      id: 'app-ghost',
+      status: 'accepted' as const,
+      recruiting_thread_id: 't-g',
+      accepted_by_agency_id: 'ag-1',
+    };
+    mockFetchApps.mockResolvedValue([ghost]);
+    await refreshApplications();
+    expect(getAcceptedApplications().map((a) => a.id)).not.toContain('app-ghost');
   });
 
   it('excludes representation_ended even when a recruiting thread id exists', async () => {
@@ -240,6 +285,75 @@ describe('getAcceptedApplications', () => {
     mockFetchApps.mockResolvedValue([ended]);
     await refreshApplications();
     expect(getAcceptedApplications().map((a) => a.id)).not.toContain('app-e');
+  });
+});
+
+describe('applicationQualifiesForAgencyRecruitingAcceptedBucket', () => {
+  it('returns true for pending_model_confirmation with thread and accepted agency', () => {
+    expect(
+      applicationQualifiesForAgencyRecruitingAcceptedBucket({
+        id: 'x',
+        firstName: 'a',
+        lastName: 'b',
+        age: 20,
+        height: 170,
+        gender: 'female',
+        hairColor: '',
+        city: '',
+        instagramLink: '',
+        images: {},
+        createdAt: 0,
+        status: 'pending_model_confirmation',
+        chatThreadId: 't1',
+        acceptedByAgencyId: 'ag-1',
+      }),
+    ).toBe(true);
+  });
+
+  it('returns false for accepted without MAT flag', () => {
+    expect(
+      applicationQualifiesForAgencyRecruitingAcceptedBucket({
+        id: 'x',
+        firstName: 'a',
+        lastName: 'b',
+        age: 20,
+        height: 170,
+        gender: 'female',
+        hairColor: '',
+        city: '',
+        instagramLink: '',
+        images: {},
+        createdAt: 0,
+        status: 'accepted',
+        chatThreadId: 't1',
+        acceptedByAgencyId: 'ag-1',
+        applicantModelId: 'mdl-1',
+        matWithAcceptedAgency: false,
+      }),
+    ).toBe(false);
+  });
+
+  it('returns true for accepted with MAT flag', () => {
+    expect(
+      applicationQualifiesForAgencyRecruitingAcceptedBucket({
+        id: 'x',
+        firstName: 'a',
+        lastName: 'b',
+        age: 20,
+        height: 170,
+        gender: 'female',
+        hairColor: '',
+        city: '',
+        instagramLink: '',
+        images: {},
+        createdAt: 0,
+        status: 'accepted',
+        chatThreadId: 't1',
+        acceptedByAgencyId: 'ag-1',
+        applicantModelId: 'mdl-1',
+        matWithAcceptedAgency: true,
+      }),
+    ).toBe(true);
   });
 });
 
@@ -366,6 +480,7 @@ describe('confirmApplicationByModel', () => {
       ...BASE_APP,
       status: 'pending_model_confirmation' as const,
       recruiting_thread_id: 't-1',
+      accepted_by_agency_id: 'ag-1',
     };
     mockFetchApps.mockResolvedValue([pendingConfirm]);
     await refreshApplications();

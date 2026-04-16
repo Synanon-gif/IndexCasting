@@ -13,6 +13,7 @@ import {
   notifyAgencyOfModelConfirmation,
   type SupabaseApplication,
 } from '../services/applicationsSupabase';
+import { supabase } from '../../lib/supabase';
 import { startRecruitingChat, addRecruitingMessage } from './recruitingChats';
 import { updateThreadAgency, updateThreadChatType } from '../services/recruitingChatSupabase';
 import { createNotification } from '../services/notificationsSupabase';
@@ -58,6 +59,15 @@ export type ModelApplication = {
   chatThreadId?: string;
   ethnicity?: string;
   countryCode?: string;
+  /**
+   * Resolved models.id for applicant_user_id (auth uid). Used for MAT defense-in-depth on accepted rows.
+   */
+  applicantModelId?: string | null;
+  /**
+   * True iff at least one MAT row exists for (applicantModelId, acceptedByAgencyId).
+   * Only set for status === 'accepted' after hydration.
+   */
+  matWithAcceptedAgency?: boolean;
 };
 
 /** Normalize image keys from DB (camelCase or snake_case) so UI always has closeUp, fullBody, profile. */
@@ -104,6 +114,61 @@ function notify() {
   listeners.forEach((fn) => fn());
 }
 
+/**
+ * Defense-in-depth: resolve models.id per applicant and whether MAT exists for (model, accepted agency).
+ * Fail-closed for `accepted` in recruiting bucket if lookups fail (no MAT → hidden).
+ */
+async function attachApplicantModelIdsAndMatFlags(apps: ModelApplication[]): Promise<void> {
+  const userIds = [...new Set(apps.map((a) => a.applicantUserId).filter(Boolean))] as string[];
+  if (userIds.length === 0) {
+    for (const a of apps) {
+      a.applicantModelId = null;
+      a.matWithAcceptedAgency = undefined;
+    }
+    return;
+  }
+  try {
+    const { data: modelRows, error: mErr } = await supabase
+      .from('models')
+      .select('id,user_id')
+      .in('user_id', userIds);
+    if (mErr || !modelRows) {
+      console.error('[applicationsStore] attachApplicantModelIdsAndMatFlags models error:', mErr);
+      for (const a of apps) {
+        a.applicantModelId = undefined;
+        a.matWithAcceptedAgency = undefined;
+      }
+      return;
+    }
+    const uidToMid = new Map(modelRows.map((m) => [m.user_id as string, m.id as string]));
+    const modelIds = [...new Set(modelRows.map((m) => m.id as string))];
+    let matRows: { model_id: string; agency_id: string }[] = [];
+    if (modelIds.length > 0) {
+      const { data: mats, error: matErr } = await supabase
+        .from('model_agency_territories')
+        .select('model_id,agency_id')
+        .in('model_id', modelIds);
+      if (matErr) {
+        console.error('[applicationsStore] attachApplicantModelIdsAndMatFlags mat error:', matErr);
+      } else {
+        matRows = (mats ?? []) as { model_id: string; agency_id: string }[];
+      }
+    }
+    const matKey = new Set(matRows.map((r) => `${r.model_id}:${r.agency_id}`));
+    for (const a of apps) {
+      const mid = a.applicantUserId ? (uidToMid.get(a.applicantUserId) ?? null) : null;
+      a.applicantModelId = mid;
+      if (a.status === 'accepted' && a.acceptedByAgencyId && mid) {
+        a.matWithAcceptedAgency = matKey.has(`${mid}:${a.acceptedByAgencyId}`);
+      } else {
+        a.matWithAcceptedAgency = undefined;
+      }
+    }
+  } catch (e) {
+    console.error('[applicationsStore] attachApplicantModelIdsAndMatFlags exception:', e);
+  }
+}
+
 async function ensureHydrated() {
   if (hydrated) return;
   // Guard: never fetch without an agency scope — RLS is the last line of defence,
@@ -117,6 +182,7 @@ async function ensureHydrated() {
   hydrated = true;
   const apps = await fetchApps(storeAgencyId);
   cache = apps.map(toLocal);
+  await attachApplicantModelIdsAndMatFlags(cache);
   notify();
 }
 
@@ -172,15 +238,30 @@ export async function addApplication(
   if (!result) return null;
   const local = toLocal(result);
   cache.unshift(local);
+  await attachApplicantModelIdsAndMatFlags(cache);
   notify();
   return local;
 }
 
+/**
+ * Recruiting "Accepted" bucket: pending_model_confirmation (MAT may not exist yet) or accepted with
+ * live MAT for (model_id, accepted_by_agency_id). Defense-in-depth vs ghost accepted rows.
+ */
+export function applicationQualifiesForAgencyRecruitingAcceptedBucket(
+  a: ModelApplication,
+): boolean {
+  if (!(a.status === 'accepted' || a.status === 'pending_model_confirmation') || !a.chatThreadId) {
+    return false;
+  }
+  if (!a.acceptedByAgencyId) return false;
+  if (a.status === 'pending_model_confirmation') return true;
+  if (!a.applicantModelId) return false;
+  return a.matWithAcceptedAgency === true;
+}
+
 /** Enthält accepted UND pending_model_confirmation (Vertretungsanfrage noch offen). */
 export function getAcceptedApplications(): ModelApplication[] {
-  return cache.filter(
-    (a) => (a.status === 'accepted' || a.status === 'pending_model_confirmation') && a.chatThreadId,
-  );
+  return cache.filter(applicationQualifiesForAgencyRecruitingAcceptedBucket);
 }
 
 export function getApplicationById(id: string): ModelApplication | undefined {
@@ -237,6 +318,8 @@ export async function acceptApplication(
 
   app.status = 'pending_model_confirmation';
   app.chatThreadId = threadId;
+  app.acceptedByAgencyId = agencyId;
+  await attachApplicantModelIdsAndMatFlags(cache);
   notify();
 
   if (app.applicantUserId) {
@@ -278,6 +361,7 @@ export async function confirmApplicationByModel(
   }
 
   app.status = 'accepted';
+  await attachApplicantModelIdsAndMatFlags(cache);
   notify();
 
   // Notify the accepting agency that the model confirmed representation
@@ -335,6 +419,7 @@ export async function rejectApplication(applicationId: string): Promise<void> {
 export async function refreshApplications(): Promise<void> {
   const apps = await fetchApps(storeAgencyId);
   cache = apps.map(toLocal);
+  await attachApplicantModelIdsAndMatFlags(cache);
   notify();
 }
 

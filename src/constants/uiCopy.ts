@@ -712,7 +712,7 @@ export const uiCopy = {
     representationTerritories: 'Territories',
     /** Shown when opening agency direct chat but MAT no longer ties model to that agency (history only). */
     agencyDirectChatRepresentationEnded:
-      'You are no longer represented by this agency in the app. You can read past messages; new messages cannot be sent until representation is active again.',
+      'You are no longer represented by this agency. Past messages stay available below.',
     switchAgencyLabel: 'Switch agency',
     /** Small kicker above agency name rows in chat lists (not the org name itself). */
     agencyChatRowKicker: 'Agency',

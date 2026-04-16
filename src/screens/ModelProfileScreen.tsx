@@ -226,6 +226,12 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   const [agencyDirectChatMatActive, setAgencyDirectChatMatActive] = useState<boolean | null>(null);
   /** Full-screen apply flow when model has a row but no MAT (e.g. after end representation). */
   const [showApplyForm, setShowApplyForm] = useState(false);
+  const settingsApplyCtaRef = useRef<React.ComponentRef<typeof TouchableOpacity>>(null);
+  const homeApplyCtaRef = useRef<React.ComponentRef<typeof TouchableOpacity>>(null);
+  const modelHasNoMat = useMemo(
+    () => !modelAgencyCtx.loading && modelAgencyCtx.agencies.length === 0,
+    [modelAgencyCtx.loading, modelAgencyCtx.agencies.length],
+  );
   const [agencyChatOpening, setAgencyChatOpening] = useState(false);
   const agencyChatBusyRef = useRef(false);
   const [pendingConfirmations, setPendingConfirmations] = useState<
@@ -573,15 +579,56 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   }, [tab, bookingThreadIds]);
 
   useEffect(() => {
-    if (tab !== 'messages' || !userId) return;
-    let cancelled = false;
-    void listModelAgencyDirectConversations(userId).then((convs) => {
-      if (!cancelled) setAgencyDirectConvs(convs);
+    if (!profile?.id || modelAgencyCtx.loading || showApplyForm || !modelHasNoMat) return;
+    const id = requestAnimationFrame(() => {
+      if (tab === 'settings' && !settingsApplyCtaRef.current) {
+        console.error('[MODEL_STATE_BROKEN_NO_APPLY_PATH] settings Apply CTA not mounted');
+      }
+      if (tab === 'home' && !homeApplyCtaRef.current) {
+        console.error('[MODEL_STATE_BROKEN_NO_APPLY_PATH] home Apply banner not mounted');
+      }
     });
+    return () => cancelAnimationFrame(id);
+  }, [tab, profile?.id, modelAgencyCtx.loading, showApplyForm, modelHasNoMat]);
+
+  useEffect(() => {
+    if (tab !== 'messages' || !userId || !profile?.id) return;
+    let cancelled = false;
+    const agencies = modelAgencyCtx.agencies;
+    void (async () => {
+      let convs = await listModelAgencyDirectConversations(userId);
+      if (cancelled) return;
+      setAgencyDirectConvs(convs);
+      let needsRefresh = false;
+      for (const row of agencies) {
+        const hasConv = convs.some((c) => {
+          const p = parseAgencyModelContextId(c.context_id);
+          return p && p.modelId === profile.id && p.agencyId === row.agencyId;
+        });
+        if (!hasConv) {
+          const convId = await ensureAgencyModelDirectConversationWithRetry(
+            row.agencyId,
+            profile.id,
+          );
+          if (!convId) {
+            console.error('[CRITICAL] missing agency-model chat after retry', {
+              modelId: profile.id,
+              agencyId: row.agencyId,
+            });
+          } else {
+            needsRefresh = true;
+          }
+        }
+      }
+      if (needsRefresh && !cancelled) {
+        convs = await listModelAgencyDirectConversations(userId);
+        setAgencyDirectConvs(convs);
+      }
+    })();
     return () => {
       cancelled = true;
     };
-  }, [tab, userId]);
+  }, [tab, userId, profile?.id, modelAgencyCtx.agencies]);
 
   useEffect(() => {
     if (!openDirectConvId || !profile?.id) {
@@ -1096,7 +1143,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                 </View>
               </View>
             )}
-            {modelAgencyCtx.agencies.length === 0 && (
+            {modelHasNoMat && (
               <View style={st.section}>
                 <Text style={st.sectionLabel}>Agency</Text>
                 {modelAgencyCtx.loading ? (
@@ -1108,6 +1155,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                       {uiCopy.model.applyWhenNoAgencyHint}
                     </Text>
                     <TouchableOpacity
+                      ref={settingsApplyCtaRef}
                       onPress={() => setShowApplyForm(true)}
                       style={{
                         marginTop: spacing.md,
@@ -2062,6 +2110,38 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
             style={{ flex: 1 }}
             contentContainerStyle={{ flexGrow: 1, paddingBottom: spacing.xl * 2 }}
           >
+            {modelHasNoMat && !modelAgencyCtx.loading ? (
+              <View
+                style={{
+                  marginBottom: spacing.lg,
+                  padding: spacing.md,
+                  backgroundColor: colors.surface,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                }}
+              >
+                <Text style={st.metaText}>{uiCopy.model.noAgencyProfiles}</Text>
+                <Text style={[st.metaText, { marginTop: spacing.sm }]}>
+                  {uiCopy.model.applyWhenNoAgencyHint}
+                </Text>
+                <TouchableOpacity
+                  ref={homeApplyCtaRef}
+                  onPress={() => setShowApplyForm(true)}
+                  style={{
+                    marginTop: spacing.md,
+                    borderRadius: 999,
+                    backgroundColor: colors.accentBrown,
+                    paddingVertical: spacing.sm,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ ...typography.label, color: '#fff' }}>
+                    {uiCopy.model.applyToAgenciesCta}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
             {pendingConfirmations.length > 0 && (
               <View style={{ marginBottom: spacing.lg }}>
                 <Text style={st.sectionLabel}>Action required</Text>
