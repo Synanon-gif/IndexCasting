@@ -3,6 +3,7 @@
  * Pro Partei: agency_id; Bilder-URLs und Maße persistent; parteiübergreifend sichtbar je nach RLS.
  */
 import { supabase } from '../../lib/supabase';
+import { logAction } from '../utils/logAction';
 import { filterModelsByChestCoalesce } from '../utils/filterModelsByChestCoalesce';
 import { serviceErr, serviceOkData, type ServiceResult } from '../types/serviceResult';
 import { fetchAllSupabasePages } from './supabaseFetchAll';
@@ -686,17 +687,40 @@ export async function getMyModelAgencies(): Promise<ModelAgencyContext[]> {
 /**
  * Agency ends representation (soft delete): model leaves My Models & client discovery;
  * past option_requests / calendar history stay in DB for reporting.
+ * Pass `organizationId` for org-scoped audit logging when known.
  */
-export async function removeModelFromAgency(modelId: string, agencyId: string): Promise<boolean> {
-  const { error } = await supabase.rpc('agency_remove_model', {
-    p_model_id: modelId,
-    p_agency_id: agencyId,
-  });
-  if (error) {
-    console.error('removeModelFromAgency error:', error);
+export async function removeModelFromAgency(
+  modelId: string,
+  agencyId: string,
+  opts?: { organizationId?: string | null },
+): Promise<boolean> {
+  try {
+    const { data, error } = await supabase.rpc('agency_remove_model', {
+      p_model_id: modelId,
+      p_agency_id: agencyId,
+    });
+    if (error) {
+      console.error('removeModelFromAgency error:', error);
+      return false;
+    }
+    if (data !== true) {
+      console.error('removeModelFromAgency: RPC returned non-success', { modelId, agencyId, data });
+      return false;
+    }
+    if (opts?.organizationId) {
+      void logAction(opts.organizationId, 'removeModelFromAgency', {
+        type: 'audit',
+        action: 'model_removed',
+        entityType: 'model',
+        entityId: modelId,
+        newData: { agencyId, endRepresentation: true },
+      });
+    }
+    return true;
+  } catch (e) {
+    console.error('removeModelFromAgency exception:', e);
     return false;
   }
-  return true;
 }
 
 /** Link a roster model to the model user who registered with this email (after API import etc.). */

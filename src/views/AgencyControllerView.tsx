@@ -4503,11 +4503,22 @@ const MyModelsTab: React.FC<{
               uiCopy.alerts.endRepresentationTitle,
               uiCopy.alerts.endRepresentationBody,
               async () => {
-                const ok = await removeModelFromAgency(selectedModel.id, agencyId);
+                const ok = await removeModelFromAgency(selectedModel.id, agencyId, {
+                  organizationId: inviteOrganizationId,
+                });
                 if (ok) {
                   setSelectedModel(null);
                   setEditState(buildEditState({ name: '' }));
                   onRefresh();
+                  showAppAlert(
+                    uiCopy.alerts.endRepresentationSuccessTitle,
+                    uiCopy.alerts.endRepresentationSuccessBody,
+                  );
+                } else {
+                  showAppAlert(
+                    uiCopy.alerts.endRepresentationFailedTitle,
+                    uiCopy.alerts.endRepresentationFailedBody,
+                  );
                 }
               },
               uiCopy.alerts.endRepresentationConfirm,
@@ -4515,7 +4526,7 @@ const MyModelsTab: React.FC<{
           }}
         >
           <Text style={{ ...typography.label, fontSize: 12, color: colors.error }}>
-            End representation (soft-remove)
+            {uiCopy.alerts.endRepresentationButton}
           </Text>
         </TouchableOpacity>
       </ScreenScrollView>

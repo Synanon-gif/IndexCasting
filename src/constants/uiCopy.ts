@@ -152,6 +152,12 @@ export const uiCopy = {
     endRepresentationBody:
       'Remove this model from your roster? The model will be unlinked from your agency.',
     endRepresentationConfirm: 'End',
+    endRepresentationButton: 'End representation (soft-remove)',
+    endRepresentationFailedTitle: 'Could not end representation',
+    endRepresentationFailedBody:
+      'The model was not removed from your roster. Try again or contact support if this persists.',
+    endRepresentationSuccessTitle: 'Representation ended',
+    endRepresentationSuccessBody: 'The model has been removed from your roster.',
     locationUpdatedTitle: 'Location Updated',
     locationErrorTitle: 'Location Error',
     locationErrorFallback: 'Could not retrieve your location.',
