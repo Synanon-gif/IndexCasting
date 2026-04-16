@@ -74,6 +74,33 @@ describe('mergeEffectiveDisplayCitiesFromRows', () => {
     ]);
     expect(m.get('d')).toBe('ModelTypedCity');
   });
+
+  it('GPS-only winning live row omits map entry so caller can use models.city (SQL COALESCE parity)', () => {
+    const m = mergeEffectiveDisplayCitiesFromRows([
+      {
+        model_id: 'e',
+        city: 'LowerPriorityCity',
+        source: 'current',
+      },
+      {
+        model_id: 'e',
+        city: null,
+        source: 'live',
+        lat_approx: 52.5,
+        lng_approx: 13.4,
+        share_approximate_location: true,
+      },
+    ]);
+    expect(m.has('e')).toBe(false);
+  });
+
+  it('when live has no coords, uses named city from current even if live row exists empty', () => {
+    const m = mergeEffectiveDisplayCitiesFromRows([
+      { model_id: 'f', city: 'Vienna', source: 'current' },
+      { model_id: 'f', city: '', source: 'live' },
+    ]);
+    expect(m.get('f')).toBe('Vienna');
+  });
 });
 
 // ── mergeEffectiveApproxCoordsFromRows ────────────────────────────────────────

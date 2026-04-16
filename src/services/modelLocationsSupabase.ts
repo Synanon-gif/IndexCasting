@@ -231,27 +231,57 @@ export function mergeEffectiveApproxCoordsFromRows(
   return out;
 }
 
+/** Row shape for display-city merge — matches get_discovery_models effective_locations eligibility. */
+export type ModelLocationDisplayMergeRow = {
+  model_id: string;
+  city: string | null;
+  source: string;
+  lat_approx?: number | null;
+  lng_approx?: number | null;
+  share_approximate_location?: boolean | null;
+};
+
+function locationRowEligibleForEffectiveCity(r: ModelLocationDisplayMergeRow): boolean {
+  const c = r.city?.trim();
+  if (c) return true;
+  return (
+    r.share_approximate_location === true &&
+    r.lat_approx != null &&
+    r.lng_approx != null &&
+    Number.isFinite(r.lat_approx) &&
+    Number.isFinite(r.lng_approx)
+  );
+}
+
 /**
- * Picks the highest-priority non-empty city per model_id from raw rows
- * (live > current > agency). Exported for unit tests.
+ * Picks display city from the same winning model_locations row as SQL effective_locations
+ * (live > current > agency; row must have non-empty city OR shared approx coords).
+ * Only adds map entries when the winning row has a non-empty city — callers must fall back
+ * to models.city (parity with COALESCE(el.effective_city, m.city)).
  */
 export function mergeEffectiveDisplayCitiesFromRows(
-  rows: ReadonlyArray<{ model_id: string; city: string | null; source: string }>,
+  rows: ReadonlyArray<ModelLocationDisplayMergeRow>,
 ): Map<string, string> {
-  const best = new Map<string, { city: string; pri: number }>();
+  const byModel = new Map<string, ModelLocationDisplayMergeRow[]>();
   for (const row of rows) {
-    const c = row.city?.trim();
-    if (!c) continue;
-    const src: LocationSource =
-      row.source === 'live' || row.source === 'current' || row.source === 'agency'
-        ? row.source
-        : 'agency';
-    const pri = locationSourcePriority(src);
-    const cur = best.get(row.model_id);
-    if (!cur || pri > cur.pri) best.set(row.model_id, { city: c, pri });
+    const arr = byModel.get(row.model_id) ?? [];
+    arr.push(row);
+    byModel.set(row.model_id, arr);
   }
   const out = new Map<string, string>();
-  for (const [id, v] of best) out.set(id, v.city);
+  for (const [modelId, list] of byModel) {
+    const eligible = list.filter(locationRowEligibleForEffectiveCity);
+    if (eligible.length === 0) continue;
+    const normSrc = (s: string): LocationSource =>
+      s === 'live' || s === 'current' || s === 'agency' ? s : 'agency';
+    eligible.sort(
+      (a, b) =>
+        locationSourcePriority(normSrc(b.source)) - locationSourcePriority(normSrc(a.source)),
+    );
+    const win = eligible[0]!;
+    const c = win.city?.trim();
+    if (c) out.set(modelId, c);
+  }
   return out;
 }
 
@@ -268,20 +298,18 @@ export async function fetchEffectiveDisplayCitiesForModels(
   const unique = [...new Set(modelIds.filter((id) => id?.trim()))];
   if (unique.length === 0) return new Map();
   try {
-    const allRows: Array<{ model_id: string; city: string | null; source: string }> = [];
+    const allRows: ModelLocationDisplayMergeRow[] = [];
     for (let i = 0; i < unique.length; i += EFFECTIVE_CITY_BATCH) {
       const chunk = unique.slice(i, i + EFFECTIVE_CITY_BATCH);
       const { data, error } = await supabase
         .from('model_locations')
-        .select('model_id, city, source')
+        .select('model_id, city, source, lat_approx, lng_approx, share_approximate_location')
         .in('model_id', chunk);
       if (error) {
         console.error('fetchEffectiveDisplayCitiesForModels error:', error);
         continue;
       }
-      allRows.push(
-        ...((data ?? []) as Array<{ model_id: string; city: string | null; source: string }>),
-      );
+      allRows.push(...((data ?? []) as ModelLocationDisplayMergeRow[]));
     }
     return mergeEffectiveDisplayCitiesFromRows(allRows);
   } catch (e) {

@@ -543,4 +543,27 @@ describe('getDiscoveryModels – cursor pagination params', () => {
       p_cursor_model_id: 'model-xyz',
     });
   });
+
+  it('preserves p_search_lat / p_search_lng / p_city_radius_km on paginated calls (load more)', async () => {
+    mockRpc.mockResolvedValueOnce({ data: [], error: null });
+
+    const cursor: DiscoveryCursor = { score: 1100, modelId: 'model-page2' };
+    const filters: DiscoveryFilters = {
+      ...BASE_FILTERS,
+      city: 'Hamburg',
+      searchLat: 53.55,
+      searchLng: 10.0,
+      cityRadiusKm: 50,
+    };
+    await getDiscoveryModels(ORG_ID, filters, cursor);
+
+    expect(mockRpc.mock.calls[0][1]).toMatchObject({
+      p_city: 'Hamburg',
+      p_search_lat: 53.55,
+      p_search_lng: 10.0,
+      p_city_radius_km: 50,
+      p_cursor_score: 1100,
+      p_cursor_model_id: 'model-page2',
+    });
+  });
 });
