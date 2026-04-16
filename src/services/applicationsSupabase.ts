@@ -14,6 +14,7 @@ import {
 } from './gdprComplianceSupabase';
 import { createNotification } from './notificationsSupabase';
 import { uiCopy } from '../constants/uiCopy';
+import { ensureAgencyModelDirectConversation } from './b2bOrgChatSupabase';
 
 /**
  * Model-Bewerbungen (Apply) – in Supabase gespeichert.
@@ -408,7 +409,11 @@ export async function insertApplication(app: {
 export async function updateApplicationStatus(
   id: string,
   status: ApplicationStatus,
-  extra?: { recruiting_thread_id?: string; accepted_by_agency_id?: string },
+  extra?: {
+    recruiting_thread_id?: string;
+    accepted_by_agency_id?: string;
+    pending_territories?: string[];
+  },
 ): Promise<boolean> {
   const priorStatusMap: Record<ApplicationStatus, ApplicationStatus> = {
     pending_model_confirmation: 'pending',
@@ -550,7 +555,7 @@ export async function confirmApplicationByModel(
       .eq('id', applicationId)
       .eq('applicant_user_id', applicantUserId)
       .eq('status', 'pending_model_confirmation')
-      .select('id')
+      .select('id, accepted_by_agency_id')
       .maybeSingle();
 
     if (error) {
@@ -566,6 +571,19 @@ export async function confirmApplicationByModel(
     }
 
     const modelId = await createModelFromApplication(applicationId);
+    const agencyId =
+      (data as { accepted_by_agency_id?: string | null }).accepted_by_agency_id ?? null;
+    if (modelId && agencyId) {
+      void ensureAgencyModelDirectConversation(agencyId, modelId).then((convId) => {
+        if (!convId) {
+          console.error('confirmApplicationByModel: ensureAgencyModelDirectConversation failed', {
+            applicationId,
+            modelId,
+            agencyId,
+          });
+        }
+      });
+    }
     return { modelId };
   } catch (e) {
     console.error('confirmApplicationByModel exception:', e);

@@ -700,6 +700,9 @@ export const uiCopy = {
     agencyLabel: 'Agency',
     chatsSubtitle: 'Chats with agencies that responded to your application.',
     noAgencyMessages: 'No messages from agencies yet.',
+    /** CTA: bootstrap or open direct chat with the active representation agency. */
+    messageYourAgency: 'Message your agency',
+    ensureAgencyChatFailed: 'Could not open chat with your agency. Please try again.',
     openChat: 'Open chat',
     applicationDefaultsSubtitle: 'Default details for your applications.',
     noApplicationsYet: 'No applications yet. Create an application first to edit defaults.',

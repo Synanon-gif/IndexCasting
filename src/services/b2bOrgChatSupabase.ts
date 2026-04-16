@@ -488,6 +488,36 @@ export async function ensureAgencyModelDirectChat(params: {
 }
 
 /**
+ * Server find-or-create for agency↔model direct chat (`ensure_agency_model_direct_conversation`).
+ * Models cannot rely on client INSERT into `conversations` when `agency_organization_id` is set (RLS).
+ * Returns the conversation id, or null on error — no throw (Option A).
+ */
+export async function ensureAgencyModelDirectConversation(
+  agencyId: string,
+  modelId: string,
+): Promise<string | null> {
+  if (!agencyId?.trim() || !modelId?.trim()) {
+    console.error('ensureAgencyModelDirectConversation: missing agencyId or modelId');
+    return null;
+  }
+  try {
+    const { data, error } = await supabase.rpc('ensure_agency_model_direct_conversation', {
+      p_agency_id: agencyId,
+      p_model_id: modelId,
+    });
+    if (error) {
+      console.error('ensure_agency_model_direct_conversation RPC error:', error);
+      return null;
+    }
+    const id = typeof data === 'string' ? data : data != null ? String(data) : '';
+    return id || null;
+  } catch (e) {
+    console.error('ensureAgencyModelDirectConversation exception:', e);
+    return null;
+  }
+}
+
+/**
  * Direct agency→model conversations visible to a specific model user.
  * The model is in participant_ids; RLS (conversation_accessible_to_me) grants access.
  */

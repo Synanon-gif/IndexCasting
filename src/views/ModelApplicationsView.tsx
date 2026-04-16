@@ -36,6 +36,7 @@ import { ApplyFormView } from './ApplyFormView';
 import { BookingChatView } from './BookingChatView';
 import { uiCopy } from '../constants/uiCopy';
 import { BOTTOM_TAB_BAR_HEIGHT } from '../navigation/bottomTabNavigation';
+import { useModelAgency } from '../context/ModelAgencyContext';
 
 type ModelApplicationsViewProps = {
   applicantUserId: string;
@@ -96,6 +97,7 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
   applicantUserId,
   onBackToRoleSelection,
 }) => {
+  const { reload: reloadModelAgencies } = useModelAgency();
   const insets = useSafeAreaInsets();
   const { height: modelAppWinH } = useWindowDimensions();
   const webMessagesScrollStyle = useMemo(
@@ -292,6 +294,7 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
     const result = await confirmApplicationByModel(appId, applicantUserId);
     setConfirmingId(null);
     if (result) {
+      await reloadModelAgencies();
       await refreshApplications();
       load();
     } else {

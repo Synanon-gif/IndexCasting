@@ -102,7 +102,10 @@ import {
   calendarFeedSubscribeUrl,
   calendarFeedWebcalUrl,
 } from '../services/calendarFeedSupabase';
-import { listModelAgencyDirectConversations } from '../services/b2bOrgChatSupabase';
+import {
+  ensureAgencyModelDirectConversation,
+  listModelAgencyDirectConversations,
+} from '../services/b2bOrgChatSupabase';
 import type { Conversation } from '../services/messengerSupabase';
 import { OrgMessengerInline } from '../components/OrgMessengerInline';
 import { ConfirmDestructiveModal } from '../components/ConfirmDestructiveModal';
@@ -216,6 +219,8 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   const [bookingAgencyByThread, setBookingAgencyByThread] = useState<Record<string, string>>({});
   const [agencyDirectConvs, setAgencyDirectConvs] = useState<Conversation[]>([]);
   const [openDirectConvId, setOpenDirectConvId] = useState<string | null>(null);
+  const [agencyChatOpening, setAgencyChatOpening] = useState(false);
+  const agencyChatBusyRef = useRef(false);
   const [pendingConfirmations, setPendingConfirmations] = useState<
     SupabaseOptionRequestModelSafe[]
   >([]);
@@ -570,6 +575,26 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
       cancelled = true;
     };
   }, [tab, userId]);
+
+  const handleOpenAgencyDirectChat = useCallback(async () => {
+    const agencyId = modelAgencyCtx.activeRow?.agencyId;
+    if (!userId || !profile?.id || !agencyId || agencyChatBusyRef.current) return;
+    agencyChatBusyRef.current = true;
+    setAgencyChatOpening(true);
+    try {
+      const convId = await ensureAgencyModelDirectConversation(agencyId, profile.id);
+      if (!convId) {
+        Alert.alert(uiCopy.common.error, uiCopy.model.ensureAgencyChatFailed);
+        return;
+      }
+      const convs = await listModelAgencyDirectConversations(userId);
+      setAgencyDirectConvs(convs);
+      setOpenDirectConvId(convId);
+    } finally {
+      agencyChatBusyRef.current = false;
+      setAgencyChatOpening(false);
+    }
+  }, [userId, profile?.id, modelAgencyCtx.activeRow?.agencyId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1766,6 +1791,37 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
               paddingTop: spacing.sm,
             }}
           >
+            {modelAgencyCtx.activeRow && profile?.id && userId ? (
+              <View style={{ marginBottom: spacing.md }}>
+                <TouchableOpacity
+                  onPress={() => void handleOpenAgencyDirectChat()}
+                  disabled={agencyChatOpening}
+                  style={{
+                    borderRadius: 999,
+                    backgroundColor: colors.accentBrown,
+                    paddingVertical: spacing.sm,
+                    alignItems: 'center',
+                    opacity: agencyChatOpening ? 0.65 : 1,
+                  }}
+                >
+                  <Text style={{ ...typography.label, color: '#fff' }}>
+                    {agencyChatOpening ? uiCopy.common.loading : uiCopy.model.messageYourAgency}
+                  </Text>
+                </TouchableOpacity>
+                <Text
+                  style={{
+                    ...typography.body,
+                    fontSize: 11,
+                    color: colors.textSecondary,
+                    marginTop: 6,
+                    textAlign: 'center',
+                  }}
+                  numberOfLines={2}
+                >
+                  {modelAgencyCtx.activeRow.agencyName}
+                </Text>
+              </View>
+            ) : null}
             {(() => {
               type UnifiedRow =
                 | {
