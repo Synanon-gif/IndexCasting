@@ -22,13 +22,14 @@ import {
   TextInput,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   Linking,
   StyleSheet,
   useWindowDimensions,
   type ListRenderItemInfo,
 } from 'react-native';
+import { showAppAlert, showConfirmAlert } from '../utils/crossPlatformAlert';
 import { colors, spacing, typography } from '../theme/theme';
+import { uiCopy } from '../constants/uiCopy';
 import { StorageImage } from '../components/StorageImage';
 import {
   getOrganizationProfile,
@@ -147,7 +148,10 @@ export function AgencyOrgProfileScreen({
       if (result.ok && result.url) {
         setOrgProfile((prev) => (prev ? { ...prev, logo_url: result.url! } : prev));
       } else {
-        Alert.alert('Upload failed', result.error ?? 'Could not upload logo. Please try again.');
+        showAppAlert(
+          uiCopy.organizationProfile.logoUploadFailedTitle,
+          result.error ?? uiCopy.organizationProfile.logoUploadFailedMessage,
+        );
       }
     },
     [organizationId],
@@ -155,23 +159,22 @@ export function AgencyOrgProfileScreen({
 
   const handleLogoDelete = useCallback(async () => {
     if (!organizationId || !orgProfile?.logo_url) return;
-    Alert.alert('Remove logo', 'Remove the current logo?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Remove',
-        style: 'destructive',
-        onPress: async () => {
-          setLogoUploading(true);
-          const ok = await deleteOrganizationLogo(organizationId, orgProfile.logo_url);
-          setLogoUploading(false);
-          if (ok) {
-            setOrgProfile((prev) => (prev ? { ...prev, logo_url: null } : prev));
-          } else {
-            Alert.alert('Error', 'Could not remove logo. Please try again.');
-          }
-        },
+    const op = uiCopy.organizationProfile;
+    showConfirmAlert(
+      op.removeLogoTitle,
+      op.removeLogoMessage,
+      async () => {
+        setLogoUploading(true);
+        const ok = await deleteOrganizationLogo(organizationId, orgProfile.logo_url);
+        setLogoUploading(false);
+        if (ok) {
+          setOrgProfile((prev) => (prev ? { ...prev, logo_url: null } : prev));
+        } else {
+          showAppAlert(uiCopy.common.error, op.removeLogoFailed);
+        }
       },
-    ]);
+      uiCopy.common.remove,
+    );
   }, [organizationId, orgProfile?.logo_url]);
 
   // ── Phase 3A.3: share link handlers (owner-only) ──

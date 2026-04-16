@@ -1,88 +1,136 @@
-# Delete Organization & Delete Account — Architecture audit (2026)
+# Delete Organization & Delete Account — Maximum audit (2026)
 
-This document inventories the **current** implementation after a UI reliability pass. It does **not** replace live DB verification (`pg_get_functiondef`, FK checks).
+Read-only architecture and operations reference. **Does not** execute destructive SQL. **Live DB** truth requires operator-run verification (see section 4).
 
-## Phase 1 — Inventory
+## 1. UI entry points (canonical)
 
-### UI entry points
+| Action | Surfaces | RPC / service |
+|--------|----------|---------------|
+| Delete organization (owner) | `AgencyControllerView.tsx`, `ClientWebApp.tsx` | `dissolveOrganization` → `dissolve_organization` |
+| Delete account (owner / model org user) | Same + `ModelProfileScreen.tsx` | `requestAccountDeletion` → `request_account_deletion` |
+| Delete account (booker / employee) | `AgencyControllerView.tsx`, `ClientWebApp.tsx` | `requestPersonalAccountDeletion` → `request_personal_account_deletion` |
 
-| Surface | Delete organization | Delete account (owner) | Delete account (non-owner / personal) |
-|--------|---------------------|-------------------------|----------------------------------------|
-| `src/views/AgencyControllerView.tsx` | Settings tab, owner only | Same | Bookers: personal RPC |
-| `src/web/ClientWebApp.tsx` | Settings overlay, owner | Same | Employees: personal RPC |
-| `src/screens/ModelProfileScreen.tsx` | — | Account tab (`request_account_deletion`) | — |
+Cross-platform UX: `showConfirmAlert` / `showAppAlert` (`src/utils/crossPlatformAlert.ts`). Error mapping for dissolve: `messageForDissolveOrganizationError` (`src/utils/accountDeletionFeedback.ts`).
 
-### Cross-platform feedback utilities
+## 2. P0 / P1 inventory — `Alert.alert` multi-button & web-fragile confirms
 
-- `src/utils/crossPlatformAlert.ts` — `showAppAlert`, `showConfirmAlert` (web: `window.alert` / `window.confirm`; native: `Alert.alert`).
-- `src/utils/accountDeletionFeedback.ts` — maps dissolve errors to safe `uiCopy` strings.
+**P0 (org / account deletion)** — migrated earlier: owner dissolve, account delete, personal delete on `AgencyControllerView`, `ClientWebApp`, `ModelProfileScreen`.
 
-### Backend paths
+**P1 (destructive / revoke — same web reliability class)** — migrated in this audit pass:
 
-| Action | Primary API | Notes |
-|--------|-------------|--------|
-| Delete organization (UI label) | `public.dissolve_organization(p_organization_id)` via `dissolveOrganization()` in `organizationsInvitationsSupabase.ts` | Removes `organization_members`, `invitations`, `organizations` row. **Does not** run the GDPR-wide `delete_organization_data` body from root `migration_gdpr_compliance_2026_04.sql` (that RPC is **not** in `supabase/migrations/`; live presence must be verified separately). |
-| Delete account (owner / model) | `public.request_account_deletion()` via `accountSupabase.requestAccountDeletion` | Soft-delete: `profiles.deletion_requested_at`. Agent/client: blocks non-owners with `only_organization_owner_can_delete_account`. |
-| Delete account (member) | `public.request_personal_account_deletion()` | Deletes caller’s `organization_members` rows; sets `deletion_requested_at`. |
-| Hard auth + storage purge | Edge `supabase/functions/delete-user` | Service role; not triggered directly by these RPCs. |
+| Area | File | Pattern |
+|------|------|---------|
+| Calendar feed revoke | `ClientWebApp.tsx`, `AgencySettingsTab.tsx`, `ModelProfileScreen.tsx` | `showConfirmAlert` |
+| Calendar feed created (long body) | `ClientWebApp.tsx`, `AgencySettingsTab.tsx`, `ModelProfileScreen.tsx` | `showAppAlert` |
+| Consent withdraw (native branch) | `AgencySettingsTab.tsx` | `showConfirmAlert` |
+| Manual calendar event delete | `AgencyControllerView.tsx` | `showConfirmAlert` |
+| End representation (model) | `AgencyControllerView.tsx` | `showConfirmAlert` |
+| Model location remove | `ModelProfileScreen.tsx` | `showConfirmAlert` |
+| Billing address delete (native) | `BillingDetailsForm.tsx` | `showConfirmAlert` (unified with web) |
+| Media delete confirm (native) | `ModelMediaSettingsPanel.tsx` | `showConfirmAlert` (unified) |
+| Org logo / gallery remove | `AgencyOrgProfileScreen.tsx`, `ClientOrgProfileScreen.tsx` | `showConfirmAlert` + `showAppAlert` |
+| Admin purge user | `AdminDashboard.tsx` | `showConfirmAlert` |
+| Admin org type convert (native async confirm) | `AdminDashboard.tsx` | `showConfirmAlert` |
+| Admin storage unlimited / reset | `AdminDashboard.tsx` | `showConfirmAlert` |
 
-### Architecture map (high level)
+**P2 / informational** (single-button or non-destructive): many remaining `Alert.alert` calls for validation messages, success toasts, etc. — lower priority unless product reports web issues.
 
-1. **Delete organization:** Button → `showConfirmAlert` → `dissolve_organization` → on success: local state `orgDissolved`, `refreshProfile`, optional success alert; on failure: mapped error message.
-2. **Delete account:** Button → `showConfirmAlert` → `request_account_deletion` **or** `request_personal_account_deletion` → success alert → `signOut()`.
+**Grep maintenance:** `rg "Alert\\.alert\\(" src` after changes to destructive flows.
 
-## Phase 2 — Root cause: “dead click” / silent failure
+## 3. Semantics: `dissolve_organization` vs `delete_organization_data`
 
-**Primary root cause (web):** Destructive flows used `Alert.alert` with multiple buttons. On **React Native Web**, that pattern is **unreliable**; the confirmation often does not appear, so handlers never run — perceived as dead click with no error.
+| Area | `dissolve_organization` (current UI) | `delete_organization_data` (GDPR-style purge in repo root SQL) |
+|------|--------------------------------------|----------------------------------------------------------------|
+| Org row | Deleted when FK chain allows | Deleted after purge |
+| `organization_members` / `invitations` | Yes | Yes |
+| B2B messenger (org-scoped) | Not targeted by dissolve | Intended in GDPR SQL |
+| Option/casting + related | Not targeted | Client branch in SQL (see section 3.1) |
+| Agency models / photos | Not targeted | Intended in SQL |
+| `organization_subscriptions` | Not targeted | Intended in SQL |
+| Member soft-delete (`deletion_requested_at`) | No | Yes (all members) |
 
-**Fix applied:** All listed destructive buttons now use `showConfirmAlert` / `showAppAlert` for confirm, success, and errors.
+**Product decision (2026, documented): Option A** — UI stays on **`dissolve_organization`**. Copy describes that the **workspace shell** (org row, memberships, invites) is removed; **linked business data** may remain or **block** delete via FKs. Full data purge is **not** implied. **Option B** (wire UI or dissolve to verified `delete_organization_data` or successor RPC) requires live verification, `supabase/migrations/YYYYMMDD_*.sql`, and explicit product sign-off — **not shipped** in this audit.
 
-**Secondary:** PostgREST errors from dissolve (e.g. FK violations) previously collapsed to a generic string; a small mapper surfaces **safe** user copy for known classes without leaking SQL.
+### 3.1 Drift risk — `option_requests.client_id`
 
-## Phase 3–4 — Semantics & gaps (current behavior)
+Historical GDPR SQL may filter client option rows by `client_id` tied to `clients` / org client id. Newer product paths may store **`auth.uid()`** in `option_requests.client_id`. **Before** changing purge logic, on **live** DB verify:
 
-### `dissolve_organization` (canonical org delete in UI)
+- Column semantics (`information_schema.columns` + sample rows).
+- `pg_get_functiondef('public.delete_organization_data'::regproc)` (or current name).
 
-**Removes:** All members of the org, pending invitations, the `organizations` row (when DB allows the delete).
+## 4. Live verification checklist (operator — not automated)
 
-**May not remove:** Business rows that still reference the org with `ON DELETE RESTRICT` or legacy FKs — delete can **fail** with a FK error; UI now explains “related records still exist” in English.
+Run in Supabase SQL editor or Management API against **production** or staging mirror:
 
-**Contrast:** `delete_organization_data` (GDPR doc / `gdprComplianceSupabase.deleteOrganizationData`) describes a **much broader** purge (models, option threads, conversations scoped to org, etc.). The **product UI currently does not call** that function; aligning UI with full purge requires a **separate, explicit** product/DB decision and migration if the RPC is not on live.
+```sql
+-- 4.1 Deployed routines
+SELECT proname, pg_get_functiondef(oid)
+FROM pg_proc
+WHERE pronamespace = 'public'::regnamespace
+  AND proname IN ('dissolve_organization', 'delete_organization_data');
 
-### `request_account_deletion` / `request_personal_account_deletion`
+-- 4.2 FKs referencing organizations
+SELECT
+  tc.constraint_name,
+  kcu.table_name AS referencing_table,
+  kcu.column_name
+FROM information_schema.table_constraints tc
+JOIN information_schema.key_column_usage kcu
+  ON tc.constraint_name = kcu.constraint_name
+  AND tc.table_schema = kcu.table_schema
+JOIN information_schema.constraint_column_usage ccu
+  ON ccu.constraint_name = tc.constraint_name
+WHERE tc.constraint_type = 'FOREIGN KEY'
+  AND ccu.table_name = 'organizations'
+ORDER BY kcu.table_name;
 
-- **Soft delete** only in-app; **auth user** remains until Edge/cron purge.
-- **Email reuse** may still be blocked by `used_trial_emails` or auth lifecycle — operational, not fixed in this pass.
-- **Multi-party threads:** Conversations use `participant_ids` arrays; see `docs/GDPR_DELETE_FLOW.md` for documented gaps after auth delete.
+-- 4.3 option_requests.client_id — sample interpretation (adjust LIMIT)
+SELECT client_id, COUNT(*) FROM public.option_requests GROUP BY 1 ORDER BY 2 DESC LIMIT 20;
+```
 
-## Phase 5 — Org delete vs account delete
+Document findings in internal runbook; do not assume root `supabase/*.sql` matches live (see `docs/LIVE_DB_DRIFT_GUARDRAIL.md`).
 
-- **Expected UX:** Owner dissolves org first (when they have a B2B org), then schedules account deletion — UI copy guides this.
-- **RPC:** Owner can still call `request_account_deletion` while org exists (soft-delete profile); hard auth removal later must respect `organizations.owner_id` **ON DELETE RESTRICT** (see `migration_fix_org_owner_delete_restrict.sql`).
+## 5. Delete account path (current)
 
-## Phase 8 — Automated tests
+1. **UI:** `request_account_deletion` or `request_personal_account_deletion` sets **`profiles.deletion_requested_at`** (soft schedule).
+2. **Edge `delete-user`:** hard auth + storage purge path exists; **not** invoked by the Settings delete-account buttons documented here.
+3. **Gaps:** `conversations.participant_ids` staleness, `used_trial_emails`, email reuse — see `docs/GDPR_DELETE_FLOW.md`.
 
-- `src/utils/__tests__/accountDeletionFeedback.test.ts` — error mapping.
+## 6. Operational runbook — test org reset
 
-## Phase 9 — Manual QA matrix (condensed)
+**Goal:** Client or agency org “gone” for re-testing.
 
-| # | Case | Steps | Expected backend | Expected UI |
-|---|------|--------|------------------|-------------|
-| 1 | Owner deletes org (web) | Open Settings → Delete organization → confirm | `dissolve_organization` ok | Browser confirm; then success alert or green banner; loading on button |
-| 2 | Owner deletes org (native) | Same | Same | Native confirm; success alert |
-| 3 | Non-owner | No dissolve button | — | — |
-| 4 | Dissolve blocked (FK) | Org with blocking FKs (test env) | RPC error | English error, not silent |
-| 5 | Owner schedules account delete | After dissolve (or model) → Delete account → confirm | `request_account_deletion` true | Confirm; “Deletion scheduled”; sign out |
-| 6 | Booker/employee personal delete | Delete account → confirm | `request_personal_account_deletion` | Same feedback pattern |
-| 7 | Non-owner hits owner-only path | N/A for models | Exception for agent/client non-owner | `ownerOnly` message |
+- **`dissolve_organization` alone** often **does not** remove projects, options, subscriptions, etc. Delete may **fail** if FKs reference `organizations`.
+- **Option A:** Support-assisted cleanup, admin tools, or manual SQL in **non-prod** only.
+- **Option B (future):** verified purge RPC + migration + UI copy — only after section 4 checks.
 
-## Phase 11 — Residual risks
+## 7. Manual QA matrix (extended)
 
-- **Semantic gap** between **dissolve** (shell) and **full GDPR org purge** if product intends “all org data.”
-- **Hard delete** and **storage** cleanup still depend on Edge/cron, not these buttons alone.
-- **Counterparty** calendar/thread rows may remain by design; full multi-party erase needs `delete_option_request_full` / product policy.
+| # | Case | Expected |
+|---|------|----------|
+| 1 | Owner dissolves org (web) | `window.confirm` via `showConfirmAlert`; success or mapped FK/owner error |
+| 2 | Owner dissolves org (native) | Native confirm; same |
+| 3 | Non-owner | No dissolve control |
+| 4 | Dissolve blocked (FK) | User-visible English message (`dissolveOrgFailedDependencies` / mapped) |
+| 5 | Owner schedules account delete | Soft-delete RPC; scheduled message; sign-out |
+| 6 | Booker/employee personal delete | `request_personal_account_deletion` |
+| 7 | Calendar feed revoke (web) | Confirm visible; revoke runs |
+| 8 | Billing address delete (web) | Confirm; row removed |
+| 9 | Org logo remove (web) | Confirm; logo cleared |
+| 10 | Model removes location | Confirm; only model-owned source |
 
-## Reliability statement (post-fix)
+## 8. Automated tests
 
-- **Delete Organization / Delete Account buttons:** Confirmation and outcomes are **visible on web and native** using the cross-platform helpers; **no intentional silent no-op** from missing `Alert` on web.
-- **End-to-end data purge:** **Not fully guaranteed** by `dissolve_organization` alone; operational completeness requires DB review and optional alignment with `delete_organization_data` or extended RPC, verified on **live** DB.
+- `src/utils/__tests__/accountDeletionFeedback.test.ts` — dissolve error mapping.
+- `src/services/__tests__/organizationsInvitationsSupabase.test.ts` — `dissolveOrganization` RPC outcomes.
+- `src/utils/__tests__/crossPlatformAlert.test.ts` — web `confirm` / native `Alert.alert` wiring.
+
+## 9. Residual risks
+
+- Root SQL vs `migrations/` drift for `delete_organization_data`.
+- Soft-delete vs hard `delete-user` / email reuse.
+- Multi-party data: counterparties may retain rows by design until product-defined purge.
+
+## 10. Reliability statement
+
+Delete organization / delete account / P1 destructive confirms use **`showConfirmAlert`** or **`showAppAlert`** so **web** users get working **`window.confirm` / `window.alert`** semantics instead of unreliable multi-button `Alert.alert`.

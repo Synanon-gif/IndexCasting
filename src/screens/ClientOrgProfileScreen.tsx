@@ -19,7 +19,6 @@ import {
   Text,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   StyleSheet,
   Switch,
   TextInput,
@@ -27,7 +26,9 @@ import {
   useWindowDimensions,
   ScrollView,
 } from 'react-native';
+import { showAppAlert, showConfirmAlert } from '../utils/crossPlatformAlert';
 import { colors, spacing, typography } from '../theme/theme';
+import { uiCopy } from '../constants/uiCopy';
 import { StorageImage } from '../components/StorageImage';
 import {
   getOrganizationProfile,
@@ -134,7 +135,10 @@ export function ClientOrgProfileScreen({
       if (result.ok && result.url) {
         setOrgProfile((prev) => (prev ? { ...prev, logo_url: result.url! } : prev));
       } else {
-        Alert.alert('Upload failed', result.error ?? 'Could not upload logo. Please try again.');
+        showAppAlert(
+          uiCopy.organizationProfile.logoUploadFailedTitle,
+          result.error ?? uiCopy.organizationProfile.logoUploadFailedMessage,
+        );
       }
     },
     [organizationId],
@@ -142,23 +146,22 @@ export function ClientOrgProfileScreen({
 
   const handleLogoDelete = useCallback(async () => {
     if (!organizationId || !orgProfile?.logo_url) return;
-    Alert.alert('Remove logo', 'Remove the current logo?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Remove',
-        style: 'destructive',
-        onPress: async () => {
-          setLogoUploading(true);
-          const ok = await deleteOrganizationLogo(organizationId, orgProfile.logo_url);
-          setLogoUploading(false);
-          if (ok) {
-            setOrgProfile((prev) => (prev ? { ...prev, logo_url: null } : prev));
-          } else {
-            Alert.alert('Error', 'Could not remove logo. Please try again.');
-          }
-        },
+    const op = uiCopy.organizationProfile;
+    showConfirmAlert(
+      op.removeLogoTitle,
+      op.removeLogoMessage,
+      async () => {
+        setLogoUploading(true);
+        const ok = await deleteOrganizationLogo(organizationId, orgProfile.logo_url);
+        setLogoUploading(false);
+        if (ok) {
+          setOrgProfile((prev) => (prev ? { ...prev, logo_url: null } : prev));
+        } else {
+          showAppAlert(uiCopy.common.error, op.removeLogoFailed);
+        }
       },
-    ]);
+      uiCopy.common.remove,
+    );
   }, [organizationId, orgProfile?.logo_url]);
 
   // ── Gallery upload/delete handlers (owner-only) ──
@@ -189,12 +192,20 @@ export function ClientOrgProfileScreen({
           }
         }
         if (failCount > 0) {
-          Alert.alert(
-            failCount === total ? 'Upload failed' : 'Some uploads failed',
-            failCount === total
-              ? (lastError ?? 'Could not upload images. Please try again.')
-              : `${failCount} of ${total} image(s) could not be uploaded. Others were added.`,
-          );
+          const op = uiCopy.organizationProfile;
+          if (failCount === total) {
+            showAppAlert(
+              op.galleryUploadAllFailedTitle,
+              lastError ?? op.galleryUploadAllFailedMessage,
+            );
+          } else {
+            showAppAlert(
+              op.galleryUploadSomeFailedTitle,
+              op.galleryUploadSomeFailedBody
+                .replace('{failed}', String(failCount))
+                .replace('{total}', String(total)),
+            );
+          }
         }
       } finally {
         setGalleryUploading(false);
@@ -206,29 +217,28 @@ export function ClientOrgProfileScreen({
   const handleDeleteGalleryImage = useCallback(
     (item: OrganizationProfileMedia) => {
       if (!organizationId || deletingMediaIds.has(item.id)) return;
-      Alert.alert('Remove image', 'Remove this image from your gallery?', [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
-            // Per-id inflight lock
-            setDeletingMediaIds((prev) => new Set(prev).add(item.id));
-            const ok = await deleteClientGalleryImage(organizationId, item.id, item.image_url);
-            setDeletingMediaIds((prev) => {
-              const next = new Set(prev);
-              next.delete(item.id);
-              return next;
-            });
-            if (ok) {
-              // Inverse-operation remove: filter out the deleted item
-              setMedia((prev) => prev.filter((m) => m.id !== item.id));
-            } else {
-              Alert.alert('Error', 'Could not remove image. Please try again.');
-            }
-          },
+      const op = uiCopy.organizationProfile;
+      showConfirmAlert(
+        op.removeGalleryImageTitle,
+        op.removeGalleryImageMessage,
+        async () => {
+          // Per-id inflight lock
+          setDeletingMediaIds((prev) => new Set(prev).add(item.id));
+          const ok = await deleteClientGalleryImage(organizationId, item.id, item.image_url);
+          setDeletingMediaIds((prev) => {
+            const next = new Set(prev);
+            next.delete(item.id);
+            return next;
+          });
+          if (ok) {
+            // Inverse-operation remove: filter out the deleted item
+            setMedia((prev) => prev.filter((m) => m.id !== item.id));
+          } else {
+            showAppAlert(uiCopy.common.error, op.removeGalleryImageFailed);
+          }
         },
-      ]);
+        uiCopy.common.remove,
+      );
     },
     [organizationId, deletingMediaIds],
   );

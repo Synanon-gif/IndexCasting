@@ -8,11 +8,10 @@ import {
   FlatList,
   TextInput,
   ActivityIndicator,
-  Alert,
-  Platform,
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { uiCopy } from '../constants/uiCopy';
+import { showConfirmAlert } from '../utils/crossPlatformAlert';
 import {
   getAllProfiles,
   activateAccount,
@@ -265,18 +264,12 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
   const confirmAdminPurge = (p: AdminProfile) => {
     const title = uiCopy.adminDashboard.deletePermanentlyTitle;
     const message = uiCopy.adminDashboard.deletePermanentlyMessage;
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      if (window.confirm(`${title}\n\n${message}`)) void runAdminPurge(p.id);
-      return;
-    }
-    Alert.alert(title, message, [
-      { text: uiCopy.common.cancel, style: 'cancel' },
-      {
-        text: uiCopy.adminDashboard.deleteData,
-        style: 'destructive',
-        onPress: () => void runAdminPurge(p.id),
-      },
-    ]);
+    showConfirmAlert(
+      title,
+      message,
+      () => void runAdminPurge(p.id),
+      uiCopy.adminDashboard.deleteData,
+    );
   };
 
   const handleEditProfile = async (profile: AdminProfile) => {
@@ -482,39 +475,37 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
     setOrgSavingId(null);
   };
 
-  const handleConvertOrgType = async (org: AdminOrganization) => {
+  const handleConvertOrgType = (org: AdminOrganization) => {
     const targetType = org.type === 'agency' ? 'client' : 'agency';
     const confirmMsg =
       targetType === 'agency'
         ? uiCopy.adminDashboard.orgConvertToAgencyConfirm
         : uiCopy.adminDashboard.orgConvertToClientConfirm;
 
-    let proceed = false;
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      proceed = window.confirm(`${uiCopy.adminDashboard.orgConvertConfirmTitle}\n\n${confirmMsg}`);
-    } else {
-      proceed = await new Promise<boolean>((resolve) => {
-        Alert.alert(uiCopy.adminDashboard.orgConvertConfirmTitle, confirmMsg, [
-          { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-          { text: 'Convert', style: 'destructive', onPress: () => resolve(true) },
-        ]);
-      });
-    }
-    if (!proceed) return;
-
-    setOrgConvertingId(org.id);
-    const result = await adminConvertOrgType(org.id, targetType);
-    if (result.ok) {
-      showFeedback(uiCopy.adminDashboard.orgConvertSuccess);
-      setExpandedOrgId(null);
-      await loadData();
-    } else {
-      showFeedback(
-        `${uiCopy.adminDashboard.orgConvertFailed} ${!result.ok ? result.error : ''}`,
-        false,
-      );
-    }
-    setOrgConvertingId(null);
+    showConfirmAlert(
+      uiCopy.adminDashboard.orgConvertConfirmTitle,
+      confirmMsg,
+      () => {
+        void (async () => {
+          setOrgConvertingId(org.id);
+          const result = await adminConvertOrgType(org.id, targetType);
+          if (result.ok) {
+            showFeedback(uiCopy.adminDashboard.orgConvertSuccess);
+            setExpandedOrgId(null);
+            await loadData();
+          } else {
+            showFeedback(
+              `${uiCopy.adminDashboard.orgConvertFailed} ${!result.ok ? result.error : ''}`,
+              false,
+            );
+          }
+          setOrgConvertingId(null);
+        })();
+      },
+      uiCopy.adminDashboard.orgConvertConfirm,
+      undefined,
+      uiCopy.common.cancel,
+    );
   };
 
   const handleSaveSwipeLimit = async (org: AdminOrganization) => {
@@ -576,19 +567,14 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
   };
 
   const confirmSetUnlimitedStorage = (org: AdminOrganization) => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      if (window.confirm(uiCopy.storage.storageLimitConfirmUnlimited)) {
-        void handleSetUnlimitedStorage(org);
-      }
-      return;
-    }
-    Alert.alert(uiCopy.storage.storageLimitTitle, uiCopy.storage.storageLimitConfirmUnlimited, [
-      { text: uiCopy.common.cancel, style: 'cancel' },
-      {
-        text: uiCopy.storage.storageLimitSetUnlimited,
-        onPress: () => void handleSetUnlimitedStorage(org),
-      },
-    ]);
+    showConfirmAlert(
+      uiCopy.storage.storageLimitTitle,
+      uiCopy.storage.storageLimitConfirmUnlimited,
+      () => void handleSetUnlimitedStorage(org),
+      uiCopy.storage.storageLimitSetUnlimited,
+      undefined,
+      uiCopy.common.cancel,
+    );
   };
 
   const handleSetUnlimitedStorage = async (org: AdminOrganization) => {
@@ -605,20 +591,14 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
   };
 
   const confirmResetStorageLimit = (org: AdminOrganization) => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      if (window.confirm(uiCopy.storage.storageLimitConfirmReset)) {
-        void handleResetStorageLimit(org);
-      }
-      return;
-    }
-    Alert.alert(uiCopy.storage.storageLimitTitle, uiCopy.storage.storageLimitConfirmReset, [
-      { text: uiCopy.common.cancel, style: 'cancel' },
-      {
-        text: uiCopy.storage.storageLimitReset,
-        style: 'destructive',
-        onPress: () => void handleResetStorageLimit(org),
-      },
-    ]);
+    showConfirmAlert(
+      uiCopy.storage.storageLimitTitle,
+      uiCopy.storage.storageLimitConfirmReset,
+      () => void handleResetStorageLimit(org),
+      uiCopy.storage.storageLimitReset,
+      undefined,
+      uiCopy.common.cancel,
+    );
   };
 
   const handleResetStorageLimit = async (org: AdminOrganization) => {

@@ -3,9 +3,7 @@ jest.mock('../../../lib/supabase', () => ({
     rpc: jest.fn(),
     from: jest.fn(),
     auth: {
-      getUser: jest.fn(() =>
-        Promise.resolve({ data: { user: { id: 'user-1' } }, error: null })
-      ),
+      getUser: jest.fn(() => Promise.resolve({ data: { user: { id: 'user-1' } }, error: null })),
     },
   },
 }));
@@ -18,6 +16,7 @@ import {
   acceptOrganizationInvitation,
   buildOrganizationInviteUrl,
   getMyClientMemberRole,
+  dissolveOrganization,
 } from '../organizationsInvitationsSupabase';
 
 const rpc = supabase.rpc as jest.Mock;
@@ -150,6 +149,33 @@ describe('organizationsInvitationsSupabase', () => {
     await expect(acceptOrganizationInvitation('t')).resolves.toEqual({
       ok: false,
       error: 'email_mismatch',
+    });
+  });
+
+  it('dissolveOrganization: Erfolg', async () => {
+    rpc.mockResolvedValueOnce({ data: { ok: true }, error: null });
+    await expect(dissolveOrganization('org-uuid-1')).resolves.toEqual({ ok: true });
+    expect(rpc).toHaveBeenCalledWith('dissolve_organization', {
+      p_organization_id: 'org-uuid-1',
+    });
+  });
+
+  it('dissolveOrganization: PostgREST-Fehler', async () => {
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'permission denied' } });
+    await expect(dissolveOrganization('org-x')).resolves.toEqual({
+      ok: false,
+      error: 'permission denied',
+    });
+  });
+
+  it('dissolveOrganization: ok false im JSON-Body', async () => {
+    rpc.mockResolvedValueOnce({
+      data: { ok: false, error: 'forbidden_not_owner' },
+      error: null,
+    });
+    await expect(dissolveOrganization('org-x')).resolves.toEqual({
+      ok: false,
+      error: 'forbidden_not_owner',
     });
   });
 });

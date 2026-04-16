@@ -393,36 +393,32 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
           /* non-fatal */
         }
       }
-      Alert.alert(uiCopy.privacyData.calendarFeedCreatedTitle, body);
+      showAppAlert(uiCopy.privacyData.calendarFeedCreatedTitle, body);
     } finally {
       setCalendarFeedBusy(false);
     }
   };
 
   const onRevokeCalendarFeed = () => {
-    Alert.alert(uiCopy.common.confirm, uiCopy.privacyData.calendarRevokeFeedConfirm, [
-      { text: uiCopy.common.cancel, style: 'cancel' },
-      {
-        text: uiCopy.privacyData.calendarRevokeFeed,
-        style: 'destructive',
-        onPress: () => {
-          void (async () => {
-            setCalendarRevokeBusy(true);
-            try {
-              const ok = await revokeCalendarFeedToken();
-              showAppAlert(
-                ok ? uiCopy.common.success : uiCopy.common.error,
-                ok
-                  ? uiCopy.privacyData.calendarRevokeDone
-                  : uiCopy.privacyData.calendarRevokeFailed,
-              );
-            } finally {
-              setCalendarRevokeBusy(false);
-            }
-          })();
-        },
+    showConfirmAlert(
+      uiCopy.common.confirm,
+      uiCopy.privacyData.calendarRevokeFeedConfirm,
+      () => {
+        void (async () => {
+          setCalendarRevokeBusy(true);
+          try {
+            const ok = await revokeCalendarFeedToken();
+            showAppAlert(
+              ok ? uiCopy.common.success : uiCopy.common.error,
+              ok ? uiCopy.privacyData.calendarRevokeDone : uiCopy.privacyData.calendarRevokeFailed,
+            );
+          } finally {
+            setCalendarRevokeBusy(false);
+          }
+        })();
       },
-    ]);
+      uiCopy.privacyData.calendarRevokeFeed,
+    );
   };
 
   /** Set a manual approximate city (source='current') via Nominatim forward geocoding.
@@ -518,30 +514,28 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
       return;
     }
     const sourceLabel = modelLocation.source === 'live' ? 'Live GPS' : 'Current city';
-    Alert.alert(`Remove ${sourceLabel}`, uiCopy.alerts.removeLocationConfirmBody, [
-      { text: uiCopy.common.cancel, style: 'cancel' },
-      {
-        text: uiCopy.common.remove,
-        style: 'destructive',
-        onPress: async () => {
-          setRemovingLocation(true);
-          const removedSource = modelLocation.source;
-          // Delete only the specific source row — other sources are preserved
-          const ok = await deleteModelLocation(profile.id, removedSource);
-          setRemovingLocation(false);
-          if (ok) {
-            // Reload to get the next effective location (fallback to current/agency)
-            const next = await import('../services/modelLocationsSupabase').then((m) =>
-              m.getModelLocation(profile.id),
-            );
-            setModelLocation(next);
-            if (!next) setProfile((prev) => (prev ? { ...prev, currentLocation: '' } : prev));
-          } else {
-            Alert.alert(uiCopy.common.error, uiCopy.alerts.couldNotRemoveLocation);
-          }
-        },
+    showConfirmAlert(
+      `Remove ${sourceLabel}`,
+      uiCopy.alerts.removeLocationConfirmBody,
+      async () => {
+        setRemovingLocation(true);
+        const removedSource = modelLocation.source;
+        // Delete only the specific source row — other sources are preserved
+        const ok = await deleteModelLocation(profile.id, removedSource);
+        setRemovingLocation(false);
+        if (ok) {
+          // Reload to get the next effective location (fallback to current/agency)
+          const next = await import('../services/modelLocationsSupabase').then((m) =>
+            m.getModelLocation(profile.id),
+          );
+          setModelLocation(next);
+          if (!next) setProfile((prev) => (prev ? { ...prev, currentLocation: '' } : prev));
+        } else {
+          Alert.alert(uiCopy.common.error, uiCopy.alerts.couldNotRemoveLocation);
+        }
       },
-    ]);
+      uiCopy.common.remove,
+    );
   };
 
   useEffect(() => {

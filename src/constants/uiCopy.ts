@@ -625,7 +625,7 @@ export const uiCopy = {
       'You will be removed from your organization and your account will be scheduled for deletion. Data is kept for 30 days, then permanently removed. Continue?',
     dissolveOrgTitle: 'Delete organization',
     dissolveOrgDescription:
-      'This permanently removes the organization, all team members, and invitations. This cannot be undone. After deleting the organization, you can also delete your personal account.',
+      'This removes the organization workspace, all team memberships, and pending invitations. Other linked records (projects, requests, billing, subscriptions, etc.) may still exist or prevent deletion if the database blocks it — contact support if removal fails. This cannot be undone for the workspace. After deleting the organization, you can also delete your personal account.',
     dissolveOrgConfirmTitle: 'Delete organization?',
     dissolveOrgConfirmMessage:
       'Are you sure? All team members will be removed and the organization cannot be recovered. This cannot be undone.',
@@ -647,6 +647,22 @@ export const uiCopy = {
     scheduledDeletionTitle: 'Deletion scheduled',
     scheduledDeletionBody:
       'Your account deletion has been scheduled. You will be signed out. Data is removed after the retention period.',
+  },
+  /** B2B organization public profile — logo/gallery (web + native). */
+  organizationProfile: {
+    removeLogoTitle: 'Remove logo?',
+    removeLogoMessage: 'Remove the current logo from your profile?',
+    removeLogoFailed: 'Could not remove logo. Please try again.',
+    logoUploadFailedTitle: 'Upload failed',
+    logoUploadFailedMessage: 'Could not upload logo. Please try again.',
+    removeGalleryImageTitle: 'Remove image?',
+    removeGalleryImageMessage: 'Remove this image from your gallery?',
+    removeGalleryImageFailed: 'Could not remove image. Please try again.',
+    galleryUploadAllFailedTitle: 'Upload failed',
+    galleryUploadAllFailedMessage: 'Could not upload images. Please try again.',
+    galleryUploadSomeFailedTitle: 'Some uploads failed',
+    galleryUploadSomeFailedBody:
+      '{failed} of {total} image(s) could not be uploaded. Others were added.',
   },
   app: {
     crashTitle: 'Something went wrong',
@@ -1126,6 +1142,7 @@ export const uiCopy = {
       'This will convert this Agency organization to a Client. All Bookers will become Employees and member profiles will be updated to Client. Continue?',
     orgConvertSuccess: 'Organization type converted successfully.',
     orgConvertFailed: 'Could not convert organization type. Check console.',
+    orgConvertConfirm: 'Convert',
   },
   /** Agency — model profile edit panel (My Models detail view). */
   modelEdit: {

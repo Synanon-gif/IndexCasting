@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Platform, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { uiCopy } from '../constants/uiCopy';
 import { AGENCY_SEGMENT_TYPES } from '../constants/agencyTypes';
 import type { Agency } from '../services/agenciesSupabase';
 import { updateAgencySettings } from '../services/agencySettingsSupabase';
-import { showAppAlert } from '../utils/crossPlatformAlert';
+import { showAppAlert, showConfirmAlert } from '../utils/crossPlatformAlert';
 import { ScreenScrollView } from './ScreenScrollView';
 import { AgencyStorageWidget } from './AgencyStorageWidget';
 import { supabase } from '../../lib/supabase';
@@ -79,16 +79,12 @@ export const AgencySettingsTab: React.FC<Props> = ({
 
   const onWithdrawConsent = () => {
     const pd = uiCopy.privacyData;
-    if (Platform.OS === 'web') {
-      const confirmed = (window as Window & typeof globalThis).confirm?.(pd.withdrawConfirmWeb);
-      if (!confirmed) return;
-      void runWithdrawConsent();
-      return;
-    }
-    Alert.alert(pd.withdrawOptionalConsent, pd.withdrawConfirmWeb, [
-      { text: uiCopy.common.cancel, style: 'cancel' },
-      { text: uiCopy.common.confirm, onPress: () => void runWithdrawConsent() },
-    ]);
+    showConfirmAlert(
+      pd.withdrawOptionalConsent,
+      pd.withdrawConfirmWeb,
+      () => void runWithdrawConsent(),
+      uiCopy.common.confirm,
+    );
   };
 
   const onExportData = async () => {
@@ -170,36 +166,32 @@ export const AgencySettingsTab: React.FC<Props> = ({
           /* non-fatal */
         }
       }
-      Alert.alert(uiCopy.privacyData.calendarFeedCreatedTitle, body);
+      showAppAlert(uiCopy.privacyData.calendarFeedCreatedTitle, body);
     } finally {
       setCalendarFeedBusy(false);
     }
   };
 
   const onRevokeCalendarFeed = () => {
-    Alert.alert(uiCopy.common.confirm, uiCopy.privacyData.calendarRevokeFeedConfirm, [
-      { text: uiCopy.common.cancel, style: 'cancel' },
-      {
-        text: uiCopy.privacyData.calendarRevokeFeed,
-        style: 'destructive',
-        onPress: () => {
-          void (async () => {
-            setCalendarRevokeBusy(true);
-            try {
-              const ok = await revokeCalendarFeedToken();
-              showAppAlert(
-                ok ? uiCopy.common.success : uiCopy.common.error,
-                ok
-                  ? uiCopy.privacyData.calendarRevokeDone
-                  : uiCopy.privacyData.calendarRevokeFailed,
-              );
-            } finally {
-              setCalendarRevokeBusy(false);
-            }
-          })();
-        },
+    showConfirmAlert(
+      uiCopy.common.confirm,
+      uiCopy.privacyData.calendarRevokeFeedConfirm,
+      () => {
+        void (async () => {
+          setCalendarRevokeBusy(true);
+          try {
+            const ok = await revokeCalendarFeedToken();
+            showAppAlert(
+              ok ? uiCopy.common.success : uiCopy.common.error,
+              ok ? uiCopy.privacyData.calendarRevokeDone : uiCopy.privacyData.calendarRevokeFailed,
+            );
+          } finally {
+            setCalendarRevokeBusy(false);
+          }
+        })();
       },
-    ]);
+      uiCopy.privacyData.calendarRevokeFeed,
+    );
   };
 
   useEffect(() => {

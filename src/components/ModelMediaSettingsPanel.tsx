@@ -25,6 +25,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { showConfirmAlert } from '../utils/crossPlatformAlert';
 
 import { StorageImage } from './StorageImage';
 
@@ -398,21 +399,14 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
   // ---------------------------------------------------------------------------
 
   const confirmDelete = (photo: ResolvedPhoto, section: 'portfolio' | 'polaroid' | 'private') => {
-    if (Platform.OS === 'web') {
-      // window.confirm works reliably on web; Alert.alert callback does not.
-      if (typeof window !== 'undefined' && window.confirm(copy.confirmDeleteMessage)) {
-        void handleDelete(photo, section);
-      }
-      return;
-    }
-    Alert.alert(copy.confirmDeleteTitle, copy.confirmDeleteMessage, [
-      { text: copy.deleteCancel, style: 'cancel' },
-      {
-        text: copy.deleteConfirm,
-        style: 'destructive',
-        onPress: () => void handleDelete(photo, section),
-      },
-    ]);
+    showConfirmAlert(
+      copy.confirmDeleteTitle,
+      copy.confirmDeleteMessage,
+      () => void handleDelete(photo, section),
+      copy.deleteConfirm,
+      undefined,
+      copy.deleteCancel,
+    );
   };
 
   const handleDelete = async (

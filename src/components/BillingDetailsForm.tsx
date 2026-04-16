@@ -11,8 +11,6 @@ import {
   StyleSheet,
   ActivityIndicator,
   Switch,
-  Alert,
-  Platform,
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { uiCopy } from '../constants/uiCopy';
@@ -26,7 +24,7 @@ import {
   upsertOrganizationBillingProfile,
 } from '../services/billingProfilesSupabase';
 import type { OrganizationBillingProfileRow } from '../types/billingTypes';
-import { showAppAlert } from '../utils/crossPlatformAlert';
+import { showAppAlert, showConfirmAlert } from '../utils/crossPlatformAlert';
 
 type Props = {
   organizationId: string | null;
@@ -273,14 +271,12 @@ export const BillingDetailsForm: React.FC<Props> = ({ organizationId }) => {
           setSaving(false);
         }
       };
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        if (window.confirm(`${bs.deleteConfirmTitle}\n${bs.deleteConfirmMessage}`)) void run();
-      } else {
-        Alert.alert(bs.deleteConfirmTitle, bs.deleteConfirmMessage, [
-          { text: uiCopy.common.cancel, style: 'cancel' },
-          { text: bs.deleteAddress, style: 'destructive', onPress: () => void run() },
-        ]);
-      }
+      showConfirmAlert(
+        bs.deleteConfirmTitle,
+        bs.deleteConfirmMessage,
+        () => void run(),
+        bs.deleteAddress,
+      );
     },
     [organizationId, load, bs],
   );

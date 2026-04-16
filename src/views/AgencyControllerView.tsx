@@ -2285,29 +2285,27 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                 disabled={deletingManualEvent}
                 onPress={() => {
                   if (!selectedManualEvent || deletingManualEvent) return;
-                  Alert.alert(uiCopy.common.confirm, uiCopy.alerts.deleteEventConfirm, [
-                    { text: uiCopy.common.cancel, style: 'cancel' },
-                    {
-                      text: uiCopy.common.delete,
-                      style: 'destructive',
-                      onPress: async () => {
-                        setDeletingManualEvent(true);
-                        try {
-                          if (await deleteManualEvent(selectedManualEvent.id)) {
-                            await loadAgencyCalendar();
-                            setSelectedManualEvent(null);
-                          } else {
-                            Alert.alert(uiCopy.common.error, uiCopy.alerts.calendarNotSaved);
-                          }
-                        } catch (e) {
-                          console.error('deleteManualEvent error:', e);
+                  showConfirmAlert(
+                    uiCopy.common.confirm,
+                    uiCopy.alerts.deleteEventConfirm,
+                    async () => {
+                      setDeletingManualEvent(true);
+                      try {
+                        if (await deleteManualEvent(selectedManualEvent.id)) {
+                          await loadAgencyCalendar();
+                          setSelectedManualEvent(null);
+                        } else {
                           Alert.alert(uiCopy.common.error, uiCopy.alerts.calendarNotSaved);
-                        } finally {
-                          setDeletingManualEvent(false);
                         }
-                      },
+                      } catch (e) {
+                        console.error('deleteManualEvent error:', e);
+                        Alert.alert(uiCopy.common.error, uiCopy.alerts.calendarNotSaved);
+                      } finally {
+                        setDeletingManualEvent(false);
+                      }
                     },
-                  ]);
+                    uiCopy.common.delete,
+                  );
                 }}
               >
                 <Text style={[s.filterPillLabel, { color: colors.buttonSkipRed }]}>
@@ -4473,21 +4471,19 @@ const MyModelsTab: React.FC<{
             alignItems: 'center',
           }}
           onPress={() => {
-            Alert.alert(uiCopy.alerts.endRepresentationTitle, uiCopy.alerts.endRepresentationBody, [
-              { text: uiCopy.common.cancel, style: 'cancel' },
-              {
-                text: uiCopy.alerts.endRepresentationConfirm,
-                style: 'destructive',
-                onPress: async () => {
-                  const ok = await removeModelFromAgency(selectedModel.id, agencyId);
-                  if (ok) {
-                    setSelectedModel(null);
-                    setEditState(buildEditState({ name: '' }));
-                    onRefresh();
-                  }
-                },
+            showConfirmAlert(
+              uiCopy.alerts.endRepresentationTitle,
+              uiCopy.alerts.endRepresentationBody,
+              async () => {
+                const ok = await removeModelFromAgency(selectedModel.id, agencyId);
+                if (ok) {
+                  setSelectedModel(null);
+                  setEditState(buildEditState({ name: '' }));
+                  onRefresh();
+                }
               },
-            ]);
+              uiCopy.alerts.endRepresentationConfirm,
+            );
           }}
         >
           <Text style={{ ...typography.label, fontSize: 12, color: colors.error }}>

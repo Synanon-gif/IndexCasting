@@ -7814,37 +7814,33 @@ const SettingsPanel: React.FC<{ realClientId: string | null; onClose: () => void
       } catch {
         /* non-fatal */
       }
-      Alert.alert(uiCopy.privacyData.calendarFeedCreatedTitle, body);
+      showAppAlert(uiCopy.privacyData.calendarFeedCreatedTitle, body);
     } finally {
       setCalendarFeedBusy(false);
     }
   };
 
   const onRevokeCalendarFeed = () => {
-    Alert.alert(uiCopy.common.confirm, uiCopy.privacyData.calendarRevokeFeedConfirm, [
-      { text: uiCopy.common.cancel, style: 'cancel' },
-      {
-        text: uiCopy.privacyData.calendarRevokeFeed,
-        style: 'destructive',
-        onPress: () => {
-          void (async () => {
-            setCalendarRevokeBusy(true);
-            try {
-              const { revokeCalendarFeedToken } = await import('../services/calendarFeedSupabase');
-              const ok = await revokeCalendarFeedToken();
-              showAppAlert(
-                ok ? uiCopy.common.success : uiCopy.common.error,
-                ok
-                  ? uiCopy.privacyData.calendarRevokeDone
-                  : uiCopy.privacyData.calendarRevokeFailed,
-              );
-            } finally {
-              setCalendarRevokeBusy(false);
-            }
-          })();
-        },
+    showConfirmAlert(
+      uiCopy.common.confirm,
+      uiCopy.privacyData.calendarRevokeFeedConfirm,
+      () => {
+        void (async () => {
+          setCalendarRevokeBusy(true);
+          try {
+            const { revokeCalendarFeedToken } = await import('../services/calendarFeedSupabase');
+            const ok = await revokeCalendarFeedToken();
+            showAppAlert(
+              ok ? uiCopy.common.success : uiCopy.common.error,
+              ok ? uiCopy.privacyData.calendarRevokeDone : uiCopy.privacyData.calendarRevokeFailed,
+            );
+          } finally {
+            setCalendarRevokeBusy(false);
+          }
+        })();
       },
-    ]);
+      uiCopy.privacyData.calendarRevokeFeed,
+    );
   };
 
   return (
