@@ -795,6 +795,10 @@ export const uiCopy = {
     searchModelsPlaceholder: 'Search models\u2026',
     searchClientsPlaceholder: 'Search clients\u2026',
     modelSignupEmailPlaceholder: 'Model signup email (same as profile)',
+    /** Roster email edit would match another account not linked to this model — use claim/invite instead. */
+    emailMatchesExistingAccountTitle: 'Email already in use',
+    emailMatchesExistingAccountBody:
+      'This email belongs to an existing account that is not linked to this model. Use the model claim or invite flow to link the profile instead of changing the email here.',
     mediaslideApiKeyPlaceholder: 'Mediaslide API Key',
     netwalkApiKeyPlaceholder: 'Netwalk API Key',
     importUrlPlaceholder: 'https://\u2026/model.json',

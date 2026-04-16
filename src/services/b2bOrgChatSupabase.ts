@@ -518,6 +518,42 @@ export async function ensureAgencyModelDirectConversation(
 }
 
 /**
+ * Same as {@link ensureAgencyModelDirectConversation} with a short retry after transient RPC/RLS lag.
+ * Idempotent via server RPC — safe to call multiple times.
+ */
+export async function ensureAgencyModelDirectConversationWithRetry(
+  agencyId: string,
+  modelId: string,
+  opts?: { attempts?: number; delayMs?: number },
+): Promise<string | null> {
+  const attempts = Math.max(1, Math.floor(opts?.attempts ?? 2));
+  const delayMs = Math.max(0, opts?.delayMs ?? 280);
+  let last: string | null = null;
+  for (let i = 0; i < attempts; i++) {
+    last = await ensureAgencyModelDirectConversation(agencyId, modelId);
+    if (last) {
+      if (i > 0) {
+        console.warn('ensureAgencyModelDirectConversationWithRetry: succeeded after retry', {
+          agencyId,
+          modelId,
+          attempt: i + 1,
+        });
+      }
+      return last;
+    }
+    if (i < attempts - 1 && delayMs > 0) {
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  console.error('ensureAgencyModelDirectConversationWithRetry: exhausted attempts', {
+    agencyId,
+    modelId,
+    attempts,
+  });
+  return last;
+}
+
+/**
  * Direct agency→model conversations visible to a specific model user.
  * The model is in participant_ids; RLS (conversation_accessible_to_me) grants access.
  */

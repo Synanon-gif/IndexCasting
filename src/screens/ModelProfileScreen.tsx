@@ -103,7 +103,7 @@ import {
   calendarFeedWebcalUrl,
 } from '../services/calendarFeedSupabase';
 import {
-  ensureAgencyModelDirectConversation,
+  ensureAgencyModelDirectConversationWithRetry,
   listModelAgencyDirectConversations,
 } from '../services/b2bOrgChatSupabase';
 import type { Conversation } from '../services/messengerSupabase';
@@ -582,7 +582,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     agencyChatBusyRef.current = true;
     setAgencyChatOpening(true);
     try {
-      const convId = await ensureAgencyModelDirectConversation(agencyId, profile.id);
+      const convId = await ensureAgencyModelDirectConversationWithRetry(agencyId, profile.id);
       if (!convId) {
         Alert.alert(uiCopy.common.error, uiCopy.model.ensureAgencyChatFailed);
         return;

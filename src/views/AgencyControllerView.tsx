@@ -62,6 +62,7 @@ import {
   getModelByIdFromSupabase,
   removeModelFromAgency,
   agencyLinkModelToUser,
+  agencyModelEmailMatchesUnlinkedProfile,
   generateModelClaimToken,
   buildModelClaimUrl,
   type SupabaseModel,
@@ -3917,6 +3918,30 @@ const MyModelsTab: React.FC<{
       updates.is_sports_summer = editState.is_sports_summer;
       // DB CHECK (sex IN ('male','female')) — only send valid values or null (no change).
       updates.sex = editState.sex === 'male' || editState.sex === 'female' ? editState.sex : null;
+
+      const nextEmailNorm = (updates.email as string | null)?.trim().toLowerCase() ?? '';
+      const prevEmailNorm = (selectedModel.email ?? '').trim().toLowerCase();
+      if (nextEmailNorm && nextEmailNorm !== prevEmailNorm) {
+        const risky = await agencyModelEmailMatchesUnlinkedProfile(selectedModel.id, updates.email);
+        if (risky === true) {
+          console.warn('[handleSaveModel] blocked email save: matches another user account', {
+            modelId: selectedModel.id,
+          });
+          setSaveFeedback('error');
+          if (saveFeedbackTimerRef.current) clearTimeout(saveFeedbackTimerRef.current);
+          saveFeedbackTimerRef.current = setTimeout(() => setSaveFeedback(null), 4000);
+          showAppAlert(
+            uiCopy.modelRoster.emailMatchesExistingAccountTitle,
+            uiCopy.modelRoster.emailMatchesExistingAccountBody,
+          );
+          return;
+        }
+        if (risky === null) {
+          console.warn(
+            '[handleSaveModel] could not verify email/profile guard — proceeding (RPC unavailable or error)',
+          );
+        }
+      }
 
       const { error: modelUpdateError } = await supabase.rpc('agency_update_model_full', {
         p_model_id: selectedModel.id,

@@ -1,4 +1,7 @@
-import { ensureAgencyModelDirectConversation } from '../b2bOrgChatSupabase';
+import {
+  ensureAgencyModelDirectConversation,
+  ensureAgencyModelDirectConversationWithRetry,
+} from '../b2bOrgChatSupabase';
 
 const rpc = jest.fn();
 
@@ -29,5 +32,30 @@ describe('ensureAgencyModelDirectConversation', () => {
   it('returns null and skips RPC when agency id is empty', async () => {
     await expect(ensureAgencyModelDirectConversation('', 'm')).resolves.toBeNull();
     expect(rpc).not.toHaveBeenCalled();
+  });
+});
+
+describe('ensureAgencyModelDirectConversationWithRetry', () => {
+  beforeEach(() => {
+    rpc.mockReset();
+  });
+
+  it('returns id on first successful RPC', async () => {
+    rpc.mockResolvedValue({ data: 'conv-a', error: null });
+    const id = await ensureAgencyModelDirectConversationWithRetry('ag', 'mdl', { delayMs: 5 });
+    expect(id).toBe('conv-a');
+    expect(rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries when first RPC returns empty id', async () => {
+    rpc
+      .mockResolvedValueOnce({ data: null, error: null })
+      .mockResolvedValueOnce({ data: 'conv-b', error: null });
+    const id = await ensureAgencyModelDirectConversationWithRetry('ag', 'mdl', {
+      attempts: 2,
+      delayMs: 5,
+    });
+    expect(id).toBe('conv-b');
+    expect(rpc).toHaveBeenCalledTimes(2);
   });
 });

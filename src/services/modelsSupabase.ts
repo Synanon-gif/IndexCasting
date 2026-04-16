@@ -716,3 +716,30 @@ export async function agencyLinkModelToUser(
   }
   return data === true;
 }
+
+/**
+ * True when the email matches a `profiles` row whose user is not the model's `user_id` (or model has no `user_id`).
+ * Agency/booker scoped RPC — returns null if the check could not run (e.g. RPC missing).
+ */
+export async function agencyModelEmailMatchesUnlinkedProfile(
+  modelId: string,
+  email: string,
+): Promise<boolean | null> {
+  const mid = modelId?.trim();
+  const em = email?.trim();
+  if (!mid || !em) return false;
+  try {
+    const { data, error } = await supabase.rpc('agency_model_email_matches_unlinked_profile', {
+      p_model_id: mid,
+      p_email: em,
+    });
+    if (error) {
+      console.error('agency_model_email_matches_unlinked_profile RPC error:', error);
+      return null;
+    }
+    return data === true;
+  } catch (e) {
+    console.error('agencyModelEmailMatchesUnlinkedProfile exception:', e);
+    return null;
+  }
+}

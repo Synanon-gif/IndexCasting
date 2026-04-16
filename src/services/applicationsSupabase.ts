@@ -14,7 +14,8 @@ import {
 } from './gdprComplianceSupabase';
 import { createNotification } from './notificationsSupabase';
 import { uiCopy } from '../constants/uiCopy';
-import { ensureAgencyModelDirectConversation } from './b2bOrgChatSupabase';
+import { ensureAgencyModelDirectConversationWithRetry } from './b2bOrgChatSupabase';
+import { normalizePendingTerritories, hasMatForModelAgency } from './recruitingFlowGuards';
 
 /**
  * Model-Bewerbungen (Apply) – in Supabase gespeichert.
@@ -555,7 +556,7 @@ export async function confirmApplicationByModel(
       .eq('id', applicationId)
       .eq('applicant_user_id', applicantUserId)
       .eq('status', 'pending_model_confirmation')
-      .select('id, accepted_by_agency_id')
+      .select('id, accepted_by_agency_id, pending_territories')
       .maybeSingle();
 
     if (error) {
@@ -573,16 +574,29 @@ export async function confirmApplicationByModel(
     const modelId = await createModelFromApplication(applicationId);
     const agencyId =
       (data as { accepted_by_agency_id?: string | null }).accepted_by_agency_id ?? null;
+    const pendingList = normalizePendingTerritories(
+      (data as { pending_territories?: unknown }).pending_territories,
+    );
+
+    if (modelId && agencyId && pendingList.length > 0) {
+      const matOk = await hasMatForModelAgency(modelId, agencyId);
+      if (!matOk) {
+        console.error(
+          '[recruiting] MAT missing after conversion despite pending territories — check create_model_from_accepted_application / RLS',
+          { applicationId, modelId, agencyId, pendingTerritories: pendingList },
+        );
+      }
+    }
+
     if (modelId && agencyId) {
-      void ensureAgencyModelDirectConversation(agencyId, modelId).then((convId) => {
-        if (!convId) {
-          console.error('confirmApplicationByModel: ensureAgencyModelDirectConversation failed', {
-            applicationId,
-            modelId,
-            agencyId,
-          });
-        }
-      });
+      const convId = await ensureAgencyModelDirectConversationWithRetry(agencyId, modelId);
+      if (!convId) {
+        console.error('[recruiting] Direct agency↔model conversation missing after retries', {
+          applicationId,
+          modelId,
+          agencyId,
+        });
+      }
     }
     return { modelId };
   } catch (e) {

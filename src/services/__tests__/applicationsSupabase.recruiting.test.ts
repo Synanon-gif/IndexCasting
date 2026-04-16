@@ -176,21 +176,45 @@ describe('applicationsSupabase (recruiting helpers)', () => {
       expect(result).toBeNull();
     });
 
-    it('calls conversion RPC and ensure direct conversation after successful status update', async () => {
+    it('calls conversion RPC, verifies MAT when pending territories, and ensures direct conversation', async () => {
       const maybeSingle = jest.fn().mockResolvedValue({
-        data: { id: 'app-1', accepted_by_agency_id: 'ag-1' },
+        data: {
+          id: 'app-1',
+          accepted_by_agency_id: 'ag-1',
+          pending_territories: ['de', 'FR'],
+        },
         error: null,
       });
-      from.mockReturnValue({
-        update: () => ({
-          eq: () => ({
-            eq: () => ({
+      const matMaybeSingle = jest.fn().mockResolvedValue({
+        data: { id: 'mat-1' },
+        error: null,
+      });
+      from.mockImplementation((table: string) => {
+        if (table === 'model_applications') {
+          return {
+            update: () => ({
               eq: () => ({
-                select: () => ({ maybeSingle }),
+                eq: () => ({
+                  eq: () => ({
+                    select: () => ({ maybeSingle }),
+                  }),
+                }),
               }),
             }),
-          }),
-        }),
+          };
+        }
+        if (table === 'model_agency_territories') {
+          return {
+            select: () => ({
+              eq: () => ({
+                eq: () => ({
+                  limit: () => ({ maybeSingle: matMaybeSingle }),
+                }),
+              }),
+            }),
+          };
+        }
+        return {};
       });
       rpc.mockImplementation((fn: string) => {
         if (fn === 'create_model_from_accepted_application') {
@@ -204,6 +228,7 @@ describe('applicationsSupabase (recruiting helpers)', () => {
 
       const result = await confirmApplicationByModel('app-1', 'user-1');
       expect(result).toEqual({ modelId: 'merged-model-id' });
+      expect(from).toHaveBeenCalledWith('model_agency_territories');
       expect(rpc).toHaveBeenCalledWith('create_model_from_accepted_application', {
         p_application_id: 'app-1',
       });
@@ -211,6 +236,65 @@ describe('applicationsSupabase (recruiting helpers)', () => {
         p_agency_id: 'ag-1',
         p_model_id: 'merged-model-id',
       });
+    });
+
+    it('logs when MAT is missing despite pending territories', async () => {
+      const maybeSingle = jest.fn().mockResolvedValue({
+        data: {
+          id: 'app-1',
+          accepted_by_agency_id: 'ag-1',
+          pending_territories: ['DE'],
+        },
+        error: null,
+      });
+      const matMaybeSingle = jest.fn().mockResolvedValue({ data: null, error: null });
+      from.mockImplementation((table: string) => {
+        if (table === 'model_applications') {
+          return {
+            update: () => ({
+              eq: () => ({
+                eq: () => ({
+                  eq: () => ({
+                    select: () => ({ maybeSingle }),
+                  }),
+                }),
+              }),
+            }),
+          };
+        }
+        if (table === 'model_agency_territories') {
+          return {
+            select: () => ({
+              eq: () => ({
+                eq: () => ({
+                  limit: () => ({ maybeSingle: matMaybeSingle }),
+                }),
+              }),
+            }),
+          };
+        }
+        return {};
+      });
+      rpc.mockImplementation((fn: string) => {
+        if (fn === 'create_model_from_accepted_application') {
+          return Promise.resolve({ data: 'merged-model-id', error: null });
+        }
+        if (fn === 'ensure_agency_model_direct_conversation') {
+          return Promise.resolve({ data: 'conv-1', error: null });
+        }
+        return Promise.resolve({ data: null, error: null });
+      });
+
+      const result = await confirmApplicationByModel('app-1', 'user-1');
+      expect(result).toEqual({ modelId: 'merged-model-id' });
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[recruiting] MAT missing'),
+        expect.objectContaining({
+          applicationId: 'app-1',
+          modelId: 'merged-model-id',
+          agencyId: 'ag-1',
+        }),
+      );
     });
 
     it('does not call ensure direct conversation when accepted_by_agency_id is missing', async () => {
