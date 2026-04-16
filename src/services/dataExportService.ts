@@ -194,7 +194,7 @@ export async function downloadUserData(
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `indexcasting-data-export-${userId}-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `indexcasting-data-export-v${formatted.exportVersion}-${userId}-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
       URL.revokeObjectURL(url);
     }

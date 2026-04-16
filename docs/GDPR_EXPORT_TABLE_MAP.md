@@ -2,6 +2,8 @@
 
 This document classifies tables included in **`public.export_user_data`** (JSON keys are snake_case from RPC; `src/services/dataExportService.ts` maps them to camelCase and `domains`).
 
+**Compatibility:** In v3, `domains.business` is an **object** (`optionRequests`, `optionRequestMessages`, …), not a bare array. App UI only checks export success (`ok`); the formatted download filename includes `v{exportVersion}` (e.g. `indexcasting-data-export-v3-…json`).
+
 ## A — Include when the row concerns the data subject
 
 | Table / key | Notes |

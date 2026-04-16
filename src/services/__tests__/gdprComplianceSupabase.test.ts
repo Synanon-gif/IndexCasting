@@ -15,7 +15,7 @@
 jest.mock('../../../lib/supabase', () => ({
   supabase: {
     from: jest.fn(),
-    rpc:  jest.fn(),
+    rpc: jest.fn(),
     auth: {
       getUser: jest.fn().mockResolvedValue({ data: { user: { id: 'user-1' } } }),
     },
@@ -32,10 +32,11 @@ import {
   logBookingAction,
   logOptionAction,
   deleteOrganizationData,
+  exportUserData,
 } from '../gdprComplianceSupabase';
 
 const from = supabase.from as jest.Mock;
-const rpc  = supabase.rpc  as jest.Mock;
+const rpc = supabase.rpc as jest.Mock;
 
 /**
  * Chainable Supabase query mock.
@@ -48,7 +49,21 @@ const rpc  = supabase.rpc  as jest.Mock;
  */
 const makeChain = (result: unknown) => {
   const chain: Record<string, jest.Mock> = {};
-  ['insert', 'select', 'update', 'upsert', 'eq', 'neq', 'gte', 'lte', 'limit', 'order', 'is', 'maybeSingle', 'single'].forEach((m) => {
+  [
+    'insert',
+    'select',
+    'update',
+    'upsert',
+    'eq',
+    'neq',
+    'gte',
+    'lte',
+    'limit',
+    'order',
+    'is',
+    'maybeSingle',
+    'single',
+  ].forEach((m) => {
     chain[m] = jest.fn(() => {
       // Terminal resolution: direct-await insert (no .single()) and explicit terminals
       if (m === 'maybeSingle' || m === 'single' || m === 'insert') {
@@ -60,12 +75,12 @@ const makeChain = (result: unknown) => {
   return chain;
 };
 
-let errSpy:  jest.SpyInstance;
+let errSpy: jest.SpyInstance;
 let warnSpy: jest.SpyInstance;
 
 beforeEach(() => {
   jest.resetAllMocks();
-  errSpy  = jest.spyOn(console, 'error').mockImplementation(() => {});
+  errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
   warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
   // Default: rpc succeeds (covers fire-and-forget logAuditAction calls inside confirmImageRights)
   rpc.mockResolvedValue({ data: null, error: null });
@@ -91,9 +106,9 @@ describe('confirmImageRights', () => {
     from.mockReturnValueOnce(makeChain({ data: null, error: null }));
 
     const result = await confirmImageRights({
-      userId:  'user-1',
+      userId: 'user-1',
       modelId: 'model-1',
-      orgId:   'org-1',
+      orgId: 'org-1',
     });
 
     expect(result.ok).toBe(true);
@@ -118,7 +133,9 @@ describe('confirmImageRights', () => {
     // Check: no recent confirmation
     from.mockReturnValueOnce(makeChain({ data: null, error: null }));
     // Insert: unique constraint violation (race condition)
-    from.mockReturnValueOnce(makeChain({ data: null, error: { message: 'duplicate key', code: '23505' } }));
+    from.mockReturnValueOnce(
+      makeChain({ data: null, error: { message: 'duplicate key', code: '23505' } }),
+    );
 
     const result = await confirmImageRights({ userId: 'user-1', modelId: 'model-1' });
 
@@ -130,7 +147,9 @@ describe('confirmImageRights', () => {
     // Check: no recent confirmation
     from.mockReturnValueOnce(makeChain({ data: null, error: null }));
     // Insert: generic error (not 23505)
-    from.mockReturnValueOnce(makeChain({ data: null, error: { message: 'rls_violation', code: 'P0001' } }));
+    from.mockReturnValueOnce(
+      makeChain({ data: null, error: { message: 'rls_violation', code: 'P0001' } }),
+    );
 
     const result = await confirmImageRights({ userId: 'user-1', modelId: 'model-1' });
 
@@ -141,14 +160,16 @@ describe('confirmImageRights', () => {
 
   it('returns ok:false with invalid_org_id on FK violation (23503)', async () => {
     from.mockReturnValueOnce(makeChain({ data: null, error: null }));
-    from.mockReturnValueOnce(makeChain({
-      data: null,
-      error: {
-        message: 'insert or update on table violates foreign key constraint',
-        code: '23503',
-        details: 'Key (org_id)=(...) is not present in table "organizations".',
-      },
-    }));
+    from.mockReturnValueOnce(
+      makeChain({
+        data: null,
+        error: {
+          message: 'insert or update on table violates foreign key constraint',
+          code: '23503',
+          details: 'Key (org_id)=(...) is not present in table "organizations".',
+        },
+      }),
+    );
 
     const result = await confirmImageRights({
       userId: 'user-1',
@@ -162,7 +183,9 @@ describe('confirmImageRights', () => {
   });
 
   it('returns ok:false on exception (fail-closed)', async () => {
-    from.mockImplementation(() => { throw new Error('network'); });
+    from.mockImplementation(() => {
+      throw new Error('network');
+    });
 
     const result = await confirmImageRights({ userId: 'user-1', modelId: null });
 
@@ -178,7 +201,11 @@ describe('confirmImageRights', () => {
     const insertChain = makeChain({ data: null, error: null });
     from.mockReturnValueOnce(insertChain);
 
-    const result = await confirmImageRights({ userId: 'u1', modelId: null, sessionKey: 'recruiting-chat:t1' });
+    const result = await confirmImageRights({
+      userId: 'u1',
+      modelId: null,
+      sessionKey: 'recruiting-chat:t1',
+    });
 
     expect(result.ok).toBe(true);
     expect(insertChain.insert).toHaveBeenCalledWith(
@@ -207,7 +234,9 @@ describe('hasRecentImageRightsConfirmation', () => {
   });
 
   it('returns false on exception (fail-closed)', async () => {
-    from.mockImplementation(() => { throw new Error('network'); });
+    from.mockImplementation(() => {
+      throw new Error('network');
+    });
 
     const result = await hasRecentImageRightsConfirmation('user-1', 'model-1');
 
@@ -236,7 +265,9 @@ describe('hasRecentImageRightsForSessionKey', () => {
   });
 
   it('returns false on exception (fail-closed)', async () => {
-    from.mockImplementation(() => { throw new Error('db down'); });
+    from.mockImplementation(() => {
+      throw new Error('db down');
+    });
 
     expect(await hasRecentImageRightsForSessionKey('u1', 'key-1')).toBe(false);
     expect(errSpy).toHaveBeenCalled();
@@ -266,7 +297,7 @@ describe('guardUploadSession', () => {
   it('returns ok:false and logs security event when rights not confirmed', async () => {
     // First from() call (hasRecent) → null. Second from() call (security_events insert) → ok.
     from
-      .mockReturnValueOnce(makeChain({ data: null, error: null }))  // hasRecent → not found
+      .mockReturnValueOnce(makeChain({ data: null, error: null })) // hasRecent → not found
       .mockReturnValue({ insert: jest.fn().mockResolvedValue({ error: null }) }); // logSecurityEvent
 
     const result = await guardUploadSession('user-1', 'option-doc:req-1');
@@ -276,7 +307,9 @@ describe('guardUploadSession', () => {
   });
 
   it('returns ok:false when hasRecentImageRightsForSessionKey throws', async () => {
-    from.mockImplementation(() => { throw new Error('network'); });
+    from.mockImplementation(() => {
+      throw new Error('network');
+    });
 
     const result = await guardUploadSession('user-1', 'key-1');
 
@@ -291,28 +324,34 @@ describe('logAuditAction', () => {
     rpc.mockResolvedValue({ data: null, error: null });
 
     await logAuditAction({
-      orgId:      'org-1',
+      orgId: 'org-1',
       actionType: 'booking_created',
       entityType: 'booking',
-      entityId:   'bk-1',
-      oldData:    { status: 'draft' },
-      newData:    { status: 'confirmed' },
+      entityId: 'bk-1',
+      oldData: { status: 'draft' },
+      newData: { status: 'confirmed' },
     });
 
-    expect(rpc).toHaveBeenCalledWith('log_audit_action', expect.objectContaining({
-      p_org_id:      'org-1',
-      p_action_type: 'booking_created',
-      p_entity_type: 'booking',
-      p_entity_id:   'bk-1',
-    }));
+    expect(rpc).toHaveBeenCalledWith(
+      'log_audit_action',
+      expect.objectContaining({
+        p_org_id: 'org-1',
+        p_action_type: 'booking_created',
+        p_entity_type: 'booking',
+        p_entity_id: 'bk-1',
+      }),
+    );
   });
 
   it('does not throw when RPC returns an error (fire-and-forget safe)', async () => {
     rpc.mockResolvedValue({ data: null, error: { message: 'rls' } });
 
-    await expect(logAuditAction({
-      orgId: 'org-1', actionType: 'model_created',
-    })).resolves.toBeUndefined();
+    await expect(
+      logAuditAction({
+        orgId: 'org-1',
+        actionType: 'model_created',
+      }),
+    ).resolves.toBeUndefined();
 
     expect(errSpy).toHaveBeenCalled();
   });
@@ -320,9 +359,12 @@ describe('logAuditAction', () => {
   it('does not throw on exception (fire-and-forget safe)', async () => {
     rpc.mockRejectedValue(new Error('connection reset'));
 
-    await expect(logAuditAction({
-      orgId: 'org-1', actionType: 'profile_updated',
-    })).resolves.toBeUndefined();
+    await expect(
+      logAuditAction({
+        orgId: 'org-1',
+        actionType: 'profile_updated',
+      }),
+    ).resolves.toBeUndefined();
 
     expect(errSpy).toHaveBeenCalled();
   });
@@ -330,9 +372,14 @@ describe('logAuditAction', () => {
   it('passes old_data and new_data as JSON strings', async () => {
     rpc.mockResolvedValue({ data: null, error: null });
     const old = { status: 'pending' };
-    const nw  = { status: 'confirmed' };
+    const nw = { status: 'confirmed' };
 
-    await logAuditAction({ orgId: 'org-1', actionType: 'booking_confirmed', oldData: old, newData: nw });
+    await logAuditAction({
+      orgId: 'org-1',
+      actionType: 'booking_confirmed',
+      oldData: old,
+      newData: nw,
+    });
 
     const call = rpc.mock.calls[0][1];
     expect(JSON.parse(call.p_old_data)).toEqual(old);
@@ -348,11 +395,14 @@ describe('logBookingAction', () => {
 
     await logBookingAction('org-1', 'booking_confirmed', 'bk-42', { model_id: 'm-1' });
 
-    expect(rpc).toHaveBeenCalledWith('log_audit_action', expect.objectContaining({
-      p_action_type: 'booking_confirmed',
-      p_entity_type: 'booking',
-      p_entity_id:   'bk-42',
-    }));
+    expect(rpc).toHaveBeenCalledWith(
+      'log_audit_action',
+      expect.objectContaining({
+        p_action_type: 'booking_confirmed',
+        p_entity_type: 'booking',
+        p_entity_id: 'bk-42',
+      }),
+    );
   });
 
   it('passes oldState as p_old_data', async () => {
@@ -379,11 +429,14 @@ describe('logOptionAction', () => {
 
     await logOptionAction('org-1', 'option_sent', 'req-7');
 
-    expect(rpc).toHaveBeenCalledWith('log_audit_action', expect.objectContaining({
-      p_action_type: 'option_sent',
-      p_entity_type: 'option_request',
-      p_entity_id:   'req-7',
-    }));
+    expect(rpc).toHaveBeenCalledWith(
+      'log_audit_action',
+      expect.objectContaining({
+        p_action_type: 'option_sent',
+        p_entity_type: 'option_request',
+        p_entity_id: 'req-7',
+      }),
+    );
   });
 
   it('supports price-negotiation action types', async () => {
@@ -391,9 +444,12 @@ describe('logOptionAction', () => {
 
     await logOptionAction('org-1', 'option_price_countered', 'req-8', { amount: 2500 });
 
-    expect(rpc).toHaveBeenCalledWith('log_audit_action', expect.objectContaining({
-      p_action_type: 'option_price_countered',
-    }));
+    expect(rpc).toHaveBeenCalledWith(
+      'log_audit_action',
+      expect.objectContaining({
+        p_action_type: 'option_price_countered',
+      }),
+    );
   });
 
   it('supports option_document_uploaded action type', async () => {
@@ -401,9 +457,12 @@ describe('logOptionAction', () => {
 
     await logOptionAction('org-1', 'option_document_uploaded', 'req-9', { file: 'brief.pdf' });
 
-    expect(rpc).toHaveBeenCalledWith('log_audit_action', expect.objectContaining({
-      p_action_type: 'option_document_uploaded',
-    }));
+    expect(rpc).toHaveBeenCalledWith(
+      'log_audit_action',
+      expect.objectContaining({
+        p_action_type: 'option_document_uploaded',
+      }),
+    );
   });
 });
 
@@ -421,7 +480,7 @@ describe('deleteOrganizationData', () => {
 
   it('returns ok:false with reason only_owner_can_delete_organization when non-owner calls', async () => {
     rpc.mockResolvedValue({
-      data:  null,
+      data: null,
       error: { message: 'only_owner_can_delete_organization' },
     });
 
@@ -445,6 +504,69 @@ describe('deleteOrganizationData', () => {
     rpc.mockRejectedValue(new Error('network timeout'));
 
     const result = await deleteOrganizationData('org-1');
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('exception');
+  });
+});
+
+// ─── 9. exportUserData (export_user_data RPC + formatExportPayload) ─────────
+
+describe('exportUserData', () => {
+  it('returns ok:true with v3-shaped domains when RPC succeeds', async () => {
+    rpc.mockResolvedValue({
+      data: {
+        export_version: 3,
+        exported_at: '2026-04-16T00:00:00Z',
+        user_id: 'u1',
+        profile: { id: 'u1', email: 'a@b.com' },
+        organizations: [{ org_id: 'o1', org_name: 'Org' }],
+        option_requests: [{ id: 'or1' }],
+        option_request_messages: [],
+        model_profile: [{ id: 'm1', user_id: 'u1' }],
+        model_photos: [],
+        client_projects: [],
+        invitations: [],
+        booking_events: [],
+      },
+      error: null,
+    });
+
+    const result = await exportUserData('u1');
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.exportVersion).toBe(3);
+      expect(result.data.userId).toBe('u1');
+      expect(result.data.optionRequests).toHaveLength(1);
+      expect(result.data.modelProfile).toHaveLength(1);
+      expect(result.data.domains.business.optionRequests).toHaveLength(1);
+      expect(result.data.domains.business.optionRequestMessages).toEqual([]);
+      expect(result.data.domains.model.profileRows).toHaveLength(1);
+      expect(Array.isArray(result.data.domains.memberships)).toBe(true);
+    }
+    expect(rpc).toHaveBeenCalledWith('export_user_data', { p_user_id: 'u1' });
+  });
+
+  it('returns ok:false on permission_denied from RPC', async () => {
+    rpc.mockResolvedValue({
+      data: null,
+      error: { message: 'permission_denied: can only export own data' },
+    });
+
+    const result = await exportUserData('other-user');
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toContain('permission_denied');
+    }
+    expect(errSpy).toHaveBeenCalled();
+  });
+
+  it('returns ok:false with reason exception when RPC throws', async () => {
+    rpc.mockRejectedValue(new Error('network'));
+
+    const result = await exportUserData('u1');
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toBe('exception');
