@@ -8340,17 +8340,32 @@ const SettingsPanel: React.FC<{
                         );
                         if (!user) return;
                         const gdpr = await import('../services/gdprComplianceSupabase');
-                        const dl = await gdpr.downloadUserDataExport(user.id);
-                        if (dl.ok) {
-                          showAppAlert(
-                            uiCopy.privacyData.downloadStartedTitle,
-                            uiCopy.privacyData.downloadStartedBody,
-                          );
+                        if (Platform.OS === 'web') {
+                          const dl = await gdpr.downloadUserDataExport(user.id);
+                          if (dl.ok) {
+                            showAppAlert(
+                              uiCopy.privacyData.downloadStartedTitle,
+                              uiCopy.privacyData.downloadStartedBody,
+                            );
+                          } else {
+                            showAppAlert(
+                              uiCopy.common.error,
+                              gdpr.userFacingExportErrorMessage(dl.reason),
+                            );
+                          }
                         } else {
-                          showAppAlert(
-                            uiCopy.common.error,
-                            gdpr.userFacingExportErrorMessage(dl.reason),
-                          );
+                          const result = await gdpr.exportUserData(user.id);
+                          if (result.ok) {
+                            showAppAlert(
+                              uiCopy.privacyData.exportNativeTitle,
+                              uiCopy.privacyData.exportNativeBody,
+                            );
+                          } else {
+                            showAppAlert(
+                              uiCopy.common.error,
+                              gdpr.userFacingExportErrorMessage(result.reason),
+                            );
+                          }
                         }
                       } catch (e) {
                         console.error('SettingsPanel download export error:', e);

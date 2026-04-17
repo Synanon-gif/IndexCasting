@@ -105,11 +105,15 @@ No migration or lifecycle/trigger changes.
 ## 10. Residual risks
 
 - Floating local times vs. fixed “agency timezone” expectation.
-- Possible **duplicate** VEVENTs if the same logical booking appears in both `user_calendar_events` and `calendar_entries` with different ids (Stichprobe mit Produktionsdaten).
-- `booking_events` not in export (see §2).
+- Possible **duplicate** VEVENTs if the same logical booking appears in both `user_calendar_events` and `calendar_entries` with different ids (Stichprobe mit Produktionsdaten). **Mitigation today:** SQL `ROW_NUMBER` partition `opt:<option_request_id>` + `sourcePriority` (`booking_events`=0 wins) in `calendar_export_events_json` (Migration `20260901`), gespiegelt in `src/constants/calendarSourcePriority.ts` und `icsEventsFromExportPayload`. **Restrisiko:** Buchungen ohne `option_request_id` (z. B. ad-hoc `booking_events` ohne verlinktes Option-Request) können nicht via `opt:`-Partition dedupliziert werden — Stichprobe mit Produktionsdaten empfohlen, falls in Zukunft solche Rows erwartet werden.
+- ~~`booking_events` not in export (see §2)~~ — **erledigt** mit Migration `20260901_calendar_export_events_json_include_booking_events.sql`: `booking_events` werden inkludiert (Sichtbarkeit: Creator, verlinktes Model-User, Org-Mitgliedschaft `client_org_id` / `agency_org_id`) und in der Dedupe-Partition mit höchster Priorität (`sourcePriority = 0`) gemerged. Siehe §1, §2 (Source tables) und `src/utils/icsCalendar.ts` Tie-break.
 - Calendar clients may cache feed up to `max-age=300` after revoke.
 
-## 11. Production readiness
+## 11. Update log
+
+- **2026-04-17:** §10 aktualisiert — `booking_events not in export` als erledigt markiert (Migration `20260901_calendar_export_events_json_include_booking_events.sql` + `src/constants/calendarSourcePriority.ts` + `src/utils/icsCalendar.ts` Tie-break belegen die Inklusion). Duplikat-Restrisiko klarer formuliert (Mitigation via SQL `ROW_NUMBER` + sourcePriority). Verbleibendes Restrisiko: ad-hoc `booking_events` ohne `option_request_id`.
+
+## 12. Production readiness
 
 **Go / No-Go:** **Conditional Go** after **manual §9** passes on staging/production URL, Edge `calendar-feed` deployed with secrets, and migrations `20260822_*` + `20260823_*` applied. Automated tests and static audit alone are **not** sufficient for final sign-off.
 
