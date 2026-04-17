@@ -31,6 +31,7 @@ import {
   APPLY_FORM_EMPTY_PHOTO_SLOT_HEIGHT,
   APPLY_FORM_FILLED_PHOTO_ASPECT_RATIO,
 } from './applyFormPhotoLayout';
+import { isStaleSlotGeneration } from '../utils/applyFormAssignGeneration';
 
 type ImageSlot = 'closeUp' | 'fullBody' | 'profile';
 
@@ -90,6 +91,12 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     fullBody: null,
     profile: null,
   });
+  /** Per-slot monotonic id so an older async assign cannot set photoError/images after a newer pick (same slot). */
+  const slotAssignGenRef = useRef<Record<ImageSlot, number>>({
+    closeUp: 0,
+    fullBody: 0,
+    profile: 0,
+  });
 
   useEffect(() => {
     if (!nameLocked || !profile?.display_name) return;
@@ -101,12 +108,18 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const assignImageFile = async (slot: ImageSlot, file: File) => {
     if (!isImageFile(file)) return;
 
+    const gen = ++slotAssignGenRef.current[slot];
+    setPhotoError(null);
+
     const { file: prepared, conversionFailed } = await convertHeicToJpegWithStatus(file);
+    if (isStaleSlotGeneration(gen, slotAssignGenRef.current[slot])) return;
+
     if (conversionFailed) {
       setPhotoError(uiCopy.apply.heicNotSupportedWeb);
       return;
     }
-    setPhotoError(null);
+
+    if (isStaleSlotGeneration(gen, slotAssignGenRef.current[slot])) return;
 
     const asFile =
       prepared instanceof File
@@ -119,6 +132,7 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     } else {
       const reader = new FileReader();
       reader.onload = () => {
+        if (isStaleSlotGeneration(gen, slotAssignGenRef.current[slot])) return;
         setImages((prev) => ({ ...prev, [slot]: reader.result as string }));
       };
       reader.readAsDataURL(asFile);
