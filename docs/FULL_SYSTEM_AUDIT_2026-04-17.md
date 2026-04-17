@@ -143,6 +143,23 @@ If agency-level minor flagging becomes a product requirement, create:
 - Deleted: `src/utils/modelLinkDiagnostics.ts`
 - Modified: `src/services/gdprComplianceSupabase.ts` (removed `flagModelAsMinor` function and JSDoc; added comment block referencing this audit)
 - Created: `docs/FULL_SYSTEM_AUDIT_2026-04-17.md` (this file)
+- Created: `docs/SEMANTIC_UX_CONSISTENCY_MATRIX_2026-04-17.md` (Gap 4 — Model lifecycle × UI surface, 5×6 cells)
+- Created: `src/services/__tests__/crossFlowAndRaceInvariants.test.ts` (Gaps 1–3 — 22 tests covering cross-flow sequences, MAT gate, session cache, retry, multi-actor optimistic-concurrency races)
+
+---
+
+## Follow-up pass (post-1h, same day)
+
+Four additional gaps were raised after the 1h-pass and addressed without breaking the audit's canonical scope:
+
+| Gap | Addressed by | Status |
+|---|---|---|
+| 1. Cross-Flow Interactions (remove → re-apply → MAT-reactivation → chat continuity) | New tests `I-1`..`I-4` in `crossFlowAndRaceInvariants.test.ts` verifying deterministic `context_id` and chat continuity over the full lifecycle | PASS |
+| 2. State Race Conditions (optimistic UI, retry, subscriptions) | New tests `I-5`..`I-7` verifying session cache deduplication, `force` bypass, retry exhaustion behaviour | PASS |
+| 3. Multi-Actor Synchronisation (parallel accept + reject) | New test `I-8` simulating server-side optimistic-concurrency guard `.eq('status', requiredPrior)` — exactly one of N parallel mutations wins | PASS |
+| 4. Semantic UX Consistency | New `SEMANTIC_UX_CONSISTENCY_MATRIX_2026-04-17.md` documenting all 30 (5×6) Model-state × UI-surface cells, including L3 ghost diagnostic and L4 chat continuity | PASS |
+
+**Test result:** 22 / 22 passing in `crossFlowAndRaceInvariants.test.ts`.
 
 ---
 
