@@ -11,6 +11,7 @@ import {
   DEFAULT_BLOCK_START_MIN,
   parseTimeToMinutes,
 } from './calendarTimelineLayout';
+import { logCalendarPreDedupeIfDuplicatesDev } from './invariantValidationDev';
 
 export function buildEventsByDateFromModelEntries(
   entries: CalendarEntry[],
@@ -91,6 +92,7 @@ function modelCalendarEntryBeats(a: CalendarEntry, b: CalendarEntry): boolean {
  * non-cancelled over cancelled, job/booking over option/casting, then newest created_at.
  */
 export function dedupeModelCalendarEntries(entries: CalendarEntry[]): CalendarEntry[] {
+  logCalendarPreDedupeIfDuplicatesDev(entries, 'dedupeModelCalendarEntries');
   const byOptionId = new Map<string, CalendarEntry>();
   const result: CalendarEntry[] = [];
 

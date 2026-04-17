@@ -21,6 +21,7 @@ vollständig durchlaufen werden, **bevor** Code committed oder weitergeschrieben
 | **Discover / First-contact** | Discover, Chat-Bootstrap, Add-to-Project, Option/Casting/Booking, Packages, Guest-Links — siehe `system-invariants.mdc` **FIRST-CONTACT, REQUEST ECOSYSTEM & DOWNSTREAM PARITY** (12 Invarianten, **### 1** Connectionless) |
 | **Calendar / Attention** | Kalender-Workflow, Smart Attention, Model-Bestätigung — rollenübergreifende Konsistenz |
 | **Guest / Shared / Client Web Gallery** | `GuestView`, `SharedSelectionView`, `PackageGalleryView`, `ActiveOptionsView` — Bild-Pipeline (`StorageImage`), Messwerte (`—` / `??`), externes Gating, keine Discovery-Fallbacks; **PDF Export** nur Web, nur Scope der geöffneten Entität, dynamischer `jspdf`-Import — siehe [.cursor/rules/client-web-gallery-guest-shared-audit.mdc](client-web-gallery-guest-shared-audit.mdc) **§12** |
+| **Invariant audit / dev checks** | Nach Änderungen an Roster, MAT, Kalender-Dedupe, Agency↔Model-Chat, Dissolve-Caches: [docs/INVARIANT_AUDIT_REPORT.md](../../docs/INVARIANT_AUDIT_REPORT.md), `src/utils/invariantValidationDev.ts`, grep-Präfixe `[roster][integrity]` / `[calendar][dedupe]` / `[chat][mat]` |
 
 ---
 

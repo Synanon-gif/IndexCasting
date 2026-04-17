@@ -21,7 +21,10 @@ import { filterModelsByChestCoalesce } from '../utils/filterModelsByChestCoalesc
 import { serviceErr, serviceOkData, type ServiceResult } from '../types/serviceResult';
 import { fetchAllSupabasePages } from './supabaseFetchAll';
 import { modelEligibleForAgencyRoster } from '../utils/modelRosterEligibility';
-import { devAssertAgencyRosterMatchesEligibility } from '../utils/validateModelObjectDev';
+import {
+  devAssertAgencyRosterMatchesEligibility,
+  logInvariantDev,
+} from '../utils/invariantValidationDev';
 
 function isAgencyUpdateModelDevGuardOn(): boolean {
   try {
@@ -605,7 +608,7 @@ export async function getModelsForAgencyFromSupabase(agencyId: string): Promise<
   if (typeof __DEV__ !== 'undefined' && __DEV__) {
     for (const m of roster) {
       if (!matModelIds.has(m.id)) {
-        console.warn('[getModelsForAgencyFromSupabase] roster row not in MAT set (unexpected)', {
+        logInvariantDev('warn', 'roster', 'integrity', 'roster row not in MAT set (unexpected)', {
           readPath: 'mat_ids_chunked',
           agencyId: aid,
           modelId: m.id,
@@ -614,7 +617,7 @@ export async function getModelsForAgencyFromSupabase(agencyId: string): Promise<
     }
     const matNotLoaded = [...matModelIds].filter((id) => !roster.some((r) => r.id === id));
     if (matNotLoaded.length > 0) {
-      console.warn('[getModelsForAgencyFromSupabase] MAT ids missing from models query', {
+      logInvariantDev('warn', 'roster', 'integrity', 'MAT ids missing from models query', {
         readPath: 'mat_ids_chunked',
         agencyId: aid,
         modelIds: matNotLoaded.slice(0, 24),
@@ -922,6 +925,32 @@ export async function removeModelFromAgency(params: RemoveModelFromAgencyParams)
         data,
       });
       return false;
+    }
+
+    try {
+      const { data: modelRow } = await supabase
+        .from('models')
+        .select('user_id')
+        .eq('id', modelId)
+        .maybeSingle();
+      const applicantUid = modelRow?.user_id as string | null | undefined;
+      if (applicantUid) {
+        const { data: staleApps, error: staleErr } = await supabase
+          .from('model_applications')
+          .select('id')
+          .eq('applicant_user_id', applicantUid)
+          .eq('accepted_by_agency_id', resolvedAgencyId)
+          .in('status', ['accepted', 'pending_model_confirmation'])
+          .limit(1);
+        if (!staleErr && Array.isArray(staleApps) && staleApps.length > 0) {
+          console.warn('[AGENCY_REMOVE_MODEL_NO_APPLICATION_SYNC]', {
+            modelId,
+            agencyId: resolvedAgencyId,
+          });
+        }
+      }
+    } catch (probeErr) {
+      console.warn('[agency_remove_model] post-rpc application sync probe failed', probeErr);
     }
 
     void logAction(organizationId, 'removeModelFromAgency', {

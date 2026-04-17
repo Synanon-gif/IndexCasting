@@ -55,6 +55,8 @@ export type ModelApplication = {
     profile?: string;
   };
   createdAt: number;
+  /** Row `updated_at` from DB (ms); used for stale pending+no-MAT diagnostics. */
+  updatedAt: number;
   status: ApplicationStatus;
   chatThreadId?: string;
   ethnicity?: string;
@@ -65,10 +67,13 @@ export type ModelApplication = {
   applicantModelId?: string | null;
   /**
    * True iff at least one MAT row exists for (applicantModelId, acceptedByAgencyId).
-   * Only set for status === 'accepted' after hydration.
+   * Set after hydration for `accepted` and `pending_model_confirmation` when `acceptedByAgencyId` + model id resolve.
    */
   matWithAcceptedAgency?: boolean;
 };
+
+/** Threshold for `[STALE_PENDING_MODEL_CONFIRMATION_NO_MAT]` (no automatic mutation). */
+export const STALE_PENDING_MODEL_CONFIRMATION_NO_MAT_MS = 24 * 60 * 60 * 1000;
 
 /** Normalize image keys from DB (camelCase or snake_case) so UI always has closeUp, fullBody, profile. */
 function normalizeApplicationImages(imgs: unknown): ModelApplication['images'] {
@@ -97,6 +102,7 @@ function toLocal(a: SupabaseApplication): ModelApplication {
     instagramLink: a.instagram_link ?? '',
     images: normalizeApplicationImages(a.images),
     createdAt: new Date(a.created_at).getTime(),
+    updatedAt: new Date(a.updated_at ?? a.created_at).getTime(),
     status: a.status,
     chatThreadId: a.recruiting_thread_id ?? undefined,
     ethnicity: a.ethnicity ?? undefined,
@@ -158,7 +164,10 @@ async function attachApplicantModelIdsAndMatFlags(apps: ModelApplication[]): Pro
     for (const a of apps) {
       const mid = a.applicantUserId ? (uidToMid.get(a.applicantUserId) ?? null) : null;
       a.applicantModelId = mid;
-      if (a.status === 'accepted' && a.acceptedByAgencyId && mid) {
+      const needsMatFlag =
+        (a.status === 'accepted' || a.status === 'pending_model_confirmation') &&
+        Boolean(a.acceptedByAgencyId && mid);
+      if (needsMatFlag) {
         a.matWithAcceptedAgency = matKey.has(`${mid}:${a.acceptedByAgencyId}`);
       } else {
         a.matWithAcceptedAgency = undefined;
@@ -219,7 +228,9 @@ export function getPendingSwipeQueueApplications(): ModelApplication[] {
 }
 
 export async function addApplication(
-  data: Omit<ModelApplication, 'id' | 'createdAt' | 'status'> & { applicantUserId: string },
+  data: Omit<ModelApplication, 'id' | 'createdAt' | 'updatedAt' | 'status'> & {
+    applicantUserId: string;
+  },
 ): Promise<ModelApplication | null> {
   const result = await insertApp({
     applicant_user_id: data.applicantUserId,
@@ -261,7 +272,18 @@ export function applicationQualifiesForAgencyRecruitingAcceptedBucket(
 
 /** Enthält accepted UND pending_model_confirmation (Vertretungsanfrage noch offen). */
 export function getAcceptedApplications(): ModelApplication[] {
-  return cache.filter(applicationQualifiesForAgencyRecruitingAcceptedBucket);
+  const list = cache.filter(applicationQualifiesForAgencyRecruitingAcceptedBucket);
+  const now = Date.now();
+  for (const a of list) {
+    if (
+      a.status === 'pending_model_confirmation' &&
+      a.matWithAcceptedAgency !== true &&
+      now - a.updatedAt > STALE_PENDING_MODEL_CONFIRMATION_NO_MAT_MS
+    ) {
+      console.warn('[STALE_PENDING_MODEL_CONFIRMATION_NO_MAT]', { applicationId: a.id });
+    }
+  }
+  return list;
 }
 
 export function getApplicationById(id: string): ModelApplication | undefined {

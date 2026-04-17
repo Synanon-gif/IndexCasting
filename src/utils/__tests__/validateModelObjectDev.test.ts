@@ -1,4 +1,4 @@
-import { devAssertAgencyRosterMatchesEligibility } from '../validateModelObjectDev';
+import { devAssertAgencyRosterMatchesEligibility } from '../invariantValidationDev';
 
 describe('devAssertAgencyRosterMatchesEligibility', () => {
   const originalEnv = process.env.NODE_ENV;
@@ -25,7 +25,7 @@ describe('devAssertAgencyRosterMatchesEligibility', () => {
       true,
     );
     expect(spy).toHaveBeenCalledWith(
-      '[dev] agency roster row violates modelEligibleForAgencyRoster',
+      '[roster][integrity] row violates modelEligibleForAgencyRoster',
       expect.objectContaining({ agencyId: 'ag-1', modelId: 'ghost' }),
     );
   });
@@ -40,7 +40,7 @@ describe('devAssertAgencyRosterMatchesEligibility', () => {
       true,
     );
     expect(spy).toHaveBeenCalledWith(
-      '[dev] agency roster row violates modelEligibleForAgencyRoster',
+      '[roster][integrity] row violates modelEligibleForAgencyRoster',
       expect.objectContaining({ agencyId: 'ag-1', modelId: 'linked-no-mat' }),
     );
   });

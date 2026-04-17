@@ -114,6 +114,7 @@ const BASE_APP = {
   instagram_link: '',
   images: {},
   created_at: new Date(1_000_000).toISOString(),
+  updated_at: new Date(1_000_000).toISOString(),
   status: 'pending' as const,
   recruiting_thread_id: null,
   accepted_by_agency_id: null,
@@ -260,6 +261,28 @@ describe('getAcceptedApplications', () => {
     expect(ids).not.toContain('app-n');
   });
 
+  it('warns when pending_model_confirmation has no MAT and updated_at is stale', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const old = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+    const pending = {
+      ...BASE_APP,
+      id: 'app-stale',
+      status: 'pending_model_confirmation' as const,
+      recruiting_thread_id: 't-p',
+      accepted_by_agency_id: 'ag-1',
+      updated_at: old,
+    };
+    __applicationsStoreMatTestMat = [];
+    mockFetchApps.mockResolvedValue([pending]);
+    await refreshApplications();
+    getAcceptedApplications();
+    expect(warn).toHaveBeenCalledWith(
+      '[STALE_PENDING_MODEL_CONFIRMATION_NO_MAT]',
+      expect.objectContaining({ applicationId: 'app-stale' }),
+    );
+    warn.mockRestore();
+  });
+
   it('excludes accepted when no MAT exists for (model, accepted agency) — ghost defense', async () => {
     __applicationsStoreMatTestMat = [];
     const ghost = {
@@ -303,6 +326,7 @@ describe('applicationQualifiesForAgencyRecruitingAcceptedBucket', () => {
         instagramLink: '',
         images: {},
         createdAt: 0,
+        updatedAt: 0,
         status: 'pending_model_confirmation',
         chatThreadId: 't1',
         acceptedByAgencyId: 'ag-1',
@@ -324,6 +348,7 @@ describe('applicationQualifiesForAgencyRecruitingAcceptedBucket', () => {
         instagramLink: '',
         images: {},
         createdAt: 0,
+        updatedAt: 0,
         status: 'accepted',
         chatThreadId: 't1',
         acceptedByAgencyId: 'ag-1',
@@ -347,6 +372,7 @@ describe('applicationQualifiesForAgencyRecruitingAcceptedBucket', () => {
         instagramLink: '',
         images: {},
         createdAt: 0,
+        updatedAt: 0,
         status: 'accepted',
         chatThreadId: 't1',
         acceptedByAgencyId: 'ag-1',

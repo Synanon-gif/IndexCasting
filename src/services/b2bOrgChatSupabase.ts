@@ -8,6 +8,7 @@ import { b2bOrgPairContextId } from '../utils/b2bOrgPairContextId';
 import { listOrganizationMembers } from './organizationsInvitationsSupabase';
 import { type Conversation } from './messengerSupabase';
 import { fetchAllSupabasePages } from './supabaseFetchAll';
+import { agencyModelDirectContextId } from '../utils/parseAgencyModelContextId';
 
 export { b2bOrgPairContextId } from '../utils/b2bOrgPairContextId';
 
@@ -442,12 +443,13 @@ export async function ensureAgencyModelDirectChat(params: {
       const raw =
         `${error.message ?? ''} ${(error as { details?: string }).details ?? ''}`.toLowerCase();
       const isNoMat = raw.includes('no_active_representation');
-      console.error('ensureAgencyModelDirectChat RPC error:', {
+      console.error('[chat][mat] ensureAgencyModelDirectChat RPC error', {
         message: error.message,
         code: (error as { code?: string }).code,
         details: (error as { details?: string }).details,
         agencyId,
         modelId,
+        path: 'ensureAgencyModelDirectChat',
       });
       if (isNoMat) {
         return { ok: false, reason: uiCopy.messages.modelDirectChatNoRepresentation };
@@ -460,9 +462,20 @@ export async function ensureAgencyModelDirectChat(params: {
     }
     return { ok: true, conversationId: id, created: false };
   } catch (e) {
-    console.error('ensureAgencyModelDirectChat exception:', e);
+    console.error('[chat][mat] ensureAgencyModelDirectChat exception', {
+      path: 'ensureAgencyModelDirectChat',
+      e,
+    });
     return { ok: false, reason: uiCopy.messages.modelDirectChatFailed };
   }
+}
+
+/** In-memory: last successful direct-chat id per `(model_id, agency_id)` — reduces duplicate ensure RPCs per session. */
+const sessionEnsuredAgencyModelPairToConvId = new Map<string, string>();
+
+/** Clear session ensure cache (e.g. pull-to-refresh on Messages). */
+export function clearSessionEnsuredAgencyModelDirectChats(): void {
+  sessionEnsuredAgencyModelPairToConvId.clear();
 }
 
 /**
@@ -478,46 +491,81 @@ export async function ensureAgencyModelDirectConversation(
     console.error('ensureAgencyModelDirectConversation: missing agencyId or modelId');
     return null;
   }
+  const ctx = agencyModelDirectContextId(agencyId, modelId);
+  try {
+    const { data: existingRows, error: findErr } = await supabase
+      .from('conversations')
+      .select('id')
+      .eq('context_id', ctx)
+      .limit(2);
+    if (findErr) {
+      console.warn('[ensureAgencyModelDirectConversation] context_id pre-check failed', findErr);
+    } else if (existingRows && existingRows.length >= 2) {
+      console.warn('[AGENCY_MODEL_DIRECT_CONV_DUPLICATE_CONTEXT]', {
+        contextId: ctx,
+        count: existingRows.length,
+      });
+    }
+    if (existingRows?.length === 1 && existingRows[0]?.id) {
+      return String(existingRows[0].id);
+    }
+  } catch (e) {
+    console.warn('[ensureAgencyModelDirectConversation] context_id pre-check exception', e);
+  }
   try {
     const { data, error } = await supabase.rpc('ensure_agency_model_direct_conversation', {
       p_agency_id: agencyId,
       p_model_id: modelId,
     });
     if (error) {
-      console.error('ensure_agency_model_direct_conversation RPC error:', {
+      console.error('[chat][mat] ensure_agency_model_direct_conversation RPC error', {
         message: error.message,
         code: (error as { code?: string }).code,
         details: (error as { details?: string }).details,
         agencyId,
         modelId,
+        path: 'ensureAgencyModelDirectConversation',
       });
       return null;
     }
     const id = typeof data === 'string' ? data : data != null ? String(data) : '';
     return id || null;
   } catch (e) {
-    console.error('ensureAgencyModelDirectConversation exception:', e);
+    console.error('[chat][mat] ensureAgencyModelDirectConversation exception', {
+      path: 'ensureAgencyModelDirectConversation',
+      e,
+    });
     return null;
   }
 }
 
-export { parseAgencyModelContextId } from '../utils/parseAgencyModelContextId';
+export {
+  parseAgencyModelContextId,
+  agencyModelDirectContextId,
+} from '../utils/parseAgencyModelContextId';
 
 /**
  * Same as {@link ensureAgencyModelDirectConversation} with a short retry after transient RPC/RLS lag.
  * Idempotent via server RPC — safe to call multiple times.
+ * Use `force: true` to bypass in-session dedupe (explicit user refresh / open chat).
  */
 export async function ensureAgencyModelDirectConversationWithRetry(
   agencyId: string,
   modelId: string,
-  opts?: { attempts?: number; delayMs?: number },
+  opts?: { attempts?: number; delayMs?: number; force?: boolean },
 ): Promise<string | null> {
+  const pairKey = `${modelId.trim()}:${agencyId.trim()}`;
+  if (!opts?.force) {
+    const cached = sessionEnsuredAgencyModelPairToConvId.get(pairKey);
+    if (cached) return cached;
+  }
   const attempts = Math.max(1, Math.floor(opts?.attempts ?? 2));
   const delayMs = Math.max(0, opts?.delayMs ?? 280);
   let last: string | null = null;
   for (let i = 0; i < attempts; i++) {
     last = await ensureAgencyModelDirectConversation(agencyId, modelId);
     if (last) {
+      sessionEnsuredAgencyModelPairToConvId.set(pairKey, last);
       if (i > 0) {
         console.warn('ensureAgencyModelDirectConversationWithRetry: succeeded after retry', {
           agencyId,

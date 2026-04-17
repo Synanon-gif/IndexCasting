@@ -5,7 +5,7 @@
 -- while no model_agency_territories row links (models.id, accepted_by_agency_id).
 -- That misleads Recruiting and can block re-apply semantics.
 --
--- MUST be applied once in production (safe to re-run):
+-- MUST be applied once in production (idempotent — safe to re-run; client logs BACKFILL_STATUS in __DEV__):
 -- - Only touches status = 'accepted' (not pending_model_confirmation: that state
 --   often legitimately has no MAT until the model confirms).
 -- - applicant_user_id is auth user id; MAT uses models.id — join via models.user_id.

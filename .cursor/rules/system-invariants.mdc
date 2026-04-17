@@ -1503,3 +1503,12 @@ Jeder Discovery-/Near-Me-/Filter-RPC der auf `model_agency_territories` joined M
 - `get_models_by_location` — Prüfpflicht bei Änderungen
 
 **Prüfpflicht:** Jede neue Funktion die `model_agency_territories` joined: `DISTINCT ON (model_id)` oder Filter auf genau ein Territory?
+
+---
+
+## INVARIANT AUDIT & DEV CHECKS (2026)
+
+**Living audit (Coverage Map, Shadow Paths, Tests, grep-Präfixe):** [docs/INVARIANT_AUDIT_REPORT.md](../../docs/INVARIANT_AUDIT_REPORT.md)  
+**Dev-Validatoren (read-only, keine Production-Mutation):** [`src/utils/invariantValidationDev.ts`](../../src/utils/invariantValidationDev.ts) — u. a. `[roster][integrity]`, `[calendar][dedupe]`, `[chat][mat]`.
+
+Kanonische Domänenregeln (Location, Roster, Remove, Kalender, Chat, Application, Dissolve): `.cursorrules` **§27** (Final System Consistency) + der Report oben.

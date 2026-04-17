@@ -283,6 +283,14 @@ function AppContent() {
 
   const [clientType, setClientTypeState] = useState<ClientType>(() => loadClientType() ?? 'fashion');
   const { setCurrentUserId } = useAppData();
+  const backfillStatusLoggedRef = useRef(false);
+  useEffect(() => {
+    if (!__DEV__ || backfillStatusLoggedRef.current) return;
+    backfillStatusLoggedRef.current = true;
+    console.info(
+      '[BACKFILL_STATUS] Ghost accepted applications cleanup (migration 20260916) is idempotent — safe to re-run on DB',
+    );
+  }, []);
 
   /** Web: re-render when pathname changes to /terms or /privacy (client-side navigation). */
   const [, setWebPathTick] = useState(0);

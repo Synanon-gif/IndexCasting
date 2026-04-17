@@ -107,6 +107,7 @@ import {
   ensureAgencyModelDirectConversationWithRetry,
   listModelAgencyDirectConversations,
 } from '../services/b2bOrgChatSupabase';
+import { getApplicationsForApplicant } from '../services/applicationsSupabase';
 import { parseAgencyModelContextId } from '../utils/parseAgencyModelContextId';
 import { hasMatForModelAgency } from '../services/recruitingFlowGuards';
 import type { Conversation } from '../services/messengerSupabase';
@@ -232,6 +233,8 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     () => !modelAgencyCtx.loading && modelAgencyCtx.agencies.length === 0,
     [modelAgencyCtx.loading, modelAgencyCtx.agencies.length],
   );
+  /** null = loading; false = applicant has zero rows — strictest Apply CTA invariant. */
+  const [applicantHasApplications, setApplicantHasApplications] = useState<boolean | null>(null);
   const [agencyChatOpening, setAgencyChatOpening] = useState(false);
   const agencyChatBusyRef = useRef(false);
   const [pendingConfirmations, setPendingConfirmations] = useState<
@@ -579,17 +582,41 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   }, [tab, bookingThreadIds]);
 
   useEffect(() => {
+    if (!userId) {
+      setApplicantHasApplications(null);
+      return;
+    }
+    let cancelled = false;
+    void getApplicationsForApplicant(userId).then((rows) => {
+      if (!cancelled) setApplicantHasApplications(rows.length > 0);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  useEffect(() => {
     if (!profile?.id || modelAgencyCtx.loading || showApplyForm || !modelHasNoMat) return;
+    if (applicantHasApplications === null) return;
     const id = requestAnimationFrame(() => {
-      if (tab === 'settings' && !settingsApplyCtaRef.current) {
-        console.error('[MODEL_STATE_BROKEN_NO_APPLY_PATH] settings Apply CTA not mounted');
-      }
-      if (tab === 'home' && !homeApplyCtaRef.current) {
-        console.error('[MODEL_STATE_BROKEN_NO_APPLY_PATH] home Apply banner not mounted');
+      const missingSettings = tab === 'settings' && !settingsApplyCtaRef.current;
+      const missingHome = tab === 'home' && !homeApplyCtaRef.current;
+      if (!missingSettings && !missingHome) return;
+      if (applicantHasApplications === false) {
+        console.error('[CRITICAL] no MAT and no apply CTA visible', { tab });
+      } else {
+        console.error('[MODEL_STATE_BROKEN_NO_APPLY_PATH] Apply CTA not mounted', { tab });
       }
     });
     return () => cancelAnimationFrame(id);
-  }, [tab, profile?.id, modelAgencyCtx.loading, showApplyForm, modelHasNoMat]);
+  }, [
+    tab,
+    profile?.id,
+    modelAgencyCtx.loading,
+    showApplyForm,
+    modelHasNoMat,
+    applicantHasApplications,
+  ]);
 
   useEffect(() => {
     if (tab !== 'messages' || !userId || !profile?.id) return;
@@ -656,7 +683,9 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     agencyChatBusyRef.current = true;
     setAgencyChatOpening(true);
     try {
-      const convId = await ensureAgencyModelDirectConversationWithRetry(agencyId, profile.id);
+      const convId = await ensureAgencyModelDirectConversationWithRetry(agencyId, profile.id, {
+        force: true,
+      });
       if (!convId) {
         Alert.alert(uiCopy.common.error, uiCopy.model.ensureAgencyChatFailed);
         return;

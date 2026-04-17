@@ -1,17 +1,28 @@
 import {
   ensureAgencyModelDirectConversation,
   ensureAgencyModelDirectConversationWithRetry,
+  clearSessionEnsuredAgencyModelDirectChats,
 } from '../b2bOrgChatSupabase';
 
 const rpc = jest.fn();
 
 jest.mock('../../../lib/supabase', () => ({
-  supabase: { rpc: (...args: unknown[]) => rpc(...args) },
+  supabase: {
+    rpc: (...args: unknown[]) => rpc(...args),
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          limit: () => Promise.resolve({ data: [], error: null }),
+        }),
+      }),
+    }),
+  },
 }));
 
 describe('ensureAgencyModelDirectConversation', () => {
   beforeEach(() => {
     rpc.mockReset();
+    clearSessionEnsuredAgencyModelDirectChats();
   });
 
   it('returns conversation id on RPC success', async () => {
@@ -50,6 +61,7 @@ describe('ensureAgencyModelDirectConversation', () => {
 describe('ensureAgencyModelDirectConversationWithRetry', () => {
   beforeEach(() => {
     rpc.mockReset();
+    clearSessionEnsuredAgencyModelDirectChats();
   });
 
   it('returns id on first successful RPC', async () => {
@@ -68,6 +80,21 @@ describe('ensureAgencyModelDirectConversationWithRetry', () => {
       delayMs: 5,
     });
     expect(id).toBe('conv-b');
+    expect(rpc).toHaveBeenCalledTimes(2);
+  });
+
+  it('skips further RPCs for same pair in session until force', async () => {
+    rpc.mockResolvedValue({ data: 'conv-a', error: null });
+    const id1 = await ensureAgencyModelDirectConversationWithRetry('ag', 'mdl', { delayMs: 1 });
+    const id2 = await ensureAgencyModelDirectConversationWithRetry('ag', 'mdl', { delayMs: 1 });
+    expect(id1).toBe('conv-a');
+    expect(id2).toBe('conv-a');
+    expect(rpc).toHaveBeenCalledTimes(1);
+    const id3 = await ensureAgencyModelDirectConversationWithRetry('ag', 'mdl', {
+      delayMs: 1,
+      force: true,
+    });
+    expect(id3).toBe('conv-a');
     expect(rpc).toHaveBeenCalledTimes(2);
   });
 });

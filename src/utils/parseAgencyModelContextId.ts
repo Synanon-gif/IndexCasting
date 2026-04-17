@@ -1,3 +1,8 @@
+/** Canonical `conversations.context_id` for agency↔model direct threads. */
+export function agencyModelDirectContextId(agencyId: string, modelId: string): string {
+  return `agency-model:${agencyId.trim()}:${modelId.trim()}`;
+}
+
 /** Parse `conversations.context_id` for agency↔model direct threads (`agency-model:{agencyUuid}:{modelUuid}`). */
 export function parseAgencyModelContextId(
   contextId: string | null | undefined,
