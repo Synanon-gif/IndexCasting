@@ -272,6 +272,7 @@ import {
   type AgencyCalendarUrgencyFilter,
   type UnifiedAgencyCalendarRow,
 } from '../utils/agencyCalendarUnified';
+import { resolveCalendarRowOpenAction } from '../utils/calendarRowOpenAction';
 import {
   extractUnifiedClientOrgs,
   applyUnifiedOrgFilter,
@@ -2558,15 +2559,18 @@ const AgencyCalendarTab: React.FC<AgencyCalendarTabProps> = ({
   );
 
   const openUnifiedRow = (row: UnifiedAgencyCalendarRow) => {
-    if (row.kind === 'manual') {
-      onOpenManualEvent(row.ev);
-      return;
+    const action = resolveCalendarRowOpenAction(row, itemByOptionId);
+    switch (action.type) {
+      case 'openManualEvent':
+        onOpenManualEvent(action.ev);
+        return;
+      case 'openDetails':
+        onOpenDetails(action.item);
+        return;
+      case 'openBookingEntry':
+        if (onOpenBookingEntry) onOpenBookingEntry(action.entry);
+        return;
     }
-    if (row.kind === 'option') {
-      onOpenDetails(row.item);
-      return;
-    }
-    if (onOpenBookingEntry) onOpenBookingEntry(row.entry);
   };
 
   const quickAddPill = (kind: 'option' | 'casting' | 'private', label: string) => (

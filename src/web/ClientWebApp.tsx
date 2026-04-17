@@ -200,6 +200,7 @@ import {
   type AgencyCalendarTypeFilter,
   type UnifiedAgencyCalendarRow,
 } from '../utils/agencyCalendarUnified';
+import { resolveCalendarRowOpenAction } from '../utils/calendarRowOpenAction';
 import { attentionSignalsFromOptionRequestLike } from '../utils/optionRequestAttention';
 import { attentionHeaderLabelFromSignals } from '../utils/negotiationAttentionLabels';
 import { extractCounterparties } from '../utils/threadFilters';
@@ -4456,17 +4457,17 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
   );
 
   const openUnifiedRow = (row: UnifiedAgencyCalendarRow) => {
-    if (row.kind === 'manual') {
-      onOpenManualEvent(row.ev);
-      return;
-    }
-    if (row.kind === 'booking') {
-      onOpenBookingEntry?.(row.entry);
-      return;
-    }
-    if (row.kind === 'option') {
-      onOpenDetails(row.item as ClientCalendarItem);
-      return;
+    const action = resolveCalendarRowOpenAction(row, itemByOptionId);
+    switch (action.type) {
+      case 'openManualEvent':
+        onOpenManualEvent(action.ev);
+        return;
+      case 'openDetails':
+        onOpenDetails(action.item as ClientCalendarItem);
+        return;
+      case 'openBookingEntry':
+        onOpenBookingEntry?.(action.entry);
+        return;
     }
   };
 
