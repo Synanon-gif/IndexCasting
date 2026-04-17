@@ -446,62 +446,10 @@ export async function guardUploadSession(
 // PART 4 — Minors safety
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Flags a model as a minor. Sets models.is_minor = true and creates
- * a model_minor_consent record if one doesn't exist yet.
- *
- * @deprecated Uses admin-only RPC `admin_update_model_minor_flag` — will fail
- * for non-admin callers with HTTP 400/403. Currently unused in the app.
- * If agency-level minor-flagging is needed, create a dedicated
- * `agency_update_model_minor_flag` RPC with org-membership guard.
- */
-export async function flagModelAsMinor(
-  modelId: string,
-  guardianName?: string,
-  guardianEmail?: string,
-  orgId?: string,
-): Promise<ComplianceResult> {
-  try {
-    const { error: modelError } = await supabase.rpc('admin_update_model_minor_flag', {
-      p_model_id: modelId,
-      p_is_minor: true,
-    });
-
-    if (modelError) {
-      console.error('[gdpr] flagModelAsMinor model update error:', modelError);
-      return { ok: false, reason: modelError.message };
-    }
-
-    const { error: consentError } = await supabase.from('model_minor_consent').upsert(
-      {
-        model_id: modelId,
-        guardian_name: guardianName ?? null,
-        guardian_email: guardianEmail ?? null,
-        is_minor: true,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'model_id' },
-    );
-
-    if (consentError) {
-      console.error('[gdpr] flagModelAsMinor consent upsert error:', consentError);
-      return { ok: false, reason: consentError.message };
-    }
-
-    void logAuditAction({
-      orgId: orgId ?? null,
-      actionType: 'minor_flagged',
-      entityType: 'model',
-      entityId: modelId,
-      newData: { is_minor: true, guardian_email: guardianEmail },
-    });
-
-    return { ok: true, data: undefined };
-  } catch (e) {
-    console.error('[gdpr] flagModelAsMinor exception:', e);
-    return { ok: false, reason: 'exception' };
-  }
-}
+// NOTE: `flagModelAsMinor` (admin-only) was removed 2026-04-17 as unused dead code.
+// If agency-level minor-flagging is needed, create a dedicated
+// `agency_update_model_minor_flag` RPC with org-membership guard and add a
+// non-admin wrapper here. See docs/FULL_SYSTEM_AUDIT_2026-04-17.md (R3).
 
 /**
  * Records guardian consent for a minor model.
