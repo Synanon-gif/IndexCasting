@@ -859,9 +859,10 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
                   activeOpacity={0.85}
                   onPress={() => (imageCount > 0 ? openGallery(m, 0) : undefined)}
                   disabled={imageCount === 0}
+                  style={styles.guestImageTouchable}
                 >
                   {coverImage ? (
-                    <View>
+                    <View style={styles.guestImageInner}>
                       <StorageImage
                         uri={coverImage}
                         style={styles.modelImageBrowse}
@@ -1170,6 +1171,15 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     overflow: 'hidden',
     backgroundColor: colors.surfaceAlt,
+  },
+  guestImageTouchable: {
+    width: '100%',
+    height: '100%',
+  },
+  guestImageInner: {
+    position: 'relative',
+    width: '100%',
+    height: '100%',
   },
   guestStarBtn: {
     position: 'absolute',
