@@ -2199,8 +2199,11 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         chest: (m as { chest?: number | null }).chest ?? m.bust ?? 0,
         legsInseam: 0,
         coverUrl: normalizeDocumentspicturesModelImageRef(getPackageCoverRawRef(m, pkgType), m.id),
-        agencyId: null,
-        agencyName: null,
+        // Package owner agency — enables "Chat with agency" CTA in detail view.
+        // All models in a guest_link package belong to the same sending agency
+        // (gl.agency_id is the package author).
+        agencyId: gl.agency_id ?? null,
+        agencyName: gl.agency_name ?? null,
         countryCode: null,
         hasRealLocation: false,
       }));

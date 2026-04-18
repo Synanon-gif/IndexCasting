@@ -1528,6 +1528,16 @@ export const uiCopy = {
     chatError: 'Could not load chat. Please try again.',
     agencyWorkspaceNotFound:
       'Could not find the agency workspace. Please contact the agency directly.',
+    /** Gallery detail action buttons (guest must sign up first to actually use them). */
+    galleryActionChat: 'Chat with Agency',
+    galleryActionOption: 'Option',
+    galleryActionAdd: 'Add to selection',
+    /** Sign-up gate prompt shown when an unauthenticated guest taps an action. */
+    signupGatePromptTitle: 'Create a free account',
+    signupGatePromptBody:
+      'Sign up to chat with the agency, send option requests, and add models to your selection. We will bring you back to this package right after.',
+    signupGateContinue: 'Sign up to continue',
+    signupGateCancel: 'Cancel',
   },
   /** Model – "My Applications" view status labels and feedback strings. */
   modelApplications: {

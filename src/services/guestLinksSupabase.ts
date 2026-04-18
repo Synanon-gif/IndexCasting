@@ -96,11 +96,23 @@ export async function createGuestLink(params: {
 
 /**
  * Minimal link metadata shape returned by the get_guest_link_info RPC.
- * Does NOT include agency_id or model_ids — prevents enumeration by anon callers.
+ * Does NOT include model_ids — prevents enumeration of model lists by anon callers.
+ *
+ * Includes `agency_id` (since 20261021) so authenticated client workspaces can
+ * wire the "Chat with agency" CTA in the package gallery via
+ * `ensureClientAgencyChat({ agencyId: gl.agency_id, ... })`. The link_id remains
+ * the secret; the agency UUID is opaque and does not enable enumeration.
  */
 export type GuestLinkInfo = Pick<
   GuestLink,
-  'id' | 'label' | 'agency_name' | 'type' | 'is_active' | 'expires_at' | 'tos_accepted_by_guest'
+  | 'id'
+  | 'label'
+  | 'agency_id'
+  | 'agency_name'
+  | 'type'
+  | 'is_active'
+  | 'expires_at'
+  | 'tos_accepted_by_guest'
 >;
 
 /**

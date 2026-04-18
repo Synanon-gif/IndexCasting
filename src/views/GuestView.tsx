@@ -76,6 +76,40 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
   // Gallery lightbox
   const [galleryModel, setGalleryModel] = useState<GuestLinkModel | null>(null);
   const [galleryIndex, setGalleryIndex] = useState(0);
+  /**
+   * Sign-up gate prompt — shown when an unauthenticated guest taps an action
+   * (Chat / Option / Add to selection) inside the gallery. Confirming persists
+   * the current package linkId so post-signup the package auto-reopens (see
+   * `App.tsx` `ic_pending_guest_link` recovery effect) and the user can use
+   * the same buttons natively in `ClientWebApp` package mode.
+   */
+  const [signupGateOpen, setSignupGateOpen] = useState(false);
+  const triggerGuestActionSignupGate = () => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('ic_pending_guest_link', linkId);
+      } catch {
+        /* best-effort */
+      }
+    }
+    setSignupGateOpen(true);
+  };
+  const handleSignupGateContinue = () => {
+    setSignupGateOpen(false);
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('ic_pending_guest_link', linkId);
+      } catch {
+        /* best-effort */
+      }
+      const u = new URL(window.location.href);
+      u.searchParams.delete('guest');
+      u.searchParams.set('signup', '1');
+      window.location.href = u.toString();
+    } else {
+      Linking.openURL('https://indexcasting.com').catch(() => {});
+    }
+  };
   /** Local-only favorites (sessionStorage on web) — no backend. */
   const GUEST_FAV_KEY = 'ic_guest_gallery_favorite_ids';
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(() => new Set());
@@ -684,8 +718,59 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
                 {galleryModel.waist ? ` · Waist ${galleryModel.waist} cm` : ''}
                 {galleryModel.hips ? ` · Hips ${galleryModel.hips} cm` : ''}
               </Text>
+              {/* Action CTAs — same as authenticated Discover detail. For
+                  unauthenticated guests, every tap routes to the sign-up gate;
+                  after sign-up the package auto-reopens and the user can use
+                  the buttons natively in `ClientWebApp`. */}
+              <View style={styles.galleryActionRow}>
+                <TouchableOpacity
+                  style={styles.galleryActionBtn}
+                  onPress={triggerGuestActionSignupGate}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.galleryActionBtnLabel}>{copy.galleryActionChat}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.galleryActionBtn}
+                  onPress={triggerGuestActionSignupGate}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.galleryActionBtnLabel}>{copy.galleryActionOption}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.galleryActionBtn}
+                  onPress={triggerGuestActionSignupGate}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.galleryActionBtnLabel}>{copy.galleryActionAdd}</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           )}
+        </View>
+      </Modal>
+
+      {/* Sign-up gate prompt for unauthenticated guests — shown over the gallery */}
+      <Modal
+        visible={signupGateOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSignupGateOpen(false)}
+      >
+        <View style={styles.signupGateOverlay}>
+          <View style={styles.signupGateCard}>
+            <Text style={styles.signupGateTitle}>{copy.signupGatePromptTitle}</Text>
+            <Text style={styles.signupGateBody}>{copy.signupGatePromptBody}</Text>
+            <TouchableOpacity style={styles.signupGatePrimary} onPress={handleSignupGateContinue}>
+              <Text style={styles.signupGatePrimaryLabel}>{copy.signupGateContinue}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.signupGateSecondary}
+              onPress={() => setSignupGateOpen(false)}
+            >
+              <Text style={styles.signupGateSecondaryLabel}>{copy.signupGateCancel}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </Modal>
 
@@ -1358,5 +1443,77 @@ const styles = StyleSheet.create({
   galleryModelMeta: {
     color: 'rgba(255,255,255,0.65)',
     fontSize: 12,
+  },
+  /** Action CTAs row inside gallery model info overlay (Chat / Option / Add). */
+  galleryActionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 12,
+  },
+  galleryActionBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  galleryActionBtnLabel: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+  },
+  /** Sign-up gate modal (rendered above the gallery for unauthenticated guests). */
+  signupGateOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  signupGateCard: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    padding: spacing.lg,
+    alignItems: 'stretch',
+  },
+  signupGateTitle: {
+    ...typography.heading,
+    fontSize: 18,
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+    textAlign: 'center',
+  },
+  signupGateBody: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: spacing.lg,
+    lineHeight: 18,
+  },
+  signupGatePrimary: {
+    backgroundColor: colors.textPrimary,
+    paddingVertical: spacing.md,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  signupGatePrimaryLabel: {
+    ...typography.label,
+    color: colors.surface,
+  },
+  signupGateSecondary: {
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+  },
+  signupGateSecondaryLabel: {
+    ...typography.body,
+    color: colors.textSecondary,
+    fontSize: 13,
   },
 });

@@ -419,11 +419,39 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
                   {detailOpen.cityLine ? (
                     <Text style={styles.detailCity}>{detailOpen.cityLine}</Text>
                   ) : null}
-                  <TouchableOpacity style={styles.authGateBtn} onPress={showAuthGate}>
-                    <Text style={styles.authGateBtnLabel}>
-                      {uiCopy.sharedSelection.signUpToAccess}
-                    </Text>
-                  </TouchableOpacity>
+                  {/* Action CTAs — same trio as authenticated Discover detail.
+                      Unauthenticated guests are routed through the auth gate;
+                      authenticated users get the Continue-to-workspace path
+                      (handled inside `showAuthGate`). */}
+                  <View style={styles.detailActionRow}>
+                    <TouchableOpacity
+                      style={styles.detailActionBtn}
+                      onPress={showAuthGate}
+                      accessibilityRole="button"
+                    >
+                      <Text style={styles.detailActionBtnLabel}>
+                        {uiCopy.guestFlow.galleryActionChat}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.detailActionBtn}
+                      onPress={showAuthGate}
+                      accessibilityRole="button"
+                    >
+                      <Text style={styles.detailActionBtnLabel}>
+                        {uiCopy.guestFlow.galleryActionOption}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.detailActionBtn}
+                      onPress={showAuthGate}
+                      accessibilityRole="button"
+                    >
+                      <Text style={styles.detailActionBtnLabel}>
+                        {uiCopy.guestFlow.galleryActionAdd}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </ScrollView>
             ) : null}
@@ -690,6 +718,27 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textSecondary,
     marginTop: spacing.xs,
+  },
+  /** Action CTA row in detail modal (Chat / Option / Add to selection). */
+  detailActionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  detailActionBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    backgroundColor: colors.textPrimary,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  detailActionBtnLabel: {
+    ...typography.label,
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.surface,
+    letterSpacing: 0.3,
   },
   authGateBtn: {
     marginTop: spacing.md,
