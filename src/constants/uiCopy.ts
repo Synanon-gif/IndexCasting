@@ -48,6 +48,10 @@ export const uiCopy = {
     backToGallery: '← Back to gallery',
     footerCta: 'Sign up for full access',
     visitSite: 'Visit IndexCasting',
+    continueToWorkspace: 'Open in your workspace',
+    alreadySignedIn: "You're signed in",
+    alreadySignedInBody:
+      'Open this selection in your workspace to chat with agencies, request options, and add models to your projects.',
   },
   /** GDPR Art. 20 / 7 — agency settings tab + client web settings (English-only). */
   privacyData: {

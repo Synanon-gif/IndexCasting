@@ -46,12 +46,18 @@ type SharedSelectionViewProps = {
   shareName: string;
   modelIds: string[];
   token?: string | null;
+  /** When true, the view shows a "Continue to your workspace" CTA instead of the sign-up gate. */
+  isAuthenticated?: boolean;
+  /** Callback for authenticated users — strip ?shared= params and let App route to the workspace. */
+  onContinueToWorkspace?: () => void;
 };
 
 export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
   shareName,
   modelIds,
   token,
+  isAuthenticated = false,
+  onContinueToWorkspace,
 }) => {
   const { width: windowW } = useWindowDimensions();
   const isMobile = isMobileWidth(windowW);
@@ -127,16 +133,44 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
     setDetailOpen(m);
   };
 
-  const showAuthGate = () => setAuthGateVisible(true);
+  const showAuthGate = () => {
+    if (isAuthenticated && onContinueToWorkspace) {
+      onContinueToWorkspace();
+      return;
+    }
+    setAuthGateVisible(true);
+  };
 
   const handleSignUp = () => {
     setAuthGateVisible(false);
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      const base = window.location.origin || 'https://indexcasting.com';
-      window.location.href = base;
-    } else {
-      Linking.openURL('https://indexcasting.com').catch(() => {});
+    if (isAuthenticated && onContinueToWorkspace) {
+      onContinueToWorkspace();
+      return;
     }
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      // Persist shared-selection context so the user is restored back here after
+      // signing up. App.tsx reads `ic_pending_shared_selection` and re-applies
+      // the URL params after the new session bootstraps.
+      try {
+        const payload = JSON.stringify({
+          name: shareName,
+          ids: modelIds,
+          token: token ?? null,
+        });
+        localStorage.setItem('ic_pending_shared_selection', payload);
+      } catch {
+        /* best-effort */
+      }
+      const u = new URL(window.location.href);
+      u.searchParams.delete('shared');
+      u.searchParams.delete('name');
+      u.searchParams.delete('ids');
+      u.searchParams.delete('token');
+      u.searchParams.set('signup', '1');
+      window.location.href = u.toString();
+      return;
+    }
+    Linking.openURL('https://indexcasting.com').catch(() => {});
   };
 
   const [pdfExportOpen, setPdfExportOpen] = useState(false);
@@ -236,7 +270,7 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
                         <StorageImage
                           uri={m.coverUrl}
                           style={styles.tileImage}
-                          resizeMode="cover"
+                          resizeMode="contain"
                         />
                       ) : (
                         <View style={styles.tilePlaceholder}>
@@ -270,7 +304,7 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
         </ScrollView>
       )}
 
-      {/* Persistent CTA footer for external users */}
+      {/* Persistent CTA footer — adapts to auth state */}
       {!loading && models.length > 0 && (
         <View style={styles.ctaFooter}>
           <TouchableOpacity
@@ -278,7 +312,11 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
             onPress={handleSignUp}
             accessibilityRole="button"
           >
-            <Text style={styles.ctaFooterLabel}>{uiCopy.sharedSelection.footerCta}</Text>
+            <Text style={styles.ctaFooterLabel}>
+              {isAuthenticated
+                ? uiCopy.sharedSelection.continueToWorkspace
+                : uiCopy.sharedSelection.footerCta}
+            </Text>
           </TouchableOpacity>
         </View>
       )}

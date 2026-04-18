@@ -254,7 +254,7 @@ function ModelRouteGuard({
 
 function AppContent() {
   const { session, loading, profile, signOut, refreshProfile, orgDeactivated, clearOrgDeactivated, isPasswordRecovery } = useAuth();
-  const [sharedParams] = useState<{ name: string; ids: string[]; token: string | null } | null>(getSharedParams);
+  const [sharedParams, setSharedParams] = useState<{ name: string; ids: string[]; token: string | null } | null>(getSharedParams);
   const [bookingThreadId, setBookingThreadId] = useState<string | null>(getBookingThreadId);
   const [guestLinkId, setGuestLinkId] = useState<string | null>(getGuestLinkId);
   const initialRouting =
@@ -465,6 +465,38 @@ function AppContent() {
       setGuestLinkId(pending);
     } catch { /* best-effort */ }
   }, [session, guestLinkId]);
+
+  // Restore pending shared-selection after signup: if user signed up from
+  // SharedSelectionView, the params were persisted to localStorage. After auth
+  // bootstraps, re-apply the URL params and rehydrate `sharedParams` so the
+  // user lands back on the original shared project (now with the option to
+  // continue into their workspace).
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    if (sharedParams) return;
+    if (!session) return;
+    try {
+      const raw = localStorage.getItem('ic_pending_shared_selection');
+      if (!raw) return;
+      localStorage.removeItem('ic_pending_shared_selection');
+      const parsed = JSON.parse(raw) as { name?: unknown; ids?: unknown; token?: unknown } | null;
+      if (!parsed || typeof parsed !== 'object') return;
+      const name = typeof parsed.name === 'string' ? parsed.name : '';
+      const ids = Array.isArray(parsed.ids)
+        ? parsed.ids.filter((x): x is string => typeof x === 'string')
+        : [];
+      const token = typeof parsed.token === 'string' ? parsed.token : null;
+      if (!name || ids.length === 0) return;
+      const u = new URL(window.location.href);
+      u.searchParams.set('shared', '1');
+      u.searchParams.set('name', name);
+      u.searchParams.set('ids', ids.join(','));
+      if (token) u.searchParams.set('token', token);
+      window.history.replaceState({}, '', u.pathname + u.search + u.hash);
+      const reparsed = parseSharedSelectionParams(u.searchParams);
+      if (reparsed) setSharedParams(reparsed);
+    } catch { /* best-effort */ }
+  }, [session, sharedParams]);
 
   useEffect(() => {
     if (!inviteTokenState) return;
@@ -786,10 +818,27 @@ function AppContent() {
   // Shared selection links are publicly browsable (no login required).
   // Actions (Chat, Option, Add to Selection, Star) are gated — the view
   // shows a sign-up prompt when an unauthenticated user attempts an action.
+  // Authenticated users see a "Continue to workspace" CTA instead.
   if (sharedParams) {
     return (
       <>
-        <SharedSelectionView shareName={sharedParams.name} modelIds={sharedParams.ids} token={sharedParams.token} />
+        <SharedSelectionView
+          shareName={sharedParams.name}
+          modelIds={sharedParams.ids}
+          token={sharedParams.token}
+          isAuthenticated={isAuthenticatedNonGuest}
+          onContinueToWorkspace={() => {
+            if (Platform.OS === 'web' && typeof window !== 'undefined') {
+              const u = new URL(window.location.href);
+              u.searchParams.delete('shared');
+              u.searchParams.delete('name');
+              u.searchParams.delete('ids');
+              u.searchParams.delete('token');
+              window.history.replaceState({}, '', u.pathname + u.search + u.hash);
+            }
+            setSharedParams(null);
+          }}
+        />
         <StatusBar style="dark" />
       </>
     );
