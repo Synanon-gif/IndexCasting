@@ -193,9 +193,28 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
       setLink(g);
       const modelsRes = await getGuestLinkModels(linkId);
       if (!modelsRes.ok) {
+        console.warn('[GuestView] getGuestLinkModels failed', {
+          linkId: linkId.slice(0, 8),
+          error: modelsRes.error,
+        });
         setPageError(copy.modelsLoadFailed);
         return;
       }
+      console.info('[GuestView] models loaded', {
+        linkId: linkId.slice(0, 8),
+        type: g.type,
+        modelCount: modelsRes.data.length,
+        firstModel: modelsRes.data[0]
+          ? {
+              id: modelsRes.data[0].id.slice(0, 8),
+              name: modelsRes.data[0].name,
+              portfolioCount: modelsRes.data[0].portfolio_images?.length ?? 0,
+              polaroidsCount: modelsRes.data[0].polaroids?.length ?? 0,
+              firstPortfolioPrefix:
+                modelsRes.data[0].portfolio_images?.[0]?.slice(0, 80) ?? '(none)',
+            }
+          : null,
+      });
       setModels(modelsRes.data);
     } catch (e) {
       console.error('GuestView load error:', e);
