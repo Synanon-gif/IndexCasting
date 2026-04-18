@@ -21,13 +21,25 @@ function base(over: Partial<OptionRequest> = {}): OptionRequest {
 }
 
 describe('primaryCounterpartyLabelForModel', () => {
-  it('prefers client org over agency for client-driven requests', () => {
+  it('combines client org with originating agency for client-driven requests', () => {
     expect(
       primaryCounterpartyLabelForModel(
         base({
           isAgencyOnly: false,
           clientOrganizationName: 'Acme Co',
           agencyOrganizationName: 'Big Agency',
+        }),
+      ),
+    ).toBe('Acme Co · via Big Agency');
+  });
+
+  it('returns only client org if no agency name is available', () => {
+    expect(
+      primaryCounterpartyLabelForModel(
+        base({
+          isAgencyOnly: false,
+          clientOrganizationName: 'Acme Co',
+          agencyOrganizationName: null as unknown as undefined,
         }),
       ),
     ).toBe('Acme Co');
@@ -45,7 +57,19 @@ describe('primaryCounterpartyLabelForModel', () => {
     ).toBe('Studio X');
   });
 
-  it('prefers client org from DB row over generic client_name', () => {
+  it('does not duplicate the agency name when client and agency match', () => {
+    expect(
+      primaryCounterpartyLabelForModel(
+        base({
+          isAgencyOnly: false,
+          clientOrganizationName: 'Same Co',
+          agencyOrganizationName: 'Same Co',
+        }),
+      ),
+    ).toBe('Same Co');
+  });
+
+  it('prefers client org from DB row over generic client_name and adds agency', () => {
     expect(
       primaryCounterpartyLabelForModelFromDbRow({
         is_agency_only: false,
@@ -53,7 +77,7 @@ describe('primaryCounterpartyLabelForModel', () => {
         client_organization_name: 'CLIENT 1',
         agency_organization_name: 'Poetry Of People',
       }),
-    ).toBe('CLIENT 1');
+    ).toBe('CLIENT 1 · via Poetry Of People');
   });
 });
 

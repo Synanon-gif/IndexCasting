@@ -25,6 +25,15 @@ export const uiCopy = {
     remove: 'Remove',
     noAgencyContext:
       'Your account is not linked to an agency yet. Please contact your administrator.',
+    /**
+     * Last-resort fallback when an agency name cannot be resolved at all.
+     * Per organization-identity invariants we never render a generic "Agency" placeholder.
+     */
+    unknownAgency: 'Unknown agency',
+    /** Last-resort fallback for client organization label. */
+    unknownClient: 'Unknown client',
+    /** Last-resort fallback for model display name. */
+    unknownModel: 'Unknown model',
   },
   /** Unauthenticated ?shared=1 selection link (SharedSelectionView). */
   sharedSelection: {
@@ -554,7 +563,13 @@ export const uiCopy = {
      */
     passwordHintSignup: 'Min. 10 characters · uppercase & lowercase · number · symbol (e.g. !@#$)',
     signUpDisplayNamePlaceholder: 'Display name',
-    signUpCompanyNamePlaceholder: 'Company or organization name',
+    /**
+     * Sign-up placeholder for the organization name field. Stored internally as
+     * `profiles.company_name` for legacy reasons, but ALWAYS rendered as
+     * "Organization name" in the UI for consistency across signup, settings,
+     * chats, calendar, requests etc.
+     */
+    signUpCompanyNamePlaceholder: 'Organization name',
     loginTab: 'Login',
     signUpTab: 'Sign Up',
     createAccount: 'Create Account',
@@ -568,7 +583,7 @@ export const uiCopy = {
      */
     signUpOwnerHint:
       'The first signup as Client or Agency (without an invitation link) creates your organization and assigns you as the Organization Owner. People who register using an invite link you send become employees or bookers — they are not owners.',
-    companyNameRequired: 'Please enter your agency or company name.',
+    companyNameRequired: 'Please enter your organization name.',
     loginFailed: 'Login failed. Please check your connection and try again.',
     /** Forgot-password link shown below the Login submit button. */
     forgotPasswordLink: 'Forgot password?',
@@ -2140,6 +2155,8 @@ export const uiCopy = {
     threadContextOption: 'Option',
     threadContextCasting: 'Casting',
     threadContextBooking: 'Booking',
+    /** Once an option/casting becomes a confirmed job (final_status = 'job_confirmed'). */
+    threadContextJob: 'Job',
     orgFilterAllClients: 'All clients',
     orgFilterMyClients: 'My clients',
     orgFilterUnassigned: 'Unassigned',

@@ -247,7 +247,7 @@ export const BookingChatView: React.FC<Props> = ({
     setUploadError(null);
   };
 
-  const displayAgencyName = agencyName || initialAgencyName || 'Agency';
+  const displayAgencyName = agencyName || initialAgencyName || uiCopy.common.unknownAgency;
 
   const copyBookingLink = () => {
     if (typeof window === 'undefined' || !threadId) return;

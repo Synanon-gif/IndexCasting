@@ -1322,9 +1322,15 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                   return (
                     <View style={{ marginBottom: spacing.md }}>
                       <Text style={s.modelName}>
-                        {kind} · {option.model_name ?? 'Model'}
+                        {kind} · {option.model_name ?? uiCopy.common.unknownModel}
                       </Text>
-                      <Text style={s.metaText}>{option.client_name ?? 'Client'}</Text>
+                      <Text style={s.metaText}>
+                        {option.is_agency_only
+                          ? (option.agency_organization_name ?? uiCopy.common.unknownAgency)
+                          : (option.client_organization_name ??
+                            option.client_name ??
+                            uiCopy.common.unknownClient)}
+                      </Text>
                       <Text style={s.metaText}>
                         {date}
                         {start ? ` · ${start}${end ? `–${end}` : ''}` : ''}
@@ -1805,7 +1811,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                     >
                       {newEventForm.selectedModelIds.map((id) => {
                         const m = fullModels.find((x) => x.id === id);
-                        const label = (m?.name || '').trim() || 'Model';
+                        const label = (m?.name || '').trim() || uiCopy.common.unknownModel;
                         return (
                           <TouchableOpacity
                             key={id}
@@ -1925,7 +1931,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                                 )}
                               </View>
                               <Text style={{ ...typography.label, color: colors.textPrimary }}>
-                                {m.name || 'Model'}
+                                {m.name || uiCopy.common.unknownModel}
                               </Text>
                             </TouchableOpacity>
                           );

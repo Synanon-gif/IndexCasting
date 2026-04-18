@@ -25,6 +25,7 @@ import { colors } from '../theme/theme';
 import { calendarGridColorForOptionItem } from './calendarProjectionLabel';
 import { attentionSignalsFromOptionRequestLike } from './optionRequestAttention';
 import { attentionHeaderLabelFromSignals } from './negotiationAttentionLabels';
+import { uiCopy } from '../constants/uiCopy';
 
 /** Same numeric ordering as SQL `calendar_export_events_json` / ICS `sourcePriority` (lower = wins). */
 export const CALENDAR_SOURCE_PRIORITY_ORDER_FOR_AUDIT = [
@@ -161,7 +162,7 @@ export function buildUnifiedAgencyCalendarRows(
     const category = normalizeOptionCategory(item);
     const effectiveAssigneeUserId = effectiveAssigneeForOption(item, assignmentByClientOrgId);
     const needsAgencyAction = needsAgencyActionForOption(item);
-    const title = item.option.model_name ?? 'Model';
+    const title = item.option.model_name ?? uiCopy.common.unknownModel;
     return {
       kind: 'option',
       sortKey: `${date}\0${title}\0${item.option.id}`,

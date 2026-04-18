@@ -1,6 +1,7 @@
 import type { OptionRequest } from '../store/optionRequests';
 import type { Conversation } from '../services/messengerSupabase';
 import type { ClientAssignmentFlag } from '../services/clientAssignmentsSupabase';
+import { uiCopy } from '../constants/uiCopy';
 
 export type ThreadCounterparty = {
   id: string;
@@ -31,7 +32,7 @@ export function extractCounterparties(
       }
       const key = r.clientOrganizationId ?? r.clientName ?? '';
       if (key && !map.has(key)) {
-        map.set(key, r.clientOrganizationName ?? r.clientName ?? 'Client');
+        map.set(key, r.clientOrganizationName ?? r.clientName ?? uiCopy.common.unknownClient);
       }
     } else {
       const key = r.agencyOrganizationId ?? r.agencyId ?? '';
@@ -64,7 +65,7 @@ export function extractUnifiedClientOrgs(
       existing.count++;
     } else {
       map.set(key, {
-        label: r.clientOrganizationName ?? r.clientName ?? 'Client',
+        label: r.clientOrganizationName ?? r.clientName ?? uiCopy.common.unknownClient,
         count: 1,
       });
     }
@@ -76,7 +77,7 @@ export function extractUnifiedClientOrgs(
     if (existing) {
       existing.count++;
     } else {
-      map.set(key, { label: c.title ?? 'Client', count: 1 });
+      map.set(key, { label: c.title ?? uiCopy.common.unknownClient, count: 1 });
     }
   }
   return Array.from(map.entries())

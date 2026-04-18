@@ -22,6 +22,7 @@ import {
 } from '../services/applicationsSupabase';
 import { supabase } from '../../lib/supabase';
 import { guardUploadSession } from '../services/gdprComplianceSupabase';
+import { uiCopy } from '../constants/uiCopy';
 import {
   getOrganizationIdForAgency,
   ensureAgencyOrganization,
@@ -169,7 +170,7 @@ export async function tryStartRecruitingChat(
   let displayName = modelName.trim();
   if (!displayName) {
     const r = await fetchApplicationById(applicationId);
-    displayName = (r ? `${r.first_name} ${r.last_name}`.trim() : '') || 'Model';
+    displayName = (r ? `${r.first_name} ${r.last_name}`.trim() : '') || uiCopy.common.unknownModel;
   }
 
   if (agencyId) {

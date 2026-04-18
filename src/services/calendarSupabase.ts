@@ -380,7 +380,16 @@ export async function deleteCalendarEntryById(entryId: string): Promise<boolean>
   }
 }
 
-/** Set calendar entries linked to this option_request to Job (booking) type and title. */
+/**
+ * Set calendar entries linked to this option_request to Job (booking) type and title.
+ *
+ * Title source-of-truth priority (matches DB trigger fn_ensure_calendar_on_option_confirmed):
+ *   1. option_requests.client_organization_name      (canonical org display name)
+ *   2. option_requests.agency_organization_name      (only for agency-only flows)
+ *   3. option_requests.client_name                   (legacy fallback)
+ *   4. calendar_entries.client_name                  (older row fallback)
+ *   5. literal "Client"                              (last resort)
+ */
 export async function updateCalendarEntryToJob(optionRequestId: string): Promise<boolean> {
   try {
     const { data: rows, error: selErr } = await supabase
@@ -392,13 +401,47 @@ export async function updateCalendarEntryToJob(optionRequestId: string): Promise
       return false;
     }
     if (!rows?.length) return true;
+
+    // Prefer the canonical organization name from option_requests; falls back to
+    // legacy fields so historical rows without org_name still produce a real title.
+    let displayName: string | null = null;
+    try {
+      const { data: optRow } = await supabase
+        .from('option_requests')
+        .select('client_organization_name, agency_organization_name, client_name, is_agency_only')
+        .eq('id', optionRequestId)
+        .maybeSingle();
+      if (optRow) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const o = optRow as any;
+        const clientOrg = (o.client_organization_name ?? '').toString().trim();
+        const agencyOrg = (o.agency_organization_name ?? '').toString().trim();
+        const legacyName = (o.client_name ?? '').toString().trim();
+        const isAgencyOnly = o.is_agency_only === true;
+        displayName =
+          clientOrg || (isAgencyOnly ? agencyOrg : '') || legacyName || agencyOrg || null;
+      }
+    } catch (e) {
+      console.warn('updateCalendarEntryToJob: option_requests lookup failed, using fallback', e);
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const clientName = (rows[0] as any).client_name || 'Client';
+    const fallbackFromCalendar = (rows[0] as any).client_name;
+    const clientName =
+      displayName ||
+      (typeof fallbackFromCalendar === 'string' && fallbackFromCalendar.trim()) ||
+      'Client';
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const ids = rows.map((r: any) => r.id);
     const { error: updErr } = await supabase
       .from('calendar_entries')
-      .update({ entry_type: 'booking', status: 'booked', title: `Job – ${clientName}` })
+      .update({
+        entry_type: 'booking',
+        status: 'booked',
+        title: `Job – ${clientName}`,
+        client_name: clientName,
+      })
       .in('id', ids);
     if (updErr) {
       console.error('updateCalendarEntryToJob update error:', updErr);

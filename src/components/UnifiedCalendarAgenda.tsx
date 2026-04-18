@@ -235,7 +235,7 @@ export const UnifiedCalendarAgenda: React.FC<UnifiedCalendarAgendaProps> = ({
                           ) : null}
                           <View style={{ flex: 1 }}>
                             <Text style={styles.cardTitle}>
-                              {option.model_name ?? 'Model'} · {dateStr}
+                              {option.model_name ?? uiCopy.common.unknownModel} · {dateStr}
                             </Text>
                             <Text style={styles.cardMeta}>
                               {option.client_organization_name?.trim() ||

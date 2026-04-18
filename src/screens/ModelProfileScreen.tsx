@@ -88,6 +88,7 @@ import {
   primaryCounterpartyLabelForModel,
   primaryCounterpartyLabelForModelFromDbRow,
   secondarySubtitleForModel,
+  lifecycleLabelForRequest,
 } from '../utils/modelOptionDisplay';
 import { uiCopy } from '../constants/uiCopy';
 import { showAppAlert, showConfirmAlert } from '../utils/crossPlatformAlert';
@@ -2025,6 +2026,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                     actionRequired: boolean;
                     ts: number;
                     requestType: string;
+                    finalStatus?: string | null;
                   }
                 | { kind: 'direct'; id: string; label: string; ts: number }
                 | { kind: 'recruiting'; id: string; label: string; ts: number };
@@ -2044,6 +2046,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                   actionRequired: isAction,
                   ts: o.createdAt ?? 0,
                   requestType: o.requestType ?? 'option',
+                  finalStatus: o.finalStatus ?? null,
                 });
               }
               for (const conv of agencyDirectConvs) {
@@ -2106,10 +2109,10 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
               return rows.map((row) => {
                 if (row.kind === 'option') {
                   const o = row as Extract<UnifiedRow, { kind: 'option' }>;
-                  const typeLabel =
-                    o.requestType === 'casting'
-                      ? uiCopy.dashboard.threadContextCasting
-                      : uiCopy.dashboard.threadContextOption;
+                  const typeLabel = lifecycleLabelForRequest({
+                    requestType: o.requestType,
+                    finalStatus: o.finalStatus,
+                  });
                   return (
                     <TouchableOpacity
                       key={`opt-${o.id}`}
@@ -2236,9 +2239,10 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                     }}
                   >
                     <Text style={{ ...typography.label, color: '#BF360C', marginBottom: 2 }}>
-                      {req.request_type === 'casting'
-                        ? uiCopy.dashboard.threadContextCasting
-                        : uiCopy.dashboard.threadContextOption}
+                      {lifecycleLabelForRequest({
+                        requestType: req.request_type,
+                        finalStatus: req.final_status,
+                      })}
                     </Text>
                     <Text
                       style={{
@@ -2345,9 +2349,10 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                     }}
                   >
                     <Text style={{ ...typography.label, color: colors.textPrimary }}>
-                      {o.requestType === 'casting'
-                        ? uiCopy.dashboard.threadContextCasting
-                        : uiCopy.dashboard.threadContextOption}{' '}
+                      {lifecycleLabelForRequest({
+                        requestType: o.requestType,
+                        finalStatus: o.finalStatus,
+                      })}{' '}
                       ·{' '}
                       {o.finalStatus === 'job_confirmed'
                         ? uiCopy.dashboard.optionRequestStatusJobConfirmed
@@ -2411,9 +2416,10 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                     <Text
                       style={{ ...typography.label, fontSize: 11, color: colors.textSecondary }}
                     >
-                      {o.requestType === 'casting'
-                        ? uiCopy.dashboard.threadContextCasting
-                        : uiCopy.dashboard.threadContextOption}
+                      {lifecycleLabelForRequest({
+                        requestType: o.requestType,
+                        finalStatus: o.finalStatus,
+                      })}
                     </Text>
                     <Text
                       style={{ ...typography.body, color: colors.textPrimary, fontWeight: '600' }}
@@ -2648,9 +2654,10 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                       <Text
                         style={{ ...typography.body, fontSize: 11, color: colors.textSecondary }}
                       >
-                        {r.requestType === 'casting'
-                          ? uiCopy.dashboard.threadContextCasting
-                          : uiCopy.dashboard.threadContextOption}
+                        {lifecycleLabelForRequest({
+                          requestType: r.requestType,
+                          finalStatus: r.finalStatus,
+                        })}
                         {' · '}
                         {formatDateWithOptionalTimeRange(r.date, r.startTime, r.endTime)}
                       </Text>

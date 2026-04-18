@@ -241,7 +241,8 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
         return {
           threadId: app.recruiting_thread_id!,
           applicationId: app.id,
-          modelName: [app.first_name, app.last_name].filter(Boolean).join(' ') || 'Model',
+          modelName:
+            [app.first_name, app.last_name].filter(Boolean).join(' ') || uiCopy.common.unknownModel,
           agencyName,
           status: app.status,
         };

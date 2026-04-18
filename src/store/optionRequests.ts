@@ -933,7 +933,7 @@ export async function agencyCounterOfferStore(
 
     // Web push (browser Notification API)
     const agency = req.agencyId ? await getAgencyById(req.agencyId) : null;
-    notifyClientAgencyCounterOffer(agency?.name ?? 'Agency');
+    notifyClientAgencyCounterOffer(agency?.name ?? uiCopy.common.unknownAgency);
 
     // Persistent DB notification — send to client org so all org members see it.
     const full = refreshedAfterRpc ?? (await getOptionRequestById(req.id));

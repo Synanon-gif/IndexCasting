@@ -2849,7 +2849,11 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                 return (
                   <View>
                     <Text style={styles.metaText}>
-                      {kind} · {option.model_name ?? 'Model'} · {option.client_name ?? 'Client'}
+                      {kind} · {option.model_name ?? uiCopy.common.unknownModel} ·{' '}
+                      {option.agency_organization_name ??
+                        option.client_organization_name ??
+                        option.client_name ??
+                        uiCopy.common.unknownAgency}
                     </Text>
                     <Text style={styles.metaText}>
                       {date}
@@ -8004,7 +8008,7 @@ const SettingsPanel: React.FC<{
                   marginBottom: 4,
                 }}
               >
-                Company{' '}
+                Organization name{' '}
                 {ownerRoleLoading ? (
                   ''
                 ) : clientIsOwner ? (
@@ -8019,7 +8023,7 @@ const SettingsPanel: React.FC<{
                 <TextInput
                   value={companyName}
                   onChangeText={setCompanyName}
-                  placeholder="Company name"
+                  placeholder="Organization name"
                   placeholderTextColor={colors.textSecondary}
                   style={[settingsInputStyle, { marginBottom: 4 }]}
                 />
@@ -8039,7 +8043,7 @@ const SettingsPanel: React.FC<{
                     marginBottom: spacing.md,
                   }}
                 >
-                  Only the organization owner can change the company name.
+                  Only the organization owner can change the organization name.
                 </Text>
               )}
               {clientIsOwner && <View style={{ marginBottom: spacing.md }} />}
