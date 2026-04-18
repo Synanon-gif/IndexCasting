@@ -706,6 +706,9 @@ export const uiCopy = {
     applyToAgenciesCta: 'Apply to an agency',
     /** Model profile settings when MAT list is empty (first-time or after end representation). */
     applyWhenNoAgencyHint: 'Submit an application to connect with an agency.',
+    /** Banner shown on the model profile right after returning from a successful Apply submit. */
+    applicationSubmittedBanner:
+      'Application submitted. Agencies will get back to you here when they respond.',
     representationEndedApplyHint:
       'Representation with this agency has ended. You can apply again; past chats may still appear under Messages.',
     /** Shown under agency name when multiple MAT territories exist (same agency = one profile). */

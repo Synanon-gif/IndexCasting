@@ -183,7 +183,10 @@ async function ensureHydrated() {
   // Guard: never fetch without an agency scope — RLS is the last line of defence,
   // not the only one. initApplicationsForAgency() must be called first.
   if (!storeAgencyId) {
-    console.warn(
+    // Harmless in the model-side UI: the model surfaces (ModelApplicationsView)
+    // bypass this agency-scoped store and fetch their own applications directly.
+    // Downgrade to debug so it does not spam the console for normal model sessions.
+    console.debug(
       '[applicationsStore] ensureHydrated called before agencyId was set — skipping fetch',
     );
     return;

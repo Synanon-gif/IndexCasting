@@ -227,6 +227,22 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   const [agencyDirectChatMatActive, setAgencyDirectChatMatActive] = useState<boolean | null>(null);
   /** Full-screen apply flow when model has a row but no MAT (e.g. after end representation). */
   const [showApplyForm, setShowApplyForm] = useState(false);
+  /**
+   * Post-submit feedback banner: set to `true` after `ApplyFormView` reports a
+   * successful submit via `onBack(true)`. Without this banner the user would
+   * land back on the same Apply CTA without any visible confirmation that the
+   * submission actually went through (model-side UX dead-end).
+   */
+  const [applicationSubmittedBanner, setApplicationSubmittedBanner] = useState(false);
+  const applicationSubmittedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (applicationSubmittedTimerRef.current) {
+        clearTimeout(applicationSubmittedTimerRef.current);
+        applicationSubmittedTimerRef.current = null;
+      }
+    };
+  }, []);
   const settingsApplyCtaRef = useRef<React.ComponentRef<typeof TouchableOpacity>>(null);
   const homeApplyCtaRef = useRef<React.ComponentRef<typeof TouchableOpacity>>(null);
   const modelHasNoMat = useMemo(
@@ -1081,9 +1097,19 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   if (showApplyForm) {
     return (
       <ApplyFormView
-        onBack={() => {
+        onBack={(submittedSuccessfully) => {
           setShowApplyForm(false);
           void modelAgencyCtx.reload();
+          if (submittedSuccessfully) {
+            setApplicationSubmittedBanner(true);
+            if (applicationSubmittedTimerRef.current) {
+              clearTimeout(applicationSubmittedTimerRef.current);
+            }
+            applicationSubmittedTimerRef.current = setTimeout(() => {
+              setApplicationSubmittedBanner(false);
+              applicationSubmittedTimerRef.current = null;
+            }, 6000);
+          }
         }}
       />
     );
@@ -1130,6 +1156,26 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
         </View>
       </View>
       <Text style={st.heading}>{profile.name}</Text>
+
+      {applicationSubmittedBanner && (
+        <View
+          accessibilityRole="alert"
+          style={{
+            marginTop: spacing.sm,
+            marginBottom: spacing.xs,
+            paddingVertical: spacing.sm,
+            paddingHorizontal: spacing.md,
+            backgroundColor: colors.surfaceWarm,
+            borderRadius: 8,
+            borderWidth: 1,
+            borderColor: colors.border,
+          }}
+        >
+          <Text style={{ ...typography.body, color: colors.textPrimary }}>
+            {uiCopy.model.applicationSubmittedBanner}
+          </Text>
+        </View>
+      )}
 
       <View style={{ flex: 1, paddingBottom: bottomTabInset }}>
         {tab === 'settings' && (

@@ -51,7 +51,16 @@ const SLOT_LABELS: Record<ImageSlot, string> = {
   profile: 'Profile',
 };
 
-export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
+export const ApplyFormView: React.FC<{
+  /**
+   * Back / dismiss handler.
+   * @param submittedSuccessfully `true` when the user dismisses the success screen
+   *   after a real `insertApplication` success — lets the parent surface a
+   *   confirmation banner so the user is not dropped into the same Apply CTA
+   *   without any post-submit feedback (model-side UX gap).
+   */
+  onBack: (submittedSuccessfully?: boolean) => void;
+}> = ({ onBack }) => {
   const auth = useAuth();
   const applicantUserId = auth?.user?.id ?? '';
   const profile = auth?.profile ?? null;
@@ -305,7 +314,10 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     return (
       <View style={styles.container}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={onBack} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+          <TouchableOpacity
+            onPress={() => onBack(true)}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
             <Text style={styles.backArrow}>←</Text>
           </TouchableOpacity>
           <Text style={styles.brand}>INDEX CASTING</Text>
@@ -321,7 +333,10 @@ export const ApplyFormView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={onBack} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+        <TouchableOpacity
+          onPress={() => onBack()}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
           <Text style={styles.backArrow}>←</Text>
         </TouchableOpacity>
         <Text style={styles.brand}>Apply</Text>
