@@ -12,7 +12,7 @@
  * Chat opening is delegated to the parent via `onChatOpen` so each host can
  * open the chat in the way that fits its layout (modal, dedicated tab, …).
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -31,6 +31,7 @@ import {
   refreshApplications,
   confirmApplicationByModel,
   rejectApplicationByModel,
+  subscribeApplications,
 } from '../store/applicationsStore';
 import { getAgencyChatDisplayById } from '../services/agenciesSupabase';
 import { uiCopy } from '../constants/uiCopy';
@@ -157,6 +158,11 @@ export const ApplicantApplicationsSection: React.FC<ApplicantApplicationsSection
       });
   };
 
+  // Keep latest `load` accessible from store-subscription callback without
+  // adding it to the effect dependency array (would re-subscribe on every render).
+  const loadRef = useRef(load);
+  loadRef.current = load;
+
   useEffect(() => {
     const signal = { cancelled: false };
     load(signal);
@@ -165,6 +171,17 @@ export const ApplicantApplicationsSection: React.FC<ApplicantApplicationsSection
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [applicantUserId]);
+
+  // Defense-in-depth: re-fetch from server whenever the applications store
+  // notifies (e.g. after agency-side accept, model-side confirm/reject, delete).
+  // This keeps the banner + status badges in sync across all flows even if the
+  // mutation happened in a different component or surface.
+  useEffect(() => {
+    const unsub = subscribeApplications(() => {
+      loadRef.current();
+    });
+    return unsub;
+  }, []);
 
   const runConfirmedDelete = async (app: SupabaseApplication): Promise<void> => {
     if (

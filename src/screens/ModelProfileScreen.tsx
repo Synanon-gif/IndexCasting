@@ -111,6 +111,7 @@ import {
   listModelAgencyDirectConversations,
 } from '../services/b2bOrgChatSupabase';
 import { getApplicationsForApplicant } from '../services/applicationsSupabase';
+import { subscribeApplications } from '../store/applicationsStore';
 import { parseAgencyModelContextId } from '../utils/parseAgencyModelContextId';
 import { hasMatForModelAgency } from '../services/recruitingFlowGuards';
 import type { Conversation } from '../services/messengerSupabase';
@@ -617,13 +618,26 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
       return;
     }
     let cancelled = false;
-    void getApplicationsForApplicant(userId).then((rows) => {
-      if (!cancelled) setApplicantHasApplications(rows.length > 0);
-    });
+    const reload = () => {
+      void getApplicationsForApplicant(userId).then((rows) => {
+        if (!cancelled) setApplicantHasApplications(rows.length > 0);
+      });
+    };
+    reload();
+    // Re-check when the user lands on the Home or Messages tab — covers the
+    // case where an agency accepts an application while the model is mid-session
+    // (status flips to `pending_model_confirmation` server-side and the banner
+    // must surface without requiring a manual reload).
+    if (tab === 'home' || tab === 'messages') reload();
+    // Defense-in-depth: any mutation in the applications store (confirm,
+    // reject, delete, agency-side accept that propagates here) re-checks the
+    // boolean so the Home tab section mounts/unmounts correctly.
+    const unsub = subscribeApplications(reload);
     return () => {
       cancelled = true;
+      unsub();
     };
-  }, [userId]);
+  }, [userId, tab]);
 
   /**
    * Server-side hydration of recruiting threads from this model's applications.
