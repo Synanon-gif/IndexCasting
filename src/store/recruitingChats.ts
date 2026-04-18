@@ -471,6 +471,93 @@ export function addModelBookingThreadId(threadId: string): void {
   saveModelThreadIds(ids);
 }
 
+/**
+ * Server-side hydration of recruiting threads for a model user.
+ *
+ * Background: `getModelBookingThreadIds()` reads from `localStorage` only and
+ * therefore misses threads that were created server-side (e.g. when an agency
+ * accepted a global application — the model has no client-side action that
+ * would have populated `localStorage`). Without this hydration, the model's
+ * Messages tab silently hides agency conversations until the model opens the
+ * thread through another path.
+ *
+ * This function:
+ *  1. fetches all model_applications for the applicant (RLS-scoped to self),
+ *  2. collects every non-null `recruiting_thread_id`,
+ *  3. loads the matching `recruiting_chat_threads` rows in a single query,
+ *  4. merges them into the in-memory `threadsCache`,
+ *  5. mirrors the IDs into the existing localStorage list (so the rest of the
+ *     UI which reads `getModelBookingThreadIds()` keeps working unchanged),
+ *  6. notifies subscribers exactly once at the end.
+ *
+ * Skips threads of `representation_ended` applications (UX consistent with
+ * `getThreads` / `getThreadsForAgency`). Idempotent: safe to call repeatedly,
+ * e.g. on focus / tab switch / Realtime ping.
+ *
+ * Defense-in-depth: the function never throws. On error it logs and returns 0.
+ */
+export async function hydrateModelRecruitingThreadsFromApplications(
+  applicantUserId: string,
+): Promise<number> {
+  if (!applicantUserId) return 0;
+  try {
+    const { getApplicationsForApplicant } = await import('../services/applicationsSupabase');
+    const apps = await getApplicationsForApplicant(applicantUserId);
+    const threadIds = Array.from(
+      new Set(
+        apps
+          .filter((a) => a.status !== 'representation_ended')
+          .map((a) => a.recruiting_thread_id)
+          .filter((x): x is string => typeof x === 'string' && x.length > 0),
+      ),
+    );
+    if (threadIds.length === 0) return 0;
+
+    // Mirror to localStorage so existing readers (getModelBookingThreadIds)
+    // continue to work. Do this before the Supabase fetch — even if the fetch
+    // fails (RLS, network), the IDs will still surface in the Messages tab as
+    // soon as the underlying thread reads succeed.
+    for (const id of threadIds) addModelBookingThreadId(id);
+
+    const { data, error } = await supabase
+      .from('recruiting_chat_threads')
+      .select('*')
+      .in('id', threadIds);
+
+    if (error) {
+      console.error('hydrateModelRecruitingThreadsFromApplications fetch error:', error);
+      return 0;
+    }
+
+    const fetched = (data ?? []) as Array<{
+      id: string;
+      application_id: string;
+      model_name: string;
+      created_at: string;
+      chat_type: string | null;
+    }>;
+
+    let added = 0;
+    for (const t of fetched) {
+      if (threadsCache.some((existing) => existing.id === t.id)) continue;
+      threadsCache.push({
+        id: t.id,
+        applicationId: t.application_id,
+        modelName: t.model_name,
+        createdAt: new Date(t.created_at).getTime(),
+        chatType: (t.chat_type as 'recruiting' | 'active_model' | null) ?? null,
+      });
+      added += 1;
+    }
+
+    if (added > 0) notify();
+    return added;
+  } catch (e) {
+    console.error('hydrateModelRecruitingThreadsFromApplications exception:', e);
+    return 0;
+  }
+}
+
 /** Clear all cached data and reset hydration state (call on sign-out). */
 export function resetRecruitingChatsStore(): void {
   threadsCache = [];

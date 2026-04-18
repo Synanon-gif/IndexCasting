@@ -39,7 +39,9 @@ import {
   getModelBookingThreadIds,
   getRecruitingThread,
   subscribeRecruitingChats,
+  hydrateModelRecruitingThreadsFromApplications,
 } from '../store/recruitingChats';
+import { ApplicantApplicationsSection } from '../components/ApplicantApplicationsSection';
 import {
   getOptionRequests,
   subscribe,
@@ -622,6 +624,26 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
       cancelled = true;
     };
   }, [userId]);
+
+  /**
+   * Server-side hydration of recruiting threads from this model's applications.
+   *
+   * Without this, an agency-accepted application creates a `recruiting_chat_threads`
+   * row server-side (status `pending_model_confirmation`) but the model's Messages
+   * tab — which reads thread IDs from `localStorage` via `getModelBookingThreadIds`
+   * — never sees it until the model opens the thread through another path.
+   *
+   * Runs whenever `userId` changes (login / account switch) and whenever the user
+   * lands on the Home or Messages tab (cheap idempotent re-hydration that catches
+   * threads created after initial mount). The store calls `notify()` on success,
+   * which the existing `subscribeRecruitingChats` listener picks up to refresh
+   * `bookingThreadIds`.
+   */
+  useEffect(() => {
+    if (!userId) return;
+    if (tab !== 'home' && tab !== 'messages') return;
+    void hydrateModelRecruitingThreadsFromApplications(userId);
+  }, [userId, tab]);
 
   useEffect(() => {
     if (!profile?.id || modelAgencyCtx.loading || showApplyForm || !modelHasNoMat) return;
@@ -2335,6 +2357,20 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                     </View>
                   </View>
                 ))}
+              </View>
+            )}
+
+            {applicantHasApplications === true && userId && (
+              <View style={{ marginBottom: spacing.lg }}>
+                <Text style={st.sectionLabel}>Your applications</Text>
+                <ApplicantApplicationsSection
+                  applicantUserId={userId}
+                  compact
+                  onChatOpen={(threadId) => {
+                    setOpenBookingThreadId(threadId);
+                    setTab('messages');
+                  }}
+                />
               </View>
             )}
 

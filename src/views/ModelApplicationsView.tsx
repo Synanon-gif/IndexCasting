@@ -10,33 +10,22 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-  Modal,
-  Alert,
   TextInput,
-  Platform,
   useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, typography } from '../theme/theme';
 import { flexFillColumn, flexFillScrollWebWithMinHeight } from '../theme/chatLayout';
-import {
-  getApplicationsForApplicant,
-  deleteApplication,
-  updateApplicationsProfileForApplicant,
-} from '../services/applicationsSupabase';
+import { updateApplicationsProfileForApplicant } from '../services/applicationsSupabase';
 import { FILTER_COUNTRIES, ETHNICITY_OPTIONS } from '../utils/modelFilters';
-import {
-  refreshApplications,
-  confirmApplicationByModel,
-  rejectApplicationByModel,
-} from '../store/applicationsStore';
+import { refreshApplications } from '../store/applicationsStore';
 import type { SupabaseApplication } from '../services/applicationsSupabase';
 import { getAgencyChatDisplayById } from '../services/agenciesSupabase';
 import { ApplyFormView } from './ApplyFormView';
 import { BookingChatView } from './BookingChatView';
+import { ApplicantApplicationsSection } from '../components/ApplicantApplicationsSection';
 import { uiCopy } from '../constants/uiCopy';
 import { BOTTOM_TAB_BAR_HEIGHT } from '../navigation/bottomTabNavigation';
-import { useModelAgency } from '../context/ModelAgencyContext';
 
 type ModelApplicationsViewProps = {
   applicantUserId: string;
@@ -61,14 +50,6 @@ function toStatusLabel(status: string): string {
   if (status === 'representation_ended') return uiCopy.modelApplications.statusRepresentationEnded;
   if (status === 'rejected') return uiCopy.modelApplications.statusDeclined;
   return status;
-}
-
-function statusColor(status: string): string {
-  if (status === 'accepted') return colors.accentGreen;
-  if (status === 'rejected') return colors.textSecondary;
-  if (status === 'representation_ended') return colors.textSecondary;
-  if (status === 'pending_model_confirmation') return colors.warningDark;
-  return '#F9A825';
 }
 
 /**
@@ -99,7 +80,6 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
   applicantUserId,
   onBackToRoleSelection,
 }) => {
-  const { reload: reloadModelAgencies } = useModelAgency();
   const insets = useSafeAreaInsets();
   const { height: modelAppWinH } = useWindowDimensions();
   const webMessagesScrollStyle = useMemo(
@@ -107,8 +87,12 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
     [modelAppWinH, insets.top, insets.bottom],
   );
   const bottomTabInset = BOTTOM_TAB_BAR_HEIGHT + insets.bottom;
+  // Applications state is owned by ApplicantApplicationsSection (single source of truth
+  // for the list UI + accept/decline/delete actions). The Section reports loaded rows
+  // back via `onApplicationsLoaded` so Settings tab (profileDraft) and Messages tab
+  // (recruiting threads per application) stay in sync without a second fetch.
   const [applications, setApplications] = useState<SupabaseApplication[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [reloadKey, setReloadKey] = useState(0);
   const [showApplyForm, setShowApplyForm] = useState(false);
   const [tab, setTab] = useState<Tab>('applications');
   const [chatOpen, setChatOpen] = useState<{
@@ -116,14 +100,8 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
     agencyName?: string;
     applicationAgencyId?: string | null;
   } | null>(null);
-  const [pendingDeleteApp, setPendingDeleteApp] = useState<SupabaseApplication | null>(null);
   const [messagesList, setMessagesList] = useState<MessageRow[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [loadError, setLoadError] = useState(false);
-  const [agencyNames, setAgencyNames] = useState<Record<string, string>>({});
-  const [confirmingId, setConfirmingId] = useState<string | null>(null);
-  const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [profileDraft, setProfileDraft] = useState<{
     firstName: string;
     lastName: string;
@@ -138,51 +116,6 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
   const [settingsCountryDropdownOpen, setSettingsCountryDropdownOpen] = useState(false);
   const [settingsEthnicityDropdownOpen, setSettingsEthnicityDropdownOpen] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
-
-  const load = (signal?: { cancelled: boolean }) => {
-    setLoading(true);
-    setLoadError(false);
-    getApplicationsForApplicant(applicantUserId)
-      .then(async (list) => {
-        if (signal?.cancelled) return;
-        setApplications(list);
-        setLoading(false);
-        const map: Record<string, string> = {};
-        for (const a of list) {
-          if (!a.agency_id) continue;
-          const n = embeddedAgencyName(a)?.trim();
-          if (n) map[a.agency_id] = n;
-        }
-        const allIds = [...new Set(list.map((x) => x.agency_id).filter(Boolean))] as string[];
-        for (const id of allIds) {
-          if (signal?.cancelled) break;
-          if (map[id]) continue;
-          try {
-            const row = await getAgencyChatDisplayById(id);
-            if (row?.name) map[id] = row.name;
-          } catch {
-            /* ignore */
-          }
-        }
-        if (!signal?.cancelled) setAgencyNames(map);
-      })
-      .catch((e) => {
-        console.error('ModelApplicationsView load error:', e);
-        if (!signal?.cancelled) {
-          setLoading(false);
-          setLoadError(true);
-        }
-      });
-  };
-
-  useEffect(() => {
-    const signal = { cancelled: false };
-    load(signal);
-    return () => {
-      signal.cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [applicantUserId]);
 
   useEffect(() => {
     void refreshApplications();
@@ -220,7 +153,10 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
     setSavingProfile(false);
     if (ok) {
       await refreshApplications();
-      load();
+      // Force ApplicantApplicationsSection to re-load so the new profile defaults
+      // are reflected in the embedded application list (and propagate back via
+      // onApplicationsLoaded for the Settings/Messages tabs).
+      setReloadKey((k) => k + 1);
     }
   };
 
@@ -252,87 +188,14 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
       .finally(() => setMessagesLoading(false));
   }, [tab, applications]);
 
-  const runConfirmedDelete = async (app: SupabaseApplication) => {
-    if (
-      app.status !== 'pending' &&
-      app.status !== 'rejected' &&
-      app.status !== 'representation_ended'
-    )
-      return;
-    setDeletingId(app.id);
-    const ok = await deleteApplication(app.id, applicantUserId);
-    setDeletingId(null);
-    if (ok) {
-      setApplications((prev) => prev.filter((x) => x.id !== app.id));
-      setMessagesList((prev) => prev.filter((x) => x.applicationId !== app.id));
-      await refreshApplications();
-      load();
-    } else if (Platform.OS === 'web') {
-      Alert.alert(
-        uiCopy.modelApplications.deleteFailedTitle,
-        uiCopy.modelApplications.deleteFailedBody,
-      );
-    } else {
-      Alert.alert(uiCopy.alerts.deleteFailed, uiCopy.alerts.tryAgain);
-    }
-  };
-
-  const handleDeleteApplication = (app: SupabaseApplication) => {
-    if (
-      app.status !== 'pending' &&
-      app.status !== 'rejected' &&
-      app.status !== 'representation_ended'
-    )
-      return;
-    if (Platform.OS === 'web') {
-      setPendingDeleteApp(app);
-      return;
-    }
-    Alert.alert(
-      uiCopy.modelApplications.deleteConfirmTitle,
-      uiCopy.modelApplications.deleteConfirmBody,
-      [
-        { text: uiCopy.common.cancel, style: 'cancel' },
-        {
-          text: uiCopy.modelApplications.deleteConfirmAction,
-          style: 'destructive',
-          onPress: () => void runConfirmedDelete(app),
-        },
-      ],
-    );
-  };
-
-  const handleConfirmRepresentation = async (appId: string) => {
-    setConfirmingId(appId);
-    const result = await confirmApplicationByModel(appId, applicantUserId);
-    setConfirmingId(null);
-    if (result) {
-      await reloadModelAgencies();
-      await refreshApplications();
-      load();
-    } else {
-      Alert.alert(uiCopy.common.error, uiCopy.modelApplications.confirmRepresentationError);
-    }
-  };
-
-  const handleRejectRepresentation = async (appId: string) => {
-    setRejectingId(appId);
-    const ok = await rejectApplicationByModel(appId, applicantUserId);
-    setRejectingId(null);
-    if (ok) {
-      await refreshApplications();
-      load();
-    } else {
-      Alert.alert(uiCopy.common.error, uiCopy.modelApplications.declineRepresentationError);
-    }
-  };
-
   if (showApplyForm) {
     return (
       <ApplyFormView
         onBack={() => {
           setShowApplyForm(false);
-          load();
+          // Force ApplicantApplicationsSection to re-fetch so a freshly submitted
+          // application becomes visible immediately in the Applications tab.
+          setReloadKey((k) => k + 1);
         }}
       />
     );
@@ -370,152 +233,18 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
               <Text style={styles.applyBtnLabel}>+ Apply as Model</Text>
             </TouchableOpacity>
 
-            {loading ? (
-              <ActivityIndicator
-                size="small"
-                color={colors.textPrimary}
-                style={{ marginTop: spacing.lg }}
-              />
-            ) : applications.length === 0 ? (
-              <Text style={styles.meta}>
-                {loadError
-                  ? uiCopy.modelApplications.loadErrorState
-                  : uiCopy.modelApplications.emptyState}
-              </Text>
-            ) : (
-              <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
-                {applications.map((app) => (
-                  <View key={app.id} style={styles.card}>
-                    <View
-                      style={{
-                        flexDirection: 'row',
-                        justifyContent: 'space-between',
-                        alignItems: 'flex-start',
-                      }}
-                    >
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.name}>
-                          {[app.first_name, app.last_name].filter(Boolean).join(' ')}
-                        </Text>
-                        <Text style={styles.meta}>
-                          {app.height} cm · {app.city ?? '—'}
-                        </Text>
-                        {app.agency_id && (
-                          <Text style={styles.meta}>
-                            Agency:{' '}
-                            {embeddedAgencyName(app)?.trim() ||
-                              agencyNames[app.agency_id] ||
-                              uiCopy.common.unknownAgency}
-                          </Text>
-                        )}
-                        <View
-                          style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            gap: 8,
-                            marginTop: 4,
-                            flexWrap: 'wrap',
-                          }}
-                        >
-                          <View
-                            style={[styles.badge, { backgroundColor: statusColor(app.status) }]}
-                          >
-                            <Text style={styles.badgeLabel}>{toStatusLabel(app.status)}</Text>
-                          </View>
-                          {app.recruiting_thread_id && (
-                            <TouchableOpacity
-                              style={{
-                                paddingVertical: 4,
-                                paddingHorizontal: 10,
-                                borderRadius: 8,
-                                backgroundColor: colors.buttonOptionGreen,
-                              }}
-                              onPress={() =>
-                                setChatOpen({
-                                  threadId: app.recruiting_thread_id!,
-                                  agencyName:
-                                    embeddedAgencyName(app)?.trim() ||
-                                    (app.agency_id ? agencyNames[app.agency_id] : undefined),
-                                  applicationAgencyId: app.agency_id,
-                                })
-                              }
-                            >
-                              <Text
-                                style={{ ...typography.label, fontSize: 11, color: colors.surface }}
-                              >
-                                Chat
-                              </Text>
-                            </TouchableOpacity>
-                          )}
-                        </View>
-
-                        {app.status === 'representation_ended' && (
-                          <View
-                            style={[
-                              styles.confirmationBanner,
-                              { backgroundColor: colors.surface, borderColor: colors.border },
-                            ]}
-                          >
-                            <Text style={styles.confirmationBannerSubtitle}>
-                              {uiCopy.model.representationEndedApplyHint}
-                            </Text>
-                          </View>
-                        )}
-
-                        {app.status === 'pending_model_confirmation' && (
-                          <View style={styles.confirmationBanner}>
-                            <Text style={styles.confirmationBannerTitle}>
-                              {embeddedAgencyName(app)?.trim() ||
-                                (app.agency_id ? agencyNames[app.agency_id] : null) ||
-                                'An agency'}{' '}
-                              wants to represent you
-                            </Text>
-                            <Text style={styles.confirmationBannerSubtitle}>
-                              Accept to join their portfolio, or decline.
-                            </Text>
-                            <View style={styles.confirmationBannerActions}>
-                              <TouchableOpacity
-                                style={styles.confirmationAcceptBtn}
-                                onPress={() => void handleConfirmRepresentation(app.id)}
-                                disabled={confirmingId === app.id || rejectingId === app.id}
-                              >
-                                <Text style={styles.confirmationAcceptLabel}>
-                                  {confirmingId === app.id
-                                    ? 'Confirming…'
-                                    : 'Accept Representation'}
-                                </Text>
-                              </TouchableOpacity>
-                              <TouchableOpacity
-                                style={styles.confirmationDeclineBtn}
-                                onPress={() => void handleRejectRepresentation(app.id)}
-                                disabled={confirmingId === app.id || rejectingId === app.id}
-                              >
-                                <Text style={styles.confirmationDeclineLabel}>
-                                  {rejectingId === app.id ? 'Declining…' : 'Decline'}
-                                </Text>
-                              </TouchableOpacity>
-                            </View>
-                          </View>
-                        )}
-                      </View>
-                      {(app.status === 'pending' ||
-                        app.status === 'rejected' ||
-                        app.status === 'representation_ended') && (
-                        <TouchableOpacity
-                          onPress={() => handleDeleteApplication(app)}
-                          disabled={deletingId === app.id}
-                          style={styles.deleteBtn}
-                        >
-                          <Text style={styles.deleteBtnLabel}>
-                            {deletingId === app.id ? '…' : 'Delete'}
-                          </Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  </View>
-                ))}
-              </ScrollView>
-            )}
+            <ApplicantApplicationsSection
+              key={reloadKey}
+              applicantUserId={applicantUserId}
+              onApplicationsLoaded={setApplications}
+              onChatOpen={(threadId, agencyName, agencyId) =>
+                setChatOpen({
+                  threadId,
+                  agencyName,
+                  applicationAgencyId: agencyId,
+                })
+              }
+            />
           </>
         )}
 
@@ -818,42 +547,6 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
           presentation="insetAboveBottomNav"
           bottomInset={bottomTabInset}
         />
-      )}
-
-      {Platform.OS === 'web' && pendingDeleteApp != null && (
-        <Modal
-          visible
-          transparent
-          animationType="fade"
-          onRequestClose={() => setPendingDeleteApp(null)}
-        >
-          <View style={styles.confirmOverlay}>
-            <View style={styles.confirmCard}>
-              <Text style={styles.confirmTitle}>{uiCopy.modelApplications.deleteConfirmTitle}</Text>
-              <Text style={styles.confirmBody}>{uiCopy.modelApplications.deleteConfirmBody}</Text>
-              <View style={styles.confirmRow}>
-                <TouchableOpacity
-                  style={styles.confirmBtnGhost}
-                  onPress={() => setPendingDeleteApp(null)}
-                >
-                  <Text style={styles.confirmBtnGhostLabel}>{uiCopy.common.cancel}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.confirmBtnDanger}
-                  onPress={() => {
-                    const a = pendingDeleteApp;
-                    setPendingDeleteApp(null);
-                    void runConfirmedDelete(a);
-                  }}
-                >
-                  <Text style={styles.confirmBtnDangerLabel}>
-                    {uiCopy.modelApplications.deleteConfirmAction}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </Modal>
       )}
     </View>
   );
