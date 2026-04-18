@@ -16,18 +16,33 @@
  *
  * SECURITY MODEL
  *   1. Bucket whitelist: only `documentspictures` may be signed.
- *   2. Path shape whitelist: `(model-photos|model-applications)/<uuid>/<file>`
- *   3. Per-context allowlist:
+ *   2. Per-context model_id allowlist:
  *        guest_link        → `guest_links.model_ids` (active, non-expired link)
  *        shared_selection  → recomputed HMAC must match supplied `token`
- *   4. Paths whose extracted model_id is NOT in the allowlist are silently
- *      skipped (no signed URL returned for them — no error to avoid leaking
- *      which paths are valid).
+ *   3. Per-model PATH allowlist (canonical): for each allowed model_id we load
+ *      every storage reference that the model legitimately owns:
+ *        a. `models.portfolio_images[]` (mirror)
+ *        b. `models.polaroids[]`        (mirror)
+ *        c. `model_photos.path` rows   (authoritative, only client-visible ones)
+ *      Each reference is normalised to its bucket-relative path; the union
+ *      forms the request's path-allowlist.
+ *   4. Paths in the request that are NOT in the per-model path allowlist are
+ *      silently skipped (no signed URL returned, no error → no leak about which
+ *      paths exist).
  *   5. Short TTL (1 hour). Clients refresh on demand and via existing intervals.
  *   6. CORS restricted to known production origins (and localhost for dev).
  *
- * NEVER signs paths the client provides without context-based validation. NEVER
- * returns the service role key or any secret. NEVER mutates state.
+ * Why a DB-derived allowlist (not just path-shape):
+ *   Some legacy paths (e.g. application uploads) live under
+ *   `model-applications/<file>` WITHOUT a model UUID segment. The previous
+ *   shape-only filter (`<prefix>/<uuid>/<file>`) silently rejected those paths,
+ *   producing visible-image regressions for guest viewers. The DB-derived
+ *   allowlist binds every path to its owning model_id via the live mirror /
+ *   model_photos rows, so legacy paths sign correctly while still being
+ *   strictly scoped to the allowed model set.
+ *
+ * NEVER signs paths the client provides without DB-validated allowlist.
+ * NEVER returns the service role key or any secret. NEVER mutates state.
  *
  * Request:
  *   POST /sign-guest-storage-asset
@@ -61,9 +76,9 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const ALLOWED_BUCKET = 'documentspictures';
 const SIGNED_URL_TTL_SECONDS = 60 * 60; // 1 hour
 const MAX_PATHS_PER_REQUEST = 200;
+const MAX_MODELS_PER_REQUEST = 50;
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const ALLOWED_PATH_PREFIXES = ['model-photos/', 'model-applications/'];
 
 const ALLOWED_ORIGINS = [
   'https://index-casting.com',
@@ -99,22 +114,80 @@ function jsonResponse(
   });
 }
 
-/**
- * Extracts the model UUID segment from a bucket-relative path.
- * Returns null if the path does not match the expected shape.
- *   model-photos/<uuid>/<file>          → uuid
- *   model-applications/<uuid>/<file>    → uuid
- */
-function extractModelIdFromPath(path: string): string | null {
-  const trimmed = path.trim();
-  if (!trimmed) return null;
-  if (!ALLOWED_PATH_PREFIXES.some((p) => trimmed.startsWith(p))) return null;
-  const parts = trimmed.split('/');
-  if (parts.length < 3) return null;
-  const candidate = parts[1];
-  if (!UUID_REGEX.test(candidate)) return null;
-  return candidate.toLowerCase();
+// ─── Path normalisation (mirrors src/utils/normalizeModelPortfolioUrl.ts +
+//     src/storage/storageUrl.ts → extractBucketAndPath). Keep these in sync. ──
+
+const MODEL_PHOTOS_PREFIX = 'model-photos';
+const MODEL_APPLICATIONS_PREFIX = 'model-applications';
+const LEGACY_BARE_IMAGE_FILE = /^[^/\\:?*]+\.(jpe?g|png|webp|gif|heic|heif)$/i;
+const RELATIVE_WITH_SUBDIR = /^[a-f0-9-]+\/[^/\\:?*]+\.(jpe?g|png|webp|gif|heic|heif)$/i;
+
+function normalizeRefToStorageUri(raw: string, modelId: string): string {
+  const s = (raw ?? '').trim();
+  if (!s) return s;
+  const mid = (modelId ?? '').trim();
+  if (!mid) return s;
+
+  if (
+    s.startsWith('http://') ||
+    s.startsWith('https://') ||
+    s.startsWith('data:') ||
+    s.startsWith('supabase-storage://') ||
+    s.startsWith('supabase-private://')
+  ) {
+    return s;
+  }
+  if (s.startsWith(`${MODEL_PHOTOS_PREFIX}/`)) {
+    return `supabase-storage://${ALLOWED_BUCKET}/${s}`;
+  }
+  if (s.startsWith(`${MODEL_APPLICATIONS_PREFIX}/`)) {
+    return `supabase-storage://${ALLOWED_BUCKET}/${s}`;
+  }
+  if (!s.includes('://') && RELATIVE_WITH_SUBDIR.test(s)) {
+    return `supabase-storage://${ALLOWED_BUCKET}/${MODEL_PHOTOS_PREFIX}/${s}`;
+  }
+  if (!s.includes('://') && !s.includes('/') && LEGACY_BARE_IMAGE_FILE.test(s)) {
+    return `supabase-storage://${ALLOWED_BUCKET}/${MODEL_PHOTOS_PREFIX}/${mid}/${s}`;
+  }
+  return s;
 }
+
+function extractBucketAndPath(url: string): { bucket: string; path: string } | null {
+  if (!url) return null;
+  if (url.startsWith('supabase-storage://')) {
+    const rest = url.slice('supabase-storage://'.length);
+    const idx = rest.indexOf('/');
+    if (idx === -1) return null;
+    return { bucket: rest.slice(0, idx), path: rest.slice(idx + 1) };
+  }
+  if (url.startsWith('supabase-private://')) {
+    const rest = url.slice('supabase-private://'.length);
+    const idx = rest.indexOf('/');
+    if (idx === -1) return null;
+    return { bucket: rest.slice(0, idx), path: rest.slice(idx + 1) };
+  }
+  const match = url.match(/\/storage\/v1\/object\/(?:public|sign)\/([^/]+)\/(.+?)(?:\?|$)/);
+  if (match?.[1] && match?.[2]) {
+    return { bucket: match[1], path: decodeURIComponent(match[2]) };
+  }
+  return null;
+}
+
+/**
+ * Normalises a raw image reference (mirror column entry, model_photos.path,
+ * legacy public URL, bare filename, etc.) to its bucket-relative path within
+ * `documentspictures`. Returns null when the reference is external or cannot
+ * be mapped onto the allowed bucket.
+ */
+function refToBucketPath(raw: string, modelId: string): string | null {
+  const normalized = normalizeRefToStorageUri(raw, modelId);
+  const extracted = extractBucketAndPath(normalized);
+  if (!extracted) return null;
+  if (extracted.bucket !== ALLOWED_BUCKET) return null;
+  return extracted.path || null;
+}
+
+// ─── Context resolution ──────────────────────────────────────────────────────
 
 type GuestLinkRow = {
   id: string;
@@ -150,9 +223,6 @@ async function resolveAllowedModelIdsForGuestLink(
   }
 
   const now = Date.now();
-  // Mirror the access-window logic of get_guest_link_models():
-  //   - never opened: respect expires_at
-  //   - opened: 7 days from first_accessed_at
   if (data.first_accessed_at) {
     const firstOpened = new Date(data.first_accessed_at).getTime();
     const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
@@ -182,7 +252,7 @@ async function resolveAllowedModelIdsForSharedSelection(
   if (!Array.isArray(modelIds) || modelIds.length === 0) {
     return { ok: false, error: 'missing_model_ids', status: 400 };
   }
-  if (modelIds.length > 50) {
+  if (modelIds.length > MAX_MODELS_PER_REQUEST) {
     return { ok: false, error: 'too_many_model_ids', status: 400 };
   }
   const cleaned = modelIds
@@ -196,8 +266,6 @@ async function resolveAllowedModelIdsForSharedSelection(
   }
 
   // Validate token by recomputing HMAC server-side via the SECURITY DEFINER RPC.
-  // The RPC orders & joins the IDs identically to how the share link generates
-  // the token, so we pass the original (un-sorted) array to the RPC.
   const { data, error } = await admin.rpc('shared_selection_compute_hmac', {
     p_model_ids: modelIds,
   });
@@ -212,6 +280,88 @@ async function resolveAllowedModelIdsForSharedSelection(
 
   return { ok: true, modelIds: new Set(cleaned) };
 }
+
+// ─── DB-derived per-model path allowlist ─────────────────────────────────────
+
+type ModelMirrorRow = {
+  id: string;
+  portfolio_images: string[] | null;
+  polaroids: string[] | null;
+};
+
+type ModelPhotoRow = {
+  model_id: string;
+  path: string | null;
+  is_visible_to_clients: boolean | null;
+};
+
+/**
+ * For every allowed model_id, builds the union of storage paths that the model
+ * legitimately owns: mirror columns (`models.portfolio_images`, `models.polaroids`)
+ * + visible `model_photos` rows. Returns a flat `Set<bucketPath>` against which
+ * caller-supplied paths are filtered.
+ *
+ * Defense-in-Depth: even if the mirror columns are stale or include drifted
+ * legacy paths, only paths that genuinely resolve under `documentspictures` for
+ * one of the allowed models will be signed.
+ */
+async function buildPathAllowlist(
+  admin: ReturnType<typeof createClient>,
+  allowedModelIds: Set<string>,
+): Promise<Set<string>> {
+  const out = new Set<string>();
+  if (allowedModelIds.size === 0) return out;
+  const ids = Array.from(allowedModelIds);
+
+  // 1. Mirror columns on `models`.
+  const { data: modelRows, error: modelErr } = await admin
+    .from('models')
+    .select('id, portfolio_images, polaroids')
+    .in('id', ids)
+    .returns<ModelMirrorRow[]>();
+  if (modelErr) {
+    console.error('[sign-guest-storage-asset] models lookup error', modelErr);
+  } else if (modelRows) {
+    for (const row of modelRows) {
+      const mid = (row.id ?? '').toLowerCase();
+      if (!UUID_REGEX.test(mid)) continue;
+      for (const ref of row.portfolio_images ?? []) {
+        const path = refToBucketPath(typeof ref === 'string' ? ref : '', mid);
+        if (path) out.add(path);
+      }
+      for (const ref of row.polaroids ?? []) {
+        const path = refToBucketPath(typeof ref === 'string' ? ref : '', mid);
+        if (path) out.add(path);
+      }
+    }
+  }
+
+  // 2. Authoritative `model_photos` rows (client-visible only).
+  //    This handles the case where the mirror columns are stale but model_photos
+  //    has the up-to-date set; aligns with the same authority used by
+  //    can_view_model_photo_storage / get_*_models RPCs.
+  const { data: photoRows, error: photoErr } = await admin
+    .from('model_photos')
+    .select('model_id, path, is_visible_to_clients')
+    .in('model_id', ids)
+    .eq('is_visible_to_clients', true)
+    .returns<ModelPhotoRow[]>();
+  if (photoErr) {
+    // Non-fatal — mirror coverage may already be sufficient. Log and continue.
+    console.error('[sign-guest-storage-asset] model_photos lookup error', photoErr);
+  } else if (photoRows) {
+    for (const row of photoRows) {
+      const mid = (row.model_id ?? '').toLowerCase();
+      if (!UUID_REGEX.test(mid)) continue;
+      const path = refToBucketPath(typeof row.path === 'string' ? row.path : '', mid);
+      if (path) out.add(path);
+    }
+  }
+
+  return out;
+}
+
+// ─── Handler ─────────────────────────────────────────────────────────────────
 
 Deno.serve(async (req: Request) => {
   const corsHeaders = getCorsHeaders(req);
@@ -249,8 +399,8 @@ Deno.serve(async (req: Request) => {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  // 1. Resolve the allowed model_id set for the requested context.
-  let allowed: Set<string>;
+  // 1. Resolve allowed model_id set for the requested context.
+  let allowedModels: Set<string>;
   if (context === 'guest_link') {
     const linkId = (body.linkId as string | undefined)?.trim() ?? '';
     if (!linkId) {
@@ -260,7 +410,7 @@ Deno.serve(async (req: Request) => {
     if (!res.ok) {
       return jsonResponse({ ok: false, error: res.error }, res.status, corsHeaders);
     }
-    allowed = res.modelIds;
+    allowedModels = res.modelIds;
   } else {
     const modelIds = body.modelIds as unknown;
     const token = body.token as unknown;
@@ -275,24 +425,27 @@ Deno.serve(async (req: Request) => {
     if (!res.ok) {
       return jsonResponse({ ok: false, error: res.error }, res.status, corsHeaders);
     }
-    allowed = res.modelIds;
+    allowedModels = res.modelIds;
   }
 
-  if (allowed.size === 0) {
+  if (allowedModels.size === 0) {
     return jsonResponse({ ok: true, ttl: SIGNED_URL_TTL_SECONDS, signed: {} }, 200, corsHeaders);
   }
 
-  // 2. Filter requested paths against the allowlist.
-  // We always preserve the original path string as the key in the response so
-  // the client can map signed URL → original entry deterministically.
+  // 2. Build per-model PATH allowlist from the live DB (mirror + model_photos).
+  const allowedPaths = await buildPathAllowlist(admin, allowedModels);
+  if (allowedPaths.size === 0) {
+    return jsonResponse({ ok: true, ttl: SIGNED_URL_TTL_SECONDS, signed: {} }, 200, corsHeaders);
+  }
+
+  // 3. Filter requested paths against the allowlist. Preserve original strings
+  //    as response keys so the client can map signed URL → original entry.
   const validPaths: string[] = [];
   for (const raw of rawPaths) {
     if (typeof raw !== 'string') continue;
     const trimmed = raw.trim();
     if (!trimmed) continue;
-    const modelId = extractModelIdFromPath(trimmed);
-    if (!modelId) continue;
-    if (!allowed.has(modelId)) continue;
+    if (!allowedPaths.has(trimmed)) continue;
     validPaths.push(trimmed);
   }
 
@@ -300,7 +453,7 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ ok: true, ttl: SIGNED_URL_TTL_SECONDS, signed: {} }, 200, corsHeaders);
   }
 
-  // 3. Sign all valid paths in a single batch call.
+  // 4. Sign all valid paths in a single batch call.
   const { data: signedList, error: signError } = await admin.storage
     .from(ALLOWED_BUCKET)
     .createSignedUrls(validPaths, SIGNED_URL_TTL_SECONDS);
@@ -313,9 +466,8 @@ Deno.serve(async (req: Request) => {
   const signed: Record<string, string> = {};
   for (const entry of signedList ?? []) {
     if (entry.error) {
-      // Skip silently — the path is valid in our allowlist but the object does
-      // not exist in storage (e.g. mirror column drift). Caller will see no
-      // entry in the response map and can render a placeholder.
+      // Silently skip — path is in the allowlist but the object does not exist
+      // in storage (e.g. mirror drift). Caller renders a placeholder.
       continue;
     }
     if (entry.path && entry.signedUrl) {
