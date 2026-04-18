@@ -4,12 +4,10 @@ const ensureClientAgencyChatMock = jest.fn();
 const sendMessageMock = jest.fn();
 
 jest.mock('../b2bOrgChatSupabase', () => ({
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ensureClientAgencyChat: (...args: any[]) => ensureClientAgencyChatMock(...args),
 }));
 
 jest.mock('../messengerSupabase', () => ({
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sendMessage: (...args: any[]) => sendMessageMock(...args),
 }));
 
@@ -63,4 +61,3 @@ describe('createBookingMessageInClientAgencyChat', () => {
     );
   });
 });
-

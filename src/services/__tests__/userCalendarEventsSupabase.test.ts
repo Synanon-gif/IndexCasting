@@ -49,7 +49,7 @@ function makeChain(result: unknown) {
   chain['single'] = jest.fn(() => Promise.resolve(result));
   chain['maybeSingle'] = jest.fn(() => Promise.resolve(result));
   // Make the chain itself thenable so `await ...limit()` works without a terminal call.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   (chain as any).then = (
     resolve?: ((v: unknown) => unknown) | null,
     reject?: ((e: unknown) => unknown) | null,
@@ -64,7 +64,6 @@ jest.mock('../../../lib/supabase', () => ({
   },
 }));
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 const { supabase } = require('../../../lib/supabase') as {
   supabase: {
     from: jest.Mock;

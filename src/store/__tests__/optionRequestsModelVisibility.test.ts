@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Tests that the OptionRequest store correctly maps client_organization_name,
  * job_description, is_agency_only, and agency_event_group_id from Supabase rows.
@@ -108,9 +107,10 @@ describe('OptionRequest field mapping', () => {
   });
 
   it('model_safe select string includes client_organization_name', () => {
-    // Verify the select strings include new fields
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { OPTION_REQUEST_SELECT, OPTION_REQUEST_SELECT_MODEL_SAFE } = require('../../services/optionRequestsSupabase');
+    const {
+      OPTION_REQUEST_SELECT,
+      OPTION_REQUEST_SELECT_MODEL_SAFE,
+    } = require('../../services/optionRequestsSupabase');
     expect(OPTION_REQUEST_SELECT).toContain('client_organization_name');
     expect(OPTION_REQUEST_SELECT_MODEL_SAFE).toContain('client_organization_name');
     expect(OPTION_REQUEST_SELECT).toContain('is_agency_only');

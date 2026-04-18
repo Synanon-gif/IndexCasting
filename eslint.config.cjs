@@ -96,4 +96,19 @@ module.exports = [
       'no-var': 'error',
     },
   },
+  // Test files: Jest patterns require dynamic require() and any in mock typings.
+  // Production rules remain strict; these overrides apply ONLY to *.test.ts(x)
+  // and files inside any __tests__ folder.
+  {
+    files: [
+      'src/**/__tests__/**/*.{ts,tsx}',
+      'src/**/*.test.{ts,tsx}',
+      'lib/**/__tests__/**/*.{ts,tsx}',
+      'lib/**/*.test.{ts,tsx}',
+    ],
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
+      '@typescript-eslint/no-explicit-any': 'off',
+    },
+  },
 ];

@@ -83,10 +83,7 @@ jest.mock('../../../lib/validation', () => ({
 
 // ─── Imports (after mocks) ────────────────────────────────────────────────────
 
-import {
-  uploadClientGalleryImage,
-  deleteClientGalleryImage,
-} from '../organizationGallerySupabase';
+import { uploadClientGalleryImage, deleteClientGalleryImage } from '../organizationGallerySupabase';
 import { assertOrgContext } from '../../utils/orgGuard';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -133,7 +130,6 @@ describe('uploadClientGalleryImage', () => {
   });
 
   test('returns { ok: false } when organizationId is empty (assertOrgContext guard)', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (assertOrgContext as any).mockReturnValueOnce(false);
     const result = await uploadClientGalleryImage('', makeFile());
     expect(result.ok).toBe(false);
@@ -260,7 +256,6 @@ describe('deleteClientGalleryImage', () => {
   });
 
   test('returns false when organizationId is empty (assertOrgContext guard)', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (assertOrgContext as any).mockReturnValueOnce(false);
     const result = await deleteClientGalleryImage('', MEDIA_ID, IMAGE_URL);
     expect(result).toBe(false);

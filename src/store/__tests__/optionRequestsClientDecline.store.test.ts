@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Store-level tests: clientRejectCounterStore
  *
@@ -84,9 +83,9 @@ const rejectServiceFn = jest.fn<Promise<boolean>, [string]>(
 );
 
 jest.mock('../../services/optionRequestsSupabase', () => {
-  const actual = jest.requireActual<
-    typeof import('../../services/optionRequestsSupabase')
-  >('../../services/optionRequestsSupabase');
+  const actual = jest.requireActual<typeof import('../../services/optionRequestsSupabase')>(
+    '../../services/optionRequestsSupabase',
+  );
   return {
     ...actual,
     clientRejectCounterOfferOnSupabase: (id: string) => rejectServiceFn(id),

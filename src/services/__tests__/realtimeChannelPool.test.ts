@@ -35,7 +35,6 @@ function freshMocks(): { channel: jest.Mock; removeChannel: jest.Mock } {
 }
 
 function freshPool(): typeof PoolModule {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   return require('../realtimeChannelPool') as typeof PoolModule;
 }
 
@@ -161,7 +160,7 @@ describe('getChannelPoolStats', () => {
     c1(); // stat-1 goes idle (timer pending)
     const stats = getChannelPoolStats();
     expect(stats.active).toBe(1); // stat-2
-    expect(stats.idle).toBe(1);   // stat-1
+    expect(stats.idle).toBe(1); // stat-1
     expect(stats.total).toBe(2);
   });
 });

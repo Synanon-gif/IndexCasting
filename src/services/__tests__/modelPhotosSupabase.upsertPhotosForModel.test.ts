@@ -14,7 +14,6 @@ describe('upsertPhotosForModel', () => {
   });
 
   it('writes is_visible_to_clients based on UI visible flag', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const receivedPayload: any[] = [];
 
     const upsertChain = {
@@ -23,7 +22,6 @@ describe('upsertPhotosForModel', () => {
     };
 
     const upsertBuilder = {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       upsert: jest.fn().mockImplementation((payload: any[], _opts: any) => {
         receivedPayload.push(...payload);
         return upsertChain;
@@ -47,4 +45,3 @@ describe('upsertPhotosForModel', () => {
     expect(receivedPayload[0].visible).toBe(false);
   });
 });
-

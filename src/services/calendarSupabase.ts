@@ -773,7 +773,7 @@ export async function updateBookingDetails(
 
       const allRows = data as {
         id: string;
-        booking_details: any;
+        booking_details: unknown;
         updated_at: string;
         status: string;
       }[];

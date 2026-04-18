@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * System Hardening Tests — C1, C2, C4 fixes verification.
  *

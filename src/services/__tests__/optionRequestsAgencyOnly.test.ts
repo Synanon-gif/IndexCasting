@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Tests for agency-only manual event flow:
  *   - insertAgencyOptionRequest: creates an option request via agency_create_option_request RPC
@@ -15,10 +14,7 @@ jest.mock('../../../lib/supabase', () => ({
 }));
 
 import { supabase } from '../../../lib/supabase';
-import {
-  insertAgencyOptionRequest,
-  agencyConfirmJobAgencyOnly,
-} from '../optionRequestsSupabase';
+import { insertAgencyOptionRequest, agencyConfirmJobAgencyOnly } from '../optionRequestsSupabase';
 
 const rpc = supabase.rpc as jest.Mock;
 
@@ -36,13 +32,16 @@ describe('insertAgencyOptionRequest', () => {
       requestType: 'option',
       title: 'Summer Shoot',
     });
-    expect(rpc).toHaveBeenCalledWith('agency_create_option_request', expect.objectContaining({
-      p_model_id: 'model-1',
-      p_agency_id: 'agency-1',
-      p_requested_date: '2026-07-01',
-      p_request_type: 'option',
-      p_title: 'Summer Shoot',
-    }));
+    expect(rpc).toHaveBeenCalledWith(
+      'agency_create_option_request',
+      expect.objectContaining({
+        p_model_id: 'model-1',
+        p_agency_id: 'agency-1',
+        p_requested_date: '2026-07-01',
+        p_request_type: 'option',
+        p_title: 'Summer Shoot',
+      }),
+    );
     expect(result).toBe('new-req-uuid');
   });
 

@@ -54,7 +54,6 @@ const makeChain = (finalResult: unknown) => {
 jest.mock('../../../lib/supabase', () => ({
   supabase: {
     auth: {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       getUser: (...args: any[]) => getUserMock(...args),
     },
     from: jest.fn(),

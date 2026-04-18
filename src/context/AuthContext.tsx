@@ -1025,6 +1025,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // closure deps change. session, loading, profile, orgDeactivated, orgBootstrapFailed,
       // isPasswordRecovery are the real state drivers.
     }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: inline functions are stable in the closure; only the listed state drivers should retrigger memoization.
     [session, loading, profile, orgDeactivated, orgBootstrapFailed, isPasswordRecovery],
   );
 

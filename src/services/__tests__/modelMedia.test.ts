@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Tests for the Model Media Management System
  *
@@ -110,10 +109,14 @@ describe('addPhoto — private photo type', () => {
     };
 
     mockFrom
-      .mockReturnValueOnce(sortChain)   // getPhotosForModel → max sort
+      .mockReturnValueOnce(sortChain) // getPhotosForModel → max sort
       .mockReturnValueOnce(insertChain); // insert
 
-    const result = await addPhoto('model-1', 'supabase-private://documents/model-private-photos/model-1/img.jpg', 'private');
+    const result = await addPhoto(
+      'model-1',
+      'supabase-private://documents/model-private-photos/model-1/img.jpg',
+      'private',
+    );
 
     expect(capturedInsertPayload).not.toBeNull();
     expect(capturedInsertPayload.is_visible_to_clients).toBe(false);
@@ -135,9 +138,15 @@ describe('addPhoto — private photo type', () => {
     };
 
     const insertResult = {
-      id: 'photo-2', model_id: 'model-1', url: 'https://cdn.example.com/photo.jpg',
-      photo_type: 'portfolio', is_visible_to_clients: true, visible: true, sort_order: 0,
-      source: null, api_external_id: null,
+      id: 'photo-2',
+      model_id: 'model-1',
+      url: 'https://cdn.example.com/photo.jpg',
+      photo_type: 'portfolio',
+      is_visible_to_clients: true,
+      visible: true,
+      sort_order: 0,
+      source: null,
+      api_external_id: null,
     };
     const insertChain = {
       insert: jest.fn().mockImplementation((payload: any) => {
@@ -149,9 +158,7 @@ describe('addPhoto — private photo type', () => {
       }),
     };
 
-    mockFrom
-      .mockReturnValueOnce(sortChain)
-      .mockReturnValueOnce(insertChain);
+    mockFrom.mockReturnValueOnce(sortChain).mockReturnValueOnce(insertChain);
 
     const result = await addPhoto('model-1', 'https://cdn.example.com/photo.jpg', 'portfolio');
 
@@ -175,7 +182,9 @@ describe('deletePhoto', () => {
   it('calls storage remove and then DB delete', async () => {
     const { deletePhoto } = await import('../modelPhotosSupabase');
 
-    mockStorageFrom.mockReturnValue({ remove: mockStorageRemove.mockResolvedValue({ error: null }) });
+    mockStorageFrom.mockReturnValue({
+      remove: mockStorageRemove.mockResolvedValue({ error: null }),
+    });
 
     // First from() call: SELECT file_size_bytes (BUG 1 fix — reliable decrement).
     const selectChain = {
@@ -203,7 +212,9 @@ describe('deletePhoto', () => {
   it('returns false when DB delete fails', async () => {
     const { deletePhoto } = await import('../modelPhotosSupabase');
 
-    mockStorageFrom.mockReturnValue({ remove: mockStorageRemove.mockResolvedValue({ error: null }) });
+    mockStorageFrom.mockReturnValue({
+      remove: mockStorageRemove.mockResolvedValue({ error: null }),
+    });
 
     const selectChain = {
       select: jest.fn().mockReturnThis(),
@@ -216,7 +227,10 @@ describe('deletePhoto', () => {
     };
     mockFrom.mockReturnValueOnce(selectChain).mockReturnValueOnce(deleteChain);
 
-    const result = await deletePhoto('photo-id-2', 'https://xyz.supabase.co/storage/v1/object/public/documentspictures/model-photos/x/y.jpg');
+    const result = await deletePhoto(
+      'photo-id-2',
+      'https://xyz.supabase.co/storage/v1/object/public/documentspictures/model-photos/x/y.jpg',
+    );
     expect(result).toBe(false);
   });
 });
@@ -262,9 +276,7 @@ describe('addPhoto — polaroid photo type', () => {
       }),
     };
 
-    mockFrom
-      .mockReturnValueOnce(sortChain)
-      .mockReturnValueOnce(insertChain);
+    mockFrom.mockReturnValueOnce(sortChain).mockReturnValueOnce(insertChain);
 
     const result = await addPhoto('model-1', 'https://cdn.example.com/pola.jpg', 'polaroid');
 
@@ -293,14 +305,18 @@ describe('deletePhoto — bucket selection by URL', () => {
   it('uses the private "documents" bucket for private photo URLs', async () => {
     const { deletePhoto } = await import('../modelPhotosSupabase');
 
-    mockStorageFrom.mockReturnValue({ remove: mockStorageRemove.mockResolvedValue({ error: null }) });
+    mockStorageFrom.mockReturnValue({
+      remove: mockStorageRemove.mockResolvedValue({ error: null }),
+    });
 
     // First from(): SELECT file_size_bytes; second from(): DELETE.
     mockFrom
       .mockReturnValueOnce({
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
-        maybeSingle: jest.fn().mockResolvedValue({ data: { file_size_bytes: 102400 }, error: null }),
+        maybeSingle: jest
+          .fn()
+          .mockResolvedValue({ data: { file_size_bytes: 102400 }, error: null }),
       })
       .mockReturnValueOnce({
         delete: jest.fn().mockReturnThis(),
@@ -320,13 +336,17 @@ describe('deletePhoto — bucket selection by URL', () => {
   it('uses the public "documentspictures" bucket for portfolio/polaroid URLs', async () => {
     const { deletePhoto } = await import('../modelPhotosSupabase');
 
-    mockStorageFrom.mockReturnValue({ remove: mockStorageRemove.mockResolvedValue({ error: null }) });
+    mockStorageFrom.mockReturnValue({
+      remove: mockStorageRemove.mockResolvedValue({ error: null }),
+    });
 
     mockFrom
       .mockReturnValueOnce({
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
-        maybeSingle: jest.fn().mockResolvedValue({ data: { file_size_bytes: 307200 }, error: null }),
+        maybeSingle: jest
+          .fn()
+          .mockResolvedValue({ data: { file_size_bytes: 307200 }, error: null }),
       })
       .mockReturnValueOnce({
         delete: jest.fn().mockReturnThis(),
@@ -490,9 +510,16 @@ describe('GuestLinkModel type shape — portfolio vs polaroid packages', () => {
 
   it('Model without polaroids in a Polaroid Package — no errors, empty arrays', () => {
     const model: import('../guestLinksSupabase').GuestLinkModel = {
-      id: 'model-3', name: 'Max', height: 185,
-      bust: null, waist: null, hips: null,
-      city: null, hair_color: null, eye_color: null, sex: 'male',
+      id: 'model-3',
+      name: 'Max',
+      height: 185,
+      bust: null,
+      waist: null,
+      hips: null,
+      city: null,
+      hair_color: null,
+      eye_color: null,
+      sex: 'male',
       portfolio_images: [],
       polaroids: [],
     };
@@ -523,8 +550,16 @@ describe('getGuestLinkModels — RPC returns type-correct image arrays', () => {
   it('returns portfolio_images populated and polaroids = [] for a Portfolio Package', async () => {
     const rpcRows = [
       {
-        id: 'model-1', name: 'Anna', height: 178, bust: 84, waist: 62, hips: 90,
-        city: 'Berlin', hair_color: 'Brown', eye_color: 'Blue', sex: 'female',
+        id: 'model-1',
+        name: 'Anna',
+        height: 178,
+        bust: 84,
+        waist: 62,
+        hips: 90,
+        city: 'Berlin',
+        hair_color: 'Brown',
+        eye_color: 'Blue',
+        sex: 'female',
         // Use canonical supabase-storage:// URI format so extractStoragePath can resolve the path
         portfolio_images: [
           'supabase-storage://documentspictures/guest/p1.jpg',
@@ -548,8 +583,16 @@ describe('getGuestLinkModels — RPC returns type-correct image arrays', () => {
   it('returns polaroids populated and portfolio_images = [] for a Polaroid Package', async () => {
     const rpcRows = [
       {
-        id: 'model-2', name: 'Lena', height: 175, bust: 82, waist: 60, hips: 88,
-        city: 'Paris', hair_color: 'Blonde', eye_color: 'Green', sex: 'female',
+        id: 'model-2',
+        name: 'Lena',
+        height: 175,
+        bust: 82,
+        waist: 60,
+        hips: 88,
+        city: 'Paris',
+        hair_color: 'Blonde',
+        eye_color: 'Green',
+        sex: 'female',
         portfolio_images: [],
         polaroids: [
           'supabase-storage://documentspictures/guest/pola1.jpg',
@@ -602,8 +645,16 @@ describe('getGuestLinkModels — RPC returns type-correct image arrays', () => {
     const external = 'https://cdn.example.com/polaroid/shot.jpg';
     const rpcRows = [
       {
-        id: 'model-ext', name: 'X', height: 180, bust: 90, waist: 70, hips: 92,
-        city: null, hair_color: null, eye_color: null, sex: 'male',
+        id: 'model-ext',
+        name: 'X',
+        height: 180,
+        bust: 90,
+        waist: 70,
+        hips: 92,
+        city: null,
+        hair_color: null,
+        eye_color: null,
+        sex: 'male',
         portfolio_images: [],
         polaroids: [external],
       },

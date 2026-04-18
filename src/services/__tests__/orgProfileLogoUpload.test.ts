@@ -81,10 +81,7 @@ jest.mock('../../../lib/validation', () => ({
 
 // ─── Imports (after mocks) ────────────────────────────────────────────────────
 
-import {
-  uploadOrganizationLogo,
-  deleteOrganizationLogo,
-} from '../organizationLogoSupabase';
+import { uploadOrganizationLogo, deleteOrganizationLogo } from '../organizationLogoSupabase';
 import { upsertOrganizationProfile } from '../organizationProfilesSupabase';
 import { assertOrgContext } from '../../utils/orgGuard';
 
@@ -94,7 +91,8 @@ function makeFile(name = 'logo.jpg', type = 'image/jpeg'): File {
   return new File(['data'], name, { type });
 }
 
-const PUBLIC_URL = 'https://example.supabase.co/storage/v1/object/public/organization-logos/org-123/12345-logo.jpg';
+const PUBLIC_URL =
+  'https://example.supabase.co/storage/v1/object/public/organization-logos/org-123/12345-logo.jpg';
 const ORG_ID = 'org-uuid-123';
 
 // ─── uploadOrganizationLogo ───────────────────────────────────────────────────
@@ -115,7 +113,6 @@ describe('uploadOrganizationLogo', () => {
   });
 
   test('returns { ok: false } when organizationId is empty (assertOrgContext guard)', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (assertOrgContext as any).mockReturnValueOnce(false);
     const result = await uploadOrganizationLogo('', makeFile());
     expect(result.ok).toBe(false);
@@ -203,7 +200,6 @@ describe('deleteOrganizationLogo', () => {
   });
 
   test('returns false when organizationId is empty (assertOrgContext guard)', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (assertOrgContext as any).mockReturnValueOnce(false);
     const result = await deleteOrganizationLogo('', PUBLIC_URL);
     expect(result).toBe(false);

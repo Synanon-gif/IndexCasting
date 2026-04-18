@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { importModelAndMerge } from '../modelsImportSupabase';
 
 const fromMock = jest.fn();
@@ -74,9 +73,7 @@ describe('importModelAndMerge', () => {
       agency_id: null,
     };
 
-    fromMock
-      .mockReturnValueOnce(makeLookupChain(existing))
-      .mockReturnValueOnce(makeUpdateChain());
+    fromMock.mockReturnValueOnce(makeLookupChain(existing)).mockReturnValueOnce(makeUpdateChain());
 
     const res = await importModelAndMerge({
       mediaslide_sync_id: 'MS-001',
@@ -97,7 +94,7 @@ describe('importModelAndMerge', () => {
     const noMatch = makeLookupChain(null);
 
     fromMock
-      .mockReturnValueOnce(noMatch)                        // mediaslide_sync_id lookup → null
+      .mockReturnValueOnce(noMatch) // mediaslide_sync_id lookup → null
       .mockReturnValueOnce(makeInsertChain({ id: 'model-2' })); // insert → model-2
 
     // Email lookup goes through agency_find_model_by_email RPC (agency-scoped, not admin).
@@ -125,9 +122,14 @@ describe('importModelAndMerge', () => {
     // No mediaslide_sync_id, email, or birthday → no lookups, goes straight to insert.
     let insertedPayload: any;
     const insertChain: any = {};
-    insertChain.insert = jest.fn((p: unknown) => { insertedPayload = p; return insertChain; });
+    insertChain.insert = jest.fn((p: unknown) => {
+      insertedPayload = p;
+      return insertChain;
+    });
     insertChain.select = jest.fn(() => insertChain);
-    insertChain.maybeSingle = jest.fn().mockResolvedValue({ data: { id: 'model-cc' }, error: null });
+    insertChain.maybeSingle = jest
+      .fn()
+      .mockResolvedValue({ data: { id: 'model-cc' }, error: null });
 
     fromMock.mockReturnValueOnce(insertChain);
 
@@ -161,7 +163,10 @@ describe('importModelAndMerge', () => {
       country_code: 'FR',
     });
 
-    expect(rpcMock).toHaveBeenCalledWith('agency_update_model_full', expect.objectContaining({ p_country_code: 'FR' }));
+    expect(rpcMock).toHaveBeenCalledWith(
+      'agency_update_model_full',
+      expect.objectContaining({ p_country_code: 'FR' }),
+    );
   });
 
   // ── new: forceUpdateMeasurements overwrites existing measurements ───────────
@@ -200,9 +205,9 @@ describe('importModelAndMerge', () => {
     // Either agency_update_model_full is not called at all (empty updates = no change),
     // or if called, p_bust/p_waist/p_hips must be null (COALESCE = no change).
     const rpcParams = rpcMock.mock.calls.find(([name]) => name === 'agency_update_model_full')?.[1];
-    expect(rpcParams?.p_bust   ?? null).toBeNull();
-    expect(rpcParams?.p_waist  ?? null).toBeNull();
-    expect(rpcParams?.p_hips   ?? null).toBeNull();
+    expect(rpcParams?.p_bust ?? null).toBeNull();
+    expect(rpcParams?.p_waist ?? null).toBeNull();
+    expect(rpcParams?.p_hips ?? null).toBeNull();
   });
 
   it('overwrites existing measurements when forceUpdateMeasurements is true', async () => {
@@ -236,15 +241,18 @@ describe('importModelAndMerge', () => {
       forceUpdateMeasurements: true,
     });
 
-    expect(rpcMock).toHaveBeenCalledWith('agency_update_model_full', expect.objectContaining({
-      p_height: 180,
-      p_bust: 92,
-      p_waist: 65,
-      p_hips: 95,
-      p_chest: 92,
-      p_legs_inseam: 82,
-      p_shoe_size: 40,
-    }));
+    expect(rpcMock).toHaveBeenCalledWith(
+      'agency_update_model_full',
+      expect.objectContaining({
+        p_height: 180,
+        p_bust: 92,
+        p_waist: 65,
+        p_hips: 95,
+        p_chest: 92,
+        p_legs_inseam: 82,
+        p_shoe_size: 40,
+      }),
+    );
   });
 
   // ── new: ethnicity and categories are filled for new models ─────────────────
@@ -253,9 +261,14 @@ describe('importModelAndMerge', () => {
     // No mediaslide_sync_id, email, or birthday → no lookups, goes straight to insert.
     let insertedPayload: any;
     const insertChain: any = {};
-    insertChain.insert = jest.fn((p: unknown) => { insertedPayload = p; return insertChain; });
+    insertChain.insert = jest.fn((p: unknown) => {
+      insertedPayload = p;
+      return insertChain;
+    });
     insertChain.select = jest.fn(() => insertChain);
-    insertChain.maybeSingle = jest.fn().mockResolvedValue({ data: { id: 'model-eth' }, error: null });
+    insertChain.maybeSingle = jest
+      .fn()
+      .mockResolvedValue({ data: { id: 'model-eth' }, error: null });
 
     fromMock.mockReturnValueOnce(insertChain);
 
