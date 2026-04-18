@@ -11,12 +11,12 @@
  *   3. createGuestLink    — inserts with correct fields and created_by
  */
 
-const mockRpc  = jest.fn();
+const mockRpc = jest.fn();
 const mockFrom = jest.fn();
 
 jest.mock('../../../lib/supabase', () => ({
   supabase: {
-    rpc:  (...args: unknown[]) => mockRpc(...args),
+    rpc: (...args: unknown[]) => mockRpc(...args),
     auth: {
       getUser: jest.fn().mockResolvedValue({
         data: { user: { id: 'agency-user-1' } },
@@ -55,12 +55,12 @@ afterEach(() => {
 describe('getGuestLink — valid active link', () => {
   it('returns link info when RPC returns a non-empty result', async () => {
     const linkInfo = {
-      id:                  'link-1',
-      label:               'Autumn Campaign',
-      agency_name:         'Best Agency',
-      type:                'portfolio',
-      is_active:           true,
-      expires_at:          null,
+      id: 'link-1',
+      label: 'Autumn Campaign',
+      agency_name: 'Best Agency',
+      type: 'portfolio',
+      is_active: true,
+      expires_at: null,
       tos_accepted_by_guest: false,
     };
     mockRpc.mockResolvedValue({ data: [linkInfo], error: null });
@@ -129,7 +129,9 @@ describe('getAgencyOrgIdForGuestLink', () => {
   it('trims link id before RPC', async () => {
     mockRpc.mockResolvedValue({ data: 'org-1', error: null });
     await getAgencyOrgIdForGuestLink('  link-trim-2  ');
-    expect(mockRpc).toHaveBeenCalledWith('get_agency_org_id_for_link', { p_link_id: 'link-trim-2' });
+    expect(mockRpc).toHaveBeenCalledWith('get_agency_org_id_for_link', {
+      p_link_id: 'link-trim-2',
+    });
   });
 
   it('returns null without calling RPC when link id is empty or whitespace', async () => {
@@ -188,41 +190,20 @@ describe('getGuestLink — invalid / expired link', () => {
   });
 });
 
-// ─── 2. deleteGuestLink — soft delete ────────────────────────────────────────
+// ─── 2. deleteGuestLink — RPC revoke_guest_access ───────────────────────────
 
-describe('deleteGuestLink — soft delete', () => {
-  const makeUpdateChain = (result: unknown) => {
-    const isNull  = jest.fn().mockResolvedValue(result);
-    const eq      = jest.fn().mockReturnValue({ is: isNull });
-    const update  = jest.fn().mockReturnValue({ eq });
-    return { update };
-  };
-
-  it('returns true on successful soft-delete (sets deleted_at + is_active=false)', async () => {
-    mockFrom.mockReturnValue(makeUpdateChain({ error: null }));
+describe('deleteGuestLink — revoke_guest_access RPC', () => {
+  it('returns true on successful revoke (calls revoke_guest_access RPC)', async () => {
+    mockRpc.mockResolvedValue({ data: true, error: null });
 
     const result = await deleteGuestLink('link-1');
 
     expect(result).toBe(true);
-    const chain = mockFrom.mock.results[0].value;
-    expect(chain.update).toHaveBeenCalledWith(expect.objectContaining({
-      is_active:  false,
-      deleted_at: expect.any(String),
-    }));
+    expect(mockRpc).toHaveBeenCalledWith('revoke_guest_access', { p_link_id: 'link-1' });
   });
 
-  it('guards with .is("deleted_at", null) to prevent double-delete', async () => {
-    mockFrom.mockReturnValue(makeUpdateChain({ error: null }));
-
-    await deleteGuestLink('link-1');
-
-    const chain    = mockFrom.mock.results[0].value;
-    const isNullFn = chain.update().eq().is;
-    expect(isNullFn).toHaveBeenCalledWith('deleted_at', null);
-  });
-
-  it('returns false and logs error when DB returns an error', async () => {
-    mockFrom.mockReturnValue(makeUpdateChain({ error: { message: 'rls violation' } }));
+  it('returns false when RPC returns an error', async () => {
+    mockRpc.mockResolvedValue({ data: null, error: { message: 'unauthorized' } });
 
     const result = await deleteGuestLink('link-1');
 
@@ -231,12 +212,19 @@ describe('deleteGuestLink — soft delete', () => {
   });
 
   it('returns false on exception (fail-closed)', async () => {
-    mockFrom.mockImplementation(() => { throw new Error('network'); });
+    mockRpc.mockRejectedValue(new Error('network'));
 
     const result = await deleteGuestLink('link-1');
 
     expect(result).toBe(false);
     expect(errSpy).toHaveBeenCalled();
+  });
+
+  it('returns false for empty linkId without calling RPC', async () => {
+    const result = await deleteGuestLink('   ');
+
+    expect(result).toBe(false);
+    expect(mockRpc).not.toHaveBeenCalled();
   });
 });
 
@@ -252,12 +240,12 @@ describe('createGuestLink', () => {
 
   it('returns GuestLink on success with correct fields', async () => {
     const link = {
-      id:         'new-link-1',
-      agency_id:  'agency-1',
-      model_ids:  ['m-1', 'm-2'],
-      label:      'Spring Cast',
-      type:       'portfolio',
-      is_active:  true,
+      id: 'new-link-1',
+      agency_id: 'agency-1',
+      model_ids: ['m-1', 'm-2'],
+      label: 'Spring Cast',
+      type: 'portfolio',
+      is_active: true,
       created_at: '2026-04-01T00:00:00Z',
       deleted_at: null,
     };
@@ -266,8 +254,8 @@ describe('createGuestLink', () => {
     const result = await createGuestLink({
       agency_id: 'agency-1',
       model_ids: ['m-1', 'm-2'],
-      label:     'Spring Cast',
-      type:      'portfolio',
+      label: 'Spring Cast',
+      type: 'portfolio',
     });
 
     expect(result).not.toBeNull();
@@ -296,7 +284,9 @@ describe('createGuestLink', () => {
   });
 
   it('returns null on exception', async () => {
-    mockFrom.mockImplementation(() => { throw new Error('network'); });
+    mockFrom.mockImplementation(() => {
+      throw new Error('network');
+    });
 
     const result = await createGuestLink({ agency_id: 'a-1', model_ids: [], type: 'portfolio' });
 

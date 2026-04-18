@@ -92,9 +92,12 @@ import {
 import { signInOrCreateGuestWithOtp } from '../services/guestAuthSupabase';
 import { uiCopy } from '../constants/uiCopy';
 import {
+  defaultDisplayModeForPackage,
   getPackageCoverRawRef,
   getPackageDisplayImages,
   normalizePackageType,
+  packageHasBothBuckets,
+  type PackageDisplayMode,
 } from '../utils/packageDisplayMedia';
 import { TermsScreen } from '../screens/TermsScreen';
 import { PrivacyScreen } from '../screens/PrivacyScreen';
@@ -292,9 +295,26 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
   }, [linkId]);
 
   const pkgType = normalizePackageType(link?.type);
-  const getGalleryImages = (m: GuestLinkModel): string[] => getPackageDisplayImages(m, pkgType);
+
+  // For 'mixed' packages, the viewer can toggle between portfolio and polaroid.
+  // Default follows the canonical helper (mixed → 'portfolio'). Reset whenever
+  // the package type changes (e.g. realtime update from agency).
+  const [displayMode, setDisplayMode] = useState<PackageDisplayMode>(() =>
+    defaultDisplayModeForPackage(pkgType),
+  );
+  useEffect(() => {
+    setDisplayMode(defaultDisplayModeForPackage(pkgType));
+  }, [pkgType]);
+
+  // The toggle is only meaningful for mixed packages where at least one model
+  // actually has images in both buckets. Otherwise the second mode is empty.
+  const showDisplayToggle =
+    pkgType === 'mixed' && models.some((m) => packageHasBothBuckets(m, pkgType));
+
+  const getGalleryImages = (m: GuestLinkModel): string[] =>
+    getPackageDisplayImages(m, pkgType, displayMode);
   const getCoverImage = (m: GuestLinkModel): string | undefined => {
-    const raw = getPackageCoverRawRef(m, pkgType);
+    const raw = getPackageCoverRawRef(m, pkgType, displayMode);
     return raw || undefined;
   };
 
@@ -308,8 +328,12 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
     imageUrls: getGalleryImages(m),
   }));
 
+  // For mixed packages, the PDF reflects the currently chosen display mode so
+  // the export matches what the viewer sees on screen.
+  const effectivePdfMode: PackageDisplayMode =
+    pkgType === 'mixed' ? displayMode : (pkgType as PackageDisplayMode);
   const pdfEntityName =
-    link?.label || (pkgType === 'polaroid' ? 'Polaroid Package' : 'Portfolio Package');
+    link?.label || (effectivePdfMode === 'polaroid' ? 'Polaroid Package' : 'Portfolio Package');
 
   const toggleModel = (id: string) => {
     setSelectedModelIds((prev) => {
@@ -737,7 +761,9 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
         </View>
         <View style={styles.headerMetaRow}>
           <Text style={styles.headerSub}>
-            {pkgType === 'polaroid'
+            {/* For mixed packages the label follows the chosen mode so the */}
+            {/* header matches the displayed content. */}
+            {(pkgType === 'mixed' ? displayMode : pkgType) === 'polaroid'
               ? copy.packageTypePolaroidLabel
               : copy.packageTypePortfolioLabel}
             {' · '}
@@ -749,6 +775,33 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
             <Text style={styles.guestBadgePillLabel}>{copy.guestAccessBadge}</Text>
           </View>
         </View>
+        {showDisplayToggle ? (
+          <View style={styles.displayToggleRow}>
+            {(['portfolio', 'polaroid'] as const).map((mode) => {
+              const active = displayMode === mode;
+              return (
+                <TouchableOpacity
+                  key={mode}
+                  onPress={() => setDisplayMode(mode)}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  style={[styles.displayTogglePill, active && styles.displayTogglePillActive]}
+                  accessibilityRole="button"
+                >
+                  <Text
+                    style={[
+                      styles.displayTogglePillLabel,
+                      active && styles.displayTogglePillLabelActive,
+                    ]}
+                  >
+                    {mode === 'polaroid'
+                      ? copy.packageTypePolaroidLabel
+                      : copy.packageTypePortfolioLabel}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        ) : null}
         <Text style={styles.guestAccessNote}>{copy.guestAccessSubtitle}</Text>
       </View>
 
@@ -947,6 +1000,34 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 4,
     lineHeight: 14,
+  },
+  /** Mixed-package display-mode toggle (Portfolio / Polaroid). */
+  displayToggleRow: {
+    flexDirection: 'row',
+    alignSelf: 'flex-start',
+    marginTop: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 999,
+    padding: 2,
+    backgroundColor: colors.surface,
+  },
+  displayTogglePill: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'transparent',
+  },
+  displayTogglePillActive: {
+    backgroundColor: colors.textPrimary,
+  },
+  displayTogglePillLabel: {
+    ...typography.label,
+    fontSize: 11,
+    color: colors.textPrimary,
+  },
+  displayTogglePillLabelActive: {
+    color: colors.surface,
   },
   title: {
     ...typography.heading,

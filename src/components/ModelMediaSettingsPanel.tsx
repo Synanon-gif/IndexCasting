@@ -44,6 +44,7 @@ import {
   addPhoto,
   deletePhoto,
   getPhotosForModel,
+  migrateModelPhotoBucket,
   ModelPhoto,
   reorderPhotos,
   rebuildPolaroidsFromModelPhotos,
@@ -111,6 +112,20 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
   /** Mutex to prevent parallel reorder / setCover / delete / toggle operations. */
   const operationInProgress = useRef(false);
 
+  // ---------------------------------------------------------------------------
+  // Move private → portfolio / polaroid (button + HTML5 drag-and-drop on web).
+  // The actual storage work runs in `migrateModelPhotoBucket` (re-uploads the
+  // file into the public `documentspictures` bucket and rewrites model_photos).
+  // We keep a tiny per-photo lock so a double-click / double-drop cannot fire
+  // two parallel migrations on the same row.
+  // ---------------------------------------------------------------------------
+  const [movingPhotoId, setMovingPhotoId] = useState<string | null>(null);
+  /** Web-only: id of the private row currently being dragged, or `null`. */
+  const [draggedPrivateId, setDraggedPrivateId] = useState<string | null>(null);
+  /** Web-only: which target section is currently a hot drop zone, or `null`. */
+  const [dragOverTarget, setDragOverTarget] = useState<'portfolio' | 'polaroid' | null>(null);
+  const isWeb = Platform.OS === 'web';
+
   const portfolioInputRef = useRef<HTMLInputElement | null>(null);
   const polaroidInputRef = useRef<HTMLInputElement | null>(null);
   const privateInputRef = useRef<HTMLInputElement | null>(null);
@@ -175,6 +190,41 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
   useEffect(() => {
     void loadPhotos();
   }, [loadPhotos]);
+
+  // ---------------------------------------------------------------------------
+  // Move a private row into Portfolio or Polaroids. Triggered both by the
+  // explicit per-row buttons (mobile + web) and by drag-and-drop (web).
+  // After success we just reload everything from the server so portfolio /
+  // polaroid / private and the mirror columns stay perfectly in sync.
+  // ---------------------------------------------------------------------------
+  const handleMovePrivateToTarget = useCallback(
+    async (photoId: string, targetType: 'portfolio' | 'polaroid') => {
+      if (!photoId || movingPhotoId) return;
+      setMovingPhotoId(photoId);
+      try {
+        const result = await migrateModelPhotoBucket(photoId, targetType);
+        if (!result.ok) {
+          if (Platform.OS === 'web' && typeof window !== 'undefined') {
+            window.alert(copy.movePhotoFailed);
+          } else {
+            Alert.alert(uiCopy.common.error, copy.movePhotoFailed);
+          }
+          return;
+        }
+        await loadPhotos();
+      } catch (e) {
+        console.error('handleMovePrivateToTarget error:', e);
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+          window.alert(copy.movePhotoFailed);
+        } else {
+          Alert.alert(uiCopy.common.error, copy.movePhotoFailed);
+        }
+      } finally {
+        setMovingPhotoId(null);
+      }
+    },
+    [movingPhotoId, loadPhotos],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -560,9 +610,44 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
     const isLast = idx === list.length - 1;
     const showCoverBadge = section === 'portfolio' && isFirst;
     const showCoverBtn = section === 'portfolio' && !isFirst;
+    const isPrivate = section === 'private';
+    const photoId = photo.id ?? null;
+    const isMoving = isPrivate && photoId != null && movingPhotoId === photoId;
+    const isDragging = isPrivate && photoId != null && draggedPrivateId === photoId;
+
+    /* On web: make the private row draggable so the agency can drop it onto
+     * the Portfolio / Polaroids sections (HTML5 DnD). On native we still
+     * expose the explicit "→ Portfolio / → Polaroid" buttons below. RN-Web
+     * forwards unknown props to the underlying <div>, so we can attach DnD
+     * handlers via a typed cast. */
+    const dndProps =
+      isWeb && isPrivate && photoId != null
+        ? ({
+            draggable: true,
+            onDragStart: (e: {
+              dataTransfer?: { setData: (t: string, v: string) => void; effectAllowed?: string };
+            }) => {
+              try {
+                e.dataTransfer?.setData('text/plain', photoId);
+                if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+              } catch {
+                /* no-op — some browsers reject custom mime types */
+              }
+              setDraggedPrivateId(photoId);
+            },
+            onDragEnd: () => {
+              setDraggedPrivateId(null);
+              setDragOverTarget(null);
+            },
+          } as Record<string, unknown>)
+        : {};
 
     return (
-      <View key={photo.id ?? `${section}-${idx}`} style={s.photoRow}>
+      <View
+        key={photo.id ?? `${section}-${idx}`}
+        style={[s.photoRow, isDragging && s.photoRowDragging, isMoving && s.photoRowMoving]}
+        {...dndProps}
+      >
         {/* Thumbnail */}
         <Image
           source={{ uri: photo.displayUrl ?? undefined }}
@@ -628,6 +713,28 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
             >
               <Text style={s.arrowBtn}>{photo.is_visible_to_clients ? '👁' : '🚫'}</Text>
             </TouchableOpacity>
+          )}
+          {isPrivate && photoId != null && (
+            <>
+              <TouchableOpacity
+                onPress={() => void handleMovePrivateToTarget(photoId, 'portfolio')}
+                disabled={isMoving || movingPhotoId !== null}
+                style={[s.movePill, (isMoving || movingPhotoId !== null) && s.movePillDisabled]}
+              >
+                <Text style={s.movePillLabel}>
+                  {isMoving ? copy.movePhotoInProgress : copy.movePrivateToPortfolio}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => void handleMovePrivateToTarget(photoId, 'polaroid')}
+                disabled={isMoving || movingPhotoId !== null}
+                style={[s.movePill, (isMoving || movingPhotoId !== null) && s.movePillDisabled]}
+              >
+                <Text style={s.movePillLabel}>
+                  {isMoving ? copy.movePhotoInProgress : copy.movePrivateToPolaroid}
+                </Text>
+              </TouchableOpacity>
+            </>
           )}
           <TouchableOpacity onPress={() => confirmDelete(photo, section)}>
             <Text style={s.deleteBtn}>✕</Text>
@@ -860,9 +967,39 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
           </TouchableOpacity>
 
           {/* ── PORTFOLIO ───────────────────────────────────────────────────── */}
-          <View style={s.section}>
+          <View
+            style={[s.section, dragOverTarget === 'portfolio' && s.sectionDropActive]}
+            {...(isWeb && draggedPrivateId
+              ? ({
+                  onDragOver: (e: {
+                    preventDefault: () => void;
+                    dataTransfer?: { dropEffect?: string };
+                  }) => {
+                    e.preventDefault();
+                    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+                    if (dragOverTarget !== 'portfolio') setDragOverTarget('portfolio');
+                  },
+                  onDragLeave: () => {
+                    if (dragOverTarget === 'portfolio') setDragOverTarget(null);
+                  },
+                  onDrop: (e: {
+                    preventDefault: () => void;
+                    dataTransfer?: { getData: (t: string) => string };
+                  }) => {
+                    e.preventDefault();
+                    const id = e.dataTransfer?.getData('text/plain') || draggedPrivateId;
+                    setDragOverTarget(null);
+                    setDraggedPrivateId(null);
+                    if (id) void handleMovePrivateToTarget(id, 'portfolio');
+                  },
+                } as Record<string, unknown>)
+              : {})}
+          >
             <Text style={s.sectionTitle}>{copy.portfolioTitle}</Text>
             <Text style={s.sectionHint}>{copy.portfolioHint}</Text>
+            {isWeb && draggedPrivateId && (
+              <Text style={s.dropHint}>{copy.dropToMoveToPortfolio}</Text>
+            )}
 
             {portfolio.length === 0 && <Text style={s.emptyLabel}>{copy.noPhotos}</Text>}
             {portfolio.map((photo, idx) =>
@@ -875,9 +1012,39 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
           </View>
 
           {/* ── POLAROIDS ───────────────────────────────────────────────────── */}
-          <View style={s.section}>
+          <View
+            style={[s.section, dragOverTarget === 'polaroid' && s.sectionDropActive]}
+            {...(isWeb && draggedPrivateId
+              ? ({
+                  onDragOver: (e: {
+                    preventDefault: () => void;
+                    dataTransfer?: { dropEffect?: string };
+                  }) => {
+                    e.preventDefault();
+                    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+                    if (dragOverTarget !== 'polaroid') setDragOverTarget('polaroid');
+                  },
+                  onDragLeave: () => {
+                    if (dragOverTarget === 'polaroid') setDragOverTarget(null);
+                  },
+                  onDrop: (e: {
+                    preventDefault: () => void;
+                    dataTransfer?: { getData: (t: string) => string };
+                  }) => {
+                    e.preventDefault();
+                    const id = e.dataTransfer?.getData('text/plain') || draggedPrivateId;
+                    setDragOverTarget(null);
+                    setDraggedPrivateId(null);
+                    if (id) void handleMovePrivateToTarget(id, 'polaroid');
+                  },
+                } as Record<string, unknown>)
+              : {})}
+          >
             <Text style={s.sectionTitle}>{copy.polaroidsTitle}</Text>
             <Text style={s.sectionHint}>{copy.polaroidsHint}</Text>
+            {isWeb && draggedPrivateId && (
+              <Text style={s.dropHint}>{copy.dropToMoveToPolaroid}</Text>
+            )}
 
             {polaroids.length === 0 && <Text style={s.emptyLabel}>{copy.noPhotos}</Text>}
             {polaroids.map((photo, idx) =>
@@ -894,6 +1061,9 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
             <View style={s.privateHeader}>
               <Text style={[s.sectionTitle, s.privateSectionTitle]}>{copy.privateTitle}</Text>
               <Text style={s.privateSectionSubtitle}>{copy.privateSubtitle}</Text>
+              {isWeb && privatePhotos.length > 0 && (
+                <Text style={s.privateDragHint}>{copy.privateDragHint}</Text>
+              )}
             </View>
 
             {privatePhotos.length === 0 && (
@@ -962,6 +1132,49 @@ const s = StyleSheet.create({
     paddingVertical: 6,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+  },
+  photoRowDragging: {
+    opacity: 0.5,
+  },
+  photoRowMoving: {
+    opacity: 0.6,
+  },
+  sectionDropActive: {
+    backgroundColor: '#EAF6EC',
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: colors.buttonOptionGreen,
+    borderStyle: 'dashed',
+    paddingHorizontal: spacing.sm,
+  },
+  dropHint: {
+    ...typography.label,
+    fontSize: 11,
+    color: colors.buttonOptionGreen,
+    marginBottom: spacing.sm,
+  },
+  privateDragHint: {
+    ...typography.body,
+    fontSize: 10,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
+    marginTop: 2,
+  },
+  movePill: {
+    borderWidth: 1,
+    borderColor: colors.accentBrown,
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginHorizontal: 2,
+  },
+  movePillDisabled: {
+    opacity: 0.5,
+  },
+  movePillLabel: {
+    ...typography.label,
+    fontSize: 9,
+    color: colors.accentBrown,
   },
   thumbnail: {
     width: 44,

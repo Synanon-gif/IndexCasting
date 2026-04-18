@@ -11,7 +11,17 @@ import { normalizeDocumentspicturesModelImageRef } from '../utils/normalizeModel
  * Scope: external **package** access via `get_guest_link_*` RPCs only — not the same
  * code path as the public agency directory (`publicAgencyProfileSupabase.ts`).
  */
-export type PackageType = 'portfolio' | 'polaroid';
+/**
+ * Package kind for guest links and internal package gallery.
+ * - 'portfolio' → portfolio_images only
+ * - 'polaroid'  → polaroids only
+ * - 'mixed'     → both portfolio_images AND polaroids; viewer toggles between
+ *   the two on the client side (Portfolio/Polaroid switcher).
+ *
+ * Backed by `guest_links.type` CHECK constraint
+ * (migration 20261020_guest_links_mixed_package_type.sql).
+ */
+export type PackageType = 'portfolio' | 'polaroid' | 'mixed';
 
 export type GuestLink = {
   id: string;
@@ -24,7 +34,11 @@ export type GuestLink = {
   expires_at: string | null;
   is_active: boolean;
   tos_accepted_by_guest: boolean;
-  /** 'portfolio' = portfolio images only; 'polaroid' = polaroids only. */
+  /**
+   * 'portfolio' = portfolio images only;
+   * 'polaroid'  = polaroids only;
+   * 'mixed'     = both arrays populated; viewer chooses which to display.
+   */
   type: PackageType;
   created_at: string;
   /** Soft-delete timestamp. Non-null means the link has been deleted.
@@ -45,7 +59,10 @@ export async function createGuestLink(params: {
   agency_name?: string;
   label?: string;
   expires_at?: string;
-  /** 'portfolio' shows portfolio images only; 'polaroid' shows polaroids only. */
+  /**
+   * 'portfolio' shows portfolio images only; 'polaroid' shows polaroids only;
+   * 'mixed' returns both arrays populated for client-side toggling.
+   */
   type: PackageType;
 }): Promise<GuestLink | null> {
   try {
@@ -200,29 +217,26 @@ export async function deactivateGuestLink(linkId: string): Promise<boolean> {
 }
 
 /**
- * Soft-deletes a guest link by setting deleted_at to the current timestamp.
+ * Soft-deletes a guest link by routing through the SECURITY DEFINER RPC
+ * `revoke_guest_access`. The RPC enforces a 3-branch authorization that mirrors
+ * the RLS policies on guest_links (org_member ∨ org_owner ∨ legacy bookers row)
+ * and atomically sets `is_active = false, deleted_at = COALESCE(deleted_at, now())`.
  *
  * Hard DELETE is intentionally avoided: existing chat-metadata references
  * (BookingChatMetadata.packageId) remain resolvable so older conversations do
- * not break. The RLS policy and getGuestLinksForAgency filter out deleted rows
- * for normal reads (WHERE deleted_at IS NULL).
+ * not break. RLS + getGuestLinksForAgency filter out deleted rows for normal reads.
+ *
+ * NOTE: A direct PostgREST UPDATE used to silently fail (0 rows updated, no
+ * error) for callers that pass the SELECT but not the UPDATE policy path —
+ * routing through the RPC turns that into a clear failure (`permission_denied`).
  */
 export async function deleteGuestLink(linkId: string): Promise<boolean> {
-  try {
-    const { error } = await supabase
-      .from('guest_links')
-      .update({ is_active: false, deleted_at: new Date().toISOString() })
-      .eq('id', linkId)
-      .is('deleted_at', null);
-    if (error) {
-      console.error('deleteGuestLink error:', error);
-      return false;
-    }
-    return true;
-  } catch (e) {
-    console.error('deleteGuestLink exception:', e);
+  const trimmed = linkId?.trim() ?? '';
+  if (!trimmed) {
+    console.error('deleteGuestLink: empty linkId');
     return false;
   }
+  return revokeGuestAccess(trimmed);
 }
 
 /**

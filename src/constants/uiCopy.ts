@@ -1309,11 +1309,15 @@ export const uiCopy = {
       'To share a package with a registered client organization, use the "Share package" button in a B2B chat thread.',
     /** Package type selector — Step 1 of package creation. */
     packageTypeLabel: 'Package Type',
-    packageTypePortfolio: 'Portfolio Package',
-    packageTypePolaroid: 'Polaroid Package',
+    packageTypePortfolio: 'Portfolio',
+    packageTypePolaroid: 'Polaroid',
+    packageTypeMixed: 'Both',
     packageTypePortfolioHint: 'Shows only portfolio images — used for standard client discovery.',
     packageTypePolaroidHint:
       'Shows only polaroid images — used for casting agencies that require measurement shots.',
+    packageTypeMixedHint:
+      'Includes portfolio and polaroid images — viewers can switch between the two.',
+    packageTypeMixedLabel: 'Portfolio + Polaroid',
   },
   /** Client Discover tab — package mode overlay + agency chat action. */
   discover: {
@@ -1806,6 +1810,18 @@ export const uiCopy = {
       'Image rights confirmed recently — you can upload without re-checking until the session window expires.',
     viewManage: 'Manage',
     viewGallery: 'Gallery',
+    /** Action labels on internal/private files: promote a private file into a client-visible bucket. */
+    movePrivateToPortfolio: '→ Portfolio',
+    movePrivateToPolaroid: '→ Polaroid',
+    movePhotoInProgress: 'Moving…',
+    movePhotoFailed: 'Could not move this photo. Please try again.',
+    /** Hint shown above the private/internal section when the agency is using a desktop browser
+     *  that supports drag-and-drop, so they know they can drag files onto Portfolio / Polaroid. */
+    privateDragHint:
+      'Tip: drag an internal file onto the Portfolio or Polaroids section to make it client-visible.',
+    /** Drop-zone overlay shown on Portfolio / Polaroid when an internal file is being dragged over. */
+    dropToMoveToPortfolio: 'Drop to add to Portfolio',
+    dropToMoveToPolaroid: 'Drop to add to Polaroids',
   },
   swipe: {
     headerLabel: 'The Swipe',

@@ -801,3 +801,134 @@ export async function rebuildPolaroidsFromModelPhotos(modelId: string): Promise<
     .map((p) => p.url);
   return syncPolaroidsToModel(modelId, visibleUrls);
 }
+
+/**
+ * Move a private agency-only photo into the public `documentspictures` bucket
+ * and re-classify it as `portfolio` or `polaroid`.
+ *
+ * Used by the agency media panel when the agency wants to promote an internal
+ * file to a client-visible portfolio image (drag-and-drop or "Move to..." button).
+ *
+ * Pipeline:
+ *  1. Read the source `model_photos` row (must be `photo_type='private'`).
+ *  2. Resolve a short-lived signed URL for the private file and download it.
+ *  3. Re-upload the bytes through `uploadModelPhoto` so the canonical security
+ *     pipeline runs again (mime / magic bytes / extension / EXIF strip / quota).
+ *  4. Insert a new `model_photos` row with the target `photo_type` (visible=true).
+ *  5. Delete the original `model_photos` row + its storage object (decrements quota).
+ *  6. Rebuild the mirror column (`models.portfolio_images` or `models.polaroids`).
+ *
+ * Net storage delta is zero: the new upload increments and the old delete
+ * decrements by the same byte size. A short-lived double-counted spike
+ * between steps 3 and 5 is tolerated.
+ *
+ * Notes:
+ *  - `skipConsentCheck: true` is intentional. The original private upload
+ *    already collected the GDPR consent for this asset; promoting an existing
+ *    file to a different bucket does not introduce new content.
+ *  - On failure between steps 3 and 5, the just-uploaded object is rolled back
+ *    to avoid orphans.
+ */
+export async function migrateModelPhotoBucket(
+  photoId: string,
+  targetType: 'portfolio' | 'polaroid',
+): Promise<{ ok: boolean; newPhotoId?: string; error?: string }> {
+  try {
+    const { data: srcRow, error: srcErr } = await supabase
+      .from('model_photos')
+      .select('id, model_id, url, photo_type, file_size_bytes')
+      .eq('id', photoId)
+      .maybeSingle();
+    if (srcErr || !srcRow) {
+      console.error('migrateModelPhotoBucket: source row lookup failed', srcErr);
+      return { ok: false, error: 'photo_not_found' };
+    }
+    const srcType = (srcRow as { photo_type?: ModelPhotoType }).photo_type;
+    if (srcType !== 'private') {
+      return { ok: false, error: 'source_not_private' };
+    }
+    if (targetType !== 'portfolio' && targetType !== 'polaroid') {
+      return { ok: false, error: 'invalid_target_type' };
+    }
+    const modelId = (srcRow as { model_id: string }).model_id;
+    const sourceUrl = (srcRow as { url: string }).url;
+    if (!modelId || !sourceUrl) {
+      return { ok: false, error: 'invalid_source_row' };
+    }
+
+    const signedUrl = await getSignedPrivatePhotoUrl(sourceUrl);
+    if (!signedUrl) {
+      return { ok: false, error: 'signed_url_failed' };
+    }
+
+    let fileBlob: Blob;
+    try {
+      const resp = await fetch(signedUrl);
+      if (!resp.ok) {
+        console.error('migrateModelPhotoBucket: download failed status', resp.status);
+        return { ok: false, error: 'download_failed' };
+      }
+      fileBlob = await resp.blob();
+    } catch (e) {
+      console.error('migrateModelPhotoBucket fetch exception:', e);
+      return { ok: false, error: 'download_exception' };
+    }
+
+    // Reconstruct a File so the upload pipeline can read a meaningful filename
+    // and infer the extension. The Blob.type is preserved when present.
+    const extFromUrl = (sourceUrl.split('?')[0]?.split('.').pop() || 'jpg').toLowerCase();
+    const safeExt = /^[a-z0-9]+$/.test(extFromUrl) ? extFromUrl : 'jpg';
+    const fileName = `migrated-${Date.now()}.${safeExt}`;
+    const file: Blob | File =
+      typeof File !== 'undefined'
+        ? new File([fileBlob], fileName, { type: fileBlob.type || 'image/jpeg' })
+        : fileBlob;
+
+    const uploadResult = await uploadModelPhoto(modelId, file, { skipConsentCheck: true });
+    if (!uploadResult) {
+      return { ok: false, error: 'upload_failed' };
+    }
+
+    const newPhoto = await addPhoto(
+      modelId,
+      uploadResult.url,
+      targetType,
+      uploadResult.fileSizeBytes,
+    );
+    if (!newPhoto) {
+      // Roll back the just-uploaded storage object to avoid orphan + quota drift.
+      const extracted = extractBucketAndPath(uploadResult.url);
+      if (extracted) {
+        try {
+          await supabase.storage.from(extracted.bucket).remove([extracted.path]);
+        } catch (cleanupErr) {
+          console.error('migrateModelPhotoBucket cleanup remove failed', cleanupErr);
+        }
+        await decrementStorage(uploadResult.fileSizeBytes);
+      }
+      return { ok: false, error: 'insert_failed' };
+    }
+
+    // Delete the original private row + storage file. Quota decrement happens
+    // inside deletePhoto via the stored file_size_bytes column.
+    const deleteOk = await deletePhoto(photoId, sourceUrl);
+    if (!deleteOk) {
+      // Source still present — we keep the new row (already public) so the
+      // user sees the move. Surface a soft warning but treat overall as success.
+      console.warn('migrateModelPhotoBucket: source delete failed — manual cleanup may be needed', {
+        photoId,
+      });
+    }
+
+    if (targetType === 'portfolio') {
+      await rebuildPortfolioImagesFromModelPhotos(modelId);
+    } else {
+      await rebuildPolaroidsFromModelPhotos(modelId);
+    }
+
+    return { ok: true, newPhotoId: newPhoto.id };
+  } catch (e) {
+    console.error('migrateModelPhotoBucket exception:', e);
+    return { ok: false, error: 'exception' };
+  }
+}

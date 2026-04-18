@@ -8326,7 +8326,7 @@ const GuestLinksTab: React.FC<{
   const [label, setLabel] = useState('');
   const [modelSearch, setModelSearch] = useState('');
   const [selectedModelIds, setSelectedModelIds] = useState<Set<string>>(new Set());
-  const [packageType, setPackageType] = useState<'portfolio' | 'polaroid'>('portfolio');
+  const [packageType, setPackageType] = useState<'portfolio' | 'polaroid' | 'mixed'>('portfolio');
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [packageModelFilters, setPackageModelFilters] = useState<ModelFilters>(defaultModelFilters);
@@ -8791,6 +8791,14 @@ const GuestLinksTab: React.FC<{
               {copy.packageTypePolaroid}
             </Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={[s.filterPill, packageType === 'mixed' && s.filterPillActive]}
+            onPress={() => setPackageType('mixed')}
+          >
+            <Text style={[s.filterPillLabel, packageType === 'mixed' && s.filterPillLabelActive]}>
+              {copy.packageTypeMixed}
+            </Text>
+          </TouchableOpacity>
         </View>
         <Text
           style={{
@@ -8802,7 +8810,9 @@ const GuestLinksTab: React.FC<{
         >
           {packageType === 'polaroid'
             ? copy.packageTypePolaroidHint
-            : copy.packageTypePortfolioHint}
+            : packageType === 'mixed'
+              ? copy.packageTypeMixedHint
+              : copy.packageTypePortfolioHint}
         </Text>
 
         {createError !== null && (
@@ -8869,21 +8879,37 @@ const GuestLinksTab: React.FC<{
                         paddingHorizontal: 6,
                         paddingVertical: 2,
                         backgroundColor:
-                          l.type === 'polaroid' ? 'rgba(255,152,0,0.1)' : 'rgba(33,150,243,0.1)',
+                          l.type === 'polaroid'
+                            ? 'rgba(255,152,0,0.1)'
+                            : l.type === 'mixed'
+                              ? 'rgba(156,39,176,0.1)'
+                              : 'rgba(33,150,243,0.1)',
                         borderWidth: 1,
-                        borderColor: l.type === 'polaroid' ? '#FF9800' : '#2196F3',
+                        borderColor:
+                          l.type === 'polaroid'
+                            ? '#FF9800'
+                            : l.type === 'mixed'
+                              ? '#9C27B0'
+                              : '#2196F3',
                       }}
                     >
                       <Text
                         style={{
                           ...typography.label,
                           fontSize: 9,
-                          color: l.type === 'polaroid' ? '#FF9800' : '#2196F3',
+                          color:
+                            l.type === 'polaroid'
+                              ? '#FF9800'
+                              : l.type === 'mixed'
+                                ? '#9C27B0'
+                                : '#2196F3',
                         }}
                       >
                         {l.type === 'polaroid'
                           ? copy.packageTypePolaroid
-                          : copy.packageTypePortfolio}
+                          : l.type === 'mixed'
+                            ? copy.packageTypeMixed
+                            : copy.packageTypePortfolio}
                       </Text>
                     </View>
                     {/* Active / Inactive badge */}

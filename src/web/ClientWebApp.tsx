@@ -40,9 +40,12 @@ import { messageForDissolveOrganizationError } from '../utils/accountDeletionFee
 import { uiCopy } from '../constants/uiCopy';
 import { normalizeDocumentspicturesModelImageRef } from '../utils/normalizeModelPortfolioUrl';
 import {
+  defaultDisplayModeForPackage,
   getPackageCoverRawRef,
   getPackageDisplayImages,
   normalizePackageType,
+  packageHasBothBuckets,
+  type PackageDisplayMode,
 } from '../utils/packageDisplayMedia';
 import { canonicalDisplayCityForModel } from '../utils/canonicalModelCity';
 import { getCitySearchGeocodedPin } from '../utils/citySearchGeocodeCache';
@@ -548,6 +551,15 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
     packageType: PackageType;
     rawModels: GuestLinkModel[];
   } | null>(null);
+  /**
+   * Viewer-chosen display mode for a `mixed` package (portfolio vs polaroid).
+   * For non-mixed packages this is forced to the package type by an effect below.
+   */
+  const [packageDisplayMode, setPackageDisplayMode] = useState<PackageDisplayMode>('portfolio');
+  useEffect(() => {
+    if (!packageViewState) return;
+    setPackageDisplayMode(defaultDisplayModeForPackage(packageViewState.packageType));
+  }, [packageViewState?.packageId, packageViewState?.packageType]);
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const [pendingModel, setPendingModel] = useState<ModelSummary | null>(null);
   const [addingModelIds, setAddingModelIds] = useState<Set<string>>(new Set());
@@ -1444,10 +1456,26 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   const isSharedMode = !!sharedProject;
   const isPackageMode = !!packageViewState;
 
-  const baseModels = useMemo(
-    () => packageViewState?.models ?? (sharedProject ? sharedProject.models : models),
-    [packageViewState, sharedProject, models],
-  );
+  const baseModels = useMemo(() => {
+    if (packageViewState) {
+      // For 'mixed' packages, recompute the cover URL from rawModels so it follows
+      // the viewer-chosen displayMode (portfolio vs polaroid). For non-mixed packages
+      // the original cover from packageViewState.models is already correct.
+      if (packageViewState.packageType === 'mixed') {
+        return packageViewState.models.map((summary) => {
+          const raw = packageViewState.rawModels.find((r) => r.id === summary.id);
+          if (!raw) return summary;
+          const cover = normalizeDocumentspicturesModelImageRef(
+            getPackageCoverRawRef(raw, 'mixed', packageDisplayMode),
+            summary.id,
+          );
+          return { ...summary, coverUrl: cover };
+        });
+      }
+      return packageViewState.models;
+    }
+    return sharedProject ? sharedProject.models : models;
+  }, [packageViewState, packageDisplayMode, sharedProject, models]);
 
   const [sharedProjectPortfolio, setSharedProjectPortfolio] = useState<Map<string, string[]>>(
     new Map(),
@@ -1486,7 +1514,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         chest: (m as unknown as { chest?: number | null }).chest ?? m.bust ?? null,
         waist: m.waist ?? null,
         hips: m.hips ?? null,
-        imageUrls: getPackageDisplayImages(m, pkgType),
+        imageUrls: getPackageDisplayImages(m, pkgType, packageDisplayMode),
       }));
     }
     if (isSharedMode && sharedProject) {
@@ -1504,7 +1532,14 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       });
     }
     return undefined;
-  }, [isPackageMode, isSharedMode, packageViewState, sharedProject, sharedProjectPortfolio]);
+  }, [
+    isPackageMode,
+    isSharedMode,
+    packageViewState,
+    packageDisplayMode,
+    sharedProject,
+    sharedProjectPortfolio,
+  ]);
 
   const pdfEntityName = useMemo((): string | undefined => {
     if (isPackageMode && packageViewState) return packageViewState.name || 'Package';
@@ -1613,7 +1648,11 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         .then((data: any) => {
           if (packageViewState) {
             const raw = packageViewState.rawModels.find((m) => m.id === detailId);
-            const correctImages = getPackageDisplayImages(raw, packageViewState.packageType);
+            const correctImages = getPackageDisplayImages(
+              raw,
+              packageViewState.packageType,
+              packageDisplayMode,
+            );
             if (data) {
               setDetailData({
                 ...data,
@@ -1673,8 +1712,10 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         .finally(() => setDetailLoading(false));
     }
     // filteredModels: snapshot at detail open only (do not re-fetch detail on swipe).
+    // packageDisplayMode included so the detail overlay refreshes images when the
+    // viewer toggles between portfolio and polaroid in a `mixed` package.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: detailId-driven open
-  }, [detailId, packageViewState, sharedProject]);
+  }, [detailId, packageViewState, packageDisplayMode, sharedProject]);
 
   const currentModel = useMemo(
     () => (filteredModels.length ? filteredModels[currentIndex % filteredModels.length] : null),
@@ -2206,9 +2247,12 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       ? { source: 'package' as const, packageId: packageViewState.packageId }
       : {};
     const resolvedProjectId = projectId ?? sharedProjectId ?? activeProjectId ?? undefined;
+    // For 'mixed' packages, the flow source reflects which side the viewer was
+    // looking at when triggering the action — so the chat metadata stays accurate.
     const flowSource =
       packageViewState != null
-        ? packageViewState.packageType === 'polaroid'
+        ? packageViewState.packageType === 'polaroid' ||
+          (packageViewState.packageType === 'mixed' && packageDisplayMode === 'polaroid')
           ? ('polaroid_package' as const)
           : ('portfolio_package' as const)
         : resolvedProjectId
@@ -2607,6 +2651,21 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
             isPackageMode={isPackageMode}
             packageName={packageViewState?.name ?? null}
             packageType={packageViewState?.packageType ?? undefined}
+            packageDisplayMode={packageDisplayMode}
+            onChangePackageDisplayMode={setPackageDisplayMode}
+            packageHasBothBuckets={
+              packageViewState
+                ? packageHasBothBuckets(
+                    {
+                      portfolio_images: packageViewState.rawModels.flatMap(
+                        (m) => m.portfolio_images ?? [],
+                      ),
+                      polaroids: packageViewState.rawModels.flatMap((m) => m.polaroids ?? []),
+                    },
+                    packageViewState.packageType,
+                  )
+                : false
+            }
             addingModelIds={addingModelIds}
             onExitPackage={exitPackageMode}
             userCity={userCity}
@@ -2799,7 +2858,13 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         onOptionRequest={handleOptionRequest}
         detailMediaPackageType={
           packageViewState && detailId && packageViewState.rawModels.some((m) => m.id === detailId)
-            ? packageViewState.packageType
+            ? // For 'mixed' packages, project the viewer-chosen display mode onto the
+              // detail view so the section label & empty-state copy match what they see.
+              packageViewState.packageType === 'mixed'
+              ? packageDisplayMode === 'polaroid'
+                ? 'polaroid'
+                : 'portfolio'
+              : packageViewState.packageType
             : undefined
         }
         presentation={galleryDetailPresentation ? 'galleryFocus' : 'standard'}
@@ -3643,6 +3708,11 @@ type PackageGalleryProps = {
   isPackageMode: boolean;
   isSharedMode: boolean;
   packageType?: PackageType;
+  /** Viewer-chosen display mode for `mixed` packages. */
+  packageDisplayMode?: PackageDisplayMode;
+  onChangePackageDisplayMode?: (mode: PackageDisplayMode) => void;
+  /** Show the portfolio/polaroid toggle (only true for mixed packages with both buckets populated). */
+  packageHasBothBuckets?: boolean;
   packageName: string | null;
   sharedProjectName: string | null;
   sharedProjectId: string | null;
@@ -3666,6 +3736,9 @@ const PackageGalleryView: React.FC<PackageGalleryProps> = ({
   isPackageMode,
   isSharedMode,
   packageType,
+  packageDisplayMode,
+  onChangePackageDisplayMode,
+  packageHasBothBuckets,
   packageName,
   sharedProjectName,
   sharedProjectId,
@@ -3688,10 +3761,21 @@ const PackageGalleryView: React.FC<PackageGalleryProps> = ({
   const [removeBusyIds, setRemoveBusyIds] = useState<Set<string>>(new Set());
   const [pdfExportOpen, setPdfExportOpen] = useState(false);
 
+  // For mixed packages, the displayed label follows the viewer-chosen mode so the header
+  // matches the actual content shown below. For pure portfolio/polaroid packages the label
+  // is a static reflection of the package type.
+  const effectiveDisplayMode: PackageDisplayMode =
+    packageType === 'mixed'
+      ? (packageDisplayMode ?? 'portfolio')
+      : packageType === 'polaroid'
+        ? 'polaroid'
+        : 'portfolio';
   const packageTypeLabel =
-    packageType === 'polaroid'
+    effectiveDisplayMode === 'polaroid'
       ? uiCopy.guestLinks.packageTypePolaroid
       : uiCopy.guestLinks.packageTypePortfolio;
+  const showDisplayModeToggle =
+    packageType === 'mixed' && (packageHasBothBuckets ?? false) && !!onChangePackageDisplayMode;
   const galleryGridPaddingBottom = Math.max(120, tabBarBottomInset + spacing.lg);
   const colCount = isMobileGallery ? 2 : galleryW >= 960 ? 4 : galleryW >= 640 ? 3 : 2;
   const tileGap = spacing.sm;
@@ -3755,6 +3839,49 @@ const PackageGalleryView: React.FC<PackageGalleryProps> = ({
             ) : null}
           </View>
         )}
+        {showDisplayModeToggle ? (
+          <View
+            style={{
+              flexDirection: 'row',
+              alignSelf: 'center',
+              marginTop: spacing.xs,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 999,
+              padding: 2,
+              backgroundColor: colors.surface,
+            }}
+          >
+            {(['portfolio', 'polaroid'] as const).map((mode) => {
+              const active = effectiveDisplayMode === mode;
+              return (
+                <TouchableOpacity
+                  key={mode}
+                  onPress={() => onChangePackageDisplayMode?.(mode)}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  style={{
+                    paddingHorizontal: spacing.md,
+                    paddingVertical: 6,
+                    borderRadius: 999,
+                    backgroundColor: active ? colors.accentBrown : 'transparent',
+                  }}
+                >
+                  <Text
+                    style={{
+                      ...typography.label,
+                      fontSize: 12,
+                      color: active ? colors.surface : colors.textPrimary,
+                    }}
+                  >
+                    {mode === 'polaroid'
+                      ? uiCopy.guestLinks.packageTypePolaroid
+                      : uiCopy.guestLinks.packageTypePortfolio}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        ) : null}
       </View>
 
       {/* Grid */}
@@ -4097,6 +4224,11 @@ type DiscoverProps = {
   isPackageMode: boolean;
   packageName: string | null;
   packageType?: PackageType;
+  /** Viewer-chosen display mode for `mixed` packages (portfolio vs polaroid). */
+  packageDisplayMode?: PackageDisplayMode;
+  onChangePackageDisplayMode?: (mode: PackageDisplayMode) => void;
+  /** True when a `mixed` package actually has images in both buckets (toggle should appear). */
+  packageHasBothBuckets?: boolean;
   addingModelIds?: Set<string>;
   onExitPackage?: () => void;
   userCity: string | null;
@@ -4135,6 +4267,9 @@ const DiscoverView: React.FC<DiscoverProps> = ({
   isPackageMode,
   packageName,
   packageType,
+  packageDisplayMode,
+  onChangePackageDisplayMode,
+  packageHasBothBuckets: packageHasBothBucketsProp,
   addingModelIds,
   onExitPackage,
   onShowActiveOptions,
@@ -4160,6 +4295,9 @@ const DiscoverView: React.FC<DiscoverProps> = ({
         isPackageMode={isPackageMode}
         isSharedMode={isSharedMode}
         packageType={packageType}
+        packageDisplayMode={packageDisplayMode}
+        onChangePackageDisplayMode={onChangePackageDisplayMode}
+        packageHasBothBuckets={packageHasBothBucketsProp}
         packageName={packageName}
         sharedProjectName={sharedProjectName}
         sharedProjectId={sharedProjectId}
