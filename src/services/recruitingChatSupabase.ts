@@ -198,6 +198,39 @@ export async function getAgencyNamesByThreadIds(
   }
 }
 
+/**
+ * Batch lookup: resolves threadId → agencyId for a list of thread IDs.
+ *
+ * Used to deduplicate the model's Messages list: once a canonical
+ * Model↔Agency direct conversation exists for an agency, the original
+ * recruiting thread row should not appear as a second list entry for the
+ * same agency. The caller compares this map against the agencyIds parsed
+ * from `conversations.context_id` (`parseAgencyModelContextId`).
+ */
+export async function getAgencyIdsByThreadIds(
+  threadIds: string[],
+): Promise<Record<string, string>> {
+  if (!threadIds.length) return {};
+  try {
+    const { data, error } = await supabase
+      .from('recruiting_chat_threads')
+      .select('id, agency_id')
+      .in('id', threadIds);
+    if (error) {
+      console.error('getAgencyIdsByThreadIds error:', error);
+      return {};
+    }
+    const out: Record<string, string> = {};
+    for (const row of (data ?? []) as Array<{ id: string; agency_id: string | null }>) {
+      if (row.agency_id) out[row.id] = row.agency_id;
+    }
+    return out;
+  } catch (e) {
+    console.error('getAgencyIdsByThreadIds exception:', e);
+    return {};
+  }
+}
+
 /** Latest thread for an application (heals orphaned threads if the app row was never linked). */
 export async function findLatestThreadIdForApplication(
   applicationId: string,

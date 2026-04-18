@@ -80,7 +80,10 @@ import {
   type SupabaseOptionRequestModelSafe,
 } from '../services/optionRequestsSupabase';
 import { getAgencyById, type Agency } from '../services/agenciesSupabase';
-import { getAgencyNamesByThreadIds } from '../services/recruitingChatSupabase';
+import {
+  getAgencyIdsByThreadIds,
+  getAgencyNamesByThreadIds,
+} from '../services/recruitingChatSupabase';
 import { BookingChatView } from '../views/BookingChatView';
 import { ApplyFormView } from '../views/ApplyFormView';
 import { useAuth } from '../context/AuthContext';
@@ -236,6 +239,16 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     orgName: string;
   } | null>(null);
   const [bookingAgencyByThread, setBookingAgencyByThread] = useState<Record<string, string>>({});
+  /**
+   * threadId → agencyId map used to deduplicate the Messages list: once a
+   * canonical Model↔Agency direct conversation exists for an agency, the
+   * recruiting thread row for the same agency is hidden in favour of the
+   * direct conversation (avoids two list entries for the same agency after
+   * representation acceptance).
+   */
+  const [bookingAgencyIdByThread, setBookingAgencyIdByThread] = useState<Record<string, string>>(
+    {},
+  );
   const [agencyDirectConvs, setAgencyDirectConvs] = useState<Conversation[]>([]);
   const [openDirectConvId, setOpenDirectConvId] = useState<string | null>(null);
   /** false = representation with this agency ended (read-only history); null = unknown */
@@ -606,6 +619,12 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
     // replacing the previous N+1 loop (2 queries per thread).
     void getAgencyNamesByThreadIds(bookingThreadIds).then((map) => {
       if (!cancelled) setBookingAgencyByThread((prev) => ({ ...prev, ...map }));
+    });
+    // Hydrate threadId → agencyId in parallel so the unified Messages list
+    // can drop recruiting rows whose agency already has a canonical direct
+    // conversation (deduplication after representation acceptance).
+    void getAgencyIdsByThreadIds(bookingThreadIds).then((map) => {
+      if (!cancelled) setBookingAgencyIdByThread((prev) => ({ ...prev, ...map }));
     });
     return () => {
       cancelled = true;
@@ -2096,6 +2115,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                   finalStatus: o.finalStatus ?? null,
                 });
               }
+              const directConvAgencyIds = new Set<string>();
               for (const conv of agencyDirectConvs) {
                 rows.push({
                   kind: 'direct',
@@ -2103,10 +2123,19 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                   label: conv.title ?? uiCopy.b2bChat.conversationFallback,
                   ts: conv.updated_at ? new Date(conv.updated_at).getTime() : 0,
                 });
+                const parsed = parseAgencyModelContextId(conv.context_id);
+                if (parsed?.agencyId) directConvAgencyIds.add(parsed.agencyId);
               }
               for (const id of bookingThreadIds) {
                 const t = getRecruitingThread(id);
                 if (!t) continue;
+                // Deduplicate: if the agency already has a canonical direct
+                // conversation in the list, hide the recruiting row for the
+                // same agency. The direct conversation carries the same chat
+                // history (same backend channel) once representation is
+                // active, so two list entries would just be visual noise.
+                const recruitingAgencyId = bookingAgencyIdByThread[id];
+                if (recruitingAgencyId && directConvAgencyIds.has(recruitingAgencyId)) continue;
                 rows.push({
                   kind: 'recruiting',
                   id,
