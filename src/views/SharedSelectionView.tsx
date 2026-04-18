@@ -250,8 +250,11 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
             {models.map((m) => {
               const tilePct = `${(100 - (colCount - 1) * (tileGap / (windowW || 1)) * 100) / colCount}%`;
               return (
-                <View
+                <TouchableOpacity
                   key={m.id}
+                  activeOpacity={0.92}
+                  onPress={() => openDetail(m)}
+                  accessibilityRole="button"
                   style={{
                     width: tilePct as unknown as number,
                     flexBasis: tilePct as unknown as number,
@@ -260,25 +263,19 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
                     marginBottom: spacing.sm,
                   }}
                 >
-                  <TouchableOpacity
-                    activeOpacity={0.92}
-                    onPress={() => openDetail(m)}
-                    accessibilityRole="button"
-                  >
-                    <View style={styles.tileImageWrap}>
-                      {m.coverUrl ? (
-                        <StorageImage
-                          uri={m.coverUrl}
-                          style={styles.tileImage}
-                          resizeMode="contain"
-                        />
-                      ) : (
-                        <View style={styles.tilePlaceholder}>
-                          <Text style={styles.tilePlaceholderText}>{m.name.charAt(0)}</Text>
-                        </View>
-                      )}
-                    </View>
-                  </TouchableOpacity>
+                  <View style={styles.tileImageWrap}>
+                    {m.coverUrl ? (
+                      <StorageImage
+                        uri={m.coverUrl}
+                        style={styles.tileImage}
+                        resizeMode="contain"
+                      />
+                    ) : (
+                      <View style={styles.tilePlaceholder}>
+                        <Text style={styles.tilePlaceholderText}>{m.name.charAt(0)}</Text>
+                      </View>
+                    )}
+                  </View>
                   <Text style={styles.tileName} numberOfLines={1}>
                     {m.name}
                   </Text>
@@ -297,7 +294,7 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
                       {m.cityLine}
                     </Text>
                   ) : null}
-                </View>
+                </TouchableOpacity>
               );
             })}
           </View>
@@ -361,6 +358,8 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
                         style={[styles.modalArrow, styles.modalArrowLeft]}
                         onPress={() => setDetailImageIndex((i) => Math.max(0, i - 1))}
                         disabled={detailImageIndex <= 0}
+                        hitSlop={12}
+                        accessibilityRole="button"
                       >
                         <Text
                           style={[
@@ -377,6 +376,8 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
                           setDetailImageIndex((i) => Math.min(detailImages.length - 1, i + 1))
                         }
                         disabled={detailImageIndex >= detailImages.length - 1}
+                        hitSlop={12}
+                        accessibilityRole="button"
                       >
                         <Text
                           style={[

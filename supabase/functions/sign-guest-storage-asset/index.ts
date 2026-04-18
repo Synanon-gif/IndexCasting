@@ -23,7 +23,7 @@
  *      every storage reference that the model legitimately owns:
  *        a. `models.portfolio_images[]` (mirror)
  *        b. `models.polaroids[]`        (mirror)
- *        c. `model_photos.path` rows   (authoritative, only client-visible ones)
+ *        c. `model_photos.url` rows    (authoritative, only client-visible ones)
  *      Each reference is normalised to its bucket-relative path; the union
  *      forms the request's path-allowlist.
  *   4. Paths in the request that are NOT in the per-model path allowlist are
@@ -80,22 +80,53 @@ const MAX_MODELS_PER_REQUEST = 50;
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-const ALLOWED_ORIGINS = [
+// Exact-match production / canonical origins.
+const ALLOWED_EXACT_ORIGINS = new Set<string>([
   'https://index-casting.com',
   'https://www.index-casting.com',
   'https://indexcasting.com',
   'https://www.indexcasting.com',
-  'http://localhost:8081',
-  'http://localhost:19006',
+]);
+
+// Pattern-based allowlist — host-only matching (case-insensitive). Each entry
+// MUST evaluate the parsed URL hostname; never substring-match the raw Origin
+// string (would allow `evil-indexcasting.com.attacker.example`).
+const ALLOWED_HOST_PATTERNS: Array<(host: string) => boolean> = [
+  // Any subdomain of our two canonical apex domains.
+  (h) => h === 'indexcasting.com' || h.endsWith('.indexcasting.com'),
+  (h) => h === 'index-casting.com' || h.endsWith('.index-casting.com'),
+  // Vercel preview deployments for this project.
+  (h) => h.endsWith('.vercel.app'),
+  // Local development on any port (web bundlers + Expo web).
+  (h) => h === 'localhost' || h === '127.0.0.1',
 ];
+
+const FALLBACK_ORIGIN = 'https://index-casting.com';
+
+function isOriginAllowed(origin: string): boolean {
+  if (!origin) return false;
+  if (ALLOWED_EXACT_ORIGINS.has(origin)) return true;
+  let host = '';
+  try {
+    host = new URL(origin).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  if (!host) return false;
+  return ALLOWED_HOST_PATTERNS.some((pred) => pred(host));
+}
 
 function getCorsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get('Origin') ?? '';
-  const allowOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  // Native callers (iOS/Android, server-to-server) typically send no Origin
+  // and don't enforce CORS — reflecting the canonical origin is harmless and
+  // keeps a deterministic header value in logs.
+  const allowOrigin = isOriginAllowed(origin) ? origin : FALLBACK_ORIGIN;
   return {
     'Access-Control-Allow-Origin': allowOrigin,
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Max-Age': '86400',
     'Vary': 'Origin',
   };
 }
@@ -291,7 +322,7 @@ type ModelMirrorRow = {
 
 type ModelPhotoRow = {
   model_id: string;
-  path: string | null;
+  url: string | null;
   is_visible_to_clients: boolean | null;
 };
 
@@ -342,7 +373,7 @@ async function buildPathAllowlist(
   //    can_view_model_photo_storage / get_*_models RPCs.
   const { data: photoRows, error: photoErr } = await admin
     .from('model_photos')
-    .select('model_id, path, is_visible_to_clients')
+    .select('model_id, url, is_visible_to_clients')
     .in('model_id', ids)
     .eq('is_visible_to_clients', true)
     .returns<ModelPhotoRow[]>();
@@ -353,7 +384,7 @@ async function buildPathAllowlist(
     for (const row of photoRows) {
       const mid = (row.model_id ?? '').toLowerCase();
       if (!UUID_REGEX.test(mid)) continue;
-      const path = refToBucketPath(typeof row.path === 'string' ? row.path : '', mid);
+      const path = refToBucketPath(typeof row.url === 'string' ? row.url : '', mid);
       if (path) out.add(path);
     }
   }

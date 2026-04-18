@@ -696,6 +696,8 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
             <TouchableOpacity
               onPress={() => setGalleryIndex((i) => Math.max(0, i - 1))}
               disabled={galleryIndex === 0}
+              hitSlop={16}
+              accessibilityRole="button"
               style={[styles.galleryNavBtn, galleryIndex === 0 && { opacity: 0.3 }]}
             >
               <Text style={styles.galleryNavLabel}>‹</Text>
@@ -703,6 +705,8 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
             <TouchableOpacity
               onPress={() => setGalleryIndex((i) => Math.min(galleryImages.length - 1, i + 1))}
               disabled={galleryIndex === galleryImages.length - 1}
+              hitSlop={16}
+              accessibilityRole="button"
               style={[
                 styles.galleryNavBtn,
                 galleryIndex === galleryImages.length - 1 && { opacity: 0.3 },
