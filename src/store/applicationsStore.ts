@@ -369,24 +369,32 @@ export async function confirmApplicationByModel(
   applicationId: string,
   applicantUserId: string,
 ): Promise<{ modelId: string | null } | null> {
-  const app = cache.find((a) => a.id === applicationId);
-  if (!app || app.status !== 'pending_model_confirmation') return null;
-
-  // Capture accepted_by_agency_id before the service call mutates the DB row.
-  // We need this to notify the agency org after confirmation succeeds.
-  const acceptedByAgencyId =
-    (app as ModelApplication & { acceptedByAgencyId?: string | null }).acceptedByAgencyId ?? null;
+  // The service is the source of truth: it enforces id + applicant_user_id +
+  // status='pending_model_confirmation' + RLS server-side. We MUST NOT block on the
+  // local cache (which is empty in the model-side UI because the agency-scoped
+  // hydration path is not used there). Use the cache only for opportunistic updates
+  // and as a fallback for the recruiting thread id.
+  const cached = cache.find((a) => a.id === applicationId) ?? null;
 
   const result = await confirmByModelService(applicationId, applicantUserId);
   if (!result) return null;
 
+  const acceptedByAgencyId =
+    result.acceptedByAgencyId ??
+    (cached as (ModelApplication & { acceptedByAgencyId?: string | null }) | null)
+      ?.acceptedByAgencyId ??
+    null;
+  const recruitingThreadId = result.recruitingThreadId ?? cached?.chatThreadId ?? null;
+
   // Mark recruiting chat as active_model (represents the finalised relationship)
-  if (app.chatThreadId) {
-    await updateThreadChatType(app.chatThreadId, 'active_model');
+  if (recruitingThreadId) {
+    await updateThreadChatType(recruitingThreadId, 'active_model');
   }
 
-  app.status = 'accepted';
-  await attachApplicantModelIdsAndMatFlags(cache);
+  if (cached) {
+    cached.status = 'accepted';
+    await attachApplicantModelIdsAndMatFlags(cache);
+  }
   notify();
 
   // Notify the accepting agency that the model confirmed representation
@@ -394,7 +402,7 @@ export async function confirmApplicationByModel(
     void notifyAgencyOfModelConfirmation(acceptedByAgencyId, applicationId);
   }
 
-  return result;
+  return { modelId: result.modelId };
 }
 
 /**
@@ -404,13 +412,15 @@ export async function rejectApplicationByModel(
   applicationId: string,
   applicantUserId: string,
 ): Promise<boolean> {
-  const app = cache.find((a) => a.id === applicationId);
-  if (!app || app.status !== 'pending_model_confirmation') return false;
-
+  // Service is the source of truth (id + applicant_user_id + status guard + RLS).
+  // Do not gate on local cache — it is unhydrated in the model-side UI.
   const ok = await rejectByModelService(applicationId, applicantUserId);
   if (!ok) return false;
 
-  app.status = 'rejected';
+  const cached = cache.find((a) => a.id === applicationId);
+  if (cached) {
+    cached.status = 'rejected';
+  }
   notify();
   return true;
 }

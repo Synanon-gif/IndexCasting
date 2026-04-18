@@ -513,7 +513,11 @@ describe('confirmApplicationByModel', () => {
   });
 
   it('transitions status to accepted and returns modelId', async () => {
-    mockConfirmService.mockResolvedValue({ modelId: 'model-1' });
+    mockConfirmService.mockResolvedValue({
+      modelId: 'model-1',
+      acceptedByAgencyId: 'ag-1',
+      recruitingThreadId: 't-1',
+    });
     mockUpdateThreadChatType.mockResolvedValue(undefined);
 
     const result = await confirmApplicationByModel('app-1', 'user-1');
@@ -524,12 +528,13 @@ describe('confirmApplicationByModel', () => {
     expect(mockUpdateThreadChatType).toHaveBeenCalledWith('t-1', 'active_model');
   });
 
-  it('returns null when application is not in pending_model_confirmation state', async () => {
-    const pending = { ...BASE_APP, id: 'app-2', status: 'pending' as const };
-    mockFetchApps.mockResolvedValue([pending]);
-    await refreshApplications();
-    const result = await confirmApplicationByModel('app-2', 'user-1');
+  it('returns null when the service rejects the wrong status server-side', async () => {
+    // Server validates id + applicant_user_id + status='pending_model_confirmation' + RLS.
+    // When any guard fails, the service returns null and the store mirrors that.
+    mockConfirmService.mockResolvedValue(null);
+    const result = await confirmApplicationByModel('app-1', 'user-1');
     expect(result).toBeNull();
+    expect(getApplicationById('app-1')?.status).toBe('pending_model_confirmation');
   });
 
   it('returns null when the service call fails', async () => {
@@ -539,10 +544,28 @@ describe('confirmApplicationByModel', () => {
     expect(getApplicationById('app-1')?.status).toBe('pending_model_confirmation');
   });
 
-  it('returns null when application id is unknown', async () => {
-    mockConfirmService.mockResolvedValue({ modelId: 'model-x' });
+  it('returns null when service rejects unknown application id', async () => {
+    // No client-side cache guard anymore — the service is the source of truth.
+    // When the server cannot find/update the row, the service returns null.
+    mockConfirmService.mockResolvedValue(null);
     const result = await confirmApplicationByModel('unknown-id', 'user-1');
     expect(result).toBeNull();
+  });
+
+  it('still works when the local cache has no entry (model-side UI)', async () => {
+    // Model-side UI does not hydrate the agency-scoped cache. Service must drive truth.
+    mockConfirmService.mockResolvedValue({
+      modelId: 'model-2',
+      acceptedByAgencyId: 'ag-9',
+      recruitingThreadId: 't-9',
+    });
+    mockUpdateThreadChatType.mockResolvedValue(undefined);
+
+    const result = await confirmApplicationByModel('app-not-in-cache', 'user-1');
+
+    expect(result).not.toBeNull();
+    expect(result?.modelId).toBe('model-2');
+    expect(mockUpdateThreadChatType).toHaveBeenCalledWith('t-9', 'active_model');
   });
 });
 
@@ -564,12 +587,12 @@ describe('rejectApplicationByModel', () => {
     expect(getApplicationById('app-1')?.status).toBe('rejected');
   });
 
-  it('returns false when application is not in pending_model_confirmation state', async () => {
-    const pending = { ...BASE_APP, id: 'app-2', status: 'pending' as const };
-    mockFetchApps.mockResolvedValue([pending]);
-    await refreshApplications();
-    const result = await rejectApplicationByModel('app-2', 'user-1');
+  it('returns false when the service rejects the wrong status server-side', async () => {
+    // Server enforces status='pending_model_confirmation' + applicant_user_id + RLS.
+    mockRejectService.mockResolvedValue(false);
+    const result = await rejectApplicationByModel('app-1', 'user-1');
     expect(result).toBe(false);
+    expect(getApplicationById('app-1')?.status).toBe('pending_model_confirmation');
   });
 
   it('returns false when the service call fails', async () => {
@@ -579,9 +602,16 @@ describe('rejectApplicationByModel', () => {
     expect(getApplicationById('app-1')?.status).toBe('pending_model_confirmation');
   });
 
-  it('returns false when application id is unknown', async () => {
+  it('returns false when service rejects unknown application id', async () => {
+    mockRejectService.mockResolvedValue(false);
     const result = await rejectApplicationByModel('unknown-id', 'user-1');
     expect(result).toBe(false);
+  });
+
+  it('still works when the local cache has no entry (model-side UI)', async () => {
+    mockRejectService.mockResolvedValue(true);
+    const result = await rejectApplicationByModel('app-not-in-cache', 'user-1');
+    expect(result).toBe(true);
   });
 });
 

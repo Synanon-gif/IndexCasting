@@ -227,7 +227,11 @@ describe('applicationsSupabase (recruiting helpers)', () => {
       });
 
       const result = await confirmApplicationByModel('app-1', 'user-1');
-      expect(result).toEqual({ modelId: 'merged-model-id' });
+      expect(result).toEqual({
+        modelId: 'merged-model-id',
+        acceptedByAgencyId: 'ag-1',
+        recruitingThreadId: null,
+      });
       expect(from).toHaveBeenCalledWith('model_agency_territories');
       expect(rpc).toHaveBeenCalledWith('create_model_from_accepted_application', {
         p_application_id: 'app-1',
@@ -286,7 +290,11 @@ describe('applicationsSupabase (recruiting helpers)', () => {
       });
 
       const result = await confirmApplicationByModel('app-1', 'user-1');
-      expect(result).toEqual({ modelId: 'merged-model-id' });
+      expect(result).toEqual({
+        modelId: 'merged-model-id',
+        acceptedByAgencyId: 'ag-1',
+        recruitingThreadId: null,
+      });
       expect(consoleErrorSpy).toHaveBeenCalledWith(
         expect.stringContaining('[recruiting] MAT missing'),
         expect.objectContaining({
@@ -320,7 +328,11 @@ describe('applicationsSupabase (recruiting helpers)', () => {
         return Promise.resolve({ data: null, error: null });
       });
       const result = await confirmApplicationByModel('app-1', 'user-1');
-      expect(result).toEqual({ modelId: 'model-x' });
+      expect(result).toEqual({
+        modelId: 'model-x',
+        acceptedByAgencyId: null,
+        recruitingThreadId: null,
+      });
       expect(rpc).toHaveBeenCalledWith('create_model_from_accepted_application', {
         p_application_id: 'app-1',
       });

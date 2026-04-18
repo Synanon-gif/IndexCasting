@@ -556,7 +556,11 @@ export async function updateApplicationsProfileForApplicant(
 export async function confirmApplicationByModel(
   applicationId: string,
   applicantUserId: string,
-): Promise<{ modelId: string | null } | null> {
+): Promise<{
+  modelId: string | null;
+  acceptedByAgencyId: string | null;
+  recruitingThreadId: string | null;
+} | null> {
   try {
     const { data, error } = await supabase
       .from('model_applications')
@@ -564,7 +568,7 @@ export async function confirmApplicationByModel(
       .eq('id', applicationId)
       .eq('applicant_user_id', applicantUserId)
       .eq('status', 'pending_model_confirmation')
-      .select('id, accepted_by_agency_id, pending_territories')
+      .select('id, accepted_by_agency_id, pending_territories, recruiting_thread_id')
       .maybeSingle();
 
     if (error) {
@@ -582,6 +586,8 @@ export async function confirmApplicationByModel(
     const modelId = await createModelFromApplication(applicationId);
     const agencyId =
       (data as { accepted_by_agency_id?: string | null }).accepted_by_agency_id ?? null;
+    const recruitingThreadId =
+      (data as { recruiting_thread_id?: string | null }).recruiting_thread_id ?? null;
     const pendingList = normalizePendingTerritories(
       (data as { pending_territories?: unknown }).pending_territories,
     );
@@ -606,7 +612,7 @@ export async function confirmApplicationByModel(
         });
       }
     }
-    return { modelId };
+    return { modelId, acceptedByAgencyId: agencyId, recruitingThreadId };
   } catch (e) {
     console.error('confirmApplicationByModel exception:', e);
     return null;
