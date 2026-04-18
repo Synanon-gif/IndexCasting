@@ -18,6 +18,17 @@ import type { ClientAssignmentFlag } from '../services/clientAssignmentsSupabase
 import type { AgencyCalendarItem, CalendarEntry } from '../services/calendarSupabase';
 import { stripClockSeconds } from '../utils/formatTimeForUi';
 
+// Filter legacy "Client" / "Agency" / "Model" stub strings — these are placeholders,
+// not real organization names, and must never be displayed.
+const PLACEHOLDER_NAMES_LC = new Set(['client', 'agency', 'model']);
+function sanitizeOrgName(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const t = value.trim();
+  if (!t) return '';
+  if (PLACEHOLDER_NAMES_LC.has(t.toLowerCase())) return '';
+  return t;
+}
+
 export type UnifiedCalendarAgendaProps = {
   calendarMonth: { year: number; month: number };
   setCalendarMonth: React.Dispatch<React.SetStateAction<{ year: number; month: number }>>;
@@ -238,9 +249,9 @@ export const UnifiedCalendarAgenda: React.FC<UnifiedCalendarAgendaProps> = ({
                               {option.model_name ?? uiCopy.common.unknownModel} · {dateStr}
                             </Text>
                             <Text style={styles.cardMeta}>
-                              {option.client_organization_name?.trim() ||
-                                option.client_name?.trim() ||
-                                'Client'}
+                              {sanitizeOrgName(option.client_organization_name) ||
+                                sanitizeOrgName(option.client_name) ||
+                                uiCopy.common.unknownClient}
                               {start
                                 ? ` · ${stripClockSeconds(start)}${end ? `–${stripClockSeconds(end)}` : ''}`
                                 : ''}

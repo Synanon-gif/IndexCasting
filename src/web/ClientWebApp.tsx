@@ -2203,7 +2203,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       resolvedClientOrgDisplayName?.trim() ||
       auth.profile?.company_name?.trim() ||
       auth.profile?.display_name?.trim() ||
-      'Client';
+      uiCopy.common.unknownClient;
     addOptionRequest(clientOrgName, modelName, modelId, date, resolvedProjectId, {
       ...extra,
       ...pkgExtra,

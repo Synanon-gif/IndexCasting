@@ -2,6 +2,7 @@ import { supabase } from '../../lib/supabase';
 import { pooledSubscribe } from './realtimeChannelPool';
 import { OPTION_REQUEST_SELECT } from './optionRequestsSupabase';
 import type { SupabaseOptionRequest } from './optionRequestsSupabase';
+import { uiCopy } from '../constants/uiCopy';
 
 /** Alle Felder der calendar_entries-Tabelle — kein SELECT * mehr. */
 const CALENDAR_ENTRY_SELECT =
@@ -34,6 +35,19 @@ function asBookingDetails(raw: unknown): BookingDetails {
 
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.trim());
+}
+
+// Generic role labels that legacy data sometimes stored as a stub
+// ("Client", "Agency", "Model"). They MUST never be displayed as if they were
+// a real organization/person name. Any string matching one of these (case-
+// insensitive, trimmed) is treated as empty by display helpers.
+const PLACEHOLDER_NAMES_LC = new Set(['client', 'agency', 'model']);
+function sanitizePlaceholder(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const t = value.trim();
+  if (!t) return '';
+  if (PLACEHOLDER_NAMES_LC.has(t.toLowerCase())) return '';
+  return t;
 }
 
 /**
@@ -386,9 +400,9 @@ export async function deleteCalendarEntryById(entryId: string): Promise<boolean>
  * Title source-of-truth priority (matches DB trigger fn_ensure_calendar_on_option_confirmed):
  *   1. option_requests.client_organization_name      (canonical org display name)
  *   2. option_requests.agency_organization_name      (only for agency-only flows)
- *   3. option_requests.client_name                   (legacy fallback)
- *   4. calendar_entries.client_name                  (older row fallback)
- *   5. literal "Client"                              (last resort)
+ *   3. option_requests.client_name                   (legacy fallback, placeholder-filtered)
+ *   4. calendar_entries.client_name                  (older row fallback, placeholder-filtered)
+ *   5. uiCopy.common.unknownClient                   (last resort, never the literal "Client")
  */
 export async function updateCalendarEntryToJob(optionRequestId: string): Promise<boolean> {
   try {
@@ -414,9 +428,9 @@ export async function updateCalendarEntryToJob(optionRequestId: string): Promise
       if (optRow) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const o = optRow as any;
-        const clientOrg = (o.client_organization_name ?? '').toString().trim();
-        const agencyOrg = (o.agency_organization_name ?? '').toString().trim();
-        const legacyName = (o.client_name ?? '').toString().trim();
+        const clientOrg = sanitizePlaceholder(o.client_organization_name);
+        const agencyOrg = sanitizePlaceholder(o.agency_organization_name);
+        const legacyName = sanitizePlaceholder(o.client_name);
         const isAgencyOnly = o.is_agency_only === true;
         displayName =
           clientOrg || (isAgencyOnly ? agencyOrg : '') || legacyName || agencyOrg || null;
@@ -426,11 +440,8 @@ export async function updateCalendarEntryToJob(optionRequestId: string): Promise
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const fallbackFromCalendar = (rows[0] as any).client_name;
-    const clientName =
-      displayName ||
-      (typeof fallbackFromCalendar === 'string' && fallbackFromCalendar.trim()) ||
-      'Client';
+    const fallbackFromCalendar = sanitizePlaceholder((rows[0] as any).client_name);
+    const clientName = displayName || fallbackFromCalendar || uiCopy.common.unknownClient;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const ids = rows.map((r: any) => r.id);

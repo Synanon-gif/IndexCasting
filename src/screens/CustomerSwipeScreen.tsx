@@ -312,7 +312,7 @@ export const CustomerSwipeScreen: React.FC = () => {
         auth?.profile?.company_name?.trim() ||
         auth?.profile?.display_name?.trim() ||
         auth?.profile?.email?.trim() ||
-        'Client';
+        uiCopy.common.unknownClient;
       const countryFromCityFilter =
         filters.city !== 'all' ? (CITY_TO_COUNTRY[filters.city] ?? undefined) : undefined;
       addOptionRequest(clientOrgLabel, model.name, model.id, date, undefined, {

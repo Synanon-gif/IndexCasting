@@ -29,6 +29,18 @@ export type ModelCounterpartyLabelInput = {
   clientName?: string | null;
 };
 
+// Generic role labels that legacy data sometimes stored in client_name as a
+// stub ("Client", "Agency", "Model"). They MUST be treated as placeholders and
+// must never be displayed as if they were a real organization name.
+const PLACEHOLDER_NAMES = new Set(['client', 'agency', 'model']);
+
+function sanitizeName(value?: string | null): string {
+  const t = value?.trim();
+  if (!t) return '';
+  if (PLACEHOLDER_NAMES.has(t.toLowerCase())) return '';
+  return t;
+}
+
 /**
  * Build the combined model-facing counterparty label.
  *
@@ -38,23 +50,23 @@ export type ModelCounterpartyLabelInput = {
  *     A model can have multiple agencies (one per territory), so showing the
  *     originating agency is required context.
  *   - For agency-only flows (no client), only the agency name is shown.
- *   - Generic placeholders ("Client", "Agency") are NEVER returned when any
- *     real org / person name is available.
+ *   - Generic placeholders ("Client", "Agency", "Model") are NEVER returned;
+ *     legacy client_name stubs holding those values are filtered out.
  */
 function counterpartyLabelFromFields(req: ModelCounterpartyLabelInput): string {
-  const clientOrg = req.clientOrganizationName?.trim();
-  const agencyOrg = req.agencyOrganizationName?.trim();
-  const legacyClientName = req.clientName?.trim();
+  const clientOrg = sanitizeName(req.clientOrganizationName);
+  const agencyOrg = sanitizeName(req.agencyOrganizationName);
+  const legacyClientName = sanitizeName(req.clientName);
 
   if (req.isAgencyOnly) {
-    return agencyOrg || clientOrg || legacyClientName || 'Agency event';
+    return agencyOrg || clientOrg || legacyClientName || uiCopy.common.unknownAgency;
   }
 
   const clientLabel = clientOrg || legacyClientName;
   if (clientLabel && agencyOrg && clientLabel !== agencyOrg) {
     return `${clientLabel} · via ${agencyOrg}`;
   }
-  return clientLabel || agencyOrg || 'Request';
+  return clientLabel || agencyOrg || uiCopy.common.unknownClient;
 }
 
 /**
