@@ -893,6 +893,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
             inviteOrganizationId={agencyOrganizationId ?? profile?.organization_id ?? null}
             onRefresh={refreshAgencyModelLists}
             onRosterRemoveLocal={removeModelFromLocalRoster}
+            onRepresentationEnded={refreshBookingThreads}
             focusModelId={searchModelId}
             onFocusConsumed={() => setSearchModelId(null)}
           />
@@ -2815,6 +2816,12 @@ const MyModelsTab: React.FC<{
   onRefresh: () => void;
   /** After successful `agency_remove_model`, drop from dashboard + My Models lists immediately. */
   onRosterRemoveLocal?: (modelId: string) => void;
+  /**
+   * Defense-in-depth: after `agency_remove_model` succeeds, the parent should
+   * refresh the booking/recruiting thread cache so the now-`representation_ended`
+   * chat disappears immediately (service-side filter is authoritative).
+   */
+  onRepresentationEnded?: () => void;
   focusModelId?: string | null;
   onFocusConsumed?: () => void;
 }> = ({
@@ -2824,6 +2831,7 @@ const MyModelsTab: React.FC<{
   inviteOrganizationId,
   onRefresh,
   onRosterRemoveLocal,
+  onRepresentationEnded,
   focusModelId,
   onFocusConsumed,
 }) => {
@@ -4579,6 +4587,11 @@ const MyModelsTab: React.FC<{
                   setEditState(buildEditState({ name: '' }));
                   void onRefresh();
                   void refreshApplications();
+                  // Defense-in-depth: refresh booking/recruiting thread cache so
+                  // the now-`representation_ended` chat disappears immediately.
+                  // Service-side filter (`getThreadsForAgency`) is authoritative;
+                  // this avoids stale UI between mutation and next tab refresh.
+                  onRepresentationEnded?.();
                   showAppAlert(
                     uiCopy.alerts.endRepresentationSuccessTitle,
                     uiCopy.alerts.endRepresentationSuccessBody,

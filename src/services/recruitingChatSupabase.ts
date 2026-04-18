@@ -85,9 +85,12 @@ export async function getThreads(
     );
   }
   try {
+    // Defense-in-Depth: hide threads whose application is `representation_ended`
+    // (siehe getThreadsForAgency JSDoc — gleiche Begründung).
     let q = supabase
       .from('recruiting_chat_threads')
-      .select('*')
+      .select('*, model_applications!inner(status)')
+      .neq('model_applications.status', 'representation_ended')
       .order('created_at', { ascending: false })
       .limit(opts?.limit ?? 100);
     if (agencyId) q = q.eq('agency_id', agencyId);
@@ -97,7 +100,20 @@ export async function getThreads(
       console.error('getThreads error:', error);
       return [];
     }
-    return (data ?? []) as SupabaseRecruitingThread[];
+    const rows = (data ?? []) as Array<
+      SupabaseRecruitingThread & {
+        model_applications?: { status?: string | null } | { status?: string | null }[] | null;
+      }
+    >;
+    const filtered = rows.filter((r) => {
+      const app = Array.isArray(r.model_applications)
+        ? r.model_applications[0]
+        : r.model_applications;
+      return app?.status !== 'representation_ended';
+    });
+    return filtered.map(
+      ({ model_applications: _ma, ...rest }) => rest,
+    ) as SupabaseRecruitingThread[];
   } catch (e) {
     console.error('getThreads exception:', e);
     return [];
@@ -235,7 +251,21 @@ export async function createThread(
   }
 }
 
-/** Threads für eine Agentur (Booking Chats). */
+/**
+ * Threads für eine Agentur (Booking / Recruiting Chats).
+ *
+ * Filter (Defense-in-Depth — siehe System-Invariante J / 27.13 + agency_remove_model 20260905):
+ * Threads, deren zugehörige `model_applications.status = 'representation_ended'` ist (z. B. nach
+ * `agency_remove_model`), werden serverseitig ausgeblendet. Andernfalls würden alte Recruiting-Chats
+ * zu beendeten Repräsentationen weiterhin in der Messages → Recruiting Liste auftauchen und User
+ * verwirren (insbesondere wenn das Model erneut applied → neuer Thread + alter Thread sichtbar).
+ *
+ * Implementation: PostgREST embedded `!inner` join auf `model_applications`, mit `.neq` auf das
+ * Embed-Feld `status`. `!inner` ist sicher, weil `recruiting_chat_threads.application_id` ein
+ * NOT NULL FK auf `model_applications(id) ON DELETE CASCADE` ist (kein Orphan möglich). Zusätzlich
+ * filtern wir client-seitig aus (Belt & Suspenders) für den Fall, dass PostgREST in einer Edge-Case
+ * den Embed-Filter nicht anwendet (z. B. veraltete supabase-js Version).
+ */
 export async function getThreadsForAgency(
   agencyId: string,
   options?: { createdByUserId?: string | null } & ThreadListOptions,
@@ -243,8 +273,11 @@ export async function getThreadsForAgency(
   try {
     let q = supabase
       .from('recruiting_chat_threads')
-      .select('id, application_id, model_name, agency_id, organization_id, created_by, created_at')
+      .select(
+        'id, application_id, model_name, agency_id, organization_id, created_by, created_at, model_applications!inner(status)',
+      )
       .eq('agency_id', agencyId)
+      .neq('model_applications.status', 'representation_ended')
       .order('created_at', { ascending: false })
       .limit(options?.limit ?? 100);
     if (options?.createdByUserId) q = q.eq('created_by', options.createdByUserId);
@@ -254,7 +287,20 @@ export async function getThreadsForAgency(
       console.error('getThreadsForAgency error:', error);
       return [];
     }
-    return (data ?? []) as SupabaseRecruitingThread[];
+    const rows = (data ?? []) as Array<
+      SupabaseRecruitingThread & {
+        model_applications?: { status?: string | null } | { status?: string | null }[] | null;
+      }
+    >;
+    const filtered = rows.filter((r) => {
+      const app = Array.isArray(r.model_applications)
+        ? r.model_applications[0]
+        : r.model_applications;
+      return app?.status !== 'representation_ended';
+    });
+    return filtered.map(
+      ({ model_applications: _ma, ...rest }) => rest,
+    ) as SupabaseRecruitingThread[];
   } catch (e) {
     console.error('getThreadsForAgency exception:', e);
     return [];
