@@ -257,6 +257,15 @@ function AppContent() {
   const [sharedParams, setSharedParams] = useState<{ name: string; ids: string[]; token: string | null } | null>(getSharedParams);
   const [bookingThreadId, setBookingThreadId] = useState<string | null>(getBookingThreadId);
   const [guestLinkId, setGuestLinkId] = useState<string | null>(getGuestLinkId);
+  /**
+   * After a guest signs up via a shared package link, the link ID is restored
+   * from `localStorage.ic_pending_guest_link` into this state and passed to
+   * `ClientView` → `ClientWebApp` as `initialPackageId`. The workspace opens
+   * the package automatically on mount and calls `onInitialPackageConsumed`,
+   * which clears this state. Avoids the URL-strip race that previously left
+   * authenticated users with an empty workspace.
+   */
+  const [pendingPackageId, setPendingPackageId] = useState<string | null>(null);
   const initialRouting =
     Platform.OS === 'web'
       ? computeInitialInviteClaimFromUrlAndPeek()
@@ -449,22 +458,22 @@ function AppContent() {
   }, [isAuthenticatedNonGuest, guestLinkId]);
 
   // Restore pending guest link after signup: if user signed up from GuestView,
-  // the link ID was persisted to localStorage. On the next authenticated mount,
-  // restore it so the user can return to the package they were viewing.
+  // the link ID was persisted to localStorage. Once the new session is
+  // authenticated and non-guest, hand the package ID to ClientWebApp via
+  // `initialPackageId` so the workspace opens it automatically on mount.
+  // We intentionally do NOT re-write `?guest=` into the URL — that race with
+  // the strip effect above previously left users in an empty workspace.
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
-    if (guestLinkId) return;
-    if (!session) return;
+    if (!isAuthenticatedNonGuest) return;
+    if (pendingPackageId) return;
     try {
       const pending = localStorage.getItem('ic_pending_guest_link');
       if (!pending) return;
       localStorage.removeItem('ic_pending_guest_link');
-      const u = new URL(window.location.href);
-      u.searchParams.set('guest', pending);
-      window.history.replaceState({}, '', u.pathname + u.search + u.hash);
-      setGuestLinkId(pending);
+      setPendingPackageId(pending);
     } catch { /* best-effort */ }
-  }, [session, guestLinkId]);
+  }, [isAuthenticatedNonGuest, pendingPackageId]);
 
   // Restore pending shared-selection after signup: if user signed up from
   // SharedSelectionView, the params were persisted to localStorage. After auth
@@ -1069,6 +1078,8 @@ function AppContent() {
               clientType={clientType}
               onClientTypeChange={setClientType}
               onBackToRoleSelection={handleBackToRoleSelection}
+              initialPackageId={pendingPackageId}
+              onInitialPackageConsumed={() => setPendingPackageId(null)}
             />
           </ClientPaywallGuard>
         )}

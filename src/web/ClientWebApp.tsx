@@ -376,6 +376,13 @@ type ClientWebAppProps = {
   clientType: 'fashion' | 'commercial';
   onClientTypeChange: (t: 'fashion' | 'commercial') => void;
   onBackToRoleSelection: () => void;
+  /**
+   * When set on mount (e.g. after a guest signs up via a shared package link), the workspace
+   * automatically opens that package. Consumed exactly once via `onInitialPackageConsumed`.
+   * See App.tsx `ic_pending_guest_link` recovery effect.
+   */
+  initialPackageId?: string | null;
+  onInitialPackageConsumed?: () => void;
 };
 
 type Project = {
@@ -478,6 +485,8 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   clientType: _clientType,
   onClientTypeChange: _onClientTypeChange,
   onBackToRoleSelection,
+  initialPackageId,
+  onInitialPackageConsumed,
 }) => {
   const auth = useAuth();
   const { width: clientWindowWidth, height: clientWindowHeight } = useWindowDimensions();
@@ -2218,6 +2227,25 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       clearFeedbackLater();
     }
   };
+
+  // Auto-open a package on mount when an `initialPackageId` is provided
+  // (e.g. authenticated user just signed up via a shared package guest link —
+  // see App.tsx `ic_pending_guest_link` recovery effect). Consumed exactly
+  // once via `onInitialPackageConsumed`; the consumed-ref guards against
+  // React StrictMode double-mount and accidental re-runs.
+  const initialPackageConsumedRef = useRef<string | null>(null);
+  useEffect(() => {
+    const id = (initialPackageId ?? '').trim();
+    if (!id) return;
+    if (initialPackageConsumedRef.current === id) return;
+    initialPackageConsumedRef.current = id;
+    void handlePackagePress({ package_id: id }).finally(() => {
+      onInitialPackageConsumed?.();
+    });
+    // handlePackagePress is stable (closure over setters only); we intentionally
+    // only react to initialPackageId changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialPackageId]);
 
   const openDetails = (id: string) => {
     setDetailId(id);
