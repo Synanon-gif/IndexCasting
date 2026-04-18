@@ -237,7 +237,7 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
         const agencyName =
           embeddedAgencyName(app)?.trim() ||
           (app.agency_id ? (await getAgencyChatDisplayById(app.agency_id))?.name : undefined) ||
-          'Agency';
+          uiCopy.common.unknownAgency;
         return {
           threadId: app.recruiting_thread_id!,
           applicationId: app.id,
@@ -405,7 +405,7 @@ export const ModelApplicationsView: React.FC<ModelApplicationsViewProps> = ({
                             Agency:{' '}
                             {embeddedAgencyName(app)?.trim() ||
                               agencyNames[app.agency_id] ||
-                              'Agency'}
+                              uiCopy.common.unknownAgency}
                           </Text>
                         )}
                         <View
