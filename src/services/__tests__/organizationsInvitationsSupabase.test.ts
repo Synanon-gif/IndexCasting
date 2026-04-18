@@ -5,6 +5,9 @@ jest.mock('../../../lib/supabase', () => ({
     auth: {
       getUser: jest.fn(() => Promise.resolve({ data: { user: { id: 'user-1' } }, error: null })),
     },
+    functions: {
+      invoke: jest.fn(),
+    },
   },
 }));
 
@@ -17,9 +20,11 @@ import {
   buildOrganizationInviteUrl,
   getMyClientMemberRole,
   dissolveOrganization,
+  cancelDissolvedOrgStripeSubscription,
 } from '../organizationsInvitationsSupabase';
 
 const rpc = supabase.rpc as jest.Mock;
+const invoke = supabase.functions.invoke as jest.Mock;
 
 describe('organizationsInvitationsSupabase', () => {
   let consoleErrorSpy: jest.SpyInstance;
@@ -194,6 +199,64 @@ describe('organizationsInvitationsSupabase', () => {
     await expect(dissolveOrganization('org-x')).resolves.toEqual({
       ok: false,
       error: 'forbidden_not_owner',
+    });
+  });
+
+  describe('cancelDissolvedOrgStripeSubscription', () => {
+    let consoleWarnSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      consoleWarnSpy.mockRestore();
+    });
+
+    it('Erfolg: liefert stripe-Felder aus Edge-Function-Antwort', async () => {
+      invoke.mockResolvedValueOnce({
+        data: {
+          ok: true,
+          stripe_subscription_id: 'sub_abc',
+          stripe_status: 'canceled',
+          note: 'cancelled at period end',
+        },
+        error: null,
+      });
+      const res = await cancelDissolvedOrgStripeSubscription('org-uuid-1');
+      expect(res.ok).toBe(true);
+      if (res.ok) {
+        expect(res.data.stripeSubscriptionId).toBe('sub_abc');
+        expect(res.data.stripeStatus).toBe('canceled');
+        expect(res.data.note).toBe('cancelled at period end');
+      }
+      expect(invoke).toHaveBeenCalledWith('stripe-cancel-dissolved-org', {
+        body: { organization_id: 'org-uuid-1' },
+      });
+    });
+
+    it('Edge-Function transport error: ok=false, fail-tolerant', async () => {
+      invoke.mockResolvedValueOnce({
+        data: null,
+        error: { message: 'network failure' },
+      });
+      const res = await cancelDissolvedOrgStripeSubscription('org-x');
+      expect(res).toEqual({ ok: false, error: 'network failure' });
+    });
+
+    it('Edge-Function liefert ok:false (z. B. kein Stripe-Sub vorhanden)', async () => {
+      invoke.mockResolvedValueOnce({
+        data: { ok: false, error: 'no_stripe_subscription' },
+        error: null,
+      });
+      const res = await cancelDissolvedOrgStripeSubscription('org-x');
+      expect(res).toEqual({ ok: false, error: 'no_stripe_subscription' });
+    });
+
+    it('Exception im invoke (Throw): fängt ab und liefert serviceErr', async () => {
+      invoke.mockRejectedValueOnce(new Error('boom'));
+      const res = await cancelDissolvedOrgStripeSubscription('org-x');
+      expect(res).toEqual({ ok: false, error: 'boom' });
     });
   });
 });
