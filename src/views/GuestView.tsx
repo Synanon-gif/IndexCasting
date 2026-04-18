@@ -13,72 +13,10 @@ import {
   Linking,
   Modal,
   useWindowDimensions,
-  type ViewStyle,
   type ListRenderItemInfo,
 } from 'react-native';
 import { isMobileWidth } from '../theme/breakpoints';
 import { StorageImage } from '../components/StorageImage';
-
-/**
- * Semi-transparent diagonal watermark overlay — mirrors the GuestWatermark in
- * ClientWebApp.tsx. pointerEvents="none" so it never blocks tap targets below it.
- *
- * Architecture note (M2): The serve-watermarked-image Edge Function generates
- * server-side SVG watermarks for authenticated agency/client users. It cannot
- * be used here because:
- *   a) Guest users are unauthenticated (no JWT) at the browse stage.
- *   b) React Native's Image component does not render SVG URLs without a
- *      dedicated SVG renderer library.
- * This overlay is therefore the correct, intentional approach for unauthenticated
- * guests. Any future server-side watermarking for guests would require a separate
- * public endpoint (no JWT) that generates watermarked image blobs directly.
- */
-const GuestWatermark: React.FC<{ style?: ViewStyle }> = ({ style }) => (
-  <View
-    pointerEvents="none"
-    style={[
-      {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        overflow: 'hidden',
-        zIndex: 10,
-      },
-      style,
-    ]}
-  >
-    {[0, 1, 2, 3, 4].map((row) =>
-      [0, 1].map((col) => (
-        <View
-          key={`${row}-${col}`}
-          style={{
-            position: 'absolute',
-            top: `${row * 25}%` as unknown as number,
-            left: `${col * 50}%` as unknown as number,
-            width: '60%' as unknown as number,
-            alignItems: 'center',
-            transform: [{ rotate: '-30deg' }],
-          }}
-        >
-          <Text
-            style={{
-              color: 'rgba(255,255,255,0.28)',
-              fontSize: 11,
-              fontWeight: '700',
-              letterSpacing: 2,
-              textTransform: 'uppercase',
-            }}
-            selectable={false}
-          >
-            PREVIEW · IndexCasting
-          </Text>
-        </View>
-      )),
-    )}
-  </View>
-);
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, typography } from '../theme/theme';
 import { supabase } from '../../lib/supabase';
@@ -706,7 +644,6 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
                 style={styles.galleryImage}
                 resizeMode="contain"
               />
-              <GuestWatermark />
             </View>
           ) : null}
 
@@ -868,7 +805,6 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
                         style={styles.modelImageBrowse}
                         resizeMode="contain"
                       />
-                      <GuestWatermark />
                       {imageCount > 1 && (
                         <View style={styles.imageCountBadge}>
                           <Text style={styles.imageCountLabel}>{imageCount}</Text>
