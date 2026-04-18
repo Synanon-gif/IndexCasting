@@ -167,6 +167,12 @@ export type ApplicationListOptions = {
    * Pass to load earlier items ("Load more").
    */
   afterCreatedAt?: string;
+  /**
+   * Set to `true` when the caller intentionally invokes the function without
+   * an agencyId (e.g. model-side `refreshApplications` where RLS scopes rows
+   * via `applicant_user_id = auth.uid()`). Suppresses the defensive warning.
+   */
+  allowUnscoped?: boolean;
 };
 
 export async function getApplications(
@@ -177,7 +183,7 @@ export async function getApplications(
     console.error('[getApplications] agencyId provided but empty — call aborted');
     return [];
   }
-  if (agencyId === undefined) {
+  if (agencyId === undefined && !opts?.allowUnscoped) {
     console.warn(
       '[getApplications] called without agencyId — relying on RLS only (no defense-in-depth org filter)',
     );

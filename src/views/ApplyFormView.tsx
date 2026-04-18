@@ -646,7 +646,12 @@ export const ApplyFormView: React.FC<{
           >
             {imageRightsConfirmed && <Text style={styles.rightsCheckmark}>✓</Text>}
           </View>
-          <Text style={styles.rightsCheckLabel}>
+          <Text
+            style={[
+              styles.rightsCheckLabel,
+              !imageRightsConfirmed && styles.rightsCheckLabelUnchecked,
+            ]}
+          >
             I confirm I have all necessary rights and consents to share these photos as part of my
             application.
           </Text>
@@ -889,7 +894,7 @@ const styles = StyleSheet.create({
     height: 20,
     borderRadius: 4,
     borderWidth: 1.5,
-    borderColor: colors.border,
+    borderColor: colors.buttonSkipRed,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 2,
@@ -906,6 +911,10 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     flex: 1,
     lineHeight: 16,
+  },
+  rightsCheckLabelUnchecked: {
+    color: colors.buttonSkipRed,
+    fontWeight: '600',
   },
   submitLabel: {
     ...typography.label,

@@ -87,10 +87,21 @@ export async function getThreads(
   try {
     // Defense-in-Depth: hide threads whose application is `representation_ended`
     // (siehe getThreadsForAgency JSDoc — gleiche Begründung).
+    //
+    // PGRST201-FIX: There are two FK relationships between `recruiting_chat_threads`
+    // and `model_applications`:
+    //   1. `recruiting_chat_threads.application_id` → `model_applications.id`
+    //      (canonical, FK name: `recruiting_chat_threads_application_id_fkey`)
+    //   2. `model_applications.recruiting_thread_id` → `recruiting_chat_threads.id`
+    //      (reverse pointer, FK name: `fk_recruiting_thread`)
+    // PostgREST cannot pick automatically — we MUST disambiguate via the explicit
+    // FK constraint name. We use the canonical forward FK + alias `application`.
     let q = supabase
       .from('recruiting_chat_threads')
-      .select('*, model_applications!inner(status)')
-      .neq('model_applications.status', 'representation_ended')
+      .select(
+        '*, application:model_applications!recruiting_chat_threads_application_id_fkey!inner(status)',
+      )
+      .neq('application.status', 'representation_ended')
       .order('created_at', { ascending: false })
       .limit(opts?.limit ?? 100);
     if (agencyId) q = q.eq('agency_id', agencyId);
@@ -102,18 +113,14 @@ export async function getThreads(
     }
     const rows = (data ?? []) as Array<
       SupabaseRecruitingThread & {
-        model_applications?: { status?: string | null } | { status?: string | null }[] | null;
+        application?: { status?: string | null } | { status?: string | null }[] | null;
       }
     >;
     const filtered = rows.filter((r) => {
-      const app = Array.isArray(r.model_applications)
-        ? r.model_applications[0]
-        : r.model_applications;
+      const app = Array.isArray(r.application) ? r.application[0] : r.application;
       return app?.status !== 'representation_ended';
     });
-    return filtered.map(
-      ({ model_applications: _ma, ...rest }) => rest,
-    ) as SupabaseRecruitingThread[];
+    return filtered.map(({ application: _a, ...rest }) => rest) as SupabaseRecruitingThread[];
   } catch (e) {
     console.error('getThreads exception:', e);
     return [];
@@ -304,13 +311,16 @@ export async function getThreadsForAgency(
   options?: { createdByUserId?: string | null } & ThreadListOptions,
 ): Promise<SupabaseRecruitingThread[]> {
   try {
+    // PGRST201-FIX: explicit FK constraint name to disambiguate the two FK
+    // relationships between `recruiting_chat_threads` and `model_applications`
+    // (see getThreads for full explanation).
     let q = supabase
       .from('recruiting_chat_threads')
       .select(
-        'id, application_id, model_name, agency_id, organization_id, created_by, created_at, model_applications!inner(status)',
+        'id, application_id, model_name, agency_id, organization_id, created_by, created_at, application:model_applications!recruiting_chat_threads_application_id_fkey!inner(status)',
       )
       .eq('agency_id', agencyId)
-      .neq('model_applications.status', 'representation_ended')
+      .neq('application.status', 'representation_ended')
       .order('created_at', { ascending: false })
       .limit(options?.limit ?? 100);
     if (options?.createdByUserId) q = q.eq('created_by', options.createdByUserId);
@@ -322,18 +332,14 @@ export async function getThreadsForAgency(
     }
     const rows = (data ?? []) as Array<
       SupabaseRecruitingThread & {
-        model_applications?: { status?: string | null } | { status?: string | null }[] | null;
+        application?: { status?: string | null } | { status?: string | null }[] | null;
       }
     >;
     const filtered = rows.filter((r) => {
-      const app = Array.isArray(r.model_applications)
-        ? r.model_applications[0]
-        : r.model_applications;
+      const app = Array.isArray(r.application) ? r.application[0] : r.application;
       return app?.status !== 'representation_ended';
     });
-    return filtered.map(
-      ({ model_applications: _ma, ...rest }) => rest,
-    ) as SupabaseRecruitingThread[];
+    return filtered.map(({ application: _a, ...rest }) => rest) as SupabaseRecruitingThread[];
   } catch (e) {
     console.error('getThreadsForAgency exception:', e);
     return [];

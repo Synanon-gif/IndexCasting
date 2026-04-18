@@ -5038,7 +5038,7 @@ const MyModelsTab: React.FC<{
                   borderWidth: 1.5,
                   borderColor: addModelImageRightsConfirmed
                     ? colors.accentGreen
-                    : colors.textSecondary,
+                    : colors.buttonSkipRed,
                   backgroundColor: addModelImageRightsConfirmed
                     ? colors.accentGreen
                     : 'transparent',
@@ -5052,7 +5052,20 @@ const MyModelsTab: React.FC<{
                   <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>✓</Text>
                 )}
               </View>
-              <Text style={[s.metaText, { flex: 1 }]}>{uiCopy.legal.chatFileRightsCheckbox}</Text>
+              <Text
+                style={[
+                  s.metaText,
+                  {
+                    flex: 1,
+                    color: addModelImageRightsConfirmed
+                      ? colors.textSecondary
+                      : colors.buttonSkipRed,
+                    fontWeight: addModelImageRightsConfirmed ? '400' : '600',
+                  },
+                ]}
+              >
+                {uiCopy.legal.chatFileRightsCheckbox}
+              </Text>
             </TouchableOpacity>
           )}
           {(addModelImageFiles.length > 0 || addModelPolaroidFiles.length > 0) && (

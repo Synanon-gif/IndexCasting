@@ -452,7 +452,9 @@ export async function rejectApplication(applicationId: string): Promise<void> {
  * For model views (no storeAgencyId): relies on RLS (applicant_user_id = auth.uid()).
  */
 export async function refreshApplications(): Promise<void> {
-  const apps = await fetchApps(storeAgencyId);
+  const apps = storeAgencyId
+    ? await fetchApps(storeAgencyId)
+    : await fetchApps(undefined, { allowUnscoped: true });
   cache = apps.map(toLocal);
   await attachApplicantModelIdsAndMatFlags(cache);
   notify();

@@ -815,7 +815,7 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
                 height: 18,
                 borderRadius: 3,
                 borderWidth: 1.5,
-                borderColor: imageRightsConfirmed ? colors.accentGreen : colors.textSecondary,
+                borderColor: imageRightsConfirmed ? colors.accentGreen : colors.buttonSkipRed,
                 backgroundColor: imageRightsConfirmed ? colors.accentGreen : 'transparent',
                 marginRight: 8,
                 marginTop: 2,
@@ -829,7 +829,14 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
               )}
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ ...typography.body, fontSize: 12, color: colors.textSecondary }}>
+              <Text
+                style={{
+                  ...typography.body,
+                  fontSize: 12,
+                  color: imageRightsConfirmed ? colors.textSecondary : colors.buttonSkipRed,
+                  fontWeight: imageRightsConfirmed ? '400' : '600',
+                }}
+              >
                 {legalCopy.chatFileRightsCheckbox}
               </Text>
               <Text

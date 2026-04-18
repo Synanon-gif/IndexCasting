@@ -484,7 +484,9 @@ export const BookingChatView: React.FC<Props> = ({
           <View style={[styles.rightsBox, fileRightsConfirmed && styles.rightsBoxOn]}>
             {fileRightsConfirmed ? <Text style={styles.rightsCheck}>✓</Text> : null}
           </View>
-          <Text style={styles.rightsLabel}>{uiCopy.legal.chatFileRightsCheckbox}</Text>
+          <Text style={[styles.rightsLabel, !fileRightsConfirmed && styles.rightsLabelUnchecked]}>
+            {uiCopy.legal.chatFileRightsCheckbox}
+          </Text>
         </TouchableOpacity>
       ) : null}
       <View style={styles.inputRow}>
@@ -849,8 +851,8 @@ const styles = StyleSheet.create({
     width: 18,
     height: 18,
     borderRadius: 4,
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderWidth: 1.5,
+    borderColor: colors.buttonSkipRed,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 2,
@@ -866,6 +868,10 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     flex: 1,
     lineHeight: 16,
+  },
+  rightsLabelUnchecked: {
+    color: colors.buttonSkipRed,
+    fontWeight: '600',
   },
   uploadError: {
     ...typography.body,

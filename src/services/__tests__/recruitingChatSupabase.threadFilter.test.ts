@@ -28,7 +28,7 @@ type Row = {
   created_by: string | null;
   created_at: string;
   chat_type?: string | null;
-  model_applications?: { status: string } | { status: string }[] | null;
+  application?: { status: string } | { status: string }[] | null;
 };
 
 /**
@@ -85,7 +85,7 @@ describe('recruitingChatSupabase — representation_ended filter', () => {
           organization_id: 'org-1',
           created_by: 'user-1',
           created_at: '2026-04-18T10:00:00Z',
-          model_applications: { status: 'accepted' },
+          application: { status: 'accepted' },
         },
         {
           id: 'thr-ended',
@@ -97,7 +97,7 @@ describe('recruitingChatSupabase — representation_ended filter', () => {
           created_at: '2026-04-15T10:00:00Z',
           // Edge case: the embedded filter slipped through (PostgREST or
           // intermediate layer); the client-side filter must still drop it.
-          model_applications: { status: 'representation_ended' },
+          application: { status: 'representation_ended' },
         },
       ];
       mockChain(rows);
@@ -106,8 +106,8 @@ describe('recruitingChatSupabase — representation_ended filter', () => {
 
       expect(result).toHaveLength(1);
       expect(result[0].id).toBe('thr-active');
-      // model_applications must not leak into the returned shape.
-      expect((result[0] as Record<string, unknown>).model_applications).toBeUndefined();
+      // application embed must not leak into the returned shape.
+      expect((result[0] as Record<string, unknown>).application).toBeUndefined();
     });
 
     it('keeps threads when application status is "accepted"', async () => {
@@ -120,7 +120,7 @@ describe('recruitingChatSupabase — representation_ended filter', () => {
           organization_id: null,
           created_by: null,
           created_at: '2026-04-18T10:00:00Z',
-          model_applications: { status: 'accepted' },
+          application: { status: 'accepted' },
         },
       ]);
       const result = await getThreadsForAgency('agency-1');
@@ -138,7 +138,7 @@ describe('recruitingChatSupabase — representation_ended filter', () => {
           organization_id: null,
           created_by: null,
           created_at: '2026-04-18T10:00:00Z',
-          model_applications: [{ status: 'representation_ended' }],
+          application: [{ status: 'representation_ended' }],
         },
       ]);
       const result = await getThreadsForAgency('agency-1');
@@ -163,7 +163,7 @@ describe('recruitingChatSupabase — representation_ended filter', () => {
           organization_id: null,
           created_by: null,
           created_at: '2026-04-18T10:00:00Z',
-          model_applications: { status: 'accepted' },
+          application: { status: 'accepted' },
         },
         {
           id: 'thr-ended',
@@ -173,7 +173,7 @@ describe('recruitingChatSupabase — representation_ended filter', () => {
           organization_id: null,
           created_by: null,
           created_at: '2026-04-10T10:00:00Z',
-          model_applications: { status: 'representation_ended' },
+          application: { status: 'representation_ended' },
         },
       ]);
 
