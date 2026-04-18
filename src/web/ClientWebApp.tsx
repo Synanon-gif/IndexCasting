@@ -7659,7 +7659,15 @@ const SettingsPanel: React.FC<{
   const [calendarFeedBusy, setCalendarFeedBusy] = useState(false);
   const [calendarRevokeBusy, setCalendarRevokeBusy] = useState(false);
   const clientIsOwner = isOrganizationOwner(profile?.org_member_role);
-  const ownerRoleLoading = !!realClientId && !profile?.org_member_role;
+  // Owner-role is "loading" only while we have a session AND the user is still
+  // associated with an organization (organization_id present) but the role
+  // hasn't been resolved yet. After org dissolve the user no longer has an
+  // org_member_role — that's not "loading", that's a final state and we must
+  // fall through to the non-owner branch so the personal account deletion
+  // button stays reachable. Without this guard `ownerRoleLoading` would stay
+  // permanently true post-dissolve and trap the UI in a "Loading…" state.
+  const ownerRoleLoading =
+    !!realClientId && !profile?.org_member_role && !!profile?.organization_id && !orgDissolved;
   const clientOrgId = profile?.organization_id ?? null;
 
   // Load settings: Supabase profile is authoritative for display_name; localStorage fills the rest.

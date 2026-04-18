@@ -650,9 +650,9 @@ export const uiCopy = {
     dissolveOrgTitle: 'Delete organization',
     dissolveOrgDescription:
       'This removes the organization workspace, all team memberships, and pending invitations. Other linked records (projects, requests, billing, subscriptions, etc.) may still exist or prevent deletion if the database blocks it — contact support if removal fails. This cannot be undone for the workspace. After deleting the organization, you can also delete your personal account.',
-    dissolveOrgConfirmTitle: 'Delete organization?',
+    dissolveOrgConfirmTitle: 'Permanently delete this organization?',
     dissolveOrgConfirmMessage:
-      'Are you sure? All team members will be removed and the organization cannot be recovered. This cannot be undone.',
+      'This action cannot be undone. The organization workspace, all team memberships, and pending invitations will be permanently removed. If you want to keep a copy of your data, cancel now and use "Download my data" first. Click "Delete organization" to confirm.',
     dissolveOrgButton: 'Delete organization',
     dissolveOrgWorking: 'Deleting organization…',
     dissolveOrgSuccess: 'Organization deleted. You can now delete your personal account below.',
