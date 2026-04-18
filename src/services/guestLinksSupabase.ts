@@ -1,6 +1,6 @@
 import { supabase } from '../../lib/supabase';
 import { uiCopy } from '../constants/uiCopy';
-import { extractBucketAndPath, resolveStorageUrl } from '../storage/storageUrl';
+import { extractBucketAndPath } from '../storage/storageUrl';
 import { serviceErr, serviceOkData, type ServiceResult } from '../types/serviceResult';
 import { normalizeDocumentspicturesModelImageRef } from '../utils/normalizeModelPortfolioUrl';
 
@@ -266,26 +266,22 @@ export type GuestLinkModel = {
   effective_city?: string | null;
 };
 
-// Signed-URL TTL for guest-visible model images (M-3 fix, Security Audit 2026-04).
-// After a guest link expires or is deactivated, previously seen raw public-bucket
-// URLs would remain permanently accessible. By rewriting image URLs to signed URLs
-// with a TTL at fetch time, newly-loaded sessions receive URLs that expire,
-// limiting exposure without breaking the in-session UX.
+// Edge-Function-based signed URL pipeline for guest packages and shared selections.
 //
-// TTL aligned with the 7-day access window (20260406 update):
-//   - Guest links give 7 days of access from first open.
-//   - Signed URLs therefore use the same 7-day TTL so images stay accessible
-//     for the full duration without requiring in-session re-fetching.
-//   - If a link is deactivated (is_active = false), the RPC stops returning
-//     models; any previously loaded signed URLs become unreachable from the
-//     app (GuestView checks the link every 60 s and shows an error).
-//   - Full mitigation (making documentspictures bucket fully private so expired
-//     signed URLs become truly inaccessible from outside the app) is tracked
-//     as a separate infrastructure migration.
+// Background (Security Audit 2026-04 / 2026-10):
+//   The `documentspictures` bucket is private and intentionally has NO `anon SELECT`
+//   policy on `storage.objects` (the table is owned by `supabase_storage_admin` and
+//   cannot be modified via the Management API postgres role). Anonymous client-side
+//   `createSignedUrl` calls therefore fail with HTTP 400/404 (`Object not found`).
 //
-// GuestView also auto-refreshes signed URLs every 6 hours as a safety net for
-// long-lived sessions (see GuestView.tsx refreshSignedUrls interval).
-const GUEST_IMAGE_SIGNED_TTL_SECONDS = 604_800; // 7 days
+//   The Edge Function `sign-guest-storage-asset` bridges that gap: it runs with the
+//   SERVICE ROLE key (bypasses storage RLS), validates the request against the
+//   appropriate context (active guest_link OR HMAC-validated shared_selection),
+//   and returns short-lived signed URLs ONLY for paths that belong to allowed models.
+//
+//   TTL is 1 hour; GuestView and SharedSelectionView already refresh on demand
+//   (focus/visibility) and via long-running intervals.
+const SIGN_EDGE_FUNCTION = 'sign-guest-storage-asset';
 const DOCUMENTSPICTURES_BUCKET = 'documentspictures';
 
 /**
@@ -300,28 +296,165 @@ function extractStoragePath(url: string, bucket: string): string | null {
   return extracted.path || null;
 }
 
+type SignContext =
+  | { context: 'guest_link'; linkId: string }
+  | { context: 'shared_selection'; modelIds: string[]; token: string };
+
+type SignEdgeResponse = {
+  ok?: boolean;
+  ttl?: number;
+  signed?: Record<string, string>;
+  error?: string;
+};
+
 /**
- * Rewrites an array of storage image URLs to signed URLs with a short TTL.
- * Returns null for any URL that cannot be signed (bucket is private — a public
- * fallback would expose the asset permanently, defeating the TTL).
- * Callers must handle null entries (e.g. hide the image or show a placeholder).
+ * Calls the `sign-guest-storage-asset` Edge Function with a batch of bucket-relative
+ * paths and returns a map `path → signedUrl` for paths the server allowed.
+ *
+ * Paths missing from the response map are either (a) outside the per-context
+ * allowlist (silently skipped server-side, no leak) or (b) genuinely missing from
+ * storage. Callers should treat absent entries as "render a placeholder".
+ *
+ * No throws on RPC error — returns an empty map and logs once per call.
  */
-export async function signImageUrls(urls: string[], modelId: string): Promise<(string | null)[]> {
+async function batchSignPathsViaEdgeFunction(
+  ctx: SignContext,
+  paths: string[],
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (paths.length === 0) return out;
+
+  const body: Record<string, unknown> = {
+    context: ctx.context,
+    paths,
+  };
+  if (ctx.context === 'guest_link') {
+    body.linkId = ctx.linkId;
+  } else {
+    body.modelIds = ctx.modelIds;
+    body.token = ctx.token;
+  }
+
+  try {
+    const { data, error } = await supabase.functions.invoke<SignEdgeResponse>(SIGN_EDGE_FUNCTION, {
+      body,
+    });
+    if (error) {
+      console.error('[batchSignPathsViaEdgeFunction] invoke error', {
+        context: ctx.context,
+        pathCount: paths.length,
+        error: (error as { message?: string })?.message ?? error,
+      });
+      return out;
+    }
+    if (!data?.ok || !data.signed) {
+      console.error('[batchSignPathsViaEdgeFunction] response not ok', {
+        context: ctx.context,
+        pathCount: paths.length,
+        responseError: data?.error,
+      });
+      return out;
+    }
+    for (const [path, signedUrl] of Object.entries(data.signed)) {
+      if (typeof signedUrl === 'string' && signedUrl.length > 0) {
+        out.set(path, signedUrl);
+      }
+    }
+  } catch (e) {
+    console.error('[batchSignPathsViaEdgeFunction] exception', {
+      context: ctx.context,
+      pathCount: paths.length,
+      err: e,
+    });
+  }
+  return out;
+}
+
+/**
+ * Resolves an array of raw image references (canonical URI, legacy public URL,
+ * relative path, bare filename) for a single model into signed URLs by:
+ *   1. Normalising every reference (modelId-aware) to a canonical
+ *      `supabase-storage://documentspictures/...` URI.
+ *   2. Extracting the bucket-relative storage path.
+ *   3. Looking up the corresponding signed URL in the supplied map (built
+ *      previously with one batched Edge Function call).
+ *
+ * Already-signed external HTTPS URLs (data: / http(s)://) are passed through.
+ * Entries that cannot be resolved are returned as `null` — callers must filter.
+ */
+export function applySignedUrls(
+  urls: string[],
+  modelId: string,
+  signed: Map<string, string>,
+): (string | null)[] {
   if (urls.length === 0) return urls;
-  return Promise.all(
-    urls.map(async (url) => {
+  return urls.map((url) => {
+    const normalized = normalizeDocumentspicturesModelImageRef(url, modelId);
+    const path = extractStoragePath(normalized, DOCUMENTSPICTURES_BUCKET);
+    if (path) {
+      return signed.get(path) ?? null;
+    }
+    const passthrough = normalized.trim();
+    if (passthrough.startsWith('https://') || passthrough.startsWith('http://')) {
+      return passthrough;
+    }
+    return null;
+  });
+}
+
+/**
+ * Collects every bucket-relative `documentspictures/...` path referenced by a
+ * list of model image arrays, after normalising the raw references with each
+ * model's id. De-duplicates so the Edge Function gets a tight batch.
+ */
+export function collectStoragePathsForSigning(
+  entries: Array<{ modelId: string; urls: string[] }>,
+): string[] {
+  const set = new Set<string>();
+  for (const { modelId, urls } of entries) {
+    for (const url of urls) {
       const normalized = normalizeDocumentspicturesModelImageRef(url, modelId);
       const path = extractStoragePath(normalized, DOCUMENTSPICTURES_BUCKET);
-      if (!path) {
-        const passthrough = normalized.trim();
-        if (passthrough.startsWith('https://') || passthrough.startsWith('http://')) {
-          return passthrough;
-        }
-        return null;
-      }
-      return resolveStorageUrl(normalized, GUEST_IMAGE_SIGNED_TTL_SECONDS);
-    }),
-  );
+      if (path) set.add(path);
+    }
+  }
+  return Array.from(set);
+}
+
+/**
+ * Public batched entry point for the **guest_link** context. Signs every image
+ * referenced by the given models in ONE Edge Function call.
+ */
+export async function signGuestLinkImages(
+  linkId: string,
+  models: Array<{ id: string; portfolio_images: string[]; polaroids?: string[] }>,
+): Promise<Map<string, string>> {
+  const entries = models.flatMap((m) => [
+    { modelId: m.id, urls: m.portfolio_images ?? [] },
+    { modelId: m.id, urls: m.polaroids ?? [] },
+  ]);
+  const paths = collectStoragePathsForSigning(entries);
+  if (paths.length === 0) return new Map();
+  return batchSignPathsViaEdgeFunction({ context: 'guest_link', linkId }, paths);
+}
+
+/**
+ * Public batched entry point for the **shared_selection** context. Signs every
+ * portfolio image for the given models in ONE Edge Function call.
+ *
+ * `modelIds` MUST be the same array that was used to compute the HMAC `token`
+ * on the share-link generator side — the Edge Function recomputes the token
+ * server-side via `shared_selection_compute_hmac` and rejects mismatches.
+ */
+export async function signSharedSelectionImages(
+  modelIds: string[],
+  token: string,
+  models: Array<{ id: string; portfolio_images: string[] }>,
+): Promise<Map<string, string>> {
+  const entries = models.map((m) => ({ modelId: m.id, urls: m.portfolio_images ?? [] }));
+  const paths = collectStoragePathsForSigning(entries);
+  if (paths.length === 0) return new Map();
+  return batchSignPathsViaEdgeFunction({ context: 'shared_selection', modelIds, token }, paths);
 }
 
 /**
@@ -395,18 +528,21 @@ export async function getGuestLinkModels(linkId: string): Promise<ServiceResult<
     // SECURITY DEFINER RPC (migration_m3_m4_fixes.sql). No client-side insert
     // needed — the RPC is the single authoritative audit source.
 
-    // Rewrite image arrays to signed URLs (M-3 fix).
-    // signImageUrls returns null for any URL that cannot be signed;
-    // filter those out rather than falling back to public URLs.
-    const signed = await Promise.all(
-      models.map(async (m) => ({
-        ...m,
-        portfolio_images: (await signImageUrls(m.portfolio_images, m.id)).filter(
-          (u): u is string => u !== null,
-        ),
-        polaroids: (await signImageUrls(m.polaroids, m.id)).filter((u): u is string => u !== null),
-      })),
-    );
+    // Rewrite image arrays to signed URLs via Edge Function (Security Audit
+    // 2026-10): the documentspictures bucket has no anon SELECT policy so
+    // client-side createSignedUrl() fails with HTTP 400/404 for guest viewers.
+    // The Edge Function bypasses storage RLS using the service role key and
+    // validates that every requested path belongs to a model in this guest link.
+    const signedMap = await signGuestLinkImages(trimmed, models);
+    const signed = models.map((m) => ({
+      ...m,
+      portfolio_images: applySignedUrls(m.portfolio_images, m.id, signedMap).filter(
+        (u): u is string => u !== null,
+      ),
+      polaroids: applySignedUrls(m.polaroids, m.id, signedMap).filter(
+        (u): u is string => u !== null,
+      ),
+    }));
     return serviceOkData(signed);
   } catch (e) {
     console.error('[getGuestLinkModels] exception', { ...diag(), err: e });

@@ -23,6 +23,7 @@ const mockAuthGetUser = jest.fn().mockResolvedValue({ data: { user: { id: 'user-
 const mockStorageFrom = jest.fn();
 const mockStorageRemove = jest.fn();
 const mockCreateSignedUrl = jest.fn();
+const mockFunctionsInvoke = jest.fn();
 
 jest.mock('../../../lib/supabase', () => ({
   supabase: {
@@ -34,6 +35,9 @@ jest.mock('../../../lib/supabase', () => ({
     },
     storage: {
       from: (...args: unknown[]) => mockStorageFrom(...args),
+    },
+    functions: {
+      invoke: (...args: unknown[]) => mockFunctionsInvoke(...args),
     },
   },
 }));
@@ -536,14 +540,19 @@ describe('GuestLinkModel type shape — portfolio vs polaroid packages', () => {
 describe('getGuestLinkModels — RPC returns type-correct image arrays', () => {
   beforeEach(() => {
     mockRpc.mockReset();
-    // Mock storage.from('documentspictures').createSignedUrl to return a signed URL.
-    // Without this mock, signImageUrls returns null for every URL, causing the filter
-    // to produce empty arrays (correct security behaviour, but breaks unit tests that
-    // only care about the array shape, not signing).
+    // Mock the sign-guest-storage-asset Edge Function. Without this mock the
+    // signing helper would return an empty map, causing the filter to produce
+    // empty arrays (correct security behaviour) — but unit tests here only
+    // care about the array shape, not the actual URL signing.
+    mockFunctionsInvoke.mockReset();
+    mockFunctionsInvoke.mockImplementation((_name: string, opts: { body: { paths: string[] } }) => {
+      const signed: Record<string, string> = {};
+      for (const p of opts.body.paths ?? []) {
+        signed[p] = `https://signed.example.com/${p}`;
+      }
+      return Promise.resolve({ data: { ok: true, ttl: 3600, signed }, error: null });
+    });
     mockCreateSignedUrl.mockReset();
-    mockCreateSignedUrl.mockImplementation((_path: string, _ttl: number) =>
-      Promise.resolve({ data: { signedUrl: `https://signed.example.com/${_path}` }, error: null }),
-    );
     mockStorageFrom.mockReturnValue({ createSignedUrl: mockCreateSignedUrl });
   });
 
@@ -666,6 +675,13 @@ describe('getGuestLinkModels — RPC returns type-correct image arrays', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error('expected ok');
     expect(result.data[0].polaroids).toEqual([external]);
+    // The Edge Function MAY still be invoked with an empty paths array (no
+    // bucket-relative paths to sign), but it must NOT be called with this
+    // external URL as a path. We assert no invocation contains it.
+    for (const call of mockFunctionsInvoke.mock.calls) {
+      const paths = (call[1] as { body?: { paths?: string[] } } | undefined)?.body?.paths ?? [];
+      expect(paths).not.toContain(external);
+    }
     expect(mockCreateSignedUrl).not.toHaveBeenCalled();
   });
 });

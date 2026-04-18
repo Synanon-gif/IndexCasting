@@ -3,7 +3,7 @@
  * `get_shared_selection_models`. Works without authentication (anon-granted).
  */
 import { supabase } from '../../lib/supabase';
-import { signImageUrls } from './guestLinksSupabase';
+import { applySignedUrls, signSharedSelectionImages } from './guestLinksSupabase';
 import { uiCopy } from '../constants/uiCopy';
 
 export type SharedSelectionModel = {
@@ -61,14 +61,24 @@ export async function getSharedSelectionModels(
 
     const models = (data ?? []) as SharedSelectionModel[];
 
-    const signed = await Promise.all(
-      models.map(async (m) => ({
-        ...m,
-        portfolio_images: (await signImageUrls(m.portfolio_images ?? [], m.id)).filter(
-          (u): u is string => u !== null,
-        ),
-      })),
-    );
+    // Server-side signing via Edge Function (Security Audit 2026-10):
+    // documentspictures has no anon SELECT policy; client-side createSignedUrl
+    // fails for anon viewers. The Edge Function recomputes the HMAC token
+    // server-side and only signs paths that belong to the supplied modelIds.
+    if (!token) {
+      console.warn('[getSharedSelectionModels] missing token — returning models without images');
+      return {
+        ok: true,
+        data: models.map((m) => ({ ...m, portfolio_images: [] })),
+      };
+    }
+    const signedMap = await signSharedSelectionImages(modelIds, token, models);
+    const signed = models.map((m) => ({
+      ...m,
+      portfolio_images: applySignedUrls(m.portfolio_images ?? [], m.id, signedMap).filter(
+        (u): u is string => u !== null,
+      ),
+    }));
 
     return { ok: true, data: signed };
   } catch (e) {
