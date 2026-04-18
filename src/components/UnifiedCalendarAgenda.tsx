@@ -269,17 +269,38 @@ export const UnifiedCalendarAgenda: React.FC<UnifiedCalendarAgendaProps> = ({
                             ) : null}
                           </View>
                         </View>
-                        {calendar_entry?.booking_details && viewerRole === 'client' && (
-                          <Text style={styles.notePreview} numberOfLines={2}>
-                            {(calendar_entry.booking_details as { client_notes?: string })
-                              .client_notes ??
-                              (calendar_entry.booking_details as { agency_notes?: string })
-                                .agency_notes ??
-                              (calendar_entry.booking_details as { model_notes?: string })
-                                .model_notes ??
-                              ''}
-                          </Text>
-                        )}
+                        {(() => {
+                          const bd = calendar_entry?.booking_details as
+                            | {
+                                client_notes?: string;
+                                agency_notes?: string;
+                                model_notes?: string;
+                                shared_notes?: { role: string; at: string; text: string }[];
+                              }
+                            | null
+                            | undefined;
+                          if (!bd) return null;
+                          let ownNote = '';
+                          if (viewerRole === 'client') ownNote = bd.client_notes ?? '';
+                          else if (viewerRole === 'agency') ownNote = bd.agency_notes ?? '';
+                          else if (viewerRole === 'model') ownNote = bd.model_notes ?? '';
+                          let sharedPreview = '';
+                          if (
+                            !ownNote &&
+                            Array.isArray(bd.shared_notes) &&
+                            bd.shared_notes.length > 0
+                          ) {
+                            const last = bd.shared_notes[bd.shared_notes.length - 1];
+                            if (last && typeof last.text === 'string') sharedPreview = last.text;
+                          }
+                          const text = (ownNote || sharedPreview).trim();
+                          if (!text) return null;
+                          return (
+                            <Text style={styles.notePreview} numberOfLines={2}>
+                              {text}
+                            </Text>
+                          );
+                        })()}
                       </View>
                       {renderOptionBadge(item)}
                     </View>
