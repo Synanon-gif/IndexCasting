@@ -114,6 +114,11 @@ import { hasMatForModelAgency } from '../services/recruitingFlowGuards';
 import type { Conversation } from '../services/messengerSupabase';
 import { OrgMessengerInline } from '../components/OrgMessengerInline';
 import { ConfirmDestructiveModal } from '../components/ConfirmDestructiveModal';
+import { OrgProfileModal } from '../components/OrgProfileModal';
+import {
+  ModelCounterpartyLabelText,
+  type CounterpartyOrgTap,
+} from '../components/ModelCounterpartyLabelText';
 import { shouldShowSystemMessageForViewer } from '../components/optionNegotiation/filterSystemMessagesForViewer';
 import { modelInboxRequiresModelConfirmation } from '../utils/optionRequestAttention';
 import { formatDateWithOptionalTimeRange, stripClockSeconds } from '../utils/formatTimeForUi';
@@ -221,6 +226,12 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   const [savingEntrySchedule, setSavingEntrySchedule] = useState(false);
   const [deletingCalendarEntry, setDeletingCalendarEntry] = useState(false);
   const [optionChatAgency, setOptionChatAgency] = useState<Agency | null>(null);
+  const [orgProfileTap, setOrgProfileTap] = useState<{
+    orgType: 'agency' | 'client';
+    organizationId: string;
+    agencyId: string | null;
+    orgName: string;
+  } | null>(null);
   const [bookingAgencyByThread, setBookingAgencyByThread] = useState<Record<string, string>>({});
   const [agencyDirectConvs, setAgencyDirectConvs] = useState<Conversation[]>([]);
   const [openDirectConvId, setOpenDirectConvId] = useState<string | null>(null);
@@ -2631,7 +2642,6 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                 {(() => {
                   const r = getRequestByThreadId(selectedOptionThread!);
                   if (!r) return null;
-                  const titleLine = primaryCounterpartyLabelForModel(r);
                   return (
                     <View
                       style={{
@@ -2640,17 +2650,17 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                         paddingTop: 6,
                       }}
                     >
-                      <Text
-                        style={{
+                      <ModelCounterpartyLabelText
+                        req={r}
+                        onOrgPress={(tap: CounterpartyOrgTap) => setOrgProfileTap(tap)}
+                        textStyle={{
                           ...typography.body,
                           fontSize: 11,
                           color: colors.textPrimary,
                           fontWeight: '600',
                         }}
                         numberOfLines={2}
-                      >
-                        {titleLine}
-                      </Text>
+                      />
                       <Text
                         style={{ ...typography.body, fontSize: 11, color: colors.textSecondary }}
                       >
@@ -2974,9 +2984,21 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
                       const linkedReq = openEntry.option_request_id
                         ? getRequestByThreadId(openEntry.option_request_id)
                         : undefined;
-                      const orgLine = linkedReq
-                        ? primaryCounterpartyLabelForModel(linkedReq)
-                        : entry.client_name?.trim() || '';
+                      if (linkedReq) {
+                        return (
+                          <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+                            <Text style={st.metaText}>
+                              {uiCopy.calendar.modelEntryClientOrgLabel}:{' '}
+                            </Text>
+                            <ModelCounterpartyLabelText
+                              req={linkedReq}
+                              onOrgPress={(tap: CounterpartyOrgTap) => setOrgProfileTap(tap)}
+                              textStyle={st.metaText}
+                            />
+                          </View>
+                        );
+                      }
+                      const orgLine = entry.client_name?.trim() || '';
                       return orgLine ? (
                         <Text style={st.metaText}>
                           {uiCopy.calendar.modelEntryClientOrgLabel}: {orgLine}
@@ -3460,6 +3482,16 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
             : undefined
         }
       />
+      {orgProfileTap ? (
+        <OrgProfileModal
+          visible
+          onClose={() => setOrgProfileTap(null)}
+          orgType={orgProfileTap.orgType}
+          organizationId={orgProfileTap.organizationId}
+          agencyId={orgProfileTap.agencyId}
+          orgName={orgProfileTap.orgName}
+        />
+      ) : null}
     </View>
   );
 };
