@@ -153,8 +153,26 @@ describe('organizationsInvitationsSupabase', () => {
   });
 
   it('dissolveOrganization: Erfolg', async () => {
-    rpc.mockResolvedValueOnce({ data: { ok: true }, error: null });
-    await expect(dissolveOrganization('org-uuid-1')).resolves.toEqual({ ok: true });
+    rpc.mockResolvedValueOnce({
+      data: {
+        ok: true,
+        organization_id: 'org-uuid-1',
+        organization_name: 'Test Org',
+        dissolved_at: '2026-04-18T00:00:00Z',
+        scheduled_purge_at: '2026-05-18T00:00:00Z',
+        notified_members: 2,
+        stripe_customer_id: 'cus_x',
+        stripe_subscription_id: 'sub_x',
+      },
+      error: null,
+    });
+    const res = await dissolveOrganization('org-uuid-1');
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.data.organizationId).toBe('org-uuid-1');
+      expect(res.data.scheduledPurgeAt).toBe('2026-05-18T00:00:00Z');
+      expect(res.data.stripeSubscriptionId).toBe('sub_x');
+    }
     expect(rpc).toHaveBeenCalledWith('dissolve_organization', {
       p_organization_id: 'org-uuid-1',
     });

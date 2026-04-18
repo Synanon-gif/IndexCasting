@@ -46,6 +46,7 @@ export type NotificationType =
   | 'verification_approved'
   | 'verification_rejected'
   | 'invitation'
+  | 'organization_dissolved'
   | 'system';
 
 export type Notification = {

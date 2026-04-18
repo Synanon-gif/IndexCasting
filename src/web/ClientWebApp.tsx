@@ -82,6 +82,7 @@ import {
   type PackageType,
 } from '../services/guestLinksSupabase';
 import { isOrganizationOwner } from '../services/orgRoleTypes';
+import { subscribeOrgDissolvedAction } from '../utils/orgDissolvedActionBus';
 import { getAgencies, getAgencyChatDisplayById, type Agency } from '../services/agenciesSupabase';
 import { AGENCY_SEGMENT_TYPES } from '../constants/agencyTypes';
 import { type ModelFilters, defaultModelFilters } from '../utils/modelFilters';
@@ -168,6 +169,7 @@ import {
   updateOrganizationName,
   getOrganizationById,
   dissolveOrganization,
+  cancelDissolvedOrgStripeSubscription,
   getAgencyIdForOrganization,
 } from '../services/organizationsInvitationsSupabase';
 import { OrgProfileModal } from '../components/OrgProfileModal';
@@ -594,6 +596,19 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   const [isChatWithAgencyLoading, setIsChatWithAgencyLoading] = useState(false);
   const [hasNew, setHasNew] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  /**
+   * GDPR Two-Stage dissolve UX: when the global `OrgDissolvedBanner` (mounted in
+   * App.tsx) emits `download_data` or `delete_account`, route the user into the
+   * Settings panel where the canonical export / personal-account-delete UI lives.
+   * The banner has no awareness of which workspace is active — this subscriber
+   * bridges the global banner action to the local Settings open state.
+   */
+  useEffect(() => {
+    const unsubscribe = subscribeOrgDissolvedAction(() => {
+      setSettingsOpen(true);
+    });
+    return unsubscribe;
+  }, []);
   /** Measured height of the absolute bottom tab bar (may wrap on narrow web). */
   const [clientBottomTabBarHeight, setClientBottomTabBarHeight] = useState(BOTTOM_TAB_BAR_HEIGHT);
   const [msgFilter, setMsgFilter] = useState<'current' | 'archived'>('current');
@@ -7830,10 +7845,22 @@ const SettingsPanel: React.FC<{
             setOrgDissolved(true);
             onOrganizationDissolved?.();
             void refreshProfile();
-            showAppAlert(
-              uiCopy.accountDeletion.dissolveOrgTitle,
-              uiCopy.accountDeletion.dissolveOrgSuccess,
-            );
+            const stripeRes = await cancelDissolvedOrgStripeSubscription(clientOrgId);
+            if (!stripeRes.ok) {
+              console.warn(
+                '[SettingsPanel] stripe cancel failed for dissolved org:',
+                stripeRes.error,
+              );
+              showAppAlert(
+                uiCopy.accountDeletion.dissolveOrgTitle,
+                uiCopy.accountDeletion.dissolveOrgStripeWarning,
+              );
+            } else {
+              showAppAlert(
+                uiCopy.accountDeletion.dissolveOrgTitle,
+                uiCopy.accountDeletion.dissolveOrgSuccess,
+              );
+            }
           } else {
             console.error('[SettingsPanel] dissolveOrganization failed:', result.error);
             showAppAlert(uiCopy.common.error, messageForDissolveOrganizationError(result.error));

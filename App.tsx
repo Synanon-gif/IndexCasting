@@ -51,6 +51,13 @@ import {
 } from './src/services/inviteClaimSuccessUi';
 import { subscribeInviteClaimSuccess } from './src/utils/inviteClaimSuccessBus';
 import { InviteClaimSuccessBanner } from './src/components/InviteClaimSuccessBanner';
+import { OrgDissolvedBanner } from './src/components/OrgDissolvedBanner';
+import { emitOrgDissolvedAction } from './src/utils/orgDissolvedActionBus';
+import {
+  getNotificationsForCurrentUser,
+  markNotificationAsRead,
+  type Notification,
+} from './src/services/notificationsSupabase';
 import { uiCopy } from './src/constants/uiCopy';
 import { initializePushNotifications, teardownPushNotifications } from './src/services/pushNotifications';
 import { TermsScreen } from './src/screens/TermsScreen';
@@ -275,6 +282,15 @@ function AppContent() {
   const [modelClaimAuthMode, setModelClaimAuthMode] = useState<'login' | 'signup'>('signup');
 
   const [inviteClaimBannerText, setInviteClaimBannerText] = useState<string | null>(null);
+
+  /**
+   * OrgDissolvedBanner state — surfaces the active personal `organization_dissolved`
+   * notification (Stage 1 of the GDPR Two-Stage dissolve flow). Source of truth is
+   * the unread notification row created by `dissolve_organization` v2; we resolve
+   * the latest unread row at session-start and after refreshes, then expose its
+   * metadata (organization_name + scheduled_purge_at) to the global banner.
+   */
+  const [orgDissolvedNotice, setOrgDissolvedNotice] = useState<Notification | null>(null);
   const inviteClaimBannerUserIdRef = useRef<string | null>(null);
   const inviteClaimBannerDedupRef = useRef<{ key: string; at: number } | null>(null);
   const pendingInviteOrgIdForBannerRef = useRef<string | null>(null);
@@ -571,6 +587,67 @@ function AppContent() {
         onDismiss={() => setInviteClaimBannerText(null)}
       />
     ) : null;
+
+  /**
+   * Load the latest unread `organization_dissolved` personal notification for the
+   * current session. Re-runs whenever the session user changes or the profile
+   * refreshes (e.g. after an owner dissolves their own org and `organization_id`
+   * becomes NULL). Failure is swallowed — the banner is best-effort UX, not a
+   * security gate (RLS already controls visibility).
+   */
+  useEffect(() => {
+    const uid = session?.user?.id;
+    if (!uid) {
+      setOrgDissolvedNotice(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const all = await getNotificationsForCurrentUser();
+        if (cancelled) return;
+        // Pick the most-recent unread `organization_dissolved` row that is
+        // personally addressed (organization_id IS NULL — see dissolve RPC v2).
+        const candidates = all
+          .filter(
+            (n) =>
+              n.type === 'organization_dissolved' &&
+              n.is_read === false &&
+              (n.organization_id === null || n.organization_id === undefined),
+          )
+          .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+        setOrgDissolvedNotice(candidates[0] ?? null);
+      } catch (e) {
+        if (!cancelled) console.error('[App] org-dissolved notice fetch failed:', e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.user?.id, profile?.organization_id, profile?.role]);
+
+  const orgDissolvedBanner = (() => {
+    if (!session || !orgDissolvedNotice) return null;
+    const meta = (orgDissolvedNotice.metadata ?? {}) as Record<string, unknown>;
+    const scheduledPurgeAt =
+      typeof meta.scheduled_purge_at === 'string' ? (meta.scheduled_purge_at as string) : null;
+    const organizationName =
+      typeof meta.organization_name === 'string' ? (meta.organization_name as string) : null;
+    const dismiss = () => {
+      const id = orgDissolvedNotice.id;
+      setOrgDissolvedNotice(null);
+      void markNotificationAsRead(id);
+    };
+    return (
+      <OrgDissolvedBanner
+        scheduledPurgeAt={scheduledPurgeAt}
+        organizationName={organizationName}
+        onDownloadData={() => emitOrgDissolvedAction('download_data')}
+        onDeleteAccount={() => emitOrgDissolvedAction('delete_account')}
+        onDismiss={dismiss}
+      />
+    );
+  })();
 
   if (loading) {
     return (
@@ -908,6 +985,7 @@ function AppContent() {
       return (
         <>
           {inviteSuccessBanner}
+          {orgDissolvedBanner}
           <LegalAcceptanceScreen />
           <StatusBar style="dark" />
         </>
@@ -918,6 +996,7 @@ function AppContent() {
       return (
         <>
           {inviteSuccessBanner}
+          {orgDissolvedBanner}
           <PendingActivationScreen />
           <StatusBar style="dark" />
         </>
@@ -934,6 +1013,7 @@ function AppContent() {
     <>
       <View style={styles.shell}>
         {inviteSuccessBanner}
+        {orgDissolvedBanner}
         {effectiveRole === 'client' && (
           <ClientPaywallGuard>
             <ClientView

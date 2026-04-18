@@ -652,10 +652,19 @@ export const uiCopy = {
       'This removes the organization workspace, all team memberships, and pending invitations. Other linked records (projects, requests, billing, subscriptions, etc.) may still exist or prevent deletion if the database blocks it — contact support if removal fails. This cannot be undone for the workspace. After deleting the organization, you can also delete your personal account.',
     dissolveOrgConfirmTitle: 'Permanently delete this organization?',
     dissolveOrgConfirmMessage:
-      'This action cannot be undone. The organization workspace, all team memberships, and pending invitations will be permanently removed. If you want to keep a copy of your data, cancel now and use "Download my data" first. Click "Delete organization" to confirm.',
+      'This action cannot be undone. The organization workspace, every team membership and pending invitation will be removed immediately, your active subscription will be cancelled with Stripe, and your team will be notified. All shared organization data (bookings, options, conversations, projects, calendar entries, billing records) will be permanently erased after a 30-day grace period. If you want to keep a copy of your data, cancel now and use "Download my data" first. Click "Delete organization" to confirm.',
     dissolveOrgButton: 'Delete organization',
     dissolveOrgWorking: 'Deleting organization…',
-    dissolveOrgSuccess: 'Organization deleted. You can now delete your personal account below.',
+    dissolveOrgSuccess:
+      'Organization deleted. Your subscription has been cancelled and your team has been notified. All shared data will be permanently erased in 30 days. You can now delete your personal account below or download your personal data first.',
+    dissolveOrgStripeWarning:
+      'Organization deleted, but we could not cancel your Stripe subscription automatically. Please cancel it manually or contact support — billing will not renew further once the data purge runs.',
+    dissolveOrgBannerTitle: 'Your organization has been closed',
+    dissolveOrgBannerMessage:
+      'The organization you belonged to was permanently dissolved by its owner. You can still log in to manage your personal account: download your data (GDPR) or delete your account. All shared organization data will be permanently erased on {purgeDate}.',
+    dissolveOrgBannerDownload: 'Download my data',
+    dissolveOrgBannerDelete: 'Delete my account',
+    dissolveOrgBannerDismiss: 'Dismiss',
     dissolveOrgFailed: 'Could not delete the organization. Please try again.',
     /** Dissolve RPC returned forbidden_not_owner (defensive; owner UI is normally gated). */
     dissolveOrgNotOwner: 'Only the organization owner can delete the organization.',

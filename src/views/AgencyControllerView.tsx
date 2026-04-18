@@ -188,9 +188,11 @@ import {
   createOrganizationInvitation,
   buildOrganizationInviteUrl,
   dissolveOrganization,
+  cancelDissolvedOrgStripeSubscription,
   removeOrganizationMember,
   type InvitationRow,
 } from '../services/organizationsInvitationsSupabase';
+import { subscribeOrgDissolvedAction } from '../utils/orgDissolvedActionBus';
 import {
   listClientOrganizationsForAgencyDirectory,
   type ClientOrganizationDirectoryRow,
@@ -355,6 +357,19 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   const agencyIsMobile = isMobileWidth(agencyWindowWidth);
   const agencyShellPaddingH = agencyIsMobile ? spacing.sm : spacing.lg;
   const [tab, setTab] = useState<AgencyTab>('dashboard');
+  /**
+   * GDPR Two-Stage dissolve UX: when the global `OrgDissolvedBanner` (mounted in
+   * App.tsx) emits `download_data` or `delete_account`, route the user into the
+   * Settings tab where the canonical export / personal-account-delete UI lives.
+   * The banner has no awareness of which workspace is active — this subscriber
+   * bridges the global banner action to the local tab state.
+   */
+  useEffect(() => {
+    const unsubscribe = subscribeOrgDissolvedAction(() => {
+      setTab('settings');
+    });
+    return unsubscribe;
+  }, []);
   /** True when AgencyMessagesTab is in fullscreen-chat mode on mobile — hides the bottom bar. */
   const [agencyChatFullscreen, setAgencyChatFullscreen] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
@@ -1042,10 +1057,23 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                               clearAgencyWorkspaceCachesAfterDissolve();
                               void refreshProfile();
                               void getAgencies().then(setAgencies);
-                              showAppAlert(
-                                uiCopy.accountDeletion.dissolveOrgTitle,
-                                uiCopy.accountDeletion.dissolveOrgSuccess,
-                              );
+                              const stripeRes =
+                                await cancelDissolvedOrgStripeSubscription(agencyOrganizationId);
+                              if (!stripeRes.ok) {
+                                console.warn(
+                                  '[AgencyControllerView] stripe cancel failed for dissolved org:',
+                                  stripeRes.error,
+                                );
+                                showAppAlert(
+                                  uiCopy.accountDeletion.dissolveOrgTitle,
+                                  uiCopy.accountDeletion.dissolveOrgStripeWarning,
+                                );
+                              } else {
+                                showAppAlert(
+                                  uiCopy.accountDeletion.dissolveOrgTitle,
+                                  uiCopy.accountDeletion.dissolveOrgSuccess,
+                                );
+                              }
                             } else {
                               showAppAlert(
                                 uiCopy.common.error,
