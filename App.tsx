@@ -115,6 +115,12 @@ function getGuestLinkId(): string | null {
   return clampQueryId(p.get('guest'));
 }
 
+function getAgencyShareLinkId(): string | null {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
+  const p = new URLSearchParams(window.location.search);
+  return clampQueryId(p.get('agency_share'));
+}
+
 function getInviteTokenFromUrl(): string | null {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
   const p = new URLSearchParams(window.location.search);
@@ -266,6 +272,17 @@ function AppContent() {
    * authenticated users with an empty workspace.
    */
   const [pendingPackageId, setPendingPackageId] = useState<string | null>(null);
+  /**
+   * Agency-to-Agency Roster Share routing state.
+   * `?agency_share=<linkId>` is a recipient-agency-only deep link. For non-agency
+   * users the parameter is silently stripped (no UI flash). For unauthenticated
+   * users the linkId is persisted to `localStorage.ic_pending_agency_share` so it
+   * survives sign-up / e-mail magic link, and is restored after the new session
+   * is authenticated as agency. The actual UI (inbox + detail) lives in
+   * `AgencyControllerView`; this state is forwarded as `initialAgencyShareLinkId`.
+   */
+  const [agencyShareLinkId, setAgencyShareLinkId] = useState<string | null>(getAgencyShareLinkId);
+  const [pendingAgencyShareLinkId, setPendingAgencyShareLinkId] = useState<string | null>(null);
   const initialRouting =
     Platform.OS === 'web'
       ? computeInitialInviteClaimFromUrlAndPeek()
@@ -474,6 +491,50 @@ function AppContent() {
       setPendingPackageId(pending);
     } catch { /* best-effort */ }
   }, [isAuthenticatedNonGuest, pendingPackageId]);
+
+  // Agency Roster Share — persist the link ID to localStorage as soon as we
+  // see it in the URL, so it survives a magic-link/sign-up roundtrip even if
+  // the URL is lost (e.g. opened in a different tab from the e-mail).
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    if (!agencyShareLinkId) return;
+    try { localStorage.setItem('ic_pending_agency_share', agencyShareLinkId); } catch { /* best-effort */ }
+  }, [agencyShareLinkId]);
+
+  // Agency Roster Share — strip ?agency_share= for any authenticated user that
+  // is NOT in agency context (admin, client, model). The pending value stays in
+  // localStorage in case the user later switches to an agency workspace.
+  useEffect(() => {
+    if (!isAuthenticatedNonGuest) return;
+    if (!agencyShareLinkId) return;
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const role = profile?.role;
+    const isAgencyContext = role === 'agent' || profile?.is_admin === true;
+    if (isAgencyContext) return;
+    const u = new URL(window.location.href);
+    if (u.searchParams.has('agency_share')) {
+      u.searchParams.delete('agency_share');
+      window.history.replaceState({}, '', u.pathname + u.search + u.hash);
+    }
+    setAgencyShareLinkId(null);
+  }, [isAuthenticatedNonGuest, agencyShareLinkId, profile?.role, profile?.is_admin]);
+
+  // Agency Roster Share — restore pending link after sign-up / login:
+  // once the new session resolves and the user is in agency context, forward
+  // the pending link ID into `pendingAgencyShareLinkId` (consumed by
+  // AgencyControllerView). We deliberately do NOT re-write the URL.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    if (!isAuthenticatedNonGuest) return;
+    if (pendingAgencyShareLinkId) return;
+    if (profile?.role !== 'agent' && profile?.is_admin !== true) return;
+    try {
+      const pending = localStorage.getItem('ic_pending_agency_share');
+      if (!pending) return;
+      localStorage.removeItem('ic_pending_agency_share');
+      setPendingAgencyShareLinkId(pending);
+    } catch { /* best-effort */ }
+  }, [isAuthenticatedNonGuest, pendingAgencyShareLinkId, profile?.role, profile?.is_admin]);
 
   // Restore pending shared-selection after signup: if user signed up from
   // SharedSelectionView, the params were persisted to localStorage. After auth
@@ -1093,7 +1154,21 @@ function AppContent() {
         )}
         {effectiveRole === 'agency' && (
           <AgencyPaywallGuard>
-            <AgencyView onBackToRoleSelection={handleBackToRoleSelection} />
+            <AgencyView
+              onBackToRoleSelection={handleBackToRoleSelection}
+              initialAgencyShareLinkId={pendingAgencyShareLinkId ?? agencyShareLinkId}
+              onInitialAgencyShareConsumed={() => {
+                setPendingAgencyShareLinkId(null);
+                if (agencyShareLinkId && Platform.OS === 'web' && typeof window !== 'undefined') {
+                  const u = new URL(window.location.href);
+                  if (u.searchParams.has('agency_share')) {
+                    u.searchParams.delete('agency_share');
+                    window.history.replaceState({}, '', u.pathname + u.search + u.hash);
+                  }
+                }
+                setAgencyShareLinkId(null);
+              }}
+            />
           </AgencyPaywallGuard>
         )}
       </View>

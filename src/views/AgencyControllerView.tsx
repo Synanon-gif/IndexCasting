@@ -102,6 +102,7 @@ import {
 } from '../utils/formatTimeForUi';
 import { confirmImageRights, guardImageUpload } from '../services/gdprComplianceSupabase';
 import { ModelMediaSettingsPanel } from '../components/ModelMediaSettingsPanel';
+import { AgencyShareInbox, AgencyShareSendModal } from '../components/AgencyShareUI';
 import { OptionNegotiationChatShell } from '../components/optionNegotiation/OptionNegotiationChatShell';
 import { NegotiationMessageRow } from '../components/optionNegotiation/NegotiationMessageRow';
 import { NegotiationChipsRow } from '../components/optionNegotiation/NegotiationChipsRow';
@@ -347,10 +348,21 @@ type AgencyModel = {
 
 type AgencyControllerViewProps = {
   onBackToRoleSelection: () => void;
+  /**
+   * Pending Agency-to-Agency Roster Share link ID, restored from
+   * `localStorage.ic_pending_agency_share` after sign-up / login. When set,
+   * the My Models tab should auto-open the Roster Share Inbox detail for this
+   * link, then call `onInitialAgencyShareConsumed` to clear the value.
+   * UI integration is implemented in the inbox component (todo: ui-inbox).
+   */
+  initialAgencyShareLinkId?: string | null;
+  onInitialAgencyShareConsumed?: () => void;
 };
 
 export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   onBackToRoleSelection,
+  initialAgencyShareLinkId,
+  onInitialAgencyShareConsumed,
 }) => {
   const { signOut, profile, session, refreshProfile } = useAuth();
   const { width: agencyWindowWidth, height: agencyWindowHeight } = useWindowDimensions();
@@ -896,6 +908,10 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
             onRepresentationEnded={refreshBookingThreads}
             focusModelId={searchModelId}
             onFocusConsumed={() => setSearchModelId(null)}
+            agencyShareOrganizationId={agencyOrganizationId ?? profile?.organization_id ?? null}
+            agencyShareInviterName={profile?.display_name ?? null}
+            initialAgencyShareLinkId={initialAgencyShareLinkId ?? null}
+            onInitialAgencyShareConsumed={onInitialAgencyShareConsumed}
           />
         )}
 
@@ -2824,6 +2840,17 @@ const MyModelsTab: React.FC<{
   onRepresentationEnded?: () => void;
   focusModelId?: string | null;
   onFocusConsumed?: () => void;
+  /**
+   * Agency-to-Agency Roster Share — recipient/sender entry-points.
+   * `agencyShareOrganizationId` is the caller's agency-org id (same as
+   * `inviteOrganizationId` in current B2B flows). `initialAgencyShareLinkId`
+   * comes from `?agency_share=` URL routing in App.tsx; once consumed
+   * (auto-opened) we invoke `onInitialAgencyShareConsumed`.
+   */
+  agencyShareOrganizationId?: string | null;
+  agencyShareInviterName?: string | null;
+  initialAgencyShareLinkId?: string | null;
+  onInitialAgencyShareConsumed?: () => void;
 }> = ({
   models,
   agencyId,
@@ -2834,6 +2861,10 @@ const MyModelsTab: React.FC<{
   onRepresentationEnded,
   focusModelId,
   onFocusConsumed,
+  agencyShareOrganizationId,
+  agencyShareInviterName,
+  initialAgencyShareLinkId,
+  onInitialAgencyShareConsumed,
 }) => {
   const { width: _myModelsWidth } = useWindowDimensions();
   const agencyIsMobile = isMobileWidth(_myModelsWidth);
@@ -3069,6 +3100,7 @@ const MyModelsTab: React.FC<{
   // Bulk selection state
   const [selectedModelIds, setSelectedModelIds] = useState<Set<string>>(new Set());
   const [showBulkTerritoryModal, setShowBulkTerritoryModal] = useState(false);
+  const [showAgencyShareSendModal, setShowAgencyShareSendModal] = useState(false);
   const [bulkTerritorySearch, setBulkTerritorySearch] = useState('');
   const [bulkSelectedCountries, setBulkSelectedCountries] = useState<string[]>([]);
   const [bulkAssigning, setBulkAssigning] = useState(false);
@@ -5102,6 +5134,16 @@ const MyModelsTab: React.FC<{
         </View>
       )}
 
+      {/* Agency-to-Agency Roster Share inbox (recipient entry-point) */}
+      {agencyShareOrganizationId ? (
+        <AgencyShareInbox
+          organizationId={agencyShareOrganizationId}
+          initialOpenLinkId={initialAgencyShareLinkId ?? null}
+          onInitialLinkConsumed={onInitialAgencyShareConsumed}
+          onImported={onRefresh}
+        />
+      ) : null}
+
       {/* Bulk selection header */}
       <View
         style={{
@@ -5747,8 +5789,42 @@ const MyModelsTab: React.FC<{
               {uiCopy.bulkActions.assignTerritories}
             </Text>
           </TouchableOpacity>
+          {agencyShareOrganizationId ? (
+            <TouchableOpacity
+              style={{
+                backgroundColor: 'transparent',
+                borderWidth: 1,
+                borderColor: colors.textPrimary,
+                borderRadius: 999,
+                paddingVertical: spacing.sm,
+                alignItems: 'center',
+              }}
+              onPress={() => setShowAgencyShareSendModal(true)}
+            >
+              <Text style={{ ...typography.label, fontSize: 12, color: colors.textPrimary }}>
+                {uiCopy.agencyShare.sectionTitle}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       )}
+
+      {/* Agency-to-Agency Roster Share — sender modal */}
+      {agencyShareOrganizationId ? (
+        <AgencyShareSendModal
+          visible={showAgencyShareSendModal}
+          onClose={() => setShowAgencyShareSendModal(false)}
+          organizationId={agencyShareOrganizationId}
+          senderAgencyName={agencyName}
+          inviterName={agencyShareInviterName ?? null}
+          selectedModels={Array.from(selectedModelIds)
+            .map((id) => {
+              const m = models.find((mm) => mm.id === id);
+              return m ? { id: m.id, name: m.name ?? '—' } : null;
+            })
+            .filter((x): x is { id: string; name: string } => x !== null)}
+        />
+      ) : null}
 
       {/* Bulk territory assignment modal */}
       <Modal

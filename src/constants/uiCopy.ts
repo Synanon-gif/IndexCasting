@@ -2256,6 +2256,87 @@ export const uiCopy = {
     noImagesNote: 'No images available',
     footerText: 'Generated via Index Casting',
   },
+  agencyShare: {
+    // Sender — entry point in AgencyControllerView
+    sectionTitle: 'Share Roster with Another Agency',
+    sectionSubtitle:
+      'Send selected models to another agency on Index Casting. They become a co-agency for the territories they choose. You remain the home agency for each model.',
+    sendToAgencyToggle: 'Send to another agency instead of a client',
+    recipientEmailLabel: 'Recipient agency email',
+    recipientEmailPlaceholder: 'agency@example.com',
+    recipientResolvedHint: 'Recipient agency: ',
+    recipientUnresolvedHint:
+      'No agency account found for this email. The recipient must sign up on Index Casting first.',
+    labelPlaceholder: 'Optional label (e.g. "FW26 Berlin scouting")',
+    expiresInDaysLabel: 'Expires after (days)',
+    sendButton: 'Send roster',
+    sendingButton: 'Sending…',
+    sendSuccessTitle: 'Share sent',
+    sendSuccessBody: 'The recipient agency has been notified by email.',
+    sendErrorTitle: 'Could not send share',
+    selfShareError: 'You cannot send a roster share to your own agency.',
+    invalidModelsError: 'At least one selected model is not in your home agency yet.',
+    noModelsError: 'Select at least one model first.',
+    invalidEmailError: 'Enter a valid recipient email address.',
+    recipientNotFoundError:
+      'No agency account exists for this email. Ask the recipient to sign up on Index Casting before resending.',
+    emailFailedNotice:
+      'Roster share was created but the email could not be delivered. Share the link manually if needed.',
+    copyLinkLabel: 'Copy share link',
+    linkCopied: 'Link copied to clipboard.',
+
+    // Recipient — inbox + detail
+    inboxTitle: 'Roster Shares from Other Agencies',
+    inboxEmpty: 'No incoming roster shares yet.',
+    inboxLoading: 'Loading roster shares…',
+    inboxError: 'Could not load roster shares. Try again later.',
+    inboxModelCountSingular: '1 model',
+    inboxModelCountPlural: '{count} models',
+    inboxFromAgency: 'From: {agency}',
+    inboxOpenButton: 'Open',
+    inboxExpiresAt: 'Expires {date}',
+    inboxNoExpiry: 'No expiry',
+    inboxInactive: 'Inactive',
+
+    detailTitle: 'Incoming Roster Share',
+    detailSubtitle:
+      'Pick the territories you would like to represent for each model. The original agency stays the home of the model profile; you become a co-agency only for the territories you select.',
+    detailLoading: 'Loading roster…',
+    detailError: 'Could not load roster.',
+    detailEmpty: 'This share contains no models.',
+    countryPickerLabel: 'Territories you will represent',
+    countryPickerPlaceholder: 'Select countries…',
+    importButton: 'Import to my roster',
+    importingButton: 'Importing…',
+    importSuccessTitle: 'Import complete',
+    importSuccessBody: '{imported} model territor{ies} added to your roster.',
+    importPartialBody: '{imported} added · {skipped} already represented by another agency.',
+    importNoneBody:
+      'No new territories were added. All selected combinations are already represented by another agency.',
+    importErrorTitle: 'Import failed',
+    importErrorBody: 'No territories could be imported. Try again later.',
+    skippedConflictTitle: 'Already represented',
+    skippedConflictRow: '{model} · {country} — already represented by another agency',
+
+    // Per-model card actions in detail view
+    modelHasAccount: 'Model has an account',
+    modelNoAccount: 'Model has no account yet',
+    generateClaimTokenButton: 'Generate claim link',
+    claimTokenSuccess: 'Claim link generated. Send it to the model securely.',
+    claimTokenError: 'Could not generate claim link.',
+    chestLabel: 'Chest (cm)',
+    waistLabel: 'Waist (cm)',
+    hipsLabel: 'Hips (cm)',
+    heightLabel: 'Height (cm)',
+    cityLabel: 'City',
+
+    // Routing / open from email
+    openingShare: 'Opening roster share…',
+    openShareNotAuthorized:
+      'This roster share is for a different agency account. Sign in with the correct agency to open it.',
+    openShareNotFound: 'This roster share is no longer available.',
+    openShareLoginRequired: 'Sign in with your agency account to open this roster share.',
+  },
 } as const;
 
 export type UiCopyKey = typeof uiCopy;
