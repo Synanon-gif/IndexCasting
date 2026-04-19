@@ -1,3 +1,18 @@
+-- =============================================================================
+-- DEPRECATED / DO NOT EXECUTE — DIAGNOSE ONLY (NOT DEPLOYED via supabase CLI)
+--
+-- This file lives outside `supabase/migrations/` and is NOT auto-deployed.
+-- Canonical, deployed sources of truth live in `supabase/migrations/YYYYMMDD_*.sql`.
+-- Manual execution can introduce silent regressions on the live DB
+-- (RLS recursion, weakened SECURITY DEFINER guards, broken admin access, etc.).
+--
+-- See: `.cursor/rules/system-invariants.mdc` (LIVE-DB SOURCE OF TRUTH),
+--      `docs/LIVE_DB_DRIFT_GUARDRAIL.md`,
+--      `docs/CONSISTENCY_FLOW_CHECK_2026-04-19.md` (Cluster F).
+--
+-- If you need to apply changes, create a new dated migration in `supabase/migrations/`.
+-- =============================================================================
+
 -- Manuelle Kalender-Ereignisse für Kunden und Agenturen (zusätzlich zu Option/Job/Casting)
 CREATE TABLE IF NOT EXISTS public.user_calendar_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

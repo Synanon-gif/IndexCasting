@@ -11,8 +11,8 @@ import {
   ActivityIndicator,
   Platform,
   Linking,
-  Alert,
 } from 'react-native';
+import { showAppAlert } from '../utils/crossPlatformAlert';
 import { colors, spacing, typography } from '../theme/theme';
 import { uiCopy } from '../constants/uiCopy';
 import { isOrganizationOwner } from '../services/orgRoleTypes';
@@ -87,15 +87,8 @@ interface Props {
 
 export const OwnerBillingStatusCard: React.FC<Props> = ({ variant }) => {
   const { profile } = useAuth();
-  const {
-    loaded,
-    accessStatus,
-    isBlocked,
-    isAdminOverride,
-    trialDaysLeft,
-    currentPlan,
-    refresh,
-  } = useSubscription();
+  const { loaded, accessStatus, isBlocked, isAdminOverride, trialDaysLeft, currentPlan, refresh } =
+    useSubscription();
 
   const [subRow, setSubRow] = useState<OrgSubscription | null>(null);
   const [subLoading, setSubLoading] = useState(true);
@@ -166,16 +159,16 @@ export const OwnerBillingStatusCard: React.FC<Props> = ({ variant }) => {
     try {
       const result = await createCheckoutSession(defaultCheckoutPlan);
       if (!result?.checkout_url) {
-        Alert.alert(uiCopy.common.error, uiCopy.billing.checkoutFailed);
+        showAppAlert(uiCopy.common.error, uiCopy.billing.checkoutFailed);
         return;
       }
       if (!validateUrl(result.checkout_url).ok) {
-        Alert.alert(uiCopy.common.error, uiCopy.billing.checkoutFailed);
+        showAppAlert(uiCopy.common.error, uiCopy.billing.checkoutFailed);
         return;
       }
       await Linking.openURL(result.checkout_url);
     } catch {
-      Alert.alert(uiCopy.common.error, uiCopy.billing.checkoutFailed);
+      showAppAlert(uiCopy.common.error, uiCopy.billing.checkoutFailed);
     } finally {
       setCheckoutBusy(false);
     }
@@ -263,9 +256,7 @@ export const OwnerBillingStatusCard: React.FC<Props> = ({ variant }) => {
       )}
 
       <Text style={styles.bodySmallMuted}>{b.billingPaymentsProcessedBy}</Text>
-      {showSandboxLine && (
-        <Text style={styles.sandboxLine}>{b.billingTestModeNotice}</Text>
-      )}
+      {showSandboxLine && <Text style={styles.sandboxLine}>{b.billingTestModeNotice}</Text>}
 
       {showTrialSubscribeCta && (
         <>

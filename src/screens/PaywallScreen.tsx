@@ -14,7 +14,6 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Linking,
   ScrollView,
   StyleSheet,
@@ -23,6 +22,7 @@ import {
   View,
 } from 'react-native';
 import { uiCopy } from '../constants/uiCopy';
+import { showAppAlert } from '../utils/crossPlatformAlert';
 import { isOrganizationOwner } from '../services/orgRoleTypes';
 import { useSubscription } from '../context/SubscriptionContext';
 import { useAuth } from '../context/AuthContext';
@@ -191,16 +191,16 @@ export default function PaywallScreen() {
     try {
       const result = await createCheckoutSession(plan);
       if (!result?.checkout_url) {
-        Alert.alert(uiCopy.common.error, uiCopy.billing.checkoutFailed);
+        showAppAlert(uiCopy.common.error, uiCopy.billing.checkoutFailed);
         return;
       }
       if (!validateUrl(result.checkout_url).ok) {
-        Alert.alert(uiCopy.common.error, uiCopy.billing.checkoutFailed);
+        showAppAlert(uiCopy.common.error, uiCopy.billing.checkoutFailed);
         return;
       }
       await Linking.openURL(result.checkout_url);
     } catch {
-      Alert.alert(uiCopy.common.error, uiCopy.billing.checkoutFailed);
+      showAppAlert(uiCopy.common.error, uiCopy.billing.checkoutFailed);
     } finally {
       setLoadingPlan(null);
     }

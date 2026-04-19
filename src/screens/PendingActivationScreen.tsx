@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Linking, ActivityIndicator } 
 import { colors, spacing, typography } from '../theme/theme';
 import { useAuth } from '../context/AuthContext';
 import { isAgency } from '../types/roles';
+import { uiCopy } from '../constants/uiCopy';
 
 const ADMIN_EMAIL = 'admin@castingindex.com';
 
@@ -13,15 +14,16 @@ export const PendingActivationScreen: React.FC = () => {
   const documentsSent = profile?.activation_documents_sent ?? false;
 
   const handleSendDocuments = async () => {
-    const subject = encodeURIComponent(`Account Verification – ${profile?.display_name || profile?.email || 'User'}`);
+    const displayName =
+      profile?.display_name || profile?.email || uiCopy.pendingActivation.fallbackUser;
+    const subject = encodeURIComponent(uiCopy.pendingActivation.emailSubject(displayName));
     const body = encodeURIComponent(
-      `Hello Casting Index Team,\n\n` +
-      `I would like to activate my ${isAgency(profile) ? 'Agency' : 'Client'} account.\n\n` +
-      `Account Email: ${profile?.email}\n` +
-      `Display Name: ${profile?.display_name}\n` +
-      `Company: ${profile?.company_name || 'N/A'}\n\n` +
-      `I have attached the required verification documents.\n\n` +
-      `Best regards`
+      uiCopy.pendingActivation.emailBody({
+        orgKind: isAgency(profile) ? 'Agency' : 'Client',
+        email: profile?.email ?? '',
+        displayName: profile?.display_name ?? '',
+        company: profile?.company_name || uiCopy.pendingActivation.fallbackCompany,
+      }),
     );
     const url = `mailto:${ADMIN_EMAIL}?subject=${subject}&body=${body}`;
     await Linking.openURL(url);
@@ -39,46 +41,42 @@ export const PendingActivationScreen: React.FC = () => {
   return (
     <View style={styles.container}>
       <View style={styles.content}>
-        <Text style={styles.brand}>INDEX CASTING</Text>
+        <Text style={styles.brand}>{uiCopy.pendingActivation.brand}</Text>
         <Text style={styles.icon}>🔒</Text>
-        <Text style={styles.title}>Account Pending Activation</Text>
+        <Text style={styles.title}>{uiCopy.pendingActivation.title}</Text>
 
         {!documentsSent ? (
           <>
-            <Text style={styles.body}>
-              Your account needs to be verified before you can access the platform.
-              Please send your verification documents to the app operator.
-            </Text>
+            <Text style={styles.body}>{uiCopy.pendingActivation.bodyPending}</Text>
 
             {isAgency(profile) && (
-              <Text style={styles.hint}>
-                Agency accounts must register with the email address listed on your company website.
-              </Text>
+              <Text style={styles.hint}>{uiCopy.pendingActivation.agencyHint}</Text>
             )}
 
             <TouchableOpacity style={styles.primaryBtn} onPress={handleSendDocuments}>
-              <Text style={styles.primaryBtnLabel}>Send Verification Documents via Email</Text>
+              <Text style={styles.primaryBtnLabel}>
+                {uiCopy.pendingActivation.sendDocumentsBtn}
+              </Text>
             </TouchableOpacity>
           </>
         ) : (
           <>
-            <Text style={styles.body}>
-              Thank you! Your documents have been submitted. The app operator will review
-              and activate your account shortly. You will receive an email confirmation.
-            </Text>
+            <Text style={styles.body}>{uiCopy.pendingActivation.bodySent}</Text>
 
             <TouchableOpacity style={styles.primaryBtn} onPress={handleRefresh} disabled={busy}>
               {busy ? (
                 <ActivityIndicator color={colors.surface} />
               ) : (
-                <Text style={styles.primaryBtnLabel}>Check Activation Status</Text>
+                <Text style={styles.primaryBtnLabel}>
+                  {uiCopy.pendingActivation.checkStatusBtn}
+                </Text>
               )}
             </TouchableOpacity>
           </>
         )}
 
         <TouchableOpacity style={styles.logoutBtn} onPress={signOut}>
-          <Text style={styles.logoutLabel}>Logout</Text>
+          <Text style={styles.logoutLabel}>{uiCopy.pendingActivation.logoutBtn}</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -86,16 +84,45 @@ export const PendingActivationScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', paddingHorizontal: spacing.md },
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+  },
   content: { width: '100%', maxWidth: 440, alignItems: 'center' },
   brand: { ...typography.heading, color: colors.textPrimary, marginBottom: spacing.lg },
   icon: { fontSize: 48, marginBottom: spacing.md },
-  title: { ...typography.heading, fontSize: 20, color: colors.textPrimary, marginBottom: spacing.md, textAlign: 'center' },
-  body: { ...typography.body, color: colors.textSecondary, textAlign: 'center', marginBottom: spacing.md, lineHeight: 22 },
-  hint: { ...typography.body, fontSize: 12, color: colors.textSecondary, textAlign: 'center', marginBottom: spacing.md, fontStyle: 'italic' },
+  title: {
+    ...typography.heading,
+    fontSize: 20,
+    color: colors.textPrimary,
+    marginBottom: spacing.md,
+    textAlign: 'center',
+  },
+  body: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: spacing.md,
+    lineHeight: 22,
+  },
+  hint: {
+    ...typography.body,
+    fontSize: 12,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: spacing.md,
+    fontStyle: 'italic',
+  },
   primaryBtn: {
-    width: '100%', paddingVertical: spacing.md, borderRadius: 8,
-    backgroundColor: colors.textPrimary, alignItems: 'center', marginTop: spacing.sm,
+    width: '100%',
+    paddingVertical: spacing.md,
+    borderRadius: 8,
+    backgroundColor: colors.textPrimary,
+    alignItems: 'center',
+    marginTop: spacing.sm,
   },
   primaryBtnLabel: { ...typography.label, color: colors.surface },
   logoutBtn: { marginTop: spacing.lg, paddingVertical: spacing.sm },

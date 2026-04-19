@@ -1950,11 +1950,15 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
               {modelData && (
                 <View style={[styles.card, { marginTop: spacing.md }]}>
                   <Text style={styles.editSectionTitle}>Model Data</Text>
-                  {Object.entries(modelData).map(([key, val]) => (
-                    <Text key={key} style={styles.cardMeta}>
-                      {key}: {Array.isArray(val) ? val.join(', ') : String(val ?? '—')}
-                    </Text>
-                  ))}
+                  {Object.entries(modelData).map(([key, val]) => {
+                    // Avoid leaking legacy column name `bust` as visible label per §27.2.
+                    const label = key === 'bust' ? 'chest (legacy)' : key;
+                    return (
+                      <Text key={key} style={styles.cardMeta}>
+                        {label}: {Array.isArray(val) ? val.join(', ') : String(val ?? '—')}
+                      </Text>
+                    );
+                  })}
                 </View>
               )}
               {agencyData && (

@@ -1406,6 +1406,8 @@ export const uiCopy = {
       'Could not add this model — no client organization is associated with your account.',
     addToProjectModelNoAgency: 'Could not add this model — profile data is incomplete (no agency).',
     addToProjectGeneric: 'Could not save the model to this project. Please try again.',
+    /** Soft-error shown when fetching the latest projects from the server fails (offline / RLS / transient). */
+    syncFailed: 'Could not refresh projects from server. Showing the last known state.',
   },
   /** Agency — model profile completeness alerts shown in the My Models edit panel. */
   modelCompleteness: {
@@ -1978,6 +1980,36 @@ export const uiCopy = {
     storageLimitConfirmReset: 'Reset this organization to the default 5 GB storage limit?',
     storageLimitValidationNegative: 'Limit must be greater than 0 GB.',
     storageLimitValidationTooLarge: 'Limit cannot exceed 1024 GB (1 TB).',
+  },
+
+  pendingActivation: {
+    brand: 'INDEX CASTING',
+    title: 'Account Pending Activation',
+    bodyPending:
+      'Your account needs to be verified before you can access the platform. Please send your verification documents to the app operator.',
+    agencyHint:
+      'Agency accounts must register with the email address listed on your company website.',
+    sendDocumentsBtn: 'Send Verification Documents via Email',
+    bodySent:
+      'Thank you! Your documents have been submitted. The app operator will review and activate your account shortly. You will receive an email confirmation.',
+    checkStatusBtn: 'Check Activation Status',
+    logoutBtn: 'Logout',
+    emailSubject: (name: string) => `Account Verification – ${name}`,
+    emailBody: (params: {
+      orgKind: 'Agency' | 'Client';
+      email: string;
+      displayName: string;
+      company: string;
+    }) =>
+      `Hello Casting Index Team,\n\n` +
+      `I would like to activate my ${params.orgKind} account.\n\n` +
+      `Account Email: ${params.email}\n` +
+      `Display Name: ${params.displayName}\n` +
+      `Company: ${params.company}\n\n` +
+      `I have attached the required verification documents.\n\n` +
+      `Best regards`,
+    fallbackUser: 'User',
+    fallbackCompany: 'N/A',
   },
 
   billing: {

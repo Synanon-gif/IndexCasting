@@ -300,28 +300,39 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
   }, [headerTitle, b2bViewerRole, latestBookingModelName]);
 
   // Resolve model preview photos for package cards.
+  // Cache key is `${modelId}|${packageType}` so polaroid packages display polaroids
+  // while portfolio packages display portfolio images (UI-A5-2).
   // Uses fetchedPackagePhotoIds ref to avoid refetching when a model has no photo.
   useEffect(() => {
-    const previewIds = Array.from(
-      new Set(
-        msgs
-          .filter((m) => (m as { message_type?: string }).message_type === 'package')
-          .flatMap((m) => metaStringArray(m, 'preview_model_ids')),
-      ),
+    const requested = new Map<string, { modelId: string; packageType: string }>();
+    msgs
+      .filter((m) => (m as { message_type?: string }).message_type === 'package')
+      .forEach((m) => {
+        const packageType = (metaString(m, 'package_type') ?? 'portfolio').toLowerCase();
+        for (const modelId of metaStringArray(m, 'preview_model_ids')) {
+          const key = `${modelId}|${packageType}`;
+          if (!requested.has(key)) requested.set(key, { modelId, packageType });
+        }
+      });
+
+    const missing = Array.from(requested.entries()).filter(
+      ([key]) => !fetchedPackagePhotoIds.current.has(key),
     );
-    const missing = previewIds.filter((id) => !fetchedPackagePhotoIds.current.has(id));
     if (missing.length === 0) return;
 
-    missing.forEach((id) => fetchedPackagePhotoIds.current.add(id));
+    missing.forEach(([key]) => fetchedPackagePhotoIds.current.add(key));
 
     void Promise.all(
-      missing.map(async (modelId) => {
+      missing.map(async ([key, { modelId, packageType }]) => {
         try {
           const row = await getModelByIdFromSupabase(modelId);
-          const rawPhoto = row?.portfolio_images?.[0];
+          const rawPhoto =
+            packageType === 'polaroid'
+              ? (row?.polaroids?.[0] ?? row?.portfolio_images?.[0])
+              : (row?.portfolio_images?.[0] ?? row?.polaroids?.[0]);
           if (!rawPhoto) return;
           const photo = normalizeDocumentspicturesModelImageRef(rawPhoto, modelId);
-          setPackageModelPhotos((prev) => ({ ...prev, [modelId]: photo }));
+          setPackageModelPhotos((prev) => ({ ...prev, [key]: photo }));
         } catch (e) {
           console.error('packageModelPhotos lookup error:', e);
         }
@@ -826,20 +837,27 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
                     ) : null}
                     {previewIds.length > 0 ? (
                       <View style={styles.avatarRow}>
-                        {previewIds.slice(0, 4).map((modelId) =>
-                          packageModelPhotos[modelId] ? (
-                            <StorageImage
-                              key={modelId}
-                              uri={packageModelPhotos[modelId]}
-                              style={styles.avatar}
-                              resizeMode="cover"
-                            />
-                          ) : (
-                            <View key={modelId} style={[styles.avatar, styles.avatarPlaceholder]}>
-                              <Text style={styles.avatarPlaceholderText}>?</Text>
-                            </View>
-                          ),
-                        )}
+                        {(() => {
+                          const packageType = (
+                            metaString(m, 'package_type') ?? 'portfolio'
+                          ).toLowerCase();
+                          return previewIds.slice(0, 4).map((modelId) => {
+                            const cacheKey = `${modelId}|${packageType}`;
+                            const photo = packageModelPhotos[cacheKey];
+                            return photo ? (
+                              <StorageImage
+                                key={modelId}
+                                uri={photo}
+                                style={styles.avatar}
+                                resizeMode="cover"
+                              />
+                            ) : (
+                              <View key={modelId} style={[styles.avatar, styles.avatarPlaceholder]}>
+                                <Text style={styles.avatarPlaceholderText}>?</Text>
+                              </View>
+                            );
+                          });
+                        })()}
                       </View>
                     ) : null}
                     <View style={styles.cardActions}>

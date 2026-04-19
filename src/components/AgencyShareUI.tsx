@@ -545,7 +545,7 @@ const ModelDetailCard: React.FC<{
   onGenerateClaim: () => void;
   claimUrl?: string;
 }> = ({ model, selectedCountries, onOpenPicker, onGenerateClaim, claimUrl }) => {
-  const cover = model.portfolioImages[0] ?? model.polaroids[0] ?? null;
+  const cover = model.portfolioImages[0] ?? null;
   const chest = model.bust;
   const fmt = (v: number | null) => (typeof v === 'number' ? `${v}` : '—');
   return (

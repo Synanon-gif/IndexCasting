@@ -568,6 +568,11 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   useEffect(() => {
     if (!packageViewState) return;
     setPackageDisplayMode(defaultDisplayModeForPackage(packageViewState.packageType));
+    // We intentionally depend only on packageId + packageType, not the full packageViewState
+    // object: the display mode must be reset when the user opens a different package or its
+    // type changes, NOT when the models array is re-hydrated (which would flip the user's
+    // chosen mode for `mixed` packages on every refresh).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [packageViewState?.packageId, packageViewState?.packageType]);
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const [pendingModel, setPendingModel] = useState<ModelSummary | null>(null);
@@ -839,6 +844,11 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         });
       } catch (e) {
         console.error('ClientWebApp: failed to sync projects from Supabase', e);
+        // Soft-refresh hint: keep last known state (localStorage hydrate already ran),
+        // but inform the user that the live sync failed (offline / RLS / transient RPC).
+        setFeedback(uiCopy.projects.syncFailed);
+        if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
+        feedbackTimerRef.current = setTimeout(() => setFeedback(null), 3500);
       }
     })();
   }, [clientOrgId, realClientId]);
