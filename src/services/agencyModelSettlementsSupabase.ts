@@ -15,6 +15,7 @@
 
 import { supabase } from '../../lib/supabase';
 import { assertOrgContext } from '../utils/orgGuard';
+import { logAction } from '../utils/logAction';
 import type {
   AgencyModelSettlementInput,
   AgencyModelSettlementItemInput,
@@ -24,6 +25,22 @@ import type {
   AgencyModelSettlementStatus,
   AgencyModelSettlementWithItems,
 } from '../types/billingTypes';
+
+// ─── Audit helper (Phase B.5 — 20261122) ────────────────────────────────────
+async function resolveSettlementOrgId(settlementId: string): Promise<string | null> {
+  if (!settlementId) return null;
+  try {
+    const { data, error } = await supabase
+      .from('agency_model_settlements')
+      .select('organization_id')
+      .eq('id', settlementId)
+      .maybeSingle();
+    if (error || !data) return null;
+    return (data.organization_id as string) ?? null;
+  } catch {
+    return null;
+  }
+}
 
 // ─── Reads ──────────────────────────────────────────────────────────────────
 
@@ -123,7 +140,20 @@ export async function createAgencyModelSettlement(
       console.error('[createAgencyModelSettlement] error:', error);
       return null;
     }
-    return (data?.id as string) ?? null;
+    const newId = (data?.id as string) ?? null;
+    if (newId) {
+      logAction(organizationId, 'createAgencyModelSettlement', {
+        type: 'settlement',
+        action: 'settlement_created',
+        entityId: newId,
+        newData: {
+          model_id: payload.model_id,
+          currency: payload.currency ?? 'EUR',
+          source_option_request_id: payload.source_option_request_id ?? null,
+        },
+      });
+    }
+    return newId;
   } catch (e) {
     console.error('[createAgencyModelSettlement] exception:', e);
     return null;
@@ -165,6 +195,30 @@ export async function updateAgencyModelSettlement(
       console.error('[updateAgencyModelSettlement] error:', error);
       return false;
     }
+    // Map terminal status transitions to dedicated audit actions; otherwise
+    // log a generic settlement_updated entry with the patched fields.
+    const action: Parameters<typeof logAction>[2] =
+      patch.status === 'recorded'
+        ? {
+            type: 'settlement',
+            action: 'settlement_marked_recorded',
+            entityId: settlementId,
+            newData: update,
+          }
+        : patch.status === 'paid'
+          ? {
+              type: 'settlement',
+              action: 'settlement_marked_paid',
+              entityId: settlementId,
+              newData: update,
+            }
+          : {
+              type: 'settlement',
+              action: 'settlement_updated',
+              entityId: settlementId,
+              newData: update,
+            };
+    logAction(organizationId, 'updateAgencyModelSettlement', action);
     return true;
   } catch (e) {
     console.error('[updateAgencyModelSettlement] exception:', e);
@@ -197,6 +251,11 @@ export async function deleteAgencyModelSettlement(
       console.error('[deleteAgencyModelSettlement] error:', error);
       return false;
     }
+    logAction(organizationId, 'deleteAgencyModelSettlement', {
+      type: 'settlement',
+      action: 'settlement_deleted',
+      entityId: settlementId,
+    });
     return true;
   } catch (e) {
     console.error('[deleteAgencyModelSettlement] exception:', e);
@@ -232,7 +291,24 @@ export async function addAgencyModelSettlementItem(
       return null;
     }
     const id = (data?.id as string) ?? null;
-    if (id) await recomputeSettlementTotals(settlementId);
+    if (id) {
+      await recomputeSettlementTotals(settlementId);
+      void resolveSettlementOrgId(settlementId).then((orgId) => {
+        if (orgId) {
+          logAction(orgId, 'addAgencyModelSettlementItem', {
+            type: 'settlement',
+            action: 'settlement_item_added',
+            entityId: settlementId,
+            newData: {
+              item_id: id,
+              description: item.description,
+              quantity: item.quantity,
+              unit_amount_cents: item.unit_amount_cents,
+            },
+          });
+        }
+      });
+    }
     return id;
   } catch (e) {
     console.error('[addAgencyModelSettlementItem] exception:', e);
@@ -256,6 +332,16 @@ export async function deleteAgencyModelSettlementItem(
       return false;
     }
     await recomputeSettlementTotals(settlementId);
+    void resolveSettlementOrgId(settlementId).then((orgId) => {
+      if (orgId) {
+        logAction(orgId, 'deleteAgencyModelSettlementItem', {
+          type: 'settlement',
+          action: 'settlement_item_deleted',
+          entityId: settlementId,
+          newData: { item_id: itemId },
+        });
+      }
+    });
     return true;
   } catch (e) {
     console.error('[deleteAgencyModelSettlementItem] exception:', e);

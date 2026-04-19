@@ -57,6 +57,10 @@ function labelForCategory(category: BillingAttentionCategory): string {
       return hub.attentionCategoryInvoiceDraftPending;
     case 'invoice_pending_send':
       return hub.attentionCategoryInvoicePendingSend;
+    case 'invoice_payment_failed':
+      return hub.attentionCategoryInvoicePaymentFailed;
+    case 'invoice_missing_recipient_data':
+      return hub.attentionCategoryInvoiceMissingRecipientData;
     case 'invoice_received_unpaid':
       return hub.attentionCategoryInvoiceReceivedUnpaid;
     case 'invoice_received_overdue':

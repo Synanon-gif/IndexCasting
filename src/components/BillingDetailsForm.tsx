@@ -1,6 +1,15 @@
 /**
- * Owner-only B2B billing preparation (addresses + invoice defaults).
- * Do not mount in model workspace — client/agency org owners only.
+ * B2B billing preparation (addresses + invoice defaults).
+ *
+ * Permissions (Phase A/B 2026-11-20):
+ * - Owner: full read + write (create/edit/delete profiles, edit defaults)
+ * - Booker / Employee: read-only view (transparency for accounting/operations
+ *   workflows). Inputs disabled, write actions hidden, read-only banner shown.
+ * - Model / non-org users: nothing rendered (parent should not mount this).
+ *
+ * Profiles + defaults remain owner-only for legal/accounting safety; this is
+ * intentional and aligned with `organization_billing_profiles` /
+ * `organization_billing_defaults` RLS (owner-write, member-read).
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -14,7 +23,7 @@ import {
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { uiCopy } from '../constants/uiCopy';
-import { isOrganizationOwner } from '../services/orgRoleTypes';
+import { isOrganizationOwner, isOrganizationOperationalMember } from '../services/orgRoleTypes';
 import { useAuth } from '../context/AuthContext';
 import {
   deleteOrganizationBillingProfile,
@@ -47,6 +56,11 @@ export const BillingDetailsForm: React.FC<Props> = ({ organizationId }) => {
   const bs = uiCopy.billingSettings;
 
   const isOwner = isOrganizationOwner(profile?.org_member_role);
+  // Operational members (Booker/Employee) get a read-only view; non-members
+  // get nothing rendered. RLS enforces the same boundaries server-side
+  // (organization_billing_profiles + organization_billing_defaults are
+  // owner-write, member-read).
+  const isMember = isOrganizationOperationalMember(profile?.org_member_role);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -124,7 +138,8 @@ export const BillingDetailsForm: React.FC<Props> = ({ organizationId }) => {
   }, []);
 
   const load = useCallback(async () => {
-    if (!organizationId || !isOwner) return;
+    // Members (incl. Owner) can read; non-members return early.
+    if (!organizationId || !isMember) return;
     setLoading(true);
     try {
       const [plist, defs] = await Promise.all([
@@ -157,7 +172,7 @@ export const BillingDetailsForm: React.FC<Props> = ({ organizationId }) => {
     } finally {
       setLoading(false);
     }
-  }, [organizationId, isOwner, hydrateFromPrimary, bs.loadFailed]);
+  }, [organizationId, isMember, hydrateFromPrimary, bs.loadFailed]);
 
   useEffect(() => {
     void load();
@@ -281,7 +296,10 @@ export const BillingDetailsForm: React.FC<Props> = ({ organizationId }) => {
     [organizationId, load, bs],
   );
 
-  if (!organizationId || !isOwner) {
+  // Non-members (e.g. Models) get nothing — keep the workspace firewall intact.
+  // Members (Owner/Booker/Employee) see the form; Owner can edit, others see
+  // a read-only view.
+  if (!organizationId || !isMember) {
     return null;
   }
 
@@ -299,6 +317,12 @@ export const BillingDetailsForm: React.FC<Props> = ({ organizationId }) => {
       <Text style={styles.cardTitle}>{bs.cardTitle}</Text>
       <Text style={styles.intro}>{bs.intro}</Text>
 
+      {!isOwner && (
+        <View style={styles.readOnlyBanner}>
+          <Text style={styles.readOnlyBannerText}>{bs.readOnlyHint}</Text>
+        </View>
+      )}
+
       <Text style={styles.section}>{bs.sectionAddresses}</Text>
       {primaryRow?.is_default && (
         <View style={styles.badge}>
@@ -308,6 +332,7 @@ export const BillingDetailsForm: React.FC<Props> = ({ organizationId }) => {
 
       <Text style={styles.label}>{bs.fieldLabel}</Text>
       <TextInput
+        editable={isOwner}
         value={label}
         onChangeText={setLabel}
         placeholder={bs.fieldLabelPlaceholder}
@@ -316,6 +341,7 @@ export const BillingDetailsForm: React.FC<Props> = ({ organizationId }) => {
       />
       <Text style={styles.label}>{bs.fieldBillingName}</Text>
       <TextInput
+        editable={isOwner}
         value={billingName}
         onChangeText={setBillingName}
         placeholder={bs.fieldBillingNamePlaceholder}
@@ -323,19 +349,30 @@ export const BillingDetailsForm: React.FC<Props> = ({ organizationId }) => {
         style={styles.input}
       />
       <Text style={styles.label}>{bs.fieldAddress1}</Text>
-      <TextInput value={addr1} onChangeText={setAddr1} style={styles.input} />
+      <TextInput editable={isOwner} value={addr1} onChangeText={setAddr1} style={styles.input} />
       <Text style={styles.label}>{bs.fieldAddress2}</Text>
-      <TextInput value={addr2} onChangeText={setAddr2} style={styles.input} />
+      <TextInput editable={isOwner} value={addr2} onChangeText={setAddr2} style={styles.input} />
       <Text style={styles.label}>{bs.fieldCity}</Text>
-      <TextInput value={city} onChangeText={setCity} style={styles.input} />
+      <TextInput editable={isOwner} value={city} onChangeText={setCity} style={styles.input} />
       <Text style={styles.label}>{bs.fieldPostalCode}</Text>
-      <TextInput value={postal} onChangeText={setPostal} style={styles.input} />
+      <TextInput editable={isOwner} value={postal} onChangeText={setPostal} style={styles.input} />
       <Text style={styles.label}>{bs.fieldState}</Text>
-      <TextInput value={stateReg} onChangeText={setStateReg} style={styles.input} />
+      <TextInput
+        editable={isOwner}
+        value={stateReg}
+        onChangeText={setStateReg}
+        style={styles.input}
+      />
       <Text style={styles.label}>{bs.fieldCountry}</Text>
-      <TextInput value={country} onChangeText={setCountry} style={styles.input} />
+      <TextInput
+        editable={isOwner}
+        value={country}
+        onChangeText={setCountry}
+        style={styles.input}
+      />
       <Text style={styles.label}>{bs.fieldBillingEmail}</Text>
       <TextInput
+        editable={isOwner}
         value={billingEmail}
         onChangeText={setBillingEmail}
         keyboardType="email-address"
@@ -344,15 +381,17 @@ export const BillingDetailsForm: React.FC<Props> = ({ organizationId }) => {
       />
       <Text style={styles.label}>{bs.fieldVatId}</Text>
       <TextInput
+        editable={isOwner}
         value={vatId}
         onChangeText={setVatId}
         style={styles.input}
         autoCapitalize="characters"
       />
       <Text style={styles.label}>{bs.fieldTaxId}</Text>
-      <TextInput value={taxId} onChangeText={setTaxId} style={styles.input} />
+      <TextInput editable={isOwner} value={taxId} onChangeText={setTaxId} style={styles.input} />
       <Text style={styles.label}>{bs.fieldIban}</Text>
       <TextInput
+        editable={isOwner}
         value={iban}
         onChangeText={setIban}
         style={styles.input}
@@ -360,13 +399,19 @@ export const BillingDetailsForm: React.FC<Props> = ({ organizationId }) => {
       />
       <Text style={styles.label}>{bs.fieldBic}</Text>
       <TextInput
+        editable={isOwner}
         value={bic}
         onChangeText={setBic}
         style={styles.input}
         autoCapitalize="characters"
       />
       <Text style={styles.label}>{bs.fieldBankName}</Text>
-      <TextInput value={bankName} onChangeText={setBankName} style={styles.input} />
+      <TextInput
+        editable={isOwner}
+        value={bankName}
+        onChangeText={setBankName}
+        style={styles.input}
+      />
 
       {extraProfiles.length > 0 && (
         <>
@@ -376,26 +421,31 @@ export const BillingDetailsForm: React.FC<Props> = ({ organizationId }) => {
               <Text style={styles.extraText} numberOfLines={2}>
                 {p.label || p.billing_name || p.billing_city || p.id}
               </Text>
-              <TouchableOpacity onPress={() => onDelete(p)} disabled={saving}>
-                <Text style={styles.deleteLink}>{bs.deleteAddress}</Text>
-              </TouchableOpacity>
+              {isOwner && (
+                <TouchableOpacity onPress={() => onDelete(p)} disabled={saving}>
+                  <Text style={styles.deleteLink}>{bs.deleteAddress}</Text>
+                </TouchableOpacity>
+              )}
             </View>
           ))}
         </>
       )}
 
-      <TouchableOpacity
-        style={styles.secondaryBtn}
-        onPress={() => void onAddAddress()}
-        disabled={saving}
-      >
-        <Text style={styles.secondaryBtnText}>{bs.addAddress}</Text>
-      </TouchableOpacity>
+      {isOwner && (
+        <TouchableOpacity
+          style={styles.secondaryBtn}
+          onPress={() => void onAddAddress()}
+          disabled={saving}
+        >
+          <Text style={styles.secondaryBtnText}>{bs.addAddress}</Text>
+        </TouchableOpacity>
+      )}
 
       <Text style={[styles.section, styles.gapTop]}>{bs.sectionDefaults}</Text>
       <Text style={styles.label}>{bs.fieldCommissionRate}</Text>
       <Text style={styles.hint}>{bs.fieldCommissionHint}</Text>
       <TextInput
+        editable={isOwner}
         value={commission}
         onChangeText={setCommission}
         keyboardType="decimal-pad"
@@ -404,6 +454,7 @@ export const BillingDetailsForm: React.FC<Props> = ({ organizationId }) => {
       <Text style={styles.label}>{bs.fieldTaxRate}</Text>
       <Text style={styles.hint}>{bs.fieldTaxHint}</Text>
       <TextInput
+        editable={isOwner}
         value={taxRate}
         onChangeText={setTaxRate}
         keyboardType="decimal-pad"
@@ -411,6 +462,7 @@ export const BillingDetailsForm: React.FC<Props> = ({ organizationId }) => {
       />
       <Text style={styles.label}>{bs.fieldCurrency}</Text>
       <TextInput
+        editable={isOwner}
         value={currency}
         onChangeText={setCurrency}
         autoCapitalize="characters"
@@ -418,6 +470,7 @@ export const BillingDetailsForm: React.FC<Props> = ({ organizationId }) => {
       />
       <Text style={styles.label}>{bs.fieldPaymentTerms}</Text>
       <TextInput
+        editable={isOwner}
         value={payDays}
         onChangeText={setPayDays}
         keyboardType="number-pad"
@@ -425,6 +478,7 @@ export const BillingDetailsForm: React.FC<Props> = ({ organizationId }) => {
       />
       <Text style={styles.label}>{bs.fieldInvoicePrefix}</Text>
       <TextInput
+        editable={isOwner}
         value={invPrefix}
         onChangeText={setInvPrefix}
         placeholder={bs.fieldInvoicePrefixPlaceholder}
@@ -433,6 +487,7 @@ export const BillingDetailsForm: React.FC<Props> = ({ organizationId }) => {
       />
       <Text style={styles.label}>{bs.fieldNotesTemplate}</Text>
       <TextInput
+        editable={isOwner}
         value={notesTpl}
         onChangeText={setNotesTpl}
         placeholder={bs.fieldNotesPlaceholder}
@@ -445,20 +500,22 @@ export const BillingDetailsForm: React.FC<Props> = ({ organizationId }) => {
           <Text style={styles.label}>{bs.fieldReverseCharge}</Text>
           <Text style={styles.hint}>{bs.fieldReverseChargeHint}</Text>
         </View>
-        <Switch value={reverseCharge} onValueChange={setReverseCharge} />
+        <Switch value={reverseCharge} onValueChange={setReverseCharge} disabled={!isOwner} />
       </View>
 
-      <TouchableOpacity
-        style={[styles.saveBtn, saving && { opacity: 0.6 }]}
-        disabled={saving}
-        onPress={() => void onSave()}
-      >
-        {saving ? (
-          <ActivityIndicator color={colors.surface} />
-        ) : (
-          <Text style={styles.saveLabel}>{bs.save}</Text>
-        )}
-      </TouchableOpacity>
+      {isOwner && (
+        <TouchableOpacity
+          style={[styles.saveBtn, saving && { opacity: 0.6 }]}
+          disabled={saving}
+          onPress={() => void onSave()}
+        >
+          {saving ? (
+            <ActivityIndicator color={colors.surface} />
+          ) : (
+            <Text style={styles.saveLabel}>{bs.save}</Text>
+          )}
+        </TouchableOpacity>
+      )}
     </View>
   );
 };
@@ -564,4 +621,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   saveLabel: { ...typography.label, color: colors.surface },
+  readOnlyBanner: {
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: 8,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.md,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.border,
+  },
+  readOnlyBannerText: {
+    ...typography.body,
+    fontSize: 12,
+    color: colors.textSecondary,
+    lineHeight: 16,
+  },
 });

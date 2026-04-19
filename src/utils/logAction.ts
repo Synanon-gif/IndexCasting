@@ -33,7 +33,7 @@ import {
 } from '../services/gdprComplianceSupabase';
 
 type BookingAuditAction = Parameters<typeof logBookingAction>[1];
-type OptionAuditAction  = Parameters<typeof logOptionAction>[1];
+type OptionAuditAction = Parameters<typeof logOptionAction>[1];
 
 export type LogActionOpts = {
   /**
@@ -80,7 +80,44 @@ type AuditLog = {
   oldData?: Record<string, unknown>;
 };
 
-export type LogPayload = BookingLog | OptionLog | ImageLog | AuditLog;
+// Billing-specific convenience payloads (20261122 — Phase B.5).
+// Auto-set entityType so service-layer call sites stay short and consistent
+// with the DB trigger's entity_type='invoice' on tr_invoices_log_status_change.
+type InvoiceAuditAction =
+  | 'invoice_draft_created'
+  | 'invoice_draft_updated'
+  | 'invoice_draft_deleted'
+  | 'invoice_line_added'
+  | 'invoice_line_updated'
+  | 'invoice_line_deleted'
+  | 'invoice_sent';
+
+type InvoiceLog = {
+  type: 'invoice';
+  action: InvoiceAuditAction;
+  entityId: string;
+  newData?: Record<string, unknown>;
+  oldData?: Record<string, unknown>;
+};
+
+type SettlementAuditAction =
+  | 'settlement_created'
+  | 'settlement_updated'
+  | 'settlement_deleted'
+  | 'settlement_marked_recorded'
+  | 'settlement_marked_paid'
+  | 'settlement_item_added'
+  | 'settlement_item_deleted';
+
+type SettlementLog = {
+  type: 'settlement';
+  action: SettlementAuditAction;
+  entityId: string;
+  newData?: Record<string, unknown>;
+  oldData?: Record<string, unknown>;
+};
+
+export type LogPayload = BookingLog | OptionLog | ImageLog | AuditLog | InvoiceLog | SettlementLog;
 
 /**
  * Fire-and-forget audit log with mandatory org context guard.
@@ -108,47 +145,71 @@ export function logAction(
   switch (payload.type) {
     case 'booking':
       void logAuditAction({
-        orgId:      safeOrgId,
+        orgId: safeOrgId,
         actionType: payload.action,
         entityType: 'booking',
-        entityId:   payload.entityId,
-        newData:    payload.newData,
-        oldData:    payload.oldData,
+        entityId: payload.entityId,
+        newData: payload.newData,
+        oldData: payload.oldData,
         source,
       });
       break;
 
     case 'option':
       void logAuditAction({
-        orgId:      safeOrgId,
+        orgId: safeOrgId,
         actionType: payload.action,
         entityType: 'option_request',
-        entityId:   payload.entityId,
-        newData:    payload.newData,
-        oldData:    payload.oldData,
+        entityId: payload.entityId,
+        newData: payload.newData,
+        oldData: payload.oldData,
         source,
       });
       break;
 
     case 'image':
       void logAuditAction({
-        orgId:      safeOrgId,
+        orgId: safeOrgId,
         actionType: 'image_uploaded',
         entityType: 'model',
-        entityId:   payload.entityId,
-        newData:    payload.newData,
+        entityId: payload.entityId,
+        newData: payload.newData,
         source,
       });
       break;
 
     case 'audit':
       void logAuditAction({
-        orgId:      safeOrgId,
+        orgId: safeOrgId,
         actionType: payload.action,
         entityType: payload.entityType,
-        entityId:   payload.entityId,
-        newData:    payload.newData,
-        oldData:    payload.oldData,
+        entityId: payload.entityId,
+        newData: payload.newData,
+        oldData: payload.oldData,
+        source,
+      });
+      break;
+
+    case 'invoice':
+      void logAuditAction({
+        orgId: safeOrgId,
+        actionType: payload.action,
+        entityType: 'invoice',
+        entityId: payload.entityId,
+        newData: payload.newData,
+        oldData: payload.oldData,
+        source,
+      });
+      break;
+
+    case 'settlement':
+      void logAuditAction({
+        orgId: safeOrgId,
+        actionType: payload.action,
+        entityType: 'settlement',
+        entityId: payload.entityId,
+        newData: payload.newData,
+        oldData: payload.oldData,
         source,
       });
       break;

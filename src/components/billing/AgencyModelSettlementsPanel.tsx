@@ -28,7 +28,7 @@ import {
 import { colors, spacing, typography } from '../../theme/theme';
 import { uiCopy } from '../../constants/uiCopy';
 import { useAuth } from '../../context/AuthContext';
-import { isOrganizationOwner } from '../../services/orgRoleTypes';
+import { isOrganizationOwner, isOrganizationOperationalMember } from '../../services/orgRoleTypes';
 import {
   createAgencyModelSettlement,
   deleteAgencyModelSettlement,
@@ -106,7 +106,10 @@ function centsToInput(cents: number): string {
 export const AgencyModelSettlementsPanel: React.FC<Props> = ({ organizationId }) => {
   const { profile } = useAuth();
   const s = uiCopy.settlements;
+  // Phase A (2026-11-20): Settlements operational — Owner UND Booker/Employee dürfen
+  // create/edit/mark recorded/mark paid. Delete bleibt Owner-only (ams_owner_delete_draft).
   const isOwner = isOrganizationOwner(profile?.org_member_role);
+  const isMember = isOrganizationOperationalMember(profile?.org_member_role);
 
   const [mode, setMode] = useState<Mode>('list');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -177,7 +180,7 @@ export const AgencyModelSettlementsPanel: React.FC<Props> = ({ organizationId })
 
   const onMarkRecorded = useCallback(
     (row: AgencyModelSettlementRow) => {
-      if (!isOwner || row.status !== 'draft' || !organizationId) return;
+      if (!isMember || row.status !== 'draft' || !organizationId) return;
       const run = async () => {
         const ok = await updateAgencyModelSettlement(row.id, organizationId, {
           status: 'recorded',
@@ -192,12 +195,12 @@ export const AgencyModelSettlementsPanel: React.FC<Props> = ({ organizationId })
         s.markRecorded,
       );
     },
-    [isOwner, organizationId, load, s],
+    [isMember, organizationId, load, s],
   );
 
   const onMarkPaid = useCallback(
     (row: AgencyModelSettlementRow) => {
-      if (!isOwner || row.status === 'paid' || row.status === 'void' || !organizationId) return;
+      if (!isMember || row.status === 'paid' || row.status === 'void' || !organizationId) return;
       const run = async () => {
         const ok = await markAgencyModelSettlementPaid(row.id, organizationId);
         if (ok) {
@@ -214,7 +217,7 @@ export const AgencyModelSettlementsPanel: React.FC<Props> = ({ organizationId })
         s.markPaid,
       );
     },
-    [isOwner, organizationId, load, s],
+    [isMember, organizationId, load, s],
   );
 
   if (!organizationId) return null;
@@ -226,7 +229,7 @@ export const AgencyModelSettlementsPanel: React.FC<Props> = ({ organizationId })
         settlementId={mode === 'edit' ? editingId : null}
         models={models}
         modelNameById={modelNameById}
-        canEdit={isOwner}
+        canEdit={isMember}
         onClose={() => {
           setMode('list');
           setEditingId(null);
@@ -240,7 +243,7 @@ export const AgencyModelSettlementsPanel: React.FC<Props> = ({ organizationId })
     <View style={styles.card}>
       <View style={styles.headerRow}>
         <Text style={styles.cardTitle}>{s.cardTitle}</Text>
-        {isOwner && (
+        {isMember && (
           <TouchableOpacity
             style={styles.primaryBtn}
             onPress={() => setMode('create')}
@@ -251,7 +254,7 @@ export const AgencyModelSettlementsPanel: React.FC<Props> = ({ organizationId })
         )}
       </View>
       <Text style={styles.intro}>{s.intro}</Text>
-      {!isOwner && <Text style={styles.hint}>{s.ownerOnlyHint}</Text>}
+      {!isMember && <Text style={styles.hint}>{s.ownerOnlyHint}</Text>}
 
       {loading ? (
         <View style={styles.loadingWrap}>
@@ -278,7 +281,7 @@ export const AgencyModelSettlementsPanel: React.FC<Props> = ({ organizationId })
                 <Text style={styles.rowAmount}>{formatCents(r.net_amount_cents, r.currency)}</Text>
               </View>
               <View style={styles.rowActions}>
-                {r.status === 'draft' && isOwner && (
+                {r.status === 'draft' && isMember && (
                   <>
                     <TouchableOpacity
                       onPress={() => {
@@ -291,12 +294,15 @@ export const AgencyModelSettlementsPanel: React.FC<Props> = ({ organizationId })
                     <TouchableOpacity onPress={() => onMarkRecorded(r)}>
                       <Text style={styles.linkAction}>{s.markRecorded}</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => onDelete(r)}>
-                      <Text style={styles.linkDanger}>{s.delete}</Text>
-                    </TouchableOpacity>
+                    {/* Delete bleibt Owner-only — RLS Policy ams_owner_delete_draft */}
+                    {isOwner && (
+                      <TouchableOpacity onPress={() => onDelete(r)}>
+                        <Text style={styles.linkDanger}>{s.delete}</Text>
+                      </TouchableOpacity>
+                    )}
                   </>
                 )}
-                {r.status === 'recorded' && isOwner && (
+                {r.status === 'recorded' && isMember && (
                   <TouchableOpacity onPress={() => onMarkPaid(r)}>
                     <Text style={styles.linkAction}>{s.markPaid}</Text>
                   </TouchableOpacity>
@@ -613,6 +619,10 @@ const SettlementEditor: React.FC<EditorProps> = ({
 
 const styles = StyleSheet.create({
   card: {
+    // Phase D (2026-04-19): marginHorizontal hinzugefügt — Parität mit
+    // InvoicesPanel/BillingDetailsForm. BillingHubView.body hat sein
+    // paddingHorizontal entfernt; Karten bringen ihr Side-Padding selbst mit.
+    marginHorizontal: spacing.md,
     marginVertical: spacing.sm,
     backgroundColor: colors.surface,
     borderRadius: 10,

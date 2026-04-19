@@ -770,11 +770,16 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
   const billingAttentionRole: BillingAttentionRole = isOrganizationOwner(profile?.org_member_role)
     ? 'agency_owner'
     : 'agency_member';
+  // Phase C.2 (20261124): bottom-tab badge uses counts-only RPC so it does NOT
+  // load every issued invoice / settlement on every screen mount. The Billing
+  // screen itself (BillingAttentionWidget) still uses mode='detailed' for full
+  // per-row context.
   const { hasBadge: hasBillingAttention, refresh: refreshBillingBadge } = useBillingTabBadge({
     organizationId: agencyOrganizationId,
     variant: 'agency',
     role: billingAttentionRole,
     enabled: Boolean(agencyOrganizationId),
+    mode: 'counts',
   });
   useEffect(() => {
     if (tab === 'billing') void refreshBillingBadge();

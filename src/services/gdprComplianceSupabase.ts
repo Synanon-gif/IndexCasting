@@ -98,7 +98,30 @@ export type AuditActionType =
   | 'admin_subscription_changed'
   | 'login_failed'
   | 'permission_denied'
-  | 'suspicious_activity';
+  | 'suspicious_activity'
+  // ─── Billing (20261122) ──────────────────────────────────────────────
+  // Frontend-initiated invoice mutations (source='api')
+  | 'invoice_draft_created'
+  | 'invoice_draft_updated'
+  | 'invoice_draft_deleted'
+  | 'invoice_line_added'
+  | 'invoice_line_updated'
+  | 'invoice_line_deleted'
+  // DB-trigger (Stripe webhook → tr_invoices_log_status_change, source='trigger')
+  | 'invoice_sent'
+  | 'invoice_paid'
+  | 'invoice_payment_failed'
+  | 'invoice_voided'
+  | 'invoice_overdue'
+  | 'invoice_uncollectible'
+  // Settlements (agency ↔ model)
+  | 'settlement_created'
+  | 'settlement_updated'
+  | 'settlement_deleted'
+  | 'settlement_marked_recorded'
+  | 'settlement_marked_paid'
+  | 'settlement_item_added'
+  | 'settlement_item_deleted';
 
 export type SecurityEventType =
   | 'xss_attempt'

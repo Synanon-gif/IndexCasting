@@ -2239,12 +2239,20 @@ export const uiCopy = {
     fieldReverseChargeHint: 'Informational flag for your workflow; does not replace tax advice.',
     setAsDefault: 'Use as default billing identity',
     additionalIdentities: 'Additional billing identities',
+    readOnlyHint:
+      'Read-only view. Only the organization owner can edit billing addresses and invoice defaults.',
   },
   // ── Invoices (B2B Stripe Invoicing) ────────────────────────────────────────
   invoices: {
     cardTitle: 'Invoices',
+    cardTitleOutgoing: 'Outgoing invoices',
+    cardTitleIncoming: 'Incoming invoices',
     intro:
       'Manage outgoing invoices to your business partners. Drafts are auto-created when a job is confirmed; you can edit and review before sending via Stripe.',
+    introOutgoing:
+      'Manage outgoing invoices to your business partners. Drafts are auto-created when a job is confirmed; you can edit and review before sending via Stripe.',
+    introIncoming:
+      'Invoices issued by your business partners and addressed to your organization. Status is updated automatically by Stripe webhooks.',
     ownerOnlyHint: 'Only the organization owner can create, edit, or send invoices.',
     tabDrafts: 'Drafts',
     tabSent: 'Sent',
@@ -2295,6 +2303,30 @@ export const uiCopy = {
     retrySendConfirmTitle: 'Retry sending this invoice?',
     retrySendConfirmMessage:
       'This invoice is stuck in “Sending…” after a previous attempt was interrupted. Retrying is safe — Stripe will not be charged twice.',
+    // Phase E (2026-04-19): Email delivery as alternative to Stripe.
+    sendViaEmail: 'Send via Email',
+    sendingViaEmail: 'Sending email…',
+    sendEmailModalTitle: 'Send invoice via Email',
+    sendEmailModalIntro:
+      'The invoice will be finalized (number assigned, snapshots locked) and dispatched as an HTML email. After this you cannot edit it anymore.',
+    sendEmailRecipientLabel: 'Recipient email',
+    sendEmailRecipientPlaceholder: 'name@company.com',
+    sendEmailRecipientHint:
+      'Defaults to the recipient billing profile email — override here if needed.',
+    sendEmailCcLabel: 'Cc (comma-separated, optional)',
+    sendEmailCcPlaceholder: 'accounting@you.com, ops@you.com',
+    sendEmailSubjectLabel: 'Subject (optional)',
+    sendEmailSubjectPlaceholder: 'Invoice {number} from {issuer}',
+    sendEmailMessageLabel: 'Message (optional, shown above the invoice block)',
+    sendEmailMessagePlaceholder: 'Dear {recipient}, please find attached…',
+    sendEmailDispatch: 'Send email',
+    sendEmailCancel: 'Cancel',
+    sendEmailMissingRecipient:
+      'No recipient email available. Add an email to the recipient billing profile or enter one here.',
+    sendEmailInvalidRecipient: 'Recipient email is not a valid address.',
+    sendEmailInvalidCc: 'One or more Cc addresses are invalid.',
+    sendEmailSuccess: 'Invoice sent via email.',
+    sendEmailFailed: 'Could not send the invoice email. Try again.',
     saveSuccess: 'Draft saved.',
     saveFailed: 'Could not save draft. Try again.',
     deleteSuccess: 'Draft deleted.',
@@ -2402,6 +2434,8 @@ export const uiCopy = {
     attentionCategoryInvoiceUnpaid: 'Unpaid invoice',
     attentionCategoryInvoiceDraftPending: 'Draft to review',
     attentionCategoryInvoicePendingSend: 'Stuck in “Sending…”',
+    attentionCategoryInvoicePaymentFailed: 'Payment failed',
+    attentionCategoryInvoiceMissingRecipientData: 'Recipient data incomplete',
     attentionCategoryInvoiceReceivedUnpaid: 'Bill awaiting payment',
     attentionCategoryInvoiceReceivedOverdue: 'Bill overdue',
     attentionCategorySettlementDraftPending: 'Settlement draft',

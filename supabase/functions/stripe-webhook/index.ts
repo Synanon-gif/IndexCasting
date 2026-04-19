@@ -225,6 +225,31 @@ async function tryHandleB2bInvoiceEvent(
   }
   if (newStatus === 'paid') update.paid_at = new Date().toISOString();
 
+  // 20261123 — Stripe failure tracking (Phase C.3).
+  // The canonical `status` enum has no `payment_failed` value (intentionally
+  // — it would conflict with the calendar-based `overdue` lifecycle). Instead
+  // we mirror Stripe's payment_failed signal onto two dedicated columns so
+  // the Smart Attention layer (Phase C.1) can surface a CRITICAL
+  // `invoice_payment_failed` signal independent of overdue.
+  //
+  // Idempotent: invoice.payment_failed → set timestamp + reason
+  //              invoice.paid / invoice.voided → clear both
+  //              other events → leave untouched.
+  if (event.type === 'invoice.payment_failed') {
+    update.last_stripe_failure_at = new Date().toISOString();
+    const failureReason =
+      (stripeInvoice as unknown as {
+        last_finalization_error?: { message?: string | null } | null;
+      }).last_finalization_error?.message
+        ?? (typeof (stripeInvoice as unknown as { failure_message?: string | null }).failure_message === 'string'
+            ? (stripeInvoice as unknown as { failure_message?: string | null }).failure_message
+            : null);
+    update.last_stripe_failure_reason = failureReason ?? 'Stripe reported invoice.payment_failed (no detail)';
+  } else if (event.type === 'invoice.paid' || event.type === 'invoice.payment_succeeded' || event.type === 'invoice.voided') {
+    update.last_stripe_failure_at = null;
+    update.last_stripe_failure_reason = null;
+  }
+
   // F2.6 — Tax / amount sync from Stripe (Stripe is source of truth after
   // finalize). With STRIPE_TAX_ENABLED=true Stripe re-computes tax from the
   // recipient address; the values in our DB at draft time were only an
@@ -289,6 +314,9 @@ async function tryHandleB2bInvoiceEvent(
       stripe_total_cents: stripeInvoice.total ?? null,
       stripe_currency: stripeInvoice.currency ?? null,
       mirrored_tax_rate_percent: (update.tax_rate_percent as number | undefined) ?? null,
+      // 20261123 — record Stripe failure mirroring for audit / replay.
+      stripe_failure_at: (update.last_stripe_failure_at as string | null | undefined) ?? null,
+      stripe_failure_reason: (update.last_stripe_failure_reason as string | null | undefined) ?? null,
     },
   });
 

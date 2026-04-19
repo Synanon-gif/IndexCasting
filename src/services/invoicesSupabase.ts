@@ -1,19 +1,35 @@
 /**
  * Invoices service (B2B Stripe Invoicing).
  *
- * Contract:
- * - Option A return pattern: returns boolean / null / [] on failure; never throws in normal flow.
- * - Owner-only writes (RLS-enforced server-side; UI must also gate via canEditBilling()).
- * - All write paths re-confirm org context with assertOrgContext.
+ * Contract (Hybrid: Option A + ServiceResult):
+ * - Most reads/writes follow Option A: returns `boolean` / `null` / `[]` on failure;
+ *   never throws in normal flow. UI handlers MUST check the return value
+ *   (`if (!ok) rollback`) — `.catch()` alone is dead code.
+ * - `sendInvoiceViaStripe` returns a structured `ServiceResult<{hosted_url, pdf_url}>`
+ *   shape (`{ ok, error?, hosted_url?, pdf_url? }`) because the Edge Function
+ *   needs to surface either Stripe URLs or a typed failure reason. Per `system-invariants.mdc`
+ *   "SERVICE LAYER — Option A + ServiceResult (Option C, Hybrid)": one function uses
+ *   one contract end-to-end (no mixing within a single function).
+ *
+ * Permissions (Phase A 2026-11-20 — billing member-write expansion):
+ * - Operational members (Owner, Booker, Employee) may: create/edit invoice drafts,
+ *   add/update/delete line items, transition draft → pending_send (i.e. send via Stripe).
+ * - Owner-only: void invoices, delete drafts, edit organization billing profiles
+ *   and defaults. RLS (`20261120_billing_member_write_expansion.sql`) enforces these
+ *   boundaries server-side; UI gates mirror them via `isOrganizationOperationalMember`
+ *   / `isOrganizationOwner` from `orgRoleTypes.ts`.
+ * - All write paths re-confirm org context with `assertOrgContext`.
  *
  * Invariants enforced (see billing-payment-invariants.mdc):
  * - I-PAY-1: DB invoices row is the canonical local truth; Stripe is the payment authority.
- * - I-PAY-3: writes restricted to issuer org owners (RLS).
+ * - I-PAY-3: issuer org boundary — RLS restricts writes to issuer org members
+ *   (operational members for drafts/line-items/send; owners for void/delete/profiles/defaults).
  * - I-PAY-10: model billing firewall — models never read/write here.
  */
 
 import { supabase } from '../../lib/supabase';
 import { assertOrgContext } from '../utils/orgGuard';
+import { logAction } from '../utils/logAction';
 import type {
   AgencyClientBillingPresetRow,
   InvoiceDraftPatch,
@@ -24,6 +40,27 @@ import type {
   InvoiceType,
   InvoiceWithLines,
 } from '../types/billingTypes';
+
+// ─── Audit helper (Phase B.5 — 20261122) ────────────────────────────────────
+// Frontend-initiated invoice mutations write source='api' audit_trail rows.
+// We resolve organization_id lazily so callers don't need to pass it explicitly
+// for every line-item / status mutation. Trigger-driven status transitions
+// (Stripe webhook → tr_invoices_log_status_change) write their own rows with
+// source='trigger' independently of this helper.
+async function resolveInvoiceOrgId(invoiceId: string): Promise<string | null> {
+  if (!invoiceId) return null;
+  try {
+    const { data, error } = await supabase
+      .from('invoices')
+      .select('organization_id')
+      .eq('id', invoiceId)
+      .maybeSingle();
+    if (error || !data) return null;
+    return (data.organization_id as string) ?? null;
+  } catch {
+    return null;
+  }
+}
 
 // ─── Reads ──────────────────────────────────────────────────────────────────
 
@@ -258,6 +295,18 @@ export async function createInvoiceDraft(
     const newId = (data?.id as string) ?? null;
     if (!newId) return null;
 
+    logAction(organizationId, 'createInvoiceDraft', {
+      type: 'invoice',
+      action: 'invoice_draft_created',
+      entityId: newId,
+      newData: {
+        invoice_type: payload.invoice_type,
+        recipient_organization_id: effRecipient,
+        currency: effCurrency,
+        preset_id: payload.presetId ?? null,
+      },
+    });
+
     // Insert preset line item template items (best-effort) if present.
     if (preset && Array.isArray(preset.default_line_item_template)) {
       const template = preset.default_line_item_template;
@@ -330,6 +379,16 @@ export async function updateInvoiceDraft(
       console.error('[updateInvoiceDraft] error:', error);
       return false;
     }
+    void resolveInvoiceOrgId(invoiceId).then((orgId) => {
+      if (orgId) {
+        logAction(orgId, 'updateInvoiceDraft', {
+          type: 'invoice',
+          action: 'invoice_draft_updated',
+          entityId: invoiceId,
+          newData: update,
+        });
+      }
+    });
     return true;
   } catch (e) {
     console.error('[updateInvoiceDraft] exception:', e);
@@ -341,6 +400,8 @@ export async function updateInvoiceDraft(
 export async function deleteInvoiceDraft(invoiceId: string): Promise<boolean> {
   if (!invoiceId) return false;
   try {
+    // Resolve org_id BEFORE delete (row vanishes after).
+    const orgId = await resolveInvoiceOrgId(invoiceId);
     const { error } = await supabase
       .from('invoices')
       .delete()
@@ -349,6 +410,13 @@ export async function deleteInvoiceDraft(invoiceId: string): Promise<boolean> {
     if (error) {
       console.error('[deleteInvoiceDraft] error:', error);
       return false;
+    }
+    if (orgId) {
+      logAction(orgId, 'deleteInvoiceDraft', {
+        type: 'invoice',
+        action: 'invoice_draft_deleted',
+        entityId: invoiceId,
+      });
     }
     return true;
   } catch (e) {
@@ -386,7 +454,24 @@ export async function addInvoiceLineItem(
       return null;
     }
     const id = (data?.id as string) ?? null;
-    if (id) await recomputeInvoiceTotals(invoiceId);
+    if (id) {
+      await recomputeInvoiceTotals(invoiceId);
+      void resolveInvoiceOrgId(invoiceId).then((orgId) => {
+        if (orgId) {
+          logAction(orgId, 'addInvoiceLineItem', {
+            type: 'invoice',
+            action: 'invoice_line_added',
+            entityId: invoiceId,
+            newData: {
+              line_item_id: id,
+              description: item.description,
+              quantity: item.quantity,
+              unit_amount_cents: item.unit_amount_cents,
+            },
+          });
+        }
+      });
+    }
     return id;
   } catch (e) {
     console.error('[addInvoiceLineItem] exception:', e);
@@ -439,6 +524,16 @@ export async function updateInvoiceLineItem(
       return false;
     }
     await recomputeInvoiceTotals(invoiceId);
+    void resolveInvoiceOrgId(invoiceId).then((orgId) => {
+      if (orgId) {
+        logAction(orgId, 'updateInvoiceLineItem', {
+          type: 'invoice',
+          action: 'invoice_line_updated',
+          entityId: invoiceId,
+          newData: { line_item_id: lineItemId, ...update },
+        });
+      }
+    });
     return true;
   } catch (e) {
     console.error('[updateInvoiceLineItem] exception:', e);
@@ -462,6 +557,16 @@ export async function deleteInvoiceLineItem(
       return false;
     }
     await recomputeInvoiceTotals(invoiceId);
+    void resolveInvoiceOrgId(invoiceId).then((orgId) => {
+      if (orgId) {
+        logAction(orgId, 'deleteInvoiceLineItem', {
+          type: 'invoice',
+          action: 'invoice_line_deleted',
+          entityId: invoiceId,
+          newData: { line_item_id: lineItemId },
+        });
+      }
+    });
     return true;
   } catch (e) {
     console.error('[deleteInvoiceLineItem] exception:', e);
@@ -522,9 +627,29 @@ export async function recomputeInvoiceTotals(invoiceId: string): Promise<boolean
 // ─── Send via Stripe (Edge Function) ────────────────────────────────────────
 
 /**
- * Trigger send-invoice-via-stripe Edge Function for a draft invoice.
- * The Edge Function handles: numbering, billing snapshots, Stripe customer
- * resolution, Stripe invoice + items + finalize + send.
+ * Trigger `send-invoice-via-stripe` Edge Function for a draft invoice.
+ *
+ * Contract: `ServiceResult`-style (`{ ok, error?, hosted_url?, pdf_url? }`).
+ * Caller MUST check `result.ok`; on `false`, `result.error` carries a typed reason
+ * (e.g. `not_authenticated`, `not_a_member`, `invoice_not_found`,
+ * `invalid_state`/`already_locked`, `recipient_email_required`,
+ * `stripe_customer_resolution_failed`, `stripe_create_failed`, `unknown_error`).
+ *
+ * Edge Function pipeline (Phase B.4 hardening, 2026-11-20):
+ * 1. Auth + membership check (operational member of issuer org).
+ * 2. Pre-lock CAS: `UPDATE invoices SET status='pending_send' WHERE status='draft'`.
+ *    This single-row optimistic lock prevents concurrent sends and avoids gaps in
+ *    `invoice_sequences` (we only draw a number AFTER the lock succeeds).
+ * 3. Draw `next_invoice_number` and bind `invoice_number` + `billing_profile_snapshot`
+ *    + `recipient_billing_snapshot` (allowed by `fn_invoices_freeze_snapshot` while
+ *    fields are still NULL on first set, even in `pending_send` state).
+ * 4. Resolve / cache Stripe customer (`organization_stripe_customers`).
+ * 5. Create Stripe invoice + items + finalize + send (idempotency-key bound to invoice id).
+ * 6. Webhook (`stripe-webhook`) syncs `status` (`sent` / `paid` / `payment_failed` / `voided`)
+ *    back into the `invoices` row — DB is local truth, Stripe is payment authority (I-PAY-1).
+ *
+ * Permission boundary: operational members (Owner / Booker / Employee) of the issuer
+ * org may invoke this; non-members get `not_a_member`. Models are firewalled out (I-PAY-10).
  */
 export async function sendInvoiceViaStripe(invoiceId: string): Promise<{
   ok: boolean;
@@ -550,6 +675,23 @@ export async function sendInvoiceViaStripe(invoiceId: string): Promise<{
     if (!payload.ok) {
       return { ok: false, error: payload.error ?? 'unknown_error' };
     }
+    // Frontend-actor audit: who pressed Send (source='api', user_id=auth.uid()).
+    // The DB trigger `tr_invoices_log_status_change` writes a separate row when
+    // the Stripe webhook flips status to 'sent' (source='trigger', user_id=NULL)
+    // — both entries together give a complete provenance trail.
+    void resolveInvoiceOrgId(invoiceId).then((orgId) => {
+      if (orgId) {
+        logAction(orgId, 'sendInvoiceViaStripe', {
+          type: 'invoice',
+          action: 'invoice_sent',
+          entityId: invoiceId,
+          newData: {
+            hosted_url: payload.hosted_url ?? null,
+            pdf_url: payload.pdf_url ?? null,
+          },
+        });
+      }
+    });
     return {
       ok: true,
       hosted_url: payload.hosted_url ?? null,
@@ -557,6 +699,98 @@ export async function sendInvoiceViaStripe(invoiceId: string): Promise<{
     };
   } catch (e) {
     console.error('[sendInvoiceViaStripe] exception:', e);
+    return { ok: false, error: e instanceof Error ? e.message : 'exception' };
+  }
+}
+
+/**
+ * Send a draft (or pending_send) invoice as an HTML e-mail via Resend.
+ *
+ * Parallel delivery path to {@link sendInvoiceViaStripe}. The Edge Function
+ * `send-invoice-via-email` enforces the same Phase B.4 pre-lock semantics
+ * (draft → pending_send → sent) so invoice numbers never gap and snapshots
+ * freeze atomically. On success the invoice row is marked
+ * `delivery_method='email'` and accumulates `email_recipient`,
+ * `email_subject`, `email_sent_at`, `email_message_id`. On failure the
+ * row stays in `pending_send` (or `draft` if pre-lock failed) and
+ * `last_email_failure_at` / `last_email_failure_reason` are set so the
+ * Smart Attention pipeline surfaces it.
+ *
+ * Permission boundary: operational members (Owner / Booker / Employee) of
+ * the issuer org may invoke this — same gate as the Stripe send. Models are
+ * firewalled (I-PAY-10).
+ *
+ * Phase E (2026-04-19).
+ */
+export async function sendInvoiceViaEmail(
+  invoiceId: string,
+  opts?: {
+    /** Override recipient e-mail; defaults to recipient billing profile email. */
+    to?: string;
+    /** Optional CC recipients (operator BCC themselves, etc.). */
+    cc?: string[];
+    /** Optional subject override. */
+    subject?: string;
+    /** Optional free-form message rendered above the invoice block. */
+    message?: string;
+  },
+): Promise<{
+  ok: boolean;
+  error?: string;
+  invoice_number?: string;
+  email_message_id?: string | null;
+  to?: string;
+}> {
+  if (!invoiceId) return { ok: false, error: 'invoice_id required' };
+  try {
+    const { data, error } = await supabase.functions.invoke('send-invoice-via-email', {
+      body: {
+        invoice_id: invoiceId,
+        to: opts?.to,
+        cc: opts?.cc,
+        subject: opts?.subject,
+        message: opts?.message,
+      },
+    });
+    if (error) {
+      console.error('[sendInvoiceViaEmail] invoke error:', error);
+      return { ok: false, error: error.message };
+    }
+    const payload = (data ?? {}) as {
+      ok?: boolean;
+      error?: string;
+      invoice_number?: string;
+      email_message_id?: string | null;
+      to?: string;
+    };
+    if (!payload.ok) {
+      return { ok: false, error: payload.error ?? 'unknown_error' };
+    }
+    // Frontend-actor audit (parity with sendInvoiceViaStripe). The DB trigger
+    // `tr_invoices_log_status_change` adds a second row when status flips to
+    // 'sent' (source='trigger') — together they give a complete trail.
+    void resolveInvoiceOrgId(invoiceId).then((orgId) => {
+      if (orgId) {
+        logAction(orgId, 'sendInvoiceViaEmail', {
+          type: 'invoice',
+          action: 'invoice_sent',
+          entityId: invoiceId,
+          newData: {
+            delivery_method: 'email',
+            to: payload.to ?? null,
+            email_message_id: payload.email_message_id ?? null,
+          },
+        });
+      }
+    });
+    return {
+      ok: true,
+      invoice_number: payload.invoice_number,
+      email_message_id: payload.email_message_id ?? null,
+      to: payload.to,
+    };
+  } catch (e) {
+    console.error('[sendInvoiceViaEmail] exception:', e);
     return { ok: false, error: e instanceof Error ? e.message : 'exception' };
   }
 }

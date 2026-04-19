@@ -193,19 +193,39 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  // Owner check (issuer org)
+  // ── Membership check (Phase A 2026-11-20: Booker/Employee dürfen senden) ──
+  // Owner-only Aktionen (void, delete) bleiben unberührt — siehe RLS-Policies.
   const { data: issuerOrg } = await adminClient
     .from('organizations')
     .select('id, name, owner_id')
     .eq('id', invoice.organization_id)
     .maybeSingle();
 
-  if (!issuerOrg || issuerOrg.owner_id !== user.id) {
+  if (!issuerOrg) {
     return new Response(
-      JSON.stringify({ ok: false, error: 'Only the issuer organization owner can send invoices' }),
+      JSON.stringify({ ok: false, error: 'Issuer organization not found' }),
+      { status: 404, headers: { ...cors, 'Content-Type': 'application/json' } },
+    );
+  }
+
+  const isOwner = issuerOrg.owner_id === user.id;
+  let isMember = isOwner;
+  if (!isMember) {
+    const { data: memberRow } = await adminClient
+      .from('organization_members')
+      .select('user_id')
+      .eq('organization_id', invoice.organization_id)
+      .eq('user_id', user.id)
+      .maybeSingle();
+    isMember = !!memberRow;
+  }
+  if (!isMember) {
+    return new Response(
+      JSON.stringify({ ok: false, error: 'Only members of the issuer organization can send invoices' }),
       { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } },
     );
   }
+  const actorRole: string = isOwner ? 'owner' : 'member';
 
   if (!invoice.recipient_organization_id) {
     return new Response(
@@ -285,12 +305,57 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  // ── Reserve invoice_number (only on first attempt) ────────────────────────
+  // ── Phase B.4 (2026-11-20): Pre-Lock BEFORE drawing invoice_number.
+  //    Old order (draw number → CAS UPDATE) lost numbers when 2 concurrent
+  //    callers both drew but only one CAS'd successfully → sequence gap.
+  //
+  //    New order:
+  //      1. CAS UPDATE status='draft'→'pending_send' (no number yet).
+  //         Only one caller can win this CAS for a given draft.
+  //      2. Winner draws next_invoice_number (now safe — exclusive).
+  //      3. Bind UPDATE: set invoice_number + snapshots on the locked row.
+  //         Freeze trigger allows initial set (OLD.invoice_number IS NULL,
+  //         OLD.snapshot IS NULL).
+  //
+  //    Re-entry (status already pending_send): skip step 1; reuse existing
+  //    invoice_number; re-bind snapshots only if still NULL.
   let invoiceNumber: string;
-  if (invoice.invoice_number) {
-    // Re-entry: number was already reserved + bound to this invoice row.
-    invoiceNumber = invoice.invoice_number;
-  } else {
+  if (invoice.status === 'draft') {
+    // STEP 1: Pre-lock without number (eliminates race).
+    const { error: lockErr, data: lockedRow } = await adminClient
+      .from('invoices')
+      .update({
+        status: 'pending_send',
+        sent_at: new Date().toISOString(),
+        sent_by: user.id,
+      })
+      .eq('id', invoice.id)
+      .eq('status', 'draft') // CAS — only one concurrent caller wins
+      .is('invoice_number', null)
+      .select('id')
+      .maybeSingle();
+
+    if (lockErr || !lockedRow) {
+      console.error('[send-invoice-via-stripe] pre-lock UPDATE failed:', lockErr);
+      await adminClient.from('invoice_events').insert({
+        invoice_id: invoice.id,
+        event_type: 'send_prelock_failed',
+        actor_user_id: user.id,
+        actor_role: actorRole,
+        payload: {
+          db_error: lockErr?.message ?? 'no row updated (status changed concurrently or not draft)',
+        },
+      });
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error: 'Failed to lock invoice for sending — it may already be in progress. Please retry.',
+        }),
+        { status: 409, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+    }
+
+    // STEP 2: Now safe to draw number — no concurrent caller can hold this lock.
     const userClient = createClient(supabaseUrl, anonKey, {
       global: { headers: { Authorization: authHeader } },
     });
@@ -303,61 +368,96 @@ Deno.serve(async (req: Request) => {
 
     if (numberErr || !numberRes) {
       console.error('[send-invoice-via-stripe] next_invoice_number failed:', numberErr);
+      await adminClient.from('invoice_events').insert({
+        invoice_id: invoice.id,
+        event_type: 'send_number_failed',
+        actor_user_id: user.id,
+        actor_role: actorRole,
+        payload: {
+          db_error: numberErr?.message ?? 'next_invoice_number returned NULL',
+          recovery: 'invoice is in pending_send without number; admin can roll back to draft or re-call.',
+        },
+      });
       return new Response(JSON.stringify({ ok: false, error: 'Failed to reserve invoice number' }), {
         status: 500,
         headers: { ...cors, 'Content-Type': 'application/json' },
       });
     }
     invoiceNumber = String(numberRes);
-  }
 
-  // ── F2.5 Pre-Lock: bind invoice_number + freeze snapshots + flip to
-  //    pending_send BEFORE any Stripe API call. This guarantees that, if
-  //    the function dies between Stripe success and the final UPDATE, we
-  //    can recover deterministically: the row already carries the number
-  //    and snapshots, and re-entry will pick up the same Stripe invoice
-  //    via idempotency keys.
-  //
-  //    Skip if we are re-entering (status already pending_send).
-  if (invoice.status === 'draft') {
+    // STEP 3: Bind number + freeze snapshots. Freeze trigger permits initial
+    // set on pending_send when OLD values are NULL.
     const billingSnapshot = buildIssuerSnapshot(issuerProfile);
     const recipientSnapshot = buildRecipientSnapshot(recipientProfile, recipientName, recipientEmail);
 
-    const { error: lockErr, data: lockedRow } = await adminClient
+    const { error: bindErr } = await adminClient
       .from('invoices')
       .update({
-        status: 'pending_send',
         invoice_number: invoiceNumber,
         billing_profile_snapshot: billingSnapshot,
         recipient_billing_snapshot: recipientSnapshot,
-        sent_at: new Date().toISOString(),
-        sent_by: user.id,
       })
       .eq('id', invoice.id)
-      .eq('status', 'draft') // optimistic CAS — bail if someone else moved us
-      .select('id')
-      .maybeSingle();
+      .eq('status', 'pending_send')
+      .is('invoice_number', null);
 
-    if (lockErr || !lockedRow) {
-      console.error('[send-invoice-via-stripe] pre-lock UPDATE failed:', lockErr);
-      // Audit so admin can reconcile (number was reserved but not bound).
+    if (bindErr) {
+      console.error('[send-invoice-via-stripe] bind number+snapshot UPDATE failed:', bindErr);
       await adminClient.from('invoice_events').insert({
         invoice_id: invoice.id,
-        event_type: 'send_prelock_failed',
+        event_type: 'send_bind_failed',
         actor_user_id: user.id,
-        actor_role: 'owner',
+        actor_role: actorRole,
         payload: {
           reserved_invoice_number: invoiceNumber,
-          db_error: lockErr?.message ?? 'no row updated (status changed concurrently?)',
+          db_error: bindErr.message,
+          recovery: 'retry — invoice is locked in pending_send; bind step is idempotent via .is(null) guard',
         },
       });
       return new Response(
         JSON.stringify({
           ok: false,
-          error: 'Failed to lock invoice for sending — please retry. If this persists, contact support.',
+          error: 'Failed to bind invoice number — please retry.',
         }),
         { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } },
       );
+    }
+  } else {
+    // Re-entry: status already 'pending_send'. invoice_number must already exist
+    // because the bind step (STEP 3) is idempotent.
+    if (!invoice.invoice_number) {
+      // Edge case: pre-lock succeeded but bind failed; retry the bind here.
+      const userClient = createClient(supabaseUrl, anonKey, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: numberRes, error: numberErr } = await userClient.rpc('next_invoice_number', {
+        p_organization_id: invoice.organization_id,
+        p_invoice_type: invoice.invoice_type,
+        p_year: null,
+      });
+      if (numberErr || !numberRes) {
+        return new Response(JSON.stringify({ ok: false, error: 'Failed to reserve invoice number on retry' }), {
+          status: 500,
+          headers: { ...cors, 'Content-Type': 'application/json' },
+        });
+      }
+      invoiceNumber = String(numberRes);
+
+      const billingSnapshot = buildIssuerSnapshot(issuerProfile);
+      const recipientSnapshot = buildRecipientSnapshot(recipientProfile, recipientName, recipientEmail);
+
+      await adminClient
+        .from('invoices')
+        .update({
+          invoice_number: invoiceNumber,
+          billing_profile_snapshot: billingSnapshot,
+          recipient_billing_snapshot: recipientSnapshot,
+        })
+        .eq('id', invoice.id)
+        .eq('status', 'pending_send')
+        .is('invoice_number', null);
+    } else {
+      invoiceNumber = invoice.invoice_number;
     }
   }
 
@@ -538,7 +638,7 @@ Deno.serve(async (req: Request) => {
       invoice_id: invoice.id,
       event_type: 'send_stripe_failed',
       actor_user_id: user.id,
-      actor_role: 'owner',
+      actor_role: actorRole,
       payload: {
         invoice_number: invoiceNumber,
         stripe_error: message,
@@ -575,7 +675,7 @@ Deno.serve(async (req: Request) => {
       invoice_id: invoice.id,
       event_type: 'send_db_update_failed',
       actor_user_id: user.id,
-      actor_role: 'owner',
+      actor_role: actorRole,
       payload: {
         invoice_number: invoiceNumber,
         stripe_invoice_id: stripeInvoice.id,
@@ -603,7 +703,7 @@ Deno.serve(async (req: Request) => {
     invoice_id: invoice.id,
     event_type: 'sent',
     actor_user_id: user.id,
-    actor_role: 'owner',
+    actor_role: actorRole,
     payload: {
       stripe_invoice_id: stripeInvoice.id,
       invoice_number: invoiceNumber,

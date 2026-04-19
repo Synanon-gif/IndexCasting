@@ -42,6 +42,8 @@ function makeInvoice(over: Partial<InvoiceRow>): InvoiceRow {
     due_date: over.due_date ?? null,
     sent_at: over.sent_at ?? null,
     paid_at: over.paid_at ?? null,
+    last_stripe_failure_at: over.last_stripe_failure_at ?? null,
+    last_stripe_failure_reason: over.last_stripe_failure_reason ?? null,
     created_by: over.created_by ?? null,
     sent_by: over.sent_by ?? null,
     created_at: over.created_at ?? '2026-04-01T00:00:00.000Z',
@@ -167,11 +169,27 @@ describe('deriveBillingAttention — issued invoices', () => {
   });
 
   test('draft with total > 0 → invoice_draft_pending (medium)', () => {
+    // Provide a complete recipient snapshot so we isolate the draft-pending
+    // signal from the new (Phase C.1) missing_recipient_data signal.
     const sigs = deriveBillingAttention(
       input({
-        issuedInvoices: [makeInvoice({ id: 'a', status: 'draft', total_amount_cents: 5000 })],
+        issuedInvoices: [
+          makeInvoice({
+            id: 'a',
+            status: 'draft',
+            total_amount_cents: 5000,
+            recipient_billing_snapshot: {
+              billing_name: 'X',
+              billing_address_1: '1',
+              billing_city: 'Berlin',
+              billing_country: 'DE',
+              billing_email: 'b@x.test',
+            },
+          }),
+        ],
       }),
     );
+    expect(sigs).toHaveLength(1);
     expect(sigs[0].category).toBe('invoice_draft_pending');
     expect(sigs[0].severity).toBe('medium');
   });
@@ -183,6 +201,185 @@ describe('deriveBillingAttention — issued invoices', () => {
       }),
     );
     expect(sigs).toEqual([]);
+  });
+});
+
+describe('deriveBillingAttention — invoice_payment_failed (Phase C.1 / 20261123)', () => {
+  test('sent invoice with last_stripe_failure_at → invoice_payment_failed (critical)', () => {
+    const sigs = deriveBillingAttention(
+      input({
+        issuedInvoices: [
+          makeInvoice({
+            id: 'a',
+            status: 'sent',
+            due_date: '2026-05-01',
+            last_stripe_failure_at: '2026-04-18T10:00:00.000Z',
+            last_stripe_failure_reason: 'card_declined',
+          }),
+        ],
+      }),
+    );
+    const cats = sigs.map((s) => s.category);
+    // Both signals must surface — failure is independent of unpaid/overdue.
+    expect(cats).toContain('invoice_payment_failed');
+    expect(cats).toContain('invoice_unpaid');
+    const failure = sigs.find((s) => s.category === 'invoice_payment_failed')!;
+    expect(failure.severity).toBe('critical');
+    expect(failure.date).toBe('2026-04-18T10:00:00.000Z');
+  });
+
+  test('overdue invoice with failure → both invoice_overdue AND invoice_payment_failed', () => {
+    const sigs = deriveBillingAttention(
+      input({
+        issuedInvoices: [
+          makeInvoice({
+            id: 'a',
+            status: 'overdue',
+            due_date: '2026-04-01',
+            last_stripe_failure_at: '2026-04-15T00:00:00.000Z',
+          }),
+        ],
+      }),
+    );
+    const cats = sigs.map((s) => s.category);
+    expect(cats).toContain('invoice_overdue');
+    expect(cats).toContain('invoice_payment_failed');
+  });
+
+  test('paid / void / uncollectible never trigger payment_failed even with failure_at set', () => {
+    const sigs = deriveBillingAttention(
+      input({
+        issuedInvoices: [
+          makeInvoice({
+            id: 'a',
+            status: 'paid',
+            last_stripe_failure_at: '2026-04-01T00:00:00.000Z',
+          }),
+          makeInvoice({
+            id: 'b',
+            status: 'void',
+            last_stripe_failure_at: '2026-04-01T00:00:00.000Z',
+          }),
+          makeInvoice({
+            id: 'c',
+            status: 'uncollectible',
+            last_stripe_failure_at: '2026-04-01T00:00:00.000Z',
+          }),
+        ],
+      }),
+    );
+    expect(sigs).toEqual([]);
+  });
+
+  test('payment_failed visible only to agency roles, never to clients', () => {
+    expect(billingCategoryRoles('invoice_payment_failed')).toEqual([
+      'agency_owner',
+      'agency_member',
+    ]);
+  });
+});
+
+describe('deriveBillingAttention — invoice_missing_recipient_data (Phase C.1)', () => {
+  const completeSnapshot = {
+    billing_name: 'Acme Corp',
+    billing_address_1: '1 Main St',
+    billing_city: 'Berlin',
+    billing_country: 'DE',
+    billing_email: 'billing@acme.test',
+  };
+
+  test('draft with non-zero total + null snapshot → both draft_pending AND missing_recipient_data', () => {
+    const sigs = deriveBillingAttention(
+      input({
+        issuedInvoices: [
+          makeInvoice({
+            id: 'a',
+            status: 'draft',
+            total_amount_cents: 5000,
+            recipient_billing_snapshot: null,
+          }),
+        ],
+      }),
+    );
+    const cats = sigs.map((s) => s.category);
+    expect(cats).toContain('invoice_draft_pending');
+    expect(cats).toContain('invoice_missing_recipient_data');
+    const missing = sigs.find((s) => s.category === 'invoice_missing_recipient_data')!;
+    expect(missing.severity).toBe('high');
+  });
+
+  test('draft with non-zero total + complete snapshot → only draft_pending', () => {
+    const sigs = deriveBillingAttention(
+      input({
+        issuedInvoices: [
+          makeInvoice({
+            id: 'a',
+            status: 'draft',
+            total_amount_cents: 5000,
+            recipient_billing_snapshot: completeSnapshot,
+          }),
+        ],
+      }),
+    );
+    const cats = sigs.map((s) => s.category);
+    expect(cats).toContain('invoice_draft_pending');
+    expect(cats).not.toContain('invoice_missing_recipient_data');
+  });
+
+  test('draft with non-zero total + snapshot missing one required field → missing_recipient_data', () => {
+    const incomplete = { ...completeSnapshot, billing_email: '' };
+    const sigs = deriveBillingAttention(
+      input({
+        issuedInvoices: [
+          makeInvoice({
+            id: 'a',
+            status: 'draft',
+            total_amount_cents: 5000,
+            recipient_billing_snapshot: incomplete,
+          }),
+        ],
+      }),
+    );
+    expect(sigs.map((s) => s.category)).toContain('invoice_missing_recipient_data');
+  });
+
+  test('draft with total = 0 → no missing_recipient signal (empty scratchpad)', () => {
+    const sigs = deriveBillingAttention(
+      input({
+        issuedInvoices: [
+          makeInvoice({
+            id: 'a',
+            status: 'draft',
+            total_amount_cents: 0,
+            recipient_billing_snapshot: null,
+          }),
+        ],
+      }),
+    );
+    expect(sigs).toEqual([]);
+  });
+
+  test('non-draft status never triggers missing_recipient_data even with null snapshot', () => {
+    const sigs = deriveBillingAttention(
+      input({
+        issuedInvoices: [
+          makeInvoice({
+            id: 'a',
+            status: 'sent',
+            due_date: '2026-05-01',
+            recipient_billing_snapshot: null,
+          }),
+        ],
+      }),
+    );
+    expect(sigs.map((s) => s.category)).not.toContain('invoice_missing_recipient_data');
+  });
+
+  test('missing_recipient_data visible only to agency roles, never to clients', () => {
+    expect(billingCategoryRoles('invoice_missing_recipient_data')).toEqual([
+      'agency_owner',
+      'agency_member',
+    ]);
   });
 });
 
@@ -290,10 +487,24 @@ describe('deriveBillingAttention — billing profile gap', () => {
 
 describe('deriveBillingAttention — sorting', () => {
   test('sorts by severity rank (critical → high → medium → low)', () => {
+    const completeSnapshot = {
+      billing_name: 'X',
+      billing_address_1: '1',
+      billing_city: 'Berlin',
+      billing_country: 'DE',
+      billing_email: 'b@x.test',
+    };
     const sigs = deriveBillingAttention(
       input({
         issuedInvoices: [
-          makeInvoice({ id: 'draft', status: 'draft', total_amount_cents: 100 }),
+          // complete snapshot → only draft_pending fires, isolating the test
+          // from the (Phase C.1) missing_recipient_data signal.
+          makeInvoice({
+            id: 'draft',
+            status: 'draft',
+            total_amount_cents: 100,
+            recipient_billing_snapshot: completeSnapshot,
+          }),
           makeInvoice({ id: 'sent', status: 'sent', due_date: '2026-04-01' }),
           makeInvoice({ id: 'unpaid', status: 'sent', due_date: '2026-05-01' }),
         ],

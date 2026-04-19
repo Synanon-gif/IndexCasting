@@ -35,7 +35,7 @@ import {
 import { colors, spacing, typography } from '../../theme/theme';
 import { uiCopy } from '../../constants/uiCopy';
 import { useAuth } from '../../context/AuthContext';
-import { isOrganizationOwner } from '../../services/orgRoleTypes';
+import { isOrganizationOperationalMember } from '../../services/orgRoleTypes';
 import {
   createAgencyClientBillingPreset,
   deleteAgencyClientBillingPreset,
@@ -78,7 +78,9 @@ function formatDate(iso: string | null | undefined): string {
 export const BillingPresetsPanel: React.FC<Props> = ({ organizationId }) => {
   const { profile } = useAuth();
   const c = uiCopy.billingPresets;
-  const isOwner = isOrganizationOwner(profile?.org_member_role);
+  // Phase A (2026-11-20): Presets sind operationale Convenience-Daten — Owner UND
+  // Booker/Employee dürfen erstellen/editieren/löschen. Siehe Migration 20261120.
+  const isMember = isOrganizationOperationalMember(profile?.org_member_role);
 
   const [mode, setMode] = useState<Mode>({ kind: 'list' });
   const [loading, setLoading] = useState(true);
@@ -152,7 +154,7 @@ export const BillingPresetsPanel: React.FC<Props> = ({ organizationId }) => {
 
   const onDelete = useCallback(
     (preset: AgencyClientBillingPresetRow) => {
-      if (!isOwner || !organizationId) return;
+      if (!isMember || !organizationId) return;
       showConfirmAlert(
         c.presetDeleteConfirmTitle,
         c.presetDeleteConfirmMessage,
@@ -168,12 +170,12 @@ export const BillingPresetsPanel: React.FC<Props> = ({ organizationId }) => {
         uiCopy.common.delete,
       );
     },
-    [isOwner, organizationId, load, c],
+    [isMember, organizationId, load, c],
   );
 
   const onSetDefault = useCallback(
     (preset: AgencyClientBillingPresetRow) => {
-      if (!isOwner || !organizationId) return;
+      if (!isMember || !organizationId) return;
       void updateAgencyClientBillingPreset(preset.id, organizationId, {
         is_default: true,
       }).then((ok) => {
@@ -184,7 +186,7 @@ export const BillingPresetsPanel: React.FC<Props> = ({ organizationId }) => {
         void load();
       });
     },
-    [isOwner, organizationId, load, c],
+    [isMember, organizationId, load, c],
   );
 
   if (!organizationId) return null;
@@ -199,7 +201,7 @@ export const BillingPresetsPanel: React.FC<Props> = ({ organizationId }) => {
           mode.clientOrganizationId
         }
         existing={null}
-        canEdit={isOwner}
+        canEdit={isMember}
         onClose={() => {
           setMode({ kind: 'list' });
           void load();
@@ -235,7 +237,7 @@ export const BillingPresetsPanel: React.FC<Props> = ({ organizationId }) => {
             ?.clientName ?? existing.client_organization_id
         }
         existing={existing}
-        canEdit={isOwner}
+        canEdit={isMember}
         onClose={() => {
           setMode({ kind: 'list' });
           void load();
@@ -250,7 +252,7 @@ export const BillingPresetsPanel: React.FC<Props> = ({ organizationId }) => {
         <Text style={styles.cardTitle}>{c.cardTitle}</Text>
       </View>
       <Text style={styles.intro}>{c.intro}</Text>
-      {!isOwner && <Text style={styles.hint}>{c.ownerOnlyHint}</Text>}
+      {!isMember && <Text style={styles.hint}>{c.ownerOnlyHint}</Text>}
 
       {loading ? (
         <View style={styles.loadingWrap}>
@@ -273,7 +275,7 @@ export const BillingPresetsPanel: React.FC<Props> = ({ organizationId }) => {
                     {g.presets.length} {c.presetListTitle.toLowerCase()}
                   </Text>
                 </View>
-                {isOwner && (
+                {isMember && (
                   <TouchableOpacity
                     style={styles.smallBtn}
                     onPress={() =>
@@ -310,15 +312,15 @@ export const BillingPresetsPanel: React.FC<Props> = ({ organizationId }) => {
                       <View style={styles.rowActions}>
                         <TouchableOpacity onPress={() => setMode({ kind: 'edit', presetId: p.id })}>
                           <Text style={styles.linkAction}>
-                            {isOwner ? c.presetEdit : uiCopy.common.edit}
+                            {isMember ? c.presetEdit : uiCopy.common.edit}
                           </Text>
                         </TouchableOpacity>
-                        {isOwner && !p.is_default && (
+                        {isMember && !p.is_default && (
                           <TouchableOpacity onPress={() => onSetDefault(p)}>
                             <Text style={styles.linkAction}>{c.presetSetDefault}</Text>
                           </TouchableOpacity>
                         )}
-                        {isOwner && (
+                        {isMember && (
                           <TouchableOpacity onPress={() => onDelete(p)}>
                             <Text style={styles.linkDanger}>{c.presetDelete}</Text>
                           </TouchableOpacity>
@@ -740,6 +742,10 @@ const PresetEditor: React.FC<EditorProps> = ({
 
 const styles = StyleSheet.create({
   card: {
+    // Phase D (2026-04-19): marginHorizontal hinzugefügt — Parität mit
+    // InvoicesPanel/BillingDetailsForm. BillingHubView.body hat sein
+    // paddingHorizontal entfernt; Karten bringen ihr Side-Padding selbst mit.
+    marginHorizontal: spacing.md,
     marginVertical: spacing.sm,
     backgroundColor: colors.surface,
     borderRadius: 10,

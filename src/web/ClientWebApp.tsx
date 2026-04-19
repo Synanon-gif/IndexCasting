@@ -964,11 +964,15 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   )
     ? 'client_owner'
     : 'client_member';
+  // Phase C.2 (20261124): bottom-tab badge uses counts-only RPC so it does NOT
+  // load every received invoice on every screen mount. The Billing screen itself
+  // (BillingAttentionWidget) still uses mode='detailed' for full per-row context.
   const { hasBadge: hasBillingAttention, refresh: refreshBillingBadge } = useBillingTabBadge({
     organizationId: clientOrgId,
     variant: 'client',
     role: billingAttentionRole,
     enabled: Boolean(clientOrgId),
+    mode: 'counts',
   });
   // Re-evaluate badge whenever the user lands on the billing tab so a freshly-handled
   // signal disappears without forcing a full reload.

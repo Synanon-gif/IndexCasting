@@ -1,11 +1,20 @@
 /**
- * Invoices panel (Owner-only B2B invoicing).
+ * Invoices panel (B2B invoicing).
  *
- * Tabs: Drafts | Sent | Paid | Overdue | Received
- * - Outgoing tabs (Drafts/Sent/Paid/Overdue) read invoices issued by the org.
- * - Received tab reads invoices addressed TO the org (recipient_organization_id).
+ * Modes (Phase D, 2026-04-19):
+ *  - mode='outgoing' (default): Tabs Drafts | Sent | Paid | Overdue. Reads
+ *    invoices issued BY the org. Initial tab = 'drafts'. Create-Draft button
+ *    visible (Owner + Booker/Employee per Phase A).
+ *  - mode='incoming': Single Received list (no tab bar, no create button).
+ *    Reads invoices addressed TO the org (recipient_organization_id).
  *
- * Owner-only writes; non-owners see read-only lists (RLS still applies).
+ * BillingHubView mounts this component three times — once per sub-tab — so
+ * Outgoing / Incoming / Received are now visually and structurally separated
+ * instead of sharing one stateful tab strip.
+ *
+ * Phase A (2026-11-20): Operational write actions (create draft, edit, send,
+ * retry send) are open to Owner + Booker/Employee. Owner-only: delete draft,
+ * void. Non-members see read-only lists; RLS still applies server-side.
  *
  * Mount once per org context (agency or client). Do not mount in model workspace
  * (model billing firewall — see billing-payment-invariants.mdc, I-PAY-10).
@@ -32,7 +41,7 @@ import {
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { uiCopy } from '../constants/uiCopy';
-import { isOrganizationOwner } from '../services/orgRoleTypes';
+import { isOrganizationOwner, isOrganizationOperationalMember } from '../services/orgRoleTypes';
 import { useAuth } from '../context/AuthContext';
 import {
   deleteInvoiceDraft,
@@ -46,8 +55,18 @@ import { InvoiceDraftEditor } from './InvoiceDraftEditor';
 
 type Tab = 'drafts' | 'sent' | 'paid' | 'overdue' | 'received';
 
+export type InvoicesPanelMode = 'outgoing' | 'incoming';
+
 type Props = {
   organizationId: string | null;
+  /**
+   * Phase D (2026-04-19): Controls which sub-set of tabs is rendered.
+   *  - 'outgoing' (default): Drafts/Sent/Paid/Overdue + Create button.
+   *  - 'incoming': Received only — no tab bar, no create button.
+   * BillingHubView mounts the panel separately per Outgoing/Incoming/Received
+   * sub-tab so each context has clean isolated state.
+   */
+  mode?: InvoicesPanelMode;
 };
 
 const PAGE_SIZE = 50;
@@ -145,12 +164,17 @@ function recipientHaystack(r: InvoiceRow): string {
   return parts.join(' ');
 }
 
-export const InvoicesPanel: React.FC<Props> = ({ organizationId }) => {
+export const InvoicesPanel: React.FC<Props> = ({ organizationId, mode = 'outgoing' }) => {
   const { profile } = useAuth();
   const inv = uiCopy.invoices;
   const isOwner = isOrganizationOwner(profile?.org_member_role);
+  // Phase A (2026-11-20): Operational billing actions (Create/Open Draft, Retry Send,
+  // Settlements, Presets) sind für Owner UND Booker/Employee freigegeben. Owner-only
+  // bleiben: Delete Draft, Void. Siehe Migration 20261120 + RLS-Policies.
+  const isMember = isOrganizationOperationalMember(profile?.org_member_role);
+  const isIncoming = mode === 'incoming';
 
-  const [tab, setTab] = useState<Tab>('drafts');
+  const [tab, setTab] = useState<Tab>(isIncoming ? 'received' : 'drafts');
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [rows, setRows] = useState<InvoiceRow[]>([]);
@@ -253,14 +277,16 @@ export const InvoicesPanel: React.FC<Props> = ({ organizationId }) => {
   }, [tab]);
 
   const tabs = useMemo<Array<{ id: Tab; label: string }>>(
-    () => [
-      { id: 'drafts', label: inv.tabDrafts },
-      { id: 'sent', label: inv.tabSent },
-      { id: 'paid', label: inv.tabPaid },
-      { id: 'overdue', label: inv.tabOverdue },
-      { id: 'received', label: inv.tabReceived },
-    ],
-    [inv],
+    () =>
+      isIncoming
+        ? [{ id: 'received', label: inv.tabReceived }]
+        : [
+            { id: 'drafts', label: inv.tabDrafts },
+            { id: 'sent', label: inv.tabSent },
+            { id: 'paid', label: inv.tabPaid },
+            { id: 'overdue', label: inv.tabOverdue },
+          ],
+    [inv, isIncoming],
   );
 
   // ── Filter + Group ────────────────────────────────────────────────────────
@@ -324,6 +350,8 @@ export const InvoicesPanel: React.FC<Props> = ({ organizationId }) => {
     [isOwner, load, inv],
   );
 
+  // Phase A: Retry Send ist Member-fähig (nicht nur Owner). Edge function prüft
+  // ebenfalls is_org_member.
   // Recovery for invoices stuck in 'pending_send' (Stripe call interrupted before
   // local status was advanced). The send-invoice-via-stripe Edge Function is
   // idempotent on pending_send: it skips the pre-lock and reuses the already
@@ -331,7 +359,7 @@ export const InvoicesPanel: React.FC<Props> = ({ organizationId }) => {
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const onRetrySend = useCallback(
     (row: InvoiceRow) => {
-      if (!isOwner || row.status !== 'pending_send') return;
+      if (!isMember || row.status !== 'pending_send') return;
       const run = async () => {
         setRetryingId(row.id);
         try {
@@ -353,7 +381,7 @@ export const InvoicesPanel: React.FC<Props> = ({ organizationId }) => {
         inv.retrySend,
       );
     },
-    [isOwner, load, inv],
+    [isMember, load, inv],
   );
 
   if (!organizationId) return null;
@@ -401,8 +429,10 @@ export const InvoicesPanel: React.FC<Props> = ({ organizationId }) => {
   return (
     <View style={styles.card}>
       <View style={styles.headerRow}>
-        <Text style={styles.cardTitle}>{inv.cardTitle}</Text>
-        {isOwner && tab === 'drafts' && (
+        <Text style={styles.cardTitle}>
+          {isIncoming ? inv.cardTitleIncoming : inv.cardTitleOutgoing}
+        </Text>
+        {!isIncoming && isMember && tab === 'drafts' && (
           <TouchableOpacity
             style={styles.primaryBtn}
             onPress={() => setCreateOpen(true)}
@@ -412,20 +442,23 @@ export const InvoicesPanel: React.FC<Props> = ({ organizationId }) => {
           </TouchableOpacity>
         )}
       </View>
-      <Text style={styles.intro}>{inv.intro}</Text>
-      {!isOwner && <Text style={styles.hint}>{inv.ownerOnlyHint}</Text>}
+      <Text style={styles.intro}>{isIncoming ? inv.introIncoming : inv.introOutgoing}</Text>
+      {!isIncoming && !isMember && <Text style={styles.hint}>{inv.ownerOnlyHint}</Text>}
 
-      <View style={styles.tabsRow}>
-        {tabs.map((t) => (
-          <TouchableOpacity
-            key={t.id}
-            style={[styles.tab, tab === t.id && styles.tabActive]}
-            onPress={() => setTab(t.id)}
-          >
-            <Text style={[styles.tabText, tab === t.id && styles.tabTextActive]}>{t.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      {/* Tab bar only for outgoing (incoming has a single Received list). */}
+      {!isIncoming && (
+        <View style={styles.tabsRow}>
+          {tabs.map((t) => (
+            <TouchableOpacity
+              key={t.id}
+              style={[styles.tab, tab === t.id && styles.tabActive]}
+              onPress={() => setTab(t.id)}
+            >
+              <Text style={[styles.tabText, tab === t.id && styles.tabTextActive]}>{t.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
 
       {/* Search + filters — visible once initial load is finished. */}
       {!loading && rows.length > 0 && (
@@ -530,17 +563,20 @@ export const InvoicesPanel: React.FC<Props> = ({ organizationId }) => {
                     </Text>
                   </View>
                   <View style={styles.rowActions}>
-                    {r.status === 'draft' && isOwner && (
+                    {r.status === 'draft' && isMember && (
                       <>
                         <TouchableOpacity onPress={() => setOpenDraftId(r.id)}>
                           <Text style={styles.linkAction}>{inv.openDraft}</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity onPress={() => onDelete(r)}>
-                          <Text style={styles.linkDanger}>{inv.delete}</Text>
-                        </TouchableOpacity>
+                        {/* Phase A: Delete bleibt Owner-only (hartes Recht). */}
+                        {isOwner && (
+                          <TouchableOpacity onPress={() => onDelete(r)}>
+                            <Text style={styles.linkDanger}>{inv.delete}</Text>
+                          </TouchableOpacity>
+                        )}
                       </>
                     )}
-                    {r.status === 'pending_send' && isOwner && (
+                    {r.status === 'pending_send' && isMember && (
                       <TouchableOpacity
                         onPress={() => onRetrySend(r)}
                         disabled={retryingId === r.id}

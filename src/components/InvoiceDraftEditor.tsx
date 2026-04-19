@@ -24,7 +24,7 @@ import {
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { uiCopy } from '../constants/uiCopy';
-import { isOrganizationOwner } from '../services/orgRoleTypes';
+import { isOrganizationOperationalMember } from '../services/orgRoleTypes';
 import { useAuth } from '../context/AuthContext';
 import {
   addInvoiceLineItem,
@@ -32,6 +32,7 @@ import {
   deleteInvoiceLineItem,
   getInvoiceWithLines,
   recomputeInvoiceTotals,
+  sendInvoiceViaEmail,
   sendInvoiceViaStripe,
   updateInvoiceDraft,
   updateInvoiceLineItem,
@@ -40,6 +41,7 @@ import {
   listClientOrganizationsForAgencyDirectory,
   type ClientOrganizationDirectoryRow,
 } from '../services/clientOrganizationsDirectorySupabase';
+import { listAgencyOrganizationsForAgencyDirectory } from '../services/agencyOrganizationsDirectorySupabase';
 import { getOrganizationBillingDefaults } from '../services/billingProfilesSupabase';
 import {
   getDefaultPresetForClient,
@@ -73,6 +75,17 @@ function centsFromInput(s: string): number {
   return Math.round(n * 100);
 }
 
+/**
+ * Phase E (2026-04-19): Same lightweight RFC-5322-ish check used by the
+ * `send-invoice-via-email` Edge Function — keep them in sync. Both reject
+ * obvious nonsense and protect against accidental whitespace; the actual
+ * deliverability check happens at Resend.
+ */
+function isValidEmailAddress(s: string): boolean {
+  const t = s.trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t);
+}
+
 function inputFromCents(cents: number): string {
   if (!Number.isFinite(cents)) return '0';
   return (cents / 100).toFixed(2);
@@ -95,12 +108,26 @@ function formatCents(cents: number, currency: string): string {
 export const InvoiceDraftEditor: React.FC<Props> = ({ organizationId, invoiceId, onClose }) => {
   const { profile } = useAuth();
   const inv = uiCopy.invoices;
-  const isOwner = isOrganizationOwner(profile?.org_member_role);
+  // Phase A (2026-11-20): Drafts editieren + senden ist für Owner UND Booker/Employee.
+  // Owner-only Aktionen (Delete Draft, Void) werden in InvoicesPanel separat geguarded.
+  const isMember = isOrganizationOperationalMember(profile?.org_member_role);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [data, setData] = useState<InvoiceWithLines | null>(null);
+
+  // Phase E (2026-04-19): Email send dialog (alternative to Stripe send).
+  // The dialog opens on "Send via Email" and lets the operator override
+  // recipient / cc / subject / message before dispatching. Defaults come from
+  // the recipient billing snapshot — see send-invoice-via-email Edge Function
+  // for resolution rules.
+  const [emailFormOpen, setEmailFormOpen] = useState(false);
+  const [emailRecipient, setEmailRecipient] = useState('');
+  const [emailCc, setEmailCc] = useState('');
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailMessage, setEmailMessage] = useState('');
+  const [sendingEmail, setSendingEmail] = useState(false);
 
   // Top-level editable fields (mirrored to DB on blur/save)
   const [recipientId, setRecipientId] = useState<string | null>(null);
@@ -125,7 +152,7 @@ export const InvoiceDraftEditor: React.FC<Props> = ({ organizationId, invoiceId,
   const [presetApplied, setPresetApplied] = useState(false);
 
   const isDraft = data?.status === 'draft' || invoiceId === null;
-  const canEdit = isOwner && isDraft;
+  const canEdit = isMember && isDraft;
   // Preset picker only meaningful for new agency_to_client drafts (presets are agency↔client).
   const presetPickerVisible =
     canEdit && invoiceId === null && !data?.id && invoiceType === 'agency_to_client';
@@ -212,6 +239,11 @@ export const InvoiceDraftEditor: React.FC<Props> = ({ organizationId, invoiceId,
         due_date: null,
         sent_at: null,
         paid_at: null,
+        // Phase C.3 (20261123) — Stripe failure tracking columns. New drafts
+        // start clean; webhook populates them only after a real payment_failed
+        // event from Stripe.
+        last_stripe_failure_at: null,
+        last_stripe_failure_reason: null,
         created_by: null,
         sent_by: null,
         created_at: new Date().toISOString(),
@@ -226,14 +258,19 @@ export const InvoiceDraftEditor: React.FC<Props> = ({ organizationId, invoiceId,
     };
   }, [invoiceId, organizationId, load]);
 
-  // Recipient picker search
+  // Recipient picker search — invoice_type drives which directory we query.
+  // agency_to_client → client orgs (existing picker)
+  // agency_to_agency → other agency orgs (Phase B.1, 2026-11-21)
   useEffect(() => {
     if (!pickerOpen) return;
     let cancelled = false;
     const run = async () => {
       setPickerLoading(true);
       try {
-        const rows = await listClientOrganizationsForAgencyDirectory(organizationId, pickerQuery);
+        const rows =
+          invoiceType === 'agency_to_agency'
+            ? await listAgencyOrganizationsForAgencyDirectory(organizationId, pickerQuery)
+            : await listClientOrganizationsForAgencyDirectory(organizationId, pickerQuery);
         if (!cancelled) setPickerRows(rows);
       } finally {
         if (!cancelled) setPickerLoading(false);
@@ -244,7 +281,7 @@ export const InvoiceDraftEditor: React.FC<Props> = ({ organizationId, invoiceId,
       cancelled = true;
       clearTimeout(t);
     };
-  }, [pickerOpen, pickerQuery, organizationId]);
+  }, [pickerOpen, pickerQuery, organizationId, invoiceType]);
 
   /**
    * Apply a preset's defaults to the local form state.
@@ -501,6 +538,124 @@ export const InvoiceDraftEditor: React.FC<Props> = ({ organizationId, invoiceId,
     onClose,
   ]);
 
+  /**
+   * Phase E (2026-04-19): Open the inline email-send form. Pre-fills the
+   * recipient field from the draft's recipient_billing_snapshot when present
+   * so the operator usually only needs to confirm. The actual default
+   * resolution and validation happens server-side in the Edge Function — this
+   * is purely UX convenience.
+   */
+  const onOpenEmailForm = useCallback(() => {
+    if (!canEdit || !data?.id) return;
+    if (!recipientId) {
+      showAppAlert(uiCopy.common.error, inv.notRecipientYet);
+      return;
+    }
+    if (!data.line_items.length) {
+      showAppAlert(uiCopy.common.error, inv.noLineItemsYet);
+      return;
+    }
+    const snapshot = data.recipient_billing_snapshot as {
+      email?: unknown;
+      billing_email?: unknown;
+    } | null;
+    const snapshotEmail =
+      typeof snapshot?.billing_email === 'string'
+        ? snapshot.billing_email
+        : typeof snapshot?.email === 'string'
+          ? snapshot.email
+          : '';
+    setEmailRecipient(snapshotEmail);
+    setEmailCc('');
+    setEmailSubject('');
+    setEmailMessage('');
+    setEmailFormOpen(true);
+  }, [
+    canEdit,
+    data?.id,
+    data?.line_items.length,
+    data?.recipient_billing_snapshot,
+    recipientId,
+    inv,
+  ]);
+
+  /**
+   * Phase E (2026-04-19): Dispatch the invoice via the
+   * `send-invoice-via-email` Edge Function. The Edge Function performs the
+   * same draft → pending_send pre-lock as the Stripe path, draws the next
+   * invoice number, freezes the snapshots and sends through Resend. UI
+   * validation here is a courtesy — server validates again.
+   */
+  const onSendEmail = useCallback(async () => {
+    if (!canEdit || !data?.id) return;
+    const trimmedRecipient = emailRecipient.trim();
+    if (trimmedRecipient && !isValidEmailAddress(trimmedRecipient)) {
+      showAppAlert(uiCopy.common.error, inv.sendEmailInvalidRecipient);
+      return;
+    }
+    const ccList = emailCc
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    if (ccList.some((addr) => !isValidEmailAddress(addr))) {
+      showAppAlert(uiCopy.common.error, inv.sendEmailInvalidCc);
+      return;
+    }
+    setSendingEmail(true);
+    try {
+      // Save latest top-level edits first — same pattern as onSend (Stripe).
+      await updateInvoiceDraft(data.id, {
+        notes: notes.trim() || null,
+        due_date: dueDate.trim() || null,
+        currency: currency.trim() || 'EUR',
+        tax_rate_percent: numOrNull(taxRate),
+        tax_mode: taxMode,
+        reverse_charge_applied: reverseCharge,
+        recipient_organization_id: recipientId,
+      });
+      await recomputeInvoiceTotals(data.id);
+      const result = await sendInvoiceViaEmail(data.id, {
+        to: trimmedRecipient || undefined,
+        cc: ccList.length > 0 ? ccList : undefined,
+        subject: emailSubject.trim() || undefined,
+        message: emailMessage.trim() || undefined,
+      });
+      if (result.ok) {
+        setEmailFormOpen(false);
+        showAppAlert(uiCopy.common.success, inv.sendEmailSuccess);
+        onClose();
+      } else {
+        const reason = result.error ?? inv.sendEmailFailed;
+        // Surface a friendlier message for the most common operator-facing case.
+        const friendly =
+          reason === 'recipient_email_required'
+            ? inv.sendEmailMissingRecipient
+            : reason === 'recipient_email_invalid'
+              ? inv.sendEmailInvalidRecipient
+              : reason;
+        showAppAlert(uiCopy.common.error, friendly);
+      }
+    } finally {
+      setSendingEmail(false);
+    }
+  }, [
+    canEdit,
+    data?.id,
+    emailRecipient,
+    emailCc,
+    emailSubject,
+    emailMessage,
+    notes,
+    dueDate,
+    currency,
+    taxRate,
+    taxMode,
+    reverseCharge,
+    recipientId,
+    inv,
+    onClose,
+  ]);
+
   const totalDisplay = useMemo(() => {
     const c = currency.trim() || 'EUR';
     return {
@@ -545,8 +700,17 @@ export const InvoiceDraftEditor: React.FC<Props> = ({ organizationId, invoiceId,
               <TouchableOpacity
                 key={value}
                 onPress={() => {
+                  if (invoiceType === value) return;
                   setInvoiceType(value);
-                  // Clear preset selection if leaving client recipient type.
+                  // Clear recipient selection — the picker queries a different
+                  // directory per type (client vs other agency), so a recipient
+                  // picked under the previous type is no longer valid.
+                  setRecipientId('');
+                  setRecipientName('');
+                  setPickerRows([]);
+                  setPickerQuery('');
+                  // Clear preset selection if leaving client recipient type
+                  // (presets are agency↔client only).
                   if (value !== 'agency_to_client') {
                     setSelectedPresetId(null);
                     setPresetApplied(false);
@@ -793,7 +957,7 @@ export const InvoiceDraftEditor: React.FC<Props> = ({ organizationId, invoiceId,
         <View style={styles.actionsRow}>
           <TouchableOpacity
             style={[styles.saveBtn, saving && { opacity: 0.6 }]}
-            disabled={saving || sending}
+            disabled={saving || sending || sendingEmail}
             onPress={() => void onSaveTopLevel()}
           >
             {saving ? (
@@ -803,8 +967,8 @@ export const InvoiceDraftEditor: React.FC<Props> = ({ organizationId, invoiceId,
             )}
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.sendBtn, (sending || saving) && { opacity: 0.6 }]}
-            disabled={sending || saving}
+            style={[styles.sendBtn, (sending || saving || sendingEmail) && { opacity: 0.6 }]}
+            disabled={sending || saving || sendingEmail}
             onPress={() => void onSend()}
           >
             {sending ? (
@@ -813,6 +977,87 @@ export const InvoiceDraftEditor: React.FC<Props> = ({ organizationId, invoiceId,
               <Text style={styles.saveLabel}>{inv.sendViaStripe}</Text>
             )}
           </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.sendBtn, (sending || saving || sendingEmail) && { opacity: 0.6 }]}
+            disabled={sending || saving || sendingEmail}
+            onPress={onOpenEmailForm}
+          >
+            <Text style={styles.saveLabel}>{inv.sendViaEmail}</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {emailFormOpen && canEdit && (
+        <View style={styles.emailFormCard}>
+          <Text style={styles.emailFormTitle}>{inv.sendEmailModalTitle}</Text>
+          <Text style={styles.emailFormIntro}>{inv.sendEmailModalIntro}</Text>
+
+          <Text style={styles.label}>{inv.sendEmailRecipientLabel}</Text>
+          <TextInput
+            style={styles.input}
+            value={emailRecipient}
+            onChangeText={setEmailRecipient}
+            placeholder={inv.sendEmailRecipientPlaceholder}
+            placeholderTextColor={colors.textSecondary}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            editable={!sendingEmail}
+          />
+          <Text style={styles.hint}>{inv.sendEmailRecipientHint}</Text>
+
+          <Text style={styles.label}>{inv.sendEmailCcLabel}</Text>
+          <TextInput
+            style={styles.input}
+            value={emailCc}
+            onChangeText={setEmailCc}
+            placeholder={inv.sendEmailCcPlaceholder}
+            placeholderTextColor={colors.textSecondary}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            editable={!sendingEmail}
+          />
+
+          <Text style={styles.label}>{inv.sendEmailSubjectLabel}</Text>
+          <TextInput
+            style={styles.input}
+            value={emailSubject}
+            onChangeText={setEmailSubject}
+            placeholder={inv.sendEmailSubjectPlaceholder}
+            placeholderTextColor={colors.textSecondary}
+            editable={!sendingEmail}
+          />
+
+          <Text style={styles.label}>{inv.sendEmailMessageLabel}</Text>
+          <TextInput
+            style={[styles.input, { minHeight: 80, textAlignVertical: 'top' }]}
+            value={emailMessage}
+            onChangeText={setEmailMessage}
+            placeholder={inv.sendEmailMessagePlaceholder}
+            placeholderTextColor={colors.textSecondary}
+            multiline
+            editable={!sendingEmail}
+          />
+
+          <View style={styles.actionsRow}>
+            <TouchableOpacity
+              style={[styles.saveBtn, sendingEmail && { opacity: 0.6 }]}
+              disabled={sendingEmail}
+              onPress={() => setEmailFormOpen(false)}
+            >
+              <Text style={styles.saveLabel}>{inv.sendEmailCancel}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.sendBtn, sendingEmail && { opacity: 0.6 }]}
+              disabled={sendingEmail}
+              onPress={() => void onSendEmail()}
+            >
+              {sendingEmail ? (
+                <ActivityIndicator color={colors.surface} />
+              ) : (
+                <Text style={styles.saveLabel}>{inv.sendEmailDispatch}</Text>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
       )}
     </View>
@@ -977,6 +1222,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   saveLabel: { ...typography.label, color: colors.surface },
+  emailFormCard: {
+    marginTop: spacing.md,
+    padding: spacing.md,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceAlt,
+  },
+  emailFormTitle: {
+    ...typography.label,
+    fontSize: 14,
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
+  },
+  emailFormIntro: {
+    ...typography.body,
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: spacing.md,
+  },
   field: { marginBottom: spacing.sm },
   modeToggleRow: { flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.xs },
   modeChip: {

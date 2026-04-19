@@ -26,7 +26,7 @@ import {
 import { colors, spacing, typography } from '../../theme/theme';
 import { uiCopy } from '../../constants/uiCopy';
 import { useAuth } from '../../context/AuthContext';
-import { isOrganizationOwner } from '../../services/orgRoleTypes';
+import { isOrganizationOwner, isOrganizationOperationalMember } from '../../services/orgRoleTypes';
 import {
   listInvoicesForOrganization,
   listInvoicesForRecipient,
@@ -68,6 +68,12 @@ export const BillingHubView: React.FC<Props> = ({ organizationId, variant }) => 
   const { profile } = useAuth();
   const hub = uiCopy.billingHub;
   const isOwner = isOrganizationOwner(profile?.org_member_role);
+  // Phase A (2026-11-20): Member (Owner/Booker/Employee) haben Write-Zugriff auf
+  // operationale Aktionen (Invoices/Settlements/Presets). Owner-only-Bereiche
+  // (Profiles, Defaults, Delete Draft, Void) signalisieren ihre Beschränkung
+  // selbst via ownerOnlyHint. Globaler Read-only-Banner nur noch wenn Caller
+  // nicht mal Member ist (Defense-in-Depth — sollte hier nie eintreten).
+  const isMember = isOrganizationOperationalMember(profile?.org_member_role);
 
   const role: BillingAttentionRole = useMemo(() => {
     if (variant === 'agency') return isOwner ? 'agency_owner' : 'agency_member';
@@ -149,12 +155,15 @@ export const BillingHubView: React.FC<Props> = ({ organizationId, variant }) => 
   };
 
   // ── Body render ───────────────────────────────────────────────────────────
+  // Phase D (2026-04-19): InvoicesPanel wird mit explizitem mode='outgoing'|'incoming'
+  // gemountet, damit Outgoing/Incoming/Received jeweils eigenen State haben (kein
+  // gemeinsamer Tab-Strip mehr) und der Empty/Header-Kontext sofort klar ist.
   function renderAgencyBody(): React.ReactElement | null {
     switch (agencyTab) {
       case 'outgoing':
-        return <InvoicesPanel organizationId={organizationId} />;
+        return <InvoicesPanel organizationId={organizationId} mode="outgoing" />;
       case 'incoming':
-        return <InvoicesPanel organizationId={organizationId} />;
+        return <InvoicesPanel organizationId={organizationId} mode="incoming" />;
       case 'settlements':
         return <AgencyModelSettlementsPanel organizationId={organizationId} />;
       case 'presets':
@@ -169,7 +178,7 @@ export const BillingHubView: React.FC<Props> = ({ organizationId, variant }) => 
   function renderClientBody(): React.ReactElement | null {
     switch (clientTab) {
       case 'received':
-        return <InvoicesPanel organizationId={organizationId} />;
+        return <InvoicesPanel organizationId={organizationId} mode="incoming" />;
       case 'profiles':
         return <OrganizationBillingProfilesPanel organizationId={organizationId} />;
       case 'defaults':
@@ -187,8 +196,10 @@ export const BillingHubView: React.FC<Props> = ({ organizationId, variant }) => 
         </Text>
       </View>
 
-      {/* Read-only banner for non-owners */}
-      {!isOwner && (
+      {/* Read-only banner: nur wenn Caller nicht mal Member ist. Members (Booker/Employee)
+          können operationale Aktionen ausführen; Owner-only-Bereiche (Profiles, Defaults)
+          haben eigene Hinweise in den jeweiligen Panels. */}
+      {!isMember && (
         <View style={s.readOnlyBanner}>
           <Text style={s.readOnlyText}>{hub.readOnlyBanner}</Text>
         </View>
@@ -256,6 +267,10 @@ function labelForCategory(category: string): string {
       return hub.attentionCategoryInvoiceDraftPending;
     case 'invoice_pending_send':
       return hub.attentionCategoryInvoicePendingSend;
+    case 'invoice_payment_failed':
+      return hub.attentionCategoryInvoicePaymentFailed;
+    case 'invoice_missing_recipient_data':
+      return hub.attentionCategoryInvoiceMissingRecipientData;
     case 'invoice_received_unpaid':
       return hub.attentionCategoryInvoiceReceivedUnpaid;
     case 'invoice_received_overdue':
@@ -355,7 +370,11 @@ const s = StyleSheet.create({
     fontWeight: '600' as const,
   },
   body: {
-    paddingHorizontal: spacing.md,
+    // Phase D (2026-04-19): Side-Padding entfernt — die Karten der Child-Panels
+    // (InvoicesPanel, AgencyModelSettlementsPanel, BillingPresetsPanel,
+    // OrganizationBillingProfilesPanel, OrganizationBillingDefaultsPanel,
+    // BillingDetailsForm) bringen alle eigenes marginHorizontal: spacing.md mit.
+    // Doppeltes Padding (Body 16px + Card 16px = 32px Side-Margin) entfernt.
     paddingTop: spacing.sm,
   },
 });

@@ -109,6 +109,12 @@ export type InvoiceRow = {
   due_date: string | null;
   sent_at: string | null;
   paid_at: string | null;
+  // 20261123 — Stripe payment failure tracking (Phase C.3). Mirrored from
+  // Stripe `invoice.payment_failed` events by the webhook. Independent from
+  // the canonical `status` field (which keeps the lifecycle enum). Drives
+  // the `invoice_payment_failed` Smart Attention category.
+  last_stripe_failure_at: string | null;
+  last_stripe_failure_reason: string | null;
   created_by: string | null;
   sent_by: string | null;
   created_at: string;

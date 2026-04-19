@@ -71,6 +71,20 @@ export function isClientOperationalMember(role: string | null | undefined): bool
 }
 
 /**
+ * Org-typ-agnostischer Operational-Member-Check.
+ *
+ * Phase A (2026-11-20): Operational billing actions (Drafts, Line Items, Send,
+ * Settlements, Presets) sind für Owner UND Booker/Employee freigegeben — siehe
+ * Migration `20261120_billing_member_write_expansion.sql`. Owner-only bleiben:
+ * Billing Profiles, Billing Defaults, Delete Draft, Void Invoice/Settlement.
+ *
+ * Mirror der DB-Helper `is_org_member()` (RLS-Policies).
+ */
+export function isOrganizationOperationalMember(role: string | null | undefined): boolean {
+  return role === 'owner' || role === 'booker' || role === 'employee';
+}
+
+/**
  * Typed context that a user carries after login.
  * Wird vom AuthContext geladen und gibt die vollständige Org-Identität zurück.
  */

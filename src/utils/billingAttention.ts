@@ -5,20 +5,25 @@
  * derivation pipeline drives every UI surface that signals billing-related action
  * required (Billing tab badge, BillingHubView header banner, dashboard widget).
  *
- * Categories (9):
- *   1. invoice_overdue              — sent invoice past due_date, not paid
- *   2. invoice_unpaid               — sent invoice not yet paid (within terms)
- *   3. invoice_draft_pending        — draft invoice never sent
- *   4. invoice_pending_send         — pending_send transient state stuck
- *   5. invoice_received_unpaid      — recipient sees an unpaid bill
- *   6. invoice_received_overdue     — recipient sees an overdue bill
- *   7. settlement_draft_pending     — agency-internal settlement still draft
- *   8. settlement_recorded_unpaid   — recorded settlement not yet paid
- *   9. billing_profile_missing      — issuer org has no billing profile yet
+ * Categories (11):
+ *   1. invoice_overdue                — sent invoice past due_date, not paid
+ *   2. invoice_unpaid                 — sent invoice not yet paid (within terms)
+ *   3. invoice_draft_pending          — draft invoice never sent
+ *   4. invoice_pending_send           — pending_send transient state stuck
+ *   5. invoice_payment_failed         — Stripe reported payment_failed (20261123)
+ *   6. invoice_missing_recipient_data — draft has total>0 but no recipient billing
+ *                                       data (would be blocked at send time)
+ *   7. invoice_received_unpaid        — recipient sees an unpaid bill
+ *   8. invoice_received_overdue       — recipient sees an overdue bill
+ *   9. settlement_draft_pending       — agency-internal settlement still draft
+ *  10. settlement_recorded_unpaid     — recorded settlement not yet paid
+ *  11. billing_profile_missing        — issuer org has no billing profile yet
  *
  * Severity tiers:
- *   - critical : overdue (issuer or recipient), pending_send stuck
- *   - high     : unpaid, received_unpaid, billing_profile_missing
+ *   - critical : overdue (issuer or recipient), pending_send stuck,
+ *                payment_failed (Stripe charge declined — operational alert)
+ *   - high     : unpaid, received_unpaid, billing_profile_missing,
+ *                missing_recipient_data (would block send)
  *   - medium   : draft_pending, settlement_recorded_unpaid
  *   - low      : settlement_draft_pending
  *
@@ -41,6 +46,8 @@ export type BillingAttentionCategory =
   | 'invoice_unpaid'
   | 'invoice_draft_pending'
   | 'invoice_pending_send'
+  | 'invoice_payment_failed'
+  | 'invoice_missing_recipient_data'
   | 'invoice_received_unpaid'
   | 'invoice_received_overdue'
   | 'settlement_draft_pending'
@@ -98,13 +105,42 @@ const CATEGORY_SEVERITY: Record<BillingAttentionCategory, BillingAttentionSeveri
   invoice_overdue: 'critical',
   invoice_pending_send: 'critical',
   invoice_received_overdue: 'critical',
+  invoice_payment_failed: 'critical',
   invoice_unpaid: 'high',
   invoice_received_unpaid: 'high',
   billing_profile_missing: 'high',
+  invoice_missing_recipient_data: 'high',
   invoice_draft_pending: 'medium',
   settlement_recorded_unpaid: 'medium',
   settlement_draft_pending: 'low',
 };
+
+/**
+ * Required recipient billing fields. Mirrors the validation that
+ * send-invoice-via-stripe enforces just before drawing an invoice number.
+ *
+ * If a draft has total>0 but is missing one of these fields in the recipient
+ * snapshot (or has no snapshot at all), it would fail at send time. Surfacing
+ * this early in Smart Attention lets the user fix it before the send attempt.
+ */
+const REQUIRED_RECIPIENT_FIELDS = [
+  'billing_name',
+  'billing_address_1',
+  'billing_city',
+  'billing_country',
+  'billing_email',
+] as const;
+
+function recipientSnapshotIsComplete(
+  snapshot: Record<string, unknown> | null | undefined,
+): boolean {
+  if (!snapshot || typeof snapshot !== 'object') return false;
+  for (const field of REQUIRED_RECIPIENT_FIELDS) {
+    const v = (snapshot as Record<string, unknown>)[field];
+    if (typeof v !== 'string' || v.trim() === '') return false;
+  }
+  return true;
+}
 
 function todayDate(today?: string): Date {
   if (today) {
@@ -142,6 +178,28 @@ export function deriveBillingAttention(input: BillingAttentionInput): BillingAtt
 
   // ─── Issued invoices ──────────────────────────────────────────────────────
   for (const inv of input.issuedInvoices ?? []) {
+    // 20261123 — Stripe payment_failed is a CRITICAL operational alert that
+    // is INDEPENDENT of the canonical lifecycle status. A `sent` or `overdue`
+    // invoice can also have a recent Stripe failure (card decline). We surface
+    // it as its own signal IN ADDITION TO any status-based signal, but only
+    // while the failure is still "open" (status not in paid/void/uncollectible).
+    if (
+      inv.last_stripe_failure_at &&
+      inv.status !== 'paid' &&
+      inv.status !== 'void' &&
+      inv.status !== 'uncollectible'
+    ) {
+      signals.push({
+        category: 'invoice_payment_failed',
+        severity: CATEGORY_SEVERITY.invoice_payment_failed,
+        sourceId: inv.id,
+        displayNumber: inv.invoice_number,
+        amountCents: inv.total_amount_cents,
+        currency: inv.currency,
+        date: inv.last_stripe_failure_at,
+      });
+    }
+
     if (inv.status === 'sent') {
       if (isOverdue(inv.due_date, today)) {
         signals.push({
@@ -204,6 +262,21 @@ export function deriveBillingAttention(input: BillingAttentionInput): BillingAtt
           amountCents: inv.total_amount_cents,
           currency: inv.currency,
         });
+        // 20261123 — Pre-flight recipient-data check. A draft with non-zero
+        // total that has no recipient_billing_snapshot (or one missing
+        // required fields) would fail at send-invoice-via-stripe time. We
+        // surface this as a separate HIGH signal so accounting can fix the
+        // recipient data before clicking Send and getting a confusing error.
+        if (!recipientSnapshotIsComplete(inv.recipient_billing_snapshot)) {
+          signals.push({
+            category: 'invoice_missing_recipient_data',
+            severity: CATEGORY_SEVERITY.invoice_missing_recipient_data,
+            sourceId: inv.id,
+            displayNumber: inv.invoice_number,
+            amountCents: inv.total_amount_cents,
+            currency: inv.currency,
+          });
+        }
       }
       continue;
     }
@@ -300,6 +373,13 @@ export function billingCategoryRoles(category: BillingAttentionCategory): Billin
     case 'invoice_draft_pending':
     case 'invoice_pending_send':
       return ['agency_owner', 'agency_member', 'client_owner', 'client_member'];
+    // 20261123 — Issuer-only operational alerts. Recipients learn about
+    // payment failures via Stripe's own email; they don't need to see drafts
+    // that are still missing recipient data. Showing these to the recipient
+    // would leak issuer-side workflow noise.
+    case 'invoice_payment_failed':
+    case 'invoice_missing_recipient_data':
+      return ['agency_owner', 'agency_member'];
     case 'invoice_received_overdue':
     case 'invoice_received_unpaid':
       return ['agency_owner', 'agency_member', 'client_owner', 'client_member'];
