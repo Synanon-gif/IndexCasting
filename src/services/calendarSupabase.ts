@@ -3,6 +3,7 @@ import { pooledSubscribe } from './realtimeChannelPool';
 import { OPTION_REQUEST_SELECT } from './optionRequestsSupabase';
 import type { SupabaseOptionRequest } from './optionRequestsSupabase';
 import { uiCopy } from '../constants/uiCopy';
+import { logger } from '../utils/logger';
 
 /** Alle Felder der calendar_entries-Tabelle — kein SELECT * mehr. */
 const CALENDAR_ENTRY_SELECT =
@@ -459,6 +460,15 @@ export async function updateCalendarEntryToJob(optionRequestId: string): Promise
       .in('id', ids);
     if (updErr) {
       console.error('updateCalendarEntryToJob update error:', updErr);
+      logger.error(
+        'calendar',
+        'updateCalendarEntryToJob update failed — calendar may drift from option_requests',
+        {
+          message: updErr.message,
+          code: (updErr as { code?: string }).code,
+          optionRequestId,
+        },
+      );
       return false;
     }
     const { error: uceErr } = await supabase
@@ -472,6 +482,10 @@ export async function updateCalendarEntryToJob(optionRequestId: string): Promise
     return true;
   } catch (e) {
     console.error('updateCalendarEntryToJob exception:', e);
+    logger.error('calendar', 'updateCalendarEntryToJob exception', {
+      message: e instanceof Error ? e.message : 'unknown',
+      optionRequestId,
+    });
     return false;
   }
 }

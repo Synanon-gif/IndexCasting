@@ -1,7 +1,13 @@
 import { supabase } from '../../lib/supabase';
 import { checkAndIncrementStorage, decrementStorage } from './agencyStorageSupabase';
-import { validateFile, checkMagicBytes, checkExtensionConsistency, sanitizeUploadBaseName } from '../../lib/validation';
+import {
+  validateFile,
+  checkMagicBytes,
+  checkExtensionConsistency,
+  sanitizeUploadBaseName,
+} from '../../lib/validation';
 import { convertHeicToJpegWithStatus } from './imageUtils';
+import { logger } from '../utils/logger';
 
 /** Reads the actual stored file size from storage.objects metadata. Best-effort — returns null on failure. */
 async function getActualDocumentSize(bucket: string, path: string): Promise<number | null> {
@@ -38,7 +44,10 @@ export async function getDocumentsForUser(userId: string): Promise<Document[]> {
     .select('*')
     .eq('owner_id', userId)
     .order('created_at', { ascending: false });
-  if (error) { console.error('getDocumentsForUser error:', error); return []; }
+  if (error) {
+    console.error('getDocumentsForUser error:', error);
+    return [];
+  }
   return (data ?? []) as Document[];
 }
 
@@ -46,7 +55,7 @@ export async function uploadDocument(
   userId: string,
   docType: 'contract' | 'invoice' | 'id_document',
   file: File | Blob,
-  fileName: string
+  fileName: string,
 ): Promise<Document | null> {
   const { file: prepared, conversionFailed } = await convertHeicToJpegWithStatus(file);
   if (conversionFailed) {
@@ -90,25 +99,32 @@ export async function uploadDocument(
     return null;
   }
 
-  const { error: uploadError } = await supabase.storage
-    .from('documents')
-    .upload(path, prepared, {
-      contentType: prepared.type || 'application/octet-stream',
-      upsert: false,
-    });
+  const { error: uploadError } = await supabase.storage.from('documents').upload(path, prepared, {
+    contentType: prepared.type || 'application/octet-stream',
+    upsert: false,
+  });
   if (uploadError) {
     console.error('uploadDocument storage error:', uploadError);
+    logger.error('documents', 'uploadDocument storage upload failed', {
+      message: (uploadError as { message?: string }).message,
+      userId,
+      docType,
+      claimedSize,
+    });
     await decrementStorage(claimedSize);
     return null;
   }
 
   // BUG 3 FIX: verify actual size server-side and reconcile with the pre-increment.
-  const actualSize = await getActualDocumentSize('documents', path) ?? claimedSize;
+  const actualSize = (await getActualDocumentSize('documents', path)) ?? claimedSize;
   if (actualSize !== claimedSize) {
     if (actualSize > claimedSize) {
       const driftResult = await checkAndIncrementStorage(actualSize - claimedSize);
       if (!driftResult.allowed) {
-        console.warn('[storage] uploadDocument: post-upload size drift exceeded limit — counter undercounted', { actualSize, claimedSize });
+        console.warn(
+          '[storage] uploadDocument: post-upload size drift exceeded limit — counter undercounted',
+          { actualSize, claimedSize },
+        );
       }
     } else {
       await decrementStorage(claimedSize - actualSize);
@@ -130,11 +146,25 @@ export async function uploadDocument(
 
   if (error) {
     console.error('uploadDocument db error:', error);
+    logger.error('documents', 'uploadDocument db insert failed', {
+      message: error.message,
+      code: (error as { code?: string }).code,
+      userId,
+      docType,
+    });
     // Storage-Orphan cleanup: the file was uploaded successfully but the DB row
     // failed. Remove the storage object to keep Storage and DB in sync.
     const { error: removeErr } = await supabase.storage.from('documents').remove([path]);
     if (removeErr) {
-      console.error('uploadDocument orphan cleanup failed — manual removal needed:', { path, removeErr });
+      console.error('uploadDocument orphan cleanup failed — manual removal needed:', {
+        path,
+        removeErr,
+      });
+      logger.fatal('documents', 'uploadDocument orphan cleanup failed — manual removal needed', {
+        path,
+        message: (removeErr as { message?: string }).message,
+        userId,
+      });
     } else {
       await decrementStorage(actualSize);
     }
@@ -147,12 +177,17 @@ export async function uploadDocument(
 export async function getDocumentUrl(userId: string, filePath: string): Promise<string | null> {
   const expectedPrefix = `documents/${userId}/`;
   if (!filePath.startsWith(expectedPrefix)) {
-    console.error('getDocumentUrl: filePath does not belong to userId — IDOR blocked', { filePath, userId });
+    console.error('getDocumentUrl: filePath does not belong to userId — IDOR blocked', {
+      filePath,
+      userId,
+    });
+    logger.warn('documents', 'getDocumentUrl IDOR attempt blocked', {
+      userId,
+      requestedPathPrefix: filePath.split('/').slice(0, 2).join('/'),
+    });
     return null;
   }
-  const { data } = await supabase.storage
-    .from('documents')
-    .createSignedUrl(filePath, 3600);
+  const { data } = await supabase.storage.from('documents').createSignedUrl(filePath, 3600);
   return data?.signedUrl ?? null;
 }
 
@@ -170,29 +205,38 @@ export async function deleteDocument(docId: string, filePath: string): Promise<b
       .select('file_size_bytes')
       .eq('id', docId)
       .maybeSingle();
-    const freedBytes: number = (docRow as { file_size_bytes?: number } | null)?.file_size_bytes ?? 0;
+    const freedBytes: number =
+      (docRow as { file_size_bytes?: number } | null)?.file_size_bytes ?? 0;
 
     // Remove from Storage first and verify success before deleting the DB row.
     // If the order were reversed and the Storage removal failed after DB delete,
     // we would have an orphaned file with no DB reference (unreachable, wasted space).
     // In the current order a Storage failure leaves the DB row intact — the
     // document remains accessible and a retry is possible.
-    const { error: storageError } = await supabase.storage
-      .from('documents')
-      .remove([filePath]);
+    const { error: storageError } = await supabase.storage.from('documents').remove([filePath]);
 
     if (storageError) {
       console.error('deleteDocument storage error:', storageError);
+      logger.error('documents', 'deleteDocument storage remove failed', {
+        message: (storageError as { message?: string }).message,
+        docId,
+      });
       return false;
     }
 
-    const { error: dbError } = await supabase
-      .from('documents')
-      .delete()
-      .eq('id', docId);
+    const { error: dbError } = await supabase.from('documents').delete().eq('id', docId);
 
     if (dbError) {
       console.error('deleteDocument db error:', dbError);
+      logger.error(
+        'documents',
+        'deleteDocument db delete failed (storage already removed — orphan risk)',
+        {
+          message: dbError.message,
+          code: (dbError as { code?: string }).code,
+          docId,
+        },
+      );
       return false;
     }
 
@@ -204,6 +248,10 @@ export async function deleteDocument(docId: string, filePath: string): Promise<b
     return true;
   } catch (e) {
     console.error('deleteDocument exception:', e);
+    logger.error('documents', 'deleteDocument exception', {
+      message: e instanceof Error ? e.message : 'unknown',
+      docId,
+    });
     return false;
   }
 }

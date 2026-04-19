@@ -32,6 +32,7 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { withObservability } from '../_shared/logger.ts';
 import Stripe from 'npm:stripe@14';
 
 const ALWAYS_ALLOWED_ORIGINS = [
@@ -56,7 +57,7 @@ interface CancelRequest {
   organization_id: string;
 }
 
-Deno.serve(async (req: Request) => {
+Deno.serve(withObservability('stripe-cancel-dissolved-org', async (req: Request) => {
   const cors = getCorsHeaders(req);
 
   if (req.method === 'OPTIONS') {
@@ -233,4 +234,4 @@ Deno.serve(async (req: Request) => {
       { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } },
     );
   }
-});
+}));

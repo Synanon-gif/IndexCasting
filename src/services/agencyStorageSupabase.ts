@@ -10,6 +10,7 @@
  * Pattern mirrors agencyUsageLimitsSupabase.ts (swipe limits).
  */
 import { supabase } from '../../lib/supabase';
+import { logger } from '../utils/logger';
 
 /** 5 GB in bytes. Used as the fallback default when no admin override is set. */
 export const AGENCY_STORAGE_LIMIT_BYTES = 5 * 1024 * 1024 * 1024; // 5_368_709_120
@@ -75,11 +76,11 @@ export async function getMyAgencyStorageUsage(): Promise<AgencyStorageUsage | nu
     };
 
     return {
-      organization_id:     raw.organization_id,
-      used_bytes:          raw.used_bytes ?? 0,
+      organization_id: raw.organization_id,
+      used_bytes: raw.used_bytes ?? 0,
       effective_limit_bytes: raw.effective_limit_bytes ?? null,
-      limit_bytes:         raw.limit_bytes ?? AGENCY_STORAGE_LIMIT_BYTES,
-      is_unlimited:        raw.is_unlimited ?? false,
+      limit_bytes: raw.limit_bytes ?? AGENCY_STORAGE_LIMIT_BYTES,
+      is_unlimited: raw.is_unlimited ?? false,
     };
   } catch (err) {
     console.error('[agencyStorage] getMyAgencyStorageUsage error:', err);
@@ -99,9 +100,7 @@ export async function getMyAgencyStorageUsage(): Promise<AgencyStorageUsage | nu
  * Non-agency users (clients, models) receive allowed: true automatically
  * — the RPC itself handles this distinction.
  */
-export async function checkAndIncrementStorage(
-  fileSize: number,
-): Promise<StorageCheckResult> {
+export async function checkAndIncrementStorage(fileSize: number): Promise<StorageCheckResult> {
   try {
     const { data, error } = await supabase.rpc('increment_agency_storage_usage', {
       p_bytes: fileSize,
@@ -110,6 +109,14 @@ export async function checkAndIncrementStorage(
     return data as StorageCheckResult;
   } catch (err) {
     console.error('[agencyStorage] checkAndIncrementStorage error:', err);
+    logger.error(
+      'agencyStorage',
+      'checkAndIncrementStorage failed — fail closed (upload blocked)',
+      {
+        message: err instanceof Error ? err.message : String(err),
+        fileSize,
+      },
+    );
     return {
       allowed: false,
       used_bytes: 0,
@@ -135,6 +142,10 @@ export async function decrementStorage(fileSize: number): Promise<void> {
     if (error) throw error;
   } catch (err) {
     console.error('[agencyStorage] decrementStorage error:', err);
+    logger.warn('agencyStorage', 'decrementStorage failed — quota may drift', {
+      message: err instanceof Error ? err.message : String(err),
+      fileSize,
+    });
   }
 }
 
@@ -165,14 +176,10 @@ export async function deleteChatThreadWithFiles(conversationId: string): Promise
     const files = (data ?? []) as ChatThreadFilePath[];
     if (files.length === 0) return result;
 
-    const validPaths = files
-      .map((f) => f.path)
-      .filter((p): p is string => Boolean(p && p.trim()));
+    const validPaths = files.map((f) => f.path).filter((p): p is string => Boolean(p && p.trim()));
 
     if (validPaths.length > 0) {
-      const { error: storageError } = await supabase.storage
-        .from('chat-files')
-        .remove(validPaths);
+      const { error: storageError } = await supabase.storage.from('chat-files').remove(validPaths);
       if (storageError) {
         console.error('[agencyStorage] deleteChatThreadWithFiles storage error:', storageError);
       }
@@ -229,9 +236,7 @@ export async function deleteModelPortfolioFiles(modelId: string): Promise<{
 
     for (const [bucket, paths] of pathsByBucket.entries()) {
       if (paths.length === 0) continue;
-      const { error: storageError } = await supabase.storage
-        .from(bucket)
-        .remove(paths);
+      const { error: storageError } = await supabase.storage.from(bucket).remove(paths);
       if (storageError) {
         console.error(
           `[agencyStorage] deleteModelPortfolioFiles storage error (bucket: ${bucket}):`,

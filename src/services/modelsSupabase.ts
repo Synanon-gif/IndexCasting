@@ -17,6 +17,7 @@
 import type { PostgrestError } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
 import { logAction } from '../utils/logAction';
+import { logger } from '../utils/logger';
 import { filterModelsByChestCoalesce } from '../utils/filterModelsByChestCoalesce';
 import { serviceErr, serviceOkData, type ServiceResult } from '../types/serviceResult';
 import { fetchAllSupabasePages } from './supabaseFetchAll';
@@ -378,6 +379,10 @@ async function assertPlatformAccess(): Promise<void> {
   const { data, error } = await supabase.rpc('can_access_platform');
   if (error) {
     console.error('assertPlatformAccess RPC error:', error);
+    logger.error('models', 'assertPlatformAccess RPC failed — platform access denied', {
+      message: error.message,
+      code: (error as { code?: string }).code,
+    });
     throw new Error('platform_access_check_failed');
   }
   const result = data as { allowed: boolean; reason?: string } | null;
@@ -718,6 +723,10 @@ export async function claimModelByToken(
     const { data, error } = await supabase.rpc('claim_model_by_token', { p_token: token });
     if (error) {
       console.error('claimModelByToken error:', error);
+      logger.error('models', 'claimModelByToken RPC failed', {
+        message: error.message,
+        code: (error as { code?: string }).code,
+      });
       return serviceErr(error.message ?? 'claim_failed');
     }
     const result = data as { model_id: string; agency_id: string } | null;
@@ -749,6 +758,11 @@ export async function generateModelClaimToken(
     });
     if (error) {
       console.error('generateModelClaimToken error:', error);
+      logger.error('models', 'generateModelClaimToken RPC failed', {
+        message: error.message,
+        code: (error as { code?: string }).code,
+        hasOrgId: !!trimmedOrg,
+      });
       return serviceErr(error.message ?? 'rpc_error');
     }
     if (!data) return serviceErr('no_token_returned');

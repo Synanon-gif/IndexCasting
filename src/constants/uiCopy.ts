@@ -1253,6 +1253,58 @@ export const uiCopy = {
     orgConvertFailed: 'Could not convert organization type. Check console.',
     orgConvertConfirm: 'Convert',
   },
+  /** Admin — Health & Events tab (observability dashboard). */
+  adminHealth: {
+    tabLabel: 'Health & Events',
+    sectionOverview: 'Overview',
+    sectionHealthChecks: 'Health Checks',
+    sectionViolations: 'Invariant Violations',
+    sectionEvents: 'Recent Events (24h)',
+    refreshBtn: 'Refresh',
+    refreshing: 'Refreshing…',
+    lastUpdated: 'Last updated',
+    overallOk: 'All systems operational',
+    overallDegraded: 'Some checks degraded',
+    overallDown: 'Active incidents',
+    overallUnknown: 'Status unknown',
+    statusOk: 'OK',
+    statusDegraded: 'Degraded',
+    statusDown: 'Down',
+    statusUnknown: 'Unknown',
+    severityInfo: 'Info',
+    severityWarning: 'Warning',
+    severityCritical: 'Critical',
+    publicBadge: 'Public',
+    privateBadge: 'Internal',
+    checkLastRun: 'Last run',
+    checkLastOk: 'Last OK',
+    checkDetails: 'Details',
+    noChecks: 'No health checks configured.',
+    activeViolations: 'Active',
+    resolvedViolations: 'Resolved',
+    noViolationsActive: 'No active violations. ✓',
+    noViolationsAtAll: 'No violations recorded.',
+    violationDetectedAt: 'Detected',
+    violationResolvedAt: 'Resolved',
+    violationCountValue: 'Count / Value',
+    eventsByLevel: 'Events by level (last 24h)',
+    eventsTotal: 'Total events',
+    noEvents: 'No events in the last 24 hours.',
+    recentEventStream: 'Recent event stream',
+    eventLevelFilter: 'Level',
+    eventLevelAll: 'All',
+    eventLevelWarn: 'Warn+',
+    eventLevelError: 'Errors only',
+    noEventStream: 'No events match this filter.',
+    loadFailed: 'Could not load health data. Check console.',
+    notAdmin: 'Admin access required.',
+    never: 'never',
+    eventColumnTime: 'Time',
+    eventColumnLevel: 'Level',
+    eventColumnSource: 'Source',
+    eventColumnEvent: 'Event',
+    eventColumnMessage: 'Message',
+  },
   /** Agency — model profile edit panel (My Models detail view). */
   modelEdit: {
     sectionIdentity: 'Identity',
@@ -2794,6 +2846,212 @@ export const uiCopy = {
       'This roster share is for a different agency account. Sign in with the correct agency to open it.',
     openShareNotFound: 'This roster share is no longer available.',
     openShareLoginRequired: 'Sign in with your agency account to open this roster share.',
+  },
+  /**
+   * Trust Center — public pages (no auth) that communicate enterprise-grade
+   * security, GDPR posture, sub-processors, DPA terms, and incident response.
+   * All copy is intentionally static and inline; there are no RPC calls from
+   * Trust pages so the content is reviewable in code and stable for legal sign-off.
+   */
+  trust: {
+    lastUpdated: 'Last updated: 2026-04-19',
+    backToHome: '← Back to home',
+    backToTrust: '← Back to Trust Center',
+    contactLabel: 'Contact',
+    contactEmail: 'security@indexcasting.com',
+    privacyEmail: 'privacy@indexcasting.com',
+    /** Live status badge (small box on Trust Center overview, polls /status). */
+    liveStatusOk: 'All systems operational',
+    liveStatusDegraded: 'Some systems degraded',
+    liveStatusOutage: 'Service disruption',
+    liveStatusUnknown: 'Status unknown',
+    liveStatusViewDetails: 'View live status →',
+
+    // ─── Trust Center Overview (/trust) ─────────────────────────────────────
+    centerTitle: 'Trust Center',
+    centerSubtitle:
+      'Enterprise-grade security, privacy, and reliability for agencies, clients, and models on IndexCasting.',
+    centerIntro:
+      'IndexCasting is a B2B platform for fashion casting workflows. Multi-tenant isolation, GDPR compliance, and operational transparency are foundational requirements — not optional features. This Trust Center documents how we run the platform and what you can expect from us as a sub-processor of your data.',
+    cardSecurityTitle: 'Security & Architecture',
+    cardSecurityBody:
+      'How the platform is built, how data is isolated, how secrets are managed, and how we authenticate users.',
+    cardDpaTitle: 'Data Processing Addendum (DPA)',
+    cardDpaBody:
+      'GDPR Art. 28 DPA template, processed data categories, retention, and technical and organizational measures.',
+    cardSubprocessorsTitle: 'Sub-processors',
+    cardSubprocessorsBody:
+      'Current list of third-party providers that process customer data on our behalf, with regions and DPA status.',
+    cardGdprTitle: 'GDPR & Data Subject Rights',
+    cardGdprBody:
+      'Export, deletion, and rectification rights, in-app self-service paths, and retention windows by data category.',
+    cardIncidentTitle: 'Incident Response',
+    cardIncidentBody:
+      'Detection pipeline, escalation path, customer communication via the live status page, and post-incident review.',
+    cardStatusTitle: 'Live System Status',
+    cardStatusBody:
+      'Continuous health checks for RLS integrity, data invariants, and platform availability.',
+
+    // ─── Trust Security (/trust/security) ───────────────────────────────────
+    securityTitle: 'Security & Architecture',
+    securityIntro:
+      'IndexCasting is built on a defense-in-depth model. Every layer assumes the layer above it could be compromised and adds an independent check.',
+    securityArchTitle: 'Platform architecture',
+    securityArchBody:
+      'The application runs on Supabase Postgres (managed in the EU region) for primary storage and authentication, with the web frontend deployed on Vercel’s edge. All traffic is TLS 1.2+. Backups, point-in-time recovery, and at-rest encryption are managed by Supabase under their SOC 2 / ISO 27001 program.',
+    securityRlsTitle: 'Multi-tenant isolation (Row Level Security)',
+    securityRlsBody:
+      'Tenant isolation is enforced at the database layer. Every multi-tenant table has Row Level Security policies that scope reads and writes to the caller’s organization or assigned roles. Policies are reviewed against a recursion guardrail (no policy may form a cycle through profiles or models) and supported by a continuous health check.',
+    securityAdminTitle: 'Admin access & key principles',
+    securityAdminBody:
+      'There is exactly one platform admin identity, pinned by both UUID and email at the database function layer. Admin RPCs require an explicit assertion (assert_is_admin), and a partial unique index prevents the creation of additional admin profiles. Admin authentication runs through three independent detection layers so a single failure cannot lock the operator out.',
+    securityAuthTitle: 'Authentication',
+    securityAuthBody:
+      'User authentication uses Supabase Auth (email/password and magic link). Models are linked to their accounts via a one-time, hashed claim token rather than email matching. Invitation flows persist tokens until verified server-side acceptance succeeds — never on optimistic client state.',
+    securitySecretsTitle: 'Secret management',
+    securitySecretsBody:
+      'Service-role keys are restricted to Supabase Edge Functions and are never shipped to the frontend. All operational secrets (Stripe webhook secrets, API keys for sub-processors) are stored exclusively in environment variables on Supabase Edge Functions and Vercel and are rotated on a defined cadence.',
+    securityUploadsTitle: 'Uploads & content',
+    securityUploadsBody:
+      'Uploaded files are validated for MIME type, magic-byte signatures, file extension consistency, and safe paths before reaching storage. Private buckets require signed URLs with short TTLs; storage policies are enforced via SECURITY DEFINER helper functions so a Row Level Security regression on profile or model tables cannot widen storage access.',
+    securityVulnTitle: 'Vulnerability disclosure',
+    securityVulnBody:
+      'Security researchers may report findings to security@indexcasting.com. We commit to acknowledging receipt within two business days and providing a remediation timeline within ten business days. We do not pursue legal action against good-faith researchers.',
+
+    // ─── Trust DPA (/trust/dpa) ─────────────────────────────────────────────
+    dpaTitle: 'Data Processing Addendum',
+    dpaIntro:
+      'This page summarizes the Article 28 GDPR Data Processing Addendum (DPA) that governs IndexCasting’s processing of personal data on behalf of customer organizations. A countersigned PDF version is available on request from privacy@indexcasting.com.',
+    dpaPartiesTitle: 'Parties',
+    dpaPartiesBody:
+      'Controller: the customer organization (Agency or Client). Processor: IndexCasting GmbH (Germany). Sub-processors: see the Sub-processors page in this Trust Center.',
+    dpaScopeTitle: 'Subject matter and duration',
+    dpaScopeBody:
+      'The processor processes personal data strictly to provide the IndexCasting platform under the master subscription terms. Processing duration matches the active subscription plus any required retention windows specified in this DPA.',
+    dpaCategoriesTitle: 'Categories of data subjects',
+    dpaCategoriesBody:
+      'Agency owners and bookers; client owners and employees; models (including, with explicit consent, minors represented by a guardian-approved agency).',
+    dpaDataTitle: 'Categories of personal data',
+    dpaDataBody:
+      'Identification and contact data (name, email, phone), professional measurement data (height, chest/waist/hips, etc.), portfolio and polaroid images, location data (city, country, optional approximate coordinates with explicit consent), workflow metadata (option requests, calendar events, messages), and billing metadata for organizations.',
+    dpaPurposesTitle: 'Purposes of processing',
+    dpaPurposesBody:
+      'Hosting and operating the platform, facilitating casting and booking workflows between agencies and clients, providing model self-service, generating shareable selections and packages on customer instruction, and fulfilling legal obligations.',
+    dpaRetentionTitle: 'Retention',
+    dpaRetentionBody:
+      'Active organization data is retained for the lifetime of the subscription. On organization deletion, personal data is deleted or anonymized within 30 days, with documented exceptions only where law requires longer retention. Audit logs are retained for 12 months. Backups are rotated within 30 days.',
+    dpaTomTitle: 'Technical and organizational measures',
+    dpaTomBody:
+      'Encryption at rest and in transit; multi-tenant isolation via Row Level Security; least-privilege role-based access; SECURITY DEFINER helper functions with explicit auth, membership, and resource-ownership guards; continuous invariant health checks; signed URLs for private storage; comprehensive audit trail; and structured incident response.',
+    dpaTransfersTitle: 'International transfers',
+    dpaTransfersBody:
+      'Primary processing takes place in the EU. Where a sub-processor processes data outside the EEA, transfers are governed by Standard Contractual Clauses and supplementary measures as appropriate.',
+    dpaSubprocessorsTitle: 'Sub-processors',
+    dpaSubprocessorsBody:
+      'A current list is maintained on the Sub-processors page. Customers may subscribe to a notification list to be informed of additions or replacements at least 14 days in advance.',
+    dpaRightsTitle: 'Data subject rights',
+    dpaRightsBody:
+      'The processor assists the controller in fulfilling Articles 12–22 GDPR (information, access, rectification, erasure, portability). Self-service export and deletion are available in the application; manual assistance is provided on request within statutory deadlines.',
+
+    // ─── Sub-processors (/trust/subprocessors) ──────────────────────────────
+    subTitle: 'Sub-processors',
+    subIntro:
+      'IndexCasting engages the following sub-processors to deliver the platform. Each sub-processor is bound by a written contract that imposes data protection obligations equivalent to this DPA.',
+    subTableNameHeader: 'Sub-processor',
+    subTablePurposeHeader: 'Purpose',
+    subTableRegionHeader: 'Region',
+    subTableDpaHeader: 'DPA / SCCs',
+    subSupabaseName: 'Supabase, Inc.',
+    subSupabasePurpose: 'Postgres database, authentication, storage, and edge functions.',
+    subSupabaseRegion: 'EU (Frankfurt)',
+    subSupabaseDpa: 'DPA + SCCs in place',
+    subVercelName: 'Vercel Inc.',
+    subVercelPurpose: 'Web frontend hosting and edge content delivery.',
+    subVercelRegion: 'Global edge / EU',
+    subVercelDpa: 'DPA + SCCs in place',
+    subStripeName: 'Stripe Payments Europe, Ltd.',
+    subStripePurpose: 'Subscription billing, payment processing, and tax handling.',
+    subStripeRegion: 'EU (Ireland)',
+    subStripeDpa: 'DPA in place',
+    subResendName: 'Resend',
+    subResendPurpose: 'Transactional email delivery (invitations, notifications, password resets).',
+    subResendRegion: 'EU / US',
+    subResendDpa: 'DPA + SCCs in place',
+    subOptionalNotice:
+      'Customers may also opt in to optional integrations (e.g. Mediaslide, Netwalk) for external roster synchronization. Optional integrations only activate after explicit per-organization configuration and are documented separately.',
+    subChangesTitle: 'Sub-processor changes',
+    subChangesBody:
+      'New or replaced sub-processors are announced at least 14 days before they begin processing customer data, giving customers the opportunity to object before the change takes effect.',
+
+    // ─── GDPR (/trust/gdpr) ─────────────────────────────────────────────────
+    gdprTitle: 'GDPR & Data Subject Rights',
+    gdprIntro:
+      'IndexCasting complies with the General Data Protection Regulation (EU) 2016/679. This page explains how the rights of data subjects are honored on the platform.',
+    gdprAccessTitle: 'Right of access (Art. 15)',
+    gdprAccessBody:
+      'Authenticated users can review their profile data, organization memberships, and uploaded media at any time within the application. A structured personal-data export is available in account settings.',
+    gdprRectificationTitle: 'Right to rectification (Art. 16)',
+    gdprRectificationBody:
+      'Profile fields, model measurements, and uploaded media are editable in-app. Bookers and Owners may correct organization-wide records they administer.',
+    gdprErasureTitle: 'Right to erasure (Art. 17)',
+    gdprErasureBody:
+      'Users may delete their account from settings; Owners may delete the organization. Personal data is removed or anonymized within 30 days, except where law requires retention. Backups roll within 30 days.',
+    gdprPortabilityTitle: 'Right to data portability (Art. 20)',
+    gdprPortabilityBody:
+      'A machine-readable JSON export covering profile data, organization memberships, calendar events, messages, and metadata is available in account settings.',
+    gdprObjectTitle: 'Right to object & restrict (Art. 21–22)',
+    gdprObjectBody:
+      'Users may object to processing or restrict it by contacting privacy@indexcasting.com. Automated decision-making with legal effects is not used by the platform.',
+    gdprMinorsTitle: 'Minors',
+    gdprMinorsBody:
+      'Where a model under 18 is represented, the platform requires explicit consent metadata from the responsible agency, including guardian acknowledgement. Consent metadata is stored alongside the model record and surfaced in audit logs.',
+    gdprContactTitle: 'How to exercise your rights',
+    gdprContactBody:
+      'For requests that cannot be completed in-app, contact privacy@indexcasting.com. We respond within statutory deadlines (typically one month, extendable by two months for complex requests).',
+
+    // ─── Incident Response (/trust/incident-response) ───────────────────────
+    incidentTitle: 'Incident Response',
+    incidentIntro:
+      'IndexCasting operates a structured incident response program designed to detect, contain, communicate, and learn from operational and security incidents.',
+    incidentDetectionTitle: '1. Detection',
+    incidentDetectionBody:
+      'Continuous health checks (RLS recursion smoke tests, invariant validators, cancelled calendar drift, zombie organization detection, admin count guard, etc.) run every five minutes via pg_cron and write to the system_health_checks table. Frontend and edge-function errors stream into system_events. Critical states trigger admin notifications.',
+    incidentTriageTitle: '2. Triage',
+    incidentTriageBody:
+      'On detection, the on-call admin classifies the incident by severity (P1 platform outage, P2 partial degradation, P3 isolated regression). P1 and P2 incidents are reflected on the public live status page within 15 minutes.',
+    incidentContainTitle: '3. Containment',
+    incidentContainBody:
+      'Each incident class has a documented containment runbook. For data-integrity issues, the affected scope is computed using append-only invariant violation logs. For security issues, the principle is to deny first, then investigate.',
+    incidentCommsTitle: '4. Customer communication',
+    incidentCommsBody:
+      'Status updates are posted to the public /status page. Owners of affected organizations receive direct notification by email within 24 hours of confirmation for any incident that affects their data.',
+    incidentReviewTitle: '5. Post-incident review',
+    incidentReviewBody:
+      'Every P1 and P2 incident triggers a written post-incident review covering timeline, root cause, contributing factors, customer impact, remediation steps, and prevention. Reviews are summarized in the customer-facing changelog where appropriate.',
+    incidentBreachTitle: 'Personal data breach notification',
+    incidentBreachBody:
+      'Where Article 33 GDPR applies, controllers are notified without undue delay and in any event within 72 hours of confirmation, with the information required by Article 33(3).',
+    incidentReportTitle: 'Reporting an incident',
+    incidentReportBody:
+      'To report a security incident or vulnerability, contact security@indexcasting.com. Include reproduction steps if applicable. We acknowledge within two business days.',
+
+    // ─── Status Page (/status) ──────────────────────────────────────────────
+    statusTitle: 'System Status',
+    statusSubtitle:
+      'Live operational health for the IndexCasting platform. Refreshes automatically every 60 seconds.',
+    statusOverallOk: 'All systems operational',
+    statusOverallDegraded: 'Some systems degraded',
+    statusOverallOutage: 'Service disruption',
+    statusOverallUnknown: 'Status unknown',
+    statusLastUpdated: 'Last updated',
+    statusCheckHeader: 'Check',
+    statusCheckStatus: 'Status',
+    statusCheckLastRun: 'Last run',
+    statusLoadFailed: 'Status data is temporarily unavailable.',
+    statusLoading: 'Loading status…',
+    statusEmpty: 'No public health checks are configured yet.',
+    statusBackToTrust: '← Back to Trust Center',
+    statusContactNote: 'For incident communication or escalation, email security@indexcasting.com.',
   },
 } as const;
 

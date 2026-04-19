@@ -28,6 +28,7 @@ import {
 import { checkAndIncrementStorage, decrementStorage } from './agencyStorageSupabase';
 import { convertHeicToJpegWithStatus, stripExifAndCompress } from './imageUtils';
 import { guardUploadSession } from './gdprComplianceSupabase';
+import { logger } from '../utils/logger';
 
 /** Session key prefix for B2B messenger file uploads — pair with `confirmImageRights`. */
 export const MESSENGER_UPLOAD_SESSION_PREFIX = 'messenger:';
@@ -369,6 +370,11 @@ export async function sendMessage(
   const { data, error } = await supabase.from('messages').insert(insertRow).select().single();
   if (error) {
     console.error('sendMessage error:', error);
+    logger.error('messenger', 'sendMessage insert failed', {
+      message: error.message,
+      code: (error as { code?: string }).code,
+      conversationId: insertRow.conversation_id,
+    });
     return null;
   }
 

@@ -14,6 +14,48 @@ export function normalizePublicLegalPath(pathname: string): 'terms' | 'privacy' 
   return null;
 }
 
+/**
+ * Trust Center route identifiers — public, unauthenticated.
+ * Each maps to a static read-only TSX page under src/views/trust/.
+ */
+export type TrustRoute =
+  | 'trust-center'
+  | 'trust-security'
+  | 'trust-dpa'
+  | 'trust-subprocessors'
+  | 'trust-gdpr'
+  | 'trust-incident-response';
+
+/**
+ * Maps a public web pathname to a Trust Center route, or null if it does not match.
+ * Trust pages live entirely outside auth/session and may be visited by anyone.
+ */
+export function normalizeTrustPath(pathname: string): TrustRoute | null {
+  const p = pathname.replace(/\/+$/, '') || '/';
+  if (p === '/trust') return 'trust-center';
+  if (p === '/trust/security') return 'trust-security';
+  if (p === '/trust/dpa') return 'trust-dpa';
+  if (p === '/trust/subprocessors') return 'trust-subprocessors';
+  if (p === '/trust/gdpr') return 'trust-gdpr';
+  if (p === '/trust/incident-response') return 'trust-incident-response';
+  return null;
+}
+
+/** Returns true if the given pathname matches the public live status page. */
+export function isStatusPath(pathname: string): boolean {
+  const p = pathname.replace(/\/+$/, '') || '/';
+  return p === '/status';
+}
+
+/**
+ * Client-side navigation helper for Trust / Status routes (web only, no full reload).
+ */
+export function navigatePublicPath(path: string): void {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+  window.history.pushState({}, '', path);
+  bumpWebLocation();
+}
+
 export function bumpWebLocation(): void {
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
     window.dispatchEvent(new Event(INDEXCASTING_LOCATION_EVENT));

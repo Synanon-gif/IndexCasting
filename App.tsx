@@ -65,12 +65,21 @@ import { PrivacyScreen } from './src/screens/PrivacyScreen';
 import {
   INDEXCASTING_LOCATION_EVENT,
   normalizePublicLegalPath,
+  normalizeTrustPath,
+  isStatusPath,
   replaceWebPathToHome,
   getPublicAgencySlugFromPath,
   getPublicClientSlugFromPath,
 } from './src/utils/publicLegalRoutes';
 import { PublicAgencyProfileScreen } from './src/screens/PublicAgencyProfileScreen';
 import { PublicClientProfileScreen } from './src/screens/PublicClientProfileScreen';
+import { TrustCenterView } from './src/views/trust/TrustCenterView';
+import { TrustSecurityView } from './src/views/trust/TrustSecurityView';
+import { TrustDpaView } from './src/views/trust/TrustDpaView';
+import { TrustSubprocessorsView } from './src/views/trust/TrustSubprocessorsView';
+import { TrustGdprView } from './src/views/trust/TrustGdprView';
+import { TrustIncidentResponseView } from './src/views/trust/TrustIncidentResponseView';
+import { StatusPageView } from './src/views/StatusPageView';
 import { roleFromProfile, isAdmin, type NavigationRole } from './src/types/roles';
 import {
   clampInviteOrClaimToken,
@@ -914,6 +923,38 @@ function AppContent() {
             slug={clientSlug}
             onClose={replaceWebPathToHome}
           />
+          <StatusBar style="dark" />
+        </>
+      );
+    }
+  }
+
+  // Public Trust Center & Live Status routes (web only) — no auth required.
+  // Checked here so both authenticated and unauthenticated users can visit them
+  // directly (e.g. from the marketing footer or external links / RFP responses).
+  // Must come before /terms /privacy auth gating and before the shared-selection
+  // block so a Trust deeplink never falls through to the AuthScreen.
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    const trustRoute = normalizeTrustPath(window.location.pathname);
+    if (trustRoute) {
+      const node =
+        trustRoute === 'trust-center' ? <TrustCenterView /> :
+        trustRoute === 'trust-security' ? <TrustSecurityView /> :
+        trustRoute === 'trust-dpa' ? <TrustDpaView /> :
+        trustRoute === 'trust-subprocessors' ? <TrustSubprocessorsView /> :
+        trustRoute === 'trust-gdpr' ? <TrustGdprView /> :
+        <TrustIncidentResponseView />;
+      return (
+        <>
+          {node}
+          <StatusBar style="dark" />
+        </>
+      );
+    }
+    if (isStatusPath(window.location.pathname)) {
+      return (
+        <>
+          <StatusPageView />
           <StatusBar style="dark" />
         </>
       );

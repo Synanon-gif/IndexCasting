@@ -69,6 +69,7 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { withObservability } from '../_shared/logger.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -394,7 +395,7 @@ async function buildPathAllowlist(
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
-Deno.serve(async (req: Request) => {
+Deno.serve(withObservability('sign-guest-storage-asset', async (req: Request) => {
   const corsHeaders = getCorsHeaders(req);
 
   if (req.method === 'OPTIONS') {
@@ -511,4 +512,4 @@ Deno.serve(async (req: Request) => {
     200,
     corsHeaders,
   );
-});
+}));

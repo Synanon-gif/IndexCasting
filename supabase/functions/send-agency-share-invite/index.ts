@@ -23,6 +23,7 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { withObservability } from '../_shared/logger.ts';
 
 const RESEND_API_URL = 'https://api.resend.com/emails';
 const DEFAULT_APP_BASE_URL = 'https://index-casting.com';
@@ -167,7 +168,7 @@ function buildAgencyShareEmail(params: {
   return { subject, html };
 }
 
-Deno.serve(async (req: Request): Promise<Response> => {
+Deno.serve(withObservability('send-agency-share-invite', async (req: Request): Promise<Response> => {
   const corsHeaders = getCorsHeaders(req);
 
   if (req.method === 'OPTIONS') {
@@ -321,4 +322,4 @@ Deno.serve(async (req: Request): Promise<Response> => {
     console.error('[send-agency-share-invite] Fetch exception:', e);
     return jsonResponse({ error: 'email_send_exception' }, 500, corsHeaders);
   }
-});
+}));

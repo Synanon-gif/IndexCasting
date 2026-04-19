@@ -22,6 +22,7 @@ import {
   extractBucketAndPath,
 } from '../storage/storageUrl';
 import { storageUploadQueue } from '../utils/uploadQueue';
+import { logger } from '../utils/logger';
 
 /** Allowed MIME types for model photos (images only — no PDFs in portfolio). */
 const PHOTO_ALLOWED_TYPES = ALLOWED_MIME_TYPES.filter((t) => t.startsWith('image/'));
@@ -542,6 +543,11 @@ export async function uploadModelPhoto(
     );
     if (error) {
       console.error('uploadModelPhoto error:', error);
+      logger.error('modelPhotos', 'uploadModelPhoto storage upload failed', {
+        message: (error as { message?: string }).message,
+        modelId,
+        claimedSize,
+      });
       await decrementStorage(claimedSize);
       return null;
     }
@@ -580,6 +586,10 @@ export async function uploadModelPhoto(
     return { url: storageUri, fileSizeBytes: actualSize };
   } catch (e) {
     console.error('uploadModelPhoto exception:', e);
+    logger.error('modelPhotos', 'uploadModelPhoto exception', {
+      message: e instanceof Error ? e.message : 'unknown',
+      modelId,
+    });
     await decrementStorage(claimedSize);
     return null;
   }

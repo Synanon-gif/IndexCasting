@@ -1148,3 +1148,123 @@ export async function adminGetProfilesIdDisplayEmail(
     return [];
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Observability: Health & Events
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type AdminHealthCheckStatus = 'ok' | 'degraded' | 'down' | 'unknown';
+export type AdminHealthSeverity = 'info' | 'warning' | 'critical';
+
+export type AdminHealthCheck = {
+  name: string;
+  category: string | null;
+  display_name: string | null;
+  description: string | null;
+  status: AdminHealthCheckStatus;
+  severity: AdminHealthSeverity;
+  is_public: boolean;
+  last_run_at: string | null;
+  last_ok_at: string | null;
+  details: Record<string, unknown> | null;
+};
+
+export type AdminInvariantViolation = {
+  id: string;
+  detected_at: string;
+  check_name: string;
+  severity: AdminHealthSeverity;
+  count_or_value: number | null;
+  details: Record<string, unknown> | null;
+  resolved_at: string | null;
+};
+
+export type AdminHealthOverview = {
+  checks: AdminHealthCheck[];
+  violations: AdminInvariantViolation[];
+  /** Counts grouped by event level for the last 24h, e.g. { error: 12, warn: 3 }. */
+  event_counts_24h: Record<string, number>;
+  generated_at: string | null;
+};
+
+/**
+ * Admin-only RPC. Returns the consolidated observability snapshot:
+ * - all configured health checks (sorted: failures first)
+ * - active and recently-resolved invariant violations
+ * - 24h event histogram by level
+ *
+ * Server enforces `assert_is_admin()` — non-admin callers always fail.
+ */
+export async function adminGetHealthOverview(): Promise<AdminHealthOverview | null> {
+  try {
+    const { data, error } = await supabase.rpc('get_admin_health_overview');
+    if (error) {
+      console.error('adminGetHealthOverview error:', error);
+      return null;
+    }
+    const payload = Array.isArray(data) ? data[0] : data;
+    if (!payload || typeof payload !== 'object') return null;
+    const obj = payload as Record<string, unknown>;
+    const checks = Array.isArray(obj.checks) ? (obj.checks as AdminHealthCheck[]) : [];
+    const violations = Array.isArray(obj.violations)
+      ? (obj.violations as AdminInvariantViolation[])
+      : [];
+    const eventCounts =
+      obj.event_counts_24h && typeof obj.event_counts_24h === 'object'
+        ? (obj.event_counts_24h as Record<string, number>)
+        : {};
+    const generatedAt = typeof obj.generated_at === 'string' ? obj.generated_at : null;
+    return {
+      checks,
+      violations,
+      event_counts_24h: eventCounts,
+      generated_at: generatedAt,
+    };
+  } catch (e) {
+    console.error('adminGetHealthOverview exception:', e);
+    return null;
+  }
+}
+
+export type AdminSystemEvent = {
+  id: string;
+  created_at: string;
+  level: 'debug' | 'info' | 'warn' | 'error' | 'fatal' | string;
+  source: string | null;
+  event: string;
+  message: string | null;
+  user_id: string | null;
+  organization_id: string | null;
+  payload: Record<string, unknown> | null;
+};
+
+/**
+ * Admin-only paginated read of `public.system_events`. Reads via RLS — the
+ * `system_events` policies restrict SELECT to admins (see observability
+ * foundation migration).
+ */
+export async function adminListSystemEvents(opts?: {
+  limit?: number;
+  level?: 'warn' | 'error' | 'fatal' | null;
+}): Promise<AdminSystemEvent[]> {
+  const limit = Math.min(opts?.limit ?? 100, 500);
+  try {
+    let q = supabase
+      .from('system_events')
+      .select('id, created_at, level, source, event, message, user_id, organization_id, payload')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (opts?.level) {
+      q = q.eq('level', opts.level);
+    }
+    const { data, error } = await q;
+    if (error) {
+      console.error('adminListSystemEvents error:', error);
+      return [];
+    }
+    return (data ?? []) as AdminSystemEvent[];
+  } catch (e) {
+    console.error('adminListSystemEvents exception:', e);
+    return [];
+  }
+}

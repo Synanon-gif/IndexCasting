@@ -19,6 +19,7 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { withObservability } from '../_shared/logger.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -54,7 +55,7 @@ function getCorsHeaders(req: Request): Record<string, string> {
   };
 }
 
-Deno.serve(async (req: Request) => {
+Deno.serve(withObservability('serve-watermarked-image', async (req: Request) => {
   const corsHeaders = getCorsHeaders(req);
 
   if (req.method === 'OPTIONS') {
@@ -204,4 +205,4 @@ Deno.serve(async (req: Request) => {
       'X-Content-Type-Options': 'nosniff',
     },
   });
-});
+}));

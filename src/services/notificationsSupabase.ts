@@ -9,6 +9,7 @@
 import { supabase } from '../../lib/supabase';
 import { pooledSubscribe } from './realtimeChannelPool';
 import { enqueueNotification } from '../utils/notificationBatcher';
+import { logger } from '../utils/logger';
 
 /** Spezifische Felder für notifications — kein SELECT * mehr. */
 const NOTIFICATION_SELECT =
@@ -101,6 +102,11 @@ export async function createNotification(params: CreateNotificationParams): Prom
       });
       if (rpcError) {
         console.error('createNotification (cross-party RPC) error:', rpcError);
+        logger.error('notifications', 'send_notification RPC failed', {
+          message: rpcError.message,
+          code: (rpcError as { code?: string }).code,
+          type: params.type,
+        });
       }
       return;
     }
@@ -172,6 +178,10 @@ export async function createNotification(params: CreateNotificationParams): Prom
     });
   } catch (e) {
     console.error('createNotification exception:', e);
+    logger.error('notifications', 'createNotification exception', {
+      message: e instanceof Error ? e.message : 'unknown',
+      type: params.type,
+    });
   }
 }
 

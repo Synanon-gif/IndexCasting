@@ -15,6 +15,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { buildIcsCalendar, icsEventsFromExportPayload } from './ics.ts';
+import { withObservability } from '../_shared/logger.ts';
 
 const ALLOWED_ORIGINS = [
   'https://index-casting.com',
@@ -32,7 +33,7 @@ function getCorsHeaders(req: Request): Record<string, string> {
   };
 }
 
-Deno.serve(async (req: Request) => {
+Deno.serve(withObservability('calendar-feed', async (req: Request) => {
   const corsHeaders = getCorsHeaders(req);
 
   if (req.method === 'OPTIONS') {
@@ -90,4 +91,4 @@ Deno.serve(async (req: Request) => {
     console.error('[calendar-feed] exception:', e);
     return new Response('Not found', { status: 404, headers: corsHeaders });
   }
-});
+}));

@@ -55,6 +55,7 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { withObservability } from '../_shared/logger.ts';
 
 const ALWAYS_ALLOWED_ORIGINS = [
   'https://index-casting.com',
@@ -312,7 +313,7 @@ function buildInvoiceHtml(args: {
 </body></html>`;
 }
 
-Deno.serve(async (req: Request) => {
+Deno.serve(withObservability('send-invoice-via-email', async (req: Request) => {
   const cors = getCorsHeaders(req);
 
   if (req.method === 'OPTIONS') {
@@ -897,4 +898,4 @@ Deno.serve(async (req: Request) => {
     }),
     { status: 200, headers: { ...cors, 'Content-Type': 'application/json' } },
   );
-});
+}));

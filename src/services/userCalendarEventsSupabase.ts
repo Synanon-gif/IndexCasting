@@ -1,5 +1,6 @@
 import { supabase } from '../../lib/supabase';
 import { uiCopy } from '../constants/uiCopy';
+import { logger } from '../utils/logger';
 
 /** Explizite Feldliste — kein SELECT * mehr (verhindert ungewollten Datenabfluss bei neuen Spalten). */
 const USER_CALENDAR_EVENT_SELECT =
@@ -191,11 +192,18 @@ export async function insertManualEvent(event: {
         };
       }
       console.error('insertManualEvent error:', error);
+      logger.error('userCalendarEvents', 'insertManualEvent failed', {
+        message: error.message,
+        code: (error as { code?: string }).code,
+      });
       return { ok: false, errorMessage: error.message || uiCopy.calendarValidation.insertFailed };
     }
     return { ok: true, event: data as UserCalendarEvent };
   } catch (e) {
     console.error('insertManualEvent exception:', e);
+    logger.error('userCalendarEvents', 'insertManualEvent exception', {
+      message: e instanceof Error ? e.message : 'unknown',
+    });
     return {
       ok: false,
       errorMessage: e instanceof Error ? e.message : uiCopy.calendarValidation.insertFailed,
@@ -231,11 +239,18 @@ export async function updateManualEvent(
       .eq('id', id);
     if (error) {
       console.error('updateManualEvent error:', error);
+      logger.error('userCalendarEvents', 'updateManualEvent failed', {
+        message: error.message,
+        code: (error as { code?: string }).code,
+      });
       return false;
     }
     return true;
   } catch (e) {
     console.error('updateManualEvent exception:', e);
+    logger.error('userCalendarEvents', 'updateManualEvent exception', {
+      message: e instanceof Error ? e.message : 'unknown',
+    });
     return false;
   }
 }
@@ -249,11 +264,18 @@ export async function deleteManualEvent(id: string): Promise<boolean> {
     const { error } = await supabase.from('user_calendar_events').delete().eq('id', id);
     if (error) {
       console.error('deleteManualEvent error:', error);
+      logger.error('userCalendarEvents', 'deleteManualEvent failed', {
+        message: error.message,
+        code: (error as { code?: string }).code,
+      });
       return false;
     }
     return true;
   } catch (e) {
     console.error('deleteManualEvent exception:', e);
+    logger.error('userCalendarEvents', 'deleteManualEvent exception', {
+      message: e instanceof Error ? e.message : 'unknown',
+    });
     return false;
   }
 }

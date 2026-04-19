@@ -16,6 +16,7 @@ import { createNotification } from './notificationsSupabase';
 import { uiCopy } from '../constants/uiCopy';
 import { ensureAgencyModelDirectConversationWithRetry } from './b2bOrgChatSupabase';
 import { normalizePendingTerritories, hasMatForModelAgency } from './recruitingFlowGuards';
+import { logger } from '../utils/logger';
 
 /**
  * Model-Bewerbungen (Apply) – in Supabase gespeichert.
@@ -369,6 +370,10 @@ export async function insertApplication(app: {
 
     if (error) {
       console.error('insertApplication error:', error);
+      logger.error('applications', 'insertApplication failed', {
+        message: error.message,
+        code: (error as { code?: string }).code,
+      });
       return null;
     }
 
@@ -450,6 +455,12 @@ export async function updateApplicationStatus(
 
     if (error) {
       console.error('updateApplicationStatus error:', error);
+      logger.error('applications', 'updateApplicationStatus failed', {
+        message: error.message,
+        code: (error as { code?: string }).code,
+        targetStatus: status,
+        requiredPrior,
+      });
       return false;
     }
     if (!data?.id) {
@@ -709,6 +720,11 @@ export async function createModelFromApplication(applicationId: string): Promise
 
     if (error) {
       console.error('createModelFromApplication RPC error:', error);
+      logger.error('applications', 'createModelFromApplication RPC failed', {
+        message: error.message,
+        code: (error as { code?: string }).code,
+        applicationId,
+      });
       return null;
     }
 

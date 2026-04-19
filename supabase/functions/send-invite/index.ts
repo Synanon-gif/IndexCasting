@@ -21,6 +21,7 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { withObservability } from '../_shared/logger.ts';
 
 const RESEND_API_URL = 'https://api.resend.com/emails';
 const DEFAULT_APP_BASE_URL = 'https://index-casting.com';
@@ -252,7 +253,7 @@ function buildModelClaimEmail(params: {
 
 // ─── Main Handler ──────────────────────────────────────────────────────────
 
-Deno.serve(async (req: Request): Promise<Response> => {
+Deno.serve(withObservability('send-invite', async (req: Request): Promise<Response> => {
   const corsHeaders = getCorsHeaders(req);
 
   // CORS preflight
@@ -488,4 +489,4 @@ Deno.serve(async (req: Request): Promise<Response> => {
     console.error('[send-invite] Fetch exception:', e);
     return jsonResponse({ error: 'email_send_exception' }, 500, corsHeaders);
   }
-});
+}));

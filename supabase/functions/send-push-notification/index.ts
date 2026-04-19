@@ -15,6 +15,7 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { withObservability } from '../_shared/logger.ts';
 
 const EXPO_PUSH_URL = 'https://api.expo.dev/v2/push/send';
 
@@ -115,7 +116,7 @@ interface ExpoPushTicket {
   details?: { error?: string };
 }
 
-Deno.serve(async (req: Request): Promise<Response> => {
+Deno.serve(withObservability('send-push-notification', async (req: Request): Promise<Response> => {
   // Nur POST-Requests verarbeiten
   if (req.method !== 'POST') {
     return new Response('Method Not Allowed', { status: 405 });
@@ -270,4 +271,4 @@ Deno.serve(async (req: Request): Promise<Response> => {
     JSON.stringify({ sent: expoTokens.length, deactivated: invalidTokenIds.length }),
     { status: 200, headers: { 'Content-Type': 'application/json' } },
   );
-});
+}));

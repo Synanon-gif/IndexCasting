@@ -54,8 +54,9 @@ import {
   type AdminBillingStatus,
 } from '../services/adminSupabase';
 import { formatStorageBytes } from '../services/agencyStorageSupabase';
+import { AdminHealthEventsView } from './admin/AdminHealthEventsView';
 
-type AdminTab = 'accounts' | 'organizations' | 'models' | 'logs' | 'edit';
+type AdminTab = 'accounts' | 'organizations' | 'models' | 'logs' | 'health' | 'edit';
 type AccountFilter = 'all' | 'inactive' | 'active' | 'client' | 'agent' | 'model';
 
 export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
@@ -748,6 +749,7 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
             },
             { key: 'models' as AdminTab, label: 'Models', badge: models.length || null },
             { key: 'logs' as AdminTab, label: 'Audit Log', badge: null },
+            { key: 'health' as AdminTab, label: uiCopy.adminHealth.tabLabel, badge: null },
             { key: 'edit' as AdminTab, label: 'Edit Profile', badge: null },
           ].map((t) => (
             <TouchableOpacity
@@ -1766,6 +1768,9 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
             );
           }}
         />
+      ) : tab === 'health' ? (
+        /* ── Health & Events (observability) ── */
+        <AdminHealthEventsView />
       ) : tab === 'logs' ? (
         /* ── Audit Log ── */
         <FlatList

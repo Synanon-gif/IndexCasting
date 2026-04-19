@@ -1,6 +1,7 @@
 import React, { Component, type ErrorInfo, type ReactNode } from 'react';
 import { View, Text, ScrollView, Platform, TouchableOpacity, StyleSheet } from 'react-native';
 import { uiCopy } from '../constants/uiCopy';
+import { logger } from '../utils/logger';
 
 type Props = { children: ReactNode };
 type State = { error: Error | null };
@@ -18,6 +19,18 @@ export class AppErrorBoundary extends Component<Props, State> {
       console.error('[AppErrorBoundary]', error.message, error.stack, info.componentStack);
     } else {
       console.error('[AppErrorBoundary] render error caught');
+    }
+    // Ship to observability backend (fire-and-forget; PII-redacted; throttled).
+    // Crashes are always shipped — even in dev — so we get a true picture of
+    // production stability the moment we go live.
+    try {
+      logger.fatal('AppErrorBoundary', error.message || 'render-error', {
+        stack: error.stack ?? null,
+        componentStack: info.componentStack ?? null,
+        name: error.name,
+      });
+    } catch {
+      // Logger must never break the boundary itself.
     }
   }
 
@@ -63,8 +76,24 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 18, fontWeight: '700', color: '#b71c1c', marginBottom: 12 },
   hint: { fontSize: 14, color: '#333', marginBottom: 16, lineHeight: 20 },
-  scroll: { maxHeight: 360, marginBottom: 16, backgroundColor: '#fff', padding: 12, borderRadius: 8 },
-  mono: { fontSize: 12, fontFamily: Platform.OS === 'web' ? 'monospace' : undefined, color: '#111' },
-  btn: { alignSelf: 'flex-start', backgroundColor: '#b71c1c', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 8 },
+  scroll: {
+    maxHeight: 360,
+    marginBottom: 16,
+    backgroundColor: '#fff',
+    padding: 12,
+    borderRadius: 8,
+  },
+  mono: {
+    fontSize: 12,
+    fontFamily: Platform.OS === 'web' ? 'monospace' : undefined,
+    color: '#111',
+  },
+  btn: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#b71c1c',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+  },
   btnLabel: { color: '#fff', fontWeight: '600' },
 });

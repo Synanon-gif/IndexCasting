@@ -24,6 +24,7 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { withObservability } from '../_shared/logger.ts';
 import Stripe from 'npm:stripe@14';
 
 // No CORS headers: Stripe webhooks are server-to-server. Browser CORS is
@@ -326,7 +327,7 @@ async function tryHandleB2bInvoiceEvent(
 
 // ─── Main handler ──────────────────────────────────────────────────────────────
 
-Deno.serve(async (req: Request) => {
+Deno.serve(withObservability('stripe-webhook', async (req: Request) => {
   // Stripe webhooks are always POST — OPTIONS preflight has no meaning here.
   // Reject non-POST requests early to reduce attack surface.
   if (req.method !== 'POST') {
@@ -659,4 +660,4 @@ Deno.serve(async (req: Request) => {
       { status: 500, headers: { 'Content-Type': 'application/json' } },
     );
   }
-});
+}));

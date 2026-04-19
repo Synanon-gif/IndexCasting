@@ -48,6 +48,7 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { withObservability } from '../_shared/logger.ts';
 
 type Provider = 'mediaslide' | 'netwalk';
 
@@ -92,7 +93,7 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-Deno.serve(async (req: Request) => {
+Deno.serve(withObservability('external-sync-webhook', async (req: Request) => {
   if (req.method !== 'POST') {
     return jsonResponse({ ok: false, error: 'method_not_allowed' }, 405);
   }
@@ -263,4 +264,4 @@ Deno.serve(async (req: Request) => {
     enqueued: inserted?.id ?? null,
     model_id: modelRow.id,
   });
-});
+}));

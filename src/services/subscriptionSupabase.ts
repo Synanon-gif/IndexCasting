@@ -22,6 +22,7 @@
 
 import { supabase } from '../../lib/supabase';
 import { supabaseUrl } from '../config/env';
+import { logger } from '../utils/logger';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -70,8 +71,8 @@ export interface AdminOverride {
 }
 
 export interface PlanLimits {
-  swipesPerDay: number | null;   // null = unlimited
-  storageGB:    number | null;   // null = unlimited
+  swipesPerDay: number | null; // null = unlimited
+  storageGB: number | null; // null = unlimited
   /** Max organization_members for an agency org; null = unlimited (enforced server-side). */
   maxAgencyMembers: number | null;
 }
@@ -79,12 +80,12 @@ export interface PlanLimits {
 // ─── Plan metadata ────────────────────────────────────────────────────────────
 
 export const PLAN_LIMITS: Record<string, PlanLimits> = {
-  agency_basic:      { swipesPerDay: 10,  storageGB: 5,   maxAgencyMembers: 2 },
-  agency_pro:        { swipesPerDay: 50,  storageGB: 50,  maxAgencyMembers: 4 },
+  agency_basic: { swipesPerDay: 10, storageGB: 5, maxAgencyMembers: 2 },
+  agency_pro: { swipesPerDay: 50, storageGB: 50, maxAgencyMembers: 4 },
   agency_enterprise: { swipesPerDay: 150, storageGB: 500, maxAgencyMembers: null },
-  client:            { swipesPerDay: null, storageGB: null, maxAgencyMembers: null },
-  trial:             { swipesPerDay: 10,  storageGB: 5,   maxAgencyMembers: 2 },
-  admin:             { swipesPerDay: null, storageGB: null, maxAgencyMembers: null },
+  client: { swipesPerDay: null, storageGB: null, maxAgencyMembers: null },
+  trial: { swipesPerDay: 10, storageGB: 5, maxAgencyMembers: 2 },
+  admin: { swipesPerDay: null, storageGB: null, maxAgencyMembers: null },
 };
 
 // ─── Core: getMyOrgAccessStatus ──────────────────────────────────────────────
@@ -107,24 +108,27 @@ export async function getMyOrgAccessStatus(): Promise<OrgAccessStatus> {
 
     const raw = data as Record<string, unknown>;
     return {
-      allowed:         Boolean(raw.allowed),
-      reason:          (raw.reason as AccessReason) ?? 'no_org',
-      plan:            (raw.plan as PlanType | null) ?? null,
-      trial_ends_at:   raw.trial_ends_at != null ? String(raw.trial_ends_at) : null,
+      allowed: Boolean(raw.allowed),
+      reason: (raw.reason as AccessReason) ?? 'no_org',
+      plan: (raw.plan as PlanType | null) ?? null,
+      trial_ends_at: raw.trial_ends_at != null ? String(raw.trial_ends_at) : null,
       organization_id: raw.organization_id != null ? String(raw.organization_id) : null,
-      org_type:        raw.org_type === 'client' ? 'client' : raw.org_type === 'agency' ? 'agency' : null,
+      org_type: raw.org_type === 'client' ? 'client' : raw.org_type === 'agency' ? 'agency' : null,
     };
   } catch (err) {
     console.error('[subscription] getMyOrgAccessStatus error:', err);
+    logger.error('subscription', 'getMyOrgAccessStatus failed — fail closed (blocked)', {
+      message: err instanceof Error ? err.message : String(err),
+    });
     // Fail closed: on error we treat as blocked so the user sees the paywall
     // rather than silently gaining access.
     return {
-      allowed:         false,
-      reason:          'no_org',
-      plan:            null,
-      trial_ends_at:   null,
+      allowed: false,
+      reason: 'no_org',
+      plan: null,
+      trial_ends_at: null,
       organization_id: null,
-      org_type:        null,
+      org_type: null,
     };
   }
 }
@@ -137,7 +141,9 @@ export async function getMyOrgAccessStatus(): Promise<OrgAccessStatus> {
  */
 export async function getMyOrgSubscription(): Promise<OrgSubscription | null> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) return null;
 
     // MED-04: ORDER BY created_at ASC ensures the same org is selected as in
@@ -161,7 +167,7 @@ export async function getMyOrgSubscription(): Promise<OrgSubscription | null> {
       .maybeSingle();
 
     if (error) throw error;
-    return (data as OrgSubscription | null);
+    return data as OrgSubscription | null;
   } catch (err) {
     console.error('[subscription] getMyOrgSubscription error:', err);
     return null;
@@ -172,7 +178,9 @@ export async function getMyOrgSubscription(): Promise<OrgSubscription | null> {
 
 export async function getMyAdminOverride(): Promise<AdminOverride | null> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) return null;
 
     // MED-04: ORDER BY created_at ASC for consistent org selection
@@ -193,7 +201,7 @@ export async function getMyAdminOverride(): Promise<AdminOverride | null> {
       .maybeSingle();
 
     if (error) throw error;
-    return (data as AdminOverride | null);
+    return data as AdminOverride | null;
   } catch (err) {
     console.error('[subscription] getMyAdminOverride error:', err);
     return null;
@@ -211,7 +219,9 @@ export async function getMyAdminOverride(): Promise<AdminOverride | null> {
  * Server-side seat cap for an agency organization (null = unlimited).
  * Mirrors get_agency_organization_seat_limit() — use for UI hints only; enforcement is in DB triggers.
  */
-export async function getAgencyOrganizationSeatLimit(organizationId: string): Promise<number | null> {
+export async function getAgencyOrganizationSeatLimit(
+  organizationId: string,
+): Promise<number | null> {
   if (!organizationId) return null;
   try {
     const { data, error } = await supabase.rpc('get_agency_organization_seat_limit', {
@@ -231,7 +241,9 @@ export async function createCheckoutSession(
   options?: { success_url?: string; cancel_url?: string },
 ): Promise<{ checkout_url: string } | null> {
   try {
-    const { data: { session } } = await supabase.auth.getSession();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
     if (!session?.access_token) {
       console.error('[subscription] createCheckoutSession: no active session');
       return null;
@@ -239,27 +251,33 @@ export async function createCheckoutSession(
 
     const fnUrl = `${supabaseUrl}/functions/v1/create-checkout-session`;
     const response = await fetch(fnUrl, {
-      method:  'POST',
+      method: 'POST',
       headers: {
-        'Content-Type':  'application/json',
-        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
       },
       body: JSON.stringify({
         plan,
         success_url: options?.success_url,
-        cancel_url:  options?.cancel_url,
+        cancel_url: options?.cancel_url,
       }),
     });
 
-    const json = await response.json() as { ok: boolean; checkout_url?: string; error?: string };
+    const json = (await response.json()) as { ok: boolean; checkout_url?: string; error?: string };
     if (!json.ok || !json.checkout_url) {
       console.error('[subscription] createCheckoutSession failed:', json.error);
+      logger.error('subscription', 'createCheckoutSession failed — payment flow blocked', {
+        edgeError: typeof json.error === 'string' ? json.error : 'unknown',
+      });
       return null;
     }
 
     return { checkout_url: json.checkout_url };
   } catch (err) {
     console.error('[subscription] createCheckoutSession error:', err);
+    logger.error('subscription', 'createCheckoutSession exception — payment flow broken', {
+      message: err instanceof Error ? err.message : String(err),
+    });
     return null;
   }
 }

@@ -20,6 +20,7 @@ import { convertHeicToJpegWithStatus, stripExifAndCompress } from './imageUtils'
 import { checkAndIncrementStorage, decrementStorage } from './agencyStorageSupabase';
 import { guardUploadSession } from './gdprComplianceSupabase';
 import { logAction } from '../utils/logAction';
+import { logger } from '../utils/logger';
 
 export const OPTION_REQUEST_SELECT =
   'id, client_id, model_id, agency_id, requested_date, status, project_id, client_name, model_name, job_description, proposed_price, agency_counter_price, client_price_status, final_status, request_type, currency, start_time, end_time, model_approval, model_approved_at, model_account_linked, booker_id, organization_id, agency_organization_id, client_organization_id, client_organization_name, agency_organization_name, created_by, agency_assignee_user_id, is_agency_only, agency_event_group_id, created_at, updated_at';
@@ -476,6 +477,13 @@ export async function insertOptionRequest(req: {
         requestType: req.request_type ?? 'option',
       },
     });
+    logger.error('optionRequests', 'insertOptionRequest failed', {
+      code: e.code,
+      message: e.message,
+      hasOrgId: !!orgId,
+      hasAgencyOrgId: !!agencyOrgId,
+      requestType: req.request_type ?? 'option',
+    });
     return null;
   }
 
@@ -538,6 +546,12 @@ export async function updateOptionRequestStatus(
     const { data, error } = await q.select('id, organization_id').maybeSingle();
     if (error) {
       console.error('updateOptionRequestStatus error:', error);
+      logger.error('optionRequests', 'updateOptionRequestStatus update failed', {
+        message: error.message,
+        code: (error as { code?: string }).code,
+        targetStatus: status,
+        fromStatus,
+      });
       return false;
     }
     if (!data?.id) {

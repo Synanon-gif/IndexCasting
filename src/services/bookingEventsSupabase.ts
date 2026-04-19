@@ -2,6 +2,7 @@ import { supabase } from '../../lib/supabase';
 import { uiCopy } from '../constants/uiCopy';
 import { createNotifications } from './notificationsSupabase';
 import { logAction } from '../utils/logAction';
+import { logger } from '../utils/logger';
 
 /** Alle Felder der booking_events-Tabelle — kein SELECT * mehr. */
 const BOOKING_EVENT_SELECT =
@@ -98,6 +99,11 @@ export async function createBookingEvent(
 
     if (error) {
       console.error('createBookingEvent error:', error);
+      logger.error('bookingEvents', 'createBookingEvent insert failed', {
+        message: error.message,
+        code: (error as { code?: string }).code,
+        type: params.type,
+      });
       return null;
     }
     const created = data as BookingEvent;
@@ -167,6 +173,12 @@ export async function updateBookingEventStatus(
 
     if (error) {
       console.error('updateBookingEventStatus update error:', error);
+      logger.error('bookingEvents', 'updateBookingEventStatus update failed', {
+        message: error.message,
+        code: (error as { code?: string }).code,
+        from: currentStatus,
+        to: newStatus,
+      });
       return { ok: false, message: uiCopy.bookingStatus.updateFailed };
     }
     if (!updated || updated.length === 0) {

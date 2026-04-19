@@ -1,3 +1,17 @@
 #!/usr/bin/env sh
+# Pre-commit gate: lint-staged auto-fixes touched files, then typecheck + tests
+# guard against regressions before the commit is created.
+#
+# Quality gate must match `.github/workflows/ci.yml` so green local =
+# green CI. If this slows you down, the right answer is faster tests, not
+# disabling the hook (use `git commit --no-verify` only for emergency hotfixes).
 cd "$(dirname "$0")/.." || exit 1
-npx lint-staged
+
+# 1. Auto-fix and stage touched TS/TSX files.
+npx lint-staged || exit 1
+
+# 2. Type integrity (whole graph; touched file might break a dependent).
+npm run typecheck || exit 1
+
+# 3. Unit tests (1900+ tests, ~6s; non-negotiable per .cursor/rules/dev-workflow.mdc).
+npm test -- --passWithNoTests --ci --silent || exit 1

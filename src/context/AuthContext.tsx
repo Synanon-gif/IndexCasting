@@ -9,6 +9,7 @@ import React, {
 } from 'react';
 import { uiCopy } from '../constants/uiCopy';
 import { supabase } from '../../lib/supabase';
+import { logger } from '../utils/logger';
 import { appUrl } from '../config/env';
 import type { Session, User } from '@supabase/supabase-js';
 import type { OrganizationType, OrgMemberRole } from '../services/orgRoleTypes';
@@ -219,6 +220,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         details: profileQueryError.details,
         hint: profileQueryError.hint,
         userId,
+      });
+      logger.error('auth', 'loadProfile profile query failed', {
+        code: profileQueryError.code,
+        message: profileQueryError.message,
       });
     }
     if (!data) {
@@ -550,10 +555,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const { error: retryErr } = await ensurePlainSignupB2bOwnerBootstrap();
             if (retryErr) {
               console.error('bootstrapThenLoadProfile RPC error (attempt 2, giving up):', retryErr);
+              logger.error('auth', 'bootstrapThenLoadProfile RPC failed after retry', {
+                message: retryErr.message,
+              });
             }
           }
         } catch (e) {
           console.error('bootstrapThenLoadProfile exception:', e);
+          logger.error('auth', 'bootstrapThenLoadProfile exception', {
+            message: e instanceof Error ? e.message : 'unknown',
+          });
         }
       }
 
@@ -808,6 +819,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       } catch (e) {
         console.error('signIn bootstrapThenLoadProfile error:', e);
+        logger.error('auth', 'signIn bootstrapThenLoadProfile threw', {
+          message: e instanceof Error ? e.message : 'unknown',
+        });
         bootstrapThrew = true;
       }
     }

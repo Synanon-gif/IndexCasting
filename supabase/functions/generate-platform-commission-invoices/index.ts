@@ -37,6 +37,7 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { withObservability } from '../_shared/logger.ts';
 
 const ALWAYS_ALLOWED_ORIGINS = [
   'https://index-casting.com',
@@ -77,7 +78,7 @@ function previousMonthRange(): { start: string; end: string } {
   return { start: fmt(startLastMonth), end: fmt(endLastMonth) };
 }
 
-Deno.serve(async (req: Request) => {
+Deno.serve(withObservability('generate-platform-commission-invoices', async (req: Request) => {
   const cors = getCorsHeaders(req);
 
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
@@ -349,4 +350,4 @@ Deno.serve(async (req: Request) => {
     }),
     { status: 200, headers: { ...cors, 'Content-Type': 'application/json' } },
   );
-});
+}));

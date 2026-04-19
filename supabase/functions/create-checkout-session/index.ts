@@ -29,6 +29,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import Stripe from 'npm:stripe@14';
+import { withObservability } from '../_shared/logger.ts';
 
 const ALWAYS_ALLOWED_ORIGINS = [
   'https://index-casting.com',
@@ -90,7 +91,7 @@ interface CheckoutRequest {
   cancel_url?: string;
 }
 
-Deno.serve(async (req: Request) => {
+Deno.serve(withObservability('create-checkout-session', async (req: Request) => {
   const appUrl = Deno.env.get('APP_URL') ?? 'https://indexcasting.com';
   const allowedOrigins = buildAllowedOrigins(appUrl);
   const cors = getCorsHeaders(req, allowedOrigins);
@@ -301,4 +302,4 @@ Deno.serve(async (req: Request) => {
       { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } },
     );
   }
-});
+}));

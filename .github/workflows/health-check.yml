@@ -1,0 +1,114 @@
+# Periodic health check against the live Supabase project.
+#
+# Polls public.get_public_health_summary() (anon-readable) and fails the job
+# when overall_status is 'outage' or any individual check is 'down' / stale
+# beyond a tolerance window. Failures notify via the standard GitHub Actions
+# failure channel (email to commit author / repo watchers per their settings).
+#
+# Why a separate workflow:
+# - Decoupled from deploy / CI; pure operational signal.
+# - Runs on a cron, not on push, so a degraded production state is surfaced
+#   without waiting for the next code change.
+#
+# Required GitHub secrets:
+#   SUPABASE_URL              - https://<project-ref>.supabase.co
+#   SUPABASE_ANON_KEY         - anon public key (RPC is anon-callable)
+#
+# Optional (full management-API verify run on workflow_dispatch only):
+#   SUPABASE_ACCESS_TOKEN
+#   SUPABASE_PROJECT_REF
+name: Health check (production)
+
+on:
+  schedule:
+    # Every 15 minutes. Cron health checks themselves run every 5min via pg_cron;
+    # this workflow is a safety net that catches "checks themselves stopped running".
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+    inputs:
+      run_full_verify:
+        description: 'Run full scripts/observability-verify.sh (requires SUPABASE_ACCESS_TOKEN)'
+        required: false
+        default: 'false'
+
+concurrency:
+  group: health-check
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    name: Ping public health summary
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Call get_public_health_summary
+        id: ping
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SUPABASE_ANON_KEY:-}" ]; then
+            echo "::error::SUPABASE_URL or SUPABASE_ANON_KEY secret missing"
+            exit 1
+          fi
+
+          RES=$(curl -sS -X POST \
+            "${SUPABASE_URL}/rest/v1/rpc/get_public_health_summary" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            -H "Content-Type: application/json" \
+            -d '{}')
+
+          echo "Raw RPC response: $RES"
+
+          STATUS=$(echo "$RES" | python3 -c "import sys, json; d=json.load(sys.stdin); print(d.get('overall_status','unknown') if isinstance(d, dict) else (d[0].get('overall_status','unknown') if isinstance(d, list) and d else 'unknown'))")
+          LAST_UPDATED=$(echo "$RES" | python3 -c "import sys, json; d=json.load(sys.stdin); print(d.get('last_updated','') if isinstance(d, dict) else (d[0].get('last_updated','') if isinstance(d, list) and d else ''))")
+
+          echo "overall_status=$STATUS"
+          echo "last_updated=$LAST_UPDATED"
+
+          if [ "$STATUS" = "outage" ]; then
+            echo "::error::Production health check reports OUTAGE (last_updated=$LAST_UPDATED)"
+            echo "$RES"
+            exit 1
+          fi
+
+          if [ "$STATUS" = "degraded" ]; then
+            echo "::warning::Production health check reports DEGRADED (last_updated=$LAST_UPDATED)"
+          fi
+
+          # Sanity: cron writes every ~5min; if last_updated is older than 30min
+          # the cron itself probably stopped — surface that loudly.
+          if [ -n "$LAST_UPDATED" ]; then
+            python3 - <<PY
+import sys, datetime
+ts = "$LAST_UPDATED"
+try:
+    if ts.endswith('Z'):
+        ts = ts[:-1] + '+00:00'
+    dt = datetime.datetime.fromisoformat(ts)
+    age = datetime.datetime.now(datetime.timezone.utc) - dt
+    if age.total_seconds() > 30 * 60:
+        print(f"::error::Health checks have not run in {age}; pg_cron job may be down")
+        sys.exit(1)
+    print(f"OK: last health check {age} ago")
+except Exception as e:
+    print(f"::warning::Could not parse last_updated '$LAST_UPDATED': {e}")
+PY
+          fi
+
+  full-verify:
+    name: Full observability verify (manual)
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.run_full_verify == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run observability-verify.sh
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: bash scripts/observability-verify.sh

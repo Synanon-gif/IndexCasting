@@ -17,6 +17,7 @@ import {
 } from '../../lib/validation';
 import { checkAndIncrementStorage, decrementStorage } from './agencyStorageSupabase';
 import { convertHeicToJpegWithStatus, stripExifAndCompress } from './imageUtils';
+import { logger } from '../utils/logger';
 
 /** Reads the actual stored size of a recruiting chat file from storage.objects metadata. Best-effort — returns null on failure. */
 async function getActualChatFileSize(bucket: string, path: string): Promise<number | null> {
@@ -503,6 +504,12 @@ export async function addMessage(
       .single();
     if (error) {
       console.error('addMessage error:', error);
+      logger.error('recruitingChat', 'addMessage insert failed', {
+        message: error.message,
+        code: (error as { code?: string }).code,
+        fromRole,
+        hasFile,
+      });
       return null;
     }
 
