@@ -133,6 +133,7 @@ import { CHAT_BUBBLE_MAX_WIDTH } from '../components/orgMessengerMessageLayout';
 import { getCalendarDetailNextStepForModelLocalOption } from '../utils/calendarDetailNextStep';
 import { MonthCalendarView } from '../components/MonthCalendarView';
 import { CalendarViewModeBar, type CalendarViewMode } from '../components/CalendarViewModeBar';
+import { CalendarColorLegend } from '../components/CalendarColorLegend';
 import { CalendarWeekGrid } from '../components/CalendarWeekGrid';
 import { CalendarDayTimeline } from '../components/CalendarDayTimeline';
 import {
@@ -146,7 +147,6 @@ import {
   todayYmd,
   weekDayDates,
 } from '../utils/calendarTimelineLayout';
-import { calendarEntryColor } from '../utils/calendarColors';
 
 type ModelProfile = {
   id: string;
@@ -1878,59 +1878,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
               />
             )}
 
-            <View
-              style={{
-                flexDirection: 'row',
-                flexWrap: 'wrap',
-                gap: spacing.md,
-                marginBottom: spacing.md,
-              }}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <View
-                  style={{
-                    width: 10,
-                    height: 10,
-                    borderRadius: 5,
-                    backgroundColor: calendarEntryColor('personal'),
-                  }}
-                />
-                <Text style={st.metaText}>{uiCopy.dashboard.colorPersonalLabel}</Text>
-              </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <View
-                  style={{
-                    width: 10,
-                    height: 10,
-                    borderRadius: 5,
-                    backgroundColor: calendarEntryColor('booking'),
-                  }}
-                />
-                <Text style={st.metaText}>{uiCopy.dashboard.threadContextBooking}</Text>
-              </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <View
-                  style={{
-                    width: 10,
-                    height: 10,
-                    borderRadius: 5,
-                    backgroundColor: calendarEntryColor('option'),
-                  }}
-                />
-                <Text style={st.metaText}>{uiCopy.dashboard.colorOptionLabel}</Text>
-              </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <View
-                  style={{
-                    width: 10,
-                    height: 10,
-                    borderRadius: 5,
-                    backgroundColor: calendarEntryColor('casting'),
-                  }}
-                />
-                <Text style={st.metaText}>{uiCopy.dashboard.colorCastingLabel}</Text>
-              </View>
-            </View>
+            <CalendarColorLegend />
 
             {calendarViewMode === 'day' && selectedDate && (
               <View

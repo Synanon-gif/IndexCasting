@@ -4,6 +4,7 @@ import { MonthCalendarView, type CalendarDayEvent } from './MonthCalendarView';
 import { CalendarViewModeBar, type CalendarViewMode } from './CalendarViewModeBar';
 import { CalendarWeekGrid } from './CalendarWeekGrid';
 import { CalendarDayTimeline } from './CalendarDayTimeline';
+import { CalendarColorLegend } from './CalendarColorLegend';
 import { uiCopy } from '../constants/uiCopy';
 import type { UnifiedAgencyCalendarRow } from '../utils/agencyCalendarUnified';
 import type { CalendarProjectionViewerRole } from '../utils/calendarProjectionLabel';
@@ -59,7 +60,12 @@ export const B2BUnifiedCalendarBody: React.FC<B2BUnifiedCalendarBodyProps> = ({
   };
 
   const timelineEvents = useMemo(
-    () => buildTimelineEventsFromUnifiedRows(filteredUnified, viewerRole, uiCopy.calendar.projectionBadge),
+    () =>
+      buildTimelineEventsFromUnifiedRows(
+        filteredUnified,
+        viewerRole,
+        uiCopy.calendar.projectionBadge,
+      ),
     [filteredUnified, viewerRole],
   );
 
@@ -84,7 +90,12 @@ export const B2BUnifiedCalendarBody: React.FC<B2BUnifiedCalendarBodyProps> = ({
 
   const dayDateLabel = useMemo(() => {
     const d = new Date(`${focusDate}T12:00:00`);
-    return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+    return d.toLocaleDateString('en-US', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    });
   }, [focusDate]);
 
   const viewModeHint = useMemo(() => {
@@ -120,10 +131,18 @@ export const B2BUnifiedCalendarBody: React.FC<B2BUnifiedCalendarBodyProps> = ({
           compact={false}
           onSelectDay={handleMonthDayClick}
           onPrevMonth={() =>
-            setCalendarMonth((m) => (m.month === 0 ? { year: m.year - 1, month: 11 } : { year: m.year, month: m.month - 1 }))
+            setCalendarMonth((m) =>
+              m.month === 0
+                ? { year: m.year - 1, month: 11 }
+                : { year: m.year, month: m.month - 1 },
+            )
           }
           onNextMonth={() =>
-            setCalendarMonth((m) => (m.month === 11 ? { year: m.year + 1, month: 0 } : { year: m.year, month: m.month + 1 }))
+            setCalendarMonth((m) =>
+              m.month === 11
+                ? { year: m.year + 1, month: 0 }
+                : { year: m.year, month: m.month + 1 },
+            )
           }
         />
       )}
@@ -151,6 +170,7 @@ export const B2BUnifiedCalendarBody: React.FC<B2BUnifiedCalendarBodyProps> = ({
         />
       )}
 
+      <CalendarColorLegend />
     </View>
   );
 };

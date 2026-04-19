@@ -329,6 +329,12 @@ export const uiCopy = {
     typeFilterOption: 'Option',
     typeFilterCasting: 'Casting',
     typeFilterBooking: 'Job',
+    /** Color legend shown beneath every calendar (Agency, Client Web, Model). */
+    colorLegendHeading: 'Color legend',
+    legendOption: 'Option',
+    legendCasting: 'Casting',
+    legendJob: 'Job',
+    legendOwnEvent: 'Own event',
     /** Model calendar — booking detail line for the client organization (not a generic “Client” placeholder). */
     modelEntryClientOrgLabel: 'Client organization',
     /** Multi-view calendar (Agency / Client web / Model). */
@@ -2281,6 +2287,10 @@ export const uiCopy = {
       'The invoice will be finalized in Stripe, the recipient will receive an email, and you cannot edit it afterwards.',
     sendSuccess: 'Invoice sent via Stripe.',
     sendFailed: 'Could not send invoice. Try again.',
+    retrySend: 'Retry send',
+    retrySendConfirmTitle: 'Retry sending this invoice?',
+    retrySendConfirmMessage:
+      'This invoice is stuck in “Sending…” after a previous attempt was interrupted. Retrying is safe — Stripe will not be charged twice.',
     saveSuccess: 'Draft saved.',
     saveFailed: 'Could not save draft. Try again.',
     deleteSuccess: 'Draft deleted.',
