@@ -148,20 +148,28 @@ async function shipEventToBackend(
 
     const safeContext = context ? (redactValue(context) as Record<string, unknown>) : null;
     const safeMessage = redactString(message);
+    // DB schema (system_events):
+    //   - `source` is an enum: 'frontend' | 'edge' | 'db' | 'cron' | 'system'
+    //     → MUST be the literal 'edge' here, not `edge:${name}`.
+    //   - `event` is NOT NULL — use the caller-supplied logical source
+    //     (e.g. function name 'send-invite') as the stable event identifier.
+    //   - `actor_user_id` / `organization_id` are the canonical column names.
     const enriched: Record<string, unknown> = {
       ...(safeContext ?? {}),
       _runtime: 'edge',
+      _source: source,
     };
     if (opts.orgId) enriched._org_id = opts.orgId;
     if (opts.userId) enriched._user_id = opts.userId;
 
     const { error } = await client.from('system_events').insert({
       level,
-      source: `edge:${source}`,
+      source: 'edge',
+      event: source,
       message: safeMessage,
       context: enriched,
-      org_id: opts.orgId ?? null,
-      user_id: opts.userId ?? null,
+      organization_id: opts.orgId ?? null,
+      actor_user_id: opts.userId ?? null,
     });
     if (error) {
       console.warn('[edge-logger] insert failed', error.message);

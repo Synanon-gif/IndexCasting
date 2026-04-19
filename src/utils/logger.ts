@@ -175,9 +175,17 @@ async function shipEventToBackend(
   try {
     const safeContext = context ? (redactValue(context) as Record<string, unknown>) : null;
     const safeMessage = redactString(message);
+    // The DB enforces `source IN ('frontend','edge','db','cron','system')`.
+    // The TS API accepts a free-form `source` (e.g. 'optionRequests', 'AppErrorBoundary')
+    // which is the *logical* origin within the frontend layer. We therefore:
+    //   - pin `p_source = 'frontend'` (the platform-layer enum value), and
+    //   - pass the caller-provided `source` as `p_event` (a stable machine-readable
+    //     event identifier — required NOT NULL by record_system_event).
+    // The original logical source is also preserved in the context for triage.
     const enriched: Record<string, unknown> = {
       ...(safeContext ?? {}),
       _platform: platformLabel(),
+      _source: source,
     };
     if (opts.orgId) enriched._org_id = opts.orgId;
     if (opts.userId) enriched._user_id = opts.userId;
@@ -186,7 +194,8 @@ async function shipEventToBackend(
     void supabase
       .rpc('record_system_event', {
         p_level: level,
-        p_source: source,
+        p_source: 'frontend',
+        p_event: source,
         p_message: safeMessage,
         p_context: enriched,
       })

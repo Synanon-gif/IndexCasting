@@ -330,11 +330,11 @@ const ViolationRow: React.FC<{ v: AdminInvariantViolation; resolved?: boolean }>
 
 const EventRow: React.FC<{ event: AdminSystemEvent }> = ({ event }) => {
   const [expanded, setExpanded] = useState(false);
-  const hasPayload = event.payload && Object.keys(event.payload).length > 0;
+  const hasContext = event.context && Object.keys(event.context).length > 0;
   return (
     <TouchableOpacity
-      activeOpacity={hasPayload ? 0.7 : 1}
-      onPress={() => hasPayload && setExpanded((x) => !x)}
+      activeOpacity={hasContext ? 0.7 : 1}
+      onPress={() => hasContext && setExpanded((x) => !x)}
       style={[styles.eventRow, { borderLeftColor: levelColor(event.level) }]}
     >
       <View style={styles.eventHeaderRow}>
@@ -348,9 +348,9 @@ const EventRow: React.FC<{ event: AdminSystemEvent }> = ({ event }) => {
         {event.event}
       </Text>
       {event.message && <Text style={styles.eventMessage}>{event.message}</Text>}
-      {expanded && hasPayload && (
+      {expanded && hasContext && (
         <View style={styles.detailsBox}>
-          <Text style={styles.detailsText}>{JSON.stringify(event.payload, null, 2)}</Text>
+          <Text style={styles.detailsText}>{JSON.stringify(event.context, null, 2)}</Text>
         </View>
       )}
     </TouchableOpacity>
@@ -391,7 +391,7 @@ function statusLabel(s: AdminHealthCheckStatus): string {
 }
 function severityLabel(s: AdminHealthSeverity): string {
   if (s === 'critical') return uiCopy.adminHealth.severityCritical;
-  if (s === 'warning') return uiCopy.adminHealth.severityWarning;
+  if (s === 'warn') return uiCopy.adminHealth.severityWarning;
   return uiCopy.adminHealth.severityInfo;
 }
 function bannerBgColor(s: AdminHealthCheckStatus): string {
@@ -426,17 +426,17 @@ function statusTextColor(s: AdminHealthCheckStatus): string {
 }
 function severityBgColor(s: AdminHealthSeverity): string {
   if (s === 'critical') return '#FDECEA';
-  if (s === 'warning') return '#FFF8E1';
+  if (s === 'warn') return '#FFF8E1';
   return colors.surfaceAlt;
 }
 function severityTextColor(s: AdminHealthSeverity): string {
   if (s === 'critical') return colors.errorDark;
-  if (s === 'warning') return colors.warningDark;
+  if (s === 'warn') return colors.warningDark;
   return colors.textSecondary;
 }
 function severityBorderColor(s: AdminHealthSeverity): string {
   if (s === 'critical') return colors.error;
-  if (s === 'warning') return colors.warning;
+  if (s === 'warn') return colors.warning;
   return colors.borderLight;
 }
 function levelColor(level: string): string {

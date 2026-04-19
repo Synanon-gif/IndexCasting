@@ -1154,7 +1154,9 @@ export async function adminGetProfilesIdDisplayEmail(
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type AdminHealthCheckStatus = 'ok' | 'degraded' | 'down' | 'unknown';
-export type AdminHealthSeverity = 'info' | 'warning' | 'critical';
+// DB enum for `system_health_checks.severity` / `system_invariant_violations.severity`
+// is `('info','warn','critical')` — keep TS aligned to avoid silent label fallbacks.
+export type AdminHealthSeverity = 'info' | 'warn' | 'critical';
 
 export type AdminHealthCheck = {
   name: string;
@@ -1233,9 +1235,10 @@ export type AdminSystemEvent = {
   source: string | null;
   event: string;
   message: string | null;
-  user_id: string | null;
+  // Live DB columns are `actor_user_id` and `context` (jsonb), NOT `user_id`/`payload`.
+  actor_user_id: string | null;
   organization_id: string | null;
-  payload: Record<string, unknown> | null;
+  context: Record<string, unknown> | null;
 };
 
 /**
@@ -1251,7 +1254,9 @@ export async function adminListSystemEvents(opts?: {
   try {
     let q = supabase
       .from('system_events')
-      .select('id, created_at, level, source, event, message, user_id, organization_id, payload')
+      .select(
+        'id, created_at, level, source, event, message, actor_user_id, organization_id, context',
+      )
       .order('created_at', { ascending: false })
       .limit(limit);
     if (opts?.level) {

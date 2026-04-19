@@ -101,12 +101,17 @@ describe('logger — ship behaviour', () => {
     logger.error('test', 'something broke');
     logger.fatal('test', 'totally broken');
     expect(rpcMock).toHaveBeenCalledTimes(3);
+    // The DB enforces `source IN ('frontend','edge','db','cron','system')`. The
+    // caller-supplied logical source (here `'test'`) is mapped to the
+    // NOT NULL `p_event` column instead. `p_source` MUST be the platform-layer
+    // enum value `'frontend'`.
     expect(rpcMock).toHaveBeenNthCalledWith(
       1,
       'record_system_event',
       expect.objectContaining({
         p_level: 'warn',
-        p_source: 'test',
+        p_source: 'frontend',
+        p_event: 'test',
       }),
     );
   });
