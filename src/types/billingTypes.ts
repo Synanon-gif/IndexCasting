@@ -65,7 +65,11 @@ export type OrganizationBillingDefaultsInput = {
 
 // ─── Invoices (B2B Stripe Invoicing) ────────────────────────────────────────
 
-export type InvoiceType = 'agency_to_client' | 'platform_to_agency' | 'platform_to_client';
+export type InvoiceType =
+  | 'agency_to_client'
+  | 'agency_to_agency'
+  | 'platform_to_agency'
+  | 'platform_to_client';
 
 export type InvoiceStatus =
   | 'draft'
@@ -152,3 +156,145 @@ export type InvoiceDraftPatch = {
 export type InvoiceWithLines = InvoiceRow & {
   line_items: InvoiceLineItemRow[];
 };
+
+// ─── Agency ↔ Model internal settlements (model firewall enforced via RLS) ──
+//
+// These rows are NEVER visible to models. They are agency-internal bookkeeping
+// for model payouts / commission accounting and are intentionally separate
+// from the formal `invoices` table.
+
+export type AgencyModelSettlementStatus = 'draft' | 'recorded' | 'paid' | 'void';
+
+export type AgencyModelSettlementRow = {
+  id: string;
+  organization_id: string;
+  model_id: string;
+  source_option_request_id: string | null;
+  settlement_number: string | null;
+  status: AgencyModelSettlementStatus;
+  currency: string;
+  gross_amount_cents: number;
+  commission_amount_cents: number;
+  net_amount_cents: number;
+  notes: string | null;
+  metadata: Record<string, unknown>;
+  recorded_at: string | null;
+  paid_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AgencyModelSettlementInput = {
+  model_id: string;
+  source_option_request_id?: string | null;
+  currency?: string;
+  gross_amount_cents?: number;
+  commission_amount_cents?: number;
+  net_amount_cents?: number;
+  notes?: string | null;
+  metadata?: Record<string, unknown>;
+};
+
+export type AgencyModelSettlementPatch = {
+  currency?: string;
+  gross_amount_cents?: number;
+  commission_amount_cents?: number;
+  net_amount_cents?: number;
+  notes?: string | null;
+  metadata?: Record<string, unknown>;
+  status?: AgencyModelSettlementStatus;
+  settlement_number?: string | null;
+};
+
+export type AgencyModelSettlementItemRow = {
+  id: string;
+  settlement_id: string;
+  description: string;
+  quantity: number;
+  unit_amount_cents: number;
+  total_amount_cents: number;
+  currency: string;
+  position: number;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AgencyModelSettlementItemInput = {
+  description: string;
+  quantity: number;
+  unit_amount_cents: number;
+  total_amount_cents?: number;
+  currency?: string | null;
+  position?: number;
+  metadata?: Record<string, unknown>;
+};
+
+export type AgencyModelSettlementWithItems = AgencyModelSettlementRow & {
+  items: AgencyModelSettlementItemRow[];
+};
+
+// ─── Agency × Client billing presets (convenience prefill, NOT canonical) ───
+//
+// Presets are issuer-side templates owned by an agency to speed up repeated
+// invoicing for a given client organization. They are NEVER live-linked into
+// invoice rows after creation — the immutable `recipient_billing_snapshot` on
+// the invoice remains canonical.
+
+export type AgencyClientBillingPresetRow = {
+  id: string;
+  agency_organization_id: string;
+  client_organization_id: string;
+  label: string | null;
+  is_default: boolean;
+  recipient_billing_name: string | null;
+  recipient_billing_address_1: string | null;
+  recipient_billing_address_2: string | null;
+  recipient_billing_city: string | null;
+  recipient_billing_postal_code: string | null;
+  recipient_billing_state: string | null;
+  recipient_billing_country: string | null;
+  recipient_billing_email: string | null;
+  recipient_vat_id: string | null;
+  recipient_tax_id: string | null;
+  default_currency: string;
+  default_tax_mode: 'manual' | 'stripe_tax';
+  default_tax_rate_percent: number | null;
+  default_reverse_charge: boolean;
+  default_payment_terms_days: number;
+  default_notes: string | null;
+  default_line_item_template: Array<Record<string, unknown>>;
+  metadata: Record<string, unknown>;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AgencyClientBillingPresetInput = {
+  client_organization_id: string;
+  label?: string | null;
+  is_default?: boolean;
+  recipient_billing_name?: string | null;
+  recipient_billing_address_1?: string | null;
+  recipient_billing_address_2?: string | null;
+  recipient_billing_city?: string | null;
+  recipient_billing_postal_code?: string | null;
+  recipient_billing_state?: string | null;
+  recipient_billing_country?: string | null;
+  recipient_billing_email?: string | null;
+  recipient_vat_id?: string | null;
+  recipient_tax_id?: string | null;
+  default_currency?: string;
+  default_tax_mode?: 'manual' | 'stripe_tax';
+  default_tax_rate_percent?: number | null;
+  default_reverse_charge?: boolean;
+  default_payment_terms_days?: number;
+  default_notes?: string | null;
+  default_line_item_template?: Array<Record<string, unknown>>;
+  metadata?: Record<string, unknown>;
+};
+
+export type AgencyClientBillingPresetPatch = Partial<
+  Omit<AgencyClientBillingPresetInput, 'client_organization_id'>
+>;

@@ -8,6 +8,9 @@ export const uiCopy = {
     saving: 'Saving…',
     saved: 'Saved',
     delete: 'Delete',
+    edit: 'Edit',
+    change: 'Change',
+    refresh: 'Refresh',
     cancel: 'Cancel',
     confirm: 'Confirm',
     close: 'Close',
@@ -546,6 +549,7 @@ export const uiCopy = {
       calendar: 'Calendar',
       agencies: 'Agencies',
       team: 'Team',
+      billing: 'Billing',
       messages: 'Messages',
       profile: 'Profile',
     },
@@ -2327,6 +2331,234 @@ export const uiCopy = {
     notRecipientYet: 'Pick a recipient before sending.',
     noLineItemsYet: 'Add at least one line item before sending.',
     cantEditNonDraft: 'Sent invoices cannot be edited. Use Stripe for status updates.',
+    /** Recipient column displays the recipient organization or "Internal" for settlements. */
+    listColRecipientFallback: 'Internal',
+    /** Manual invoice creation — Agency → Agency commission. */
+    typeAgencyToAgency: 'Agency → Agency',
+    /** Recipient type toggle in the draft editor. */
+    recipientTypeLabel: 'Recipient type',
+    recipientTypeClient: 'Client organization',
+    recipientTypeAgency: 'Agency organization',
+    /** Preset prefill picker (visible only when presets exist for the selected recipient). */
+    presetPickerLabel: 'Apply billing preset',
+    presetPickerNone: 'No preset (start blank)',
+    presetPickerHint:
+      'Optional: prefill recipient billing details, currency, tax, terms, and starter line items.',
+    presetAppliedNotice: 'Preset applied — values can still be edited before saving.',
+    /** Search + filter + pagination (InvoicesPanel). */
+    searchPlaceholder: 'Search by number, recipient, or notes…',
+    filterTypeLabel: 'Type',
+    filterCurrencyLabel: 'Currency',
+    filterAllTypes: 'All types',
+    filterAllCurrencies: 'All currencies',
+    filterClear: 'Clear filters',
+    loadMore: 'Load more',
+    loadingMore: 'Loading…',
+    noMore: 'No more invoices.',
+    yearGroupLabel: (year: number | string): string => `Year ${year}`,
+    /** Shown when current search/filter combination matches no invoices. */
+    emptyFiltered: 'No invoices match the current search or filters.',
+  },
+
+  // ── Billing Hub (new dedicated tab) ───────────────────────────────────────
+  /**
+   * Strings shown in the new Billing top-level tab. Wraps the existing
+   * `invoices` and `billingSettings` blocks plus settlements and presets.
+   * Owner-only writes; bookers / employees see read-only state.
+   */
+  billingHub: {
+    tabLabel: 'Billing',
+    headerTitle: 'Billing',
+    headerSubtitleAgency:
+      'Outgoing invoices, internal settlements, billing partners, and your billing identity.',
+    headerSubtitleClient: 'Invoices addressed to your organization and your billing identity.',
+
+    // Sub-tabs (Agency view)
+    subTabOutgoing: 'Outgoing',
+    subTabIncoming: 'Incoming',
+    subTabSettlements: 'Model settlements',
+    subTabPresets: 'Clients & presets',
+    subTabProfiles: 'Billing profiles',
+    subTabDefaults: 'Defaults',
+
+    // Sub-tabs (Client view)
+    subTabReceived: 'Received',
+    // (profiles + defaults reused)
+
+    // Owner-gated banner for non-owner viewers (booker / employee)
+    readOnlyBanner:
+      'Read-only view. Only the organization owner can create, edit, or send billing items.',
+
+    // Smart attention banner — shown when any visible signal exists
+    attentionBannerTitle: 'Action required',
+    attentionBannerSeverityCritical: 'Critical',
+    attentionBannerSeverityHigh: 'High',
+    attentionBannerSeverityMedium: 'Medium',
+    attentionBannerSeverityLow: 'Reminder',
+    attentionEmpty: 'Everything is up to date.',
+
+    // Per-category copy (used in attention banner + dashboard widget)
+    attentionCategoryInvoiceOverdue: 'Overdue invoice',
+    attentionCategoryInvoiceUnpaid: 'Unpaid invoice',
+    attentionCategoryInvoiceDraftPending: 'Draft to review',
+    attentionCategoryInvoicePendingSend: 'Stuck in “Sending…”',
+    attentionCategoryInvoiceReceivedUnpaid: 'Bill awaiting payment',
+    attentionCategoryInvoiceReceivedOverdue: 'Bill overdue',
+    attentionCategorySettlementDraftPending: 'Settlement draft',
+    attentionCategorySettlementRecordedUnpaid: 'Settlement to pay out',
+    attentionCategoryBillingProfileMissing: 'Billing profile incomplete',
+    attentionCategoryBillingProfileMissingHint:
+      'Add a billing identity so future invoices can be issued without delays.',
+
+    // Search / filter / pagination (Outgoing & Incoming lists)
+    searchPlaceholder: 'Search invoice #, recipient, or notes…',
+    filterStatusLabel: 'Status',
+    filterStatusAll: 'All statuses',
+    filterTypeLabel: 'Type',
+    filterTypeAll: 'All types',
+    filterCurrencyLabel: 'Currency',
+    filterCurrencyAll: 'All currencies',
+    filterYearLabel: 'Year',
+    filterYearAll: 'All years',
+    filterClear: 'Clear filters',
+    filterResultCount: (n: number) => `${n} invoice${n === 1 ? '' : 's'}`,
+    paginationLoadMore: 'Load more',
+    paginationLoading: 'Loading…',
+    paginationEnd: 'No more results.',
+    yearGroupLabel: (y: number) => `${y}`,
+  },
+
+  // ── Agency ↔ Model internal settlements ───────────────────────────────────
+  /** Agency-internal payout / commission tracking. Never shown to models or clients. */
+  settlements: {
+    cardTitle: 'Model settlements',
+    intro:
+      'Internal record of model payouts and commission. Visible only to your agency team — never to models or clients.',
+    ownerOnlyHint: 'Only the organization owner can create or update settlements.',
+
+    listColModel: 'Model',
+    listColNumber: 'Settlement #',
+    listColAmount: 'Net amount',
+    listColStatus: 'Status',
+    listColCreated: 'Created',
+    listColPaidAt: 'Paid',
+    statusDraft: 'Draft',
+    statusRecorded: 'Recorded',
+    statusPaid: 'Paid',
+    statusVoid: 'Void',
+
+    empty: 'No settlements yet.',
+    loading: 'Loading settlements…',
+    loadFailed: 'Could not load settlements.',
+
+    create: 'New settlement',
+    createTitle: 'New model settlement',
+    delete: 'Delete draft',
+    deleteConfirmTitle: 'Delete this draft settlement?',
+    deleteConfirmMessage: 'Drafts can be removed. Recorded or paid settlements cannot be deleted.',
+    deleteFailed: 'Could not delete settlement.',
+    deleteSuccess: 'Draft removed.',
+
+    save: 'Save',
+    saveSuccess: 'Settlement saved.',
+    saveFailed: 'Could not save settlement.',
+
+    markRecorded: 'Mark as recorded',
+    markRecordedConfirmTitle: 'Record this settlement?',
+    markRecordedConfirmMessage:
+      'Once recorded, this settlement is part of your agency-internal ledger. You can still mark it as paid later.',
+    markRecordedFailed: 'Could not record settlement.',
+
+    markPaid: 'Mark as paid',
+    markPaidConfirmTitle: 'Mark settlement as paid?',
+    markPaidConfirmMessage: 'Records the payout date for this model. This step is final.',
+    markPaidFailed: 'Could not mark as paid.',
+    markPaidSuccess: 'Settlement marked as paid.',
+
+    markVoid: 'Void',
+    markVoidConfirmTitle: 'Void this settlement?',
+    markVoidConfirmMessage: 'Voided settlements remain in the ledger for audit.',
+
+    fieldModel: 'Model',
+    fieldModelPlaceholder: 'Search your roster…',
+    fieldSettlementNumber: 'Settlement number',
+    fieldSettlementNumberPlaceholder: 'Optional — your internal reference.',
+    fieldGross: 'Gross amount',
+    fieldCommission: 'Agency commission',
+    fieldNet: 'Net to model',
+    fieldCurrency: 'Currency',
+    fieldNotes: 'Notes (internal)',
+    fieldNotesPlaceholder: 'Optional — visible only to your agency team.',
+
+    sectionItems: 'Line items',
+    addItem: 'Add line',
+    removeItem: 'Remove',
+    itemDescription: 'Description',
+    itemQuantity: 'Quantity',
+    itemUnit: 'Unit amount',
+    itemTotal: 'Total',
+
+    backToList: 'Back to settlements',
+  },
+
+  // ── Agency × Client billing presets ───────────────────────────────────────
+  /** Agency-side convenience templates per client. Never shown to clients or models. */
+  billingPresets: {
+    cardTitle: 'Clients & billing presets',
+    intro:
+      'Save reusable billing templates per client. Presets pre-fill new invoice drafts only — they never alter invoices already created.',
+    ownerOnlyHint: 'Only the organization owner can create or edit presets.',
+
+    listColClient: 'Client',
+    listColPresetCount: 'Presets',
+    listColDefault: 'Default preset',
+    listColUpdated: 'Updated',
+    listEmpty: 'No clients yet.',
+    listEmptyHint: 'Presets appear here automatically once you start invoicing recurring clients.',
+
+    presetListTitle: 'Presets',
+    presetListEmpty: 'No presets for this client yet.',
+    presetCreate: 'New preset',
+    presetEdit: 'Edit preset',
+    presetDelete: 'Delete preset',
+    presetDeleteConfirmTitle: 'Delete this preset?',
+    presetDeleteConfirmMessage:
+      'Existing invoices are not affected — the immutable billing snapshot stays on each invoice.',
+    presetDeleteFailed: 'Could not delete preset.',
+    presetSetDefault: 'Set as default',
+    presetIsDefault: 'Default',
+
+    save: 'Save preset',
+    saveSuccess: 'Preset saved.',
+    saveFailed: 'Could not save preset.',
+
+    fieldLabel: 'Preset label',
+    fieldLabelPlaceholder: 'e.g. HQ — net 30',
+    fieldRecipientName: 'Recipient legal name',
+    fieldRecipientAddress1: 'Address line 1',
+    fieldRecipientAddress2: 'Address line 2',
+    fieldRecipientCity: 'City',
+    fieldRecipientPostalCode: 'Postal code',
+    fieldRecipientState: 'State / region',
+    fieldRecipientCountry: 'Country',
+    fieldRecipientEmail: 'Invoice email',
+    fieldVatId: 'VAT ID',
+    fieldTaxId: 'Tax ID',
+    fieldCurrency: 'Default currency',
+    fieldTaxMode: 'Tax mode',
+    fieldTaxRate: 'Tax rate (%)',
+    fieldReverseCharge: 'Reverse charge (EU B2B)',
+    fieldPaymentTerms: 'Payment terms (days)',
+    fieldNotes: 'Default invoice notes',
+    fieldNotesPlaceholder: 'Optional — appended to the invoice on creation.',
+
+    sectionLineTemplate: 'Default line items',
+    sectionLineTemplateHint:
+      'Optional — items added here are inserted when the preset prefills a new draft. Quantities and prices are still editable per invoice.',
+    addTemplateLine: 'Add template line',
+
+    snapshotImmutabilityNote:
+      'Editing a preset does not change invoices that already exist. Invoices keep an immutable copy of the billing details captured when they were created.',
   },
   // ── Dashboard ──────────────────────────────────────────────────────────────
   dashboard: {

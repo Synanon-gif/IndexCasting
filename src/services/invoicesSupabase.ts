@@ -15,6 +15,7 @@
 import { supabase } from '../../lib/supabase';
 import { assertOrgContext } from '../utils/orgGuard';
 import type {
+  AgencyClientBillingPresetRow,
   InvoiceDraftPatch,
   InvoiceLineItemInput,
   InvoiceLineItemRow,
@@ -32,7 +33,18 @@ import type {
  */
 export async function listInvoicesForOrganization(
   organizationId: string,
-  opts?: { statuses?: InvoiceStatus[]; types?: InvoiceType[]; limit?: number },
+  opts?: {
+    statuses?: InvoiceStatus[];
+    types?: InvoiceType[];
+    limit?: number;
+    /**
+     * Cursor pagination — pass the `created_at` of the last row from the previous
+     * page to fetch older rows. Combined with `cursorId` for stable tie-breaking
+     * when multiple rows share the same `created_at`.
+     */
+    cursorCreatedAt?: string | null;
+    cursorId?: string | null;
+  },
 ): Promise<InvoiceRow[]> {
   if (!assertOrgContext(organizationId, 'listInvoicesForOrganization')) return [];
   try {
@@ -41,9 +53,21 @@ export async function listInvoicesForOrganization(
       .select('*')
       .eq('organization_id', organizationId)
       .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
       .limit(opts?.limit ?? 200);
     if (opts?.statuses?.length) q = q.in('status', opts.statuses);
     if (opts?.types?.length) q = q.in('invoice_type', opts.types);
+    if (opts?.cursorCreatedAt) {
+      // Keyset pagination: fetch rows strictly older than the cursor. Use OR
+      // clause for stable tie-breaking on identical created_at timestamps.
+      if (opts.cursorId) {
+        q = q.or(
+          `created_at.lt.${opts.cursorCreatedAt},and(created_at.eq.${opts.cursorCreatedAt},id.lt.${opts.cursorId})`,
+        );
+      } else {
+        q = q.lt('created_at', opts.cursorCreatedAt);
+      }
+    }
     const { data, error } = await q;
     if (error) {
       console.error('[listInvoicesForOrganization] error:', error);
@@ -63,7 +87,13 @@ export async function listInvoicesForOrganization(
  */
 export async function listInvoicesForRecipient(
   organizationId: string,
-  opts?: { statuses?: InvoiceStatus[]; types?: InvoiceType[]; limit?: number },
+  opts?: {
+    statuses?: InvoiceStatus[];
+    types?: InvoiceType[];
+    limit?: number;
+    cursorCreatedAt?: string | null;
+    cursorId?: string | null;
+  },
 ): Promise<InvoiceRow[]> {
   if (!assertOrgContext(organizationId, 'listInvoicesForRecipient')) return [];
   try {
@@ -72,9 +102,19 @@ export async function listInvoicesForRecipient(
       .select('*')
       .eq('recipient_organization_id', organizationId)
       .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
       .limit(opts?.limit ?? 200);
     if (opts?.statuses?.length) q = q.in('status', opts.statuses);
     if (opts?.types?.length) q = q.in('invoice_type', opts.types);
+    if (opts?.cursorCreatedAt) {
+      if (opts.cursorId) {
+        q = q.or(
+          `created_at.lt.${opts.cursorCreatedAt},and(created_at.eq.${opts.cursorCreatedAt},id.lt.${opts.cursorId})`,
+        );
+      } else {
+        q = q.lt('created_at', opts.cursorCreatedAt);
+      }
+    }
     const { data, error } = await q;
     if (error) {
       console.error('[listInvoicesForRecipient] error:', error);
@@ -122,8 +162,18 @@ export async function getInvoiceWithLines(invoiceId: string): Promise<InvoiceWit
 // ─── Owner writes (drafts only; RLS enforces ownership server-side) ─────────
 
 /**
- * Create a manual draft invoice (e.g. ad-hoc agency_to_client outside the
- * auto-trigger path). Returns the new invoice id, or null on failure.
+ * Create a manual draft invoice (e.g. ad-hoc agency_to_client / agency_to_agency
+ * outside the auto-trigger path).
+ *
+ * Preset prefill (optional, opt-in via `presetId`):
+ * - Loaded preset values are used as DEFAULTS; explicit `payload` fields ALWAYS win.
+ * - Preset is one-shot: it pre-fills the draft AT CREATION ONLY. The resulting
+ *   invoice row stays canonical (immutable snapshot freeze applies on send).
+ * - `default_line_item_template` items are inserted as initial line items and
+ *   recomputeInvoiceTotals() runs once at the end. Fails on individual line items
+ *   are logged but do not roll back the invoice insert (best-effort prefill).
+ *
+ * Returns the new invoice id, or null on failure.
  */
 export async function createInvoiceDraft(
   organizationId: string,
@@ -137,24 +187,64 @@ export async function createInvoiceDraft(
     tax_rate_percent?: number | null;
     tax_mode?: 'manual' | 'stripe_tax';
     reverse_charge_applied?: boolean;
+    presetId?: string | null;
   },
 ): Promise<string | null> {
   if (!assertOrgContext(organizationId, 'createInvoiceDraft')) return null;
   try {
+    let preset: AgencyClientBillingPresetRow | null = null;
+    if (payload.presetId) {
+      const { data: presetData, error: presetErr } = await supabase
+        .from('agency_client_billing_presets')
+        .select('*')
+        .eq('id', payload.presetId)
+        .eq('agency_organization_id', organizationId)
+        .maybeSingle();
+      if (presetErr) {
+        console.error('[createInvoiceDraft] preset lookup error:', presetErr);
+        // Best-effort: continue without preset if lookup fails.
+      } else if (presetData) {
+        preset = presetData as AgencyClientBillingPresetRow;
+      }
+    }
+
+    // Resolve effective fields: explicit payload wins; preset defaults fill gaps.
+    const effRecipient =
+      payload.recipient_organization_id !== undefined
+        ? payload.recipient_organization_id
+        : (preset?.client_organization_id ?? null);
+    const effCurrency = payload.currency ?? preset?.default_currency ?? 'EUR';
+    const effTaxMode = payload.tax_mode ?? preset?.default_tax_mode ?? 'manual';
+    const effTaxRate =
+      payload.tax_rate_percent !== undefined
+        ? payload.tax_rate_percent
+        : (preset?.default_tax_rate_percent ?? null);
+    const effReverseCharge =
+      payload.reverse_charge_applied !== undefined
+        ? payload.reverse_charge_applied
+        : (preset?.default_reverse_charge ?? false);
+    const effNotes = payload.notes !== undefined ? payload.notes : (preset?.default_notes ?? null);
+    let effDueDate = payload.due_date ?? null;
+    if (effDueDate === null && preset?.default_payment_terms_days) {
+      const d = new Date();
+      d.setDate(d.getDate() + Number(preset.default_payment_terms_days));
+      effDueDate = d.toISOString().slice(0, 10);
+    }
+
     const { data, error } = await supabase
       .from('invoices')
       .insert({
         organization_id: organizationId,
-        recipient_organization_id: payload.recipient_organization_id ?? null,
+        recipient_organization_id: effRecipient,
         invoice_type: payload.invoice_type,
         status: 'draft',
-        currency: payload.currency ?? 'EUR',
-        notes: payload.notes ?? null,
-        due_date: payload.due_date ?? null,
+        currency: effCurrency,
+        notes: effNotes,
+        due_date: effDueDate,
         source_option_request_id: payload.source_option_request_id ?? null,
-        tax_rate_percent: payload.tax_rate_percent ?? null,
-        tax_mode: payload.tax_mode ?? 'manual',
-        reverse_charge_applied: payload.reverse_charge_applied ?? false,
+        tax_rate_percent: effTaxRate,
+        tax_mode: effTaxMode,
+        reverse_charge_applied: effReverseCharge,
         subtotal_amount_cents: 0,
         tax_amount_cents: 0,
         total_amount_cents: 0,
@@ -165,7 +255,46 @@ export async function createInvoiceDraft(
       console.error('[createInvoiceDraft] error:', error);
       return null;
     }
-    return (data?.id as string) ?? null;
+    const newId = (data?.id as string) ?? null;
+    if (!newId) return null;
+
+    // Insert preset line item template items (best-effort) if present.
+    if (preset && Array.isArray(preset.default_line_item_template)) {
+      const template = preset.default_line_item_template;
+      let position = 0;
+      let insertedAny = false;
+      for (const raw of template) {
+        const itemRaw = raw as Record<string, unknown>;
+        const description =
+          typeof itemRaw.description === 'string' ? (itemRaw.description as string) : null;
+        if (!description) continue;
+        const quantity = typeof itemRaw.quantity === 'number' ? Number(itemRaw.quantity) : 1;
+        const unitAmount =
+          typeof itemRaw.unit_amount_cents === 'number' ? Number(itemRaw.unit_amount_cents) : 0;
+        const total = Math.round(quantity * unitAmount);
+        const { error: liErr } = await supabase.from('invoice_line_items').insert({
+          invoice_id: newId,
+          description,
+          quantity,
+          unit_amount_cents: unitAmount,
+          total_amount_cents: total,
+          currency: effCurrency,
+          position,
+          metadata: {},
+        });
+        if (liErr) {
+          console.error('[createInvoiceDraft] template line item insert error:', liErr);
+        } else {
+          insertedAny = true;
+          position += 1;
+        }
+      }
+      if (insertedAny) {
+        await recomputeInvoiceTotals(newId);
+      }
+    }
+
+    return newId;
   } catch (e) {
     console.error('[createInvoiceDraft] exception:', e);
     return null;

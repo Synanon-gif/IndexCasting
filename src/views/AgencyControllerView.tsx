@@ -244,6 +244,9 @@ import type { CalendarViewMode } from '../components/CalendarViewModeBar';
 import { ScreenScrollView } from '../components/ScreenScrollView';
 import { uiCopy } from '../constants/uiCopy';
 import { isOrganizationOwner } from '../services/orgRoleTypes';
+import { useBillingTabBadge } from '../hooks/useBillingTabBadge';
+import type { BillingAttentionRole } from '../utils/billingAttention';
+import { BillingAttentionWidget } from '../components/billing/BillingAttentionWidget';
 import { AgencyOrgProfileScreen } from '../screens/AgencyOrgProfileScreen';
 import { OrgProfileModal } from '../components/OrgProfileModal';
 import {
@@ -288,8 +291,7 @@ import { ClientOrgFilterDropdown } from '../components/ClientOrgFilterDropdown';
 import { DashboardSummaryBar } from '../components/DashboardSummaryBar';
 import { OrgMetricsPanel } from '../components/OrgMetricsPanel';
 import { OwnerBillingStatusCard } from '../components/OwnerBillingStatusCard';
-import { BillingDetailsForm } from '../components/BillingDetailsForm';
-import { InvoicesPanel } from '../components/InvoicesPanel';
+import { BillingHubView } from '../components/billing/BillingHubView';
 import { GlobalSearchBar } from '../components/GlobalSearchBar';
 import {
   getMyAgencyUsageLimits,
@@ -339,6 +341,7 @@ type AgencyTab =
   | 'recruiting'
   | 'bookers'
   | 'guestLinks'
+  | 'billing'
   | 'settings'
   | 'profile';
 
@@ -753,11 +756,29 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
       { key: 'recruiting', label: 'Recruiting' },
       { key: 'bookers', label: 'Team' },
       { key: 'guestLinks', label: uiCopy.guestLinks.tabTitle },
+      { key: 'billing', label: uiCopy.billingHub.tabLabel },
       { key: 'settings', label: uiCopy.agencySettings.tabLabel },
       { key: 'profile', label: 'Profile' },
     ];
     return all;
   }, []);
+
+  /**
+   * Smart Attention badge for the bottom Billing tab (parity with Messages dot).
+   * Owners see all billing signals; bookers see the role-filtered subset.
+   */
+  const billingAttentionRole: BillingAttentionRole = isOrganizationOwner(profile?.org_member_role)
+    ? 'agency_owner'
+    : 'agency_member';
+  const { hasBadge: hasBillingAttention, refresh: refreshBillingBadge } = useBillingTabBadge({
+    organizationId: agencyOrganizationId,
+    variant: 'agency',
+    role: billingAttentionRole,
+    enabled: Boolean(agencyOrganizationId),
+  });
+  useEffect(() => {
+    if (tab === 'billing') void refreshBillingBadge();
+  }, [tab, refreshBillingBadge]);
 
   const openAgencyBookingChat = (threadId: string) => {
     refreshBookingThreads();
@@ -885,6 +906,14 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                 onPressRequests={() => setTab('messages')}
                 onPressMessages={() => setTab('messages')}
                 onPressCalendar={() => setTab('calendar')}
+              />
+            )}
+            {agencyOrganizationId && (
+              <BillingAttentionWidget
+                organizationId={agencyOrganizationId}
+                variant="agency"
+                role={billingAttentionRole}
+                onOpenBilling={() => setTab('billing')}
               />
             )}
             {swipeLimits && (
@@ -1039,11 +1068,13 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
           />
         )}
 
+        {tab === 'billing' && (
+          <BillingHubView organizationId={agencyOrganizationId ?? null} variant="agency" />
+        )}
+
         {tab === 'settings' && isOrganizationOwner(profile?.org_member_role) && (
           <ScreenScrollView>
             <OwnerBillingStatusCard variant="agency" />
-            <BillingDetailsForm organizationId={agencyOrganizationId ?? null} />
-            <InvoicesPanel organizationId={agencyOrganizationId ?? null} />
             {agencyOrganizationId && (
               <OrgMetricsPanel
                 orgId={agencyOrganizationId}
@@ -1310,6 +1341,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
                 style={s.tabItem}
               >
                 <Text style={[s.tabLabel, tab === t.key && s.tabLabelActive]}>{t.label}</Text>
+                {t.key === 'billing' && hasBillingAttention ? <View style={s.tabBadgeDot} /> : null}
                 {tab === t.key && <View style={s.tabUnderline} />}
               </TouchableOpacity>
             ))}
@@ -9615,7 +9647,12 @@ const s = StyleSheet.create({
     paddingVertical: spacing.sm,
     backgroundColor: colors.background,
   },
-  tabItem: { alignItems: 'center', paddingHorizontal: spacing.xs, flexShrink: 0 },
+  tabItem: {
+    alignItems: 'center',
+    paddingHorizontal: spacing.xs,
+    flexShrink: 0,
+    position: 'relative',
+  },
   tabLabel: { ...typography.label, fontSize: 11, color: colors.textSecondary },
   tabLabelActive: { color: colors.accentGreen },
   tabUnderline: {
@@ -9624,6 +9661,15 @@ const s = StyleSheet.create({
     width: 24,
     backgroundColor: colors.accentGreen,
     borderRadius: 1,
+  },
+  tabBadgeDot: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.accentBrown,
   },
   sectionLabel: { ...typography.label, color: colors.textSecondary, marginBottom: spacing.xs },
   metaText: { ...typography.body, fontSize: 12, color: colors.textSecondary },

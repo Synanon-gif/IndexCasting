@@ -9,6 +9,9 @@ import { NegotiationSummaryCard } from '../components/optionNegotiation/Negotiat
 import { NegotiationThreadFooter } from '../components/optionNegotiation/NegotiationThreadFooter';
 import { ConfirmDestructiveModal } from '../components/ConfirmDestructiveModal';
 import { useDeviceType } from '../hooks/useDeviceType';
+import { useBillingTabBadge } from '../hooks/useBillingTabBadge';
+import type { BillingAttentionRole } from '../utils/billingAttention';
+import { BillingAttentionWidget } from '../components/billing/BillingAttentionWidget';
 import { isMobileWidth } from '../theme/breakpoints';
 import { shouldShowSystemMessageForViewer } from '../components/optionNegotiation/filterSystemMessagesForViewer';
 import {
@@ -214,8 +217,7 @@ import { ClientOrganizationTeamSection } from '../components/ClientOrganizationT
 import { OrgMessengerInline } from '../components/OrgMessengerInline';
 import { OrgMetricsPanel } from '../components/OrgMetricsPanel';
 import { OwnerBillingStatusCard } from '../components/OwnerBillingStatusCard';
-import { BillingDetailsForm } from '../components/BillingDetailsForm';
-import { InvoicesPanel } from '../components/InvoicesPanel';
+import { BillingHubView } from '../components/billing/BillingHubView';
 import { GlobalSearchBar } from '../components/GlobalSearchBar';
 import { DashboardSummaryBar } from '../components/DashboardSummaryBar';
 import { StorageImage } from '../components/StorageImage';
@@ -309,6 +311,7 @@ type TopTab =
   | 'messages'
   | 'calendar'
   | 'team'
+  | 'billing'
   | 'profile';
 
 /** Same tab set on narrow and wide web — narrow uses horizontal scroll. */
@@ -320,6 +323,7 @@ const CLIENT_PRIMARY_BOTTOM_TABS: TopTab[] = [
   'agencies',
   'projects',
   'team',
+  'billing',
   'profile',
 ];
 
@@ -337,6 +341,8 @@ function labelForClientBottomTab(key: TopTab): string {
       return uiCopy.clientWeb.bottomTabs.agencies;
     case 'team':
       return uiCopy.clientWeb.bottomTabs.team;
+    case 'billing':
+      return uiCopy.clientWeb.bottomTabs.billing;
     case 'profile':
       return uiCopy.clientWeb.bottomTabs.profile;
     case 'messages':
@@ -946,6 +952,29 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       setResolvedClientOrgDisplayName(org?.name?.trim() || null);
     });
   }, [clientOrgId]);
+
+  /**
+   * Smart Attention badge for the bottom Billing tab.
+   * Mirrors the Messages tab dot pattern (truthy boolean → small dot).
+   * Role mapping: client owners can act on every billing signal; employees see
+   * only the role-filtered subset (presets/profiles owner-only signals are hidden).
+   */
+  const billingAttentionRole: BillingAttentionRole = isOrganizationOwner(
+    auth.profile?.org_member_role,
+  )
+    ? 'client_owner'
+    : 'client_member';
+  const { hasBadge: hasBillingAttention, refresh: refreshBillingBadge } = useBillingTabBadge({
+    organizationId: clientOrgId,
+    variant: 'client',
+    role: billingAttentionRole,
+    enabled: Boolean(clientOrgId),
+  });
+  // Re-evaluate badge whenever the user lands on the billing tab so a freshly-handled
+  // signal disappears without forcing a full reload.
+  useEffect(() => {
+    if (tab === 'billing') void refreshBillingBadge();
+  }, [tab, refreshBillingBadge]);
 
   // Save filters to Supabase (explicit user action via "Save Filters" button).
   const handleSaveFilters = useCallback(async () => {
@@ -2680,6 +2709,14 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                 setTab('discover');
               }}
             />
+            {clientOrgId && (
+              <BillingAttentionWidget
+                organizationId={clientOrgId}
+                variant="client"
+                role={billingAttentionRole}
+                onOpenBilling={() => setTab('billing')}
+              />
+            )}
           </ScrollView>
         )}
 
@@ -2891,14 +2928,16 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                 Team
               </Text>
               {clientOrgId && <OwnerBillingStatusCard variant="client" />}
-              <BillingDetailsForm organizationId={clientOrgId ?? null} />
-              <InvoicesPanel organizationId={clientOrgId ?? null} />
               {clientOrgId && isOrganizationOwner(auth.profile?.org_member_role) && (
                 <ClientOrgMetricsPanelWrapper orgId={clientOrgId} />
               )}
               <ClientOrganizationTeamSection realClientId={realClientId} />
             </View>
           </ScrollView>
+        )}
+
+        {tab === 'billing' && (
+          <BillingHubView organizationId={clientOrgId ?? null} variant="client" />
         )}
 
         {tab === 'profile' && (
@@ -3630,6 +3669,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                   ['discover', uiCopy.clientWeb.bottomTabs.discover],
                   ['calendar', uiCopy.clientWeb.bottomTabs.calendar],
                   ['team', uiCopy.clientWeb.bottomTabs.team],
+                  ['billing', uiCopy.clientWeb.bottomTabs.billing],
                   ['profile', uiCopy.clientWeb.bottomTabs.profile],
                 ] as const
               ).map(([k, label]) => (
@@ -3697,6 +3737,9 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
                     {labelForClientBottomTab(key)}
                   </Text>
                   {key === 'messages' && hasNew ? <View style={styles.bottomTabDot} /> : null}
+                  {key === 'billing' && hasBillingAttention ? (
+                    <View style={styles.bottomTabDot} />
+                  ) : null}
                   {active ? <View style={styles.bottomTabUnderline} /> : null}
                 </TouchableOpacity>
               );

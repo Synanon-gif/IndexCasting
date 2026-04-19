@@ -65,19 +65,31 @@ afterEach(() => {
  */
 const listChain = (result: unknown) => {
   const inFn: jest.Mock = jest.fn();
+  const lt: jest.Mock = jest.fn();
+  const orFn: jest.Mock = jest.fn();
   const buildResolvable = (): {
     in: jest.Mock;
+    lt: jest.Mock;
+    or: jest.Mock;
     then: (cb: (v: unknown) => unknown) => Promise<unknown>;
   } => ({
     in: inFn,
+    lt,
+    or: orFn,
     then: (cb: (v: unknown) => unknown) => Promise.resolve(cb(result)),
   });
   inFn.mockImplementation(() => buildResolvable());
+  lt.mockImplementation(() => buildResolvable());
+  orFn.mockImplementation(() => buildResolvable());
   const limit = jest.fn().mockImplementation(() => buildResolvable());
-  const order = jest.fn().mockReturnValue({ limit });
+  // Service chains .order('created_at', ...).order('id', ...).limit() for stable
+  // keyset pagination — second .order() returns the same shape and finally chains
+  // into .limit().
+  const order2 = jest.fn().mockReturnValue({ limit });
+  const order = jest.fn().mockReturnValue({ order: order2, limit });
   const eq = jest.fn().mockReturnValue({ order });
   const select = jest.fn().mockReturnValue({ eq });
-  return { select, eq, order, limit, in: inFn };
+  return { select, eq, order, limit, in: inFn, lt, or: orFn };
 };
 
 /** select().eq().maybeSingle() — terminal. */
@@ -141,6 +153,27 @@ describe('listInvoicesForOrganization', () => {
     from.mockReturnValue(chain);
     await listInvoicesForOrganization('org-1', { statuses: ['draft', 'sent'] });
     expect(chain.in).toHaveBeenCalledWith('status', ['draft', 'sent']);
+  });
+
+  it('cursor pagination: cursorCreatedAt only → uses .lt()', async () => {
+    const chain = listChain({ data: [], error: null });
+    from.mockReturnValue(chain);
+    await listInvoicesForOrganization('org-1', {
+      cursorCreatedAt: '2026-01-01T00:00:00Z',
+    });
+    expect(chain.lt).toHaveBeenCalledWith('created_at', '2026-01-01T00:00:00Z');
+  });
+
+  it('cursor pagination: cursorCreatedAt + cursorId → uses .or() for tie-breaking', async () => {
+    const chain = listChain({ data: [], error: null });
+    from.mockReturnValue(chain);
+    await listInvoicesForOrganization('org-1', {
+      cursorCreatedAt: '2026-01-01T00:00:00Z',
+      cursorId: 'inv-9',
+    });
+    expect(chain.or).toHaveBeenCalledWith(
+      'created_at.lt.2026-01-01T00:00:00Z,and(created_at.eq.2026-01-01T00:00:00Z,id.lt.inv-9)',
+    );
   });
 });
 
@@ -246,6 +279,258 @@ describe('createInvoiceDraft', () => {
     );
     expect(await createInvoiceDraft('org-1', { invoice_type: 'platform_to_agency' })).toBeNull();
     expect(consoleErrorSpy).toHaveBeenCalled();
+  });
+
+  // Anti-regression: agency_to_agency type (Phase 2b — commission invoices)
+  it('accepts invoice_type=agency_to_agency without preset and persists it', async () => {
+    const chain = insertReturningChain({ data: { id: 'a2a-inv' }, error: null });
+    from.mockReturnValue(chain);
+    const id = await createInvoiceDraft('agency-1', {
+      invoice_type: 'agency_to_agency',
+      recipient_organization_id: 'agency-2',
+      currency: 'USD',
+    });
+    expect(id).toBe('a2a-inv');
+    expect(chain.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organization_id: 'agency-1',
+        recipient_organization_id: 'agency-2',
+        invoice_type: 'agency_to_agency',
+        status: 'draft',
+        currency: 'USD',
+      }),
+    );
+  });
+
+  // ─── presetId prefill (Phase X — Agency × Client billing presets) ─────────
+
+  it('prefills currency / tax / notes / due_date from preset (payload omitted)', async () => {
+    const insertChain = insertReturningChain({ data: { id: 'inv-with-preset' }, error: null });
+    let invoicesUpdateCount = 0;
+    from.mockImplementation((t: string) => {
+      if (t === 'agency_client_billing_presets') {
+        return {
+          select: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                maybeSingle: jest.fn().mockResolvedValue({
+                  data: {
+                    id: 'preset-1',
+                    agency_organization_id: 'agency-1',
+                    client_organization_id: 'client-1',
+                    default_currency: 'USD',
+                    default_tax_mode: 'stripe_tax',
+                    default_tax_rate_percent: null,
+                    default_reverse_charge: true,
+                    default_payment_terms_days: 14,
+                    default_notes: 'Preset note',
+                    default_line_item_template: [],
+                  },
+                  error: null,
+                }),
+              }),
+            }),
+          }),
+        };
+      }
+      if (t === 'invoices') {
+        // Initial insert; no recompute path because no line items inserted.
+        invoicesUpdateCount += 1;
+        return insertChain;
+      }
+      return insertChain;
+    });
+
+    const id = await createInvoiceDraft('agency-1', {
+      invoice_type: 'agency_to_client',
+      presetId: 'preset-1',
+    });
+    expect(id).toBe('inv-with-preset');
+    expect(invoicesUpdateCount).toBe(1);
+    const insertCall = insertChain.insert.mock.calls[0][0] as Record<string, unknown>;
+    expect(insertCall.currency).toBe('USD');
+    expect(insertCall.tax_mode).toBe('stripe_tax');
+    expect(insertCall.reverse_charge_applied).toBe(true);
+    expect(insertCall.notes).toBe('Preset note');
+    expect(insertCall.recipient_organization_id).toBe('client-1');
+    // due_date computed from default_payment_terms_days (14) — must be a YYYY-MM-DD string.
+    expect(typeof insertCall.due_date).toBe('string');
+    expect((insertCall.due_date as string).length).toBe(10);
+  });
+
+  it('explicit payload fields ALWAYS win over preset defaults', async () => {
+    const insertChain = insertReturningChain({ data: { id: 'inv-x' }, error: null });
+    from.mockImplementation((t: string) => {
+      if (t === 'agency_client_billing_presets') {
+        return {
+          select: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                maybeSingle: jest.fn().mockResolvedValue({
+                  data: {
+                    id: 'p',
+                    agency_organization_id: 'org-1',
+                    client_organization_id: 'client-preset',
+                    default_currency: 'USD',
+                    default_tax_mode: 'stripe_tax',
+                    default_reverse_charge: true,
+                    default_payment_terms_days: 30,
+                    default_notes: 'preset',
+                    default_line_item_template: [],
+                  },
+                  error: null,
+                }),
+              }),
+            }),
+          }),
+        };
+      }
+      return insertChain;
+    });
+
+    await createInvoiceDraft('org-1', {
+      invoice_type: 'agency_to_client',
+      presetId: 'p',
+      recipient_organization_id: 'client-explicit',
+      currency: 'EUR',
+      tax_mode: 'manual',
+      reverse_charge_applied: false,
+      notes: 'explicit',
+      due_date: '2027-01-01',
+    });
+    const insertCall = insertChain.insert.mock.calls[0][0] as Record<string, unknown>;
+    expect(insertCall.recipient_organization_id).toBe('client-explicit');
+    expect(insertCall.currency).toBe('EUR');
+    expect(insertCall.tax_mode).toBe('manual');
+    expect(insertCall.reverse_charge_applied).toBe(false);
+    expect(insertCall.notes).toBe('explicit');
+    expect(insertCall.due_date).toBe('2027-01-01');
+  });
+
+  it('inserts line items from preset default_line_item_template + recomputes totals', async () => {
+    const insertChain = insertReturningChain({ data: { id: 'inv-tpl' }, error: null });
+    const lineInsert = jest.fn().mockResolvedValue({ error: null });
+    let invoicesPhase = 0; // 0=insert, 1=recompute meta, 2=recompute update
+    from.mockImplementation((t: string) => {
+      if (t === 'agency_client_billing_presets') {
+        return {
+          select: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                maybeSingle: jest.fn().mockResolvedValue({
+                  data: {
+                    id: 'p',
+                    agency_organization_id: 'org-1',
+                    client_organization_id: 'client-1',
+                    default_currency: 'EUR',
+                    default_tax_mode: 'manual',
+                    default_tax_rate_percent: 19,
+                    default_reverse_charge: false,
+                    default_payment_terms_days: 30,
+                    default_notes: null,
+                    default_line_item_template: [
+                      { description: 'Service A', quantity: 2, unit_amount_cents: 5000 },
+                      { description: 'Service B', quantity: 1, unit_amount_cents: 10000 },
+                      { description: '', quantity: 1, unit_amount_cents: 1000 }, // skipped (no desc)
+                    ],
+                  },
+                  error: null,
+                }),
+              }),
+            }),
+          }),
+        };
+      }
+      if (t === 'invoices') {
+        invoicesPhase += 1;
+        if (invoicesPhase === 1) return insertChain;
+        if (invoicesPhase === 2) {
+          // recompute meta read
+          return maybeSingleChain({
+            data: {
+              id: 'inv-tpl',
+              status: 'draft',
+              tax_rate_percent: 19,
+              tax_mode: 'manual',
+              reverse_charge_applied: false,
+            },
+            error: null,
+          });
+        }
+        // recompute update
+        return updateEqEqChain({ error: null });
+      }
+      if (t === 'invoice_line_items') {
+        // Distinguish insert vs recompute read: select for read, insert for insert.
+        return {
+          insert: lineInsert,
+          select: jest.fn().mockReturnValue({
+            eq: jest.fn().mockResolvedValue({
+              data: [{ total_amount_cents: 10000 }, { total_amount_cents: 10000 }],
+              error: null,
+            }),
+          }),
+        };
+      }
+      return insertChain;
+    });
+
+    const id = await createInvoiceDraft('org-1', {
+      invoice_type: 'agency_to_client',
+      presetId: 'p',
+    });
+    expect(id).toBe('inv-tpl');
+    // Two valid line items inserted (third skipped due to empty description).
+    expect(lineInsert).toHaveBeenCalledTimes(2);
+    const firstItem = lineInsert.mock.calls[0][0] as Record<string, unknown>;
+    expect(firstItem.invoice_id).toBe('inv-tpl');
+    expect(firstItem.description).toBe('Service A');
+    expect(firstItem.quantity).toBe(2);
+    expect(firstItem.unit_amount_cents).toBe(5000);
+    expect(firstItem.total_amount_cents).toBe(10000);
+    expect(firstItem.position).toBe(0);
+    const secondItem = lineInsert.mock.calls[1][0] as Record<string, unknown>;
+    expect(secondItem.position).toBe(1);
+  });
+
+  it('continues invoice insert even when preset lookup fails (best-effort)', async () => {
+    const insertChain = insertReturningChain({ data: { id: 'inv-fallback' }, error: null });
+    from.mockImplementation((t: string) => {
+      if (t === 'agency_client_billing_presets') {
+        return {
+          select: jest.fn().mockReturnValue({
+            eq: jest.fn().mockReturnValue({
+              eq: jest.fn().mockReturnValue({
+                maybeSingle: jest.fn().mockResolvedValue({ data: null, error: { message: 'rls' } }),
+              }),
+            }),
+          }),
+        };
+      }
+      return insertChain;
+    });
+    const id = await createInvoiceDraft('org-1', {
+      invoice_type: 'agency_to_client',
+      presetId: 'missing-preset',
+      currency: 'EUR',
+    });
+    // Preset lookup failed; invoice still created with payload defaults.
+    expect(id).toBe('inv-fallback');
+    expect(consoleErrorSpy).toHaveBeenCalled();
+  });
+
+  it('does not call preset lookup when presetId not provided', async () => {
+    let presetCalled = false;
+    from.mockImplementation((t: string) => {
+      if (t === 'agency_client_billing_presets') {
+        presetCalled = true;
+        return insertReturningChain({ data: null, error: null });
+      }
+      return insertReturningChain({ data: { id: 'no-preset' }, error: null });
+    });
+    const id = await createInvoiceDraft('org-1', { invoice_type: 'agency_to_client' });
+    expect(id).toBe('no-preset');
+    expect(presetCalled).toBe(false);
   });
 });
 

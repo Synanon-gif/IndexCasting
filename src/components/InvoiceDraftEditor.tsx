@@ -41,8 +41,17 @@ import {
   type ClientOrganizationDirectoryRow,
 } from '../services/clientOrganizationsDirectorySupabase';
 import { getOrganizationBillingDefaults } from '../services/billingProfilesSupabase';
+import {
+  getDefaultPresetForClient,
+  listAgencyClientBillingPresets,
+} from '../services/agencyClientBillingPresetsSupabase';
 import { showAppAlert, showConfirmAlert } from '../utils/crossPlatformAlert';
-import type { InvoiceLineItemRow, InvoiceType, InvoiceWithLines } from '../types/billingTypes';
+import type {
+  AgencyClientBillingPresetRow,
+  InvoiceLineItemRow,
+  InvoiceType,
+  InvoiceWithLines,
+} from '../types/billingTypes';
 
 type Props = {
   organizationId: string;
@@ -110,8 +119,16 @@ export const InvoiceDraftEditor: React.FC<Props> = ({ organizationId, invoiceId,
   const [pickerRows, setPickerRows] = useState<ClientOrganizationDirectoryRow[]>([]);
   const [pickerLoading, setPickerLoading] = useState(false);
 
+  // Preset prefill (only relevant for new agency_to_client drafts before first save).
+  const [availablePresets, setAvailablePresets] = useState<AgencyClientBillingPresetRow[]>([]);
+  const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
+  const [presetApplied, setPresetApplied] = useState(false);
+
   const isDraft = data?.status === 'draft' || invoiceId === null;
   const canEdit = isOwner && isDraft;
+  // Preset picker only meaningful for new agency_to_client drafts (presets are agency↔client).
+  const presetPickerVisible =
+    canEdit && invoiceId === null && !data?.id && invoiceType === 'agency_to_client';
 
   const load = useCallback(
     async (id: string) => {
@@ -229,9 +246,74 @@ export const InvoiceDraftEditor: React.FC<Props> = ({ organizationId, invoiceId,
     };
   }, [pickerOpen, pickerQuery, organizationId]);
 
+  /**
+   * Apply a preset's defaults to the local form state.
+   * Only used in CREATE mode before the draft has been persisted.
+   * Does NOT touch the DB — the preset id is sent on createInvoiceDraft so the
+   * server-side prefill (incl. line items + recipient_billing_snapshot) takes effect.
+   */
+  const applyPresetLocal = useCallback((preset: AgencyClientBillingPresetRow | null) => {
+    if (!preset) {
+      setPresetApplied(false);
+      return;
+    }
+    if (preset.default_currency) setCurrency(preset.default_currency);
+    if (preset.default_tax_rate_percent != null) {
+      setTaxRate(String(preset.default_tax_rate_percent));
+    }
+    setTaxMode(preset.default_tax_mode ?? 'manual');
+    setReverseCharge(preset.default_reverse_charge === true);
+    if (preset.default_notes) setNotes(preset.default_notes);
+    // Compute due date from terms (best-effort, can be edited).
+    const terms = preset.default_payment_terms_days ?? 30;
+    if (Number.isFinite(terms) && terms > 0) {
+      const due = new Date(Date.now() + terms * 24 * 60 * 60 * 1000);
+      setDueDate(due.toISOString().slice(0, 10));
+    }
+    setPresetApplied(true);
+  }, []);
+
+  /**
+   * When the recipient changes (CREATE mode, agency_to_client), load presets and
+   * auto-apply the default preset locally so the user immediately sees prefilled
+   * fields. The preset id is also persisted on first save (createInvoiceDraft).
+   */
+  useEffect(() => {
+    if (!presetPickerVisible || !recipientId) {
+      setAvailablePresets([]);
+      setSelectedPresetId(null);
+      setPresetApplied(false);
+      return;
+    }
+    let cancelled = false;
+    const run = async () => {
+      const [list, def] = await Promise.all([
+        listAgencyClientBillingPresets(organizationId, {
+          clientOrganizationId: recipientId,
+          limit: 100,
+        }),
+        getDefaultPresetForClient(organizationId, recipientId),
+      ]);
+      if (cancelled) return;
+      setAvailablePresets(list);
+      if (def && !selectedPresetId) {
+        setSelectedPresetId(def.id);
+        applyPresetLocal(def);
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+    // selectedPresetId intentionally omitted: only auto-apply default once per recipient.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [organizationId, recipientId, presetPickerVisible, applyPresetLocal]);
+
   const ensurePersisted = useCallback(async (): Promise<string | null> => {
     if (data?.id) return data.id;
-    // Create draft row first.
+    // Create draft row first. Pass presetId so the server-side prefill can apply
+    // recipient_billing_snapshot + starter line items + tax/currency defaults.
+    // Explicit values from this form ALWAYS override preset values (handled in service).
     const newId = await createInvoiceDraft(organizationId, {
       invoice_type: invoiceType,
       recipient_organization_id: recipientId,
@@ -241,6 +323,7 @@ export const InvoiceDraftEditor: React.FC<Props> = ({ organizationId, invoiceId,
       tax_rate_percent: numOrNull(taxRate),
       tax_mode: taxMode,
       reverse_charge_applied: reverseCharge,
+      presetId: invoiceType === 'agency_to_client' ? selectedPresetId : null,
     });
     if (!newId) {
       showAppAlert(uiCopy.common.error, inv.saveFailed);
@@ -259,6 +342,7 @@ export const InvoiceDraftEditor: React.FC<Props> = ({ organizationId, invoiceId,
     taxRate,
     taxMode,
     reverseCharge,
+    selectedPresetId,
     load,
     inv.saveFailed,
   ]);
@@ -445,6 +529,45 @@ export const InvoiceDraftEditor: React.FC<Props> = ({ organizationId, invoiceId,
 
       {!canEdit && <Text style={styles.warning}>{inv.cantEditNonDraft}</Text>}
 
+      {/* Recipient-Type toggle (Client | Agency) — only for new drafts; once
+          persisted, invoice_type is locked because the snapshot/numbering
+          assumes a stable recipient kind. */}
+      {canEdit && invoiceId === null && !data.id && (
+        <View style={styles.field}>
+          <Text style={styles.label}>{inv.recipientTypeLabel}</Text>
+          <View style={styles.modeToggleRow}>
+            {(
+              [
+                ['agency_to_client', inv.recipientTypeClient],
+                ['agency_to_agency', inv.recipientTypeAgency],
+              ] as const
+            ).map(([value, label]) => (
+              <TouchableOpacity
+                key={value}
+                onPress={() => {
+                  setInvoiceType(value);
+                  // Clear preset selection if leaving client recipient type.
+                  if (value !== 'agency_to_client') {
+                    setSelectedPresetId(null);
+                    setPresetApplied(false);
+                  }
+                }}
+                style={[styles.modeChip, invoiceType === value ? styles.modeChipActive : null]}
+              >
+                <Text
+                  style={[
+                    styles.modeChipText,
+                    invoiceType === value ? styles.modeChipTextActive : null,
+                  ]}
+                >
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      )}
+
       {/* Recipient picker */}
       <Text style={styles.label}>{inv.fieldRecipient}</Text>
       <Text style={styles.hint}>{inv.fieldRecipientHint}</Text>
@@ -491,6 +614,43 @@ export const InvoiceDraftEditor: React.FC<Props> = ({ organizationId, invoiceId,
               <Text style={styles.linkAction}>{inv.fieldRecipientPickAgain}</Text>
             </TouchableOpacity>
           )}
+        </View>
+      )}
+
+      {presetPickerVisible && recipientId && availablePresets.length > 0 && (
+        <View style={styles.presetBox}>
+          <Text style={styles.label}>{inv.presetPickerLabel}</Text>
+          <Text style={styles.hint}>{inv.presetPickerHint}</Text>
+          <View style={styles.pickerList}>
+            <TouchableOpacity
+              style={[styles.presetRow, selectedPresetId === null ? styles.presetRowActive : null]}
+              onPress={() => {
+                setSelectedPresetId(null);
+                setPresetApplied(false);
+              }}
+            >
+              <Text style={styles.presetRowLabel}>{inv.presetPickerNone}</Text>
+            </TouchableOpacity>
+            {availablePresets.map((p) => (
+              <TouchableOpacity
+                key={p.id}
+                style={[
+                  styles.presetRow,
+                  selectedPresetId === p.id ? styles.presetRowActive : null,
+                ]}
+                onPress={() => {
+                  setSelectedPresetId(p.id);
+                  applyPresetLocal(p);
+                }}
+              >
+                <Text style={styles.presetRowLabel}>
+                  {p.label || p.recipient_billing_name || '—'}
+                  {p.is_default ? ' ★' : ''}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          {presetApplied && <Text style={styles.presetNotice}>{inv.presetAppliedNotice}</Text>}
         </View>
       )}
 
@@ -817,4 +977,46 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   saveLabel: { ...typography.label, color: colors.surface },
+  field: { marginBottom: spacing.sm },
+  modeToggleRow: { flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.xs },
+  modeChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceAlt,
+  },
+  modeChipActive: {
+    backgroundColor: colors.accentGreen,
+    borderColor: colors.accentGreen,
+  },
+  modeChipText: { ...typography.label, fontSize: 12, color: colors.textSecondary },
+  modeChipTextActive: { color: colors.surface },
+  presetBox: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+    backgroundColor: colors.surfaceAlt,
+    gap: spacing.xs,
+  },
+  presetRow: {
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    borderRadius: 8,
+  },
+  presetRowActive: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.accentGreen,
+  },
+  presetRowLabel: { ...typography.body, fontSize: 13, color: colors.textPrimary },
+  presetNotice: {
+    ...typography.body,
+    fontSize: 11,
+    color: colors.accentGreen,
+    marginTop: 4,
+  },
 });
