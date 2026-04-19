@@ -4,8 +4,7 @@
  */
 import type { SupabaseOptionRequest } from '../services/optionRequestsSupabase';
 import type { CalendarEntry } from '../services/calendarSupabase';
-import { CALENDAR_COLORS, calendarEntryColor } from './calendarColors';
-import { colors } from '../theme/theme';
+import { CALENDAR_COLORS, CALENDAR_PROJECTION_COLORS, calendarEntryColor } from './calendarColors';
 import type { CalendarDayEvent } from '../components/MonthCalendarView';
 import {
   attentionSignalsFromOptionRequestLike,
@@ -61,9 +60,6 @@ function isCastingProjection(
   return false;
 }
 
-const AWAITING_MODEL_BADGE_BG = '#7B1FA2';
-const CLIENT_JOB_BADGE_BG = '#5D4037';
-
 /**
  * Badge for an option row + optional calendar_entry (client & agency lists).
  * Uses {@link deriveApprovalAttention} — not `client_price_status` alone.
@@ -77,7 +73,11 @@ export function getCalendarProjectionBadge(
   const textColor = '#fff';
 
   if (option.status === 'rejected') {
-    return { label: labels.rejected, backgroundColor: colors.textSecondary, textColor };
+    return {
+      label: labels.rejected,
+      backgroundColor: CALENDAR_PROJECTION_COLORS.rejected,
+      textColor,
+    };
   }
 
   if (isJobProjection(option, calendar_entry)) {
@@ -92,7 +92,7 @@ export function getCalendarProjectionBadge(
   if (isCastingProjection(option, calendar_entry)) {
     return {
       label: labels.casting,
-      backgroundColor: colors.textSecondary,
+      backgroundColor: CALENDAR_COLORS.casting,
       textColor,
     };
   }
@@ -114,20 +114,20 @@ export function getCalendarProjectionBadge(
   if (appr === 'waiting_for_agency_confirmation') {
     return {
       label: labels.optionNegotiating,
-      backgroundColor: '#1565C0',
+      backgroundColor: CALENDAR_COLORS.casting,
       textColor,
     };
   }
 
   if (appr === 'waiting_for_model_confirmation') {
     const label = viewerRole === 'model' ? labels.yourConfirmationNeeded : labels.awaitingModel;
-    return { label, backgroundColor: AWAITING_MODEL_BADGE_BG, textColor };
+    return { label, backgroundColor: CALENDAR_PROJECTION_COLORS.awaitingModel, textColor };
   }
 
   if (appr === 'waiting_for_client_to_finalize_job') {
     return {
       label: labels.awaitingClientJob,
-      backgroundColor: CLIENT_JOB_BADGE_BG,
+      backgroundColor: CALENDAR_PROJECTION_COLORS.jobConfirmationPending,
       textColor,
     };
   }
@@ -135,7 +135,7 @@ export function getCalendarProjectionBadge(
   if (appr === 'waiting_for_agency_to_finalize_job') {
     return {
       label: labels.awaitingAgencyJob ?? labels.awaitingClientJob,
-      backgroundColor: CLIENT_JOB_BADGE_BG,
+      backgroundColor: CALENDAR_PROJECTION_COLORS.jobConfirmationPending,
       textColor,
     };
   }
@@ -143,7 +143,7 @@ export function getCalendarProjectionBadge(
   if (appr === 'approval_inactive') {
     return {
       label: labels.optionNegotiating,
-      backgroundColor: '#1565C0',
+      backgroundColor: CALENDAR_COLORS.casting,
       textColor,
     };
   }
@@ -161,14 +161,14 @@ export function getCalendarProjectionBadge(
   if (option.status === 'in_negotiation') {
     return {
       label: labels.optionNegotiating,
-      backgroundColor: '#1565C0',
+      backgroundColor: CALENDAR_COLORS.casting,
       textColor,
     };
   }
 
   return {
     label: labels.optionPending,
-    backgroundColor: '#1565C0',
+    backgroundColor: CALENDAR_COLORS.casting,
     textColor,
   };
 }
@@ -189,9 +189,9 @@ export function getBookingEntryProjectionBadge(
     };
   }
   if (t === 'casting' || t === 'gosee') {
-    return { label: labels.casting, backgroundColor: colors.textSecondary, textColor };
+    return { label: labels.casting, backgroundColor: CALENDAR_COLORS.casting, textColor };
   }
-  return { label: labels.optionPending, backgroundColor: '#1565C0', textColor };
+  return { label: labels.optionPending, backgroundColor: CALENDAR_COLORS.casting, textColor };
 }
 
 /**
@@ -202,11 +202,11 @@ export function calendarGridColorForOptionItem(item: {
   calendar_entry: CalendarEntry | null;
 }): string {
   const { option, calendar_entry } = item;
-  if (option.status === 'rejected') return colors.textSecondary;
+  if (option.status === 'rejected') return CALENDAR_PROJECTION_COLORS.rejected;
   if (isJobProjection(option, calendar_entry)) {
     return calendar_entry?.status === 'tentative' ? CALENDAR_COLORS.option : CALENDAR_COLORS.job;
   }
-  if (isCastingProjection(option, calendar_entry)) return colors.textSecondary;
+  if (isCastingProjection(option, calendar_entry)) return CALENDAR_COLORS.casting;
   const appr = deriveApprovalAttention(
     attentionSignalsFromOptionRequestLike({
       status: option.status,
@@ -220,9 +220,11 @@ export function calendarGridColorForOptionItem(item: {
       requestType: option.request_type ?? null,
     }),
   );
-  if (appr === 'waiting_for_model_confirmation') return AWAITING_MODEL_BADGE_BG;
-  if (appr === 'waiting_for_client_to_finalize_job') return CLIENT_JOB_BADGE_BG;
-  if (appr === 'waiting_for_agency_to_finalize_job') return CLIENT_JOB_BADGE_BG;
+  if (appr === 'waiting_for_model_confirmation') return CALENDAR_PROJECTION_COLORS.awaitingModel;
+  if (appr === 'waiting_for_client_to_finalize_job')
+    return CALENDAR_PROJECTION_COLORS.jobConfirmationPending;
+  if (appr === 'waiting_for_agency_to_finalize_job')
+    return CALENDAR_PROJECTION_COLORS.jobConfirmationPending;
   const et = calendar_entry?.entry_type;
   return calendarEntryColor(et ?? 'option');
 }

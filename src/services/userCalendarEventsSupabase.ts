@@ -1,6 +1,7 @@
 import { supabase } from '../../lib/supabase';
 import { uiCopy } from '../constants/uiCopy';
 import { logger } from '../utils/logger';
+import { CALENDAR_COLORS } from '../utils/calendarColors';
 
 /** Explizite Feldliste — kein SELECT * mehr (verhindert ungewollten Datenabfluss bei neuen Spalten). */
 const USER_CALENDAR_EVENT_SELECT =
@@ -32,7 +33,16 @@ export type UserCalendarEvent = {
   updated_at: string;
 };
 
-const DEFAULT_COLORS = ['#1565C0', '#2E7D32', '#F9A825', '#C62828', '#6A1B9A', '#00838F'];
+/** Default swatch 0 = legend “Own event” grey; remaining choices for overrides. */
+const DEFAULT_COLORS = [
+  CALENDAR_COLORS.personal,
+  CALENDAR_COLORS.casting,
+  '#2E7D32',
+  CALENDAR_COLORS.option,
+  '#C62828',
+  '#6A1B9A',
+  '#00838F',
+];
 
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.trim());

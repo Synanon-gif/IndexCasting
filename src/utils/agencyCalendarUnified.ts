@@ -21,9 +21,8 @@ import {
 } from '../constants/calendarSourcePriority';
 import type { UserCalendarEvent } from '../services/userCalendarEventsSupabase';
 import type { ClientAssignmentFlag } from '../services/clientAssignmentsSupabase';
-import { colors } from '../theme/theme';
 import { calendarGridColorForOptionItem } from './calendarProjectionLabel';
-import { CALENDAR_COLORS } from './calendarColors';
+import { CALENDAR_COLORS, calendarEntryColor } from './calendarColors';
 import { attentionSignalsFromOptionRequestLike } from './optionRequestAttention';
 import { attentionHeaderLabelFromSignals } from './negotiationAttentionLabels';
 import { uiCopy } from '../constants/uiCopy';
@@ -572,7 +571,7 @@ export function buildEventsByDateFromUnifiedRows(rows: UnifiedAgencyCalendarRow[
     if (row.kind === 'manual') {
       map[date].push({
         id: row.id,
-        color: row.ev.color || '#888',
+        color: row.ev.color || CALENDAR_COLORS.personal,
         title: row.title,
         kind: 'manual',
       });
@@ -593,12 +592,11 @@ export function buildEventsByDateFromUnifiedRows(rows: UnifiedAgencyCalendarRow[
       });
       continue;
     }
-    let color = '#1565C0';
+    let color = calendarEntryColor(row.entry.entry_type);
     if (row.entry.entry_type === 'booking') {
       const tentative = row.entry.status === 'tentative';
       color = tentative ? CALENDAR_COLORS.option : CALENDAR_COLORS.job;
-    } else if (row.entry.entry_type === 'casting' || row.entry.entry_type === 'gosee')
-      color = colors.textSecondary;
+    }
     map[date].push({
       id: row.id,
       color,

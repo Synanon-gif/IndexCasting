@@ -6,12 +6,23 @@
 import { colors } from '../theme/theme';
 
 export const CALENDAR_COLORS = {
-  casting:  '#1565C0',  // blue
-  gosee:    '#0288D1',  // light blue
-  option:   '#E65100',  // deep orange
-  booking:  '#B71C1C',  // red
-  personal: '#616161',  // grey
-  job:      '#1B5E20',  // dark green
+  casting: '#1565C0', // blue
+  gosee: '#0288D1', // light blue
+  option: '#E65100', // deep orange
+  booking: '#B71C1C', // red
+  personal: '#616161', // grey
+  job: '#1B5E20', // dark green
+} as const;
+
+/**
+ * Month dots / badges for B2B option-thread attention (see `calendarProjectionLabel`).
+ * Keep in sync with `CalendarColorLegend` extended rows.
+ */
+export const CALENDAR_PROJECTION_COLORS = {
+  awaitingModel: '#7B1FA2',
+  jobConfirmationPending: '#5D4037',
+  /** Rejected or inactive rows — matches theme `textSecondary`. */
+  rejected: colors.textSecondary,
 } as const;
 
 export type CalendarEntryColorType = keyof typeof CALENDAR_COLORS;

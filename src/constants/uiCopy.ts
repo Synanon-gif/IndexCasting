@@ -338,6 +338,11 @@ export const uiCopy = {
     legendCasting: 'Casting',
     legendJob: 'Job',
     legendOwnEvent: 'Own event',
+    /** Same dot color as Option — tentative job before confirmation. */
+    legendTentativeJobNote: 'Tentative job uses the Option color.',
+    legendAwaitingModel: 'Awaiting model',
+    legendJobConfirmationPending: 'Job confirmation',
+    legendRejectedOrInactive: 'Rejected / inactive',
     /** Model calendar — booking detail line for the client organization (not a generic “Client” placeholder). */
     modelEntryClientOrgLabel: 'Client organization',
     /** Multi-view calendar (Agency / Client web / Model). */

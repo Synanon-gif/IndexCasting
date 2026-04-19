@@ -3,11 +3,15 @@
  * (getCalendarProjectionBadge / getBookingEntryProjectionBadge).
  */
 import type { UnifiedAgencyCalendarRow } from './agencyCalendarUnified';
-import type { CalendarProjectionLabels, CalendarProjectionViewerRole } from './calendarProjectionLabel';
+import type {
+  CalendarProjectionLabels,
+  CalendarProjectionViewerRole,
+} from './calendarProjectionLabel';
 import {
   getBookingEntryProjectionBadge,
   getCalendarProjectionBadge,
 } from './calendarProjectionLabel';
+import { CALENDAR_COLORS } from './calendarColors';
 import {
   DEFAULT_BLOCK_END_MIN,
   DEFAULT_BLOCK_START_MIN,
@@ -29,7 +33,10 @@ export type CalendarTimelineEvent = CalendarScheduleBlock & {
   row: UnifiedAgencyCalendarRow;
 };
 
-function resolveOptionTimes(row: UnifiedAgencyCalendarRow & { kind: 'option' }): { startMin: number; endMin: number } {
+function resolveOptionTimes(row: UnifiedAgencyCalendarRow & { kind: 'option' }): {
+  startMin: number;
+  endMin: number;
+} {
   const { item } = row;
   const ce = item.calendar_entry;
   const opt = item.option;
@@ -45,7 +52,10 @@ function resolveOptionTimes(row: UnifiedAgencyCalendarRow & { kind: 'option' }):
   return { startMin: start, endMin: end };
 }
 
-function resolveBookingTimes(row: UnifiedAgencyCalendarRow & { kind: 'booking' }): { startMin: number; endMin: number } {
+function resolveBookingTimes(row: UnifiedAgencyCalendarRow & { kind: 'booking' }): {
+  startMin: number;
+  endMin: number;
+} {
   const e = row.entry;
   const start = parseTimeToMinutes(e.start_time ?? null) ?? DEFAULT_BLOCK_START_MIN;
   let end = parseTimeToMinutes(e.end_time ?? null) ?? start + 60;
@@ -53,7 +63,10 @@ function resolveBookingTimes(row: UnifiedAgencyCalendarRow & { kind: 'booking' }
   return { startMin: start, endMin: end };
 }
 
-function resolveManualTimes(row: UnifiedAgencyCalendarRow & { kind: 'manual' }): { startMin: number; endMin: number } {
+function resolveManualTimes(row: UnifiedAgencyCalendarRow & { kind: 'manual' }): {
+  startMin: number;
+  endMin: number;
+} {
   const ev = row.ev;
   const start = parseTimeToMinutes(ev.start_time ?? null) ?? DEFAULT_BLOCK_START_MIN;
   let end = parseTimeToMinutes(ev.end_time ?? null) ?? start + 60;
@@ -78,7 +91,7 @@ export function buildTimelineEventsFromUnifiedRows(
         startMin,
         endMin,
         title: row.title,
-        color: row.ev.color || '#616161',
+        color: row.ev.color || CALENDAR_COLORS.personal,
         row,
       });
       continue;
@@ -98,7 +111,12 @@ export function buildTimelineEventsFromUnifiedRows(
       });
       continue;
     }
-    const badge = getCalendarProjectionBadge(row.item.option, row.item.calendar_entry, labels, viewerRole);
+    const badge = getCalendarProjectionBadge(
+      row.item.option,
+      row.item.calendar_entry,
+      labels,
+      viewerRole,
+    );
     const { startMin, endMin } = resolveOptionTimes(row);
     out.push({
       id: row.id,
@@ -114,11 +132,17 @@ export function buildTimelineEventsFromUnifiedRows(
   return out;
 }
 
-export function filterTimelineEventsForDate(events: CalendarTimelineEvent[], date: string): CalendarTimelineEvent[] {
+export function filterTimelineEventsForDate(
+  events: CalendarTimelineEvent[],
+  date: string,
+): CalendarTimelineEvent[] {
   return events.filter((e) => e.date === date);
 }
 
-export function filterTimelineEventsForWeek(events: CalendarTimelineEvent[], weekDates: string[]): CalendarTimelineEvent[] {
+export function filterTimelineEventsForWeek(
+  events: CalendarTimelineEvent[],
+  weekDates: string[],
+): CalendarTimelineEvent[] {
   const set = new Set(weekDates);
   return events.filter((e) => set.has(e.date));
 }
