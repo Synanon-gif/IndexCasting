@@ -83,7 +83,8 @@ function setupSupabaseMock({
         }),
       };
     }
-    if (table === 'model_assignments') {
+    if (table === 'model_agency_territories') {
+      // F1.4: territory source of truth migrated from model_assignments.
       return {
         select: () => ({
           eq: () => ({ limit: () => Promise.resolve({ data: terrData, error: null }) }),
@@ -200,7 +201,7 @@ describe('syncSingleModelFromMediaslide', () => {
     });
     fromMock.mockImplementation((table: string) => {
       if (table === 'models') return { update: updateSpy };
-      if (table === 'model_assignments') {
+      if (table === 'model_agency_territories') {
         return {
           select: () => ({
             eq: () => ({ limit: () => Promise.resolve({ data: [{ id: 't1' }], error: null }) }),
@@ -234,7 +235,7 @@ describe('syncSingleModelFromMediaslide', () => {
     });
     fromMock.mockImplementation((table: string) => {
       if (table === 'models') return { update: updateSpy };
-      if (table === 'model_assignments') {
+      if (table === 'model_agency_territories') {
         return {
           select: () => ({
             eq: () => ({ limit: () => Promise.resolve({ data: [{ id: 't1' }], error: null }) }),

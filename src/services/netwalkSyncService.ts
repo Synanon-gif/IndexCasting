@@ -26,6 +26,7 @@ import {
 import { fetchAllSupabasePages } from './supabaseFetchAll';
 import { logMediaslideError, type ExternalCalendarBlockoutRemote } from './mediaslideSyncService';
 import { upsertTerritoriesForModelCountryAgencyPairs } from './territoriesSupabase';
+import { drainInboundResyncOutbox } from './externalSyncOutboxWorker';
 
 // Re-export the shared log helper under a Netwalk-specific alias for clarity.
 export const logNetwalkError = logMediaslideError;
@@ -257,6 +258,16 @@ export async function syncSingleModelFromNetwalk(args: {
     if (Array.isArray(remote.portfolio.polaroids)) {
       (updates as any).polaroids = remote.portfolio.polaroids;
     }
+  } else if (remote.portfolio && photoSource !== 'netwalk') {
+    // F1.6 — Defense-in-depth observability; mirrors mediaslideSyncService.
+    // Remote sent portfolio data but local `photo_source` is not 'netwalk',
+    // so we MUST NOT mirror it (system-invariants §27.1 / EXTERNE PROFIL-SYNCS).
+    console.warn(
+      '[netwalkSync] skipping remote portfolio write — photo_source is',
+      photoSource,
+      'for model',
+      local.id,
+    );
   }
 
   if (Object.keys(updates).length === 0) {
@@ -346,9 +357,12 @@ export async function syncSingleModelFromNetwalk(args: {
     const missingRequired: string[] = [];
     if (!freshModel.name?.trim()) missingRequired.push('name');
     if ((freshModel.portfolio_images ?? []).length === 0) missingRequired.push('portfolio_images');
+    // Territory presence: canonical source is `model_agency_territories`
+    // (system-invariants — TERRITORIES — AUTORITATIVE TABELLE).
+    // `model_assignments.territory` is not authoritative.
     const { data: terr } = await supabase
-      .from('model_assignments')
-      .select('id')
+      .from('model_agency_territories')
+      .select('country_code')
       .eq('model_id', localModelId)
       .limit(1);
     if (!terr || terr.length === 0) missingRequired.push('territory');
@@ -480,10 +494,14 @@ export async function syncCalendarFromNetwalk(args: {
     };
 
     if (existing) {
-      const { error: updErr } = await supabase
-        .from('calendar_entries')
-        .update(payload)
-        .eq('id', existing.id);
+      // F1.5 — DB-level guard against TOCTOU race; mirrors
+      // syncCalendarFromMediaslide. See that function for the full rationale.
+      const newTs = payload.external_updated_at;
+      let upd = supabase.from('calendar_entries').update(payload).eq('id', existing.id);
+      if (newTs) {
+        upd = upd.or(`external_updated_at.is.null,external_updated_at.lt.${newTs}`);
+      }
+      const { error: updErr } = await upd;
       if (updErr) {
         await logNetwalkError({
           operation: 'syncCalendarFromNetwalk:update',
@@ -635,4 +653,10 @@ export async function runNetwalkCronSync(apiKey?: string): Promise<void> {
   });
 
   await runWithConcurrency(tasks, 5);
+
+  // F1.3 — drain inbound webhook receipts. The bulk loop above re-pulled every
+  // model with `netwalk_model_id`, which by definition includes any model the
+  // provider asked us to refresh via webhook. Marking the outbox rows `sent`
+  // here closes the loop so the queue does not grow unbounded.
+  await drainInboundResyncOutbox('netwalk');
 }

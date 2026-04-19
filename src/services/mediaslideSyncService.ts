@@ -24,6 +24,7 @@ import {
 } from './mediaslideConnector';
 import { fetchAllSupabasePages } from './supabaseFetchAll';
 import { upsertTerritoriesForModelCountryAgencyPairs } from './territoriesSupabase';
+import { drainInboundResyncOutbox } from './externalSyncOutboxWorker';
 
 /**
  * Lightweight concurrency limiter — avoids external p-limit dependency.
@@ -310,6 +311,17 @@ export async function syncSingleModelFromMediaslide(args: {
     if (Array.isArray(remote.portfolio.polaroids)) {
       (updates as any).polaroids = remote.portfolio.polaroids;
     }
+  } else if (remote.portfolio && photoSource !== 'mediaslide') {
+    // F1.6 — Defense-in-depth observability: remote sent portfolio data but
+    // local `photo_source` is not 'mediaslide', so we MUST NOT mirror it
+    // (system-invariants §27.1 / EXTERNE PROFIL-SYNCS). Log so operators can
+    // detect misconfigured agencies that expect remote photos to flow.
+    console.warn(
+      '[mediaslideSync] skipping remote portfolio write — photo_source is',
+      photoSource,
+      'for model',
+      local.id,
+    );
   }
 
   if (Object.keys(updates).length === 0) {
@@ -400,10 +412,13 @@ export async function syncSingleModelFromMediaslide(args: {
     const missingRequired: string[] = [];
     if (!freshModel.name?.trim()) missingRequired.push('name');
     if ((freshModel.portfolio_images ?? []).length === 0) missingRequired.push('portfolio_images');
-    // Territory presence is checked via a separate query for accuracy.
+    // Territory presence is checked against the canonical source of truth
+    // `model_agency_territories` (system-invariants — TERRITORIES — AUTORITATIVE
+    // TABELLE). `model_assignments.territory` is not the source of truth and
+    // must not be relied on for representation/territory queries.
     const { data: terr } = await supabase
-      .from('model_assignments')
-      .select('id')
+      .from('model_agency_territories')
+      .select('country_code')
       .eq('model_id', localModelId)
       .limit(1);
     if (!terr || terr.length === 0) missingRequired.push('territory');
@@ -542,10 +557,19 @@ export async function syncCalendarFromMediaslide(args: {
     };
 
     if (existing) {
-      const { error: updErr } = await supabase
-        .from('calendar_entries')
-        .update(payload)
-        .eq('id', existing.id);
+      // F1.5 — DB-level guard against TOCTOU race: between our SELECT above and
+      // this UPDATE another concurrent sync (or webhook handler) might have
+      // already written a NEWER `external_updated_at`. Filtering on
+      // `external_updated_at IS NULL OR external_updated_at < new_ts` makes
+      // the UPDATE a no-op in that case so we never overwrite a fresher row
+      // with stale remote data. The in-memory `remoteIsNewer` check above is
+      // kept as the cheap fast-path; this is the authoritative serialization.
+      const newTs = payload.external_updated_at;
+      let upd = supabase.from('calendar_entries').update(payload).eq('id', existing.id);
+      if (newTs) {
+        upd = upd.or(`external_updated_at.is.null,external_updated_at.lt.${newTs}`);
+      }
+      const { error: updErr } = await upd;
       if (updErr) {
         await logMediaslideError({
           operation: 'syncCalendarFromMediaslide:update',
@@ -716,4 +740,10 @@ export async function runMediaslideCronSync(apiKey?: string): Promise<void> {
   });
 
   await runWithConcurrency(tasks, 5);
+
+  // F1.3 — drain inbound webhook receipts. The bulk loop above re-pulled every
+  // model with `mediaslide_sync_id`, which by definition includes any model the
+  // provider asked us to refresh via webhook. Marking the outbox rows `sent`
+  // here closes the loop so the queue does not grow unbounded.
+  await drainInboundResyncOutbox('mediaslide');
 }

@@ -3,24 +3,42 @@
  *
  * Sends a DRAFT invoice via Stripe Invoicing.
  *
- * Flow:
- *   1. Verify caller JWT
- *   2. Verify caller is the owner of the issuer org (organizations.owner_id = auth.uid())
- *   3. Verify invoice is DRAFT and not already sent
- *   4. Reserve invoice_number via next_invoice_number RPC (gap-free, locked)
- *   5. Resolve / create Stripe customer for recipient org
- *   6. Freeze billing_profile_snapshot + recipient_billing_snapshot
- *   7. Create Stripe Invoice + InvoiceItem(s)
- *   8. Finalize + send via Stripe
- *   9. Update invoice row → status='sent', stripe_invoice_id, stripe_hosted_url, stripe_pdf_url, sent_at, sent_by
- *  10. Append invoice_events row
+ * State machine (F2.5 split-brain-safe):
+ *   draft         (initial)
+ *     │  pre-lock UPDATE (invoice_number + snapshots + sent_by + sent_at)
+ *     ▼
+ *   pending_send  (number reserved, snapshots frozen, NO Stripe call yet)
+ *     │  Stripe create + items + finalize + send (all idempotent)
+ *     │  final UPDATE (stripe_invoice_id, hosted_url, pdf_url, payment_intent)
+ *     ▼
+ *   sent          (terminal for this function)
+ *
+ * Re-entry rules (when caller retries after partial failure):
+ *   - status='draft'        → full pipeline.
+ *   - status='pending_send' AND stripe_invoice_id IS NULL
+ *                           → re-run Stripe with same invoice.id-derived
+ *                             idempotency keys (Stripe dedups), then final
+ *                             UPDATE. invoice_number is re-used (already set).
+ *   - status='pending_send' AND stripe_invoice_id IS NOT NULL
+ *                           → split-brain recovery: skip Stripe, just final
+ *                             UPDATE to mark 'sent'. The Stripe-side already
+ *                             succeeded last time; only the DB write failed.
+ *   - status='sent' / 'paid' / etc. → 409 conflict.
+ *
+ * Idempotency:
+ *   - All Stripe mutating calls carry an idempotency key derived from
+ *     invoice.id (or item.id / recipient_org_id). Stripe deduplicates within
+ *     24h, so retries within that window never double-create.
+ *   - Local DB pre-lock binds invoice_number to this invoice row before
+ *     Stripe is contacted. A failure between pre-lock and final UPDATE
+ *     leaves a recoverable 'pending_send' row, never a silent duplicate.
  *
  * Invariants:
  *   - I-PAY-1: payment authority is Stripe; we only mirror state from webhooks.
  *   - I-PAY-3: owner-only; enforced server-side, not just RLS.
  *   - I-PAY-9: no custodial funds — Stripe collects directly from payer.
- *   - PSP-agnostic table; this function hard-codes 'stripe' but the schema
- *     supports adyen|manual for future expansion.
+ *   - F2.3: billing_profile_snapshot / recipient_billing_snapshot / invoice_number
+ *           become immutable once status leaves 'draft' (see freeze trigger).
  *
  * Required secrets:
  *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY
@@ -147,13 +165,15 @@ Deno.serve(async (req: Request) => {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  // ── Load invoice + line items + verify ownership ──────────────────────────
+  // ── Load invoice + verify ownership + state ───────────────────────────────
   const { data: invoice, error: invErr } = await adminClient
     .from('invoices')
     .select(
       'id, organization_id, recipient_organization_id, invoice_type, status, currency, ' +
         'subtotal_amount_cents, tax_amount_cents, total_amount_cents, tax_rate_percent, ' +
-        'tax_mode, reverse_charge_applied, due_date, notes, source_option_request_id',
+        'tax_mode, reverse_charge_applied, due_date, notes, source_option_request_id, ' +
+        'invoice_number, stripe_invoice_id, stripe_hosted_url, stripe_pdf_url, ' +
+        'billing_profile_snapshot, recipient_billing_snapshot',
     )
     .eq('id', body.invoice_id)
     .maybeSingle();
@@ -165,7 +185,8 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  if (invoice.status !== 'draft') {
+  // F2.5: accept draft (full pipeline) and pending_send (re-entry / recovery).
+  if (invoice.status !== 'draft' && invoice.status !== 'pending_send') {
     return new Response(
       JSON.stringify({ ok: false, error: `Invoice cannot be sent: status='${invoice.status}'` }),
       { status: 409, headers: { ...cors, 'Content-Type': 'application/json' } },
@@ -244,8 +265,6 @@ Deno.serve(async (req: Request) => {
 
   const recipientProfile: BillingProfileRow | null = recipientProfiles?.[0] ?? null;
 
-  // Recipient profile may be incomplete; we fall back to org name + warn but
-  // still proceed (Stripe customer can be created with minimal data).
   const { data: recipientOrg } = await adminClient
     .from('organizations')
     .select('id, name')
@@ -266,39 +285,88 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  // ── Reserve invoice_number ────────────────────────────────────────────────
-  // We use the service-role client; the function is SECDEF and tolerates a
-  // null auth.uid() (trigger context), but here we have a user — pass the
-  // header-bound client instead so the membership check passes through.
-  const userClient = createClient(supabaseUrl, anonKey, {
-    global: { headers: { Authorization: authHeader } },
-  });
-
-  const { data: numberRes, error: numberErr } = await userClient.rpc('next_invoice_number', {
-    p_organization_id: invoice.organization_id,
-    p_invoice_type: invoice.invoice_type,
-    p_year: null,
-  });
-
-  if (numberErr || !numberRes) {
-    console.error('[send-invoice-via-stripe] next_invoice_number failed:', numberErr);
-    return new Response(JSON.stringify({ ok: false, error: 'Failed to reserve invoice number' }), {
-      status: 500,
-      headers: { ...cors, 'Content-Type': 'application/json' },
+  // ── Reserve invoice_number (only on first attempt) ────────────────────────
+  let invoiceNumber: string;
+  if (invoice.invoice_number) {
+    // Re-entry: number was already reserved + bound to this invoice row.
+    invoiceNumber = invoice.invoice_number;
+  } else {
+    const userClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authHeader } },
     });
+
+    const { data: numberRes, error: numberErr } = await userClient.rpc('next_invoice_number', {
+      p_organization_id: invoice.organization_id,
+      p_invoice_type: invoice.invoice_type,
+      p_year: null,
+    });
+
+    if (numberErr || !numberRes) {
+      console.error('[send-invoice-via-stripe] next_invoice_number failed:', numberErr);
+      return new Response(JSON.stringify({ ok: false, error: 'Failed to reserve invoice number' }), {
+        status: 500,
+        headers: { ...cors, 'Content-Type': 'application/json' },
+      });
+    }
+    invoiceNumber = String(numberRes);
   }
 
-  const invoiceNumber = String(numberRes);
+  // ── F2.5 Pre-Lock: bind invoice_number + freeze snapshots + flip to
+  //    pending_send BEFORE any Stripe API call. This guarantees that, if
+  //    the function dies between Stripe success and the final UPDATE, we
+  //    can recover deterministically: the row already carries the number
+  //    and snapshots, and re-entry will pick up the same Stripe invoice
+  //    via idempotency keys.
+  //
+  //    Skip if we are re-entering (status already pending_send).
+  if (invoice.status === 'draft') {
+    const billingSnapshot = buildIssuerSnapshot(issuerProfile);
+    const recipientSnapshot = buildRecipientSnapshot(recipientProfile, recipientName, recipientEmail);
 
-  // ── Stripe customer (idempotent: reuse if recipient already has one) ──────
+    const { error: lockErr, data: lockedRow } = await adminClient
+      .from('invoices')
+      .update({
+        status: 'pending_send',
+        invoice_number: invoiceNumber,
+        billing_profile_snapshot: billingSnapshot,
+        recipient_billing_snapshot: recipientSnapshot,
+        sent_at: new Date().toISOString(),
+        sent_by: user.id,
+      })
+      .eq('id', invoice.id)
+      .eq('status', 'draft') // optimistic CAS — bail if someone else moved us
+      .select('id')
+      .maybeSingle();
+
+    if (lockErr || !lockedRow) {
+      console.error('[send-invoice-via-stripe] pre-lock UPDATE failed:', lockErr);
+      // Audit so admin can reconcile (number was reserved but not bound).
+      await adminClient.from('invoice_events').insert({
+        invoice_id: invoice.id,
+        event_type: 'send_prelock_failed',
+        actor_user_id: user.id,
+        actor_role: 'owner',
+        payload: {
+          reserved_invoice_number: invoiceNumber,
+          db_error: lockErr?.message ?? 'no row updated (status changed concurrently?)',
+        },
+      });
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error: 'Failed to lock invoice for sending — please retry. If this persists, contact support.',
+        }),
+        { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } },
+      );
+    }
+  }
+
+  // ── Stripe customer (idempotent) ──────────────────────────────────────────
   const stripe = new Stripe(stripeSecretKey, {
     apiVersion: '2024-04-10',
     httpClient: Stripe.createFetchHttpClient(),
   });
 
-  // Resolve cached Stripe customer for the recipient.
-  // Priority: organization_stripe_customers cache → organization_subscriptions
-  // (recipient may already be a paying org with a Stripe customer attached).
   let recipientCustomerId: string | undefined;
 
   const { data: cachedCustomer } = await adminClient
@@ -321,45 +389,49 @@ Deno.serve(async (req: Request) => {
   }
 
   if (!recipientCustomerId) {
-    const customer = await stripe.customers.create({
-      email: recipientEmail,
-      name: recipientName,
-      address: recipientProfile
-        ? {
-            line1: recipientProfile.billing_address_1 ?? undefined,
-            line2: recipientProfile.billing_address_2 ?? undefined,
-            city: recipientProfile.billing_city ?? undefined,
-            postal_code: recipientProfile.billing_postal_code ?? undefined,
-            state: recipientProfile.billing_state ?? undefined,
-            country: recipientProfile.billing_country ?? undefined,
-          }
-        : undefined,
-      metadata: {
-        organization_id: invoice.recipient_organization_id,
-        purpose: 'invoice_recipient',
-      },
-    });
-    recipientCustomerId = customer.id;
+    try {
+      const customer = await stripe.customers.create(
+        {
+          email: recipientEmail,
+          name: recipientName,
+          address: recipientProfile
+            ? {
+                line1: recipientProfile.billing_address_1 ?? undefined,
+                line2: recipientProfile.billing_address_2 ?? undefined,
+                city: recipientProfile.billing_city ?? undefined,
+                postal_code: recipientProfile.billing_postal_code ?? undefined,
+                state: recipientProfile.billing_state ?? undefined,
+                country: recipientProfile.billing_country ?? undefined,
+              }
+            : undefined,
+          metadata: {
+            organization_id: invoice.recipient_organization_id,
+            purpose: 'invoice_recipient',
+          },
+        },
+        { idempotencyKey: `recipient-org:${invoice.recipient_organization_id}:invoice_recipient` },
+      );
+      recipientCustomerId = customer.id;
 
-    // Cache for future invoices to the same recipient.
-    await adminClient.from('organization_stripe_customers').upsert(
-      {
-        organization_id: invoice.recipient_organization_id,
-        stripe_customer_id: recipientCustomerId,
-        purpose: 'invoice_recipient',
-      },
-      { onConflict: 'organization_id', ignoreDuplicates: false },
-    );
+      await adminClient.from('organization_stripe_customers').upsert(
+        {
+          organization_id: invoice.recipient_organization_id,
+          stripe_customer_id: recipientCustomerId,
+          purpose: 'invoice_recipient',
+        },
+        { onConflict: 'organization_id', ignoreDuplicates: false },
+      );
+    } catch (err) {
+      console.error('[send-invoice-via-stripe] stripe.customers.create failed:', err);
+      const message = err instanceof Error ? err.message : 'Stripe customer creation failed';
+      return new Response(JSON.stringify({ ok: false, error: `Stripe error: ${message}` }), {
+        status: 502,
+        headers: { ...cors, 'Content-Type': 'application/json' },
+      });
+    }
   }
 
   // ── Tax handling ──────────────────────────────────────────────────────────
-  // Two mutually exclusive modes:
-  //   1. STRIPE_TAX_ENABLED=true  → Stripe Tax computes tax automatically
-  //      (requires Stripe Tax to be active on the account; ignores tax_rate_percent).
-  //   2. STRIPE_TAX_ENABLED=false → Manual MVP path: if invoice.tax_rate_percent > 0
-  //      and reverse_charge_applied is false, we create a Stripe TaxRate on-the-fly
-  //      and attach it to each invoice item via tax_rates. If reverse charge applies
-  //      or rate is 0, no tax is added (the recipient sees a 0 tax line).
   const manualTaxRatePercent = !stripeTaxEnabled
     && !invoice.reverse_charge_applied
     && Number(invoice.tax_rate_percent ?? 0) > 0
@@ -369,145 +441,158 @@ Deno.serve(async (req: Request) => {
   let manualTaxRateId: string | null = null;
   if (manualTaxRatePercent > 0) {
     try {
-      const taxRate = await stripe.taxRates.create({
-        display_name: `VAT ${manualTaxRatePercent}%`,
-        percentage: manualTaxRatePercent,
-        inclusive: false,
-        country: issuerProfile.billing_country ?? undefined,
-        metadata: {
-          invoice_id: invoice.id,
-          organization_id: invoice.organization_id,
-          source: 'send-invoice-via-stripe',
+      const taxRate = await stripe.taxRates.create(
+        {
+          display_name: `VAT ${manualTaxRatePercent}%`,
+          percentage: manualTaxRatePercent,
+          inclusive: false,
+          country: issuerProfile.billing_country ?? undefined,
+          metadata: {
+            invoice_id: invoice.id,
+            organization_id: invoice.organization_id,
+            source: 'send-invoice-via-stripe',
+          },
         },
-      });
+        { idempotencyKey: `inv:${invoice.id}:taxrate:${manualTaxRatePercent}` },
+      );
       manualTaxRateId = taxRate.id;
     } catch (err) {
       console.warn('[send-invoice-via-stripe] tax rate creation failed; sending without tax:', err);
     }
   }
 
-  // ── Create Stripe invoice ────────────────────────────────────────────────
+  // ── Create / re-attach Stripe invoice (all idempotent) ────────────────────
   let stripeInvoice: Stripe.Invoice;
   try {
-    stripeInvoice = await stripe.invoices.create({
-      customer: recipientCustomerId,
-      collection_method: 'send_invoice',
-      days_until_due: invoice.due_date
-        ? Math.max(
-            1,
-            Math.ceil(
-              (new Date(invoice.due_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24),
-            ),
-          )
-        : 30,
-      currency: (invoice.currency ?? 'EUR').toLowerCase(),
-      auto_advance: false,
-      automatic_tax: stripeTaxEnabled ? { enabled: true } : undefined,
-      default_tax_rates: manualTaxRateId ? [manualTaxRateId] : undefined,
-      number: invoiceNumber,
-      description: invoice.reverse_charge_applied
-        ? `${invoice.notes ?? ''}\n\nReverse charge — VAT to be accounted for by the recipient.`.trim()
-        : invoice.notes ?? undefined,
-      metadata: {
-        invoice_id: invoice.id,
-        organization_id: invoice.organization_id,
-        recipient_organization_id: invoice.recipient_organization_id,
-        invoice_type: invoice.invoice_type,
-        source_option_request_id: invoice.source_option_request_id ?? '',
-        tax_mode: stripeTaxEnabled ? 'stripe_tax' : manualTaxRateId ? 'manual' : 'none',
-        reverse_charge: invoice.reverse_charge_applied ? 'true' : 'false',
-      },
-    });
+    if (invoice.stripe_invoice_id) {
+      // Split-brain recovery: Stripe-side already ran last time, but the
+      // final DB UPDATE failed. Re-fetch and skip create/items/finalize/send.
+      stripeInvoice = await stripe.invoices.retrieve(invoice.stripe_invoice_id);
+    } else {
+      stripeInvoice = await stripe.invoices.create(
+        {
+          customer: recipientCustomerId,
+          collection_method: 'send_invoice',
+          days_until_due: invoice.due_date
+            ? Math.max(
+                1,
+                Math.ceil(
+                  (new Date(invoice.due_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24),
+                ),
+              )
+            : 30,
+          currency: (invoice.currency ?? 'EUR').toLowerCase(),
+          auto_advance: false,
+          automatic_tax: stripeTaxEnabled ? { enabled: true } : undefined,
+          default_tax_rates: manualTaxRateId ? [manualTaxRateId] : undefined,
+          number: invoiceNumber,
+          description: invoice.reverse_charge_applied
+            ? `${invoice.notes ?? ''}\n\nReverse charge — VAT to be accounted for by the recipient.`.trim()
+            : invoice.notes ?? undefined,
+          metadata: {
+            invoice_id: invoice.id,
+            organization_id: invoice.organization_id,
+            recipient_organization_id: invoice.recipient_organization_id,
+            invoice_type: invoice.invoice_type,
+            source_option_request_id: invoice.source_option_request_id ?? '',
+            tax_mode: stripeTaxEnabled ? 'stripe_tax' : manualTaxRateId ? 'manual' : 'none',
+            reverse_charge: invoice.reverse_charge_applied ? 'true' : 'false',
+          },
+        },
+        { idempotencyKey: `inv:${invoice.id}:create` },
+      );
 
-    for (const item of lineItems) {
-      await stripe.invoiceItems.create({
-        customer: recipientCustomerId,
-        invoice: stripeInvoice.id,
-        currency: (item.currency ?? invoice.currency ?? 'EUR').toLowerCase(),
-        description: item.description,
-        quantity: Math.max(1, Math.floor(Number(item.quantity ?? 1))),
-        unit_amount: Number(item.unit_amount_cents ?? 0),
-      });
+      for (const item of lineItems) {
+        await stripe.invoiceItems.create(
+          {
+            customer: recipientCustomerId,
+            invoice: stripeInvoice.id,
+            currency: (item.currency ?? invoice.currency ?? 'EUR').toLowerCase(),
+            description: item.description,
+            quantity: Math.max(1, Math.floor(Number(item.quantity ?? 1))),
+            unit_amount: Number(item.unit_amount_cents ?? 0),
+          },
+          { idempotencyKey: `inv:${invoice.id}:item:${item.id}` },
+        );
+      }
+
+      stripeInvoice = await stripe.invoices.finalizeInvoice(
+        stripeInvoice.id,
+        { auto_advance: false },
+        { idempotencyKey: `inv:${invoice.id}:finalize` },
+      );
+      await stripe.invoices.sendInvoice(
+        stripeInvoice.id,
+        undefined,
+        { idempotencyKey: `inv:${invoice.id}:send` },
+      );
+
+      stripeInvoice = await stripe.invoices.retrieve(stripeInvoice.id);
     }
-
-    stripeInvoice = await stripe.invoices.finalizeInvoice(stripeInvoice.id, {
-      auto_advance: false,
-    });
-    await stripe.invoices.sendInvoice(stripeInvoice.id);
-
-    stripeInvoice = await stripe.invoices.retrieve(stripeInvoice.id);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Stripe API error';
     console.error('[send-invoice-via-stripe] Stripe error:', err);
+    // Audit so admin can see where it failed; invoice stays in pending_send,
+    // safe to retry (Stripe idempotency keys will dedup).
+    await adminClient.from('invoice_events').insert({
+      invoice_id: invoice.id,
+      event_type: 'send_stripe_failed',
+      actor_user_id: user.id,
+      actor_role: 'owner',
+      payload: {
+        invoice_number: invoiceNumber,
+        stripe_error: message,
+      },
+    });
     return new Response(JSON.stringify({ ok: false, error: `Stripe error: ${message}` }), {
       status: 502,
       headers: { ...cors, 'Content-Type': 'application/json' },
     });
   }
 
-  // ── Persist updates: status='sent', snapshots, Stripe IDs ────────────────
-  const billingSnapshot = {
-    profile_id: issuerProfile.id,
-    label: issuerProfile.label,
-    billing_name: issuerProfile.billing_name,
-    billing_address_1: issuerProfile.billing_address_1,
-    billing_address_2: issuerProfile.billing_address_2,
-    billing_city: issuerProfile.billing_city,
-    billing_postal_code: issuerProfile.billing_postal_code,
-    billing_state: issuerProfile.billing_state,
-    billing_country: issuerProfile.billing_country,
-    billing_email: issuerProfile.billing_email,
-    vat_id: issuerProfile.vat_id,
-    tax_id: issuerProfile.tax_id,
-    iban: issuerProfile.iban,
-    bic: issuerProfile.bic,
-    bank_name: issuerProfile.bank_name,
-    snapshot_at: new Date().toISOString(),
-  };
-
-  const recipientSnapshot = recipientProfile
-    ? {
-        profile_id: recipientProfile.id,
-        label: recipientProfile.label,
-        billing_name: recipientProfile.billing_name,
-        billing_address_1: recipientProfile.billing_address_1,
-        billing_address_2: recipientProfile.billing_address_2,
-        billing_city: recipientProfile.billing_city,
-        billing_postal_code: recipientProfile.billing_postal_code,
-        billing_state: recipientProfile.billing_state,
-        billing_country: recipientProfile.billing_country,
-        billing_email: recipientProfile.billing_email,
-        vat_id: recipientProfile.vat_id,
-        tax_id: recipientProfile.tax_id,
-        snapshot_at: new Date().toISOString(),
-      }
-    : { billing_name: recipientName, billing_email: recipientEmail, snapshot_at: new Date().toISOString() };
-
+  // ── Final UPDATE: pending_send → sent + Stripe IDs ────────────────────────
   const { error: updErr } = await adminClient
     .from('invoices')
     .update({
       status: 'sent',
-      invoice_number: invoiceNumber,
       stripe_invoice_id: stripeInvoice.id,
       stripe_hosted_url: stripeInvoice.hosted_invoice_url ?? null,
       stripe_pdf_url: stripeInvoice.invoice_pdf ?? null,
       stripe_payment_intent_id:
         typeof stripeInvoice.payment_intent === 'string' ? stripeInvoice.payment_intent : null,
-      billing_profile_snapshot: billingSnapshot,
-      recipient_billing_snapshot: recipientSnapshot,
-      sent_at: new Date().toISOString(),
-      sent_by: user.id,
     })
-    .eq('id', invoice.id);
+    .eq('id', invoice.id)
+    .in('status', ['pending_send', 'draft']); // tolerate either; CAS-ish
 
   if (updErr) {
-    console.error('[send-invoice-via-stripe] Failed to persist invoice update:', updErr);
-    // The Stripe invoice was already sent — log loudly, return error so caller knows.
+    console.error(
+      '[send-invoice-via-stripe] SPLIT-BRAIN: Stripe sent OK but DB UPDATE failed:',
+      updErr,
+    );
+    // Loud audit row so an admin can reconcile. Stripe-side state is the
+    // recoverable truth (stripe_invoice_id is in the payload).
+    await adminClient.from('invoice_events').insert({
+      invoice_id: invoice.id,
+      event_type: 'send_db_update_failed',
+      actor_user_id: user.id,
+      actor_role: 'owner',
+      payload: {
+        invoice_number: invoiceNumber,
+        stripe_invoice_id: stripeInvoice.id,
+        stripe_hosted_url: stripeInvoice.hosted_invoice_url,
+        stripe_pdf_url: stripeInvoice.invoice_pdf,
+        db_error: updErr.message,
+        recovery: 'retry POST send-invoice-via-stripe; idempotency keys will reuse this Stripe invoice',
+      },
+    });
     return new Response(
       JSON.stringify({
         ok: false,
-        error: 'Stripe invoice sent but local DB update failed — please contact support',
+        error:
+          'Stripe invoice sent but local DB update failed — retry the request to reconcile, ' +
+          'or contact support. The recipient has already received the invoice.',
         stripe_invoice_id: stripeInvoice.id,
+        invoice_number: invoiceNumber,
       }),
       { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } },
     );
@@ -539,3 +624,55 @@ Deno.serve(async (req: Request) => {
     { status: 200, headers: { ...cors, 'Content-Type': 'application/json' } },
   );
 });
+
+// ── Snapshot helpers ────────────────────────────────────────────────────────
+
+function buildIssuerSnapshot(profile: BillingProfileRow): Record<string, unknown> {
+  return {
+    profile_id: profile.id,
+    label: profile.label,
+    billing_name: profile.billing_name,
+    billing_address_1: profile.billing_address_1,
+    billing_address_2: profile.billing_address_2,
+    billing_city: profile.billing_city,
+    billing_postal_code: profile.billing_postal_code,
+    billing_state: profile.billing_state,
+    billing_country: profile.billing_country,
+    billing_email: profile.billing_email,
+    vat_id: profile.vat_id,
+    tax_id: profile.tax_id,
+    iban: profile.iban,
+    bic: profile.bic,
+    bank_name: profile.bank_name,
+    snapshot_at: new Date().toISOString(),
+  };
+}
+
+function buildRecipientSnapshot(
+  profile: BillingProfileRow | null,
+  fallbackName: string,
+  fallbackEmail: string,
+): Record<string, unknown> {
+  if (!profile) {
+    return {
+      billing_name: fallbackName,
+      billing_email: fallbackEmail,
+      snapshot_at: new Date().toISOString(),
+    };
+  }
+  return {
+    profile_id: profile.id,
+    label: profile.label,
+    billing_name: profile.billing_name,
+    billing_address_1: profile.billing_address_1,
+    billing_address_2: profile.billing_address_2,
+    billing_city: profile.billing_city,
+    billing_postal_code: profile.billing_postal_code,
+    billing_state: profile.billing_state,
+    billing_country: profile.billing_country,
+    billing_email: profile.billing_email,
+    vat_id: profile.vat_id,
+    tax_id: profile.tax_id,
+    snapshot_at: new Date().toISOString(),
+  };
+}

@@ -180,10 +180,31 @@ Deno.serve(async (req: Request) => {
 
   // Enqueue inbound-resync marker. Service-role bypasses the
   // direct-INSERT lock; the table-level CHECK + idempotency index still apply.
-  const idempotencyKey = `inbound:${externalId}:${eventType}:${(payload.occurred_at ?? Date.now()).toString().slice(0, 32)}`;
+  //
+  // Idempotency key invariant (F1.2):
+  //   The key MUST be deterministic for the same logical webhook event so that
+  //   provider retries (network blip, 5xx, etc.) collapse onto the same row.
+  //   - `occurred_at` is the canonical timestamp from the provider; we keep
+  //     it as-is (no `slice` so equal ISO strings hash identically).
+  //   - When the provider omits `occurred_at`, we fall back to a SHA-256 of
+  //     the raw request body. This is still deterministic per delivery (same
+  //     bytes → same key) and prevents a `Date.now()`-style new-key-per-retry
+  //     bug that bypassed the unique partial index on
+  //     (provider, idempotency_key).
+  let occurredAtPart: string;
+  if (typeof payload.occurred_at === 'string' && payload.occurred_at.length > 0) {
+    occurredAtPart = payload.occurred_at;
+  } else {
+    const bodyHashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(rawBody));
+    occurredAtPart =
+      'body:' +
+      Array.from(new Uint8Array(bodyHashBuf))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+  }
+  const idempotencyKey = `inbound:${externalId}:${eventType}:${occurredAtPart}`.slice(0, 200);
 
-  // Idempotency dedupe within a short window: same external_id + event_type +
-  // occurred_at in pending state should not enqueue twice.
+  // Pre-INSERT dedupe (cheap path: same payload already in outbox).
   const { data: existing } = await supabase
     .from('external_sync_outbox')
     .select('id')
@@ -214,6 +235,25 @@ Deno.serve(async (req: Request) => {
     .maybeSingle();
 
   if (insertErr) {
+    // 23505 = unique violation on (provider, idempotency_key) — concurrent
+    // delivery of the exact same logical event won the race. Treat as dedupe
+    // success and return the existing row id, NOT 500.
+    const code = (insertErr as { code?: string }).code;
+    if (code === '23505') {
+      const { data: dedup } = await supabase
+        .from('external_sync_outbox')
+        .select('id')
+        .eq('provider', provider)
+        .eq('idempotency_key', idempotencyKey)
+        .neq('status', 'failed')
+        .maybeSingle();
+      return jsonResponse({
+        ok: true,
+        enqueued: dedup?.id ?? null,
+        model_id: modelRow.id,
+        deduped: true,
+      });
+    }
     console.error('[external-sync-webhook] outbox insert error', provider, externalId, insertErr);
     return jsonResponse({ ok: false, error: 'enqueue_failed' }, 500);
   }

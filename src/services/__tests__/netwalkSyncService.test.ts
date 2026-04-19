@@ -83,7 +83,7 @@ function setupSupabaseMock({
         update: () => ({ eq: () => Promise.resolve({ error: updateError }) }),
       };
     }
-    if (table === 'model_assignments') {
+    if (table === 'model_agency_territories') {
       return {
         select: () => ({
           eq: () => ({ limit: () => Promise.resolve({ data: terrData, error: null }) }),
@@ -170,13 +170,11 @@ describe('syncSingleModelFromNetwalk', () => {
       updated_at: '2024-07-01T10:00:00Z',
       measurements: { height: 176, waist: 62 },
     });
-    getModelByIdFromSupabaseMock
-      .mockResolvedValueOnce(local)
-      .mockResolvedValueOnce({
-        ...local,
-        name: 'Remote Netwalk Model',
-        portfolio_images: ['photo.jpg'],
-      });
+    getModelByIdFromSupabaseMock.mockResolvedValueOnce(local).mockResolvedValueOnce({
+      ...local,
+      name: 'Remote Netwalk Model',
+      portfolio_images: ['photo.jpg'],
+    });
     getModelFromNetwalkMock.mockResolvedValue(remote);
 
     const result = await syncSingleModelFromNetwalk({
@@ -198,7 +196,7 @@ describe('syncSingleModelFromNetwalk', () => {
     });
     fromMock.mockImplementation((table: string) => {
       if (table === 'models') return { update: updateSpy };
-      if (table === 'model_assignments') {
+      if (table === 'model_agency_territories') {
         return {
           select: () => ({
             eq: () => ({ limit: () => Promise.resolve({ data: [{ id: 't1' }], error: null }) }),
@@ -231,7 +229,7 @@ describe('syncSingleModelFromNetwalk', () => {
     });
     fromMock.mockImplementation((table: string) => {
       if (table === 'models') return { update: updateSpy };
-      if (table === 'model_assignments') {
+      if (table === 'model_agency_territories') {
         return {
           select: () => ({
             eq: () => ({ limit: () => Promise.resolve({ data: [{ id: 't1' }], error: null }) }),

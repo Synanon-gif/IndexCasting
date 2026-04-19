@@ -225,6 +225,42 @@ async function tryHandleB2bInvoiceEvent(
   }
   if (newStatus === 'paid') update.paid_at = new Date().toISOString();
 
+  // F2.6 — Tax / amount sync from Stripe (Stripe is source of truth after
+  // finalize). With STRIPE_TAX_ENABLED=true Stripe re-computes tax from the
+  // recipient address; the values in our DB at draft time were only an
+  // estimate. Mirror the authoritative figures so our UI/PDF/audit reflect
+  // what the customer actually owes / paid.
+  //
+  // Idempotent: Stripe locks subtotal/tax/total at finalize, so re-emitted
+  // events carry the same values. Currency is normalized to upper-case to
+  // match the rest of our schema.
+  if (typeof stripeInvoice.subtotal === 'number') {
+    update.subtotal_amount_cents = stripeInvoice.subtotal;
+  }
+  if (typeof stripeInvoice.tax === 'number' && stripeInvoice.tax !== null) {
+    update.tax_amount_cents = stripeInvoice.tax;
+  } else if (stripeInvoice.tax === null) {
+    update.tax_amount_cents = 0;
+  }
+  if (typeof stripeInvoice.total === 'number') {
+    update.total_amount_cents = stripeInvoice.total;
+  }
+  if (typeof stripeInvoice.currency === 'string' && stripeInvoice.currency.length > 0) {
+    update.currency = stripeInvoice.currency.toUpperCase();
+  }
+  // Single tax rate → mirror percent (best-effort; multi-rate split-charges
+  // are rare for B2B and are intentionally left untouched so we don't
+  // collapse them to a misleading single number).
+  const totalTaxAmounts = (stripeInvoice as unknown as {
+    total_tax_amounts?: Array<{ tax_rate?: string | { percentage?: number | null } | null }>;
+  }).total_tax_amounts;
+  if (Array.isArray(totalTaxAmounts) && totalTaxAmounts.length === 1) {
+    const taxRateRef = totalTaxAmounts[0]?.tax_rate;
+    if (taxRateRef && typeof taxRateRef === 'object' && typeof taxRateRef.percentage === 'number') {
+      update.tax_rate_percent = taxRateRef.percentage;
+    }
+  }
+
   const { error: updErr } = await supabase
     .from('invoices')
     .update(update)
@@ -247,6 +283,12 @@ async function tryHandleB2bInvoiceEvent(
       status_after: update.status ?? localInvoice.status,
       amount_paid: stripeInvoice.amount_paid,
       amount_due: stripeInvoice.amount_due,
+      // F2.6 — record the Stripe-authoritative figures we mirrored.
+      stripe_subtotal_cents: stripeInvoice.subtotal ?? null,
+      stripe_tax_cents: stripeInvoice.tax ?? null,
+      stripe_total_cents: stripeInvoice.total ?? null,
+      stripe_currency: stripeInvoice.currency ?? null,
+      mirrored_tax_rate_percent: (update.tax_rate_percent as number | undefined) ?? null,
     },
   });
 

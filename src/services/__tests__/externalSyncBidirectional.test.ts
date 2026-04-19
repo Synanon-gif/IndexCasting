@@ -345,7 +345,7 @@ describe('syncSingleModelFromMediaslide — photo_source branching', () => {
           update: () => ({ eq: () => Promise.resolve({ error: null }) }),
         };
       }
-      if (table === 'model_assignments') {
+      if (table === 'model_agency_territories') {
         return {
           select: () => ({
             eq: () => ({
