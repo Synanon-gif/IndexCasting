@@ -17,9 +17,14 @@
 import { supabase } from '../../lib/supabase';
 import type { SupabaseModel } from './modelsSupabase';
 import { agencyUpdateModelFullRpc, getModelByIdFromSupabase } from './modelsSupabase';
-import { getModelFromNetwalk, syncModelData } from './netwalkConnector';
+import {
+  getCalendarFromNetwalk,
+  getModelFromNetwalk,
+  getPortfolioFromNetwalk,
+  syncModelData,
+} from './netwalkConnector';
 import { fetchAllSupabasePages } from './supabaseFetchAll';
-import { logMediaslideError } from './mediaslideSyncService';
+import { logMediaslideError, type ExternalCalendarBlockoutRemote } from './mediaslideSyncService';
 import { upsertTerritoriesForModelCountryAgencyPairs } from './territoriesSupabase';
 
 // Re-export the shared log helper under a Netwalk-specific alias for clarity.
@@ -81,6 +86,14 @@ type NetwalkModelPayload = {
   visibility?: {
     isVisibleCommercial?: boolean;
     isVisibleFashion?: boolean;
+  };
+  /**
+   * Optional portfolio mirror — only consumed when models.photo_source = 'netwalk'.
+   * URLs are stored as-is (no local storage mirror); UI renders them directly.
+   */
+  portfolio?: {
+    images?: string[] | null;
+    polaroids?: string[] | null;
   };
 };
 
@@ -218,6 +231,34 @@ export async function syncSingleModelFromNetwalk(args: {
     }
   }
 
+  // Photo-source branching: only mirror remote portfolio URLs when the agency
+  // explicitly opted into 'netwalk' as the source-of-truth for this model.
+  // Default 'own' → never overwrite portfolio_images / polaroids from remote
+  // (model_photos pipeline drives the mirror columns; see system-invariants §27.1).
+  let photoSource: 'own' | 'mediaslide' | 'netwalk' = 'own';
+  try {
+    const { data: ps } = await supabase
+      .from('models')
+      .select('photo_source')
+      .eq('id', local.id)
+      .maybeSingle();
+    if (ps && (ps as { photo_source?: string }).photo_source) {
+      const v = (ps as { photo_source: string }).photo_source;
+      if (v === 'own' || v === 'mediaslide' || v === 'netwalk') photoSource = v;
+    }
+  } catch {
+    /* default to 'own' */
+  }
+
+  if (photoSource === 'netwalk' && remote.portfolio) {
+    if (Array.isArray(remote.portfolio.images)) {
+      (updates as any).portfolio_images = remote.portfolio.images;
+    }
+    if (Array.isArray(remote.portfolio.polaroids)) {
+      (updates as any).polaroids = remote.portfolio.polaroids;
+    }
+  }
+
   if (Object.keys(updates).length === 0) {
     return { ok: true };
   }
@@ -245,6 +286,8 @@ export async function syncSingleModelFromNetwalk(args: {
     p_shoe_size: u.shoe_size ?? null,
     p_is_visible_commercial: u.is_visible_commercial ?? null,
     p_is_visible_fashion: u.is_visible_fashion ?? null,
+    p_portfolio_images: u.portfolio_images ?? null,
+    p_polaroids: u.polaroids ?? null,
   });
 
   if (error) {
@@ -325,6 +368,176 @@ export async function syncSingleModelFromNetwalk(args: {
 }
 
 // ---------------------------------------------------------------------------
+// Inbound calendar sync (Netwalk → calendar_entries)
+// ---------------------------------------------------------------------------
+
+/**
+ * Pull calendar block-outs for a model from Netwalk and reconcile them with
+ * `calendar_entries`. Mirrors syncCalendarFromMediaslide exactly — see that
+ * function's docblock for the conflict-resolution invariants (system-invariants
+ * §G — Calendar as Projection):
+ *
+ *   1. Canonical rows (option_request_id IS NOT NULL) ALWAYS win.
+ *   2. External rows are visual-only block-outs; never enter Smart Attention.
+ *   3. Idempotent: matched on (external_source, external_event_id);
+ *      only updates rows whose remote `updated_at` is strictly newer.
+ *   4. Removed-on-remote: external rows missing from the payload are marked
+ *      status='cancelled' (never deleted).
+ */
+export async function syncCalendarFromNetwalk(args: {
+  localModelId: string;
+  netwalkId: string;
+  apiKey?: string;
+}): Promise<{ ok: boolean; upserted: number; cancelled: number }> {
+  const { localModelId, netwalkId, apiKey } = args;
+
+  let remote: ExternalCalendarBlockoutRemote[] = [];
+  try {
+    const raw = await getCalendarFromNetwalk(netwalkId, apiKey);
+    remote = (Array.isArray(raw) ? raw : []) as ExternalCalendarBlockoutRemote[];
+  } catch (e: any) {
+    await logNetwalkError({
+      operation: 'getCalendarFromNetwalk',
+      modelId: localModelId,
+      mediaslideId: netwalkId,
+      message: e?.message || 'Failed to fetch calendar from Netwalk',
+      details: e,
+    });
+    return { ok: false, upserted: 0, cancelled: 0 };
+  }
+
+  const remoteIds = new Set(
+    remote.map((e) => e.external_event_id).filter((id): id is string => Boolean(id)),
+  );
+
+  const { data: existingRows, error: existingErr } = await supabase
+    .from('calendar_entries')
+    .select('id, external_event_id, external_updated_at, status, date')
+    .eq('model_id', localModelId)
+    .eq('external_source', 'netwalk');
+
+  if (existingErr) {
+    await logNetwalkError({
+      operation: 'syncCalendarFromNetwalk:loadExisting',
+      modelId: localModelId,
+      mediaslideId: netwalkId,
+      message: existingErr.message,
+      details: existingErr,
+    });
+    return { ok: false, upserted: 0, cancelled: 0 };
+  }
+
+  const existingByExtId = new Map<
+    string,
+    { id: string; external_updated_at: string | null; status: string | null; date: string | null }
+  >();
+  for (const r of existingRows ?? []) {
+    if (r.external_event_id) {
+      existingByExtId.set(r.external_event_id, {
+        id: r.id,
+        external_updated_at: r.external_updated_at,
+        status: r.status,
+        date: r.date,
+      });
+    }
+  }
+
+  const { data: canonicalRows } = await supabase
+    .from('calendar_entries')
+    .select('date')
+    .eq('model_id', localModelId)
+    .not('option_request_id', 'is', null)
+    .neq('status', 'cancelled');
+
+  const canonicalDates = new Set((canonicalRows ?? []).map((r: any) => r.date as string));
+
+  let upserted = 0;
+  let cancelled = 0;
+
+  for (const ev of remote) {
+    if (!ev.external_event_id || !ev.date) continue;
+    if (canonicalDates.has(ev.date)) continue; // canonical wins
+
+    const existing = existingByExtId.get(ev.external_event_id);
+    const remoteTs = toTimestamp(ev.updated_at ?? null);
+    const existingTs = toTimestamp(existing?.external_updated_at ?? null);
+
+    const remoteIsNewer =
+      !existing || (remoteTs !== null && (existingTs === null || remoteTs > existingTs));
+
+    if (!remoteIsNewer) continue;
+
+    const payload = {
+      model_id: localModelId,
+      date: ev.date,
+      start_time: ev.start_time ?? null,
+      end_time: ev.end_time ?? null,
+      status: ev.status ?? 'unavailable',
+      title: ev.title ?? 'Netwalk block-out',
+      external_source: 'netwalk' as const,
+      external_event_id: ev.external_event_id,
+      external_updated_at: ev.updated_at ?? new Date().toISOString(),
+    };
+
+    if (existing) {
+      const { error: updErr } = await supabase
+        .from('calendar_entries')
+        .update(payload)
+        .eq('id', existing.id);
+      if (updErr) {
+        await logNetwalkError({
+          operation: 'syncCalendarFromNetwalk:update',
+          modelId: localModelId,
+          mediaslideId: netwalkId,
+          message: updErr.message,
+          details: { event: ev, error: updErr },
+        });
+        continue;
+      }
+    } else {
+      const { error: insErr } = await supabase.from('calendar_entries').insert(payload);
+      if (insErr) {
+        await logNetwalkError({
+          operation: 'syncCalendarFromNetwalk:insert',
+          modelId: localModelId,
+          mediaslideId: netwalkId,
+          message: insErr.message,
+          details: { event: ev, error: insErr },
+        });
+        continue;
+      }
+    }
+    upserted += 1;
+  }
+
+  for (const [extId, row] of existingByExtId) {
+    if (remoteIds.has(extId)) continue;
+    if (row.status === 'cancelled') continue;
+    const { error: cancelErr } = await supabase
+      .from('calendar_entries')
+      .update({ status: 'cancelled', external_updated_at: new Date().toISOString() })
+      .eq('id', row.id);
+    if (cancelErr) {
+      await logNetwalkError({
+        operation: 'syncCalendarFromNetwalk:cancel',
+        modelId: localModelId,
+        mediaslideId: netwalkId,
+        message: cancelErr.message,
+        details: { rowId: row.id, error: cancelErr },
+      });
+      continue;
+    }
+    cancelled += 1;
+  }
+
+  return { ok: true, upserted, cancelled };
+}
+
+// Touch-stub to keep getPortfolioFromNetwalk in the import graph for downstream
+// services that may want raw portfolio reads outside the sync flow.
+export { getPortfolioFromNetwalk };
+
+// ---------------------------------------------------------------------------
 // Webhook entry point
 // ---------------------------------------------------------------------------
 
@@ -332,6 +545,8 @@ export async function handleNetwalkWebhook(payload: {
   localModelId: string;
   netwalkId: string;
   apiKey?: string;
+  /** When true, also pull calendar block-outs after the profile sync. */
+  syncCalendar?: boolean;
 }): Promise<{ ok: boolean }> {
   const result = await syncSingleModelFromNetwalk(payload);
   if (!result.ok) {
@@ -341,6 +556,23 @@ export async function handleNetwalkWebhook(payload: {
       mediaslideId: payload.netwalkId,
       message: 'Webhook sync failed',
     });
+  }
+  if (payload.syncCalendar) {
+    try {
+      await syncCalendarFromNetwalk({
+        localModelId: payload.localModelId,
+        netwalkId: payload.netwalkId,
+        apiKey: payload.apiKey,
+      });
+    } catch (e) {
+      await logNetwalkError({
+        operation: 'handleNetwalkWebhook:calendar',
+        modelId: payload.localModelId,
+        mediaslideId: payload.netwalkId,
+        message: 'Calendar sync failed in webhook',
+        details: e,
+      });
+    }
   }
   return { ok: result.ok };
 }
@@ -381,6 +613,12 @@ export async function runNetwalkCronSync(apiKey?: string): Promise<void> {
     try {
       await syncModelData(row.netwalk_model_id, apiKey);
       await syncSingleModelFromNetwalk({
+        localModelId: row.id,
+        netwalkId: row.netwalk_model_id,
+        apiKey,
+      });
+      // Pull calendar block-outs (idempotent; canonical option_request rows win).
+      await syncCalendarFromNetwalk({
         localModelId: row.id,
         netwalkId: row.netwalk_model_id,
         apiKey,

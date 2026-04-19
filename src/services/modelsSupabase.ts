@@ -985,6 +985,93 @@ export async function agencyLinkModelToUser(
   return data === true;
 }
 
+// ---------------------------------------------------------------------------
+// External photo source (Mediaslide / Netwalk) — `models.photo_source` toggle
+// ---------------------------------------------------------------------------
+
+export type PhotoSource = 'own' | 'mediaslide' | 'netwalk';
+
+export type ModelPhotoSourceContext = {
+  /** Which set of photos the discovery / package layer should render. */
+  photo_source: PhotoSource;
+  /** External Mediaslide model id (when paired). */
+  mediaslide_sync_id: string | null;
+  /** External Netwalk model id (when paired). */
+  netwalk_model_id: string | null;
+  /** True when at least one external system is paired and selectable. */
+  hasExternalLink: boolean;
+};
+
+/**
+ * Read the current photo-source state for a single model.
+ * Used by the agency media settings panel to decide whether to render the
+ * "Use Mediaslide / Netwalk pictures" toggle and the "external pictures missing"
+ * warning. Returns null when the row does not exist or RLS blocks the read.
+ */
+export async function getModelPhotoSourceContext(
+  modelId: string,
+): Promise<ModelPhotoSourceContext | null> {
+  const id = modelId?.trim();
+  if (!id) return null;
+  try {
+    const { data, error } = await supabase
+      .from('models')
+      .select('photo_source, mediaslide_sync_id, netwalk_model_id')
+      .eq('id', id)
+      .maybeSingle();
+    if (error) {
+      console.error('[getModelPhotoSourceContext] error:', error);
+      return null;
+    }
+    if (!data) return null;
+    const row = data as {
+      photo_source?: string | null;
+      mediaslide_sync_id?: string | null;
+      netwalk_model_id?: string | null;
+    };
+    const raw = (row.photo_source ?? 'own') as string;
+    const photo_source: PhotoSource = raw === 'mediaslide' || raw === 'netwalk' ? raw : 'own';
+    return {
+      photo_source,
+      mediaslide_sync_id: row.mediaslide_sync_id ?? null,
+      netwalk_model_id: row.netwalk_model_id ?? null,
+      hasExternalLink: Boolean(row.mediaslide_sync_id) || Boolean(row.netwalk_model_id),
+    };
+  } catch (e) {
+    console.error('[getModelPhotoSourceContext] exception:', e);
+    return null;
+  }
+}
+
+/**
+ * Persist a new `photo_source` for a model via the SECURITY DEFINER RPC
+ * `set_model_photo_source` (agency-scoped, writes audit log row).
+ * Returns true on success.
+ *
+ * Setting `photo_source = 'own'` keeps `models.portfolio_images` / `polaroids`
+ * pointing at this platform's `model_photos`. Setting `'mediaslide'` /
+ * `'netwalk'` switches discovery / packages over to the URLs the next sync
+ * pulled from the remote system.
+ */
+export async function setModelPhotoSource(modelId: string, source: PhotoSource): Promise<boolean> {
+  const id = modelId?.trim();
+  if (!id) return false;
+  try {
+    const { error } = await supabase.rpc('set_model_photo_source', {
+      p_model_id: id,
+      p_source: source,
+    });
+    if (error) {
+      console.error('[setModelPhotoSource] RPC error:', error);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('[setModelPhotoSource] exception:', e);
+    return false;
+  }
+}
+
 /**
  * True when the email matches a `profiles` row whose user is not the model's `user_id` (or model has no `user_id`).
  * Agency/booker scoped RPC — returns null if the check could not run (e.g. RPC missing).

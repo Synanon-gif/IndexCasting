@@ -117,10 +117,14 @@ export async function getModelFromNetwalk(id, apiKey) {
 }
 
 /**
- * Push availability (blocked/available dates) to Netwalk.
+ * Push availability (blocked dates / booking blocks) to Netwalk.
+ *
+ * The exact payload shape is defined by callers (e.g. `externalCalendarSync.ts`
+ * builds a richer per-entry block payload). The connector itself just forwards
+ * the JSON to the remote endpoint.
  *
  * @param {string} id
- * @param {{ blocked: string[], available: string[] }} dates
+ * @param {object} dates
  * @param {string=} apiKey
  */
 export async function pushAvailabilityToNetwalk(id, dates, apiKey) {
@@ -156,4 +160,88 @@ export async function pushVisibilityToNetwalk(id, visibility, apiKey) {
     body: JSON.stringify(visibility),
   });
   return { ok: res.ok };
+}
+
+// ---------------------------------------------------------------------------
+// PULL: calendar / portfolio / search-by-email (bidirectional sync)
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch availability / blocked dates for a model from Netwalk.
+ * Returns an array of normalized calendar block-out events:
+ *   { external_event_id, date, start_time?, end_time?, status, title?, updated_at }
+ *
+ * In mock mode (no EXPO_PUBLIC_NETWALK_API_URL) returns [].
+ *
+ * @param {string} id
+ * @param {string=} apiKey
+ */
+export async function getCalendarFromNetwalk(id, apiKey) {
+  await delay(150);
+  if (!getBaseUrl()) return [];
+  const res = await fetch(`${getBaseUrl()}/api/models/${id}/calendar`, {
+    headers: apiKey ? { Authorization: authHeader(apiKey) } : {},
+  });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return Array.isArray(data) ? data : Array.isArray(data?.events) ? data.events : [];
+}
+
+/**
+ * Fetch portfolio image URLs for a model from Netwalk.
+ * Returns { images: string[], polaroids: string[], updated_at?: string|null }.
+ *
+ * In mock mode pulls from local Supabase by `netwalk_model_id`.
+ *
+ * @param {string} id
+ * @param {string=} apiKey
+ */
+export async function getPortfolioFromNetwalk(id, apiKey) {
+  await delay(150);
+  if (!getBaseUrl()) {
+    const { supabase } = await import('../../lib/supabase');
+    const { data } = await supabase
+      .from('models')
+      .select('portfolio_images, polaroids, updated_at')
+      .eq('netwalk_model_id', id)
+      .maybeSingle();
+    return {
+      images: data?.portfolio_images ?? [],
+      polaroids: data?.polaroids ?? [],
+      updated_at: data?.updated_at ?? null,
+    };
+  }
+  const res = await fetch(`${getBaseUrl()}/api/models/${id}/portfolio`, {
+    headers: apiKey ? { Authorization: authHeader(apiKey) } : {},
+  });
+  if (!res.ok) return { images: [], polaroids: [], updated_at: null };
+  const data = await res.json();
+  return {
+    images: Array.isArray(data?.images) ? data.images : [],
+    polaroids: Array.isArray(data?.polaroids) ? data.polaroids : [],
+    updated_at: data?.updated_at ?? null,
+  };
+}
+
+/**
+ * Search Netwalk models by email (bulk pairing helper for the agency UI).
+ * Returns an array of { id, name, email }; [] in mock mode / on error.
+ *
+ * @param {string} email
+ * @param {string=} apiKey
+ */
+export async function searchNetwalkModelsByEmail(email, apiKey) {
+  await delay(150);
+  if (!email || !email.includes('@')) return [];
+  if (!getBaseUrl()) return [];
+  const url = `${getBaseUrl()}/api/models/search?email=${encodeURIComponent(email)}`;
+  const res = await fetch(url, {
+    headers: apiKey ? { Authorization: authHeader(apiKey) } : {},
+  });
+  if (!res.ok) return [];
+  const data = await res.json();
+  const list = Array.isArray(data) ? data : Array.isArray(data?.models) ? data.models : [];
+  return list
+    .filter((m) => m && typeof m.id === 'string')
+    .map((m) => ({ id: m.id, name: m.name ?? null, email: m.email ?? null }));
 }

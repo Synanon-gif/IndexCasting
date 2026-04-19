@@ -260,6 +260,8 @@ import ModelEditDetailsPanel, {
 import { importModelAndMerge } from '../services/modelCreationFacade';
 import { runMediaslideCronSync } from '../services/mediaslideSyncService';
 import { runNetwalkCronSync } from '../services/netwalkSyncService';
+import { searchMediaslideModelsByEmail } from '../services/mediaslideConnector';
+import { searchNetwalkModelsByEmail } from '../services/netwalkConnector';
 import { getAgencyApiKeys, saveAgencyApiConnection } from '../services/agencySettingsSupabase';
 import { checkModelCompleteness, type CompletenessContext } from '../utils/modelCompleteness';
 import { OPTION_REQUEST_CHAT_STATUS_COLORS } from '../utils/calendarColors';
@@ -287,6 +289,7 @@ import { DashboardSummaryBar } from '../components/DashboardSummaryBar';
 import { OrgMetricsPanel } from '../components/OrgMetricsPanel';
 import { OwnerBillingStatusCard } from '../components/OwnerBillingStatusCard';
 import { BillingDetailsForm } from '../components/BillingDetailsForm';
+import { InvoicesPanel } from '../components/InvoicesPanel';
 import { GlobalSearchBar } from '../components/GlobalSearchBar';
 import {
   getMyAgencyUsageLimits,
@@ -1040,6 +1043,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
           <ScreenScrollView>
             <OwnerBillingStatusCard variant="agency" />
             <BillingDetailsForm organizationId={agencyOrganizationId ?? null} />
+            <InvoicesPanel organizationId={agencyOrganizationId ?? null} />
             {agencyOrganizationId && (
               <OrgMetricsPanel
                 orgId={agencyOrganizationId}
@@ -2924,6 +2928,9 @@ const MyModelsTab: React.FC<{
   const [netwalkKey, setNetwalkKey] = useState('');
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
   const [syncLoading, setSyncLoading] = useState(false);
+  const [bulkPairLoading, setBulkPairLoading] = useState(false);
+  const [bulkPairFeedback, setBulkPairFeedback] = useState<string | null>(null);
+  const bulkPairFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Import from Link state
   const [importLinkUrl, setImportLinkUrl] = useState('');
@@ -3823,6 +3830,94 @@ const MyModelsTab: React.FC<{
       setSyncLoading(false);
       if (syncFeedbackTimerRef.current) clearTimeout(syncFeedbackTimerRef.current);
       syncFeedbackTimerRef.current = setTimeout(() => setSyncFeedback(null), 8000);
+    }
+  };
+
+  /**
+   * Auto-pair unpaired models with Mediaslide / Netwalk records via email lookup.
+   *
+   * For every model in the agency roster that
+   *   - has an email on file
+   *   - has NO `mediaslide_sync_id` AND NO `netwalk_model_id`
+   * the connectors are queried by email. If a connected provider returns
+   * exactly one match, the local model row is linked via `update_model_sync_ids`
+   * (SECURITY DEFINER, agency-scoped). Existing pairings are never overwritten.
+   *
+   * Ambiguous matches (multiple results from one provider) are skipped and
+   * surfaced in the feedback string so the agency can pair them manually.
+   */
+  const handleBulkPairByEmail = async () => {
+    if (bulkPairLoading) return;
+    if (!agencyId) return;
+    if (!mediaslideKey && !netwalkKey) {
+      setBulkPairFeedback(uiCopy.modelRoster.bulkPairNoConnection);
+      if (bulkPairFeedbackTimerRef.current) clearTimeout(bulkPairFeedbackTimerRef.current);
+      bulkPairFeedbackTimerRef.current = setTimeout(() => setBulkPairFeedback(null), 6000);
+      return;
+    }
+    setBulkPairLoading(true);
+    setBulkPairFeedback(uiCopy.modelRoster.bulkPairRunning);
+    let paired = 0;
+    let ambiguous = 0;
+    let scanned = 0;
+    try {
+      const allModels = await getModelsForAgencyFromSupabase(agencyId);
+      const candidates = (allModels as any[]).filter(
+        (m) =>
+          typeof m?.email === 'string' &&
+          m.email.includes('@') &&
+          !m.mediaslide_sync_id &&
+          !m.netwalk_model_id,
+      );
+      scanned = candidates.length;
+      if (scanned === 0) {
+        setBulkPairFeedback(uiCopy.modelRoster.bulkPairNoCandidates);
+        return;
+      }
+      for (const cand of candidates) {
+        try {
+          const email = String(cand.email).trim();
+          if (!email) continue;
+          let mediaslideId: string | null = null;
+          let netwalkId: string | null = null;
+          if (mediaslideKey) {
+            const hits = (await searchMediaslideModelsByEmail(email, mediaslideKey)) as Array<{
+              id: string;
+            }>;
+            if (Array.isArray(hits) && hits.length === 1) mediaslideId = hits[0].id;
+            else if (Array.isArray(hits) && hits.length > 1) ambiguous += 1;
+          }
+          if (netwalkKey) {
+            const hits = (await searchNetwalkModelsByEmail(email, netwalkKey)) as Array<{
+              id: string;
+            }>;
+            if (Array.isArray(hits) && hits.length === 1) netwalkId = hits[0].id;
+            else if (Array.isArray(hits) && hits.length > 1) ambiguous += 1;
+          }
+          if (!mediaslideId && !netwalkId) continue;
+          const { error } = await supabase.rpc('update_model_sync_ids', {
+            p_model_id: cand.id,
+            p_mediaslide_id: mediaslideId,
+            p_netwalk_model_id: netwalkId,
+          });
+          if (error) {
+            console.error('handleBulkPairByEmail: update_model_sync_ids failed', error);
+            continue;
+          }
+          paired += 1;
+        } catch (perCandidateErr) {
+          console.error('handleBulkPairByEmail: candidate failed', perCandidateErr);
+        }
+      }
+      await Promise.resolve(onRefresh());
+      setBulkPairFeedback(uiCopy.modelRoster.bulkPairResult(paired, scanned, ambiguous));
+    } catch (e) {
+      console.error('handleBulkPairByEmail error:', e);
+      setBulkPairFeedback(uiCopy.modelRoster.bulkPairFailed);
+    } finally {
+      setBulkPairLoading(false);
+      if (bulkPairFeedbackTimerRef.current) clearTimeout(bulkPairFeedbackTimerRef.current);
+      bulkPairFeedbackTimerRef.current = setTimeout(() => setBulkPairFeedback(null), 8000);
     }
   };
 
@@ -5730,6 +5825,48 @@ const MyModelsTab: React.FC<{
                 }}
               >
                 {syncFeedback}
+              </Text>
+            )}
+          </View>
+
+          {/* ── Bulk auto-pair by email (Mediaslide / Netwalk) ─────────── */}
+          <View style={s.apiSection}>
+            <Text style={s.sectionLabel}>{uiCopy.modelRoster.bulkPairTitle}</Text>
+            <Text
+              style={{
+                ...typography.body,
+                fontSize: 12,
+                color: colors.textSecondary,
+                marginBottom: spacing.sm,
+              }}
+            >
+              {uiCopy.modelRoster.bulkPairSubtitle}
+            </Text>
+            <TouchableOpacity
+              style={[
+                s.saveBtn,
+                { alignSelf: 'flex-start', paddingHorizontal: spacing.lg },
+                (bulkPairLoading || (!mediaslideKey && !netwalkKey)) && { opacity: 0.5 },
+              ]}
+              onPress={handleBulkPairByEmail}
+              disabled={bulkPairLoading || (!mediaslideKey && !netwalkKey)}
+            >
+              <Text style={s.saveBtnLabel}>
+                {bulkPairLoading
+                  ? uiCopy.modelRoster.bulkPairRunning
+                  : uiCopy.modelRoster.bulkPairButton}
+              </Text>
+            </TouchableOpacity>
+            {bulkPairFeedback && (
+              <Text
+                style={{
+                  ...typography.body,
+                  fontSize: 12,
+                  color: colors.accentGreen,
+                  marginTop: spacing.xs,
+                }}
+              >
+                {bulkPairFeedback}
               </Text>
             )}
           </View>

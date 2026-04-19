@@ -150,6 +150,110 @@ async function validateOrg(supabase: ReturnType<typeof createClient>, orgId: str
   return data !== null;
 }
 
+// ─── B2B invoice helper (public.invoices) ─────────────────────────────────────
+//
+// B2B invoices created by send-invoice-via-stripe carry metadata.invoice_id
+// (UUID into public.invoices). When Stripe emits invoice.* events for these,
+// we mirror the lifecycle into public.invoices.status without touching the
+// subscription paywall path.
+
+const B2B_INVOICE_STATUS_MAP: Record<string, string> = {
+  'invoice.finalized':           'sent',
+  'invoice.sent':                'sent',
+  'invoice.paid':                'paid',
+  'invoice.payment_succeeded':   'paid',
+  'invoice.payment_failed':      'overdue',
+  'invoice.voided':              'void',
+  'invoice.marked_uncollectible':'uncollectible',
+};
+
+async function tryHandleB2bInvoiceEvent(
+  supabase: ReturnType<typeof createClient>,
+  event: Stripe.Event,
+): Promise<boolean> {
+  const stripeInvoice = event.data.object as Stripe.Invoice;
+  const localInvoiceId = stripeInvoice.metadata?.invoice_id ?? null;
+
+  // Not a B2B invoice — fall through to existing subscription handler.
+  if (!localInvoiceId) return false;
+
+  const newStatus = B2B_INVOICE_STATUS_MAP[event.type];
+  if (!newStatus) {
+    // B2B invoice but we don't care about this event type.
+    console.log('[stripe-webhook] B2B invoice event ignored:', event.type, 'invoice_id:', localInvoiceId);
+    return true;
+  }
+
+  // Look up local invoice (defense: ensure it exists and Stripe ID matches if set).
+  const { data: localInvoice, error: lookupErr } = await supabase
+    .from('invoices')
+    .select('id, status, stripe_invoice_id, organization_id')
+    .eq('id', localInvoiceId)
+    .maybeSingle();
+
+  if (lookupErr || !localInvoice) {
+    console.error('[stripe-webhook] B2B invoice not found in DB:', localInvoiceId, lookupErr);
+    // Treat as handled (don't fall through to subscription path); idempotent skip.
+    return true;
+  }
+
+  // Defense: if Stripe ID is set in DB and disagrees with the event, something is wrong.
+  if (localInvoice.stripe_invoice_id && localInvoice.stripe_invoice_id !== stripeInvoice.id) {
+    console.error(
+      '[stripe-webhook] B2B invoice stripe_invoice_id mismatch:',
+      'DB has', localInvoice.stripe_invoice_id, 'event has', stripeInvoice.id,
+    );
+    return true;
+  }
+
+  // Build update payload — status transitions only forward (never re-open paid/void).
+  const TERMINAL_STATES = new Set(['paid', 'void', 'uncollectible']);
+  const update: Record<string, unknown> = {};
+
+  if (TERMINAL_STATES.has(localInvoice.status as string)) {
+    console.log('[stripe-webhook] B2B invoice already terminal, skipping status update:', localInvoice.id, localInvoice.status);
+  } else {
+    update.status = newStatus;
+  }
+
+  // Always refresh hosted/PDF URLs and Stripe ID on the way through.
+  update.stripe_invoice_id   = stripeInvoice.id;
+  update.stripe_hosted_url   = stripeInvoice.hosted_invoice_url ?? null;
+  update.stripe_pdf_url      = stripeInvoice.invoice_pdf ?? null;
+  if (typeof stripeInvoice.payment_intent === 'string') {
+    update.stripe_payment_intent_id = stripeInvoice.payment_intent;
+  }
+  if (newStatus === 'paid') update.paid_at = new Date().toISOString();
+
+  const { error: updErr } = await supabase
+    .from('invoices')
+    .update(update)
+    .eq('id', localInvoice.id);
+
+  if (updErr) {
+    console.error('[stripe-webhook] B2B invoice update failed:', updErr);
+    throw new Error(`b2b_invoice_update_failed: ${updErr.message}`);
+  }
+
+  // Audit event
+  await supabase.from('invoice_events').insert({
+    invoice_id: localInvoice.id,
+    event_type: event.type,
+    actor_role: 'stripe_webhook',
+    payload: {
+      stripe_event_id: event.id,
+      stripe_invoice_id: stripeInvoice.id,
+      status_before: localInvoice.status,
+      status_after: update.status ?? localInvoice.status,
+      amount_paid: stripeInvoice.amount_paid,
+      amount_due: stripeInvoice.amount_due,
+    },
+  });
+
+  console.log('[stripe-webhook] B2B invoice updated:', localInvoice.id, '→', update.status ?? localInvoice.status);
+  return true;
+}
+
 // ─── Main handler ──────────────────────────────────────────────────────────────
 
 Deno.serve(async (req: Request) => {
@@ -223,6 +327,40 @@ Deno.serve(async (req: Request) => {
   };
 
   try {
+    // ── B2B invoice dispatch (public.invoices) ──────────────────────────────
+    // Try to match B2B invoice events first. Returns true if event was handled
+    // as a B2B invoice (whether or not we updated anything). Returns false to
+    // fall through to the existing subscription paywall handlers.
+    if (
+      event.type === 'invoice.finalized' ||
+      event.type === 'invoice.sent' ||
+      event.type === 'invoice.paid' ||
+      event.type === 'invoice.payment_succeeded' ||
+      event.type === 'invoice.payment_failed' ||
+      event.type === 'invoice.voided' ||
+      event.type === 'invoice.marked_uncollectible'
+    ) {
+      const handled = await tryHandleB2bInvoiceEvent(supabase, event);
+      if (handled) {
+        // Mark processed and return early (do NOT fall through to subscription path).
+        const { error: markErr } = await supabase
+          .from('stripe_processed_events')
+          .insert({ event_id: event.id });
+        if (markErr && markErr.code !== '23505') {
+          console.error('[stripe-webhook] Failed to mark B2B event processed:', markErr);
+          return new Response(
+            JSON.stringify({ error: 'failed_to_mark_processed', event_id: event.id }),
+            { status: 500, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        return new Response(JSON.stringify({ received: true, b2b_invoice: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      // Not a B2B invoice → fall through to subscription handlers below.
+    }
+
     switch (event.type) {
 
       // ── checkout.session.completed ───────────────────────────────────────

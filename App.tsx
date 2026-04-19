@@ -461,18 +461,28 @@ function AppContent() {
   };
 
   // When an authenticated non-guest user lands with ?guest= in the URL
-  // (e.g. they bookmarked a shared link or an old tab reopened), silently strip
-  // the parameter so the normal workspace renders and no GuestView flash occurs.
+  // (e.g. they bookmarked a shared link, reopened an old tab, or returned to a
+  // guest package they already accepted), hand the package ID to ClientWebApp
+  // via `pendingPackageId` so the workspace auto-opens the package, then strip
+  // the URL parameter so subsequent reloads stay clean. This mirrors the
+  // post-signup recovery flow below — the entry point should not matter:
+  // a logged-in user opening a shared package URL must always land in that
+  // package, never on the generic Discover dashboard.
   useEffect(() => {
     if (!isAuthenticatedNonGuest) return;
     if (!guestLinkId) return;
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    if (!pendingPackageId) setPendingPackageId(guestLinkId);
     const u = new URL(window.location.href);
     if (u.searchParams.has('guest')) {
       u.searchParams.delete('guest');
       window.history.replaceState({}, '', u.pathname + u.search + u.hash);
     }
-  }, [isAuthenticatedNonGuest, guestLinkId]);
+    // Drop the URL-derived guestLinkId so this effect does not re-fire and
+    // re-open the package every time `pendingPackageId` is consumed by
+    // ClientWebApp (would otherwise loop: consume → null → re-open).
+    setGuestLinkId(null);
+  }, [isAuthenticatedNonGuest, guestLinkId, pendingPackageId]);
 
   // Restore pending guest link after signup: if user signed up from GuestView,
   // the link ID was persisted to localStorage. Once the new session is
@@ -487,8 +497,11 @@ function AppContent() {
     try {
       const pending = localStorage.getItem('ic_pending_guest_link');
       if (!pending) return;
-      localStorage.removeItem('ic_pending_guest_link');
+      // Set state first, then clear localStorage. If state propagation drops
+      // for any reason, the next render will re-read the same value rather
+      // than silently losing the recovery context.
       setPendingPackageId(pending);
+      localStorage.removeItem('ic_pending_guest_link');
     } catch { /* best-effort */ }
   }, [isAuthenticatedNonGuest, pendingPackageId]);
 
@@ -548,15 +561,33 @@ function AppContent() {
     try {
       const raw = localStorage.getItem('ic_pending_shared_selection');
       if (!raw) return;
-      localStorage.removeItem('ic_pending_shared_selection');
-      const parsed = JSON.parse(raw) as { name?: unknown; ids?: unknown; token?: unknown } | null;
-      if (!parsed || typeof parsed !== 'object') return;
+      // Parse and validate FIRST — only remove the localStorage key once we
+      // know the payload is usable. Removing before validation would drop the
+      // recovery context for any malformed/empty payload (e.g. partial write,
+      // schema drift), leaving the user without their shared selection after
+      // sign-up. The reverse order is safe: a valid payload is consumed once;
+      // an invalid one stays in localStorage until cleaned up explicitly.
+      let parsed: { name?: unknown; ids?: unknown; token?: unknown } | null = null;
+      try {
+        parsed = JSON.parse(raw) as { name?: unknown; ids?: unknown; token?: unknown } | null;
+      } catch {
+        // Corrupt JSON — clean up and bail.
+        localStorage.removeItem('ic_pending_shared_selection');
+        return;
+      }
+      if (!parsed || typeof parsed !== 'object') {
+        localStorage.removeItem('ic_pending_shared_selection');
+        return;
+      }
       const name = typeof parsed.name === 'string' ? parsed.name : '';
       const ids = Array.isArray(parsed.ids)
         ? parsed.ids.filter((x): x is string => typeof x === 'string')
         : [];
       const token = typeof parsed.token === 'string' ? parsed.token : null;
-      if (!name || ids.length === 0) return;
+      if (!name || ids.length === 0) {
+        localStorage.removeItem('ic_pending_shared_selection');
+        return;
+      }
       const u = new URL(window.location.href);
       u.searchParams.set('shared', '1');
       u.searchParams.set('name', name);
@@ -564,7 +595,11 @@ function AppContent() {
       if (token) u.searchParams.set('token', token);
       window.history.replaceState({}, '', u.pathname + u.search + u.hash);
       const reparsed = parseSharedSelectionParams(u.searchParams);
-      if (reparsed) setSharedParams(reparsed);
+      if (reparsed) {
+        setSharedParams(reparsed);
+        // Consumed successfully — safe to drop the persisted copy.
+        localStorage.removeItem('ic_pending_shared_selection');
+      }
     } catch { /* best-effort */ }
   }, [session, sharedParams]);
 

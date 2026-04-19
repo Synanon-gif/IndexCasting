@@ -55,6 +55,12 @@ import {
   uploadModelPhoto,
   uploadPrivateModelPhoto,
 } from '../services/modelPhotosSupabase';
+import {
+  getModelPhotoSourceContext,
+  setModelPhotoSource,
+  type ModelPhotoSourceContext,
+  type PhotoSource,
+} from '../services/modelsSupabase';
 import { colors, spacing, typography } from '../theme/theme';
 
 // ---------------------------------------------------------------------------
@@ -129,6 +135,49 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
   const portfolioInputRef = useRef<HTMLInputElement | null>(null);
   const polaroidInputRef = useRef<HTMLInputElement | null>(null);
   const privateInputRef = useRef<HTMLInputElement | null>(null);
+
+  // ---------------------------------------------------------------------------
+  // External photo source (Mediaslide / Netwalk) — UI banner shown only when
+  // the model is paired with at least one external system.
+  // ---------------------------------------------------------------------------
+  const [photoSourceCtx, setPhotoSourceCtx] = useState<ModelPhotoSourceContext | null>(null);
+  const [photoSourceSaving, setPhotoSourceSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const ctx = await getModelPhotoSourceContext(modelId);
+      if (!cancelled) setPhotoSourceCtx(ctx);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [modelId]);
+
+  const handleChangePhotoSource = useCallback(
+    async (next: PhotoSource) => {
+      if (!photoSourceCtx || photoSourceCtx.photo_source === next || photoSourceSaving) return;
+      setPhotoSourceSaving(true);
+      const previous = photoSourceCtx;
+      setPhotoSourceCtx({ ...photoSourceCtx, photo_source: next });
+      const ok = await setModelPhotoSource(modelId, next);
+      if (!ok) {
+        setPhotoSourceCtx(previous);
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+          window.alert(copy.photoSourceSaveFailed);
+        } else {
+          Alert.alert(uiCopy.common.error, copy.photoSourceSaveFailed);
+        }
+      } else {
+        // Reload remote ctx so external warnings reflect new source.
+        const refreshed = await getModelPhotoSourceContext(modelId);
+        if (refreshed) setPhotoSourceCtx(refreshed);
+        onReconcileCompleteRef.current?.();
+      }
+      setPhotoSourceSaving(false);
+    },
+    [modelId, photoSourceCtx, photoSourceSaving],
+  );
 
   // ---------------------------------------------------------------------------
   // Stable callback refs — prevent re-creating loadPhotos when parent re-renders
@@ -857,8 +906,132 @@ export const ModelMediaSettingsPanel: React.FC<Props> = ({
     </View>
   );
 
+  // ---------------------------------------------------------------------------
+  // Photo-source banner — only renders when the model is paired with at least
+  // one external system (Mediaslide / Netwalk). Lets the agency decide whether
+  // discovery / cover / packages render the URLs synced from the external CRM
+  // or the agency\u2019s own uploads in `model_photos`.
+  // ---------------------------------------------------------------------------
+  const renderPhotoSourceBanner = () => {
+    if (!photoSourceCtx || !photoSourceCtx.hasExternalLink) return null;
+    const current = photoSourceCtx.photo_source;
+    const allOptions: Array<{
+      key: PhotoSource;
+      label: string;
+      hint: string;
+      available: boolean;
+    }> = [
+      { key: 'own', label: copy.photoSourceOwn, hint: copy.photoSourceOwnHint, available: true },
+      {
+        key: 'mediaslide',
+        label: copy.photoSourceMediaslide,
+        hint: copy.photoSourceMediaslideHint,
+        available: Boolean(photoSourceCtx.mediaslide_sync_id),
+      },
+      {
+        key: 'netwalk',
+        label: copy.photoSourceNetwalk,
+        hint: copy.photoSourceNetwalkHint,
+        available: Boolean(photoSourceCtx.netwalk_model_id),
+      },
+    ];
+    const options = allOptions.filter((o) => o.available);
+
+    // When the chosen external source is selected but no portfolio_images URLs
+    // exist yet, surface a warning so the agency knows discovery will be empty.
+    const externalSelectedButEmpty =
+      (current === 'mediaslide' || current === 'netwalk') && portfolio.length === 0;
+
+    return (
+      <View
+        style={{
+          padding: spacing.md,
+          borderRadius: 8,
+          borderWidth: 1,
+          borderColor: colors.border,
+          backgroundColor: colors.surface,
+          marginBottom: spacing.md,
+        }}
+      >
+        <Text style={[typography.label, { color: colors.textPrimary, marginBottom: 4 }]}>
+          {copy.photoSourceBannerTitle}
+        </Text>
+        <Text style={[typography.body, { color: colors.textSecondary, marginBottom: spacing.sm }]}>
+          {copy.photoSourceBannerSubtitle}
+        </Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs }}>
+          {options.map((opt) => {
+            const active = current === opt.key;
+            return (
+              <TouchableOpacity
+                key={opt.key}
+                onPress={() => void handleChangePhotoSource(opt.key)}
+                disabled={photoSourceSaving || active}
+                style={{
+                  paddingHorizontal: spacing.md,
+                  paddingVertical: 6,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: active ? colors.textPrimary : colors.border,
+                  backgroundColor: active ? colors.textPrimary : 'transparent',
+                  opacity: photoSourceSaving && !active ? 0.6 : 1,
+                }}
+              >
+                <Text
+                  style={{
+                    ...typography.label,
+                    fontSize: 11,
+                    color: active ? colors.surface : colors.textSecondary,
+                  }}
+                >
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        <Text
+          style={[
+            typography.body,
+            { fontSize: 11, color: colors.textSecondary, marginTop: spacing.xs },
+          ]}
+        >
+          {options.find((o) => o.key === current)?.hint ?? ''}
+        </Text>
+        {photoSourceSaving && (
+          <Text
+            style={[typography.body, { fontSize: 11, color: colors.textSecondary, marginTop: 4 }]}
+          >
+            {copy.photoSourceUpdating}
+          </Text>
+        )}
+        {externalSelectedButEmpty && (
+          <Text
+            style={[
+              typography.body,
+              { fontSize: 11, color: colors.buttonSkipRed, marginTop: spacing.xs },
+            ]}
+          >
+            {copy.photoSourceMissingExternal}
+          </Text>
+        )}
+        <Text
+          style={[
+            typography.body,
+            { fontSize: 11, color: colors.textSecondary, marginTop: spacing.xs },
+          ]}
+        >
+          {copy.photoSourceManualStillAvailable}
+        </Text>
+      </View>
+    );
+  };
+
   return (
     <ScrollView showsVerticalScrollIndicator={false}>
+      {/* ── External photo source (Mediaslide / Netwalk) banner ─── */}
+      {renderPhotoSourceBanner()}
+
       {/* ── View mode toggle: Manage / Gallery ──────────────────── */}
       <View style={{ flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.md }}>
         {(['manage', 'gallery'] as const).map((mode) => (

@@ -16,7 +16,12 @@
 import { supabase } from '../../lib/supabase';
 import type { SupabaseModel } from './modelsSupabase';
 import { agencyUpdateModelFullRpc, getModelByIdFromSupabase } from './modelsSupabase';
-import { getModelFromMediaslide, syncModelData } from './mediaslideConnector';
+import {
+  getCalendarFromMediaslide,
+  getModelFromMediaslide,
+  getPortfolioFromMediaslide,
+  syncModelData,
+} from './mediaslideConnector';
 import { fetchAllSupabasePages } from './supabaseFetchAll';
 import { upsertTerritoriesForModelCountryAgencyPairs } from './territoriesSupabase';
 
@@ -84,6 +89,24 @@ type MediaslideModelPayload = {
     isVisibleCommercial?: boolean;
     isVisibleFashion?: boolean;
   };
+  /**
+   * Optional portfolio mirror — only consumed when models.photo_source = 'mediaslide'.
+   * URLs are stored as-is (no local storage mirror); UI renders them directly.
+   */
+  portfolio?: {
+    images?: string[] | null;
+    polaroids?: string[] | null;
+  };
+};
+
+export type ExternalCalendarBlockoutRemote = {
+  external_event_id: string;
+  date: string;
+  start_time?: string | null;
+  end_time?: string | null;
+  status: 'tentative' | 'booked' | 'unavailable';
+  title?: string | null;
+  updated_at?: string | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -261,6 +284,34 @@ export async function syncSingleModelFromMediaslide(args: {
     }
   }
 
+  // Photo-source branching: only mirror remote portfolio URLs when the agency
+  // explicitly opted into 'mediaslide' as the source-of-truth for this model.
+  // Default 'own' → never overwrite portfolio_images / polaroids from remote
+  // (model_photos pipeline drives the mirror columns; see system-invariants §27.1).
+  let photoSource: 'own' | 'mediaslide' | 'netwalk' = 'own';
+  try {
+    const { data: ps } = await supabase
+      .from('models')
+      .select('photo_source')
+      .eq('id', local.id)
+      .maybeSingle();
+    if (ps && (ps as { photo_source?: string }).photo_source) {
+      const v = (ps as { photo_source: string }).photo_source;
+      if (v === 'own' || v === 'mediaslide' || v === 'netwalk') photoSource = v;
+    }
+  } catch {
+    /* default to 'own' */
+  }
+
+  if (photoSource === 'mediaslide' && remote.portfolio) {
+    if (Array.isArray(remote.portfolio.images)) {
+      (updates as any).portfolio_images = remote.portfolio.images;
+    }
+    if (Array.isArray(remote.portfolio.polaroids)) {
+      (updates as any).polaroids = remote.portfolio.polaroids;
+    }
+  }
+
   if (Object.keys(updates).length === 0) {
     return { ok: true };
   }
@@ -288,6 +339,8 @@ export async function syncSingleModelFromMediaslide(args: {
     p_shoe_size: u.shoe_size ?? null,
     p_is_visible_commercial: u.is_visible_commercial ?? null,
     p_is_visible_fashion: u.is_visible_fashion ?? null,
+    p_portfolio_images: u.portfolio_images ?? null,
+    p_polaroids: u.polaroids ?? null,
   });
 
   if (error) {
@@ -370,6 +423,180 @@ export async function syncSingleModelFromMediaslide(args: {
 }
 
 // ---------------------------------------------------------------------------
+// Inbound calendar sync (Mediaslide → calendar_entries)
+// ---------------------------------------------------------------------------
+
+/**
+ * Pull calendar block-outs for a model from Mediaslide and reconcile them with
+ * `calendar_entries`.
+ *
+ * Conflict resolution invariants (system-invariants §G — Calendar as Projection):
+ *   1. Rows with option_request_id IS NOT NULL are canonical and ALWAYS win —
+ *      this function never inserts/updates an external row that overlaps a
+ *      canonical lifecycle row on the same (model_id, date).
+ *   2. External rows are visual-only block-outs (status = 'tentative'/'booked'/
+ *      'unavailable'). They MUST stay outside the Smart-Attention pipeline
+ *      (no option_request_id, no model_approval, no negotiation fields).
+ *   3. Idempotency: matched on (external_source, external_event_id). Re-running
+ *      the sync only updates rows whose remote `updated_at` is strictly newer.
+ *   4. Removed-on-remote: external rows whose external_event_id is no longer
+ *      in the remote payload are marked status='cancelled' (never deleted),
+ *      so the audit trail / shared-note history survives.
+ */
+export async function syncCalendarFromMediaslide(args: {
+  localModelId: string;
+  mediaslideId: string;
+  apiKey?: string;
+}): Promise<{ ok: boolean; upserted: number; cancelled: number }> {
+  const { localModelId, mediaslideId, apiKey } = args;
+
+  let remote: ExternalCalendarBlockoutRemote[] = [];
+  try {
+    const raw = await getCalendarFromMediaslide(mediaslideId, apiKey);
+    remote = (Array.isArray(raw) ? raw : []) as ExternalCalendarBlockoutRemote[];
+  } catch (e: any) {
+    await logMediaslideError({
+      operation: 'getCalendarFromMediaslide',
+      modelId: localModelId,
+      mediaslideId,
+      message: e?.message || 'Failed to fetch calendar from Mediaslide',
+      details: e,
+    });
+    return { ok: false, upserted: 0, cancelled: 0 };
+  }
+
+  const remoteIds = new Set(
+    remote.map((e) => e.external_event_id).filter((id): id is string => Boolean(id)),
+  );
+
+  // Existing external rows for this model (mediaslide-source only).
+  const { data: existingRows, error: existingErr } = await supabase
+    .from('calendar_entries')
+    .select('id, external_event_id, external_updated_at, status, date')
+    .eq('model_id', localModelId)
+    .eq('external_source', 'mediaslide');
+
+  if (existingErr) {
+    await logMediaslideError({
+      operation: 'syncCalendarFromMediaslide:loadExisting',
+      modelId: localModelId,
+      mediaslideId,
+      message: existingErr.message,
+      details: existingErr,
+    });
+    return { ok: false, upserted: 0, cancelled: 0 };
+  }
+
+  const existingByExtId = new Map<
+    string,
+    { id: string; external_updated_at: string | null; status: string | null; date: string | null }
+  >();
+  for (const r of existingRows ?? []) {
+    if (r.external_event_id) {
+      existingByExtId.set(r.external_event_id, {
+        id: r.id,
+        external_updated_at: r.external_updated_at,
+        status: r.status,
+        date: r.date,
+      });
+    }
+  }
+
+  // Canonical rows (option_request_id IS NOT NULL) for the same model — used
+  // to skip remote rows that would overlap a canonical lifecycle entry.
+  const { data: canonicalRows } = await supabase
+    .from('calendar_entries')
+    .select('date')
+    .eq('model_id', localModelId)
+    .not('option_request_id', 'is', null)
+    .neq('status', 'cancelled');
+
+  const canonicalDates = new Set((canonicalRows ?? []).map((r: any) => r.date as string));
+
+  let upserted = 0;
+  let cancelled = 0;
+
+  for (const ev of remote) {
+    if (!ev.external_event_id || !ev.date) continue;
+    if (canonicalDates.has(ev.date)) continue; // canonical wins
+
+    const existing = existingByExtId.get(ev.external_event_id);
+    const remoteTs = toTimestamp(ev.updated_at ?? null);
+    const existingTs = toTimestamp(existing?.external_updated_at ?? null);
+
+    const remoteIsNewer =
+      !existing || (remoteTs !== null && (existingTs === null || remoteTs > existingTs));
+
+    if (!remoteIsNewer) continue;
+
+    const payload = {
+      model_id: localModelId,
+      date: ev.date,
+      start_time: ev.start_time ?? null,
+      end_time: ev.end_time ?? null,
+      status: ev.status ?? 'unavailable',
+      title: ev.title ?? 'Mediaslide block-out',
+      external_source: 'mediaslide' as const,
+      external_event_id: ev.external_event_id,
+      external_updated_at: ev.updated_at ?? new Date().toISOString(),
+    };
+
+    if (existing) {
+      const { error: updErr } = await supabase
+        .from('calendar_entries')
+        .update(payload)
+        .eq('id', existing.id);
+      if (updErr) {
+        await logMediaslideError({
+          operation: 'syncCalendarFromMediaslide:update',
+          modelId: localModelId,
+          mediaslideId,
+          message: updErr.message,
+          details: { event: ev, error: updErr },
+        });
+        continue;
+      }
+    } else {
+      const { error: insErr } = await supabase.from('calendar_entries').insert(payload);
+      if (insErr) {
+        await logMediaslideError({
+          operation: 'syncCalendarFromMediaslide:insert',
+          modelId: localModelId,
+          mediaslideId,
+          message: insErr.message,
+          details: { event: ev, error: insErr },
+        });
+        continue;
+      }
+    }
+    upserted += 1;
+  }
+
+  // Remote-removed: cancel local external rows that are no longer in the payload.
+  for (const [extId, row] of existingByExtId) {
+    if (remoteIds.has(extId)) continue;
+    if (row.status === 'cancelled') continue;
+    const { error: cancelErr } = await supabase
+      .from('calendar_entries')
+      .update({ status: 'cancelled', external_updated_at: new Date().toISOString() })
+      .eq('id', row.id);
+    if (cancelErr) {
+      await logMediaslideError({
+        operation: 'syncCalendarFromMediaslide:cancel',
+        modelId: localModelId,
+        mediaslideId,
+        message: cancelErr.message,
+        details: { rowId: row.id, error: cancelErr },
+      });
+      continue;
+    }
+    cancelled += 1;
+  }
+
+  return { ok: true, upserted, cancelled };
+}
+
+// ---------------------------------------------------------------------------
 // Webhook-Entry-Point
 // ---------------------------------------------------------------------------
 
@@ -382,6 +609,8 @@ export async function handleMediaslideWebhook(payload: {
   localModelId: string;
   mediaslideId: string;
   apiKey?: string;
+  /** When true, also pull calendar block-outs after the profile sync. */
+  syncCalendar?: boolean;
 }): Promise<{ ok: boolean }> {
   const result = await syncSingleModelFromMediaslide(payload);
   if (!result.ok) {
@@ -391,6 +620,23 @@ export async function handleMediaslideWebhook(payload: {
       mediaslideId: payload.mediaslideId,
       message: 'Webhook sync failed',
     });
+  }
+  if (payload.syncCalendar) {
+    try {
+      await syncCalendarFromMediaslide({
+        localModelId: payload.localModelId,
+        mediaslideId: payload.mediaslideId,
+        apiKey: payload.apiKey,
+      });
+    } catch (e) {
+      await logMediaslideError({
+        operation: 'handleMediaslideWebhook:calendar',
+        modelId: payload.localModelId,
+        mediaslideId: payload.mediaslideId,
+        message: 'Calendar sync failed in webhook',
+        details: e,
+      });
+    }
   }
   return { ok: result.ok };
 }
@@ -447,6 +693,13 @@ export async function runMediaslideCronSync(apiKey?: string): Promise<void> {
     try {
       await syncModelData(row.mediaslide_sync_id, apiKey);
       await syncSingleModelFromMediaslide({
+        localModelId: row.id,
+        mediaslideId: row.mediaslide_sync_id,
+        apiKey,
+      });
+      // Pull calendar block-outs (idempotent; only updates rows whose remote
+      // updated_at is strictly newer; never touches canonical option_request rows).
+      await syncCalendarFromMediaslide({
         localModelId: row.id,
         mediaslideId: row.mediaslide_sync_id,
         apiKey,

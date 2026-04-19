@@ -42,6 +42,10 @@ import { getAgencyById } from '../services/agenciesSupabase';
 import { resolveAgencyForModelAndCountry } from '../services/territoriesSupabase';
 import { createBookingMessageInClientAgencyChat } from '../services/bookingChatIntegrationSupabase';
 import { updateCalendarEntryToJob, checkCalendarConflict } from '../services/calendarSupabase';
+import {
+  syncOptionRequestConfirmationToExternal,
+  syncOptionRequestCancellationToExternal,
+} from '../services/externalCalendarSync';
 import { notifyClientAgencyCounterOffer } from '../services/pushNotifications';
 import { showAppAlert } from '../utils/crossPlatformAlert';
 import { uiCopy } from '../constants/uiCopy';
@@ -1119,6 +1123,9 @@ export async function clientConfirmJobStore(threadId: string): Promise<boolean> 
         console.error('[clientConfirmJobStore] calendar upgrade retry failed — entry may be stale');
       }
     }
+    // External calendar mirror (Mediaslide / Netwalk) — fire-and-forget.
+    // Outbox-backed; failures retry via cron worker without blocking the UX.
+    void syncOptionRequestConfirmationToExternal(req.id);
     const inserted = await addOptionSystemMessage(req.id, 'job_confirmed_by_client');
     if (inserted) {
       messagesCache.push({
@@ -1259,6 +1266,9 @@ export async function agencyRejectNegotiationStore(threadId: string): Promise<bo
   if (!req) return false;
   if (!beginCriticalOptionAction(threadId)) return false;
   try {
+    // Push 'cancelled' to external calendars BEFORE the row is deleted, so the
+    // helper can still snapshot date/time. Fire-and-forget.
+    void syncOptionRequestCancellationToExternal(req.id);
     const ok = await deleteOptionRequestFull(req.id, {
       auditActor: 'agency',
       auditOrganizationId: req.agencyOrganizationId,
@@ -1311,6 +1321,8 @@ export async function agencyConfirmJobAgencyOnlyStore(threadId: string): Promise
         );
       }
     }
+    // External calendar mirror (Mediaslide / Netwalk) — fire-and-forget.
+    void syncOptionRequestConfirmationToExternal(req.id);
 
     // System message emitted from the store (parity with clientConfirmJobStore).
     // The RPC handles only the UPDATE; message creation is the store's responsibility.

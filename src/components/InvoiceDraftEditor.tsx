@@ -1,0 +1,820 @@
+/**
+ * InvoiceDraftEditor — Owner-only B2B invoice draft editor.
+ *
+ * Responsibilities:
+ * - Create or edit a draft invoice (top-level fields + line items).
+ * - Live recompute totals (subtotal/tax/total) per line edit.
+ * - Send via Stripe (calls send-invoice-via-stripe Edge Function).
+ *
+ * Invariants:
+ * - Status must remain 'draft' to allow edits (RLS enforced server-side).
+ * - Owner-only writes; non-owners get a read-only view.
+ * - I-PAY-1: DB invoices row is canonical truth; Stripe IDs only persisted on send.
+ * - I-PAY-10: model billing firewall — never mounted in model workspace.
+ */
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { colors, spacing, typography } from '../theme/theme';
+import { uiCopy } from '../constants/uiCopy';
+import { isOrganizationOwner } from '../services/orgRoleTypes';
+import { useAuth } from '../context/AuthContext';
+import {
+  addInvoiceLineItem,
+  createInvoiceDraft,
+  deleteInvoiceLineItem,
+  getInvoiceWithLines,
+  recomputeInvoiceTotals,
+  sendInvoiceViaStripe,
+  updateInvoiceDraft,
+  updateInvoiceLineItem,
+} from '../services/invoicesSupabase';
+import {
+  listClientOrganizationsForAgencyDirectory,
+  type ClientOrganizationDirectoryRow,
+} from '../services/clientOrganizationsDirectorySupabase';
+import { getOrganizationBillingDefaults } from '../services/billingProfilesSupabase';
+import { showAppAlert, showConfirmAlert } from '../utils/crossPlatformAlert';
+import type { InvoiceLineItemRow, InvoiceType, InvoiceWithLines } from '../types/billingTypes';
+
+type Props = {
+  organizationId: string;
+  /** null = create new draft; string = edit existing draft */
+  invoiceId: string | null;
+  onClose: () => void;
+};
+
+function numOrNull(s: string): number | null {
+  const t = s.trim();
+  if (!t) return null;
+  const n = Number(t.replace(',', '.'));
+  return Number.isFinite(n) ? n : null;
+}
+
+function centsFromInput(s: string): number {
+  const n = Number(s.trim().replace(',', '.'));
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.round(n * 100);
+}
+
+function inputFromCents(cents: number): string {
+  if (!Number.isFinite(cents)) return '0';
+  return (cents / 100).toFixed(2);
+}
+
+function formatCents(cents: number, currency: string): string {
+  const amount = (cents ?? 0) / 100;
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  } catch {
+    return `${amount.toFixed(2)} ${currency}`;
+  }
+}
+
+export const InvoiceDraftEditor: React.FC<Props> = ({ organizationId, invoiceId, onClose }) => {
+  const { profile } = useAuth();
+  const inv = uiCopy.invoices;
+  const isOwner = isOrganizationOwner(profile?.org_member_role);
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [data, setData] = useState<InvoiceWithLines | null>(null);
+
+  // Top-level editable fields (mirrored to DB on blur/save)
+  const [recipientId, setRecipientId] = useState<string | null>(null);
+  const [recipientName, setRecipientName] = useState<string>('');
+  const [invoiceType, setInvoiceType] = useState<InvoiceType>('agency_to_client');
+  const [currency, setCurrency] = useState('EUR');
+  const [notes, setNotes] = useState('');
+  const [dueDate, setDueDate] = useState('');
+  const [taxRate, setTaxRate] = useState('');
+  const [taxMode, setTaxMode] = useState<'manual' | 'stripe_tax'>('manual');
+  const [reverseCharge, setReverseCharge] = useState(false);
+
+  // Recipient picker
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerQuery, setPickerQuery] = useState('');
+  const [pickerRows, setPickerRows] = useState<ClientOrganizationDirectoryRow[]>([]);
+  const [pickerLoading, setPickerLoading] = useState(false);
+
+  const isDraft = data?.status === 'draft' || invoiceId === null;
+  const canEdit = isOwner && isDraft;
+
+  const load = useCallback(
+    async (id: string) => {
+      setLoading(true);
+      try {
+        const row = await getInvoiceWithLines(id);
+        if (!row) {
+          showAppAlert(uiCopy.common.error, inv.loadFailed);
+          onClose();
+          return;
+        }
+        setData(row);
+        setRecipientId(row.recipient_organization_id);
+        setRecipientName('');
+        setInvoiceType(row.invoice_type);
+        setCurrency(row.currency || 'EUR');
+        setNotes(row.notes ?? '');
+        setDueDate(row.due_date ?? '');
+        setTaxRate(row.tax_rate_percent != null ? String(row.tax_rate_percent) : '');
+        setTaxMode(row.tax_mode === 'stripe_tax' ? 'stripe_tax' : 'manual');
+        setReverseCharge(row.reverse_charge_applied === true);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [inv.loadFailed, onClose],
+  );
+
+  useEffect(() => {
+    if (invoiceId) {
+      void load(invoiceId);
+      return;
+    }
+    // Create flow: stub data shell (no DB row yet — created on first save).
+    // Pre-populate currency, tax rate, and reverse-charge eligibility from issuer billing defaults.
+    let cancelled = false;
+    const initCreate = async () => {
+      let initialCurrency = 'EUR';
+      let initialTaxRate = '';
+      let initialReverseCharge = false;
+      try {
+        const defaults = await getOrganizationBillingDefaults(organizationId);
+        if (defaults) {
+          if (defaults.default_currency) initialCurrency = defaults.default_currency;
+          if (defaults.default_tax_rate != null) initialTaxRate = String(defaults.default_tax_rate);
+          if (defaults.reverse_charge_eligible === true) initialReverseCharge = true;
+        }
+      } catch (e) {
+        console.warn('[InvoiceDraftEditor] billing defaults load failed (non-fatal):', e);
+      }
+      if (cancelled) return;
+      setCurrency(initialCurrency);
+      setTaxRate(initialTaxRate);
+      setReverseCharge(initialReverseCharge);
+      setData({
+        id: '',
+        organization_id: organizationId,
+        recipient_organization_id: null,
+        invoice_type: 'agency_to_client',
+        status: 'draft',
+        invoice_number: null,
+        source_option_request_id: null,
+        period_start: null,
+        period_end: null,
+        payment_provider: 'stripe',
+        payment_provider_metadata: {},
+        stripe_invoice_id: null,
+        stripe_hosted_url: null,
+        stripe_pdf_url: null,
+        stripe_payment_intent_id: null,
+        billing_profile_snapshot: null,
+        recipient_billing_snapshot: null,
+        currency: initialCurrency,
+        subtotal_amount_cents: 0,
+        tax_amount_cents: 0,
+        total_amount_cents: 0,
+        tax_rate_percent: initialTaxRate ? Number(initialTaxRate) : null,
+        tax_mode: 'manual',
+        reverse_charge_applied: initialReverseCharge,
+        notes: null,
+        due_date: null,
+        sent_at: null,
+        paid_at: null,
+        created_by: null,
+        sent_by: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        line_items: [],
+      });
+      setLoading(false);
+    };
+    void initCreate();
+    return () => {
+      cancelled = true;
+    };
+  }, [invoiceId, organizationId, load]);
+
+  // Recipient picker search
+  useEffect(() => {
+    if (!pickerOpen) return;
+    let cancelled = false;
+    const run = async () => {
+      setPickerLoading(true);
+      try {
+        const rows = await listClientOrganizationsForAgencyDirectory(organizationId, pickerQuery);
+        if (!cancelled) setPickerRows(rows);
+      } finally {
+        if (!cancelled) setPickerLoading(false);
+      }
+    };
+    const t = setTimeout(() => void run(), 200);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [pickerOpen, pickerQuery, organizationId]);
+
+  const ensurePersisted = useCallback(async (): Promise<string | null> => {
+    if (data?.id) return data.id;
+    // Create draft row first.
+    const newId = await createInvoiceDraft(organizationId, {
+      invoice_type: invoiceType,
+      recipient_organization_id: recipientId,
+      currency: currency.trim() || 'EUR',
+      notes: notes.trim() || null,
+      due_date: dueDate.trim() || null,
+      tax_rate_percent: numOrNull(taxRate),
+      tax_mode: taxMode,
+      reverse_charge_applied: reverseCharge,
+    });
+    if (!newId) {
+      showAppAlert(uiCopy.common.error, inv.saveFailed);
+      return null;
+    }
+    await load(newId);
+    return newId;
+  }, [
+    data?.id,
+    organizationId,
+    invoiceType,
+    recipientId,
+    currency,
+    notes,
+    dueDate,
+    taxRate,
+    taxMode,
+    reverseCharge,
+    load,
+    inv.saveFailed,
+  ]);
+
+  const onSaveTopLevel = useCallback(async () => {
+    if (!canEdit) return;
+    setSaving(true);
+    try {
+      const id = await ensurePersisted();
+      if (!id) return;
+      const ok = await updateInvoiceDraft(id, {
+        notes: notes.trim() || null,
+        due_date: dueDate.trim() || null,
+        currency: currency.trim() || 'EUR',
+        tax_rate_percent: numOrNull(taxRate),
+        tax_mode: taxMode,
+        reverse_charge_applied: reverseCharge,
+        recipient_organization_id: recipientId,
+      });
+      if (ok) {
+        await recomputeInvoiceTotals(id);
+        await load(id);
+        showAppAlert(uiCopy.common.success, inv.saveSuccess);
+      } else {
+        showAppAlert(uiCopy.common.error, inv.saveFailed);
+      }
+    } finally {
+      setSaving(false);
+    }
+  }, [
+    canEdit,
+    ensurePersisted,
+    notes,
+    dueDate,
+    currency,
+    taxRate,
+    taxMode,
+    reverseCharge,
+    recipientId,
+    load,
+    inv,
+  ]);
+
+  const onAddLine = useCallback(async () => {
+    if (!canEdit) return;
+    const id = await ensurePersisted();
+    if (!id) return;
+    const ok = await addInvoiceLineItem(id, {
+      description: 'New line item',
+      quantity: 1,
+      unit_amount_cents: 0,
+      currency: currency.trim() || 'EUR',
+      position: data?.line_items.length ?? 0,
+    });
+    if (ok) {
+      await load(id);
+    } else {
+      showAppAlert(uiCopy.common.error, inv.saveFailed);
+    }
+  }, [canEdit, ensurePersisted, currency, data?.line_items.length, load, inv.saveFailed]);
+
+  const onUpdateLine = useCallback(
+    async (
+      line: InvoiceLineItemRow,
+      patch: Partial<{
+        description: string;
+        quantity: number;
+        unit_amount_cents: number;
+      }>,
+    ) => {
+      if (!canEdit || !data?.id) return;
+      const ok = await updateInvoiceLineItem(line.id, data.id, patch);
+      if (ok) {
+        await load(data.id);
+      } else {
+        showAppAlert(uiCopy.common.error, inv.saveFailed);
+      }
+    },
+    [canEdit, data?.id, load, inv.saveFailed],
+  );
+
+  const onRemoveLine = useCallback(
+    (line: InvoiceLineItemRow) => {
+      if (!canEdit || !data?.id) return;
+      const id = data.id;
+      const run = async () => {
+        const ok = await deleteInvoiceLineItem(line.id, id);
+        if (ok) {
+          await load(id);
+        } else {
+          showAppAlert(uiCopy.common.error, inv.saveFailed);
+        }
+      };
+      showConfirmAlert(
+        inv.removeLine,
+        inv.deleteConfirmMessage,
+        () => void run(),
+        uiCopy.common.delete,
+      );
+    },
+    [canEdit, data?.id, load, inv],
+  );
+
+  const onSend = useCallback(async () => {
+    if (!canEdit || !data?.id) return;
+    if (!recipientId) {
+      showAppAlert(uiCopy.common.error, inv.notRecipientYet);
+      return;
+    }
+    if (!data.line_items.length) {
+      showAppAlert(uiCopy.common.error, inv.noLineItemsYet);
+      return;
+    }
+    showConfirmAlert(
+      inv.sendConfirmTitle,
+      inv.sendConfirmMessage,
+      async () => {
+        setSending(true);
+        try {
+          // Save latest top-level edits first.
+          await updateInvoiceDraft(data.id, {
+            notes: notes.trim() || null,
+            due_date: dueDate.trim() || null,
+            currency: currency.trim() || 'EUR',
+            tax_rate_percent: numOrNull(taxRate),
+            tax_mode: taxMode,
+            reverse_charge_applied: reverseCharge,
+            recipient_organization_id: recipientId,
+          });
+          await recomputeInvoiceTotals(data.id);
+          const result = await sendInvoiceViaStripe(data.id);
+          if (result.ok) {
+            showAppAlert(uiCopy.common.success, inv.sendSuccess);
+            onClose();
+          } else {
+            showAppAlert(uiCopy.common.error, result.error ?? inv.sendFailed);
+          }
+        } finally {
+          setSending(false);
+        }
+      },
+      inv.sendViaStripe,
+    );
+  }, [
+    canEdit,
+    data?.id,
+    data?.line_items.length,
+    recipientId,
+    notes,
+    dueDate,
+    currency,
+    taxRate,
+    taxMode,
+    reverseCharge,
+    inv,
+    onClose,
+  ]);
+
+  const totalDisplay = useMemo(() => {
+    const c = currency.trim() || 'EUR';
+    return {
+      subtotal: formatCents(data?.subtotal_amount_cents ?? 0, c),
+      tax: formatCents(data?.tax_amount_cents ?? 0, c),
+      total: formatCents(data?.total_amount_cents ?? 0, c),
+    };
+  }, [data, currency]);
+
+  if (loading || !data) {
+    return (
+      <View style={styles.card}>
+        <ActivityIndicator size="small" color={colors.textSecondary} />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.card}>
+      <View style={styles.headerRow}>
+        <TouchableOpacity onPress={onClose}>
+          <Text style={styles.backLink}>← {inv.backToList}</Text>
+        </TouchableOpacity>
+        <Text style={styles.invoiceNoTitle}>{data.invoice_number ?? inv.invoiceNumberPending}</Text>
+      </View>
+
+      {!canEdit && <Text style={styles.warning}>{inv.cantEditNonDraft}</Text>}
+
+      {/* Recipient picker */}
+      <Text style={styles.label}>{inv.fieldRecipient}</Text>
+      <Text style={styles.hint}>{inv.fieldRecipientHint}</Text>
+      {pickerOpen ? (
+        <View style={styles.pickerBox}>
+          <TextInput
+            value={pickerQuery}
+            onChangeText={setPickerQuery}
+            placeholder={inv.fieldRecipientPlaceholder}
+            placeholderTextColor={colors.textSecondary}
+            style={styles.input}
+            autoFocus
+          />
+          {pickerLoading ? (
+            <ActivityIndicator size="small" color={colors.textSecondary} />
+          ) : pickerRows.length === 0 ? (
+            <Text style={styles.hint}>—</Text>
+          ) : (
+            <View style={styles.pickerList}>
+              {pickerRows.slice(0, 20).map((r) => (
+                <TouchableOpacity
+                  key={r.id}
+                  style={styles.pickerRow}
+                  onPress={() => {
+                    setRecipientId(r.id);
+                    setRecipientName(r.name);
+                    setPickerOpen(false);
+                  }}
+                >
+                  <Text style={styles.pickerName}>{r.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+          <TouchableOpacity onPress={() => setPickerOpen(false)}>
+            <Text style={styles.linkAction}>{uiCopy.common.cancel}</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View style={styles.recipientRow}>
+          <Text style={styles.recipientText}>{recipientName || recipientId || '—'}</Text>
+          {canEdit && (
+            <TouchableOpacity onPress={() => setPickerOpen(true)}>
+              <Text style={styles.linkAction}>{inv.fieldRecipientPickAgain}</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
+      <Text style={styles.label}>{inv.fieldCurrency}</Text>
+      <TextInput
+        value={currency}
+        onChangeText={setCurrency}
+        autoCapitalize="characters"
+        editable={canEdit}
+        style={styles.input}
+      />
+
+      <Text style={styles.label}>{inv.fieldDueDate}</Text>
+      <TextInput
+        value={dueDate}
+        onChangeText={setDueDate}
+        placeholder={inv.fieldDueDatePlaceholder}
+        placeholderTextColor={colors.textSecondary}
+        editable={canEdit}
+        style={styles.input}
+      />
+
+      <Text style={styles.label}>{inv.fieldTaxRate}</Text>
+      <TextInput
+        value={taxRate}
+        onChangeText={setTaxRate}
+        keyboardType="decimal-pad"
+        editable={canEdit}
+        style={styles.input}
+      />
+
+      <View style={styles.switchRow}>
+        <View style={styles.switchLabelWrap}>
+          <Text style={styles.label}>{inv.fieldReverseCharge}</Text>
+          <Text style={styles.hint}>{inv.fieldReverseChargeHint}</Text>
+        </View>
+        <Switch value={reverseCharge} onValueChange={setReverseCharge} disabled={!canEdit} />
+      </View>
+
+      <Text style={styles.label}>{inv.fieldNotes}</Text>
+      <TextInput
+        value={notes}
+        onChangeText={setNotes}
+        placeholder={inv.fieldNotesPlaceholder}
+        placeholderTextColor={colors.textSecondary}
+        editable={canEdit}
+        style={[styles.input, styles.multiline]}
+        multiline
+      />
+
+      {/* Line items */}
+      <Text style={[styles.section, styles.gapTop]}>{inv.sectionLineItems}</Text>
+      {data.line_items.length === 0 ? (
+        <Text style={styles.hint}>—</Text>
+      ) : (
+        data.line_items.map((line) => (
+          <View key={line.id} style={styles.lineCard}>
+            <Text style={styles.label}>{inv.lineDescription}</Text>
+            <TextInput
+              defaultValue={line.description}
+              editable={canEdit}
+              onEndEditing={(e) => void onUpdateLine(line, { description: e.nativeEvent.text })}
+              style={styles.input}
+            />
+            <View style={styles.lineGrid}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.label}>{inv.lineQuantity}</Text>
+                <TextInput
+                  defaultValue={String(line.quantity ?? 1)}
+                  keyboardType="decimal-pad"
+                  editable={canEdit}
+                  onEndEditing={(e) => {
+                    const q = Number(e.nativeEvent.text.replace(',', '.'));
+                    if (Number.isFinite(q) && q > 0) {
+                      void onUpdateLine(line, { quantity: q });
+                    }
+                  }}
+                  style={styles.input}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.label}>
+                  {inv.lineUnit} ({line.currency})
+                </Text>
+                <TextInput
+                  defaultValue={inputFromCents(line.unit_amount_cents)}
+                  keyboardType="decimal-pad"
+                  editable={canEdit}
+                  onEndEditing={(e) =>
+                    void onUpdateLine(line, {
+                      unit_amount_cents: centsFromInput(e.nativeEvent.text),
+                    })
+                  }
+                  style={styles.input}
+                />
+              </View>
+            </View>
+            <View style={styles.lineFooter}>
+              <Text style={styles.lineTotalText}>
+                {inv.lineTotal}: {formatCents(line.total_amount_cents, line.currency)}
+              </Text>
+              {canEdit && (
+                <TouchableOpacity onPress={() => onRemoveLine(line)}>
+                  <Text style={styles.linkDanger}>{inv.removeLine}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        ))
+      )}
+
+      {canEdit && (
+        <TouchableOpacity style={styles.secondaryBtn} onPress={() => void onAddLine()}>
+          <Text style={styles.secondaryBtnText}>{inv.addLineItem}</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* Summary */}
+      <View style={[styles.summaryBox, styles.gapTop]}>
+        <View style={styles.summaryRow}>
+          <Text style={styles.summaryLabel}>{inv.summarySubtotal}</Text>
+          <Text style={styles.summaryValue}>{totalDisplay.subtotal}</Text>
+        </View>
+        <View style={styles.summaryRow}>
+          <Text style={styles.summaryLabel}>{inv.summaryTax}</Text>
+          <Text style={styles.summaryValue}>{totalDisplay.tax}</Text>
+        </View>
+        <View style={styles.summaryRow}>
+          <Text style={[styles.summaryLabel, { color: colors.textPrimary }]}>
+            {inv.summaryTotal}
+          </Text>
+          <Text style={[styles.summaryValue, { color: colors.textPrimary, fontSize: 16 }]}>
+            {totalDisplay.total}
+          </Text>
+        </View>
+        {reverseCharge && <Text style={styles.hint}>{inv.summaryReverseChargeNote}</Text>}
+      </View>
+
+      {canEdit && (
+        <View style={styles.actionsRow}>
+          <TouchableOpacity
+            style={[styles.saveBtn, saving && { opacity: 0.6 }]}
+            disabled={saving || sending}
+            onPress={() => void onSaveTopLevel()}
+          >
+            {saving ? (
+              <ActivityIndicator color={colors.surface} />
+            ) : (
+              <Text style={styles.saveLabel}>{uiCopy.common.save}</Text>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.sendBtn, (sending || saving) && { opacity: 0.6 }]}
+            disabled={sending || saving}
+            onPress={() => void onSend()}
+          >
+            {sending ? (
+              <ActivityIndicator color={colors.surface} />
+            ) : (
+              <Text style={styles.saveLabel}>{inv.sendViaStripe}</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  card: {
+    marginHorizontal: spacing.md,
+    marginVertical: spacing.sm,
+    backgroundColor: colors.surface,
+    borderRadius: 10,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+    gap: spacing.sm,
+  },
+  backLink: { ...typography.label, color: colors.accentGreen, fontSize: 13 },
+  invoiceNoTitle: { ...typography.heading, fontSize: 14, color: colors.textPrimary },
+  warning: {
+    ...typography.body,
+    fontSize: 12,
+    color: colors.error,
+    marginBottom: spacing.sm,
+  },
+  label: {
+    ...typography.label,
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginBottom: 4,
+  },
+  hint: {
+    ...typography.body,
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+  },
+  multiline: { minHeight: 64, textAlignVertical: 'top' },
+  section: {
+    ...typography.label,
+    fontSize: 12,
+    color: colors.textPrimary,
+    marginBottom: spacing.xs,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  gapTop: { marginTop: spacing.md },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+    gap: spacing.md,
+  },
+  switchLabelWrap: { flex: 1 },
+  recipientRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    marginBottom: spacing.sm,
+    gap: spacing.sm,
+  },
+  recipientText: { ...typography.body, color: colors.textPrimary, flex: 1 },
+  pickerBox: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    padding: spacing.sm,
+    marginBottom: spacing.sm,
+    gap: spacing.xs,
+  },
+  pickerList: { gap: 4 },
+  pickerRow: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    borderRadius: 8,
+    backgroundColor: colors.surfaceAlt,
+  },
+  pickerName: { ...typography.body, color: colors.textPrimary, fontSize: 13 },
+  lineCard: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    padding: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  lineGrid: { flexDirection: 'row', gap: spacing.sm },
+  lineFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 4,
+  },
+  lineTotalText: { ...typography.label, color: colors.textPrimary, fontSize: 12 },
+  linkAction: { ...typography.label, color: colors.accentGreen, fontSize: 12 },
+  linkDanger: { ...typography.label, color: colors.error, fontSize: 12 },
+  secondaryBtn: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  secondaryBtnText: { ...typography.label, color: colors.accentGreen, fontSize: 13 },
+  summaryBox: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: spacing.sm,
+    gap: 4,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  summaryLabel: { ...typography.label, color: colors.textSecondary, fontSize: 12 },
+  summaryValue: { ...typography.body, color: colors.textSecondary, fontSize: 13 },
+  actionsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  saveBtn: {
+    flex: 1,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: 10,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    minHeight: 48,
+    justifyContent: 'center',
+  },
+  sendBtn: {
+    flex: 2,
+    backgroundColor: colors.buttonOptionGreen,
+    borderRadius: 10,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+    minHeight: 48,
+    justifyContent: 'center',
+  },
+  saveLabel: { ...typography.label, color: colors.surface },
+});
