@@ -32,9 +32,38 @@ Diese Regel dokumentiert das **Controlled Frontend Fix Pass**-Konzept (Deep Audi
 ## 4. Bild-Rendering — Verdrahtung
 
 - **Import:** `import { StorageImage } from '../components/StorageImage';` — **kein** Default-Export (`StorageImage.tsx` exportiert named).
-- **GuestView:** Cover/Grid, Request-Form-Karten, Galerie-Lightbox: `StorageImage` mit `uri={...}`, `resizeMode` wie zuvor. `GuestWatermark` bleibt als Overlay über dem Bildbereich wo vorgesehen (nicht auf Platzhalter erzwingen).
-- **SharedSelectionView:** Kachel-Cover und Detail-Modal-Hero: `StorageImage` mit `uri`.
+- **GuestView:** Cover/Grid, Request-Form-Karten, Galerie-Lightbox: `StorageImage` mit `uri={...}`, `resizeMode` wie zuvor.
+- **SharedSelectionView:** Kachel-Cover und Detail-Modal-Hero: `StorageImage` mit `uri`. **Cover** rendert mit **`resizeMode="contain"`** (volle, nicht beschnittene Bilder — Produkt-Anforderung „Always show full pictures“).
 - **ClientWebApp `PackageGalleryView`:** unverändert `StorageImage` + bestehende Normalisierung für eingeloggte Clients.
+
+### 4.1 Watermark-Verbot in Galerien (kanonisch, 2026-04)
+
+- **VERBOTEN** in **allen** Bild-Oberflächen (intern + extern, Package + Project + Guest + Shared): jede Form von „PREVIEW“ / „IndexCasting“ / Diagonal-/Repeat-Watermark als Overlay über Modelfotos.
+- Der frühere `GuestWatermark`-Component wurde aus `GuestView.tsx` entfernt (Component-Definition + alle Calls). **Nicht** wieder einführen — auch nicht als „dezente“ Variante.
+- PDF-Export ist davon mitabgedeckt (siehe **§12.3** „Wasserzeichen“).
+- Ausnahme: System-eigene UI-Badges (z. B. „Polaroid Package“-Header) sind **keine** Bild-Watermarks und bleiben.
+
+### 4.2 Layout-Pflicht für `aspectRatio` + `StorageImage` (`react-native-web`)
+
+Wenn ein Container `aspectRatio` definiert und `StorageImage` mit `height: '100%'` rendert, müssen **alle** Zwischen-Wrapper (`TouchableOpacity`, `View`) explizit gefüllt werden — sonst kollabieren sie auf `react-native-web` zu **`0px` Höhe** und das Bild wird unsichtbar (klassischer „Coverbild-fehlt“-Bug).
+
+```tsx
+// ✅ PFLICHT bei aspectRatio-Container + height:100%-Image:
+<View style={{ aspectRatio: 3 / 4 }}>
+  <TouchableOpacity
+    onPress={openGallery}
+    style={{ width: '100%', height: '100%' }}   // <- Pflicht
+  >
+    <View style={{ width: '100%', height: '100%', position: 'relative' }}>
+      <StorageImage uri={url} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
+    </View>
+  </TouchableOpacity>
+</View>
+```
+
+- **Verboten:** `TouchableOpacity` ohne explizite `width`/`height` zwischen `aspectRatio`-Parent und `StorageImage`.
+- **Verboten:** Inneres Wrapper-`View` ohne `position: 'relative'`, wenn darin absolute Overlays (Buttons, Badges, Action-Row) liegen sollen.
+- **Regression-Indikator:** Coverbild fehlt nur auf Web, nicht auf Native → meist dieser Layout-Bug.
 
 ## 5. Messwerte (Chest / Legacy `bust`, Höhe, Taillen, Hüften)
 
@@ -58,6 +87,117 @@ Diese Regel dokumentiert das **Controlled Frontend Fix Pass**-Konzept (Deep Audi
 - **Ohne Login:** Grid und Detail-Modal nur mit Daten aus `get_shared_selection_models` — keine Discovery-Queries.
 - **Auth-Gate:** Aktionen „wie eingeloggter Client“ (Chat, Option, …) nur nach Signup — bestehende Modal-Logik + `handleSignUp` (z. B. Redirect `indexcasting.com` mit `signup=1` auf Web).
 - **Persistenter CTA:** Bei geladener, nicht-leerer Liste optional Footer-Banner mit `uiCopy.sharedSelection.footerCta` — klarstellen, dass Vollzugriff über Account läuft (ergänzt Detail-„Sign up to access“).
+
+## 7a. Gallery / Detail Action-CTAs — Chat / Option / Add to selection (kanonisch, 2026-04)
+
+**Produkt-Pflicht:** In jeder Detail-Galerie (Cover-Klick öffnet Modelseite mit allen Bildern) müssen **dieselben drei** primären Actions sichtbar sein, mit identischer Semantik wie in der Discovery-View — **NICHT neu erfinden, vorhandene Handler wiederverwenden**:
+
+1. **Chat with agency**
+2. **Option** (öffnet Option/Casting-Picker)
+3. **Add to selection** (Add-to-Project)
+
+**Gilt für alle vier Surfaces:**
+
+| Surface | Komponente | Sichtbarkeit der CTAs | Auth-Gate |
+|---|---|---|---|
+| Internes Package (Portfolio/Polaroid) | `ClientWebApp` → `ProjectDetailView` (via `lockedGalleryDetailSummary` → `detailModelSummaryForOverlay`) | Immer aktiv | nicht nötig (eingeloggter Client) |
+| Internes Project (Shared-Project-Modus) | `ClientWebApp` → `ProjectDetailView` (Models aus `sharedProject.models`) | Immer aktiv | nicht nötig |
+| Externes Guest-Package | `GuestView` Gallery-Overlay | Sichtbar; Klick → **Sign-up-Gate-Modal** | Pflicht vor Action |
+| Externe Shared Selection | `SharedSelectionView` Detail-Modal (`detailActionRow`) | Sichtbar; Klick → bestehender `showAuthGate` | Pflicht vor Action |
+
+### 7a.1 Verdrahtung intern (`ClientWebApp.tsx`)
+
+- **`agencyId` MUSS** auf den `ModelSummary`-Objekten verfügbar sein, die in `detailModelSummaryForOverlay` landen — sonst rendert `ProjectDetailView` keinen „Chat with agency“-Button.
+- Quelle für Package-Modus: `getGuestLink` → `GuestLinkInfo.agency_id` / `agency_name` (siehe **§7a.4** RPC-Pflicht).
+- Quelle für Shared-Project-Modus: `mapSupabaseModelToClientProjectSummary` → `agencyId` aus `models.agency_id`.
+- **Verboten:** Eigene Inline-Modal-Komponenten für Chat/Option/Add bauen — die Handler `onOpenOptionPicker`, `onChatFromDetail`, `onAddToSelectionFromDetail` (bzw. äquivalente in `ProjectDetailView`) existieren bereits.
+
+### 7a.2 Sign-up-Gate (extern — GuestView)
+
+- **State:** `signupGateOpen: boolean`.
+- **Trigger:** `triggerGuestActionSignupGate(action)` setzt `signupGateOpen = true` (statt direkt zu navigieren) bei Klick auf Chat/Option/Add im Gallery-Overlay.
+- **Modal:** Eigene `Modal`-Instanz **über** der Gallery (z-stacked); Inhalt: Prompt aus `uiCopy.guestFlow.signupGatePromptTitle/Body`, Buttons `signupGateContinue` (→ `handleSignupGateContinue` → bestehender Signup-Pfad) und `signupGateCancel` (→ schließt Modal, Gallery bleibt offen).
+- **Verboten:** Action-Buttons hinter Sign-up verstecken / ausblenden — sie müssen sichtbar sein, damit der externe Nutzer den Wert versteht (UX-Regel „Show value first, gate on intent“).
+
+### 7a.3 Sign-up-Gate (extern — SharedSelectionView)
+
+- Wiederverwendung des **bestehenden** `showAuthGate`-Pfads (kein zweites Modal-System).
+- Detail-Modal `detailActionRow` enthält drei `TouchableOpacity` (Chat / Option / Add) — alle rufen `showAuthGate(action)` auf.
+- **Verboten:** Den vorherigen einzelnen „Sign up to access“-Button wieder einführen — die drei expliziten CTAs sind kanonisch (signalisieren konkret, was nach Signup möglich ist).
+
+### 7a.4 RPC-Pflicht — `get_guest_link_info` exposes `agency_id`
+
+Damit interne Package-Galerien den „Chat with agency“-Button rendern können, **MUSS** die RPC `public.get_guest_link_info(p_link_id uuid)` die Agency-Identität in der `RETURNS TABLE` liefern:
+
+```sql
+RETURNS TABLE (
+  id                    UUID,
+  label                 TEXT,
+  agency_id             UUID,    -- Pflicht (Migration 20261021)
+  agency_name           TEXT,    -- Pflicht (Migration 20261021)
+  type                  TEXT,
+  is_active             BOOLEAN,
+  expires_at            TIMESTAMPTZ,
+  tos_accepted_by_guest BOOLEAN
+)
+```
+
+- **Migration:** `supabase/migrations/20261021_get_guest_link_info_expose_agency_id.sql` (deployed). Wie immer SECURITY DEFINER + `SET row_security TO off` + Rate-Limit erhalten.
+- **TypeScript-Typ:** `GuestLinkInfo` in `src/services/guestLinksSupabase.ts` MUSS `agency_id: string | null` und `agency_name: string | null` enthalten — sonst Type-Error in `ClientWebApp`-Mapping.
+- **Verifikation:** `pg_get_function_result('public.get_guest_link_info(uuid)'::regprocedure)` muss `agency_id` und `agency_name` enthalten.
+- **Verboten:** Agency-ID per zweitem Roundtrip aus `agencies`-Tabelle nachladen, wenn die RPC sie schon liefern kann — verhindert „Chat-Button blinkt rein“-UX.
+
+### 7a.5 uiCopy-Strings (kanonisch)
+
+Alle CTA-Labels und Sign-up-Gate-Texte ausschließlich aus `uiCopy.guestFlow`:
+`galleryActionChat`, `galleryActionOption`, `galleryActionAdd`, `signupGatePromptTitle`, `signupGatePromptBody`, `signupGateContinue`, `signupGateCancel` — keine Hardcodes in den Views.
+
+## 7b. Post-Signup Recovery — Guest-Link & Shared-Selection (kanonisch, 2026-04)
+
+Wenn ein externer Guest sich aus einem Package- oder Shared-Selection-Kontext registriert, MUSS er **nach Login** in **denselben** Kontext zurückkehren — nicht in das generische Discover-Dashboard.
+
+### 7b.1 Persistenz vor Signup-Redirect
+
+- **Guest-Package (`GuestView` Signup-Pfad):** Vor Redirect/OTP `localStorage.setItem('ic_pending_guest_link', linkId)`.
+- **Shared-Selection (`SharedSelectionView.handleSignUp`):** Vor Redirect `localStorage.setItem('ic_pending_shared_selection', JSON.stringify(sharedParams))`.
+- **Konstante Keys:** Genau diese Strings — kein Drift; in `App.tsx` als `GUEST_PENDING_KEY` / `SHARED_PENDING_KEY` referenziert.
+
+### 7b.2 Recovery in `App.tsx`
+
+- **Pattern:** `pendingPackageId`-State (statt URL-Manipulation), gesetzt im Auth-Effekt nach erfolgreichem Login wenn `ic_pending_guest_link` existiert.
+- **Übergabe:** als **`initialPackageId`-Prop** an `ClientWebApp` (nicht via URL-Params, um Race mit dem `guest`-Param-Strip-Effect zu vermeiden).
+- **Cleanup:** `ClientWebApp` ruft nach erfolgreichem Öffnen `onInitialPackageConsumed()` → Parent löscht `pendingPackageId` + `localStorage`-Key.
+- **Shared-Selection-Recovery:** analog — `sharedParams` aus `localStorage` restoren, dann URL-Parameter (`?shared=1&name=…&ids=…`) re-applien **nach** Auth-Restore.
+- **Verboten:** Recovery-`useEffect` mit URL-Strip-`useEffect` mischen (alter Bug — race condition); State-basierter Pfad ist kanonisch.
+
+### 7b.3 ClientWebApp — `initialPackageId` öffnet Package automatisch
+
+- Prop-Signatur: `initialPackageId?: string; onInitialPackageConsumed?: () => void;`
+- On mount: Wenn gesetzt → `handlePackagePress(linkId)` ausführen → nach Erfolg `onInitialPackageConsumed()`.
+- **Mapping `GuestLinkModel → ModelSummary`:** `agencyId`/`agencyName` aus `GuestLinkInfo.agency_id`/`agency_name` populieren (siehe **§7a.4**), damit „Chat with agency“ direkt nach Recovery funktioniert.
+
+## 7c. Edge Function `sign-guest-storage-asset` (kanonisch, 2026-04)
+
+Server-side Signing für Guest-Bilder — das einzige System, das ohne Login Storage-Objekte sicher ausliefert. Bei Änderungen:
+
+### 7c.1 DB-backed allowlist (KEINE Path-Shape-Validation)
+
+- **VERBOTEN:** Strenge Path-Shape-Regex wie `model-applications/<uuid>/<file>` als alleiniger Validator. Echte Pfade in der DB können auch `model-applications/<file>` sein → strenge Validation verschluckt diese Bilder still.
+- **PFLICHT:** `buildPathAllowlist()` baut die Liste aus DB-Quellen:
+  - `models.portfolio_images`, `models.polaroids`, `models.private_images`, `models.cover_image_url` (Mirror-Spalten)
+  - `model_photos.url` (**nicht** `.path` — Spalte heißt `url`)
+- Eingehender Storage-Path wird gegen diese normalisierte Allowlist gematcht; nur Treffer werden gesigned.
+
+### 7c.2 CORS — flexibel, nicht enge Allowlist
+
+- **Pattern-basierter Host-Check:** exakte Domains (`indexcasting.com`, `www.indexcasting.com`), Subdomains, Vercel-Previews (`*.vercel.app`), localhost.
+- **Header-Pflichten:** `Access-Control-Allow-Origin` (echo origin), `Access-Control-Allow-Methods: POST, OPTIONS`, `Access-Control-Allow-Headers: authorization, x-client-info, apikey, content-type`, `Vary: Origin`, `Access-Control-Max-Age: 86400`.
+- **Verboten:** Enge `ALLOWED_ORIGINS`-Liste ohne Vercel-Preview-Pattern — bricht alle PR-Previews.
+
+### 7c.3 Service-Role-Bypass (kontrolliert)
+
+- Edge Function nutzt `SERVICE_ROLE_KEY` ausschließlich für Storage-Signing; alle DB-Reads für die Allowlist laufen über RLS-bewusste Selects (nur denormalisierte/öffentlich-spiegelnde Spalten).
+- **Verboten:** Service-Role-Selects auf RLS-geschützte private Tabellen ohne explizite Eingrenzung — Allowlist-Build muss konservativ bleiben.
 
 ## 8. ClientWebApp — `ActiveOptionsView` (Active Options Overlay)
 
