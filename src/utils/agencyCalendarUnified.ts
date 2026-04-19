@@ -23,6 +23,7 @@ import type { UserCalendarEvent } from '../services/userCalendarEventsSupabase';
 import type { ClientAssignmentFlag } from '../services/clientAssignmentsSupabase';
 import { colors } from '../theme/theme';
 import { calendarGridColorForOptionItem } from './calendarProjectionLabel';
+import { CALENDAR_COLORS } from './calendarColors';
 import { attentionSignalsFromOptionRequestLike } from './optionRequestAttention';
 import { attentionHeaderLabelFromSignals } from './negotiationAttentionLabels';
 import { uiCopy } from '../constants/uiCopy';
@@ -593,8 +594,10 @@ export function buildEventsByDateFromUnifiedRows(rows: UnifiedAgencyCalendarRow[
       continue;
     }
     let color = '#1565C0';
-    if (row.entry.entry_type === 'booking') color = colors.buttonSkipRed;
-    else if (row.entry.entry_type === 'casting' || row.entry.entry_type === 'gosee')
+    if (row.entry.entry_type === 'booking') {
+      const tentative = row.entry.status === 'tentative';
+      color = tentative ? CALENDAR_COLORS.option : CALENDAR_COLORS.job;
+    } else if (row.entry.entry_type === 'casting' || row.entry.entry_type === 'gosee')
       color = colors.textSecondary;
     map[date].push({
       id: row.id,

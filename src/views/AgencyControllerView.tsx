@@ -94,6 +94,7 @@ import {
   getPhotosForModel,
   rebuildPortfolioImagesFromModelPhotos,
   rebuildPolaroidsFromModelPhotos,
+  getFirstClientVisiblePortfolioUrlForModels,
 } from '../services/modelPhotosSupabase';
 import { normalizeDocumentspicturesModelImageRef } from '../utils/normalizeModelPortfolioUrl';
 import {
@@ -764,6 +765,10 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
 
   const insets = useSafeAreaInsets();
   const bottomTabInset = BOTTOM_TAB_BAR_HEIGHT + insets.bottom;
+  // Mobile chat workspaces (booking + recruiting) hide the bottom tab bar
+  // and pull the composer to the screen bottom. Required by §28.1#1.
+  const bookingChatOpenOnMobile = openBookingThreadId != null && agencyIsMobile;
+  const mobileChatOverlayActive = agencyChatFullscreen || bookingChatOpenOnMobile;
 
   const resetAgencyTabRoot = useCallback(() => {
     switch (tab) {
@@ -807,7 +812,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
       ]}
     >
       <View style={s.topShell}>
-        <Text style={s.brand}>INDEX CASTING</Text>
+        {!mobileChatOverlayActive && <Text style={s.brand}>INDEX CASTING</Text>}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
           <TouchableOpacity
             onPress={() => {
@@ -836,7 +841,11 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
       </View>
 
       <View
-        style={{ flex: 1, minHeight: 0, paddingBottom: agencyChatFullscreen ? 0 : bottomTabInset }}
+        style={{
+          flex: 1,
+          minHeight: 0,
+          paddingBottom: mobileChatOverlayActive ? 0 : bottomTabInset,
+        }}
       >
         {tab === 'dashboard' && (
           <View style={{ flex: 1 }}>
@@ -1273,11 +1282,11 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
           fromRole="agency"
           onClose={() => setOpenBookingThreadId(null)}
           presentation="insetAboveBottomNav"
-          bottomInset={bottomTabInset}
+          bottomInset={bookingChatOpenOnMobile ? insets.bottom : bottomTabInset}
         />
       )}
 
-      {!agencyChatFullscreen && (
+      {!mobileChatOverlayActive && (
         <View
           style={[
             s.bottomBar,
@@ -2961,11 +2970,33 @@ const MyModelsTab: React.FC<{
   /** model_id → sorted country codes for territory badges in the roster list */
   const [rosterTerritoriesMap, setRosterTerritoriesMap] = useState<Record<string, string[]>>({});
 
+  /** model_id → has at least one client-visible portfolio photo (canonical model_photos truth) */
+  const [rosterVisiblePortfolioMap, setRosterVisiblePortfolioMap] = useState<
+    Record<string, boolean>
+  >({});
+
   useEffect(() => {
     if (agencyId) {
       getTerritoriesForAgency(agencyId).then(setRosterTerritoriesMap);
     }
   }, [agencyId]);
+
+  useEffect(() => {
+    if (!models.length) {
+      setRosterVisiblePortfolioMap({});
+      return;
+    }
+    let cancelled = false;
+    void getFirstClientVisiblePortfolioUrlForModels(models.map((m) => m.id)).then((urlByModel) => {
+      if (cancelled) return;
+      const next: Record<string, boolean> = {};
+      for (const m of models) next[m.id] = Boolean(urlByModel.get(m.id));
+      setRosterVisiblePortfolioMap(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [models]);
 
   useEffect(() => {
     if (!models.length) {
@@ -3772,11 +3803,13 @@ const MyModelsTab: React.FC<{
       const freshList = freshFull.map((m: any) => ({
         id: m.id,
         name: m.name,
-        portfolio_images: m.portfolio_images,
       }));
+      const visiblePortfolioMapFresh = freshList.length
+        ? await getFirstClientVisiblePortfolioUrlForModels(freshList.map((m: any) => m.id))
+        : new Map<string, string>();
       const incompleteAfterSync = freshList.filter(
         (m: any) =>
-          (m.portfolio_images ?? []).length === 0 || !(rosterTerritoriesMap[m.id] ?? []).length,
+          !visiblePortfolioMapFresh.get(m.id) || !(rosterTerritoriesMap[m.id] ?? []).length,
       ).length;
       setSyncFeedback(
         incompleteAfterSync > 0
@@ -5179,11 +5212,11 @@ const MyModelsTab: React.FC<{
 
       {/* Org-wide banner: shows count of models missing required fields */}
       {(() => {
-        const incompleteCount = filtered.filter(
-          (m) =>
-            (m.portfolio_images ?? []).length === 0 ||
-            (rosterTerritoriesMap[m.id] ?? []).length === 0,
-        ).length;
+        const incompleteCount = filtered.filter((m) => {
+          const noVisiblePortfolio = rosterVisiblePortfolioMap[m.id] === false;
+          const noTerritories = (rosterTerritoriesMap[m.id] ?? []).length === 0;
+          return noVisiblePortfolio || noTerritories;
+        }).length;
         if (incompleteCount === 0) return null;
         return (
           <View

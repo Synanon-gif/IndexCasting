@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { colors, spacing, typography } from '../../theme/theme';
 import { uiCopy } from '../../constants/uiCopy';
 import type { DisplayStatus } from '../../utils/statusHelpers';
@@ -42,7 +42,11 @@ export const NegotiationChipsRow: React.FC<NegotiationChipsRowProps> = ({
 
   return (
     <View style={styles.wrap}>
-      <View style={styles.row}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.row}
+      >
         <View style={[styles.chip, { backgroundColor: wfBg, borderColor: wfColor }]}>
           <Text style={[styles.chipText, { color: wfColor }]} numberOfLines={1}>
             {wfLabel}
@@ -50,31 +54,35 @@ export const NegotiationChipsRow: React.FC<NegotiationChipsRowProps> = ({
         </View>
         {attentionLabel ? (
           <View style={[styles.chip, styles.attentionChip]}>
-            <Text style={styles.attentionText} numberOfLines={2}>
+            <Text style={styles.attentionText} numberOfLines={1}>
               {attentionLabel}
             </Text>
           </View>
         ) : null}
-      </View>
-      {showPriceLines && (agreed != null || proposedPrice != null || agencyCounterPrice != null) && (
-        <View style={styles.priceCol}>
-          {agreed != null ? (
-            <Text style={styles.priceLineAgreed}>
-              {uiCopy.optionNegotiationChat.agreedPriceLabel}: {formatOptionMoneyAmount(agreed, currency)}
-            </Text>
-          ) : null}
-          {proposedPrice != null ? (
-            <Text style={styles.priceLine}>
-              {uiCopy.optionNegotiationChat.proposedPriceLabel}: {formatOptionMoneyAmount(proposedPrice, currency)}
-            </Text>
-          ) : null}
-          {agencyCounterPrice != null ? (
-            <Text style={styles.priceLine}>
-              {uiCopy.optionNegotiationChat.counterPriceLabel}: {formatOptionMoneyAmount(agencyCounterPrice, currency)}
-            </Text>
-          ) : null}
-        </View>
-      )}
+      </ScrollView>
+      {showPriceLines &&
+        (agreed != null || proposedPrice != null || agencyCounterPrice != null) && (
+          <View style={styles.priceCol}>
+            {agreed != null ? (
+              <Text style={styles.priceLineAgreed}>
+                {uiCopy.optionNegotiationChat.agreedPriceLabel}:{' '}
+                {formatOptionMoneyAmount(agreed, currency)}
+              </Text>
+            ) : null}
+            {proposedPrice != null ? (
+              <Text style={styles.priceLine}>
+                {uiCopy.optionNegotiationChat.proposedPriceLabel}:{' '}
+                {formatOptionMoneyAmount(proposedPrice, currency)}
+              </Text>
+            ) : null}
+            {agencyCounterPrice != null ? (
+              <Text style={styles.priceLine}>
+                {uiCopy.optionNegotiationChat.counterPriceLabel}:{' '}
+                {formatOptionMoneyAmount(agencyCounterPrice, currency)}
+              </Text>
+            ) : null}
+          </View>
+        )}
     </View>
   );
 };
@@ -85,7 +93,7 @@ const styles = StyleSheet.create({
   },
   row: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexWrap: 'nowrap',
     alignItems: 'center',
     gap: spacing.xs,
   },

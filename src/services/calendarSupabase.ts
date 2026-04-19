@@ -406,10 +406,13 @@ export async function deleteCalendarEntryById(entryId: string): Promise<boolean>
  */
 export async function updateCalendarEntryToJob(optionRequestId: string): Promise<boolean> {
   try {
+    // Filter cancelled rows so a stale rejected/cancelled entry is never reactivated as a job
+    // (Invariant G: single canonical event per lifecycle; Invariant N: writes only on active rows).
     const { data: rows, error: selErr } = await supabase
       .from('calendar_entries')
       .select('id, client_name')
-      .eq('option_request_id', optionRequestId);
+      .eq('option_request_id', optionRequestId)
+      .neq('status', 'cancelled');
     if (selErr) {
       console.error('updateCalendarEntryToJob select error:', selErr);
       return false;
@@ -461,7 +464,8 @@ export async function updateCalendarEntryToJob(optionRequestId: string): Promise
     const { error: uceErr } = await supabase
       .from('user_calendar_events')
       .update({ title: `Job – ${clientName}`, color: '#2E7D32' })
-      .eq('source_option_request_id', optionRequestId);
+      .eq('source_option_request_id', optionRequestId)
+      .neq('status', 'cancelled');
     if (uceErr) {
       console.warn('updateCalendarEntryToJob user_calendar_events update error:', uceErr);
     }
@@ -488,7 +492,8 @@ async function fetchCalendarEntriesByOptionIds(optionIds: string[]): Promise<Cal
       const { data, error } = await supabase
         .from('calendar_entries')
         .select(CALENDAR_ENTRY_SELECT)
-        .in('option_request_id', chunk);
+        .in('option_request_id', chunk)
+        .neq('status', 'cancelled');
       if (error) console.error('fetchCalendarEntriesByOptionIds chunk error:', error);
       return (data ?? []) as CalendarEntry[];
     }),

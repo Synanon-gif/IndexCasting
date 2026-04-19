@@ -572,6 +572,7 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const [pendingModel, setPendingModel] = useState<ModelSummary | null>(null);
   const [addingModelIds, setAddingModelIds] = useState<Set<string>>(new Set());
+  const [removingModelIds, setRemovingModelIds] = useState<Set<string>>(new Set());
   /** Frontend-only favorites (gallery); persisted in sessionStorage — no backend. */
   const GALLERY_FAVORITES_STORAGE_KEY = 'ic_client_gallery_favorite_ids';
   const [favoriteModelIds, setFavoriteModelIds] = useState<Set<string>>(() => new Set());
@@ -2006,11 +2007,24 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
   };
 
   const handleRemoveModelFromProject = async (projectId: string, modelId: string) => {
+    // Inflight-lock per model.id — prevents double-click on the same model
+    // (system-invariants §4c "Inflight-Lock-Pflicht (NIEMALS weglassen)").
+    const lockKey = `${projectId}:${modelId}`;
+    if (removingModelIds.has(lockKey)) return;
+    setRemovingModelIds((prev) => new Set(prev).add(lockKey));
+
     const confirmed =
       typeof window !== 'undefined'
         ? window.confirm(uiCopy.projects.deleteFromProjectConfirm)
         : true;
-    if (!confirmed) return;
+    if (!confirmed) {
+      setRemovingModelIds((prev) => {
+        const next = new Set(prev);
+        next.delete(lockKey);
+        return next;
+      });
+      return;
+    }
 
     // Level 3 — Inverse-Operation Rollback (NOT snapshot-based).
     //
@@ -2033,22 +2047,30 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       ),
     );
 
-    const ok = await removeModelFromProject(projectId, modelId);
-    if (ok) {
-      // Server reconciliation refetch: silently confirm DB state matches UI after remove.
-      void reconcileProjectModels(projectId);
-    } else if (removedModel) {
-      // Inverse rollback: add back the removed model to live state.
-      // !p.models.some() guard: prevents double-insertion on concurrent rollbacks.
-      setProjects((prev) =>
-        prev.map((p) =>
-          p.id === projectId && !p.models.some((m) => m.id === modelId)
-            ? { ...p, models: [...p.models, removedModel] }
-            : p,
-        ),
-      );
-      setFeedback('Could not remove model from project. Please try again.');
-      clearFeedbackLater();
+    try {
+      const ok = await removeModelFromProject(projectId, modelId);
+      if (ok) {
+        // Server reconciliation refetch: silently confirm DB state matches UI after remove.
+        void reconcileProjectModels(projectId);
+      } else if (removedModel) {
+        // Inverse rollback: add back the removed model to live state.
+        // !p.models.some() guard: prevents double-insertion on concurrent rollbacks.
+        setProjects((prev) =>
+          prev.map((p) =>
+            p.id === projectId && !p.models.some((m) => m.id === modelId)
+              ? { ...p, models: [...p.models, removedModel] }
+              : p,
+          ),
+        );
+        setFeedback('Could not remove model from project. Please try again.');
+        clearFeedbackLater();
+      }
+    } finally {
+      setRemovingModelIds((prev) => {
+        const next = new Set(prev);
+        next.delete(lockKey);
+        return next;
+      });
     }
   };
 
@@ -2574,9 +2596,11 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
               </TouchableOpacity>
             </View>
             <View style={styles.topBarCenter}>
-              <Text style={styles.brand} numberOfLines={1}>
-                INDEX CASTING
-              </Text>
+              {!clientChatFullscreen && (
+                <Text style={styles.brand} numberOfLines={1}>
+                  INDEX CASTING
+                </Text>
+              )}
             </View>
             <View style={[styles.topBarSide, styles.topBarSideRight]}>
               {clientIsMobile ? (
@@ -4706,13 +4730,16 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
       >
         {uiCopy.calendar.typeFilterHeading}
       </Text>
-      <View
-        style={{
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{
           flexDirection: 'row',
-          flexWrap: 'wrap',
+          flexWrap: 'nowrap',
           gap: spacing.xs,
-          marginBottom: spacing.sm,
+          paddingBottom: spacing.xs,
         }}
+        style={{ marginBottom: spacing.sm }}
       >
         {[
           { k: 'all' as const, label: uiCopy.calendar.typeFilterAll },
@@ -4732,12 +4759,15 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
               backgroundColor: typeFilter === k ? colors.surface : 'transparent',
             }}
           >
-            <Text style={{ ...typography.label, fontSize: 11, color: colors.textPrimary }}>
+            <Text
+              style={{ ...typography.label, fontSize: 11, color: colors.textPrimary }}
+              numberOfLines={1}
+            >
               {label}
             </Text>
           </TouchableOpacity>
         ))}
-      </View>
+      </ScrollView>
 
       <B2BUnifiedCalendarBody
         viewerRole="client"
@@ -6111,7 +6141,15 @@ const MessagesView: React.FC<MessagesViewProps> = ({
     const threadId = request.threadId;
     setRejectNegotiationModalVisible(false);
     void (async () => {
-      await agencyRejectNegotiationStore(threadId);
+      // Fail-closed: only refresh + hint when the RPC actually succeeded.
+      const ok = await agencyRejectNegotiationStore(threadId);
+      if (!ok) {
+        showAppAlert(
+          uiCopy.optionNegotiationChat.rejectOptionFailedTitle,
+          uiCopy.optionNegotiationChat.rejectOptionFailedMessage,
+        );
+        return;
+      }
       setRequests(getOptionRequests());
       showNegotiationCalendarHint();
     })();
@@ -7438,10 +7476,14 @@ const ProjectDetailView: React.FC<DetailProps> = ({
               <View style={styles.detailGalleryMetaBlock}>
                 <Text style={styles.detailTitle}>{data.name}</Text>
                 <Text style={styles.clientGalleryMeta}>
-                  {uiCopy.discover.detailMeasurementHeight} {data.measurements.height} cm ·{' '}
-                  {uiCopy.discover.detailMeasurementChest} {data.measurements.chest} cm ·{' '}
-                  {uiCopy.discover.detailMeasurementWaist} {data.measurements.waist} cm ·{' '}
-                  {uiCopy.discover.detailMeasurementHips} {data.measurements.hips} cm
+                  {uiCopy.discover.detailMeasurementHeight}{' '}
+                  {data.measurements.height != null ? `${data.measurements.height} cm` : '—'} ·{' '}
+                  {uiCopy.discover.detailMeasurementChest}{' '}
+                  {data.measurements.chest != null ? `${data.measurements.chest} cm` : '—'} ·{' '}
+                  {uiCopy.discover.detailMeasurementWaist}{' '}
+                  {data.measurements.waist != null ? `${data.measurements.waist} cm` : '—'} ·{' '}
+                  {uiCopy.discover.detailMeasurementHips}{' '}
+                  {data.measurements.hips != null ? `${data.measurements.hips} cm` : '—'}
                 </Text>
                 {galleryLocationLine ? (
                   <Text style={styles.clientGalleryLocation}>{galleryLocationLine}</Text>
@@ -7568,25 +7610,33 @@ const ProjectDetailView: React.FC<DetailProps> = ({
                 <Text style={styles.detailMeasureLabel}>
                   {uiCopy.discover.detailMeasurementHeight}
                 </Text>
-                <Text style={styles.detailMeasureValue}>{data.measurements.height}</Text>
+                <Text style={styles.detailMeasureValue}>
+                  {data.measurements.height > 0 ? `${data.measurements.height} cm` : '—'}
+                </Text>
               </View>
               <View style={styles.detailMeasureItem}>
                 <Text style={styles.detailMeasureLabel}>
                   {uiCopy.discover.detailMeasurementChest}
                 </Text>
-                <Text style={styles.detailMeasureValue}>{data.measurements.chest}</Text>
+                <Text style={styles.detailMeasureValue}>
+                  {data.measurements.chest > 0 ? `${data.measurements.chest} cm` : '—'}
+                </Text>
               </View>
               <View style={styles.detailMeasureItem}>
                 <Text style={styles.detailMeasureLabel}>
                   {uiCopy.discover.detailMeasurementWaist}
                 </Text>
-                <Text style={styles.detailMeasureValue}>{data.measurements.waist}</Text>
+                <Text style={styles.detailMeasureValue}>
+                  {data.measurements.waist > 0 ? `${data.measurements.waist} cm` : '—'}
+                </Text>
               </View>
               <View style={styles.detailMeasureItem}>
                 <Text style={styles.detailMeasureLabel}>
                   {uiCopy.discover.detailMeasurementHips}
                 </Text>
-                <Text style={styles.detailMeasureValue}>{data.measurements.hips}</Text>
+                <Text style={styles.detailMeasureValue}>
+                  {data.measurements.hips > 0 ? `${data.measurements.hips} cm` : '—'}
+                </Text>
               </View>
             </View>
 
@@ -7622,7 +7672,7 @@ const ProjectDetailView: React.FC<DetailProps> = ({
               )}
             </ScrollView>
 
-            <Text style={styles.detailSectionLabel}>Calendar</Text>
+            <Text style={styles.detailSectionLabel}>{uiCopy.discover.detailSectionCalendar}</Text>
             <View style={styles.calendarRow}>
               {data.calendar.blocked.map((d) => (
                 <View key={d} style={styles.blockedPill}>
@@ -7636,8 +7686,10 @@ const ProjectDetailView: React.FC<DetailProps> = ({
               ))}
             </View>
 
-            <Text style={styles.detailSectionLabel}>Request option</Text>
-            <Text style={styles.metaText}>Request option for a specific date.</Text>
+            <Text style={styles.detailSectionLabel}>
+              {uiCopy.discover.detailSectionRequestOption}
+            </Text>
+            <Text style={styles.metaText}>{uiCopy.discover.detailRequestOptionHelper}</Text>
             <View style={styles.optionDatesRow}>
               {OPTION_DATES.map((d) => (
                 <TouchableOpacity

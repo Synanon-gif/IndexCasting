@@ -27,7 +27,6 @@ const ALLOWLIST = new Set<string>([
   'web/AdminDashboard.tsx', // Org-Typ-Klassifikation
   'utils/modelOptionDisplay.ts', // Enthält PLACEHOLDER_NAMES Set (definiert die Filter)
   'services/calendarSupabase.ts', // Enthält PLACEHOLDER_NAMES_LC Set (definiert die Filter)
-  'components/UnifiedCalendarAgenda.tsx', // Enthält PLACEHOLDER_NAMES_LC Set
 ]);
 
 /** Patterns die einen hardcoded Org-Namen-Fallback signalisieren. */

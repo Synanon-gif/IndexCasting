@@ -907,9 +907,9 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
                   const isRejected = rawStatus === 'rejected';
                   const isTerminal = isDeleted || isRejected;
                   const label = isDeleted
-                    ? 'Removed'
+                    ? uiCopy.b2bChat.bookingStatusRemoved
                     : isRejected
-                      ? 'Declined'
+                      ? uiCopy.b2bChat.bookingStatusDeclined
                       : bookingStatusLabel(rawStatus as BookingEventStatus);
                   const isCancelled = rawStatus === 'cancelled' || isTerminal;
                   const isConfirmed = rawStatus === 'model_confirmed' || rawStatus === 'completed';

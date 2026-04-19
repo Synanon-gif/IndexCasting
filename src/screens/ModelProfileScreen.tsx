@@ -367,7 +367,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
         m.getModelLocation(profile.id),
       );
       setModelLocation(refreshed);
-      Alert.alert(uiCopy.alerts.locationUpdatedTitle, `Live GPS location set to: ${cityName}`);
+      Alert.alert(uiCopy.alerts.locationUpdatedTitle, uiCopy.alerts.liveGpsLocationSet(cityName));
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       Alert.alert(
@@ -968,10 +968,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
       await loadPendingConfirmations(profile.id);
       await loadCalendar(profile.id);
     } else if (!ok) {
-      Alert.alert(
-        uiCopy.common.error ?? 'Error',
-        'Could not confirm availability. The agency may not have confirmed yet, or the request status has changed. Please try again later.',
-      );
+      Alert.alert(uiCopy.common.error ?? 'Error', uiCopy.alerts.couldNotConfirmAvailability);
     }
   };
 
@@ -985,10 +982,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
       await loadPendingConfirmations(profile.id);
       await loadCalendar(profile.id);
     } else if (!ok) {
-      Alert.alert(
-        uiCopy.common.error ?? 'Error',
-        'Could not decline the request. Please try again later.',
-      );
+      Alert.alert(uiCopy.common.error ?? 'Error', uiCopy.alerts.couldNotDeclineRequest);
     }
   };
 
@@ -1103,7 +1097,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
         entry_type: 'personal',
       });
       if (!created) {
-        Alert.alert('Calendar', uiCopy.alerts.calendarNotSaved);
+        Alert.alert(uiCopy.alerts.calendarTitle, uiCopy.alerts.calendarNotSaved);
         return;
       }
       setNewEntryTitle('');
@@ -1120,6 +1114,13 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
 
   const insets = useSafeAreaInsets();
   const bottomTabInset = BOTTOM_TAB_BAR_HEIGHT + insets.bottom;
+  // Mobile chat workspaces (booking, direct conversation, option negotiation)
+  // hide the bottom tab bar and pull content to the screen edge — required
+  // by §28.1#1 (Mobile Chat-Screens sind Vollbild-Workspaces).
+  const mobileChatOverlayActive =
+    isMobileModel &&
+    (openBookingThreadId != null || openDirectConvId != null || selectedOptionThread != null);
+  const chatComposerInset = mobileChatOverlayActive ? insets.bottom : bottomTabInset;
 
   const resetModelTabRoot = useCallback(() => {
     switch (tab) {
@@ -1193,7 +1194,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
       ]}
     >
       <View style={st.topShell}>
-        <Text style={st.brand}>INDEX CASTING</Text>
+        {!mobileChatOverlayActive && <Text style={st.brand}>INDEX CASTING</Text>}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
           <TouchableOpacity
             onPress={() => {
@@ -2565,7 +2566,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
           initialAgencyName={bookingAgencyByThread[openBookingThreadId]}
           onClose={() => setOpenBookingThreadId(null)}
           presentation="insetAboveBottomNav"
-          bottomInset={bottomTabInset}
+          bottomInset={chatComposerInset}
         />
       )}
 
@@ -2576,7 +2577,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
             left: 0,
             right: 0,
             top: 0,
-            bottom: bottomTabInset,
+            bottom: chatComposerInset,
             backgroundColor: colors.background,
             zIndex: 1000,
           }}
@@ -2626,30 +2627,40 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
         </View>
       )}
 
-      <View style={[st.bottomTabBar, { paddingBottom: insets.bottom }]}>
-        <View style={st.tabRow}>
-          {[
-            { key: 'home' as const, label: 'Home' },
-            { key: 'calendar' as const, label: 'Calendar' },
-            {
-              key: 'messages' as const,
-              label: pendingConfirmations.length
-                ? `Messages (${pendingConfirmations.length})`
-                : 'Messages',
-            },
-            { key: 'settings' as const, label: 'Settings' },
-          ].map((t) => (
-            <TouchableOpacity
-              key={t.key}
-              onPress={() => handleModelTabPress(t.key)}
-              style={st.tabItem}
-            >
-              <Text style={[st.tabLabel, tab === t.key && st.tabLabelActive]}>{t.label}</Text>
-              {tab === t.key && <View style={st.tabUnderline} />}
-            </TouchableOpacity>
-          ))}
+      {!mobileChatOverlayActive && (
+        <View style={[st.bottomTabBar, { paddingBottom: insets.bottom }]}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={isMobileModel}
+            keyboardShouldPersistTaps="handled"
+            style={{ width: '100%' }}
+            contentContainerStyle={st.tabRow}
+          >
+            {[
+              { key: 'home' as const, label: 'Home' },
+              { key: 'calendar' as const, label: 'Calendar' },
+              {
+                key: 'messages' as const,
+                label: pendingConfirmations.length
+                  ? `Messages (${pendingConfirmations.length})`
+                  : 'Messages',
+              },
+              { key: 'settings' as const, label: 'Settings' },
+            ].map((t) => (
+              <TouchableOpacity
+                key={t.key}
+                onPress={() => handleModelTabPress(t.key)}
+                style={st.tabItem}
+              >
+                <Text style={[st.tabLabel, tab === t.key && st.tabLabelActive]} numberOfLines={1}>
+                  {t.label}
+                </Text>
+                {tab === t.key && <View style={st.tabUnderline} />}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
         </View>
-      </View>
+      )}
 
       {selectedOptionThread && (
         <View
@@ -2658,7 +2669,7 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
             left: 0,
             right: 0,
             top: 0,
-            bottom: bottomTabInset,
+            bottom: chatComposerInset,
             zIndex: 995,
             // On mobile: fullscreen panel. On desktop: dimmed overlay with centered card.
             ...(isMobileModel
@@ -3613,7 +3624,15 @@ const st = StyleSheet.create({
     marginBottom: spacing.md,
   },
   label: { ...typography.label, color: colors.textSecondary, marginBottom: spacing.sm },
-  tabRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around' },
+  tabRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    flexGrow: 1,
+    paddingHorizontal: spacing.sm,
+    gap: spacing.md,
+  },
+  tabItem: { alignItems: 'center', paddingHorizontal: spacing.sm, minWidth: 0 },
   bottomTabBar: {
     position: 'absolute' as const,
     left: 0,
@@ -3625,7 +3644,6 @@ const st = StyleSheet.create({
     backgroundColor: colors.background,
     paddingVertical: spacing.sm,
   },
-  tabItem: { alignItems: 'center' },
   tabLabel: { ...typography.label, color: colors.textSecondary },
   tabLabelActive: { color: colors.accentGreen },
   tabUnderline: {

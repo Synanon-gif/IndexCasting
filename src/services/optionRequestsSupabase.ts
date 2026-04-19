@@ -30,7 +30,17 @@ export const OPTION_REQUEST_SELECT =
  * List reads prefer workflow columns (`final_status`, `client_price_status`, `model_approval`) in attention/calendar utils.
  */
 
-/** Model-linked app: no price / negotiation columns (defense-in-depth vs UI-only hiding). */
+/**
+ * Model-linked app: no price / negotiation columns (defense-in-depth vs UI-only hiding).
+ *
+ * INVARIANT D (system-invariants.mdc — MODEL DATA SAFETY CONTRACT):
+ * - `currency` is intentionally INCLUDED. It is non-commercial metadata that pairs with
+ *   `start_time` / `end_time` for date/time formatting in the model UI; it carries no
+ *   negotiated value and never leaks `proposed_price`, `agency_counter_price`, or
+ *   `client_price_status`.
+ * - VERBOTEN here: any column from the negotiation/price axis. If a new commercial
+ *   field is added to `option_requests`, it MUST stay out of this select.
+ */
 export const OPTION_REQUEST_SELECT_MODEL_SAFE =
   'id, client_id, model_id, agency_id, requested_date, status, project_id, client_name, model_name, job_description, final_status, request_type, currency, start_time, end_time, model_approval, model_approved_at, model_account_linked, booker_id, organization_id, agency_organization_id, client_organization_id, client_organization_name, agency_organization_name, created_by, agency_assignee_user_id, is_agency_only, agency_event_group_id, created_at, updated_at';
 
@@ -1233,90 +1243,11 @@ export async function addOptionSystemMessage(
   }
 }
 
-export async function updateModelApproval(
-  id: string,
-  approval: 'approved' | 'rejected',
-): Promise<boolean> {
-  try {
-    // Auth-Guard: only the model linked to this request may approve/reject.
-    // Fetch the request and verify the current user is the model's linked user.
-    const {
-      data: { user },
-      error: authErr,
-    } = await supabase.auth.getUser();
-    if (authErr || !user) {
-      console.error('updateModelApproval: no authenticated user', authErr);
-      return false;
-    }
-
-    const { data: req, error: fetchErr } = await supabase
-      .from('option_requests')
-      .select('model_id')
-      .eq('id', id)
-      .maybeSingle();
-
-    if (fetchErr || !req) {
-      console.error('updateModelApproval: request fetch failed', fetchErr);
-      return false;
-    }
-
-    const { data: modelRow, error: modelErr } = await supabase
-      .from('models')
-      .select('user_id')
-      .eq('id', (req as { model_id: string }).model_id)
-      .maybeSingle();
-
-    if (modelErr || !modelRow) {
-      console.error('updateModelApproval: model fetch failed', modelErr);
-      return false;
-    }
-
-    const modelUserId = (modelRow as { user_id: string | null }).user_id;
-    if (modelUserId !== user.id) {
-      console.error('updateModelApproval: caller is not the linked model user', {
-        callerId: user.id,
-        modelUserId,
-      });
-      return false;
-    }
-
-    const { data: updatedRows, error } = await supabase
-      .from('option_requests')
-      .update({
-        model_approval: approval,
-        model_approved_at: approval === 'approved' ? new Date().toISOString() : null,
-      })
-      .eq('id', id)
-      // Race-condition guard: only update if still in pending state.
-      // Prevents double-approve / concurrent approve+reject conflicts.
-      .eq('model_approval', 'pending')
-      .select('id, organization_id');
-
-    if (error) {
-      console.error('updateModelApproval error:', error);
-      return false;
-    }
-    if (!updatedRows || updatedRows.length === 0) {
-      console.warn(
-        'updateModelApproval: no row updated — already approved/rejected or concurrent request',
-        { id, approval },
-      );
-      return false;
-    }
-    const row = updatedRows[0] as { id: string; organization_id: string | null };
-    logAction(row.organization_id, 'updateModelApproval', {
-      type: 'option',
-      action: approval === 'approved' ? 'option_confirmed' : 'option_rejected',
-      entityId: id,
-      newData: { model_approval: approval },
-      oldData: { model_approval: 'pending' },
-    });
-    return true;
-  } catch (e) {
-    console.error('updateModelApproval exception:', e);
-    return false;
-  }
-}
+// NOTE: Removed `updateModelApproval` (2026-04-19) — dead code. Model approval/rejection
+// now flows exclusively through `modelConfirmOptionRequest` / `modelRejectOptionRequest`,
+// which respect the canonical guards (final_status='option_confirmed' gate, system messages,
+// inflight guard, post-RPC refresh). Reviving any direct UPDATE on `model_approval` would
+// bypass invariant E.0 (no-rollback) and invariant K (axis separation).
 
 export async function getOptionRequestsForModel(
   modelId: string,

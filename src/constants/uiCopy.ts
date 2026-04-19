@@ -186,6 +186,15 @@ export const uiCopy = {
     removeLocationConfirmBody: 'Your location will no longer appear in the Near Me filter.',
     couldNotRemoveLocation: 'Could not remove location. Please try again.',
     couldNotSaveLocation: 'Could not save your location. Please try again.',
+    /** Model: live GPS location was set successfully — accepts the resolved city name. */
+    liveGpsLocationSet: (cityName: string) => `Live GPS location set to: ${cityName}`,
+    /** Model: confirm-availability RPC failed (status changed or agency not yet confirmed). */
+    couldNotConfirmAvailability:
+      'Could not confirm availability. The agency may not have confirmed yet, or the request status has changed. Please try again later.',
+    /** Model: decline-availability RPC failed. */
+    couldNotDeclineRequest: 'Could not decline the request. Please try again later.',
+    /** Model: calendar entry insert/update failed (title for short alert). */
+    calendarTitle: 'Calendar',
   },
   team: {
     section: 'Team',
@@ -943,6 +952,8 @@ export const uiCopy = {
     bookingModelLabel: 'Model',
     bookingDateLabel: 'Date',
     bookingStatusLabel: 'Status',
+    bookingStatusRemoved: 'Removed',
+    bookingStatusDeclined: 'Declined',
     openPackage: 'Open package',
     modelIdLabel: 'Model ID',
     pickPackage: 'Choose a package to share',
@@ -1360,6 +1371,12 @@ export const uiCopy = {
     addingToSelection: 'Adding…',
     /** When project title is missing in selection gallery header. */
     sharedProjectNameFallback: 'Project',
+    /** Detail modal — calendar availability section label. */
+    detailSectionCalendar: 'Calendar',
+    /** Detail modal — option request section label. */
+    detailSectionRequestOption: 'Request option',
+    /** Detail modal — option request section helper text. */
+    detailRequestOptionHelper: 'Request option for a specific date.',
   },
   /** Client Projects tab — project management actions. */
   projects: {
@@ -1679,6 +1696,8 @@ export const uiCopy = {
     rejectOptionTitle: 'Remove this request?',
     rejectOptionMessage:
       'This permanently removes the option or casting for all parties before the job is confirmed. Calendars and threads will be cleared. This cannot be undone.',
+    rejectOptionFailedTitle: 'Could not remove request',
+    rejectOptionFailedMessage: 'The request may have already changed. Please reload and try again.',
     /** Model — Profile → Options booking requests */
     modelConfirmAvailabilityTitle: 'Confirm availability?',
     modelConfirmAvailabilityMessage:

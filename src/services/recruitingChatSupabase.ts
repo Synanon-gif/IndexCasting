@@ -620,8 +620,14 @@ export async function uploadRecruitingChatFile(
   const safeBaseName =
     file instanceof File ? sanitizeUploadBaseName(file.name) : sanitizeUploadBaseName(fileName);
   const path = `recruiting/${threadId}/${Date.now()}_${safeBaseName}`;
+  // contentType MUST reflect the actual uploaded blob (safeFile may be a re-encoded
+  // image from stripExifAndCompress with a different MIME than the original file).
+  const safeContentType =
+    (safeFile instanceof File ? safeFile.type : (safeFile as Blob).type) ||
+    file.type ||
+    'application/octet-stream';
   const { error } = await supabase.storage.from('chat-files').upload(path, safeFile, {
-    contentType: file.type || 'application/octet-stream',
+    contentType: safeContentType,
     upsert: false,
   });
   if (error) {

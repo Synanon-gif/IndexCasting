@@ -60,6 +60,36 @@ function endCriticalOptionAction(threadId: string): void {
   criticalOptionActionInflight.delete(threadId);
 }
 
+/**
+ * Per-creation-tuple guard against double-submit for NEW option/casting requests.
+ * Key = `${modelId}|${date}|${requestType}|${startTime ?? ''}|${endTime ?? ''}`.
+ * Mirrors the per-thread inflight guard used for mutations on existing rows
+ * (system-invariants.mdc invariant L). Window is short — released after the
+ * RPC returns (success or failure) — so legitimate retries after a failure
+ * remain possible.
+ */
+const optionRequestCreationInflight = new Set<string>();
+
+function makeCreationKey(
+  modelId: string,
+  date: string,
+  requestType: 'option' | 'casting',
+  startTime?: string,
+  endTime?: string,
+): string {
+  return `${modelId}|${date}|${requestType}|${startTime ?? ''}|${endTime ?? ''}`;
+}
+
+function beginCreationGuard(key: string): boolean {
+  if (optionRequestCreationInflight.has(key)) return false;
+  optionRequestCreationInflight.add(key);
+  return true;
+}
+
+function endCreationGuard(key: string): void {
+  optionRequestCreationInflight.delete(key);
+}
+
 export type OptionRequestFlowSource =
   | 'discover'
   | 'portfolio_package'
@@ -243,8 +273,13 @@ export function addOptionRequest(
     clientOrganizationName?: string;
   },
 ): string {
-  const threadId = `thread-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const requestType = extra?.requestType ?? 'option';
+  const creationKey = makeCreationKey(modelId, date, requestType, extra?.startTime, extra?.endTime);
+  if (!beginCreationGuard(creationKey)) {
+    console.warn('[addOptionRequest] duplicate submission ignored', creationKey);
+    return '';
+  }
+  const threadId = `thread-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const timeStr = formatParenTimeRange(extra?.startTime, extra?.endTime);
   const _label = requestType === 'casting' ? 'Casting' : 'Option';
   const req: OptionRequest = {
@@ -285,245 +320,252 @@ export function addOptionRequest(
   notify();
 
   (async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user?.id) {
-      requestsCache = requestsCache.filter((x) => x.id !== req.id);
-      messagesCache = messagesCache.filter((m) => m.id !== autoMessage.id);
-      notify();
-      showAppAlert(uiCopy.common.error, uiCopy.alerts.optionRequestRequiresSignIn);
-      return;
-    }
-    const clientId = user.id;
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user?.id) {
+        requestsCache = requestsCache.filter((x) => x.id !== req.id);
+        messagesCache = messagesCache.filter((m) => m.id !== autoMessage.id);
+        notify();
+        showAppAlert(uiCopy.common.error, uiCopy.alerts.optionRequestRequiresSignIn);
+        return;
+      }
+      const clientId = user.id;
 
-    let organizationId: string | null = null;
-    if (user?.id) {
+      let organizationId: string | null = null;
+      if (user?.id) {
+        try {
+          // Employees must resolve their employer's org; owners fall back to
+          // creating their own org. getMyClientMemberRole covers both cases.
+          const { getMyClientMemberRole, ensureClientOrganization } =
+            await import('../services/organizationsInvitationsSupabase');
+          const roleData = await getMyClientMemberRole();
+          if (roleData?.organization_id) {
+            organizationId = roleData.organization_id;
+          } else {
+            organizationId = await ensureClientOrganization();
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+
+      let agencyId: string | null = null;
+      let countryCodeUsedForBooking: string | null = null;
       try {
-        // Employees must resolve their employer's org; owners fall back to
-        // creating their own org. getMyClientMemberRole covers both cases.
-        const { getMyClientMemberRole, ensureClientOrganization } =
-          await import('../services/organizationsInvitationsSupabase');
-        const roleData = await getMyClientMemberRole();
-        if (roleData?.organization_id) {
-          organizationId = roleData.organization_id;
+        const model = await getModelByIdFromSupabase(modelId);
+        const fallbackAgency = model?.agency_id ?? null;
+
+        // Derive model account status from canonical truth (models.user_id)
+        const modelHasAccount = !!(model as { user_id?: string | null } | null)?.user_id;
+        req.modelAccountLinked = modelHasAccount;
+
+        const countryCodeUsed = extra?.countryCode?.trim()
+          ? extra?.countryCode
+          : (model?.country_code ?? model?.country ?? null);
+
+        if (countryCodeUsed) {
+          const resolved = await resolveAgencyForModelAndCountry(modelId, countryCodeUsed);
+          if (resolved) {
+            agencyId = resolved;
+            countryCodeUsedForBooking = countryCodeUsed;
+          } else {
+            // No MAT entry for this country (e.g. model physically in FR but
+            // represented only in UK). Fall back to home agency and skip strict
+            // MAT+country validation — the RPC will verify models.agency_id instead.
+            console.warn('[addOptionRequest] no MAT entry for territory, using fallback agency', {
+              modelId,
+              country: countryCodeUsed,
+              fallbackAgency,
+            });
+            agencyId = fallbackAgency;
+            countryCodeUsedForBooking = null;
+          }
+
+          if (!agencyId) {
+            showAppAlert(uiCopy.common.error, uiCopy.alerts.noTerritoryForCountry);
+            requestsCache = requestsCache.filter((x) => x.id !== req.id);
+            messagesCache = messagesCache.filter((m) => m.id !== autoMessage.id);
+            notify();
+            return;
+          }
         } else {
-          organizationId = await ensureClientOrganization();
+          agencyId = fallbackAgency;
+          if (!agencyId) {
+            showAppAlert(uiCopy.common.error, uiCopy.alerts.missingCountryCode);
+            requestsCache = requestsCache.filter((x) => x.id !== req.id);
+            messagesCache = messagesCache.filter((m) => m.id !== autoMessage.id);
+            notify();
+            return;
+          }
+        }
+      } catch {}
+
+      let agencyOrganizationId: string | null = null;
+      try {
+        if (agencyId) {
+          agencyOrganizationId = await resolveAgencyOrganizationIdForOptionRequest(
+            modelId,
+            agencyId,
+            countryCodeUsedForBooking,
+          );
         }
       } catch {
-        /* ignore */
+        agencyOrganizationId = null;
       }
-    }
 
-    let agencyId: string | null = null;
-    let countryCodeUsedForBooking: string | null = null;
-    try {
-      const model = await getModelByIdFromSupabase(modelId);
-      const fallbackAgency = model?.agency_id ?? null;
-
-      // Derive model account status from canonical truth (models.user_id)
-      const modelHasAccount = !!(model as { user_id?: string | null } | null)?.user_id;
-      req.modelAccountLinked = modelHasAccount;
-
-      const countryCodeUsed = extra?.countryCode?.trim()
-        ? extra?.countryCode
-        : (model?.country_code ?? model?.country ?? null);
-
-      if (countryCodeUsed) {
-        const resolved = await resolveAgencyForModelAndCountry(modelId, countryCodeUsed);
-        if (resolved) {
-          agencyId = resolved;
-          countryCodeUsedForBooking = countryCodeUsed;
-        } else {
-          // No MAT entry for this country (e.g. model physically in FR but
-          // represented only in UK). Fall back to home agency and skip strict
-          // MAT+country validation — the RPC will verify models.agency_id instead.
-          console.warn('[addOptionRequest] no MAT entry for territory, using fallback agency', {
+      if (countryCodeUsedForBooking && agencyId && !agencyOrganizationId) {
+        console.error(
+          '[addOptionRequest] territory validation failed: MAT does not confirm agency for territory',
+          {
             modelId,
-            country: countryCodeUsed,
-            fallbackAgency,
-          });
-          agencyId = fallbackAgency;
-          countryCodeUsedForBooking = null;
-        }
-
-        if (!agencyId) {
-          showAppAlert(uiCopy.common.error, uiCopy.alerts.noTerritoryForCountry);
-          requestsCache = requestsCache.filter((x) => x.id !== req.id);
-          messagesCache = messagesCache.filter((m) => m.id !== autoMessage.id);
-          notify();
-          return;
-        }
-      } else {
-        agencyId = fallbackAgency;
-        if (!agencyId) {
-          showAppAlert(uiCopy.common.error, uiCopy.alerts.missingCountryCode);
-          requestsCache = requestsCache.filter((x) => x.id !== req.id);
-          messagesCache = messagesCache.filter((m) => m.id !== autoMessage.id);
-          notify();
-          return;
-        }
+            agencyId,
+            countryCode: countryCodeUsedForBooking,
+          },
+        );
+        showAppAlert(uiCopy.common.error, uiCopy.alerts.noTerritoryForCountry);
+        requestsCache = requestsCache.filter((x) => x.id !== req.id);
+        messagesCache = messagesCache.filter((m) => m.id !== autoMessage.id);
+        notify();
+        return;
       }
-    } catch {}
 
-    let agencyOrganizationId: string | null = null;
-    try {
-      if (agencyId) {
-        agencyOrganizationId = await resolveAgencyOrganizationIdForOptionRequest(
-          modelId,
-          agencyId,
-          countryCodeUsedForBooking,
+      const flowSource = extra?.flowSource ?? 'other';
+      const normStart = extra?.startTime?.trim() ? extra.startTime : null;
+      const normEnd = extra?.endTime?.trim() ? extra.endTime : null;
+
+      console.info('[addOptionRequest] resolution', {
+        flowSource,
+        actingUserId: clientId,
+        clientOrganizationId: organizationId,
+        modelId,
+        requestType,
+        countryCode: countryCodeUsedForBooking,
+        resolvedAgencyId: agencyId,
+        resolvedAgencyOrganizationId: agencyOrganizationId,
+      });
+
+      // Calendar conflict check — informational only (fail-open).
+      // Warns the user when the model already has a confirmed booking on the
+      // requested date so they can decide whether to proceed.
+      const conflictResult = await checkCalendarConflict(modelId, date, normStart, normEnd);
+      if (conflictResult.has_conflict) {
+        const conflictTitles = conflictResult.conflicting_entries
+          .map((e) => e.title ?? e.entry_type)
+          .join(', ');
+        showAppAlert(
+          uiCopy.calendarValidation.conflictWarningTitle ?? 'Schedule Conflict',
+          (
+            uiCopy.calendarValidation.conflictWarningMessage ??
+            'This model already has a booking on this date: {{entries}}. You can still submit the request.'
+          ).replace('{{entries}}', conflictTitles),
         );
       }
-    } catch {
-      agencyOrganizationId = null;
-    }
 
-    if (countryCodeUsedForBooking && agencyId && !agencyOrganizationId) {
-      console.error(
-        '[addOptionRequest] territory validation failed: MAT does not confirm agency for territory',
-        {
-          modelId,
-          agencyId,
-          countryCode: countryCodeUsedForBooking,
-        },
-      );
-      showAppAlert(uiCopy.common.error, uiCopy.alerts.noTerritoryForCountry);
-      requestsCache = requestsCache.filter((x) => x.id !== req.id);
-      messagesCache = messagesCache.filter((m) => m.id !== autoMessage.id);
-      notify();
-      return;
-    }
-
-    const flowSource = extra?.flowSource ?? 'other';
-    const normStart = extra?.startTime?.trim() ? extra.startTime : null;
-    const normEnd = extra?.endTime?.trim() ? extra.endTime : null;
-
-    console.info('[addOptionRequest] resolution', {
-      flowSource,
-      actingUserId: clientId,
-      clientOrganizationId: organizationId,
-      modelId,
-      requestType,
-      countryCode: countryCodeUsedForBooking,
-      resolvedAgencyId: agencyId,
-      resolvedAgencyOrganizationId: agencyOrganizationId,
-    });
-
-    // Calendar conflict check — informational only (fail-open).
-    // Warns the user when the model already has a confirmed booking on the
-    // requested date so they can decide whether to proceed.
-    const conflictResult = await checkCalendarConflict(modelId, date, normStart, normEnd);
-    if (conflictResult.has_conflict) {
-      const conflictTitles = conflictResult.conflicting_entries
-        .map((e) => e.title ?? e.entry_type)
-        .join(', ');
-      showAppAlert(
-        uiCopy.calendarValidation.conflictWarningTitle ?? 'Schedule Conflict',
-        (
-          uiCopy.calendarValidation.conflictWarningMessage ??
-          'This model already has a booking on this date: {{entries}}. You can still submit the request.'
-        ).replace('{{entries}}', conflictTitles),
-      );
-    }
-
-    const result = await insertOptionRequest({
-      client_id: clientId,
-      model_id: modelId,
-      agency_id: agencyId!,
-      requested_date: date,
-      project_id: projectId,
-      client_name: clientName,
-      model_name: modelName,
-      job_description: extra?.jobDescription,
-      proposed_price: extra?.proposedPrice,
-      currency: extra?.currency,
-      start_time: normStart ?? undefined,
-      end_time: normEnd ?? undefined,
-      request_type: requestType,
-      organization_id: organizationId,
-      client_organization_id: organizationId ?? null,
-      client_organization_name: extra?.clientOrganizationName ?? null,
-      agency_organization_id: agencyOrganizationId,
-      created_by: user?.id ?? null,
-    });
-    if (!result) {
-      // DB insert failed: roll back the optimistic stub so the UI stays consistent.
-      requestsCache = requestsCache.filter((x) => x.id !== req.id);
-      messagesCache = messagesCache.filter((m) => m.id !== autoMessage.id);
-      notify();
-      console.error(
-        '[addOptionRequest] insertOptionRequest returned null – optimistic entry rolled back',
-        {
-          flowSource,
-          actingUserId: clientId,
-          clientOrganizationId: organizationId,
-          modelId,
-          requestType,
-          countryCode: countryCodeUsedForBooking,
-          resolvedAgencyId: agencyId,
-          resolvedAgencyOrganizationId: agencyOrganizationId,
-        },
-      );
-      return;
-    }
-    if (result) {
-      const local = toLocalRequest(result);
-      const r = requestsCache.find((x) => x.id === req.id);
-      if (r) {
-        r.id = local.id;
-        r.threadId = local.threadId;
-        r.modelApproval = local.modelApproval;
-        r.modelApprovedAt = local.modelApprovedAt;
-        r.modelAccountLinked = local.modelAccountLinked;
-        r.agencyId = local.agencyId;
+      const result = await insertOptionRequest({
+        client_id: clientId,
+        model_id: modelId,
+        agency_id: agencyId!,
+        requested_date: date,
+        project_id: projectId,
+        client_name: clientName,
+        model_name: modelName,
+        job_description: extra?.jobDescription,
+        proposed_price: extra?.proposedPrice,
+        currency: extra?.currency,
+        start_time: normStart ?? undefined,
+        end_time: normEnd ?? undefined,
+        request_type: requestType,
+        organization_id: organizationId,
+        client_organization_id: organizationId ?? null,
+        client_organization_name: extra?.clientOrganizationName ?? null,
+        agency_organization_id: agencyOrganizationId,
+        created_by: user?.id ?? null,
+      });
+      if (!result) {
+        // DB insert failed: roll back the optimistic stub so the UI stays consistent.
+        requestsCache = requestsCache.filter((x) => x.id !== req.id);
+        messagesCache = messagesCache.filter((m) => m.id !== autoMessage.id);
+        notify();
+        console.error(
+          '[addOptionRequest] insertOptionRequest returned null – optimistic entry rolled back',
+          {
+            flowSource,
+            actingUserId: clientId,
+            clientOrganizationId: organizationId,
+            modelId,
+            requestType,
+            countryCode: countryCodeUsedForBooking,
+            resolvedAgencyId: agencyId,
+            resolvedAgencyOrganizationId: agencyOrganizationId,
+          },
+        );
+        return;
       }
-      const m = messagesCache.find((x) => x.id === autoMessage.id);
-      if (m) m.threadId = result.id;
-      void addOptionMessage(result.id, 'client', autoText);
+      if (result) {
+        const local = toLocalRequest(result);
+        const r = requestsCache.find((x) => x.id === req.id);
+        if (r) {
+          r.id = local.id;
+          r.threadId = local.threadId;
+          r.modelApproval = local.modelApproval;
+          r.modelApprovedAt = local.modelApprovedAt;
+          r.modelAccountLinked = local.modelAccountLinked;
+          r.agencyId = local.agencyId;
+        }
+        const m = messagesCache.find((x) => x.id === autoMessage.id);
+        if (m) m.threadId = result.id;
+        void addOptionMessage(result.id, 'client', autoText);
 
-      // Booking must be visible in B2B chat as a typed message.
-      const bookingCountryCode = (countryCodeUsedForBooking ?? '').trim().toUpperCase();
-      if (user?.id && organizationId && bookingCountryCode) {
-        void createBookingMessageInClientAgencyChat({
-          agencyId: result.agency_id,
-          actingUserId: user.id,
-          clientOrganizationId: organizationId,
-          modelId,
-          countryCode: bookingCountryCode,
-          date,
-          optionRequestId: result.id,
-          requestType: requestType === 'casting' ? 'casting' : 'option',
-          source: extra?.source,
-          packageId: extra?.packageId,
-        });
-      }
-
-      // Workflow hint: from_role=system via RPC only (no agency/client spoofing).
-      if (local.modelAccountLinked === false) {
-        const sysClient = await addOptionSystemMessage(result.id, 'no_model_account_client_notice');
-        if (sysClient) {
-          messagesCache.push({
-            id: sysClient.id,
-            threadId: result.id,
-            from: 'system',
-            text: sysClient.text,
-            createdAt: new Date(sysClient.created_at).getTime(),
+        // Booking must be visible in B2B chat as a typed message.
+        const bookingCountryCode = (countryCodeUsedForBooking ?? '').trim().toUpperCase();
+        if (user?.id && organizationId && bookingCountryCode) {
+          void createBookingMessageInClientAgencyChat({
+            agencyId: result.agency_id,
+            actingUserId: user.id,
+            clientOrganizationId: organizationId,
+            modelId,
+            countryCode: bookingCountryCode,
+            date,
+            optionRequestId: result.id,
+            requestType: requestType === 'casting' ? 'casting' : 'option',
+            source: extra?.source,
+            packageId: extra?.packageId,
           });
         }
-        const sysAgency = await addOptionSystemMessage(result.id, 'no_model_account');
-        if (sysAgency) {
-          messagesCache.push({
-            id: sysAgency.id,
-            threadId: result.id,
-            from: 'system',
-            text: sysAgency.text,
-            createdAt: new Date(sysAgency.created_at).getTime(),
-          });
+
+        // Workflow hint: from_role=system via RPC only (no agency/client spoofing).
+        if (local.modelAccountLinked === false) {
+          const sysClient = await addOptionSystemMessage(
+            result.id,
+            'no_model_account_client_notice',
+          );
+          if (sysClient) {
+            messagesCache.push({
+              id: sysClient.id,
+              threadId: result.id,
+              from: 'system',
+              text: sysClient.text,
+              createdAt: new Date(sysClient.created_at).getTime(),
+            });
+          }
+          const sysAgency = await addOptionSystemMessage(result.id, 'no_model_account');
+          if (sysAgency) {
+            messagesCache.push({
+              id: sysAgency.id,
+              threadId: result.id,
+              from: 'system',
+              text: sysAgency.text,
+              createdAt: new Date(sysAgency.created_at).getTime(),
+            });
+          }
         }
+        notify();
+        extra?.onThreadReady?.(result.id);
       }
-      notify();
-      extra?.onThreadReady?.(result.id);
+    } finally {
+      endCreationGuard(creationKey);
     }
   })();
 
@@ -833,26 +875,29 @@ export async function agencyConfirmAvailabilityStore(threadId: string): Promise<
     const result = await agencyAcceptRequest(req.id);
     if (result === null) return false;
 
+    // System message is independent of the post-RPC cache refresh — always emit so
+    // the chat audit trail is preserved even if getOptionRequestById fails (R1 fix).
+    const inserted = await addOptionSystemMessage(req.id, 'agency_confirmed_availability');
+    if (inserted) {
+      messagesCache.push({
+        id: inserted.id,
+        threadId,
+        from: 'system',
+        text: inserted.text,
+        createdAt: new Date(inserted.created_at).getTime(),
+      });
+    }
+
     const updated = await getOptionRequestById(req.id);
     if (updated) {
       Object.assign(req, toLocalRequest(updated));
-      const inserted = await addOptionSystemMessage(req.id, 'agency_confirmed_availability');
-      if (inserted) {
-        messagesCache.push({
-          id: inserted.id,
-          threadId,
-          from: 'system',
-          text: inserted.text,
-          createdAt: new Date(inserted.created_at).getTime(),
-        });
-      }
-      notify();
     } else {
       console.warn(
         '[agencyConfirmAvailabilityStore] RPC succeeded but post-refresh failed — local state may be stale',
         req.id,
       );
     }
+    notify();
     return true;
   } finally {
     endCriticalOptionAction(threadId);
@@ -871,26 +916,29 @@ export async function agencyAcceptClientPriceStore(threadId: string): Promise<bo
     const priceOk = await agencyAcceptClientPrice(req.id);
     if (!priceOk) return false;
 
+    // System message is independent of the post-RPC cache refresh — always emit so
+    // the chat audit trail is preserved even if getOptionRequestById fails (R2 fix).
+    const inserted = await addOptionSystemMessage(req.id, 'agency_accepted_price');
+    if (inserted) {
+      messagesCache.push({
+        id: inserted.id,
+        threadId,
+        from: 'system',
+        text: inserted.text,
+        createdAt: new Date(inserted.created_at).getTime(),
+      });
+    }
+
     const updated = await getOptionRequestById(req.id);
     if (updated) {
       Object.assign(req, toLocalRequest(updated));
-      const inserted = await addOptionSystemMessage(req.id, 'agency_accepted_price');
-      if (inserted) {
-        messagesCache.push({
-          id: inserted.id,
-          threadId,
-          from: 'system',
-          text: inserted.text,
-          createdAt: new Date(inserted.created_at).getTime(),
-        });
-      }
-      notify();
     } else {
       console.warn(
         '[agencyAcceptClientPriceStore] RPC succeeded but post-refresh failed — local state may be stale',
         req.id,
       );
     }
+    notify();
     return true;
   } finally {
     endCriticalOptionAction(threadId);
@@ -1322,33 +1370,48 @@ export async function createAgencyOnlyOptionRequest(params: {
   agencyEventGroupId?: string;
   agencyOrganizationId?: string;
 }): Promise<string | null> {
-  const requestId = await insertAgencyOptionRequest(params);
-  if (!requestId) return null;
-
-  const full = await getOptionRequestById(requestId);
-  if (full) {
-    const local = toLocalRequest(full);
-    const existing = requestsCache.find((r) => r.id === requestId);
-    if (existing) {
-      Object.assign(existing, local);
-    } else {
-      requestsCache.push(local);
-    }
-
-    if (local.modelAccountLinked === false) {
-      const sysMsg = await addOptionSystemMessage(requestId, 'no_model_account');
-      if (sysMsg) {
-        messagesCache.push({
-          id: sysMsg.id,
-          threadId: requestId,
-          from: 'system',
-          text: sysMsg.text,
-          createdAt: new Date(sysMsg.created_at).getTime(),
-        });
-      }
-    }
-
-    notify();
+  const creationKey = makeCreationKey(
+    params.modelId,
+    params.requestedDate,
+    params.requestType ?? 'option',
+    params.startTime,
+    params.endTime,
+  );
+  if (!beginCreationGuard(creationKey)) {
+    console.warn('[createAgencyOnlyOptionRequest] duplicate submission ignored', creationKey);
+    return null;
   }
-  return requestId;
+  try {
+    const requestId = await insertAgencyOptionRequest(params);
+    if (!requestId) return null;
+
+    const full = await getOptionRequestById(requestId);
+    if (full) {
+      const local = toLocalRequest(full);
+      const existing = requestsCache.find((r) => r.id === requestId);
+      if (existing) {
+        Object.assign(existing, local);
+      } else {
+        requestsCache.push(local);
+      }
+
+      if (local.modelAccountLinked === false) {
+        const sysMsg = await addOptionSystemMessage(requestId, 'no_model_account');
+        if (sysMsg) {
+          messagesCache.push({
+            id: sysMsg.id,
+            threadId: requestId,
+            from: 'system',
+            text: sysMsg.text,
+            createdAt: new Date(sysMsg.created_at).getTime(),
+          });
+        }
+      }
+
+      notify();
+    }
+    return requestId;
+  } finally {
+    endCreationGuard(creationKey);
+  }
 }

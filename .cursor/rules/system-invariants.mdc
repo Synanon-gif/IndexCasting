@@ -1106,6 +1106,7 @@ onPress={() => { setFinalStatus('option_confirmed'); setClientPriceStatus('accep
 | `client_accepted_counter` | Axis 1 | "Client accepted the agency proposal." |
 | `client_rejected_counter` | Terminal | "Client declined the counter offer." |
 | `job_confirmed_by_client` | Beide | "Job confirmed by client." |
+| `job_confirmed_by_agency` | Beide (agency-only flow) | "Agency confirmed the job." |
 
 **Prüfpflicht bei JEDER Änderung an Negotiation-Buttons oder Store-Funktionen:**
 1. Setzt der Handler Felder von mehr als einer Achse? → STOP

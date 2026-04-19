@@ -715,8 +715,8 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
                 {getChestValue(galleryModel) != null
                   ? ` · Chest ${getChestValue(galleryModel)} cm`
                   : ''}
-                {galleryModel.waist ? ` · Waist ${galleryModel.waist} cm` : ''}
-                {galleryModel.hips ? ` · Hips ${galleryModel.hips} cm` : ''}
+                {galleryModel.waist != null ? ` · Waist ${galleryModel.waist} cm` : ''}
+                {galleryModel.hips != null ? ` · Hips ${galleryModel.hips} cm` : ''}
               </Text>
               {/* Action CTAs — same as authenticated Discover detail. For
                   unauthenticated guests, every tap routes to the sign-up gate;
@@ -922,8 +922,8 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
                 <Text style={styles.modelMeta}>
                   {m.height != null ? `${m.height}cm` : '—'}
                   {getChestValue(m) != null ? ` · Chest ${getChestValue(m)} cm` : ''}
-                  {m.waist ? ` · Waist ${m.waist} cm` : ''}
-                  {m.hips ? ` · Hips ${m.hips} cm` : ''}
+                  {m.waist != null ? ` · Waist ${m.waist} cm` : ''}
+                  {m.hips != null ? ` · Hips ${m.hips} cm` : ''}
                 </Text>
                 <Text style={styles.modelMeta}>
                   {m.sex ? (m.sex === 'female' ? copy.sexFemale : copy.sexMale) : ''}
