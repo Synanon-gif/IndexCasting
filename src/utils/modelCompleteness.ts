@@ -63,7 +63,7 @@ export function checkModelCompleteness(
 
   if (!ctx.hasVisiblePhoto) {
     issues.push({
-      field: 'portfolio_images',
+      field: 'visible_portfolio_photo',
       label: 'No visible portfolio photo — clients cannot see this model.',
       severity: 'critical',
     });
@@ -82,7 +82,8 @@ export function checkModelCompleteness(
   if (!model.is_visible_fashion && !model.is_visible_commercial) {
     issues.push({
       field: 'visibility',
-      label: 'Not visible to any client type (Fashion or Commercial) — model will NOT appear in client discovery. Assign at least one.',
+      label:
+        'Not visible to any client type (Fashion or Commercial) — model will NOT appear in client discovery. Assign at least one.',
       severity: 'critical',
     });
   }
@@ -198,7 +199,7 @@ export function getCompletionPercent(
   ctx: CompletenessContext,
 ): number {
   const issues = checkModelCompleteness(model, ctx);
-  const criticalCount    = issues.filter((i) => i.severity === 'critical').length;
+  const criticalCount = issues.filter((i) => i.severity === 'critical').length;
   const recommendedCount = issues.filter((i) => i.severity === 'recommended').length;
 
   const MAX_POINTS = 4 * 2 + 8 * 1; // 16 = max weight when all issues present

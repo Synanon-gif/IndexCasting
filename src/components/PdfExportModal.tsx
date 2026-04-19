@@ -134,7 +134,9 @@ export function PdfExportModal({ visible, onClose, models, entityName }: PdfExpo
                       </Text>
                     ) : null}
                   </View>
-                  <Text style={styles.rowImageCount}>{m.imageUrls.length} img</Text>
+                  <Text style={styles.rowImageCount}>
+                    {uiCopy.pdfExport.imageCountSuffix(m.imageUrls.length)}
+                  </Text>
                 </TouchableOpacity>
               );
             })}

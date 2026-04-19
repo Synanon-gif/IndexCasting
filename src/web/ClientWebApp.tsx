@@ -4017,7 +4017,7 @@ const PackageGalleryView: React.FC<PackageGalleryProps> = ({
                   {(m.chest ?? m.bust) != null ? `${m.chest ?? m.bust} cm` : '—'} ·{' '}
                   {uiCopy.discover.detailMeasurementWaist} {m.waist != null ? `${m.waist} cm` : '—'}{' '}
                   · {uiCopy.discover.detailMeasurementHips} {m.hips != null ? `${m.hips} cm` : '—'}
-                  {m.legsInseam
+                  {m.legsInseam != null
                     ? ` · ${uiCopy.discover.detailMeasurementInseam} ${m.legsInseam} cm`
                     : ''}
                 </Text>
@@ -4506,7 +4506,7 @@ const DiscoverView: React.FC<DiscoverProps> = ({
                   <Text style={styles.coverMeasurementsLabel}>
                     Height {current.height} cm · Chest {current.chest || current.bust || '—'} cm ·
                     Waist {current.waist || '—'} cm · Hips {current.hips || '—'} cm
-                    {current.legsInseam ? ` · Inseam ${current.legsInseam} cm` : ''}
+                    {current.legsInseam != null ? ` · Inseam ${current.legsInseam} cm` : ''}
                   </Text>
                   <Text style={styles.coverLocationLabel}>
                     {current.hasRealLocation
@@ -4699,8 +4699,14 @@ const ClientCalendarView: React.FC<ClientCalendarViewProps> = ({
       contentContainerStyle={{ paddingBottom: spacing.xl * 2 + scrollBottomInset }}
     >
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionLabel}>Calendar</Text>
-        <View style={{ flexDirection: 'row', gap: spacing.sm, alignItems: 'center' }}>
+        <View
+          style={{
+            flexDirection: 'row',
+            gap: spacing.sm,
+            alignItems: 'center',
+            marginLeft: 'auto',
+          }}
+        >
           {!canAddManualEvents && (
             <Text
               style={{

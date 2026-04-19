@@ -775,7 +775,7 @@ function AppContent() {
             onPress={() => { clearOrgDeactivated(); void signOut(); }}
             style={{ paddingVertical: 12, paddingHorizontal: 32, backgroundColor: colors.textPrimary, borderRadius: 8 }}
           >
-            <Text style={{ fontWeight: '600', color: colors.surface }}>Sign Out</Text>
+            <Text style={{ fontWeight: '600', color: colors.surface }}>{uiCopy.common.logout}</Text>
           </TouchableOpacity>
         </View>
         <StatusBar style="dark" />

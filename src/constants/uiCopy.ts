@@ -722,7 +722,7 @@ export const uiCopy = {
     sharedListSignInHint:
       'You opened a shared model list. After signing in, open the same link again if the list does not appear.',
     /** Fallback when invite/claim success banner text resolver fails (success still applied). */
-    inviteClaimSuccessFallback: 'Welcome — your workspace access is ready.',
+    inviteClaimSuccessFallback: 'We connected your account. Some details could not be loaded.',
   },
   apply: {
     displayNameMissing:
@@ -1181,6 +1181,18 @@ export const uiCopy = {
     orgSaved: 'Organization updated.',
     orgSaveFailed: 'Could not update organization. Check console.',
     orgToggleActiveFailed: 'Could not change organization status.',
+    orgToggleActiveConfirmTitle: 'Change organization status?',
+    editorSaveChanges: 'Save Changes',
+    editorActiveLabel: 'Active',
+    editorEmptyState: 'Select a profile from the Accounts tab to edit.',
+    swipeResetConfirmTitle: 'Reset daily swipe count?',
+    swipeResetConfirmBody: (name: string) =>
+      `Reset today's swipe counter for "${name}"? This cannot be undone.`,
+    swipeResetConfirmBtn: 'Reset',
+    orgDeactivateConfirmBody: (name: string) =>
+      `Deactivate "${name}"? Members will lose platform access until reactivated.`,
+    orgActivateConfirmBody: (name: string) =>
+      `Activate "${name}"? Members will regain platform access (subject to plan).`,
     orgMembersCount: '{n} member(s)',
     /** Models tab */
     modelsTabTitle: 'Models',
@@ -2306,6 +2318,7 @@ export const uiCopy = {
     errorGeneric: 'PDF generation failed. Please try again.',
     noImagesNote: 'No images available',
     footerText: 'Generated via Index Casting',
+    imageCountSuffix: (count: number) => `${count} img`,
   },
   agencyShare: {
     // Sender — entry point in AgencyControllerView

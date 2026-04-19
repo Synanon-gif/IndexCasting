@@ -1,3 +1,5 @@
+import { uiCopy } from '../constants/uiCopy';
+
 export type PdfModelInput = {
   name: string;
   city: string;
@@ -14,7 +16,6 @@ const MARGIN = 15;
 const CONTENT_W = PAGE_W - 2 * MARGIN;
 const IMAGE_TIMEOUT_MS = 12_000;
 const FOOTER_Y = PAGE_H - 8;
-const FOOTER_TEXT = 'Generated via Index Casting';
 
 /**
  * Load a remote image and convert it to a JPEG data-URL via an off-screen
@@ -111,7 +112,7 @@ function addFooter(doc: JsPDFInstance): void {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(150, 150, 150);
-  doc.text(FOOTER_TEXT, MARGIN, FOOTER_Y);
+  doc.text(uiCopy.pdfExport.footerText, MARGIN, FOOTER_Y);
   doc.setTextColor(0, 0, 0);
 }
 
@@ -190,7 +191,7 @@ export async function generateModelsPdf(
       doc.setFont('helvetica', 'italic');
       doc.setFontSize(10);
       doc.setTextColor(150, 150, 150);
-      doc.text('No images available', MARGIN, y + 5);
+      doc.text(uiCopy.pdfExport.noImagesNote, MARGIN, y + 5);
       doc.setTextColor(0, 0, 0);
       continue;
     }

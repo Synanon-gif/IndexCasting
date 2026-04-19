@@ -442,15 +442,31 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
       showFeedback('Apply the DB migration first to use this feature.', false);
       return;
     }
-    setOrgTogglingId(org.id);
-    const ok = await adminSetOrgActive(org.id, !org.is_active);
-    if (ok) {
-      showFeedback(org.is_active ? 'Organization deactivated.' : 'Organization activated.');
-      await loadData();
-    } else {
-      showFeedback(uiCopy.adminDashboard.orgToggleActiveFailed, false);
-    }
-    setOrgTogglingId(null);
+    const willDeactivate = org.is_active;
+    const confirmBody = willDeactivate
+      ? uiCopy.adminDashboard.orgDeactivateConfirmBody(org.name ?? '')
+      : uiCopy.adminDashboard.orgActivateConfirmBody(org.name ?? '');
+    const confirmLabel = willDeactivate
+      ? uiCopy.adminDashboard.orgDeactivateBtn
+      : uiCopy.adminDashboard.orgActivateBtn;
+    showConfirmAlert(
+      uiCopy.adminDashboard.orgToggleActiveConfirmTitle,
+      confirmBody,
+      () => {
+        void (async () => {
+          setOrgTogglingId(org.id);
+          const ok = await adminSetOrgActive(org.id, !org.is_active);
+          if (ok) {
+            showFeedback(willDeactivate ? 'Organization deactivated.' : 'Organization activated.');
+            await loadData();
+          } else {
+            showFeedback(uiCopy.adminDashboard.orgToggleActiveFailed, false);
+          }
+          setOrgTogglingId(null);
+        })();
+      },
+      confirmLabel,
+    );
   };
 
   const handleSaveOrg = async (org: AdminOrganization) => {
@@ -527,17 +543,26 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
     setOrgSwipeSavingId(null);
   };
 
-  const handleResetSwipeCount = async (org: AdminOrganization) => {
-    setOrgSwipeResettingId(org.id);
-    const ok = await adminResetAgencySwipeCount(org.id);
-    if (ok) {
-      showFeedback(uiCopy.adminDashboard.swipeLimitResetSuccess);
-      const updated = await adminGetAgencyUsageLimits(org.id);
-      setOrgSwipeLimits((prev) => ({ ...prev, [org.id]: updated }));
-    } else {
-      showFeedback(uiCopy.adminDashboard.swipeLimitResetFailed, false);
-    }
-    setOrgSwipeResettingId(null);
+  const handleResetSwipeCount = (org: AdminOrganization) => {
+    showConfirmAlert(
+      uiCopy.adminDashboard.swipeResetConfirmTitle,
+      uiCopy.adminDashboard.swipeResetConfirmBody(org.name ?? ''),
+      () => {
+        void (async () => {
+          setOrgSwipeResettingId(org.id);
+          const ok = await adminResetAgencySwipeCount(org.id);
+          if (ok) {
+            showFeedback(uiCopy.adminDashboard.swipeLimitResetSuccess);
+            const updated = await adminGetAgencyUsageLimits(org.id);
+            setOrgSwipeLimits((prev) => ({ ...prev, [org.id]: updated }));
+          } else {
+            showFeedback(uiCopy.adminDashboard.swipeLimitResetFailed, false);
+          }
+          setOrgSwipeResettingId(null);
+        })();
+      },
+      uiCopy.adminDashboard.swipeResetConfirmBtn,
+    );
   };
 
   // ── Storage Override Handlers ─────────────────────────────────────────────
@@ -1288,7 +1313,7 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
                                   styles.btnRed,
                                   isResetting && { opacity: 0.5 },
                                 ]}
-                                onPress={() => void handleResetSwipeCount(org)}
+                                onPress={() => handleResetSwipeCount(org)}
                                 disabled={isResetting}
                               >
                                 {isResetting ? (
@@ -1925,7 +1950,7 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
               )}
 
               <View style={{ marginBottom: spacing.sm }}>
-                <Text style={styles.editLabel}>Active</Text>
+                <Text style={styles.editLabel}>{uiCopy.adminDashboard.editorActiveLabel}</Text>
                 <TouchableOpacity
                   style={[styles.toggleBtn, editFields.is_active === 'true' && styles.toggleBtnOn]}
                   onPress={() =>
@@ -1941,7 +1966,7 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
                       editFields.is_active === 'true' && styles.toggleBtnLabelOn,
                     ]}
                   >
-                    {editFields.is_active === 'true' ? 'Yes' : 'No'}
+                    {editFields.is_active === 'true' ? uiCopy.common.yes : uiCopy.common.no}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -1977,12 +2002,14 @@ export const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout })
                 onPress={handleSaveEdit}
                 disabled={saving}
               >
-                <Text style={styles.saveBtnLabel}>{saving ? 'Saving...' : 'Save Changes'}</Text>
+                <Text style={styles.saveBtnLabel}>
+                  {saving ? uiCopy.common.saving : uiCopy.adminDashboard.editorSaveChanges}
+                </Text>
               </TouchableOpacity>
               <View style={{ height: 40 }} />
             </>
           ) : (
-            <Text style={styles.emptyText}>Select a profile from the Accounts tab to edit.</Text>
+            <Text style={styles.emptyText}>{uiCopy.adminDashboard.editorEmptyState}</Text>
           )}
         </ScrollView>
       )}
