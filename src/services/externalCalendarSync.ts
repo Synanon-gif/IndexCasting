@@ -145,26 +145,59 @@ async function pushOne(args: {
     idempotencyKey,
   });
 
+  // Audit-Gap closure: when the outbox enqueue fails (no row created) but we still
+  // attempt a direct push, every outcome MUST emit an explicit operational log so
+  // the missing audit row is reconcilable. Without this, an enq-fail + push-success
+  // would silently leave external state diverged from local audit trail.
+  const auditMissingOutbox = !enq.ok || !enq.rowId;
+
   // Best-effort direct push regardless of enqueue outcome (idempotency key dedupes).
   try {
     const pushFn =
       provider === 'mediaslide' ? pushAvailabilityToMediaslide : pushAvailabilityToNetwalk;
     const res = await pushFn(remoteModelId, payload, apiKey ?? undefined);
     if (res?.ok) {
-      await markOutboxSent(enq.rowId);
+      if (enq.rowId) {
+        await markOutboxSent(enq.rowId);
+      } else {
+        // Direct push succeeded but no outbox audit row exists.
+        // Log so admins can reconcile (the remote system has the change, our
+        // external_sync_outbox table does not record it for this attempt).
+        await logMediaslideError({
+          operation: `push_availability_${provider}_no_outbox_row`,
+          modelId,
+          mediaslideId: provider === 'mediaslide' ? remoteModelId : null,
+          message:
+            'Direct push succeeded but enqueue_external_sync_outbox failed — no outbox audit row.',
+          details: { idempotencyKey, status: payload.blocked[0]?.status ?? null },
+        });
+      }
       return 'ok';
     }
-    await markOutboxFailed(enq.rowId, `${provider} push returned not-ok`);
+    const notOkMsg = `${provider} push returned not-ok`;
+    if (enq.rowId) {
+      await markOutboxFailed(enq.rowId, notOkMsg);
+    } else if (auditMissingOutbox) {
+      await logMediaslideError({
+        operation: `push_availability_${provider}_no_outbox_row`,
+        modelId,
+        mediaslideId: provider === 'mediaslide' ? remoteModelId : null,
+        message: `${notOkMsg} (enqueue_external_sync_outbox also failed — no audit row)`,
+        details: { idempotencyKey, status: payload.blocked[0]?.status ?? null },
+      });
+    }
     return 'error';
-  } catch (e: any) {
-    const message = e?.message || `${provider} push threw`;
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : `${provider} push threw`;
     await markOutboxFailed(enq.rowId, message);
     await logMediaslideError({
-      operation: `push_availability_${provider}`,
+      operation: auditMissingOutbox
+        ? `push_availability_${provider}_no_outbox_row`
+        : `push_availability_${provider}`,
       modelId,
       mediaslideId: provider === 'mediaslide' ? remoteModelId : null,
       message,
-      details: e,
+      details: { error: e instanceof Error ? (e.stack ?? e.message) : String(e), idempotencyKey },
     });
     return 'error';
   }

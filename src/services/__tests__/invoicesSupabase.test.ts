@@ -159,6 +159,24 @@ describe('listInvoicesForRecipient', () => {
     expect(r).toHaveLength(1);
     expect(chain.eq).toHaveBeenCalledWith('recipient_organization_id', 'org-2');
   });
+
+  // Anti-regression: the Received tab in InvoicesPanel passes the full
+  // recipient-visible status set so void/uncollectible invoices remain visible
+  // to the recipient owner (matches RLS invoices_recipient_owner_select).
+  it('forwards full recipient-visible status set incl. void/uncollectible', async () => {
+    const chain = listChain({ data: [], error: null });
+    from.mockReturnValue(chain);
+    await listInvoicesForRecipient('org-2', {
+      statuses: ['sent', 'paid', 'overdue', 'void', 'uncollectible'],
+    });
+    expect(chain.in).toHaveBeenCalledWith('status', [
+      'sent',
+      'paid',
+      'overdue',
+      'void',
+      'uncollectible',
+    ]);
+  });
 });
 
 // ─── getInvoiceWithLines ───────────────────────────────────────────────────

@@ -27,6 +27,7 @@ import {
   deleteInvoiceDraft,
   listInvoicesForOrganization,
   listInvoicesForRecipient,
+  sendInvoiceViaStripe,
 } from '../services/invoicesSupabase';
 import type { InvoiceRow, InvoiceStatus, InvoiceType } from '../types/billingTypes';
 import { showAppAlert, showConfirmAlert } from '../utils/crossPlatformAlert';
@@ -115,8 +116,12 @@ export const InvoicesPanel: React.FC<Props> = ({ organizationId }) => {
     try {
       let data: InvoiceRow[] = [];
       if (tab === 'received') {
+        // Match RLS policy invoices_recipient_owner_select: recipient owners may
+        // see all non-draft, non-pending_send statuses including void/uncollectible
+        // (otherwise voided invoices the recipient previously saw would silently
+        // disappear from their UI — audit-trail regression).
         data = await listInvoicesForRecipient(organizationId, {
-          statuses: ['sent', 'paid', 'overdue'],
+          statuses: ['sent', 'paid', 'overdue', 'void', 'uncollectible'],
         });
       } else {
         const statusMap: Record<Tab, InvoiceStatus[] | undefined> = {
@@ -171,6 +176,38 @@ export const InvoicesPanel: React.FC<Props> = ({ organizationId }) => {
         inv.deleteConfirmMessage,
         () => void run(),
         uiCopy.common.delete,
+      );
+    },
+    [isOwner, load, inv],
+  );
+
+  // Recovery for invoices stuck in 'pending_send' (Stripe call interrupted before
+  // local status was advanced). The send-invoice-via-stripe Edge Function is
+  // idempotent on pending_send: it skips the pre-lock and reuses the already
+  // assigned invoice_number — no duplicate Stripe invoice / no number gap.
+  const [retryingId, setRetryingId] = useState<string | null>(null);
+  const onRetrySend = useCallback(
+    (row: InvoiceRow) => {
+      if (!isOwner || row.status !== 'pending_send') return;
+      const run = async () => {
+        setRetryingId(row.id);
+        try {
+          const res = await sendInvoiceViaStripe(row.id);
+          if (res.ok) {
+            showAppAlert(uiCopy.common.success, inv.sendSuccess);
+            await load();
+          } else {
+            showAppAlert(uiCopy.common.error, res.error ?? inv.sendFailed);
+          }
+        } finally {
+          setRetryingId(null);
+        }
+      };
+      showConfirmAlert(
+        inv.retrySendConfirmTitle,
+        inv.retrySendConfirmMessage,
+        () => void run(),
+        inv.retrySend,
       );
     },
     [isOwner, load, inv],
@@ -265,6 +302,13 @@ export const InvoicesPanel: React.FC<Props> = ({ organizationId }) => {
                       <Text style={styles.linkDanger}>{inv.delete}</Text>
                     </TouchableOpacity>
                   </>
+                )}
+                {r.status === 'pending_send' && isOwner && (
+                  <TouchableOpacity onPress={() => onRetrySend(r)} disabled={retryingId === r.id}>
+                    <Text style={styles.linkAction}>
+                      {retryingId === r.id ? inv.sendingViaStripe : inv.retrySend}
+                    </Text>
+                  </TouchableOpacity>
                 )}
                 {r.status !== 'draft' && r.stripe_hosted_url && Platform.OS === 'web' && (
                   <TouchableOpacity

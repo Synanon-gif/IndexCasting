@@ -54,6 +54,17 @@ jest.mock('../netwalkConnector', () => ({
   pushAvailabilityToNetwalk: (...args: unknown[]) => pushAvailabilityToNetwalkMock(...args),
 }));
 
+const logMediaslideErrorMock = jest.fn().mockResolvedValue(undefined);
+jest.mock('../mediaslideSyncService', () => {
+  const actual = jest.requireActual<typeof import('../mediaslideSyncService')>(
+    '../mediaslideSyncService',
+  );
+  return {
+    ...actual,
+    logMediaslideError: (...args: unknown[]) => logMediaslideErrorMock(...args),
+  };
+});
+
 jest.mock('../supabaseFetchAll', () => ({
   fetchAllSupabasePages: jest.fn().mockResolvedValue([]),
 }));
@@ -313,6 +324,139 @@ describe('syncConfirmedBookingToExternalCalendars — outbox idempotency', () =>
 
     expect(result).toEqual({ mediaslide: 'skipped', netwalk: 'skipped' });
     expect(getAgencyApiKeysMock).not.toHaveBeenCalled();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2b. Audit-trail safety: enqueueOutbox failure path (no outbox row created)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('syncConfirmedBookingToExternalCalendars — outbox audit-gap closure', () => {
+  beforeEach(() => {
+    fromMock.mockReset();
+    rpcMock.mockReset();
+    getAgencyApiKeysMock.mockReset();
+    pushAvailabilityToMediaslideMock.mockReset();
+    pushAvailabilityToNetwalkMock.mockReset();
+    logMediaslideErrorMock.mockReset();
+    logMediaslideErrorMock.mockResolvedValue(undefined);
+  });
+
+  it('logs operational warning when enqueue_external_sync_outbox fails but direct push succeeds (no audit row)', async () => {
+    getAgencyApiKeysMock.mockResolvedValue({
+      mediaslide_connected: true,
+      mediaslide_api_key: 'key-ms',
+      netwalk_connected: false,
+      netwalk_api_key: null,
+    });
+    // enqueue fails (no rowId returned). Direct push succeeds.
+    rpcMock.mockImplementation((fn: string) => {
+      if (fn === 'enqueue_external_sync_outbox') {
+        return Promise.resolve({ data: null, error: { message: 'rls denied' } });
+      }
+      return Promise.resolve({ data: null, error: null });
+    });
+    pushAvailabilityToMediaslideMock.mockResolvedValue({ ok: true });
+
+    const entry = makeCalendarEntry({ id: 'cal-audit-1', status: 'booked' });
+    const result = await syncConfirmedBookingToExternalCalendars(entry, {
+      agencyId: AGENCY_ID,
+      modelMediaslideId: MEDIASLIDE_ID,
+      modelNetwalkId: null,
+    });
+
+    // Push itself succeeded (remote system has the change).
+    expect(result.mediaslide).toBe('ok');
+    // But operational log MUST flag the missing outbox row so admins can reconcile.
+    expect(logMediaslideErrorMock).toHaveBeenCalledTimes(1);
+    const call = logMediaslideErrorMock.mock.calls[0][0] as { operation: string; message: string };
+    expect(call.operation).toBe('push_availability_mediaslide_no_outbox_row');
+    expect(call.message).toMatch(/no outbox audit row/i);
+  });
+
+  it('logs operational warning when both enqueue and direct push fail (push not-ok)', async () => {
+    getAgencyApiKeysMock.mockResolvedValue({
+      mediaslide_connected: true,
+      mediaslide_api_key: 'key-ms',
+      netwalk_connected: false,
+      netwalk_api_key: null,
+    });
+    rpcMock.mockImplementation((fn: string) => {
+      if (fn === 'enqueue_external_sync_outbox') {
+        return Promise.resolve({ data: null, error: { message: 'rls denied' } });
+      }
+      return Promise.resolve({ data: null, error: null });
+    });
+    pushAvailabilityToMediaslideMock.mockResolvedValue({ ok: false });
+
+    const result = await syncConfirmedBookingToExternalCalendars(
+      makeCalendarEntry({ id: 'cal-audit-2', status: 'booked' }),
+      { agencyId: AGENCY_ID, modelMediaslideId: MEDIASLIDE_ID, modelNetwalkId: null },
+    );
+
+    expect(result.mediaslide).toBe('error');
+    expect(logMediaslideErrorMock).toHaveBeenCalledTimes(1);
+    const call = logMediaslideErrorMock.mock.calls[0][0] as { operation: string; message: string };
+    expect(call.operation).toBe('push_availability_mediaslide_no_outbox_row');
+    expect(call.message).toMatch(/not-ok/i);
+  });
+
+  it('logs operational warning when enqueue fails AND direct push throws (audit-gap + exception)', async () => {
+    getAgencyApiKeysMock.mockResolvedValue({
+      mediaslide_connected: true,
+      mediaslide_api_key: 'key-ms',
+      netwalk_connected: false,
+      netwalk_api_key: null,
+    });
+    rpcMock.mockImplementation((fn: string) => {
+      if (fn === 'enqueue_external_sync_outbox') {
+        return Promise.resolve({ data: null, error: { message: 'rls denied' } });
+      }
+      return Promise.resolve({ data: null, error: null });
+    });
+    pushAvailabilityToMediaslideMock.mockRejectedValue(new Error('network down'));
+
+    const result = await syncConfirmedBookingToExternalCalendars(
+      makeCalendarEntry({ id: 'cal-audit-3', status: 'booked' }),
+      { agencyId: AGENCY_ID, modelMediaslideId: MEDIASLIDE_ID, modelNetwalkId: null },
+    );
+
+    expect(result.mediaslide).toBe('error');
+    expect(logMediaslideErrorMock).toHaveBeenCalledTimes(1);
+    const call = logMediaslideErrorMock.mock.calls[0][0] as { operation: string; message: string };
+    // When enqueue also failed, the operation tag MUST signal the missing audit row
+    // (so the catch-branch log is distinguishable from the normal "push threw" log).
+    expect(call.operation).toBe('push_availability_mediaslide_no_outbox_row');
+    expect(call.message).toMatch(/network down/);
+  });
+
+  it('does NOT log no_outbox_row when enqueue succeeds (happy path)', async () => {
+    getAgencyApiKeysMock.mockResolvedValue({
+      mediaslide_connected: true,
+      mediaslide_api_key: 'key-ms',
+      netwalk_connected: false,
+      netwalk_api_key: null,
+    });
+    rpcMock.mockImplementation((fn: string) => {
+      if (fn === 'enqueue_external_sync_outbox') {
+        return Promise.resolve({ data: 'outbox-row-ok', error: null });
+      }
+      return Promise.resolve({ data: null, error: null });
+    });
+    pushAvailabilityToMediaslideMock.mockResolvedValue({ ok: true });
+
+    const result = await syncConfirmedBookingToExternalCalendars(
+      makeCalendarEntry({ id: 'cal-happy', status: 'booked' }),
+      { agencyId: AGENCY_ID, modelMediaslideId: MEDIASLIDE_ID, modelNetwalkId: null },
+    );
+
+    expect(result.mediaslide).toBe('ok');
+    // Happy path: outbox marked sent via mark_external_sync_outbox_sent, no error log.
+    expect(logMediaslideErrorMock).not.toHaveBeenCalled();
+    const markSentCalls = rpcMock.mock.calls.filter(
+      (c) => c[0] === 'mark_external_sync_outbox_sent',
+    );
+    expect(markSentCalls.length).toBe(1);
   });
 });
 

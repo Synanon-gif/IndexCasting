@@ -19,7 +19,6 @@ import { agencyUpdateModelFullRpc, getModelByIdFromSupabase } from './modelsSupa
 import {
   getCalendarFromMediaslide,
   getModelFromMediaslide,
-  getPortfolioFromMediaslide,
   syncModelData,
 } from './mediaslideConnector';
 import { fetchAllSupabasePages } from './supabaseFetchAll';
