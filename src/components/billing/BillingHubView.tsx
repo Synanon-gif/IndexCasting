@@ -150,8 +150,18 @@ export const BillingHubView: React.FC<Props> = ({ organizationId, variant }) => 
 
   const activeKey = variant === 'agency' ? agencyTab : clientTab;
   const setActiveKey = (k: AgencySubTab | ClientSubTab) => {
+    const previous = activeKey;
     if (variant === 'agency') setAgencyTab(k as AgencySubTab);
     else setClientTab(k as ClientSubTab);
+    // Smart-Attention-Refresh on sub-tab change: wenn der User in einem Panel
+    // eine Aktion ausgeführt hat (Send Invoice, Mark Paid, neues Settlement,
+    // neuer Billing-Profile), muss der Hub-Banner beim nächsten Tab-Wechsel
+    // aktuelle Signale zeigen — sonst bleibt er bis zum Re-Mount stale.
+    // Lightweight: 4 parallele Reads (Issued/Received/Settlements/Profiles)
+    // — gleicher Pfad wie der Initial-Load. Skip wenn derselbe Tab geklickt wurde.
+    if (k !== previous) {
+      void loadAttention();
+    }
   };
 
   // ── Body render ───────────────────────────────────────────────────────────
