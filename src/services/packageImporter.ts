@@ -32,9 +32,28 @@ import { imageDedupKey } from './imageDedupKey';
 /**
  * Wandelt rohe Provider-Payloads in für die UI sichtbare Preview-Modelle um.
  * Wendet zentral Dedup + Bildlimit an. Markiert Models ohne `externalId` oder `name` als skipped.
+ *
+ * Zusatz-Schutz: wenn der Provider versehentlich zwei Karten mit derselben `externalId`
+ * liefert (kaputtes List-HTML, doppelte `data-model-id`), markieren wir beide Previews mit
+ * einer expliziten `duplicate_external_id`-Warnung. Wir mergen NICHT still — die Agency
+ * sieht beide Zeilen und entscheidet bewusst. Der DB-Merge via `mediaslide_sync_id` würde
+ * sonst stillschweigend passieren und unsere Preview-Pflicht aushebeln.
  */
 export function toPreviewModels(payloads: ProviderImportPayload[]): PreviewModel[] {
-  return payloads.map((p) => buildPreview(p));
+  const seen = new Map<string, number>();
+  for (const p of payloads) {
+    const id = (p.externalId ?? '').trim();
+    if (!id) continue;
+    seen.set(id, (seen.get(id) ?? 0) + 1);
+  }
+  return payloads.map((p) => {
+    const preview = buildPreview(p);
+    const id = (p.externalId ?? '').trim();
+    if (id && (seen.get(id) ?? 0) > 1) {
+      preview.warnings = [...preview.warnings, `duplicate_external_id:${id}`];
+    }
+    return preview;
+  });
 }
 
 function buildPreview(p: ProviderImportPayload): PreviewModel {
@@ -204,16 +223,36 @@ export function previewToImportPayload(input: {
   // photo_source spiegelt die Herkunft der Bilder wider — bei Package-Imports
   // immer der externe Provider. Der Importer setzt das Feld bei INSERT direkt;
   // bei UPDATE eines bestehenden 'own'-Models wird via RPC nachgezogen.
-  const photoSource: 'mediaslide' | 'netwalk' | undefined =
-    preview.externalProvider === 'mediaslide'
-      ? 'mediaslide'
-      : preview.externalProvider === 'netwalk'
-        ? 'netwalk'
-        : undefined;
+  //
+  // Exhaustive-Switch: jeder neue PackageProviderId-Wert MUSS hier ergänzt werden,
+  // sonst schlägt der TypeScript-Build fehl (`never`-Branch). Damit kann ein neuer
+  // Provider niemals still ohne photo_source committen.
+  const photoSource: 'mediaslide' | 'netwalk' = (() => {
+    switch (preview.externalProvider) {
+      case 'mediaslide':
+        return 'mediaslide';
+      case 'netwalk':
+        return 'netwalk';
+      default: {
+        const _exhaustive: never = preview.externalProvider;
+        throw new Error(
+          `previewToImportPayload: unknown externalProvider ${String(_exhaustive)} — refusing to commit without photo_source`,
+        );
+      }
+    }
+  })();
+
+  // Re-Import-Key strikt provider-spezifisch — nur EIN Sync-Slot pro Payload.
+  // Wir setzen den Slot, der zum Provider gehört, und lassen den anderen explizit
+  // undefined. So merget der Importer NIE über einen falschen Slot.
+  const mediaslideSyncId: string | undefined =
+    preview.externalProvider === 'mediaslide' ? preview.externalId : undefined;
+  const netwalkModelId: string | undefined =
+    preview.externalProvider === 'netwalk' ? preview.externalId : undefined;
 
   return {
-    mediaslide_sync_id: preview.externalProvider === 'mediaslide' ? preview.externalId : undefined,
-    netwalk_model_id: preview.externalProvider === 'netwalk' ? preview.externalId : undefined,
+    mediaslide_sync_id: mediaslideSyncId,
+    netwalk_model_id: netwalkModelId,
     name: preview.name,
     agency_id: agencyId,
     height: preview.measurements.height,

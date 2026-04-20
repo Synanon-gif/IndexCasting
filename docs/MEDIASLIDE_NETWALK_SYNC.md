@@ -134,7 +134,59 @@ risking the same drift class that the detector now guards against. The
 skeleton + registry slot let us add the parser without touching the importer
 or UI.
 
+### Hardening smoke-test matrix (April 2026)
+
+The package import is covered by an explicit smoke-test matrix that exercises the
+common failure modes a real provider (MediaSlide today, Netwalk tomorrow) can throw at us:
+
+| Perspective | Test file(s) | What it proves |
+| --- | --- | --- |
+| Parser robustness | `src/services/__tests__/mediaslidePackageParser.test.ts` | Multi-language measurement labels, no-picture filter, US-only shoes do NOT silently land as cm, broken/missing anchors are counted but not parsed. |
+| Provider adversarial | `src/services/__tests__/mediaslidePackageProvider.test.ts` + `…smoke.test.ts` | Mixed good/bad cards isolate per model, partial book-fetch failures keep good cards intact, total book-fetch failure → `ParserDriftError` (or `forceSkipReason: book_fetch_failed` under `allowDriftBypass`). |
+| Mapping/Import safety | `src/services/__tests__/packageImporter.test.ts` + `…smoke.test.ts` | Caps, dedup, skip semantics, `agency_id` from caller, `photo_source` exhaustively mapped, sync-slot exclusivity (`mediaslide_sync_id` xor `netwalk_model_id`), no sensitive field injection, duplicate `externalId` warning, drift-override never bypasses DB-safety skips. |
+| Drift detection | `src/services/__tests__/providerDriftDetector.test.ts` | Anchor coverage / extraction ratio / book-OK ratio thresholds, hard_block vs soft_warn, `maskUrl()`. |
+| Provider contract | `src/services/__tests__/packageProviderContract.test.ts` | Registry order, deterministic `detect()`, Netwalk stub throws `netwalk_provider_not_implemented`. |
+| UI state machine | `src/services/__tests__/packageImportPane.logic.test.ts` | All transitions including drift_blocked → override_confirm → committing. |
+
+A new always-on rule [`/.cursor/rules/package-import-invariants.mdc`](../.cursor/rules/package-import-invariants.mdc)
+codifies the guarantees that those tests defend (preview-pflicht, identity safety,
+skip semantics, image rules, drift/override safety, provider neutrality).
+
+### Netwalk readiness — current status
+
+The hardening was explicitly checked for provider-neutrality so that a future
+`netwalkPackageProvider.analyze()` can drop in without refactor pain.
+
+What is already provider-neutral:
+
+- `ProviderImportPayload`, `PreviewModel`, `CommitOutcome`, `PACKAGE_IMPORT_LIMITS`
+  in `packageImportTypes.ts` use the abstract `PackageProviderId` enum.
+- `packageImporter.ts` (`toPreviewModels`, `previewToImportPayload`, `commitPreview`)
+  contains zero MediaSlide-specific assumptions; provider mapping is exhaustive
+  via a TypeScript `never`-fallback so adding a new provider is a compile-time signal
+  if `photo_source` mapping is forgotten.
+- `providerDriftDetector.ts` is fully provider-agnostic; thresholds are constants
+  and anchors are passed in by the caller.
+- `providerRegistry.ts` + `getProviderForUrl(url)` is the single dispatch path used
+  by the UI; the UI itself never names a concrete provider.
+- `PackageImportPane.tsx` reason codes / banners speak of "Provider", not "MediaSlide";
+  unsupported / unimplemented providers surface a clear, distinct message.
+
+What still needs real-world data before Netwalk goes live:
+
+- A `netwalkPackageParser.ts` — currently absent on purpose; we refuse to ship a
+  speculative parser that will simply re-trigger the drift detector.
+- Anchors + parser version constants for Netwalk (mirror of `MEDIASLIDE_LIST_ANCHORS`
+  / `MEDIASLIDE_PARSER_VERSION`).
+- A `photo_source = 'netwalk'` migration verification end-to-end (the importer mapping
+  is already in place and unit-tested; production smoke needs ≥1 real book sample).
+
+The `netwalkPackageProvider` stub MUST keep throwing `netwalk_provider_not_implemented`
+until the points above are real — silently routing Netwalk URLs into the MediaSlide
+parser is a release blocker (see invariant `Provider-Neutralität (Netwalk Readiness)`).
+
 ## Related rules
 
+- Package import invariants: [.cursor/rules/package-import-invariants.mdc](../.cursor/rules/package-import-invariants.mdc).
 - Upload consent matrix: [.cursor/rules/upload-consent-matrix.mdc](../.cursor/rules/upload-consent-matrix.mdc).
 - Model creation entry points: [`src/services/modelCreationFacade.ts`](../src/services/modelCreationFacade.ts).

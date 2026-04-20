@@ -1,0 +1,101 @@
+---
+description: Package-Import-Invarianten — Provider-neutrale Sicherheitsregeln für MediaSlide, Netwalk und alle zukünftigen Provider
+alwaysApply: true
+---
+
+# Package Import Invariants — provider-neutral
+
+Diese Regeln gelten für JEDEN externen Package-Import-Provider (`mediaslide`, `netwalk`, …)
+und dürfen weder in Importer-, Parser-, Provider-, Drift-, Preview-, Commit- noch UI-Logik gebrochen werden.
+
+Architekturreferenz: `src/services/packageImportTypes.ts`, `packageImporter.ts`, `providerRegistry.ts`,
+`mediaslidePackageProvider.ts`, `netwalkPackageProvider.ts`, `providerDriftDetector.ts`, `PackageImportPane.tsx`.
+
+## A. Preview-Pflicht und State-Machine
+
+- Ein Package-Import darf NIE direkt committen. Erforderlich: `idle → analyzing → previewing → committing → done`.
+- `Cancel`/`Abort` aus jeder Phase muss in einen sauberen `idle`-State zurückführen.
+- `drift_blocked` darf NUR über expliziten Override-Confirm-Dialog verlassen werden — nie automatisch.
+- Unsupported/unimplemented Provider (z. B. Netwalk-Stub) MÜSSEN mit einem klaren Reason-Code (`netwalk_provider_not_implemented`,
+  `unsupported_provider_url`) erkennbar bleiben — kein stiller Fallback in einen anderen Provider.
+
+## B. Identitäts- und Tenancy-Sicherheit
+
+- `agency_id` MUSS IMMER aus dem Caller-Kontext stammen (`useAgency`/Importer-Argument).
+  Provider-Daten dürfen `agency_id` NIEMALS liefern oder überschreiben.
+- `ProviderImportPayload` darf KEINE sensiblen Felder transportieren: kein `id`, kein `auth_user_id`,
+  kein `agency_id`, kein `email_login`, kein `password`. Falls ein Provider so etwas liefert, MUSS es im Importer ignoriert werden.
+- `photo_source` MUSS im Commit explizit gesetzt werden. Mapping `externalProvider → photo_source` ist im Importer
+  exhaustiv (Compile-Time `never`-Fallback). Unbekannte Provider → harter Fehler statt undefined.
+- `mediaslide_sync_id` und `netwalk_model_id` werden NUR provider-spezifisch befüllt. Niemals dieselbe externalId
+  über zwei Provider-Spalten gleichzeitig.
+
+## C. Skip- und Datenqualitätssicherheit
+
+- Pflichtfelder fehlen → Modell wird als `skip` markiert mit lesbarem Reason (`missing_external_id`, `missing_name`,
+  `missing_height`, `no_images`, `forced:<reason>`). NIE Fake-Werte einsetzen, NIE „leere“ Modelle als `ready` führen.
+- Doppelte `externalId` innerhalb eines Imports MÜSSEN als Warnung sichtbar werden (`duplicate_external_id:<id>`),
+  damit die Agency den Konflikt sieht statt eines stillen DB-Merges.
+- `forceSkipReason` aus dem Provider (z. B. `book_fetch_failed`) ist immer bindend — der Importer darf es NIE überstimmen.
+- Re-Import desselben Modells ist idempotent: gleiche `externalId` ⇒ Update, NICHT Insert. Matching ausschließlich über
+  provider-spezifischen Sync-Key, niemals nur über `name`.
+- `forceUpdateMeasurements` darf nur durchschlagen, wenn der Caller es explizit setzt — Default ist `false`.
+
+## D. Bild-Invarianten (Portfolio / Polaroids)
+
+- Harte Caps zentral in `PACKAGE_IMPORT_LIMITS` (Portfolio = 20, Polaroids = 10). Kein Provider/Parser darf die
+  Caps individuell ändern — Caps sind ausschließlich Importer-Pflicht.
+- Reihenfolge der Bilder im Preview = Commit-Reihenfolge = DOM-/Provider-Reihenfolge.
+- Dedup ist provider-neutral (`imageDedupKey`) und MUSS Reihenfolge erhalten.
+- Portfolio und Polaroids dürfen NIE vermischt werden (eigene Album-Klassifizierung pro Provider).
+- `discardedPortfolio`/`discardedPolaroids` zählen NUR Bilder, die wegen Cap verworfen wurden — niemals Dedup-Treffer.
+- KEIN Cross-Model-Bildleak: Bilder aus Modell A landen niemals an Modell B, auch nicht bei
+  multi-card Imports oder identischen URLs in mehreren Books.
+- Modelle ohne verwertbare Bilder (Portfolio + Polaroids = 0) MÜSSEN `no_images` skippen — niemals als `ready` markiert.
+
+## E. Drift- und Override-Sicherheit
+
+- Drift-Signale `anchorCoverage`, `extractionRatio`, `bookOkRatio` MÜSSEN bei jedem Provider berechnet und klassifiziert
+  werden (`ok` / `soft_warn` / `hard_block`).
+- `hard_block` blockiert den Commit per `ParserDriftError`. Die UI MUSS einen Drift-Banner mit gerouteten,
+  maskierten URLs anzeigen.
+- Drift-Override (`allowDriftBypass: true`) erlaubt NUR die Anzeige von Preview/Commit; alle DB-Safety-Skips
+  (Pflichtfelder, `no_images`, `forceSkipReason`) bleiben aktiv. Override darf NIE als „alles erlauben“ interpretiert werden.
+- Logs von externen URLs verwenden ausschließlich `maskUrl(...)`; volle Drittanbieter-URLs gehören NICHT in
+  Production-Logs.
+
+## F. Provider-Neutralität (Netwalk Readiness)
+
+- Generelle Logik (`packageImporter`, `providerDriftDetector`, `PackageImportPane`, `providerRegistry`,
+  `packageImportTypes`) MUSS frei von provider-spezifischen Annahmen bleiben.
+- Provider-spezifische Annahmen (DOM-Selektoren, Album-Mapping, Image-URL-Format) leben ausschließlich im jeweiligen
+  `*PackageProvider.ts` und `*PackageParser.ts`.
+- Neue Provider werden über `registerPackageProvider(...)` angemeldet; UI/Doku/Fehlertexte sprechen von
+  „Provider“, nicht von „MediaSlide“.
+- Caps, Skip-Regeln, DB-Safety, Override-Safety und Preview-Pflicht GELTEN für Netwalk identisch wie für MediaSlide.
+- `netwalkPackageProvider` darf seinen Stub-Status nicht verbergen: `analyze()` MUSS bis zur echten Implementierung
+  `netwalk_provider_not_implemented` werfen.
+
+## G. Tests sind Teil der Invariante
+
+Diese Smoke-Tests dürfen NICHT entfernt oder weichgespült werden ohne Ersatz mit gleicher Härte:
+
+- `src/services/__tests__/packageImporter.test.ts` (Caps, Dedup, Skips, photo_source, Re-Import-Sicherheit).
+- `src/services/__tests__/packageImporter.smoke.test.ts` (Cross-Model-Isolation, duplicate externalId,
+  Sync-Slot-Exklusivität, Field-Injection-Schutz, Drift-Override-DB-Safety).
+- `src/services/__tests__/mediaslidePackageProvider.test.ts` und `mediaslidePackageProvider.smoke.test.ts`
+  (Mixed good/bad cards, partielle/totale Book-Fetch-Fails, Drift-Hard-Block, Override-Pfad).
+- `src/services/__tests__/mediaslidePackageParser.test.ts` (Measurement-Mapping inkl. mehrsprachige Labels,
+  No-Picture-Filter, US-Only Shoe ≠ cm).
+- `src/services/__tests__/providerDriftDetector.test.ts` (Anchor/Extraction/BookOk-Schwellen, Maskierung).
+- `src/services/__tests__/packageProviderContract.test.ts` (Registry, deterministisches `detect()`,
+  Netwalk-Stub-Verhalten).
+- `src/services/__tests__/packageImportPane.logic.test.ts` (State-Machine).
+
+## H. Verbotene Refactors
+
+- KEINE Provider-Erkennung in `packageImporter.ts` (Provider-Lookup gehört in die Registry).
+- KEINE direkten DB-Calls aus Provider/Parser; DB-Schreiben passiert ausschließlich in `modelsImportSupabase.importModelAndMerge`.
+- KEIN `agency_id`-Pfad aus Provider-Daten in den Importer (selbst „nur als Hint“ NICHT erlaubt).
+- KEIN Auto-Commit nach `analyze` ohne UI-Preview-Confirm.
+- KEINE Cap- oder Dedup-Logik in Parser/Provider duplizieren.

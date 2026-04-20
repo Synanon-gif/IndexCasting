@@ -134,6 +134,54 @@ describe('mediaslidePackageParser — robustness', () => {
     expect(book.measurements.shoe_size).toBe(43);
   });
 
+  it('mixed-language measurements: english labels mapped exactly to fields (no swap)', () => {
+    // Adversarial: Chest and Bust are easy to confuse; Hips and Hueften are alt spellings.
+    const html = `
+      <div id="bookModelMeasurements">
+        <div class="measurementElement"><span class="measurementTitle">Height</span> <span class="measurementEu">187<span class="measurementUnit">cm</span></span></div>
+        <div class="measurementElement"><span class="measurementTitle">Chest</span> <span class="measurementEu">96<span class="measurementUnit">cm</span></span></div>
+        <div class="measurementElement"><span class="measurementTitle">Bust</span> <span class="measurementEu">89<span class="measurementUnit">cm</span></span></div>
+        <div class="measurementElement"><span class="measurementTitle">Waist</span> <span class="measurementEu">75<span class="measurementUnit">cm</span></span></div>
+        <div class="measurementElement"><span class="measurementTitle">Hueften</span> <span class="measurementEu">95<span class="measurementUnit">cm</span></span></div>
+        <div class="measurementElement"><span class="measurementTitle">Inseam</span> <span class="measurementEu">81<span class="measurementUnit">cm</span></span></div>
+        <div class="measurementElement"><span class="measurementTitle">Shoes</span> <span class="measurementEu">45eu</span></div>
+        <div class="measurementElement"><span class="measurementTitle">Hair</span> Dark brown</div>
+        <div class="measurementElement"><span class="measurementTitle">Eyes</span> Green brown</div>
+      </div>
+    `;
+    const book = parsePackageBook(html);
+    expect(book.measurements.height).toBe(187);
+    expect(book.measurements.chest).toBe(96);
+    expect(book.measurements.bust).toBe(89);
+    expect(book.measurements.waist).toBe(75);
+    expect(book.measurements.hips).toBe(95);
+    expect(book.measurements.legs_inseam).toBe(81);
+    expect(book.measurements.shoe_size).toBe(45);
+    expect(book.hair_color_raw).toBe('Dark brown');
+    expect(book.eye_color_raw).toBe('Green brown');
+  });
+
+  it('shoe size with US-only annotation does NOT silently land as cm', () => {
+    // If MediaSlide ever omits the 'eu' annotation, we must NOT misinterpret.
+    const html = `
+      <div id="bookModelMeasurements">
+        <div class="measurementElement"><span class="measurementTitle">Shoes</span> <span class="measurementEu">10us</span></div>
+      </div>
+    `;
+    const book = parsePackageBook(html);
+    expect(book.measurements.shoe_size).toBeFalsy();
+  });
+
+  it('placeholder/no-picture URLs are filtered out of book images', () => {
+    const html = `
+      <div class="modelBookPicture"><img class="portrait" src="https://static-ms-eu.mediaslide.com/images/no-picture.png" /></div>
+      <div class="modelBookPicture"><img class="portrait" data-lazy="https://mediaslide-europe.storage.googleapis.com/x/pictures/1/1/large-1700000000-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg" /></div>
+    `;
+    const book = parsePackageBook(html);
+    expect(book.imagesForCurrentCategory).toHaveLength(1);
+    expect(book.imagesForCurrentCategory[0]).toContain('large-1700000000');
+  });
+
   it('extracts album catalog with multiple albums', () => {
     const html = `
       <div class="bookMenuLinks">
