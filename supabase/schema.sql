@@ -90,6 +90,11 @@ CREATE TABLE public.models (
   video_url TEXT,
   is_visible_commercial BOOLEAN NOT NULL DEFAULT true,
   is_visible_fashion BOOLEAN NOT NULL DEFAULT false,
+  -- 20261203: free-text mother agency. Editable by Agency only via agency_update_model_full.
+  -- mother_agency_name is visible per existing models RLS; mother_agency_contact is
+  -- agency-internal in the UI.
+  mother_agency_name TEXT NULL,
+  mother_agency_contact TEXT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

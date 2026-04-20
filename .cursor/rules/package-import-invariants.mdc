@@ -99,3 +99,16 @@ Diese Smoke-Tests dürfen NICHT entfernt oder weichgespült werden ohne Ersatz m
 - KEIN `agency_id`-Pfad aus Provider-Daten in den Importer (selbst „nur als Hint“ NICHT erlaubt).
 - KEIN Auto-Commit nach `analyze` ohne UI-Preview-Confirm.
 - KEINE Cap- oder Dedup-Logik in Parser/Provider duplizieren.
+
+## I. Mother-Agency-Felder bleiben außerhalb des Imports
+
+- `models.mother_agency_name` und `models.mother_agency_contact` sind reine
+  Informationsfelder (siehe `.cursor/rules/mother-agency.mdc`). Sie dürfen
+  weder im Provider-Payload, noch im Importer, noch in einem Sync-Service
+  automatisch gesetzt, gemerged oder überschrieben werden.
+- `ProviderImportPayload` MUSS frei von `mother_agency_*` bleiben — selbst wenn
+  ein Provider sie liefert, wird der Wert verworfen (Type-Definition + Tests in
+  `motherAgency.test.ts`).
+- `previewToImportPayload` darf `mother_agency_*` NIEMALS in `ImportModelPayload`
+  schreiben. Auch nicht „nur als Default“. Der einzige Schreibpfad ist
+  `agency_update_model_full` durch eine bewusste Agency-Action.

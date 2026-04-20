@@ -86,7 +86,7 @@ export async function agencyUpdateModelFullRpc(
  * Entspricht 1:1 dem SupabaseModel-Interface.
  */
 const MODEL_DETAIL_SELECT =
-  'id, agency_id, user_id, agency_relationship_status, agency_relationship_ended_at, email, mediaslide_sync_id, netwalk_model_id, name, height, bust, waist, hips, chest, legs_inseam, shoe_size, city, country, hair_color, eye_color, current_location, portfolio_images, polaroids, video_url, is_visible_commercial, is_visible_fashion, categories, is_sports_winter, is_sports_summer, created_at, updated_at, country_code, sex, ethnicity' as const;
+  'id, agency_id, user_id, agency_relationship_status, agency_relationship_ended_at, email, mediaslide_sync_id, netwalk_model_id, name, height, bust, waist, hips, chest, legs_inseam, shoe_size, city, country, hair_color, eye_color, current_location, portfolio_images, polaroids, video_url, is_visible_commercial, is_visible_fashion, categories, is_sports_winter, is_sports_summer, created_at, updated_at, country_code, sex, ethnicity, mother_agency_name, mother_agency_contact' as const;
 
 /**
  * Reduzierte Felder für Listen-Ansichten (Swipe, Roster).
@@ -140,6 +140,19 @@ export type SupabaseModel = {
   ethnicity?: string | null;
   /** Canonical city from model_locations (live>current>agency). Present when loaded via RPCs that join model_locations. */
   effective_city?: string | null;
+  /**
+   * Mother-agency free-text name. NULL = no mother agency / this agency is primary.
+   * Edited only via `agency_update_model_full` (Agency Owner / Booker).
+   * Visible per existing models RLS to: Agency members, the model, and territory-paired clients.
+   * NEVER auto-filled by package importers (see package-import-invariants §I).
+   */
+  mother_agency_name?: string | null;
+  /**
+   * Mother-agency contact (email, phone, booker name) — agency-internal in the UI.
+   * Same RLS scope on the column itself; UI restricts display to agency members.
+   * NEVER auto-filled by package importers.
+   */
+  mother_agency_contact?: string | null;
 };
 
 export async function getModelsFromSupabase(opts?: { limit?: number }): Promise<SupabaseModel[]> {

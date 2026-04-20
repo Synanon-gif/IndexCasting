@@ -1,0 +1,65 @@
+---
+description: Mother-Agency Field — informational free text only, NEVER logic
+alwaysApply: true
+---
+
+# Mother Agency — purely informational, never logic
+
+`models.mother_agency_name` and `models.mother_agency_contact` are two free-text
+columns that exist for one purpose only: a Booker/Agency Owner can see at a
+glance whether another agency primarily represents this model.
+
+This is **not** a relational field, **not** a sync target, and **not** an
+authority signal. Misusing it for logic creates legal and product risk
+(wrong attribution, wrong ownership, hidden bugs).
+
+## A. Hard invariants
+
+- `mother_agency_name` / `mother_agency_contact` MUST stay free text.
+- Both columns MUST be edited exclusively via `agency_update_model_full`
+  (Agency Owner / Booker only). No client RPC, no model self-edit RPC, no
+  importer RPC may write them.
+- They MUST NOT influence any of:
+  - Package / API import (MediaSlide, Netwalk, future providers).
+  - `importModelAndMerge` matching or merging.
+  - Bidirectional sync (`mediaslideSyncService`, `netwalkSyncService`).
+  - Casting, options, bookings, settlements, invoices.
+  - Discovery / search / filtering.
+  - RLS, ownership, `agency_id`, territories, claim flow.
+- They MUST NOT trigger any implicit logic, audit, notification, webhook, or
+  outbox row.
+- They MUST NOT be auto-populated. If a Mother Agency value is unknown, the
+  field stays `NULL` and the UI shows the empty state. Guessing from
+  `external_provider`, package URL host, agency name, or any other source is
+  forbidden.
+
+## B. Visibility (UI-enforced, RLS-permissive)
+
+- `mother_agency_name`: visible to anyone who can read the model row
+  (agency members, the model, and territory-paired clients) — i.e. exactly
+  what existing models RLS already allows. UI may render it as a label like
+  "Mother Agency: <name>".
+- `mother_agency_contact`: same RLS scope on the column itself, but the UI
+  MUST treat it as agency-internal — only Agency Owners and Bookers see it.
+  Clients and the model themself MUST NOT have a UI surface that displays it.
+
+## C. Editing path
+
+- The only writer is `agency_update_model_full` with the new params
+  `p_mother_agency_name` / `p_mother_agency_contact` (added 2026-12-03):
+  - `NULL` → no change.
+  - empty / whitespace → explicit `NULL` (clear).
+  - non-empty → trimmed and persisted.
+- `AgencyControllerView.handleSaveModel` and the Add-Model flow are the only
+  callers. Any new caller MUST go through `agencyUpdateModelFullRpc` and
+  reuse the same trim / clear semantics.
+
+## D. Tests are part of the invariant
+
+- `src/services/__tests__/motherAgency.test.ts` MUST keep asserting:
+  - `previewToImportPayload` never emits `mother_agency_*`.
+  - Hostile / future provider payloads with `mother_agency_*` are stripped.
+  - `buildEditState` initialises empty strings from `null` / missing values.
+
+If you ship a new feature that touches mother-agency, add a regression test in
+the same file. Removing or weakening these tests is a release blocker.

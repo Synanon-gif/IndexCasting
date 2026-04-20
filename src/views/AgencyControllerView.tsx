@@ -3476,6 +3476,10 @@ const MyModelsTab: React.FC<{
         }
       } else {
         // Newly created: set relationship + sports flags not covered by importModelAndMerge insert.
+        const motherAgencyName =
+          (addModelEditState.mother_agency_name ?? '').trim().slice(0, 120) || '';
+        const motherAgencyContact =
+          (addModelEditState.mother_agency_contact ?? '').trim().slice(0, 240) || '';
         const { error: updateErr } = await agencyUpdateModelFullRpc({
           p_model_id: mergeResult.model_id,
           p_agency_relationship_status: emailTrim ? 'pending_link' : 'active',
@@ -3483,6 +3487,10 @@ const MyModelsTab: React.FC<{
           p_is_visible_commercial: isVisibleCommercial,
           p_is_sports_winter: addModelEditState.is_sports_winter,
           p_is_sports_summer: addModelEditState.is_sports_summer,
+          // Send mother-agency only when the user actually filled it in — avoids
+          // overwriting any value an importer/merge path may have set.
+          ...(motherAgencyName ? { p_mother_agency_name: motherAgencyName } : {}),
+          ...(motherAgencyContact ? { p_mother_agency_contact: motherAgencyContact } : {}),
         });
         if (updateErr) {
           console.error('handleAddModel: agency_update_model_full (create) failed:', updateErr);
@@ -4165,6 +4173,13 @@ const MyModelsTab: React.FC<{
       updates.city =
         normalizeInput(String(editState.city ?? '')).slice(0, MODEL_CITY_MAX_LENGTH) || null;
       updates.country_code = editState.country_code || null;
+      // Mother agency (free text). Empty string → null = explicit clear.
+      // Hard-cap reflects DB column comment + UI maxLength to avoid slipping
+      // novel-length payloads in via copy/paste.
+      updates.mother_agency_name =
+        normalizeInput(String(editState.mother_agency_name ?? '')).slice(0, 120) || null;
+      updates.mother_agency_contact =
+        normalizeInput(String(editState.mother_agency_contact ?? '')).slice(0, 240) || null;
       updates.current_location =
         normalizeInput(String(editState.current_location ?? '')).slice(
           0,
@@ -4231,6 +4246,11 @@ const MyModelsTab: React.FC<{
         p_is_visible_commercial: updates.is_visible_commercial ?? null,
         p_is_sports_winter: (updates as any).is_sports_winter ?? null,
         p_is_sports_summer: (updates as any).is_sports_summer ?? null,
+        // Mother agency: empty string = explicit clear (RPC trims to NULL),
+        // non-empty = update. We never send NULL here so the agency CAN remove
+        // a previously-recorded mother agency by emptying the form field.
+        p_mother_agency_name: updates.mother_agency_name ?? '',
+        p_mother_agency_contact: updates.mother_agency_contact ?? '',
       });
       if (modelUpdateError) {
         console.error('handleSaveModel agency_update_model_full:', {

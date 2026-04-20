@@ -1319,6 +1319,7 @@ export const uiCopy = {
     sectionEthnicity: 'Ethnicity',
     sectionLocation: 'Location',
     sectionSegment: 'Segment & Sport',
+    sectionMotherAgency: 'Mother Agency',
     nameLabel: 'Name',
     emailLabel: 'Model Email',
     namePlaceholder: 'Full name',
@@ -1358,6 +1359,15 @@ export const uiCopy = {
       'Enables radius-based discovery. Only a rounded area (~5 km) is shared — never exact GPS.',
     shareLocationSaved: 'Location saved.',
     shareLocationError: 'Could not save location. Please try again.',
+    motherAgencyHint:
+      'Optional. Free text — only fill in if another agency primarily represents this model. ' +
+      'Never auto-imported from MediaSlide / Netwalk.',
+    motherAgencyNameLabel: 'Mother Agency Name',
+    motherAgencyNamePlaceholder: 'e.g. New Madison Paris',
+    motherAgencyContactLabel: 'Mother Agency Contact (agency-internal)',
+    motherAgencyContactPlaceholder: 'Booker email, phone, or name',
+    motherAgencyContactInternalNote:
+      'Visible to your agency members only. Clients see only the mother agency name.',
   },
   /** Sports categories on model profiles and client filters. */
   sportCategories: {

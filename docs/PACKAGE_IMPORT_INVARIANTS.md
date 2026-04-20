@@ -89,3 +89,12 @@ Short version:
 
 These tests are **part of the invariant** — removing or weakening them without
 equivalent replacement is a release blocker (see rule §G).
+
+## 8. Mother-agency fields are out of scope for any importer
+
+`models.mother_agency_name` and `models.mother_agency_contact` (shipped
+2026-12-03) are purely informational free-text columns. The package import
+pipeline MUST NOT read, write, default, or merge them. See
+[`docs/MOTHER_AGENCY.md`](./MOTHER_AGENCY.md) and
+[`.cursor/rules/mother-agency.mdc`](../.cursor/rules/mother-agency.mdc).
+Regression coverage lives in `src/services/__tests__/motherAgency.test.ts`.

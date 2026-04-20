@@ -20,72 +20,12 @@ import {
 } from '../utils/modelFilters';
 
 // ── State shape ───────────────────────────────────────────────────────────────
-
-export type ModelEditState = {
-  name: string;
-  email: string;
-  sex: 'male' | 'female' | null;
-  height: string;
-  chest: string;
-  waist: string;
-  hips: string;
-  legs_inseam: string;
-  shoe_size: string;
-  hair_color: string;
-  eye_color: string;
-  ethnicity: string | null;
-  country_code: string;
-  city: string;
-  current_location: string;
-  categories: string[];
-  is_sports_winter: boolean;
-  is_sports_summer: boolean;
-};
-
-export function buildEditState(m: {
-  name: string;
-  email?: string | null;
-  sex?: 'male' | 'female' | null;
-  height?: number | null;
-  chest?: number | null;
-  bust?: number | null;
-  waist?: number | null;
-  hips?: number | null;
-  legs_inseam?: number | null;
-  shoe_size?: number | null;
-  hair_color?: string | null;
-  eye_color?: string | null;
-  ethnicity?: string | null;
-  country_code?: string | null;
-  country?: string | null;
-  city?: string | null;
-  current_location?: string | null;
-  categories?: string[] | null;
-  is_sports_winter?: boolean;
-  is_sports_summer?: boolean;
-}): ModelEditState {
-  const chestVal = m.chest ?? m.bust;
-  return {
-    name: m.name ?? '',
-    email: m.email ?? '',
-    sex: (m.sex as 'male' | 'female' | null) ?? null,
-    height: String(m.height ?? ''),
-    chest: chestVal != null ? String(chestVal) : '',
-    waist: m.waist != null ? String(m.waist) : '',
-    hips: m.hips != null ? String(m.hips) : '',
-    legs_inseam: m.legs_inseam != null ? String(m.legs_inseam) : '',
-    shoe_size: m.shoe_size != null ? String(m.shoe_size) : '',
-    hair_color: m.hair_color ?? '',
-    eye_color: m.eye_color ?? '',
-    ethnicity: m.ethnicity ?? null,
-    country_code: m.country_code ?? '',
-    city: m.city ?? '',
-    current_location: m.current_location ?? '',
-    categories: m.categories ?? [],
-    is_sports_winter: m.is_sports_winter ?? false,
-    is_sports_summer: m.is_sports_summer ?? false,
-  };
-}
+//
+// `ModelEditState` and `buildEditState` live in `src/utils/modelEditState.ts`
+// so jest tests (no React Native transform) can import them. We re-export here
+// so existing call sites that import from this file keep working.
+export { buildEditState, type ModelEditState } from '../utils/modelEditState';
+import type { ModelEditState } from '../utils/modelEditState';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -485,6 +425,47 @@ const ModelEditDetailsPanel: React.FC<Props> = ({ state, onChange }) => {
             );
           })}
         </View>
+      </View>
+
+      {/* ── Mother Agency ── */}
+      <Text style={styles.sectionHeader}>{uiCopy.modelEdit.sectionMotherAgency}</Text>
+      <Text
+        style={{
+          fontSize: 11,
+          color: colors.textSecondary,
+          marginBottom: spacing.sm,
+          lineHeight: 15,
+        }}
+      >
+        {uiCopy.modelEdit.motherAgencyHint}
+      </Text>
+
+      <View style={styles.group}>
+        <Text style={styles.label}>{uiCopy.modelEdit.motherAgencyNameLabel}</Text>
+        <TextInput
+          value={state.mother_agency_name}
+          onChangeText={(v) => set({ mother_agency_name: v })}
+          placeholder={uiCopy.modelEdit.motherAgencyNamePlaceholder}
+          placeholderTextColor={colors.textSecondary}
+          style={styles.input}
+          maxLength={120}
+        />
+      </View>
+
+      <View style={styles.group}>
+        <Text style={styles.label}>{uiCopy.modelEdit.motherAgencyContactLabel}</Text>
+        <TextInput
+          value={state.mother_agency_contact}
+          onChangeText={(v) => set({ mother_agency_contact: v })}
+          placeholder={uiCopy.modelEdit.motherAgencyContactPlaceholder}
+          placeholderTextColor={colors.textSecondary}
+          style={styles.input}
+          maxLength={240}
+          multiline
+        />
+        <Text style={styles.optionalHelper}>
+          {uiCopy.modelEdit.motherAgencyContactInternalNote}
+        </Text>
       </View>
 
       {/* Sport */}

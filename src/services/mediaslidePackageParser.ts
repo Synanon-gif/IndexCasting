@@ -229,25 +229,28 @@ function extractMeasurementsFromBook(html: string): ParsedBookFragment['measurem
     }
   }
 
-  // Strategie 2 (Fallback): wenn KEIN Wert per Label gemappt wurde,
-  // versuche Positions-Reihenfolge (typisch: height, chest, waist, hips, inseam, hair, eyes, shoes).
+  // Strategie 2 (Fallback): nur HEIGHT per Position rekonstruieren.
+  //
+  // Begründung:
+  //   * `height` ist Pflichtfeld im Ziel-Schema (`models.height NOT NULL`). Ohne
+  //     Wert würde das Model im Importer als `missing_height` skippen — also
+  //     komplett verloren gehen, sobald MediaSlide das Label rebrandet.
+  //   * Alle anderen Maße (Chest/Bust/Waist/Hips/Inseam/Shoe) sind optional und
+  //     dürfen NIEMALS positional erraten werden: weibliche Books haben
+  //     [Bust, Waist, Hips], männliche Books haben [Chest, Waist, Hips, Inseam].
+  //     Eine starre Position-Map würde Bust→Chest oder Inseam→Hips routen und
+  //     wäre genau das "silent data routing"-Problem, vor dem die Invariants
+  //     warnen. Lieber ein leeres Feld (sichtbar in Preview) als ein falsches.
+  //   * Der Drift-Detector schlägt zusätzlich an, sobald die Labels global
+  //     verschwinden (extractionRatio sinkt) — das ist die richtige Schranke.
+  //
+  // Konsequenz: bei reinem Position-Fallback bekommt die UI HEIGHT, alles andere
+  // bleibt null. Damit ist `missing_height` ausgeschlossen, aber kein Maß
+  // landet in einem fremden Feld.
   const anyMeasurement = Object.values(result).some((v) => v != null);
   if (!anyMeasurement) {
-    const cmEls = elements
-      .map((el) => ({ el, value: parseCmValue(el.body) }))
-      .filter((x): x is { el: (typeof elements)[number]; value: number } => x.value != null);
-    const positions: Array<keyof ParsedBookFragment['measurements']> = [
-      'height',
-      'chest',
-      'waist',
-      'hips',
-      'legs_inseam',
-    ];
-    for (let i = 0; i < positions.length && i < cmEls.length; i++) {
-      result[positions[i]] = cmEls[i].value;
-    }
-    const shoesEl = elements.find((el) => /\d+(?:[.,]\d+)?\s*eu/i.test(stripTags(el.body)));
-    if (shoesEl) result.shoe_size = parseShoeEu(shoesEl.body);
+    const firstCm = elements.map((el) => parseCmValue(el.body)).find((v): v is number => v != null);
+    if (firstCm != null) result.height = firstCm;
   }
 
   return result;

@@ -114,7 +114,11 @@ describe('mediaslidePackageParser — robustness', () => {
     expect(book.measurements.shoe_size).toBe(44);
   });
 
-  it('positional fallback works when no labels match', () => {
+  it('positional fallback only rescues HEIGHT, never routes other values to wrong fields', () => {
+    // When MediaSlide rebrands every measurement label, the parser must NOT
+    // guess that position #2 is "chest" — a female book would then have
+    // bust→chest, waist→waist, hips→hips, but a male book would be inseam→hips.
+    // Refusing to guess prevents a silent cross-field data corruption.
     const html = `
       <div id="bookModelMeasurements">
         <div class="measurementElement"><span class="measurementTitle">???</span> <span class="measurementEu">182<span class="measurementUnit">cm</span></span></div>
@@ -127,11 +131,26 @@ describe('mediaslidePackageParser — robustness', () => {
     `;
     const book = parsePackageBook(html);
     expect(book.measurements.height).toBe(182);
-    expect(book.measurements.chest).toBe(94);
-    expect(book.measurements.waist).toBe(80);
-    expect(book.measurements.hips).toBe(96);
-    expect(book.measurements.legs_inseam).toBe(82);
-    expect(book.measurements.shoe_size).toBe(43);
+    // Crucially: no positional guess for chest/waist/hips/legs_inseam/shoe_size.
+    expect(book.measurements.chest).toBeUndefined();
+    expect(book.measurements.bust).toBeUndefined();
+    expect(book.measurements.waist).toBeUndefined();
+    expect(book.measurements.hips).toBeUndefined();
+    expect(book.measurements.legs_inseam).toBeUndefined();
+    expect(book.measurements.shoe_size).toBeUndefined();
+  });
+
+  it('positional fallback gives no HEIGHT when no cm element is present', () => {
+    // Edge: label-less book with only shoe-size in EU should NOT smuggle the
+    // shoe number into height.
+    const html = `
+      <div id="bookModelMeasurements">
+        <div class="measurementElement"><span class="measurementTitle">???</span> <span class="measurementEu">43eu</span></div>
+      </div>
+    `;
+    const book = parsePackageBook(html);
+    expect(book.measurements.height).toBeUndefined();
+    expect(book.measurements.shoe_size).toBeUndefined();
   });
 
   it('mixed-language measurements: english labels mapped exactly to fields (no swap)', () => {
