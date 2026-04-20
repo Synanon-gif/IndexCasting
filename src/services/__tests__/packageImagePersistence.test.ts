@@ -348,7 +348,7 @@ describe('persistImagesForPackageImport — failure classification', () => {
     expect(classifyImagePersistResult(res)).toBe('partial');
   });
 
-  it('all_failed: every download is 404 → no inserts, no upload, mirror still rebuilt', async () => {
+  it('all_failed: every download is 404 → no inserts, no upload, mirror is NOT rebuilt (legacy-mirror protection)', async () => {
     const { fetchImpl } = makeFetch({ responses: {} });
     const { uploadImpl, uploads } = makeUpload();
     const { addPhotoImpl, inserts } = makeAddPhoto();
@@ -366,6 +366,11 @@ describe('persistImagesForPackageImport — failure classification', () => {
     expect(uploads).toHaveLength(0);
     expect(inserts).toHaveLength(0);
     expect(classifyImagePersistResult(res)).toBe('all_failed');
+    // Legacy-Mirror-Schutz: bei 0 persistiert KEIN Rebuild — sonst würden
+    // bestehende externe URLs eines Legacy-Modells (vor Phase 2 importiert,
+    // noch nicht in `model_photos` gespiegelt) still auf `[]` gesetzt.
+    expect(rebuilds.rebuildPortfolioImpl).not.toHaveBeenCalled();
+    expect(rebuilds.rebuildPolaroidsImpl).not.toHaveBeenCalled();
     expect(res.mirrorRebuilt).toBe(true);
     expect(res.failures.every((f) => f.reason === 'download_http_error')).toBe(true);
   });
@@ -622,9 +627,15 @@ describe('persistImagesForPackageImport — cancel between images', () => {
 // ---------------------------------------------------------------------------
 
 describe('persistImagesForPackageImport — mirror rebuild', () => {
-  it('calls rebuild for both portfolio and polaroids exactly once with modelId', async () => {
-    const url = PORTFOLIO_URL(1);
-    const { fetchImpl } = makeFetch({ responses: { [url]: { contentType: 'image/jpeg' } } });
+  it('calls rebuild for both albums exactly once with modelId when both have persisted images', async () => {
+    const portUrl = PORTFOLIO_URL(1);
+    const polUrl = POLAROID_URL(1);
+    const { fetchImpl } = makeFetch({
+      responses: {
+        [portUrl]: { contentType: 'image/jpeg' },
+        [polUrl]: { contentType: 'image/jpeg' },
+      },
+    });
     const { uploadImpl } = makeUpload();
     const { addPhotoImpl } = makeAddPhoto();
     const rebuilds = makeRebuilds();
@@ -633,8 +644,8 @@ describe('persistImagesForPackageImport — mirror rebuild', () => {
       modelId: 'rebuild-target',
       provider: 'mediaslide',
       providerExternalId: 'X',
-      portfolioUrls: [url],
-      polaroidUrls: [],
+      portfolioUrls: [portUrl],
+      polaroidUrls: [polUrl],
       options: { fetchImpl, uploadImpl, addPhotoImpl, ...rebuilds },
     });
 
@@ -698,6 +709,125 @@ describe('persistImagesForPackageImport — mirror rebuild', () => {
     });
 
     expect(res.mirrorRebuilt).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 6b) Legacy-Mirror protection: skip rebuild per album when 0 images persisted.
+// Background: a legacy model (imported before Phase 2) may still have external
+// URLs in `models.portfolio_images` / `models.polaroids`. Re-importing such a
+// model with persistImages=true MUST NOT silently wipe these columns when the
+// new persistence run produces zero rows. The rebuild reads exclusively from
+// `model_photos`, so calling it after 0 successful inserts would set the
+// mirror to `[]` — destructive data loss without honest visibility.
+// ---------------------------------------------------------------------------
+
+describe('persistImagesForPackageImport — legacy-mirror protection', () => {
+  it('no_images: empty input → both rebuilds are skipped, mirrorRebuilt stays true', async () => {
+    const { fetchImpl } = makeFetch({ responses: {} });
+    const { uploadImpl } = makeUpload();
+    const { addPhotoImpl } = makeAddPhoto();
+    const rebuilds = makeRebuilds();
+
+    const res = await persistImagesForPackageImport({
+      modelId: 'm',
+      provider: 'mediaslide',
+      providerExternalId: 'X',
+      portfolioUrls: [],
+      polaroidUrls: [],
+      options: { fetchImpl, uploadImpl, addPhotoImpl, ...rebuilds },
+    });
+
+    expect(rebuilds.rebuildPortfolioImpl).not.toHaveBeenCalled();
+    expect(rebuilds.rebuildPolaroidsImpl).not.toHaveBeenCalled();
+    expect(res.mirrorRebuilt).toBe(true);
+    expect(classifyImagePersistResult(res)).toBe('no_images');
+  });
+
+  it('only portfolio persisted: portfolio rebuild runs, polaroid rebuild is skipped', async () => {
+    const url = PORTFOLIO_URL(1);
+    const polUrl = POLAROID_URL(1); // will 404
+    const { fetchImpl } = makeFetch({
+      responses: { [url]: { contentType: 'image/jpeg' } },
+    });
+    const { uploadImpl } = makeUpload();
+    const { addPhotoImpl } = makeAddPhoto();
+    const rebuilds = makeRebuilds();
+
+    const res = await persistImagesForPackageImport({
+      modelId: 'mixed',
+      provider: 'mediaslide',
+      providerExternalId: 'X',
+      portfolioUrls: [url],
+      polaroidUrls: [polUrl],
+      options: { fetchImpl, uploadImpl, addPhotoImpl, ...rebuilds },
+    });
+
+    expect(res.portfolioPersisted).toBe(1);
+    expect(res.polaroidPersisted).toBe(0);
+    expect(rebuilds.rebuildPortfolioImpl).toHaveBeenCalledWith('mixed');
+    expect(rebuilds.rebuildPolaroidsImpl).not.toHaveBeenCalled();
+    // mirrorRebuilt covers the rebuilds we DID run (portfolio ok).
+    expect(res.mirrorRebuilt).toBe(true);
+    expect(classifyImagePersistResult(res)).toBe('partial');
+  });
+
+  it('only polaroids persisted: polaroid rebuild runs, portfolio rebuild is skipped', async () => {
+    const portUrl = PORTFOLIO_URL(1); // will 404
+    const polUrl = POLAROID_URL(1);
+    const { fetchImpl } = makeFetch({
+      responses: { [polUrl]: { contentType: 'image/jpeg' } },
+    });
+    const { uploadImpl } = makeUpload();
+    const { addPhotoImpl } = makeAddPhoto();
+    const rebuilds = makeRebuilds();
+
+    const res = await persistImagesForPackageImport({
+      modelId: 'mixed-2',
+      provider: 'mediaslide',
+      providerExternalId: 'X',
+      portfolioUrls: [portUrl],
+      polaroidUrls: [polUrl],
+      options: { fetchImpl, uploadImpl, addPhotoImpl, ...rebuilds },
+    });
+
+    expect(res.portfolioPersisted).toBe(0);
+    expect(res.polaroidPersisted).toBe(1);
+    expect(rebuilds.rebuildPolaroidsImpl).toHaveBeenCalledWith('mixed-2');
+    expect(rebuilds.rebuildPortfolioImpl).not.toHaveBeenCalled();
+    expect(res.mirrorRebuilt).toBe(true);
+    expect(classifyImagePersistResult(res)).toBe('partial');
+  });
+
+  it('all aborted before any persist: no rebuild call (legacy mirror untouched)', async () => {
+    const u1 = PORTFOLIO_URL(1);
+    const u2 = POLAROID_URL(1);
+    const ctrl = new AbortController();
+    ctrl.abort();
+    const { fetchImpl, calls } = makeFetch({
+      responses: {
+        [u1]: { contentType: 'image/jpeg' },
+        [u2]: { contentType: 'image/jpeg' },
+      },
+    });
+    const { uploadImpl } = makeUpload();
+    const { addPhotoImpl } = makeAddPhoto();
+    const rebuilds = makeRebuilds();
+
+    const res = await persistImagesForPackageImport({
+      modelId: 'cancelled-model',
+      provider: 'mediaslide',
+      providerExternalId: 'X',
+      portfolioUrls: [u1],
+      polaroidUrls: [u2],
+      options: { fetchImpl, uploadImpl, addPhotoImpl, ...rebuilds, signal: ctrl.signal },
+    });
+
+    expect(calls).toHaveLength(0);
+    expect(res.failures.map((f) => f.reason)).toEqual(['download_aborted', 'download_aborted']);
+    expect(rebuilds.rebuildPortfolioImpl).not.toHaveBeenCalled();
+    expect(rebuilds.rebuildPolaroidsImpl).not.toHaveBeenCalled();
+    expect(res.mirrorRebuilt).toBe(true);
   });
 });
 

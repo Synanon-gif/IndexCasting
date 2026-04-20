@@ -89,6 +89,18 @@ Architekturreferenz: `src/services/packageImportTypes.ts`, `packageImporter.ts`,
   müssen die URLs öffentlich auslieferbar bereitstellen oder es schlägt mit `download_http_error` fehl.
 - HARDER GUARDRAIL: KEIN automatisches Löschen von alten `model_photos`-Rows beim Re-Import. Re-Importe fügen
   hinzu; Drift-Cleanup ist ein separater bewusster Schritt.
+- LEGACY-MIRROR-SCHUTZ: Wenn ein Album ZERO erfolgreich persistierte Bilder hat (`portfolioPersisted === 0`
+  bzw. `polaroidPersisted === 0`), DARF der Mirror-Rebuild für genau dieses Album NICHT laufen. Begründung:
+  `rebuild*FromModelPhotos` baut die Mirror-Spalten exklusiv aus `model_photos`. Liefe der Rebuild trotzdem,
+  würden bestehende externe URLs eines Legacy-Modells (vor Phase 2 importiert, noch nicht in `model_photos`
+  gespiegelt) still auf `[]` gesetzt — destruktiver Datenverlust ohne ehrliche Sichtbarkeit. Bei 0 persistiert
+  bleibt der Vorzustand der Mirror-Spalte erhalten; das Outcome wird über `classifyImagePersistResult`
+  ehrlich als `all_failed` / `partial` gemeldet. `mirrorRebuilt` reflektiert ausschließlich Rebuilds, die
+  WIRKLICH ausgeführt wurden — Skip ist KEIN Fail.
+- Persistenz-Funktion `persistImagesForPackageImport` MUSS gegen Throws aus Download-/Upload-/AddPhoto-Pfad
+  intern abschirmen und IMMER ein `PackageImagePersistResult` zurückgeben. `commitPreview` darf eine geworfene
+  Persistenz dennoch defensiv abfangen und das Modell als `warning` (`image_persistence_threw:<message>`)
+  führen — niemals den ganzen Batch crashen.
 
 ## E. Drift- und Override-Sicherheit
 

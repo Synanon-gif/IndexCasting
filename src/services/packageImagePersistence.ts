@@ -229,27 +229,41 @@ export async function persistImagesForPackageImport(
   portfolioPersisted = await persistAlbum(input.portfolioUrls, 'portfolio');
   polaroidPersisted = await persistAlbum(input.polaroidUrls, 'polaroid');
 
-  // Mirror-Spalten neu aufbauen: nur erfolgreich persistierte (visible) Bilder
-  // landen jetzt in `models.portfolio_images` / `models.polaroids`.
-  // Der Rebuild läuft auch wenn 0 persistiert wurden — dann werden die
-  // Mirror-Spalten leer / unverändert (je nach Vorzustand). Outcome-Konsument
-  // (commitPreview) entscheidet anhand `failures.length` vs `attempted`, ob
-  // das Model als "warning" markiert wird.
+  // Mirror-Spalten neu aufbauen — pro Album NUR wenn dieses Album mindestens
+  // ein Bild erfolgreich persistiert hat. Hintergrund (siehe
+  // `package-import-invariants.mdc` D2 / "Legacy-Mirror-Schutz"):
+  //
+  // `rebuildPortfolioImagesFromModelPhotos` / `rebuildPolaroidsFromModelPhotos`
+  // bauen die Mirror-Spalten EXKLUSIV aus `model_photos`-Zeilen. Würden wir
+  // nach einem komplett fehlgeschlagenen Persist-Lauf trotzdem rebuilden,
+  // würden für ein bestehendes Legacy-Modell mit alten externen URLs in
+  // `models.portfolio_images` / `models.polaroids` (vor Phase 2 importiert)
+  // diese Spalten still auf `[]` gesetzt — destruktiver Datenverlust ohne
+  // ehrliche Sichtbarkeit. Statt zu wipen bleibt der Vorzustand erhalten;
+  // `commitPreview` markiert das Outcome je nach `classifyImagePersistResult`
+  // ehrlich als `warning` (`all_images_persistence_failed` / `partial`).
+  //
+  // Für NEU-Inserts (ohne Vorzustand) ist das Verhalten identisch korrekt:
+  // bei 0 persistiert bleiben die initialen `[]` aus dem Importer stehen.
   let mirrorRebuilt = true;
-  try {
-    const rebuildPortfolio = opts.rebuildPortfolioImpl ?? rebuildPortfolioImagesFromModelPhotos;
-    const rebuildPolaroids = opts.rebuildPolaroidsImpl ?? rebuildPolaroidsFromModelPhotos;
-    const [okP, okPol] = await Promise.all([
-      rebuildPortfolio(input.modelId),
-      rebuildPolaroids(input.modelId),
-    ]);
-    mirrorRebuilt = Boolean(okP) && Boolean(okPol);
-  } catch (e) {
-    console.error('[packageImagePersistence] mirror rebuild exception', {
-      modelId: input.modelId,
-      message: e instanceof Error ? e.message : 'unknown',
-    });
-    mirrorRebuilt = false;
+  const shouldRebuildPortfolio = portfolioPersisted > 0;
+  const shouldRebuildPolaroids = polaroidPersisted > 0;
+  if (shouldRebuildPortfolio || shouldRebuildPolaroids) {
+    try {
+      const rebuildPortfolio = opts.rebuildPortfolioImpl ?? rebuildPortfolioImagesFromModelPhotos;
+      const rebuildPolaroids = opts.rebuildPolaroidsImpl ?? rebuildPolaroidsFromModelPhotos;
+      const tasks: Array<Promise<boolean>> = [];
+      if (shouldRebuildPortfolio) tasks.push(rebuildPortfolio(input.modelId));
+      if (shouldRebuildPolaroids) tasks.push(rebuildPolaroids(input.modelId));
+      const results = await Promise.all(tasks);
+      mirrorRebuilt = results.every(Boolean);
+    } catch (e) {
+      console.error('[packageImagePersistence] mirror rebuild exception', {
+        modelId: input.modelId,
+        message: e instanceof Error ? e.message : 'unknown',
+      });
+      mirrorRebuilt = false;
+    }
   }
 
   return {
