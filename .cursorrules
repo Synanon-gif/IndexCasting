@@ -631,6 +631,7 @@ Ergänzt und schärft die obigen Regeln **ohne** sie zu ersetzen. Bei Widerspruc
 ### 27.1 Discovery / Image (CRITICAL — portfolio vs polaroids)
 
 - **Media-Source-of-Truth:** Für Agency-Media-Persistenz, Client-Sichtbarkeit und completeness-kritische „visible portfolio“-Prüfungen ist **`model_photos`** (`photo_type='portfolio'`, `is_visible_to_clients`) autoritativ; `models.portfolio_images` / `models.polaroids` sind nur Mirrors für Rendering/Discovery.
+- **Package-Import (Phase 2) und Mirrors:** Nach erfolgreicher Bild-Persistenz werden Mirror-Spalten aus `model_photos` neu aufgebaut — **pro Album nur**, wenn in diesem Album mindestens ein Bild persistiert wurde; sonst bleibt der Vorzustand der jeweiligen Mirror-Spalte (Legacy-Schutz gegen stillen Leer-Wipe). Vollständig: `.cursor/rules/package-import-invariants.mdc` §D2 (**LEGACY-MIRROR-SCHUTZ**).
 - **Standard Discovery** (Client, Agency-internes Browsen): nur **`portfolio_images`** anzeigen; **`polaroids` immer `[]`** (oder gleichwertig: nie für Discovery-Grids/Cards nutzen).
 - **Polaroids** nur sichtbar in: **Agency Packages** und **Guest Links** (externe Packages), gesteuert über **`packageType`** (`portfolio` | `polaroid`).
 - **Verboten:** jeder Pfad, in dem Polaroids in **normaler** Discovery erscheinen (nicht Package-/Guest-Kontext).

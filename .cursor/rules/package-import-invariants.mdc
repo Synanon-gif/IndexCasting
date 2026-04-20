@@ -8,8 +8,9 @@ alwaysApply: true
 Diese Regeln gelten für JEDEN externen Package-Import-Provider (`mediaslide`, `netwalk`, …)
 und dürfen weder in Importer-, Parser-, Provider-, Drift-, Preview-, Commit- noch UI-Logik gebrochen werden.
 
-Architekturreferenz: `src/services/packageImportTypes.ts`, `packageImporter.ts`, `providerRegistry.ts`,
-`mediaslidePackageProvider.ts`, `netwalkPackageProvider.ts`, `providerDriftDetector.ts`, `PackageImportPane.tsx`.
+Architekturreferenz: `src/services/packageImportTypes.ts`, `packageImporter.ts`, `packageImagePersistence.ts`,
+`providerRegistry.ts`, `mediaslidePackageProvider.ts`, `netwalkPackageProvider.ts`, `providerDriftDetector.ts`,
+`PackageImportPane.tsx`.
 
 ## A. Preview-Pflicht und State-Machine
 
@@ -67,7 +68,9 @@ Architekturreferenz: `src/services/packageImportTypes.ts`, `packageImporter.ts`,
     (MIME-Whitelist, Magic-Bytes, Extension-Konsistenz, EXIF-Strip, agency storage quota, audit log).
   - Portfolio und Polaroids in getrennten Schleifen mit explizitem `photo_type` verarbeiten.
   - Sequentiell pro Album hochladen (`MAX(sort_order)+1` race-frei).
-  - Mirror-Spalten via `rebuildPortfolioImagesFromModelPhotos`/`rebuildPolaroidsFromModelPhotos` aktualisieren.
+  - Mirror-Spalten **pro Album** via `rebuildPortfolioImagesFromModelPhotos` bzw. `rebuildPolaroidsFromModelPhotos`
+    aktualisieren — **nur wenn** in diesem Album mindestens ein Bild erfolgreich persistiert wurde
+    (sonst Rebuild überspringen; siehe **LEGACY-MIRROR-SCHUTZ** unten).
   - `model_photos.source = <provider>` und `model_photos.api_external_id = <providerExternalId>` setzen,
     damit jede persistierte Zeile als Package-Import erkennbar bleibt.
 - Wenn `persistImages: true`, MUSS `commitPreview` `portfolio_images` und `polaroids` im `ImportModelPayload`
@@ -133,7 +136,8 @@ Diese Smoke-Tests dürfen NICHT entfernt oder weichgespült werden ohne Ersatz m
 - `src/services/__tests__/packageImporter.smoke.test.ts` (Cross-Model-Isolation, duplicate externalId,
   Sync-Slot-Exklusivität, Field-Injection-Schutz, Drift-Override-DB-Safety).
 - `src/services/__tests__/packageImagePersistence.test.ts` (Bild-Mirror-Pipeline: Cross-Model-Isolation,
-  Album-Trennung, granulare Failure-Codes, Cancel, Mirror-Rebuild, Provider-Neutralität).
+  Album-Trennung, granulare Failure-Codes, Cancel, Mirror-Rebuild, **Legacy-Mirror-Schutz** pro Album,
+  Provider-Neutralität).
 - `src/services/__tests__/packageImporter.persistImages.test.ts` (Integration: `persistImages:true` strippt
   externe URLs aus dem Importer-Payload, kombinierte Warnings, Skipped-Models triggern keine Persistenz).
 - `src/services/__tests__/mediaslidePackageProvider.test.ts` und `mediaslidePackageProvider.smoke.test.ts`
