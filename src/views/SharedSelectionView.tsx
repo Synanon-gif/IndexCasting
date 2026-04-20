@@ -343,86 +343,94 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
               </TouchableOpacity>
             </View>
             {detailOpen ? (
-              <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} bounces={false}>
-                <View style={styles.modalHeroWrap}>
-                  {detailImages[detailImageIndex] || detailOpen.coverUrl ? (
-                    <StorageImage
-                      uri={detailImages[detailImageIndex] || detailOpen.coverUrl}
-                      style={styles.modalHero}
-                      resizeMode="contain"
-                    />
-                  ) : null}
-                  {detailHasNav && (
-                    <>
-                      <TouchableOpacity
-                        style={[styles.modalArrow, styles.modalArrowLeft]}
-                        onPress={() => setDetailImageIndex((i) => Math.max(0, i - 1))}
-                        disabled={detailImageIndex <= 0}
-                        hitSlop={12}
-                        accessibilityRole="button"
-                      >
-                        <Text
-                          style={[
-                            styles.modalArrowLabel,
-                            detailImageIndex <= 0 && { opacity: 0.3 },
-                          ]}
+              <>
+                <ScrollView
+                  style={styles.modalScroll}
+                  contentContainerStyle={styles.modalScrollContent}
+                  showsVerticalScrollIndicator={false}
+                  bounces={false}
+                >
+                  <View style={styles.modalHeroWrap}>
+                    {detailImages[detailImageIndex] || detailOpen.coverUrl ? (
+                      <StorageImage
+                        uri={detailImages[detailImageIndex] || detailOpen.coverUrl}
+                        style={styles.modalHero}
+                        resizeMode="contain"
+                      />
+                    ) : null}
+                    {detailHasNav && (
+                      <>
+                        <TouchableOpacity
+                          style={[styles.modalArrow, styles.modalArrowLeft]}
+                          onPress={() => setDetailImageIndex((i) => Math.max(0, i - 1))}
+                          disabled={detailImageIndex <= 0}
+                          hitSlop={12}
+                          accessibilityRole="button"
                         >
-                          ‹
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.modalArrow, styles.modalArrowRight]}
-                        onPress={() =>
-                          setDetailImageIndex((i) => Math.min(detailImages.length - 1, i + 1))
-                        }
-                        disabled={detailImageIndex >= detailImages.length - 1}
-                        hitSlop={12}
-                        accessibilityRole="button"
-                      >
-                        <Text
-                          style={[
-                            styles.modalArrowLabel,
-                            detailImageIndex >= detailImages.length - 1 && { opacity: 0.3 },
-                          ]}
+                          <Text
+                            style={[
+                              styles.modalArrowLabel,
+                              detailImageIndex <= 0 && { opacity: 0.3 },
+                            ]}
+                          >
+                            ‹
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.modalArrow, styles.modalArrowRight]}
+                          onPress={() =>
+                            setDetailImageIndex((i) => Math.min(detailImages.length - 1, i + 1))
+                          }
+                          disabled={detailImageIndex >= detailImages.length - 1}
+                          hitSlop={12}
+                          accessibilityRole="button"
                         >
-                          ›
-                        </Text>
-                      </TouchableOpacity>
-                      <View style={styles.modalCounter}>
-                        <Text style={styles.modalCounterLabel}>
-                          {detailImageIndex + 1} / {detailImages.length}
-                        </Text>
-                      </View>
-                    </>
-                  )}
-                </View>
-                <View style={styles.modalMetaBlock}>
-                  <Text style={styles.detailName}>{detailOpen.name}</Text>
-                  <Text style={styles.detailMeasurements}>
-                    {uiCopy.discover.detailMeasurementHeight}{' '}
-                    {detailOpen.measurements.height != null
-                      ? `${detailOpen.measurements.height} cm`
-                      : '—'}{' '}
-                    · {uiCopy.discover.detailMeasurementChest}{' '}
-                    {detailOpen.measurements.chest != null
-                      ? `${detailOpen.measurements.chest} cm`
-                      : '—'}{' '}
-                    · {uiCopy.discover.detailMeasurementWaist}{' '}
-                    {detailOpen.measurements.waist != null
-                      ? `${detailOpen.measurements.waist} cm`
-                      : '—'}{' '}
-                    · {uiCopy.discover.detailMeasurementHips}{' '}
-                    {detailOpen.measurements.hips != null
-                      ? `${detailOpen.measurements.hips} cm`
-                      : '—'}
-                  </Text>
-                  {detailOpen.cityLine ? (
-                    <Text style={styles.detailCity}>{detailOpen.cityLine}</Text>
-                  ) : null}
-                  {/* Action CTAs — same trio as authenticated Discover detail.
-                      Unauthenticated guests are routed through the auth gate;
-                      authenticated users get the Continue-to-workspace path
-                      (handled inside `showAuthGate`). */}
+                          <Text
+                            style={[
+                              styles.modalArrowLabel,
+                              detailImageIndex >= detailImages.length - 1 && { opacity: 0.3 },
+                            ]}
+                          >
+                            ›
+                          </Text>
+                        </TouchableOpacity>
+                        <View style={styles.modalCounter}>
+                          <Text style={styles.modalCounterLabel}>
+                            {detailImageIndex + 1} / {detailImages.length}
+                          </Text>
+                        </View>
+                      </>
+                    )}
+                  </View>
+                  <View style={styles.modalMetaBlock}>
+                    <Text style={styles.detailName}>{detailOpen.name}</Text>
+                    <Text style={styles.detailMeasurements}>
+                      {uiCopy.discover.detailMeasurementHeight}{' '}
+                      {detailOpen.measurements.height != null
+                        ? `${detailOpen.measurements.height} cm`
+                        : '—'}{' '}
+                      · {uiCopy.discover.detailMeasurementChest}{' '}
+                      {detailOpen.measurements.chest != null
+                        ? `${detailOpen.measurements.chest} cm`
+                        : '—'}{' '}
+                      · {uiCopy.discover.detailMeasurementWaist}{' '}
+                      {detailOpen.measurements.waist != null
+                        ? `${detailOpen.measurements.waist} cm`
+                        : '—'}{' '}
+                      · {uiCopy.discover.detailMeasurementHips}{' '}
+                      {detailOpen.measurements.hips != null
+                        ? `${detailOpen.measurements.hips} cm`
+                        : '—'}
+                    </Text>
+                    {detailOpen.cityLine ? (
+                      <Text style={styles.detailCity}>{detailOpen.cityLine}</Text>
+                    ) : null}
+                  </View>
+                </ScrollView>
+                {/* Sticky CTA footer — keeps Chat/Option/Add reachable on every
+                    viewport (mirrors authenticated `ProjectDetailView`
+                    galleryFocus + `GuestView` gallery for cross-flow parity). */}
+                <View style={styles.modalFooter}>
                   <View style={styles.detailActionRow}>
                     <TouchableOpacity
                       style={styles.detailActionBtn}
@@ -453,7 +461,7 @@ export const SharedSelectionView: React.FC<SharedSelectionViewProps> = ({
                     </TouchableOpacity>
                   </View>
                 </View>
-              </ScrollView>
+              </>
             ) : null}
           </View>
         </View>
@@ -631,11 +639,31 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 560,
     maxHeight: '94%',
+    flexShrink: 1,
     zIndex: 1,
     elevation: 4,
     backgroundColor: colors.background,
     borderRadius: 14,
     overflow: 'hidden',
+    flexDirection: 'column' as const,
+  },
+  modalScroll: {
+    flex: 1,
+    minHeight: 0,
+    width: '100%',
+  },
+  modalScrollContent: {
+    paddingBottom: spacing.sm,
+  },
+  modalFooter: {
+    flexShrink: 0,
+    width: '100%',
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    backgroundColor: colors.background,
   },
   modalTopBar: {
     flexDirection: 'row',
@@ -724,7 +752,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
-    marginTop: spacing.md,
   },
   detailActionBtn: {
     paddingVertical: 10,

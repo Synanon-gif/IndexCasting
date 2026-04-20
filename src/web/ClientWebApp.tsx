@@ -3005,10 +3005,16 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
         addBusy={
           detailModelSummaryForOverlay ? addingModelIds.has(detailModelSummaryForOverlay.id) : false
         }
+        bottomInset={bottomTabInset}
       />
 
       {selectedCalendarItem && (
-        <View style={styles.detailOverlay}>
+        <View
+          style={[
+            styles.detailOverlay,
+            { paddingBottom: Math.max(spacing.sm, bottomTabInset + spacing.sm) },
+          ]}
+        >
           <View style={[styles.detailCard, { maxWidth: 520 }]}>
             <View style={styles.detailHeaderRow}>
               <Text style={styles.detailTitle}>{uiCopy.calendar.bookingDetailsTitle}</Text>
@@ -3370,7 +3376,12 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       />
 
       {showAddManualEvent && (
-        <View style={styles.detailOverlay}>
+        <View
+          style={[
+            styles.detailOverlay,
+            { paddingBottom: Math.max(spacing.sm, bottomTabInset + spacing.sm) },
+          ]}
+        >
           <TouchableOpacity
             style={StyleSheet.absoluteFill}
             activeOpacity={1}
@@ -3501,7 +3512,12 @@ export const ClientWebApp: React.FC<ClientWebAppProps> = ({
       )}
 
       {selectedManualEvent && (
-        <View style={styles.detailOverlay}>
+        <View
+          style={[
+            styles.detailOverlay,
+            { paddingBottom: Math.max(spacing.sm, bottomTabInset + spacing.sm) },
+          ]}
+        >
           <TouchableOpacity
             style={StyleSheet.absoluteFill}
             activeOpacity={1}
@@ -7404,6 +7420,12 @@ type DetailProps = {
   onAddToSelectionFromDetail?: () => void;
   chatLoading?: boolean;
   addBusy?: boolean;
+  /**
+   * Bottom safe-area inset for the modal overlay so the centered detail card
+   * never extends behind the absolute bottom tab bar (web + mobile, packages
+   * and projects). Required for the sticky CTA footer to remain reachable.
+   */
+  bottomInset?: number;
 };
 
 const ProjectDetailView: React.FC<DetailProps> = ({
@@ -7420,11 +7442,24 @@ const ProjectDetailView: React.FC<DetailProps> = ({
   onAddToSelectionFromDetail,
   chatLoading = false,
   addBusy = false,
+  bottomInset = 0,
 }) => {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<string | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [heroImageIndex, setHeroImageIndex] = useState(0);
+  const { height: detailViewportHeight } = useWindowDimensions();
+  // Hero must leave room for back bar + meta + sticky CTA footer no matter how
+  // short the viewport is (mobile landscape, small windows). Cap at the design
+  // ceiling on tall screens.
+  const heroMaxHeight = Math.max(
+    220,
+    Math.min(560, Math.round((detailViewportHeight - bottomInset) * 0.55)),
+  );
+  // Pad the centered overlay so the modal card never extends behind the
+  // absolute bottom tab bar — keeps the sticky CTA footer reachable across
+  // packages, projects, internal + external, desktop + mobile, app + web.
+  const overlayBottomPadding = Math.max(spacing.sm, bottomInset + spacing.sm);
 
   const normalizedDisplayImageUrls = useMemo(() => {
     const id = data?.id ?? '';
@@ -7468,8 +7503,10 @@ const ProjectDetailView: React.FC<DetailProps> = ({
   const hasHeroNav = galleryHeroUrls.length > 1;
 
   if (presentation === 'galleryFocus') {
+    const hasFooterCtas =
+      !!onOpenOptionPicker || !!onAddToSelectionFromDetail || !!onChatFromDetail;
     return (
-      <View style={styles.detailOverlay}>
+      <View style={[styles.detailOverlay, { paddingBottom: overlayBottomPadding }]}>
         <View style={[styles.detailCard, styles.detailCardGalleryFocus]}>
           <View style={styles.detailGalleryTopBar}>
             <TouchableOpacity onPress={onClose} style={styles.detailGalleryBackBtn} hitSlop={12}>
@@ -7481,111 +7518,126 @@ const ProjectDetailView: React.FC<DetailProps> = ({
             <Text style={[styles.metaText, { padding: spacing.md }]}>{uiCopy.common.loading}</Text>
           ) : (
             <>
-              <View style={styles.detailGalleryHeroWrap}>
-                <TouchableOpacity
-                  activeOpacity={0.92}
-                  onPress={() => heroUrl && setLightboxIndex(heroImageIndex)}
-                  style={styles.detailGalleryHeroTouchable}
-                >
-                  {heroUrl ? (
-                    <StorageImage
-                      uri={heroUrl}
-                      style={styles.detailGalleryHeroImage}
-                      resizeMode="contain"
-                      ttlSeconds={CLIENT_MODEL_IMAGE_TTL_SEC}
-                      fallback={
-                        <View
-                          style={[
-                            styles.detailGalleryHeroImage,
-                            { backgroundColor: colors.border },
-                          ]}
-                        />
-                      }
-                    />
-                  ) : (
-                    <View
-                      style={[styles.detailGalleryHeroImage, { backgroundColor: colors.border }]}
-                    >
-                      <Text style={styles.metaText}>{mediaEmptyCopy}</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-                {hasHeroNav && (
-                  <>
-                    <TouchableOpacity
-                      style={[styles.detailGalleryHeroArrow, styles.detailGalleryHeroArrowLeft]}
-                      onPress={() => setHeroImageIndex((i) => Math.max(0, i - 1))}
-                      disabled={heroImageIndex <= 0}
-                    >
-                      <Text style={styles.detailGalleryHeroArrowText}>‹</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.detailGalleryHeroArrow, styles.detailGalleryHeroArrowRight]}
-                      onPress={() =>
-                        setHeroImageIndex((i) => Math.min(galleryHeroUrls.length - 1, i + 1))
-                      }
-                      disabled={heroImageIndex >= galleryHeroUrls.length - 1}
-                    >
-                      <Text style={styles.detailGalleryHeroArrowText}>›</Text>
-                    </TouchableOpacity>
-                  </>
-                )}
-                {galleryHeroUrls.length > 1 ? (
-                  <View style={styles.detailGalleryHeroCounter}>
-                    <Text style={styles.lightboxCounterLabel}>
-                      {heroImageIndex + 1} / {galleryHeroUrls.length}
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
-              <View style={styles.detailGalleryMetaBlock}>
-                <Text style={styles.detailTitle}>{data.name}</Text>
-                <Text style={styles.clientGalleryMeta}>
-                  {uiCopy.discover.detailMeasurementHeight}{' '}
-                  {data.measurements.height != null ? `${data.measurements.height} cm` : '—'} ·{' '}
-                  {uiCopy.discover.detailMeasurementChest}{' '}
-                  {data.measurements.chest != null ? `${data.measurements.chest} cm` : '—'} ·{' '}
-                  {uiCopy.discover.detailMeasurementWaist}{' '}
-                  {data.measurements.waist != null ? `${data.measurements.waist} cm` : '—'} ·{' '}
-                  {uiCopy.discover.detailMeasurementHips}{' '}
-                  {data.measurements.hips != null ? `${data.measurements.hips} cm` : '—'}
-                </Text>
-                {galleryLocationLine ? (
-                  <Text style={styles.clientGalleryLocation}>{galleryLocationLine}</Text>
-                ) : null}
-              </View>
-              <View style={styles.detailGalleryCtaRow}>
-                {onOpenOptionPicker ? (
-                  <TouchableOpacity style={styles.optionButtonOutline} onPress={onOpenOptionPicker}>
-                    <Text style={styles.optionButtonOutlineLabel}>
-                      {uiCopy.discover.openOptionPicker}
-                    </Text>
-                  </TouchableOpacity>
-                ) : null}
-                {onAddToSelectionFromDetail ? (
+              <ScrollView
+                style={styles.detailGalleryScroll}
+                contentContainerStyle={styles.detailGalleryScrollContent}
+                showsVerticalScrollIndicator={false}
+              >
+                <View style={[styles.detailGalleryHeroWrap, { maxHeight: heroMaxHeight }]}>
                   <TouchableOpacity
-                    style={[styles.addToSelectionButton, addBusy && { opacity: 0.4 }]}
-                    onPress={onAddToSelectionFromDetail}
-                    disabled={addBusy}
+                    activeOpacity={0.92}
+                    onPress={() => heroUrl && setLightboxIndex(heroImageIndex)}
+                    style={styles.detailGalleryHeroTouchable}
                   >
-                    <Text style={styles.addToSelectionLabel}>
-                      {addBusy ? uiCopy.discover.addingToSelection : uiCopy.discover.addToSelection}
-                    </Text>
+                    {heroUrl ? (
+                      <StorageImage
+                        uri={heroUrl}
+                        style={styles.detailGalleryHeroImage}
+                        resizeMode="contain"
+                        ttlSeconds={CLIENT_MODEL_IMAGE_TTL_SEC}
+                        fallback={
+                          <View
+                            style={[
+                              styles.detailGalleryHeroImage,
+                              { backgroundColor: colors.border },
+                            ]}
+                          />
+                        }
+                      />
+                    ) : (
+                      <View
+                        style={[styles.detailGalleryHeroImage, { backgroundColor: colors.border }]}
+                      >
+                        <Text style={styles.metaText}>{mediaEmptyCopy}</Text>
+                      </View>
+                    )}
                   </TouchableOpacity>
-                ) : null}
-              </View>
-              {onChatFromDetail ? (
-                <TouchableOpacity
-                  style={[styles.chatWithAgencyButton, chatLoading && { opacity: 0.5 }]}
-                  onPress={onChatFromDetail}
-                  disabled={chatLoading}
-                >
-                  <Text style={styles.chatWithAgencyLabel}>
-                    {chatLoading
-                      ? uiCopy.discover.chatWithAgencyLoading
-                      : uiCopy.discover.chatWithAgency}
+                  {hasHeroNav && (
+                    <>
+                      <TouchableOpacity
+                        style={[styles.detailGalleryHeroArrow, styles.detailGalleryHeroArrowLeft]}
+                        onPress={() => setHeroImageIndex((i) => Math.max(0, i - 1))}
+                        disabled={heroImageIndex <= 0}
+                      >
+                        <Text style={styles.detailGalleryHeroArrowText}>‹</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.detailGalleryHeroArrow, styles.detailGalleryHeroArrowRight]}
+                        onPress={() =>
+                          setHeroImageIndex((i) => Math.min(galleryHeroUrls.length - 1, i + 1))
+                        }
+                        disabled={heroImageIndex >= galleryHeroUrls.length - 1}
+                      >
+                        <Text style={styles.detailGalleryHeroArrowText}>›</Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
+                  {galleryHeroUrls.length > 1 ? (
+                    <View style={styles.detailGalleryHeroCounter}>
+                      <Text style={styles.lightboxCounterLabel}>
+                        {heroImageIndex + 1} / {galleryHeroUrls.length}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+                <View style={styles.detailGalleryMetaBlock}>
+                  <Text style={styles.detailTitle}>{data.name}</Text>
+                  <Text style={styles.clientGalleryMeta}>
+                    {uiCopy.discover.detailMeasurementHeight}{' '}
+                    {data.measurements.height != null ? `${data.measurements.height} cm` : '—'} ·{' '}
+                    {uiCopy.discover.detailMeasurementChest}{' '}
+                    {data.measurements.chest != null ? `${data.measurements.chest} cm` : '—'} ·{' '}
+                    {uiCopy.discover.detailMeasurementWaist}{' '}
+                    {data.measurements.waist != null ? `${data.measurements.waist} cm` : '—'} ·{' '}
+                    {uiCopy.discover.detailMeasurementHips}{' '}
+                    {data.measurements.hips != null ? `${data.measurements.hips} cm` : '—'}
                   </Text>
-                </TouchableOpacity>
+                  {galleryLocationLine ? (
+                    <Text style={styles.clientGalleryLocation}>{galleryLocationLine}</Text>
+                  ) : null}
+                </View>
+              </ScrollView>
+              {hasFooterCtas ? (
+                <View style={styles.detailGalleryFooter}>
+                  <View style={styles.detailGalleryCtaRow}>
+                    {onOpenOptionPicker ? (
+                      <TouchableOpacity
+                        style={styles.optionButtonOutline}
+                        onPress={onOpenOptionPicker}
+                      >
+                        <Text style={styles.optionButtonOutlineLabel}>
+                          {uiCopy.discover.openOptionPicker}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
+                    {onAddToSelectionFromDetail ? (
+                      <TouchableOpacity
+                        style={[styles.addToSelectionButton, addBusy && { opacity: 0.4 }]}
+                        onPress={onAddToSelectionFromDetail}
+                        disabled={addBusy}
+                      >
+                        <Text style={styles.addToSelectionLabel}>
+                          {addBusy
+                            ? uiCopy.discover.addingToSelection
+                            : uiCopy.discover.addToSelection}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                  {onChatFromDetail ? (
+                    <TouchableOpacity
+                      style={[styles.chatWithAgencyButton, chatLoading && { opacity: 0.5 }]}
+                      onPress={onChatFromDetail}
+                      disabled={chatLoading}
+                    >
+                      <Text style={styles.chatWithAgencyLabel}>
+                        {chatLoading
+                          ? uiCopy.discover.chatWithAgencyLoading
+                          : uiCopy.discover.chatWithAgency}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
               ) : null}
             </>
           )}
@@ -7657,7 +7709,7 @@ const ProjectDetailView: React.FC<DetailProps> = ({
   }
 
   return (
-    <View style={styles.detailOverlay}>
+    <View style={[styles.detailOverlay, { paddingBottom: overlayBottomPadding }]}>
       <View style={styles.detailCard}>
         <View style={styles.detailHeaderRow}>
           <Text style={styles.detailTitle}>{data ? data.name : uiCopy.common.loading}</Text>
@@ -9797,12 +9849,15 @@ const styles = StyleSheet.create({
   },
   detailCardGalleryFocus: {
     maxWidth: 720,
-    maxHeight: '96%',
+    maxHeight: '100%',
+    flexShrink: 1,
     borderWidth: 0,
     backgroundColor: colors.background,
     paddingHorizontal: spacing.md,
-    paddingBottom: spacing.lg,
+    paddingBottom: 0,
     borderRadius: 14,
+    flexDirection: 'column' as const,
+    overflow: 'hidden' as const,
   },
   detailGalleryTopBar: {
     flexDirection: 'row',
@@ -9870,6 +9925,23 @@ const styles = StyleSheet.create({
   },
   detailGalleryMetaBlock: {
     marginBottom: spacing.sm,
+  },
+  detailGalleryScroll: {
+    flex: 1,
+    minHeight: 0,
+    width: '100%',
+  },
+  detailGalleryScrollContent: {
+    paddingBottom: spacing.sm,
+  },
+  detailGalleryFooter: {
+    flexShrink: 0,
+    width: '100%',
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    backgroundColor: colors.background,
   },
   detailGalleryCtaRow: {
     flexDirection: 'row',

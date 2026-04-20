@@ -646,7 +646,12 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
   // ─── Browse models ──────────────────────────────────────────────────────────
   return (
     <View style={styles.container}>
-      {/* ── Gallery lightbox ── */}
+      {/* ── Gallery lightbox ──
+          Layout: vertical flex column (back bar → image area → meta + sticky CTA
+          footer). The CTA row stays anchored to the bottom of the visible safe
+          area on every viewport so guests on short screens never see the
+          actions clipped. Mirrors the authenticated `ProjectDetailView`
+          galleryFocus structure for cross-flow consistency. */}
       <Modal
         visible={!!galleryModel}
         transparent
@@ -654,74 +659,81 @@ export const GuestView: React.FC<GuestViewProps> = ({ linkId }) => {
         onRequestClose={closeGallery}
       >
         <View style={styles.galleryOverlay}>
-          <TouchableOpacity
-            style={styles.galleryBack}
-            onPress={closeGallery}
-            accessibilityRole="button"
-          >
-            <Text style={styles.galleryBackGlyph}>←</Text>
-            <Text style={styles.galleryBackLabel}>{uiCopy.discover.backToGallery}</Text>
-          </TouchableOpacity>
-
-          {/* Counter */}
-          <Text style={styles.galleryCounter}>
-            {galleryIndex + 1} / {galleryImages.length}
-          </Text>
-
-          {/* Main image */}
-          {galleryImages[galleryIndex] ? (
-            <View
-              style={{ flex: 1, width: '100%', alignItems: 'center', justifyContent: 'center' }}
+          <View style={styles.galleryTopBar}>
+            <TouchableOpacity
+              style={styles.galleryBackBtn}
+              onPress={closeGallery}
+              accessibilityRole="button"
+              hitSlop={12}
             >
+              <Text style={styles.galleryBackGlyph}>←</Text>
+              <Text style={styles.galleryBackLabel}>{uiCopy.discover.backToGallery}</Text>
+            </TouchableOpacity>
+            {galleryImages.length > 0 ? (
+              <Text style={styles.galleryTopCounter}>
+                {galleryIndex + 1} / {galleryImages.length}
+              </Text>
+            ) : (
+              <View />
+            )}
+          </View>
+
+          <View style={styles.galleryImageArea}>
+            {galleryImages[galleryIndex] ? (
               <StorageImage
                 uri={galleryImages[galleryIndex]}
                 style={styles.galleryImage}
                 resizeMode="contain"
               />
-            </View>
-          ) : null}
-
-          {/* Navigation */}
-          <View style={styles.galleryNav}>
-            <TouchableOpacity
-              onPress={() => setGalleryIndex((i) => Math.max(0, i - 1))}
-              disabled={galleryIndex === 0}
-              hitSlop={16}
-              accessibilityRole="button"
-              style={[styles.galleryNavBtn, galleryIndex === 0 && { opacity: 0.3 }]}
-            >
-              <Text style={styles.galleryNavLabel}>‹</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setGalleryIndex((i) => Math.min(galleryImages.length - 1, i + 1))}
-              disabled={galleryIndex === galleryImages.length - 1}
-              hitSlop={16}
-              accessibilityRole="button"
-              style={[
-                styles.galleryNavBtn,
-                galleryIndex === galleryImages.length - 1 && { opacity: 0.3 },
-              ]}
-            >
-              <Text style={styles.galleryNavLabel}>›</Text>
-            </TouchableOpacity>
+            ) : null}
+            {galleryImages.length > 1 && (
+              <>
+                <TouchableOpacity
+                  onPress={() => setGalleryIndex((i) => Math.max(0, i - 1))}
+                  disabled={galleryIndex === 0}
+                  hitSlop={16}
+                  accessibilityRole="button"
+                  style={[
+                    styles.galleryNavBtn,
+                    styles.galleryNavBtnLeft,
+                    galleryIndex === 0 && { opacity: 0.3 },
+                  ]}
+                >
+                  <Text style={styles.galleryNavLabel}>‹</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setGalleryIndex((i) => Math.min(galleryImages.length - 1, i + 1))}
+                  disabled={galleryIndex === galleryImages.length - 1}
+                  hitSlop={16}
+                  accessibilityRole="button"
+                  style={[
+                    styles.galleryNavBtn,
+                    styles.galleryNavBtnRight,
+                    galleryIndex === galleryImages.length - 1 && { opacity: 0.3 },
+                  ]}
+                >
+                  <Text style={styles.galleryNavLabel}>›</Text>
+                </TouchableOpacity>
+              </>
+            )}
           </View>
 
-          {/* Model info overlay */}
           {galleryModel && (
-            <View style={styles.galleryModelInfo}>
-              <Text style={styles.galleryModelName}>{galleryModel.name}</Text>
-              <Text style={styles.galleryModelMeta}>
-                {galleryModel.height != null ? `${galleryModel.height}cm` : '—'}
+            <View style={styles.galleryFooter}>
+              <Text style={styles.galleryModelName} numberOfLines={1}>
+                {galleryModel.name}
+              </Text>
+              <Text style={styles.galleryModelMeta} numberOfLines={2}>
+                {galleryModel.height != null ? `${galleryModel.height} cm` : '—'}
                 {getChestValue(galleryModel) != null
                   ? ` · Chest ${getChestValue(galleryModel)} cm`
                   : ''}
                 {galleryModel.waist != null ? ` · Waist ${galleryModel.waist} cm` : ''}
                 {galleryModel.hips != null ? ` · Hips ${galleryModel.hips} cm` : ''}
               </Text>
-              {/* Action CTAs — same as authenticated Discover detail. For
-                  unauthenticated guests, every tap routes to the sign-up gate;
-                  after sign-up the package auto-reopens and the user can use
-                  the buttons natively in `ClientWebApp`. */}
+              {/* Action CTAs — same as authenticated Discover detail. Every tap
+                  routes through the sign-up gate; after sign-up the package
+                  auto-reopens in `ClientWebApp`. */}
               <View style={styles.galleryActionRow}>
                 <TouchableOpacity
                   style={styles.galleryActionBtn}
@@ -1374,19 +1386,56 @@ const styles = StyleSheet.create({
   galleryOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.93)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    flexDirection: 'column' as const,
+    paddingTop: Platform.OS === 'ios' ? 52 : 24,
+    paddingBottom: Platform.OS === 'ios' ? 32 : 16,
   },
-  galleryBack: {
-    position: 'absolute',
-    top: Platform.OS === 'ios' ? 52 : 44,
-    left: 16,
-    zIndex: 20,
+  galleryTopBar: {
+    flexShrink: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+  },
+  galleryBackBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingVertical: 6,
     paddingHorizontal: 6,
+  },
+  galleryTopCounter: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 13,
+    paddingHorizontal: 6,
+  },
+  galleryImageArea: {
+    flex: 1,
+    minHeight: 0,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  galleryFooter: {
+    flexShrink: 0,
+    width: '100%',
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    alignItems: 'center',
+  },
+  galleryNavBtnLeft: {
+    position: 'absolute',
+    left: 8,
+    top: '50%',
+    marginTop: -28,
+  },
+  galleryNavBtnRight: {
+    position: 'absolute',
+    right: 8,
+    top: '50%',
+    marginTop: -28,
   },
   galleryBackGlyph: {
     color: '#fff',
@@ -1398,40 +1447,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  galleryCounter: {
-    position: 'absolute',
-    top: Platform.OS === 'ios' ? 56 : 48,
-    left: 0,
-    right: 0,
-    textAlign: 'center',
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 13,
-    zIndex: 10,
-  },
   galleryImage: {
     width: '100%',
-    height: '70%',
-  },
-  galleryNav: {
-    flexDirection: 'row',
-    gap: 48,
-    marginTop: 24,
+    height: '100%',
   },
   galleryNavBtn: {
     padding: 12,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    borderRadius: 8,
   },
   galleryNavLabel: {
     color: '#fff',
-    fontSize: 42,
-    lineHeight: 44,
-  },
-  galleryModelInfo: {
-    position: 'absolute',
-    bottom: 60,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    paddingHorizontal: 24,
+    fontSize: 36,
+    lineHeight: 38,
   },
   galleryModelName: {
     color: '#fff',
