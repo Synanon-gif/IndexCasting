@@ -57,6 +57,13 @@ export type ImportModelPayload = {
    * Use this when Mediaslide is the authoritative source of truth for measurements.
    */
   forceUpdateMeasurements?: boolean;
+  /**
+   * Quelle der Bilder/Profildaten. Bei INSERT direkt in die Spalte gesetzt; bei
+   * UPDATE eines bestehenden Models mit `photo_source='own'` wird sie zusätzlich
+   * via `set_model_photo_source`-RPC nachgezogen, damit Package-Importe nicht
+   * still als "own" verbleiben.
+   */
+  photo_source?: 'own' | 'mediaslide' | 'netwalk';
   /** @internal Set by 23505 defense-in-depth to prevent infinite recursion. */
   _mergeRetry?: boolean;
 };
@@ -251,6 +258,27 @@ export async function importModelAndMerge(
         }
       }
 
+      // photo_source angleichen, wenn der Import von einem externen Provider kommt
+      // und das bestehende Model noch als 'own' markiert ist. Fehler hier dürfen den
+      // Import NICHT scheitern lassen — wir loggen und gehen weiter.
+      if (
+        params.photo_source &&
+        params.photo_source !== 'own' &&
+        (existing.photo_source === 'own' || existing.photo_source == null)
+      ) {
+        try {
+          const { error: psError } = await supabase.rpc('set_model_photo_source', {
+            p_model_id: existing.id,
+            p_source: params.photo_source,
+          });
+          if (psError) {
+            console.warn('importModelAndMerge: set_model_photo_source failed:', psError);
+          }
+        } catch (psEx) {
+          console.warn('importModelAndMerge: set_model_photo_source threw:', psEx);
+        }
+      }
+
       if (params.territories?.length) {
         await upsertTerritoriesForModelCountryAgencyPairs(existing.id, params.territories);
       }
@@ -293,6 +321,7 @@ export async function importModelAndMerge(
       portfolio_images: params.portfolio_images ?? [],
       polaroids: params.polaroids ?? [],
       birthday: birthday ?? null,
+      ...(params.photo_source ? { photo_source: params.photo_source } : {}),
     };
 
     const { data, error } = await supabase

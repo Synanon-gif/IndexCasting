@@ -10,7 +10,13 @@
  * KEINE Caps, KEINE DB-Logik, KEINE UI-Begriffe in dieser Datei.
  */
 
-import type { AnalyzeProgress, PackageProvider, ProviderImportPayload } from './packageImportTypes';
+import type {
+  AnalyzeProgress,
+  DriftResult,
+  PackageProvider,
+  ProviderImportPayload,
+} from './packageImportTypes';
+import { ParserDriftError } from './packageImportTypes';
 import {
   createMediaslidePackageFetcher,
   parsePackageUrl,
@@ -18,12 +24,18 @@ import {
   type MediaslideFetcherOptions,
 } from './mediaslidePackageFetcher';
 import {
+  countPackageListContainers,
   detectTenantSlug,
   parsePackageBook,
   parsePackageList,
   type ParsedBookFragment,
   type ParsedListEntry,
 } from './mediaslidePackageParser';
+import {
+  evaluateRunDrift,
+  MEDIASLIDE_LIST_ANCHORS,
+  MEDIASLIDE_PARSER_VERSION,
+} from './providerDriftDetector';
 
 const PROVIDER_ID = 'mediaslide' as const;
 
@@ -63,12 +75,32 @@ export function createMediaslidePackageProvider(
     url: string;
     signal?: AbortSignal;
     onProgress?: (s: AnalyzeProgress) => void;
+    onDrift?: (drift: DriftResult) => void;
+    allowDriftBypass?: boolean;
   }): Promise<ProviderImportPayload[]> {
-    const { url, signal, onProgress } = input;
+    const { url, signal, onProgress, onDrift, allowDriftBypass } = input;
 
     onProgress?.({ phase: 'fetch_list', modelsTotal: 0, modelsDone: 0 });
     const listHtml = await fetcher.fetchPackageListHtml(url, signal);
     const listEntries = parsePackageList(listHtml);
+    const cardsDetected = countPackageListContainers(listHtml);
+
+    // Frühe Drift-Bewertung — schon bevor wir Books fetchen, können fehlende
+    // Anchors / katastrophal niedrige Extraction-Rate einen Hard-Block auslösen.
+    const earlyDrift = evaluateRunDrift({
+      providerId: PROVIDER_ID,
+      parserVersion: MEDIASLIDE_PARSER_VERSION,
+      url,
+      listHtml,
+      expectedAnchors: MEDIASLIDE_LIST_ANCHORS,
+      cardsDetected,
+      cardsExtracted: listEntries.length,
+      payloads: [],
+    });
+    if (earlyDrift.severity === 'hard_block' && !allowDriftBypass) {
+      throw new ParserDriftError(earlyDrift);
+    }
+
     if (listEntries.length === 0) {
       throw new Error('package_no_models');
     }
@@ -115,12 +147,32 @@ export function createMediaslidePackageProvider(
     const slots = Math.min(bookConcurrency, listEntries.length);
     await Promise.all(Array.from({ length: slots }, worker));
 
-    // Tenant-Slug als Validierungs-Hint (informativ; nicht erzwungen).
+    // Tenant-Slug-Validierung: wenn das List-HTML keinen erkennbaren Tenant-Slug
+    // mehr enthält, ist das ein starkes Signal für Format-Drift (frühere Versionen
+    // exposed `data-tenant-slug` o. ä.). Wir markieren als Warnung pro Model.
     const tenantSlug = detectTenantSlug(listHtml);
-    if (tenantSlug) {
+    if (!tenantSlug) {
       for (const p of payloads) {
-        p.warnings = p.warnings ?? [];
+        p.warnings = [...(p.warnings ?? []), 'tenant_slug_missing'];
       }
+    }
+
+    // Späte Drift-Bewertung mit Book-Quality.
+    const lateDrift = evaluateRunDrift({
+      providerId: PROVIDER_ID,
+      parserVersion: MEDIASLIDE_PARSER_VERSION,
+      url,
+      listHtml,
+      expectedAnchors: MEDIASLIDE_LIST_ANCHORS,
+      cardsDetected,
+      cardsExtracted: listEntries.length,
+      payloads,
+    });
+    if (lateDrift.severity === 'hard_block' && !allowDriftBypass) {
+      throw new ParserDriftError(lateDrift);
+    }
+    if (lateDrift.severity !== 'ok') {
+      onDrift?.(lateDrift);
     }
 
     return payloads;
@@ -250,6 +302,11 @@ function classifyAndBuildPayload(input: {
 }
 
 function buildErrorPayload(entry: ParsedListEntry, err: unknown): ProviderImportPayload {
+  // Wenn der Book-Fetch komplett scheitert, haben wir KEINE Bilder und meist keine
+  // Maße — `forceSkipReason` sorgt dafür, dass der Importer dieses Model als
+  // `skipped` (statt fälschlich als `ready`) behandelt. Der List-Hint (Cover, Höhe)
+  // bleibt für die UI sichtbar, ohne dass ein leeres Model committed wird.
+  const hasHeight = entry.heightHintCm != null;
   return {
     externalProvider: PROVIDER_ID,
     externalId: entry.mediaSlideModelId,
@@ -259,5 +316,6 @@ function buildErrorPayload(entry: ParsedListEntry, err: unknown): ProviderImport
     portfolio_image_urls: [],
     polaroid_image_urls: [],
     warnings: [`book_fetch_failed:${(err as Error).message ?? 'unknown'}`],
+    forceSkipReason: hasHeight ? undefined : 'book_fetch_failed',
   };
 }

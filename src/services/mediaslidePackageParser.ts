@@ -13,6 +13,7 @@
  */
 
 import { redactPackageUrl } from './mediaslidePackageFetcher';
+import { imageDedupKey } from './imageDedupKey';
 
 export type ParsedListEntry = {
   /** MediaSlide-stabile Model-ID (z. B. "256"). Pflicht. */
@@ -105,6 +106,19 @@ export function parsePackageBook(html: string): ParsedBookFragment {
     albumCatalog: extractAlbumCatalog(html),
     imagesForCurrentCategory: extractBookImages(html),
   };
+}
+
+/**
+ * Zählt erkannte `packageModel_*`-Container im List-HTML — unabhängig davon,
+ * ob die Karte später vollständig geparst werden konnte. Basis für die
+ * `extractionRatio` der Drift-Detection.
+ */
+export function countPackageListContainers(html: string): number {
+  if (typeof html !== 'string' || html.length === 0) return 0;
+  const re = /<div\s+id="packageModel_\d+"[^>]*class="packageModel"/gi;
+  let count = 0;
+  while (re.exec(html)) count++;
+  return count;
 }
 
 /** Tenant-Slug aus erster GCS-URL extrahieren (informativ). */
@@ -381,12 +395,8 @@ function extractBookImages(html: string): string[] {
 // Image helpers
 // ---------------------------------------------------------------------------
 
-/** Stabiler Dedup-Key aus der URL: `{modelId}/{categoryId}/{md5}` (ohne Größe und ohne Cache-Buster). */
-export function imageDedupKey(url: string): string {
-  const m = url.match(/\/pictures\/(\d+)\/(\d+)\/(?:profile|large|thumb)-\d+-([0-9a-f]{32})\.jpg/i);
-  if (m) return `${m[1]}/${m[2]}/${m[3]}`;
-  return url.split('?')[0];
-}
+/** Re-Export für Backwards-Compat. Echte Implementierung in `./imageDedupKey`. */
+export { imageDedupKey };
 
 function isPlaceholderImage(url: string): boolean {
   return url.includes('no-picture.png') || url.includes('static-ms-eu.mediaslide.com/images');

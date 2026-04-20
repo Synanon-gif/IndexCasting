@@ -49,7 +49,68 @@ export type ProviderImportPayload = {
   extra_album_counts?: Record<string, number>;
   /** Provider-/Parser-Warnungen, die im Preview pro Model angezeigt werden. */
   warnings?: string[];
+  /**
+   * Wenn gesetzt, MUSS der Importer dieses Model als `skipped` mit diesem Reason
+   * behandeln — auch wenn andere Felder formal "ready" wären. Wird vom Provider
+   * gesetzt, wenn der Roh-Payload nachweislich unvollständig ist (z. B. Book-Fetch
+   * komplett fehlgeschlagen, nur Listen-Hint vorhanden).
+   */
+  forceSkipReason?: string;
 };
+
+// ---------------------------------------------------------------------------
+// Drift detection
+// ---------------------------------------------------------------------------
+
+export type DriftSeverity = 'ok' | 'soft_warn' | 'hard_block';
+
+/**
+ * Strukturiertes Drift-Ergebnis pro Analyze-Run.
+ * Wird vom Provider an den Importer/UI weitergereicht. Enthält bewusst KEINE
+ * roh-HTML-Snippets — nur aggregierte Signale + maskierte URL.
+ */
+export type DriftResult = {
+  severity: DriftSeverity;
+  /** Stabiler Versions-Tag des Parsers (z. B. "mediaslide-2026-04"). */
+  parserVersion: string;
+  providerId: PackageProviderId;
+  /** Maskierte Quelle (Host + 1 Pfadsegment, ohne Query). */
+  maskedUrl: string;
+  /** Anteil gefundener `expectedListAnchors` (0..1). */
+  anchorCoverage: number;
+  /** Welche Pflicht-Anker fehlen (für Logging/UI). */
+  missingAnchors: string[];
+  /** Anteil erfolgreich vollständig geparster Karten (0..1). */
+  extractionRatio: number;
+  /** Anteil Books mit verwertbarem Output (0..1). 1.0 wenn keine Books erwartet. */
+  bookOkRatio: number;
+  /** Maschinenlesbare Reason-Codes (`parser_anchor_coverage_low`, ...). */
+  reasonCodes: string[];
+  /** Anzahl Container im List-HTML. */
+  cardsDetected: number;
+  /** Anzahl davon vollständig geparst. */
+  cardsExtracted: number;
+};
+
+/**
+ * Error-Klasse für Drift-Hard-Blocks. Provider werfen diese statt eines generischen
+ * Errors, sodass die UI das angehängte DriftResult sicher auspacken kann.
+ *
+ * `message` ist immer `'parser_drift_detected'`, sodass bestehende Handler, die nur
+ * auf den Error-Code matchen, weiterhin funktionieren.
+ */
+export class ParserDriftError extends Error {
+  public readonly drift: DriftResult;
+  constructor(drift: DriftResult) {
+    super('parser_drift_detected');
+    this.name = 'ParserDriftError';
+    this.drift = drift;
+  }
+}
+
+export function isParserDriftError(e: unknown): e is ParserDriftError {
+  return e instanceof Error && e.name === 'ParserDriftError' && 'drift' in e;
+}
 
 /** Fortschritts-Callback während der Provider-Analyse-Phase. */
 export type AnalyzeProgress = {
@@ -73,6 +134,18 @@ export type PackageProvider = {
     url: string;
     signal?: AbortSignal;
     onProgress?: (s: AnalyzeProgress) => void;
+    /**
+     * Optional callback for non-fatal drift signals (`soft_warn` or `ok`).
+     * Hard-Block drift causes a thrown `ParserDriftError` instead.
+     */
+    onDrift?: (drift: DriftResult) => void;
+    /**
+     * Wenn true, wirft der Provider KEINE `ParserDriftError` mehr — Drift wird
+     * nur via `onDrift` gemeldet. Wird ausschließlich vom expliziten Admin-
+     * Override gesetzt, NICHT als Default. Pflichtfeld-Checks im Importer
+     * greifen weiterhin.
+     */
+    allowDriftBypass?: boolean;
   }) => Promise<ProviderImportPayload[]>;
 };
 

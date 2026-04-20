@@ -1,6 +1,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
+  countPackageListContainers,
   detectTenantSlug,
   imageDedupKey,
   parsePackageBook,
@@ -149,6 +150,27 @@ describe('mediaslidePackageParser — robustness', () => {
     ]);
   });
 
+  it('countPackageListContainers counts EVERY packageModel container, even broken ones', () => {
+    const html = `
+      <div id="packageModel_1" class="packageModel"><div class="modelName">A</div></div>
+      <div id="packageModel_2" class="packageModel">
+        <div class="modelName">B</div>
+        <a data-model-id="22"></a>
+      </div>
+      <div id="packageModel_3" class="packageModel"><!-- broken: no name --><a data-model-id="33"></a></div>
+    `;
+    expect(countPackageListContainers(html)).toBe(3);
+    expect(parsePackageList(html).length).toBeLessThan(3);
+  });
+
+  it('countPackageListContainers returns 0 for empty / non-string input', () => {
+    expect(countPackageListContainers('')).toBe(0);
+    // @ts-expect-error intentional non-string
+    expect(countPackageListContainers(null)).toBe(0);
+    // @ts-expect-error intentional non-string
+    expect(countPackageListContainers(undefined)).toBe(0);
+  });
+
   it('multi-card list: parses every card', () => {
     const card = (id: number) => `
       <div id="packageModel_${id * 10}" class="packageModel">
@@ -162,5 +184,62 @@ describe('mediaslidePackageParser — robustness', () => {
     const entries = parsePackageList(html);
     expect(entries.map((e) => e.mediaSlideModelId)).toEqual(['1', '2', '3']);
     expect(entries.map((e) => e.name)).toEqual(['Model 1', 'Model 2', 'Model 3']);
+  });
+});
+
+describe('mediaslidePackageParser — drift smoke tests (synthetic broken fixtures)', () => {
+  // Goal: ensure that when MediaSlide changes its HTML, the parser fails
+  // PREDICTABLY (returns less / nothing) rather than silently producing garbage.
+  // The drift detector then flags these via anchor coverage / extraction ratio.
+
+  const goodCard = (id: number) => `
+    <div id="packageModel_${id}" class="packageModel">
+      <a href="#book-${id}"><img data-original="https://x/y/pictures/${id}/${id}/profile-1-${'a'.repeat(32)}.jpg" /></a>
+      <div class="modelName" translate="no">Model ${id}</div>
+      <a id="select_${id}" data-model-id="${id}"></a>
+      <div class="modelHeight">17${id}cm</div>
+    </div>
+  `;
+
+  it('renamed wrapper class → 0 cards detected, parsePackageList returns []', () => {
+    const html = goodCard(1).replace('class="packageModel"', 'class="package_card_v2"');
+    expect(countPackageListContainers(html)).toBe(0);
+    expect(parsePackageList(html)).toHaveLength(0);
+  });
+
+  it('missing data-model-id on otherwise valid card → silently dropped', () => {
+    const html = goodCard(1).replace(/data-model-id="\d+"/, '');
+    // Container still detected (good for drift extractionRatio < 1)
+    expect(countPackageListContainers(html)).toBe(1);
+    expect(parsePackageList(html)).toHaveLength(0);
+  });
+
+  it('renamed modelName class → name lost, card dropped', () => {
+    const html = goodCard(1).replace('class="modelName"', 'class="model_label"');
+    expect(countPackageListContainers(html)).toBe(1);
+    expect(parsePackageList(html)).toHaveLength(0);
+  });
+
+  it('mixed: 2 good cards + 2 broken cards → only 2 parsed but 4 detected', () => {
+    const broken1 = goodCard(2).replace(/data-model-id="\d+"/, '');
+    const broken2 = goodCard(4).replace('class="modelName"', 'class="other"');
+    const html = goodCard(1) + broken1 + goodCard(3) + broken2;
+    expect(countPackageListContainers(html)).toBe(4);
+    const parsed = parsePackageList(html);
+    expect(parsed).toHaveLength(2);
+    expect(parsed.map((p) => p.mediaSlideModelId)).toEqual(['1', '3']);
+  });
+
+  it('empty album catalog → parsePackageBook still returns measurements without throwing', () => {
+    const html = `
+      <div class="bookMenuName" translate="no">EMPTY ALBUM MODEL</div>
+      <div id="bookModelMeasurements">
+        <div class="measurementElement"><span class="measurementTitle">Height</span> <span class="measurementEu">181<span class="measurementUnit">cm</span></span></div>
+      </div>
+    `;
+    const book = parsePackageBook(html);
+    expect(book.measurements.height).toBe(181);
+    expect(book.albumCatalog).toEqual([]);
+    expect(book.imagesForCurrentCategory).toEqual([]);
   });
 });

@@ -16,7 +16,10 @@ function makePayload(overrides: Partial<ProviderImportPayload> = {}): ProviderIm
     externalId: 'MS-100',
     name: 'Test Model',
     measurements: { height: 180 },
-    portfolio_image_urls: [],
+    // Default: 1 portfolio image so the payload becomes 'ready' under the
+    // empty-ready guard. Tests that explicitly want the no_images path override
+    // both arrays to [].
+    portfolio_image_urls: ['https://x/y/pictures/1/1/large-1-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.jpg'],
     polaroid_image_urls: [],
     ...overrides,
   };
@@ -85,6 +88,34 @@ describe('toPreviewModels — bildlimit + dedup + skip-status', () => {
     expect(previews[0].status).toBe('skipped');
     expect(previews[0].skipReason).toBe('missing_name');
   });
+
+  it('skips ready-eligible model with 0 portfolio + 0 polaroids → no_images', () => {
+    const previews = toPreviewModels([
+      makePayload({ portfolio_image_urls: [], polaroid_image_urls: [] }),
+    ]);
+    expect(previews[0].status).toBe('skipped');
+    expect(previews[0].skipReason).toBe('no_images');
+  });
+
+  it('respects provider-set forceSkipReason regardless of other fields', () => {
+    const previews = toPreviewModels([
+      makePayload({
+        forceSkipReason: 'book_fetch_failed',
+        portfolio_image_urls: ['https://x/p1.jpg'],
+        polaroid_image_urls: ['https://x/p2.jpg'],
+      }),
+    ]);
+    expect(previews[0].status).toBe('skipped');
+    expect(previews[0].skipReason).toBe('book_fetch_failed');
+  });
+
+  it('does NOT apply forceSkipReason if externalId is empty (missing_external_id wins)', () => {
+    const previews = toPreviewModels([
+      makePayload({ externalId: '', forceSkipReason: 'book_fetch_failed' }),
+    ]);
+    expect(previews[0].status).toBe('skipped');
+    expect(previews[0].skipReason).toBe('missing_external_id');
+  });
 });
 
 describe('previewToImportPayload — mapping correctness', () => {
@@ -137,6 +168,28 @@ describe('previewToImportPayload — mapping correctness', () => {
     });
     expect(payload.netwalk_model_id).toBe('NW-77');
     expect(payload.mediaslide_sync_id).toBeUndefined();
+  });
+
+  it('sets photo_source=mediaslide for mediaslide payloads', () => {
+    const previews = toPreviewModels([makePayload({ externalProvider: 'mediaslide' })]);
+    const payload = previewToImportPayload({
+      preview: previews[0],
+      agencyId: 'a-1',
+      options: {},
+    });
+    expect(payload.photo_source).toBe('mediaslide');
+  });
+
+  it('sets photo_source=netwalk for netwalk payloads', () => {
+    const previews = toPreviewModels([
+      makePayload({ externalProvider: 'netwalk', externalId: 'NW-1' }),
+    ]);
+    const payload = previewToImportPayload({
+      preview: previews[0],
+      agencyId: 'a-1',
+      options: {},
+    });
+    expect(payload.photo_source).toBe('netwalk');
   });
 
   it('forwards forceUpdateMeasurements only when option is true', () => {

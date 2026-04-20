@@ -24,13 +24,16 @@ import {
   View,
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
-import { createMediaslidePackageProvider } from '../services/mediaslidePackageProvider';
+import { getProviderForUrl } from '../services/providerRegistry';
 import {
   PACKAGE_IMPORT_LIMITS,
+  isParserDriftError,
   type AnalyzeProgress,
   type CommitOutcome,
   type CommitProgress,
   type CommitSummary,
+  type DriftResult,
+  type PackageProvider,
   type PreviewModel,
 } from '../services/packageImportTypes';
 import { commitPreview, toPreviewModels } from '../services/packageImporter';
@@ -41,7 +44,14 @@ type Props = {
   onModelsChanged?: () => void;
 };
 
-type Phase = 'idle' | 'analyzing' | 'previewing' | 'committing' | 'done';
+type Phase =
+  | 'idle'
+  | 'analyzing'
+  | 'previewing'
+  | 'committing'
+  | 'done'
+  | 'drift_blocked'
+  | 'drift_override_confirm';
 
 export const PackageImportPane: React.FC<Props> = ({ agencyId, onModelsChanged }) => {
   const [phase, setPhase] = useState<Phase>('idle');
@@ -55,6 +65,9 @@ export const PackageImportPane: React.FC<Props> = ({ agencyId, onModelsChanged }
 
   const [commitProgress, setCommitProgress] = useState<CommitProgress | null>(null);
   const [summary, setSummary] = useState<CommitSummary | null>(null);
+
+  const [drift, setDrift] = useState<DriftResult | null>(null);
+  const [overrideText, setOverrideText] = useState('');
 
   const abortRef = useRef<AbortController | null>(null);
 
@@ -77,12 +90,59 @@ export const PackageImportPane: React.FC<Props> = ({ agencyId, onModelsChanged }
     setSelected(new Set());
     setCommitProgress(null);
     setSummary(null);
+    setDrift(null);
+    setOverrideText('');
   }, []);
+
+  const runAnalyze = useCallback(
+    async (provider: PackageProvider, allowDriftBypass: boolean) => {
+      const ctrl = new AbortController();
+      abortRef.current = ctrl;
+      setPhase('analyzing');
+      setAnalyzeProgress({ phase: 'fetch_list', modelsTotal: 0, modelsDone: 0 });
+
+      try {
+        const payloads = await provider.analyze({
+          url: url.trim(),
+          signal: ctrl.signal,
+          onProgress: (p) => setAnalyzeProgress(p),
+          onDrift: (d) => setDrift(d),
+          allowDriftBypass,
+        });
+        if (payloads.length > PACKAGE_IMPORT_LIMITS.MAX_MODELS_PER_RUN) {
+          throw new Error(
+            `Package enthält ${payloads.length} Models (Limit ${PACKAGE_IMPORT_LIMITS.MAX_MODELS_PER_RUN}).`,
+          );
+        }
+        const built = toPreviewModels(payloads);
+        setPreviews(built);
+        setSelected(new Set(built.filter((p) => p.status === 'ready').map((p) => p.externalId)));
+        setPhase('previewing');
+      } catch (e) {
+        if ((e as Error).message === 'aborted') {
+          reset();
+          return;
+        }
+        if (isParserDriftError(e)) {
+          console.warn('[package-import drift]', JSON.stringify(e.drift));
+          setDrift(e.drift);
+          setPhase('drift_blocked');
+          return;
+        }
+        setError(humaniseError((e as Error).message));
+        setPhase('idle');
+      } finally {
+        if (abortRef.current === ctrl) abortRef.current = null;
+      }
+    },
+    [url, reset],
+  );
 
   const handleAnalyze = useCallback(async () => {
     setError(null);
+    setDrift(null);
     if (!url.trim()) {
-      setError('Bitte gib einen MediaSlide-Package-Link ein.');
+      setError('Bitte gib einen Package-Link ein (MediaSlide oder Netwalk).');
       return;
     }
     if (!agencyId) {
@@ -90,41 +150,41 @@ export const PackageImportPane: React.FC<Props> = ({ agencyId, onModelsChanged }
       return;
     }
 
-    const ctrl = new AbortController();
-    abortRef.current = ctrl;
-    setPhase('analyzing');
-    setAnalyzeProgress({ phase: 'fetch_list', modelsTotal: 0, modelsDone: 0 });
-
-    try {
-      const provider = createMediaslidePackageProvider();
-      if (!provider.detect({ url: url.trim() })) {
-        throw new Error('package_url_invalid');
-      }
-      const payloads = await provider.analyze({
-        url: url.trim(),
-        signal: ctrl.signal,
-        onProgress: (p) => setAnalyzeProgress(p),
-      });
-      if (payloads.length > PACKAGE_IMPORT_LIMITS.MAX_MODELS_PER_RUN) {
-        throw new Error(
-          `Package enthält ${payloads.length} Models (Limit ${PACKAGE_IMPORT_LIMITS.MAX_MODELS_PER_RUN}).`,
-        );
-      }
-      const built = toPreviewModels(payloads);
-      setPreviews(built);
-      setSelected(new Set(built.filter((p) => p.status === 'ready').map((p) => p.externalId)));
-      setPhase('previewing');
-    } catch (e) {
-      if ((e as Error).message === 'aborted') {
-        reset();
-        return;
-      }
-      setError(humaniseError((e as Error).message));
-      setPhase('idle');
-    } finally {
-      if (abortRef.current === ctrl) abortRef.current = null;
+    const provider = getProviderForUrl(url.trim());
+    if (!provider) {
+      setError(humaniseError('provider_not_supported'));
+      return;
     }
-  }, [url, agencyId, reset]);
+
+    await runAnalyze(provider, false);
+  }, [url, agencyId, runAnalyze]);
+
+  const handleOverrideRequest = useCallback(() => {
+    setOverrideText('');
+    setPhase('drift_override_confirm');
+  }, []);
+
+  const handleOverrideCancel = useCallback(() => {
+    setOverrideText('');
+    setPhase('drift_blocked');
+  }, []);
+
+  const handleOverrideConfirm = useCallback(async () => {
+    if (overrideText.trim().toUpperCase() !== 'OVERRIDE') return;
+    const provider = getProviderForUrl(url.trim());
+    if (!provider) {
+      setError(humaniseError('provider_not_supported'));
+      setPhase('idle');
+      return;
+    }
+    // Drift-Override: Re-Analyse mit allowDriftBypass=true. Drift-Banner bleibt
+    // sichtbar (drift state wird nicht gelöscht). ABER: der Importer wendet
+    // weiterhin alle Pflichtfeld-Checks an (`missing_external_id`, `missing_name`,
+    // `missing_height`, `no_images`, `forceSkipReason`). Damit bleibt die DB
+    // selbst im Override-Pfad sicher.
+    setOverrideText('');
+    await runAnalyze(provider, true);
+  }, [overrideText, url, runAnalyze]);
 
   const handleCommit = useCallback(async () => {
     if (phase !== 'previewing') return;
@@ -223,8 +283,72 @@ export const PackageImportPane: React.FC<Props> = ({ agencyId, onModelsChanged }
         </View>
       )}
 
+      {phase === 'drift_blocked' && drift && (
+        <View style={{ marginTop: spacing.md }}>
+          <DriftBanner drift={drift} severity="hard_block" />
+          <Text style={styles.warnText}>
+            Aus Sicherheitsgründen wurde der Import blockiert. Es kann sein, dass{' '}
+            {drift.providerId === 'mediaslide' ? 'MediaSlide' : drift.providerId} sein Layout
+            geändert hat. Du kannst manuell überschreiben — der Importer schützt die DB weiterhin
+            durch Pflichtfeld-Checks (Höhe, Bilder, externalId).
+          </Text>
+          <View style={[styles.row, { marginTop: spacing.md, gap: spacing.sm }]}>
+            <TouchableOpacity style={styles.secondaryBtn} onPress={reset}>
+              <Text style={styles.secondaryBtnLabel}>Abbrechen</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.secondaryBtn, { borderColor: colors.buttonSkipRed }]}
+              onPress={handleOverrideRequest}
+            >
+              <Text style={[styles.secondaryBtnLabel, { color: colors.buttonSkipRed }]}>
+                Override anfordern…
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {phase === 'drift_override_confirm' && drift && (
+        <View style={{ marginTop: spacing.md }}>
+          <DriftBanner drift={drift} severity="hard_block" />
+          <Text style={styles.warnText}>
+            Du übersteuerst eine harte Drift-Warnung. Tippe das Wort{' '}
+            <Text style={{ fontWeight: '700' }}>OVERRIDE</Text> ein, um trotzdem zu analysieren. Der
+            Drift bleibt für diesen Lauf protokolliert.
+          </Text>
+          <TextInput
+            style={styles.input}
+            placeholder="OVERRIDE"
+            placeholderTextColor={colors.textSecondary}
+            value={overrideText}
+            onChangeText={setOverrideText}
+            autoCapitalize="characters"
+            autoCorrect={false}
+          />
+          <View style={[styles.row, { marginTop: spacing.sm, gap: spacing.sm }]}>
+            <TouchableOpacity style={styles.secondaryBtn} onPress={handleOverrideCancel}>
+              <Text style={styles.secondaryBtnLabel}>Zurück</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.primaryBtn,
+                { backgroundColor: colors.buttonSkipRed },
+                overrideText.trim().toUpperCase() !== 'OVERRIDE' && styles.btnDisabled,
+              ]}
+              onPress={handleOverrideConfirm}
+              disabled={overrideText.trim().toUpperCase() !== 'OVERRIDE'}
+            >
+              <Text style={styles.primaryBtnLabel}>Override bestätigen</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
       {phase === 'previewing' && (
         <View style={{ marginTop: spacing.md }}>
+          {drift && drift.severity !== 'ok' && (
+            <DriftBanner drift={drift} severity={drift.severity} />
+          )}
           <Text style={styles.subtitle}>
             Erkannt: {previews.length} Model(s) — bereit: {totalReady}
             {totalSkipped > 0 ? `, übersprungen: ${totalSkipped}` : ''}
@@ -317,6 +441,44 @@ export const PackageImportPane: React.FC<Props> = ({ agencyId, onModelsChanged }
   );
 };
 
+const DriftBanner: React.FC<{
+  drift: DriftResult;
+  severity: 'hard_block' | 'soft_warn' | 'ok';
+}> = ({ drift, severity }) => {
+  const isHard = severity === 'hard_block';
+  const accent = isHard ? colors.buttonSkipRed : colors.textSecondary;
+  return (
+    <View
+      style={{
+        borderWidth: 1,
+        borderColor: accent,
+        borderRadius: 6,
+        padding: spacing.sm,
+        marginBottom: spacing.sm,
+      }}
+    >
+      <Text style={[styles.subtitle, { color: accent, marginBottom: spacing.xs }]}>
+        {isHard ? 'Drift-Hard-Block' : 'Drift-Warnung'} · {drift.providerId} · {drift.parserVersion}
+      </Text>
+      <Text style={styles.previewMeta}>Quelle: {drift.maskedUrl}</Text>
+      <Text style={styles.previewMeta}>
+        Anker-Coverage: {(drift.anchorCoverage * 100).toFixed(0)}% · Extraction:{' '}
+        {(drift.extractionRatio * 100).toFixed(0)}% · Books-OK:{' '}
+        {(drift.bookOkRatio * 100).toFixed(0)}%
+      </Text>
+      <Text style={styles.previewMeta}>
+        Karten erkannt: {drift.cardsDetected} · extrahiert: {drift.cardsExtracted}
+      </Text>
+      {drift.missingAnchors.length > 0 && (
+        <Text style={styles.previewWarn}>Fehlende Anker: {drift.missingAnchors.join(', ')}</Text>
+      )}
+      {drift.reasonCodes.length > 0 && (
+        <Text style={styles.previewWarn}>Codes: {drift.reasonCodes.join(', ')}</Text>
+      )}
+    </View>
+  );
+};
+
 const PreviewRow: React.FC<{
   preview: PreviewModel;
   selected: boolean;
@@ -394,15 +556,19 @@ function renderAnalyzeLabel(p: AnalyzeProgress | null): string {
 function humaniseError(code: string): string {
   switch (code) {
     case 'package_url_invalid':
-      return 'Ungültiger MediaSlide-Package-Link.';
+      return 'Der Link entspricht nicht dem MediaSlide-Package-Format.';
     case 'package_unreachable':
       return 'Package-Server ist nicht erreichbar. Bitte später erneut versuchen.';
     case 'package_timeout':
       return 'Zeitüberschreitung beim Laden des Packages.';
     case 'package_no_models':
       return 'Im Package wurden keine Models gefunden.';
-    case 'package_url_invalid':
-      return 'Der Link entspricht nicht dem MediaSlide-Package-Format.';
+    case 'parser_drift_detected':
+      return 'Das Package-Layout weicht vom erwarteten Format ab. Import wurde aus Sicherheitsgründen blockiert.';
+    case 'provider_not_supported':
+      return 'Diese URL gehört zu keinem unterstützten Provider (MediaSlide / Netwalk).';
+    case 'netwalk_provider_not_implemented':
+      return 'Netwalk-Import ist noch nicht freigeschaltet (Phase 2).';
     default:
       if (code.startsWith('package_http_error:')) {
         return `MediaSlide antwortet mit HTTP ${code.split(':')[1]}.`;

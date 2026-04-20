@@ -95,12 +95,27 @@ describe('mediaslidePackageProvider', () => {
     expect(p.polaroid_image_urls).toEqual([]);
   });
 
-  it('analyze throws "package_no_models" when list HTML has none', async () => {
+  it('analyze throws ParserDriftError when list HTML is unrecognisable (drift > package_no_models)', async () => {
+    // Drift detector catches this earlier and more specifically than package_no_models:
+    // a totally empty HTML body has 0 of 5 expected anchors → hard_block.
     const fetcher: MediaslideFetcher = {
       fetchPackageListHtml: jest.fn(async () => '<html><body>no cards</body></html>'),
       fetchPackageBookFragment: jest.fn(async () => '<div></div>'),
     };
     const provider = createMediaslidePackageProvider({ fetcher });
-    await expect(provider.analyze({ url: VALID_URL })).rejects.toThrow('package_no_models');
+    await expect(provider.analyze({ url: VALID_URL })).rejects.toThrow('parser_drift_detected');
+  });
+
+  it('allowDriftBypass=true downgrades drift hard-block to package_no_models when applicable', async () => {
+    // With drift bypass, the early-drift throw is suppressed. An empty list still
+    // ends up at the legacy `package_no_models` guard.
+    const fetcher: MediaslideFetcher = {
+      fetchPackageListHtml: jest.fn(async () => '<html><body>no cards</body></html>'),
+      fetchPackageBookFragment: jest.fn(async () => '<div></div>'),
+    };
+    const provider = createMediaslidePackageProvider({ fetcher });
+    await expect(provider.analyze({ url: VALID_URL, allowDriftBypass: true })).rejects.toThrow(
+      'package_no_models',
+    );
   });
 });

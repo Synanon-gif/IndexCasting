@@ -27,7 +27,7 @@ import {
   type PreviewModel,
   type ProviderImportPayload,
 } from './packageImportTypes';
-import { imageDedupKey } from './mediaslidePackageParser';
+import { imageDedupKey } from './imageDedupKey';
 
 /**
  * Wandelt rohe Provider-Payloads in für die UI sichtbare Preview-Modelle um.
@@ -39,6 +39,29 @@ export function toPreviewModels(payloads: ProviderImportPayload[]): PreviewModel
 
 function buildPreview(p: ProviderImportPayload): PreviewModel {
   const warnings: string[] = [...(p.warnings ?? [])];
+
+  // Provider-Override: wenn der Adapter den Payload ausdrücklich als unvollständig
+  // markiert (z. B. Book-Fetch komplett fehlgeschlagen), niemals als ready zulassen.
+  if (p.forceSkipReason && p.externalId && p.externalId.trim()) {
+    return {
+      externalProvider: p.externalProvider,
+      externalId: p.externalId,
+      name: p.name ?? '',
+      coverImageUrl: p.coverImageUrl ?? null,
+      status: 'skipped',
+      skipReason: p.forceSkipReason,
+      measurements: p.measurements,
+      hair_color_raw: p.hair_color_raw,
+      eye_color_raw: p.eye_color_raw,
+      instagram: p.instagram,
+      portfolio_image_urls: [],
+      polaroid_image_urls: [],
+      discardedPortfolio: 0,
+      discardedPolaroids: 0,
+      extra_album_counts: p.extra_album_counts,
+      warnings,
+    };
+  }
 
   if (!p.externalId || !p.externalId.trim()) {
     return {
@@ -104,6 +127,31 @@ function buildPreview(p: ProviderImportPayload): PreviewModel {
   const discardedPortfolio = portfolioDeduped.length - portfolio.length;
   const discardedPolaroids = polaroidsDeduped.length - polaroids.length;
 
+  // "Empty-Ready"-Schutz: ein Model ohne ein einziges verwertbares Bild ist für die
+  // Agency wertlos und ein klassisches Zeichen für ein halb gerendertes Book oder
+  // einen Drift-Edge-Case. Wir markieren ausdrücklich als skipped, statt einen
+  // bildlosen Datensatz still in die DB zu schreiben.
+  if (portfolio.length === 0 && polaroids.length === 0) {
+    return {
+      externalProvider: p.externalProvider,
+      externalId: p.externalId,
+      name: p.name,
+      coverImageUrl: p.coverImageUrl ?? null,
+      status: 'skipped',
+      skipReason: 'no_images',
+      measurements: p.measurements,
+      hair_color_raw: p.hair_color_raw,
+      eye_color_raw: p.eye_color_raw,
+      instagram: p.instagram,
+      portfolio_image_urls: [],
+      polaroid_image_urls: [],
+      discardedPortfolio: 0,
+      discardedPolaroids: 0,
+      extra_album_counts: p.extra_album_counts,
+      warnings,
+    };
+  }
+
   return {
     externalProvider: p.externalProvider,
     externalId: p.externalId,
@@ -153,6 +201,16 @@ export function previewToImportPayload(input: {
     throw new Error('previewToImportPayload: height is required');
   }
 
+  // photo_source spiegelt die Herkunft der Bilder wider — bei Package-Imports
+  // immer der externe Provider. Der Importer setzt das Feld bei INSERT direkt;
+  // bei UPDATE eines bestehenden 'own'-Models wird via RPC nachgezogen.
+  const photoSource: 'mediaslide' | 'netwalk' | undefined =
+    preview.externalProvider === 'mediaslide'
+      ? 'mediaslide'
+      : preview.externalProvider === 'netwalk'
+        ? 'netwalk'
+        : undefined;
+
   return {
     mediaslide_sync_id: preview.externalProvider === 'mediaslide' ? preview.externalId : undefined,
     netwalk_model_id: preview.externalProvider === 'netwalk' ? preview.externalId : undefined,
@@ -170,6 +228,7 @@ export function previewToImportPayload(input: {
     portfolio_images: preview.portfolio_image_urls,
     polaroids: preview.polaroid_image_urls,
     forceUpdateMeasurements: options.forceUpdateMeasurements ?? false,
+    photo_source: photoSource,
   };
 }
 
