@@ -1,0 +1,1093 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+
+<head>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <link rel="stylesheet" type="text/css" href="/assets/a3377ddf/jui/css/base/jquery-ui.css" />
+<link rel="stylesheet" type="text/css" href="https://static-ms-eu.mediaslide.com/js/bootstrap/bootstrap.css" />
+<link rel="stylesheet" type="text/css" href="https://static-ms-eu.mediaslide.com/js/font-awesome/css/font-awesome.min.css" />
+<link rel="stylesheet" type="text/css" href="https://static-ms-eu.mediaslide.com/js/fontawesomepro/css/all.min.css" />
+<link rel="stylesheet" type="text/css" href="https://static-ms-eu.mediaslide.com/js/slick/slick.css" />
+<link rel="stylesheet" type="text/css" href="https://static-ms-eu.mediaslide.com/js/slick/slick-theme.css" />
+<link rel="stylesheet" type="text/css" href="https://static-ms-eu.mediaslide.com/js/mmenu/jquery.mmenu.all.css" />
+<link rel="stylesheet" type="text/css" href="https://static-ms-eu.mediaslide.com/js/mkhplayer/css/mkhplayer.default.css" />
+<link rel="stylesheet" type="text/css" href="https://static-ms-eu.mediaslide.com/css/package_default.css?v=2023-02-02" />
+<link rel="stylesheet" type="text/css" href="https://static-ms-eu.mediaslide.com/css/package_core.css?v=2022-01-27" />
+<link rel="stylesheet" type="text/css" href="https://static-ms-eu.mediaslide.com/css/package_news.css" />
+<link rel="stylesheet" type="text/css" href="https://static-ms-eu.mediaslide.com/css/animate.css" />
+<script type="text/javascript" src="/assets/a3377ddf/jquery.min.js"></script>
+<script type="text/javascript" src="/assets/a3377ddf/jui/js/jquery-ui.min.js"></script>
+<script type="text/javascript" src="https://static-ms-eu.mediaslide.com/js/bootstrap/bootstrap.js"></script>
+<script type="text/javascript" src="https://static-ms-eu.mediaslide.com/js/smartresize/smartresize.js"></script>
+<script type="text/javascript" src="https://static-ms-eu.mediaslide.com/js/html5/html5.js"></script>
+<script type="text/javascript" src="https://static-ms-eu.mediaslide.com/js/lazyload/jquery.lazyload.min.js"></script>
+<script type="text/javascript" src="https://static-ms-eu.mediaslide.com/js/masonry/isotope.pkgd.min.js"></script>
+<script type="text/javascript" src="https://static-ms-eu.mediaslide.com/js/masonry/imagesloaded.pkgd.min.js"></script>
+<script type="text/javascript" src="https://static-ms-eu.mediaslide.com/js/slick/slick.js"></script>
+<script type="text/javascript" src="https://static-ms-eu.mediaslide.com/js/mmenu/jquery.mmenu.all.js"></script>
+<script type="text/javascript" src="https://static-ms-eu.mediaslide.com/js/mkhplayer/js/jquery.mkhplayer.js"></script>
+<title>Mediaslide - View Package</title>
+
+    <meta name="robots" content="noindex">
+    <meta name="googlebot" content="noindex">
+
+    
+    <link rel="apple-touch-icon" sizes="180x180" href="https://static-ms-eu.mediaslide.com/images/favicon/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="https://static-ms-eu.mediaslide.com/images/favicon/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="https://static-ms-eu.mediaslide.com/images/favicon/favicon-16x16.png">
+    <link rel="manifest" href="https://static-ms-eu.mediaslide.com/images/favicon/site.webmanifest">
+    <link rel="mask-icon" href="https://static-ms-eu.mediaslide.com/images/favicon/safari-pinned-tab.svg" color="#5bbad5">
+    <link rel="shortcut icon" href="https://static-ms-eu.mediaslide.com/images/favicon/favicon.ico">
+    <meta name="msapplication-TileColor" content="#da532c">
+    <meta name="msapplication-config" content="https://static-ms-eu.mediaslide.com/images/favicon/browserconfig.xml">
+    <meta name="theme-color" content="#ffffff">
+
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <meta name="language" content="en" />
+                    <!--[if IE 7]>
+    <link rel="stylesheet" href="https://static-ms-eu.mediaslide.com/js/font-awesome/css/font-awesome-ie7.min.css">
+    <![endif]-->
+
+    
+    <style>
+        .mm-panel {
+            padding: 0 !important;
+            border-right: 1px solid #d6dee2;
+        }
+
+        .conversationArea {
+            margin-top: 20px;
+            padding-top: 15px;
+        }
+
+            </style>
+
+</head>
+
+<body>
+
+            <div id="packageDownloadOverlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 9999; background-color: rgba(0, 0, 0, 0.2); overflow: auto">
+            <div id="packageDownloadContent" style="position: absolute; top: 50%; transform: translateY(-50%) translateX(-50%); -webkit-transform: translateX(-50%) translateY(-50%); -ms-transform: translateX(-50%) translateY(-50%); left: 50%; background-color: #FFFFFF; width: 500px; max-width: 70%; max-width: calc(100% - 100px); border-radius: 15px; padding: 40px">
+                <div style="text-align: center">
+                    <h2>Download selection as PDF</h2>
+                </div>
+
+                <div style="display: flex; justify-content:center;">
+                    <div style="margin: 10px 0">
+                        <a href="#" onclick="downloadPackageOption(5, 0); return false;"><span class="btn btn-primary"><i class="fal fa-download"></i> Download LIGHT</span></a>
+                    </div>
+
+                    <div style="margin: 10px 0; margin-left: 10px;">
+                        <a href="#" onclick="downloadPackageOption(0, 0); return false;"><span class="btn btn-primary"><i class="fal fa-download"></i> Download ALL</span></a>
+                    </div>
+                </div>
+
+                <div style="font-size: 10px; text-align: center">
+                    The "light download" feature enables a quick download of up to 5 pictures per album.
+                </div>
+                <div style="text-align: center; margin-top: 12px;"><span style="color: #6f7782; font-size: 12px;">PDF language:</span> <select id="downloadPdfLang" onchange="if(typeof packageLang!=='undefined')packageLang=this.value;" style="height: 26px; font-size: 12px; border: 1px solid #d6dee2; border-radius: 3px; padding: 2px 6px;"><option value="en" selected>English</option><option value="fr">Français</option><option value="it">Italiano</option><option value="es">Español</option><option value="ca">Català</option><option value="de">Deutsch</option><option value="nl">Nederlands</option><option value="sv">Svenska</option><option value="da">Dansk</option><option value="pt">Português</option><option value="ru">Русский</option><option value="pl">Polski</option><option value="no">Norsk</option><option value="el">Ελληνικά</option><option value="cs">Čeština</option><option value="uk">Українська</option><option value="ro">Română</option><option value="hu">Magyar</option><option value="fi">Suomi</option><option value="tr">Türkçe</option><option value="pt-br">Português (Brasil)</option><option value="ja">日本語</option><option value="ko">한국어</option><option value="zh">中文</option><option value="th">ไทย</option></select></div>
+            </div>
+        </div>        <div id="packageDownloadOverlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 9999; background-color: rgba(0, 0, 0, 0.2); overflow: auto">
+            <div id="packageDownloadContent" style="position: absolute; top: 50%; transform: translateY(-50%) translateX(-50%); -webkit-transform: translateX(-50%) translateY(-50%); -ms-transform: translateX(-50%) translateY(-50%); left: 50%; background-color: #FFFFFF; width: 500px; max-width: 70%; max-width: calc(100% - 100px); border-radius: 15px; padding: 40px">
+                <div style="text-align: center">
+                    <h2>Download selection as PDF</h2>
+                </div>
+
+                <div style="display: flex; justify-content:center;">
+                    <div style="margin: 10px 0">
+                        <a href="#" onclick="downloadPackageOption(5, 0); return false;"><span class="btn btn-primary"><i class="fal fa-download"></i> Download LIGHT</span></a>
+                    </div>
+
+                    <div style="margin: 10px 0; margin-left: 10px;">
+                        <a href="#" onclick="downloadPackageOption(0, 0); return false;"><span class="btn btn-primary"><i class="fal fa-download"></i> Download ALL</span></a>
+                    </div>
+                </div>
+
+                <div style="font-size: 10px; text-align: center">
+                    The "light download" feature enables a quick download of up to 5 pictures per album.
+                </div>
+                <div style="text-align: center; margin-top: 12px;"><span style="color: #6f7782; font-size: 12px;">PDF language:</span> <select id="downloadPdfLang" onchange="if(typeof packageLang!=='undefined')packageLang=this.value;" style="height: 26px; font-size: 12px; border: 1px solid #d6dee2; border-radius: 3px; padding: 2px 6px;"><option value="en" selected>English</option><option value="fr">Français</option><option value="it">Italiano</option><option value="es">Español</option><option value="ca">Català</option><option value="de">Deutsch</option><option value="nl">Nederlands</option><option value="sv">Svenska</option><option value="da">Dansk</option><option value="pt">Português</option><option value="ru">Русский</option><option value="pl">Polski</option><option value="no">Norsk</option><option value="el">Ελληνικά</option><option value="cs">Čeština</option><option value="uk">Українська</option><option value="ro">Română</option><option value="hu">Magyar</option><option value="fi">Suomi</option><option value="tr">Türkçe</option><option value="pt-br">Português (Brasil)</option><option value="ja">日本語</option><option value="ko">한국어</option><option value="zh">中文</option><option value="th">ไทย</option></select></div>
+            </div>
+        </div>
+    
+    <div id="packageTopMenu" style="text-align: center; padding: 5px">
+        <div>
+            <a id="hamburger" class="mm-slideout" href="#packageTopMenuSlider"><span></span></a>
+            <a href="http://www.thepoetryofpeople.com" target="_blank">
+                <img src="https://mediaslide-europe.storage.googleapis.com/hausofhay/application/ec4ec5feafdfb87408dde58815748ad3.jpg" style="max-height: 100px; max-width: 80%" border="0" pagespeed_no_transform />
+            </a>
+        </div>
+        <div class="packageSubject">
+            REMI        </div>
+    </div>
+
+    <div id="packageList" style="padding-bottom: 100px; min-height: 100vh; display: flex; flex-direction: column;">
+
+        <div id="packageListCards">
+        
+                        <div id="packageModel_1218" class="packageModel" onmouseover="">
+                    <div id="packageModelPicture_1218" class="modelPicture" style="margin-bottom: 10px; overflow: hidden">
+                        <div>
+                            <a href="#book-674">
+                                <img class="lazy" src="https://static-ms-eu.mediaslide.com/images/no-picture.png" data-original="https://mediaslide-europe.storage.googleapis.com/hausofhay/pictures/256/674/profile-1776519990-27ce7e7c63a1cfa5ddeb3706a702589b.jpg?v=1776520060" style="width: 100%; border: 0" onerror="this.onerror=null;this.src='https://static-ms-eu.mediaslide.com/images/no-picture.png';" />
+                            </a>
+                        </div>
+                        
+                    </div>
+                    <div class="modelName" translate="no">
+                        RÉMI LOVISOLO
+                        
+                    </div>
+                    <div style="text-align: center">
+                                                        <div style="display: inline-block; vertical-align: 2px">
+                                    <a href='https://www.instagram.com/rem_lvs' target='_blank' style='margin: 0 5px; color: #000000; font-size: 14px'> 
+                                        <i class='fab fa-instagram'></i></span> <span class="bookModelSocialFollowers"></span></a> 
+                                    </a>
+                                </div>
+                    </div>
+                    
+                    <div class="modelHeight">
+                        <div>
+                                                                            187cm                         <span class='separator'><span>/</span></span>                          6' 1½''<br />
+
+                        </div>
+                    </div>
+                    <div class="packageSelection">
+                                                <a id="select_256" href="#" onclick="selectModel(this); return false;" data-model-id="256" data-is-maybe="0">
+                            <span class="icon-stack">
+                                <i class="icon-circle icon-stack-base packageModelPictosDefault"></i>
+                                <i class="icon-thumbs-up icon-light" style="font-size: 14px"></i>
+                            </span>
+                        </a>
+                        <a id="unselect_256" href="#" onclick="unselectModel(this); return false;" data-model-id="256">
+                            <span class="icon-stack">
+                                <i class="icon-circle icon-stack-base packageModelPictosNo"></i>
+                                <i class="icon-thumbs-down icon-light" style="font-size: 14px"></i>
+                            </span>
+                        </a>
+                        <input id="checked_256" type="checkbox"  style="display: none" />
+                    </div>
+                </div>        <div class="clear"></div>
+        </div>
+        <div id="package-lang-switcher" style="text-align: right; padding: 0 10px; margin-top: auto;">
+            <select id="package_language" onchange="changePackageLanguage(this.value);"
+                style="height: 26px; font-size: 11px; border: 1px solid #d6dee2; border-radius: 3px; padding: 2px 6px; background: #fff; cursor: pointer; color: #6f7782;">
+                <option value="en" selected>English</option><option value="fr">Français</option><option value="it">Italiano</option><option value="es">Español</option><option value="ca">Català</option><option value="de">Deutsch</option><option value="nl">Nederlands</option><option value="sv">Svenska</option><option value="da">Dansk</option><option value="pt">Português</option><option value="ru">Русский</option><option value="pl">Polski</option><option value="no">Norsk</option><option value="el">Ελληνικά</option><option value="cs">Čeština</option><option value="uk">Українська</option><option value="ro">Română</option><option value="hu">Magyar</option><option value="fi">Suomi</option><option value="tr">Türkçe</option><option value="pt-br">Português (Brasil)</option><option value="ja">日本語</option><option value="ko">한국어</option><option value="zh">中文</option><option value="th">ไทย</option>            </select>
+        </div>
+    </div>
+
+    <div id="packageBottomMenu">
+                        <div class="selection">My selection: <span style="color: #1abc9c"><span id="selectionMobileYes">0</span> yes</span> - <span style="color: #f39c12"><span id="selectionMobileMaybe">0</span> maybe</span></div>
+                <div id="selectionMobileSend" style="height: 30px; ">
+                    <a href="#" onclick="sendSelection(); return false;"><span class="btn btn-primary selectionSendText">Send my selection</span></a>
+                </div>
+                <div id="selectionMobileSent" style="height: 30px; display: none">
+                    Selection successfully sent!                </div>
+            </div>
+
+    <div class="packageMenu">
+
+        <form onsubmit="return false;" id="packageForm" action="/package/view/176/1a5f30ca/331/2a9fa1ab" method="post">
+        <div id="selectionArea">
+            <div style="text-align: center; margin-top: 30px">
+                <a href="http://www.thepoetryofpeople.com" target="_blank">
+                    <img class="packageLogo" src="https://mediaslide-europe.storage.googleapis.com/hausofhay/application/ec4ec5feafdfb87408dde58815748ad3.jpg" style="max-width: 280px; max-height: 150px" border="0" pagespeed_no_transform />
+                </a>
+            </div>
+            <div class="packageSubject">
+                REMI            </div>
+
+            <div style="text-align: center; margin: 15px 0; padding: 5px 10px;">
+                                        <div class="selection">My selection: <span style="color: #1abc9c"><span id="selectionYes">0</span> yes</span> - <span style="color: #f39c12"><span id="selectionMaybe">0</span> maybe</span></div>
+                        <div style="display: flex; justify-content:center;">
+
+                            <div id="selectionSend" style="height: 30px; ">
+                                <a href="#" onclick="sendSelection(); return false;"><span class="btn btn-primary selectionSendText">Send my selection</span></a>
+                            </div>
+                            <div id="selectionSent" style="height: 30px; display: none">
+                                <span class="btn btn-primary">Selection successfully sent!</span>
+                            </div>
+                            <div id="downloadPackage" style="height: 30px">
+                                <a href="#" onclick="downloadPackage(); return false;"><span class="btn btn-primary"><i class="fal fa-download"></i></span></a>
+                            </div>
+                        </div>
+                            </div>
+        </div>
+        <div class="conversationArea" id="conversationArea">
+            <div class="conversationAreaTitle">
+                                    Between <span style="font-weight: 600" translate="no">
+                        Paul</span>
+                    and <span style="font-weight: 600">You</span>
+                    <div style="text-align: center;">
+                                                <div class="badge" style="background-color: #6f7782; color: #FFFFFF">
+                            <a href="mailto:paul@thepoetryofpeople.com" style="color: #FFFFFF">paul@thepoetryofpeople.com</a>
+                        </div>                    </div>
+                            </div>
+                                        <div class="conversationElement">
+                    <div class="conversationLetterLeft"><span>P</span></div>
+                    <div class="conversationArrowLeft"></div>
+                    <div class="conversationMessage">
+                        Hello here is the book of young Remi xx                     </div>
+                    <div style="clear: both"></div>
+                </div>
+                                        <div class="messagesArea">
+                                    </div>
+                    </div>
+                    <div class="conversationMessageSend">
+                <input id="message" name="message" type="text" autocomplete="off" placeholder="Write a message..." style="box-shadow: none;">
+                <a href="#" onclick="sendMessage(); return false;" style="color: #333333"><i class="fas fa-reply"></i> </a>
+            </div>
+            <br />
+                <input type="hidden" name="package_model_selection" id="package_model_selection" type="text" value="">
+        <input type="hidden" name="package_model_selection_unsaved" id="package_model_selection_unsaved" type="text" value="0">
+
+        </form>
+    </div>
+
+    <div id="bookModel" style="display: none; background-color: #FFFFFF"></div>
+
+    <div id="send-error" title="Selection error" style="display: none">
+        <div class="modal-body" style="padding-top: 10px">
+            You haven't selected any model.        </div>
+        <div class="confirmButtons" style="text-align: right">
+            <a href="#" onclick="$('#send-error').dialog('close'); return false;"><span class="btn btn-primary"><span>Close</span></a>
+        </div>
+    </div>
+
+    <nav id="packageTopMenuSlider">
+        <div>
+            <div class="conversationArea" id="conversationAreaMobile">
+                <div class="conversationAreaTitle">
+                                            Between <span style="font-weight: 600" translate="no">
+                            Paul</span>
+                        and <span style="font-weight: 600">You</span>
+                                    </div>
+                                                    <div class="conversationElement">
+                        <div class="conversationLetterLeft"><span>P</span></div>
+                        <div class="conversationArrowLeft"></div>
+                        <div class="conversationMessage">
+                            Hello here is the book of young Remi xx                         </div>
+                        <div style="clear: both"></div>
+                    </div>
+                                                    <div class="messagesArea">
+                                            </div>
+                                                    <div class="conversationMessageSend">
+                        <input id="messageMobile" name="message" type="text" autocomplete="off" placeholder="Write a message..." style="box-shadow: none;">
+                        <a href="#" onclick="sendMessage(); return false;"><i class="fas fa-reply"></i></a>
+                    </div>
+                            </div>
+        </div>
+    </nav>
+
+    <script language="Javascript">
+        initSlick = function() {}
+
+        $(window).load(function() {
+
+            if (!window.console) console = {
+                log: function() {}
+            };
+
+            $('#packageDownloadOverlay').click(function(e) {
+                if ($(e.target).closest('#packageDownloadContent').length === 0) {
+                    $('#packageDownloadOverlay').hide();
+                }
+            });
+
+            downloadPackage = function() {
+                if ($('#package_model_selection').val() == "") {
+                    $('#send-error').dialog({
+                        width: 400,
+                        height: 200,
+                        autoOpen: true,
+                        resizable: false
+                    });
+                } else {
+                    $('#packageDownloadOverlay').show();
+                }
+            }
+
+            downloadPackageOption = function(limit, nbAlbum, type = "pdf") {
+
+                if ($('#package_model_selection').val() == "") {
+                    $('#send-error').dialog({
+                        width: 400,
+                        height: 200,
+                        autoOpen: true,
+                        resizable: false
+                    });
+                } else {
+
+                    $('#packageDownloadOverlay').show();
+                    $('#packageDownloadContentResult').html('Download in progress, please wait...');
+
+                    var model_ids = $.map(modelSelected, function(model) {
+                        return model.model_id;
+                    });
+
+                    var dlLang = $('#downloadPdfLang').val() || packageLang;
+                    if (type == "zip") {
+                        window.open("/pdf/packageSelectionZip?package_id=176&hash=1a5f30ca&package_recipient_id=331&recipient_hash=2a9fa1ab&limit=" + limit + '&nbAlbum=' + nbAlbum + '&selection=' + model_ids + '&lang=' + dlLang, '_blank')
+                    } else {
+                        window.open("/pdf/packageSelectionPdf?package_id=176&hash=1a5f30ca&package_recipient_id=331&recipient_hash=2a9fa1ab&limit=" + limit + '&nbAlbum=' + nbAlbum + '&selection=' + model_ids + '&lang=' + dlLang, '_blank')
+                    }
+                }
+
+            }
+
+            var modelSelected = [];
+                        $('#package_model_selection').val(JSON.stringify(modelSelected));
+
+            
+            var last_hash_id = "";
+            var last_hash_subid = "";
+            $(window).bind('hashchange', function(e) {
+
+                if (typeof stopAllAudios == 'function') {
+                    stopAllAudios();
+                }
+
+                var hash = window.location.hash;
+                if (hash == "" || hash == "#" || hash == "#list")
+                    hideBookModel();
+                else {
+                    var hash_array = hash.split("-");
+                    hash_type = hash_array[0];
+                    hash_id = hash_array[1];
+                    hash_subid = hash_array.length > 2 ? hash_array[2] : "";
+                    if (hash_type == "#book" && hash_id == "custom" && hash_subid != "") {
+                        last_hash_id = "";
+                        showBookModelCustom(hash_subid);
+                    } else if (hash_type == "#book") {
+                        last_hash_id = "";
+                        showBookModel(hash_id);
+                    }
+                    if (hash_type == "#customFields") {
+                        last_hash_id = "";
+                        showCustomFieldsModel(hash_id);
+                    } else if (hash_type == "#video") {
+                        last_hash_id = "";
+                        showVideoModel(hash_id);
+                    } else if (hash_type == "#audio") {
+                        last_hash_id = "";
+                        showAudioModel(hash_id);
+                    } else if (hash_type == "#news" && hash_subid == "") {
+                        if (last_hash_id != hash_id) {
+                            last_hash_id = hash_id;
+                            getNews(hash_id);
+                        } else {
+                            $('#modelNewsDetail').hide();
+                            $('#modelNewsList').fadeIn();
+                            if (last_hash_subid != "") {
+                                var newsItem = $("#newsItem_" + last_hash_subid);
+                                $('#modelNews').scrollTop(newsItem.offset().top - 60);
+                                last_hash_subid = "";
+                            }
+                        }
+                    } else if (hash_type == "#news" && hash_subid != "") {
+                        $('#modelNewsList').hide();
+                        $('#modelNewsDetail').html('');
+                        last_hash_id = hash_id;
+                        last_hash_subid = hash_subid;
+                        getNewsDetail(hash_subid);
+                        $('#modelNewsDetail').fadeIn();
+                    } else if (hash_type == "#link") {
+                        last_hash_id = "";
+                        showLinkModel(hash_id);
+                    } else if (hash_type == '#model' && hash_id != '') {
+                        if (hash_subid != '') {
+                            showAdditionalPackageTab(hash_id, hash_subid);
+                        }
+                    }
+                }
+            });
+
+            $(document).keyup(function(e) {
+                if (e.keyCode == 27) {
+                    hideBookModel();
+                }
+            });
+
+            $('#packageList').css('min-height', $(window).height() - 70);
+            $('#gdpr_privacy_policy_text').css('max-height', $(window).height() - 170);
+            $(window).smartresize(function() {
+                $('#packageList').css('min-height', $(window).height() - 70);
+                $('#gdpr_privacy_policy_text').css('max-height', $(window).height() - 170);
+            });
+
+            
+                setGdprCompliant = function() {
+
+                    $('#packageGdprOverlay').fadeOut();
+
+                    $.ajax({
+                        type: 'GET',
+                        url: '/package/setGdprCompliant?package_id=176&hash=1a5f30ca&package_recipient_id=331&recipient_hash=2a9fa1ab',
+                        success: function(data) {
+
+                        },
+                        error: function(data) { // if error occured
+                            window.parent.showException(data);
+                        },
+
+                        dataType: 'html'
+                    });
+
+                }
+                setGdprUnsubscribe = function() {
+
+                    $('#gdpr_privacy_policy_text').hide();
+                    $('#gdpr_privacy_policy_text_unsubscribe').fadeIn();
+
+                    $.ajax({
+                        type: 'GET',
+                        url: '/package/setGdprUnsubscribe?package_id=176&hash=1a5f30ca&package_recipient_id=331&recipient_hash=2a9fa1ab',
+                        success: function(data) {
+
+                        },
+                        error: function(data) { // if error occured
+                            window.parent.showException(data);
+                        },
+
+                        dataType: 'html'
+                    });
+
+                }
+            
+            showBookModel = function(model_picture_category_id) {
+
+                $("#bookModel").html('');
+                $("#bookModel").fadeIn(300);
+
+                data = {
+                    model_picture_category_id: model_picture_category_id
+                };
+
+                $.ajax({
+                    type: 'GET',
+                    url: '/package/viewBook?package_id=176&hash=1a5f30ca&package_recipient_id=331&recipient_hash=2a9fa1ab',
+                    data: data,
+                    success: function(data) {
+                        $('#bookModel').html(data);
+                    },
+                    error: function(data) { // if error occured
+                        window.parent.showException(data);
+                    },
+
+                    dataType: 'html'
+                });
+
+            }
+
+            showBookModelCustom = function(custom_portfolio_id) {
+
+                $("#bookModel").html('');
+                $("#bookModel").fadeIn(300);
+
+                data = {
+                    custom_portfolio_id: custom_portfolio_id
+                };
+
+                $.ajax({
+                    type: 'GET',
+                    url: '/package/viewBook?package_id=176&hash=1a5f30ca&package_recipient_id=331&recipient_hash=2a9fa1ab',
+                    data: data,
+                    success: function(data) {
+                        $('#bookModel').html(data);
+                    },
+                    error: function(data) {
+                        window.parent.showException(data);
+                    },
+                    dataType: 'html'
+                });
+
+            }
+
+            showCustomFieldsModel = function(model_id) {
+                $("#bookModel").html('');
+                $("#bookModel").fadeIn(300);
+
+                data = {
+                    model_id: model_id
+                };
+
+                $.ajax({
+                    type: 'GET',
+                    url: '/package/viewCustomFields?package_id=176&hash=1a5f30ca&package_recipient_id=331&recipient_hash=2a9fa1ab',
+                    data: data,
+                    success: function(data) {
+                        $('#bookModel').html(data);
+                    },
+                    error: function(data) { // if error occured
+                        window.parent.showException(data);
+                    },
+
+                    dataType: 'html'
+                });
+
+            }
+
+            showVideoModel = function(package_model_video_id) {
+                $("#bookModel").html('');
+                $("#bookModel").fadeIn(300);
+
+                data = {
+                    package_model_video_id: package_model_video_id
+                };
+
+                $.ajax({
+                    type: 'GET',
+                    url: '/package/getVideo?package_id=176&hash=1a5f30ca',
+                    data: data,
+                    success: function(data) {
+                        $('#bookModel').html(data);
+                    },
+                    error: function(data) { // if error occured
+                        window.parent.showException(data);
+                    },
+
+                    dataType: 'html'
+                });
+
+            }
+
+            showAudioModel = function(package_model_audio_id) {
+                $("#bookModel").html('');
+                $("#bookModel").fadeIn(300);
+
+                data = {
+                    package_model_audio_id: package_model_audio_id
+                };
+
+                $.ajax({
+                    type: 'GET',
+                    url: '/package/getAudio?package_id=176&hash=1a5f30ca',
+                    data: data,
+                    success: function(data) {
+                        $('#bookModel').html(data);
+                    },
+                    error: function(data) { // if error occured
+                        window.parent.showException(data);
+                    },
+
+                    dataType: 'html'
+                });
+
+            }
+
+            showLinkModel = function(package_model_id) {
+                $("#bookModel").html('');
+                $("#bookModel").fadeIn(300);
+
+                data = {
+                    package_model_id: package_model_id
+                };
+
+                $.ajax({
+                    type: 'GET',
+                    url: '/package/getLink?package_id=176&hash=1a5f30ca',
+                    data: data,
+                    success: function(data) {
+                        $('#bookModel').html(data);
+                    },
+                    error: function(data) { // if error occured
+                        window.parent.showException(data);
+                    },
+
+                    dataType: 'html'
+                });
+
+            }
+
+            getNews = function(package_model_id) {
+                $("#bookModel").html('');
+                $("#bookModel").fadeIn(300);
+
+                data = {
+                    package_model_id: package_model_id
+                };
+
+                $.ajax({
+                    type: 'GET',
+                    url: '/package/getNews?package_id=176&hash=1a5f30ca',
+                    data: data,
+                    success: function(data) {
+                        $('#bookModel').html(data);
+                    },
+                    error: function(data) { // if error occured
+                        window.parent.showException(data);
+                    },
+
+                    dataType: 'html'
+                });
+
+            }
+
+            getNewsDetail = function(news_id) {
+
+                $.ajax({
+                    type: 'GET',
+                    url: '/package/getNewsDetail?package_id=176&hash=1a5f30ca&news_id=' + news_id,
+                    success: function(data) {
+                        $('#modelNewsDetail').html(data);
+                    },
+                    error: function(data) { // if error occured
+                        window.parent.showException(data);
+                    },
+
+                    dataType: 'html'
+                });
+
+            }
+
+            showAdditionalPackageTab = function(actionId, packageModelId) {
+                $(`#bookModel`).html('');
+                $(`#bookModel`).fadeIn(300);
+
+                data = {
+                    action_id: actionId,
+                    package_model_id: packageModelId
+                };
+
+                $.ajax({
+                    type: 'GET',
+                    url: '/package/viewAdditionalTab?package_id=176&hash=1a5f30ca&package_recipient_id=331&recipient_hash=2a9fa1ab',
+                    data: data,
+                    success: function(data) {
+                        $('#bookModel').html(data);
+                    },
+                    error: function(data) { // if error occured
+                        window.parent.showException(data);
+                    },
+
+                    dataType: 'html'
+                });
+            }
+
+            hideBookModel = function() {
+                if (window.location.hash != "")
+                    window.location.hash = '#list';
+                $("#bookModel").fadeOut(300);
+                $("#bookModel").html('');
+                $('body').css('overflow', 'auto');
+            }
+
+                            selectModel = function(element) {
+
+                    $(".selectionSendText").html('Send my selection');
+                    $("#selectionSend").show();
+                    $("#selectionMobileSend").show();
+                    $("#selectionSent").hide();
+                    $("#selectionMobileSent").hide();
+
+                    var model_id = $(element).attr('data-model-id');
+                    var is_maybe = $(element).attr('data-is-maybe');
+                    var countYes = parseInt($('#selectionYes').html());
+                    var countMaybe = parseInt($('#selectionMaybe').html());
+
+                    if (!$('#checked_' + model_id).is(':checked')) {
+                        countYes++;
+                        $('#selectionYes').html(countYes);
+                        $('#selectionMobileYes').html(countYes);
+
+                        $(element).children().first().children().first().addClass('packageModelPictosYes');
+                        $(element).children().first().children().first().removeClass('packageModelPictosNo');
+                        $(element).children().first().children().first().removeClass('packageModelPictosMaybe');
+                        $(element).children().first().children().first().removeClass('packageModelPictosDefault');
+
+                        $('#unselect_' + model_id).children().first().children().first().addClass('packageModelPictosDefault');
+                        $('#unselect_' + model_id).children().first().children().first().removeClass('packageModelPictosYes');
+                        $('#unselect_' + model_id).children().first().children().first().removeClass('packageModelPictosNo');
+                        $('#unselect_' + model_id).children().first().children().first().removeClass('packageModelPictosMaybe');
+                        $('#checked_' + model_id).prop('checked', true);
+
+                                            } else {
+                        if (is_maybe == 0) {
+                            countYes--;
+                            $('#selectionYes').html(countYes);
+                            $('#selectionMobileYes').html(countYes);
+                            countMaybe++;
+                            $('#selectionMaybe').html(countMaybe);
+                            $('#selectionMobileMaybe').html(countMaybe);
+                            $(element).children().first().children().first().addClass('packageModelPictosMaybe');
+                            $(element).children().first().children().first().removeClass('packageModelPictosYes');
+                            $(element).children().first().children().first().removeClass('packageModelPictosNo');
+                            $(element).children().first().children().first().removeClass('packageModelPictosDefault');
+                            $(element).attr('data-is-maybe', 1);
+                            $(element).attr('data-original-title', 'Maybe');
+
+                                                    } else {
+                            countYes++;
+                            $('#selectionYes').html(countYes);
+                            $('#selectionMobileYes').html(countYes);
+                            countMaybe--;
+                            $('#selectionMaybe').html(countMaybe);
+                            $('#selectionMobileMaybe').html(countMaybe);
+                            $(element).children().first().children().first().addClass('packageModelPictosYes');
+                            $(element).children().first().children().first().removeClass('packageModelPictosMaybe');
+                            $(element).children().first().children().first().removeClass('packageModelPictosNo');
+                            $(element).children().first().children().first().removeClass('packageModelPictosDefault');
+                            $(element).attr('data-is-maybe', 0);
+                            $(element).attr('data-original-title', 'Yes');
+
+                                                    }
+                    }
+
+                    //On le remove
+                    modelSelected = $.grep(modelSelected, function(model) {
+                        return model.model_id != model_id;
+                    });
+
+                    //On le rajoute
+                    modelSelected.push({
+                        model_id: model_id,
+                        is_maybe: $(element).attr('data-is-maybe')
+                    });
+
+                    $('#package_model_selection').val(JSON.stringify(modelSelected));
+                    $('#package_model_selection_unsaved').val(1);
+
+
+                }
+
+                unselectModel = function(element) {
+
+                    $("#selectionSendText").show();
+                    $("#selectionMobileSend").show();
+                    $("#selectionSent").hide();
+                    $("#selectionSend").show();
+                    $("#selectionMobileSent").hide();
+
+                    var model_id = $(element).attr('data-model-id');
+                    var is_maybe = $('#select_' + model_id).attr('data-is-maybe');
+                    var countYes = parseInt($('#selectionYes').html());
+                    var countMaybe = parseInt($('#selectionMaybe').html());
+
+                    if ($('#checked_' + model_id).is(':checked')) {
+                        $(element).children().first().children().first().addClass('packageModelPictosNo');
+                        $(element).children().first().children().first().removeClass('packageModelPictosYes');
+                        $(element).children().first().children().first().removeClass('packageModelPictosMaybe');
+                        $(element).children().first().children().first().removeClass('packageModelPictosDefault');
+                        if (is_maybe == 0) {
+                            countYes--;
+                            $('#selectionYes').html(countYes);
+                            $('#selectionMobileYes').html(countYes);
+                        } else {
+                            $('#select_' + model_id).attr('data-is-maybe', 0);
+                            $('#select_' + model_id).attr('data-original-title', 'Yes');
+                            countMaybe--;
+                            $('#selectionMaybe').html(countMaybe);
+                            $('#selectionMobileMaybe').html(countMaybe);
+                        }
+
+                        $('#select_' + model_id).children().first().children().first().addClass('packageModelPictosDefault');
+                        $('#select_' + model_id).children().first().children().first().removeClass('packageModelPictosYes');
+                        $('#select_' + model_id).children().first().children().first().removeClass('packageModelPictosMaybe');
+                        $('#select_' + model_id).children().first().children().first().removeClass('packageModelPictosNo');
+                        $('#checked_' + model_id).prop('checked', false);
+
+                        $('#select_' + model_id).attr("onclick", "selectModel(this); return false;");
+
+                        modelSelected = $.grep(modelSelected, function(model) {
+                            return model.model_id != model_id;
+                        });
+
+                        $('#package_model_selection').val(JSON.stringify(modelSelected));
+
+                    }
+
+                }
+
+                sendSelection = function() {
+
+                    if ($('#package_model_selection').val() == "") {
+                        $('#send-error').dialog({
+                            width: 400,
+                            height: 200,
+                            autoOpen: true,
+                            resizable: false
+                        });
+                    } else {
+
+                        $(".selectionSendText").html('Sending...');
+
+                        var data = $("#packageForm").serialize();
+
+                        $.ajax({
+                            type: 'POST',
+                            url: '/package/sendSelection?package_id=176&package_recipient_id=331&recipient_hash=2a9fa1ab',
+                            data: data,
+                            success: function(data) {
+                                $("#selectionSend").hide();
+                                $("#selectionMobileSend").hide();
+                                $("#selectionSent").show();
+                                $("#selectionMobileSent").show();
+
+                                $('#package_model_selection_unsaved').val(0);
+                                $(".selectionSendText").html('Send my selection');
+
+                                //On update modelSelected
+                                $.each(data, function(index, model) {
+                                    modelSelected.push({
+                                        model_id: model.model_id,
+                                        is_maybe: model.is_maybe
+                                    });
+                                });
+
+                            },
+                            error: function(data) {
+                                $(".selectionSendText").html('Send my selection');
+                                if (typeof window.parent.showException === 'function') {
+                                    window.parent.showException(data);
+                                }
+                            },
+
+                            dataType: 'json'
+                        });
+                    }
+                }
+
+                $('#message').keypress(function(event) {
+                    var keycode = (event.keyCode ? event.keyCode : event.which);
+                    if (keycode == '13') {
+                        sendMessage();
+                    }
+                });
+
+                $('#messageMobile').keypress(function(event) {
+                    var keycode = (event.keyCode ? event.keyCode : event.which);
+                    if (keycode == '13') {
+                        sendMessage();
+                    }
+                });
+
+                var user_id = 0;
+                sendMessage = function() {
+                    var message = '';
+                    if ($('#message').val() != "")
+                        message = $('#message').val();
+                    else if ($('#messageMobile').val() != "")
+                        message = $('#messageMobile').val();
+
+                    if (!message || message == '')
+                        return;
+
+                    $('#message').val('');
+                    $('#messageMobile').val('');
+
+                    $.ajax({
+                        type: 'POST',
+                        url: '/package/sendMessage?package_id=176&package_recipient_id=331&recipient_hash=2a9fa1ab',
+                        data: {
+                            message: message
+                        },
+                        success: function(data) {
+                            getMessages();
+                        },
+                        error: function(data) { // if error occured
+                            window.parent.showException(data);
+                        },
+
+                        dataType: 'html'
+                    });
+
+                }
+
+                getMessages = function() {
+
+                    $.ajax({
+                        type: 'POST',
+                        url: '/package/getMessages?package_id=176&package_recipient_id=331&recipient_hash=2a9fa1ab',
+                        success: function(data) {
+                            $('.messagesArea').html(data);
+
+                            var conversationArea = $('#conversationArea');
+                            conversationArea.scrollTop(conversationArea.prop("scrollHeight"));
+
+                            var conversationAreaMobile = $('#conversationAreaMobile');
+                            conversationAreaMobile.scrollTop(conversationAreaMobile.prop("scrollHeight"));
+
+                        },
+                        error: function(data) { // if error occured
+                            window.parent.showException(data);
+                        },
+
+                        dataType: 'html'
+                    });
+                }
+
+            
+            responsiveDesign = function() {
+                // $('.packageModel').height($('.packageModel').width() * 1.3318 + 80);
+                $('.modelPicture').height($('.modelPicture').width() * 1.33333);
+                if ($('.packageSelection').css('position') == "absolute")
+                    $('.packageSelection').css('top', $('.modelPicture').height() - 60);
+                else
+                    $('.packageSelection').css('top', 0);
+                $('.packageSelection').fadeIn();
+                conversationsArea();
+            }
+
+            conversationsArea = function() {
+                $(".conversationArea").height($(window).height() - $("#selectionArea").height() - 110);
+
+                var conversationArea = $('#conversationArea');
+                conversationArea.scrollTop(conversationArea.prop("scrollHeight"));
+
+                var conversationAreaMobile = $('#conversationAreaMobile');
+                conversationAreaMobile.scrollTop(conversationAreaMobile.prop("scrollHeight"));
+            }
+
+            $(window).smartresize(function() {
+                responsiveDesign();
+            });
+
+            responsiveDesign();
+            // Modern browser detection instead of using deprecated $.browser
+            if (navigator.userAgent.indexOf('MSIE 6') !== -1 ||
+                (navigator.userAgent.indexOf('MSIE') !== -1 && parseFloat(navigator.userAgent.match(/MSIE (\d+\.\d+)/)[1]) < 7)) {
+                // search for selectors you want to add hover behavior to
+                $('#bookModel').css('position', 'absolute');
+                $('#bookModel').css('width', $(window).width());
+                $('#bookModel').css('height', $(window).height());
+            }
+
+            $(window).trigger('hashchange');
+
+            $(".lazy").lazyload();
+
+            $("#packageTopMenuSlider").mmenu({
+                "extensions": [
+                    "theme-white"
+                ],
+                navbar: {
+                    title: "Mediaslide Instant message"
+                }
+            });
+
+            $(window).bind('beforeunload', function() {
+                if ($('#package_model_selection_unsaved').val() == 1) {
+                    return "You haven\'t sent your selection yet. Do you want to leave without finishing?";
+                }
+
+                if ($('#message').length > 0 && $('#message').val() != "") {
+                    return "You haven\'t sent your message yet. Do you want to leave without finishing?";
+                }
+            });
+
+            importModelError = function() {
+                $('#import-model-error').dialog({
+                    width: 600,
+                    height: 400,
+                    autoOpen: true,
+                    resizable: false,
+                    open: function(event, ui) {
+                        $(this).parent().css('z-index', 999999);
+                    },
+                });
+            }
+
+            importModelId = "";
+            importModel = function(model_id) {
+
+                importModelId = model_id;
+
+                
+                    importModelError();
+
+                
+            }
+
+            importModelContainer = function(agency_url) {
+
+                if (agency_url == "dev")
+                    var url = "http://" + agency_url + ".mediaslide.local/models/importModelPackage";
+                else
+                    var url = "https://" + agency_url + ".mediaslide.com/models/importModelPackage";
+
+                //On se connecte au Mediaslide du client.
+                $('#importModelConnexion').html("<iframe id='importModelConnexionIframe' src='" + url + "' style='width: 100%; height: 400px; border: 0'></iframe>");
+                // $('#importModelConnexion').html("<iframe id='importModelConnexionIframe' src='http://dev.mediaslide.local/models/importModelPackage' style='width: 100%; height: 400px; border: 0'></iframe>");
+
+                //On passe l'objet model au Mediaslide du client.
+                $('#importModelConnexionIframe').on('load', function() {
+                    var win = $('#importModelConnexionIframe')[0].contentWindow;
+
+                    $.ajax({
+                        type: 'POST',
+                        url: '/package/exportModel?package_id=176&package_hash=1a5f30ca&package_recipient_id=331&recipient_hash=2a9fa1ab&model_id=' + importModelId,
+                        success: function(data) {
+                            win.postMessage(JSON.stringify(data), "*");
+                        },
+                        error: function(data) { // if error occured
+                            window.parent.showException(data);
+                        },
+
+                        dataType: 'json'
+                    });
+                });
+
+                $('#import-model-confirm').dialog({
+                    width: 600,
+                    height: 500,
+                    autoOpen: true,
+                    resizable: false,
+                    open: function(event, ui) {
+                        $(this).parent().css('z-index', 999999);
+                    },
+                });
+            }
+            if (/(android|bb\d+|meego).+mobile|avantgo|bada\/|blackberry|blazer|compal|elaine|fennec|hiptop|iemobile|ip(hone|od)|iris|kindle|lge |maemo|midp|mmp|mobile.+firefox|netfront|opera m(ob|in)i|palm( os)?|phone|p(ixi|re)\/|plucker|pocket|psp|series(4|6)0|symbian|treo|up\.(browser|link)|vodafone|wap|windows ce|xda|xiino/i.test(navigator.userAgent) || /1207|6310|6590|3gso|4thp|50[1-6]i|770s|802s|a wa|abac|ac(er|oo|s\-)|ai(ko|rn)|al(av|ca|co)|amoi|an(ex|ny|yw)|aptu|ar(ch|go)|as(te|us)|attw|au(di|\-m|r |s )|avan|be(ck|ll|nq)|bi(lb|rd)|bl(ac|az)|br(e|v)w|bumb|bw\-(n|u)|c55\/|capi|ccwa|cdm\-|cell|chtm|cldc|cmd\-|co(mp|nd)|craw|da(it|ll|ng)|dbte|dc\-s|devi|dica|dmob|do(c|p)o|ds(12|\-d)|el(49|ai)|em(l2|ul)|er(ic|k0)|esl8|ez([4-7]0|os|wa|ze)|fetc|fly(\-|_)|g1 u|g560|gene|gf\-5|g\-mo|go(\.w|od)|gr(ad|un)|haie|hcit|hd\-(m|p|t)|hei\-|hi(pt|ta)|hp( i|ip)|hs\-c|ht(c(\-| |_|a|g|p|s|t)|tp)|hu(aw|tc)|i\-(20|go|ma)|i230|iac( |\-|\/)|ibro|idea|ig01|ikom|im1k|inno|ipaq|iris|ja(t|v)a|jbro|jemu|jigs|kddi|keji|kgt( |\/)|klon|kpt |kwc\-|kyo(c|k)|le(no|xi)|lg( g|\/(k|l|u)|50|54|\-[a-w])|libw|lynx|m1\-w|m3ga|m50\/|ma(te|ui|xo)|mc(01|21|ca)|m\-cr|me(rc|ri)|mi(o8|oa|ts)|mmef|mo(01|02|bi|de|do|t(\-| |o|v)|zz)|mt(50|p1|v )|mwbp|mywa|n10[0-2]|n20[2-3]|n30(0|2)|n50(0|2|5)|n7(0(0|1)|10)|ne((c|m)\-|on|tf|wf|wg|wt)|nok(6|i)|nzph|o2im|op(ti|wv)|oran|owg1|p800|pan(a|d|t)|pdxg|pg(13|\-([1-8]|c))|phil|pire|pl(ay|uc)|pn\-2|po(ck|rt|se)|prox|psio|pt\-g|qa\-a|qc(07|12|21|32|60|\-[2-7]|i\-)|qtek|r380|r600|raks|rim9|ro(ve|zo)|s55\/|sa(ge|ma|mm|ms|ny|va)|sc(01|h\-|oo|p\-)|sdk\/|se(c(\-|0|1)|47|mc|nd|ri)|sgh\-|shar|sie(\-|m)|sk\-0|sl(45|id)|sm(al|ar|b3|it|t5)|so(ft|ny)|sp(01|h\-|v\-|v )|sy(01|mb)|t2(18|50)|t6(00|10|18)|ta(gt|lk)|tcl\-|tdg\-|tel(i|m)|tim\-|t\-mo|to(pl|sh)|ts(70|m\-|m3|m5)|tx\-9|up(\.b|g1|si)|utst|v400|v750|veri|vi(rg|te)|vk(40|5[0-3]|\-v)|vm40|voda|vulc|vx(52|53|60|61|70|80|81|83|85|98)|w3c(\-| )|webc|whit|wi(g |nc|nw)|wmlb|wonu|x700|yas\-|your|zeto|zte\-/i.test(navigator.userAgent.substr(0, 4))) {} else {
+                $("[rel=tooltip]").tooltip({
+                    placement: 'top'
+                });
+            }
+
+        });
+    </script>
+    <div id="import-model-confirm" title="Import to Mediaslide" style="display: none">
+        <div class="modal-body">
+            <div id="importModelConnexion"></div>
+        </div>
+    </div>
+    <div id="import-model-error" title="" style="display: none">
+        <div class="modal-body">
+            <div class="importMediaslide" style="margin-top: 50px; text-align: center; padding: 10px; font-size: 16px; max-width: 460px; margin: 0 auto">
+                <img src="https://storage.googleapis.com/mediaslide-europe/mediaslide/logo-mediaslide.png" style="width: 200px" /><br /><br /><br />
+                <strong>You don't have a Mediaslide account or you are not logged in.</strong>
+                <br /><br />
+                To import packages, you need a Mediaslide account. Please contact <a href="mailto:sales@mediaslide.com">sales@mediaslide.com</a> to create one.<br />
+                <br />
+                <strong>You already have a Mediaslide account?</strong><br />
+                <div style="padding-top: 10px; font-size: 16px">
+                    <input type="text" name="agencyUrl" id="agencyUrl" style="width: 120px; text-align: center; border-bottom: 1px solid #333333; border-radius: 0" placeholder="Agency url" /> <strong>. mediaslide.com</strong>
+                </div>
+                <div style="padding-top: 10px">
+                    <a href="#" onclick="importModelContainer($('#agencyUrl').val()); return false;"><span class="btn btn-small btn-primary">Connect</span></a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<script type="text/javascript">
+var packageLang = "en";
+
+$.ajaxPrefilter(function(options) {
+    if (options.url && options.url.indexOf('/package/') !== -1 && options.url.indexOf('lang=') === -1) {
+        options.url += (options.url.indexOf('?') !== -1 ? '&' : '?') + 'lang=' + packageLang;
+    }
+});
+
+changePackageLanguage = function(lang) {
+    packageLang = lang;
+    localStorage.setItem('package_language', lang);
+    var url = new URL(window.location.href);
+    url.searchParams.set('lang', lang);
+    window.location.href = url.toString();
+}
+</script>
+
+</body>
+
+</html>

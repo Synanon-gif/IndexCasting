@@ -1,0 +1,166 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
+import {
+  detectTenantSlug,
+  imageDedupKey,
+  parsePackageBook,
+  parsePackageList,
+} from '../mediaslidePackageParser';
+
+const FIXTURE_DIR = join(__dirname, 'fixtures');
+const LIST_HTML = readFileSync(
+  join(FIXTURE_DIR, 'mediaslide_package_hausofhay_list.html'),
+  'utf-8',
+);
+const BOOK_HTML = readFileSync(
+  join(FIXTURE_DIR, 'mediaslide_package_hausofhay_book674.html'),
+  'utf-8',
+);
+
+describe('mediaslidePackageParser — real fixture (hausofhay / REMI)', () => {
+  it('parsePackageList extracts exactly 1 model with stable identifiers', () => {
+    const entries = parsePackageList(LIST_HTML);
+    expect(entries).toHaveLength(1);
+    const e = entries[0];
+    expect(e.mediaSlideModelId).toBe('256');
+    expect(e.packageModelId).toBe('1218');
+    expect(e.defaultCategoryId).toBe('674');
+    expect(e.name).toBe('RÉMI LOVISOLO');
+    expect(e.coverImageUrl).toMatch(/profile-1776519990-/);
+    expect(e.instagram).toBe('rem_lvs');
+    expect(e.heightHintCm).toBe(187);
+  });
+
+  it('parsePackageBook extracts measurements + 5 portfolio images in DOM order', () => {
+    const book = parsePackageBook(BOOK_HTML);
+    expect(book.name).toBe('RÉMI LOVISOLO');
+    expect(book.measurements.height).toBe(187);
+    expect(book.measurements.chest).toBe(96);
+    expect(book.measurements.waist).toBe(82);
+    expect(book.measurements.hips).toBe(97);
+    expect(book.measurements.legs_inseam).toBe(81);
+    expect(book.measurements.shoe_size).toBe(45);
+    expect(book.hair_color_raw).toBe('Dark brown');
+    expect(book.eye_color_raw).toBe('Green brown');
+    expect(book.albumCatalog).toEqual([
+      { categoryId: '674', title: 'PORTFOLIO', count: 1 },
+      { categoryId: '675', title: 'POLAROIDS', count: 1 },
+    ]);
+    expect(book.imagesForCurrentCategory).toHaveLength(5);
+    expect(book.imagesForCurrentCategory[0]).toMatch(/large-1776519990-/);
+    // Reihenfolge stabil: erstes Bild (eager src), danach lazy in DOM-Order.
+    expect(book.imagesForCurrentCategory[1]).toMatch(/large-1776519981-/);
+    expect(book.imagesForCurrentCategory[2]).toMatch(/large-1776519968-/);
+  });
+
+  it('detectTenantSlug returns "hausofhay"', () => {
+    expect(detectTenantSlug(LIST_HTML)).toBe('hausofhay');
+    expect(detectTenantSlug(BOOK_HTML)).toBe('hausofhay');
+  });
+
+  it('imageDedupKey is stable across cache-buster and size variants', () => {
+    const a =
+      'https://mediaslide-europe.storage.googleapis.com/hausofhay/pictures/256/674/large-1776519990-27ce7e7c63a1cfa5ddeb3706a702589b.jpg?v=1776520060';
+    const b =
+      'https://mediaslide-europe.storage.googleapis.com/hausofhay/pictures/256/674/profile-1776519990-27ce7e7c63a1cfa5ddeb3706a702589b.jpg';
+    expect(imageDedupKey(a)).toBe(imageDedupKey(b));
+  });
+});
+
+describe('mediaslidePackageParser — robustness', () => {
+  it('falls back to height-hint when DOM lacks measurements', () => {
+    const html = `
+      <div id="packageModel_999" class="packageModel">
+        <a href="#book-1"><img data-original="https://x/pictures/9/1/large-1-aaa.jpg" /></a>
+        <div class="modelName" translate="no">JANE DOE</div>
+        <a id="select_999" data-model-id="999"></a>
+        <div class="modelHeight">175cm</div>
+      </div>
+    `;
+    const entries = parsePackageList(html);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].name).toBe('JANE DOE');
+    expect(entries[0].heightHintCm).toBe(175);
+  });
+
+  it('drops cards without data-model-id', () => {
+    const html = `
+      <div id="packageModel_1" class="packageModel">
+        <div class="modelName" translate="no">No ID</div>
+      </div>
+      <div id="packageModel_2" class="packageModel">
+        <div class="modelName" translate="no">Has ID</div>
+        <a data-model-id="42" href="#book-7"></a>
+      </div>
+    `;
+    const entries = parsePackageList(html);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].mediaSlideModelId).toBe('42');
+  });
+
+  it('parses German-labelled measurements (synthetic)', () => {
+    const html = `
+      <div class="bookMenuName" translate="no">DE TEST</div>
+      <div id="bookModelMeasurements">
+        <div class="measurementElement"><span class="measurementTitle">Größe</span> <span class="measurementEu">180<span class="measurementUnit">cm</span></span></div>
+        <div class="measurementElement"><span class="measurementTitle">Brust</span> <span class="measurementEu">95<span class="measurementUnit">cm</span></span></div>
+        <div class="measurementElement"><span class="measurementTitle">Schuhe</span> <span class="measurementEu">44eu</span></div>
+      </div>
+    `;
+    const book = parsePackageBook(html);
+    expect(book.measurements.height).toBe(180);
+    expect(book.measurements.chest).toBe(95);
+    expect(book.measurements.shoe_size).toBe(44);
+  });
+
+  it('positional fallback works when no labels match', () => {
+    const html = `
+      <div id="bookModelMeasurements">
+        <div class="measurementElement"><span class="measurementTitle">???</span> <span class="measurementEu">182<span class="measurementUnit">cm</span></span></div>
+        <div class="measurementElement"><span class="measurementTitle">???</span> <span class="measurementEu">94<span class="measurementUnit">cm</span></span></div>
+        <div class="measurementElement"><span class="measurementTitle">???</span> <span class="measurementEu">80<span class="measurementUnit">cm</span></span></div>
+        <div class="measurementElement"><span class="measurementTitle">???</span> <span class="measurementEu">96<span class="measurementUnit">cm</span></span></div>
+        <div class="measurementElement"><span class="measurementTitle">???</span> <span class="measurementEu">82<span class="measurementUnit">cm</span></span></div>
+        <div class="measurementElement"><span class="measurementTitle">???</span> <span class="measurementEu">43eu</span></div>
+      </div>
+    `;
+    const book = parsePackageBook(html);
+    expect(book.measurements.height).toBe(182);
+    expect(book.measurements.chest).toBe(94);
+    expect(book.measurements.waist).toBe(80);
+    expect(book.measurements.hips).toBe(96);
+    expect(book.measurements.legs_inseam).toBe(82);
+    expect(book.measurements.shoe_size).toBe(43);
+  });
+
+  it('extracts album catalog with multiple albums', () => {
+    const html = `
+      <div class="bookMenuLinks">
+        <a href="#book-100"><span class="menuSelected">PORTFOLIO <span class="albumCounter">(12)</span></span></a>
+        <a href="#book-101"><span class="menuUnselected">POLAROIDS <span class="albumCounter">(4)</span></span></a>
+        <a href="#book-102"><span class="menuUnselected">DIGITALS <span class="albumCounter">(6)</span></span></a>
+      </div>
+    `;
+    const book = parsePackageBook(html);
+    expect(book.albumCatalog).toEqual([
+      { categoryId: '100', title: 'PORTFOLIO', count: 12 },
+      { categoryId: '101', title: 'POLAROIDS', count: 4 },
+      { categoryId: '102', title: 'DIGITALS', count: 6 },
+    ]);
+  });
+
+  it('multi-card list: parses every card', () => {
+    const card = (id: number) => `
+      <div id="packageModel_${id * 10}" class="packageModel">
+        <a href="#book-${id}" ><img data-original="https://x/y/pictures/${id}/${id}/profile-1-${'a'.repeat(32)}.jpg" /></a>
+        <div class="modelName" translate="no">Model ${id}</div>
+        <a id="select_${id}" data-model-id="${id}"></a>
+        <div class="modelHeight">17${id}cm</div>
+      </div>
+    `;
+    const html = `${card(1)}${card(2)}${card(3)}`;
+    const entries = parsePackageList(html);
+    expect(entries.map((e) => e.mediaSlideModelId)).toEqual(['1', '2', '3']);
+    expect(entries.map((e) => e.name)).toEqual(['Model 1', 'Model 2', 'Model 3']);
+  });
+});

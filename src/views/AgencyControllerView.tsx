@@ -104,6 +104,7 @@ import {
 import { confirmImageRights, guardImageUpload } from '../services/gdprComplianceSupabase';
 import { ModelMediaSettingsPanel } from '../components/ModelMediaSettingsPanel';
 import { AgencyShareInbox, AgencyShareSendModal } from '../components/AgencyShareUI';
+import { PackageImportPane } from '../components/PackageImportPane';
 import { OptionNegotiationChatShell } from '../components/optionNegotiation/OptionNegotiationChatShell';
 import { NegotiationMessageRow } from '../components/optionNegotiation/NegotiationMessageRow';
 import { NegotiationChipsRow } from '../components/optionNegotiation/NegotiationChipsRow';
@@ -5298,6 +5299,9 @@ const MyModelsTab: React.FC<{
           )}
         </View>
       )}
+
+      {/* MediaSlide Package Import (Phase 1) — additive, opt-in via link input. */}
+      {agencyId ? <PackageImportPane agencyId={agencyId} onModelsChanged={onRefresh} /> : null}
 
       {/* Agency-to-Agency Roster Share inbox (recipient entry-point) */}
       {agencyShareOrganizationId ? (
