@@ -2,6 +2,7 @@ import {
   getCalendarProjectionBadge,
   getBookingEntryProjectionBadge,
   dedupeCalendarGridEventsByOptionRequest,
+  calendarGridColorForOptionItem,
 } from '../calendarProjectionLabel';
 import type { SupabaseOptionRequest } from '../../services/optionRequestsSupabase';
 import type { CalendarEntry } from '../../services/calendarSupabase';
@@ -182,11 +183,139 @@ describe('calendarProjectionLabel', () => {
   });
 
   it('getBookingEntryProjectionBadge handles orphan booking row', () => {
-    const b = getBookingEntryProjectionBadge(
-      { entry_type: 'booking', status: 'booked' },
-      L,
-    );
+    const b = getBookingEntryProjectionBadge({ entry_type: 'booking', status: 'booked' }, L);
     expect(b.label).toBe(L.job);
+  });
+
+  describe('color parity — month grid === week/day badge', () => {
+    type Case = {
+      name: string;
+      option: SupabaseOptionRequest;
+      entry: CalendarEntry | null;
+    };
+    const cases: Case[] = [
+      {
+        name: 'rejected',
+        option: baseOption({ status: 'rejected' }),
+        entry: null,
+      },
+      {
+        name: 'job_confirmed (no entry)',
+        option: baseOption({ final_status: 'job_confirmed' }),
+        entry: null,
+      },
+      {
+        name: 'job booking tentative',
+        option: baseOption({ status: 'confirmed', final_status: 'option_confirmed' }),
+        entry: entry({ entry_type: 'booking', status: 'tentative' }),
+      },
+      {
+        name: 'job booking confirmed',
+        option: baseOption({ status: 'confirmed', final_status: 'job_confirmed' }),
+        entry: entry({ entry_type: 'booking', status: 'booked' }),
+      },
+      {
+        name: 'casting entry',
+        option: baseOption(),
+        entry: entry({ entry_type: 'casting' }),
+      },
+      {
+        name: 'request_type casting (no entry)',
+        option: baseOption({ request_type: 'casting' }),
+        entry: null,
+      },
+      {
+        name: 'option_pending default',
+        option: baseOption({ status: 'in_negotiation', final_status: 'option_pending' }),
+        entry: entry({ entry_type: 'option' }),
+      },
+      {
+        name: 'awaiting agency confirmation',
+        option: baseOption({
+          status: 'in_negotiation',
+          final_status: 'option_pending',
+          client_price_status: 'accepted',
+          model_approval: 'pending',
+          model_account_linked: true,
+          proposed_price: 500,
+        }),
+        entry: entry({ entry_type: 'option' }),
+      },
+      {
+        name: 'awaiting model confirmation',
+        option: baseOption({
+          status: 'in_negotiation',
+          final_status: 'option_confirmed',
+          client_price_status: 'accepted',
+          model_approval: 'pending',
+          model_account_linked: true,
+          proposed_price: 500,
+        }),
+        entry: entry({ entry_type: 'option' }),
+      },
+      {
+        name: 'awaiting client to finalize job',
+        option: baseOption({
+          status: 'confirmed',
+          final_status: 'option_confirmed',
+          client_price_status: 'accepted',
+          model_approval: 'approved',
+          model_account_linked: true,
+          proposed_price: 5000,
+        }),
+        entry: entry({ entry_type: 'option' }),
+      },
+      {
+        name: 'agency-only awaiting agency to finalize job',
+        option: baseOption({
+          status: 'in_negotiation',
+          final_status: 'option_confirmed',
+          model_approval: 'approved',
+          model_account_linked: false,
+          is_agency_only: true,
+        }),
+        entry: entry({ entry_type: 'option' }),
+      },
+      {
+        name: 'option confirmed (no model account, fully cleared)',
+        option: baseOption({
+          status: 'confirmed',
+          final_status: 'option_confirmed',
+          client_price_status: 'accepted',
+          model_approval: 'approved',
+          model_account_linked: false,
+          proposed_price: 1000,
+        }),
+        entry: entry({ entry_type: 'option' }),
+      },
+      {
+        name: 'in_negotiation with no signals (default casting blue)',
+        option: baseOption({ status: 'in_negotiation' }),
+        entry: null,
+      },
+    ];
+
+    cases.forEach(({ name, option, entry: ce }) => {
+      it(`color matches week/day for: ${name}`, () => {
+        const monthColor = calendarGridColorForOptionItem({ option, calendar_entry: ce });
+        const weekDayColor = getCalendarProjectionBadge(option, ce, L).backgroundColor;
+        expect(monthColor).toBe(weekDayColor);
+      });
+
+      it(`color matches week/day for: ${name} (model viewer)`, () => {
+        // Month grid has no viewer concept — must still equal default (client) projection,
+        // because color buckets do not depend on viewerRole (only labels do).
+        const monthColor = calendarGridColorForOptionItem({ option, calendar_entry: ce });
+        const modelColor = getCalendarProjectionBadge(option, ce, L, 'model').backgroundColor;
+        expect(monthColor).toBe(modelColor);
+      });
+
+      it(`color matches week/day for: ${name} (agency viewer)`, () => {
+        const monthColor = calendarGridColorForOptionItem({ option, calendar_entry: ce });
+        const agencyColor = getCalendarProjectionBadge(option, ce, L, 'agency').backgroundColor;
+        expect(monthColor).toBe(agencyColor);
+      });
+    });
   });
 
   it('dedupeCalendarGridEventsByOptionRequest collapses same option_request on same day', () => {

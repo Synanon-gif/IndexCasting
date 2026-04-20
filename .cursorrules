@@ -785,35 +785,37 @@ Ergänzt `system-invariants.mdc` **### 10** (Responsive UI) und bestehende Kalen
 
 11. **Kalenderfarben semantisch und kanonisch:** Option / Casting / Job überall **dieselbe** Farbsemantik. Ist ein Lifecycle in der UI als Job bestätigt, darf **kein** zweiter Eintrag mit alter Option-Farbe daneben stehen. Farbe folgt dem **aktuellen** kanonischen Lifecycle-State.
 
+12. **Kalenderfarben — eine Quelle (`2026-04-19`):** Legende, Monats-Raster, Badges und `calendarProjectionLabel` **dürfen keine abweichenden Hex-Werte** hardcoden. Kanonisch: `src/utils/calendarColors.ts` — `CALENDAR_COLORS`, `CALENDAR_PROJECTION_COLORS`, `calendarEntryColor()`. UI-Texte der Legende: `uiCopy.calendar.legend*` (`CalendarColorLegend`). Änderungen an Semantik immer Grid + Legende + Projection gemeinsam prüfen.
+
 ### 28.3 Negotiation / Verfügbarkeit / Bestätigung
 
-12. **Preisverhandlung und Verfügbarkeitsbestätigung sind getrennte Achsen (Invariante K, 20260616):** Beide können unabhängig fortschreiten. Gültige Zustände u. a.: Preis settled, Verfügbarkeit offen; Verfügbarkeit teilweise bestätigt, Preis offen; beides offen; beides abgeschlossen. UI, Header, Attention, Kalender und Tab-Dots müssen diese Trennung respektieren (ergänzt Smart-Attention-Regeln in §26 / system-invariants). **Kanonisch:** `agencyConfirmAvailabilityStore` setzt NUR `final_status`; `agencyAcceptClientPriceStore` setzt NUR `client_price_status`; kein Handler darf beide Achsen mutieren (Ausnahme: `clientConfirmJobStore` / `client_confirm_option_job` als terminaler Schritt). Model-Approval blockiert NUR Axis 2 (Availability), NIE Axis 1 (Preis) — Agency darf den Preis IMMER verhandeln.
+13. **Preisverhandlung und Verfügbarkeitsbestätigung sind getrennte Achsen (Invariante K, 20260616):** Beide können unabhängig fortschreiten. Gültige Zustände u. a.: Preis settled, Verfügbarkeit offen; Verfügbarkeit teilweise bestätigt, Preis offen; beides offen; beides abgeschlossen. UI, Header, Attention, Kalender und Tab-Dots müssen diese Trennung respektieren (ergänzt Smart-Attention-Regeln in §26 / system-invariants). **Kanonisch:** `agencyConfirmAvailabilityStore` setzt NUR `final_status`; `agencyAcceptClientPriceStore` setzt NUR `client_price_status`; kein Handler darf beide Achsen mutieren (Ausnahme: `clientConfirmJobStore` / `client_confirm_option_job` als terminaler Schritt). Model-Approval blockiert NUR Axis 2 (Availability), NIE Axis 1 (Preis) — Agency darf den Preis IMMER verhandeln.
 
-13. **Model-Account-Logik kanonisch aus echter Verknüpfung:** „Model has account“ = echte Verknüpfung Model↔User; Ableitungen wie `model_account_linked` müssen dazu synchron sein. Kein blindes „no model account“, wenn das Model verknüpft ist. Offene Requests nach Model-Claim / Linking **nachziehen**.
+14. **Model-Account-Logik kanonisch aus echter Verknüpfung:** „Model has account“ = echte Verknüpfung Model↔User; Ableitungen wie `model_account_linked` müssen dazu synchron sein. Kein blindes „no model account“, wenn das Model verknüpft ist. Offene Requests nach Model-Claim / Linking **nachziehen**.
 
-14. **Mit Model-Account:** Option inhaltlich final confirmed erst, wenn Preis (Client↔Agency) **und** Verfügbarkeit (Agency **und** Model) den Produktregeln entsprechen; danach kann der Client den Job final bestätigen. Smart Attention muss u. a. unterscheiden: waiting for model, action required agency, waiting for agency on price, waiting for client to finalize job.
+15. **Mit Model-Account:** Option inhaltlich final confirmed erst, wenn Preis (Client↔Agency) **und** Verfügbarkeit (Agency **und** Model) den Produktregeln entsprechen; danach kann der Client den Job final bestätigen. Smart Attention muss u. a. unterscheiden: waiting for model, action required agency, waiting for agency on price, waiting for client to finalize job.
 
-15. **Ohne Model-Account:** Verfügbarkeitsseite läuft über die Agency; kein `waiting_for_model`-Fake. Systemnachrichten, Kalender und Attention müssen diesen Branch sauber abbilden (`model_account_linked ?? false` bleibt maßgeblich — siehe system-invariants **Negotiation B**).
+16. **Ohne Model-Account:** Verfügbarkeitsseite läuft über die Agency; kein `waiting_for_model`-Fake. Systemnachrichten, Kalender und Attention müssen diesen Branch sauber abbilden (`model_account_linked ?? false` bleibt maßgeblich — siehe system-invariants **Negotiation B**).
 
 ### 28.4 Invite / Claim / Workspace
 
-16. **Landing im richtigen Workspace:** Nach Booker-Invite, Employee-Invite oder Model-Claim muss der User **direkt** im korrekten Workspace landen. Verboten: falscher Fallback-Screen, generischer Apply-as-Model trotz zugewiesenem Agency-Model, fehlende Membership, falsche Org-Zuordnung, richtiges Profil aber falscher Workspace. Email-Bestätigung, Re-Login und Token-Persistence müssen den Flow überleben (siehe §4b, §27.5–27.6, `invite-finalization.mdc`).
+17. **Landing im richtigen Workspace:** Nach Booker-Invite, Employee-Invite oder Model-Claim muss der User **direkt** im korrekten Workspace landen. Verboten: falscher Fallback-Screen, generischer Apply-as-Model trotz zugewiesenem Agency-Model, fehlende Membership, falsche Org-Zuordnung, richtiges Profil aber falscher Workspace. Email-Bestätigung, Re-Login und Token-Persistence müssen den Flow überleben (siehe §4b, §27.5–27.6, `invite-finalization.mdc`).
 
-17. **Finalisierung = Identität + Runtime-Routing:** Abgeschlossen erst wenn Profil/Rolle, Membership, Org-Zuordnung **und** Runtime-Routing / Workspace-Resolver stimmen und die UI ohne Reload den richtigen Screen zeigt (Backend-Finalisierung nicht nur UI-Gefühl).
+18. **Finalisierung = Identität + Runtime-Routing:** Abgeschlossen erst wenn Profil/Rolle, Membership, Org-Zuordnung **und** Runtime-Routing / Workspace-Resolver stimmen und die UI ohne Reload den richtigen Screen zeigt (Backend-Finalisierung nicht nur UI-Gefühl).
 
 ### 28.5 Bilder / Storage
 
-18. **Sichtbarkeit = auflösbar:** Wo das Produkt Bilder zeigen soll (Discovery, Packages, Projects, Recruiting Applications, Model Profiles, Previews), müssen Storage-Objekte **überall** zu renderbaren URLs aufgelöst werden; `supabase-storage://` zuverlässig normalisieren/signen. „Object not found“ bei eigentlich sichtbaren Bildern = **GA-blocking**.
+19. **Sichtbarkeit = auflösbar:** Wo das Produkt Bilder zeigen soll (Discovery, Packages, Projects, Recruiting Applications, Model Profiles, Previews), müssen Storage-Objekte **überall** zu renderbaren URLs aufgelöst werden; `supabase-storage://` zuverlässig normalisieren/signen. „Object not found“ bei eigentlich sichtbaren Bildern = **GA-blocking**.
 
-19. **Bildsichtbarkeit als Produktvertrag:** Wenn ein Screen Bildsichtbarkeit verspricht, darf keine Rolle dauerhaft leere Kacheln sehen, obwohl der Vertrag Bilder vorsieht (Alignment mit §27.1, §27.8, `CLIENT_MODEL_PHOTO_VISIBILITY.md`).
+20. **Bildsichtbarkeit als Produktvertrag:** Wenn ein Screen Bildsichtbarkeit verspricht, darf keine Rolle dauerhaft leere Kacheln sehen, obwohl der Vertrag Bilder vorsieht (Alignment mit §27.1, §27.8, `CLIENT_MODEL_PHOTO_VISIBILITY.md`).
 
 ### 28.6 Recruiting / Applications
 
-20. **Globale Applications:** Wenn das Produkt globale Model-Applications für alle Agenturen vorsieht, muss Recruiting so filtern/rendern — **keine** versehentliche `agency_id`-Verengung, die globale Bewerbungen unsichtbar macht.
+21. **Globale Applications:** Wenn das Produkt globale Model-Applications für alle Agenturen vorsieht, muss Recruiting so filtern/rendern — **keine** versehentliche `agency_id`-Verengung, die globale Bewerbungen unsichtbar macht.
 
-21. **Chat vor Accept:** Agency muss mit Bewerber-Model chatten können, **bevor** die Application akzeptiert wird. Accept darf keinen finalen Agency-Link voraussetzen, wenn das Produkt Vorab-Chat erlaubt. Thread und Application-Entity müssen konsistent verknüpft sein.
+22. **Chat vor Accept:** Agency muss mit Bewerber-Model chatten können, **bevor** die Application akzeptiert wird. Accept darf keinen finalen Agency-Link voraussetzen, wenn das Produkt Vorab-Chat erlaubt. Thread und Application-Entity müssen konsistent verknüpft sein.
 
-22. **Finale Aufnahme mit Model-Bestätigung:** Intent-to-accept durch Agency kann vorher stehen; **finale** Agency-Zuordnung erst nach Model-Bestätigung, wenn das Produkt den Zwei-Schritt so definiert. UI und Backend müssen den Zwei-Schritt widerspiegeln.
+23. **Finale Aufnahme mit Model-Bestätigung:** Intent-to-accept durch Agency kann vorher stehen; **finale** Agency-Zuordnung erst nach Model-Bestätigung, wenn das Produkt den Zwei-Schritt so definiert. UI und Backend müssen den Zwei-Schritt widerspiegeln.
 
 ### 28.7 Review — Stop-Bedingungen („nicht done“)
 
@@ -829,3 +831,36 @@ Ein Review ist **nicht** als erledigt zu markieren, solange noch vorkommt:
 - Model mit Account wird noch als „No model account“ behandelt
 - Bilder: `resolveStorageUrl failed` / `Object not found` trotz Produkt-Sichtbarkeit
 - Recruiting: global gedacht, aber nicht global sichtbar
+
+---
+
+## 29. Produkt-Ergänzungen vom 2026-04-19 (Trust, Status, Agency-Share, Observability, Billing Hub)
+
+Ergänzt Kalender-Farb-Disziplin (§28.2) und feste Domänen aus dem Release-Tag — bei Widerspruch zu Security-/RLS-Regeln gelten **Security-Regeln**.
+
+### 29.1 Öffentliche Trust- und Status-Routen
+
+- **Trust Center:** `/trust` mit Unterpfaden (`/trust/security`, `/trust/dpa`, `/trust/subprocessors`, `/trust/gdpr`, `/trust/incident-response`). **Status:** `/status` (öffentlich).
+- Neue Routen **nicht** nur in `App.tsx` verdrahten: `normalizeTrustPath` / Legal-Route-Tests in `src/utils/__tests__/publicLegalRoutes.test.ts` erweitern — sonst brechen Marketing-Links und Deep-Links still.
+- Inhalte: englische Nutzer-/Compliance-Copy wo sichtbar; **kein** `§` in sichtbarer Produkt-Copy (Rendering).
+
+### 29.2 Agency-to-Agency Roster Share (MAT)
+
+- **Zweck:** Eine Agentur teilt Roster-Snapshots mit einer anderen; Empfänger importiert **Territories** in `model_agency_territories` — **kein** Überschreiben bestehender MAT-Zeilen; Konflikte kommen als `skipped` zurück (`import_models_from_agency_share` / `importModelsFromAgencyShare`).
+- **Service:** `src/services/agencySharePackagesSupabase.ts` — Org-Kontext via `assertOrgContext`; Mutations `ServiceResult`, Listen Option A (`[]`) wie dokumentiert.
+- **UI:** `AgencyShareUI.tsx`, `AgencyControllerView` — Deep-Link `?agency_share=` / `initialAgencyShareLinkId`, nach Verbrauch `onInitialAgencyShareConsumed`.
+- **Claim:** Unverknüpfte Models: `generateModelClaimToken` (Co-Agency-Zweig in DB) — **kein** Vermischen mit reinem Guest-Package-Flow ohne explizites Produkt-Review.
+
+### 29.3 Admin-Observability (`system_events` & Logger)
+
+- Admin-UI und strukturierte Logger, die **`system_events`** (oder Nachfolge-Tabellen) lesen/schreiben, **müssen** zum **live deployten** Schema passen — Spalten-/Typ-Änderungen immer **Logger + UI + Typen** gemeinsam anpassen (kein „UI zeigt leere Spalten“ nach Migration).
+- **Health / CI:** `/trust`- und `/status`-Patterns nicht ohne Abgleich mit öffentlichen Route-Tests ändern.
+
+### 29.4 Billing Hub (B2B)
+
+- **Billing Hub** (Rechnungen, Settlements, Presets, Smart-Attention im Billing-Bereich): **Owner-only**-Pflichten und **Model-Billing-Firewall** unverändert — siehe `.cursor/rules/billing-payment-invariants.mdc` (**I-PAY-1 … I-PAY-11**).
+- Banner/Attention im Hub: bei **Sub-Tab-Wechsel** neu laden, wenn der Zustand von der aktiven Registerkarte abhängt (kein veralteter Smart-Attention-Stand).
+
+### 29.5 Mediaslide / Netwalk Sync (Erinnerung)
+
+- Bidirektionale Sync-Connectors ändern **nicht** die harte Regel **EXTERNE PROFIL-SYNCS** in `system-invariants.mdc` (kein implizites Storage-Mirror ohne Produktentscheid). Sync-Metadaten vs. Asset-Copy strikt trennen.

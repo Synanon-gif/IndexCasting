@@ -50,6 +50,12 @@ The product does not hold client↔agency booking proceeds in custody. Subscript
 - **Do not** add billing tables or invoice joins to model-safe selects (`OPTION_REQUEST_SELECT_MODEL_SAFE` and related paths stay price-agnostic per existing model safety contract).
 - **Future Agency → Model payouts** (if ever): **separate** feature — own UI, own RLS, own tables/flows — **no** mixing with client↔agency invoice views.
 
+## I-PAY-11 — Billing Hub UI & attention (2026-04-19)
+
+- **Billing Hub** surfaces (invoices, settlements, presets, operational billing) are **B2B-only**; **I-PAY-10** (model firewall) and **owner-only** billing actions (checkout, destructive owner settings) remain enforced server-side — **not** UI-only.
+- **Smart Attention** (or status banners) inside the Hub **must** stay in sync when the user switches **sub-tabs** if the signal depends on the active tab (reload or keyed refetch — no stale banner after navigation).
+- **Commercial truth** for amounts still comes from canonical DB state (**I-PAY-1**); Hub is presentation + drafts over that truth.
+
 ## Regression checklist (when touching billing)
 
 - [ ] No new model-facing surface exposes billing/fee/invoice/payment fields.

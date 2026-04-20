@@ -1507,9 +1507,25 @@ Jeder Discovery-/Near-Me-/Filter-RPC der auf `model_agency_territories` joined M
 
 ---
 
+## TRUST, STATUS, AGENCY-SHARE, OBSERVABILITY & BILLING HUB (Verweis — 2026-04-19)
+
+Vollständige Produkt- und Routing-Regeln stehen in **`.cursorrules` §29** (keine Regel-Duplikat-Pflege hier). Kurz:
+
+| Thema | Wo |
+|--------|-----|
+| Öffentliche Routen `/trust`, `/trust/*`, `/status` + Route-Tests (`normalizeTrustPath`, `publicLegalRoutes.test.ts`) | `.cursorrules` §29.1 |
+| Agency-to-Agency Roster Share — MAT-Import ohne Überschreibung, `import_models_from_agency_share` / `agencySharePackagesSupabase.ts` | `.cursorrules` §29.2 |
+| Admin `system_events` / Logger — UI und Queries an **live** Schema | `.cursorrules` §29.3 |
+| Billing Hub, Sub-Tab Attention, Owner/Model-Firewall | `.cursorrules` §29.4; `.cursor/rules/billing-payment-invariants.mdc` **I-PAY-11** |
+| Mediaslide/Netwalk vs. implizitem Storage-Mirror | `.cursorrules` §29.5; **EXTERNE PROFIL-SYNCS** (oben) |
+
+**Kalenderfarben:** eine Quelle — `src/utils/calendarColors.ts` (`CALENDAR_COLORS`, `CALENDAR_PROJECTION_COLORS`); Legende/Grid/Projection nicht auseinanderdriften — **`.cursorrules` §28.2** Ziffer 12.
+
+---
+
 ## INVARIANT AUDIT & DEV CHECKS (2026)
 
 **Living audit (Coverage Map, Shadow Paths, Tests, grep-Präfixe):** [docs/INVARIANT_AUDIT_REPORT.md](../../docs/INVARIANT_AUDIT_REPORT.md)  
 **Dev-Validatoren (read-only, keine Production-Mutation):** [`src/utils/invariantValidationDev.ts`](../../src/utils/invariantValidationDev.ts) — u. a. `[roster][integrity]`, `[calendar][dedupe]`, `[chat][mat]`.
 
-Kanonische Domänenregeln (Location, Roster, Remove, Kalender, Chat, Application, Dissolve): `.cursorrules` **§27** (Final System Consistency) + der Report oben.
+Kanonische Domänenregeln (Location, Roster, Remove, Kalender, Chat, Application, Dissolve): `.cursorrules` **§27** (Final System Consistency); Trust/Agency-Share/Observability/Billing Hub: **§29** + der Report oben.
