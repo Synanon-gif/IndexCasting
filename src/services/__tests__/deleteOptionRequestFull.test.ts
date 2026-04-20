@@ -9,12 +9,20 @@ jest.mock('../../utils/logAction', () => ({
   logAction: jest.fn(() => true),
 }));
 
+jest.mock('../externalCalendarSync', () => ({
+  syncOptionRequestCancellationToExternal: jest
+    .fn()
+    .mockResolvedValue({ mediaslide: 'skipped', netwalk: 'skipped' }),
+}));
+
 import { supabase } from '../../../lib/supabase';
 import { logAction } from '../../utils/logAction';
 import { deleteOptionRequestFull } from '../optionRequestsSupabase';
+import { syncOptionRequestCancellationToExternal } from '../externalCalendarSync';
 
 const rpc = supabase.rpc as jest.Mock;
 const from = supabase.from as jest.Mock;
+const mockSyncCancel = syncOptionRequestCancellationToExternal as jest.Mock;
 
 const agencyOpts = { auditActor: 'agency' as const };
 const clientOpts = { auditActor: 'client' as const };
@@ -69,6 +77,7 @@ describe('deleteOptionRequestFull', () => {
   it('returns false when row has final_status job_confirmed', async () => {
     mockOptionRow({ final_status: 'job_confirmed' });
     await expect(deleteOptionRequestFull('opt-1', agencyOpts)).resolves.toBe(false);
+    expect(mockSyncCancel).not.toHaveBeenCalled();
     expect(rpc).not.toHaveBeenCalled();
   });
 
@@ -76,6 +85,8 @@ describe('deleteOptionRequestFull', () => {
     mockOptionRow();
     rpc.mockResolvedValue({ error: null });
     await expect(deleteOptionRequestFull('opt-1', agencyOpts)).resolves.toBe(true);
+    expect(mockSyncCancel).toHaveBeenCalledTimes(1);
+    expect(mockSyncCancel).toHaveBeenCalledWith('opt-1');
     expect(rpc).toHaveBeenCalledWith('delete_option_request_full', {
       p_option_request_id: 'opt-1',
     });

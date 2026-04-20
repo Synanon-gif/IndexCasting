@@ -42,10 +42,7 @@ import { getAgencyById } from '../services/agenciesSupabase';
 import { resolveAgencyForModelAndCountry } from '../services/territoriesSupabase';
 import { createBookingMessageInClientAgencyChat } from '../services/bookingChatIntegrationSupabase';
 import { updateCalendarEntryToJob, checkCalendarConflict } from '../services/calendarSupabase';
-import {
-  syncOptionRequestConfirmationToExternal,
-  syncOptionRequestCancellationToExternal,
-} from '../services/externalCalendarSync';
+import { syncOptionRequestConfirmationToExternal } from '../services/externalCalendarSync';
 import { notifyClientAgencyCounterOffer } from '../services/pushNotifications';
 import { showAppAlert } from '../utils/crossPlatformAlert';
 import { uiCopy } from '../constants/uiCopy';
@@ -1266,9 +1263,6 @@ export async function agencyRejectNegotiationStore(threadId: string): Promise<bo
   if (!req) return false;
   if (!beginCriticalOptionAction(threadId)) return false;
   try {
-    // Push 'cancelled' to external calendars BEFORE the row is deleted, so the
-    // helper can still snapshot date/time. Fire-and-forget.
-    void syncOptionRequestCancellationToExternal(req.id);
     const ok = await deleteOptionRequestFull(req.id, {
       auditActor: 'agency',
       auditOrganizationId: req.agencyOrganizationId,

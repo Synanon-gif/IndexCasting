@@ -18,6 +18,7 @@ import {
   getActivelyRepresentedModelIdsForAgency,
   filterBookingEventsForAgencyActiveRepresentation,
 } from './modelRepresentationGuards';
+import { filterOutRejectedOptionCalendarRows } from '../utils/b2bCalendarRejectFilter';
 import type { BookingBrief } from '../utils/bookingBrief';
 import {
   normalizeInput,
@@ -538,12 +539,13 @@ export async function getCalendarEntriesForClient(clientId: string): Promise<Cli
     const optionIds = optionList.map((o) => o.id);
     const entryList = await fetchCalendarEntriesByOptionIds(optionIds);
 
-    return optionList.map((opt) => {
+    const mapped = optionList.map((opt) => {
       const matching = entryList.filter((e) => e.option_request_id === opt.id);
       const active =
         matching.find((e) => e.status !== 'cancelled') ?? matching[matching.length - 1] ?? null;
       return { option: opt, calendar_entry: active };
     });
+    return filterOutRejectedOptionCalendarRows(mapped);
   } catch (e) {
     console.error('getCalendarEntriesForClient exception:', e);
     return [];
@@ -582,12 +584,13 @@ export async function getCalendarEntriesForAgency(agencyId: string): Promise<Age
     const optionIds = filteredOptions.map((o) => o.id);
     const entryList = await fetchCalendarEntriesByOptionIds(optionIds);
 
-    return filteredOptions.map((opt) => {
+    const mapped = filteredOptions.map((opt) => {
       const matching = entryList.filter((e) => e.option_request_id === opt.id);
       const active =
         matching.find((e) => e.status !== 'cancelled') ?? matching[matching.length - 1] ?? null;
       return { option: opt, calendar_entry: active };
     });
+    return filterOutRejectedOptionCalendarRows(mapped);
   } catch (e) {
     console.error('getCalendarEntriesForAgency exception:', e);
     return [];

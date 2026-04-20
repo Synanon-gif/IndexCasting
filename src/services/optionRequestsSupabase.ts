@@ -21,6 +21,7 @@ import { checkAndIncrementStorage, decrementStorage } from './agencyStorageSupab
 import { guardUploadSession } from './gdprComplianceSupabase';
 import { logAction } from '../utils/logAction';
 import { logger } from '../utils/logger';
+import { syncOptionRequestCancellationToExternal } from './externalCalendarSync';
 
 export const OPTION_REQUEST_SELECT =
   'id, client_id, model_id, agency_id, requested_date, status, project_id, client_name, model_name, job_description, proposed_price, agency_counter_price, client_price_status, final_status, request_type, currency, start_time, end_time, model_approval, model_approved_at, model_account_linked, booker_id, organization_id, agency_organization_id, client_organization_id, client_organization_name, agency_organization_name, created_by, agency_assignee_user_id, is_agency_only, agency_event_group_id, created_at, updated_at';
@@ -2057,6 +2058,9 @@ export async function modelRejectOptionRequest(id: string): Promise<boolean> {
       newData: { rejected_by: 'model' },
     });
 
+    // Triggers have cancelled local calendar rows; push the same to Mediaslide/Netwalk.
+    await syncOptionRequestCancellationToExternal(id);
+
     // Notify agency and client about the model rejection (fire-and-forget).
     void (async () => {
       try {
@@ -2202,6 +2206,9 @@ export async function deleteOptionRequestFull(
       console.warn('[deleteOptionRequestFull] blocked: job_confirmed', id);
       return false;
     }
+
+    // Release external calendar blocks while `calendar_entries` still exist (RPC deletes them next).
+    await syncOptionRequestCancellationToExternal(id);
 
     // Pre-collect storage paths before the RPC deletes DB rows.
     const storagePaths = await collectOptionDocStoragePaths(id);

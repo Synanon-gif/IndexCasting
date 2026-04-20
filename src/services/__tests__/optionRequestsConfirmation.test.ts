@@ -23,6 +23,12 @@ jest.mock('../../utils/logAction', () => ({
   logAction: jest.fn(() => true),
 }));
 
+jest.mock('../externalCalendarSync', () => ({
+  syncOptionRequestCancellationToExternal: jest
+    .fn()
+    .mockResolvedValue({ mediaslide: 'skipped', netwalk: 'skipped' }),
+}));
+
 import { supabase } from '../../../lib/supabase';
 import { logAction } from '../../utils/logAction';
 import { createBookingEvent } from '../bookingEventsSupabase';
@@ -34,8 +40,10 @@ import {
   getPendingModelConfirmations,
   clientConfirmJobOnSupabase,
 } from '../optionRequestsSupabase';
+import { syncOptionRequestCancellationToExternal } from '../externalCalendarSync';
 
 const from = supabase.from as jest.Mock;
+const mockSyncCancel = syncOptionRequestCancellationToExternal as jest.Mock;
 const rpc = supabase.rpc as jest.Mock;
 const mockCreateBookingEvent = createBookingEvent as jest.Mock;
 
@@ -387,6 +395,8 @@ describe('modelRejectOptionRequest', () => {
     const eqChain: jest.Mock = jest.fn().mockImplementation(() => ({ eq: eqChain, select }));
     from.mockReturnValue({ update: () => ({ eq: eqChain }) });
     await expect(modelRejectOptionRequest('req-1')).resolves.toBe(true);
+    expect(mockSyncCancel).toHaveBeenCalledTimes(1);
+    expect(mockSyncCancel).toHaveBeenCalledWith('req-1');
     expect(eqChain).toHaveBeenCalledWith('id', 'req-1');
     expect(eqChain).toHaveBeenCalledWith('model_approval', 'pending');
     expect(eqChain).toHaveBeenCalledWith('final_status', 'option_confirmed');
@@ -400,6 +410,7 @@ describe('modelRejectOptionRequest', () => {
     const eqChain: jest.Mock = jest.fn().mockImplementation(() => ({ eq: eqChain, select }));
     from.mockReturnValue({ update: () => ({ eq: eqChain }) });
     await expect(modelRejectOptionRequest('req-1')).resolves.toBe(false);
+    expect(mockSyncCancel).not.toHaveBeenCalled();
   });
 
   it('returns false when no row updated (concurrent state change)', async () => {
@@ -409,6 +420,7 @@ describe('modelRejectOptionRequest', () => {
     const eqChain: jest.Mock = jest.fn().mockImplementation(() => ({ eq: eqChain, select }));
     from.mockReturnValue({ update: () => ({ eq: eqChain }) });
     await expect(modelRejectOptionRequest('req-1')).resolves.toBe(false);
+    expect(mockSyncCancel).not.toHaveBeenCalled();
   });
 });
 
