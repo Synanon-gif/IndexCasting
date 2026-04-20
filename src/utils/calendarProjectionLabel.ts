@@ -123,6 +123,14 @@ function resolveProjectionBucket(
 }
 
 function projectionBucketColor(bucket: CalendarProjectionBucket): string {
+  // Canonical mapping — must match `CalendarColorLegend` exactly:
+  //   Option lifecycle (pending / negotiating / awaiting agency / confirmed)  → option orange
+  //   Casting lifecycle                                                       → casting blue
+  //   Job confirmed                                                           → job green
+  //   Tentative job (per legend footnote `legendTentativeJobNote`)            → option orange
+  //   Awaiting model approval (special projection)                            → awaitingModel purple
+  //   Awaiting client/agency to finalize job (special projection)             → jobConfirmationPending brown
+  //   Rejected / inactive                                                     → rejected grey
   switch (bucket) {
     case 'rejected':
       return CALENDAR_PROJECTION_COLORS.rejected;
@@ -133,17 +141,16 @@ function projectionBucketColor(bucket: CalendarProjectionBucket): string {
     case 'casting':
       return CALENDAR_COLORS.casting;
     case 'awaitingAgencyConfirmation':
-      return CALENDAR_COLORS.casting;
+      return CALENDAR_COLORS.option;
     case 'awaitingModelConfirmation':
       return CALENDAR_PROJECTION_COLORS.awaitingModel;
     case 'awaitingClientJob':
     case 'awaitingAgencyJob':
       return CALENDAR_PROJECTION_COLORS.jobConfirmationPending;
     case 'optionConfirmed':
-      return CALENDAR_COLORS.job;
     case 'optionNegotiating':
     case 'optionPending':
-      return CALENDAR_COLORS.casting;
+      return CALENDAR_COLORS.option;
   }
 }
 
@@ -214,7 +221,7 @@ export function getBookingEntryProjectionBadge(
   if (t === 'casting' || t === 'gosee') {
     return { label: labels.casting, backgroundColor: CALENDAR_COLORS.casting, textColor };
   }
-  return { label: labels.optionPending, backgroundColor: CALENDAR_COLORS.casting, textColor };
+  return { label: labels.optionPending, backgroundColor: CALENDAR_COLORS.option, textColor };
 }
 
 /**

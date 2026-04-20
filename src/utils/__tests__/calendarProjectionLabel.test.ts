@@ -289,7 +289,7 @@ describe('calendarProjectionLabel', () => {
         entry: entry({ entry_type: 'option' }),
       },
       {
-        name: 'in_negotiation with no signals (default casting blue)',
+        name: 'in_negotiation with no signals (default option orange)',
         option: baseOption({ status: 'in_negotiation' }),
         entry: null,
       },
