@@ -58,7 +58,19 @@ COMMENT ON COLUMN public.models.mother_agency_contact IS
 --
 -- Strict superset of the 20260903 version: same body + 2 new optional params,
 -- both COALESCE'd so existing callers stay binary-compatible (NULL = no change).
+--
+-- PostgreSQL: new parameters change the signature. CREATE OR REPLACE alone would
+-- add a second overload; REVOKE/COMMENT then fail with 42725. Drop the prior
+-- signature first (idempotent).
 -- ---------------------------------------------------------------------------
+
+DROP FUNCTION IF EXISTS public.agency_update_model_full(
+  uuid, text, text, text, text, text, text, text,
+  integer, integer, integer, integer, integer, integer, integer,
+  text, text, text, text, text[],
+  boolean, boolean, boolean, boolean, boolean,
+  text[], text[], text, text, boolean, text, timestamptz
+);
 
 CREATE OR REPLACE FUNCTION public.agency_update_model_full(
   p_model_id                     uuid,
@@ -206,10 +218,31 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL    ON FUNCTION public.agency_update_model_full FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.agency_update_model_full TO authenticated;
+REVOKE ALL ON FUNCTION public.agency_update_model_full(
+  uuid, text, text, text, text, text, text, text,
+  integer, integer, integer, integer, integer, integer, integer,
+  text, text, text, text, text[],
+  boolean, boolean, boolean, boolean, boolean,
+  text[], text[], text, text, boolean, text, timestamptz,
+  text, text
+) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.agency_update_model_full(
+  uuid, text, text, text, text, text, text, text,
+  integer, integer, integer, integer, integer, integer, integer,
+  text, text, text, text, text[],
+  boolean, boolean, boolean, boolean, boolean,
+  text[], text[], text, text, boolean, text, timestamptz,
+  text, text
+) TO authenticated;
 
-COMMENT ON FUNCTION public.agency_update_model_full IS
+COMMENT ON FUNCTION public.agency_update_model_full(
+  uuid, text, text, text, text, text, text, text,
+  integer, integer, integer, integer, integer, integer, integer,
+  text, text, text, text, text[],
+  boolean, boolean, boolean, boolean, boolean,
+  text[], text[], text, text, boolean, text, timestamptz,
+  text, text
+) IS
   'FIXED (20260429): model-scoped membership + admin bypass. '
   'FIXED (20260430): no models.phone column — p_phone accepted for compat, not written. '
   'FIXED (20260518): clear agency_relationship_ended_at when re-activating (status→active/pending_link). '
