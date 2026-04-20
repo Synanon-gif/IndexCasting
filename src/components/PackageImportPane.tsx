@@ -1,17 +1,23 @@
 /**
- * PackageImportPane — Agency-facing UI für den MediaSlide Package Import (Phase 1).
+ * PackageImportPane — Agency-facing UI für den MediaSlide Package Import (Phase 2).
  *
  * Zustände (State Machine):
  *   idle → analyzing → previewing → committing → done
  *
  * Designprinzipien:
  *  - Ehrliche Statusanzeige: Fortschritt, Anzahl Models, Anzahl Bilder, Warnungen.
- *  - Bilder werden in Phase 1 als externe MediaSlide/GCS-URLs übernommen — das wird hier
- *    explizit kommuniziert (keine "magische" Persistenz).
+ *  - Phase 2: Bilder werden beim Commit kontrolliert heruntergeladen, validiert
+ *    und in unseren Storage persistiert (`model_photos` + Mirror-Rebuild). Das
+ *    Model bleibt damit unabhängig vom externen Provider, sobald der Import
+ *    durch ist. Der Commit-Schritt dauert dadurch deutlich länger als die
+ *    reine Modell-Anlage; die UI zeigt pro Bild Fortschritt, partielle
+ *    Fehlertypen und persistierte Bildanzahl pro Model.
  *  - Vor dem Commit kann die Agency Models einzeln deselektieren.
- *  - Cancel-Button (AbortController) während Analyse + Commit.
+ *  - Cancel-Button (AbortController) während Analyse + Commit. Cancel wirkt
+ *    zwischen Bildern bzw. zwischen Models — kein Mid-Image-Rollback.
  *  - Pure Komponente: KEINE direkten DB-Zugriffe; orchestriert über `commitPreview`,
- *    das `importModelAndMerge` aufruft (RLS / Org-Scoping bleiben erhalten).
+ *    das `importModelAndMerge` und anschließend `persistImagesForPackageImport`
+ *    aufruft (RLS / Org-Scoping / GDPR-Audit bleiben erhalten).
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -203,7 +209,12 @@ export const PackageImportPane: React.FC<Props> = ({ agencyId, onModelsChanged }
       const result = await commitPreview({
         selected: toCommit,
         agencyId,
-        options: { forceUpdateMeasurements: forceMeasurements },
+        options: {
+          forceUpdateMeasurements: forceMeasurements,
+          // Phase 2: physische Bild-Persistenz aktiv. UI-Default → true.
+          // Tests können das via direktem Service-Aufruf umgehen.
+          persistImages: true,
+        },
         signal: ctrl.signal,
         onProgress: (p) => setCommitProgress(p),
       });
@@ -241,10 +252,12 @@ export const PackageImportPane: React.FC<Props> = ({ agencyId, onModelsChanged }
         sie dir vor dem Anlegen zur Bestätigung.
       </Text>
       <Text style={styles.hint}>
-        Hinweis (Phase 1): Bilder werden als externe MediaSlide-URLs gespeichert. Ein eigener
-        Bild-Mirror ist Phase 2 — wenn das Package gelöscht wird, können externe Bilder
-        verschwinden. Cap pro Model: max. {PACKAGE_IMPORT_LIMITS.MAX_PORTFOLIO_IMAGES_PER_MODEL}{' '}
-        Portfolio + {PACKAGE_IMPORT_LIMITS.MAX_POLAROIDS_PER_MODEL} Polaroids.
+        Hinweis (Phase 2 aktiv): Bilder werden beim Import kontrolliert in unseren Storage kopiert
+        (HEIC→JPEG, EXIF entfernt, MIME/Magic-Bytes geprüft). Das importierte Model bleibt damit
+        unabhängig vom Package — auch wenn der Link später deaktiviert wird. Der Commit dauert
+        dadurch länger; partielle Bild-Fehler werden pro Model gemeldet. Cap pro Model: max.{' '}
+        {PACKAGE_IMPORT_LIMITS.MAX_PORTFOLIO_IMAGES_PER_MODEL} Portfolio +{' '}
+        {PACKAGE_IMPORT_LIMITS.MAX_POLAROIDS_PER_MODEL} Polaroids.
       </Text>
 
       {phase === 'idle' && (
@@ -403,6 +416,10 @@ export const PackageImportPane: React.FC<Props> = ({ agencyId, onModelsChanged }
             Importiere {commitProgress?.done ?? 0}/{commitProgress?.total ?? 0}
             {commitProgress?.currentLabel ? ` – ${commitProgress.currentLabel}` : ''}
           </Text>
+          <Text style={styles.subtleNote}>
+            Bilder werden geladen, validiert und in den Storage kopiert. Das kann pro Model mehrere
+            Sekunden dauern.
+          </Text>
           <TouchableOpacity style={styles.secondaryBtn} onPress={handleCancel}>
             <Text style={styles.secondaryBtnLabel}>Nach aktuellem Model stoppen</Text>
           </TouchableOpacity>
@@ -421,6 +438,27 @@ export const PackageImportPane: React.FC<Props> = ({ agencyId, onModelsChanged }
             <SummaryLine label="Übersprungen" value={summary.skippedCount} />
           )}
           {summary.errorCount > 0 && <SummaryLine label="Fehler" value={summary.errorCount} bad />}
+          {(() => {
+            // Summenzeile für Bild-Persistenz (Phase 2): macht den
+            // tatsächlichen Mirror-Erfolg auf einen Blick sichtbar.
+            const persisted = summary.outcomes.reduce(
+              (acc, o) => acc + (o.imagesPersisted ?? 0),
+              0,
+            );
+            const attempted = summary.outcomes.reduce(
+              (acc, o) => acc + (o.imagesAttempted ?? 0),
+              0,
+            );
+            if (attempted === 0) return null;
+            return (
+              <SummaryLine
+                label="Bilder persistiert"
+                value={persisted}
+                ok={persisted === attempted}
+                bad={persisted === 0}
+              />
+            );
+          })()}
           <View style={{ marginTop: spacing.sm }}>
             {summary.outcomes
               .filter(
@@ -521,11 +559,31 @@ const PreviewRow: React.FC<{
 
 const OutcomeRow: React.FC<{ outcome: CommitOutcome }> = ({ outcome }) => {
   const color = outcome.status === 'error' ? colors.buttonSkipRed : colors.textSecondary;
+  // Bild-Persistenz-Stats sichtbar machen, sodass die Agency unmittelbar
+  // sieht, wie viele Bilder pro Model wirklich in unseren Storage gewandert
+  // sind und welche Fehler-Codes aufgetreten sind. Failure-Codes werden
+  // gekürzt, um die Outcome-Liste lesbar zu halten.
+  const hasImageInfo = (outcome.imagesAttempted ?? 0) > 0;
+  const failureSnippets = (outcome.imageFailureReasons ?? []).slice(0, 3);
+  const moreFailures =
+    (outcome.imageFailureReasons?.length ?? 0) > failureSnippets.length
+      ? ` (+${(outcome.imageFailureReasons?.length ?? 0) - failureSnippets.length})`
+      : '';
   return (
-    <Text style={[styles.previewMeta, { color }]}>
-      [{outcome.status}] {outcome.name} (#{outcome.externalId})
-      {outcome.reason ? ` – ${outcome.reason}` : ''}
-    </Text>
+    <View style={{ marginBottom: 2 }}>
+      <Text style={[styles.previewMeta, { color }]}>
+        [{outcome.status}] {outcome.name} (#{outcome.externalId})
+        {outcome.reason ? ` – ${outcome.reason}` : ''}
+      </Text>
+      {hasImageInfo && (
+        <Text style={styles.previewMeta}>
+          Bilder: {outcome.imagesPersisted ?? 0}/{outcome.imagesAttempted ?? 0}
+          {failureSnippets.length > 0
+            ? ` · Fehler: ${failureSnippets.join(', ')}${moreFailures}`
+            : ''}
+        </Text>
+      )}
+    </View>
   );
 };
 

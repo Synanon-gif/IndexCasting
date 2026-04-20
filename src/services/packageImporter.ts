@@ -28,6 +28,13 @@ import {
   type ProviderImportPayload,
 } from './packageImportTypes';
 import { imageDedupKey } from './imageDedupKey';
+import {
+  classifyImagePersistResult,
+  persistImagesForPackageImport,
+  type PackageImageProgress,
+  type PackageImagePersistResult,
+  type PersistImagesForModelInput,
+} from './packageImagePersistence';
 
 /**
  * Wandelt rohe Provider-Payloads in für die UI sichtbare Preview-Modelle um.
@@ -274,6 +281,18 @@ export function previewToImportPayload(input: {
 /**
  * Sequentieller Commit-Lauf: pro Model `importModelAndMerge`. Robust gegen Teilfehler.
  * Cancel via AbortSignal stoppt VOR dem nächsten Model (kein Mid-Model-Rollback).
+ *
+ * Bild-Persistenz (Phase 2):
+ *  - Wenn `options.persistImages === true` (UI-Default), werden die externen
+ *    Bild-URLs NICHT in `models.portfolio_images` / `models.polaroids`
+ *    geschrieben. Stattdessen läuft nach dem `importModelAndMerge`-Erfolg
+ *    `persistImagesForPackageImport`, das die Bilder herunterlädt, validiert,
+ *    in Storage hochlädt und `model_photos`-Zeilen anlegt. Mirror-Spalten
+ *    werden anschließend aus `model_photos` neu aufgebaut. Damit ist das
+ *    Model unabhängig vom externen Provider, sobald der Commit durch ist.
+ *  - `persistImages === false` (Test-/Legacy-Default) erhält das ursprüngliche
+ *    Verhalten (externe URLs landen in den Mirror-Spalten). Wird nur in
+ *    Tests verwendet, die das Persistenz-Modul nicht doppelt mocken wollen.
  */
 export async function commitPreview(input: {
   selected: PreviewModel[];
@@ -283,8 +302,12 @@ export async function commitPreview(input: {
   onProgress?: (p: CommitProgress) => void;
   /** Test-Hook: ersetze den tatsächlichen Importer-Aufruf. */
   importImpl?: typeof importModelAndMerge;
+  /** Test-Hook: ersetze die Bild-Persistenz (sonst {@link persistImagesForPackageImport}). */
+  persistImagesImpl?: (input: PersistImagesForModelInput) => Promise<PackageImagePersistResult>;
 }): Promise<CommitSummary> {
   const importer = input.importImpl ?? importModelAndMerge;
+  const persistImpl = input.persistImagesImpl ?? persistImagesForPackageImport;
+  const persistImages = input.options.persistImages === true;
   const total = input.selected.length;
   const outcomes: CommitOutcome[] = [];
   let createdCount = 0;
@@ -341,8 +364,16 @@ export async function commitPreview(input: {
       continue;
     }
 
+    // Wenn Bild-Persistenz aktiv ist: externe URLs NICHT an den DB-Importer
+    // weiterreichen. So können beim Merge keine externen Provider-URLs in
+    // die Mirror-Spalten leaken. Bei NEW-Insert wird `[]` geschrieben und
+    // anschließend durch den Mirror-Rebuild aus `model_photos` befüllt.
+    const importerPayload: ImportModelPayload = persistImages
+      ? { ...payload, portfolio_images: null, polaroids: null }
+      : payload;
+
     try {
-      const res = await importer(payload);
+      const res = await importer(importerPayload);
       if (!res) {
         outcomes.push({
           externalId: preview.externalId,
@@ -353,34 +384,122 @@ export async function commitPreview(input: {
         errorCount++;
         continue;
       }
+      // Default: Status aus dem reinen DB-Schritt (created vs. merged).
+      // Bild-Persistenz kann das anschließend zu 'warning' eskalieren.
+      const baseStatus: 'created' | 'merged' = res.created ? 'created' : 'merged';
+      if (res.created) createdCount++;
+      else mergedCount++;
+
+      const baseOutcome: CommitOutcome = {
+        externalId: preview.externalId,
+        name: preview.name,
+        status: baseStatus,
+        modelId: res.model_id,
+      };
+
+      // Stille Sync-ID-Persistenz-Fehler werden als Warnung markiert,
+      // ohne den Bild-Persistenz-Schritt zu überspringen — die DB-Row
+      // ist da, die Bilder können trotzdem korrekt gespiegelt werden.
       if (res.externalSyncIdsPersistFailed) {
-        outcomes.push({
-          externalId: preview.externalId,
-          name: preview.name,
-          status: 'warning',
-          modelId: res.model_id,
-          reason: 'external_sync_ids_persist_failed',
-        });
+        baseOutcome.status = 'warning';
+        baseOutcome.reason = 'external_sync_ids_persist_failed';
+        // Status-Counter umsortieren: created/merged wieder runter,
+        // warning rauf.
+        if (res.created) createdCount--;
+        else mergedCount--;
         warningCount++;
-        continue;
       }
-      if (res.created) {
-        outcomes.push({
-          externalId: preview.externalId,
-          name: preview.name,
-          status: 'created',
-          modelId: res.model_id,
-        });
-        createdCount++;
-      } else {
-        outcomes.push({
-          externalId: preview.externalId,
-          name: preview.name,
-          status: 'merged',
-          modelId: res.model_id,
-        });
-        mergedCount++;
+
+      // Bild-Persistenz (Phase 2). Läuft nur wenn aktiviert UND der DB-Step
+      // erfolgreich war. Cancel zwischen Models wird respektiert; innerhalb
+      // eines Models wird nicht mehr abgebrochen (kein Mid-Model-Rollback).
+      if (persistImages) {
+        try {
+          const persistRes = await persistImpl({
+            modelId: res.model_id,
+            provider: preview.externalProvider,
+            providerExternalId: preview.externalId,
+            portfolioUrls: preview.portfolio_image_urls,
+            polaroidUrls: preview.polaroid_image_urls,
+            options: {
+              signal: input.signal,
+              onImageProgress: (img: PackageImageProgress) =>
+                input.onProgress?.({
+                  total,
+                  done: i,
+                  currentLabel: `${preview.name} – ${img.type} ${img.index + 1}`,
+                }),
+            },
+          });
+          baseOutcome.imagesPersisted =
+            persistRes.portfolioPersisted + persistRes.polaroidPersisted;
+          baseOutcome.imagesAttempted =
+            persistRes.portfolioAttempted + persistRes.polaroidAttempted;
+          baseOutcome.imageFailureReasons = persistRes.failures.map(
+            (f) => `${f.type}#${f.index}:${f.reason}`,
+          );
+
+          const klass = classifyImagePersistResult(persistRes);
+          // Eskalation: jede unvollständige Persistenz ist mindestens
+          // 'warning'. Wir downgraden NICHT von 'error' (Sync-IDs +
+          // Bild-Fehler bleiben sichtbar getrennt).
+          if (
+            klass === 'all_failed' &&
+            persistRes.portfolioAttempted + persistRes.polaroidAttempted > 0
+          ) {
+            if (baseOutcome.status === 'created' || baseOutcome.status === 'merged') {
+              if (baseOutcome.status === 'created') createdCount--;
+              else mergedCount--;
+              warningCount++;
+            }
+            baseOutcome.status = 'warning';
+            baseOutcome.reason =
+              baseOutcome.reason && baseOutcome.reason !== 'external_sync_ids_persist_failed'
+                ? `${baseOutcome.reason};all_images_persistence_failed`
+                : 'all_images_persistence_failed';
+          } else if (klass === 'partial') {
+            if (baseOutcome.status === 'created' || baseOutcome.status === 'merged') {
+              if (baseOutcome.status === 'created') createdCount--;
+              else mergedCount--;
+              warningCount++;
+            }
+            baseOutcome.status = 'warning';
+            const partialReason = `images_partial:${persistRes.portfolioPersisted + persistRes.polaroidPersisted}/${persistRes.portfolioAttempted + persistRes.polaroidAttempted}`;
+            baseOutcome.reason = baseOutcome.reason
+              ? `${baseOutcome.reason};${partialReason}`
+              : partialReason;
+          }
+
+          if (!persistRes.mirrorRebuilt) {
+            // Sehr seltener Fall: model_photos-Rows existieren, Mirror-
+            // Rebuild ist gestolpert. Mache das sichtbar — manuelle
+            // Wiederherstellung über Drift-Cleanup nötig.
+            if (baseOutcome.status === 'created' || baseOutcome.status === 'merged') {
+              if (baseOutcome.status === 'created') createdCount--;
+              else mergedCount--;
+              warningCount++;
+            }
+            baseOutcome.status = 'warning';
+            const rebuildReason = 'mirror_rebuild_failed';
+            baseOutcome.reason = baseOutcome.reason
+              ? `${baseOutcome.reason};${rebuildReason}`
+              : rebuildReason;
+          }
+        } catch (persistErr) {
+          // Persistenz-Funktion selbst hat geworfen (sollte nicht passieren —
+          // sie fängt intern alles ab). Defensive Behandlung: als Warnung
+          // markieren, Model bleibt importiert.
+          if (baseOutcome.status === 'created' || baseOutcome.status === 'merged') {
+            if (baseOutcome.status === 'created') createdCount--;
+            else mergedCount--;
+            warningCount++;
+          }
+          baseOutcome.status = 'warning';
+          baseOutcome.reason = `image_persistence_threw:${(persistErr as Error).message ?? 'unknown'}`;
+        }
       }
+
+      outcomes.push(baseOutcome);
     } catch (e) {
       outcomes.push({
         externalId: preview.externalId,

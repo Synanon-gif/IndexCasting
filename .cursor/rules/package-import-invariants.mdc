@@ -53,6 +53,43 @@ Architekturreferenz: `src/services/packageImportTypes.ts`, `packageImporter.ts`,
   multi-card Imports oder identischen URLs in mehreren Books.
 - Modelle ohne verwertbare Bilder (Portfolio + Polaroids = 0) MÜSSEN `no_images` skippen — niemals als `ready` markiert.
 
+## D2. Bild-Persistenz (Phase 2 — Mirror in unseren Storage)
+
+- Default für UI-getriebene Imports: `CommitOptions.persistImages = true`. Externe Provider-URLs werden NIE als
+  Endzustand in `models.portfolio_images`/`models.polaroids` belassen — sie werden in `model_photos` + Storage
+  gespiegelt und die Mirror-Spalten anschließend aus `model_photos` neu aufgebaut. Damit ist das importierte
+  Modell unabhängig vom externen Provider.
+- Persistenz läuft AUSSCHLIESSLICH über `src/services/packageImagePersistence.ts`. Keine direkten Storage-Calls
+  oder `addPhoto`-Aufrufe aus `packageImporter.ts`, Provider, Parser oder UI. Diese Datei ist die einzige
+  Brücke zwischen Provider-URL und unserem Storage.
+- `persistImagesForPackageImport` MUSS:
+  - die existierende Sicherheits-Pipeline `uploadModelPhoto({ skipConsentCheck: true })` benutzen
+    (MIME-Whitelist, Magic-Bytes, Extension-Konsistenz, EXIF-Strip, agency storage quota, audit log).
+  - Portfolio und Polaroids in getrennten Schleifen mit explizitem `photo_type` verarbeiten.
+  - Sequentiell pro Album hochladen (`MAX(sort_order)+1` race-frei).
+  - Mirror-Spalten via `rebuildPortfolioImagesFromModelPhotos`/`rebuildPolaroidsFromModelPhotos` aktualisieren.
+  - `model_photos.source = <provider>` und `model_photos.api_external_id = <providerExternalId>` setzen,
+    damit jede persistierte Zeile als Package-Import erkennbar bleibt.
+- Wenn `persistImages: true`, MUSS `commitPreview` `portfolio_images` und `polaroids` im `ImportModelPayload`
+  auf `null` setzen, damit `importModelAndMerge` keine externen URLs in die Mirror-Spalten schreibt — selbst
+  als Zwischenzustand. Quellurls sind im Preview-Modell bewahrt und gehen direkt an die Persistenz-Funktion.
+- Pro persistiertes Bild gilt: nur erfolgreich heruntergeladene UND erfolgreich validierte UND erfolgreich
+  hochgeladene UND erfolgreich in `model_photos` eingetragene Bilder zählen als persistiert. Jeder andere
+  Pfad landet als Failure mit einem maschinenlesbaren `reason`-Code (`download_timeout`, `download_http_error`,
+  `download_network`, `download_aborted`, `invalid_content_type`, `empty_response`, `too_large`, `upload_failed`,
+  `addphoto_failed`, `invalid_url`).
+- `commitPreview` MUSS partielle Bild-Persistenz als `warning`-Outcome surface'en (`images_partial:p/a`),
+  vollständigen Bild-Fail als `all_images_persistence_failed` und Mirror-Rebuild-Fail als
+  `mirror_rebuild_failed`. Sync-ID-Persistenz-Warnung und Bild-Persistenz-Warnung kombinieren ihre Reasons
+  (`;`-getrennt) und werden nur EINMAL als Warning gezählt — keine Doppelzählung.
+- Cancel via `AbortSignal` wirkt ZWISCHEN Bildern (kein Mid-Image-Rollback). Restliche Bilder werden als
+  `download_aborted` markiert; das Modell bleibt importiert mit den bisher persistierten Bildern.
+- Provider-Neutralität bleibt gewahrt: `packageImagePersistence` darf KEINE provider-spezifischen URL-Patterns,
+  DOM-Annahmen oder Auth-Header einbauen. Downloads erfolgen anonym (kein Cookie, kein Bearer); Provider-CDNs
+  müssen die URLs öffentlich auslieferbar bereitstellen oder es schlägt mit `download_http_error` fehl.
+- HARDER GUARDRAIL: KEIN automatisches Löschen von alten `model_photos`-Rows beim Re-Import. Re-Importe fügen
+  hinzu; Drift-Cleanup ist ein separater bewusster Schritt.
+
 ## E. Drift- und Override-Sicherheit
 
 - Drift-Signale `anchorCoverage`, `extractionRatio`, `bookOkRatio` MÜSSEN bei jedem Provider berechnet und klassifiziert
@@ -83,6 +120,10 @@ Diese Smoke-Tests dürfen NICHT entfernt oder weichgespült werden ohne Ersatz m
 - `src/services/__tests__/packageImporter.test.ts` (Caps, Dedup, Skips, photo_source, Re-Import-Sicherheit).
 - `src/services/__tests__/packageImporter.smoke.test.ts` (Cross-Model-Isolation, duplicate externalId,
   Sync-Slot-Exklusivität, Field-Injection-Schutz, Drift-Override-DB-Safety).
+- `src/services/__tests__/packageImagePersistence.test.ts` (Bild-Mirror-Pipeline: Cross-Model-Isolation,
+  Album-Trennung, granulare Failure-Codes, Cancel, Mirror-Rebuild, Provider-Neutralität).
+- `src/services/__tests__/packageImporter.persistImages.test.ts` (Integration: `persistImages:true` strippt
+  externe URLs aus dem Importer-Payload, kombinierte Warnings, Skipped-Models triggern keine Persistenz).
 - `src/services/__tests__/mediaslidePackageProvider.test.ts` und `mediaslidePackageProvider.smoke.test.ts`
   (Mixed good/bad cards, partielle/totale Book-Fetch-Fails, Drift-Hard-Block, Override-Pfad).
 - `src/services/__tests__/mediaslidePackageParser.test.ts` (Measurement-Mapping inkl. mehrsprachige Labels,
@@ -99,6 +140,10 @@ Diese Smoke-Tests dürfen NICHT entfernt oder weichgespült werden ohne Ersatz m
 - KEIN `agency_id`-Pfad aus Provider-Daten in den Importer (selbst „nur als Hint“ NICHT erlaubt).
 - KEIN Auto-Commit nach `analyze` ohne UI-Preview-Confirm.
 - KEINE Cap- oder Dedup-Logik in Parser/Provider duplizieren.
+- KEIN Bypass von `packageImagePersistence.ts` für Bild-Mirroring; insbesondere keine direkten
+  Storage-Uploads aus `packageImporter.ts`, Provider, Parser oder UI.
+- KEIN Aktivieren von `confirmImageRights`/`hasRecentImageRightsConfirmation` für Package-Bild-Persistenz —
+  die Agency hat den Package-Link bewusst gepasted; das Audit-Log läuft pro Bild über `uploadModelPhoto`.
 
 ## I. Mother-Agency-Felder bleiben außerhalb des Imports
 

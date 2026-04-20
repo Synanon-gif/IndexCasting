@@ -182,6 +182,19 @@ export type CommitOptions = {
    * Default: false → bestehende Werte bleiben, nur Lücken werden gefüllt.
    */
   forceUpdateMeasurements?: boolean;
+  /**
+   * Phase 2 — Bild-Mirror.
+   *
+   * Wenn `true`, werden externe Provider-URLs NICHT in `models.portfolio_images`
+   * / `models.polaroids` geschrieben. Stattdessen werden alle Bilder kontrolliert
+   * heruntergeladen, validiert und in unseren Storage hochgeladen
+   * (`model_photos`-Zeilen + Mirror-Rebuild). Damit ist das importierte Model
+   * unabhängig vom externen Provider, sobald der Commit durch ist.
+   *
+   * Default: `false` — bestehende Tests / Legacy-Pfade bleiben unverändert.
+   * Die Agency-UI setzt das Flag explizit auf `true`.
+   */
+  persistImages?: boolean;
 };
 
 export type CommitProgress = {
@@ -196,6 +209,21 @@ export type CommitOutcome = {
   status: 'created' | 'merged' | 'warning' | 'error' | 'skipped';
   modelId?: string;
   reason?: string;
+  /**
+   * Anzahl Bilder, die in unseren Storage persistiert wurden.
+   * Nur gesetzt, wenn `CommitOptions.persistImages === true`.
+   */
+  imagesPersisted?: number;
+  /**
+   * Anzahl Bilder, die für die Persistenz versucht wurden (Portfolio + Polaroids).
+   * Nur gesetzt, wenn `CommitOptions.persistImages === true`.
+   */
+  imagesAttempted?: number;
+  /**
+   * Pro fehlgeschlagenem Bild ein kompakter Reason-String (`<type>#<index>:<reason>`).
+   * Hilft der Agency, partielle Persistenz-Fehler nachzuvollziehen.
+   */
+  imageFailureReasons?: string[];
 };
 
 export type CommitSummary = {
