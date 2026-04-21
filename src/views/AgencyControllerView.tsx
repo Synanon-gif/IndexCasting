@@ -949,6 +949,7 @@ export const AgencyControllerView: React.FC<AgencyControllerViewProps> = ({
             models={fullModels}
             agencyId={currentAgencyId}
             agencyName={currentAgency?.name ?? null}
+            agencyCountry={currentAgency?.country ?? null}
             inviteOrganizationId={agencyOrganizationId ?? profile?.organization_id ?? null}
             onRefresh={refreshAgencyModelLists}
             onRosterRemoveLocal={removeModelFromLocalRoster}
@@ -2878,6 +2879,12 @@ const MyModelsTab: React.FC<{
   models: SupabaseModel[];
   agencyId: string;
   agencyName?: string | null;
+  /**
+   * Free-form country string from `agencies.country`. Forwarded to
+   * `PackageImportPane` to pre-fill the territory input — only when the value
+   * already looks like an ISO-2 code (no auto-mapping of long country names).
+   */
+  agencyCountry?: string | null;
   /** Pass-through for send-invite (model_claim) — disambiguates multi-org bookers. */
   inviteOrganizationId?: string | null;
   onRefresh: () => void;
@@ -2906,6 +2913,7 @@ const MyModelsTab: React.FC<{
   models,
   agencyId,
   agencyName,
+  agencyCountry,
   inviteOrganizationId,
   onRefresh,
   onRosterRemoveLocal,
@@ -5320,8 +5328,17 @@ const MyModelsTab: React.FC<{
         </View>
       )}
 
-      {/* MediaSlide Package Import (Phase 1) — additive, opt-in via link input. */}
-      {agencyId ? <PackageImportPane agencyId={agencyId} onModelsChanged={onRefresh} /> : null}
+      {/* MediaSlide Package Import (Phase 2) — additive, opt-in via link input.
+          We pass `defaultTerritory` so the territory input pre-fills with the
+          agency's home country (only when it already looks like an ISO-2 code,
+          e.g. "AT"; long country names are intentionally NOT auto-mapped). */}
+      {agencyId ? (
+        <PackageImportPane
+          agencyId={agencyId}
+          onModelsChanged={onRefresh}
+          defaultTerritory={agencyCountry ?? null}
+        />
+      ) : null}
 
       {/* Agency-to-Agency Roster Share inbox (recipient entry-point) */}
       {agencyShareOrganizationId ? (

@@ -203,6 +203,81 @@ describe('previewToImportPayload — mapping correctness', () => {
     });
     expect(b.forceUpdateMeasurements).toBe(true);
   });
+
+  // -------------------------------------------------------------------------
+  // Territory forwarding (MAT visibility fix)
+  // -------------------------------------------------------------------------
+  //
+  // Without these, an imported model is created in `models` but stays
+  // INVISIBLE in "My Models" because the roster query
+  // (`getModelsForAgencyFromSupabase`) is fail-closed on
+  // `model_agency_territories`. The UI now requires at least one ISO-2 code
+  // and forwards it through `previewToImportPayload`, which in turn forwards
+  // it to `importModelAndMerge` for both the create and the merge path.
+  // -------------------------------------------------------------------------
+
+  it('forwards territories from CommitOptions, normalises country codes to UPPERCASE', () => {
+    const previews = toPreviewModels([makePayload()]);
+    const payload = previewToImportPayload({
+      preview: previews[0],
+      agencyId: 'agency-1',
+      options: {
+        territories: [
+          { country_code: 'at', agency_id: 'agency-1' },
+          { country_code: 'de', agency_id: 'agency-1' },
+        ],
+      },
+    });
+    expect(payload.territories).toEqual([
+      { country_code: 'AT', agency_id: 'agency-1' },
+      { country_code: 'DE', agency_id: 'agency-1' },
+    ]);
+  });
+
+  it('OVERRIDES any incoming territory.agency_id with the agencyId of the call (defense-in-depth)', () => {
+    // Even if a malicious / buggy caller passes a foreign agency_id alongside
+    // a country code, the resulting territory MUST belong to the calling
+    // agency — otherwise the import would inject claims into a foreign
+    // agency's roster, which RLS shouldn't allow but we don't want to depend
+    // on RLS for this safety property.
+    const previews = toPreviewModels([makePayload()]);
+    const payload = previewToImportPayload({
+      preview: previews[0],
+      agencyId: 'caller-agency',
+      options: {
+        territories: [{ country_code: 'AT', agency_id: 'foreign-agency-DO-NOT-USE' }],
+      },
+    });
+    expect(payload.territories).toEqual([{ country_code: 'AT', agency_id: 'caller-agency' }]);
+  });
+
+  it('drops territories with empty country_code without crashing', () => {
+    const previews = toPreviewModels([makePayload()]);
+    const payload = previewToImportPayload({
+      preview: previews[0],
+      agencyId: 'agency-1',
+      options: {
+        territories: [
+          { country_code: '', agency_id: 'agency-1' },
+          { country_code: '   ', agency_id: 'agency-1' },
+          { country_code: 'GB', agency_id: 'agency-1' },
+        ],
+      },
+    });
+    expect(payload.territories).toEqual([{ country_code: 'GB', agency_id: 'agency-1' }]);
+  });
+
+  it('omits the territories field entirely when no claims are provided (legacy / Native)', () => {
+    const previews = toPreviewModels([makePayload()]);
+    const a = previewToImportPayload({ preview: previews[0], agencyId: 'a-1', options: {} });
+    expect(a.territories).toBeUndefined();
+    const b = previewToImportPayload({
+      preview: previews[0],
+      agencyId: 'a-1',
+      options: { territories: [] },
+    });
+    expect(b.territories).toBeUndefined();
+  });
 });
 
 describe('commitPreview — partial-failure resilience', () => {
