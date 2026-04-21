@@ -416,3 +416,61 @@ describe('commitPreview — persistence is NOT called for skipped models', () =>
     expect(summary.createdCount).toBe(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// 6) imageFetchImpl forwarding (Phase 2 / CORS-Web-Bridge)
+// ---------------------------------------------------------------------------
+
+describe('commitPreview — imageFetchImpl forwarding', () => {
+  /**
+   * Wenn die Web-App `commitPreview` mit einem benutzerdefinierten
+   * `imageFetchImpl` aufruft (Edge-Function-Bridge ueber `package-image-proxy`,
+   * weil der MediaSlide-GCS-Bucket kein CORS sendet), muss dieses fetchImpl
+   * 1:1 in die Persistenz-Optionen weitergereicht werden. Ohne diese
+   * Verdrahtung wuerde `packageImagePersistence` weiterhin global `fetch`
+   * benutzen und im Browser an CORS scheitern (`download_network`).
+   */
+  it('forwards imageFetchImpl into persistImagesImpl options.fetchImpl', async () => {
+    const previews = toPreviewModels([payload()]);
+    const importImpl = jest.fn(async () => ok());
+    const captured: PersistImagesForModelInput[] = [];
+    const persistImagesImpl = jest.fn(async (input: PersistImagesForModelInput) => {
+      captured.push(input);
+      return persistResult({ portfolioPersisted: 2, portfolioAttempted: 2 });
+    });
+    const customFetch = jest.fn() as unknown as typeof fetch;
+
+    await commitPreview({
+      selected: previews,
+      agencyId: 'a',
+      options: { persistImages: true },
+      importImpl,
+      persistImagesImpl,
+      imageFetchImpl: customFetch,
+    });
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0].options?.fetchImpl).toBe(customFetch);
+  });
+
+  it('does NOT set options.fetchImpl when imageFetchImpl is omitted (Native default)', async () => {
+    const previews = toPreviewModels([payload()]);
+    const importImpl = jest.fn(async () => ok());
+    const captured: PersistImagesForModelInput[] = [];
+    const persistImagesImpl = jest.fn(async (input: PersistImagesForModelInput) => {
+      captured.push(input);
+      return persistResult({ portfolioPersisted: 2, portfolioAttempted: 2 });
+    });
+
+    await commitPreview({
+      selected: previews,
+      agencyId: 'a',
+      options: { persistImages: true },
+      importImpl,
+      persistImagesImpl,
+    });
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0].options?.fetchImpl).toBeUndefined();
+  });
+});

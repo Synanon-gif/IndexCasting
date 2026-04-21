@@ -23,6 +23,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Platform,
   StyleSheet,
   Text,
   TextInput,
@@ -31,6 +32,7 @@ import {
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { getProviderForUrl } from '../services/providerRegistry';
+import { createSupabasePackageImageFetchImpl } from '../services/packageImageProxyClient';
 import {
   PACKAGE_IMPORT_LIMITS,
   isParserDriftError,
@@ -217,6 +219,10 @@ export const PackageImportPane: React.FC<Props> = ({ agencyId, onModelsChanged }
         },
         signal: ctrl.signal,
         onProgress: (p) => setCommitProgress(p),
+        // Auf Web routen wir Bild-Downloads über `package-image-proxy`,
+        // weil der MediaSlide-GCS-Bucket kein CORS sendet. Auf Native
+        // bleibt der Direkt-Fetch erhalten (kein CORS, weniger Hops).
+        ...(Platform.OS === 'web' ? { imageFetchImpl: createSupabasePackageImageFetchImpl() } : {}),
       });
       setSummary(result);
       setPhase('done');

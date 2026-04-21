@@ -304,6 +304,15 @@ export async function commitPreview(input: {
   importImpl?: typeof importModelAndMerge;
   /** Test-Hook: ersetze die Bild-Persistenz (sonst {@link persistImagesForPackageImport}). */
   persistImagesImpl?: (input: PersistImagesForModelInput) => Promise<PackageImagePersistResult>;
+  /**
+   * Optionaler `fetch`-Override für die Phase-2-Bild-Downloads.
+   * Wird auf Web genutzt, um Provider-CDNs (z. B. MediaSlide-GCS-Bucket)
+   * über die Edge Function `package-image-proxy` zu tunneln, weil diese
+   * CDNs keinen `Access-Control-Allow-Origin`-Header senden und ein
+   * Direkt-Fetch sonst mit `download_network` (CORS) scheitert.
+   * Auf Native bleibt es `undefined` → klassischer `fetch`.
+   */
+  imageFetchImpl?: typeof fetch;
 }): Promise<CommitSummary> {
   const importer = input.importImpl ?? importModelAndMerge;
   const persistImpl = input.persistImagesImpl ?? persistImagesForPackageImport;
@@ -423,6 +432,7 @@ export async function commitPreview(input: {
             polaroidUrls: preview.polaroid_image_urls,
             options: {
               signal: input.signal,
+              ...(input.imageFetchImpl ? { fetchImpl: input.imageFetchImpl } : {}),
               onImageProgress: (img: PackageImageProgress) =>
                 input.onProgress?.({
                   total,
