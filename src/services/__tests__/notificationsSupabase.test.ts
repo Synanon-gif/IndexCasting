@@ -130,6 +130,35 @@ describe('notificationsSupabase', () => {
     expect(from).not.toHaveBeenCalled();
   });
 
+  // ── Test 1b-cross-with-org: counter-offer pattern (cross-party + org_id) ──
+  // Regression: agencyCounterOfferStore previously sent BOTH user_id (client)
+  // AND organization_id (client_organization_id). The old `!params.organization_id`
+  // guard on `isCrossParty` caused this to fall through to the batched direct
+  // INSERT, which violated the notifications RLS policy (42501). We now
+  // unconditionally route to the RPC whenever target ≠ caller.
+  it('createNotification (cross-party + organization_id) still routes to send_notification RPC', async () => {
+    (supabase.rpc as jest.Mock).mockResolvedValue({ error: null });
+
+    await createNotification({
+      user_id: 'client-user',
+      organization_id: 'client-org',
+      type: 'agency_counter_offer',
+      title: 'Counter offer received',
+      message: 'The agency has proposed a different fee. Please review and respond.',
+      metadata: { option_request_id: 'opt-1', counter_price: 1200, currency: 'EUR' },
+    });
+
+    expect(supabase.rpc).toHaveBeenCalledWith(
+      'send_notification',
+      expect.objectContaining({
+        p_target_user_id: 'client-user',
+        p_type: 'agency_counter_offer',
+      }),
+    );
+    expect(enqueuedRows).toHaveLength(0);
+    expect(from).not.toHaveBeenCalled();
+  });
+
   // ── Test 2: getNotificationsForCurrentUser returns only owned rows ─────────
   it('getNotificationsForCurrentUser returns rows when RLS allows', async () => {
     const mockRows = [

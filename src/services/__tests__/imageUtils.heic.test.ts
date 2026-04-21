@@ -1,22 +1,43 @@
 /**
  * HEIC pipeline tests — Platform.OS = 'web' so `convertHeicToJpegWithStatus`
- * actually attempts the heic2any dynamic import (the previous "do not load on web"
+ * actually attempts the WASM dynamic imports (the previous "do not load on web"
  * guard caused every iPhone HEIC upload to fail in production).
+ *
+ * The function tries three strategies in order: heic-to → heic2any → native
+ * canvas decode. We mock the first two and ensure the third (canvas) is not
+ * exercised in jsdom (no real HEIC decoder).
  */
 jest.mock('react-native', () => ({ Platform: { OS: 'web' } }));
 
-// heic2any cannot run inside jsdom (no Canvas / WebAssembly stubs). We stub the module
-// so the function code path is exercised end-to-end without pulling the 1.4MB lib.
+const heicToFailingHeics = new Set<string>();
+
+jest.mock(
+  'heic-to',
+  () => ({
+    __esModule: true,
+    heicTo: jest.fn(async ({ blob }: { blob: Blob }) => {
+      if ((blob as { size?: number }).size === 0) {
+        throw new Error('ERR_LIBHEIF format not supported');
+      }
+      const name = (blob as File).name ?? '';
+      if (heicToFailingHeics.has(name)) {
+        throw new Error('ERR_LIBHEIF format not supported');
+      }
+      return new Blob(['heic-to-converted'], { type: 'image/jpeg' });
+    }),
+  }),
+  { virtual: true },
+);
+
 jest.mock(
   'heic2any',
   () => ({
     __esModule: true,
     default: jest.fn(async ({ blob }: { blob: Blob }) => {
-      // Empty blobs are treated as "cannot convert" (matches real heic2any behavior).
       if ((blob as { size?: number }).size === 0) {
         throw new Error('empty buffer');
       }
-      return new Blob(['converted'], { type: 'image/jpeg' });
+      return new Blob(['heic2any-converted'], { type: 'image/jpeg' });
     }),
   }),
   { virtual: true },
@@ -43,8 +64,12 @@ describe('imageUtils — HEIC detection', () => {
 });
 
 describe('imageUtils — convertHeicToJpegWithStatus (web)', () => {
-  it('attempts heic2any on web and returns a JPEG File when conversion succeeds', async () => {
-    const buf = new Uint8Array([0xff, 0xd8, 0xff, 0x00]); // non-empty payload
+  beforeEach(() => {
+    heicToFailingHeics.clear();
+  });
+
+  it('attempts heic-to on web and returns a JPEG File when conversion succeeds', async () => {
+    const buf = new Uint8Array([0xff, 0xd8, 0xff, 0x00]);
     const f = new File([buf], 'p.heic', { type: 'image/heic' });
     const r = await convertHeicToJpegWithStatus(f);
     expect(r.conversionFailed).toBe(false);
@@ -53,7 +78,17 @@ describe('imageUtils — convertHeicToJpegWithStatus (web)', () => {
     expect((r.file as File).name).toBe('p.jpg');
   });
 
-  it('returns conversionFailed when the underlying conversion throws (e.g. empty blob)', async () => {
+  it('falls back to heic2any when heic-to throws ERR_LIBHEIF (newer iPhone HEVC)', async () => {
+    const buf = new Uint8Array([0xff, 0xd8, 0xff, 0x00]);
+    heicToFailingHeics.add('iphone-hevc.heic');
+    const f = new File([buf], 'iphone-hevc.heic', { type: 'image/heic' });
+    const r = await convertHeicToJpegWithStatus(f);
+    expect(r.conversionFailed).toBe(false);
+    expect((r.file as File).type).toBe('image/jpeg');
+    expect((r.file as File).name).toBe('iphone-hevc.jpg');
+  });
+
+  it('returns conversionFailed when every strategy fails (e.g. empty blob)', async () => {
     const f = new File([], 'p.heic', { type: 'image/heic' });
     const r = await convertHeicToJpegWithStatus(f);
     expect(r.conversionFailed).toBe(true);

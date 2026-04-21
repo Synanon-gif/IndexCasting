@@ -51,41 +51,62 @@ export function isHeicOrHeifFile(file: File | Blob): boolean {
  * Converts HEIC/HEIF to JPEG. Non-HEIC files are returned with conversionFailed: false.
  * Callers can show UX when conversionFailed is true (browser cannot process this file).
  *
- * Works on:
- *   - Web (browser): dynamic-imports `heic2any` (browser-only, uses Canvas + WebAssembly).
- *   - Native (iOS/Android via Capacitor/Expo Web): same dynamic import — heic2any only
- *     runs in WebView contexts.
+ * Multi-strategy converter (in order):
+ *   1. `heic-to` (libheif 1.21.x — supports modern iPhone HEVC HEIC variants)
+ *   2. `heic2any`  (libheif 1.16 — older fallback for legacy HEIC)
+ *   3. Native `<img>` decode + canvas re-encode (Safari decodes HEIC natively;
+ *      some Chromium builds via system codecs)
  *
- * Defense-in-depth:
- *   - If `heic2any` cannot be imported (e.g. no Canvas in test env, SSR, ad-blocker), we
- *     return `conversionFailed: true` so callers can render explicit UX rather than
- *     silently uploading an unviewable HEIC.
- *   - Empty buffers / corrupt files surface as `conversionFailed: true` (heic2any throws).
- *   - On true React Native (no DOM Canvas) `Platform.OS === 'ios' | 'android'`, heic2any
- *     is not loaded and we return `conversionFailed: true` — the native picker should
- *     have already converted to JPEG, but if not, callers must surface the failure.
+ * Why three strategies: real-world iPhones produce HEIC files that fail libheif
+ * 1.16 ("ERR_LIBHEIF format not supported"), and even libheif 1.21 occasionally
+ * stumbles on burst/multi-frame containers. The `<img>` fallback captures
+ * everything Safari can render natively, which closes the last gap on iOS-uploaded
+ * photos viewed from a Mac.
+ *
+ * On true React Native (`Platform.OS === 'ios' | 'android'`) we still bail —
+ * the native picker should have already produced a JPEG, and bundling libheif
+ * WASM into the RN binary is wasteful.
  */
 export async function convertHeicToJpegWithStatus(file: File | Blob): Promise<HeicConvertResult> {
   if (!isHeicOrHeifFile(file)) {
     return { file, conversionFailed: false };
   }
 
-  // True React Native (not the web shim) cannot run heic2any — bail without attempting.
   if (Platform.OS === 'ios' || Platform.OS === 'android') {
     return { file, conversionFailed: true };
   }
 
-  // Web (and Capacitor WebView, which still reports OS='web' via react-native-web).
-  // Empty / zero-byte files cannot be converted — short-circuit so test doubles and
-  // adversarial inputs don't crash heic2any internally.
   const sizeOk = (file as File).size === undefined ? true : (file as File).size > 0;
   if (!sizeOk) {
     return { file, conversionFailed: true };
   }
 
-  let heic2any:
-    | ((opts: { blob: Blob; toType?: string; quality?: number }) => Promise<Blob | Blob[]>)
-    | null = null;
+  const originalName = file instanceof File ? file.name : 'photo.heic';
+  const jpegName = originalName.replace(/\.hei[cf]$/i, '.jpg');
+  const wrap = (blob: Blob): HeicConvertResult => ({
+    file: new File([blob], jpegName, { type: 'image/jpeg' }),
+    conversionFailed: false,
+  });
+
+  // ── Strategy 1: heic-to (libheif 1.21.x, current iPhone HEVC support) ─────
+  try {
+    const mod = (await import('heic-to')) as {
+      heicTo?: (opts: { blob: Blob; type?: string; quality?: number }) => Promise<Blob>;
+      default?: {
+        heicTo?: (opts: { blob: Blob; type?: string; quality?: number }) => Promise<Blob>;
+      };
+    };
+    const heicTo =
+      mod.heicTo ?? (mod.default && typeof mod.default === 'object' ? mod.default.heicTo : null);
+    if (heicTo) {
+      const converted = await heicTo({ blob: file, type: 'image/jpeg', quality: 0.92 });
+      if (converted && (converted as Blob).size > 0) return wrap(converted as Blob);
+    }
+  } catch (e) {
+    console.warn('convertHeicToJpegWithStatus: heic-to failed, trying heic2any', e);
+  }
+
+  // ── Strategy 2: heic2any (older libheif, kept as compatibility fallback) ──
   try {
     const mod = (await import('heic2any')) as
       | {
@@ -96,28 +117,60 @@ export async function convertHeicToJpegWithStatus(file: File | Blob): Promise<He
           }) => Promise<Blob | Blob[]>;
         }
       | ((opts: { blob: Blob; toType?: string; quality?: number }) => Promise<Blob | Blob[]>);
-    heic2any = (typeof mod === 'function' ? mod : mod.default) ?? null;
+    const heic2any = (typeof mod === 'function' ? mod : mod.default) ?? null;
+    if (heic2any) {
+      const converted = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.92 });
+      const resultBlob = Array.isArray(converted) ? converted[0] : converted;
+      if (resultBlob && (resultBlob as Blob).size > 0) return wrap(resultBlob as Blob);
+    }
   } catch (e) {
-    console.warn('convertHeicToJpegWithStatus: heic2any module failed to load', e);
-    return { file, conversionFailed: true };
+    console.warn('convertHeicToJpegWithStatus: heic2any failed, trying native decode', e);
   }
 
-  if (!heic2any) {
-    return { file, conversionFailed: true };
-  }
-
+  // ── Strategy 3: native browser HEIC decode via <img> + canvas ─────────────
+  // Safari/macOS Chrome can decode HEIC via system frameworks; this path
+  // succeeds where libheif WASM does not (e.g. Apple HEIC/HEIC-ProRes).
   try {
-    const converted = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.92 });
-    const resultBlob = Array.isArray(converted) ? converted[0] : converted;
-    const originalName = file instanceof File ? file.name : 'photo.heic';
-    const jpegName = originalName.replace(/\.hei[cf]$/i, '.jpg');
-    return {
-      file: new File([resultBlob], jpegName, { type: 'image/jpeg' }),
-      conversionFailed: false,
-    };
+    const nativeBlob = await decodeWithCanvas(file);
+    if (nativeBlob && nativeBlob.size > 0) return wrap(nativeBlob);
   } catch (e) {
-    console.error('convertHeicToJpegWithStatus: conversion failed', e);
-    return { file, conversionFailed: true };
+    console.error('convertHeicToJpegWithStatus: native decode failed', e);
+  }
+
+  console.error('convertHeicToJpegWithStatus: all conversion strategies failed', {
+    name: originalName,
+    type: file.type,
+    size: (file as File).size,
+  });
+  return { file, conversionFailed: true };
+}
+
+/**
+ * Decodes any browser-renderable image (including HEIC on Safari) via a
+ * detached <img> element and re-encodes the result as a JPEG via canvas.
+ */
+async function decodeWithCanvas(file: File | Blob): Promise<Blob | null> {
+  if (typeof document === 'undefined' || typeof URL === 'undefined') return null;
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement | null>((resolve) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => resolve(null);
+      el.src = url;
+    });
+    if (!img || img.naturalWidth === 0 || img.naturalHeight === 0) return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(img, 0, 0);
+    return await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.92),
+    );
+  } finally {
+    URL.revokeObjectURL(url);
   }
 }
 

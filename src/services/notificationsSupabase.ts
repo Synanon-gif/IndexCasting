@@ -86,11 +86,21 @@ export async function createNotification(params: CreateNotificationParams): Prom
     const callerId = user?.id ?? null;
     const targetUserId = params.user_id ?? null;
 
-    // Cross-party notification (sender ≠ target, no org scope):
-    // Use the SECURITY DEFINER RPC that validates the sender↔target relationship.
-    // This prevents spam/phishing across unrelated organizations.
-    const isCrossParty =
-      targetUserId !== null && targetUserId !== callerId && !params.organization_id;
+    // Cross-party notification: caller ≠ target user.
+    // Always route through the SECURITY DEFINER RPC `send_notification`,
+    // which validates the sender↔target relationship and inserts the row
+    // server-side. This prevents both spam/phishing across unrelated
+    // organizations AND the RLS violation that occurred when callers
+    // accidentally set BOTH user_id and organization_id (e.g. the agency
+    // counter-offer notification, which sets target = client_id and
+    // organization_id = client_organization_id — neither of those satisfies
+    // the `notifications_insert_self_or_org` policy: the agency caller is not
+    // a member of the client organization, and the row is not self-targeted).
+    // The previous `!params.organization_id` guard caused a 42501 RLS error
+    // and dropped the notification entirely. The RPC ignores
+    // `organization_id` (cross-party rows are always direct user_id), so we
+    // simply forward the metadata.
+    const isCrossParty = targetUserId !== null && targetUserId !== callerId;
 
     if (isCrossParty) {
       const { error: rpcError } = await supabase.rpc('send_notification', {
