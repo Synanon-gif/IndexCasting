@@ -61,31 +61,40 @@ function isFatalClaimError(err: string | undefined): boolean {
     err === 'token_expired' ||
     err === 'token_already_used' ||
     err === 'token_not_found' ||
+    err === 'model_already_claimed_by_other_user' ||
     err === 'no_result' ||
-    (typeof err === 'string' && /token_not_found|token_expired|token_already_used/i.test(err))
+    (typeof err === 'string' &&
+      /token_not_found|token_expired|token_already_used|model_already_claimed_by_other_user/i.test(
+        err,
+      ))
   );
 }
 
 function isAlreadyDoneClaimError(err: string | undefined): boolean {
   if (!err) return false;
+  // `model_already_claimed_by_other_user` (20261205 hardening) is a FATAL,
+  // not "already done" — the current user is signing in with the wrong
+  // account. Make sure the broader /already_claimed/ regex never swallows it.
+  if (/model_already_claimed_by_other_user/i.test(err)) return false;
   return /already_linked|already_claimed/i.test(err);
 }
 
-function showInviteAlerts(
-  err: string | undefined,
-  signOut?: () => void | Promise<void>,
-): void {
+function showInviteAlerts(err: string | undefined, signOut?: () => void | Promise<void>): void {
   if (err === 'email_mismatch') {
-    Alert.alert(
-      uiCopy.inviteErrors.title,
-      uiCopy.inviteErrors.emailMismatch,
-      [
-        ...(signOut
-          ? [{ text: uiCopy.inviteErrors.signOutBtn, onPress: () => { void signOut(); }, style: 'destructive' as const }]
-          : []),
-        { text: uiCopy.inviteErrors.dismissBtn, style: 'cancel' },
-      ],
-    );
+    Alert.alert(uiCopy.inviteErrors.title, uiCopy.inviteErrors.emailMismatch, [
+      ...(signOut
+        ? [
+            {
+              text: uiCopy.inviteErrors.signOutBtn,
+              onPress: () => {
+                void signOut();
+              },
+              style: 'destructive' as const,
+            },
+          ]
+        : []),
+      { text: uiCopy.inviteErrors.dismissBtn, style: 'cancel' },
+    ]);
   } else if (err === 'invalid_or_expired') {
     Alert.alert(uiCopy.inviteErrors.title, uiCopy.inviteErrors.expiredOrUsed);
   } else if (err === 'already_member_of_another_org') {
@@ -98,7 +107,12 @@ function showInviteAlerts(
 }
 
 function showClaimAlerts(err: string | undefined): void {
-  if (isFatalClaimError(err)) {
+  if (
+    err === 'model_already_claimed_by_other_user' ||
+    (typeof err === 'string' && /model_already_claimed_by_other_user/i.test(err))
+  ) {
+    Alert.alert(uiCopy.modelClaimErrors.title, uiCopy.modelClaimErrors.alreadyClaimedByOther);
+  } else if (isFatalClaimError(err)) {
     Alert.alert(uiCopy.modelClaimErrors.title, uiCopy.modelClaimErrors.expiredOrUsed);
   } else if (err) {
     Alert.alert(uiCopy.modelClaimErrors.title, uiCopy.modelClaimErrors.genericFail);
@@ -120,7 +134,9 @@ export type FinalizePendingOptions = {
  */
 async function shouldSkipClaimForCurrentUser(): Promise<boolean> {
   try {
-    const { data: { session } } = await supabase.auth.getSession();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
     if (!session?.user) return false;
     const { data } = await supabase
       .from('profiles')
@@ -129,11 +145,17 @@ async function shouldSkipClaimForCurrentUser(): Promise<boolean> {
       .maybeSingle();
     if (!data) return false;
     if (data.is_admin) {
-      console.warn('[finalizePendingInviteOrClaim] skipping claim — current user is admin; token preserved');
+      console.warn(
+        '[finalizePendingInviteOrClaim] skipping claim — current user is admin; token preserved',
+      );
       return true;
     }
     if (data.role === 'agent' || data.role === 'client') {
-      console.warn('[finalizePendingInviteOrClaim] skipping claim — current user role is', data.role, '; token preserved');
+      console.warn(
+        '[finalizePendingInviteOrClaim] skipping claim — current user role is',
+        data.role,
+        '; token preserved',
+      );
       return true;
     }
     return false;
@@ -216,7 +238,8 @@ export function finalizePendingInviteOrClaim(
         if (isAlreadyDoneInviteError(out.invite.error)) {
           out.invite.state = 'already_done';
           await persistInviteToken(null);
-          if (opts.showUiAlerts && out.invite.error) showInviteAlerts(out.invite.error, opts.signOut);
+          if (opts.showUiAlerts && out.invite.error)
+            showInviteAlerts(out.invite.error, opts.signOut);
         } else if (isFatalInviteError(out.invite.error)) {
           out.invite.state = 'fatal';
           await persistInviteToken(null);
@@ -232,7 +255,8 @@ export function finalizePendingInviteOrClaim(
             flow: 'agency_client_invite',
             error: out.invite.error,
           });
-          if (opts.showUiAlerts && out.invite.error) showInviteAlerts(out.invite.error, opts.signOut);
+          if (opts.showUiAlerts && out.invite.error)
+            showInviteAlerts(out.invite.error, opts.signOut);
         }
         // Do NOT return here — a pending model claim must still be attempted
         // even when the invite fails (they are independent flows).
@@ -253,7 +277,10 @@ export function finalizePendingInviteOrClaim(
         try {
           await opts.onSuccessReloadProfile?.();
         } catch (e) {
-          console.error('[finalizePendingInviteOrClaim] onSuccessReloadProfile after invite chain error:', e);
+          console.error(
+            '[finalizePendingInviteOrClaim] onSuccessReloadProfile after invite chain error:',
+            e,
+          );
         }
       }
       if (out.claim.ok && out.claim.modelId && out.claim.agencyId) {
@@ -272,7 +299,10 @@ export function finalizePendingInviteOrClaim(
         try {
           await opts.onSuccessReloadProfile?.();
         } catch (e) {
-          console.error('[finalizePendingInviteOrClaim] onSuccessReloadProfile after claim error:', e);
+          console.error(
+            '[finalizePendingInviteOrClaim] onSuccessReloadProfile after claim error:',
+            e,
+          );
         }
         if (out.claim.modelId && out.claim.agencyId) {
           emitInviteClaimSuccess({

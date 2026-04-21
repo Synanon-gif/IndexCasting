@@ -5519,6 +5519,51 @@ const MyModelsTab: React.FC<{
                       }) || '—'}
                       {m.height ? ` · ${m.height} cm` : ''}
                     </Text>
+                    {/* Account status indicator on the gallery tile.
+                        Mirrors the list-view badge (single source of truth:
+                        models.user_id) so agency staff can scan account
+                        coverage at a glance without switching to list view. */}
+                    {m.user_id ? (
+                      <Text
+                        style={{
+                          ...typography.label,
+                          fontSize: 9,
+                          color: colors.accentGreen,
+                          marginTop: 2,
+                          letterSpacing: 0.3,
+                        }}
+                        numberOfLines={1}
+                      >
+                        Account ✓
+                      </Text>
+                    ) : m.agency_relationship_status === 'pending_link' ||
+                      (!m.user_id && m.email) ? (
+                      <Text
+                        style={{
+                          ...typography.label,
+                          fontSize: 9,
+                          color: colors.warning,
+                          marginTop: 2,
+                          letterSpacing: 0.3,
+                        }}
+                        numberOfLines={1}
+                      >
+                        Invite pending
+                      </Text>
+                    ) : (
+                      <Text
+                        style={{
+                          ...typography.label,
+                          fontSize: 9,
+                          color: colors.textSecondary,
+                          marginTop: 2,
+                          letterSpacing: 0.3,
+                        }}
+                        numberOfLines={1}
+                      >
+                        No account
+                      </Text>
+                    )}
                   </TouchableOpacity>
                 );
               })}
@@ -5707,6 +5752,42 @@ const MyModelsTab: React.FC<{
                       </Text>
                     </View>
                   )}
+                  {/* Account status badge — single source of truth: models.user_id.
+                      Positive (Account ✓) when linked, warning + Resend when pending,
+                      neutral muted text when no email & no user (import-only record).
+                      Designed to be visually quiet so it doesn't dominate the row. */}
+                  {m.user_id ? (
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: spacing.xs,
+                        marginTop: 2,
+                      }}
+                    >
+                      <View
+                        style={{
+                          paddingHorizontal: 6,
+                          paddingVertical: 1,
+                          borderRadius: 8,
+                          backgroundColor: colors.accentGreen + '22',
+                          borderWidth: 1,
+                          borderColor: colors.accentGreen,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            ...typography.label,
+                            fontSize: 9,
+                            color: colors.accentGreen,
+                            letterSpacing: 0.3,
+                          }}
+                        >
+                          Account ✓
+                        </Text>
+                      </View>
+                    </View>
+                  ) : null}
                   {(m.agency_relationship_status === 'pending_link' || (!m.user_id && m.email)) && (
                     <View
                       style={{
@@ -5741,6 +5822,21 @@ const MyModelsTab: React.FC<{
                         </TouchableOpacity>
                       )}
                     </View>
+                  )}
+                  {/* Import-only models (no user_id AND no email): explicit
+                      "no account" hint so the agency knows they cannot send
+                      an invite link until they add an email. */}
+                  {!m.user_id && !m.email && m.agency_relationship_status !== 'pending_link' && (
+                    <Text
+                      style={{
+                        ...typography.label,
+                        fontSize: 9,
+                        color: colors.textSecondary,
+                        marginTop: 2,
+                      }}
+                    >
+                      No account · add email to invite
+                    </Text>
                   )}
                 </View>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, maxWidth: 80 }}>
@@ -5950,7 +6046,7 @@ const MyModelsTab: React.FC<{
           </View>
 
           <View style={s.apiSection}>
-            <Text style={s.sectionLabel}>Import from Link</Text>
+            <Text style={s.sectionLabel}>Import from Link (direct merge — no preview)</Text>
             <Text
               style={{
                 ...typography.body,
@@ -5961,6 +6057,11 @@ const MyModelsTab: React.FC<{
             >
               Paste a URL that returns a JSON model profile (name, height, measurements, photos). If
               a profile with the same email or Mediaslide ID already exists it will be merged.
+              {'\n\n'}
+              <Text style={{ color: colors.warning }}>Heads up:</Text> this skips the preview step.
+              Models are merged immediately. For MediaSlide package URLs use{' '}
+              <Text style={{ fontWeight: '600' }}>“Import MediaSlide Package”</Text> at the top of
+              this tab — it lets you review and pick rows before committing.
             </Text>
             <View style={{ flexDirection: 'row', gap: spacing.sm, alignItems: 'center' }}>
               <TextInput
