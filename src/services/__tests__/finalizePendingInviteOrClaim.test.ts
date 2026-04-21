@@ -1,4 +1,6 @@
-const mockMaybeSingle = jest.fn().mockResolvedValue({ data: { role: 'model', is_admin: false }, error: null });
+const mockMaybeSingle = jest
+  .fn()
+  .mockResolvedValue({ data: { role: 'model', is_admin: false }, error: null });
 const mockEq = jest.fn().mockReturnValue({ maybeSingle: mockMaybeSingle });
 const mockSelect = jest.fn().mockReturnValue({ eq: mockEq });
 
@@ -8,7 +10,9 @@ jest.mock('../../../lib/supabase', () => ({
     from: jest.fn().mockReturnValue({ select: mockSelect }),
     auth: {
       getUser: jest.fn(() => Promise.resolve({ data: { user: { id: 'user-1' } }, error: null })),
-      getSession: jest.fn(() => Promise.resolve({ data: { session: { user: { id: 'user-1' } } }, error: null })),
+      getSession: jest.fn(() =>
+        Promise.resolve({ data: { session: { user: { id: 'user-1' } } }, error: null }),
+      ),
     },
   },
 }));
@@ -220,12 +224,58 @@ describe('finalizePendingInviteOrClaim', () => {
 
   it('skips claim when current user is agent (token preserved)', async () => {
     readModelClaimToken.mockResolvedValue('claim_tok');
-    mockMaybeSingle.mockResolvedValueOnce({ data: { role: 'agent', is_admin: false }, error: null });
+    mockMaybeSingle.mockResolvedValueOnce({
+      data: { role: 'agent', is_admin: false },
+      error: null,
+    });
 
     const r = await finalizePendingInviteOrClaim({});
 
     expect(claimModelByToken).not.toHaveBeenCalled();
     expect(r.claim.attempted).toBe(false);
     expect(persistModelClaimToken).not.toHaveBeenCalledWith(null);
+  });
+
+  /**
+   * 20261205 hardening: claim_model_by_token now raises
+   * `model_already_claimed_by_other_user` when the target models row is
+   * already linked to a DIFFERENT auth user. This must be classified as a
+   * FATAL claim error (token cleared, no retry loop), and the user-facing
+   * Alert message must be the dedicated copy — not the generic expired/used
+   * one — so the model knows to sign in with the original email instead of
+   * spamming retry.
+   */
+  it('classifies model_already_claimed_by_other_user as fatal and clears the claim token', async () => {
+    readModelClaimToken.mockResolvedValue('claim_tok');
+    claimModelByToken.mockResolvedValue({
+      ok: false,
+      error: 'model_already_claimed_by_other_user',
+    });
+
+    const r = await finalizePendingInviteOrClaim({});
+
+    expect(claimModelByToken).toHaveBeenCalledWith('claim_tok');
+    expect(r.claim.attempted).toBe(true);
+    expect(r.claim.ok).toBe(false);
+    expect(r.claim.state).toBe('fatal');
+    expect(r.claim.error).toBe('model_already_claimed_by_other_user');
+    // Token cleared on fatal — never retried automatically.
+    expect(persistModelClaimToken).toHaveBeenCalledWith(null);
+  });
+
+  it('classifies wrapped Postgres error message containing model_already_claimed_by_other_user as fatal', async () => {
+    readModelClaimToken.mockResolvedValue('claim_tok');
+    claimModelByToken.mockResolvedValue({
+      ok: false,
+      // Real-world Supabase RPC errors arrive with prefix text, e.g.
+      // "Postgres error: model_already_claimed_by_other_user". Make sure the
+      // regex branch catches that too so the fatal path always wins.
+      error: 'PostgrestError: model_already_claimed_by_other_user',
+    });
+
+    const r = await finalizePendingInviteOrClaim({});
+
+    expect(r.claim.state).toBe('fatal');
+    expect(persistModelClaimToken).toHaveBeenCalledWith(null);
   });
 });

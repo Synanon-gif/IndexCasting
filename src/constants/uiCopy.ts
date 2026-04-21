@@ -489,6 +489,8 @@ export const uiCopy = {
     title: 'Invitation Error',
     expiredOrUsed:
       'This model invitation link has already been used or has expired. Please ask your agency for a new link.',
+    alreadyClaimedByOther:
+      'This model profile is already linked to a different account. If this is your profile, please sign in with the email address you used originally — or ask your agency to send a new invite to the correct address.',
     genericFail: 'Could not link your model profile. Please try again or contact your agency.',
     dismissBtn: 'OK',
   },
