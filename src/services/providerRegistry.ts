@@ -8,12 +8,26 @@
  * KEIN State außer dem (per Test überschreibbaren) Provider-Array.
  */
 
+import { Platform } from 'react-native';
 import type { PackageProvider } from './packageImportTypes';
 import { createMediaslidePackageProvider } from './mediaslidePackageProvider';
 import { createNetwalkPackageProvider } from './netwalkPackageProvider';
+import { createSupabaseMediaslideProxyInvoker } from './mediaslidePackageProxyClient';
 
+/**
+ * Web-Builds MÜSSEN den server-seitigen Proxy nutzen, weil MediaSlide keine
+ * `Access-Control-Allow-Origin`-Header sendet. Native (iOS/Android/Tests) kann
+ * weiterhin direkt fetchen, da dort kein CORS-Constraint greift. Sollte in
+ * Zukunft auch Native den Proxy nutzen wollen (z. B. um anonymen Datenverkehr
+ * über unseren Server zu zwingen), reicht es, den Build-Branch hier zu
+ * vereinheitlichen — Provider/Importer/UI bleiben identisch.
+ */
 const DEFAULT_PROVIDERS: PackageProvider[] = [
-  createMediaslidePackageProvider(),
+  Platform.OS === 'web'
+    ? createMediaslidePackageProvider({
+        proxyInvoker: createSupabaseMediaslideProxyInvoker(),
+      })
+    : createMediaslidePackageProvider(),
   createNetwalkPackageProvider(),
 ];
 

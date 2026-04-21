@@ -29,11 +29,41 @@ and stage up to 50 models for review before any DB write happens.
 | Layer | File | Responsibility |
 | --- | --- | --- |
 | Provider-neutral types | [`src/services/packageImportTypes.ts`](../src/services/packageImportTypes.ts) | `ProviderImportPayload`, `PreviewModel`, `CommitSummary`, hard image caps. |
-| HTTP transport | [`src/services/mediaslidePackageFetcher.ts`](../src/services/mediaslidePackageFetcher.ts) | Cookie jar (PHPSESSID), 10 s timeout, 2× retry, capability-hash redaction in logs. |
+| HTTP transport | [`src/services/mediaslidePackageFetcher.ts`](../src/services/mediaslidePackageFetcher.ts) | Cookie jar (PHPSESSID), 10 s timeout, 2× retry, capability-hash redaction in logs. Two transport modes: direct `fetch` (Native/tests) and `proxyInvoker` (Web). |
+| Web proxy bridge | [`src/services/mediaslidePackageProxyClient.ts`](../src/services/mediaslidePackageProxyClient.ts) | Lazy-resolved Supabase-`functions.invoke()` wrapper. Übersetzt Edge-Fehler in stabile `package_*`-Codes. |
+| Server-side proxy | [`supabase/functions/mediaslide-package-proxy/index.ts`](../supabase/functions/mediaslide-package-proxy/index.ts) | JWT-Auth + Agency-Membership-Check + URL-Allowlist (`*.mediaslide.com/package/(view\|viewBook)`); leitet GETs an MediaSlide weiter und gibt Body + Set-Cookie an den Browser zurück. Pflicht im Web, weil MediaSlide keine `Access-Control-Allow-Origin`-Header sendet. |
 | DOM parser (pure) | [`src/services/mediaslidePackageParser.ts`](../src/services/mediaslidePackageParser.ts) | Stable extraction via `data-model-id`, `translate="no"`, `.measurementElement`, GCS URL pattern. |
 | MediaSlide adapter | [`src/services/mediaslidePackageProvider.ts`](../src/services/mediaslidePackageProvider.ts) | Combines fetcher + parser; classifies albums into PORTFOLIO / POLAROIDS / extra. |
 | Generic importer | [`src/services/packageImporter.ts`](../src/services/packageImporter.ts) | Provider-neutral: dedup, hard image caps, mapping → `importModelAndMerge`, partial-failure summary. |
 | Agency UI | [`src/components/PackageImportPane.tsx`](../src/components/PackageImportPane.tsx) | Multi-step state machine `idle → analyzing → previewing → committing → done`. |
+
+### Browser CORS — why the proxy exists
+
+MediaSlide-Tenants (`https://*.mediaslide.com/package/...`) liefern **keinen**
+`Access-Control-Allow-Origin`-Header zurück. Ein direkter `fetch()` aus
+`https://www.index-casting.com` schlägt deshalb mit `net::ERR_FAILED` /
+„blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present“
+fehl, **bevor** unsere Retry-Logik überhaupt greifen kann.
+
+Lösung: Im Web-Build wird der Fetcher mit `proxyInvoker` instanziiert
+(`providerRegistry.ts`, `Platform.OS === 'web'`-Branch). Jeder Upstream-Request
+geht dann als POST `{ url, cookie?, referer? }` an die Edge Function
+`mediaslide-package-proxy`, die das Request server-seitig durchführt
+(kein CORS) und Body + Set-Cookie zurückgibt. Der `TinyCookieJar` lebt
+weiterhin im Browser, sodass die PHPSESSID zwischen Listen- und Book-
+Requests erhalten bleibt.
+
+Sicherheits-Constraints der Edge Function:
+- JWT-Auth Pflicht (kein Open-Proxy).
+- Caller MUSS Mitglied einer `agency`-Org sein (`get_my_org_context`).
+- URL-Allowlist: Host = `*.mediaslide.com`; Pfad = `/package/view/<digits>/<hex>/<digits>/<hex>` ODER `/package/viewBook` mit Pflicht-Query-Params.
+- Method = GET only; Body-Cap 5 MB; Timeout 12 s.
+- Capability-Hashes werden in Logs maskiert (`/REDACTED`).
+- CORS auf Index-Casting-Origins beschränkt.
+
+Native-Builds (iOS/Android) bleiben am direkten `fetch`-Pfad — dort gibt es
+keinen Same-Origin-Constraint und der Proxy würde nur Latenz und Quota
+unnötig kosten.
 
 ### Image persistence — Phase 1 vs Phase 2 (decision matrix)
 
