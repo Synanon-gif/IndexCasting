@@ -27,9 +27,26 @@
 
 jest.mock('../../../lib/supabase', () => ({
   supabase: {
-    from: jest.fn(() => ({
-      update: jest.fn(() => ({ eq: jest.fn(async () => ({ error: null })) })),
-    })),
+    from: jest.fn(() => {
+      // Chainable stub good enough for both code paths exercised under test:
+      //  - `clearPreviousPackagePhotosForModelDefault` does
+      //    `from('model_photos').select('id, url').eq(...).eq(...).eq(...)`
+      //    and AWAITs the result. Return [] = nothing to clear.
+      //  - `updatePhotoSourceFields` does
+      //    `from('model_photos').update({ ... }).eq('id', photoId)` and AWAITs.
+      const eqResolved = Promise.resolve({ data: [], error: null });
+      const eq = jest.fn(() => ({
+        eq: jest.fn(() => ({
+          eq: jest.fn(() => eqResolved),
+        })),
+        then: (...args: unknown[]) =>
+          (eqResolved as unknown as Promise<unknown>).then(...(args as [() => unknown])),
+      }));
+      return {
+        select: jest.fn(() => ({ eq })),
+        update: jest.fn(() => ({ eq: jest.fn(async () => ({ error: null })) })),
+      };
+    }),
   },
 }));
 
@@ -178,6 +195,165 @@ const POLAROID_URL = (n: number) => `https://cdn.example.test/polaroid/${n}.jpg`
 // ---------------------------------------------------------------------------
 // 1) Happy path — full persistence, mirror rebuild, ordering
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// 0) Re-import idempotency — bestehende Photos desselben Packages werden
+//    vor dem Persist-Lauf abgeräumt, sodass ein Re-Import keine Duplikate
+//    erzeugt. Eigene Uploads + Photos anderer Packages bleiben unangetastet.
+// ---------------------------------------------------------------------------
+
+describe('persistImagesForPackageImport — re-import idempotency', () => {
+  it('calls clearPreviousPackagePhotosImpl with (modelId, provider, providerExternalId) and counts deletions', async () => {
+    const url1 = PORTFOLIO_URL(1);
+    const { fetchImpl } = makeFetch({ responses: { [url1]: { contentType: 'image/jpeg' } } });
+    const { uploadImpl } = makeUpload();
+    const { addPhotoImpl } = makeAddPhoto();
+    const rebuilds = makeRebuilds();
+
+    const clearArgs: Array<{ modelId: string; provider: string; providerExternalId: string }> = [];
+    const clearPreviousPackagePhotosImpl = jest.fn(async (args) => {
+      clearArgs.push(args);
+      return { deletedCount: 7, deletionFailures: 0 };
+    });
+
+    const res = await persistImagesForPackageImport({
+      modelId: 'model-X',
+      provider: 'mediaslide',
+      providerExternalId: 'MS-X',
+      portfolioUrls: [url1],
+      polaroidUrls: [],
+      options: {
+        fetchImpl,
+        uploadImpl,
+        addPhotoImpl,
+        ...rebuilds,
+        clearPreviousPackagePhotosImpl,
+      },
+    });
+
+    expect(clearPreviousPackagePhotosImpl).toHaveBeenCalledTimes(1);
+    expect(clearArgs[0]).toEqual({
+      modelId: 'model-X',
+      provider: 'mediaslide',
+      providerExternalId: 'MS-X',
+    });
+    expect(res.previousPackagePhotosCleared).toBe(7);
+    expect(res.previousPackagePhotosClearFailures).toBe(0);
+    expect(res.portfolioPersisted).toBe(1);
+  });
+
+  it('skips cleanup when clearPreviousPackagePhotos:false (legacy/test override)', async () => {
+    const url1 = PORTFOLIO_URL(1);
+    const { fetchImpl } = makeFetch({ responses: { [url1]: { contentType: 'image/jpeg' } } });
+    const { uploadImpl } = makeUpload();
+    const { addPhotoImpl } = makeAddPhoto();
+    const rebuilds = makeRebuilds();
+    const clearPreviousPackagePhotosImpl = jest.fn();
+
+    const res = await persistImagesForPackageImport({
+      modelId: 'model-X',
+      provider: 'mediaslide',
+      providerExternalId: 'MS-X',
+      portfolioUrls: [url1],
+      polaroidUrls: [],
+      options: {
+        fetchImpl,
+        uploadImpl,
+        addPhotoImpl,
+        ...rebuilds,
+        clearPreviousPackagePhotos: false,
+        clearPreviousPackagePhotosImpl,
+      },
+    });
+
+    expect(clearPreviousPackagePhotosImpl).not.toHaveBeenCalled();
+    expect(res.previousPackagePhotosCleared).toBe(0);
+    expect(res.previousPackagePhotosClearFailures).toBe(0);
+  });
+
+  it('does not block the persist run when cleanup itself throws — failure surfaces in counter', async () => {
+    const url1 = PORTFOLIO_URL(1);
+    const { fetchImpl } = makeFetch({ responses: { [url1]: { contentType: 'image/jpeg' } } });
+    const { uploadImpl } = makeUpload();
+    const { addPhotoImpl } = makeAddPhoto();
+    const rebuilds = makeRebuilds();
+
+    const clearPreviousPackagePhotosImpl = jest.fn(async () => {
+      throw new Error('storage_500');
+    });
+
+    const res = await persistImagesForPackageImport({
+      modelId: 'model-X',
+      provider: 'mediaslide',
+      providerExternalId: 'MS-X',
+      portfolioUrls: [url1],
+      polaroidUrls: [],
+      options: {
+        fetchImpl,
+        uploadImpl,
+        addPhotoImpl,
+        ...rebuilds,
+        clearPreviousPackagePhotosImpl,
+      },
+    });
+
+    expect(res.previousPackagePhotosClearFailures).toBe(1);
+    // The new photo was still persisted — cleanup failure is non-fatal.
+    expect(res.portfolioPersisted).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 0b) Bounded-parallel image downloads — for large 50-model imports the
+//     persistence pipeline runs N (default 4) downloads in parallel inside
+//     each album, but persists rows in deterministic INDEX order so that
+//     `model_photos.sort_order` stays monotonic and matches preview order.
+// ---------------------------------------------------------------------------
+
+describe('persistImagesForPackageImport — bounded-parallel downloads', () => {
+  it('parallel-downloads up to imageDownloadConcurrency images and addPhoto runs in INDEX order', async () => {
+    const portfolioUrls = [PORTFOLIO_URL(1), PORTFOLIO_URL(2), PORTFOLIO_URL(3), PORTFOLIO_URL(4)];
+
+    // Track concurrency: count active downloads while the artificial wait runs.
+    let active = 0;
+    let peak = 0;
+    const fetchImpl = jest.fn(async (url: string) => {
+      active++;
+      peak = Math.max(peak, active);
+      // Yield to the event loop so other workers can also enter.
+      await new Promise((r) => setTimeout(r, 5));
+      active--;
+      const headers = new Headers({ 'content-type': 'image/jpeg', 'content-length': '8' });
+      const body = new Uint8Array(8).fill(0xab);
+      return new Response(body as BodyInit, { status: 200, headers });
+    }) as unknown as typeof fetch;
+
+    const { uploadImpl } = makeUpload();
+    const { addPhotoImpl, inserts } = makeAddPhoto();
+    const rebuilds = makeRebuilds();
+
+    await persistImagesForPackageImport({
+      modelId: 'model-PARA',
+      provider: 'mediaslide',
+      providerExternalId: 'MS-P',
+      portfolioUrls,
+      polaroidUrls: [],
+      options: {
+        fetchImpl,
+        uploadImpl,
+        addPhotoImpl,
+        ...rebuilds,
+        imageDownloadConcurrency: 3,
+        clearPreviousPackagePhotos: false,
+      },
+    });
+
+    expect(peak).toBeGreaterThanOrEqual(2); // at least 2 active at some point
+    expect(peak).toBeLessThanOrEqual(3);
+    // addPhoto must run in original index order regardless of download finish order.
+    expect(inserts.map((i) => i.sortOrder)).toEqual([1, 2, 3, 4]);
+  });
+});
 
 describe('persistImagesForPackageImport — happy path', () => {
   it('downloads, uploads, and addPhoto for portfolio THEN polaroids in input order', async () => {
@@ -610,6 +786,13 @@ describe('persistImagesForPackageImport — cancel between images', () => {
         addPhotoImpl,
         ...rebuilds,
         signal: ctrl.signal,
+        // Force serial mode: the cancel test's invariant is "abort hits BEFORE
+        // the next download" — that's only deterministic when downloads run
+        // one at a time. With the production default (concurrency=4) all 3
+        // downloads start in parallel before any onImageProgress fires, which
+        // is correct production behaviour but useless for asserting the
+        // abort-before-next semantics this test guards.
+        imageDownloadConcurrency: 1,
         onImageProgress: (ev) => {
           if (ev.outcome === 'persisted' && ev.index === 0) ctrl.abort();
         },

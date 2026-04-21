@@ -257,12 +257,20 @@ export function previewToImportPayload(input: {
   const netwalkModelId: string | undefined =
     preview.externalProvider === 'netwalk' ? preview.externalId : undefined;
 
-  // Territory-Claims werden 1:1 weitergereicht; `agency_id` wird hier hart auf
-  // den `agencyId`-Parameter gesetzt, damit ein UI-Bug (oder ein älterer
-  // Caller, der eine fremde agency_id mitschickt) NIE in eine fremde
-  // Agency-Roster injizieren kann. Ohne diese Defense-in-Depth wäre `territories`
-  // ein Vehikel, das die Agency-Bindung des restlichen Payloads umgehen könnte.
-  const sanitizedTerritories = (options.territories ?? [])
+  // Territory-Claims:
+  //  1) Per-Model-Override (`territoriesByExternalId[preview.externalId]`) hat
+  //     Vorrang — die UI nutzt das, wenn die Agency pro Model unterschiedliche
+  //     Länder vergeben will (z. B. ein Talent für AT, ein anderes für DE in
+  //     derselben Charge).
+  //  2) Fallback: globaler `territories`-Block, der für ALLE Models gilt.
+  // In beiden Fällen wird `agency_id` HART auf den `agencyId`-Parameter
+  // gesetzt — ein UI-Bug oder ein älterer Caller, der eine fremde agency_id
+  // mitschickt, kann so NIE in einen fremden Agency-Roster injizieren. Ohne
+  // diese Defense-in-Depth wären `territories` / `territoriesByExternalId`
+  // Vehikel, die die Agency-Bindung des restlichen Payloads umgehen könnten.
+  const perRow = options.territoriesByExternalId?.[preview.externalId];
+  const rawTerritories = perRow && perRow.length > 0 ? perRow : (options.territories ?? []);
+  const sanitizedTerritories = rawTerritories
     .map((t) => {
       const cc = (t.country_code ?? '').trim().toUpperCase();
       if (!cc) return null;
@@ -431,6 +439,23 @@ export async function commitPreview(input: {
         if (res.created) createdCount--;
         else mergedCount--;
         warningCount++;
+      }
+
+      // Territory-Persistenz-Fehler: WICHTIG. Ohne MAT-Row ist das Modell
+      // unsichtbar in "My Models" (roster-query ist fail-closed auf MAT).
+      // Wir markieren explizit als Warning, damit die Agency das sofort sieht
+      // und nachjustieren kann (z. B. per bulk-Territory-Panel).
+      if (res.territoriesPersistFailed) {
+        if (baseOutcome.status === 'created' || baseOutcome.status === 'merged') {
+          if (baseOutcome.status === 'created') createdCount--;
+          else mergedCount--;
+          warningCount++;
+        }
+        baseOutcome.status = 'warning';
+        const territoryReason = `territory_save_failed:${res.territoriesPersistFailureReason ?? 'unknown'} — model NOT visible in My Models until you assign a territory`;
+        baseOutcome.reason = baseOutcome.reason
+          ? `${baseOutcome.reason};${territoryReason}`
+          : territoryReason;
       }
 
       // Bild-Persistenz (Phase 2). Läuft nur wenn aktiviert UND der DB-Step

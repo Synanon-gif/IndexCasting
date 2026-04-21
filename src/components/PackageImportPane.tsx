@@ -49,7 +49,13 @@ import {
   type PreviewModel,
 } from '../services/packageImportTypes';
 import { commitPreview, toPreviewModels } from '../services/packageImporter';
-import { deriveDefaultTerritoryInput, parseTerritoryInput } from './PackageImportPane.utils';
+import {
+  buildPerRowTerritoryClaims,
+  computeEffectiveTerritories,
+  deriveDefaultTerritoryInput,
+  findSelectedWithoutTerritory,
+  parseTerritoryInput,
+} from './PackageImportPane.utils';
 
 type Props = {
   agencyId: string;
@@ -91,6 +97,14 @@ export const PackageImportPane: React.FC<Props> = ({
     deriveDefaultTerritoryInput(defaultTerritory),
   );
 
+  // Per-row territory overrides — keyed by externalId. Free-form user input
+  // in the SAME format as `territoriesInput` (e.g. "AT, DE"). Empty string =
+  // no override, fall back to the global `territoriesInput`.
+  // Why per-row exists: a single agency may import 50 models in one run that
+  // belong to different mother-agencies / countries (rare but real). The
+  // global field stays the cheap default; per-row is the explicit override.
+  const [perRowTerritories, setPerRowTerritories] = useState<Record<string, string>>({});
+
   const [commitProgress, setCommitProgress] = useState<CommitProgress | null>(null);
   const [summary, setSummary] = useState<CommitSummary | null>(null);
 
@@ -120,6 +134,7 @@ export const PackageImportPane: React.FC<Props> = ({
     setAnalyzeProgress(null);
     setPreviews([]);
     setSelected(new Set());
+    setPerRowTerritories({});
     setCommitProgress(null);
     setSummary(null);
     setDrift(null);
@@ -218,6 +233,28 @@ export const PackageImportPane: React.FC<Props> = ({
     await runAnalyze(provider, true);
   }, [overrideText, url, runAnalyze]);
 
+  // Compute the per-model effective territory list once for both validation
+  // and commit. A model is invalid for commit if it has neither a per-row
+  // override nor a non-empty global default.
+  const effectiveTerritoriesByExternalId = useMemo(
+    () =>
+      computeEffectiveTerritories({
+        previews,
+        perRowOverrides: perRowTerritories,
+        globalTerritories: parsedTerritories,
+      }),
+    [previews, perRowTerritories, parsedTerritories],
+  );
+
+  const selectedWithoutTerritory = useMemo(
+    () =>
+      findSelectedWithoutTerritory({
+        selected,
+        effective: effectiveTerritoriesByExternalId,
+      }),
+    [selected, effectiveTerritoriesByExternalId],
+  );
+
   const handleCommit = useCallback(async () => {
     if (phase !== 'previewing') return;
     const toCommit = previews.filter((p) => p.status === 'ready' && selected.has(p.externalId));
@@ -225,11 +262,16 @@ export const PackageImportPane: React.FC<Props> = ({
       setError('Please select at least one model.');
       return;
     }
-    if (parsedTerritories.length === 0) {
-      // Block commit when no territory is provided. Without a territory the
-      // model would be created but invisible in "My Models" (roster query is
-      // fail-closed on `model_agency_territories`).
-      setError('Please enter at least one territory (ISO-2 country code, e.g. "AT" or "AT, DE").');
+    // Per-row territory check — a model can only commit if it ends up with
+    // at least one ISO-2 country code (override OR global). Without it, the
+    // import would create a model that is invisible in "My Models" (roster
+    // query is fail-closed on `model_agency_territories`).
+    if (selectedWithoutTerritory.length > 0) {
+      setError(
+        `Please set territories for: ${selectedWithoutTerritory.join(', ')} ` +
+          `(use the global field above OR per-row override). Models without a ` +
+          `territory would be invisible in "My Models".`,
+      );
       return;
     }
     setError(null);
@@ -239,26 +281,30 @@ export const PackageImportPane: React.FC<Props> = ({
     setCommitProgress({ total: toCommit.length, done: 0 });
 
     try {
-      const territoryClaims: CommitTerritoryClaim[] = parsedTerritories.map((cc) => ({
+      const globalTerritoryClaims: CommitTerritoryClaim[] = parsedTerritories.map((cc) => ({
         country_code: cc,
         agency_id: agencyId,
       }));
+      const perRowClaims = buildPerRowTerritoryClaims({
+        toCommit,
+        effective: effectiveTerritoriesByExternalId,
+        globalTerritories: parsedTerritories,
+        agencyId,
+      });
 
       const result = await commitPreview({
         selected: toCommit,
         agencyId,
         options: {
           forceUpdateMeasurements: forceMeasurements,
-          // Phase 2: physical image persistence active. UI default → true.
-          // Tests can bypass this via the direct service call.
           persistImages: true,
-          territories: territoryClaims,
+          ...(globalTerritoryClaims.length > 0 ? { territories: globalTerritoryClaims } : {}),
+          ...(Object.keys(perRowClaims).length > 0
+            ? { territoriesByExternalId: perRowClaims }
+            : {}),
         },
         signal: ctrl.signal,
         onProgress: (p) => setCommitProgress(p),
-        // On Web, route image downloads through `package-image-proxy` because
-        // the MediaSlide GCS bucket sends no CORS header. On Native we keep
-        // the direct fetch (no CORS, fewer hops).
         ...(Platform.OS === 'web' ? { imageFetchImpl: createSupabasePackageImageFetchImpl() } : {}),
       });
       setSummary(result);
@@ -272,7 +318,17 @@ export const PackageImportPane: React.FC<Props> = ({
     } finally {
       if (abortRef.current === ctrl) abortRef.current = null;
     }
-  }, [phase, previews, selected, agencyId, forceMeasurements, onModelsChanged, parsedTerritories]);
+  }, [
+    phase,
+    previews,
+    selected,
+    agencyId,
+    forceMeasurements,
+    onModelsChanged,
+    parsedTerritories,
+    effectiveTerritoriesByExternalId,
+    selectedWithoutTerritory,
+  ]);
 
   const handleCancel = useCallback(() => {
     abortRef.current?.abort();
@@ -415,18 +471,29 @@ export const PackageImportPane: React.FC<Props> = ({
               minutes.
             </Text>
           )}
-          {previews.map((p) => (
-            <PreviewRow
-              key={p.externalId}
-              preview={p}
-              selected={selected.has(p.externalId)}
-              onToggle={() => toggleSelected(p.externalId)}
-            />
-          ))}
+          {previews.map((p) => {
+            const eff = effectiveTerritoriesByExternalId[p.externalId] ?? [];
+            const overrideRaw = perRowTerritories[p.externalId] ?? '';
+            const overrideActive = overrideRaw.trim().length > 0;
+            return (
+              <PreviewRow
+                key={p.externalId}
+                preview={p}
+                selected={selected.has(p.externalId)}
+                onToggle={() => toggleSelected(p.externalId)}
+                effectiveTerritories={eff}
+                overrideValue={overrideRaw}
+                overrideActive={overrideActive}
+                onOverrideChange={(v) =>
+                  setPerRowTerritories((prev) => ({ ...prev, [p.externalId]: v }))
+                }
+              />
+            );
+          })}
 
           <View style={{ marginTop: spacing.md }}>
             <Text style={styles.fieldLabel}>
-              Territory (ISO-2 country codes, comma-separated)
+              Default territory for all models (ISO-2 country codes, comma-separated)
               {parsedTerritories.length > 0 ? ` — ${parsedTerritories.join(', ')}` : ''}
             </Text>
             <TextInput
@@ -439,8 +506,8 @@ export const PackageImportPane: React.FC<Props> = ({
               autoCorrect={false}
             />
             <Text style={styles.subtleNote}>
-              Required. Each imported model is claimed for these territories so it appears in "My
-              Models". You can edit territories per model later.
+              Required (or set per model below). Each imported model is claimed for these
+              territories so it appears in "My Models". Per-row override wins when set.
             </Text>
           </View>
 
@@ -461,10 +528,10 @@ export const PackageImportPane: React.FC<Props> = ({
               style={[
                 styles.primaryBtn,
                 { flex: 1 },
-                (selected.size === 0 || parsedTerritories.length === 0) && styles.btnDisabled,
+                (selected.size === 0 || selectedWithoutTerritory.length > 0) && styles.btnDisabled,
               ]}
               onPress={handleCommit}
-              disabled={selected.size === 0 || parsedTerritories.length === 0}
+              disabled={selected.size === 0 || selectedWithoutTerritory.length > 0}
             >
               <Text style={styles.primaryBtnLabel}>Import {selected.size} model(s)</Text>
             </TouchableOpacity>
@@ -586,39 +653,88 @@ const PreviewRow: React.FC<{
   preview: PreviewModel;
   selected: boolean;
   onToggle: () => void;
-}> = ({ preview, selected, onToggle }) => {
+  /** ISO-2 codes that will actually be claimed for this model on commit. */
+  effectiveTerritories: string[];
+  /** Raw text in the per-row override input. */
+  overrideValue: string;
+  /** True when the user typed something into the override input. */
+  overrideActive: boolean;
+  onOverrideChange: (v: string) => void;
+}> = ({
+  preview,
+  selected,
+  onToggle,
+  effectiveTerritories,
+  overrideValue,
+  overrideActive,
+  onOverrideChange,
+}) => {
   const isReady = preview.status === 'ready';
+  const territoryBadgeText =
+    effectiveTerritories.length > 0
+      ? `Territories: ${effectiveTerritories.join(', ')}${overrideActive ? ' (override)' : ' (default)'}`
+      : 'No territory yet — set the default field above OR override below';
+  const territoryBadgeColor =
+    effectiveTerritories.length > 0
+      ? overrideActive
+        ? colors.accentGreen
+        : colors.textSecondary
+      : colors.buttonSkipRed;
   return (
-    <TouchableOpacity
-      onPress={isReady ? onToggle : undefined}
-      activeOpacity={isReady ? 0.6 : 1}
-      style={[styles.previewRow, !isReady && styles.previewRowDisabled]}
-    >
-      <View style={[styles.checkbox, selected && isReady && styles.checkboxOn]}>
-        {selected && isReady && <Text style={styles.checkboxMark}>✓</Text>}
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.previewName}>
-          {preview.name || '(no name)'}{' '}
-          <Text style={styles.previewMeta}>· #{preview.externalId}</Text>
-        </Text>
-        {isReady ? (
-          <Text style={styles.previewMeta}>
-            {preview.measurements.height ? `${preview.measurements.height} cm · ` : ''}
-            {preview.portfolio_image_urls.length} portfolio
-            {preview.discardedPortfolio > 0 ? ` (+${preview.discardedPortfolio} discarded)` : ''}
-            {' · '}
-            {preview.polaroid_image_urls.length} polaroids
-            {preview.discardedPolaroids > 0 ? ` (+${preview.discardedPolaroids} discarded)` : ''}
+    <View style={[styles.previewRow, !isReady && styles.previewRowDisabled]}>
+      <TouchableOpacity
+        onPress={isReady ? onToggle : undefined}
+        activeOpacity={isReady ? 0.6 : 1}
+        style={{ flexDirection: 'row', alignItems: 'flex-start', flex: 1, gap: spacing.sm }}
+      >
+        <View style={[styles.checkbox, selected && isReady && styles.checkboxOn]}>
+          {selected && isReady && <Text style={styles.checkboxMark}>✓</Text>}
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.previewName}>
+            {preview.name || '(no name)'}{' '}
+            <Text style={styles.previewMeta}>· #{preview.externalId}</Text>
           </Text>
-        ) : (
-          <Text style={styles.previewWarn}>Skipped: {preview.skipReason ?? 'unknown'}</Text>
-        )}
-        {preview.warnings.length > 0 && (
-          <Text style={styles.previewWarn}>{preview.warnings.join(' · ')}</Text>
-        )}
-      </View>
-    </TouchableOpacity>
+          {isReady ? (
+            <>
+              <Text style={styles.previewMeta}>
+                {preview.measurements.height ? `${preview.measurements.height} cm · ` : ''}
+                {preview.portfolio_image_urls.length} portfolio
+                {preview.discardedPortfolio > 0
+                  ? ` (+${preview.discardedPortfolio} discarded)`
+                  : ''}
+                {' · '}
+                {preview.polaroid_image_urls.length} polaroids
+                {preview.discardedPolaroids > 0
+                  ? ` (+${preview.discardedPolaroids} discarded)`
+                  : ''}
+              </Text>
+              <Text style={[styles.previewMeta, { color: territoryBadgeColor }]}>
+                {territoryBadgeText}
+              </Text>
+            </>
+          ) : (
+            <Text style={styles.previewWarn}>Skipped: {preview.skipReason ?? 'unknown'}</Text>
+          )}
+          {preview.warnings.length > 0 && (
+            <Text style={styles.previewWarn}>{preview.warnings.join(' · ')}</Text>
+          )}
+        </View>
+      </TouchableOpacity>
+      {isReady && (
+        <View style={{ width: 100 }}>
+          <TextInput
+            style={[styles.input, styles.perRowTerritoryInput]}
+            placeholder="override"
+            placeholderTextColor={colors.textSecondary}
+            value={overrideValue}
+            onChangeText={onOverrideChange}
+            autoCapitalize="characters"
+            autoCorrect={false}
+          />
+        </View>
+      )}
+    </View>
   );
 };
 
@@ -819,6 +935,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     gap: spacing.sm,
+  },
+  perRowTerritoryInput: {
+    fontSize: 11,
+    paddingVertical: 4,
+    marginBottom: 0,
+    textAlign: 'center',
   },
   previewRowDisabled: {
     opacity: 0.5,

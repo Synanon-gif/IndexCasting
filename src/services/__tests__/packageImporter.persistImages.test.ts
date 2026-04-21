@@ -56,6 +56,8 @@ function persistResult(p: Partial<PackageImagePersistResult>): PackageImagePersi
     polaroidAttempted: 0,
     failures: [],
     mirrorRebuilt: true,
+    previousPackagePhotosCleared: 0,
+    previousPackagePhotosClearFailures: 0,
     ...p,
   };
 }
@@ -472,5 +474,107 @@ describe('commitPreview — imageFetchImpl forwarding', () => {
 
     expect(captured).toHaveLength(1);
     expect(captured[0].options?.fetchImpl).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 7) Territory-failure surfacing — the user-facing "I entered a territory but
+//    it was not saved" bug. The importer now returns the model_id even when
+//    the MAT write fails (plus territoriesPersistFailed:true). commitPreview
+//    must convert that into a `warning` outcome so the agency sees what went
+//    wrong and can re-run the territory step from the bulk panel.
+// ---------------------------------------------------------------------------
+
+describe('commitPreview — territory-persist failure surfacing', () => {
+  it('marks the model as warning when importer reports territoriesPersistFailed:true', async () => {
+    const previews = toPreviewModels([payload()]);
+    const importImpl = jest.fn(
+      async (): Promise<ImportModelAndMergeResult | null> => ({
+        model_id: 'db-x',
+        created: false, // merge path
+        territoriesPersistFailed: true,
+        territoriesPersistFailureReason: 'rls_denied_for_agency',
+      }),
+    );
+    const persistImagesImpl = jest.fn(async () =>
+      persistResult({
+        portfolioPersisted: 2,
+        portfolioAttempted: 2,
+      }),
+    );
+
+    const summary = await commitPreview({
+      selected: previews,
+      agencyId: 'agency-1',
+      options: {
+        persistImages: true,
+        territories: [{ country_code: 'AT', agency_id: 'agency-1' }],
+      },
+      importImpl,
+      persistImagesImpl,
+    });
+
+    expect(summary.warningCount).toBe(1);
+    expect(summary.mergedCount).toBe(0);
+    expect(summary.errorCount).toBe(0);
+    const o = summary.outcomes[0];
+    expect(o.status).toBe('warning');
+    expect(o.reason).toMatch(/territory_save_failed/);
+    expect(o.reason).toMatch(/NOT visible in My Models/);
+    expect(o.modelId).toBe('db-x');
+  });
+
+  it('does NOT mark warning when importer reports a clean result', async () => {
+    const previews = toPreviewModels([payload()]);
+    const importImpl = jest.fn(async () => ok('db-clean', false));
+    const persistImagesImpl = jest.fn(async () =>
+      persistResult({
+        portfolioPersisted: 2,
+        portfolioAttempted: 2,
+      }),
+    );
+    const summary = await commitPreview({
+      selected: previews,
+      agencyId: 'a',
+      options: { persistImages: true },
+      importImpl,
+      persistImagesImpl,
+    });
+    expect(summary.warningCount).toBe(0);
+    expect(summary.mergedCount).toBe(1);
+    expect(summary.outcomes[0].status).toBe('merged');
+  });
+
+  it('combines sync-id failure AND territory failure on the same model (warningCount counts once)', async () => {
+    const previews = toPreviewModels([payload()]);
+    const importImpl = jest.fn(
+      async (): Promise<ImportModelAndMergeResult | null> => ({
+        model_id: 'db-y',
+        created: false,
+        externalSyncIdsPersistFailed: true,
+        territoriesPersistFailed: true,
+        territoriesPersistFailureReason: 'save_returned_false',
+      }),
+    );
+    const persistImagesImpl = jest.fn(async () =>
+      persistResult({
+        portfolioPersisted: 2,
+        portfolioAttempted: 2,
+      }),
+    );
+
+    const summary = await commitPreview({
+      selected: previews,
+      agencyId: 'a',
+      options: { persistImages: true, territories: [{ country_code: 'AT', agency_id: 'a' }] },
+      importImpl,
+      persistImagesImpl,
+    });
+
+    expect(summary.warningCount).toBe(1);
+    const o = summary.outcomes[0];
+    expect(o.status).toBe('warning');
+    expect(o.reason).toMatch(/external_sync_ids_persist_failed/);
+    expect(o.reason).toMatch(/territory_save_failed/);
   });
 });

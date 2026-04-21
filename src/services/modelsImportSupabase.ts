@@ -7,7 +7,7 @@ export type ModelMergeTerritoryInput = {
   agency_id: string;
 };
 
-/** Return shape for {@link importModelAndMerge} — backward compatible (`externalSyncIdsPersistFailed` optional). */
+/** Return shape for {@link importModelAndMerge} — backward compatible (optional fields). */
 export type ImportModelAndMergeResult = {
   model_id: string;
   created: boolean;
@@ -16,6 +16,17 @@ export type ImportModelAndMergeResult = {
    * `update_model_sync_ids` failed — merge succeeded without persisting external IDs.
    */
   externalSyncIdsPersistFailed?: boolean;
+  /**
+   * When true, `params.territories` were provided but `save_model_territories`
+   * failed (RPC error, RLS deny, transient network issue). The model row itself
+   * was created/updated successfully — only the MAT (model_agency_territories)
+   * write failed. The caller MUST surface this to the user, otherwise the
+   * model would be silently invisible in the agency's "My Models" roster
+   * (the roster query is fail-closed on MAT).
+   */
+  territoriesPersistFailed?: boolean;
+  /** Optional human-readable detail for the territory failure — for UI / logs. */
+  territoriesPersistFailureReason?: string;
 };
 
 export type ImportModelPayload = {
@@ -279,14 +290,34 @@ export async function importModelAndMerge(
         }
       }
 
+      // Territory-Claims separat & robust schreiben. WICHTIG: Fehler hier dürfen
+      // den (bereits erfolgreichen) Merge nicht in einen `null`-Return kippen,
+      // sonst gibt es State-Divergence: Model wurde aktualisiert, aber Caller
+      // glaubt es ist gescheitert. Stattdessen flaggen wir den Fehler und
+      // surfacen ihn im `commitPreview`-Outcome als Warning.
+      let territoriesPersistFailed = false;
+      let territoriesPersistFailureReason: string | undefined;
       if (params.territories?.length) {
-        await upsertTerritoriesForModelCountryAgencyPairs(existing.id, params.territories);
+        try {
+          await upsertTerritoriesForModelCountryAgencyPairs(existing.id, params.territories);
+        } catch (terrErr) {
+          territoriesPersistFailed = true;
+          territoriesPersistFailureReason =
+            terrErr instanceof Error ? terrErr.message : 'unknown_territory_error';
+          console.error('importModelAndMerge: territory write failed (merge path):', terrErr);
+        }
       }
 
       return {
         model_id: existing.id,
         created: false,
         ...(externalSyncIdsPersistFailed ? { externalSyncIdsPersistFailed: true } : {}),
+        ...(territoriesPersistFailed
+          ? {
+              territoriesPersistFailed: true,
+              territoriesPersistFailureReason,
+            }
+          : {}),
       };
     }
 
@@ -357,11 +388,32 @@ export async function importModelAndMerge(
       return null;
     }
 
+    // Same robust pattern for the INSERT path: do not let a territory failure
+    // wipe out the freshly created model row from the result. The caller
+    // surfaces this as a warning so the agency can retry the territory step.
+    let territoriesPersistFailed = false;
+    let territoriesPersistFailureReason: string | undefined;
     if (params.territories?.length) {
-      await upsertTerritoriesForModelCountryAgencyPairs(data.id, params.territories);
+      try {
+        await upsertTerritoriesForModelCountryAgencyPairs(data.id, params.territories);
+      } catch (terrErr) {
+        territoriesPersistFailed = true;
+        territoriesPersistFailureReason =
+          terrErr instanceof Error ? terrErr.message : 'unknown_territory_error';
+        console.error('importModelAndMerge: territory write failed (insert path):', terrErr);
+      }
     }
 
-    return { model_id: data.id, created: true };
+    return {
+      model_id: data.id,
+      created: true,
+      ...(territoriesPersistFailed
+        ? {
+            territoriesPersistFailed: true,
+            territoriesPersistFailureReason,
+          }
+        : {}),
+    };
   } catch (e) {
     console.error('importModelAndMerge exception:', e);
     return null;

@@ -206,6 +206,22 @@ export type CommitOptions = {
    */
   territories?: CommitTerritoryClaim[];
   /**
+   * Optional per-model territory overrides — if a model's `externalId` appears
+   * here, the importer uses the override (sanitized) instead of the global
+   * `territories`. Used by the UI when the agency wants different country sets
+   * per imported model in the same run (e.g. mixed import of AT and DE talent).
+   *
+   * If a model has no entry here AND no global `territories` either, the
+   * importer commits the model WITHOUT any MAT row. The UI is expected to
+   * block that case ahead of time so this code path is only reached by tests
+   * / legacy callers.
+   *
+   * Same defense-in-depth as `territories`: `agency_id` on each claim is
+   * overwritten with the importer-side `agencyId` parameter — a UI bug or
+   * stale state can never inject into a foreign agency roster.
+   */
+  territoriesByExternalId?: Record<string, CommitTerritoryClaim[]>;
+  /**
    * Phase 2 — Bild-Mirror.
    *
    * Wenn `true`, werden externe Provider-URLs NICHT in `models.portfolio_images`

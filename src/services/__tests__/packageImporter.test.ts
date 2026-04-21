@@ -278,6 +278,65 @@ describe('previewToImportPayload — mapping correctness', () => {
     });
     expect(b.territories).toBeUndefined();
   });
+
+  // -------------------------------------------------------------------------
+  // Per-row territory override
+  // -------------------------------------------------------------------------
+  it('per-row territoriesByExternalId overrides the global territories list', () => {
+    const previews = toPreviewModels([
+      makePayload({ externalId: 'X1', name: 'X1' }),
+      makePayload({ externalId: 'X2', name: 'X2' }),
+    ]);
+    const globalT = [{ country_code: 'AT', agency_id: 'agency-1' }];
+    const perRow: Record<string, { country_code: string; agency_id: string }[]> = {
+      X2: [
+        { country_code: 'gb', agency_id: 'agency-1' },
+        { country_code: 'fr', agency_id: 'agency-1' },
+      ],
+    };
+    const p1 = previewToImportPayload({
+      preview: previews[0],
+      agencyId: 'agency-1',
+      options: { territories: globalT, territoriesByExternalId: perRow },
+    });
+    const p2 = previewToImportPayload({
+      preview: previews[1],
+      agencyId: 'agency-1',
+      options: { territories: globalT, territoriesByExternalId: perRow },
+    });
+    expect(p1.territories).toEqual([{ country_code: 'AT', agency_id: 'agency-1' }]);
+    expect(p2.territories).toEqual([
+      { country_code: 'GB', agency_id: 'agency-1' },
+      { country_code: 'FR', agency_id: 'agency-1' },
+    ]);
+  });
+
+  it('per-row override also gets agency_id hard-overridden (defense-in-depth)', () => {
+    const previews = toPreviewModels([makePayload({ externalId: 'X', name: 'X' })]);
+    const payload = previewToImportPayload({
+      preview: previews[0],
+      agencyId: 'caller-agency',
+      options: {
+        territoriesByExternalId: {
+          X: [{ country_code: 'AT', agency_id: 'foreign-DO-NOT-USE' }],
+        },
+      },
+    });
+    expect(payload.territories).toEqual([{ country_code: 'AT', agency_id: 'caller-agency' }]);
+  });
+
+  it('falls back to global territories when per-row entry is empty array', () => {
+    const previews = toPreviewModels([makePayload({ externalId: 'X', name: 'X' })]);
+    const payload = previewToImportPayload({
+      preview: previews[0],
+      agencyId: 'agency-1',
+      options: {
+        territories: [{ country_code: 'AT', agency_id: 'agency-1' }],
+        territoriesByExternalId: { X: [] },
+      },
+    });
+    expect(payload.territories).toEqual([{ country_code: 'AT', agency_id: 'agency-1' }]);
+  });
 });
 
 describe('commitPreview — partial-failure resilience', () => {
