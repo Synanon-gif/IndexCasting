@@ -277,27 +277,19 @@ export const OrgMessengerInline: React.FC<OrgMessengerInlineProps> = ({
     );
   }, [msgs]);
 
-  const latestBookingModelName = useMemo(() => {
-    for (let i = msgs.length - 1; i >= 0; i--) {
-      const m = msgs[i];
-      if ((m as { message_type?: string }).message_type !== 'booking') continue;
-      const mid = (m as { metadata?: Record<string, unknown> }).metadata?.['model_id'];
-      if (typeof mid !== 'string' || !mid.trim()) continue;
-      const name = bookingModelNames[mid];
-      if (name?.trim()) return name.trim();
-    }
-    return null;
-  }, [msgs, bookingModelNames]);
-
+  // Note: B2B org-chat header MUST identify only the counterparty org — never a
+  // model name (see b2bMessengerHeaderTitle.ts). bookingModelNames stays around
+  // because booking cards in the message list still render the model name; the
+  // header path simply does not consume it.
   const displayHeaderTitle = useMemo(() => {
     const fb = uiCopy.b2bChat.conversationFallback;
     const base = headerTitle?.trim() ?? '';
     if (b2bViewerRole === 'client') {
-      return formatB2bClientHeaderPrimary(base || fb, latestBookingModelName);
+      return formatB2bClientHeaderPrimary(base || fb);
     }
     if (!base) return fb;
     return base;
-  }, [headerTitle, b2bViewerRole, latestBookingModelName]);
+  }, [headerTitle, b2bViewerRole]);
 
   // Resolve model preview photos for package cards.
   // Cache key is `${modelId}|${packageType}` so polaroid packages display polaroids

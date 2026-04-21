@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { colors, spacing, typography } from '../theme/theme';
 import { isMobileWidth } from '../theme/breakpoints';
-import { getChatOverlayMaxWidth, getMessagesScrollMaxHeight } from '../theme/chatLayout';
+import { getMessagesScrollMaxHeight } from '../theme/chatLayout';
 import {
   getModelsFromSupabase,
   getModelForUserFromSupabase,
@@ -53,6 +53,7 @@ import {
   loadMessagesForThread,
   loadOlderMessagesForThread,
   refreshOptionRequestInCache,
+  subscribeToOptionRequestRowChanges,
   type OptionRequest,
 } from '../store/optionRequests';
 import { subscribeToOptionMessages } from '../services/optionRequestsSupabase';
@@ -185,9 +186,9 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
 }) => {
   const { width: modelProfileWindowWidth, height: modelProfileWindowHeight } =
     useWindowDimensions();
-  const optionChatOverlayMaxW = getChatOverlayMaxWidth(modelProfileWindowWidth);
   const optionChatMessagesMaxH = getMessagesScrollMaxHeight(modelProfileWindowHeight);
-  // True on mobile-width viewports — option chat overlay fills the inset area instead of floating.
+  // Used by other (non-chat) responsive decisions in this screen — the option chat
+  // overlay itself is now ALWAYS fullscreen (parity with Agency / Client chat UX).
   const isMobileModel = isMobileWidth(modelProfileWindowWidth);
   const { signOut } = useAuth();
   const modelAgencyCtx = useModelAgency();
@@ -1023,11 +1024,18 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
   useEffect(() => {
     const req = selectedOptionThread ? getRequestByThreadId(selectedOptionThread) : undefined;
     if (!req) return;
-    const unsub = subscribeToOptionMessages(req.id, () => {
+    const unsubMsgs = subscribeToOptionMessages(req.id, () => {
       loadMessagesForThread(selectedOptionThread!, { viewerRole: 'model' });
       refreshOptionRequestInCache(selectedOptionThread!, { modelSafe: true });
     });
-    return unsub;
+    // Defense-in-depth: subscribe to option_requests row UPDATEs so the model
+    // sees price/state transitions (counter-offer set, status flip, final_status
+    // change) immediately even when no system message is present.
+    const unsubRow = subscribeToOptionRequestRowChanges(req.id, { modelSafe: true });
+    return () => {
+      unsubMsgs();
+      unsubRow();
+    };
   }, [selectedOptionThread]);
 
   useEffect(() => {
@@ -2619,32 +2627,18 @@ export const ModelProfileScreen: React.FC<ModelProfileScreenProps> = ({
             top: 0,
             bottom: chatComposerInset,
             zIndex: 995,
-            // On mobile: fullscreen panel. On desktop: dimmed overlay with centered card.
-            ...(isMobileModel
-              ? { backgroundColor: colors.surface }
-              : {
-                  backgroundColor: 'rgba(0,0,0,0.1)',
-                  justifyContent: 'center' as const,
-                  alignItems: 'center' as const,
-                  padding: spacing.lg,
-                }),
+            // Always fullscreen — Model option chat must match the Agency / Client
+            // chat treatment (no dimmed-card-overlay on desktop). The previous
+            // desktop overlay made the Model app feel inconsistent with the rest
+            // of the product where chats own the entire chat surface.
+            backgroundColor: colors.surface,
           }}
         >
           <View
             style={{
-              // Mobile: fill entire inset area. Desktop: floating card.
-              ...(isMobileModel
-                ? { flex: 1, backgroundColor: colors.surface, overflow: 'hidden' as const }
-                : {
-                    width: '100%',
-                    maxWidth: optionChatOverlayMaxW,
-                    maxHeight: '80%',
-                    backgroundColor: colors.surface,
-                    borderRadius: 18,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    overflow: 'hidden' as const,
-                  }),
+              flex: 1,
+              backgroundColor: colors.surface,
+              overflow: 'hidden' as const,
               padding: spacing.md,
             }}
           >

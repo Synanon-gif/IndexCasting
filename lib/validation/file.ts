@@ -142,18 +142,50 @@ export async function checkMagicBytes(file: File | Blob): Promise<ValidationResu
   return { ok: true };
 }
 
+/** Filename-extension → MIME fallback for browsers that report `file.type === ''`
+ * (notably Windows/Linux Chrome with HEIC/HEIF files exported from iPhones). The
+ * original `validateFile` rejected such uploads BEFORE the HEIC pipeline could run,
+ * so this map is the canonical recovery path used by `inferMimeFromName` and
+ * `validateFile`. Keep aligned with `ALLOWED_MIME_TYPES`. */
+const EXTENSION_MIME_FALLBACK: Record<string, string> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  heic: 'image/heic',
+  heif: 'image/heif',
+  pdf: 'application/pdf',
+};
+
+/** Best-effort MIME inference from filename extension. Returns '' if unknown. */
+export function inferMimeFromName(name: string): string {
+  const lower = (name ?? '').toLowerCase();
+  const dot = lower.lastIndexOf('.');
+  if (dot === -1) return '';
+  const ext = lower.slice(dot + 1);
+  return EXTENSION_MIME_FALLBACK[ext] ?? '';
+}
+
 /**
  * Validates a file for upload:
  * 1. MIME type must be in the allowed whitelist.
  * 2. File size must not exceed MAX_FILE_SIZE_BYTES.
  *
  * Does NOT check magic bytes (call checkMagicBytes separately for full validation).
+ *
+ * If `file.type` is empty (some browsers do not report a MIME for HEIC/HEIF files
+ * exported by iPhones), we transparently fall back to the filename extension via
+ * {@link inferMimeFromName} so the HEIC conversion pipeline downstream can run.
  */
 export function validateFile(
   file: File | Blob,
   allowedTypes: readonly string[] = ALLOWED_MIME_TYPES,
 ): ValidationResult {
-  const mimeType = file.type;
+  let mimeType = file.type;
+
+  if (!mimeType && file instanceof File) {
+    mimeType = inferMimeFromName(file.name);
+  }
 
   if (!mimeType) {
     return { ok: false, error: 'File type could not be determined.' };

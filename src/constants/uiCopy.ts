@@ -1863,6 +1863,22 @@ export const uiCopy = {
     /** B2B thread: terminal — no further fee negotiation. */
     negotiationFeeClosedRejected: 'This request was rejected. Fee negotiation is closed.',
     negotiationFeeClosedJobConfirmed: 'Job confirmed. Fee negotiation is closed.',
+    /** Agency: counter-offer RPC rejected because status is no longer in_negotiation
+     * (typically the model already confirmed availability → status='confirmed'). */
+    counterOfferFailedNotInNegotiation:
+      'Could not send the counter-offer — this request is no longer in negotiation. The model may have already confirmed availability or the request was rejected. The view has been refreshed.',
+    /**
+     * Generic fail-closed message for negotiation actions whose RPC rejected
+     * (e.g. status is no longer `in_negotiation`, model already confirmed/rejected,
+     * client_price_status drifted, request was withdrawn). Surfaced when:
+     *   - confirmAvailability / acceptClientPrice / rejectClientPrice
+     *   - clientAcceptCounter / clientConfirmJob / agencyConfirmJobAgencyOnly
+     * fails on either side. UI is refreshed before the alert fires so the next
+     * action reflects the true server state.
+     */
+    negotiationActionFailedTitle: 'Could not complete this action',
+    negotiationActionFailedMessage:
+      'The booking state changed before the action reached the server (e.g. the request was rejected, the model confirmed, or the price was already accepted). The view has been refreshed — try again if needed.',
     /** Agency: client declined proposed fee — prompt to send another counter. */
     agencyNegotiationAfterClientDecline:
       'Client declined the proposed fee — you can send a new counter-offer below.',

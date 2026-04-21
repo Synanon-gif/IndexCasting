@@ -46,6 +46,7 @@ import {
   loadOptionRequestsForAgency,
   purgeOptionThreadFromStore,
   refreshOptionRequestInCache,
+  subscribeToOptionRequestRowChanges,
   loadMessagesForThread,
   loadOlderMessagesForThread,
   agencyConfirmAvailabilityStore,
@@ -6999,11 +7000,19 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
   useEffect(() => {
     const req = selectedThreadId ? getRequestByThreadId(selectedThreadId) : undefined;
     if (!req) return;
-    const unsub = subscribeToOptionMessages(req.id, () => {
+    const unsubMsgs = subscribeToOptionMessages(req.id, () => {
       loadMessagesForThread(selectedThreadId!);
       refreshOptionRequestInCache(selectedThreadId!);
     });
-    return unsub;
+    // Defense-in-depth: subscribe to option_requests row UPDATEs so price/state
+    // changes from the client/model side (counter-offer accept/reject, model
+    // approval, status flip) refresh the open thread even when no system message
+    // is inserted (or its insert silently failed). De-dupes via cache.
+    const unsubRow = subscribeToOptionRequestRowChanges(req.id);
+    return () => {
+      unsubMsgs();
+      unsubRow();
+    };
   }, [selectedThreadId]);
 
   const _toggleArchive = (threadId: string) => {
@@ -7296,59 +7305,91 @@ const AgencyMessagesTab: React.FC<AgencyMessagesTabProps> = ({
     }, 4000);
   }, [onOptionProjectionChanged]);
 
-  const runAgencyConfirmAvailability = useCallback(async () => {
-    if (!request?.threadId || processingRequestId) return;
-    setProcessingRequestId(request.threadId);
-    try {
-      await agencyConfirmAvailabilityStore(request.threadId);
-      setRequests(getOptionRequests());
-      showNegotiationCalendarHint();
-    } finally {
-      setProcessingRequestId(null);
-    }
-  }, [request?.threadId, processingRequestId, showNegotiationCalendarHint]);
+  // Generic fail-closed wrapper for negotiation actions. Same rationale as
+  // runAgencyCounterOffer: silent boolean failure leaves the UI stale and the user
+  // convinced the action succeeded. We refresh the cache from the server snapshot
+  // so any conditional CTAs re-evaluate, then surface the canonical alert. Each
+  // action keeps its own busy lock via processingRequestId.
+  const runNegotiationAction = useCallback(
+    async (label: string, fn: () => Promise<boolean>): Promise<boolean> => {
+      if (!request?.threadId || processingRequestId) return false;
+      const tid = request.threadId;
+      setProcessingRequestId(tid);
+      try {
+        const ok = await fn();
+        if (!ok) {
+          setRequests(getOptionRequests());
+          Alert.alert(
+            uiCopy.optionNegotiationChat.negotiationActionFailedTitle,
+            uiCopy.optionNegotiationChat.negotiationActionFailedMessage,
+          );
+          return false;
+        }
+        setRequests(getOptionRequests());
+        showNegotiationCalendarHint();
+        return true;
+      } catch (e) {
+        console.error(`runNegotiationAction(${label}) exception`, e);
+        setRequests(getOptionRequests());
+        Alert.alert(
+          uiCopy.optionNegotiationChat.negotiationActionFailedTitle,
+          uiCopy.optionNegotiationChat.negotiationActionFailedMessage,
+        );
+        return false;
+      } finally {
+        setProcessingRequestId(null);
+      }
+    },
+    [request?.threadId, processingRequestId, showNegotiationCalendarHint],
+  );
 
-  const runAgencyConfirmJobAgencyOnly = useCallback(async () => {
-    if (!request?.threadId || processingRequestId) return;
-    setProcessingRequestId(request.threadId);
-    try {
-      await agencyConfirmJobAgencyOnlyStore(request.threadId);
-      setRequests(getOptionRequests());
-    } finally {
-      setProcessingRequestId(null);
-    }
-  }, [request?.threadId, processingRequestId]);
+  // NegotiationThreadFooter expects `() => Promise<void>` for its action props,
+  // so we drop the boolean return from the wrapper here. The boolean is still
+  // available inside runNegotiationAction for the alert/refresh logic.
+  const runAgencyConfirmAvailability = useCallback(async (): Promise<void> => {
+    await runNegotiationAction('agencyConfirmAvailability', () =>
+      agencyConfirmAvailabilityStore(request!.threadId!),
+    );
+  }, [runNegotiationAction, request]);
 
-  const runAgencyAcceptClientPrice = useCallback(async () => {
-    if (!request?.threadId || processingRequestId) return;
-    setProcessingRequestId(request.threadId);
-    try {
-      await agencyAcceptClientPriceStore(request.threadId);
-      setRequests(getOptionRequests());
-      showNegotiationCalendarHint();
-    } finally {
-      setProcessingRequestId(null);
-    }
-  }, [request?.threadId, processingRequestId, showNegotiationCalendarHint]);
+  const runAgencyConfirmJobAgencyOnly = useCallback(async (): Promise<void> => {
+    await runNegotiationAction('agencyConfirmJobAgencyOnly', () =>
+      agencyConfirmJobAgencyOnlyStore(request!.threadId!),
+    );
+  }, [runNegotiationAction, request]);
 
-  const runAgencyRejectClientPrice = useCallback(async () => {
-    if (!request?.threadId || processingRequestId) return;
-    setProcessingRequestId(request.threadId);
-    try {
-      await agencyRejectClientPriceStore(request.threadId);
-      setRequests(getOptionRequests());
-      showNegotiationCalendarHint();
-    } finally {
-      setProcessingRequestId(null);
-    }
-  }, [request?.threadId, processingRequestId, showNegotiationCalendarHint]);
+  const runAgencyAcceptClientPrice = useCallback(async (): Promise<void> => {
+    await runNegotiationAction('agencyAcceptClientPrice', () =>
+      agencyAcceptClientPriceStore(request!.threadId!),
+    );
+  }, [runNegotiationAction, request]);
+
+  const runAgencyRejectClientPrice = useCallback(async (): Promise<void> => {
+    await runNegotiationAction('agencyRejectClientPrice', () =>
+      agencyRejectClientPriceStore(request!.threadId!),
+    );
+  }, [runNegotiationAction, request]);
 
   const runAgencyCounterOffer = useCallback(
     async (amount: number) => {
       if (!request?.threadId || processingRequestId) return;
       setProcessingRequestId(request.threadId);
       try {
-        await agencyCounterOfferStore(request.threadId, amount, currency);
+        const ok = await agencyCounterOfferStore(request.threadId, amount, currency);
+        if (!ok) {
+          // Fail-closed feedback: silent failure here previously made users believe
+          // the counter offer was sent (the input cleared) while the row was
+          // unchanged on the server. This typically happens when the request is
+          // no longer in 'in_negotiation' (e.g. model already confirmed → status
+          // flipped to 'confirmed'). Refresh local state so the UI now reflects
+          // the server (counter-offer buttons disappear) and surface a hint.
+          setRequests(getOptionRequests());
+          Alert.alert(
+            uiCopy.common.error,
+            uiCopy.optionNegotiationChat.counterOfferFailedNotInNegotiation,
+          );
+          return;
+        }
         setAgencyCounterInput('');
         setNegotiationCounterExpanded(false);
         setRequests(getOptionRequests());
